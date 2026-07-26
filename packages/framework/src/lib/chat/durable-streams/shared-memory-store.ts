@@ -21,8 +21,8 @@
  * yield* setupDurableStreams({ bufferStore, registryStore })
  * ```
  */
-import { call, type Operation } from 'effection'
-import { EventEmitter } from 'events'
+import { call, type Operation } from "effection";
+import { EventEmitter } from "events";
 import type {
   TokenBuffer,
   TokenBufferStore,
@@ -30,32 +30,56 @@ import type {
   SessionEntry,
   SessionStatus,
   TokenBufferWriter,
-} from '@sweatpants/durable-streams'
-import { StaleTokenWriterError } from '@sweatpants/durable-streams'
-import type { Logger } from '../../logger/index.ts'
+} from "@sweatpants/durable-streams";
+import { StaleTokenWriterError } from "@sweatpants/durable-streams";
+import type { Logger } from "../../logger/index.ts";
 
 // Use a simple console-based logger at module level
 // (pino with transport can hang in certain environments like Vite SSR)
 function createSimpleLogger(prefix: string): Logger {
   return {
     trace: (obj: object | string, msg?: string) => {
-      if (process.env['DEBUG_DURABLE']) {
-        console.log(`[${prefix}:trace]`, typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined)
+      if (process.env["DEBUG_DURABLE"]) {
+        console.log(
+          `[${prefix}:trace]`,
+          typeof obj === "string" ? obj : msg,
+          typeof obj === "object" ? obj : undefined,
+        );
       }
     },
     debug: (obj: object | string, msg?: string) => {
-      if (process.env['DEBUG_DURABLE']) {
-        console.log(`[${prefix}:debug]`, typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined)
+      if (process.env["DEBUG_DURABLE"]) {
+        console.log(
+          `[${prefix}:debug]`,
+          typeof obj === "string" ? obj : msg,
+          typeof obj === "object" ? obj : undefined,
+        );
       }
     },
-    info: (obj: object | string, msg?: string) => console.log(`[${prefix}:info]`, typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
-    warn: (obj: object | string, msg?: string) => console.warn(`[${prefix}:warn]`, typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
-    error: (obj: object | string, msg?: string) => console.error(`[${prefix}:error]`, typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
-    child: (bindings: Record<string, unknown>) => createSimpleLogger(`${prefix}:${Object.values(bindings).join(':')}`),
-  }
+    info: (obj: object | string, msg?: string) =>
+      console.log(
+        `[${prefix}:info]`,
+        typeof obj === "string" ? obj : msg,
+        typeof obj === "object" ? obj : undefined,
+      ),
+    warn: (obj: object | string, msg?: string) =>
+      console.warn(
+        `[${prefix}:warn]`,
+        typeof obj === "string" ? obj : msg,
+        typeof obj === "object" ? obj : undefined,
+      ),
+    error: (obj: object | string, msg?: string) =>
+      console.error(
+        `[${prefix}:error]`,
+        typeof obj === "string" ? obj : msg,
+        typeof obj === "object" ? obj : undefined,
+      ),
+    child: (bindings: Record<string, unknown>) =>
+      createSimpleLogger(`${prefix}:${Object.values(bindings).join(":")}`),
+  };
 }
 
-const log: Logger = createSimpleLogger('shared-store')
+const log: Logger = createSimpleLogger("shared-store");
 
 // =============================================================================
 // SHARED STORAGE TYPES
@@ -66,12 +90,12 @@ const log: Logger = createSimpleLogger('shared-store')
  * This is the "dumb" data that lives outside Effection.
  */
 export interface SharedBufferState<T> {
-  tokens: T[]
-  completed: boolean
-  error: Error | null
-  writerFence?: { ownerId: string; activationEpoch: number }
+  tokens: T[];
+  completed: boolean;
+  error: Error | null;
+  writerFence?: { ownerId: string; activationEpoch: number };
   /** EventEmitter for cross-scope notifications */
-  emitter: EventEmitter
+  emitter: EventEmitter;
 }
 
 /**
@@ -80,11 +104,11 @@ export interface SharedBufferState<T> {
  */
 export interface SharedStorage<T> {
   /** Buffer states keyed by buffer ID */
-  buffers: Map<string, SharedBufferState<T>>
+  buffers: Map<string, SharedBufferState<T>>;
   /** Session entries keyed by session ID */
-  sessions: Map<string, SessionEntry>
+  sessions: Map<string, SessionEntry>;
   /** Session status keyed by session ID (mutable, updated by writer tasks) */
-  sessionStatus: Map<string, SessionStatus>
+  sessionStatus: Map<string, SessionStatus>;
 }
 
 /**
@@ -108,7 +132,7 @@ export function createSharedStorage<T>(): SharedStorage<T> {
     buffers: new Map(),
     sessions: new Map(),
     sessionStatus: new Map(),
-  }
+  };
 }
 
 // =============================================================================
@@ -121,52 +145,59 @@ export function createSharedStorage<T>(): SharedStorage<T> {
  * Uses EventEmitter for change notifications, which works across
  * Effection scopes (unlike Effection Signal which is scope-bound).
  */
-function createSharedBuffer<T>(
-  id: string,
-  state: SharedBufferState<T>
-): TokenBuffer<T> {
+function createSharedBuffer<T>(id: string, state: SharedBufferState<T>): TokenBuffer<T> {
   function assertFence(ownerId: string, activationEpoch: number): void {
     if (
       !state.writerFence ||
       state.writerFence.ownerId !== ownerId ||
       state.writerFence.activationEpoch !== activationEpoch
     ) {
-      throw new StaleTokenWriterError()
+      throw new StaleTokenWriterError();
     }
   }
 
   function appendTokens(newTokens: T[]): number {
-    if (state.completed || state.error) throw new Error('Buffer is closed')
-    state.tokens.push(...newTokens)
-    state.emitter.emit('change')
-    if (state.tokens.length % 50 === 0) {
-      log.debug({ bufferId: id, tokenCount: state.tokens.length }, 'buffer append progress')
+    if (state.completed || state.error) {
+      throw new Error("Buffer is closed");
     }
-    return state.tokens.length
+    state.tokens.push(...newTokens);
+    state.emitter.emit("change");
+    if (state.tokens.length % 50 === 0) {
+      log.debug({ bufferId: id, tokenCount: state.tokens.length }, "buffer append progress");
+    }
+    return state.tokens.length;
   }
 
   function completeBuffer(): void {
-    if (state.completed) return
-    log.debug({ bufferId: id, totalTokens: state.tokens.length }, 'buffer complete')
-    state.completed = true
-    state.emitter.emit('change')
+    if (state.completed) {
+      return;
+    }
+    log.debug({ bufferId: id, totalTokens: state.tokens.length }, "buffer complete");
+    state.completed = true;
+    state.emitter.emit("change");
   }
 
   function failBuffer(err: Error): void {
-    if (state.completed) return
-    log.error({ bufferId: id, error: err.message }, 'buffer failed')
-    state.completed = true
-    state.error = err.message.length <= 1024 ? err : new Error(err.message.slice(0, 1024))
-    state.error.name = err.name
-    state.emitter.emit('change')
+    if (state.completed) {
+      return;
+    }
+    log.error({ bufferId: id, error: err.message }, "buffer failed");
+    state.completed = true;
+    state.error = err.message.length <= 1024 ? err : new Error(err.message.slice(0, 1024));
+    state.error.name = err.name;
+    state.emitter.emit("change");
   }
 
   const buffer: TokenBuffer<T> = {
     id,
 
     *claimWriter(request): Operation<TokenBufferWriter<T>> {
-      if (!request.ownerId || !Number.isSafeInteger(request.activationEpoch) || request.activationEpoch < 0) {
-        throw new Error('Writer owner and nonnegative activation epoch are required')
+      if (
+        !request.ownerId ||
+        !Number.isSafeInteger(request.activationEpoch) ||
+        request.activationEpoch < 0
+      ) {
+        throw new Error("Writer owner and nonnegative activation epoch are required");
       }
       if (
         state.writerFence &&
@@ -174,69 +205,79 @@ function createSharedBuffer<T>(
           (request.activationEpoch === state.writerFence.activationEpoch &&
             request.ownerId !== state.writerFence.ownerId))
       ) {
-        throw new StaleTokenWriterError()
+        throw new StaleTokenWriterError();
       }
-      state.writerFence = { ...request }
-      const fence = { streamId: id, ...request }
+      state.writerFence = { ...request };
+      const fence = { streamId: id, ...request };
       return {
         fence,
         *append(tokens): Operation<number> {
-          assertFence(request.ownerId, request.activationEpoch)
-          return appendTokens(tokens)
+          assertFence(request.ownerId, request.activationEpoch);
+          return appendTokens(tokens);
         },
         *complete(): Operation<void> {
-          assertFence(request.ownerId, request.activationEpoch)
-          completeBuffer()
+          assertFence(request.ownerId, request.activationEpoch);
+          completeBuffer();
         },
         *fail(error): Operation<void> {
-          assertFence(request.ownerId, request.activationEpoch)
-          failBuffer(error)
+          assertFence(request.ownerId, request.activationEpoch);
+          failBuffer(error);
         },
-      }
+      };
     },
 
     *read(afterLSN = 0): Operation<{ tokens: T[]; lsn: number }> {
       return {
         tokens: state.tokens.slice(afterLSN),
         lsn: state.tokens.length,
-      }
+      };
     },
 
     *isComplete(): Operation<boolean> {
-      return state.completed
+      return state.completed;
     },
 
     *getError(): Operation<Error | null> {
-      return state.error
+      return state.error;
     },
 
     *waitForChange(afterLSN: number): Operation<void> {
       // If there's already new data or stream is done, return immediately
       if (state.tokens.length > afterLSN || state.completed || state.error) {
-        log.debug({ bufferId: id, afterLSN, currentLength: state.tokens.length, completed: state.completed }, 'waitForChange: immediate return')
-        return
+        log.debug(
+          {
+            bufferId: id,
+            afterLSN,
+            currentLength: state.tokens.length,
+            completed: state.completed,
+          },
+          "waitForChange: immediate return",
+        );
+        return;
       }
 
-      log.debug({ bufferId: id, afterLSN }, 'waitForChange: waiting for notification')
+      log.debug({ bufferId: id, afterLSN }, "waitForChange: waiting for notification");
       yield* call(
         () =>
           new Promise<void>((resolve) => {
-            const changed = () => resolve()
-            state.emitter.once('change', changed)
+            const changed = () => resolve();
+            state.emitter.once("change", changed);
             // Subscribe before re-checking to close the dropped-wakeup race.
             if (state.tokens.length > afterLSN || state.completed || state.error) {
-              state.emitter.off('change', changed)
-              resolve()
+              state.emitter.off("change", changed);
+              resolve();
             }
           }),
-      )
-      log.debug({ bufferId: id, afterLSN, newLength: state.tokens.length }, 'waitForChange: change detected')
+      );
+      log.debug(
+        { bufferId: id, afterLSN, newLength: state.tokens.length },
+        "waitForChange: change detected",
+      );
     },
-  }
+  };
 
-  return buffer
+  return buffer;
 }
-
 
 // =============================================================================
 // SHARED TOKEN BUFFER STORE
@@ -248,14 +289,12 @@ function createSharedBuffer<T>(
  * Multiple instances can be created from the same SharedStorage,
  * and they will all see the same buffers.
  */
-export function createSharedBufferStore<T>(
-  storage: SharedStorage<T>
-): TokenBufferStore<T> {
+export function createSharedBufferStore<T>(storage: SharedStorage<T>): TokenBufferStore<T> {
   return {
     *create(id: string): Operation<TokenBuffer<T>> {
-      log.debug({ bufferId: id }, 'bufferStore.create')
+      log.debug({ bufferId: id }, "bufferStore.create");
       if (storage.buffers.has(id)) {
-        throw new Error(`Buffer ${id} already exists`)
+        throw new Error(`Buffer ${id} already exists`);
       }
 
       // Create the shared state
@@ -264,35 +303,35 @@ export function createSharedBufferStore<T>(
         completed: false,
         error: null,
         emitter: new EventEmitter(),
-      }
-      storage.buffers.set(id, state)
-      log.debug({ bufferId: id }, 'buffer created in shared storage')
+      };
+      storage.buffers.set(id, state);
+      log.debug({ bufferId: id }, "buffer created in shared storage");
 
       // Return a buffer wrapper around the state
-      return createSharedBuffer(id, state)
+      return createSharedBuffer(id, state);
     },
 
     *get(id: string): Operation<TokenBuffer<T> | null> {
-      const state = storage.buffers.get(id)
+      const state = storage.buffers.get(id);
       if (!state) {
-        log.debug({ bufferId: id }, 'bufferStore.get: not found')
-        return null
+        log.debug({ bufferId: id }, "bufferStore.get: not found");
+        return null;
       }
-      log.debug({ bufferId: id }, 'bufferStore.get: found')
+      log.debug({ bufferId: id }, "bufferStore.get: found");
       // Return a buffer wrapper around the existing state
-      return createSharedBuffer(id, state)
+      return createSharedBuffer(id, state);
     },
 
     *delete(id: string): Operation<void> {
-      log.debug({ bufferId: id }, 'bufferStore.delete')
-      const state = storage.buffers.get(id)
+      log.debug({ bufferId: id }, "bufferStore.delete");
+      const state = storage.buffers.get(id);
       if (state) {
         // Clean up the emitter
-        state.emitter.removeAllListeners()
-        storage.buffers.delete(id)
+        state.emitter.removeAllListeners();
+        storage.buffers.delete(id);
       }
     },
-  }
+  };
 }
 
 // =============================================================================
@@ -305,32 +344,30 @@ export function createSharedBufferStore<T>(
  * Multiple instances can be created from the same SharedStorage,
  * and they will all see the same session entries.
  */
-export function createSharedRegistryStore<T>(
-  storage: SharedStorage<T>
-): SessionRegistryStore {
+export function createSharedRegistryStore<T>(storage: SharedStorage<T>): SessionRegistryStore {
   return {
     *get(sessionId: string): Operation<SessionEntry | null> {
-      return storage.sessions.get(sessionId) ?? null
+      return storage.sessions.get(sessionId) ?? null;
     },
 
     *set(sessionId: string, entry: SessionEntry): Operation<void> {
-      storage.sessions.set(sessionId, entry)
+      storage.sessions.set(sessionId, entry);
     },
 
     *delete(sessionId: string): Operation<void> {
-      storage.sessions.delete(sessionId)
-      storage.sessionStatus.delete(sessionId)
+      storage.sessions.delete(sessionId);
+      storage.sessionStatus.delete(sessionId);
     },
 
     *updateRefCount(sessionId: string, delta: number): Operation<number> {
-      const entry = storage.sessions.get(sessionId)
+      const entry = storage.sessions.get(sessionId);
       if (!entry) {
-        throw new Error(`Session ${sessionId} not found`)
+        throw new Error(`Session ${sessionId} not found`);
       }
-      entry.refCount += delta
-      return entry.refCount
+      entry.refCount += delta;
+      return entry.refCount;
     },
-  }
+  };
 }
 
 // =============================================================================
@@ -341,7 +378,7 @@ export function createSharedRegistryStore<T>(
  * Configuration for shared durable streams.
  */
 export interface SharedDurableStreamsConfig<T> {
-  storage: SharedStorage<T>
+  storage: SharedStorage<T>;
 }
 
 /**
@@ -361,11 +398,11 @@ export interface SharedDurableStreamsConfig<T> {
  * ```
  */
 export function getSharedStores<T>(storage: SharedStorage<T>): {
-  bufferStore: TokenBufferStore<T>
-  registryStore: SessionRegistryStore
+  bufferStore: TokenBufferStore<T>;
+  registryStore: SessionRegistryStore;
 } {
   return {
     bufferStore: createSharedBufferStore(storage),
     registryStore: createSharedRegistryStore(storage),
-  }
+  };
 }

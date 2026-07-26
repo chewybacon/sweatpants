@@ -633,7 +633,9 @@ export function installRemoteWorkspaceFilesProvider(options: {
         fence: binding.fence,
         operationId: execution.operationId("workspace.inspect"),
       });
-      if (response.type !== "inspect-result") throw wrongWorkspaceResponse("inspect");
+      if (response.type !== "inspect-result") {
+        throw wrongWorkspaceResponse("inspect");
+      }
       return { workspaceRevision: response.workspaceVersion };
     },
     *readFile(args) {
@@ -649,7 +651,9 @@ export function installRemoteWorkspaceFilesProvider(options: {
         ...(input.startLine === undefined ? {} : { startLine: input.startLine }),
         ...(input.endLine === undefined ? {} : { endLine: input.endLine }),
       });
-      if (response.type !== "read-result") throw wrongWorkspaceResponse("readFile");
+      if (response.type !== "read-result") {
+        throw wrongWorkspaceResponse("readFile");
+      }
       return {
         path: response.path,
         contents: response.content,
@@ -668,7 +672,9 @@ export function installRemoteWorkspaceFilesProvider(options: {
         operationId: execution.operationId("workspace.list"),
         path: args[0].path,
       });
-      if (response.type !== "list-result") throw wrongWorkspaceResponse("list");
+      if (response.type !== "list-result") {
+        throw wrongWorkspaceResponse("list");
+      }
       return {
         path: response.path,
         entries: [...response.entries],
@@ -686,7 +692,9 @@ export function installRemoteWorkspaceFilesProvider(options: {
         path: args[0].path,
         contents: args[0].contents,
       });
-      if (response.type !== "write-result") throw wrongWorkspaceResponse("writeFile");
+      if (response.type !== "write-result") {
+        throw wrongWorkspaceResponse("writeFile");
+      }
       return {
         path: response.path,
         bytes: response.bytes,
@@ -703,7 +711,9 @@ export function installRemoteWorkspaceFilesProvider(options: {
         expectedWorkspaceRevision: args[0].expectedWorkspaceRevision,
         script: args[0].script,
       });
-      if (response.type !== "script-result") throw wrongWorkspaceResponse("runScript");
+      if (response.type !== "script-result") {
+        throw wrongWorkspaceResponse("runScript");
+      }
       return {
         script: response.script,
         exitCode: response.exitCode,

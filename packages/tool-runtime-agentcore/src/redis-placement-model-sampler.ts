@@ -23,8 +23,7 @@ import {
 } from "./placement-model-sampler.ts";
 
 export interface RedisPlacementModelSampler
-  extends PlacementModelSampler,
-    PlacementModelSampleProducerStore {
+  extends PlacementModelSampler, PlacementModelSampleProducerStore {
   inspect(identity: RemoteSampleIdentity): Operation<RemoteSampleRecord | null>;
   cleanup(identity: RemoteSampleIdentity): Operation<void>;
 }
@@ -130,13 +129,17 @@ export function createRedisPlacementModelSampler(options: {
 
   function* requireRecord(identity: RemoteSampleIdentity): Operation<RemoteSampleRecord> {
     const record = yield* readRecord(identity);
-    if (!record) throw new CrankError("remote_sample_protocol_error", "Remote sample not found");
+    if (!record) {
+      throw new CrankError("remote_sample_protocol_error", "Remote sample not found");
+    }
     return record;
   }
 
   function* requireBuffer(streamId: string): Operation<TokenBuffer<RemoteModelDeliveryEvent>> {
     const buffer = yield* options.buffers.get(streamId);
-    if (!buffer) throw new CrankError("remote_sample_protocol_error", "Remote sample spool missing");
+    if (!buffer) {
+      throw new CrankError("remote_sample_protocol_error", "Remote sample spool missing");
+    }
     return buffer;
   }
 
@@ -151,7 +154,9 @@ export function createRedisPlacementModelSampler(options: {
         arguments: [fence.ownerId, String(fence.producerEpoch), canonicalJson(next)],
       }),
     );
-    if (result === "stale") throw new StaleTokenWriterError("Remote producer fence is stale");
+    if (result === "stale") {
+      throw new StaleTokenWriterError("Remote producer fence is stale");
+    }
     if (result !== "ok") {
       throw new CrankError("remote_sample_conflict", "Remote sample is not producer-mutable");
     }
@@ -169,14 +174,16 @@ export function createRedisPlacementModelSampler(options: {
         throw new CrankError("remote_sample_protocol_error", "Sampling request digest differs");
       }
       const classifications = request.request.classifications ?? [];
-      if (!options.authorize({
-        authorization: request.authorization,
-        identity: request.identity,
-        requestDigest: request.requestDigest,
-        effectContractDigest: request.effectContractDigest,
-        releaseId: request.releaseId,
-        classifications,
-      })) {
+      if (
+        !options.authorize({
+          authorization: request.authorization,
+          identity: request.identity,
+          requestDigest: request.requestDigest,
+          effectContractDigest: request.effectContractDigest,
+          releaseId: request.releaseId,
+          classifications,
+        })
+      ) {
         throw new CrankError("remote_sample_unauthorized", "Remote sample authorization failed");
       }
       const key = keyFor(prefix, request.identity);
@@ -188,7 +195,9 @@ export function createRedisPlacementModelSampler(options: {
           existing.requestDigest !== request.requestDigest ||
           existing.effectContractDigest !== request.effectContractDigest ||
           existing.classificationsDigest !== classificationsDigest
-        ) throw new CrankError("remote_sample_conflict", "Remote sample identity conflicts");
+        ) {
+          throw new CrankError("remote_sample_conflict", "Remote sample identity conflicts");
+        }
         return attachment(existing);
       }
       const streamId = stableOpaqueId("remote-sample", [key, request.releaseId]);
@@ -200,7 +209,9 @@ export function createRedisPlacementModelSampler(options: {
           buffer = yield* options.buffers.get(streamId);
         }
       }
-      if (!buffer) throw new CrankError("remote_sample_protocol_error", "Cannot create remote spool");
+      if (!buffer) {
+        throw new CrankError("remote_sample_protocol_error", "Cannot create remote spool");
+      }
       const record: RemoteSampleRecord = {
         version: 1,
         identity: request.identity,
@@ -225,7 +236,9 @@ export function createRedisPlacementModelSampler(options: {
           winner.requestDigest !== request.requestDigest ||
           winner.effectContractDigest !== request.effectContractDigest ||
           winner.classificationsDigest !== classificationsDigest
-        ) throw new CrankError("remote_sample_conflict", "Remote sample identity conflicts");
+        ) {
+          throw new CrankError("remote_sample_conflict", "Remote sample identity conflicts");
+        }
         return attachment(winner);
       }
       return attachment(record);
@@ -250,7 +263,9 @@ export function createRedisPlacementModelSampler(options: {
 
     *waitForChange({ attachment: requested, afterLsn }) {
       const record = yield* requireRecord(requested.identity);
-      if (terminal(record.state) || record.state === "orphaned") return;
+      if (terminal(record.state) || record.state === "orphaned") {
+        return;
+      }
       const buffer = yield* requireBuffer(record.streamId);
       const remaining = Math.max(0, Date.parse(record.producerLeaseExpiresAt) - now());
       yield* race([buffer.waitForChange(afterLsn), sleep(remaining)]);
@@ -263,7 +278,9 @@ export function createRedisPlacementModelSampler(options: {
 
     *cancel({ attachment: requested }) {
       const record = yield* requireRecord(requested.identity);
-      if (terminal(record.state) || record.state === "orphaned") return;
+      if (terminal(record.state) || record.state === "orphaned") {
+        return;
+      }
       const disposition: ModelSampleDisposition = { status: "cancelled" };
       const cancelFence = {
         ownerId: `cancel:${requested.identity.pullId}`,
@@ -278,10 +295,14 @@ export function createRedisPlacementModelSampler(options: {
         disposition,
         dispositionDigest: canonicalSnapshot(disposition).sha,
       };
-      yield* cas(requested.identity, {
-        ownerId: record.producerOwnerId,
-        producerEpoch: record.producerEpoch,
-      }, next);
+      yield* cas(
+        requested.identity,
+        {
+          ownerId: record.producerOwnerId,
+          producerEpoch: record.producerEpoch,
+        },
+        next,
+      );
       const writer = yield* (yield* requireBuffer(record.streamId)).claimWriter({
         ownerId: cancelFence.ownerId,
         activationEpoch: cancelFence.producerEpoch,
@@ -306,8 +327,11 @@ export function createRedisPlacementModelSampler(options: {
       const record = yield* requireRecord(identity);
       if (
         request.producerEpoch < record.producerEpoch ||
-        (request.producerEpoch === record.producerEpoch && request.ownerId !== record.producerOwnerId)
-      ) throw new StaleTokenWriterError("Remote producer fence is stale");
+        (request.producerEpoch === record.producerEpoch &&
+          request.ownerId !== record.producerOwnerId)
+      ) {
+        throw new StaleTokenWriterError("Remote producer fence is stale");
+      }
       const next = {
         ...record,
         state: "streaming" as const,
@@ -315,7 +339,11 @@ export function createRedisPlacementModelSampler(options: {
         producerEpoch: request.producerEpoch,
         producerLeaseExpiresAt: request.leaseExpiresAt,
       };
-      yield* cas(identity, { ownerId: record.producerOwnerId, producerEpoch: record.producerEpoch }, next);
+      yield* cas(
+        identity,
+        { ownerId: record.producerOwnerId, producerEpoch: record.producerEpoch },
+        next,
+      );
       yield* (yield* requireBuffer(record.streamId)).claimWriter({
         ownerId: request.ownerId,
         activationEpoch: request.producerEpoch,
@@ -325,7 +353,10 @@ export function createRedisPlacementModelSampler(options: {
 
     *append(identity, fence, events) {
       const record = yield* requireRecord(identity);
-      if (record.producerOwnerId !== fence.ownerId || record.producerEpoch !== fence.producerEpoch) {
+      if (
+        record.producerOwnerId !== fence.ownerId ||
+        record.producerEpoch !== fence.producerEpoch
+      ) {
         throw new StaleTokenWriterError("Remote producer fence is stale");
       }
       const buffer = yield* requireBuffer(record.streamId);
@@ -334,16 +365,18 @@ export function createRedisPlacementModelSampler(options: {
         activationEpoch: fence.producerEpoch,
       });
       const before = (yield* buffer.read(0)).lsn;
-      return yield* writer.append(events.map((value, index) => ({
-        version: 1,
-        streamId: record.streamId,
-        lsn: before + index + 1,
-        producerEpoch: fence.producerEpoch,
-        taskId: identity.taskId,
-        pullId: identity.pullId,
-        ...(value.messageId ? { messageId: value.messageId } : {}),
-        event: value.event,
-      })));
+      return yield* writer.append(
+        events.map((value, index) => ({
+          version: 1,
+          streamId: record.streamId,
+          lsn: before + index + 1,
+          producerEpoch: fence.producerEpoch,
+          taskId: identity.taskId,
+          pullId: identity.pullId,
+          ...(value.messageId ? { messageId: value.messageId } : {}),
+          event: value.event,
+        })),
+      );
     },
 
     *publishDisposition(identity, fence, disposition) {
@@ -356,7 +389,12 @@ export function createRedisPlacementModelSampler(options: {
       const terminalLsn = (yield* buffer.read(0)).lsn;
       const next: RemoteSampleRecord = {
         ...record,
-        state: disposition.status === "ok" ? "completed" : disposition.status === "cancelled" ? "cancelled" : "failed",
+        state:
+          disposition.status === "ok"
+            ? "completed"
+            : disposition.status === "cancelled"
+              ? "cancelled"
+              : "failed",
         terminalLsn,
         disposition,
         dispositionDigest: canonicalSnapshot(disposition).sha,
@@ -376,7 +414,9 @@ export function createRedisPlacementModelSampler(options: {
 
     *cleanup(identity) {
       const record = yield* readRecord(identity);
-      if (!record || Date.parse(record.retentionExpiresAt) > now()) return;
+      if (!record || Date.parse(record.retentionExpiresAt) > now()) {
+        return;
+      }
       yield* call(() => options.client.del(keyFor(prefix, identity)));
       yield* options.buffers.delete(record.streamId);
     },

@@ -369,7 +369,9 @@ describe("pi-ai provider boundary normalization", () => {
       }
       const done = yield* subscription.next();
       expect(done.done).toBe(true);
-      if (done.done) assistant = done.value;
+      if (done.done) {
+        assistant = done.value;
+      }
     });
 
     expect(assistant).toMatchObject({
@@ -402,7 +404,9 @@ describe("pi-ai provider boundary normalization", () => {
 
       const [, , piOptions] = piAiMocks.streamSimple.mock.calls[0]!;
       expect(piOptions).toMatchObject({ reasoning: level });
-      if (level === "high") expect(piOptions).toMatchObject({ thinkingBudgets: { high: 1234 } });
+      if (level === "high") {
+        expect(piOptions).toMatchObject({ thinkingBudgets: { high: 1234 } });
+      }
       expect(piOptions).not.toHaveProperty("reasoningEffort");
       expect(piOptions).not.toHaveProperty("thinkingEnabled");
       expect(piOptions).not.toHaveProperty("thinkingBudgetTokens");
@@ -517,7 +521,9 @@ describe("pi-ai provider boundary normalization", () => {
       );
       const next = yield* subscription.next();
       expect(next.done).toBe(true);
-      if (next.done) assistant = next.value;
+      if (next.done) {
+        assistant = next.value;
+      }
     });
 
     const [, piContext, piOptions] = piAiMocks.streamSimple.mock.calls[0]!;

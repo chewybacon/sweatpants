@@ -230,9 +230,7 @@ export function createPlacementModelSamplingService(options: {
         authorization,
       });
       attachments.set(sampleKey(identity), attachment);
-      let afterLsn = options.resumeAfter
-        ? yield* options.resumeAfter(identity, attachment)
-        : 0;
+      let afterLsn = options.resumeAfter ? yield* options.resumeAfter(identity, attachment) : 0;
 
       while (true) {
         if (context.cancellation.aborted) {
@@ -273,7 +271,9 @@ export function createPlacementModelSamplingService(options: {
           throw new CrankError("remote_sample_orphaned", "Remote model producer was orphaned");
         }
         if (["completed", "cancelled", "failed"].includes(page.state)) {
-          if (page.terminalLsn === undefined || afterLsn < page.terminalLsn) continue;
+          if (page.terminalLsn === undefined || afterLsn < page.terminalLsn) {
+            continue;
+          }
           const disposition = yield* options.sampler.disposition({
             version: AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
             attachment,
@@ -311,7 +311,9 @@ export function createPlacementModelSamplingService(options: {
           candidate.identity.taskId === identity.taskId &&
           candidate.identity.pullId === identity.pullId,
       );
-      if (!attachment) return;
+      if (!attachment) {
+        return;
+      }
       yield* options.sampler.acknowledge({
         version: AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
         attachment,

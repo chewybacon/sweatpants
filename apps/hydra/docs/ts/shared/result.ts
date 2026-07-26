@@ -32,7 +32,7 @@ export function isErr<T, E>(result: Result<T, E>): result is { ok: false; error:
 
 /** Unwrap a result or throw if it's an error */
 export function unwrap<T, E>(result: Result<T, E>): T {
-  if (result.ok) return result.value;
+  if (result.ok) {return result.value;}
   throw result.error;
 }
 

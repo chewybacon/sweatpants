@@ -523,7 +523,7 @@ function useSpinner(): Operation<Spinner> {
     yield* provide({
       *start(label = 'thinking') {
         // Idempotent - if already running, do nothing
-        if (animationTask) return;
+        if (animationTask) {return;}
 
         let frameIndex = 0;
         animationTask = yield* spawn(function*() {
@@ -606,7 +606,7 @@ await main(function*() {
       break;
     }
 
-    if (!userInput.trim()) continue;
+    if (!userInput.trim()) {continue;}
 
     messages.push({ role: 'user', content: userInput });
 

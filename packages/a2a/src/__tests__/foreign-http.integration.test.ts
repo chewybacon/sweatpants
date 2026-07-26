@@ -45,7 +45,9 @@ describe("secure foreign A2A HTTP+JSON transport", () => {
     await once(server, "listening");
     servers.push(server);
     const address = server.address();
-    if (!address || typeof address === "string") throw new Error("missing HTTP port");
+    if (!address || typeof address === "string") {
+      throw new Error("missing HTTP port");
+    }
     const origin = `http://127.0.0.1:${address.port}`;
     const transport = createSecureForeignA2AHttpTransport({
       cardOrigin: origin,

@@ -55,7 +55,9 @@ export function deduplicateMessages(messages: Message[]): Message[] {
             : undefined;
     const existingIndex = key ? positions.get(key) : undefined;
     if (existingIndex === undefined) {
-      if (key) positions.set(key, result.length);
+      if (key) {
+        positions.set(key, result.length);
+      }
       result.push(message);
       continue;
     }
@@ -86,14 +88,20 @@ export function* replayFramesToConversation(
     events.push(frame.event);
     state = chatReducer(state, frame.event);
 
-    if (frame.event.type !== "ACTIVITY_SNAPSHOT") continue;
+    if (frame.event.type !== "ACTIVITY_SNAPSHOT") {
+      continue;
+    }
     const replay = activitySnapshotToPluginReplayTrace(frame.event);
-    if (!replay) continue;
+    if (!replay) {
+      continue;
+    }
     const tool = tools?.find(
       (candidate): candidate is ReplayableTool =>
         replayableTool(candidate) && candidate.name === replay.toolName,
     );
-    if (!tool?.replayTrace) continue;
+    if (!tool?.replayTrace) {
+      continue;
+    }
     const hydrated = yield* tool.replayTrace(replay.trace);
     const tracking = {
       callId: replay.callId,
@@ -125,9 +133,13 @@ export function* replayFramesToConversation(
 
   if (transforms?.length) {
     for (const message of state.messages) {
-      if (message.role !== "assistant" || !message.content) continue;
+      if (message.role !== "assistant" || !message.content) {
+        continue;
+      }
       const rendered = yield* renderReplayMessageParts(message.id, message.content, transforms);
-      if (!rendered) continue;
+      if (!rendered) {
+        continue;
+      }
       const toolParts = (state.finalizedParts[message.id] ?? []).filter(
         (part) => part.type === "tool-call",
       );
@@ -161,10 +173,16 @@ export function* readDurableHistory(
       headers: { Accept: "application/x-ndjson" },
     }),
   );
-  if (response.status === 404) return { events: [], history: [] };
-  if (!response.ok) throw new Error(`Failed to hydrate durable history: ${response.status}`);
+  if (response.status === 404) {
+    return { events: [], history: [] };
+  }
+  if (!response.ok) {
+    throw new Error(`Failed to hydrate durable history: ${response.status}`);
+  }
   const text = (yield* call(() => response.text())).trim();
-  if (!text) return { events: [], history: [] };
+  if (!text) {
+    return { events: [], history: [] };
+  }
   const frames = text
     .split("\n")
     .filter(Boolean)

@@ -347,7 +347,7 @@ function builder(state: BuilderState): unknown {
           "Durable tool model.sample declaration differs from the canonical contract",
         );
       }
-      return builder({ ...state, effects: { ...(state.effects ?? {}), ...effects } });
+      return builder({ ...state, effects: { ...state.effects, ...effects } });
     },
     samples() {
       requireStage(state.parameters, ".parameters()", ".samples()");
@@ -433,7 +433,7 @@ function builder(state: BuilderState): unknown {
       // the manifest embeds only their descriptors. Sampling always adds the
       // one canonical contract and its built-in validators.
       const declaredEffects: EffectMap = {
-        ...(state.effects ?? {}),
+        ...state.effects,
         ...(state.samples ? { [MODEL_SAMPLE_EFFECT.name]: MODEL_SAMPLE_EFFECT } : {}),
       };
       for (const definition of Object.values(declaredEffects)) {

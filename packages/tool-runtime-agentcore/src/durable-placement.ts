@@ -128,16 +128,25 @@ export function reconcileAgentCoreDurableReadiness(
 ): AgentCoreDurableReadiness {
   const missing = new Set<AgentCoreDurableReadiness["missing"][number]>();
   try {
-    if (!input.release) missing.add("release");
-    else validateAgentCoreRuntimeRelease(input.release);
+    if (!input.release) {
+      missing.add("release");
+    } else {
+      validateAgentCoreRuntimeRelease(input.release);
+    }
   } catch {
     missing.add("release");
   }
   const registered = input.registry.get(exactProgramKey(input.program));
-  if (!registered || registered.digest !== input.program.digest) missing.add("program");
-  if (!input.driverAvailable) missing.add("driver");
+  if (!registered || registered.digest !== input.program.digest) {
+    missing.add("program");
+  }
+  if (!input.driverAvailable) {
+    missing.add("driver");
+  }
   for (const effect of Object.values(input.manifest.effects)) {
-    if (!input.effectKeys.has(`${effect.name}@${effect.version}`)) missing.add("effect");
+    if (!input.effectKeys.has(`${effect.name}@${effect.version}`)) {
+      missing.add("effect");
+    }
   }
   const schemaDigests = [
     input.manifest.inputSchema.digest,
@@ -152,16 +161,22 @@ export function reconcileAgentCoreDurableReadiness(
       ...(effect.cancellation ? [effect.cancellation.partialSchema.digest] : []),
     ]),
   ];
-  if (schemaDigests.some((digest) => !input.schemaDigests.has(digest))) missing.add("schema");
+  if (schemaDigests.some((digest) => !input.schemaDigests.has(digest))) {
+    missing.add("schema");
+  }
   if (input.sampling?.required) {
     const modelSample = Object.values(input.manifest.effects).find(
       (effect) => effect.name === "model.sample",
     );
-    if (input.sampling.protocolVersion !== 1) missing.add("sampling_protocol");
+    if (input.sampling.protocolVersion !== 1) {
+      missing.add("sampling_protocol");
+    }
     if (!modelSample || input.sampling.effectContractDigest !== effectContractDigest(modelSample)) {
       missing.add("sampling_effect");
     }
-    if (!input.sampling.deliveryAvailable) missing.add("sampling_delivery");
+    if (!input.sampling.deliveryAvailable) {
+      missing.add("sampling_delivery");
+    }
     if (
       (input.sampling.requestedClassifications ?? []).some(
         (classification) => !input.sampling?.allowedClassifications?.has(classification),

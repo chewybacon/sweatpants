@@ -62,7 +62,9 @@ export function useBufferedChannel<T>(): Operation<Channel<T, void>> {
 
     // Helper to wait for subscriber
     function waitForSubscriber(): Promise<void> {
-      if (hasSubscriber) return Promise.resolve();
+      if (hasSubscriber) {
+        return Promise.resolve();
+      }
       return new Promise((resolve) => {
         subscriberResolve = resolve;
       });
@@ -70,7 +72,9 @@ export function useBufferedChannel<T>(): Operation<Channel<T, void>> {
 
     // Helper to wait for item or close
     function waitForItem(): Promise<void> {
-      if (queue.length > 0 || closed) return Promise.resolve();
+      if (queue.length > 0 || closed) {
+        return Promise.resolve();
+      }
       return new Promise((resolve) => {
         itemResolve = resolve;
       });
@@ -91,7 +95,9 @@ export function useBufferedChannel<T>(): Operation<Channel<T, void>> {
         // If closed and queue empty, close channel and exit
         if (closed && queue.length === 0) {
           yield* channel.close();
-          if (closeResolve) closeResolve();
+          if (closeResolve) {
+            closeResolve();
+          }
           break;
         }
 
@@ -188,7 +194,9 @@ export function useTransformPipeline(
         yield* input.send(event);
       },
       *close() {
-        if (closed) return;
+        if (closed) {
+          return;
+        }
         closed = true;
         yield* input.close();
         // A closed pipeline is drained: every transform has flushed and every
@@ -262,7 +270,9 @@ function* runTransformChain(
     current = next;
   }
 
-  for (const task of tasks) yield* task;
+  for (const task of tasks) {
+    yield* task;
+  }
 }
 
 /**

@@ -27,7 +27,9 @@ const deployment = JSON.parse(
   await readFile("agentcore-durable-program-runtime-deploy-output.json", "utf8"),
 ) as DeploymentOutput;
 const imageDigest = deployment.imageUri.split("@")[1];
-if (!imageDigest) throw new Error("Deployment image URI is not digest-pinned");
+if (!imageDigest) {
+  throw new Error("Deployment image URI is not digest-pinned");
+}
 const release: AgentCoreRuntimeRelease = {
   releaseId: deployment.releaseId,
   runtimeArn: deployment.agentRuntimeArn,

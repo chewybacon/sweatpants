@@ -71,8 +71,12 @@ export function selectInternalSampleModel(
   config: AgentCoreToolSampleConfig,
   inheritedModel: ModelSelection | undefined,
 ): ModelSelection {
-  if (config.explicitModel) return config.explicitModel;
-  if (inheritedModel) return inheritedModel;
+  if (config.explicitModel) {
+    return config.explicitModel;
+  }
+  if (inheritedModel) {
+    return inheritedModel;
+  }
   throw new Error(
     "AgentCore internal sampling requires start_tool_session.context.model or explicit AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER/ID",
   );
@@ -164,8 +168,10 @@ function extractFencedJson(text: string): string | undefined {
 }
 
 function extractBalancedJson(text: string): string | undefined {
-  const start = text.search(/[\[{]/);
-  if (start < 0) return undefined;
+  const start = text.search(/[[{]/);
+  if (start < 0) {
+    return undefined;
+  }
 
   const opener = text[start];
   const closer = opener === "{" ? "}" : "]";
@@ -191,10 +197,18 @@ function extractBalancedJson(text: string): string | undefined {
       continue;
     }
 
-    if (inString) continue;
-    if (char === opener) depth += 1;
-    if (char === closer) depth -= 1;
-    if (depth === 0) return text.slice(start, index + 1);
+    if (inString) {
+      continue;
+    }
+    if (char === opener) {
+      depth += 1;
+    }
+    if (char === closer) {
+      depth -= 1;
+    }
+    if (depth === 0) {
+      return text.slice(start, index + 1);
+    }
   }
 
   return undefined;
@@ -235,7 +249,9 @@ function modelContext(messages: ModelMessage[], request: InternalSampleRequest):
   };
 
   const tools = samplingTools(request.tools);
-  if (tools) context.tools = tools;
+  if (tools) {
+    context.tools = tools;
+  }
   return context;
 }
 

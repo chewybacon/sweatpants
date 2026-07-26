@@ -55,7 +55,9 @@ export function createAgentCoreActivationCoordinator(
         ownerId: options.ownerId,
         leaseDurationMs,
       });
-      if (claim.status !== "claimed") return claim;
+      if (claim.status !== "claimed") {
+        return claim;
+      }
       let reason: ReleaseActivationRequest["reason"] = "scope_exit";
       try {
         const winner = yield* race([

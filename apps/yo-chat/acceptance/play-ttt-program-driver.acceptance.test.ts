@@ -106,7 +106,9 @@ describe("journal-native play_ttt through ProgramRuntime", () => {
       }
 
       expect(outcome.state).toBe("completed");
-      if (outcome.state !== "completed") throw new Error("game did not complete");
+      if (outcome.state !== "completed") {
+        throw new Error("game did not complete");
+      }
       expect(outcome.value as PlayTttResult).toMatchObject({ success: true });
       const trace = yield* host.trace(opened.sessionId);
       const operations = trace.tasks[0]!.operations;
@@ -137,9 +139,13 @@ function firstEmptyPosition(messages: Json[]): number {
 }
 
 function containsGameOver(value: Json): boolean {
-  if (Array.isArray(value)) return value.some(containsGameOver);
+  if (Array.isArray(value)) {
+    return value.some(containsGameOver);
+  }
   if (value && typeof value === "object") {
-    if (value["gameOver"] === true) return true;
+    if (value["gameOver"] === true) {
+      return true;
+    }
     return Object.values(value).some(containsGameOver);
   }
   return false;
@@ -155,12 +161,16 @@ function firstEmptyBoardPosition(value: Json): number {
     }
     for (const child of value) {
       const found = firstEmptyBoardPosition(child);
-      if (found >= 0) return found;
+      if (found >= 0) {
+        return found;
+      }
     }
   } else if (value && typeof value === "object") {
     for (const child of Object.values(value)) {
       const found = firstEmptyBoardPosition(child);
-      if (found >= 0) return found;
+      if (found >= 0) {
+        return found;
+      }
     }
   }
   return -1;

@@ -91,14 +91,18 @@ test.describe("Markdown rendering persistence", () => {
     if (/^```/m.test(text)) {
       // But only if there's no rendered code block
       const hasCodeBlock = (await locator.locator("pre code").count()) > 0;
-      if (!hasCodeBlock) return true;
+      if (!hasCodeBlock) {
+        return true;
+      }
     }
 
     // Check for heading markers like "## Title" - these should become <h2>Title</h2>
     // But only flag if there's NO rendered heading
     if (/^#{1,6}\s/m.test(text)) {
       const hasHeading = (await locator.locator("h1, h2, h3, h4, h5, h6").count()) > 0;
-      if (!hasHeading) return true;
+      if (!hasHeading) {
+        return true;
+      }
     }
 
     // NOTE: We intentionally do NOT treat markdown tables (pipe syntax) as "raw markdown"

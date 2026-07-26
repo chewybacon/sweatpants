@@ -68,15 +68,19 @@ export class InMemoryDurableInvocationService {
     this.#prune();
     const now = this.#now();
     const requestExpiry = parseExpiry(request.requestExpiresAt);
-    if (now >= requestExpiry)
+    if (now >= requestExpiry) {
       throw new CrankError("a2a_request_expired", "Invocation create request expired");
+    }
     const key = invocationKey(request);
     const previous = this.#records.get(key);
     if (previous) {
       assertDigest(previous.digest, request.messageDigest);
-      if (previous.type === "aborted")
+      if (previous.type === "aborted") {
         throw new CrankError("a2a_invocation_aborted", "Invocation was aborted");
-      if (previous.type === "bound") return previous.result;
+      }
+      if (previous.type === "bound") {
+        return previous.result;
+      }
       return previous.result;
     }
     const promise = Promise.resolve().then(execute);
@@ -91,12 +95,15 @@ export class InMemoryDurableInvocationService {
     try {
       const result = await promise;
       const current = this.#records.get(key);
-      if (current !== record)
+      if (current !== record) {
         throw new CrankError("a2a_protocol_error", "Invocation binding changed while pending");
+      }
       this.#records.set(key, { ...record, type: "bound", result });
       return result;
     } catch (error) {
-      if (this.#records.get(key) === record) this.#records.delete(key);
+      if (this.#records.get(key) === record) {
+        this.#records.delete(key);
+      }
       throw error;
     }
   }
@@ -104,10 +111,13 @@ export class InMemoryDurableInvocationService {
   async resolve(request: DurableInvocationLookupRequest): Promise<ResolveForeignInvocationResult> {
     this.#prune();
     const record = this.#records.get(invocationKey(request));
-    if (!record) return { status: "not_found" };
+    if (!record) {
+      return { status: "not_found" };
+    }
     assertDigest(record.digest, request.messageDigest);
-    if (record.type === "aborted")
+    if (record.type === "aborted") {
       return { status: "aborted", expiresAt: new Date(record.expiresAt).toISOString() };
+    }
     const result = record.type === "pending" ? await record.result : record.result;
     return { status: "bound", result };
   }
@@ -118,8 +128,9 @@ export class InMemoryDurableInvocationService {
     const record = this.#records.get(key);
     if (record) {
       assertDigest(record.digest, request.messageDigest);
-      if (record.type === "aborted")
+      if (record.type === "aborted") {
         return { status: "aborted", expiresAt: new Date(record.expiresAt).toISOString() };
+      }
       const result = record.type === "pending" ? await record.result : record.result;
       return { status: "bound", result };
     }
@@ -137,17 +148,19 @@ export class InMemoryDurableInvocationService {
   ): Promise<ForeignA2ASendResult> {
     this.#prune();
     const invocation = this.#records.get(invocationKey(request));
-    if (!invocation || invocation.type !== "bound")
+    if (!invocation || invocation.type !== "bound") {
       throw new CrankError("a2a_invocation_not_bound", "Continuation requires a bound invocation");
+    }
     if (
       invocation.result.type !== "task" ||
       invocation.result.task.id !== request.taskId ||
       invocation.result.task.contextId !== request.contextId
-    )
+    ) {
       throw new CrankError(
         "a2a_binding_conflict",
         "Continuation task/context differs from the invocation binding",
       );
+    }
     const key = `${invocationKey(request)}\u0000${request.messageId}`;
     const previous = this.#messages.get(key);
     if (previous) {
@@ -177,10 +190,15 @@ export class InMemoryDurableInvocationService {
     const now = this.#now();
     for (const [key, record] of this.#records) {
       const expires = record.type === "aborted" ? record.expiresAt : record.retentionExpiresAt;
-      if (record.type !== "pending" && now >= expires) this.#records.delete(key);
+      if (record.type !== "pending" && now >= expires) {
+        this.#records.delete(key);
+      }
     }
-    for (const [key, record] of this.#messages)
-      if (now >= record.expiresAt) this.#messages.delete(key);
+    for (const [key, record] of this.#messages) {
+      if (now >= record.expiresAt) {
+        this.#messages.delete(key);
+      }
+    }
   }
 }
 
@@ -189,18 +207,21 @@ function invocationKey(request: {
   tenantId?: string;
   invocationId: string;
 }): string {
-  if (!request.principalId || !request.invocationId)
+  if (!request.principalId || !request.invocationId) {
     throw new CrankError("a2a_protocol_error", "Invocation identity is incomplete");
+  }
   return `${request.principalId}\u0000${request.tenantId ?? ""}\u0000${request.invocationId}`;
 }
 function assertDigest(expected: string, actual: string): void {
-  if (expected !== actual)
+  if (expected !== actual) {
     throw new CrankError("idempotency_conflict", "Invocation identity content conflict");
+  }
 }
 function parseExpiry(value: string): number {
   const result = Date.parse(value);
-  if (!Number.isFinite(result))
+  if (!Number.isFinite(result)) {
     throw new CrankError("a2a_protocol_error", "Invalid request expiration");
+  }
   return result;
 }
 function validateRetention(value: ForeignA2ARetentionV1): void {
@@ -209,7 +230,8 @@ function validateRetention(value: ForeignA2ARetentionV1): void {
       !Number.isSafeInteger(duration) ||
       duration < 0 ||
       (name !== "clockSkewSeconds" && duration === 0)
-    )
+    ) {
       throw new CrankError("invalid_descriptor", `Invalid durable-invocation retention ${name}`);
+    }
   }
 }

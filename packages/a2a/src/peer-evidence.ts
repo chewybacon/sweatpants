@@ -22,19 +22,21 @@ export function verifyPeerTerminalEvidence(
   const { signature, ...input } = evidence;
   const body = canonicalEvidence(input);
   if (signature) {
-    if (!publicKey)
+    if (!publicKey) {
       throw new CrankError(
         "peer_terminal_evidence_invalid",
         "Signed evidence has no verification key",
       );
+    }
     const valid = verify(
       null,
       Buffer.from(canonicalJson(body)),
       publicKey,
       Buffer.from(signature, "base64"),
     );
-    if (!valid)
+    if (!valid) {
       throw new CrankError("peer_terminal_evidence_invalid", "Terminal evidence signature differs");
+    }
   }
   return {
     digest: sha256(
@@ -55,8 +57,9 @@ function canonicalEvidence(
     !/^[0-9a-f]{64}$/.test(input.grantChainHead) ||
     !/^[0-9a-f]{64}$/.test(input.delegatedEffectTranscriptHead) ||
     !/^[0-9a-f]{64}$/.test(input.calleeJournalRoot)
-  )
+  ) {
     throw new CrankError("peer_terminal_evidence_invalid", "Terminal evidence fields are invalid");
+  }
   return {
     taskId: input.taskId,
     calleeReleaseDigest: input.calleeReleaseDigest,

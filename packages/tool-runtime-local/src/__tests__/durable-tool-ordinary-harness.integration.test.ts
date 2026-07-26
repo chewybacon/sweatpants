@@ -130,7 +130,9 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
           sampled.text,
           choiceSchema.descriptor,
         );
-        if (result.action !== "accept") break;
+        if (result.action !== "accept") {
+          break;
+        }
         answers.push(result.content.answer);
         if (!result.content.continue) {
           break;

@@ -98,8 +98,12 @@ type PendingRequestResponse =
   | undefined;
 
 function pendingForResponse(pending: Pending | undefined): PendingRequestResponse {
-  if (!pending) return undefined;
-  if (pending.type === "elicit") return { type: "elicit", elicitId: pending.elicitId };
+  if (!pending) {
+    return undefined;
+  }
+  if (pending.type === "elicit") {
+    return { type: "elicit", elicitId: pending.elicitId };
+  }
   return { type: "sample", sampleId: pending.sampleId };
 }
 
@@ -135,7 +139,9 @@ function toSpanAttributes(
 ): Record<string, string | number | boolean> {
   const attrs: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(fields)) {
-    if (value === undefined || value === null) continue;
+    if (value === undefined || value === null) {
+      continue;
+    }
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       attrs[`${prefix}.${key}`] = value;
     }
@@ -153,17 +159,29 @@ function errorEvent(name: string, error: unknown): RuntimeEvent {
 }
 
 function toBridgeElicitResult(response: RawElicitResponse): ElicitResponse["result"] {
-  if (response.action === "accept") return { action: "accept", content: response.content };
+  if (response.action === "accept") {
+    return { action: "accept", content: response.content };
+  }
   return { action: response.action };
 }
 
 function toBridgeSampleResult(response: RawSampleResponse): SampleResponse["result"] {
   const result: Record<string, unknown> = { text: response.text };
-  if (response.model !== undefined) result["model"] = response.model;
-  if (response.stopReason !== undefined) result["stopReason"] = response.stopReason;
-  if (response.parsed !== undefined) result["parsed"] = response.parsed;
-  if (response.parseError !== undefined) result["parseError"] = response.parseError;
-  if (response.toolCalls !== undefined) result["toolCalls"] = response.toolCalls;
+  if (response.model !== undefined) {
+    result["model"] = response.model;
+  }
+  if (response.stopReason !== undefined) {
+    result["stopReason"] = response.stopReason;
+  }
+  if (response.parsed !== undefined) {
+    result["parsed"] = response.parsed;
+  }
+  if (response.parseError !== undefined) {
+    result["parseError"] = response.parseError;
+  }
+  if (response.toolCalls !== undefined) {
+    result["toolCalls"] = response.toolCalls;
+  }
   return result as unknown as SampleResponse["result"];
 }
 
@@ -182,29 +200,43 @@ function isTerminalStatus(status: ToolStatus): boolean {
 }
 
 function readNumberFile(path: string): number | undefined {
-  if (!existsSync(path)) return undefined;
+  if (!existsSync(path)) {
+    return undefined;
+  }
   const raw = readFileSync(path, "utf8").trim();
-  if (!raw || raw === "max") return undefined;
+  if (!raw || raw === "max") {
+    return undefined;
+  }
   const value = Number(raw);
   return Number.isFinite(value) ? value : undefined;
 }
 
 function readMaxFile(path: string): number | "max" | undefined {
-  if (!existsSync(path)) return undefined;
+  if (!existsSync(path)) {
+    return undefined;
+  }
   const raw = readFileSync(path, "utf8").trim();
-  if (raw === "max") return "max";
+  if (raw === "max") {
+    return "max";
+  }
   const value = Number(raw);
   return Number.isFinite(value) ? value : undefined;
 }
 
 function readMemoryStat(path: string): Record<string, number> | undefined {
-  if (!existsSync(path)) return undefined;
+  if (!existsSync(path)) {
+    return undefined;
+  }
   const stat: Record<string, number> = {};
   for (const line of readFileSync(path, "utf8").split("\n")) {
     const [key, rawValue] = line.trim().split(/\s+/);
-    if (!key || !rawValue) continue;
+    if (!key || !rawValue) {
+      continue;
+    }
     const value = Number(rawValue);
-    if (Number.isFinite(value)) stat[key] = value;
+    if (Number.isFinite(value)) {
+      stat[key] = value;
+    }
   }
   return stat;
 }
@@ -238,7 +270,9 @@ export class RuntimeSessionRegistry {
 
   isBusy(): boolean {
     for (const session of this.sessions.values()) {
-      if (!["completed", "failed", "cancelled", "orphaned"].includes(session.status)) return true;
+      if (!["completed", "failed", "cancelled", "orphaned"].includes(session.status)) {
+        return true;
+      }
     }
     return false;
   }
@@ -248,7 +282,9 @@ export class RuntimeSessionRegistry {
     context: RuntimeSessionContext,
   ): Promise<RuntimeResponse[]> {
     const duplicate = this.checkDuplicate(request, context);
-    if (duplicate) return duplicate;
+    if (duplicate) {
+      return duplicate;
+    }
 
     switch (request.op) {
       case "start_tool_session":
@@ -300,10 +336,14 @@ export class RuntimeSessionRegistry {
     let terminal = 0;
 
     for (const session of this.sessions.values()) {
-      if (session.runtimeSessionId !== context.runtimeSessionId) continue;
+      if (session.runtimeSessionId !== context.runtimeSessionId) {
+        continue;
+      }
       total += 1;
       byStatus[session.status] += 1;
-      if (isTerminalStatus(session.status)) terminal += 1;
+      if (isTerminalStatus(session.status)) {
+        terminal += 1;
+      }
     }
 
     return {
@@ -329,9 +369,13 @@ export class RuntimeSessionRegistry {
     context: RuntimeSessionContext,
   ): RuntimeResponse[] | null {
     const session = this.getSession(request.toolSessionId, context);
-    if (!session) return null;
+    if (!session) {
+      return null;
+    }
     const previous = session.commandFingerprints.get(request.commandId);
-    if (!previous) return null;
+    if (!previous) {
+      return null;
+    }
     if (previous === fingerprint(request)) {
       return [
         {
@@ -360,7 +404,9 @@ export class RuntimeSessionRegistry {
 
   private notify(session: RuntimeToolSession): void {
     const waiters = session.waiters.splice(0);
-    for (const waiter of waiters) waiter();
+    for (const waiter of waiters) {
+      waiter();
+    }
   }
 
   private emit(session: RuntimeToolSession, event: RuntimeEvent): RuntimeResponse {
@@ -396,7 +442,9 @@ export class RuntimeSessionRegistry {
   }
 
   private async waitForChange(session: RuntimeToolSession, timeoutMs: number): Promise<void> {
-    if (timeoutMs <= 0) return;
+    if (timeoutMs <= 0) {
+      return;
+    }
     await new Promise<void>((resolve) => {
       const waiter = (): void => {
         clearTimeout(timer);
@@ -404,7 +452,9 @@ export class RuntimeSessionRegistry {
       };
       const timer = setTimeout(() => {
         const index = session.waiters.indexOf(waiter);
-        if (index >= 0) session.waiters.splice(index, 1);
+        if (index >= 0) {
+          session.waiters.splice(index, 1);
+        }
         resolve();
       }, timeoutMs);
       session.waiters.push(waiter);
@@ -429,13 +479,17 @@ export class RuntimeSessionRegistry {
     const deadline = Date.now() + timeoutMs;
     while (!this.isPauseOrTerminal(session)) {
       const remaining = deadline - Date.now();
-      if (remaining <= 0) return;
+      if (remaining <= 0) {
+        return;
+      }
       await this.waitForChange(session, Math.min(remaining, 250));
     }
   }
 
   private failSession(session: RuntimeToolSession, name: string, error: unknown): void {
-    if (isTerminalStatus(session.status)) return;
+    if (isTerminalStatus(session.status)) {
+      return;
+    }
     session.pending = undefined;
     session.status = "failed";
     const duration = Date.now() - session.createdAt;
@@ -633,7 +687,9 @@ export class RuntimeSessionRegistry {
   }
 
   private handleBridgeEvent(session: RuntimeToolSession, event: BridgeEvent): void {
-    if (isTerminalStatus(session.status)) return;
+    if (isTerminalStatus(session.status)) {
+      return;
+    }
 
     switch (event.type) {
       case "notify":
@@ -699,7 +755,9 @@ export class RuntimeSessionRegistry {
           });
           void this.internalSample(session, sampleRequest).then(
             (response) => {
-              if (isTerminalStatus(session.status)) return;
+              if (isTerminalStatus(session.status)) {
+                return;
+              }
               event.responseSignal.send({ result: toBridgeSampleResult(response) });
             },
             (error: unknown) => this.failSession(session, "InternalSamplingError", error),
@@ -753,7 +811,9 @@ export class RuntimeSessionRegistry {
         yield* effectionSleep(0);
 
         const result = yield* host.run();
-        if (isTerminalStatus(session.status)) return;
+        if (isTerminalStatus(session.status)) {
+          return;
+        }
         session.pending = undefined;
         session.status = "completed";
         const duration = Date.now() - session.createdAt;
@@ -773,7 +833,9 @@ export class RuntimeSessionRegistry {
         });
         self.emit(session, { type: "result", result });
       } catch (error) {
-        if (isTerminalStatus(session.status)) return;
+        if (isTerminalStatus(session.status)) {
+          return;
+        }
         session.pending = undefined;
         session.status = "failed";
         const duration = Date.now() - session.createdAt;
@@ -801,7 +863,9 @@ export class RuntimeSessionRegistry {
     }).then(
       () => undefined,
       (error: unknown) => {
-        if (isTerminalStatus(session.status)) return;
+        if (isTerminalStatus(session.status)) {
+          return;
+        }
         session.pending = undefined;
         session.status = "failed";
         const duration = Date.now() - session.createdAt;
@@ -838,16 +902,22 @@ export class RuntimeSessionRegistry {
   ): Promise<void> {
     try {
       const response = await pending.promise;
-      if (isTerminalStatus(session.status)) return;
+      if (isTerminalStatus(session.status)) {
+        return;
+      }
       session.pending = undefined;
       session.status = "running";
       const content = response.action === "accept" ? response.content : { action: response.action };
       this.emit(session, { type: "progress", message: "resumed after elicit", progress: 0.75 });
-      if (isTerminalStatus(session.status)) return;
+      if (isTerminalStatus(session.status)) {
+        return;
+      }
       session.status = "completed";
       this.emit(session, { type: "result", result: { elicitResponse: content } });
     } catch (error) {
-      if (isTerminalStatus(session.status)) return;
+      if (isTerminalStatus(session.status)) {
+        return;
+      }
       session.status = "failed";
       this.emit(session, {
         type: "error",
@@ -870,18 +940,24 @@ export class RuntimeSessionRegistry {
   ): Promise<void> {
     try {
       const response = await pending.promise;
-      if (isTerminalStatus(session.status)) return;
+      if (isTerminalStatus(session.status)) {
+        return;
+      }
       session.pending = undefined;
       session.status = "running";
       this.emit(session, { type: "progress", message: "resumed after sample", progress: 0.75 });
-      if (isTerminalStatus(session.status)) return;
+      if (isTerminalStatus(session.status)) {
+        return;
+      }
       session.status = "completed";
       this.emit(session, {
         type: "result",
         result: { sampleText: response.text, model: response.model ?? null },
       });
     } catch (error) {
-      if (isTerminalStatus(session.status)) return;
+      if (isTerminalStatus(session.status)) {
+        return;
+      }
       session.status = "failed";
       this.emit(session, {
         type: "error",
@@ -897,7 +973,9 @@ export class RuntimeSessionRegistry {
   ): Promise<void> {
     try {
       const response = await this.internalSample(session, request);
-      if (isTerminalStatus(session.status)) return;
+      if (isTerminalStatus(session.status)) {
+        return;
+      }
       session.pending = undefined;
       session.status = "running";
       this.emit(session, {
@@ -905,7 +983,9 @@ export class RuntimeSessionRegistry {
         message: "completed internal sample",
         progress: 0.75,
       });
-      if (isTerminalStatus(session.status)) return;
+      if (isTerminalStatus(session.status)) {
+        return;
+      }
       session.status = "completed";
       this.emit(session, {
         type: "result",
@@ -921,8 +1001,12 @@ export class RuntimeSessionRegistry {
     context: RuntimeSessionContext,
   ): Promise<RuntimeResponse[]> {
     const session = this.getSession(request.toolSessionId, context);
-    if (!session) return [{ type: "session_not_found", toolSessionId: request.toolSessionId }];
-    if (isTerminalStatus(session.status)) return [statusResponse(session)];
+    if (!session) {
+      return [{ type: "session_not_found", toolSessionId: request.toolSessionId }];
+    }
+    if (isTerminalStatus(session.status)) {
+      return [statusResponse(session)];
+    }
     const pending = session.pending;
     if (!pending || pending.type !== "elicit" || pending.elicitId !== request.elicitId) {
       return [
@@ -951,8 +1035,12 @@ export class RuntimeSessionRegistry {
     context: RuntimeSessionContext,
   ): Promise<RuntimeResponse[]> {
     const session = this.getSession(request.toolSessionId, context);
-    if (!session) return [{ type: "session_not_found", toolSessionId: request.toolSessionId }];
-    if (isTerminalStatus(session.status)) return [statusResponse(session)];
+    if (!session) {
+      return [{ type: "session_not_found", toolSessionId: request.toolSessionId }];
+    }
+    if (isTerminalStatus(session.status)) {
+      return [statusResponse(session)];
+    }
     const pending = session.pending;
     if (!pending || pending.type !== "sample" || pending.sampleId !== request.sampleId) {
       return [
@@ -978,8 +1066,12 @@ export class RuntimeSessionRegistry {
     context: RuntimeSessionContext,
   ): RuntimeResponse[] {
     const session = this.getSession(request.toolSessionId, context);
-    if (!session) return [{ type: "session_not_found", toolSessionId: request.toolSessionId }];
-    if (isTerminalStatus(session.status)) return [statusResponse(session)];
+    if (!session) {
+      return [{ type: "session_not_found", toolSessionId: request.toolSessionId }];
+    }
+    if (isTerminalStatus(session.status)) {
+      return [statusResponse(session)];
+    }
     this.recordCommand(session, request);
     session.pending = undefined;
     session.abortController?.abort(request.reason);
@@ -1003,7 +1095,9 @@ export class RuntimeSessionRegistry {
 
   private inspect(toolSessionId: string, context: RuntimeSessionContext): RuntimeResponse {
     const session = this.getSession(toolSessionId, context);
-    if (!session) return { type: "session_not_found", toolSessionId };
+    if (!session) {
+      return { type: "session_not_found", toolSessionId };
+    }
     return statusResponse(session);
   }
 
@@ -1013,7 +1107,9 @@ export class RuntimeSessionRegistry {
     context: RuntimeSessionContext,
   ): RuntimeResponse[] {
     const session = this.getSession(toolSessionId, context);
-    if (!session) return [{ type: "session_not_found", toolSessionId }];
+    if (!session) {
+      return [{ type: "session_not_found", toolSessionId }];
+    }
     return [
       ...session.events
         .filter((event) => event.seq > afterRuntimeEventSeq)

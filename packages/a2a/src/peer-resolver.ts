@@ -34,8 +34,9 @@ export type PeerResolverBundle = {
 
 /** Compiles one exact granted contract into one replay-pinned local resolver program. */
 export function compilePeerResolverBundle(grant: PeerGrant): PeerResolverBundle {
-  if (grant.route !== "caller")
+  if (grant.route !== "caller") {
     throw new Error("Only caller-routed grants compile local resolver bundles");
+  }
   const definition = peerContractAsEffectDefinition(grant.contract);
   const digest = sha256(
     canonicalJson({
@@ -61,8 +62,9 @@ export function compilePeerResolverBundle(grant: PeerGrant): PeerResolverBundle 
         input.grantId !== grant.grantId ||
         input.grantVersion !== grant.grantVersion ||
         input.invocationId !== grant.invocationId
-      )
+      ) {
         throw new Error("Peer resolver input does not match its pinned grant");
+      }
       try {
         const value = yield* context.effect(definition, input.input, {
           audience: `peer:${grant.calleeIdentity}`,
@@ -70,9 +72,12 @@ export function compilePeerResolverBundle(grant: PeerGrant): PeerResolverBundle 
         });
         return { status: "ok", value };
       } catch (error) {
-        if (error instanceof DurableProgramCancellation) return { status: "cancelled" };
-        if (error instanceof PullApplicationError)
+        if (error instanceof DurableProgramCancellation) {
+          return { status: "cancelled" };
+        }
+        if (error instanceof PullApplicationError) {
           return { status: "error", error: error.applicationError };
+        }
         throw error;
       }
     },

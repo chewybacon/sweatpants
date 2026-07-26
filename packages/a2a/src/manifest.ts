@@ -69,12 +69,15 @@ export async function fetchRemoteProgramManifest(
     ...(options.authorization ? { authorization: options.authorization } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   });
-  if (response.status === 401)
+  if (response.status === 401) {
     throw a2aError("authentication_failed", "Manifest authentication failed");
-  if (response.status === 403 || response.status === 404)
+  }
+  if (response.status === 403 || response.status === 404) {
     throw a2aError("manifest_not_found", "Requested program manifest is unavailable");
-  if (response.status < 200 || response.status >= 300)
+  }
+  if (response.status < 200 || response.status >= 300) {
     throw a2aError("transport_lost", `Manifest request failed with status ${response.status}`);
+  }
   requireExtensionEcho(response);
   return parseRemoteProgramManifestDocument(parseA2AJsonResponse(response), options.program);
 }
@@ -93,33 +96,40 @@ export function parseRemoteProgramManifestDocument(
       "manifestDigest",
       "capabilities",
     ])
-  )
+  ) {
     throw mismatch("Manifest document fields are not closed");
-  if (value["protocolVersion"] !== 1)
+  }
+  if (value["protocolVersion"] !== 1) {
     throw a2aError("protocol_version_unsupported", "Unsupported manifest protocol");
-  if (value["extensionUri"] !== CALLER_AUTHORITATIVE_EXTENSION_URI)
+  }
+  if (value["extensionUri"] !== CALLER_AUTHORITATIVE_EXTENSION_URI) {
     throw a2aError("extension_echo_mismatch", "Manifest extension identity does not match");
+  }
   const program = parseProgram(value["program"]);
-  if (expectedProgram && canonicalJson(program) !== canonicalJson(expectedProgram))
+  if (expectedProgram && canonicalJson(program) !== canonicalJson(expectedProgram)) {
     throw mismatch("Manifest program identity does not match the requested artifact");
+  }
   const capabilities = value["capabilities"];
   if (
     !record(capabilities) ||
     !exactKeys(capabilities, ["ordinaryReplay", "streamedRestore"]) ||
     capabilities["ordinaryReplay"] !== true ||
     typeof capabilities["streamedRestore"] !== "boolean"
-  )
+  ) {
     throw mismatch("Manifest replay capabilities are invalid");
+  }
   const manifest = parseClosedDurableManifest(value["manifest"]);
   if (
     manifest.programId !== program.id ||
     manifest.version !== program.version ||
     manifest.digest !== program.digest
-  )
+  ) {
     throw mismatch("Embedded manifest identity does not match its document identity");
+  }
   const computed = canonicalSnapshot(manifest).sha;
-  if (!digest(value["manifestDigest"]) || value["manifestDigest"] !== computed)
+  if (!digest(value["manifestDigest"]) || value["manifestDigest"] !== computed) {
     throw mismatch("Manifest digest does not match canonical manifest content");
+  }
   return Object.freeze({
     protocolVersion: 1,
     extensionUri: CALLER_AUTHORITATIVE_EXTENSION_URI,
@@ -189,19 +199,26 @@ function parseClosedDurableManifest(value: unknown): DurableProgramManifest {
     !record(value["elicits"]) ||
     !record(value["effects"]) ||
     !record(value["capabilities"])
-  )
+  ) {
     throw mismatch("Durable manifest fields are not closed");
+  }
   parseDescriptor(value["inputSchema"]);
   parseDescriptor(value["outputSchema"]);
   for (const declaration of Object.values(value["elicits"])) {
-    if (!record(declaration) || !onlyKeys(declaration, ["response"], ["context"]))
+    if (!record(declaration) || !onlyKeys(declaration, ["response"], ["context"])) {
       throw mismatch("Elicit declaration fields are not closed");
+    }
     parseDescriptor(declaration["response"]);
-    if (declaration["context"] !== undefined) parseDescriptor(declaration["context"]);
+    if (declaration["context"] !== undefined) {
+      parseDescriptor(declaration["context"]);
+    }
   }
-  for (const definition of Object.values(value["effects"])) parseClosedEffect(definition);
-  if (!exactKeys(value["capabilities"], ["durableEmissions", "structuredChildren", "replay"]))
+  for (const definition of Object.values(value["effects"])) {
+    parseClosedEffect(definition);
+  }
+  if (!exactKeys(value["capabilities"], ["durableEmissions", "structuredChildren", "replay"])) {
     throw mismatch("Program capability fields are not closed");
+  }
   try {
     validateDurableManifest(value as unknown as DurableProgramManifest);
   } catch (error) {
@@ -218,16 +235,20 @@ function parseClosedEffect(value: Json): EffectDefinition<Json, Json, Json> {
       ["name", "version", "inputSchema", "outputSchema", "retrySafety"],
       ["cancellation"],
     )
-  )
+  ) {
     throw mismatch("Effect definition fields are not closed");
+  }
   parseDescriptor(value["inputSchema"]);
   parseDescriptor(value["outputSchema"]);
   if (value["cancellation"] !== undefined) {
-    if (!record(value["cancellation"]) || !exactKeys(value["cancellation"], ["partialSchema"]))
+    if (!record(value["cancellation"]) || !exactKeys(value["cancellation"], ["partialSchema"])) {
       throw mismatch("Effect cancellation fields are not closed");
+    }
     parseDescriptor(value["cancellation"]["partialSchema"]);
   }
-  if (!record(value["retrySafety"])) throw mismatch("Effect retry safety is invalid");
+  if (!record(value["retrySafety"])) {
+    throw mismatch("Effect retry safety is invalid");
+  }
   const retryMode = value["retrySafety"]["mode"];
   const retryKeys =
     retryMode === "repeatable"
@@ -235,8 +256,9 @@ function parseClosedEffect(value: Json): EffectDefinition<Json, Json, Json> {
       : retryMode === "unsafe"
         ? ["mode"]
         : ["mode", "mechanism"];
-  if (!exactKeys(value["retrySafety"], retryKeys))
+  if (!exactKeys(value["retrySafety"], retryKeys)) {
     throw mismatch("Effect retry safety fields are not closed");
+  }
   return value as unknown as EffectDefinition<Json, Json, Json>;
 }
 
@@ -253,10 +275,12 @@ function parseDescriptor(value: unknown): void {
       "fidelity",
       "digest",
     ])
-  )
+  ) {
     throw mismatch("Schema descriptor fields are not closed");
-  if (!record(value["fidelity"]) || !exactKeys(value["fidelity"], ["input", "output"]))
+  }
+  if (!record(value["fidelity"]) || !exactKeys(value["fidelity"], ["input", "output"])) {
     throw mismatch("Schema descriptor fidelity fields are not closed");
+  }
   try {
     parsePortableSchemaDescriptor(value);
   } catch (error) {
@@ -265,10 +289,12 @@ function parseDescriptor(value: unknown): void {
 }
 
 function parseProgram(value: unknown): PinnedProgram {
-  if (!record(value) || !exactKeys(value, ["id", "version", "digest"]))
+  if (!record(value) || !exactKeys(value, ["id", "version", "digest"])) {
     throw mismatch("Invalid manifest program identity");
-  if (!nonempty(value["id"]) || !nonempty(value["version"]) || !digest(value["digest"]))
+  }
+  if (!nonempty(value["id"]) || !nonempty(value["version"]) || !digest(value["digest"])) {
     throw mismatch("Invalid manifest program identity");
+  }
   return Object.freeze({ id: value["id"], version: value["version"], digest: value["digest"] });
 }
 function record(value: unknown): value is Record<string, Json> {

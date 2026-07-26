@@ -19,7 +19,11 @@ import type {
  * createTool(name) → .description() → .parameters() → .elicits()/.samples() → .execute().
  */
 export function createTool<TName extends string>(name: TName): CreateToolBuilderBase<TName> {
-  return createUnifiedToolBuilder({ name, annotations: {}, extensions: [] }) as CreateToolBuilderBase<TName>;
+  return createUnifiedToolBuilder({
+    name,
+    annotations: {},
+    extensions: [],
+  }) as CreateToolBuilderBase<TName>;
 }
 
 interface UnifiedBuilderState {
@@ -68,7 +72,8 @@ function createUnifiedToolBuilder(state: UnifiedBuilderState): unknown {
       apply?: (state: UnifiedBuilderState) => UnifiedBuilderState | void;
     }) {
       assertHasParameters(state, ".use()");
-      const metadata = extension.metadata ?? (extension.namespace ? { namespace: extension.namespace } : {});
+      const metadata =
+        extension.metadata ?? (extension.namespace ? { namespace: extension.namespace } : {});
       const next: UnifiedBuilderState = { ...state, extensions: [...state.extensions, metadata] };
       const applied = extension.apply?.(next);
       return createUnifiedToolBuilder(applied ?? next);
@@ -126,7 +131,8 @@ function finalizeCoreUnifiedTool(options: {
   impl: (input: unknown, ctx: ToolCtx) => Operation<unknown>;
 }): ToolDefinition {
   const normalizedElicits = normalizeCoreElicits(options.elicits);
-  const normalizedSamples = options.samples === true ? {} : normalizeCoreSamples(options.samples ?? {});
+  const normalizedSamples =
+    options.samples === true ? {} : normalizeCoreSamples(options.samples ?? {});
   const artifacts = buildToolSchemaArtifacts({
     identity: `tool:${options.name}`,
     version: schemaVersionAnnotation(options.annotations),
@@ -288,8 +294,12 @@ function normalizeCoreSamples(samples: SamplesMap): SamplesMap {
 }
 
 function isElicitDefinitionLike(value: unknown): value is ElicitDefinition {
-  if (!value || typeof value !== "object") return false;
-  if (typeof (value as { safeParse?: unknown }).safeParse === "function") return false;
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  if (typeof (value as { safeParse?: unknown }).safeParse === "function") {
+    return false;
+  }
   return (
     "response" in value ||
     "context" in value ||

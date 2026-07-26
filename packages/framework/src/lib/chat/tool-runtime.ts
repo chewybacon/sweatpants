@@ -254,7 +254,9 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
 
     *resume(request: ToolResumeRequest): Operation<ToolExecution> {
       for (const strategy of strategies) {
-        if (!strategy.resume) continue;
+        if (!strategy.resume) {
+          continue;
+        }
         try {
           return yield* strategy.resume(request.ref, request.input, {
             runtimeId,
@@ -277,7 +279,9 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
 
     *abort(ref: ToolExecutionRef, reason?: string): Operation<void> {
       for (const strategy of strategies) {
-        if (!strategy.abort) continue;
+        if (!strategy.abort) {
+          continue;
+        }
         try {
           yield* strategy.abort(ref, reason, { runtimeId });
           return;
@@ -300,11 +304,12 @@ export const ToolRuntimeContext = createContext<ToolRuntime>("ToolRuntime");
 
 function* activeRuntime(): Operation<ToolRuntime> {
   const runtime = yield* ToolRuntimeContext.get();
-  if (!runtime)
+  if (!runtime) {
     throw new ToolRuntimeError(
       "TOOL_RUNTIME_NOT_CONFIGURED",
       "Tool runtime not configured. Install a ToolRuntime in scope.",
     );
+  }
   return runtime;
 }
 

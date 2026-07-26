@@ -30,12 +30,16 @@ function composeTransforms(transforms: ChatEventTransform[]) {
       tasks.push(
         yield* spawn(function* () {
           yield* transform(source, destination);
-          if (!last) yield* destination.close();
+          if (!last) {
+            yield* destination.close();
+          }
         }),
       );
       current = next;
     }
-    for (const task of tasks) yield* task;
+    for (const task of tasks) {
+      yield* task;
+    }
   };
 }
 
@@ -45,7 +49,9 @@ export function* renderReplayMessageParts(
   content: string,
   transforms: ChatEventTransform[] | undefined,
 ): Operation<MessagePart[] | undefined> {
-  if (!content) return undefined;
+  if (!content) {
+    return undefined;
+  }
   if (!transforms?.length) {
     return [{ id: `${messageId}:text`, type: "text", content, rendered: content }];
   }

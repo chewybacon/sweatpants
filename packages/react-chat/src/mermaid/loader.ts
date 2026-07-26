@@ -30,11 +30,17 @@ const isBrowser = typeof window !== "undefined" && typeof document !== "undefine
  */
 async function initMermaid(): Promise<typeof mermaidDefault | null> {
   // Mermaid requires a DOM - skip on server
-  if (!isBrowser) return null;
+  if (!isBrowser) {
+    return null;
+  }
 
-  if (mermaidInstance) return mermaidInstance;
+  if (mermaidInstance) {
+    return mermaidInstance;
+  }
 
-  if (initPromise) return initPromise;
+  if (initPromise) {
+    return initPromise;
+  }
 
   initPromise = (async () => {
     const mermaid = (await import("mermaid")).default;
@@ -82,7 +88,9 @@ async function initMermaid(): Promise<typeof mermaidDefault | null> {
  * Returns true on server (we skip mermaid rendering there).
  */
 export function isMermaidReady(): boolean {
-  if (!isBrowser) return true; // On server, consider it "ready" (will be skipped)
+  if (!isBrowser) {
+    return true;
+  } // On server, consider it "ready" (will be skipped)
   return mermaidInstance !== null;
 }
 

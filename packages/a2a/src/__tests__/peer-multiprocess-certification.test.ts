@@ -34,8 +34,11 @@ const calleeFixture = resolve(import.meta.dirname, "fixtures/peer-callee-process
 const callerFixture = resolve(import.meta.dirname, "fixtures/peer-caller-resolver-process.ts");
 const effectFixture = resolve(import.meta.dirname, "fixtures/peer-effect-executor-process.ts");
 afterEach(() => {
-  for (const child of children)
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  for (const child of children) {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+  }
   children.clear();
 });
 
@@ -146,14 +149,17 @@ describe("three-process Sweatpants peer certification", () => {
           };
           const crashedCaller = start(callerFixture, environment);
           const crashed = yield* call(() => exited(crashedCaller));
-          if (crashed.signal !== "SIGKILL")
+          if (crashed.signal !== "SIGKILL") {
             throw new Error(`caller did not crash at resolver boundary: ${crashed.stderr}`);
+          }
           const recoveredCaller = start(callerFixture, environment);
           const recovered = yield* call(() => exited(recoveredCaller));
           const line = recovered.stdout
             .split("\n")
             .find((candidate) => candidate.startsWith("OUTCOME "));
-          if (!line) throw new Error(`caller recovery emitted no outcome: ${recovered.stderr}`);
+          if (!line) {
+            throw new Error(`caller recovery emitted no outcome: ${recovered.stderr}`);
+          }
           return JSON.parse(line.slice("OUTCOME ".length));
         }),
       );
@@ -267,7 +273,9 @@ async function reservePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("port unavailable");
+  if (!address || typeof address === "string") {
+    throw new Error("port unavailable");
+  }
   await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
   return address.port;
 }

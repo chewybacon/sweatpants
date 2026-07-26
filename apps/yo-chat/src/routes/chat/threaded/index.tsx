@@ -113,7 +113,9 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
 
       {toolCall.emissions.map((emission) => {
         const Component = emission.component;
-        if (!Component) return null;
+        if (!Component) {
+          return null;
+        }
 
         return (
           <Component

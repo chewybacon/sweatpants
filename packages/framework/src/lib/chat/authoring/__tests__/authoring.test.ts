@@ -69,14 +69,18 @@ async function drive(
         (proposal): Operation<ProgramResume> =>
           (function* () {
             proposals.push(proposal);
-            if (remaining.length === 0) throw new BoundaryReached();
+            if (remaining.length === 0) {
+              throw new BoundaryReached();
+            }
             return remaining.shift();
           })(),
       );
       return yield* program.program(input as never, context);
     });
   } catch (error) {
-    if (!(error instanceof BoundaryReached)) throw error;
+    if (!(error instanceof BoundaryReached)) {
+      throw error;
+    }
   }
   return { proposals, ...(result === undefined ? {} : { result }) };
 }

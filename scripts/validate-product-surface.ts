@@ -45,7 +45,9 @@ function readJson<T>(path: string): T {
 }
 
 function listSourceFiles(dir: string, acc: string[] = []): string[] {
-  if (!existsSync(dir)) return acc;
+  if (!existsSync(dir)) {
+    return acc;
+  }
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (
       entry.name === "node_modules" ||
@@ -72,16 +74,22 @@ function extractImports(source: string): string[] {
   const imports: string[] = [];
   for (const match of source.matchAll(IMPORT_RE)) {
     const spec = match[1] ?? match[2] ?? match[3];
-    if (spec) imports.push(spec);
+    if (spec) {
+      imports.push(spec);
+    }
   }
   return imports;
 }
 
 function packageNameAndSubpath(importPath: string): { pkg: string; subpath: string } | null {
-  if (!importPath.startsWith("@sweatpants/")) return null;
+  if (!importPath.startsWith("@sweatpants/")) {
+    return null;
+  }
   const parts = importPath.split("/");
   // @scope/name[/...]
-  if (parts.length < 2) return null;
+  if (parts.length < 2) {
+    return null;
+  }
   const pkg = `${parts[0]}/${parts[1]}`;
   const rest = parts.slice(2).join("/");
   const subpath = rest.length === 0 ? "." : `./${rest}`;
@@ -91,17 +99,25 @@ function packageNameAndSubpath(importPath: string): { pkg: string; subpath: stri
 function resolvePackageDir(pkgName: string): string | null {
   const packagesRoot = join(repoRoot, "packages");
   for (const entry of readdirSync(packagesRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory()) {
+      continue;
+    }
     const pkgJsonPath = join(packagesRoot, entry.name, "package.json");
-    if (!existsSync(pkgJsonPath)) continue;
+    if (!existsSync(pkgJsonPath)) {
+      continue;
+    }
     const pkg = readJson<PackageJson>(pkgJsonPath);
-    if (pkg.name === pkgName) return join(packagesRoot, entry.name);
+    if (pkg.name === pkgName) {
+      return join(packagesRoot, entry.name);
+    }
   }
   return null;
 }
 
 function exportKeys(exportsField: Record<string, unknown> | undefined): string[] {
-  if (!exportsField) return ["."];
+  if (!exportsField) {
+    return ["."];
+  }
   return Object.keys(exportsField);
 }
 
@@ -152,11 +168,7 @@ function matchesExperimental(importPath: string, patterns: string[]): string | n
   return null;
 }
 
-function isGrandfathered(
-  allowlist: Allowlist,
-  fileRel: string,
-  importPath: string,
-): boolean {
+function isGrandfathered(allowlist: Allowlist, fileRel: string, importPath: string): boolean {
   return allowlist.knownExceptions.some(
     (ex) =>
       (ex.file === fileRel || fileRel.endsWith(ex.file)) &&
@@ -165,7 +177,9 @@ function isGrandfathered(
 }
 
 function isAllowlistedImport(importPath: string, facadePaths: string[]): boolean {
-  if (!importPath.startsWith("@sweatpants/")) return true;
+  if (!importPath.startsWith("@sweatpants/")) {
+    return true;
+  }
   return facadePaths.some(
     (allowed) => importPath === allowed || importPath.startsWith(`${allowed}/`),
   );
@@ -186,20 +200,29 @@ function validateProductAppImports(allowlist: Allowlist): Failure[] {
     const files: string[] = [];
     for (const root of roots) {
       const st = statSync(root);
-      if (st.isDirectory()) listSourceFiles(root, files);
-      else files.push(root);
+      if (st.isDirectory()) {
+        listSourceFiles(root, files);
+      } else {
+        files.push(root);
+      }
     }
 
     for (const file of files) {
       // Skip pure test/outside-in harnesses that intentionally exercise runtimes.
       const rel = relative(repoRoot, file).replaceAll("\\", "/");
-      if (rel.includes("/outside-in/") || rel.includes("/__tests__/")) continue;
+      if (rel.includes("/outside-in/") || rel.includes("/__tests__/")) {
+        continue;
+      }
 
       const source = readFileSync(file, "utf8");
       for (const imp of extractImports(source)) {
         const hit = matchesExperimental(imp, allowlist.experimentalPathPatterns);
-        if (!hit) continue;
-        if (isGrandfathered(allowlist, rel, imp)) continue;
+        if (!hit) {
+          continue;
+        }
+        if (isGrandfathered(allowlist, rel, imp)) {
+          continue;
+        }
         failures.push({
           kind: "experimental-import",
           message: `${rel} imports experimental path "${imp}" (matched ${hit})`,
@@ -223,7 +246,9 @@ function validateGoldenPathSuites(allowlist: Allowlist): Failure[] {
     }
     const source = readFileSync(suitePath, "utf8");
     for (const imp of extractImports(source)) {
-      if (!imp.startsWith("@sweatpants/")) continue;
+      if (!imp.startsWith("@sweatpants/")) {
+        continue;
+      }
       if (!isAllowlistedImport(imp, allowlist.facadePaths)) {
         failures.push({
           kind: "golden-path",

@@ -184,17 +184,21 @@ export function createHttpJsonForeignA2AClient(
     },
     *getTask(request) {
       const query = new URLSearchParams();
-      if (request.historyLength !== undefined)
+      if (request.historyLength !== undefined) {
         query.set("historyLength", String(request.historyLength));
-      if (request.pin.tenantId) query.set("tenant", request.pin.tenantId);
+      }
+      if (request.pin.tenantId) {
+        query.set("tenant", request.pin.tenantId);
+      }
       const suffix = query.size ? `?${query}` : "";
       const response = yield* invoke(options, request.pin, {
         method: "GET",
         url: `${endpoint(request.pin.interface.url, `tasks/${encodeURIComponent(request.taskId)}`)}${suffix}`,
         headers: operationHeaders(request.pin),
       });
-      if (response.status === 404)
+      if (response.status === 404) {
         throw new CrankError("remote_state_expired", "A2A task is unavailable");
+      }
       requireSuccess(response, "GetTask");
       return parseForeignA2ATask(requireBody(response), options.validationLimits);
     },
@@ -208,10 +212,12 @@ export function createHttpJsonForeignA2AClient(
         headers: operationHeaders(request.pin),
         body: request.pin.tenantId ? { tenant: request.pin.tenantId } : {},
       });
-      if (response.status === 404)
+      if (response.status === 404) {
         throw new CrankError("task_not_found", "A2A task is unavailable");
-      if (response.status === 400)
+      }
+      if (response.status === 400) {
         throw new CrankError("task_not_cancelable", "A2A task is not cancelable");
+      }
       requireSuccess(response, "CancelTask");
       return parseForeignA2ATask(requireBody(response), options.validationLimits);
     },
@@ -248,11 +254,12 @@ export function createHttpJsonForeignA2AClient(
             requireSuccess(response, "AbortInvocation");
             requireDurableEcho(response, request.pin);
             const parsed = parseResolveResult(requireBody(response), options.validationLimits);
-            if (parsed.status === "not_found")
+            if (parsed.status === "not_found") {
               throw new CrankError(
                 "a2a_protocol_error",
                 "AbortInvocation may not return bare not_found",
               );
+            }
             return parsed;
           },
         }
@@ -264,13 +271,20 @@ export function classifyForeignCancellation(
   value: ForeignA2ATask | CrankError,
 ): ForeignA2ACancelResult {
   if (value instanceof CrankError) {
-    if (value.code === "task_not_found") return { status: "task_not_found_or_expired" };
-    if (value.code === "task_not_cancelable") return { status: "not_cancelable" };
+    if (value.code === "task_not_found") {
+      return { status: "task_not_found_or_expired" };
+    }
+    if (value.code === "task_not_cancelable") {
+      return { status: "not_cancelable" };
+    }
     return { status: "transport_indeterminate" };
   }
-  if (value.status.state === "canceled") return { status: "confirmed_canceled", task: value };
-  if (["completed", "failed", "rejected"].includes(value.status.state))
+  if (value.status.state === "canceled") {
+    return { status: "confirmed_canceled", task: value };
+  }
+  if (["completed", "failed", "rejected"].includes(value.status.state)) {
     return { status: "already_terminal", task: value };
+  }
   return { status: "rejected", task: value };
 }
 
@@ -288,7 +302,9 @@ function* invoke(
       }),
     );
   } catch (error) {
-    if (error instanceof ForeignA2ATransportError) throw error;
+    if (error instanceof ForeignA2ATransportError) {
+      throw error;
+    }
     throw new ForeignA2ATransportError(
       "a2a_transport_lost",
       "Foreign A2A transport lost",
@@ -318,7 +334,9 @@ function wireMessage(message: ForeignA2AMessage): Json {
   };
 }
 function extensionMetadata(pin: ForeignA2AInvocationPin, message: ForeignA2AMessage): Json {
-  if (pin.guarantee.level !== "reconciled") return message.metadata ?? {};
+  if (pin.guarantee.level !== "reconciled") {
+    return message.metadata ?? {};
+  }
   return {
     ...(record(message.metadata) ? message.metadata : {}),
     [DURABLE_INVOCATION_EXTENSION_URI]: {
@@ -344,14 +362,18 @@ function parseResolveResult(
   value: Json,
   limits?: Partial<ForeignA2AValidationLimits>,
 ): ResolveForeignInvocationResult {
-  if (!record(value) || typeof value["status"] !== "string")
+  if (!record(value) || typeof value["status"] !== "string") {
     throw new CrankError("a2a_protocol_error", "Invalid invocation reconciliation response");
-  if (value["status"] === "not_found" && Object.keys(value).length === 1)
+  }
+  if (value["status"] === "not_found" && Object.keys(value).length === 1) {
     return { status: "not_found" };
-  if (value["status"] === "aborted" && typeof value["expiresAt"] === "string")
+  }
+  if (value["status"] === "aborted" && typeof value["expiresAt"] === "string") {
     return { status: "aborted", expiresAt: value["expiresAt"] };
-  if (value["status"] === "bound" && value["result"] !== undefined)
+  }
+  if (value["status"] === "bound" && value["result"] !== undefined) {
     return { status: "bound", result: parseForeignA2ASendResult(value["result"], limits) };
+  }
   throw new CrankError("a2a_protocol_error", "Invalid invocation reconciliation response");
 }
 function assertMessageGuaranteeCurrent(request: ForeignA2AContinueRequest): void {
@@ -360,19 +382,22 @@ function assertMessageGuaranteeCurrent(request: ForeignA2AContinueRequest): void
   if (
     ["reconciled", "idempotent_messages"].includes(request.pin.guarantee.level) &&
     (!expiry || Date.now() >= Date.parse(expiry))
-  )
+  ) {
     throw new CrankError(
       "a2a_guarantee_expired",
       "Message idempotency guarantee expired before dispatch",
     );
+  }
 }
 function assertNotExpired(value: string, field: string): void {
-  if (!Number.isFinite(Date.parse(value)) || Date.now() >= Date.parse(value))
+  if (!Number.isFinite(Date.parse(value)) || Date.now() >= Date.parse(value)) {
     throw new CrankError("a2a_guarantee_expired", `${field} expired before dispatch`);
+  }
 }
 function requireDurableExtension(pin: ForeignA2AInvocationPin) {
-  if (pin.guarantee.level !== "reconciled" || !pin.guarantee.extension)
+  if (pin.guarantee.level !== "reconciled" || !pin.guarantee.extension) {
     throw new CrankError("a2a_guarantee_unavailable", "Durable invocation extension is not pinned");
+  }
   return pin.guarantee.extension;
 }
 function endpoint(base: string, suffix: string): string {
@@ -382,7 +407,9 @@ function requireDurableEcho(
   response: ForeignA2AHttpTransportResponse,
   pin: ForeignA2AInvocationPin,
 ): void {
-  if (pin.guarantee.level !== "reconciled") return;
+  if (pin.guarantee.level !== "reconciled") {
+    return;
+  }
   const echoed =
     response.headers[A2A_EXTENSIONS_HEADER.toLowerCase()] ??
     response.headers[A2A_EXTENSIONS_HEADER];
@@ -391,16 +418,19 @@ function requireDurableEcho(
       ?.split(",")
       .map((value) => value.trim())
       .includes(DURABLE_INVOCATION_EXTENSION_URI)
-  )
+  ) {
     throw new CrankError("extension_echo_mismatch", "Durable invocation activation was not echoed");
+  }
 }
 function requireSuccess(response: ForeignA2AHttpTransportResponse, operation: string): void {
-  if (response.status < 200 || response.status >= 300)
+  if (response.status < 200 || response.status >= 300) {
     throw new CrankError("a2a_remote_error", `${operation} failed with status ${response.status}`);
+  }
 }
 function requireBody(response: ForeignA2AHttpTransportResponse): Json {
-  if (response.body === undefined)
+  if (response.body === undefined) {
     throw new CrankError("a2a_protocol_error", "A2A response body is missing");
+  }
   return response.body;
 }
 function canonicalMessageDigest(message: ForeignA2AMessage): string {

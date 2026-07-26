@@ -66,7 +66,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readAuthFile(path: string): AuthFile | null {
-  if (!existsSync(path)) return null;
+  if (!existsSync(path)) {
+    return null;
+  }
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
     return isRecord(parsed) ? (parsed as AuthFile) : null;
@@ -93,7 +95,9 @@ function parseTokenFields(token: string): Record<string, string> {
   for (const part of token.split(";")) {
     const [rawKey, ...rest] = part.split("=");
     const key = rawKey?.trim();
-    if (!key || rest.length === 0) continue;
+    if (!key || rest.length === 0) {
+      continue;
+    }
     fields[key] = rest.join("=").trim();
   }
   return fields;
@@ -101,14 +105,20 @@ function parseTokenFields(token: string): Record<string, string> {
 
 function parseExpiryFromToken(fields: Record<string, string>): Date | undefined {
   const raw = fields["exp"] ?? fields["expires_at"] ?? fields["expiresAt"];
-  if (!raw) return undefined;
+  if (!raw) {
+    return undefined;
+  }
   const numeric = Number(raw);
-  if (!Number.isFinite(numeric)) return undefined;
+  if (!Number.isFinite(numeric)) {
+    return undefined;
+  }
   return epochToDate(numeric);
 }
 
 function epochToDate(value: number | undefined): Date | undefined {
-  if (!Number.isFinite(value)) return undefined;
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
   const millis = value! > 10_000_000_000 ? value! : value! * 1000;
   return new Date(millis);
 }
@@ -153,7 +163,9 @@ function tokenInfoFromRecord(
   authFile: string,
   record: AuthRecord,
 ): TokenInfo | null {
-  if (typeof record.access !== "string" || record.access.trim().length === 0) return null;
+  if (typeof record.access !== "string" || record.access.trim().length === 0) {
+    return null;
+  }
   const token = record.access.trim();
   const fields = parseTokenFields(token);
   const proxyEndpoint = fields["proxy-ep"];
@@ -192,13 +204,17 @@ function findToken(): TokenInfo | null {
 
   const ownAuthFile = sweatpantsAuthFile();
   const ownRecord = readAuthRecord(ownAuthFile);
-  if (ownRecord) return tokenInfoFromRecord("sweatpants-auth-file", ownAuthFile, ownRecord);
+  if (ownRecord) {
+    return tokenInfoFromRecord("sweatpants-auth-file", ownAuthFile, ownRecord);
+  }
 
   return null;
 }
 
 function redactToken(token: string): string {
-  if (token.length <= 16) return "[redacted]";
+  if (token.length <= 16) {
+    return "[redacted]";
+  }
   return `${token.slice(0, 6)}…${token.slice(-6)}`;
 }
 
@@ -208,7 +224,9 @@ function shellQuote(value: string): string {
 
 function requireToken(): TokenInfo {
   const info = findToken();
-  if (info) return info;
+  if (info) {
+    return info;
+  }
 
   console.error("No GitHub Copilot auth token found.");
   console.error(`Checked ${envTokenName} and ${sweatpantsAuthFile()}`);
@@ -217,7 +235,9 @@ function requireToken(): TokenInfo {
 }
 
 function formatExpiry(expiresAt: Date | undefined): string {
-  if (!expiresAt) return "unknown";
+  if (!expiresAt) {
+    return "unknown";
+  }
   const remainingMs = expiresAt.getTime() - Date.now();
   const remainingMinutes = Math.round(remainingMs / 60_000);
   const suffix =
@@ -231,7 +251,9 @@ function status(): void {
   const info = requireToken();
   console.log("GitHub Copilot auth: OK");
   console.log(`source: ${info.source}`);
-  if (info.authFile) console.log(`auth file: ${info.authFile}`);
+  if (info.authFile) {
+    console.log(`auth file: ${info.authFile}`);
+  }
   console.log(`token: ${redactToken(info.token)}`);
   console.log(`expires: ${formatExpiry(info.expiresAt)}`);
   console.log(`proxy endpoint: ${info.proxyEndpoint ?? "not present in token"}`);
@@ -281,7 +303,9 @@ async function login(): Promise<void> {
         console.log("GitHub Copilot device authorization required:");
         console.log(`  Open: ${info.verificationUri}`);
         console.log(`  Code: ${info.userCode}`);
-        if (info.expiresInSeconds) console.log(`  Expires in: ${info.expiresInSeconds}s`);
+        if (info.expiresInSeconds) {
+          console.log(`  Expires in: ${info.expiresInSeconds}s`);
+        }
       },
       async onPrompt(prompt) {
         const suffix = prompt.placeholder ? ` (${prompt.placeholder})` : "";

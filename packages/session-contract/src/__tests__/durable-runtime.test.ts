@@ -774,7 +774,9 @@ describe("crank-native durable runtime", () => {
         },
         programCapability: opened.programCapability,
       });
-      if (reserved.status !== "authorized") throw new Error("effect not authorized");
+      if (reserved.status !== "authorized") {
+        throw new Error("effect not authorized");
+      }
       const unavailable = createInMemoryDurableJournalAuthority({
         journalId: "journal-1",
         journalIncarnation: "incarnation-1",

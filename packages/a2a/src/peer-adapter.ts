@@ -47,8 +47,9 @@ export const peerTaskAdapter = createPinnedDurableProgram(
     if (
       input.request.pin.invocationId !== input.pin.foreign.invocationId ||
       input.request.pin.cardDigest !== input.pin.foreign.cardDigest
-    )
+    ) {
       throw new CrankError("peer_identity_mismatch", "Peer adapter input pin differs");
+    }
     const result = yield* context.invoke<ForeignA2ATerminalResult>(
       foreignA2AAdapterChild(input.request),
     );
@@ -71,9 +72,12 @@ export function verifyPeerResultEcho(
   pin: PeerInvocationPin,
 ): void {
   const task = "task" in result ? result.task : undefined;
-  if (!task) return;
-  if (!task.metadata || typeof task.metadata !== "object" || Array.isArray(task.metadata))
+  if (!task) {
+    return;
+  }
+  if (!task.metadata || typeof task.metadata !== "object" || Array.isArray(task.metadata)) {
     throw new CrankError("peer_grant_echo_mismatch", "Peer result omitted profile metadata");
+  }
   const profile = task.metadata[SWEATPANTS_PEER_PROFILE_URI];
   if (
     !profile ||
@@ -81,8 +85,9 @@ export function verifyPeerResultEcho(
     Array.isArray(profile) ||
     profile["grantSetDigest"] !== pin.grantSet.digest ||
     profile["requirementManifestDigest"] !== pin.requirementManifest.manifestDigest
-  )
+  ) {
     throw new CrankError("peer_grant_echo_mismatch", "Peer result grant/manifest echo differs");
+  }
 }
 function portable(
   identity: string,

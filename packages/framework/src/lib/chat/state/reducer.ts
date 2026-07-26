@@ -17,11 +17,15 @@ function upsertMessage(messages: Message[], message: Message): Message[] {
 }
 
 function upsertToolResult(messages: Message[], message: Message): Message[] {
-  if (!message.tool_call_id) return upsertMessage(messages, message);
+  if (!message.tool_call_id) {
+    return upsertMessage(messages, message);
+  }
   const index = messages.findIndex(
     (candidate) => candidate.role === "tool" && candidate.tool_call_id === message.tool_call_id,
   );
-  if (index < 0) return [...messages, message];
+  if (index < 0) {
+    return [...messages, message];
+  }
   return messages.map((candidate, candidateIndex) =>
     candidateIndex === index
       ? candidate.replay && !message.replay
@@ -51,7 +55,9 @@ function partsForMessages(messages: Message[]): Record<string, MessagePart[]> {
   const finalized: Record<string, MessagePart[]> = {};
 
   for (const message of messages) {
-    if (!message.id || message.role !== "assistant") continue;
+    if (!message.id || message.role !== "assistant") {
+      continue;
+    }
     const parts: MessagePart[] = [];
     if (message.content) {
       parts.push({
@@ -77,7 +83,9 @@ function partsForMessages(messages: Message[]): Record<string, MessagePart[]> {
         pluginElicits: [],
       });
     }
-    if (parts.length > 0) finalized[message.id] = parts;
+    if (parts.length > 0) {
+      finalized[message.id] = parts;
+    }
   }
   return finalized;
 }
@@ -176,9 +184,13 @@ function attachPendingElicits(
   part: MessagePart,
   pending: Record<string, ElicitTrackingState>,
 ): MessagePart {
-  if (part.type !== "tool-call") return part;
+  if (part.type !== "tool-call") {
+    return part;
+  }
   const tracking = pending[part.callId];
-  if (!tracking) return part;
+  if (!tracking) {
+    return part;
+  }
   return {
     ...part,
     pluginElicits: tracking.elicitations.map((elicit) => ({
@@ -216,7 +228,9 @@ function addInterrupts(
     const key =
       typeof metadata["sweatpants/key"] === "string" ? metadata["sweatpants/key"] : interrupt.id;
     const existing = pending[callId];
-    if (existing?.elicitations.some((elicit) => elicit.elicitId === interrupt.id)) continue;
+    if (existing?.elicitations.some((elicit) => elicit.elicitId === interrupt.id)) {
+      continue;
+    }
     pending[callId] = {
       callId,
       toolName,
@@ -275,11 +289,14 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       );
       const projectedParts = partsForMessages(messages);
       for (const message of messages) {
-        if (!message.id) continue;
+        if (!message.id) {
+          continue;
+        }
         const previous = state.messages.find((candidate) => candidate.id === message.id);
         const rendered = state.finalizedParts[message.id];
-        if (previous?.content === message.content && rendered)
+        if (previous?.content === message.content && rendered) {
           projectedParts[message.id] = rendered;
+        }
       }
       return { ...state, messages, finalizedParts: projectedParts };
     }
@@ -338,7 +355,9 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
 
     case "TEXT_MESSAGE_END": {
       const draft = state.messageDrafts[event.messageId];
-      if (!draft) return state;
+      if (!draft) {
+        return state;
+      }
       const { [event.messageId]: _ended, ...messageDrafts } = state.messageDrafts;
       const message: Message = { id: draft.id, role: draft.role, content: draft.content };
       return {
@@ -385,7 +404,9 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
 
     case "TOOL_CALL_ARGS": {
       const draft = state.toolCallDrafts[event.toolCallId];
-      if (!draft) return state;
+      if (!draft) {
+        return state;
+      }
       const args = draft.arguments + event.delta;
       const nextDraft = { ...draft, arguments: args };
       const updatePart = (part: MessagePart): MessagePart =>
@@ -404,7 +425,9 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
 
     case "TOOL_CALL_END": {
       const draft = state.toolCallDrafts[event.toolCallId];
-      if (!draft) return state;
+      if (!draft) {
+        return state;
+      }
       const toolCallDrafts = {
         ...state.toolCallDrafts,
         [event.toolCallId]: { ...draft, ended: true },
@@ -491,7 +514,9 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
 
     case "ACTIVITY_SNAPSHOT": {
       const trace = activitySnapshotToPluginReplayTrace(event);
-      if (!trace) return state;
+      if (!trace) {
+        return state;
+      }
       const traces = new Map(
         (state.replay?.toolTraces ?? []).map((entry) => [entry.callId, entry]),
       );
@@ -525,7 +550,9 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
         state.streaming.activePartType === event.partType
           ? state.streaming.activePartId
           : event.partId;
-      if (!targetId) return state;
+      if (!targetId) {
+        return state;
+      }
       return {
         ...state,
         streaming: {
@@ -544,7 +571,9 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
 
     case "LOCAL_ELICIT_RESPONSE": {
       const tracking = state.pendingElicits[event.callId];
-      if (!tracking) return state;
+      if (!tracking) {
+        return state;
+      }
       const updatePart = (part: MessagePart): MessagePart =>
         part.type === "tool-call" && part.callId === event.callId
           ? {

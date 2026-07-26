@@ -79,7 +79,9 @@ async function readNextSseMessage(reader: SseReader, buffer: SseBuffer): Promise
       const rawEvent = buffer.text.slice(0, boundary);
       buffer.text = buffer.text.slice(boundary + 2);
       const data = parseSseData(rawEvent);
-      if (!data) continue;
+      if (!data) {
+        continue;
+      }
       return JSON.parse(data) as JsonRpcMessage;
     }
 
@@ -100,7 +102,9 @@ async function readUntilSseMessage(
   const readLoop = async () => {
     while (true) {
       const message = await readNextSseMessage(reader, buffer);
-      if (predicate(message)) return message;
+      if (predicate(message)) {
+        return message;
+      }
     }
   };
 
@@ -140,7 +144,8 @@ async function callGreetViaMcpSampling(input: {
 
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).toContain("text/event-stream");
-  const sessionId = response.headers.get("mcp-session-id") ?? response.headers.get("Mcp-Session-Id");
+  const sessionId =
+    response.headers.get("mcp-session-id") ?? response.headers.get("Mcp-Session-Id");
   expect(sessionId).toBeTruthy();
   expect(response.body).toBeTruthy();
 
@@ -234,7 +239,10 @@ test.describe("Greet Tool (Sampling)", () => {
       "Dear Alice, it is my pleasure to extend warm greetings to you on this fine day.",
     );
 
-    await page.getByRole("button", { name: /approve/i }).first().click();
+    await page
+      .getByRole("button", { name: /approve/i })
+      .first()
+      .click();
 
     const toolsTab = page.getByRole("tab", { name: /tools/i });
     await toolsTab.click();

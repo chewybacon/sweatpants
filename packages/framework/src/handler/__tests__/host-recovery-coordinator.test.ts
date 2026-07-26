@@ -20,7 +20,9 @@ describe("host recovery coordinator", () => {
     const result = await run(() =>
       recoverKnownWorkOnStartup(authority, {
         *activate(session) {
-          if (session.sessionId === "expired") throw new Error("placement unavailable");
+          if (session.sessionId === "expired") {
+            throw new Error("placement unavailable");
+          }
         },
       }),
     );

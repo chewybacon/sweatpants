@@ -9,7 +9,9 @@ function source(path: string): string {
 }
 
 function sourceFiles(directory: string): string[] {
-  if (!statSync(directory).isDirectory()) return [directory];
+  if (!statSync(directory).isDirectory()) {
+    return [directory];
+  }
   return readdirSync(directory).flatMap((entry) => {
     const path = resolve(directory, entry);
     return statSync(path).isDirectory()
@@ -45,7 +47,9 @@ describe("single crank-turner architecture", () => {
     ];
     for (const file of roots.flatMap(sourceFiles).filter((file) => !file.includes("__tests__"))) {
       const contents = readFileSync(file, "utf8");
-      if (!contents.includes("ProgramDriver") && !file.includes("durable-driver")) continue;
+      if (!contents.includes("ProgramDriver") && !file.includes("durable-driver")) {
+        continue;
+      }
       expect(contents, `${file} must not create a signal-driven producer`).not.toContain(
         "createSignal",
       );

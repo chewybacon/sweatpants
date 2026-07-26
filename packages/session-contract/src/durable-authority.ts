@@ -408,7 +408,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (catalog && (!isJsonRecord(catalog) || catalog["digest"] !== request.catalogDigest)) {
       throw new CrankError("invalid_manifest", "Accepted catalog digest differs");
     }
-    if (catalog) assertInlineSize(catalog, this.#options.maxOutcomeBytes);
+    if (catalog) {
+      assertInlineSize(catalog, this.#options.maxOutcomeBytes);
+    }
     const route = request.route === undefined ? undefined : canonicalSnapshot(request.route).value;
     const emissionPolicy = this.#options.emissionPolicy
       ? structuredClone(this.#options.emissionPolicy)
@@ -1422,8 +1424,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     const epoch = (this.#lastActivationEpochBySession.get(request.sessionId) ?? 0) + 1;
     this.#lastActivationEpochBySession.set(request.sessionId, epoch);
     for (const task of this.#tasks.values()) {
-      if (task.sessionId === request.sessionId && task.status === "active")
+      if (task.sessionId === request.sessionId && task.status === "active") {
         task.executionEpoch = epoch;
+      }
     }
     const taskRevision = this.#taskRevisions.get(request.sessionId) ?? 0;
     const journalHeadDigest = this.#journalHeadDigest(request.sessionId);
@@ -1480,8 +1483,11 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     // exact no-lost-wakeup re-derivation.
     const runnable =
       request.reason !== "terminal" && (retryable || this.#runnable.has(request.sessionId));
-    if (runnable) this.#runnable.add(request.sessionId);
-    else this.#runnable.delete(request.sessionId);
+    if (runnable) {
+      this.#runnable.add(request.sessionId);
+    } else {
+      this.#runnable.delete(request.sessionId);
+    }
     return { status: "released", runnable };
   }
 
@@ -1701,7 +1707,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       claims.journalHeadDigest === this.#journalHeadDigest(request.sessionId) &&
       claims.restoreNonce === this.#restoreNonces.get(request.sessionId) &&
       request.proof.frontierDigest === this.#restoreFrontierDigests.get(request.sessionId);
-    if (!valid) return this.#recordRestoreStale(request.sessionId);
+    if (!valid) {
+      return this.#recordRestoreStale(request.sessionId);
+    }
     const consumedNonce = this.#nextNonce();
     this.#restoreNonces.set(request.sessionId, consumedNonce);
     this.#restoreFrontierDigests.delete(request.sessionId);
@@ -1812,7 +1820,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       this.#records.set(sessionId, structuredClone(records));
     }
     for (const task of this.#tasks.values()) {
-      if (!task.emissionPolicy) continue;
+      if (!task.emissionPolicy) {
+        continue;
+      }
       const emissions = (this.#records.get(task.sessionId) ?? []).filter(
         (record) =>
           record.payload.type === "DurableEmission" && record.payload.taskId === task.taskId,
@@ -1835,16 +1845,27 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     for (const sessionId of snapshot.runnable) {
       this.#runnable.add(sessionId);
     }
-    for (const [sessionId, lease] of snapshot.activationLeases)
+    for (const [sessionId, lease] of snapshot.activationLeases) {
       this.#activationLeases.set(sessionId, structuredClone(lease));
-    for (const entry of snapshot.lastActivationEpochBySession)
+    }
+    for (const entry of snapshot.lastActivationEpochBySession) {
       this.#lastActivationEpochBySession.set(...entry);
-    for (const entry of snapshot.taskRevisions) this.#taskRevisions.set(...entry);
-    for (const entry of snapshot.restoreNonces) this.#restoreNonces.set(...entry);
-    for (const entry of snapshot.restoreFrontierDigests) this.#restoreFrontierDigests.set(...entry);
-    for (const entry of snapshot.consecutiveRestoreStales)
+    }
+    for (const entry of snapshot.taskRevisions) {
+      this.#taskRevisions.set(...entry);
+    }
+    for (const entry of snapshot.restoreNonces) {
+      this.#restoreNonces.set(...entry);
+    }
+    for (const entry of snapshot.restoreFrontierDigests) {
+      this.#restoreFrontierDigests.set(...entry);
+    }
+    for (const entry of snapshot.consecutiveRestoreStales) {
       this.#consecutiveRestoreStales.set(...entry);
-    for (const entry of snapshot.activationNotBeforeMs) this.#activationNotBeforeMs.set(...entry);
+    }
+    for (const entry of snapshot.activationNotBeforeMs) {
+      this.#activationNotBeforeMs.set(...entry);
+    }
     this.#nonce = snapshot.nonce;
   }
 
@@ -2179,7 +2200,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     task: Task,
   ): Operation<void> {
     const lease = this.#activationLeases.get(task.sessionId);
-    if (!lease || !frontier) throw new CrankError("restore_stale");
+    if (!lease || !frontier) {
+      throw new CrankError("restore_stale");
+    }
     let claims: RestoreTicketClaims;
     try {
       claims = parseRestoreTicketClaims(
@@ -2188,7 +2211,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     } catch {
       throw new CrankError("restore_stale");
     }
-    if (!claims.releaseId || !claims.frontierDomain) throw new CrankError("restore_stale");
+    if (!claims.releaseId || !claims.frontierDomain) {
+      throw new CrankError("restore_stale");
+    }
     const expectedFrontierDigest = sha256(
       canonicalJson({
         domain: claims.frontierDomain,
@@ -2288,14 +2313,17 @@ export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthor
 }
 
 function migrateDurableAuthoritySnapshot(value: Json): Json {
-  if (!isJsonRecord(value)) return value;
+  if (!isJsonRecord(value)) {
+    return value;
+  }
   let migrated = value;
   if (migrated["version"] === 2) {
     if (
       !hasExactKeys(migrated, ["version", "tasks", "records", "runnable", "nonce"]) ||
       !Array.isArray(migrated["records"])
-    )
+    ) {
       return migrated;
+    }
     const taskRevisions = migrated["records"].flatMap((entry): Json[] =>
       Array.isArray(entry) && typeof entry[0] === "string" && Array.isArray(entry[1])
         ? [[entry[0], entry[1].length]]
@@ -2342,7 +2370,9 @@ function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySn
     "consecutiveRestoreStales",
     "activationNotBeforeMs",
   ];
-  if (!isJsonRecord(value) || !hasExactKeys(value, keys)) return false;
+  if (!isJsonRecord(value) || !hasExactKeys(value, keys)) {
+    return false;
+  }
   return (
     value["version"] === 4 &&
     isNonNegativeInteger(value["nonce"]) &&
@@ -2395,8 +2425,9 @@ function isActivationLeaseTuple(value: Json): boolean {
     value.length !== 2 ||
     typeof value[0] !== "string" ||
     !isJsonRecord(value[1])
-  )
+  ) {
     return false;
+  }
   const lease = value[1];
   return (
     hasExactKeys(lease, [
@@ -2419,9 +2450,6 @@ function isActivationLeaseTuple(value: Json): boolean {
     typeof lease["restoreNonce"] === "string"
   );
 }
-
-
-
 
 function isTaskSnapshot(value: Json): boolean {
   if (!isJsonRecord(value)) {
@@ -3113,8 +3141,9 @@ function parseRestoreTicketClaims(value: unknown): RestoreTicketClaims {
       ],
       ["releaseId", "sandboxSessionId", "replayDomain", "frontierDomain"],
     )
-  )
+  ) {
     throw new CrankError("restore_stale");
+  }
   const stringFields = [
     "journalId",
     "journalIncarnation",
@@ -3139,8 +3168,9 @@ function parseRestoreTicketClaims(value: unknown): RestoreTicketClaims {
       Number.isSafeInteger(value["replayedThroughActionIndex"]) &&
       value["replayedThroughActionIndex"] >= -1
     )
-  )
+  ) {
     throw new CrankError("restore_stale");
+  }
   // SAFETY: every field RestoreTicketClaims declares is checked immediately
   // above and the guard throws restore_stale on any mismatch, so this point is
   // unreachable for a shape the claims type does not describe.
@@ -3176,7 +3206,9 @@ function canonicalByteLength(value: Json): number {
 function normalizeEmissionPolicy(
   policy: SemanticEmissionPolicy | undefined,
 ): SemanticEmissionPolicy | undefined {
-  if (policy === undefined) return undefined;
+  if (policy === undefined) {
+    return undefined;
+  }
   if (!isEmissionPolicyValue(policy)) {
     throw new CrankError("invalid_manifest", "Invalid semantic emission policy");
   }
@@ -3187,7 +3219,9 @@ function normalizeEmissionPolicy(
 }
 
 function isEmissionPolicyValue(value: unknown): value is SemanticEmissionPolicy {
-  if (!isJsonRecord(value)) return false;
+  if (!isJsonRecord(value)) {
+    return false;
+  }
   if (!hasOnlyKeys(value, [], ["maxEmissionsPerTask", "maxCumulativeEmissionBytes"])) {
     return false;
   }

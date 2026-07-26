@@ -83,7 +83,9 @@ export function createHeadlessCodingService(options: {
         },
       });
     } else {
-      if (!options.connector) throw new Error("workspace provider is not configured");
+      if (!options.connector) {
+        throw new Error("workspace provider is not configured");
+      }
       yield* installRemoteWorkspaceFilesProvider({
         resolve: function* () {
           return { connector: options.connector!, fence: options.fence };

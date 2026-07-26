@@ -155,7 +155,9 @@ export function* parseRequest(request: Request): Operation<McpParsedRequest> {
  * Check if a value is a valid JSON-RPC request.
  */
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
   const obj = value as Record<string, unknown>;
   return obj["jsonrpc"] === "2.0" && obj["id"] !== undefined && typeof obj["method"] === "string";
 }
@@ -166,7 +168,9 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
 function isJsonRpcNotification(
   value: unknown,
 ): value is { jsonrpc: "2.0"; method: string; params?: unknown } {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
   const obj = value as Record<string, unknown>;
   return obj["jsonrpc"] === "2.0" && obj["id"] === undefined && typeof obj["method"] === "string";
 }
@@ -175,7 +179,9 @@ function isJsonRpcNotification(
  * Check if a value is a valid JSON-RPC response.
  */
 function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
   const obj = value as Record<string, unknown>;
   return obj["jsonrpc"] === "2.0" && obj["id"] !== undefined && ("result" in obj || "error" in obj);
 }
@@ -372,7 +378,9 @@ function classifyPostBody(
  * Check if a result looks like an elicitation result.
  */
 function isElicitationResult(result: unknown): result is McpElicitationResult {
-  if (typeof result !== "object" || result === null) return false;
+  if (typeof result !== "object" || result === null) {
+    return false;
+  }
   const obj = result as Record<string, unknown>;
   const action = obj["action"];
   return typeof action === "string" && ["accept", "decline", "cancel"].includes(action);
@@ -382,7 +390,9 @@ function isElicitationResult(result: unknown): result is McpElicitationResult {
  * Check if a result looks like a sampling result.
  */
 function isSamplingResult(result: unknown): result is McpCreateMessageResult {
-  if (typeof result !== "object" || result === null) return false;
+  if (typeof result !== "object" || result === null) {
+    return false;
+  }
   const obj = result as Record<string, unknown>;
   return (
     obj["role"] === "assistant" && obj["content"] !== undefined && typeof obj["model"] === "string"

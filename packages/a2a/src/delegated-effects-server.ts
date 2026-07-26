@@ -86,8 +86,9 @@ export class InMemoryDelegatedEffectsService {
       if (
         previous.invocationId !== input.invocationId ||
         previous.grants.digest !== input.grantSet.digest
-      )
+      ) {
         throw new CrankError("peer_task_conflict", "Peer task identity was reused inconsistently");
+      }
       return;
     }
     this.#tasks.set(input.taskId, {
@@ -122,11 +123,12 @@ export class InMemoryDelegatedEffectsService {
         previous.request.inputDigest !== inputDigest ||
         previous.request.grantId !== input.grantId ||
         previous.request.contractDigest !== input.contractDigest
-      )
+      ) {
         throw new CrankError(
           "peer_event_conflict",
           "Delegated effect ID was reused inconsistently",
         );
+      }
       return previous.request;
     }
     const grant = task.grants.grants.find(
@@ -137,12 +139,15 @@ export class InMemoryDelegatedEffectsService {
       !grant ||
       grant.route !== "caller" ||
       grant.contract.contractDigest !== input.contractDigest
-    )
+    ) {
       throw new CrankError("peer_grant_denied", "Delegated effect is not covered by the grant");
-    if (task.revoked.has(grant.grantId))
+    }
+    if (task.revoked.has(grant.grantId)) {
       throw new CrankError("peer_grant_revoked", "Delegated effect grant was revoked");
-    if (Date.now() >= Date.parse(grant.expiresAt))
+    }
+    if (Date.now() >= Date.parse(grant.expiresAt)) {
       throw new CrankError("peer_grant_expired", "Delegated effect grant expired");
+    }
     const event = this.#event(task, {
       type: "effect_requested",
       taskId: task.taskId,
@@ -167,11 +172,12 @@ export class InMemoryDelegatedEffectsService {
     requested: PeerEffectOffer[];
   }): DelegatedEffectEvent {
     const task = this.#task(input.taskId);
-    if (!task.grants.amendmentRequests)
+    if (!task.grants.amendmentRequests) {
       throw new CrankError(
         "peer_grant_amendment_denied",
         "This peer invocation does not permit grant amendments",
       );
+    }
     return this.#event(task, {
       type: "grant_amendment_requested",
       taskId: task.taskId,
@@ -187,12 +193,14 @@ export class InMemoryDelegatedEffectsService {
     expirations: Record<keyof PeerRetentionV1, string>,
   ): DelegatedEffectEvent {
     const task = this.#task(taskId);
-    for (const value of Object.values(expirations))
-      if (!Number.isFinite(Date.parse(value)) || Date.parse(value) <= this.#now())
+    for (const value of Object.values(expirations)) {
+      if (!Number.isFinite(Date.parse(value)) || Date.parse(value) <= this.#now()) {
         throw new CrankError(
           "peer_retention_invalid",
           "Peer retention renewal is not future-dated",
         );
+      }
+    }
     task.expiresAt = Date.parse(expirations.effectEventSeconds);
     return this.#event(task, {
       type: "retention_renewed",
@@ -209,11 +217,14 @@ export class InMemoryDelegatedEffectsService {
   ): DelegatedEffectEvent {
     const task = this.#task(taskId);
     if (task.terminal) {
-      if (evidence && canonicalJson(task.terminal) !== canonicalJson(evidence))
+      if (evidence && canonicalJson(task.terminal) !== canonicalJson(evidence)) {
         throw new CrankError("peer_terminal_conflict", "Terminal peer evidence is immutable");
+      }
       return task.events.find((event) => event.type === "task_terminal")!;
     }
-    if (evidence) task.terminal = evidence;
+    if (evidence) {
+      task.terminal = evidence;
+    }
     return this.#event(task, {
       type: "task_terminal",
       taskId: task.taskId,
@@ -231,9 +242,13 @@ export class InMemoryDelegatedEffectsService {
   }): DelegatedEffectEvent {
     const task = this.#task(input.taskId);
     const effect = task.effects.get(input.effectId);
-    if (!effect) throw new CrankError("peer_effect_not_found", "Delegated effect is unavailable");
+    if (!effect) {
+      throw new CrankError("peer_effect_not_found", "Delegated effect is unavailable");
+    }
     const existing = task.events.find((event) => event.eventId === input.cancelId);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
     effect.cancellationRequested = true;
     return this.#event(task, {
       type: "effect_cancel_requested",
@@ -246,13 +261,16 @@ export class InMemoryDelegatedEffectsService {
 
   listEvents(taskId: string, afterCursor: number, pageSize = 100): DelegatedEffectEventPage {
     const task = this.#task(taskId);
-    if (!Number.isSafeInteger(afterCursor) || afterCursor < 0)
+    if (!Number.isSafeInteger(afterCursor) || afterCursor < 0) {
       throw new CrankError("peer_cursor_invalid", "Delegated-effect cursor is invalid");
-    if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 1_000)
+    }
+    if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 1_000) {
       throw new CrankError("peer_page_invalid", "Delegated-effect page size is invalid");
+    }
     const events = task.events.filter((event) => event.cursor > afterCursor).slice(0, pageSize);
-    if (events.length > 0 && events[0]!.cursor !== afterCursor + 1)
+    if (events.length > 0 && events[0]!.cursor !== afterCursor + 1) {
       throw new CrankError("peer_cursor_expired", "Delegated-effect event cursor is unavailable");
+    }
     const body = {
       taskId,
       afterCursor,
@@ -272,7 +290,9 @@ export class InMemoryDelegatedEffectsService {
   getEffectStatus(taskId: string, effectId: string): DelegatedEffectStatus {
     const task = this.#task(taskId);
     const effect = task.effects.get(effectId);
-    if (!effect) return { status: "expired" };
+    if (!effect) {
+      return { status: "expired" };
+    }
     return effect.response
       ? { status: "resolved", response: effect.response }
       : { status: "pending", cancellationRequested: effect.cancellationRequested };
@@ -281,7 +301,9 @@ export class InMemoryDelegatedEffectsService {
   resolveEffect(response: DelegatedEffectResponse): DelegatedEffectResponseAck {
     const task = this.#task(response.taskId);
     const effect = task.effects.get(response.effectId);
-    if (!effect) throw new CrankError("peer_effect_not_found", "Delegated effect is unavailable");
+    if (!effect) {
+      throw new CrankError("peer_effect_not_found", "Delegated effect is unavailable");
+    }
     const digest = boundedDigest(
       response as unknown as Json,
       INLINE_LIMIT,
@@ -289,8 +311,9 @@ export class InMemoryDelegatedEffectsService {
     );
     const previous = task.responseAcks.get(response.responseId);
     if (previous) {
-      if (previous.digest !== digest)
+      if (previous.digest !== digest) {
         throw new CrankError("idempotency_conflict", "Delegated effect response identity conflict");
+      }
       return { ...previous.ack, status: "duplicate" };
     }
     if (
@@ -298,11 +321,12 @@ export class InMemoryDelegatedEffectsService {
       effect.request.grantVersion !== response.grantVersion ||
       effect.request.contractDigest !== response.contractDigest ||
       canonicalSnapshot(response.outcome).sha !== response.outcomeDigest
-    )
+    ) {
       throw new CrankError(
         "peer_effect_response_invalid",
         "Delegated effect response binding differs",
       );
+    }
     this.#validateOutcome?.(response.taskId, response.effectId, response.outcome);
     effect.response = canonicalSnapshot(response).value as DelegatedEffectResponse;
     const ack: DelegatedEffectResponseAck = {
@@ -319,8 +343,9 @@ export class InMemoryDelegatedEffectsService {
     const digest = boundedDigest(amendment as unknown as Json, INLINE_LIMIT, "grant amendment");
     const previous = task.amendmentAcks.get(amendment.amendmentId);
     if (previous) {
-      if (previous.digest !== digest)
+      if (previous.digest !== digest) {
         throw new CrankError("idempotency_conflict", "Grant amendment conflict");
+      }
       return { ...previous.ack, status: "duplicate" };
     }
     if (
@@ -328,8 +353,9 @@ export class InMemoryDelegatedEffectsService {
       amendment.previousGrantDigest !== task.grants.digest ||
       amendment.grantSet.previousDigest !== task.grants.digest ||
       amendment.grantSet.version !== task.grants.version + 1
-    )
+    ) {
       throw new CrankError("peer_grant_amendment_invalid", "Grant amendment chain is invalid");
+    }
     task.grants = amendment.grantSet;
     const ack: PeerGrantAmendmentAck = {
       status: "accepted",
@@ -345,8 +371,9 @@ export class InMemoryDelegatedEffectsService {
     const digest = boundedDigest(revocation as unknown as Json, INLINE_LIMIT, "grant revocation");
     const previous = task.revocationAcks.get(revocation.revocationId);
     if (previous) {
-      if (previous.digest !== digest)
+      if (previous.digest !== digest) {
         throw new CrankError("idempotency_conflict", "Grant revocation conflict");
+      }
       return { ...previous.ack, status: "duplicate" };
     }
     const grant = task.grants.grants.find(
@@ -362,8 +389,9 @@ export class InMemoryDelegatedEffectsService {
         grantVersion: revocation.grantVersion,
         ...(revocation.reason ? { reason: revocation.reason } : {}),
       }).sha !== revocation.revocationDigest
-    )
+    ) {
       throw new CrankError("peer_grant_revocation_invalid", "Grant revocation is invalid");
+    }
     task.revoked.add(revocation.grantId);
     const ack: PeerGrantRevocationAck = {
       status: "accepted",
@@ -438,21 +466,27 @@ export class InMemoryDelegatedEffectsService {
 
   #task(taskId: string): TaskRecord {
     const task = this.#tasks.get(taskId);
-    if (!task) throw new CrankError("peer_task_expired", "Peer task protocol state is unavailable");
-    if (this.#now() >= task.expiresAt)
+    if (!task) {
+      throw new CrankError("peer_task_expired", "Peer task protocol state is unavailable");
+    }
+    if (this.#now() >= task.expiresAt) {
       throw new CrankError("peer_protocol_expired", "Peer delegated-effect retention expired");
+    }
     return task;
   }
 }
 
 function boundedDigest(value: Json, limit: number, label: string): string {
   const snapshot = canonicalSnapshot(value);
-  if (new TextEncoder().encode(snapshot.canonical).byteLength > limit)
+  if (new TextEncoder().encode(snapshot.canonical).byteLength > limit) {
     throw new CrankError("payload_too_large", `${label} exceeds its inline bound`);
+  }
   return snapshot.sha;
 }
 function validateRetention(retention: PeerRetentionV1): void {
-  for (const [name, value] of Object.entries(retention))
-    if (!Number.isSafeInteger(value) || value <= 0)
+  for (const [name, value] of Object.entries(retention)) {
+    if (!Number.isSafeInteger(value) || value <= 0) {
       throw new CrankError("invalid_descriptor", `Invalid peer retention ${name}`);
+    }
+  }
 }

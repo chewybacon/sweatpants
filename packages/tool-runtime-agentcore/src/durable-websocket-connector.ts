@@ -11,7 +11,7 @@ import { SignatureV4 } from "@smithy/signature-v4";
 import { call, type Operation } from "effection";
 import { WebSocket, type RawData } from "ws";
 
-import { CrankError} from "@sweatpants/session-contract";
+import { CrankError } from "@sweatpants/session-contract";
 import { AGENTCORE_MAX_FRAME_BYTES } from "./durable-protocol.ts";
 
 export interface AgentCoreWebSocketConnectRequest {
@@ -52,10 +52,13 @@ export function createSigV4AgentCoreWebSocketConnector(
 
   return {
     *connect(request): Operation<AgentCoreWebSocketConnection> {
-      if (request.signal.aborted) throw transportLost();
+      if (request.signal.aborted) {
+        throw transportLost();
+      }
       const endpoint = endpointForRelease(request.release);
-      if (endpoint.protocol !== "wss:")
+      if (endpoint.protocol !== "wss:") {
         throw new CrankError("placement_unavailable", "AgentCore WebSocket must use TLS");
+      }
       const signer = new SignatureV4({
         credentials,
         region: request.release.region,
@@ -99,7 +102,9 @@ export function createSigV4AgentCoreWebSocketConnector(
         yield* call(() => opened(socket, request.signal));
       } catch (error) {
         socket.terminate();
-        if (request.signal.aborted) throw transportLost();
+        if (request.signal.aborted) {
+          throw transportLost();
+        }
         throw new CrankError(
           "agentcore_auth_failed",
           "AgentCore WebSocket handshake failed",
@@ -110,7 +115,9 @@ export function createSigV4AgentCoreWebSocketConnector(
       return createConnection(socket, request.signal);
     },
     *stopRuntimeSession(request): Operation<"stopped" | "already_stopped"> {
-      if (request.signal.aborted) throw transportLost();
+      if (request.signal.aborted) {
+        throw transportLost();
+      }
       const client = new BedrockAgentCoreClient({
         region: request.release.region,
         credentials,
@@ -158,13 +165,18 @@ function createConnection(socket: WebSocket, signal: AbortSignal): AgentCoreWebS
   let terminal: CrankError | undefined;
   const fail = (error = transportLost()) => {
     terminal ??= error;
-    for (const waiter of waiters.splice(0)) waiter.reject(terminal);
+    for (const waiter of waiters.splice(0)) {
+      waiter.reject(terminal);
+    }
   };
   socket.on("message", (data: RawData, binary) => {
     const frame = binary ? new Uint8Array(asBuffer(data)) : asBuffer(data).toString("utf8");
     const waiter = waiters.shift();
-    if (waiter) waiter.resolve(frame);
-    else frames.push(frame);
+    if (waiter) {
+      waiter.resolve(frame);
+    } else {
+      frames.push(frame);
+    }
   });
   socket.once("close", () => fail());
   socket.once("error", (error) =>
@@ -186,10 +198,13 @@ function createConnection(socket: WebSocket, signal: AbortSignal): AgentCoreWebS
 
   return {
     *send(frame): Operation<void> {
-      if (terminal || socket.readyState !== WebSocket.OPEN) throw terminal ?? transportLost();
+      if (terminal || socket.readyState !== WebSocket.OPEN) {
+        throw terminal ?? transportLost();
+      }
       const size = typeof frame === "string" ? Buffer.byteLength(frame) : frame.byteLength;
-      if (size > AGENTCORE_MAX_FRAME_BYTES)
+      if (size > AGENTCORE_MAX_FRAME_BYTES) {
         throw new CrankError("payload_too_large", "AgentCore frame exceeds 2 MiB");
+      }
       yield* call(
         () =>
           new Promise<void>((resolve, reject) =>
@@ -199,8 +214,12 @@ function createConnection(socket: WebSocket, signal: AbortSignal): AgentCoreWebS
     },
     *receive(): Operation<string | Uint8Array> {
       const frame = frames.shift();
-      if (frame !== undefined) return frame;
-      if (terminal) throw terminal;
+      if (frame !== undefined) {
+        return frame;
+      }
+      if (terminal) {
+        throw terminal;
+      }
       return yield* call(
         () =>
           new Promise<string | Uint8Array>((resolve, reject) => waiters.push({ resolve, reject })),
@@ -208,14 +227,18 @@ function createConnection(socket: WebSocket, signal: AbortSignal): AgentCoreWebS
     },
     *close(code = 1000, reason = "scope_exit"): Operation<void> {
       signal.removeEventListener("abort", abort);
-      if (socket.readyState === WebSocket.CLOSED) return;
+      if (socket.readyState === WebSocket.CLOSED) {
+        return;
+      }
       yield* call(
         () =>
           new Promise<void>((resolve) => {
             const done = () => resolve();
             socket.once("close", done);
             socket.close(code, reason.slice(0, 123));
-            if (socket.readyState === WebSocket.CLOSED) resolve();
+            if (socket.readyState === WebSocket.CLOSED) {
+              resolve();
+            }
           }),
       );
     },
@@ -248,9 +271,15 @@ function opened(socket: WebSocket, signal: AbortSignal): Promise<void> {
 }
 
 function asBuffer(data: RawData): Buffer {
-  if (Buffer.isBuffer(data)) return data;
-  if (data instanceof ArrayBuffer) return Buffer.from(data);
-  if (Array.isArray(data)) return Buffer.concat(data);
+  if (Buffer.isBuffer(data)) {
+    return data;
+  }
+  if (data instanceof ArrayBuffer) {
+    return Buffer.from(data);
+  }
+  if (Array.isArray(data)) {
+    return Buffer.concat(data);
+  }
   return Buffer.from(data as unknown as ArrayBuffer);
 }
 

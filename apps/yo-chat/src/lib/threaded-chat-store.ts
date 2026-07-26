@@ -2,9 +2,9 @@ import {
   createInMemoryBufferStore,
   type TokenBuffer,
   type TokenBufferStore,
-} from '@sweatpants/framework/chat/durable-streams'
-import { createRedisTokenBufferStore } from '@sweatpants/durable-streams/redis'
-import type { Message } from '@sweatpants/framework/chat'
+} from "@sweatpants/framework/chat/durable-streams";
+import { createRedisTokenBufferStore } from "@sweatpants/durable-streams/redis";
+import type { Message } from "@sweatpants/framework/chat";
 import {
   createPiAiModelProviderDriver,
   resolvePiAiModel,
@@ -12,130 +12,130 @@ import {
   type Message as ModelMessage,
   type ModelSelection,
   type StreamEvent as ModelStreamEvent,
-} from '@sweatpants/model-provider-pi-ai'
-import { call, race, resource, run, type Operation, type Stream, type Task } from 'effection'
-import type { RedisClientType } from 'redis'
-import type { ThreadEvent, ThreadFrame, ThreadMessageInput } from './threaded-chat-types'
-export type { ThreadEvent, ThreadFrame, ThreadMessageInput } from './threaded-chat-types'
+} from "@sweatpants/model-provider-pi-ai";
+import { call, race, resource, run, type Operation, type Stream, type Task } from "effection";
+import type { RedisClientType } from "redis";
+import type { ThreadEvent, ThreadFrame, ThreadMessageInput } from "./threaded-chat-types";
+export type { ThreadEvent, ThreadFrame, ThreadMessageInput } from "./threaded-chat-types";
 
 export interface ThreadStore {
-  create(threadId: string): Operation<{ created: boolean; buffer: TokenBuffer<ThreadEvent> }>
-  read(threadId: string, offset: number): Operation<ThreadEvent[]>
+  create(threadId: string): Operation<{ created: boolean; buffer: TokenBuffer<ThreadEvent> }>;
+  read(threadId: string, offset: number): Operation<ThreadEvent[]>;
   appendEvent(
     threadId: string,
-    event: Omit<ThreadEvent, 'id' | 'timestamp'>,
-  ): Operation<ThreadEvent>
-  waitForChange(threadId: string, afterOffset: number): Operation<void>
-  nextOffset(threadId: string): Operation<number>
+    event: Omit<ThreadEvent, "id" | "timestamp">,
+  ): Operation<ThreadEvent>;
+  waitForChange(threadId: string, afterOffset: number): Operation<void>;
+  nextOffset(threadId: string): Operation<number>;
 }
 
 interface RuntimeWorkItem {
-  input: ThreadMessageInput[]
-  resolve: () => void
-  reject: (error: unknown) => void
+  input: ThreadMessageInput[];
+  resolve: () => void;
+  reject: (error: unknown) => void;
 }
 
 interface ThreadRuntime {
-  queue: RuntimeWorkItem[]
-  running: boolean
+  queue: RuntimeWorkItem[];
+  running: boolean;
 }
 
 export interface ThreadedChatEngine {
-  listThreadIds(): string[]
-  createThread(threadId?: string): Promise<{ threadId: string; created: boolean }>
-  readThread(threadId: string, offset?: number): Promise<ThreadFrame[]>
-  sendMessage(threadId: string, input: ThreadMessageInput[]): Promise<Response>
+  listThreadIds(): string[];
+  createThread(threadId?: string): Promise<{ threadId: string; created: boolean }>;
+  readThread(threadId: string, offset?: number): Promise<ThreadFrame[]>;
+  sendMessage(threadId: string, input: ThreadMessageInput[]): Promise<Response>;
 }
 
 function createFrameStream(frames: ThreadFrame[]): Stream<ThreadFrame, void> {
   return resource(function* (provide) {
-    let index = 0
+    let index = 0;
     yield* provide({
       *next(): Operation<IteratorResult<ThreadFrame, void>> {
         if (index >= frames.length) {
-          return { done: true, value: undefined }
+          return { done: true, value: undefined };
         }
-        const value = frames[index]
-        index += 1
-        return { done: false, value: value! }
+        const value = frames[index];
+        index += 1;
+        return { done: false, value: value! };
       },
-    })
-  })
+    });
+  });
 }
 
 function createTailFrameStream(params: {
-  store: ThreadStore
-  threadId: string
-  startOffset: number
-  completion: Promise<void>
+  store: ThreadStore;
+  threadId: string;
+  startOffset: number;
+  completion: Promise<void>;
 }): Stream<ThreadFrame, void> {
-  const { store, threadId, startOffset, completion } = params
+  const { store, threadId, startOffset, completion } = params;
 
   return resource(function* (provide) {
-    const queue: ThreadFrame[] = []
-    let done = false
-    let completionSettled = false
-    let completionError: unknown = null
-    let cursor = startOffset
+    const queue: ThreadFrame[] = [];
+    let done = false;
+    let completionSettled = false;
+    let completionError: unknown = null;
+    let cursor = startOffset;
 
     completion.then(
       () => {
-        completionSettled = true
+        completionSettled = true;
       },
       (error) => {
-        completionError = error
-        completionSettled = true
+        completionError = error;
+        completionSettled = true;
       },
-    )
+    );
 
     yield* provide({
       *next(): Operation<IteratorResult<ThreadFrame, void>> {
         return yield* (function* loop(): Operation<IteratorResult<ThreadFrame, void>> {
           if (queue.length > 0) {
-            return { done: false, value: queue.shift()! }
+            return { done: false, value: queue.shift()! };
           }
 
           if (done) {
-            return { done: true, value: undefined }
+            return { done: true, value: undefined };
           }
 
           if (completionError) {
-            throw completionError
+            throw completionError;
           }
 
-          const events = yield* store.read(threadId, cursor)
+          const events = yield* store.read(threadId, cursor);
           if (events.length > 0) {
             for (const [index, event] of events.entries()) {
               queue.push({
                 offset: String(cursor + index + 1),
                 event,
-              })
+              });
             }
-            cursor += events.length
-            return { done: false, value: queue.shift()! }
+            cursor += events.length;
+            return { done: false, value: queue.shift()! };
           }
 
           if (completionSettled) {
-            done = true
-            return { done: true, value: undefined }
+            done = true;
+            return { done: true, value: undefined };
           }
 
           yield* race([
-            (function* (): Operation<'changed'> {
-              yield* store.waitForChange(threadId, cursor)
-              return 'changed'
+            (function* (): Operation<"changed"> {
+              yield* store.waitForChange(threadId, cursor);
+              return "changed";
             })(),
-            (function* (): Operation<'done'> {
-              yield* call(() => completion)
-              return 'done'
+            (function* (): Operation<"done"> {
+              yield* call(() => completion);
+              return "done";
             })(),
-          ])
+          ]);
 
-          return yield* loop()
-        })()
+          return yield* loop();
+        })();
       },
-    })
-  })
+    });
+  });
 }
 
 async function createStreamingNDJSONResponse(
@@ -143,163 +143,170 @@ async function createStreamingNDJSONResponse(
   status: number,
   headers: Headers,
 ): Promise<Response> {
-  let task: Task<void> | null = null
+  let task: Task<void> | null = null;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       task = run(function* () {
-        const subscription = yield* frameStream
+        const subscription = yield* frameStream;
         while (true) {
-          const next = yield* subscription.next()
+          const next = yield* subscription.next();
           if (next.done) {
-            controller.close()
-            break
+            controller.close();
+            break;
           }
 
-          controller.enqueue(
-            new TextEncoder().encode(`${JSON.stringify(next.value)}\n`),
-          )
+          controller.enqueue(new TextEncoder().encode(`${JSON.stringify(next.value)}\n`));
         }
-      })
+      });
       task.catch((error) => {
-        controller.error(error)
-      })
+        controller.error(error);
+      });
     },
     async cancel() {
       if (task) {
-        await task.halt().catch(() => undefined)
+        await task.halt().catch(() => undefined);
       }
     },
-  })
+  });
 
-  const responseHeaders = new Headers(headers)
-  responseHeaders.set('Content-Type', 'application/x-ndjson')
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set("Content-Type", "application/x-ndjson");
 
   return new Response(stream, {
     status,
     headers: responseHeaders,
-  })
+  });
 }
 
 function buildMessages(events: ThreadEvent[], systemPrompt: string): Message[] {
-  const messages: Message[] = [{ id: 'system:threaded-chat', role: 'system', content: systemPrompt }]
+  const messages: Message[] = [
+    { id: "system:threaded-chat", role: "system", content: systemPrompt },
+  ];
 
   for (const event of events) {
-    if (event.type === 'user_message') {
-      messages.push({ id: event.id, role: 'user', content: event.content })
-      continue
+    if (event.type === "user_message") {
+      messages.push({ id: event.id, role: "user", content: event.content });
+      continue;
     }
 
-    if (event.type === 'assistant_message_complete') {
-      messages.push({ id: event.id, role: 'assistant', content: event.content })
+    if (event.type === "assistant_message_complete") {
+      messages.push({ id: event.id, role: "assistant", content: event.content });
     }
   }
 
-  return messages
+  return messages;
 }
 
 function createThreadStore(bufferStore: TokenBufferStore<ThreadEvent>): ThreadStore {
   const create = function* (
     threadId: string,
   ): Operation<{ created: boolean; buffer: TokenBuffer<ThreadEvent> }> {
-    const existing = yield* bufferStore.get(threadId)
+    const existing = yield* bufferStore.get(threadId);
     if (existing) {
-      return { created: false, buffer: existing }
+      return { created: false, buffer: existing };
     }
-    const buffer = yield* bufferStore.create(threadId)
-    return { created: true, buffer }
-  }
+    const buffer = yield* bufferStore.create(threadId);
+    return { created: true, buffer };
+  };
 
   return {
     create,
 
     *read(threadId, offset) {
-      const buffer = yield* bufferStore.get(threadId)
+      const buffer = yield* bufferStore.get(threadId);
       if (!buffer) {
-        return []
+        return [];
       }
-      const { tokens } = yield* buffer.read(offset)
-      return tokens
+      const { tokens } = yield* buffer.read(offset);
+      return tokens;
     },
 
     *appendEvent(threadId, event) {
-      const { buffer } = yield* create(threadId)
-      const { lsn } = yield* buffer.read(Number.MAX_SAFE_INTEGER)
+      const { buffer } = yield* create(threadId);
+      const { lsn } = yield* buffer.read(Number.MAX_SAFE_INTEGER);
       const next: ThreadEvent = {
         ...event,
         id: `${threadId}:${lsn + 1}`,
         timestamp: Date.now(),
-      }
+      };
       const writer = yield* buffer.claimWriter({
         ownerId: `thread-events:${threadId}`,
         activationEpoch: 1,
-      })
-      yield* writer.append([next])
-      return next
+      });
+      yield* writer.append([next]);
+      return next;
     },
 
     *waitForChange(threadId, afterOffset) {
-      const buffer = yield* bufferStore.get(threadId)
+      const buffer = yield* bufferStore.get(threadId);
       if (!buffer) {
-        return
+        return;
       }
-      yield* buffer.waitForChange(afterOffset)
+      yield* buffer.waitForChange(afterOffset);
     },
 
     *nextOffset(threadId) {
-      const buffer = yield* bufferStore.get(threadId)
+      const buffer = yield* bufferStore.get(threadId);
       if (!buffer) {
-        return 0
+        return 0;
       }
-      const { lsn } = yield* buffer.read(Number.MAX_SAFE_INTEGER)
-      return lsn
+      const { lsn } = yield* buffer.read(Number.MAX_SAFE_INTEGER);
+      return lsn;
     },
-  }
+  };
 }
 
 function buildModelProviderMessages(events: ThreadEvent[], systemPrompt: string): ModelMessage[] {
   return buildMessages(events, systemPrompt).map((message) => {
-    if (message.role === 'system') return { role: 'system', content: message.content }
-    if (message.role === 'user') return { role: 'user', content: message.content }
-    if (message.role === 'assistant') {
+    if (message.role === "system") {
+      return { role: "system", content: message.content };
+    }
+    if (message.role === "user") {
+      return { role: "user", content: message.content };
+    }
+    if (message.role === "assistant") {
       return {
-        role: 'assistant',
-        content: message.content ? [{ type: 'text' as const, text: message.content }] : [],
-      }
+        role: "assistant",
+        content: message.content ? [{ type: "text" as const, text: message.content }] : [],
+      };
     }
     return {
-      role: 'toolResult',
-      toolCallId: message.tool_call_id ?? '',
-      toolName: message.replay?.toolName ?? '',
-      content: [{ type: 'text' as const, text: message.content }],
-      isError: message.content.startsWith('Error:'),
-    }
-  })
+      role: "toolResult",
+      toolCallId: message.tool_call_id ?? "",
+      toolName: message.replay?.toolName ?? "",
+      content: [{ type: "text" as const, text: message.content }],
+      isError: message.content.startsWith("Error:"),
+    };
+  });
 }
 
 function parseModelProviderEvent(event: ModelStreamEvent): string | null {
-  return event.type === 'text_delta' ? event.delta : null
+  return event.type === "text_delta" ? event.delta : null;
 }
 
 function modelAssistantText(message: ModelAssistantMessage): string {
   return message.content
-    .filter((block): block is Extract<ModelAssistantMessage['content'][number], { type: 'text' }> => block.type === 'text')
+    .filter(
+      (block): block is Extract<ModelAssistantMessage["content"][number], { type: "text" }> =>
+        block.type === "text",
+    )
     .map((block) => block.text)
-    .join('')
+    .join("");
 }
 
 export function createThreadedChatEngine(params: {
-  bufferStore: TokenBufferStore<ThreadEvent>
-  model: ModelSelection
-  systemPrompt: string
+  bufferStore: TokenBufferStore<ThreadEvent>;
+  model: ModelSelection;
+  systemPrompt: string;
 }): ThreadedChatEngine {
-  const { bufferStore, model: modelSelection, systemPrompt } = params
-  const store = createThreadStore(bufferStore)
-  const modelProvider = createPiAiModelProviderDriver()
-  const model = resolvePiAiModel(modelSelection)
-  const knownThreadIds = new Set<string>()
-  const runtimes = new Map<string, ThreadRuntime>()
-  const runOp = <T>(factory: () => Operation<T>): Promise<T> => run(factory)
+  const { bufferStore, model: modelSelection, systemPrompt } = params;
+  const store = createThreadStore(bufferStore);
+  const modelProvider = createPiAiModelProviderDriver();
+  const model = resolvePiAiModel(modelSelection);
+  const knownThreadIds = new Set<string>();
+  const runtimes = new Map<string, ThreadRuntime>();
+  const runOp = <T>(factory: () => Operation<T>): Promise<T> => run(factory);
 
   const processQueueItem = function* (
     threadId: string,
@@ -307,131 +314,131 @@ export function createThreadedChatEngine(params: {
   ): Operation<void> {
     for (const message of input) {
       yield* store.appendEvent(threadId, {
-        from: 'user',
-        type: 'user_message',
+        from: "user",
+        type: "user_message",
         content: message.content,
-      })
+      });
     }
 
-    const history = yield* store.read(threadId, 0)
-    const messages = buildModelProviderMessages(history, systemPrompt)
-    const assistantMessageId = crypto.randomUUID()
-    let assistantText = ''
+    const history = yield* store.read(threadId, 0);
+    const messages = buildModelProviderMessages(history, systemPrompt);
+    const assistantMessageId = crypto.randomUUID();
+    let assistantText = "";
 
     const stream = modelProvider.stream({
       model,
       context: { messages },
-    })
-    const subscription = yield* stream
+    });
+    const subscription = yield* stream;
 
     while (true) {
-      const next = yield* subscription.next()
+      const next = yield* subscription.next();
       if (next.done) {
-        const finalText = modelAssistantText(next.value)
+        const finalText = modelAssistantText(next.value);
         if (!assistantText.trim() && finalText.trim()) {
-          assistantText = finalText
+          assistantText = finalText;
         }
-        break
+        break;
       }
 
-      const chunk = parseModelProviderEvent(next.value)
+      const chunk = parseModelProviderEvent(next.value);
       if (!chunk) {
-        continue
+        continue;
       }
 
-      assistantText += chunk
+      assistantText += chunk;
       yield* store.appendEvent(threadId, {
-        from: 'assistant',
-        type: 'assistant_message_delta',
+        from: "assistant",
+        type: "assistant_message_delta",
         content: chunk,
         messageId: assistantMessageId,
-      })
+      });
     }
 
     if (assistantText.trim()) {
       yield* store.appendEvent(threadId, {
-        from: 'assistant',
-        type: 'assistant_message_complete',
+        from: "assistant",
+        type: "assistant_message_complete",
         content: assistantText,
         messageId: assistantMessageId,
-      })
+      });
     }
-  }
+  };
 
   const enqueueTurn = (threadId: string, input: ThreadMessageInput[]): Promise<void> => {
-    const runtime = runtimes.get(threadId) ?? { queue: [], running: false }
-    runtimes.set(threadId, runtime)
+    const runtime = runtimes.get(threadId) ?? { queue: [], running: false };
+    runtimes.set(threadId, runtime);
 
     const runQueue = () => {
       if (runtime.running) {
-        return
+        return;
       }
 
-      runtime.running = true
+      runtime.running = true;
       void run(function* () {
         while (runtime.queue.length > 0) {
-          const item = runtime.queue.shift()
+          const item = runtime.queue.shift();
           if (!item) {
-            continue
+            continue;
           }
           try {
-            yield* processQueueItem(threadId, item.input)
-            item.resolve()
+            yield* processQueueItem(threadId, item.input);
+            item.resolve();
           } catch (error) {
-            item.reject(error)
+            item.reject(error);
           }
         }
       })
         .catch((error) => {
           while (runtime.queue.length > 0) {
-            runtime.queue.shift()?.reject(error)
+            runtime.queue.shift()?.reject(error);
           }
         })
         .finally(() => {
-          runtime.running = false
+          runtime.running = false;
           if (runtime.queue.length > 0) {
-            runQueue()
+            runQueue();
           }
-        })
-    }
+        });
+    };
 
     const completion = new Promise<void>((resolve, reject) => {
-      runtime.queue.push({ input, resolve, reject })
-    })
-    runQueue()
-    return completion
-  }
+      runtime.queue.push({ input, resolve, reject });
+    });
+    runQueue();
+    return completion;
+  };
 
   return {
     listThreadIds() {
-      return Array.from(knownThreadIds)
+      return Array.from(knownThreadIds);
     },
 
     async createThread(threadId = crypto.randomUUID()) {
-      const { created } = await runOp(() => store.create(threadId))
-      knownThreadIds.add(threadId)
-      return { threadId, created }
+      const { created } = await runOp(() => store.create(threadId));
+      knownThreadIds.add(threadId);
+      return { threadId, created };
     },
 
     async readThread(threadId, offset = 0) {
-      const events = await runOp(() => store.read(threadId, offset))
+      const events = await runOp(() => store.read(threadId, offset));
       return events.map((event, index) => ({
         offset: String(offset + index + 1),
         event,
-      }))
+      }));
     },
 
     async sendMessage(threadId, input) {
-      knownThreadIds.add(threadId)
-      await this.createThread(threadId)
-      const startOffset = await runOp(() => store.nextOffset(threadId))
-      const completion = enqueueTurn(threadId, input)
+      knownThreadIds.add(threadId);
+      await this.createThread(threadId);
+      const startOffset = await runOp(() => store.nextOffset(threadId));
+      const completion = enqueueTurn(threadId, input);
       const headers = new Headers({
-        'Content-Type': 'application/x-ndjson',
-        'Cache-Control': 'no-store',
-        'X-Thread-Id': threadId,
-        'Stream-Next-Offset': String(startOffset),
-      })
+        "Content-Type": "application/x-ndjson",
+        "Cache-Control": "no-store",
+        "X-Thread-Id": threadId,
+        "Stream-Next-Offset": String(startOffset),
+      });
 
       return createStreamingNDJSONResponse(
         createTailFrameStream({
@@ -442,19 +449,19 @@ export function createThreadedChatEngine(params: {
         }),
         200,
         headers,
-      )
+      );
     },
-  }
+  };
 }
 
 export function createThreadBufferStore(
   redisClient: RedisClientType | null,
 ): TokenBufferStore<ThreadEvent> {
   if (!redisClient) {
-    return createInMemoryBufferStore<ThreadEvent>()
+    return createInMemoryBufferStore<ThreadEvent>();
   }
 
   return createRedisTokenBufferStore<ThreadEvent>(redisClient, {
-    keyPrefix: 'threaded-chat:',
-  })
+    keyPrefix: "threaded-chat:",
+  });
 }

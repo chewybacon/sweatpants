@@ -147,7 +147,9 @@ function* waitForAbort(signal: AbortSignal): Operation<void> {
 }
 
 function afterLsnFromElicitId(elicitId: string | undefined): number | undefined {
-  if (!elicitId) return undefined;
+  if (!elicitId) {
+    return undefined;
+  }
   const requestMatch = /:req:(\d+)$/.exec(elicitId);
   return requestMatch?.[1] ? Number(requestMatch[1]) : undefined;
 }
@@ -163,7 +165,9 @@ function* nextMcpExecution(
 
   while (true) {
     const next = yield* subscription.next();
-    if (next.done) return mcpEventToExecution(runtimeId, call, session, null);
+    if (next.done) {
+      return mcpEventToExecution(runtimeId, call, session, null);
+    }
 
     if (next.value.type === "sample_request") {
       const result = yield* samplingProvider.sample(next.value.messages, {
@@ -215,11 +219,12 @@ export function createLocalSessionToolExecutionStrategy(
         );
       }
       const tool = toolsByName.get(entry.definition.name);
-      if (!tool)
+      if (!tool) {
         throw new ToolRuntimeError(
           "NO_MATCHING_TOOL_STRATEGY",
           `Local session strategy cannot execute tool: ${entry.definition.name}`,
         );
+      }
       const params = validateRuntimeToolParameters(tool, call.function.arguments, call.id);
       const session = yield* options.registry.create(tool, params, {
         sessionId: call.id,
@@ -236,18 +241,21 @@ export function createLocalSessionToolExecutionStrategy(
     *resume(ref, input, ctx: ToolExecutionContext): Operation<ToolExecution> {
       const sessionId = ref.sessionId ?? ref.executionId;
       const session = yield* options.registry.get(sessionId);
-      if (!session)
+      if (!session) {
         throw new ToolRuntimeError(
           "EXECUTION_NOT_FOUND",
           `Local tool session not found: ${sessionId}`,
         );
-      if (ref.toolName && session.toolName !== ref.toolName)
+      }
+      if (ref.toolName && session.toolName !== ref.toolName) {
         throw new ToolRuntimeError(
           "EXECUTION_NOT_FOUND",
           `Local tool session not found: ${sessionId}`,
         );
-      if (!input.elicitId)
+      }
+      if (!input.elicitId) {
         throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
+      }
       yield* session.respondToElicit(input.elicitId, input.result as WireElicitResult<unknown>);
       if (ctx.signal) {
         yield* spawn(function* () {
@@ -270,11 +278,12 @@ export function createLocalSessionToolExecutionStrategy(
     *abort(ref, reason): Operation<void> {
       const sessionId = ref.sessionId ?? ref.executionId;
       const session = yield* options.registry.get(sessionId);
-      if (!session)
+      if (!session) {
         throw new ToolRuntimeError(
           "EXECUTION_NOT_FOUND",
           `Local tool session not found: ${sessionId}`,
         );
+      }
       yield* session.cancel(reason);
     },
   };

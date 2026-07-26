@@ -24,9 +24,13 @@ let initPromise: Promise<typeof katex> | null = null;
  * which lets acceptance tests and server-side rendering use the same pipeline.
  */
 async function initKatex(): Promise<typeof katex | null> {
-  if (katexInstance) return katexInstance;
+  if (katexInstance) {
+    return katexInstance;
+  }
 
-  if (initPromise) return initPromise;
+  if (initPromise) {
+    return initPromise;
+  }
 
   initPromise = (async () => {
     const katex = await import("katex");
@@ -96,7 +100,9 @@ export function renderMath(latex: string, displayMode: boolean): Operation<MathR
  * Returns null if KaTeX is not ready.
  */
 export function renderMathSync(latex: string, displayMode: boolean): string | null {
-  if (!katexInstance) return null;
+  if (!katexInstance) {
+    return null;
+  }
 
   try {
     return katexInstance.renderToString(latex, {

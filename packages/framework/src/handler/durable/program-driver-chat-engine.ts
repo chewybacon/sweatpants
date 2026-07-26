@@ -368,7 +368,9 @@ export function createProgramDriverChatEngine(
       *next(): Operation<IteratorResult<StreamEvent, void>> {
         events ??= yield* activateProgramDriverChatEngine(params);
         const event = events[cursor];
-        if (!event) return { done: true, value: undefined };
+        if (!event) {
+          return { done: true, value: undefined };
+        }
         cursor += 1;
         return { done: false, value: event };
       },
@@ -502,7 +504,9 @@ function* activateProgramDriverChatEngine(
             streamToOuterClient
               ? function* (text, delta) {
                   partialText = text.slice(-32_768);
-                  if (!liveEvent) return;
+                  if (!liveEvent) {
+                    return;
+                  }
                   if (!streamStarted) {
                     streamStarted = true;
                     yield* liveEvent({
@@ -517,7 +521,9 @@ function* activateProgramDriverChatEngine(
           );
           if (streamStarted && liveEvent) {
             yield* liveEvent({ type: "TEXT_MESSAGE_END", messageId });
-            if (value.calls.length === 0) streamedTerminal = true;
+            if (value.calls.length === 0) {
+              streamedTerminal = true;
+            }
           }
           return { status: "ok" as const, value };
         } catch (error) {
@@ -527,7 +533,9 @@ function* activateProgramDriverChatEngine(
               partial: { text: partialText, interrupted: true as const },
             };
           }
-          if (error instanceof CrankError) throw error;
+          if (error instanceof CrankError) {
+            throw error;
+          }
           throw new CrankError("model_runtime_failed", "Provider error");
         }
       },
@@ -797,7 +805,9 @@ function* sampleModel(
     }
     if (next.value.type === "text_delta") {
       text += next.value.delta;
-      if (onText) yield* onText(text, next.value.delta);
+      if (onText) {
+        yield* onText(text, next.value.delta);
+      }
     }
     if (next.value.type === "toolcall_end") {
       const block = next.value.toolCall;
@@ -825,7 +835,9 @@ function* sampleModel(
 }
 
 function safeProviderErrorMessage(value: string | undefined): string | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   return value
     .replaceAll(/[\u0000-\u001f\u007f]/g, " ")
     .replaceAll(/(bearer|token|api[-_ ]?key)\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
@@ -1330,7 +1342,9 @@ function foreignElicitId(
 }
 
 function modelSystemPromptText(value: Json): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") {
+    return value;
+  }
   const part = jsonRecord(value);
   return typeof part?.["value"] === "string"
     ? part["value"]
@@ -1510,7 +1524,9 @@ function* runFencedActivation(
   fenced: boolean,
   activate: (epoch: number, ownerId?: string) => Operation<ProgramRunResult>,
 ): Operation<ProgramRunResult> {
-  if (!fenced) return yield* activate(fallbackEpoch);
+  if (!fenced) {
+    return yield* activate(fallbackEpoch);
+  }
   activationOwnerCounter += 1;
   const ownerId = stableOpaqueId("host-activation", [
     process.pid,

@@ -22,15 +22,15 @@ import type {
   McpCreateMessageResult,
   McpToolCallParams,
   McpContentBlock,
-} from './types.ts'
-import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } from './types.ts'
-import type { 
+} from "./types.ts";
+import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } from "./types.ts";
+import type {
   WireElicitResult,
   WireSampleResultBase,
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
   SamplingToolCall,
-} from '../mcp-tool-types.ts'
+} from "../mcp-tool-types.ts";
 
 // =============================================================================
 // DECODED TYPES
@@ -42,17 +42,20 @@ import type {
  * access to the original prompt text needed to construct exchanges.
  * The exchange is added by the runtime layer (for example bridge-runtime).
  */
-export type DecodedSampleResult = WireSampleResultBase | WireSampleResultWithParsed<unknown> | WireSampleResultWithToolCalls
+export type DecodedSampleResult =
+  | WireSampleResultBase
+  | WireSampleResultWithParsed<unknown>
+  | WireSampleResultWithToolCalls;
 
 /**
  * Result of decoding an MCP message.
  */
 export type DecodedMessage =
-  | { type: 'elicitation_response'; elicitId: string; result: WireElicitResult<unknown> }
-  | { type: 'sampling_response'; sampleId: string; result: DecodedSampleResult }
-  | { type: 'tool_call'; name: string; args: Record<string, unknown>; requestId: string | number }
-  | { type: 'error'; code: number; message: string; data?: unknown }
-  | { type: 'unknown'; raw: unknown }
+  | { type: "elicitation_response"; elicitId: string; result: WireElicitResult<unknown> }
+  | { type: "sampling_response"; sampleId: string; result: DecodedSampleResult }
+  | { type: "tool_call"; name: string; args: Record<string, unknown>; requestId: string | number }
+  | { type: "error"; code: number; message: string; data?: unknown }
+  | { type: "unknown"; raw: unknown };
 
 // =============================================================================
 // ELICITATION DECODER
@@ -66,44 +69,44 @@ export type DecodedMessage =
  */
 export function decodeElicitationResponse(
   response: JsonRpcResponse<McpElicitationResult>,
-  elicitId: string
+  elicitId: string,
 ): DecodedMessage {
   if (isJsonRpcError(response)) {
     return {
-      type: 'error',
+      type: "error",
       code: response.error.code,
       message: response.error.message,
       data: response.error.data,
-    }
+    };
   }
 
   if (!isJsonRpcSuccess(response)) {
-    return { type: 'unknown', raw: response }
+    return { type: "unknown", raw: response };
   }
 
-  const mcpResult = response.result
+  const mcpResult = response.result;
 
-  let elicitResult: WireElicitResult<unknown>
+  let elicitResult: WireElicitResult<unknown>;
 
   switch (mcpResult.action) {
-    case 'accept':
-      elicitResult = { action: 'accept', content: mcpResult.content ?? {} }
-      break
-    case 'decline':
-      elicitResult = { action: 'decline' }
-      break
-    case 'cancel':
-      elicitResult = { action: 'cancel' }
-      break
+    case "accept":
+      elicitResult = { action: "accept", content: mcpResult.content ?? {} };
+      break;
+    case "decline":
+      elicitResult = { action: "decline" };
+      break;
+    case "cancel":
+      elicitResult = { action: "cancel" };
+      break;
     default:
-      return { type: 'unknown', raw: response }
+      return { type: "unknown", raw: response };
   }
 
   return {
-    type: 'elicitation_response',
+    type: "elicitation_response",
     elicitId,
     result: elicitResult,
-  }
+  };
 }
 
 // =============================================================================
@@ -114,67 +117,69 @@ export function decodeElicitationResponse(
  * Extract text from MCP content blocks.
  */
 function extractTextFromContent(content: McpContentBlock | McpContentBlock[]): string {
-  const blocks = Array.isArray(content) ? content : [content]
-  const textBlocks = blocks.filter(isTextContent)
-  return textBlocks.map(b => b.text).join('\n')
+  const blocks = Array.isArray(content) ? content : [content];
+  const textBlocks = blocks.filter(isTextContent);
+  return textBlocks.map((b) => b.text).join("\n");
 }
 
 /**
  * Extract tool calls from MCP content blocks.
  */
-function extractToolCallsFromContent(content: McpContentBlock | McpContentBlock[]): SamplingToolCall[] {
-  const blocks = Array.isArray(content) ? content : [content]
-  const toolUseBlocks = blocks.filter(isToolUseContent)
-  return toolUseBlocks.map(block => ({
+function extractToolCallsFromContent(
+  content: McpContentBlock | McpContentBlock[],
+): SamplingToolCall[] {
+  const blocks = Array.isArray(content) ? content : [content];
+  const toolUseBlocks = blocks.filter(isToolUseContent);
+  return toolUseBlocks.map((block) => ({
     id: block.id,
     name: block.name,
     arguments: block.input,
-  }))
+  }));
 }
 
 /**
  * Decode an MCP sampling response into a SampleResult.
- * 
+ *
  * Returns different result types based on the response:
  * - If stopReason is 'toolUse', returns SampleResultWithToolCalls
  * - Otherwise returns SampleResultBase (structured output parsing happens at a higher layer)
  */
 export function decodeSamplingResponse(
   response: JsonRpcResponse<McpCreateMessageResult>,
-  sampleId: string
+  sampleId: string,
 ): DecodedMessage {
   if (isJsonRpcError(response)) {
     return {
-      type: 'error',
+      type: "error",
       code: response.error.code,
       message: response.error.message,
       data: response.error.data,
-    }
+    };
   }
 
   if (!isJsonRpcSuccess(response)) {
-    return { type: 'unknown', raw: response }
+    return { type: "unknown", raw: response };
   }
 
-  const mcpResult = response.result
+  const mcpResult = response.result;
 
   // Extract text from content
-  const text = extractTextFromContent(mcpResult.content)
+  const text = extractTextFromContent(mcpResult.content);
 
   // Check if this is a tool use response
-  if (mcpResult.stopReason === 'toolUse') {
-    const toolCalls = extractToolCallsFromContent(mcpResult.content)
+  if (mcpResult.stopReason === "toolUse") {
+    const toolCalls = extractToolCallsFromContent(mcpResult.content);
     const result: WireSampleResultWithToolCalls = {
       text,
       model: mcpResult.model,
-      stopReason: 'toolUse',
+      stopReason: "toolUse",
       toolCalls,
-    }
+    };
     return {
-      type: 'sampling_response',
+      type: "sampling_response",
       sampleId,
       result,
-    }
+    };
   }
 
   // Return base result (structured output parsing happens at runtime layer)
@@ -182,13 +187,13 @@ export function decodeSamplingResponse(
     text,
     model: mcpResult.model,
     ...(mcpResult.stopReason !== undefined && { stopReason: mcpResult.stopReason }),
-  }
+  };
 
   return {
-    type: 'sampling_response',
+    type: "sampling_response",
     sampleId,
     result,
-  }
+  };
 }
 
 // =============================================================================
@@ -199,14 +204,14 @@ export function decodeSamplingResponse(
  * Decode an MCP tools/call request.
  */
 export function decodeToolCallRequest(
-  request: JsonRpcRequest<'tools/call', McpToolCallParams>
+  request: JsonRpcRequest<"tools/call", McpToolCallParams>,
 ): DecodedMessage {
   return {
-    type: 'tool_call',
-    name: request.params?.name ?? '',
+    type: "tool_call",
+    name: request.params?.name ?? "",
     args: request.params?.arguments ?? {},
     requestId: request.id,
-  }
+  };
 }
 
 // =============================================================================
@@ -217,8 +222,8 @@ export function decodeToolCallRequest(
  * Pending response tracking for correlating responses with their requests.
  */
 export interface PendingRequest {
-  type: 'elicitation' | 'sampling'
-  id: string // elicitId or sampleId
+  type: "elicitation" | "sampling";
+  id: string; // elicitId or sampleId
 }
 
 /**
@@ -228,70 +233,65 @@ export interface DecoderContext {
   /**
    * Map of JSON-RPC request ID to pending request info.
    */
-  pendingRequests: Map<string | number, PendingRequest>
+  pendingRequests: Map<string | number, PendingRequest>;
 
   /**
    * Add a pending elicitation request.
    */
-  addPendingElicitation(requestId: string | number, elicitId: string): void
+  addPendingElicitation(requestId: string | number, elicitId: string): void;
 
   /**
    * Add a pending sampling request.
    */
-  addPendingSampling(requestId: string | number, sampleId: string): void
+  addPendingSampling(requestId: string | number, sampleId: string): void;
 }
 
 /**
  * Create a decoder context for tracking pending requests.
  */
 export function createDecoderContext(): DecoderContext {
-  const pendingRequests = new Map<string | number, PendingRequest>()
+  const pendingRequests = new Map<string | number, PendingRequest>();
 
   return {
     pendingRequests,
     addPendingElicitation(requestId, elicitId) {
-      pendingRequests.set(requestId, { type: 'elicitation', id: elicitId })
+      pendingRequests.set(requestId, { type: "elicitation", id: elicitId });
     },
     addPendingSampling(requestId, sampleId) {
-      pendingRequests.set(requestId, { type: 'sampling', id: sampleId })
+      pendingRequests.set(requestId, { type: "sampling", id: sampleId });
     },
-  }
+  };
 }
 
 /**
  * Decode a JSON-RPC response using context to correlate with the original request.
  */
-export function decodeResponse(
-  response: JsonRpcResponse,
-  ctx: DecoderContext
-): DecodedMessage {
-  const requestId = isJsonRpcSuccess(response) || isJsonRpcError(response)
-    ? response.id
-    : null
+export function decodeResponse(response: JsonRpcResponse, ctx: DecoderContext): DecodedMessage {
+  const requestId = isJsonRpcSuccess(response) || isJsonRpcError(response) ? response.id : null;
 
   if (requestId === null) {
-    return { type: 'unknown', raw: response }
+    return { type: "unknown", raw: response };
   }
 
-  const pending = ctx.pendingRequests.get(requestId)
+  const pending = ctx.pendingRequests.get(requestId);
   if (!pending) {
-    return { type: 'unknown', raw: response }
+    return { type: "unknown", raw: response };
   }
 
   // Remove from pending
-  ctx.pendingRequests.delete(requestId)
+  ctx.pendingRequests.delete(requestId);
 
   switch (pending.type) {
-    case 'elicitation':
+    case "elicitation":
       return decodeElicitationResponse(
         response as JsonRpcResponse<McpElicitationResult>,
-        pending.id
-      )
-    case 'sampling':
+        pending.id,
+      );
+    case "sampling":
       return decodeSamplingResponse(
         response as JsonRpcResponse<McpCreateMessageResult>,
-        pending.id
-      )
+        pending.id,
+      );
   }
 }
 
@@ -303,48 +303,48 @@ export function decodeResponse(
  * Parsed JSON-RPC message union type.
  */
 export type ParsedJsonRpcMessage =
-  | { type: 'request'; message: JsonRpcRequest }
-  | { type: 'notification'; message: JsonRpcNotification }
-  | { type: 'response'; message: JsonRpcResponse }
-  | { type: 'invalid'; raw: unknown; error: string }
+  | { type: "request"; message: JsonRpcRequest }
+  | { type: "notification"; message: JsonRpcNotification }
+  | { type: "response"; message: JsonRpcResponse }
+  | { type: "invalid"; raw: unknown; error: string };
 
 /**
  * Parse a raw JSON string into a typed JSON-RPC message.
  */
 export function parseJsonRpcMessage(raw: string): ParsedJsonRpcMessage {
-  let parsed: unknown
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(raw)
+    parsed = JSON.parse(raw);
   } catch {
-    return { type: 'invalid', raw, error: 'Invalid JSON' }
+    return { type: "invalid", raw, error: "Invalid JSON" };
   }
 
-  if (typeof parsed !== 'object' || parsed === null) {
-    return { type: 'invalid', raw: parsed, error: 'Not an object' }
+  if (typeof parsed !== "object" || parsed === null) {
+    return { type: "invalid", raw: parsed, error: "Not an object" };
   }
 
-  const obj = parsed as Record<string, unknown>
+  const obj = parsed as Record<string, unknown>;
 
-  if (obj['jsonrpc'] !== '2.0') {
-    return { type: 'invalid', raw: parsed, error: 'Not JSON-RPC 2.0' }
+  if (obj["jsonrpc"] !== "2.0") {
+    return { type: "invalid", raw: parsed, error: "Not JSON-RPC 2.0" };
   }
 
   // Check for response (has result or error)
   if (isJsonRpcResponseShape(obj)) {
-    return { type: 'response', message: obj }
+    return { type: "response", message: obj };
   }
 
   // Check for request (has id and method)
   if (isJsonRpcRequestShape(obj)) {
-    return { type: 'request', message: obj }
+    return { type: "request", message: obj };
   }
 
   // Check for notification (has method but no id)
   if (isJsonRpcNotificationShape(obj)) {
-    return { type: 'notification', message: obj }
+    return { type: "notification", message: obj };
   }
 
-  return { type: 'invalid', raw: parsed, error: 'Unknown message type' }
+  return { type: "invalid", raw: parsed, error: "Unknown message type" };
 }
 
 // =============================================================================
@@ -355,21 +355,21 @@ export function parseJsonRpcMessage(raw: string): ParsedJsonRpcMessage {
  * Type predicate: object has the shape of a JSON-RPC response (has result or error, plus jsonrpc).
  */
 function isJsonRpcResponseShape(obj: object): obj is JsonRpcResponse {
-  return 'result' in obj || 'error' in obj
+  return "result" in obj || "error" in obj;
 }
 
 /**
  * Type predicate: object has the shape of a JSON-RPC request (has id and method, plus jsonrpc).
  */
 function isJsonRpcRequestShape(obj: object): obj is JsonRpcRequest {
-  return 'id' in obj && 'method' in obj
+  return "id" in obj && "method" in obj;
 }
 
 /**
  * Type predicate: object has the shape of a JSON-RPC notification (has method but no id, plus jsonrpc).
  */
 function isJsonRpcNotificationShape(obj: object): obj is JsonRpcNotification {
-  return 'method' in obj && !('id' in obj)
+  return "method" in obj && !("id" in obj);
 }
 
 // =============================================================================
@@ -380,39 +380,61 @@ function isJsonRpcNotificationShape(obj: object): obj is JsonRpcNotification {
  * Validate that a tools/call request has required fields.
  */
 export function validateToolCallRequest(
-  request: JsonRpcRequest
-): request is JsonRpcRequest<'tools/call', McpToolCallParams> {
-  if (request.method !== 'tools/call') return false
-  if (!request.params) return false
-  const params = request.params as Record<string, unknown>
-  if (typeof params['name'] !== 'string') return false
-  return true
+  request: JsonRpcRequest,
+): request is JsonRpcRequest<"tools/call", McpToolCallParams> {
+  if (request.method !== "tools/call") {
+    return false;
+  }
+  if (!request.params) {
+    return false;
+  }
+  const params = request.params as Record<string, unknown>;
+  if (typeof params["name"] !== "string") {
+    return false;
+  }
+  return true;
 }
 
 /**
  * Validate that an elicitation response has required fields.
  */
 export function validateElicitationResponse(
-  response: JsonRpcResponse
+  response: JsonRpcResponse,
 ): response is JsonRpcResponse<McpElicitationResult> {
-  if (isJsonRpcError(response)) return true // Errors are valid responses
-  if (!isJsonRpcSuccess(response)) return false
-  const result = response.result as Record<string, unknown>
-  if (!result['action']) return false
-  if (!['accept', 'decline', 'cancel'].includes(result['action'] as string)) return false
-  return true
+  if (isJsonRpcError(response)) {
+    return true;
+  } // Errors are valid responses
+  if (!isJsonRpcSuccess(response)) {
+    return false;
+  }
+  const result = response.result as Record<string, unknown>;
+  if (!result["action"]) {
+    return false;
+  }
+  if (!["accept", "decline", "cancel"].includes(result["action"] as string)) {
+    return false;
+  }
+  return true;
 }
 
 /**
  * Validate that a sampling response has required fields.
  */
 export function validateSamplingResponse(
-  response: JsonRpcResponse
+  response: JsonRpcResponse,
 ): response is JsonRpcResponse<McpCreateMessageResult> {
-  if (isJsonRpcError(response)) return true // Errors are valid responses
-  if (!isJsonRpcSuccess(response)) return false
-  const result = response.result as Record<string, unknown>
-  if (result['role'] !== 'assistant') return false
-  if (!result['content']) return false
-  return true
+  if (isJsonRpcError(response)) {
+    return true;
+  } // Errors are valid responses
+  if (!isJsonRpcSuccess(response)) {
+    return false;
+  }
+  const result = response.result as Record<string, unknown>;
+  if (result["role"] !== "assistant") {
+    return false;
+  }
+  if (!result["content"]) {
+    return false;
+  }
+  return true;
 }

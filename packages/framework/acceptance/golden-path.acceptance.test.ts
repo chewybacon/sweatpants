@@ -140,7 +140,9 @@ function createScriptedModelProvider(options: {
       const subscription = yield* this.stream(request);
       while (true) {
         const next = yield* subscription.next();
-        if (next.done) return next.value;
+        if (next.done) {
+          return next.value;
+        }
       }
     },
   };
@@ -250,7 +252,9 @@ describe("product facade golden path", () => {
         const subscription = yield* this.stream(request);
         while (true) {
           const next = yield* subscription.next();
-          if (next.done) return next.value;
+          if (next.done) {
+            return next.value;
+          }
         }
       },
     };

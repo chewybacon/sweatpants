@@ -20,21 +20,24 @@
  * const registry = yield* useSessionRegistry<string>()
  * ```
  */
-import type { Operation } from 'effection'
+import type { Operation } from "effection";
 import type {
   RetentionPolicy,
   SessionRegistry,
   RecoverableSessionRegistry,
   SessionRegistryStore,
   TokenBufferStore,
-} from '@sweatpants/durable-streams'
-import { createInMemoryBufferStore, createInMemoryRegistryStore } from '@sweatpants/durable-streams'
-import { createSessionRegistry } from './session-registry.ts'
+} from "@sweatpants/durable-streams";
+import {
+  createInMemoryBufferStore,
+  createInMemoryRegistryStore,
+} from "@sweatpants/durable-streams";
+import { createSessionRegistry } from "./session-registry.ts";
 import {
   TokenBufferStoreContext,
   SessionRegistryStoreContext,
   SessionRegistryContext,
-} from './contexts.ts'
+} from "./contexts.ts";
 
 // =============================================================================
 // TYPES
@@ -45,11 +48,11 @@ import {
  */
 export interface DurableStreamsConfig<T> {
   /** Store for creating and managing TokenBuffers */
-  bufferStore: TokenBufferStore<T>
+  bufferStore: TokenBufferStore<T>;
   /** Store for tracking session entries with refCount */
-  registryStore: SessionRegistryStore
+  registryStore: SessionRegistryStore;
   /** Retention policy for completed streams */
-  retentionPolicy?: RetentionPolicy
+  retentionPolicy?: RetentionPolicy;
 }
 
 /**
@@ -57,11 +60,11 @@ export interface DurableStreamsConfig<T> {
  */
 export interface DurableStreamsSetup<T> {
   /** The session registry for acquire/release operations */
-  registry: RecoverableSessionRegistry<T>
+  registry: RecoverableSessionRegistry<T>;
   /** The buffer store (also available via useTokenBufferStore) */
-  bufferStore: TokenBufferStore<T>
+  bufferStore: TokenBufferStore<T>;
   /** The registry store (also available via useSessionRegistryStore) */
-  registryStore: SessionRegistryStore
+  registryStore: SessionRegistryStore;
 }
 
 // =============================================================================
@@ -90,21 +93,23 @@ export interface DurableStreamsSetup<T> {
  * ```
  */
 export function* setupDurableStreams<T>(
-  config: DurableStreamsConfig<T>
+  config: DurableStreamsConfig<T>,
 ): Operation<DurableStreamsSetup<T>> {
-  const { bufferStore, registryStore, retentionPolicy } = config
+  const { bufferStore, registryStore, retentionPolicy } = config;
 
   // Create the registry (this is an Operation that may spawn tasks)
-  const registry = yield* createSessionRegistry(bufferStore, registryStore, {
-    ...(retentionPolicy ? { retentionPolicy } : {}),
-  })
+  const registry = yield* createSessionRegistry(
+    bufferStore,
+    registryStore,
+    retentionPolicy ? { retentionPolicy } : {},
+  );
 
   // Set all contexts for DI
-  yield* TokenBufferStoreContext.set(bufferStore as TokenBufferStore<unknown>)
-  yield* SessionRegistryStoreContext.set(registryStore)
-  yield* SessionRegistryContext.set(registry as SessionRegistry<unknown>)
+  yield* TokenBufferStoreContext.set(bufferStore as TokenBufferStore<unknown>);
+  yield* SessionRegistryStoreContext.set(registryStore);
+  yield* SessionRegistryContext.set(registry as SessionRegistry<unknown>);
 
-  return { registry, bufferStore, registryStore }
+  return { registry, bufferStore, registryStore };
 }
 
 // =============================================================================
@@ -141,14 +146,14 @@ export function* setupDurableStreams<T>(
  * ```
  */
 export function* setupInMemoryDurableStreams<T>(
-  options: { retentionPolicy?: RetentionPolicy } = {}
+  options: { retentionPolicy?: RetentionPolicy } = {},
 ): Operation<DurableStreamsSetup<T>> {
-  const bufferStore = createInMemoryBufferStore<T>()
-  const registryStore = createInMemoryRegistryStore()
+  const bufferStore = createInMemoryBufferStore<T>();
+  const registryStore = createInMemoryRegistryStore();
 
   return yield* setupDurableStreams({
     bufferStore,
     registryStore,
     ...(options.retentionPolicy ? { retentionPolicy: options.retentionPolicy } : {}),
-  })
+  });
 }

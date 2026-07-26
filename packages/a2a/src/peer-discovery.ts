@@ -61,12 +61,14 @@ export async function discoverSweatpantsPeer(
     minimumGuarantee: "reconciled",
     ambiguityPolicy: "surface",
   });
-  for (const required of [SWEATPANTS_PEER_PROFILE_URI, DELEGATED_EFFECTS_EXTENSION_URI])
-    if (!foreign.extensionUris.includes(required))
+  for (const required of [SWEATPANTS_PEER_PROFILE_URI, DELEGATED_EFFECTS_EXTENSION_URI]) {
+    if (!foreign.extensionUris.includes(required)) {
       throw new CrankError(
         "peer_profile_unavailable",
         `Required peer extension is missing: ${required}`,
       );
+    }
+  }
   const profileDeclaration = extension(foreign.card, SWEATPANTS_PEER_PROFILE_URI);
   const profile = parsePeerProfileParams(profileDeclaration["params"]);
   await Promise.all([
@@ -92,13 +94,15 @@ export async function discoverSweatpantsPeer(
     ...(options.authorization ? { authorization: options.authorization } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   });
-  if (response.status < 200 || response.status >= 300)
+  if (response.status < 200 || response.status >= 300) {
     throw new CrankError("peer_manifest_unavailable", "Peer requirement manifest is unavailable");
+  }
   requireExtensionEcho(response.headers, SWEATPANTS_PEER_PROFILE_URI);
   requireExtensionEcho(response.headers, DELEGATED_EFFECTS_EXTENSION_URI);
   const manifest = parsePeerRequirementManifest(parseA2AJsonResponse(response));
-  if (manifest.skillId !== options.skillId)
+  if (manifest.skillId !== options.skillId) {
     throw new CrankError("peer_manifest_invalid", "Peer requirement manifest skill differs");
+  }
   const invocation = prepareForeignA2AInvocation({
     discovery: foreign,
     derivationKey: options.derivationKey,
@@ -180,8 +184,9 @@ export function callPeerAgent(pin: PeerInvocationPin, request: ForeignA2AStartRe
 }
 
 export function verifyPeerTaskEcho(task: ForeignA2ATask, pin: PeerInvocationPin): void {
-  if (!task.metadata || typeof task.metadata !== "object" || Array.isArray(task.metadata))
+  if (!task.metadata || typeof task.metadata !== "object" || Array.isArray(task.metadata)) {
     throw new CrankError("peer_grant_echo_mismatch", "Peer task omitted profile metadata");
+  }
   const profile = task.metadata[SWEATPANTS_PEER_PROFILE_URI];
   if (
     !profile ||
@@ -189,8 +194,9 @@ export function verifyPeerTaskEcho(task: ForeignA2ATask, pin: PeerInvocationPin)
     Array.isArray(profile) ||
     profile["grantSetDigest"] !== pin.grantSet.digest ||
     profile["requirementManifestDigest"] !== pin.requirementManifest.manifestDigest
-  )
+  ) {
     throw new CrankError("peer_grant_echo_mismatch", "Peer task grant/manifest echo differs");
+  }
 }
 
 export function parsePeerProfileParams(value: unknown): SweatpantsPeerProfileParamsV1 {
@@ -212,8 +218,9 @@ export function parsePeerProfileParams(value: unknown): SweatpantsPeerProfilePar
     typeof value["requirementManifestEndpoint"] !== "string" ||
     typeof value["delegatedEffectsEndpoint"] !== "string" ||
     !record(value["retention"])
-  )
+  ) {
     throw new CrankError("peer_profile_invalid", "Invalid Sweatpants peer profile parameters");
+  }
   const retention = value["retention"];
   const keys: Array<keyof PeerRetentionV1> = [
     "taskSeconds",
@@ -224,16 +231,20 @@ export function parsePeerProfileParams(value: unknown): SweatpantsPeerProfilePar
     "cancellationEvidenceSeconds",
     "terminalEvidenceSeconds",
   ];
-  if (!exactKeys(retention, keys))
+  if (!exactKeys(retention, keys)) {
     throw new CrankError("peer_profile_invalid", "Invalid peer retention declaration");
-  for (const key of keys)
-    if (!Number.isSafeInteger(retention[key]) || Number(retention[key]) <= 0)
+  }
+  for (const key of keys) {
+    if (!Number.isSafeInteger(retention[key]) || Number(retention[key]) <= 0) {
       throw new CrankError("peer_profile_invalid", `Invalid peer retention ${key}`);
+    }
+  }
   if (
     value["terminalEvidenceKeyId"] !== undefined &&
     typeof value["terminalEvidenceKeyId"] !== "string"
-  )
+  ) {
     throw new CrankError("peer_profile_invalid", "Invalid terminal evidence key ID");
+  }
   return Object.freeze({
     protocolVersion: 1,
     delegatedEffectsVersion: 1,
@@ -251,16 +262,18 @@ function extension(card: Json, uri: string): Record<string, Json> {
     !record(card) ||
     !record(card["capabilities"]) ||
     !Array.isArray(card["capabilities"]["extensions"])
-  )
+  ) {
     throw new CrankError(
       "peer_profile_unavailable",
       "Agent Card extension declarations are invalid",
     );
+  }
   const selected = card["capabilities"]["extensions"].find(
     (candidate) => record(candidate) && candidate["uri"] === uri,
   );
-  if (!record(selected))
+  if (!record(selected)) {
     throw new CrankError("peer_profile_unavailable", "Peer profile is unavailable");
+  }
   return selected;
 }
 function retentionExpirations(
@@ -281,8 +294,9 @@ function requireExtensionEcho(headers: Readonly<Record<string, string>>, uri: st
       ?.split(",")
       .map((part) => part.trim())
       .includes(uri)
-  )
+  ) {
     throw new CrankError("extension_echo_mismatch", `Peer extension was not echoed: ${uri}`);
+  }
 }
 function record(value: unknown): value is Record<string, Json> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));

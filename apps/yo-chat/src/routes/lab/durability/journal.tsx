@@ -31,7 +31,9 @@ function ProgramJournalInspector() {
   async function inspect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const selected = String(new FormData(event.currentTarget).get("conversationId") ?? "").trim();
-    if (!selected) return;
+    if (!selected) {
+      return;
+    }
     setLoading(true);
     setError(undefined);
     try {

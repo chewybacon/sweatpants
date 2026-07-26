@@ -9,20 +9,20 @@ import type {
 
 /**
  * Serve a protocol over an operative transport.
- * 
+ *
  * Listens for incoming requests, dispatches them to the handle's methods,
  * streams progress updates, and sends final responses.
- * 
+ *
  * @example
  * ```ts
  * // Create protocol and implementation
  * const protocol = createProtocol({ ... });
  * const inspector = createImplementation(protocol, function*() { ... });
  * const handle = yield* inspector.attach();
- * 
+ *
  * // Get operative transport (from pair, websocket, etc.)
  * const [principal, operative] = yield* createTransportPair();
- * 
+ *
  * // Serve the protocol - handles all incoming requests
  * yield* serveProtocol(handle, operative);
  * ```
@@ -35,7 +35,9 @@ export function* serveProtocol<M extends Methods>(
 
   for (;;) {
     const result = yield* subscription.next();
-    if (result.done) break;
+    if (result.done) {
+      break;
+    }
 
     const request = result.value;
 
@@ -60,13 +62,11 @@ function* handleRequest<M extends Methods>(
     // Check if method exists on the protocol. Built-in transport requests use
     // `type` for UI-specific elicit kinds (for example "confirmation"), so
     // fall back to the transport `kind` when the kind names a protocol method.
-    const usedKindFallback = !(type in handle.protocol.methods) &&
-      request.kind in handle.protocol.methods;
-    const methodName = (type in handle.protocol.methods
-      ? type
-      : usedKindFallback
-        ? request.kind
-        : undefined) as keyof M | undefined;
+    const usedKindFallback =
+      !(type in handle.protocol.methods) && request.kind in handle.protocol.methods;
+    const methodName = (
+      type in handle.protocol.methods ? type : usedKindFallback ? request.kind : undefined
+    ) as keyof M | undefined;
 
     if (!methodName) {
       const response: ResponseMessage = {

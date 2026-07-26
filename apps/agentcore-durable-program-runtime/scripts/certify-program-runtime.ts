@@ -45,7 +45,9 @@ const deployment = JSON.parse(
   await readFile("agentcore-durable-program-runtime-deploy-output.json", "utf8"),
 ) as DeploymentOutput;
 const imageDigest = deployment.imageUri.split("@")[1];
-if (!imageDigest) throw new Error("Deployment image is not digest-pinned");
+if (!imageDigest) {
+  throw new Error("Deployment image is not digest-pinned");
+}
 const release: AgentCoreRuntimeRelease = {
   releaseId: deployment.releaseId,
   runtimeArn: deployment.agentRuntimeArn,
@@ -119,7 +121,9 @@ await run(() =>
 async function activate(ownerId: string): Promise<ProgramRunResult> {
   return await run(function* () {
     const claim = yield* authority.claimActivation({ sessionId, ownerId });
-    if (claim.status !== "claimed") throw new Error(`activation claim failed: ${claim.status}`);
+    if (claim.status !== "claimed") {
+      throw new Error(`activation claim failed: ${claim.status}`);
+    }
     let reason: "parked" | "terminal" | "failed" = "failed";
     try {
       const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
@@ -150,7 +154,9 @@ async function activate(ownerId: string): Promise<ProgramRunResult> {
 
 const firstStarted = Date.now();
 const first = await activate("live-owner-1");
-if (first.state !== "parked") throw new Error(`first activation did not park: ${first.state}`);
+if (first.state !== "parked") {
+  throw new Error(`first activation did not park: ${first.state}`);
+}
 const journal = authority.readJournal(sessionId);
 const elicit = [...journal]
   .reverse()
@@ -169,7 +175,9 @@ const context = elicit.payload.descriptor.context as {
   cards: Array<{ rank: string; suit: string; display: string }>;
 };
 const selected = context.cards[0];
-if (!selected) throw new Error("pick_card context contained no cards");
+if (!selected) {
+  throw new Error("pick_card context contained no cards");
+}
 const capability = authority.resolutionCapability(sessionId, taskId, elicit.payload.pullId);
 const resolution = await run(() =>
   authority.resolve({
@@ -178,12 +186,14 @@ const resolution = await run(() =>
     outcome: { status: "ok", value: { action: "accept", content: { picked: selected } } },
   }),
 );
-if (resolution.status === "rejected")
+if (resolution.status === "rejected") {
   throw new Error(`elicit resolution failed: ${resolution.code}`);
+}
 const resumeStarted = Date.now();
 const second = await activate("live-owner-2");
-if (second.state !== "completed")
+if (second.state !== "completed") {
   throw new Error(`second activation did not complete: ${second.state}`);
+}
 const streamedResumeMs = Date.now() - resumeStarted;
 await run(function* () {
   if (connector.stopRuntimeSession) {

@@ -47,7 +47,9 @@ export function createNodeA2AWebSocketConnector(
   const factory = options.webSocketFactory ?? ((url, wsOptions) => new WebSocket(url, wsOptions));
   return {
     *connect(request): Operation<A2AWebSocketConnection> {
-      if (request.signal.aborted) throw transportLost();
+      if (request.signal.aborted) {
+        throw transportLost();
+      }
       const validated = yield* call(() =>
         validateA2AUrl(request.endpoint, {
           purpose: "driver",
@@ -60,7 +62,7 @@ export function createNodeA2AWebSocketConnector(
       );
       const headers: Record<string, string> = {
         [A2A_EXTENSIONS_HEADER]: CALLER_AUTHORITATIVE_EXTENSION_URI,
-        ...(authorization?.headers ?? {}),
+        ...authorization?.headers,
       };
       validateHeaders(headers);
       const socketOptions = {
@@ -77,7 +79,9 @@ export function createNodeA2AWebSocketConnector(
         yield* call(() => opened(socket, request.signal));
       } catch (error) {
         socket.terminate();
-        if (error instanceof CrankError) throw error;
+        if (error instanceof CrankError) {
+          throw error;
+        }
         throw a2aError("authentication_failed", "A2A WebSocket handshake failed", error);
       }
       return connection;
@@ -94,14 +98,19 @@ function connectionFor(socket: WebSocket, signal: AbortSignal): A2AWebSocketConn
   let terminal: CrankError | undefined;
   const fail = (error = transportLost()) => {
     terminal ??= error;
-    for (const waiter of waiters.splice(0)) waiter.reject(terminal);
+    for (const waiter of waiters.splice(0)) {
+      waiter.reject(terminal);
+    }
   };
   socket.on("message", (data: RawData, binary) => {
     const bytes = asBuffer(data);
     const frame = binary ? new Uint8Array(bytes) : bytes.toString("utf8");
     const waiter = waiters.shift();
-    if (waiter) waiter.resolve(frame);
-    else frames.push(frame);
+    if (waiter) {
+      waiter.resolve(frame);
+    } else {
+      frames.push(frame);
+    }
   });
   socket.once("close", () => fail());
   socket.once("error", (error) =>
@@ -115,10 +124,13 @@ function connectionFor(socket: WebSocket, signal: AbortSignal): A2AWebSocketConn
 
   return {
     *send(frame): Operation<void> {
-      if (terminal || socket.readyState !== WebSocket.OPEN) throw terminal ?? transportLost();
+      if (terminal || socket.readyState !== WebSocket.OPEN) {
+        throw terminal ?? transportLost();
+      }
       const size = typeof frame === "string" ? Buffer.byteLength(frame) : frame.byteLength;
-      if (size > A2A_MAX_FRAME_BYTES)
+      if (size > A2A_MAX_FRAME_BYTES) {
         throw a2aError("payload_too_large", "A2A frame exceeds 2 MiB");
+      }
       try {
         yield* call(
           () =>
@@ -132,8 +144,12 @@ function connectionFor(socket: WebSocket, signal: AbortSignal): A2AWebSocketConn
     },
     *receive(): Operation<string | Uint8Array> {
       const frame = frames.shift();
-      if (frame !== undefined) return frame;
-      if (terminal) throw terminal;
+      if (frame !== undefined) {
+        return frame;
+      }
+      if (terminal) {
+        throw terminal;
+      }
       return yield* call(
         () =>
           new Promise<string | Uint8Array>((resolve, reject) => waiters.push({ resolve, reject })),
@@ -141,13 +157,17 @@ function connectionFor(socket: WebSocket, signal: AbortSignal): A2AWebSocketConn
     },
     *close(code = 1000, reason = "scope_exit"): Operation<void> {
       signal.removeEventListener("abort", abort);
-      if (socket.readyState === WebSocket.CLOSED) return;
+      if (socket.readyState === WebSocket.CLOSED) {
+        return;
+      }
       yield* call(
         () =>
           new Promise<void>((resolve) => {
             socket.once("close", resolve);
             socket.close(code, reason.slice(0, 123));
-            if (socket.readyState === WebSocket.CLOSED) resolve();
+            if (socket.readyState === WebSocket.CLOSED) {
+              resolve();
+            }
           }),
       );
     },
@@ -197,8 +217,11 @@ function createPinnedLookup(addresses: readonly string[]): LookupFunction {
     callback: (...args: unknown[]) => void,
   ) => {
     const records = addresses.map((address) => ({ address, family: isIP(address) }));
-    if (lookupOptions?.all) callback(null, records);
-    else callback(null, records[0]?.address, records[0]?.family);
+    if (lookupOptions?.all) {
+      callback(null, records);
+    } else {
+      callback(null, records[0]?.address, records[0]?.family);
+    }
   }) as LookupFunction;
 }
 function validateHeaders(headers: Readonly<Record<string, string>>): void {
@@ -207,16 +230,24 @@ function validateHeaders(headers: Readonly<Record<string, string>>): void {
       ["host", "connection", "upgrade", "sec-websocket-key", "sec-websocket-protocol"].includes(
         name.toLowerCase(),
       )
-    )
+    ) {
       throw a2aError("authentication_failed", `Authorization provider may not set ${name}`);
-    if (/\r|\n/.test(name) || /\r|\n/.test(value))
+    }
+    if (/\r|\n/.test(name) || /\r|\n/.test(value)) {
       throw a2aError("authentication_failed", "Invalid WebSocket authorization header");
+    }
   }
 }
 function asBuffer(data: RawData): Buffer {
-  if (Buffer.isBuffer(data)) return data;
-  if (data instanceof ArrayBuffer) return Buffer.from(data);
-  if (Array.isArray(data)) return Buffer.concat(data);
+  if (Buffer.isBuffer(data)) {
+    return data;
+  }
+  if (data instanceof ArrayBuffer) {
+    return Buffer.from(data);
+  }
+  if (Array.isArray(data)) {
+    return Buffer.concat(data);
+  }
   return Buffer.from(data as unknown as ArrayBuffer);
 }
 function transportLost(): CrankError {

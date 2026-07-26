@@ -90,7 +90,9 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
 
   // Format result for display
   const formatResult = (result: unknown): string => {
-    if (typeof result === "string") return result;
+    if (typeof result === "string") {
+      return result;
+    }
     return JSON.stringify(result, null, 2);
   };
 
@@ -265,7 +267,9 @@ function MathAssistantDemo() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim() || isStreaming) {
+      return;
+    }
     send(input.trim());
     setInput("");
   };

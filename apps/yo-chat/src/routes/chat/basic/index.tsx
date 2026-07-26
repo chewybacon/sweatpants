@@ -5,68 +5,68 @@
  * Uses durable streams so the conversation persists across page refreshes.
  * Uses the full pipeline (markdown + shiki + mermaid) for rich rendering.
  */
-import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { useChat, type ChatMessage } from '@sweatpants/react-chat'
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useChat, type ChatMessage } from "@sweatpants/react-chat";
 
-export const Route = createFileRoute('/chat/basic/')({
+export const Route = createFileRoute("/chat/basic/")({
   component: BasicChatDemo,
-})
+});
 
-const CONVERSATION_ID_KEY = 'basic-chat-conversation-id'
-const SCRIPTED_RENDERING_CONVERSATION_ID_KEY = 'basic-chat-scripted-rendering-conversation-id'
+const CONVERSATION_ID_KEY = "basic-chat-conversation-id";
+const SCRIPTED_RENDERING_CONVERSATION_ID_KEY = "basic-chat-scripted-rendering-conversation-id";
 
 function scriptedRenderingEnabled(): boolean {
-  return import.meta.env['VITE_ENABLE_SCRIPTED_RENDERING'] === '1'
-    && new URLSearchParams(window.location.search).get('scriptedRendering') === '1'
+  return (
+    import.meta.env["VITE_ENABLE_SCRIPTED_RENDERING"] === "1" &&
+    new URLSearchParams(window.location.search).get("scriptedRendering") === "1"
+  );
 }
 
 function conversationIdKey(): string {
-  return scriptedRenderingEnabled()
-    ? SCRIPTED_RENDERING_CONVERSATION_ID_KEY
-    : CONVERSATION_ID_KEY
+  return scriptedRenderingEnabled() ? SCRIPTED_RENDERING_CONVERSATION_ID_KEY : CONVERSATION_ID_KEY;
 }
 
 function createConversationId(): string {
-  return crypto.randomUUID()
+  return crypto.randomUUID();
 }
 
 function getOrCreateConversationId(): string {
-  const key = conversationIdKey()
-  const existingId = window.localStorage.getItem(key)
+  const key = conversationIdKey();
+  const existingId = window.localStorage.getItem(key);
   if (existingId) {
-    return existingId
+    return existingId;
   }
 
-  const nextId = createConversationId()
-  window.localStorage.setItem(key, nextId)
-  return nextId
+  const nextId = createConversationId();
+  window.localStorage.setItem(key, nextId);
+  return nextId;
 }
 
 function replaceConversationId(): string {
-  const key = conversationIdKey()
-  const nextId = createConversationId()
-  window.localStorage.setItem(key, nextId)
-  return nextId
+  const key = conversationIdKey();
+  const nextId = createConversationId();
+  window.localStorage.setItem(key, nextId);
+  return nextId;
 }
 
 /**
  * Renders a single message with its parts.
  */
 function Message({ message }: { message: ChatMessage }) {
-  const isUser = message.role === 'user'
-  const isSystem = message.role === 'system'
+  const isUser = message.role === "user";
+  const isSystem = message.role === "system";
 
   return (
-    <div className={`mb-8 ${isUser ? 'text-right' : ''}`}>
-      <div className={`inline-block max-w-[85%] ${isUser ? '' : 'w-full'}`}>
+    <div className={`mb-8 ${isUser ? "text-right" : ""}`}>
+      <div className={`inline-block max-w-[85%] ${isUser ? "" : "w-full"}`}>
         {/* Role label */}
         <div
           className={`text-xs mb-1 font-bold tracking-wider uppercase ${
-            isUser ? 'text-cyan-500' : 'text-purple-500'
+            isUser ? "text-cyan-500" : "text-purple-500"
           }`}
         >
-          {isUser ? 'You' : isSystem ? 'System' : 'Assistant'}
+          {isUser ? "You" : isSystem ? "System" : "Assistant"}
           {message.isStreaming && (
             <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>
           )}
@@ -76,13 +76,13 @@ function Message({ message }: { message: ChatMessage }) {
         <div
           className={`p-4 rounded-lg ${
             isUser
-              ? 'bg-cyan-950/30 border border-cyan-900/50 text-cyan-100'
-              : 'bg-slate-800/50 text-slate-200'
+              ? "bg-cyan-950/30 border border-cyan-900/50 text-cyan-100"
+              : "bg-slate-800/50 text-slate-200"
           }`}
         >
           {/* Render parts in timeline order */}
           {message.parts.map((part) => {
-            if (part.type === 'reasoning') {
+            if (part.type === "reasoning") {
               return (
                 <details key={part.id} className="mb-3 text-xs">
                   <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
@@ -93,20 +93,20 @@ function Message({ message }: { message: ChatMessage }) {
                     dangerouslySetInnerHTML={{ __html: part.rendered }}
                   />
                 </details>
-              )
+              );
             }
 
-            if (part.type === 'text') {
+            if (part.type === "text") {
               return (
                 <div
                   key={part.id}
                   className="prose prose-invert prose-sm max-w-none leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: part.rendered }}
                 />
-              )
+              );
             }
 
-            return null
+            return null;
           })}
 
           {/* Cursor for streaming messages */}
@@ -116,49 +116,43 @@ function Message({ message }: { message: ChatMessage }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function BasicChatSession({
   conversationId,
   onClearHistory,
 }: {
-  conversationId: string
-  onClearHistory: () => void
+  conversationId: string;
+  onClearHistory: () => void;
 }) {
-  const [input, setInput] = useState('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [input, setInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scriptedRendering = scriptedRenderingEnabled()
-  const {
-    messages,
-    streamingMessage,
-    isStreaming,
-    pipelineReady,
-    send,
-    abort,
-    error,
-  } = useChat({
+  const scriptedRendering = scriptedRenderingEnabled();
+  const { messages, streamingMessage, isStreaming, pipelineReady, send, abort, error } = useChat({
     // Full pipeline for rich markdown rendering
-    pipeline: 'full',
-    ...(scriptedRendering ? { baseUrl: '/api/chat?scripted=rendering' } : {}),
+    pipeline: "full",
+    ...(scriptedRendering ? { baseUrl: "/api/chat?scripted=rendering" } : {}),
     // No tools - clean baseline chat
     tools: [],
     // No plugins
     plugins: [],
     conversationId,
-  })
+  });
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingMessage?.parts.length])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, streamingMessage?.parts.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isStreaming) return
-    send(input.trim())
-    setInput('')
-  }
+    e.preventDefault();
+    if (!input.trim() || isStreaming) {
+      return;
+    }
+    send(input.trim());
+    setInput("");
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 font-mono">
@@ -166,9 +160,7 @@ function BasicChatSession({
         {/* Header */}
         <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
           <div>
-            <h1 className="text-3xl font-bold text-cyan-400 mb-2">
-              Basic Chat
-            </h1>
+            <h1 className="text-3xl font-bold text-cyan-400 mb-2">Basic Chat</h1>
             <p className="text-slate-400 text-sm">
               Durable chat — conversation persists across refreshes
             </p>
@@ -190,19 +182,19 @@ function BasicChatSession({
               <p>Send a message to start chatting</p>
               <div className="flex gap-2 text-xs flex-wrap justify-center">
                 <button
-                  onClick={() => setInput('Tell me about quantum computing')}
+                  onClick={() => setInput("Tell me about quantum computing")}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
                   "quantum computing"
                 </button>
                 <button
-                  onClick={() => setInput('Write a haiku about code')}
+                  onClick={() => setInput("Write a haiku about code")}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
                   "haiku about code"
                 </button>
                 <button
-                  onClick={() => setInput('Explain how React hooks work')}
+                  onClick={() => setInput("Explain how React hooks work")}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
                   "React hooks"
@@ -236,11 +228,7 @@ function BasicChatSession({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              isStreaming
-                ? 'Waiting for response...'
-                : 'Type a message...'
-            }
+            placeholder={isStreaming ? "Waiting for response..." : "Type a message..."}
             disabled={isStreaming}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
@@ -277,28 +265,26 @@ function BasicChatSession({
           <div className="flex items-center gap-4">
             <span>
               <span className="text-emerald-600">pipeline:</span>
-              {' full'}
+              {" full"}
             </span>
-            <span className="text-cyan-400">
-              {messages.length} messages
-            </span>
+            <span className="text-cyan-400">{messages.length} messages</span>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function BasicChatDemo() {
-  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   useEffect(() => {
-    setConversationId(getOrCreateConversationId())
-  }, [])
+    setConversationId(getOrCreateConversationId());
+  }, []);
 
   const handleClearHistory = useCallback(() => {
-    setConversationId(replaceConversationId())
-  }, [])
+    setConversationId(replaceConversationId());
+  }, []);
 
   if (conversationId === null) {
     return (
@@ -306,9 +292,7 @@ function BasicChatDemo() {
         <div className="max-w-3xl mx-auto">
           <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
             <div>
-              <h1 className="text-3xl font-bold text-cyan-400 mb-2">
-                Basic Chat
-              </h1>
+              <h1 className="text-3xl font-bold text-cyan-400 mb-2">Basic Chat</h1>
               <p className="text-slate-400 text-sm">
                 Durable chat — conversation persists across refreshes
               </p>
@@ -326,7 +310,7 @@ function BasicChatDemo() {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -335,5 +319,5 @@ function BasicChatDemo() {
       conversationId={conversationId}
       onClearHistory={handleClearHistory}
     />
-  )
+  );
 }

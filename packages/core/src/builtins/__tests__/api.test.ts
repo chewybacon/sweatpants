@@ -342,11 +342,7 @@ describe("Built-in API", () => {
         schema: z.object({ confirmed: z.boolean() }),
       });
 
-      expect(callOrder).toEqual([
-        "middleware-before",
-        "transport",
-        "middleware-after",
-      ]);
+      expect(callOrder).toEqual(["middleware-before", "transport", "middleware-after"]);
     });
 
     it("should allow middleware to modify sample options", function* () {
@@ -413,10 +409,7 @@ describe("Built-in API", () => {
       yield* notify({ message: "Processing started" });
       yield* notify({ message: "Processing complete" });
 
-      expect(notifications).toEqual([
-        "[LOG] Processing started",
-        "[LOG] Processing complete",
-      ]);
+      expect(notifications).toEqual(["[LOG] Processing started", "[LOG] Processing complete"]);
     });
   });
 });
@@ -433,7 +426,9 @@ function* handleOperativeRequests(
 
   for (;;) {
     const result = yield* sub.next();
-    if (result.done) break;
+    if (result.done) {
+      break;
+    }
 
     const request = result.value as TransportRequest;
 

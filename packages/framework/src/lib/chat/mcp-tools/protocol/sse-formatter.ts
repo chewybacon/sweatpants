@@ -21,7 +21,7 @@
  * @see https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#resumability-and-redelivery
  * @packageDocumentation
  */
-import type { SseEvent } from './types.ts'
+import type { SseEvent } from "./types.ts";
 
 // =============================================================================
 // EVENT ID GENERATION
@@ -37,7 +37,7 @@ import type { SseEvent } from './types.ts'
  * 2. Identify the position (via LSN)
  */
 export function generateEventId(sessionId: string, lsn: number): string {
-  return `${sessionId}:${lsn}`
+  return `${sessionId}:${lsn}`;
 }
 
 /**
@@ -46,16 +46,20 @@ export function generateEventId(sessionId: string, lsn: number): string {
  * @returns Parsed components, or null if invalid format
  */
 export function parseEventId(eventId: string): { sessionId: string; lsn: number } | null {
-  const colonIndex = eventId.lastIndexOf(':')
-  if (colonIndex === -1) return null
+  const colonIndex = eventId.lastIndexOf(":");
+  if (colonIndex === -1) {
+    return null;
+  }
 
-  const sessionId = eventId.slice(0, colonIndex)
-  const lsnStr = eventId.slice(colonIndex + 1)
-  const lsn = parseInt(lsnStr, 10)
+  const sessionId = eventId.slice(0, colonIndex);
+  const lsnStr = eventId.slice(colonIndex + 1);
+  const lsn = parseInt(lsnStr, 10);
 
-  if (isNaN(lsn)) return null
+  if (isNaN(lsn)) {
+    return null;
+  }
 
-  return { sessionId, lsn }
+  return { sessionId, lsn };
 }
 
 // =============================================================================
@@ -71,31 +75,31 @@ export function parseEventId(eventId: string): { sessionId: string; lsn: number 
  * - Multi-line data splits into multiple `data:` lines
  */
 export function formatSseEvent(event: SseEvent): string {
-  const lines: string[] = []
+  const lines: string[] = [];
 
   // Event ID (for resumability)
   if (event.id !== undefined) {
-    lines.push(`id: ${event.id}`)
+    lines.push(`id: ${event.id}`);
   }
 
   // Event type (if not default 'message')
   if (event.event !== undefined) {
-    lines.push(`event: ${event.event}`)
+    lines.push(`event: ${event.event}`);
   }
 
   // Retry interval
   if (event.retry !== undefined) {
-    lines.push(`retry: ${event.retry}`)
+    lines.push(`retry: ${event.retry}`);
   }
 
   // Data - split multi-line data into separate data: lines
-  const dataLines = event.data.split('\n')
+  const dataLines = event.data.split("\n");
   for (const line of dataLines) {
-    lines.push(`data: ${line}`)
+    lines.push(`data: ${line}`);
   }
 
   // End with double newline
-  return lines.join('\n') + '\n\n'
+  return lines.join("\n") + "\n\n";
 }
 
 /**
@@ -105,18 +109,18 @@ export function formatMessageAsSse(
   message: unknown,
   sessionId: string,
   lsn: number,
-  eventType?: string
+  eventType?: string,
 ): string {
   const event: SseEvent = {
     id: generateEventId(sessionId, lsn),
     data: JSON.stringify(message),
-  }
+  };
 
   if (eventType !== undefined) {
-    event.event = eventType
+    event.event = eventType;
   }
 
-  return formatSseEvent(event)
+  return formatSseEvent(event);
 }
 
 // =============================================================================
@@ -132,14 +136,14 @@ export function formatMessageAsSse(
 export function createPrimeEvent(sessionId: string, retryMs?: number): string {
   const event: SseEvent = {
     id: generateEventId(sessionId, 0),
-    data: '',
-  }
+    data: "",
+  };
 
   if (retryMs !== undefined) {
-    event.retry = retryMs
+    event.retry = retryMs;
   }
 
-  return formatSseEvent(event)
+  return formatSseEvent(event);
 }
 
 /**
@@ -148,18 +152,14 @@ export function createPrimeEvent(sessionId: string, retryMs?: number): string {
  * Per MCP spec, when closing a connection before the stream ends,
  * servers SHOULD send a retry field to indicate when the client should reconnect.
  */
-export function createCloseEvent(
-  sessionId: string,
-  lsn: number,
-  retryMs: number = 1000
-): string {
+export function createCloseEvent(sessionId: string, lsn: number, retryMs: number = 1000): string {
   const event: SseEvent = {
     id: generateEventId(sessionId, lsn),
-    data: '',
+    data: "",
     retry: retryMs,
-  }
+  };
 
-  return formatSseEvent(event)
+  return formatSseEvent(event);
 }
 
 // =============================================================================
@@ -173,43 +173,49 @@ export function createCloseEvent(
  * @returns Parsed event, or null if invalid
  */
 export function parseSseEvent(raw: string): SseEvent | null {
-  const lines = raw.split('\n')
-  let id: string | undefined
-  let event: string | undefined
-  let retry: number | undefined
-  const dataLines: string[] = []
+  const lines = raw.split("\n");
+  let id: string | undefined;
+  let event: string | undefined;
+  let retry: number | undefined;
+  const dataLines: string[] = [];
 
   for (const line of lines) {
-    if (line.startsWith('id:')) {
-      id = line.slice(3).trim()
-    } else if (line.startsWith('event:')) {
-      event = line.slice(6).trim()
-    } else if (line.startsWith('retry:')) {
-      const retryStr = line.slice(6).trim()
-      const parsed = parseInt(retryStr, 10)
+    if (line.startsWith("id:")) {
+      id = line.slice(3).trim();
+    } else if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith("retry:")) {
+      const retryStr = line.slice(6).trim();
+      const parsed = parseInt(retryStr, 10);
       if (!isNaN(parsed)) {
-        retry = parsed
+        retry = parsed;
       }
-    } else if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trimStart())
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
     }
     // Skip empty lines and comments (lines starting with :)
   }
 
   // Must have at least one data line
   if (dataLines.length === 0) {
-    return null
+    return null;
   }
 
   const result: SseEvent = {
-    data: dataLines.join('\n'),
+    data: dataLines.join("\n"),
+  };
+
+  if (id !== undefined) {
+    result.id = id;
+  }
+  if (event !== undefined) {
+    result.event = event;
+  }
+  if (retry !== undefined) {
+    result.retry = retry;
   }
 
-  if (id !== undefined) result.id = id
-  if (event !== undefined) result.event = event
-  if (retry !== undefined) result.retry = retry
-
-  return result
+  return result;
 }
 
 /**
@@ -219,21 +225,23 @@ export function parseSseEvent(raw: string): SseEvent | null {
  * @returns Array of parsed events and any remaining incomplete data
  */
 export function parseSseChunk(chunk: string): { events: SseEvent[]; remaining: string } {
-  const events: SseEvent[] = []
-  const parts = chunk.split('\n\n')
+  const events: SseEvent[] = [];
+  const parts = chunk.split("\n\n");
 
   // Last part might be incomplete
-  const remaining = parts.pop() ?? ''
+  const remaining = parts.pop() ?? "";
 
   for (const part of parts) {
-    if (part.trim() === '') continue
-    const event = parseSseEvent(part + '\n\n')
+    if (part.trim() === "") {
+      continue;
+    }
+    const event = parseSseEvent(part + "\n\n");
     if (event) {
-      events.push(event)
+      events.push(event);
     }
   }
 
-  return { events, remaining }
+  return { events, remaining };
 }
 
 // =============================================================================
@@ -245,11 +253,11 @@ export function parseSseChunk(chunk: string): { events: SseEvent[]; remaining: s
  */
 export function createSseHeaders(): Record<string, string> {
   return {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'X-Accel-Buffering': 'no', // Disable nginx buffering
-  }
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no", // Disable nginx buffering
+  };
 }
 
 /**
@@ -259,17 +267,17 @@ export interface SseWriter {
   /**
    * Write an SSE event to the stream.
    */
-  write(message: unknown, lsn: number, eventType?: string): void
+  write(message: unknown, lsn: number, eventType?: string): void;
 
   /**
    * Write a raw SSE event string.
    */
-  writeRaw(data: string): void
+  writeRaw(data: string): void;
 
   /**
    * Close the stream.
    */
-  close(): void
+  close(): void;
 }
 
 /**
@@ -278,18 +286,18 @@ export interface SseWriter {
 export function createSseWriter(
   sessionId: string,
   write: (data: string) => void,
-  close: () => void
+  close: () => void,
 ): SseWriter {
   return {
     write(message: unknown, lsn: number, eventType?: string) {
-      const formatted = formatMessageAsSse(message, sessionId, lsn, eventType)
-      write(formatted)
+      const formatted = formatMessageAsSse(message, sessionId, lsn, eventType);
+      write(formatted);
     },
     writeRaw(data: string) {
-      write(data)
+      write(data);
     },
     close() {
-      close()
+      close();
     },
-  }
+  };
 }

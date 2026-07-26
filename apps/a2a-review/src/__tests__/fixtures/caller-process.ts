@@ -116,7 +116,9 @@ const modelRegistration = createChatModelEffectRegistration({
   allowedClassifications: ["internal", "restricted"],
   *sample(_request, context) {
     const existing = effectState.model[context.pullId];
-    if (existing !== undefined) return existing as unknown as ChatModelSampleOutputV2;
+    if (existing !== undefined) {
+      return existing as unknown as ChatModelSampleOutputV2;
+    }
     effectState.modelExecutions += 1;
     const value: ChatModelSampleOutputV2 =
       effectState.modelExecutions === 1
@@ -169,8 +171,12 @@ const askRegistration = createAskParentRegistration({
       return undefined;
     },
     *claimQuestion(pullId, budget) {
-      if (effectState.claims.includes(pullId)) return "duplicate";
-      if (effectState.claims.length >= budget) return "exhausted";
+      if (effectState.claims.includes(pullId)) {
+        return "duplicate";
+      }
+      if (effectState.claims.length >= budget) {
+        return "exhausted";
+      }
       effectState.claims.push(pullId);
       persistEffects();
       return "allowed";
@@ -180,7 +186,9 @@ const askRegistration = createAskParentRegistration({
     },
     *commit(pullId, outcome) {
       const existing = effectState.askOutcomes[pullId];
-      if (existing) return existing;
+      if (existing) {
+        return existing;
+      }
       effectState.askOutcomes[pullId] = outcome;
       persistEffects();
       return outcome;
@@ -297,7 +305,9 @@ await run(function* () {
   persistAuthority();
   crashOnce("terminal_after_authority_commit");
   const completed = terminalEvidence(authority.readJournal(rootAttach.sessionId));
-  if (!completed) throw new Error("root task did not complete");
+  if (!completed) {
+    throw new Error("root task did not complete");
+  }
   emitResult(completed);
 });
 
@@ -305,7 +315,9 @@ function terminalEvidence(records: DurableSemanticRecord[]): Json | undefined {
   const closed = records.find(
     (record) => record.payload.type === "TaskClosed" && record.payload.taskId === rootAttach.taskId,
   );
-  if (!closed || closed.payload.type !== "TaskClosed") return undefined;
+  if (!closed || closed.payload.type !== "TaskClosed") {
+    return undefined;
+  }
   return {
     outcome: closed.payload.outcome,
     modelExecutions: effectState.modelExecutions,
@@ -324,7 +336,9 @@ function emitResult(result: Json): void {
   process.stdout.write(`RESULT ${canonicalJson(result)}\n`);
 }
 function crashOnce(stage: string): void {
-  if (crashStage !== stage || effectState.crashed.includes(stage)) return;
+  if (crashStage !== stage || effectState.crashed.includes(stage)) {
+    return;
+  }
   effectState.crashed.push(stage);
   persistEffects();
   process.kill(process.pid, "SIGKILL");
@@ -339,7 +353,9 @@ function persistAfterOperations(
   return new Proxy(target, {
     get(object, property) {
       const value = Reflect.get(object, property, object);
-      if (typeof value !== "function") return value;
+      if (typeof value !== "function") {
+        return value;
+      }
       return (...args: unknown[]) =>
         (function* (): Operation<unknown> {
           const result = yield* value.apply(object, args);
@@ -367,6 +383,8 @@ function assistantMessage(id: string, value: Json) {
 
 function required(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} is required`);
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
   return value;
 }

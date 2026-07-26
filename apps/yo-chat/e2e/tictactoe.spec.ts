@@ -46,12 +46,18 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     const userXMessage = page.locator("text=/playing as X/i");
     const userOMessage = page.locator("text=/playing as O/i");
 
-    if (await userXMessage.isVisible()) return "X";
-    if (await userOMessage.isVisible()) return "O";
+    if (await userXMessage.isVisible()) {
+      return "X";
+    }
+    if (await userOMessage.isVisible()) {
+      return "O";
+    }
 
     // Fallback: if we see X marks but we can still click cells, we're O
     const xMarks = page.locator(".text-cyan-400").filter({ hasText: "X" });
-    if ((await xMarks.count()) > 0) return "O";
+    if ((await xMarks.count()) > 0) {
+      return "O";
+    }
 
     return null;
   }
@@ -267,7 +273,9 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     await page.getByRole("button", { name: "Start Game" }).click();
 
     const emptyCell = await waitForInteractiveCellOrSkip(page);
-    if (!emptyCell) return;
+    if (!emptyCell) {
+      return;
+    }
 
     const xMarks = page.locator(".text-cyan-400").filter({ hasText: "X" });
     const oMarks = page.locator(".text-purple-400").filter({ hasText: "O" });
@@ -287,7 +295,9 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     await page.getByRole("button", { name: "Start Game" }).click();
 
     const emptyCell = await waitForInteractiveCellOrSkip(page);
-    if (!emptyCell) return;
+    if (!emptyCell) {
+      return;
+    }
 
     const cyanHighlight = page.locator(".bg-cyan-900\\/30");
     const purpleHighlight = page.locator(".bg-purple-900\\/30");
@@ -311,7 +321,9 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     await page.getByRole("button", { name: "Start Game" }).click();
 
     const emptyCell = await waitForInteractiveCellOrSkip(page);
-    if (!emptyCell) return;
+    if (!emptyCell) {
+      return;
+    }
 
     const thinkingLocator = page.getByText("thinking...", { exact: true });
     let moves = 0;
@@ -320,7 +332,9 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
         .locator("button:not([disabled])")
         .filter({ hasText: /^[0-8]$/ })
         .last();
-      if (!(await nextEmptyCell.isVisible().catch(() => false))) break;
+      if (!(await nextEmptyCell.isVisible().catch(() => false))) {
+        break;
+      }
 
       try {
         await nextEmptyCell.click({ timeout: 5000 });
@@ -448,7 +462,9 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     await page.getByRole("button", { name: "Start Game" }).click();
 
     const emptyCell = await waitForInteractiveCellOrSkip(page);
-    if (!emptyCell) return;
+    if (!emptyCell) {
+      return;
+    }
 
     await emptyCell.click();
 
@@ -513,7 +529,9 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
   // FOLLOW-UP AFTER COMPLETED GAME
   // =============================================================================
 
-  test("free-form chat while a game interrupt is open does not require resume[]", async ({ page }) => {
+  test("free-form chat while a game interrupt is open does not require resume[]", async ({
+    page,
+  }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
 
     const thinkingLocator = page.getByText("thinking...", { exact: true });
@@ -530,8 +548,12 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
     // Optional: play one move so the interrupt is clearly mid-tool.
     await emptyCell.click();
-    await expect(thinkingLocator).toBeVisible({ timeout: 10000 }).catch(() => {});
-    await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 }).catch(() => {});
+    await expect(thinkingLocator)
+      .toBeVisible({ timeout: 10000 })
+      .catch(() => {});
+    await expect(thinkingLocator)
+      .not.toBeVisible({ timeout: 90000 })
+      .catch(() => {});
 
     // Free-form send while a tool interrupt is still open must cancel the
     // interrupt and accept the new turn, not reject with resume[].

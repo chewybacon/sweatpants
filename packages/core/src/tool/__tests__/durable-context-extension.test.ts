@@ -245,7 +245,9 @@ describe("durable context extensions", () => {
         type: "operation",
         descriptor: { kind: "effect", input: { key: "answer" } },
       });
-      if (effect.type !== "operation") throw new Error("expected effect");
+      if (effect.type !== "operation") {
+        throw new Error("expected effect");
+      }
       const secondEffect = yield* driver.step(attachment, {
         type: "resume",
         actionIndex: effect.actionIndex,
@@ -264,7 +266,9 @@ describe("durable context extensions", () => {
         type: "operation",
         descriptor: { input: { key: "answer:second" } },
       });
-      if (secondEffect.type !== "operation") throw new Error("expected second effect");
+      if (secondEffect.type !== "operation") {
+        throw new Error("expected second effect");
+      }
       const completed = yield* driver.step(attachment, {
         type: "resume",
         actionIndex: secondEffect.actionIndex,

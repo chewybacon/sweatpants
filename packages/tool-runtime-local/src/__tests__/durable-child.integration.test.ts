@@ -176,7 +176,9 @@ describe("automatic local durable parent/child recovery", () => {
           `Round ${round + 1}: ${sampled.suggestion}`,
           choiceSchema.descriptor,
         );
-        if (result.action !== "accept") break;
+        if (result.action !== "accept") {
+          break;
+        }
         answers.push(result.content.answer);
         if (!result.content.continue) {
           break;

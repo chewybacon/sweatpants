@@ -48,7 +48,9 @@ test.describe("play_ttt Agentic Tool", () => {
     const deadline = Date.now() + timeout;
 
     while (Date.now() < deadline) {
-      if ((await cells.count()) > 0) return cells.last();
+      if ((await cells.count()) > 0) {
+        return cells.last();
+      }
       const errorLocator = page.locator("text=/^Error:/");
       if ((await errorLocator.count()) > 0) {
         const errorText = await errorLocator.first().textContent();
@@ -77,12 +79,18 @@ test.describe("play_ttt Agentic Tool", () => {
     const userXMessage = page.locator("text=/playing as X/i");
     const userOMessage = page.locator("text=/playing as O/i");
 
-    if (await userXMessage.isVisible()) return "X";
-    if (await userOMessage.isVisible()) return "O";
+    if (await userXMessage.isVisible()) {
+      return "X";
+    }
+    if (await userOMessage.isVisible()) {
+      return "O";
+    }
 
     // Fallback: if we see X marks but we can still click cells, we're O
     const xMarks = page.locator(".text-cyan-400").filter({ hasText: "X" });
-    if ((await xMarks.count()) > 0) return "O"; // Model made first move as X
+    if ((await xMarks.count()) > 0) {
+      return "O";
+    } // Model made first move as X
 
     return null;
   }
@@ -276,10 +284,14 @@ test.describe("play_ttt Agentic Tool", () => {
 
     while (moves < 4) {
       // Check if game ended
-      if ((await gameOver.count()) > 0) break;
+      if ((await gameOver.count()) > 0) {
+        break;
+      }
 
       // Check if there's an empty cell to click
-      if (!(await emptyCell.isVisible())) break;
+      if (!(await emptyCell.isVisible())) {
+        break;
+      }
 
       await emptyCell.click();
       moves++;

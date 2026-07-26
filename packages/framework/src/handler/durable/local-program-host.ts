@@ -249,7 +249,9 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
       const terminal = requestedTaskId
         ? terminalOutcome(records, requestedTaskId)
         : latestRootTerminal(records);
-      if (terminal) return outcomeToRunResult(terminal);
+      if (terminal) {
+        return outcomeToRunResult(terminal);
+      }
       throw new CrankError("unknown_target", "No runnable program task in session");
     }
     const program = {
@@ -294,7 +296,9 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
             `local-host-resume:${crypto.randomUUID()}`,
           )).executionEpoch;
         }
-        if (task.taskId === opened.taskId) rootExecutionEpoch = taskEpoch;
+        if (task.taskId === opened.taskId) {
+          rootExecutionEpoch = taskEpoch;
+        }
       }
     }
     if (rootExecutionEpoch === undefined) {
@@ -477,12 +481,16 @@ function assertCatalogDispatch(catalog: PinnedProgramCatalog, program: PinnedPro
     (entry) =>
       entry.kind === "program" && exactProgramKey(entry.program) === exactProgramKey(program),
   );
-  if (exact) return;
+  if (exact) {
+    return;
+  }
 
   const foreignAdapter =
     exactProgramKey(program) === exactProgramKey(FOREIGN_TOOL_ADAPTER_PROGRAM) &&
     entries.some((entry) => entry.kind === "foreign-tool");
-  if (foreignAdapter) return;
+  if (foreignAdapter) {
+    return;
+  }
 
   const targetExists = entries.some(
     (entry) =>
@@ -564,7 +572,9 @@ export function normalizeProgramTrace(
     }
     if (payload.type === "PullResolved") {
       const operation = operationByPull.get(payload.pullId);
-      if (operation) operation.outcome = structuredClone(payload.outcome);
+      if (operation) {
+        operation.outcome = structuredClone(payload.outcome);
+      }
       continue;
     }
     if (payload.type === "DurableEmission") {
@@ -582,7 +592,9 @@ export function normalizeProgramTrace(
     }
     if (payload.type === "TaskClosed") {
       const task = tasks.get(payload.taskId);
-      if (task) task.terminal = structuredClone(payload.outcome);
+      if (task) {
+        task.terminal = structuredClone(payload.outcome);
+      }
     }
   }
   return { version: 1, tasks: [...tasks.values()] };
@@ -599,7 +611,9 @@ function selectRunnableTask(records: readonly DurableSemanticRecord[], requested
       ? [record.payload]
       : [],
   );
-  if (opened.length === 0) return undefined;
+  if (opened.length === 0) {
+    return undefined;
+  }
   if (!requestedTaskId) {
     return opened.filter((task) => !task.parentTaskId).at(-1);
   }

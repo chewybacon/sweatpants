@@ -31,7 +31,9 @@ function createOptions(overrides = {}) {
 }
 
 function canonicalToolSource(content: string): string {
-  if (/^\s*import\s/m.test(content)) return content;
+  if (/^\s*import\s/m.test(content)) {
+    return content;
+  }
   if (/\bdefineTool\s*\(/.test(content)) {
     return `import { defineTool } from "@sweatpants/core";\n${content}`;
   }

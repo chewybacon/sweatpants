@@ -46,10 +46,14 @@ export function isWorkerBackedToolSessionRegistry(registry: ToolSessionRegistry)
 }
 
 function resolveWorkerUrl(workerUrl: string | URL, isDev?: boolean): string | URL {
-  if (!isDev) return workerUrl;
+  if (!isDev) {
+    return workerUrl;
+  }
 
   if (workerUrl instanceof URL) {
-    if (workerUrl.protocol === "file:") return workerUrl;
+    if (workerUrl.protocol === "file:") {
+      return workerUrl;
+    }
     const cacheBusted = new URL(workerUrl.toString());
     cacheBusted.searchParams.set("t", Date.now().toString());
     return cacheBusted;
@@ -107,8 +111,12 @@ export interface ToolSessionRegistryOptions {
  */
 function* waitForSettlement(session: ToolSession): Operation<ToolSessionStatus> {
   const current = yield* session.status();
-  if (current === "completed" || current === "failed" || current === "cancelled") return current;
-  if (!session.settled) throw new Error("ToolSession must provide event-driven settled()");
+  if (current === "completed" || current === "failed" || current === "cancelled") {
+    return current;
+  }
+  if (!session.settled) {
+    throw new Error("ToolSession must provide event-driven settled()");
+  }
   return yield* session.settled();
 }
 
@@ -235,11 +243,15 @@ export function createToolSessionRegistry(
 
       *get(sessionId: string): Operation<ToolSession | null> {
         const entry = yield* store.get(sessionId);
-        if (!entry) return null;
+        if (!entry) {
+          return null;
+        }
 
         // Return from active sessions if available
         const active = activeSessions.get(sessionId);
-        if (active) return active;
+        if (active) {
+          return active;
+        }
 
         // Entry exists but session not in active map - session may have been
         // orphaned (e.g., server restart). Return the entry's session reference.
@@ -257,7 +269,9 @@ export function createToolSessionRegistry(
 
         // Return from active sessions if available
         const active = activeSessions.get(sessionId);
-        if (active) return active;
+        if (active) {
+          return active;
+        }
 
         // Return the entry's session reference
         return entry.session;

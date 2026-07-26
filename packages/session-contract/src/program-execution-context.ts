@@ -108,12 +108,12 @@ function acceptedAffinity(request: AttachProgramRequest, route: ProgramRoute): S
 function isAffinity(value: unknown): value is SandboxAffinity {
   return Boolean(
     value &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      ["invocation", "conversation", "workspace"].includes(
-        String((value as Record<string, unknown>)["kind"]),
-      ) &&
-      typeof (value as Record<string, unknown>)["key"] === "string",
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    ["invocation", "conversation", "workspace"].includes(
+      String((value as Record<string, unknown>)["kind"]),
+    ) &&
+    typeof (value as Record<string, unknown>)["key"] === "string",
   );
 }
 
@@ -128,7 +128,9 @@ function freezeAffinity(value: SandboxAffinity): SandboxAffinity {
 }
 
 function assertNoAuthorityMaterial(value: unknown, path = "route"): void {
-  if (!value || typeof value !== "object") return;
+  if (!value || typeof value !== "object") {
+    return;
+  }
   if (Array.isArray(value)) {
     value.forEach((child, index) => assertNoAuthorityMaterial(child, `${path}[${index}]`));
     return;
@@ -152,7 +154,11 @@ function boundedNamespace(value: string): string {
 }
 
 function boundedText(value: string, field: string): string {
-  if (typeof value !== "string" || value.length === 0 || new TextEncoder().encode(value).length > 512) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    new TextEncoder().encode(value).length > 512
+  ) {
     throw new CrankError("invalid_descriptor", `${field} must be bounded text`);
   }
   return value;

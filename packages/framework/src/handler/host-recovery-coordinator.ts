@@ -40,7 +40,9 @@ export function createHostRecoveryCoordinator(): {
   let accepting = true;
   return {
     *run<T>(sessionId: string, operation: Operation<T>): Operation<T> {
-      if (!accepting) throw new CrankError("host_shutting_down");
+      if (!accepting) {
+        throw new CrankError("host_shutting_down");
+      }
       const controller = new AbortController();
       active.set(sessionId, controller);
       try {
@@ -63,7 +65,9 @@ export function createHostRecoveryCoordinator(): {
     *shutdown(): Operation<{ unfinishedSessionIds: string[] }> {
       accepting = false;
       const unfinishedSessionIds = [...active.keys()].sort();
-      for (const controller of active.values()) controller.abort();
+      for (const controller of active.values()) {
+        controller.abort();
+      }
       return { unfinishedSessionIds };
     },
     accepting() {

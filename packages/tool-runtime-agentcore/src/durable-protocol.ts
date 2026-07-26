@@ -150,8 +150,9 @@ function parseMessage(
   validatePayload: (type: string, envelope: Record<string, Json>) => void,
 ): HostProgramMessage | RuntimeProgramMessage {
   const bytes = typeof frame === "string" ? new TextEncoder().encode(frame) : frame;
-  if (bytes.byteLength > AGENTCORE_MAX_FRAME_BYTES)
+  if (bytes.byteLength > AGENTCORE_MAX_FRAME_BYTES) {
     throw protocol("payload_too_large", "Frame exceeds 2 MiB");
+  }
   let value: Json;
   try {
     value = assertJson(
@@ -162,28 +163,37 @@ function parseMessage(
   } catch (error) {
     throw protocol("program_protocol_error", "Malformed canonical JSON", error);
   }
-  if (!record(value)) throw protocol("program_protocol_error", "Envelope must be an object");
+  if (!record(value)) {
+    throw protocol("program_protocol_error", "Envelope must be an object");
+  }
   const required = ["protocolVersion", "type", "releaseId", "taskId", "activationEpoch", "payload"];
   const optional = ["attachmentId", "actionIndex"];
-  if (!onlyKeys(value, required, optional))
+  if (!onlyKeys(value, required, optional)) {
     throw protocol("program_protocol_error", "Envelope fields are not closed");
-  if (value["protocolVersion"] !== AGENTCORE_DURABLE_PROTOCOL_VERSION)
+  }
+  if (value["protocolVersion"] !== AGENTCORE_DURABLE_PROTOCOL_VERSION) {
     throw protocol("protocol_version_unsupported", "Unsupported protocol version");
+  }
   const type = value["type"];
-  if (typeof type !== "string" || !allowed.has(type))
+  if (typeof type !== "string" || !allowed.has(type)) {
     throw protocol("program_protocol_error", "Unknown protocol message type");
+  }
   if (
     !nonempty(value["releaseId"]) ||
     !nonempty(value["taskId"]) ||
     !integer(value["activationEpoch"])
-  )
+  ) {
     throw protocol("program_protocol_error", "Invalid envelope identity");
-  if (value["attachmentId"] !== undefined && !nonempty(value["attachmentId"]))
+  }
+  if (value["attachmentId"] !== undefined && !nonempty(value["attachmentId"])) {
     throw protocol("program_protocol_error", "Invalid attachment identity");
-  if (value["actionIndex"] !== undefined && !integer(value["actionIndex"]))
+  }
+  if (value["actionIndex"] !== undefined && !integer(value["actionIndex"])) {
     throw protocol("program_protocol_error", "Invalid action index");
-  if (!record(value["payload"]))
+  }
+  if (!record(value["payload"])) {
     throw protocol("program_protocol_error", "Payload must be an object");
+  }
   validatePayload(type, value);
   return canonicalSnapshot(value).value as unknown as HostProgramMessage | RuntimeProgramMessage;
 }
@@ -203,8 +213,9 @@ function validateHostPayload(type: string, envelope: Record<string, Json>): void
         !nonempty(payload["programInputDigest"]) ||
         !replayPosition(payload["replayedThroughActionIndex"]) ||
         !digest(payload["replayChainSeed"])
-      )
+      ) {
         fail();
+      }
       const attach = payload["attach"] as Record<string, Json>;
       if (
         !exactKeys(attach, [
@@ -220,15 +231,20 @@ function validateHostPayload(type: string, envelope: Record<string, Json>): void
         attach["executionEpoch"] !== envelope["activationEpoch"] ||
         !record(attach["program"]) ||
         !validAffinity(attach["affinity"])
-      )
+      ) {
         fail();
+      }
       break;
     }
     case "replay_operation":
     case "replay_emission":
       validateReplayEntry(payload, type === "replay_operation" ? "operation" : "emission");
-      if (envelope["actionIndex"] !== payload["actionIndex"] || !nonempty(envelope["attachmentId"]))
+      if (
+        envelope["actionIndex"] !== payload["actionIndex"] ||
+        !nonempty(envelope["attachmentId"])
+      ) {
         fail();
+      }
       break;
     case "replay_end":
       if (
@@ -236,29 +252,33 @@ function validateHostPayload(type: string, envelope: Record<string, Json>): void
         !integer(payload["entryCount"]) ||
         !digest(payload["replayChainDigest"]) ||
         !nonempty(envelope["attachmentId"])
-      )
+      ) {
         fail();
+      }
       break;
     case "command": {
       if (
         !exactKeys(payload, ["command"]) ||
         !record(payload["command"]) ||
         !nonempty(envelope["attachmentId"])
-      )
+      ) {
         fail();
+      }
       const command = payload["command"] as Record<string, Json>;
       if (
         !nonempty(command["type"]) ||
         !["start", "resume", "authorize", "ack_emission", "cancel"].includes(
           String(command["type"]),
         )
-      )
+      ) {
         fail();
+      }
       if (
         ["resume", "authorize", "ack_emission"].includes(String(command["type"])) &&
         envelope["actionIndex"] !== command["actionIndex"]
-      )
+      ) {
         fail();
+      }
       break;
     }
     case "shutdown":
@@ -268,8 +288,9 @@ function validateHostPayload(type: string, envelope: Record<string, Json>): void
           String(payload["reason"]),
         ) ||
         !nonempty(envelope["attachmentId"])
-      )
+      ) {
         fail();
+      }
   }
 }
 
@@ -281,8 +302,9 @@ function validateRuntimePayload(type: string, envelope: Record<string, Json>): v
         !exactKeys(payload, ["attachment", "computeGeneration"]) ||
         !record(payload["attachment"]) ||
         !nonempty(payload["computeGeneration"])
-      )
+      ) {
         fail();
+      }
       break;
     case "frontier":
       if (
@@ -297,21 +319,26 @@ function validateRuntimePayload(type: string, envelope: Record<string, Json>): v
         !digest(payload["replayChainDigest"]) ||
         !digest(payload["frontierDigest"]) ||
         !nonempty(envelope["attachmentId"])
-      )
+      ) {
         fail();
+      }
       break;
     case "step":
       if (
         !exactKeys(payload, ["step"]) ||
         !validStep(payload["step"]) ||
         !nonempty(envelope["attachmentId"])
-      )
+      ) {
         fail();
-      if (record(payload["step"]) && envelope["actionIndex"] !== payload["step"]["actionIndex"])
+      }
+      if (record(payload["step"]) && envelope["actionIndex"] !== payload["step"]["actionIndex"]) {
         fail();
+      }
       break;
     case "shutdown_complete":
-      if (!exactKeys(payload, []) || !nonempty(envelope["attachmentId"])) fail();
+      if (!exactKeys(payload, []) || !nonempty(envelope["attachmentId"])) {
+        fail();
+      }
       break;
     case "rejected":
       if (
@@ -319,8 +346,9 @@ function validateRuntimePayload(type: string, envelope: Record<string, Json>): v
         !errorCodes.has(payload["code"] as AgentCoreDurableProgramErrorCode) ||
         typeof payload["message"] !== "string" ||
         new TextEncoder().encode(payload["message"]).byteLength > AGENTCORE_MAX_ERROR_TEXT_BYTES
-      )
+      ) {
         fail();
+      }
       break;
   }
 }
@@ -346,8 +374,9 @@ function validateReplayEntry(
     !digest(payload["descriptorDigest"]) ||
     !digest(payload["previousEntryDigest"]) ||
     !digest(payload["entryDigest"])
-  )
+  ) {
     fail();
+  }
 }
 
 export interface ReplayChainSeedInput {
@@ -377,8 +406,9 @@ export function linkReplayEntry(
   previousEntryDigest: string,
   entry: UnlinkedReplayEntry,
 ): ReplayEntry {
-  if (!digest(seed) || !digest(previousEntryDigest))
+  if (!digest(seed) || !digest(previousEntryDigest)) {
     throw protocol("program_protocol_error", "Invalid replay chain digest");
+  }
   const entryWithoutEntryDigest = { ...entry, previousEntryDigest };
   const entryDigest = sha256(
     canonicalJson({ replayChainSeed: seed, previousEntryDigest, entryWithoutEntryDigest }),
@@ -392,7 +422,9 @@ export function verifyReplayEntry(
   entry: ReplayEntry,
 ): boolean {
   const { entryDigest, previousEntryDigest: claimedPrevious, ...body } = entry;
-  if (claimedPrevious !== previousEntryDigest) return false;
+  if (claimedPrevious !== previousEntryDigest) {
+    return false;
+  }
   return linkReplayEntry(seed, previousEntryDigest, body).entryDigest === entryDigest;
 }
 

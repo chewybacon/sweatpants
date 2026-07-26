@@ -40,8 +40,12 @@ export function* stopRuntimeSessionIfTerminal(options: {
   const now = options.now ?? (() => new Date());
   const current = (yield* stores.handles.get(options.handle.sessionId)) ?? options.handle;
 
-  if (!isTerminalStatus(current.status)) return current;
-  if (current.stopRequestedAt || current.stoppedAt) return current;
+  if (!isTerminalStatus(current.status)) {
+    return current;
+  }
+  if (current.stopRequestedAt || current.stoppedAt) {
+    return current;
+  }
 
   const stopRequestedAt = now().toISOString();
   const requested = yield* stores.handles.update(current.sessionId, {
@@ -112,7 +116,9 @@ function toToolSessionStatus(status: AgentCoreToolSessionHandle["status"]): Tool
 
 export async function drainAsyncIterable<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   const result: T[] = [];
-  for await (const item of iterable) result.push(item);
+  for await (const item of iterable) {
+    result.push(item);
+  }
   return result;
 }
 
@@ -125,7 +131,9 @@ export function createAgentCoreToolSession(
 
   function* getHandle(): Operation<AgentCoreToolSessionHandle> {
     const handle = yield* stores.handles.get(sessionId);
-    if (!handle) throw new Error(`AgentCore tool session not found: ${sessionId}`);
+    if (!handle) {
+      throw new Error(`AgentCore tool session not found: ${sessionId}`);
+    }
     return handle;
   }
 
@@ -215,7 +223,9 @@ export function createAgentCoreToolSession(
 
     if (response.type === "protocol_error" || response.type === "command_conflict") {
       const current = yield* getHandle();
-      if (isTerminalStatus(current.status)) return;
+      if (isTerminalStatus(current.status)) {
+        return;
+      }
       const message = response.type === "protocol_error" ? response.message : response.message;
       const event: AgentCoreToolEvent = { type: "error", name: response.type, message };
       const lsn = yield* stores.events.append(sessionId, event);
@@ -232,7 +242,9 @@ export function createAgentCoreToolSession(
 
   function* reconcileRuntimeState(): Operation<void> {
     const handle = yield* getHandle();
-    if (isTerminalStatus(handle.status)) return;
+    if (isTerminalStatus(handle.status)) {
+      return;
+    }
     const stream = yield* runtimeClient.drainEvents(handle, handle.lastRuntimeEventSeq ?? 0);
     yield* ingestStream(stream);
     const inspected = yield* runtimeClient.inspect(yield* getHandle());
@@ -281,10 +293,14 @@ export function createAgentCoreToolSession(
               const batch = yield* stores.events.readAfter(sessionId, cursor);
               buffered = batch.events;
               index = 0;
-              if (buffered.length > 0) continue;
+              if (buffered.length > 0) {
+                continue;
+              }
 
               const terminal = yield* stores.events.isTerminal(sessionId);
-              if (terminal) return { done: true, value: undefined };
+              if (terminal) {
+                return { done: true, value: undefined };
+              }
 
               const handle = yield* getHandle();
               if (!isTerminalStatus(handle.status) && !drainedBeforeWait) {

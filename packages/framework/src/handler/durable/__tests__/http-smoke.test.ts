@@ -950,7 +950,9 @@ describe.skip("Durable Chat Handler - Ollama Integration (moved to @sweatpants/m
 
   describe("Basic LLM Streaming", () => {
     it("should stream a real LLM response", async () => {
-      if (!ollamaAvailable) return;
+      if (!ollamaAvailable) {
+        return;
+      }
 
       const handler = createOllamaHandler();
       server = await createHttpTestServer(handler);
@@ -977,7 +979,9 @@ describe.skip("Durable Chat Handler - Ollama Integration (moved to @sweatpants/m
     }, 30000); // 30s timeout for LLM
 
     it("should handle a simple math question", async () => {
-      if (!ollamaAvailable) return;
+      if (!ollamaAvailable) {
+        return;
+      }
 
       const handler = createOllamaHandler();
       server = await createHttpTestServer(handler);
@@ -1001,7 +1005,9 @@ describe.skip("Durable Chat Handler - Ollama Integration (moved to @sweatpants/m
 
   describe("LLM Reconnection", () => {
     it("should reconnect to an active LLM stream", async () => {
-      if (!ollamaAvailable) return;
+      if (!ollamaAvailable) {
+        return;
+      }
 
       const sharedStorage = createSharedStorage<string>();
       const handler = createOllamaHandlerWithSharedStorage(sharedStorage);
@@ -1034,7 +1040,9 @@ describe.skip("Durable Chat Handler - Ollama Integration (moved to @sweatpants/m
       // Read just 2-3 chunks to get minimal events, then disconnect quickly
       for (let i = 0; i < 3; i++) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         const text = decoder.decode(value, { stream: true });
         const lines = text.trim().split("\n").filter(Boolean);
         for (const line of lines) {
@@ -1100,7 +1108,9 @@ describe.skip("Durable Chat Handler - Ollama Integration (moved to @sweatpants/m
 
   describe("Multi-turn Conversation", () => {
     it("should handle a multi-turn conversation", async () => {
-      if (!ollamaAvailable) return;
+      if (!ollamaAvailable) {
+        return;
+      }
 
       const handler = createOllamaHandler();
       server = await createHttpTestServer(handler);

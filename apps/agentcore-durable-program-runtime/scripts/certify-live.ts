@@ -49,7 +49,9 @@ const deployment = JSON.parse(
   await readFile("agentcore-durable-program-runtime-deploy-output.json", "utf8"),
 ) as DeploymentOutput;
 const imageDigest = deployment.imageUri.split("@")[1];
-if (!imageDigest) throw new Error("Deployment image is not digest-pinned");
+if (!imageDigest) {
+  throw new Error("Deployment image is not digest-pinned");
+}
 const release: AgentCoreRuntimeRelease = {
   releaseId: deployment.releaseId,
   runtimeArn: deployment.agentRuntimeArn,
@@ -74,12 +76,16 @@ const client = new BedrockAgentCoreClient({ region: release.region });
 const sessions = new Set<string>();
 
 async function bodyToString(body: unknown): Promise<string> {
-  if (!body || typeof body !== "object") return "";
+  if (!body || typeof body !== "object") {
+    return "";
+  }
   if ("transformToString" in body && typeof body.transformToString === "function") {
     return await body.transformToString();
   }
   const chunks: Buffer[] = [];
-  for await (const chunk of body as AsyncIterable<Uint8Array>) chunks.push(Buffer.from(chunk));
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    chunks.push(Buffer.from(chunk));
+  }
   return Buffer.concat(chunks).toString("utf8");
 }
 
@@ -209,7 +215,9 @@ async function replayPickCard(): Promise<{
       ) {
         throw new Error("warm replay did not restore the elicit frontier");
       }
-      if (!restored.computeGeneration) throw new Error("warm restore omitted compute generation");
+      if (!restored.computeGeneration) {
+        throw new Error("warm restore omitted compute generation");
+      }
       return restored.computeGeneration;
     } finally {
       yield* driver.shutdown(restored.attachment, "parked");
@@ -249,13 +257,17 @@ async function replayPickCard(): Promise<{
       ) {
         throw new Error("cold replay did not restore the elicit frontier");
       }
-      if (!restored.computeGeneration) throw new Error("cold restore omitted compute generation");
+      if (!restored.computeGeneration) {
+        throw new Error("cold restore omitted compute generation");
+      }
       return restored.computeGeneration;
     } finally {
       yield* driver.shutdown(restored.attachment, "parked");
     }
   });
-  if (warm === cold) throw new Error("explicit stop did not change compute generation");
+  if (warm === cold) {
+    throw new Error("explicit stop did not change compute generation");
+  }
   return { warmGeneration: warm, coldGeneration: cold, coldResumeMs: Date.now() - coldStarted };
 }
 

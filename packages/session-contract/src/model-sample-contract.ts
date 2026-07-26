@@ -65,7 +65,9 @@ function schema(
     descriptor,
     schema: standardSchema((value) => {
       const message = guard(value);
-      if (message !== undefined) return { issues: [{ message }] };
+      if (message !== undefined) {
+        return { issues: [{ message }] };
+      }
       try {
         return { value: assertJson(value) };
       } catch {
@@ -173,8 +175,12 @@ export const MODEL_SAMPLE_OUTPUT_DESCRIPTOR = schema(
     additionalProperties: false,
   },
   (value) => {
-    if (!isObject(value)) return "model sample result must be an object";
-    if (typeof value["text"] !== "string") return "text must be a string";
+    if (!isObject(value)) {
+      return "model sample result must be an object";
+    }
+    if (typeof value["text"] !== "string") {
+      return "text must be a string";
+    }
     if (!Array.isArray(value["calls"]) || !Array.isArray(value["content"])) {
       return "calls and content must be arrays";
     }

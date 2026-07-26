@@ -35,7 +35,9 @@ function serializeArguments(args: Record<string, unknown>): string {
 }
 
 function parseArguments(args: string): Record<string, unknown> {
-  if (!args) return {};
+  if (!args) {
+    return {};
+  }
   try {
     const parsed = JSON.parse(args) as unknown;
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)

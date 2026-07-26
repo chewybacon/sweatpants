@@ -183,7 +183,9 @@ describe("durable cancellation and partial results", () => {
         },
         programCapability,
       });
-      if (reserved.status !== "authorized") throw new Error("effect was not authorized");
+      if (reserved.status !== "authorized") {
+        throw new Error("effect was not authorized");
+      }
       expect(
         yield* selected.resolve({
           capability: reserved.resolutionCapability,
@@ -212,7 +214,9 @@ describe("durable cancellation and partial results", () => {
         },
         programCapability: invalid.programCapability,
       });
-      if (invalidReserved.status !== "authorized") throw new Error("effect was not authorized");
+      if (invalidReserved.status !== "authorized") {
+        throw new Error("effect was not authorized");
+      }
       expect(
         yield* invalid.selected.resolve({
           capability: invalidReserved.resolutionCapability,
@@ -268,7 +272,9 @@ describe("durable cancellation and partial results", () => {
         yield* context.elicit<boolean>("approval", "Approve?", approvalResponse.descriptor);
         return "approved";
       } catch (error) {
-        if (error instanceof DurableProgramCancellation) catches += 1;
+        if (error instanceof DurableProgramCancellation) {
+          catches += 1;
+        }
         return "must-not-become-success";
       } finally {
         yield* context.effect(cleanup, null, { audience: "cleanup" });

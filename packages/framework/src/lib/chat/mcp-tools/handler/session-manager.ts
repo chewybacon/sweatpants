@@ -175,7 +175,9 @@ export class McpSessionManager {
     key: string,
   ): void {
     const state = this.sessions.get(sessionId);
-    if (!state) return;
+    if (!state) {
+      return;
+    }
 
     state.pendingElicits.set(String(requestId), {
       elicitId,
@@ -189,7 +191,9 @@ export class McpSessionManager {
    */
   registerPendingSample(sessionId: string, sampleId: string, requestId: JsonRpcId): void {
     const state = this.sessions.get(sessionId);
-    if (!state) return;
+    if (!state) {
+      return;
+    }
 
     state.pendingSamples.set(String(requestId), {
       sampleId,
@@ -202,7 +206,9 @@ export class McpSessionManager {
    */
   getPendingElicit(sessionId: string, requestId: JsonRpcId): PendingElicitation | null {
     const state = this.sessions.get(sessionId);
-    if (!state) return null;
+    if (!state) {
+      return null;
+    }
 
     return state.pendingElicits.get(String(requestId)) ?? null;
   }
@@ -212,7 +218,9 @@ export class McpSessionManager {
    */
   getPendingSample(sessionId: string, requestId: JsonRpcId): PendingSample | null {
     const state = this.sessions.get(sessionId);
-    if (!state) return null;
+    if (!state) {
+      return null;
+    }
 
     return state.pendingSamples.get(String(requestId)) ?? null;
   }
@@ -222,7 +230,9 @@ export class McpSessionManager {
    */
   clearPendingElicit(sessionId: string, requestId: JsonRpcId): void {
     const state = this.sessions.get(sessionId);
-    if (!state) return;
+    if (!state) {
+      return;
+    }
 
     state.pendingElicits.delete(String(requestId));
   }
@@ -232,7 +242,9 @@ export class McpSessionManager {
    */
   clearPendingSample(sessionId: string, requestId: JsonRpcId): void {
     const state = this.sessions.get(sessionId);
-    if (!state) return;
+    if (!state) {
+      return;
+    }
 
     state.pendingSamples.delete(String(requestId));
   }

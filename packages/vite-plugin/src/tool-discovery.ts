@@ -46,10 +46,14 @@ export function toolDiscoveryPlugin(userOptions: ToolDiscoveryOptions = {}): Plu
 
     transform(code, id) {
       // Only transform files in the tools directory
-      if (!id.startsWith(join(root, options.dir))) return null;
+      if (!id.startsWith(join(root, options.dir))) {
+        return null;
+      }
 
       // Only transform .ts and .tsx files
-      if (!id.endsWith(".ts") && !id.endsWith(".tsx")) return null;
+      if (!id.endsWith(".ts") && !id.endsWith(".tsx")) {
+        return null;
+      }
 
       try {
         const ast = parse(code, {
@@ -58,7 +62,9 @@ export function toolDiscoveryPlugin(userOptions: ToolDiscoveryOptions = {}): Plu
           sourceType: "module",
         });
 
-        if (!ast) return null;
+        if (!ast) {
+          return null;
+        }
 
         let modified = false;
         const localBuilders = importedBuilderBindings(ast.program.body, options);
@@ -190,7 +196,9 @@ function findEnclosingExportName(path: { parentPath: any }): string | null | und
   let p: any = path.parentPath;
   while (p) {
     if (t.isVariableDeclarator(p.node)) {
-      if (t.isIdentifier(p.node.id)) return p.node.id.name;
+      if (t.isIdentifier(p.node.id)) {
+        return p.node.id.name;
+      }
       return undefined;
     }
     if (t.isExportDefaultDeclaration(p.node)) {
@@ -207,10 +215,14 @@ function importedBuilderBindings(
 ): Map<string, DiscoveredTool["execution"]> {
   const bindings = new Map<string, DiscoveredTool["execution"]>();
   for (const statement of body) {
-    if (!t.isImportDeclaration(statement)) continue;
+    if (!t.isImportDeclaration(statement)) {
+      continue;
+    }
     const moduleName = statement.source.value;
     for (const specifier of statement.specifiers) {
-      if (!t.isImportSpecifier(specifier)) continue;
+      if (!t.isImportSpecifier(specifier)) {
+        continue;
+      }
       const importedName = t.isIdentifier(specifier.imported)
         ? specifier.imported.name
         : specifier.imported.value;
@@ -239,9 +251,13 @@ function importedBuilderNamesFromContent(
     const moduleName = match[2] ?? "";
     for (const raw of group.split(",")) {
       const declaration = raw.trim().replace(/^type\s+/, "");
-      if (!declaration) continue;
+      if (!declaration) {
+        continue;
+      }
       const [imported, alias] = declaration.split(/\s+as\s+/).map((part) => part.trim());
-      if (!imported) continue;
+      if (!imported) {
+        continue;
+      }
       const configured = options.builders.find(
         (builder) =>
           (builder.module === "*" || builder.module === moduleName) && builder.export === imported,
@@ -259,7 +275,9 @@ function isToolFile(
   toolsDir: string,
   options: ResolvedToolDiscoveryOptions,
 ): boolean {
-  if (!file.startsWith(toolsDir)) return false;
+  if (!file.startsWith(toolsDir)) {
+    return false;
+  }
   const relPath = relative(toolsDir, file);
 
   // Check if it matches the pattern and is not ignored
@@ -443,8 +461,12 @@ export function discoverToolsInContent(
   // `explicitName` is the string arg when provided; `exportName` is the
   // enclosing identifier name (for derivation when no explicit name is given).
   const finalName = (explicitName: string | undefined, exportName: string | undefined): string => {
-    if (explicitName !== undefined) return explicitName;
-    if (exportName) return deriveNameFromExportName(exportName);
+    if (explicitName !== undefined) {
+      return explicitName;
+    }
+    if (exportName) {
+      return deriveNameFromExportName(exportName);
+    }
     return deriveNameFromFilePath(file);
   };
 
@@ -460,7 +482,9 @@ export function discoverToolsInContent(
 
   while ((match = namedExportRegex.exec(content)) !== null) {
     const [, exportName, builderName, argBody] = match;
-    if (!exportName || !builderName) continue;
+    if (!exportName || !builderName) {
+      continue;
+    }
     const explicitName = extractStringArg(argBody);
     const toolName = finalName(explicitName, exportName);
     tools.push({
@@ -483,7 +507,9 @@ export function discoverToolsInContent(
 
   while ((match = defaultExportRegex.exec(content)) !== null) {
     const [, builderName, argBody] = match;
-    if (!builderName) continue;
+    if (!builderName) {
+      continue;
+    }
     const explicitName = extractStringArg(argBody ?? "");
     const toolName = finalName(explicitName, undefined);
     tools.push({
@@ -506,7 +532,9 @@ export function discoverToolsInContent(
   >();
   while ((match = varDefRegex.exec(content)) !== null) {
     const [, varName, builderName, argBody] = match;
-    if (!varName || !builderName) continue;
+    if (!varName || !builderName) {
+      continue;
+    }
     const explicitName = extractStringArg(argBody ?? "");
     const toolName = finalName(explicitName, varName);
     varDefs.set(varName, {
@@ -520,7 +548,9 @@ export function discoverToolsInContent(
   const defaultExportVarRegex = /export\s+default\s+(\w+)\s*(?:;|\n|$)/g;
   while ((match = defaultExportVarRegex.exec(content)) !== null) {
     const [, varName] = match;
-    if (!varName) continue;
+    if (!varName) {
+      continue;
+    }
     const def = varDefs.get(varName);
     if (def) {
       const alreadyAdded = tools.some((t) => t.toolName === def.toolName);
@@ -540,16 +570,22 @@ export function discoverToolsInContent(
   const namedExportBraceRegex = /export\s*\{([^}]+)\}/g;
   while ((match = namedExportBraceRegex.exec(content)) !== null) {
     const exportGroup = match[1];
-    if (!exportGroup) continue;
+    if (!exportGroup) {
+      continue;
+    }
     const exports = exportGroup.split(",").map((s) => s.trim());
     for (const exp of exports) {
       // Handle 'foo' or 'foo as bar'
       const parts = exp.split(/\s+as\s+/);
       const rawVar = parts[0];
-      if (!rawVar) continue;
+      if (!rawVar) {
+        continue;
+      }
       const varName = rawVar.trim();
       const exportName = parts[1]?.trim() ?? varName;
-      if (!varName) continue;
+      if (!varName) {
+        continue;
+      }
       const def = varDefs.get(varName);
       if (def) {
         const alreadyAdded = tools.some((t) => t.toolName === def.toolName);
@@ -577,7 +613,9 @@ export function discoverToolsInContent(
  */
 function extractStringArg(argBody: string | undefined): string | undefined {
   const trimmed = (argBody ?? "").trim();
-  if (trimmed === "") return undefined;
+  if (trimmed === "") {
+    return undefined;
+  }
   const match = /^(['"`])([^'"`]+)\1/.exec(trimmed);
   return match?.[2] ?? undefined;
 }
@@ -889,7 +927,11 @@ function log(
   level: "verbose" | "normal",
   message: string,
 ): void {
-  if (options.logLevel === "silent") return;
-  if (level === "verbose" && options.logLevel !== "verbose") return;
+  if (options.logLevel === "silent") {
+    return;
+  }
+  if (level === "verbose" && options.logLevel !== "verbose") {
+    return;
+  }
   console.log(message);
 }
