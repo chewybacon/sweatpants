@@ -384,15 +384,29 @@ function invalid(): CrankError {
   return new CrankError("invalid_resolution_capability", "Invalid capability token");
 }
 
+/**
+ * base64url via `btoa`/`atob` rather than Node's Buffer.
+ *
+ * Capabilities are minted and verified wherever the authority runs, which
+ * includes browsers and edge runtimes. Buffer is a Node global: it breaks
+ * browser bundling, and depending on it here would tie the session contract to
+ * one runtime for no reason.
+ */
 function base64url(bytes: Uint8Array): string {
-  return Buffer.from(bytes).toString("base64url");
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function fromBase64url(value: string): Uint8Array {
   if (!/^[A-Za-z0-9_-]*$/.test(value)) {
     throw invalid();
   }
-  return new Uint8Array(Buffer.from(value, "base64url"));
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
 
 function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
