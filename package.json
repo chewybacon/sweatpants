@@ -23,11 +23,11 @@
         "test:outside-in:hermetic": "pnpm -C apps/yo-chat test:outside-in:hermetic",
         "verify:a2a-inspector-pin": "tsx scripts/verify-a2a-inspector-pin.ts",
         "test:a2a-inspector": "pnpm -C apps/yo-a2a test",
-        "lint": "./node_modules/.bin/oxlint --import-plugin --react-plugin --promise-plugin --vitest-plugin . && pnpm run -r --parallel lint",
+        "lint": "./node_modules/.bin/oxlint --type-aware --import-plugin --react-plugin --promise-plugin --vitest-plugin . && pnpm run -r --parallel lint",
         "lint:fix": "./node_modules/.bin/oxlint --import-plugin --react-plugin --promise-plugin --vitest-plugin --fix .",
         "format": "./node_modules/.bin/oxfmt .",
         "format:check": "files=$(git diff --name-only --diff-filter=ACMRTUXB -- . | grep -E '\\.(ts|tsx|js|jsx|mjs|cjs|json|md|css|yml|yaml)$' || true); [ -z \"$files\" ] || ./node_modules/.bin/oxfmt --check $files",
-        "check": "tsc -b && pnpm check:types-gates",
+        "check": "tsc -b",
         "validate:exports": "tsx scripts/validate-package-exports.ts",
         "validate:module-graph": "tsx scripts/validate-module-graph.ts",
         "validate:product-surface": "tsx scripts/validate-product-surface.ts",
@@ -42,8 +42,7 @@
         "copilot:auth:env": "tsx scripts/copilot-auth.ts env",
         "copilot:auth:sync": "tsx scripts/copilot-auth.ts write-env apps/yo-chat/.env.local",
         "copilot:auth:help": "tsx scripts/copilot-auth.ts help",
-        "pull:gemini-cli": "rm -rf apps/yo-agent/packages/gemini-cli && git clone --depth 1 https://github.com/google-gemini/gemini-cli.git apps/yo-agent/packages/gemini-cli && rm -rf apps/yo-agent/packages/gemini-cli/.git",
-        "check:types-gates": "tsx scripts/check-banned-symbols.ts"
+        "pull:gemini-cli": "rm -rf apps/yo-agent/packages/gemini-cli && git clone --depth 1 https://github.com/google-gemini/gemini-cli.git apps/yo-agent/packages/gemini-cli && rm -rf apps/yo-agent/packages/gemini-cli/.git"
     },
     "dependencies": {
         "@effectionx/context-api": "catalog:",
@@ -55,6 +54,7 @@
         "oxc-parser": "^0.123.0",
         "oxfmt": "^0.43.0",
         "oxlint": "^1.58.0",
+        "oxlint-tsgolint": "^7.0.2001",
         "tsx": "catalog:",
         "typescript": "catalog:"
     },

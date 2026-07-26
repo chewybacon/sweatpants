@@ -7,7 +7,6 @@
     "declaration": false,
     "declarationMap": false,
     "noImplicitAny": false,
-    "baseUrl": ".",
     "paths": {
       "@sweatpants/framework/chat": ["./src/framework-chat-agentcore-shim.ts"]
     },

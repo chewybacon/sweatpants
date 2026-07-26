@@ -2,7 +2,6 @@
   "extends": "@sweatpants/ts-config/tsconfig.app.json",
   "compilerOptions": {
     "types": ["vite/client"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     },
