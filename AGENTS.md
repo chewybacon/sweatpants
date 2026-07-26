@@ -1,5 +1,95 @@
 # Agent Instructions
 
+## Architecture Orientation
+
+Read this before changing anything under `packages/`. It exists because the
+package names do not yet match the ports they implement, and several similarly
+named types are unrelated.
+
+### The four placement axes
+
+A request moves through four independently replaceable boxes. Most confusion
+comes from collapsing box 3 and box 4, which run different code under different
+constraints.
+
+| box                   | decides                                                             | port                                                                                   | live implementations                                                    |
+| --------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 1. Ingress            | where HTTP lands                                                    | `createChatApplication` (`framework/src/server`)                                       | Node HTTP (`apps/yo-chat`)                                              |
+| 2. Journal authority  | where truth lives; the serialization domain                         | `DurableJournalAuthorityService` (22 methods, `session-contract/src/durable-types.ts`) | `InMemoryDurableJournalAuthority`; `createRedisDurableJournalAuthority` |
+| 3. Crank / activation | where the durable program generator runs; chatty with the authority | `ProgramRuntime`, `handler/durable/local-program-host.ts`                              | in-process (Node)                                                       |
+| 4. Tool execution     | where tool code runs; never touches the journal                     | see the two tiers below                                                                | see below                                                               |
+
+Box 4 has two tiers, and they are different ports:
+
+- **Tier A — remote generator, no machine.** `ProgramDriver` (`session-contract`):
+  `attach / step / shutdown / restore? / restoreContext? / manifest?`. Replays
+  from the journal and runs to the next park point. No shell, disk, or ports.
+  Implementations: `createLocalProgramDriver` (`session-contract/src/program-driver.ts`),
+  `tool-runtime-local` (`durable-driver.ts`, `local-worker-durable-driver.ts`),
+  `tool-runtime-agentcore/src/durable-driver.ts`, `a2a/src/driver.ts`.
+- **Tier B — a machine with a disk.** `SandboxProvider` (`session-contract/src/sandbox-substrate.ts`):
+  `create / inspect / connect / suspend? / resume? / restore? / terminate`, plus
+  `SandboxCapabilities` (`shell`, `processExecution`, `localDisk`, `ports`,
+  `workspacePersistence`). **This port has no implementations.** It is design
+  stage; treat any first implementation as unproven, not as a second impl.
+
+Because Tier A stops at park points, a single-invocation executor is a natural
+fit for it. Long unparked work lives in box 3, not box 4.
+
+### Names that look related but are not
+
+- `SandboxProvider` (`session-contract`) — the Tier B runtime port. No impls.
+- `SandboxProviderDefinition` (`framework/src/deployment`) — a _deployment
+  descriptor_ (`image`, `lifecycle`). Produced by `lambdaMicrovm()`. Unrelated
+  to the port above.
+- `LambdaMicrovmWorkspaceManager` (`sandbox-provider-aws`) — a workspace lease
+  manager (`resolve / inspect / close`). Also unrelated to the port above.
+- `crank-store-redis` — despite the name, this is a **journal authority**
+  implementation. It is 359 lines that load a snapshot, run the shared
+  `InMemoryDurableJournalAuthority`, and CAS-write the snapshot back. All
+  authority semantics live in `session-contract/src/durable-authority.ts`.
+
+### There are two chat engines, and both are live
+
+They serve different product surfaces. Fixing one usually means considering the
+other.
+
+- `framework/src/handler/durable/program-driver-chat-engine.ts` — the HTTP chat
+  turn. Reached via `createDurableChatHandler`. This is what `apps/yo-chat` runs.
+- `framework/src/lib/chat/authoring/program.ts` — authored/generated chat
+  programs for A2A-served agents. Reached via `server/standard-a2a-host.ts`.
+
+### Configuration traps that make a wrong setup look right
+
+Each of these has silently cost real debugging time. Prefer failing loudly over
+falling back.
+
+- **`dist` vs `src`.** App tests resolve `@sweatpants/framework` to `dist/`, so
+  edits to framework source have no effect until `pnpm -C packages/framework build`.
+  The `development` export condition resolves to source; `packages/a2a`
+  certification fixtures use `--conditions=development`.
+- **Redis conformance falls back to a fake.** `crank-store-redis`'s conformance
+  suite calls `createMemoryRedisClient()` when it cannot connect, so it passes
+  green against a dead port. Confirm real usage before claiming Redis coverage.
+- **Worker vs in-process ToolSession registry.** Production `tool-runtime-local`
+  requires a worker-backed registry (`driver.ts`). Tests that build an
+  in-process registry exercise a configuration that never ships.
+- **Redis persists between runs.** In-memory stores are fresh each run; Redis is
+  not. Namespace conversation and key prefixes per run, as
+  `apps/yo-chat/acceptance/fixtures/*-harness.ts` and the `crank-store-redis`
+  suite do.
+
+### Durability model in one paragraph
+
+The journal is the only authority. Everything else — hosts, runtimes,
+sandboxes, transports — is replaceable compute. A host may be destroyed at any
+time; work the authority accepted survives, and work it never accepted was
+never promised. Unsafe effects whose attempt is detached settle as a coded
+`effect_outcome_indeterminate` outcome that the authored program acts on; there
+is no state where a pull parks with no exit. `apps/yo-chat/acceptance/`
+demonstrates this: the harnesses model host loss by discarding a runtime while
+the substrate keeps journal, stream buffers, and foreign sessions.
+
 ## Quality Gates and Definition of Done
 
 A coding task is not done until the relevant quality gates for the touched code have passed or any remaining failures have been clearly explained to the user.
