@@ -22,10 +22,24 @@ import {
 import { createStreamTransportHandle } from "./transport.ts";
 import { scenario, type ScenarioContext } from "./scenario.ts";
 
+/** Optional application-owned seams used by causal lifecycle scenarios. */
+export interface TestApplicationScenario {
+  /** Graceful, composition-owned shutdown of the active Host generation. */
+  gracefulShutdown?(options: { graceMs: number }): Promise<void>;
+  /** Catastrophic test hook; the application must discard scopes without finalization claims. */
+  abandon?(): Promise<void>;
+  armFault?(point: string): Promise<void>;
+  waitForFault?(point: string): Promise<void>;
+  readHistory?(sessionId: string, cursor?: string): Promise<unknown>;
+  checkpointEvidence?(executionId: string): Promise<unknown | null>;
+  storageMetrics?(): Promise<unknown>;
+}
+
 export interface TestApplication {
   handle(request: Request): Promise<Response>;
   close(): Promise<void>;
   trace?(conversationId: string): Promise<unknown>;
+  scenario?: TestApplicationScenario;
 }
 
 export interface TestModelInstallation {
@@ -60,8 +74,8 @@ export interface TestRigOptions {
   unmatchedRequests?: "poison" | "buffer";
 }
 
-import type { TestRig } from "./rig-types.ts";
-export type { TestRig } from "./rig-types.ts";
+import type { ScenarioLifecycleControls, TestRig } from "./rig-types.ts";
+export type { ScenarioLifecycleControls, TestRig } from "./rig-types.ts";
 
 export interface TestRigBodyContext {
   signal: AbortSignal;
@@ -217,28 +231,55 @@ export async function withTestRig<T>(
       simulator.baseUrl,
       options.modelId ?? "sweatpants-acceptance",
     );
-    application = await options.createApplication({
-      signal: abort.signal,
-      model: modelInstallation,
-    });
-    binding =
-      options.binding === "in-process"
-        ? {
-            fetch: (input, init) => {
-              const raw =
-                typeof input === "string"
-                  ? input
-                  : input instanceof URL
-                    ? input.toString()
-                    : input.url;
-              return application!.handle(new Request(new URL(raw, "http://localhost"), init));
-            },
-            close: async () => {},
-          }
-        : await createHttpBinding(application);
+    const createApplicationGeneration = async () => {
+      application = await options.createApplication({
+        signal: abort.signal,
+        model: modelInstallation,
+      });
+      binding =
+        options.binding === "in-process"
+          ? {
+              fetch: (input, init) => {
+                const raw =
+                  typeof input === "string"
+                    ? input
+                    : input instanceof URL
+                      ? input.toString()
+                      : input.url;
+                return application!.handle(new Request(new URL(raw, "http://localhost"), init));
+              },
+              close: async () => {},
+            }
+          : await createHttpBinding(application);
+    };
+
+    const replaceApplicationGeneration = async (catastrophic: boolean) => {
+      const retiringApplication = application;
+      const retiringBinding = binding;
+      if (!retiringApplication || !retiringBinding) {
+        throw new Error("Test rig cannot replace an application before it is installed");
+      }
+      if (catastrophic) {
+        if (!retiringApplication.scenario?.abandon) {
+          throw new Error("Scenario host abandonment requires TestApplication.scenario.abandon()");
+        }
+        await retiringApplication.scenario.abandon();
+        // The application-owned hook disposes the catastrophic scope. The rig
+        // only closes its HTTP shell and deliberately does not invoke close().
+        await retiringBinding.close();
+      } else {
+        await retiringBinding.close();
+        await retiringApplication.close();
+      }
+      await createApplicationGeneration();
+    };
+
+    await createApplicationGeneration();
 
     chatRuntime = createChatRuntime({
-      fetch: binding.fetch,
+      // Resolve the binding at request time so a causal scenario can replace a
+      // Host while retaining its model simulator and durable substrate.
+      fetch: (input, init) => binding!.fetch(input, init),
       barrierTimeoutMs,
       onPoison: poison,
       getRootFailure: () => root,
@@ -312,6 +353,58 @@ export async function withTestRig<T>(
       }
     };
 
+    const missingScenarioCapability = (capability: string): never => {
+      throw new Error(
+        `Scenario ${capability} requires a TestApplication.scenario.${capability}() adapter`,
+      );
+    };
+    const lifecycle: ScenarioLifecycleControls = {
+      async gracefulShutdown(shutdownOptions) {
+        const shutdown = application?.scenario?.gracefulShutdown;
+        if (!shutdown) {
+          return missingScenarioCapability("gracefulShutdown");
+        }
+        await shutdown(shutdownOptions);
+      },
+      replace: () => replaceApplicationGeneration(false),
+      abandon: () => replaceApplicationGeneration(true),
+      async armFault(point) {
+        const armFault = application?.scenario?.armFault;
+        if (!armFault) {
+          return missingScenarioCapability("armFault");
+        }
+        await armFault(point);
+      },
+      async waitForFault(point) {
+        const waitForFault = application?.scenario?.waitForFault;
+        if (!waitForFault) {
+          return missingScenarioCapability("waitForFault");
+        }
+        await waitForFault(point);
+      },
+      async readHistory(sessionId, cursor) {
+        const readHistory = application?.scenario?.readHistory;
+        if (!readHistory) {
+          return missingScenarioCapability("readHistory");
+        }
+        return await readHistory(sessionId, cursor);
+      },
+      async checkpointEvidence(executionId) {
+        const checkpointEvidence = application?.scenario?.checkpointEvidence;
+        if (!checkpointEvidence) {
+          return missingScenarioCapability("checkpointEvidence");
+        }
+        return await checkpointEvidence(executionId);
+      },
+      async storageMetrics() {
+        const storageMetrics = application?.scenario?.storageMetrics;
+        if (!storageMetrics) {
+          return missingScenarioCapability("storageMetrics");
+        }
+        return await storageMetrics();
+      },
+    };
+
     const rig: TestRig = {
       get model() {
         if (root) {
@@ -336,6 +429,12 @@ export async function withTestRig<T>(
           throw root;
         }
         return binding!.fetch;
+      },
+      get lifecycle() {
+        if (root) {
+          throw root;
+        }
+        return lifecycle;
       },
       get state() {
         return state;

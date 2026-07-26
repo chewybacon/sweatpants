@@ -869,6 +869,9 @@ importers:
 
   packages/a2a:
     dependencies:
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract
@@ -943,6 +946,9 @@ importers:
       '@standard-schema/spec':
         specifier: 'catalog:'
         version: 1.1.0
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract
@@ -1026,6 +1032,25 @@ importers:
       typescript:
         specifier: ^5.3.0
         version: 5.9.3
+
+  packages/foundation:
+    dependencies:
+      '@noble/hashes':
+        specifier: ^2.2.0
+        version: 2.2.0
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/framework:
     dependencies:
@@ -1494,6 +1519,9 @@ importers:
       '@babel/core':
         specifier: ^7.24.0
         version: 7.28.6
+      '@sweatpants/tool-runtime-local':
+        specifier: workspace:*
+        version: link:../tool-runtime-local
       fast-glob:
         specifier: ^3.3.2
         version: 3.3.3
@@ -1562,6 +1590,9 @@ importers:
 
   packages/workspace-runtime:
     dependencies:
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract

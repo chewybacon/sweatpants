@@ -1,12 +1,8 @@
 import type { Around, Operation, Scope } from "effection";
 import { createApi } from "effection/experimental";
 
-import {
-  canonicalJson,
-  sha256,
-  type DurableProgramContext,
-  type Json,
-} from "@sweatpants/session-contract";
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
+import type { DurableProgramContext, Json } from "@sweatpants/session-contract";
 
 export type DurableClientMethod = (...args: any[]) => Operation<any>;
 export type DurableClientShape = Readonly<Record<string, DurableClientMethod>>;

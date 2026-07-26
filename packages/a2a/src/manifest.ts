@@ -1,13 +1,11 @@
+import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
-  canonicalJson,
-  canonicalSnapshot,
   durableEffectRuntimeSchemas,
   parsePortableSchemaDescriptor,
   validateDurableManifest,
   type DurableEffectRegistry,
   type DurableProgramManifest,
   type EffectDefinition,
-  type Json,
   type PinnedProgram,
 } from "@sweatpants/session-contract";
 import {

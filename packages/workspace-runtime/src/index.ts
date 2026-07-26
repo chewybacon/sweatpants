@@ -3,15 +3,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import {
-  CrankError,
   assertJson,
   canonicalJson,
   canonicalSnapshot,
   sha256,
   sortStrings,
   type Json,
-  useProgramExecution,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/foundation";
+import { CrankError, useProgramExecution } from "@sweatpants/session-contract";
 import { call, resource, useAbortSignal, useScope, type Operation, type Task } from "effection";
 
 import {
