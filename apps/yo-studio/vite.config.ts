@@ -1,7 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { createScope } from "effection";
 import { nodeRequestToWebRequest, sendWebResponse } from "@sweatpants/stream-bridge";
-import { createLambdaMicrovmWorkspaceManager } from "@sweatpants/sandbox-provider-aws";
+import { createLambdaMicrovmWorkspaceManager } from "@sweatpants/workspace-lambda-microvm";
 import { defineConfig, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 

@@ -42,9 +42,9 @@ fit for it. Long unparked work lives in box 3, not box 4.
 - `SandboxProviderDefinition` (`framework/src/deployment`) — a _deployment
   descriptor_ (`image`, `lifecycle`). Produced by `lambdaMicrovm()`. Unrelated
   to the port above.
-- `LambdaMicrovmWorkspaceManager` (`sandbox-provider-aws`) — a workspace lease
+- `LambdaMicrovmWorkspaceManager` (`workspace-lambda-microvm`) — a workspace lease
   manager (`resolve / inspect / close`). Also unrelated to the port above.
-- `crank-store-redis` — despite the name, this is a **journal authority**
+- `journal-authority-redis` — despite the name, this is a **journal authority**
   implementation. It is 359 lines that load a snapshot, run the shared
   `InMemoryDurableJournalAuthority`, and CAS-write the snapshot back. All
   authority semantics live in `session-contract/src/durable-authority.ts`.
@@ -68,7 +68,7 @@ falling back.
   edits to framework source have no effect until `pnpm -C packages/framework build`.
   The `development` export condition resolves to source; `packages/a2a`
   certification fixtures use `--conditions=development`.
-- **Redis conformance falls back to a fake.** `crank-store-redis`'s conformance
+- **Redis conformance falls back to a fake.** `journal-authority-redis`'s conformance
   suite calls `createMemoryRedisClient()` when it cannot connect, so it passes
   green against a dead port. Confirm real usage before claiming Redis coverage.
 - **Worker vs in-process ToolSession registry.** Production `tool-runtime-local`
@@ -76,7 +76,7 @@ falling back.
   in-process registry exercise a configuration that never ships.
 - **Redis persists between runs.** In-memory stores are fresh each run; Redis is
   not. Namespace conversation and key prefixes per run, as
-  `apps/yo-chat/acceptance/fixtures/*-harness.ts` and the `crank-store-redis`
+  `apps/yo-chat/acceptance/fixtures/*-harness.ts` and the `journal-authority-redis`
   suite do.
 
 ### Durability model in one paragraph

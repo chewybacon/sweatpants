@@ -5,7 +5,7 @@ import {
   type ProgramDriverJournal,
   type ProgramDriverJournalStore,
 } from "@sweatpants/framework/server";
-import { createRedisDurableJournalAuthority } from "@sweatpants/crank-store-redis";
+import { createRedisDurableJournalAuthority } from "@sweatpants/journal-authority-redis";
 import type { RedisClientType } from "redis";
 import type {
   CapabilityKeyring,

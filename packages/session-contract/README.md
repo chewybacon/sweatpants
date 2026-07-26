@@ -103,5 +103,5 @@ or replay compatibility path.
 ## Journal authority
 
 Use `createInMemoryDurableJournalAuthority` for development and
-`createRedisDurableJournalAuthority` from `@sweatpants/crank-store-redis` for shared persistence.
+`createRedisDurableJournalAuthority` from `@sweatpants/journal-authority-redis` for shared persistence.
 Both implementations execute the same authority conformance corpus.
