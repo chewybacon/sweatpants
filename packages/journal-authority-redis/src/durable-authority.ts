@@ -181,7 +181,6 @@ export function createRedisDurableJournalAuthority(
     restoreFrontierDigests: [],
     consecutiveRestoreStales: [],
     activationNotBeforeMs: [],
-    placements: [],
   };
 
   async function load(): Promise<{ raw: string; snapshot: DurableAuthoritySnapshot }> {

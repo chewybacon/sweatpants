@@ -33,7 +33,6 @@ import { effectContractDigest } from "./effect-contract.ts";
 import { hasLiveDurableEffect, signalLiveDurableEffect } from "./durable-cancellation-live.ts";
 import type {
   ActivationLeaseState,
-  AgentCoreTaskPlacement,
   AppendEmissionRequest,
   BindRestoreFrontierRequest,
   BindRestoreFrontierResult,
@@ -279,7 +278,6 @@ export interface DurableAuthoritySnapshot {
   restoreFrontierDigests: Array<[string, string]>;
   consecutiveRestoreStales: Array<[string, number]>;
   activationNotBeforeMs: Array<[string, number]>;
-  placements: Array<[string, AgentCoreTaskPlacement]>;
 }
 
 /** Composition options for a process-local authority and optional parsed snapshot. */
@@ -334,7 +332,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   readonly #restoreFrontierDigests = new Map<string, string>();
   readonly #consecutiveRestoreStales = new Map<string, number>();
   readonly #activationNotBeforeMs = new Map<string, number>();
-  readonly #placements = new Map<string, AgentCoreTaskPlacement>();
   readonly #options: Required<
     Omit<
       InMemoryDurableJournalOptions,
@@ -1343,7 +1340,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       restoreFrontierDigests: [...this.#restoreFrontierDigests.entries()],
       consecutiveRestoreStales: [...this.#consecutiveRestoreStales.entries()],
       activationNotBeforeMs: [...this.#activationNotBeforeMs.entries()],
-      placements: structuredClone([...this.#placements.entries()]),
     };
   }
 
@@ -1715,22 +1711,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return { status: "consumed" };
   }
 
-  /** Stores one trusted private placement exactly once and rejects task/sandbox rebinding. */
-  setAgentCorePlacement(placement: AgentCoreTaskPlacement): void {
-    const key = taskKey(placement.journalId, placement.taskId);
-    const existing = this.#placements.get(key);
-    if (existing && canonicalSnapshot(existing).sha !== canonicalSnapshot(placement).sha) {
-      throw new CrankError("idempotency_conflict", "AgentCore task placement is immutable");
-    }
-    this.#placements.set(key, structuredClone(placement));
-  }
-
-  /** Reads private placement without projecting it into semantic records. */
-  agentCorePlacement(journalId: string, taskId: string): AgentCoreTaskPlacement | undefined {
-    const placement = this.#placements.get(taskKey(journalId, taskId));
-    return placement ? structuredClone(placement) : undefined;
-  }
-
   /** Returns a defensive cancellation-state snapshot for fresh replay. */
   *cancellationState(sessionId: string, taskId: string): Operation<DurableCancellationState> {
     return structuredClone(this.#task(sessionId, taskId).cancellation);
@@ -1820,7 +1800,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     this.#restoreFrontierDigests.clear();
     this.#consecutiveRestoreStales.clear();
     this.#activationNotBeforeMs.clear();
-    this.#placements.clear();
     for (const value of snapshot.tasks) {
       const task: Task = {
         ...structuredClone(value),
@@ -1866,8 +1845,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     for (const entry of snapshot.consecutiveRestoreStales)
       this.#consecutiveRestoreStales.set(...entry);
     for (const entry of snapshot.activationNotBeforeMs) this.#activationNotBeforeMs.set(...entry);
-    for (const [key, placement] of snapshot.placements)
-      this.#placements.set(key, structuredClone(placement));
     this.#nonce = snapshot.nonce;
   }
 
@@ -2333,7 +2310,6 @@ function migrateDurableAuthoritySnapshot(value: Json): Json {
       restoreNonces: [],
       consecutiveRestoreStales: [],
       activationNotBeforeMs: [],
-      placements: [],
     };
   }
   if (migrated["version"] !== 3 || !Array.isArray(migrated["activationLeases"])) {
@@ -2365,7 +2341,6 @@ function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySn
     "restoreFrontierDigests",
     "consecutiveRestoreStales",
     "activationNotBeforeMs",
-    "placements",
   ];
   if (!isJsonRecord(value) || !hasExactKeys(value, keys)) return false;
   return (
@@ -2384,9 +2359,7 @@ function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySn
     isStringStringTupleArray(value["restoreNonces"]) &&
     isStringStringTupleArray(value["restoreFrontierDigests"]) &&
     isStringNumberTupleArray(value["consecutiveRestoreStales"]) &&
-    isStringNumberTupleArray(value["activationNotBeforeMs"]) &&
-    Array.isArray(value["placements"]) &&
-    value["placements"].every(isPlacementTuple)
+    isStringNumberTupleArray(value["activationNotBeforeMs"])
   );
 }
 
@@ -2447,86 +2420,8 @@ function isActivationLeaseTuple(value: Json): boolean {
   );
 }
 
-function isPlacementTuple(value: Json): boolean {
-  if (
-    !Array.isArray(value) ||
-    value.length !== 2 ||
-    typeof value[0] !== "string" ||
-    !isJsonRecord(value[1])
-  )
-    return false;
-  const placement = value[1];
-  const affinity = placement["affinity"];
-  const release = placement["release"];
-  const program = placement["program"];
-  return (
-    hasOnlyKeys(
-      placement,
-      ["journalId", "taskId", "affinity", "runtimeSessionId", "release", "program", "createdAt"],
-      ["terminalAt", "lastComputeGeneration"],
-    ) &&
-    ["journalId", "taskId", "runtimeSessionId", "createdAt"].every(
-      (key) => typeof placement[key] === "string",
-    ) &&
-    isJsonRecord(affinity) &&
-    hasExactKeys(affinity, ["kind", "key"]) &&
-    ["invocation", "conversation", "workspace"].includes(String(affinity["kind"])) &&
-    typeof affinity["key"] === "string" &&
-    isPinnedProgramSnapshot(program) &&
-    isRuntimeReleaseSnapshot(release) &&
-    (placement["terminalAt"] === undefined || typeof placement["terminalAt"] === "string") &&
-    (placement["lastComputeGeneration"] === undefined ||
-      typeof placement["lastComputeGeneration"] === "string")
-  );
-}
 
-function isPinnedProgramSnapshot(value: unknown): boolean {
-  return (
-    isJsonRecord(value) &&
-    hasExactKeys(value, ["id", "version", "digest"]) &&
-    typeof value["id"] === "string" &&
-    typeof value["version"] === "string" &&
-    typeof value["digest"] === "string"
-  );
-}
 
-function isRuntimeReleaseSnapshot(value: unknown): boolean {
-  if (!isJsonRecord(value)) return false;
-  const filesystem = value["filesystem"];
-  const lifecycle = value["lifecycle"];
-  return (
-    hasExactKeys(value, [
-      "releaseId",
-      "runtimeArn",
-      "region",
-      "imageDigest",
-      "protocolVersion",
-      "registryDigest",
-      "iamProfile",
-      "networkProfile",
-      "filesystem",
-      "lifecycle",
-    ]) &&
-    [
-      "releaseId",
-      "runtimeArn",
-      "region",
-      "imageDigest",
-      "registryDigest",
-      "iamProfile",
-      "networkProfile",
-    ].every((key) => typeof value[key] === "string") &&
-    value["protocolVersion"] === 1 &&
-    isJsonRecord(filesystem) &&
-    hasExactKeys(filesystem, ["kind", "mountPath"]) &&
-    filesystem["kind"] === "managed_session_storage" &&
-    typeof filesystem["mountPath"] === "string" &&
-    isJsonRecord(lifecycle) &&
-    hasExactKeys(lifecycle, ["idleRuntimeSessionTimeoutSeconds", "maxLifetimeSeconds"]) &&
-    isNonNegativeInteger(lifecycle["idleRuntimeSessionTimeoutSeconds"]) &&
-    isNonNegativeInteger(lifecycle["maxLifetimeSeconds"])
-  );
-}
 
 function isTaskSnapshot(value: Json): boolean {
   if (!isJsonRecord(value)) {

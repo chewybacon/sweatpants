@@ -1,3 +1,4 @@
+import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import type { AnyToolContract, RuntimeTool } from "@sweatpants/core";
 import type { Operation } from "effection";
 import {
@@ -18,7 +19,6 @@ import {
 } from "@sweatpants/framework/server";
 import {
   createDurableToolRegistry,
-  type AgentCoreRuntimeRelease,
   type Json,
   type ProgramDriver,
   type ProgramRoute,

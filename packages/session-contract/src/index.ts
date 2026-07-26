@@ -110,8 +110,6 @@ export {
 /** ProgramDriver durable runtime contracts. */
 export type {
   ActivationLeaseState,
-  AgentCoreRuntimeRelease,
-  AgentCoreTaskPlacement,
   AppendEmissionRequest,
   AttachProgramRequest,
   BindRestoreFrontierRequest,

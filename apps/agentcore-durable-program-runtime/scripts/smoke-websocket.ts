@@ -1,8 +1,9 @@
+import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { readFile } from "node:fs/promises";
 
 import { run } from "effection";
 
-import type { AgentCoreRuntimeRelease, ProgramRoute } from "@sweatpants/session-contract";
+import type { ProgramRoute } from "@sweatpants/session-contract";
 import {
   createAgentCoreDurableProgramDriver,
   createAgentCoreWebSocketProgramTransport,
