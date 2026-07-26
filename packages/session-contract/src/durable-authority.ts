@@ -29,8 +29,11 @@ import {
   stableOpaqueId,
 } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
-import { effectContractDigest } from "./effect-contract.ts";
-import { hasLiveDurableEffect, signalLiveDurableEffect } from "./durable-cancellation-live.ts";
+import {
+  effectContractDigest,
+  hasLiveDurableEffect,
+  signalLiveDurableEffect,
+} from "@sweatpants/durable-effects/runtime";
 import type {
   ActivationLeaseState,
   AppendEmissionRequest,

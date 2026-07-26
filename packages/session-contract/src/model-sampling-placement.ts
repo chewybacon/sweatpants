@@ -2,7 +2,7 @@ import { createContext, type Operation } from "effection";
 
 import { canonicalSnapshot } from "./canonical.ts";
 import { createDurableEffectRegistration } from "./durable-apis.ts";
-import { effectContractDigest } from "./effect-contract.ts";
+import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   MODEL_SAMPLE_EFFECT,
   type ModelSampleCancellationPartial,

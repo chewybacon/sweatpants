@@ -5,10 +5,10 @@ import { call, run, type Operation } from "effection";
 import { createApi } from "effection/experimental";
 import { describe, expect, it } from "vitest";
 
+import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import {
   CrankError,
   DurableEffectRegistryContext,
-  DurableEffectRouting,
   ExecutionDurableEffectRegistryContext,
   JournalAuthorityContext,
   MODEL_SAMPLE_EFFECT,

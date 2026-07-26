@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import { z, type ZodSchema } from "zod";
 import { canonicalJson, sha256, sortStrings } from "@sweatpants/foundation";
+import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   CrankError,
@@ -11,7 +12,6 @@ import {
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
   createInterfaceDerivedPinnedDurableProgram,
-  effectContractDigest,
   createPinnedDurableProgram as createLowLevelDurableTool,
   generateProgramArtifactIdentity,
   type DurableProgramContext,

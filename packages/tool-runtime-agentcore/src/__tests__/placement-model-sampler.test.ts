@@ -1,10 +1,10 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
+import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   MODEL_SAMPLE_EFFECT,
   canonicalSnapshot,
   createCapabilityKeyring,
-  effectContractDigest,
   type ModelSampleRequest,
 } from "@sweatpants/session-contract";
 
