@@ -1,0 +1,50 @@
+{
+    "name": "@sweatpants/history-store",
+    "version": "0.1.0",
+    "description": "Session History storage mechanics",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "default": "./src/index.ts"
+        },
+        "./memory": {
+            "development": {
+                "import": "./src/memory.ts",
+                "types": "./src/memory.ts"
+            },
+            "import": {
+                "types": "./dist/memory.d.ts",
+                "default": "./dist/memory.js"
+            },
+            "default": "./src/memory.ts"
+        }
+    },
+    "scripts": {
+        "build": "tsup",
+        "check": "tsc -b",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@sweatpants/foundation": "workspace:*",
+        "effection": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    }
+}
