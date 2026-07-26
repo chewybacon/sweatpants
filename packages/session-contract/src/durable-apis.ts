@@ -6,9 +6,11 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { assertInlineSize, serializeDurableError } from "./authoring.ts";
 import { assertJson, canonicalSnapshot } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
-import { effectContractDigest } from "./effect-contract.ts";
-import { DurableEffectRouting } from "./effect-routing.ts";
-import { registerLiveDurableEffect } from "./durable-cancellation-live.ts";
+import {
+  DurableEffectRouting,
+  effectContractDigest,
+  registerLiveDurableEffect,
+} from "@sweatpants/durable-effects/runtime";
 import {
   ProgramDriverRegistryContext,
   ProgramExecutionScopeContext,

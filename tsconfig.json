@@ -9,6 +9,9 @@
             "path": "./packages/foundation"
         },
         {
+            "path": "./packages/durable-effects"
+        },
+        {
             "path": "./packages/a2a"
         },
         {

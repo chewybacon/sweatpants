@@ -96,6 +96,7 @@
     },
     "dependencies": {
         "@standard-schema/spec": "catalog:",
+        "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "effection": "catalog:"

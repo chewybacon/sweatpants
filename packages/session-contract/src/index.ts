@@ -69,12 +69,6 @@ export {
   stableOpaqueId,
   sortStrings,
 } from "./canonical.ts";
-export { effectContractDigest, type EffectContractDigestDocumentV1 } from "./effect-contract.ts";
-export {
-  DurableEffectRouting,
-  type DurableEffectRoute,
-  type DurableEffectRoutingRequest,
-} from "./effect-routing.ts";
 export {
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_INPUT_DESCRIPTOR,

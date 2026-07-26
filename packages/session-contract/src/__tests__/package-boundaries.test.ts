@@ -9,12 +9,13 @@ describe("session-contract package boundaries", () => {
     const packageJson = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
     };
-    // @standard-schema/spec is an intentional, pinned interface-only
-    // dependency (unified tool contract design); Zod, framework, runtime, and
-    // Redis imports remain forbidden.
+    // DR-043/DR-054: the Phase 1 extraction makes durable-effects the only
+    // workspace dependency permitted beneath this legacy aggregate. Zod,
+    // framework, runtime, and Redis imports remain forbidden.
     expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual([
       "@noble/hashes",
       "@standard-schema/spec",
+      "@sweatpants/durable-effects",
       "effection",
     ]);
 

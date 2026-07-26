@@ -18,7 +18,7 @@ import {
   DurableProgramCancellation,
 } from "./authoring.ts";
 import { canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
-import { effectContractDigest } from "./effect-contract.ts";
+import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   ProgramExecutionContext,
   createProgramExecutionValue,

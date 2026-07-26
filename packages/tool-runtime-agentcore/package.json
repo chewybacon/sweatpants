@@ -67,6 +67,7 @@
         "@aws-sdk/credential-provider-node": "^3.972.57",
         "@smithy/protocol-http": "^5.5.1",
         "@smithy/signature-v4": "^5.5.1",
+        "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "redis": "^4.7.0",

@@ -1,8 +1,8 @@
 import type { Operation } from "effection";
+import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   CrankError,
   canonicalSnapshot,
-  effectContractDigest,
   MODEL_SAMPLE_EFFECT,
   type Json,
   type ModelSampleDisposition,

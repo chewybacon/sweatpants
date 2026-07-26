@@ -1,6 +1,7 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
+import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   CrankError,
@@ -17,7 +18,6 @@ import {
   createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
   createProgramDriverRegistry,
-  effectContractDigest,
   stableProgramAttachmentId,
   type DurableProgramManifest,
   type EffectDefinition,
