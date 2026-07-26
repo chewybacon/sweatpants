@@ -1,5 +1,5 @@
 {
-    "name": "@sweatpants/sandbox-provider-aws",
+    "name": "@sweatpants/workspace-lambda-microvm",
     "version": "0.1.0",
     "description": "Effection-native AWS Lambda MicroVM workspace provider",
     "license": "MIT",

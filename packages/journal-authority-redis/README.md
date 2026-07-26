@@ -1,9 +1,9 @@
-# @sweatpants/crank-store-redis
+# @sweatpants/journal-authority-redis
 
 Redis-backed ProgramDriver durable journal authority.
 
 ```ts
-import { createRedisDurableJournalAuthority } from "@sweatpants/crank-store-redis";
+import { createRedisDurableJournalAuthority } from "@sweatpants/journal-authority-redis";
 
 const authority = createRedisDurableJournalAuthority(redisClient, {
   journalId: "conversation:123",

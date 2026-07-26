@@ -324,7 +324,7 @@ changing either projection or the program. The conversation ID is retained in
 `localStorage`, so refresh hydrates the same durable handler conversation; only
 New session replaces that identity and remounts the hook.
 
-`@sweatpants/sandbox-provider-aws` now interprets the Lambda deployment in the
+`@sweatpants/workspace-lambda-microvm` now interprets the Lambda deployment in the
 Vite Host: the first ordinary workspace operation for each durable conversation allocates a
 conversation-affine MicroVM, waits for readiness, mints short-lived port-bound auth,
 binds the activation fence, and returns `createHttpWorkspaceConnector()`. The

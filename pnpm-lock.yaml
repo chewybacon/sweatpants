@@ -535,15 +535,15 @@ importers:
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@sweatpants/crank-store-redis':
-        specifier: workspace:*
-        version: link:../../packages/crank-store-redis
       '@sweatpants/durable-streams':
         specifier: workspace:*
         version: link:../../packages/durable-streams
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
+      '@sweatpants/journal-authority-redis':
+        specifier: workspace:*
+        version: link:../../packages/journal-authority-redis
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../../packages/model-provider-pi-ai
@@ -808,15 +808,15 @@ importers:
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
-      '@sweatpants/sandbox-provider-aws':
-        specifier: workspace:*
-        version: link:../../packages/sandbox-provider-aws
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../../packages/session-contract
       '@sweatpants/stream-bridge':
         specifier: workspace:*
         version: link:../../packages/stream-bridge
+      '@sweatpants/workspace-lambda-microvm':
+        specifier: workspace:*
+        version: link:../../packages/workspace-lambda-microvm
       '@sweatpants/workspace-runtime':
         specifier: workspace:*
         version: link:../../packages/workspace-runtime
@@ -986,34 +986,6 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.1.13
-
-  packages/crank-store-redis:
-    dependencies:
-      '@sweatpants/session-contract':
-        specifier: workspace:*
-        version: link:../session-contract
-      effection:
-        specifier: 4.1.0-alpha.9
-        version: 4.1.0-alpha.9
-    devDependencies:
-      '@sweatpants/ts-config':
-        specifier: workspace:*
-        version: link:../ts-config
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.19.5
-      redis:
-        specifier: ^4.7.0
-        version: 4.7.1
-      tsup:
-        specifier: 'catalog:'
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vitest:
-        specifier: 'catalog:'
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/durable-streams:
     dependencies:
@@ -1216,6 +1188,34 @@ importers:
         specifier: 'catalog:'
         version: 8.19.0
 
+  packages/journal-authority-redis:
+    dependencies:
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      redis:
+        specifier: ^4.7.0
+        version: 4.7.1
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/model-provider-pi-ai:
     dependencies:
       '@earendil-works/pi-ai':
@@ -1303,34 +1303,6 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.1.13
-
-  packages/sandbox-provider-aws:
-    dependencies:
-      '@sweatpants/session-contract':
-        specifier: workspace:*
-        version: link:../session-contract
-      '@sweatpants/workspace-runtime':
-        specifier: workspace:*
-        version: link:../workspace-runtime
-      effection:
-        specifier: 4.1.0-alpha.9
-        version: 4.1.0-alpha.9
-    devDependencies:
-      '@sweatpants/ts-config':
-        specifier: workspace:*
-        version: link:../ts-config
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.19.5
-      tsup:
-        specifier: 'catalog:'
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vitest:
-        specifier: 'catalog:'
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/session-contract:
     dependencies:
@@ -1556,6 +1528,34 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.1.13
+
+  packages/workspace-lambda-microvm:
+    dependencies:
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
+      '@sweatpants/workspace-runtime':
+        specifier: workspace:*
+        version: link:../workspace-runtime
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/workspace-runtime:
     dependencies:

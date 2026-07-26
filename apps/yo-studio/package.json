@@ -16,7 +16,7 @@
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/react-chat": "workspace:*",
-        "@sweatpants/sandbox-provider-aws": "workspace:*",
+        "@sweatpants/workspace-lambda-microvm": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/stream-bridge": "workspace:*",
         "@sweatpants/workspace-runtime": "workspace:*",

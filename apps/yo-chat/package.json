@@ -30,7 +30,7 @@
         "@radix-ui/react-scroll-area": "^1.2.10",
         "@radix-ui/react-slot": "^1.2.4",
         "@sweatpants/core": "workspace:*",
-        "@sweatpants/crank-store-redis": "workspace:*",
+        "@sweatpants/journal-authority-redis": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",

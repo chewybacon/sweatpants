@@ -1,5 +1,5 @@
 {
-    "name": "@sweatpants/crank-store-redis",
+    "name": "@sweatpants/journal-authority-redis",
     "version": "0.1.0",
     "description": "Redis-backed ProgramDriver durable journal authority",
     "license": "MIT",
