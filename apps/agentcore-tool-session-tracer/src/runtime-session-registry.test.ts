@@ -188,7 +188,9 @@ describe("RuntimeSessionRegistry protocol safety", () => {
       (response) => response.type === "tool_event" && response.event.type === "elicit_request",
     );
     expect(elicit).toMatchObject({ type: "tool_event", event: { type: "elicit_request" } });
-    if (elicit?.type !== "tool_event" || elicit.event.type !== "elicit_request") return;
+    if (elicit?.type !== "tool_event" || elicit.event.type !== "elicit_request") {
+      return;
+    }
 
     const respond = await registry.handle(
       {

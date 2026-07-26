@@ -68,7 +68,9 @@ export function createAgentCoreToolSessionRegistry(
       : undefined;
     const profile =
       preferred ?? profiles.find((candidate) => candidate.toolNames.includes(toolName));
-    if (!profile) throw new Error(`No AgentCore runtime profile allows tool ${toolName}`);
+    if (!profile) {
+      throw new Error(`No AgentCore runtime profile allows tool ${toolName}`);
+    }
     return profile;
   }
 
@@ -123,7 +125,9 @@ export function createAgentCoreToolSessionRegistry(
 
     if (response.type === "session_not_found") {
       const current = (yield* stores.handles.get(handle.sessionId)) ?? handle;
-      if (terminalStatus(current.status)) return current;
+      if (terminalStatus(current.status)) {
+        return current;
+      }
       const lsn = yield* stores.events.append(handle.sessionId, {
         type: "error",
         name: "AgentCoreToolSessionOrphaned",
@@ -141,7 +145,9 @@ export function createAgentCoreToolSessionRegistry(
 
     if (response.type === "protocol_error" || response.type === "command_conflict") {
       const current = (yield* stores.handles.get(handle.sessionId)) ?? handle;
-      if (terminalStatus(current.status)) return current;
+      if (terminalStatus(current.status)) {
+        return current;
+      }
       const lsn = yield* stores.events.append(handle.sessionId, {
         type: "error",
         name: response.type,
@@ -159,7 +165,9 @@ export function createAgentCoreToolSessionRegistry(
 
     if (response.type === "command_duplicate") {
       const current = (yield* stores.handles.get(handle.sessionId)) ?? handle;
-      if (terminalStatus(current.status)) return current;
+      if (terminalStatus(current.status)) {
+        return current;
+      }
       const stream = yield* runtimeClient.drainEvents(current, current.lastRuntimeEventSeq ?? 0);
       const drained = yield* ingestStream(current, stream);
       return yield* ingest(drained, yield* runtimeClient.inspect(drained));
@@ -184,9 +192,13 @@ export function createAgentCoreToolSessionRegistry(
 
   function* getSession(sessionId: string): Operation<ToolSession | null> {
     const existing = active.get(sessionId);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
     const handle = yield* stores.handles.get(sessionId);
-    if (!handle) return null;
+    if (!handle) {
+      return null;
+    }
     const session = createAgentCoreToolSession({ handle, stores, runtimeClient });
     active.set(sessionId, session);
     return session;
@@ -263,7 +275,9 @@ export function createAgentCoreToolSessionRegistry(
 
     *acquire(sessionId: string): Operation<ToolSession> {
       const session = yield* getSession(sessionId);
-      if (!session) throw new Error(`Session not found: ${sessionId}`);
+      if (!session) {
+        throw new Error(`Session not found: ${sessionId}`);
+      }
       yield* session.status();
       return session;
     },

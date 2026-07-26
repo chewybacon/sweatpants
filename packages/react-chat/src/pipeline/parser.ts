@@ -20,7 +20,7 @@
  * - Closing: ``` or ~~~
  * - Content between is a code block, not text
  */
-import type { Parser, ParserFactory, ParseContext, Frame } from './types.ts'
+import type { Parser, ParserFactory, ParseContext, Frame } from "./types.ts";
 import {
   createTextBlock,
   createCodeBlock,
@@ -32,42 +32,44 @@ import {
   completeBlock,
   clearActiveBlock,
   addTrace,
-} from './frame.ts'
+} from "./frame.ts";
 
 // =============================================================================
 // Fence Detection
 // =============================================================================
 
 /** Regex to detect fence start: ``` or ~~~ with optional language */
-const FENCE_START = /^(`{3,}|~{3,})(\w*)\s*$/
+const FENCE_START = /^(`{3,}|~{3,})(\w*)\s*$/;
 
 /** Regex to detect fence end: ``` or ~~~ */
-const FENCE_END = /^(`{3,}|~{3,})\s*$/
+const FENCE_END = /^(`{3,}|~{3,})\s*$/;
 
 /**
  * Check if a line is a fence start.
  * Returns [delimiter, language] or null.
  */
 const matchFenceStart = (line: string): [string, string] | null => {
-  const match = line.trim().match(FENCE_START)
+  const match = line.trim().match(FENCE_START);
   if (match) {
-    return [match[1]!, match[2] || '']
+    return [match[1]!, match[2] || ""];
   }
-  return null
-}
+  return null;
+};
 
 /**
  * Check if a line is a fence end for a given delimiter.
  */
 const matchFenceEnd = (line: string, delimiter: string): boolean => {
-  const trimmed = line.trim()
-  const match = trimmed.match(FENCE_END)
-  if (!match) return false
+  const trimmed = line.trim();
+  const match = trimmed.match(FENCE_END);
+  if (!match) {
+    return false;
+  }
 
   // Must use same fence character and at least same length
-  const fence = match[1]!
-  return fence[0] === delimiter[0] && fence.length >= delimiter.length
-}
+  const fence = match[1]!;
+  return fence[0] === delimiter[0] && fence.length >= delimiter.length;
+};
 
 // =============================================================================
 // Parser State
@@ -78,13 +80,13 @@ const matchFenceEnd = (line: string, delimiter: string): boolean => {
  */
 interface ParserState {
   /** Are we currently inside a code fence? */
-  inFence: boolean
+  inFence: boolean;
   /** The fence delimiter (``` or ~~~) */
-  delimiter: string
+  delimiter: string;
   /** The language of the current fence */
-  language: string
+  language: string;
   /** Buffer for incomplete line */
-  lineBuffer: string
+  lineBuffer: string;
 }
 
 // =============================================================================
@@ -106,98 +108,98 @@ export const createParser: ParserFactory = () => {
   // State persists across calls
   const state: ParserState = {
     inFence: false,
-    delimiter: '',
-    language: '',
-    lineBuffer: '',
-  }
+    delimiter: "",
+    language: "",
+    lineBuffer: "",
+  };
 
   const parser: Parser = (frame: Frame, chunk: string, ctx: ParseContext): Frame => {
-    let currentFrame = frame
+    let currentFrame = frame;
 
     // Add chunk to line buffer
-    state.lineBuffer += chunk
+    state.lineBuffer += chunk;
 
     // Process complete lines
     while (true) {
-      const newlineIdx = state.lineBuffer.indexOf('\n')
+      const newlineIdx = state.lineBuffer.indexOf("\n");
 
       if (newlineIdx === -1) {
         // No complete line yet
         if (ctx.flush && state.lineBuffer.length > 0) {
           // End of stream - process remaining content
-          currentFrame = processContent(currentFrame, state.lineBuffer, state, true)
-          state.lineBuffer = ''
+          currentFrame = processContent(currentFrame, state.lineBuffer, state, true);
+          state.lineBuffer = "";
         }
-        break
+        break;
       }
 
       // Extract the complete line (including \n)
-      const line = state.lineBuffer.slice(0, newlineIdx + 1)
-      state.lineBuffer = state.lineBuffer.slice(newlineIdx + 1)
+      const line = state.lineBuffer.slice(0, newlineIdx + 1);
+      state.lineBuffer = state.lineBuffer.slice(newlineIdx + 1);
 
       // Process this line
-      currentFrame = processLine(currentFrame, line, state)
+      currentFrame = processLine(currentFrame, line, state);
     }
 
-    return currentFrame
-  }
+    return currentFrame;
+  };
 
-  return parser
-}
+  return parser;
+};
 
 /**
  * Process a complete line (with trailing newline).
  */
 function processLine(frame: Frame, line: string, state: ParserState): Frame {
-  const lineContent = line.trimEnd() // For matching (keep original for raw)
+  const lineContent = line.trimEnd(); // For matching (keep original for raw)
 
   if (!state.inFence) {
     // Outside fence - check for fence start
-    const fenceStart = matchFenceStart(lineContent)
+    const fenceStart = matchFenceStart(lineContent);
 
     if (fenceStart) {
-      const [delimiter, language] = fenceStart
+      const [delimiter, language] = fenceStart;
 
       // Complete any current text block
-      let currentFrame = completeCurrentTextBlock(frame)
+      let currentFrame = completeCurrentTextBlock(frame);
 
       // Enter fence mode
-      state.inFence = true
-      state.delimiter = delimiter
-      state.language = language
+      state.inFence = true;
+      state.delimiter = delimiter;
+      state.language = language;
 
       // Create new code block
-      const codeBlock = createCodeBlock(language, '', 'streaming')
-      currentFrame = addBlock(currentFrame, codeBlock)
-      currentFrame = addTrace(currentFrame, 'parser', 'create', {
+      const codeBlock = createCodeBlock(language, "", "streaming");
+      currentFrame = addBlock(currentFrame, codeBlock);
+      currentFrame = addTrace(currentFrame, "parser", "create", {
         blockId: codeBlock.id,
-        detail: `code fence start: ${language || 'plain'}`,
-      })
+        detail: `code fence start: ${language || "plain"}`,
+      });
 
-      return currentFrame
+      return currentFrame;
     }
 
     // Regular text line - append to current text block
-    return appendTextContent(frame, line)
+    return appendTextContent(frame, line);
   } else {
     // Inside fence - check for fence end
     if (matchFenceEnd(lineContent, state.delimiter)) {
       // Exit fence mode
-      state.inFence = false
-      state.delimiter = ''
-      state.language = ''
+      state.inFence = false;
+      state.delimiter = "";
+      state.language = "";
 
       // Complete the code block
-      const currentFrame = updateActiveBlock(frame, completeBlock)
-      const activeBlock = getActiveBlock(currentFrame)
-      return addTrace(currentFrame, 'parser', 'update', {
+      const currentFrame = updateActiveBlock(frame, completeBlock);
+      const activeBlock = getActiveBlock(currentFrame);
+      return addTrace(currentFrame, "parser", "update", {
         ...(activeBlock && { blockId: activeBlock.id }),
-        detail: 'code fence end',
-      })
+        detail: "code fence end",
+      });
     }
 
     // Regular code line - append to current code block
-    return updateActiveBlock(frame, (block) => appendToBlock(block, line))
+    return updateActiveBlock(frame, (block) => appendToBlock(block, line));
   }
 }
 
@@ -208,29 +210,31 @@ function processContent(
   frame: Frame,
   content: string,
   state: ParserState,
-  isFlush: boolean
+  isFlush: boolean,
 ): Frame {
-  if (!content) return frame
+  if (!content) {
+    return frame;
+  }
 
   if (!state.inFence) {
     // Text content
-    return appendTextContent(frame, content)
+    return appendTextContent(frame, content);
   } else {
     // Code content - but first check if this is a fence close (on flush)
     // We need to check BEFORE appending to avoid including the fence in raw content
     if (isFlush) {
-      const trimmed = content.trim()
+      const trimmed = content.trim();
       if (matchFenceEnd(trimmed, state.delimiter)) {
         // This is a fence close - don't append it, just close the fence
-        state.inFence = false
-        state.delimiter = ''
-        state.language = ''
-        return updateActiveBlock(frame, completeBlock)
+        state.inFence = false;
+        state.delimiter = "";
+        state.language = "";
+        return updateActiveBlock(frame, completeBlock);
       }
     }
-    
+
     // Not a fence close - append the content
-    return updateActiveBlock(frame, (block) => appendToBlock(block, content))
+    return updateActiveBlock(frame, (block) => appendToBlock(block, content));
   }
 }
 
@@ -238,36 +242,36 @@ function processContent(
  * Append text content to the current text block, or create one if needed.
  */
 function appendTextContent(frame: Frame, content: string): Frame {
-  const lastBlock = getLastBlock(frame)
+  const lastBlock = getLastBlock(frame);
 
   // If last block is a streaming text block, append to it
-  if (lastBlock?.type === 'text' && lastBlock.status === 'streaming') {
-    return updateActiveBlock(frame, (block) => appendToBlock(block, content))
+  if (lastBlock?.type === "text" && lastBlock.status === "streaming") {
+    return updateActiveBlock(frame, (block) => appendToBlock(block, content));
   }
 
   // Otherwise, create a new text block
-  const textBlock = createTextBlock(content, 'streaming')
-  let currentFrame = addBlock(frame, textBlock)
-  currentFrame = addTrace(currentFrame, 'parser', 'create', {
+  const textBlock = createTextBlock(content, "streaming");
+  let currentFrame = addBlock(frame, textBlock);
+  currentFrame = addTrace(currentFrame, "parser", "create", {
     blockId: textBlock.id,
-    detail: 'text block',
-  })
+    detail: "text block",
+  });
 
-  return currentFrame
+  return currentFrame;
 }
 
 /**
  * Complete the current text block if there is one.
  */
 function completeCurrentTextBlock(frame: Frame): Frame {
-  const activeBlock = getActiveBlock(frame)
+  const activeBlock = getActiveBlock(frame);
 
-  if (activeBlock?.type === 'text' && activeBlock.status === 'streaming') {
-    const updated = updateActiveBlock(frame, completeBlock)
-    return clearActiveBlock(updated)
+  if (activeBlock?.type === "text" && activeBlock.status === "streaming") {
+    const updated = updateActiveBlock(frame, completeBlock);
+    return clearActiveBlock(updated);
   }
 
-  return frame
+  return frame;
 }
 
 // =============================================================================
@@ -278,4 +282,4 @@ function completeCurrentTextBlock(frame: Frame): Frame {
  * Default parser factory.
  * @internal
  */
-export const defaultParser = createParser
+export const defaultParser = createParser;

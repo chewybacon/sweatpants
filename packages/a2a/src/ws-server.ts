@@ -35,7 +35,9 @@ export function bindA2AExecutorWebSocket(
   let closed = false;
   socket.on("message", (data: RawData, binary) => {
     sequence = sequence.then(async () => {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       const bytes = asBuffer(data);
       if (bytes.byteLength > A2A_MAX_FRAME_BYTES) {
         socket.close(1009, "payload_too_large");
@@ -44,7 +46,9 @@ export function bindA2AExecutorWebSocket(
       const frame = binary ? new Uint8Array(bytes) : bytes.toString("utf8");
       try {
         const response = await run(() => connection.handle(frame));
-        if (response !== undefined && socket.readyState === WebSocket.OPEN) socket.send(response);
+        if (response !== undefined && socket.readyState === WebSocket.OPEN) {
+          socket.send(response);
+        }
       } catch (error) {
         // Parser failures have no trustworthy identity for a rejection frame.
         // Executor application rejections are already encoded by handle().
@@ -60,7 +64,9 @@ export function bindA2AExecutorWebSocket(
     });
   });
   const release = () => {
-    if (closed) return;
+    if (closed) {
+      return;
+    }
     closed = true;
     void sequence.finally(() => run(() => connection.close()));
   };
@@ -71,19 +77,28 @@ export function bindA2AExecutorWebSocket(
 export function parseActivatedA2AExtensions(
   header: string | readonly string[] | undefined,
 ): string[] {
-  if (header === undefined) return [];
+  if (header === undefined) {
+    return [];
+  }
   const values: readonly string[] = Array.isArray(header) ? header : [header];
   const result = values
     .flatMap((value: string) => value.split(",").map((part: string) => part.trim()))
     .filter(Boolean);
-  if (result.some((value) => /[\r\n]/.test(value)))
+  if (result.some((value) => /[\r\n]/.test(value))) {
     throw a2aError("extension_not_activated", "Invalid A2A extension activation header");
+  }
   return [...new Set(result)];
 }
 
 function asBuffer(data: RawData): Buffer {
-  if (Buffer.isBuffer(data)) return data;
-  if (data instanceof ArrayBuffer) return Buffer.from(data);
-  if (Array.isArray(data)) return Buffer.concat(data);
+  if (Buffer.isBuffer(data)) {
+    return data;
+  }
+  if (data instanceof ArrayBuffer) {
+    return Buffer.from(data);
+  }
+  if (Array.isArray(data)) {
+    return Buffer.concat(data);
+  }
   return Buffer.from(data as unknown as ArrayBuffer);
 }

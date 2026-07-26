@@ -103,7 +103,9 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
         );
         const ready = yield* receiveWithin(opened.connection, deadlines.attachMs, "attach");
         assertResponse(ready, request, opened.route);
-        if (ready.type !== "attachment_ready") throw protocol("Expected attachment_ready");
+        if (ready.type !== "attachment_ready") {
+          throw protocol("Expected attachment_ready");
+        }
         const attachment = makeAttachment(
           request,
           opened.route,
@@ -142,8 +144,12 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
         yield* send(handle.connection, message);
         const response = yield* receiveWithin(handle.connection, deadlines.stepMs, "step");
         assertHandleResponse(response, handle);
-        if (response.commandId !== commandId) throw identity("Command response identity mismatch");
-        if (response.type !== "step") throw protocol("Expected exactly one program step");
+        if (response.commandId !== commandId) {
+          throw identity("Command response identity mismatch");
+        }
+        if (response.type !== "step") {
+          throw protocol("Expected exactly one program step");
+        }
         observe(
           options,
           "step",
@@ -172,7 +178,9 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
 
     *shutdown(attachment, reason): Operation<void> {
       const handle = attachmentHandle(attachment);
-      if (handle.shutdown) return;
+      if (handle.shutdown) {
+        return;
+      }
       handle.shutdown = true;
       const commandId = stableControlId(handle, "shutdown");
       try {
@@ -182,10 +190,13 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
         );
         const response = yield* receiveWithin(handle.connection, deadlines.stepMs, "shutdown");
         assertHandleResponse(response, handle);
-        if (response.commandId !== commandId || response.type !== "shutdown_complete")
+        if (response.commandId !== commandId || response.type !== "shutdown_complete") {
           throw protocol("Expected shutdown_complete");
+        }
       } catch (error) {
-        if (reason !== "transport_lost" && !isTransport(error)) throw error;
+        if (reason !== "transport_lost" && !isTransport(error)) {
+          throw error;
+        }
       } finally {
         observe(options, "shutdown", fromHandle(handle), handle.route, handle.attachmentId);
         yield* handle.connection.close(1000, reason);
@@ -198,7 +209,9 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
     },
   };
 
-  if (options.streamedRestore === false) return base;
+  if (options.streamedRestore === false) {
+    return base;
+  }
   return {
     ...base,
     *restoreContext(request) {
@@ -230,7 +243,9 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
         );
         const ready = yield* receiveWithin(opened.connection, deadlines.attachMs, "restore attach");
         assertResponse(ready, request.attach, opened.route);
-        if (ready.type !== "restore_ready") throw protocol("Expected restore_ready");
+        if (ready.type !== "restore_ready") {
+          throw protocol("Expected restore_ready");
+        }
         const attachment = makeAttachment(
           request.attach,
           opened.route,
@@ -241,8 +256,9 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
         let previous = request.replayChainSeed;
         let count = 0;
         yield* streamReplay(request, function* (entry) {
-          if (!verifyA2AReplayEntry(request.replayChainSeed, previous, entry))
+          if (!verifyA2AReplayEntry(request.replayChainSeed, previous, entry)) {
             throw a2aError("replay_diverged", "Caller replay integrity chain diverged");
+          }
           yield* send(
             opened.connection,
             handleEnvelope(
@@ -255,8 +271,9 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
           previous = entry.entryDigest;
           count += 1;
         });
-        if (previous !== request.replayChainDigest)
+        if (previous !== request.replayChainDigest) {
           throw a2aError("replay_diverged", "Caller replay chain end diverged");
+        }
         yield* send(
           opened.connection,
           handleEnvelope(handle, "replay_end", {
@@ -270,7 +287,9 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
           "restore frontier",
         );
         assertHandleResponse(frontier, handle);
-        if (frontier.type !== "frontier") throw protocol("Expected restored frontier");
+        if (frontier.type !== "frontier") {
+          throw protocol("Expected restored frontier");
+        }
         const computed = computeA2AFrontierDigest({
           executionId: handle.route.executionId,
           program: handle.program,
@@ -280,8 +299,9 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
           replayChainDigest: frontier.payload.replayChainDigest,
           step: frontier.payload.step,
         });
-        if (frontier.payload.frontierDigest !== computed)
+        if (frontier.payload.frontierDigest !== computed) {
           throw a2aError("replay_diverged", "Remote frontier digest mismatch");
+        }
         // The remote digest proves the closed public A2A identity. The authority
         // proof remains caller-private and uses its existing task/release domain.
         const authorityFrontierDigest = sha256(
@@ -334,8 +354,9 @@ function* openConnection(
     const hello = parseExecutorHello(
       yield* receiveRawWithin(connection, deadlines.handshakeMs, "extension hello"),
     );
-    if (requiresRestore && !hello.capabilities.streamedRestore)
+    if (requiresRestore && !hello.capabilities.streamedRestore) {
       throw protocol("Executor did not advertise streamed restore");
+    }
     observe(options, "connected", request, route);
     return { connection, route };
   } catch (error) {
@@ -346,7 +367,9 @@ function* openConnection(
 
 function routeFrom(request: AttachProgramRequest): A2AProgramRouteV1 {
   const route = request.route;
-  if (!record(route)) throw a2aError("identity_mismatch", "Missing A2A program route");
+  if (!record(route)) {
+    throw a2aError("identity_mismatch", "Missing A2A program route");
+  }
   const keys = [
     "driverKind",
     "protocolVersion",
@@ -355,8 +378,9 @@ function routeFrom(request: AttachProgramRequest): A2AProgramRouteV1 {
     "driverEndpoint",
     "cardOrigin",
   ];
-  if (Object.keys(route).length !== keys.length || !keys.every((key) => key in route))
+  if (Object.keys(route).length !== keys.length || !keys.every((key) => key in route)) {
     throw a2aError("identity_mismatch", "A2A route fields are not closed");
+  }
   if (
     route["driverKind"] !== "a2a" ||
     route["protocolVersion"] !== 1 ||
@@ -364,8 +388,9 @@ function routeFrom(request: AttachProgramRequest): A2AProgramRouteV1 {
     !nonempty(route["executionId"]) ||
     typeof route["driverEndpoint"] !== "string" ||
     typeof route["cardOrigin"] !== "string"
-  )
+  ) {
     throw a2aError("identity_mismatch", "Invalid pinned A2A route");
+  }
   return route as unknown as A2AProgramRouteV1;
 }
 
@@ -439,7 +464,9 @@ function* receiveWithin(
   phase: string,
 ): Operation<ServerProgramMessageV1> {
   const response = parseServerProgramMessage(yield* receiveRawWithin(connection, timeoutMs, phase));
-  if (response.type === "rejected") throw rejected(response);
+  if (response.type === "rejected") {
+    throw rejected(response);
+  }
   return response;
 }
 function* receiveRawWithin(
@@ -484,8 +511,9 @@ function assertHandleResponse(response: ServerProgramMessageV1, handle: A2AAttac
   });
 }
 function attachmentHandle(attachment: ProgramAttachment): A2AAttachmentHandle {
-  if (!(attachment.handle instanceof A2AAttachmentHandle))
+  if (!(attachment.handle instanceof A2AAttachmentHandle)) {
     throw protocol("Foreign or serialized A2A attachment");
+  }
   return attachment.handle;
 }
 function assertLive(handle: A2AAttachmentHandle, attachment: ProgramAttachment): void {
@@ -494,8 +522,9 @@ function assertLive(handle: A2AAttachmentHandle, attachment: ProgramAttachment):
     attachment.attachmentId !== handle.attachmentId ||
     attachment.executionEpoch !== handle.executionEpoch ||
     attachment.driverKind !== "a2a"
-  )
+  ) {
     throw a2aError("stale_activation", "Stale A2A attachment");
+  }
 }
 function stableControlId(handle: A2AAttachmentHandle, type: string): string {
   return `cmd_${sha256(
@@ -509,8 +538,9 @@ function stableControlId(handle: A2AAttachmentHandle, type: string): string {
   ).slice(0, 40)}`;
 }
 function assertInlineInput(input: Json): void {
-  if (new TextEncoder().encode(canonicalJson(input)).byteLength > A2A_MAX_INLINE_INPUT_BYTES)
+  if (new TextEncoder().encode(canonicalJson(input)).byteLength > A2A_MAX_INLINE_INPUT_BYTES) {
     throw a2aError("payload_too_large", "A2A child input exceeds the 1 MiB authority inline bound");
+  }
 }
 function* streamReplay(
   request: ProgramRestoreRequest,
@@ -521,19 +551,27 @@ function* streamReplay(
     const iterator = asyncIterator.call(request.replay);
     while (true) {
       const next = yield* call(() => iterator.next());
-      if (next.done) return;
+      if (next.done) {
+        return;
+      }
       yield* visit(next.value);
     }
   }
   const syncIterator = request.replay[Symbol.iterator];
-  if (!syncIterator) throw protocol("Replay source is not iterable");
+  if (!syncIterator) {
+    throw protocol("Replay source is not iterable");
+  }
   const iterator = syncIterator.call(request.replay);
-  for (let next = iterator.next(); !next.done; next = iterator.next()) yield* visit(next.value);
+  for (let next = iterator.next(); !next.done; next = iterator.next()) {
+    yield* visit(next.value);
+  }
 }
 function validateDeadlines(value: A2AProgramDriverDeadlines): A2AProgramDriverDeadlines {
-  for (const deadline of Object.values(value))
-    if (!Number.isSafeInteger(deadline) || deadline <= 0)
+  for (const deadline of Object.values(value)) {
+    if (!Number.isSafeInteger(deadline) || deadline <= 0) {
       throw new CrankError("invalid_descriptor", "A2A deadlines must be positive integers");
+    }
+  }
   return Object.freeze(value);
 }
 function rejected(message: Extract<ServerProgramMessageV1, { type: "rejected" }>): CrankError {

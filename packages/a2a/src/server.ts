@@ -36,8 +36,9 @@ export function createA2AProgramRoute(input: {
   driverEndpoint: string;
   cardUrlOrOrigin: string;
 }): A2AProgramRouteV1 {
-  if (!input.executionId || input.executionId.length > 256)
+  if (!input.executionId || input.executionId.length > 256) {
     throw a2aError("identity_mismatch", "Invalid opaque execution ID");
+  }
   return Object.freeze({
     driverKind: "a2a",
     protocolVersion: 1,
@@ -95,16 +96,24 @@ export function createA2AManifestService(options: {
     const safeHeaders = Object.freeze({
       [A2A_EXTENSIONS_HEADER]: CALLER_AUTHORITATIVE_EXTENSION_URI,
     });
-    if (request.method !== "GET") return errorResponse(405, "method_not_allowed");
-    if (!request.activatedExtensions.includes(CALLER_AUTHORITATIVE_EXTENSION_URI))
+    if (request.method !== "GET") {
+      return errorResponse(405, "method_not_allowed");
+    }
+    if (!request.activatedExtensions.includes(CALLER_AUTHORITATIVE_EXTENSION_URI)) {
       return errorResponse(400, "extension_not_activated");
-    if (!request.principal) return errorResponse(401, "authentication_failed");
+    }
+    if (!request.principal) {
+      return errorResponse(401, "authentication_failed");
+    }
     const url = request.url instanceof URL ? request.url : new URL(request.url);
     const program = queryProgram(url);
-    if (!program || !options.authorize(request.principal, program))
+    if (!program || !options.authorize(request.principal, program)) {
       return errorResponse(404, "manifest_not_found");
+    }
     const tool = options.registry.get(`${program.id}@${program.version}#${program.digest}`);
-    if (!tool) return errorResponse(404, "manifest_not_found");
+    if (!tool) {
+      return errorResponse(404, "manifest_not_found");
+    }
     return {
       status: 200,
       headers: safeHeaders,
@@ -117,17 +126,22 @@ export function createA2AManifestService(options: {
 
 function queryProgram(url: URL): PinnedProgram | undefined {
   const allowed = new Set(["id", "version", "digest"]);
-  if ([...url.searchParams.keys()].some((key) => !allowed.has(key))) return undefined;
+  if ([...url.searchParams.keys()].some((key) => !allowed.has(key))) {
+    return undefined;
+  }
   const id = url.searchParams.get("id");
   const version = url.searchParams.get("version");
   const digest = url.searchParams.get("digest");
-  if (!id || !version || !digest || !/^[0-9a-f]{64}$/.test(digest)) return undefined;
+  if (!id || !version || !digest || !/^[0-9a-f]{64}$/.test(digest)) {
+    return undefined;
+  }
   if (
     url.searchParams.getAll("id").length !== 1 ||
     url.searchParams.getAll("version").length !== 1 ||
     url.searchParams.getAll("digest").length !== 1
-  )
+  ) {
     return undefined;
+  }
   return { id, version, digest };
 }
 function errorResponse(status: number, code: string): A2AManifestServiceResponse {

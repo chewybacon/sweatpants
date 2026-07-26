@@ -36,11 +36,21 @@ const categoryBg: Record<EventCategory, string> = {
 };
 
 function categorize(type: string): EventCategory {
-  if (type.startsWith("TEXT_MESSAGE_") || type.startsWith("REASONING_MESSAGE_")) return "text";
-  if (type.startsWith("TOOL_CALL_") || type === "ACTIVITY_SNAPSHOT") return "tool";
-  if (type === "RUN_STARTED" || type === "RUN_FINISHED") return "lifecycle";
-  if (type === "MESSAGES_SNAPSHOT" || type === "STATE_SNAPSHOT") return "state";
-  if (type === "RUN_ERROR") return "error";
+  if (type.startsWith("TEXT_MESSAGE_") || type.startsWith("REASONING_MESSAGE_")) {
+    return "text";
+  }
+  if (type.startsWith("TOOL_CALL_") || type === "ACTIVITY_SNAPSHOT") {
+    return "tool";
+  }
+  if (type === "RUN_STARTED" || type === "RUN_FINISHED") {
+    return "lifecycle";
+  }
+  if (type === "MESSAGES_SNAPSHOT" || type === "STATE_SNAPSHOT") {
+    return "state";
+  }
+  if (type === "RUN_ERROR") {
+    return "error";
+  }
   return "other";
 }
 
@@ -150,7 +160,9 @@ export function StreamInspector({ entries, isStreaming, onClear, onClose }: Stre
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el) {
+      return;
+    }
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
     userScrolledUp.current = !atBottom;
   }, []);

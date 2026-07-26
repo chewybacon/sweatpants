@@ -48,13 +48,17 @@ function combineAbortSignals(
 ): CombinedAbortController {
   const controller = new AbortController();
   const abort = () => {
-    if (!controller.signal.aborted) controller.abort();
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
   };
 
   scopeSignal.addEventListener("abort", abort, { once: true });
   callerSignal?.addEventListener("abort", abort, { once: true });
 
-  if (scopeSignal.aborted || callerSignal?.aborted) abort();
+  if (scopeSignal.aborted || callerSignal?.aborted) {
+    abort();
+  }
 
   return {
     controller,
@@ -83,7 +87,9 @@ function toPiUsage(usage: Usage | undefined): PiUsage {
 }
 
 function fromPiUsage(usage: PiUsage | undefined): Usage | undefined {
-  if (!usage) return undefined;
+  if (!usage) {
+    return undefined;
+  }
   return {
     input: usage.input,
     output: usage.output,
@@ -169,15 +175,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function contentBlockHasProviderPayload(block: ContentBlock): boolean {
-  if (block.type === "text" || block.type === "thinking") return block.text.trim().length > 0;
-  if (block.type === "image") return block.data.length > 0;
-  if (block.type === "toolCall") return block.name.trim().length > 0;
+  if (block.type === "text" || block.type === "thinking") {
+    return block.text.trim().length > 0;
+  }
+  if (block.type === "image") {
+    return block.data.length > 0;
+  }
+  if (block.type === "toolCall") {
+    return block.name.trim().length > 0;
+  }
   return false;
 }
 
 function providerMessageHasPayload(message: Message): boolean {
-  if (message.role === "assistant") return message.content.some(contentBlockHasProviderPayload);
-  if (message.role === "toolResult") return message.content.some(contentBlockHasProviderPayload);
+  if (message.role === "assistant") {
+    return message.content.some(contentBlockHasProviderPayload);
+  }
+  if (message.role === "toolResult") {
+    return message.content.some(contentBlockHasProviderPayload);
+  }
   return true;
 }
 
@@ -244,7 +260,9 @@ function normalizeProviderMessages(messages: Message[]): Message[] {
 }
 
 function safeErrorMessage(message: string | undefined): string | undefined {
-  if (!message) return undefined;
+  if (!message) {
+    return undefined;
+  }
   return message
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/sk-[A-Za-z0-9_-]{12,}/g, "sk-[redacted]")
@@ -256,14 +274,18 @@ function safeErrorMessage(message: string | undefined): string | undefined {
 function safeMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(metadata)) {
-    if (key === "raw" || key === "diagnostics" || key === "stack" || key === "details") continue;
+    if (key === "raw" || key === "diagnostics" || key === "stack" || key === "details") {
+      continue;
+    }
     result[key] = typeof value === "string" ? safeErrorMessage(value) : value;
   }
   return result;
 }
 
 function normalizeToolArguments(value: unknown): Record<string, unknown> {
-  if (isRecord(value)) return value;
+  if (isRecord(value)) {
+    return value;
+  }
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
@@ -336,7 +358,9 @@ function unwrapSchemaResponseMessage(message: AssistantMessage): AssistantMessag
     content.push(block);
   }
 
-  if (!consumedSchemaTool) return message;
+  if (!consumedSchemaTool) {
+    return message;
+  }
   const { stopReason: currentStopReason, ...rest } = message;
   const stopReason = currentStopReason === "toolUse" ? "stop" : currentStopReason;
   return {
@@ -472,7 +496,9 @@ function assertResponseFormatToolPolicy(
   context: Context,
   options: StreamOptions | undefined,
 ): void {
-  if (!options?.responseFormat || !context.tools?.length) return;
+  if (!options?.responseFormat || !context.tools?.length) {
+    return;
+  }
   if (context.tools.some((tool) => tool.name === SCHEMA_TOOL_NAME)) {
     throw new Error(`Tool name "${SCHEMA_TOOL_NAME}" is reserved for structured response output`);
   }
@@ -486,7 +512,9 @@ function toPiContextWithResponseFormat(
   options: StreamOptions | undefined,
 ): PiContext {
   const piContext = toPiContext(context);
-  if (!options?.responseFormat) return piContext;
+  if (!options?.responseFormat) {
+    return piContext;
+  }
 
   const schemaTool = {
     name: SCHEMA_TOOL_NAME,
@@ -508,7 +536,7 @@ function toPiStreamOptions(
   const apiKey = options?.apiKey ?? (model.provider === "ollama" ? "ollama" : undefined);
   const reasoning = toPiReasoning(options);
   return {
-    ...(options?.providerOptions ?? {}),
+    ...options?.providerOptions,
     signal,
     ...(apiKey ? { apiKey } : {}),
     ...(options?.env ? { env: options.env as Record<string, string> } : {}),
@@ -535,7 +563,7 @@ function toPiImageOptions(
   signal: AbortSignal,
 ): PiProviderImagesOptions {
   return {
-    ...(options?.providerOptions ?? {}),
+    ...options?.providerOptions,
     signal,
     ...(options?.apiKey ? { apiKey: options.apiKey } : {}),
     ...(options?.headers ? { headers: options.headers } : {}),
@@ -626,7 +654,9 @@ function fromPiEventForOptions(
   event: PiAssistantMessageEvent,
   options: StreamOptions | undefined,
 ): StreamEvent | undefined {
-  if (options?.responseFormat && event.type.startsWith("toolcall_")) return undefined;
+  if (options?.responseFormat && event.type.startsWith("toolcall_")) {
+    return undefined;
+  }
   const converted = fromPiEvent(event);
   return options?.responseFormat ? unwrapSchemaResponseEvent(converted) : converted;
 }
@@ -676,7 +706,9 @@ export function createPiAiRuntime(): Runtime {
                 const next = yield* call(() => iterator.next());
                 if (!next.done) {
                   const event = fromPiEventForOptions(next.value, options);
-                  if (event) return { done: false, value: event };
+                  if (event) {
+                    return { done: false, value: event };
+                  }
                   continue;
                 }
                 const finalMessage = yield* call(() => stream.result());

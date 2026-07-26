@@ -16,7 +16,9 @@ const repoRoot = resolve(import.meta.dirname, "../../../..");
 const fixture = resolve(import.meta.dirname, "fixtures/foreign-server-process.ts");
 afterEach(async () => {
   for (const child of children) {
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
   }
   children.clear();
 });
@@ -165,14 +167,18 @@ function waitReady(child: ChildProcess): Promise<void> {
   });
 }
 function exited(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve();
+  }
   return new Promise((resolveExit) => child.once("exit", () => resolveExit()));
 }
 async function reservePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("failed to reserve port");
+  if (!address || typeof address === "string") {
+    throw new Error("failed to reserve port");
+  }
   await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
   return address.port;
 }

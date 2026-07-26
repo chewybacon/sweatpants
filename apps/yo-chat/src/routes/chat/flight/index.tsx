@@ -17,10 +17,16 @@ export const Route = createFileRoute("/chat/flight/")({
  * Renders a tool call part with its inline emissions.
  */
 function formatToolResult(result: unknown): string {
-  if (typeof result === "string") return result;
-  if (!result || typeof result !== "object") return "";
+  if (typeof result === "string") {
+    return result;
+  }
+  if (!result || typeof result !== "object") {
+    return "";
+  }
   const record = result as Record<string, unknown>;
-  if (typeof record["message"] === "string") return record["message"];
+  if (typeof record["message"] === "string") {
+    return record["message"];
+  }
   return JSON.stringify(result);
 }
 
@@ -32,7 +38,9 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
     <div className="my-2">
       {toolCall.emissions.map((emission) => {
         const Component = emission.component;
-        if (!Component) return null;
+        if (!Component) {
+          return null;
+        }
 
         return (
           <Component
@@ -151,7 +159,9 @@ function FlightChatDemo() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim() || isStreaming) {
+      return;
+    }
     send(input.trim());
     setInput("");
   };

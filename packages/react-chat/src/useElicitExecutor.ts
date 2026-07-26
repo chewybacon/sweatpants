@@ -86,12 +86,16 @@ export function useElicitExecutor(options: UseElicitExecutorOptions): void {
     const currentPendingIds = new Set<string>();
     for (const tracking of pendingElicits) {
       for (const elicit of tracking.elicitations) {
-        if (elicit.status === "pending") currentPendingIds.add(elicit.elicitId);
+        if (elicit.status === "pending") {
+          currentPendingIds.add(elicit.elicitId);
+        }
       }
     }
 
     for (const id of completedRef.current) {
-      if (!currentPendingIds.has(id)) completedRef.current.delete(id);
+      if (!currentPendingIds.has(id)) {
+        completedRef.current.delete(id);
+      }
     }
     for (const [id, task] of tasksRef.current) {
       if (!currentPendingIds.has(id)) {
@@ -104,16 +108,24 @@ export function useElicitExecutor(options: UseElicitExecutorOptions): void {
       }
     }
     for (const id of executingRef.current) {
-      if (!currentPendingIds.has(id)) executingRef.current.delete(id);
+      if (!currentPendingIds.has(id)) {
+        executingRef.current.delete(id);
+      }
     }
 
     // Find pending elicitations that we haven't started or completed yet
     for (const tracking of pendingElicits) {
       for (const elicit of tracking.elicitations) {
         // Skip if not pending or already executing
-        if (elicit.status !== "pending") continue;
-        if (executingRef.current.has(elicit.elicitId)) continue;
-        if (completedRef.current.has(elicit.elicitId)) continue;
+        if (elicit.status !== "pending") {
+          continue;
+        }
+        if (executingRef.current.has(elicit.elicitId)) {
+          continue;
+        }
+        if (completedRef.current.has(elicit.elicitId)) {
+          continue;
+        }
 
         // Look up the plugin
         const plugin = registry.get(elicit.toolName);
@@ -190,7 +202,9 @@ function* executePluginHandler(
   dispatchLocalEmissionAction: (patch: LocalEmissionAction) => void,
   respondToElicit: UseElicitExecutorOptions["respondToElicit"],
 ) {
-  if (!plugin) return;
+  if (!plugin) {
+    return;
+  }
 
   // Mark the ephemeral browser emission sequence as started
   dispatchLocalEmissionAction({
@@ -233,7 +247,9 @@ function* executePluginHandler(
 
     // Create respond callback that resumes the generator
     const respond = (value: TResponse): void => {
-      if (responded) return;
+      if (responded) {
+        return;
+      }
       responded = true;
 
       traceEmission.response = value;

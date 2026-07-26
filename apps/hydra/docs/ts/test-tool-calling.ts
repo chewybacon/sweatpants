@@ -45,7 +45,7 @@ interface ToolRegistry {
 
 function createToolRegistry(tools: AnyTool[]): ToolRegistry {
   const map = new Map<string, AnyTool>();
-  for (const tool of tools) map.set(tool.name, tool);
+  for (const tool of tools) {map.set(tool.name, tool);}
   return {
     tools: map,
     toOllamaFormat: () => tools.map((tool) => ({
@@ -67,10 +67,10 @@ interface ToolError { callId: string; toolName: string; message: string; phase: 
 function* executeToolCall(registry: ToolRegistry, toolCall: ToolCall): Operation<Result<ToolResult, ToolError>> {
   const { id, function: fn } = toolCall;
   const tool = registry.tools.get(fn.name);
-  if (!tool) return err({ callId: id, toolName: fn.name, message: `Unknown tool: ${fn.name}`, phase: 'not_found' });
+  if (!tool) {return err({ callId: id, toolName: fn.name, message: `Unknown tool: ${fn.name}`, phase: 'not_found' });}
 
   const parsed = tool.parameters.safeParse(fn.arguments);
-  if (!parsed.success) return err({ callId: id, toolName: fn.name, message: `Validation failed: ${parsed.error.message}`, phase: 'validation' });
+  if (!parsed.success) {return err({ callId: id, toolName: fn.name, message: `Validation failed: ${parsed.error.message}`, phase: 'validation' });}
 
   try {
     const result = yield* tool.execute(parsed.data);
@@ -117,7 +117,7 @@ function parseNDJSON<T>(readable: ReadableStream<Uint8Array>): Stream<T, void> {
           if (idx !== -1) {
             const line = buffer.slice(0, idx).trim();
             buffer = buffer.slice(idx + 1);
-            if (line) return { done: false, value: JSON.parse(line) as T };
+            if (line) {return { done: false, value: JSON.parse(line) as T };}
             continue;
           }
           const { done, value } = yield* call(() => reader.read());
@@ -157,8 +157,8 @@ function useChatStream(messages: OllamaMessage[], options?: { tools?: ToolRegist
       body: JSON.stringify({ model: MODEL_NAME, messages, stream: true, ...(options?.tools && { tools: options.tools.toOllamaFormat() }) }),
       signal,
     }));
-    if (!response.ok) throw new Error(`Ollama API error: ${response.status}`);
-    if (!response.body) throw new Error('No response body');
+    if (!response.ok) {throw new Error(`Ollama API error: ${response.status}`);}
+    if (!response.body) {throw new Error('No response body');}
 
     const subscription: Subscription<OllamaChatChunk, void> = yield* parseNDJSON<OllamaChatChunk>(response.body);
     let textBuffer = '';
@@ -169,7 +169,7 @@ function useChatStream(messages: OllamaMessage[], options?: { tools?: ToolRegist
 
     yield* provide({
       *next(): Operation<IteratorResult<ChatEvent, ChatResult>> {
-        if (pendingEvents.length > 0) return { done: false, value: pendingEvents.shift()! };
+        if (pendingEvents.length > 0) {return { done: false, value: pendingEvents.shift()! };}
 
         const next = yield* subscription.next();
         if (next.done) {
@@ -177,7 +177,7 @@ function useChatStream(messages: OllamaMessage[], options?: { tools?: ToolRegist
         }
 
         const chunk = next.value;
-        if (chunk.error) throw new Error(`Ollama: ${chunk.error}`);
+        if (chunk.error) {throw new Error(`Ollama: ${chunk.error}`);}
 
         if (chunk.done) {
           usage = { promptTokens: chunk.prompt_eval_count ?? 0, completionTokens: chunk.eval_count ?? 0, totalTokens: (chunk.prompt_eval_count ?? 0) + (chunk.eval_count ?? 0) };
@@ -187,7 +187,7 @@ function useChatStream(messages: OllamaMessage[], options?: { tools?: ToolRegist
         if (chunk.message.thinking) { thinkingBuffer += chunk.message.thinking; pendingEvents.push({ type: 'thinking', content: chunk.message.thinking }); }
         if (chunk.message.tool_calls) { toolCalls = [...toolCalls, ...chunk.message.tool_calls]; pendingEvents.push({ type: 'tool_calls', toolCalls: chunk.message.tool_calls }); }
 
-        if (pendingEvents.length > 0) return { done: false, value: pendingEvents.shift()! };
+        if (pendingEvents.length > 0) {return { done: false, value: pendingEvents.shift()! };}
         return yield* this.next();
       },
     });
@@ -200,7 +200,7 @@ const calculatorTool = defineTool({
   description: 'Perform basic arithmetic',
   parameters: z.object({ expression: z.string().describe('Math expression like "2 + 2"') }),
   *execute({ expression }) {
-    if (!/^[\d\s+\-*/().]+$/.test(expression)) throw new Error('Invalid expression');
+    if (!/^[\d\s+\-*/().]+$/.test(expression)) {throw new Error('Invalid expression');}
     return { expression, result: Function(`"use strict"; return (${expression})`)() };
   },
 });

@@ -426,7 +426,9 @@ describe("LocalProgramHost", () => {
         catalog,
       });
       const firstParked = yield* first.result;
-      if (firstParked.state !== "parked") throw new Error("expected parked");
+      if (firstParked.state !== "parked") {
+        throw new Error("expected parked");
+      }
       yield* host.respond({
         sessionId: first.sessionId,
         taskId: first.taskId,

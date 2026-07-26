@@ -352,10 +352,14 @@ export function createMockModelProviderDriver(provider: MockProvider): ModelProv
 
         yield* provide({
           *next(): Operation<IteratorResult<RuntimeStreamEvent, AssistantMessage>> {
-            if (pending.length > 0) return { done: false, value: pending.shift()! };
+            if (pending.length > 0) {
+              return { done: false, value: pending.shift()! };
+            }
 
             const next = yield* subscription.next();
-            if (next.done) return { done: true, value: assistantFromProviderResult(next.value) };
+            if (next.done) {
+              return { done: true, value: assistantFromProviderResult(next.value) };
+            }
 
             const event: ChatEvent = next.value;
             const partial: AssistantMessage = {
@@ -405,7 +409,9 @@ export function createMockModelProviderDriver(provider: MockProvider): ModelProv
       const subscription = yield* this.stream(request);
       while (true) {
         const next = yield* subscription.next();
-        if (next.done) return next.value;
+        if (next.done) {
+          return next.value;
+        }
       }
     },
   };
@@ -488,7 +494,7 @@ function createTestToolRuntime(tools: MockTool[]): ToolRuntime {
         callId: request.call.id,
         toolName: request.call.function.name,
       });
-      if (!tool)
+      if (!tool) {
         return {
           kind: "failed",
           ref,
@@ -497,6 +503,7 @@ function createTestToolRuntime(tools: MockTool[]): ToolRuntime {
             message: `Tool not found: ${request.call.function.name}`,
           },
         };
+      }
       const params = validateToolParameters({
         schema: tool.parameters,
         params: request.call.function.arguments,

@@ -32,20 +32,24 @@
  *
  * @packageDocumentation
  */
-import { createScope, type Operation } from 'effection'
-import { z } from 'zod'
-import type { McpHandlerConfig, McpHttpHandler, McpClassifiedRequest, McpSessionState, McpInitializeRequest, McpToolsListRequest } from './types.ts'
-import { McpHandlerError } from './types.ts'
-import { parseAndClassify } from './request-parser.ts'
-import { createSessionManager, type McpSessionManager } from './session-manager.ts'
-import { handlePost, type PostHandlerOptions } from './post-handler.ts'
-import { createSseEventStream, type SseStreamOptions } from './get-handler.ts'
-import {
-  createPrimeEvent,
-  createSseHeaders,
-} from '../protocol/sse-formatter.ts'
-import { JSON_RPC_ERROR_CODES } from '../protocol/types.ts'
-import { MCP_PROTOCOL_VERSION } from '@sweatpants/session-contract'
+import { createScope, type Operation } from "effection";
+import { z } from "zod";
+import type {
+  McpHandlerConfig,
+  McpHttpHandler,
+  McpClassifiedRequest,
+  McpSessionState,
+  McpInitializeRequest,
+  McpToolsListRequest,
+} from "./types.ts";
+import { McpHandlerError } from "./types.ts";
+import { parseAndClassify } from "./request-parser.ts";
+import { createSessionManager, type McpSessionManager } from "./session-manager.ts";
+import { handlePost, type PostHandlerOptions } from "./post-handler.ts";
+import { createSseEventStream, type SseStreamOptions } from "./get-handler.ts";
+import { createPrimeEvent, createSseHeaders } from "../protocol/sse-formatter.ts";
+import { JSON_RPC_ERROR_CODES } from "../protocol/types.ts";
+import { MCP_PROTOCOL_VERSION } from "@sweatpants/session-contract";
 
 // =============================================================================
 // HANDLER OPTIONS
@@ -56,9 +60,9 @@ import { MCP_PROTOCOL_VERSION } from '@sweatpants/session-contract'
  */
 export interface McpHandlerOptions extends McpHandlerConfig {
   /** POST handler options */
-  postOptions?: PostHandlerOptions | undefined
+  postOptions?: PostHandlerOptions | undefined;
   /** SSE stream options */
-  sseOptions?: SseStreamOptions | undefined
+  sseOptions?: SseStreamOptions | undefined;
 }
 
 // =============================================================================
@@ -71,16 +75,16 @@ export interface McpHandlerOptions extends McpHandlerConfig {
 function createJsonRpcErrorResponse(
   code: number,
   message: string,
-  id: string | number | null = null
+  id: string | number | null = null,
 ): Record<string, unknown> {
   return {
-    jsonrpc: '2.0',
+    jsonrpc: "2.0",
     id,
     error: {
       code,
       message,
     },
-  }
+  };
 }
 
 /**
@@ -91,16 +95,16 @@ function createErrorResponse(
   code: number,
   message: string,
   id: string | number | null = null,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
 ): Response {
-  const body = createJsonRpcErrorResponse(code, message, id)
+  const body = createJsonRpcErrorResponse(code, message, id);
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...headers,
     },
-  })
+  });
 }
 
 // =============================================================================
@@ -112,10 +116,10 @@ function createErrorResponse(
  */
 function createInitializeResponse(
   request: McpInitializeRequest,
-  _options: McpHandlerOptions
+  _options: McpHandlerOptions,
 ): Record<string, unknown> {
   return {
-    jsonrpc: '2.0',
+    jsonrpc: "2.0",
     id: request.requestId,
     result: {
       protocolVersion: MCP_PROTOCOL_VERSION,
@@ -125,78 +129,85 @@ function createInitializeResponse(
         },
       },
       serverInfo: {
-        name: 'mcp-durable-runtime',
-        version: '1.0.0',
+        name: "mcp-durable-runtime",
+        version: "1.0.0",
       },
     },
-  }
+  };
 }
 
 /**
  * Serialize an ElicitsMap to JSON Schema format for the _meta extension.
- * 
+ *
  * Converts Zod schemas in the elicits map to JSON Schema format:
  * { [key]: { response: JsonSchema, context?: JsonSchema } }
  */
 function serializeElicitsMap(
-  elicits: Record<string, { response?: z.ZodType; context?: z.ZodType }> | undefined
-): Record<string, { response: Record<string, unknown>; context?: Record<string, unknown> }> | undefined {
+  elicits: Record<string, { response?: z.ZodType; context?: z.ZodType }> | undefined,
+):
+  | Record<string, { response: Record<string, unknown>; context?: Record<string, unknown> }>
+  | undefined {
   if (!elicits || Object.keys(elicits).length === 0) {
-    return undefined
+    return undefined;
   }
 
-  const result: Record<string, { response: Record<string, unknown>; context?: Record<string, unknown> }> = {}
+  const result: Record<
+    string,
+    { response: Record<string, unknown>; context?: Record<string, unknown> }
+  > = {};
 
   for (const [key, def] of Object.entries(elicits)) {
-    if (!def.response) continue
+    if (!def.response) {
+      continue;
+    }
 
     try {
-      const responseSchema = z.toJSONSchema(def.response)
+      const responseSchema = z.toJSONSchema(def.response);
       const entry: { response: Record<string, unknown>; context?: Record<string, unknown> } = {
         response: responseSchema,
-      }
+      };
 
       if (def.context) {
         try {
-          entry.context = z.toJSONSchema(def.context)
+          entry.context = z.toJSONSchema(def.context);
         } catch {
           // Skip context if conversion fails
         }
       }
 
-      result[key] = entry
+      result[key] = entry;
     } catch {
       // Skip this elicit key if response conversion fails
     }
   }
 
-  return Object.keys(result).length > 0 ? result : undefined
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 /**
  * Create a tools/list response.
- * 
+ *
  * Includes x-sweatpants extension in _meta for tools with elicits definitions,
  * enabling clients to introspect elicitation schemas for type generation.
  */
 function createToolsListResponse(
   request: McpToolsListRequest,
-  tools: Map<string, unknown>
+  tools: Map<string, unknown>,
 ): Record<string, unknown> {
   const toolList = Array.from(tools.entries()).map(([name, tool]) => {
     // Extract tool metadata - tools have name, description, parameters, elicits, and requires
-    const t = tool as { 
-      description?: string
-      parameters?: z.ZodType
-      elicits?: Record<string, { response?: z.ZodType; context?: z.ZodType }>
-      requires?: { elicitation?: boolean; sampling?: boolean }
-    }
-    
+    const t = tool as {
+      description?: string;
+      parameters?: z.ZodType;
+      elicits?: Record<string, { response?: z.ZodType; context?: z.ZodType }>;
+      requires?: { elicitation?: boolean; sampling?: boolean };
+    };
+
     // Convert Zod schema to JSON Schema
-    let inputSchema: Record<string, unknown> = { type: 'object', properties: {} }
+    let inputSchema: Record<string, unknown> = { type: "object", properties: {} };
     if (t.parameters) {
       try {
-        inputSchema = z.toJSONSchema(t.parameters)
+        inputSchema = z.toJSONSchema(t.parameters);
       } catch {
         // Fallback if conversion fails
       }
@@ -205,38 +216,38 @@ function createToolsListResponse(
     // Build the base tool definition
     const toolDef: Record<string, unknown> = {
       name,
-      description: t.description ?? '',
+      description: t.description ?? "",
       inputSchema,
-    }
+    };
 
     // Add x-sweatpants extension in _meta if tool has elicits or requires
-    const elicitsSchema = serializeElicitsMap(t.elicits)
+    const elicitsSchema = serializeElicitsMap(t.elicits);
     if (elicitsSchema || t.requires) {
-      const xSweatpants: Record<string, unknown> = {}
-      
+      const xSweatpants: Record<string, unknown> = {};
+
       if (elicitsSchema) {
-        xSweatpants['elicits'] = elicitsSchema
-      }
-      
-      if (t.requires) {
-        xSweatpants['requires'] = t.requires
+        xSweatpants["elicits"] = elicitsSchema;
       }
 
-      toolDef['_meta'] = {
-        'x-sweatpants': xSweatpants,
+      if (t.requires) {
+        xSweatpants["requires"] = t.requires;
       }
+
+      toolDef["_meta"] = {
+        "x-sweatpants": xSweatpants,
+      };
     }
-    
-    return toolDef
-  })
+
+    return toolDef;
+  });
 
   return {
-    jsonrpc: '2.0',
+    jsonrpc: "2.0",
     id: request.requestId,
     result: {
       tools: toolList,
     },
-  }
+  };
 }
 
 // =============================================================================
@@ -250,221 +261,221 @@ function createToolsListResponse(
  * MCP Streamable HTTP transport protocol.
  */
 export function createMcpHandler(options: McpHandlerOptions): {
-  handler: McpHttpHandler
-  manager: McpSessionManager
+  handler: McpHttpHandler;
+  manager: McpSessionManager;
 } {
   const {
     registry,
     tools,
     sessionTimeout,
     sseRetryMs = 1000,
-    logger = 'mcp-handler',
+    logger = "mcp-handler",
     includeStackTraces = false,
     postOptions = {},
     sseOptions = {},
-  } = options
+  } = options;
 
   // Create session manager
   const manager = createSessionManager({
     registry,
     tools,
     sessionTimeout,
-  })
+  });
 
   // Merge SSE options with defaults
   const mergedSseOptions: SseStreamOptions = {
     retryMs: sseRetryMs,
     logger,
     ...sseOptions,
-  }
+  };
 
   /**
    * The main HTTP handler function.
    */
   const handler: McpHttpHandler = async (request: Request): Promise<Response> => {
-    const [scope, destroy] = createScope()
+    const [scope, destroy] = createScope();
 
     try {
       // Parse and classify the request
-      let classified: McpClassifiedRequest
+      let classified: McpClassifiedRequest;
       try {
         classified = await scope.run(function* () {
-          return yield* parseAndClassify(request)
-        })
+          return yield* parseAndClassify(request);
+        });
       } catch (error) {
-        await destroy()
+        await destroy();
         if (error instanceof McpHandlerError) {
           return createErrorResponse(
             error.httpStatus,
-            error.code === 'INVALID_REQUEST'
+            error.code === "INVALID_REQUEST"
               ? JSON_RPC_ERROR_CODES.INVALID_PARAMS
               : JSON_RPC_ERROR_CODES.INVALID_REQUEST,
             error.message,
             error.requestId,
-          )
+          );
         }
-        throw error
+        throw error;
       }
 
       // Handle based on request type
       switch (classified.type) {
-        case 'initialize': {
+        case "initialize": {
           // Generate a session ID for this connection
-          const initSessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
-          
+          const initSessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+
           // Respond with server capabilities and session ID
-          const response = createInitializeResponse(classified, options)
-          await destroy()
+          const response = createInitializeResponse(classified, options);
+          await destroy();
           return new Response(JSON.stringify(response), {
             status: 200,
-            headers: { 
-              'Content-Type': 'application/json',
-              'Mcp-Session-Id': initSessionId,
+            headers: {
+              "Content-Type": "application/json",
+              "Mcp-Session-Id": initSessionId,
             },
-          })
+          });
         }
 
-        case 'tools_list': {
+        case "tools_list": {
           // Respond with list of available tools
-          const response = createToolsListResponse(classified, tools)
-          await destroy()
+          const response = createToolsListResponse(classified, tools);
+          await destroy();
           return new Response(JSON.stringify(response), {
             status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          })
+            headers: { "Content-Type": "application/json" },
+          });
         }
 
-        case 'ping': {
+        case "ping": {
           // Respond to ping
-          await destroy()
-          return new Response(JSON.stringify({
-            jsonrpc: '2.0',
-            id: classified.requestId,
-            result: {},
-          }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          })
+          await destroy();
+          return new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: classified.requestId,
+              result: {},
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
         }
 
-        case 'notification': {
+        case "notification": {
           // Notifications don't expect a response - just acknowledge
-          await destroy()
-          return new Response(null, { status: 202 })
+          await destroy();
+          return new Response(null, { status: 202 });
         }
 
-        case 'tools_call':
-        case 'elicit_response':
-        case 'sample_response': {
+        case "tools_call":
+        case "elicit_response":
+        case "sample_response": {
           // POST requests
           const result = await scope.run(function* () {
-            return yield* handlePost(classified, manager, postOptions)
-          })
+            return yield* handlePost(classified, manager, postOptions);
+          });
 
-          if (result.type === 'json') {
-            await destroy()
+          if (result.type === "json") {
+            await destroy();
             return new Response(JSON.stringify(result.body), {
               status: result.status,
               headers: {
-                'Content-Type': 'application/json',
+                "Content-Type": "application/json",
                 ...result.headers,
               },
-            })
+            });
           }
 
           // Upgrade to SSE - get session state
-          const { sessionId } = result
+          const { sessionId } = result;
           const state = await scope.run(function* () {
-            return yield* manager.getSession(sessionId)
-          })
+            return yield* manager.getSession(sessionId);
+          });
 
           if (!state) {
-            await destroy()
+            await destroy();
             return createErrorResponse(
               404,
               JSON_RPC_ERROR_CODES.INTERNAL_ERROR,
-              'Session state not found'
-            )
+              "Session state not found",
+            );
           }
 
           // Create SSE response
-          return createSseResponse(scope, destroy, state, manager, mergedSseOptions)
+          return createSseResponse(scope, destroy, state, manager, mergedSseOptions);
         }
 
-        case 'sse_stream': {
+        case "sse_stream": {
           // GET request for SSE
-          const { sessionId, afterLSN } = classified
+          const { sessionId, afterLSN } = classified;
 
           // If no session ID or empty, return an idle SSE stream
           // This is used for general server notifications (not tool-specific)
           if (!sessionId) {
-            return createIdleSseResponse(destroy, mergedSseOptions)
+            return createIdleSseResponse(destroy, mergedSseOptions);
           }
 
           // Try to acquire the session
           try {
             const state = await scope.run(function* () {
-              const s = yield* manager.acquireSession(sessionId)
+              const s = yield* manager.acquireSession(sessionId);
               if (afterLSN !== undefined) {
-                s.lastLSN = afterLSN
+                s.lastLSN = afterLSN;
               }
-              return s
-            })
+              return s;
+            });
 
-            return createSseResponse(scope, destroy, state, manager, mergedSseOptions)
+            return createSseResponse(scope, destroy, state, manager, mergedSseOptions);
           } catch {
             // Session not found - return idle stream instead of error
-            return createIdleSseResponse(destroy, mergedSseOptions)
+            return createIdleSseResponse(destroy, mergedSseOptions);
           }
         }
 
-        case 'terminate': {
+        case "terminate": {
           // DELETE request
-          const { sessionId } = classified
+          const { sessionId } = classified;
 
           await scope.run(function* () {
-            yield* manager.terminateSession(sessionId)
-          })
+            yield* manager.terminateSession(sessionId);
+          });
 
-          await destroy()
-          return new Response(null, { status: 204 })
+          await destroy();
+          return new Response(null, { status: 204 });
         }
 
         default:
-          await destroy()
+          await destroy();
           return createErrorResponse(
             400,
             JSON_RPC_ERROR_CODES.INVALID_REQUEST,
-            'Unknown request type'
-          )
+            "Unknown request type",
+          );
       }
     } catch (error) {
-      await destroy()
+      await destroy();
 
       if (error instanceof McpHandlerError) {
         return createErrorResponse(
           error.httpStatus,
-          error.code === 'INVALID_REQUEST'
+          error.code === "INVALID_REQUEST"
             ? JSON_RPC_ERROR_CODES.INVALID_PARAMS
             : JSON_RPC_ERROR_CODES.INTERNAL_ERROR,
           error.message,
           error.requestId,
-        )
+        );
       }
 
-      const message = includeStackTraces && error instanceof Error
-        ? `${error.message}\n${error.stack}`
-        : 'Internal server error'
+      const message =
+        includeStackTraces && error instanceof Error
+          ? `${error.message}\n${error.stack}`
+          : "Internal server error";
 
-      return createErrorResponse(
-        500,
-        JSON_RPC_ERROR_CODES.INTERNAL_ERROR,
-        message
-      )
+      return createErrorResponse(500, JSON_RPC_ERROR_CODES.INTERNAL_ERROR, message);
     }
-  }
+  };
 
-  return { handler, manager }
+  return { handler, manager };
 }
 
 // =============================================================================
@@ -473,53 +484,50 @@ export function createMcpHandler(options: McpHandlerOptions): {
 
 /**
  * Create an idle SSE stream for general server notifications.
- * 
+ *
  * This is returned when a client connects without a valid session ID.
  * It sends a keepalive comment every 30 seconds to keep the connection alive.
  */
-function createIdleSseResponse(
-  destroy: () => Promise<void>,
-  options: SseStreamOptions
-): Response {
-  const { retryMs = 1000 } = options
+function createIdleSseResponse(destroy: () => Promise<void>, options: SseStreamOptions): Response {
+  const { retryMs = 1000 } = options;
 
-  const headers = new Headers(createSseHeaders())
-  const encoder = new TextEncoder()
+  const headers = new Headers(createSseHeaders());
+  const encoder = new TextEncoder();
 
-  let intervalId: ReturnType<typeof setInterval> | null = null
+  let intervalId: ReturnType<typeof setInterval> | null = null;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       // Send initial retry directive
-      controller.enqueue(encoder.encode(`retry: ${retryMs}\n\n`))
-      
+      controller.enqueue(encoder.encode(`retry: ${retryMs}\n\n`));
+
       // Send keepalive comments every 30 seconds
       intervalId = setInterval(() => {
         try {
-          controller.enqueue(encoder.encode(`: keepalive\n\n`))
+          controller.enqueue(encoder.encode(`: keepalive\n\n`));
         } catch {
           // Stream might be closed
           if (intervalId) {
-            clearInterval(intervalId)
-            intervalId = null
+            clearInterval(intervalId);
+            intervalId = null;
           }
         }
-      }, 30000)
+      }, 30000);
     },
 
     cancel() {
       if (intervalId) {
-        clearInterval(intervalId)
-        intervalId = null
+        clearInterval(intervalId);
+        intervalId = null;
       }
-      destroy().catch(() => {})
+      destroy().catch(() => {});
     },
-  })
+  });
 
   return new Response(stream, {
     status: 200,
     headers,
-  })
+  });
 }
 
 // =============================================================================
@@ -528,7 +536,7 @@ function createIdleSseResponse(
 
 /**
  * Create an SSE Response from a session state.
- * 
+ *
  * Uses a queue-based pattern to bridge between Effection's cooperative
  * scheduling and the ReadableStream's pull-based model. A persistent
  * Effection task reads events and pushes them to a queue, while pull()
@@ -539,41 +547,41 @@ function createSseResponse(
   destroy: () => Promise<void>,
   state: McpSessionState,
   manager: McpSessionManager,
-  options: SseStreamOptions
+  options: SseStreamOptions,
 ): Response {
-  const { sessionId } = state
-  const { retryMs = 1000 } = options
+  const { sessionId } = state;
+  const { retryMs = 1000 } = options;
 
   // Build headers
-  const headers = new Headers(createSseHeaders())
-  headers.set('Mcp-Session-Id', sessionId)
+  const headers = new Headers(createSseHeaders());
+  headers.set("Mcp-Session-Id", sessionId);
 
   // Encoder for stream
-  const encoder = new TextEncoder()
+  const encoder = new TextEncoder();
 
   // Queue for bridging Effection -> ReadableStream
   // Events are pushed by the Effection task, consumed by pull()
-  const eventQueue: Array<IteratorResult<string, void>> = []
-  let queueResolver: (() => void) | null = null
-  let streamDone = false
-  let scopeDestroyed = false
+  const eventQueue: Array<IteratorResult<string, void>> = [];
+  let queueResolver: (() => void) | null = null;
+  let streamDone = false;
+  let scopeDestroyed = false;
 
   // Helper to wait for queue to have items
   function waitForQueueItem(): Promise<void> {
     if (eventQueue.length > 0 || streamDone) {
-      return Promise.resolve()
+      return Promise.resolve();
     }
-    return new Promise<void>(resolve => {
-      queueResolver = resolve
-    })
+    return new Promise<void>((resolve) => {
+      queueResolver = resolve;
+    });
   }
 
   // Helper to push to queue and wake up waiter
   function pushToQueue(item: IteratorResult<string, void>): void {
-    eventQueue.push(item)
+    eventQueue.push(item);
     if (queueResolver) {
-      queueResolver()
-      queueResolver = null
+      queueResolver();
+      queueResolver = null;
     }
   }
 
@@ -581,8 +589,8 @@ function createSseResponse(
     async start(controller) {
       try {
         // Send prime event immediately
-        const primeEvent = createPrimeEvent(sessionId, retryMs)
-        controller.enqueue(encoder.encode(primeEvent))
+        const primeEvent = createPrimeEvent(sessionId, retryMs);
+        controller.enqueue(encoder.encode(primeEvent));
 
         // Start a persistent Effection task that reads from subscription
         // and pushes to the queue. This scope.run() stays active until
@@ -592,106 +600,108 @@ function createSseResponse(
         // and pushes to the queue. This scope.run() stays active until
         // the stream completes, which keeps the Effection scheduler running
         // and allows spawned tasks (like tool execution) to process events.
-        scope.run(function* () {
-          try {
-            const subscription = yield* createSseEventStream(state, manager, options)
-            
-            while (!scopeDestroyed) {
-              const result = yield* subscription.next()
-              pushToQueue(result)
-              
-              if (result.done) {
-                break
+        scope
+          .run(function* () {
+            try {
+              const subscription = yield* createSseEventStream(state, manager, options);
+
+              while (!scopeDestroyed) {
+                const result = yield* subscription.next();
+                pushToQueue(result);
+
+                if (result.done) {
+                  break;
+                }
+              }
+            } catch (error) {
+              // Push error as a special marker
+              pushToQueue({ done: true, value: undefined });
+              throw error;
+            } finally {
+              streamDone = true;
+              // Wake up any waiting pull()
+              if (queueResolver) {
+                queueResolver();
+                queueResolver = null;
               }
             }
-          } catch (error) {
-            // Push error as a special marker
-            pushToQueue({ done: true, value: undefined })
-            throw error
-          } finally {
-            streamDone = true
-            // Wake up any waiting pull()
+          })
+          .catch(() => {
+            // Errors will surface via queue, no need to log here
+            streamDone = true;
             if (queueResolver) {
-              queueResolver()
-              queueResolver = null
+              queueResolver();
+              queueResolver = null;
             }
-          }
-        }).catch(() => {
-          // Errors will surface via queue, no need to log here
-          streamDone = true
-          if (queueResolver) {
-            queueResolver()
-            queueResolver = null
-          }
-        })
+          });
       } catch (error) {
-        controller.error(error)
+        controller.error(error);
       }
     },
 
     async pull(controller) {
       if (scopeDestroyed) {
-        controller.close()
-        return
+        controller.close();
+        return;
       }
 
       // Wait for an item in the queue
-      await waitForQueueItem()
+      await waitForQueueItem();
 
       // Get item from queue
-      const result = eventQueue.shift()
-      
+      const result = eventQueue.shift();
+
       if (!result || result.done) {
-        controller.close()
+        controller.close();
         if (!scopeDestroyed) {
-          scopeDestroyed = true
+          scopeDestroyed = true;
           try {
             await scope.run(function* () {
-              yield* manager.releaseSession(sessionId)
-            })
+              yield* manager.releaseSession(sessionId);
+            });
           } catch {
             // Ignore release errors
           }
           try {
-            await destroy()
+            await destroy();
           } catch {
             // Ignore destroy errors
           }
         }
       } else {
-        controller.enqueue(encoder.encode(result.value))
+        controller.enqueue(encoder.encode(result.value));
       }
     },
 
     async cancel() {
       if (!scopeDestroyed) {
-        scopeDestroyed = true
-        streamDone = true
+        scopeDestroyed = true;
+        streamDone = true;
         // Wake up any blocked queue wait
         if (queueResolver) {
-          queueResolver()
-          queueResolver = null
+          queueResolver();
+          queueResolver = null;
         }
         try {
           await scope.run(function* () {
-            yield* manager.releaseSession(sessionId)
-          })
+            yield* manager.releaseSession(sessionId);
+          });
         } catch {
           // Ignore release errors
         }
         try {
-          await destroy()
+          await destroy();
         } catch {
           // Ignore destroy errors
         }
       }
     },
-  })
+  });
 
   return new Response(stream, {
     status: 200,
     headers,
-  })
+  });
 }
 
 // =============================================================================
@@ -700,46 +710,49 @@ function createSseResponse(
 
 /**
  * MCP Manifest format for /.well-known/mcp.json
- * 
+ *
  * Follows RFC 8615 well-known URIs pattern for service discovery.
  */
 export interface McpManifest {
   /** Schema version for the manifest */
-  version: '1.0'
-  
+  version: "1.0";
+
   /** Server metadata */
   server: {
-    name: string
-    version: string
-    description?: string
-  }
-  
+    name: string;
+    version: string;
+    description?: string;
+  };
+
   /** MCP endpoint configuration */
   mcp: {
     /** URL path to the MCP endpoint (relative to manifest location) */
-    endpoint: string
+    endpoint: string;
     /** Supported MCP protocol version */
-    protocolVersion: string
-  }
-  
+    protocolVersion: string;
+  };
+
   /** Tool definitions with x-sweatpants extensions */
   tools: Array<{
-    name: string
-    description: string
-    inputSchema: Record<string, unknown>
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
     _meta?: {
-      'x-sweatpants'?: {
-        elicits?: Record<string, {
-          response: Record<string, unknown>
-          context?: Record<string, unknown>
-        }>
+      "x-sweatpants"?: {
+        elicits?: Record<
+          string,
+          {
+            response: Record<string, unknown>;
+            context?: Record<string, unknown>;
+          }
+        >;
         requires?: {
-          elicitation?: boolean
-          sampling?: boolean
-        }
-      }
-    }
-  }>
+          elicitation?: boolean;
+          sampling?: boolean;
+        };
+      };
+    };
+  }>;
 }
 
 /**
@@ -747,62 +760,57 @@ export interface McpManifest {
  */
 export interface GenerateMcpManifestOptions {
   /** Server name */
-  name?: string
+  name?: string;
   /** Server version */
-  version?: string
+  version?: string;
   /** Server description */
-  description?: string
+  description?: string;
   /** MCP endpoint path (default: '/mcp') */
-  endpoint?: string
+  endpoint?: string;
 }
 
 /**
  * Generate an MCP manifest for /.well-known/mcp.json
- * 
+ *
  * This enables service discovery and introspection of MCP tools,
  * including x-sweatpants extensions for elicit schemas.
- * 
+ *
  * @example
  * ```typescript
  * import { generateMcpManifest } from '@sweatpants/framework'
- * 
+ *
  * const tools = new Map([['book_flight', bookFlightTool]])
- * 
+ *
  * const manifest = generateMcpManifest(tools, {
  *   name: 'Travel Agent',
  *   version: '1.0.0',
  *   description: 'Book flights and hotels',
  * })
- * 
+ *
  * // Mount at /.well-known/mcp.json
  * app.get('/.well-known/mcp.json', () => Response.json(manifest))
  * ```
  */
 export function generateMcpManifest(
   tools: Map<string, unknown>,
-  options: GenerateMcpManifestOptions = {}
+  options: GenerateMcpManifestOptions = {},
 ): McpManifest {
-  const {
-    name = 'mcp-server',
-    version = '1.0.0',
-    description,
-    endpoint = '/mcp',
-  } = options
+  const { name = "mcp-server", version = "1.0.0", description, endpoint = "/mcp" } = options;
 
   // Build tool list using the same logic as createToolsListResponse
   const toolList = Array.from(tools.entries()).map(([toolName, tool]) => {
-    const t = tool as { 
-      description?: string
-      parameters?: z.ZodType
-      elicits?: Record<string, { response?: z.ZodType; context?: z.ZodType }>
-      requires?: { elicitation?: boolean; sampling?: boolean }
-    }
-    
+    const t = tool as {
+      description?: string;
+      parameters?: z.ZodType;
+      elicits?: Record<string, { response?: z.ZodType; context?: z.ZodType }>;
+      requires?: { elicitation?: boolean; sampling?: boolean };
+    };
+
     // Convert Zod schema to JSON Schema
-    let inputSchema: Record<string, unknown> = { type: 'object', properties: {} }
+    let inputSchema: Record<string, unknown> = { type: "object", properties: {} };
     if (t.parameters) {
       try {
-        inputSchema = z.toJSONSchema(t.parameters)
+        inputSchema = z.toJSONSchema(t.parameters);
       } catch {
         // Fallback if conversion fails
       }
@@ -810,59 +818,65 @@ export function generateMcpManifest(
 
     // Build the base tool definition
     const toolDef: {
-      name: string
-      description: string
-      inputSchema: Record<string, unknown>
+      name: string;
+      description: string;
+      inputSchema: Record<string, unknown>;
       _meta?: {
-        'x-sweatpants'?: {
-          elicits?: Record<string, {
-            response: Record<string, unknown>
-            context?: Record<string, unknown>
-          }>
+        "x-sweatpants"?: {
+          elicits?: Record<
+            string,
+            {
+              response: Record<string, unknown>;
+              context?: Record<string, unknown>;
+            }
+          >;
           requires?: {
-            elicitation?: boolean
-            sampling?: boolean
-          }
-        }
-      }
+            elicitation?: boolean;
+            sampling?: boolean;
+          };
+        };
+      };
     } = {
       name: toolName,
-      description: t.description ?? '',
+      description: t.description ?? "",
       inputSchema,
-    }
+    };
 
     // Add x-sweatpants extension in _meta if tool has elicits or requires
-    const elicitsSchema = serializeElicitsMap(t.elicits)
+    const elicitsSchema = serializeElicitsMap(t.elicits);
     if (elicitsSchema || t.requires) {
       const xSweatpants: {
-        elicits?: Record<string, {
-          response: Record<string, unknown>
-          context?: Record<string, unknown>
-        }>
+        elicits?: Record<
+          string,
+          {
+            response: Record<string, unknown>;
+            context?: Record<string, unknown>;
+          }
+        >;
         requires?: {
-          elicitation?: boolean
-          sampling?: boolean
-        }
-      } = {}
-      
+          elicitation?: boolean;
+          sampling?: boolean;
+        };
+      } = {};
+
       if (elicitsSchema) {
-        xSweatpants.elicits = elicitsSchema
+        xSweatpants.elicits = elicitsSchema;
       }
-      
+
       if (t.requires) {
-        xSweatpants.requires = t.requires
+        xSweatpants.requires = t.requires;
       }
 
       toolDef._meta = {
-        'x-sweatpants': xSweatpants,
-      }
+        "x-sweatpants": xSweatpants,
+      };
     }
-    
-    return toolDef
-  })
+
+    return toolDef;
+  });
 
   const manifest: McpManifest = {
-    version: '1.0',
+    version: "1.0",
     server: {
       name,
       version,
@@ -873,14 +887,14 @@ export function generateMcpManifest(
       protocolVersion: MCP_PROTOCOL_VERSION,
     },
     tools: toolList,
-  }
+  };
 
-  return manifest
+  return manifest;
 }
 
 // =============================================================================
 // RE-EXPORTS
 // =============================================================================
 
-export type { McpHandlerConfig, McpHttpHandler } from './types.ts'
-export { McpHandlerError, MCP_HANDLER_ERRORS } from './types.ts'
+export type { McpHandlerConfig, McpHttpHandler } from "./types.ts";
+export { McpHandlerError, MCP_HANDLER_ERRORS } from "./types.ts";

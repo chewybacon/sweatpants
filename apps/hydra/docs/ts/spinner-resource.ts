@@ -60,7 +60,7 @@ export function useSpinner(): Operation<Spinner> {
     yield* provide({
       *start(label = 'thinking') {
         // Idempotent - if already running, do nothing
-        if (animationTask) return;
+        if (animationTask) {return;}
 
         let frameIndex = 0;
         animationTask = yield* spawn(function* () {

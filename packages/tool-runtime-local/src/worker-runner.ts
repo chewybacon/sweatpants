@@ -239,7 +239,9 @@ function createMcpWorkerContext(
 
   function schemaForElicitKey(key: string): Record<string, unknown> | undefined {
     const entry = (elicitationSchemas as Record<string, unknown>)[key];
-    if (!entry) return undefined;
+    if (!entry) {
+      return undefined;
+    }
     const responseSchema =
       entry &&
       typeof entry === "object" &&

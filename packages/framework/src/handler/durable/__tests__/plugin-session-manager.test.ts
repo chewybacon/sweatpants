@@ -13,7 +13,9 @@ function eventStream(event: ToolSessionEvent): Stream<ToolSessionEvent, void> {
     let sent = false;
     yield* provide({
       *next(): Operation<IteratorResult<ToolSessionEvent, void>> {
-        if (sent) return { done: true, value: undefined };
+        if (sent) {
+          return { done: true, value: undefined };
+        }
         sent = true;
         return { done: false, value: event };
       },

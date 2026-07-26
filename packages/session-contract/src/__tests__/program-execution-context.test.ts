@@ -51,7 +51,9 @@ describe("ProgramExecutionContext", () => {
     const result = await run(function* () {
       const attachment = yield* driver.attach(request);
       const emission = yield* driver.step(attachment, { type: "start", input: null });
-      if (emission.type !== "emission") throw new Error("expected emission");
+      if (emission.type !== "emission") {
+        throw new Error("expected emission");
+      }
       const completed = yield* driver.step(attachment, {
         type: "ack_emission",
         actionIndex: emission.actionIndex,
@@ -65,7 +67,9 @@ describe("ProgramExecutionContext", () => {
       type: "completed",
       value: { affinity: { kind: "workspace", key: "workspace-binding" } },
     });
-    if (result.type !== "completed") throw new Error("expected completion");
+    if (result.type !== "completed") {
+      throw new Error("expected completion");
+    }
     const value = result.value as { first: string; second: string };
     expect(value.first).not.toBe(value.second);
     expect(value.first.length).toBeLessThanOrEqual(128);
@@ -80,7 +84,11 @@ describe("ProgramExecutionContext", () => {
   });
 
   it("fails outside an attachment and rejects unbounded namespaces", async () => {
-    await expect(run(function* () { return yield* useProgramExecution(); })).rejects.toMatchObject({
+    await expect(
+      run(function* () {
+        return yield* useProgramExecution();
+      }),
+    ).rejects.toMatchObject({
       code: "program_execution_unavailable",
     });
     const execution = createProgramExecutionValue(request, "attachment");

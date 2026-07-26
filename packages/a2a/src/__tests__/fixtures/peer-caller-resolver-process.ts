@@ -76,8 +76,9 @@ const registration = createDurableEffectRegistration(
   { mode: "idempotent", mechanism: "pull_id_key" },
   function* (effectInput, context) {
     const outcomePath = `${effectCountPath}.${context.pullId}.json`;
-    if (existsSync(outcomePath))
+    if (existsSync(outcomePath)) {
       return { status: "ok", value: JSON.parse(readFileSync(outcomePath, "utf8")) as Json };
+    }
     const child = spawn(
       process.execPath,
       ["--conditions=development", "--import", "tsx", effectFixture],
@@ -149,7 +150,9 @@ await run(function* () {
     writeFileSync(crashMarker, "crashed-after-resolver-terminal\n");
     process.kill(process.pid, "SIGKILL");
   }
-  if (result.state !== "completed") throw new Error(`resolver did not complete: ${result.state}`);
+  if (result.state !== "completed") {
+    throw new Error(`resolver did not complete: ${result.state}`);
+  }
   process.stdout.write(`OUTCOME ${canonicalJson(result.value)}\n`);
 });
 
@@ -163,7 +166,9 @@ function persistAfterOperations(
   return new Proxy(target, {
     get(object, property) {
       const value = Reflect.get(object, property, object);
-      if (typeof value !== "function") return value;
+      if (typeof value !== "function") {
+        return value;
+      }
       return (...args: unknown[]) =>
         (function* (): Operation<unknown> {
           const result = yield* value.apply(object, args);
@@ -202,6 +207,8 @@ function atomic(path: string, value: Json): void {
 }
 function required(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} is required`);
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
   return value;
 }

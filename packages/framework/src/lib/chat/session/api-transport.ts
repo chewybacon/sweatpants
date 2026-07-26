@@ -17,8 +17,12 @@ function deriveEnabledPlugins(options: StreamChatOptions): string[] {
 }
 
 function deriveEnabledTools(options: StreamChatOptions): boolean | string[] | undefined {
-  if (options.enabledTools !== undefined) return options.enabledTools;
-  if (!options.tools?.length) return undefined;
+  if (options.enabledTools !== undefined) {
+    return options.enabledTools;
+  }
+  if (!options.tools?.length) {
+    return undefined;
+  }
   return options.tools
     .map((tool) =>
       (typeof tool === "function" || (typeof tool === "object" && tool !== null)) && "name" in tool
@@ -51,17 +55,23 @@ function buildResumeForwardedProps(options: StreamChatOptions): {
   forwardedProps?: { sweatpants: { clientReplayTraces: Record<string, unknown> } };
 } {
   const elicitResponses = options.elicitResponses ?? [];
-  if (elicitResponses.length === 0) return {};
+  if (elicitResponses.length === 0) {
+    return {};
+  }
 
   const resume = elicitResponses.map(resumeEntryForElicitResponse);
   const clientReplayTraces: Record<string, unknown> = {};
 
   for (const response of elicitResponses) {
-    if (!response.trace) continue;
+    if (!response.trace) {
+      continue;
+    }
     const normalized = normalizeClientReplayTrace(response.trace, {
       interruptId: response.elicitId,
     });
-    if (normalized) clientReplayTraces[response.elicitId] = normalized;
+    if (normalized) {
+      clientReplayTraces[response.elicitId] = normalized;
+    }
   }
 
   return {
@@ -111,7 +121,9 @@ export function* executeChatFetch(
     let errorMessage = `Chat API error: ${response.status}`;
     try {
       const json = JSON.parse(errorText);
-      if (json.error) errorMessage = json.error;
+      if (json.error) {
+        errorMessage = json.error;
+      }
     } catch {
       errorMessage += ` - ${errorText}`;
     }

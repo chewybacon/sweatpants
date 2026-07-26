@@ -28,7 +28,9 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
     <div className="my-2">
       {toolCall.emissions.map((emission) => {
         const Component = emission.component;
-        if (!Component) return null;
+        if (!Component) {
+          return null;
+        }
 
         return (
           <Component
@@ -159,7 +161,9 @@ When the tool asks for a move, respond with ONLY a single digit (0-8). Nothing e
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim() || isStreaming) {
+      return;
+    }
     send(input.trim());
     setInput("");
   };

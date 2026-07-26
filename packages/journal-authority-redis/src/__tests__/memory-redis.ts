@@ -30,7 +30,9 @@ export function createMemoryRedisClient(): RedisClientType {
       return "OK";
     },
     async setNX(key: string, value: string) {
-      if (strings.has(key)) return false;
+      if (strings.has(key)) {
+        return false;
+      }
       strings.set(key, value);
       return true;
     },
@@ -47,24 +49,32 @@ export function createMemoryRedisClient(): RedisClientType {
       const selected = Array.isArray(keys) ? keys : [keys];
       let removed = 0;
       for (const key of selected) {
-        if (strings.delete(key)) removed += 1;
-        if (sets.delete(key)) removed += 1;
+        if (strings.delete(key)) {
+          removed += 1;
+        }
+        if (sets.delete(key)) {
+          removed += 1;
+        }
       }
       return removed;
     },
-    async eval(
-      _script: string,
-      options: { keys: string[]; arguments: string[] },
-    ) {
+    async eval(_script: string, options: { keys: string[]; arguments: string[] }) {
       const [stateKey, _channelKey, runnableKey] = options.keys;
       const [expected, next, sessionId, keepRunnable] = options.arguments;
-      if (!stateKey || expected === undefined || next === undefined) return 0;
-      if ((strings.get(stateKey) ?? "") !== expected) return 0;
+      if (!stateKey || expected === undefined || next === undefined) {
+        return 0;
+      }
+      if ((strings.get(stateKey) ?? "") !== expected) {
+        return 0;
+      }
       strings.set(stateKey, next);
       if (runnableKey && sessionId) {
         const runnable = sets.get(runnableKey) ?? new Set<string>();
-        if (keepRunnable === "1") runnable.add(sessionId);
-        else runnable.delete(sessionId);
+        if (keepRunnable === "1") {
+          runnable.add(sessionId);
+        } else {
+          runnable.delete(sessionId);
+        }
         sets.set(runnableKey, runnable);
       }
       return 1;

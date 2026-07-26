@@ -9,9 +9,9 @@
  * - Current board state shown at the bottom
  * - Interactive only when waiting for user input
  */
-import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
-import type { Board, Player } from '../../tictactoe/types'
-import { GameMoveCard } from './GameMoveCard'
+import type { RenderableProps } from "@sweatpants/framework/chat/browser-rendering";
+import type { Board, Player } from "../../tictactoe/types";
+import { GameMoveCard } from "./GameMoveCard";
 
 // =============================================================================
 // TYPES
@@ -20,38 +20,38 @@ import { GameMoveCard } from './GameMoveCard'
 /** A single move in the game history */
 export interface GameMove {
   /** The cell that was played */
-  position: number
+  position: number;
   /** Who made this move */
-  player: Player
+  player: Player;
   /** Was this the model or user? */
-  isModel: boolean
+  isModel: boolean;
   /** Board state AFTER this move */
-  boardAfter: Board
+  boardAfter: Board;
   /** Move number (1-indexed) */
-  moveNumber: number
+  moveNumber: number;
   /** Model's strategy (only for model moves) */
-  strategy?: 'offensive' | 'defensive'
+  strategy?: "offensive" | "defensive";
   /** Strategy reasoning */
-  reasoning?: string
+  reasoning?: string;
 }
 
 export interface GameChatViewProps extends RenderableProps<{ position: number }> {
   /** History of all moves so far */
-  moveHistory: GameMove[]
+  moveHistory: GameMove[];
   /** Current board state */
-  board: Board
+  board: Board;
   /** User's symbol */
-  userSymbol: Player
+  userSymbol: Player;
   /** Model's symbol */
-  modelSymbol: Player
+  modelSymbol: Player;
   /** The last move (for highlighting) */
-  lastMove?: { position: number; player: Player }
+  lastMove?: { position: number; player: Player };
   /** If game is over, the winning line */
-  winningLine?: number[]
+  winningLine?: number[];
   /** Is the game over? */
-  gameOver?: boolean
+  gameOver?: boolean;
   /** Game result message */
-  resultMessage?: string
+  resultMessage?: string;
 }
 
 // =============================================================================
@@ -68,63 +68,64 @@ function CurrentBoard({
   response,
   userSymbol,
 }: {
-  board: Board
-  lastPosition?: number | undefined
-  winningLine?: number[] | undefined
-  gameOver?: boolean | undefined
-  onRespond?: ((value: { position: number }) => void) | undefined
-  disabled?: boolean | undefined
-  response?: { position: number } | undefined
-  userSymbol: Player
+  board: Board;
+  lastPosition?: number | undefined;
+  winningLine?: number[] | undefined;
+  gameOver?: boolean | undefined;
+  onRespond?: ((value: { position: number }) => void) | undefined;
+  disabled?: boolean | undefined;
+  response?: { position: number } | undefined;
+  userSymbol: Player;
 }) {
   const renderCell = (position: number) => {
-    const cell = board[position]
-    const isWinningCell = winningLine?.includes(position)
-    const isLastMove = position === lastPosition
-    const isUserMove = response?.position === position
+    const cell = board[position];
+    const isWinningCell = winningLine?.includes(position);
+    const isLastMove = position === lastPosition;
+    const isUserMove = response?.position === position;
 
     // Determine cell styling
-    let cellStyle = 'w-14 h-14 text-xl font-bold border border-slate-600 '
+    let cellStyle = "w-14 h-14 text-xl font-bold border border-slate-600 ";
 
     if (isWinningCell) {
-      cellStyle += 'bg-emerald-900/50 text-emerald-400 '
+      cellStyle += "bg-emerald-900/50 text-emerald-400 ";
     } else if (isLastMove) {
-      cellStyle += 'bg-cyan-900/30 '
+      cellStyle += "bg-cyan-900/30 ";
     } else if (isUserMove) {
-      cellStyle += 'bg-purple-900/30 '
+      cellStyle += "bg-purple-900/30 ";
     }
 
-    if (cell === 'X') {
-      cellStyle += 'text-cyan-400 '
-    } else if (cell === 'O') {
-      cellStyle += 'text-purple-400 '
+    if (cell === "X") {
+      cellStyle += "text-cyan-400 ";
+    } else if (cell === "O") {
+      cellStyle += "text-purple-400 ";
     }
 
     // Interactive or static
     if (disabled || gameOver || cell !== null) {
       return (
-        <div key={position} className={cellStyle + 'flex items-center justify-center'}>
-          {cell || ''}
+        <div key={position} className={cellStyle + "flex items-center justify-center"}>
+          {cell || ""}
         </div>
-      )
+      );
     }
 
     return (
       <button
         key={position}
         onClick={() => onRespond?.({ position })}
-        className={cellStyle + 'hover:bg-slate-700 cursor-pointer transition-colors flex items-center justify-center text-slate-600'}
+        className={
+          cellStyle +
+          "hover:bg-slate-700 cursor-pointer transition-colors flex items-center justify-center text-slate-600"
+        }
       >
         {position}
       </button>
-    )
-  }
+    );
+  };
 
   return (
-    <div className="grid grid-cols-3 gap-1">
-      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(renderCell)}
-    </div>
-  )
+    <div className="grid grid-cols-3 gap-1">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(renderCell)}</div>
+  );
 }
 
 // =============================================================================
@@ -149,17 +150,19 @@ export function GameChatView({
   // and follow-up chat messages are not blocked by "Open interrupts require resume[]".
   // The elicit executor's respond() is idempotent, so re-renders are safe.
   if (gameOver && !disabled && !response && onRespond) {
-    queueMicrotask(() => onRespond({ position: -1 }))
+    queueMicrotask(() => onRespond({ position: -1 }));
   }
 
   // Determine game result for the last move card
-  const getGameResult = (move: GameMove): 'win' | 'lose' | 'draw' | undefined => {
-    if (!gameOver || move.moveNumber !== moveHistory.length) return undefined
-    if (winningLine && winningLine.length > 0) {
-      return move.isModel ? 'win' : 'lose'
+  const getGameResult = (move: GameMove): "win" | "lose" | "draw" | undefined => {
+    if (!gameOver || move.moveNumber !== moveHistory.length) {
+      return undefined;
     }
-    return 'draw'
-  }
+    if (winningLine && winningLine.length > 0) {
+      return move.isModel ? "win" : "lose";
+    }
+    return "draw";
+  };
 
   return (
     <div className="space-y-2 my-3">
@@ -187,9 +190,7 @@ export function GameChatView({
               <span className="text-xs font-bold uppercase tracking-wider text-purple-400">
                 Your Turn
               </span>
-              <span className="text-xs text-slate-500">
-                Playing as {userSymbol}
-              </span>
+              <span className="text-xs text-slate-500">Playing as {userSymbol}</span>
             </div>
           </div>
 
@@ -205,14 +206,10 @@ export function GameChatView({
 
             <div className="flex-1 min-w-0">
               {!disabled && !response && (
-                <p className="text-sm text-slate-400">
-                  Click a cell to make your move
-                </p>
+                <p className="text-sm text-slate-400">Click a cell to make your move</p>
               )}
               {response && (
-                <p className="text-sm text-slate-400">
-                  You selected cell {response.position}
-                </p>
+                <p className="text-sm text-slate-400">You selected cell {response.position}</p>
               )}
             </div>
           </div>
@@ -221,7 +218,7 @@ export function GameChatView({
         /* Game Over State */
         <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-4 flex flex-col items-center">
           <div className="text-xl font-bold text-emerald-400 mb-2">
-            {resultMessage || 'Game Over'}
+            {resultMessage || "Game Over"}
           </div>
           <CurrentBoard
             board={board}
@@ -234,7 +231,7 @@ export function GameChatView({
         </div>
       )}
     </div>
-  )
+  );
 }
 
-GameChatView.displayName = 'GameChatView'
+GameChatView.displayName = "GameChatView";

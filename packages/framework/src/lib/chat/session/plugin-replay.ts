@@ -78,7 +78,9 @@ function cloneJsonValue(
   seen: WeakSet<object>,
   options: { omitUndefinedProperties: boolean },
 ): JsonValue | InvalidJson {
-  if (depth > maxDepth) return invalidJson;
+  if (depth > maxDepth) {
+    return invalidJson;
+  }
 
   if (value === null || typeof value === "string" || typeof value === "boolean") {
     return value;
@@ -100,14 +102,18 @@ function cloneJsonValue(
     return invalidJson;
   }
 
-  if (seen.has(value)) return invalidJson;
+  if (seen.has(value)) {
+    return invalidJson;
+  }
   seen.add(value);
 
   if (Array.isArray(value)) {
     const cloned: JsonValue[] = [];
     for (const item of value) {
       const next = cloneJsonValue(item, depth + 1, maxDepth, seen, options);
-      if (next === invalidJson) return invalidJson;
+      if (next === invalidJson) {
+        return invalidJson;
+      }
       cloned.push(next);
     }
     return cloned;
@@ -119,20 +125,28 @@ function cloneJsonValue(
   }
 
   const symbolKeys = Object.getOwnPropertySymbols(value);
-  if (symbolKeys.length > 0) return invalidJson;
+  if (symbolKeys.length > 0) {
+    return invalidJson;
+  }
 
   const cloned: { [key: string]: JsonValue } = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (item === undefined && options.omitUndefinedProperties) continue;
+    if (item === undefined && options.omitUndefinedProperties) {
+      continue;
+    }
     const next = cloneJsonValue(item, depth + 1, maxDepth, seen, options);
-    if (next === invalidJson) return invalidJson;
+    if (next === invalidJson) {
+      return invalidJson;
+    }
     cloned[key] = next;
   }
   return cloned;
 }
 
 function cloneJsonObject(value: unknown, maxDepth: number): Record<string, unknown> | null {
-  if (!isRecord(value)) return null;
+  if (!isRecord(value)) {
+    return null;
+  }
   const cloned = cloneJsonValue(value, 0, maxDepth, new WeakSet<object>(), {
     omitUndefinedProperties: true,
   });
@@ -175,37 +189,59 @@ export function normalizeClientReplayTrace(
   options: NormalizeReplayTraceOptions = {},
 ): (ToolExecutionTrace & { version: 1 }) | null {
   const limits = limitsWithDefaults(options.limits);
-  if (!isRecord(input)) return null;
+  if (!isRecord(input)) {
+    return null;
+  }
 
-  if (input["version"] !== 1) return null;
-  if (!finiteNumber(input["startedAt"]) || !finiteNumber(input["completedAt"])) return null;
+  if (input["version"] !== 1) {
+    return null;
+  }
+  if (!finiteNumber(input["startedAt"]) || !finiteNumber(input["completedAt"])) {
+    return null;
+  }
 
   const rawEmissions = input["emissions"];
-  if (!Array.isArray(rawEmissions)) return null;
-  if (rawEmissions.length > limits.maxIncomingTraceEmissions) return null;
+  if (!Array.isArray(rawEmissions)) {
+    return null;
+  }
+  if (rawEmissions.length > limits.maxIncomingTraceEmissions) {
+    return null;
+  }
 
   const emissions: EmissionTraceEntry[] = [];
   for (let index = 0; index < rawEmissions.length; index++) {
     const rawEntry = rawEmissions[index];
-    if (!isRecord(rawEntry)) return null;
+    if (!isRecord(rawEntry)) {
+      return null;
+    }
 
     const componentKey = rawEntry["componentKey"];
     const timestamp = rawEntry["timestamp"];
-    if (typeof componentKey !== "string" || componentKey.length === 0) return null;
-    if (!finiteNumber(timestamp)) return null;
+    if (typeof componentKey !== "string" || componentKey.length === 0) {
+      return null;
+    }
+    if (!finiteNumber(timestamp)) {
+      return null;
+    }
 
     const props = cloneJsonObject(rawEntry["props"], limits.maxTraceJsonDepth);
-    if (!props) return null;
+    if (!props) {
+      return null;
+    }
 
     const responseValue = rawEntry["response"];
     const hasResponse = Object.prototype.hasOwnProperty.call(rawEntry, "response");
     const response = hasResponse
       ? cloneOptionalJsonValue(responseValue, limits.maxTraceJsonDepth)
       : undefined;
-    if (response === invalidJson) return null;
+    if (response === invalidJson) {
+      return null;
+    }
 
     const emissionId = rawEntry["emissionId"];
-    if (typeof emissionId !== "string" || emissionId.length === 0) return null;
+    if (typeof emissionId !== "string" || emissionId.length === 0) {
+      return null;
+    }
     const sourceInterruptId = rawEntry["sourceInterruptId"] ?? options.interruptId;
 
     emissions.push({
@@ -229,7 +265,9 @@ export function normalizeClientReplayTrace(
   };
 
   const size = encodedSize(trace);
-  if (size === null || size > limits.maxIncomingTraceBytes) return null;
+  if (size === null || size > limits.maxIncomingTraceBytes) {
+    return null;
+  }
 
   return trace;
 }
@@ -287,7 +325,9 @@ export function buildPluginReplayActivity(source: {
   trace: ToolExecutionTrace;
 }): PluginReplayActivitySnapshotEvent | null {
   const normalized = normalizeClientReplayTrace(source.trace);
-  if (!normalized) return null;
+  if (!normalized) {
+    return null;
+  }
   const trace = reindexTrace(normalized);
   const content: PluginReplayActivityContent = {
     version: 1,
@@ -296,7 +336,9 @@ export function buildPluginReplayActivity(source: {
     trace,
   };
   const size = encodedSize(content);
-  if (size === null || size > PLUGIN_REPLAY_LIMITS.maxMergedActivityContentBytes) return null;
+  if (size === null || size > PLUGIN_REPLAY_LIMITS.maxMergedActivityContentBytes) {
+    return null;
+  }
 
   return {
     type: "ACTIVITY_SNAPSHOT",
@@ -310,31 +352,51 @@ export function buildPluginReplayActivity(source: {
 export function activityContentToPluginReplayTrace(
   content: unknown,
 ): ConversationReplayToolTrace | null {
-  if (!isRecord(content)) return null;
-  if (content["version"] !== 1) return null;
+  if (!isRecord(content)) {
+    return null;
+  }
+  if (content["version"] !== 1) {
+    return null;
+  }
   const toolCallId = content["toolCallId"];
   const toolName = content["toolName"];
   const trace = content["trace"];
-  if (typeof toolCallId !== "string" || typeof toolName !== "string") return null;
+  if (typeof toolCallId !== "string" || typeof toolName !== "string") {
+    return null;
+  }
   const normalized = normalizeClientReplayTrace(trace);
-  if (!normalized) return null;
+  if (!normalized) {
+    return null;
+  }
   return { callId: toolCallId, toolName, trace: normalized };
 }
 
 export function activityMessageToPluginReplayTrace(
   message: unknown,
 ): ConversationReplayToolTrace | null {
-  if (!isRecord(message)) return null;
-  if (message["role"] !== "activity") return null;
-  if (message["activityType"] !== PLUGIN_REPLAY_ACTIVITY_TYPE) return null;
+  if (!isRecord(message)) {
+    return null;
+  }
+  if (message["role"] !== "activity") {
+    return null;
+  }
+  if (message["activityType"] !== PLUGIN_REPLAY_ACTIVITY_TYPE) {
+    return null;
+  }
   return activityContentToPluginReplayTrace(message["content"]);
 }
 
 export function activitySnapshotToPluginReplayTrace(
   event: unknown,
 ): ConversationReplayToolTrace | null {
-  if (!isRecord(event)) return null;
-  if (event["type"] !== "ACTIVITY_SNAPSHOT") return null;
-  if (event["activityType"] !== PLUGIN_REPLAY_ACTIVITY_TYPE) return null;
+  if (!isRecord(event)) {
+    return null;
+  }
+  if (event["type"] !== "ACTIVITY_SNAPSHOT") {
+    return null;
+  }
+  if (event["activityType"] !== PLUGIN_REPLAY_ACTIVITY_TYPE) {
+    return null;
+  }
   return activityContentToPluginReplayTrace(event["content"]);
 }

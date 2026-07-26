@@ -24,7 +24,9 @@ export function createInProcessA2AConnector(
 ): A2AWebSocketConnector {
   return {
     *connect(request) {
-      if (request.signal.aborted) throw a2aError("transport_lost", "A2A test connection aborted");
+      if (request.signal.aborted) {
+        throw a2aError("transport_lost", "A2A test connection aborted");
+      }
       const remote = executor.openConnection({
         principal,
         activatedExtension: CALLER_AUTHORITATIVE_EXTENSION_URI,
@@ -33,19 +35,28 @@ export function createInProcessA2AConnector(
       let closed = false;
       return {
         *send(frame): Operation<void> {
-          if (closed) throw a2aError("transport_lost", "A2A test connection is closed");
+          if (closed) {
+            throw a2aError("transport_lost", "A2A test connection is closed");
+          }
           const response = yield* remote.handle(frame);
-          if (response !== undefined) responses.push(response);
+          if (response !== undefined) {
+            responses.push(response);
+          }
         },
         *receive(): Operation<string | Uint8Array> {
-          if (closed) throw a2aError("transport_lost", "A2A test connection is closed");
+          if (closed) {
+            throw a2aError("transport_lost", "A2A test connection is closed");
+          }
           const response = responses.shift();
-          if (response === undefined)
+          if (response === undefined) {
             throw a2aError("transport_lost", "A2A test connection has no pending response");
+          }
           return response;
         },
         *close(): Operation<void> {
-          if (closed) return;
+          if (closed) {
+            return;
+          }
           closed = true;
           yield* remote.close();
         },
@@ -80,27 +91,36 @@ function mailbox<I, O>(): Mailbox<I, O> {
             const pending: PendingForeignA2ARequest<I, O> = {
               request,
               *respond(value) {
-                if (settled) throw new Error("Foreign A2A request was already answered");
+                if (settled) {
+                  throw new Error("Foreign A2A request was already answered");
+                }
                 settled = true;
                 responses -= 1;
                 resolve(value);
               },
               *fail(error) {
-                if (settled) throw new Error("Foreign A2A request was already answered");
+                if (settled) {
+                  throw new Error("Foreign A2A request was already answered");
+                }
                 settled = true;
                 responses -= 1;
                 reject(error);
               },
             };
             const consumer = consumers.shift();
-            if (consumer) consumer(pending);
-            else arrivals.push(pending);
+            if (consumer) {
+              consumer(pending);
+            } else {
+              arrivals.push(pending);
+            }
           }),
       );
     },
     *next() {
       const arrived = arrivals.shift();
-      if (arrived) return arrived;
+      if (arrived) {
+        return arrived;
+      }
       return yield* call(
         () =>
           new Promise<PendingForeignA2ARequest<I, O>>((resolve) => {
@@ -173,7 +193,9 @@ export function createRegistryManifestProvider(
 ): (program: PinnedProgram) => Promise<ReturnType<typeof createRemoteProgramManifestDocument>> {
   return async (program) => {
     const tool = registry.get(`${program.id}@${program.version}#${program.digest}`);
-    if (!tool) throw a2aError("program_version_unavailable", "Exact remote program is unavailable");
+    if (!tool) {
+      throw a2aError("program_version_unavailable", "Exact remote program is unavailable");
+    }
     return createRemoteProgramManifestDocument(tool.manifest as DurableProgramManifest, {
       streamedRestore,
     });

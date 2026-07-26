@@ -101,8 +101,11 @@ describe("yo-studio play_ttt capability", () => {
           } else if (step.descriptor.kind === "elicit") {
             const gameOver = containsGameOver(step.descriptor.context);
             const position = gameOver ? -1 : firstEmptyBoardPosition(step.descriptor.context);
-            if (gameOver) terminalAcknowledgements += 1;
-            else elicitedMoves += 1;
+            if (gameOver) {
+              terminalAcknowledgements += 1;
+            } else {
+              elicitedMoves += 1;
+            }
             outcome = {
               status: "ok" as const,
               value: { action: "accept", content: { position } },
@@ -175,10 +178,14 @@ describe("yo-studio play_ttt capability", () => {
 });
 
 function containsGameOver(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(containsGameOver);
+  if (Array.isArray(value)) {
+    return value.some(containsGameOver);
+  }
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
-    if (record["gameOver"] === true) return true;
+    if (record["gameOver"] === true) {
+      return true;
+    }
     return Object.values(record).some(containsGameOver);
   }
   return false;
@@ -194,12 +201,16 @@ function firstEmptyBoardPosition(value: unknown): number {
     }
     for (const child of value) {
       const found = firstEmptyBoardPosition(child);
-      if (found >= 0) return found;
+      if (found >= 0) {
+        return found;
+      }
     }
   } else if (value && typeof value === "object") {
     for (const child of Object.values(value as Record<string, unknown>)) {
       const found = firstEmptyBoardPosition(child);
-      if (found >= 0) return found;
+      if (found >= 0) {
+        return found;
+      }
     }
   }
   return -1;

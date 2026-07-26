@@ -69,7 +69,9 @@ describe("AG-UI stream driver", () => {
       { type: "RUN_FINISHED", ...correlation },
     ]);
     expect(result.type).toBe("complete");
-    if (result.type !== "complete") throw new Error("expected complete result");
+    if (result.type !== "complete") {
+      throw new Error("expected complete result");
+    }
     expect(result.toolResults).toEqual([{ id: "new-call", name: "search", content: "new" }]);
   });
 

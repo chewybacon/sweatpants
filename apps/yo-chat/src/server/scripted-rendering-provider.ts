@@ -53,7 +53,9 @@ graph TD
 `;
 
 function textFromContent(content: RuntimeContext["messages"][number]["content"]): string {
-  if (typeof content === "string") return content;
+  if (typeof content === "string") {
+    return content;
+  }
   return content
     .map((block) => (block.type === "text" || block.type === "thinking" ? block.text : ""))
     .join("");
@@ -61,24 +63,36 @@ function textFromContent(content: RuntimeContext["messages"][number]["content"])
 
 function latestUserText(context: RuntimeContext): string {
   for (const message of [...context.messages].reverse()) {
-    if (message.role === "user") return textFromContent(message.content);
+    if (message.role === "user") {
+      return textFromContent(message.content);
+    }
   }
   return "";
 }
 
 function latestToolResultText(context: RuntimeContext): string | undefined {
   for (const message of [...context.messages].reverse()) {
-    if (message.role === "toolResult") return textFromContent(message.content);
+    if (message.role === "toolResult") {
+      return textFromContent(message.content);
+    }
   }
   return undefined;
 }
 
 function fixtureFor(context: RuntimeContext): string {
   const prompt = latestUserText(context).toLowerCase();
-  if (prompt.includes("delta arrival")) return deltaFixture;
-  if (prompt.includes("mermaid")) return mermaidFixture;
-  if (prompt.includes("math")) return mathFixture;
-  if (prompt.includes("markdown")) return markdownFixture;
+  if (prompt.includes("delta arrival")) {
+    return deltaFixture;
+  }
+  if (prompt.includes("mermaid")) {
+    return mermaidFixture;
+  }
+  if (prompt.includes("math")) {
+    return mathFixture;
+  }
+  if (prompt.includes("markdown")) {
+    return markdownFixture;
+  }
   return markdownFixture;
 }
 
@@ -153,7 +167,9 @@ export function createScriptedRenderingModelProvider(): ModelProviderDriver {
         yield* provide({
           *next(): Operation<IteratorResult<RuntimeStreamEvent, AssistantMessage>> {
             if (emitted < parts.length) {
-              if (delayedDeltas) yield* sleep(250);
+              if (delayedDeltas) {
+                yield* sleep(250);
+              }
               const delta = parts[emitted++]!;
               const partialText = text.slice(0, parts.slice(0, emitted).join("").length);
               return {

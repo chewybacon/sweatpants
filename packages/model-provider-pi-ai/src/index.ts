@@ -97,7 +97,9 @@ export function parseRequestModelSelection(
   value: unknown,
   label = "model",
 ): ModelSelection | undefined {
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   const selection = validateModelSelectionFields(value, label);
   const keys = Object.keys(value as Record<string, unknown>);
   const extras = keys.filter((key) => key !== "provider" && key !== "id");
@@ -110,7 +112,9 @@ export function parseRequestModelSelection(
 }
 
 export function parseAllowedModelsJson(value: string | undefined): ModelSelection[] | undefined {
-  if (value === undefined || value.trim().length === 0) return undefined;
+  if (value === undefined || value.trim().length === 0) {
+    return undefined;
+  }
 
   let parsed: unknown;
   try {
@@ -211,7 +215,9 @@ function registryLookup(selection: ModelSelection): Model | undefined {
 export function resolvePiAiModel(selection: ModelSelection): Model {
   const normalized = parseModelSelection(selection, "model");
   const registryModel = registryLookup(normalized);
-  if (registryModel) return withGitHubCopilotAuth(registryModel);
+  if (registryModel) {
+    return withGitHubCopilotAuth(registryModel);
+  }
 
   if (normalized.provider === "ollama") {
     return createOllamaModel(
@@ -235,11 +241,15 @@ export function resolvePiAiModel(selection: ModelSelection): Model {
 }
 
 function withGitHubCopilotAuth(model: Model): Model {
-  if (model.provider !== "github-copilot") return model;
+  if (model.provider !== "github-copilot") {
+    return model;
+  }
 
   const token =
     process.env["COPILOT_GITHUB_TOKEN"] ?? readGitHubCopilotAccessTokenFromSweatpantsAuth();
-  if (!token) return model;
+  if (!token) {
+    return model;
+  }
 
   const baseUrl = githubCopilotBaseUrlFromAccessToken(token);
   if (!process.env["COPILOT_GITHUB_TOKEN"]) {
@@ -255,7 +265,9 @@ function readGitHubCopilotAccessTokenFromSweatpantsAuth(): string | undefined {
 }
 
 function readGitHubCopilotAccessTokenFromAuthFile(authPath: string): string | undefined {
-  if (!existsSync(authPath)) return undefined;
+  if (!existsSync(authPath)) {
+    return undefined;
+  }
   try {
     const auth = JSON.parse(readFileSync(authPath, "utf8")) as {
       ["github-copilot"]?: { access?: unknown; type?: unknown };
@@ -270,12 +282,16 @@ function readGitHubCopilotAccessTokenFromAuthFile(authPath: string): string | un
 function githubCopilotBaseUrlFromAccessToken(token: string): string | undefined {
   const match = token.match(/proxy-ep=([^;]+)/);
   const proxyHost = match?.[1];
-  if (!proxyHost) return undefined;
+  if (!proxyHost) {
+    return undefined;
+  }
   return `https://${proxyHost.replace(/^proxy\./, "api.")}`;
 }
 
 export function redactSensitiveString(message: string | undefined): string | undefined {
-  if (!message) return undefined;
+  if (!message) {
+    return undefined;
+  }
   return message
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/sk-[A-Za-z0-9_-]{12,}/g, "sk-[redacted]")
@@ -307,7 +323,9 @@ export function createPiAiModelProviderDriver(runtime: Runtime = piAiRuntime): M
       );
       while (true) {
         const next = yield* subscription.next();
-        if (next.done) return next.value;
+        if (next.done) {
+          return next.value;
+        }
       }
     },
   };

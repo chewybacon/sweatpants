@@ -44,22 +44,27 @@ export function createAgentCoreDurableEvaluator(options: AgentCoreDurableEvaluat
       try {
         assertBase(message);
         if (message.type === "restore_begin") {
-          if (attachment || terminal) throw protocol("restore_begin repeated");
-          if (taskId && taskId !== message.taskId)
+          if (attachment || terminal) {
+            throw protocol("restore_begin repeated");
+          }
+          if (taskId && taskId !== message.taskId) {
             throw new CrankError(
               "sandbox_task_mismatch",
               "Sandbox is invocation-affine to another task",
             );
+          }
           if (
             message.payload.attach.taskId !== message.taskId ||
             message.payload.attach.executionEpoch !== message.activationEpoch
-          )
+          ) {
             throw protocol("Attach identity mismatch");
+          }
           if (
             canonicalSnapshot(message.payload.attach.input).sha !==
             message.payload.programInputDigest
-          )
+          ) {
             throw protocol("Canonical input digest mismatch");
+          }
           taskId = message.taskId;
           activationEpoch = message.activationEpoch;
           input = message.payload.attach.input;
@@ -85,10 +90,12 @@ export function createAgentCoreDurableEvaluator(options: AgentCoreDurableEvaluat
         const current = requireAttachment(message);
         if (message.type === "replay_operation" || message.type === "replay_emission") {
           const entry = message.payload as ReplayEntry;
-          if (!verifyReplayEntry(replayChainSeed, replayChainDigest, entry))
+          if (!verifyReplayEntry(replayChainSeed, replayChainDigest, entry)) {
             throw new CrankError("replay_diverged", "Replay integrity chain mismatch");
-          if (!step)
+          }
+          if (!step) {
             step = yield* driver.step(current, { type: "start", input: requireInput(input) });
+          }
           compareReplayStep(step, entry);
           replayChainDigest = entry.entryDigest;
           replayCount += 1;
@@ -112,10 +119,12 @@ export function createAgentCoreDurableEvaluator(options: AgentCoreDurableEvaluat
           if (
             message.payload.entryCount !== replayCount ||
             message.payload.replayChainDigest !== replayChainDigest
-          )
+          ) {
             throw new CrankError("history_not_exhausted", "Replay history end mismatch");
-          if (!step)
+          }
+          if (!step) {
             step = yield* driver.step(current, { type: "start", input: requireInput(input) });
+          }
           if (step.actionIndex <= replayedThrough) {
             throw new CrankError("history_not_exhausted", "Replay history was not exhausted");
           }
@@ -164,18 +173,24 @@ export function createAgentCoreDurableEvaluator(options: AgentCoreDurableEvaluat
   };
 
   function assertBase(message: HostProgramMessage): void {
-    if (message.releaseId !== options.releaseId)
+    if (message.releaseId !== options.releaseId) {
       throw new CrankError("placement_unavailable", "Runtime release mismatch");
-    if (taskId && message.taskId !== taskId)
+    }
+    if (taskId && message.taskId !== taskId) {
       throw new CrankError("sandbox_task_mismatch", "Sandbox task mismatch");
-    if (activationEpoch !== undefined && message.activationEpoch !== activationEpoch)
+    }
+    if (activationEpoch !== undefined && message.activationEpoch !== activationEpoch) {
       throw new CrankError("stale_activation", "Activation epoch mismatch");
+    }
   }
 
   function requireAttachment(message: HostProgramMessage): ProgramAttachment {
-    if (!attachment || message.attachmentId !== attachment.attachmentId)
+    if (!attachment || message.attachmentId !== attachment.attachmentId) {
       throw protocol("Attachment identity mismatch");
-    if (terminal) throw protocol("Attachment is terminal");
+    }
+    if (terminal) {
+      throw protocol("Attachment is terminal");
+    }
     return attachment;
   }
 
@@ -199,21 +214,26 @@ export function createAgentCoreDurableEvaluator(options: AgentCoreDurableEvaluat
 }
 
 function requireInput(input: Json | undefined): Json {
-  if (input === undefined) throw protocol("Restore input is missing");
+  if (input === undefined) {
+    throw protocol("Restore input is missing");
+  }
   return input;
 }
 
 function compareReplayStep(step: ProgramStep, entry: ReplayEntry): void {
-  if (step.actionIndex !== entry.actionIndex || step.type !== entry.type)
+  if (step.actionIndex !== entry.actionIndex || step.type !== entry.type) {
     throw new CrankError("replay_diverged", "Replay action or kind mismatch");
-  if (step.type !== "operation" && step.type !== "emission")
+  }
+  if (step.type !== "operation" && step.type !== "emission") {
     throw new CrankError("replay_diverged", "Program returned before replay history ended");
+  }
   const descriptorKind = step.type === "operation" ? step.descriptor.kind : "emission";
   if (
     descriptorKind !== entry.descriptorKind ||
     canonicalSnapshot(step.descriptor).sha !== entry.descriptorDigest
-  )
+  ) {
     throw new CrankError("replay_diverged", "Replay descriptor mismatch");
+  }
 }
 
 function allowedCode(

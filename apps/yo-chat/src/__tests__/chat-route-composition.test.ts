@@ -88,7 +88,10 @@ describe("yo-chat chat application composition", () => {
     expect(modelProvider).toMatch(/env\.ENABLE_SCRIPTED_RENDERING_PROVIDER !== ["']yes["']/);
     expect(modelProvider).toContain("Scripted rendering provider is disabled");
     expect(modelProvider).toContain("installScriptedRenderingModelProvider");
-    expect(basicRoute).toContain("import.meta.env['VITE_ENABLE_SCRIPTED_RENDERING'] === '1'");
+    // Quote style is the formatter's business; the gate is the env check.
+    expect(basicRoute).toMatch(
+      /import\.meta\.env\[["']VITE_ENABLE_SCRIPTED_RENDERING["']\]\s*===\s*["']1["']/,
+    );
     expect(playwrightConfig).toContain("ENABLE_SCRIPTED_RENDERING_PROVIDER");
     expect(playwrightConfig).toContain("VITE_ENABLE_SCRIPTED_RENDERING");
     expect(playwrightConfig).toContain("E2E_FULL");

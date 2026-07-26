@@ -7,7 +7,9 @@ import {
 
 const port = Number(process.env["FOREIGN_A2A_PORT"]);
 const mode = process.env["FOREIGN_A2A_MODE"] ?? "reconciled";
-if (!Number.isSafeInteger(port) || port <= 0) throw new Error("FOREIGN_A2A_PORT is required");
+if (!Number.isSafeInteger(port) || port <= 0) {
+  throw new Error("FOREIGN_A2A_PORT is required");
+}
 let creations = 0;
 let continuations = 0;
 let dropFirst = mode !== "continuation";
@@ -147,11 +149,15 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 
 async function readBody(request: import("node:http").IncomingMessage): Promise<any> {
   const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  for await (const chunk of request) {
+    chunks.push(Buffer.from(chunk));
+  }
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : undefined;
 }
 function wireResult(result: ForeignA2ASendResult): any {
-  if (result.type === "message") return { message: result.message };
+  if (result.type === "message") {
+    return { message: result.message };
+  }
   return {
     task: {
       id: result.task.id,

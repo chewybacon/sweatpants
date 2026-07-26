@@ -67,7 +67,9 @@ export async function discoverCallerAuthoritativeProgram(
   } catch (error) {
     throw a2aError("agent_card_invalid", "Agent Card is not canonical JSON", error);
   }
-  if (!record(card)) throw a2aError("agent_card_invalid", "Agent Card must be an object");
+  if (!record(card)) {
+    throw a2aError("agent_card_invalid", "Agent Card must be an object");
+  }
   validateAgentCardCore(card);
   const capabilities = card["capabilities"];
   if (!record(capabilities) || !Array.isArray(capabilities["extensions"])) {
@@ -131,7 +133,9 @@ export async function discoverCallerAuthoritativeProgram(
     }),
     programForSkill(skillId: string): PinnedProgram {
       const mapping = params.programs.find((candidate) => candidate.skillId === skillId);
-      if (!mapping) throw a2aError("authorization_denied", "Requested A2A skill is unavailable");
+      if (!mapping) {
+        throw a2aError("authorization_denied", "Requested A2A skill is unavailable");
+      }
       return structuredClone(mapping.program);
     },
   });
@@ -157,10 +161,12 @@ export function parseCallerAuthoritativeExtensionParams(
       !record(mapping) ||
       !exactKeys(mapping, ["skillId", "program"]) ||
       !nonempty(mapping["skillId"])
-    )
+    ) {
       throw a2aError("agent_card_invalid", "Invalid A2A skill mapping");
-    if (skills.has(mapping["skillId"]))
+    }
+    if (skills.has(mapping["skillId"])) {
       throw a2aError("agent_card_invalid", "Duplicate A2A skill mapping");
+    }
     skills.add(mapping["skillId"]);
     const program = parsePinnedProgram(mapping["program"]);
     return Object.freeze({ skillId: mapping["skillId"], program });
@@ -176,10 +182,12 @@ export function parseCallerAuthoritativeExtensionParams(
 }
 
 export function parsePinnedProgram(value: unknown): PinnedProgram {
-  if (!record(value) || !exactKeys(value, ["id", "version", "digest"]))
+  if (!record(value) || !exactKeys(value, ["id", "version", "digest"])) {
     throw a2aError("agent_card_invalid", "Invalid pinned A2A program identity");
-  if (!nonempty(value["id"]) || !nonempty(value["version"]) || !digest(value["digest"]))
+  }
+  if (!nonempty(value["id"]) || !nonempty(value["version"]) || !digest(value["digest"])) {
     throw a2aError("agent_card_invalid", "Invalid pinned A2A program identity");
+  }
   return Object.freeze({ id: value["id"], version: value["version"], digest: value["digest"] });
 }
 
@@ -209,8 +217,9 @@ function validateSkillMappings(
   params: CallerAuthoritativeProgramExtensionParamsV1,
 ): void {
   const skills = card["skills"];
-  if (!Array.isArray(skills))
+  if (!Array.isArray(skills)) {
     throw a2aError("agent_card_invalid", "Agent Card skills must be an array");
+  }
   const ids = new Set(
     skills.flatMap((skill) => (record(skill) && nonempty(skill["id"]) ? [skill["id"]] : [])),
   );
@@ -222,11 +231,15 @@ function validateSkillMappings(
 }
 
 function classifyHttpStatus(status: number, resource: "agent-card" | "manifest"): void {
-  if (status >= 200 && status < 300) return;
-  if (status === 401)
+  if (status >= 200 && status < 300) {
+    return;
+  }
+  if (status === 401) {
     throw a2aError("authentication_failed", `A2A ${resource} authentication failed`);
-  if (status === 403 || status === 404)
+  }
+  if (status === 403 || status === 404) {
     throw a2aError("authorization_denied", `A2A ${resource} is unavailable`);
+  }
   throw a2aError("transport_lost", `A2A ${resource} request failed with status ${status}`);
 }
 

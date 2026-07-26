@@ -113,10 +113,14 @@ export function signPrivateAuthorityToken(
   claims: unknown,
   keyring: CapabilityKeyring,
 ): string {
-  if (!purpose) throw new CrankError("invalid_manifest", "Private token purpose is required");
+  if (!purpose) {
+    throw new CrankError("invalid_manifest", "Private token purpose is required");
+  }
   const keyId = keyring.activeKeyId;
   const key = keyringState(keyring).get(keyId);
-  if (!key || key.status !== "active") throw invalid();
+  if (!key || key.status !== "active") {
+    throw invalid();
+  }
   const body = canonicalJson(claims);
   const keyPart = base64url(encoder.encode(keyId));
   const claimsPart = base64url(encoder.encode(body));
@@ -139,26 +143,36 @@ export function verifyPrivateAuthorityToken(
       !claimsPart ||
       !signaturePart ||
       extra.length
-    )
+    ) {
       throw invalid();
-    if (new TextDecoder().decode(fromBase64url(purposePart)) !== purpose) throw invalid();
+    }
+    if (new TextDecoder().decode(fromBase64url(purposePart)) !== purpose) {
+      throw invalid();
+    }
     const keyId = new TextDecoder().decode(fromBase64url(keyPart));
     const key = keyringState(keyring).get(keyId);
-    if (!key || key.status === "retired") throw invalid();
+    if (!key || key.status === "retired") {
+      throw invalid();
+    }
     const signingInput = [version, purposePart, keyPart, claimsPart].join(".");
     if (
       !equalBytes(
         hmac(sha256, key.secret, encoder.encode(signingInput)),
         fromBase64url(signaturePart),
       )
-    )
+    ) {
       throw invalid();
+    }
     const decoded = new TextDecoder("utf-8", { fatal: true }).decode(fromBase64url(claimsPart));
     const claims: unknown = JSON.parse(decoded);
-    if (canonicalJson(claims) !== decoded) throw invalid();
+    if (canonicalJson(claims) !== decoded) {
+      throw invalid();
+    }
     return claims;
   } catch (error) {
-    if (error instanceof CrankError) throw error;
+    if (error instanceof CrankError) {
+      throw error;
+    }
     throw invalid();
   }
 }
@@ -394,7 +408,9 @@ function invalid(): CrankError {
  */
 function base64url(bytes: Uint8Array): string {
   let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
@@ -405,7 +421,9 @@ function fromBase64url(value: string): Uint8Array {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/");
   const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
   const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
   return bytes;
 }
 

@@ -66,8 +66,9 @@ export function* consumeAgUiEventStream(
           break;
         case "TOOL_CALL_ARGS": {
           const call = toolCalls.get(event.toolCallId);
-          if (call)
+          if (call) {
             toolCalls.set(event.toolCallId, { ...call, arguments: call.arguments + event.delta });
+          }
           break;
         }
         case "TOOL_CALL_RESULT":
@@ -94,9 +95,15 @@ export function* consumeAgUiEventStream(
     yield* each.next();
   }
 
-  if (!runStarted) throw new Error("AG-UI stream ended before RUN_STARTED");
-  if (!terminalSeen) throw new Error("AG-UI stream ended before RUN_FINISHED or RUN_ERROR");
-  if (runError) throw runError;
+  if (!runStarted) {
+    throw new Error("AG-UI stream ended before RUN_STARTED");
+  }
+  if (!terminalSeen) {
+    throw new Error("AG-UI stream ended before RUN_FINISHED or RUN_ERROR");
+  }
+  if (runError) {
+    throw runError;
+  }
 
   const currentToolCalls = [...toolCalls.values()].map((call) => ({
     id: call.id,

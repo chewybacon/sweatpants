@@ -118,10 +118,12 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
 
   return {
     openConnection(request): A2AExecutorConnection {
-      if (request.activatedExtension !== CALLER_AUTHORITATIVE_EXTENSION_URI)
+      if (request.activatedExtension !== CALLER_AUTHORITATIVE_EXTENSION_URI) {
         throw a2aError("extension_not_activated", "Exact A2A extension activation is required");
-      if (!request.principal?.principalId)
+      }
+      if (!request.principal?.principalId) {
         throw a2aError("authentication_failed", "Authenticated executor principal is required");
+      }
       const state: ConnectionState = {
         principal: Object.freeze({ ...request.principal }),
         replayChainSeed: "",
@@ -159,7 +161,9 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
         *close(): Operation<void> {
           if (!state.shutdown) {
             state.shutdown = true;
-            if (state.attachment) yield* driver.shutdown(state.attachment, "transport_lost");
+            if (state.attachment) {
+              yield* driver.shutdown(state.attachment, "transport_lost");
+            }
           }
           states.delete(state);
           releaseEpoch(state);
@@ -178,8 +182,9 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
           !state.shutdown &&
           !state.fenced &&
           (!executionId || state.identity?.executionId === executionId)
-        )
+        ) {
           count += 1;
+        }
       }
       return count;
     },
@@ -189,18 +194,25 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
     state: ConnectionState,
     message: ClientProgramMessageV1,
   ): Operation<ServerProgramMessageV1 | undefined> {
-    if (state.shutdown) throw protocol("Executor connection is closed");
-    if (state.fenced)
+    if (state.shutdown) {
+      throw protocol("Executor connection is closed");
+    }
+    if (state.fenced) {
       throw a2aError("stale_activation", "Executor attachment was fenced by a newer epoch");
+    }
     if (message.type === "attach_begin" || message.type === "restore_begin") {
-      if (state.attachment || state.identity)
+      if (state.attachment || state.identity) {
         throw protocol("Attach may occur only once per connection");
-      if (message.type === "restore_begin" && !streamedRestore)
+      }
+      if (message.type === "restore_begin" && !streamedRestore) {
         throw protocol("Streamed restore is not implemented by this executor");
-      if (canonicalSnapshot(message.payload.input).sha !== message.payload.inputDigest)
+      }
+      if (canonicalSnapshot(message.payload.input).sha !== message.payload.inputDigest) {
         throw protocol("Canonical child input digest mismatch");
-      if (options.authorize && !options.authorize(state.principal, message.program))
+      }
+      if (options.authorize && !options.authorize(state.principal, message.program)) {
         throw a2aError("authorization_denied", "Requested program is unavailable");
+      }
       yield* acceptEpoch(state, message);
       const request = remoteAttachRequest(message);
       state.identity = identityOf(message);
@@ -211,8 +223,9 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
         state.replayChainDigest = message.payload.replayChainSeed;
         state.replayedThrough = message.payload.replayedThroughActionIndex;
       }
-      if (activeAttachmentCount() >= limits.maxActiveAttachments)
+      if (activeAttachmentCount() >= limits.maxActiveAttachments) {
         throw protocol("Executor active attachment limit exceeded");
+      }
       state.attachment = yield* driver.attach(request);
       trackEpoch(state);
       observe(state, "attached");
@@ -229,12 +242,16 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
 
     const attachment = requireAttachment(state, message);
     if (message.type === "replay_operation" || message.type === "replay_emission") {
-      if (!state.restoring) throw protocol("Replay entry outside restore");
+      if (!state.restoring) {
+        throw protocol("Replay entry outside restore");
+      }
       const entry = message.payload as ReplayEntry;
-      if (!verifyA2AReplayEntry(state.replayChainSeed, state.replayChainDigest, entry))
+      if (!verifyA2AReplayEntry(state.replayChainSeed, state.replayChainDigest, entry)) {
         throw a2aError("replay_diverged", "Replay integrity chain mismatch");
-      if (!state.step)
+      }
+      if (!state.step) {
         state.step = yield* driver.step(attachment, { type: "start", input: requireInput(state) });
+      }
       compareReplayStep(state.step, entry);
       state.replayChainDigest = entry.entryDigest;
       state.replayCount += 1;
@@ -255,16 +272,21 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
       return undefined;
     }
     if (message.type === "replay_end") {
-      if (!state.restoring) throw protocol("Replay end outside restore");
+      if (!state.restoring) {
+        throw protocol("Replay end outside restore");
+      }
       if (
         message.payload.entryCount !== state.replayCount ||
         message.payload.replayChainDigest !== state.replayChainDigest
-      )
+      ) {
         throw a2aError("history_not_exhausted", "Replay history end mismatch");
-      if (!state.step)
+      }
+      if (!state.step) {
         state.step = yield* driver.step(attachment, { type: "start", input: requireInput(state) });
-      if (state.step.actionIndex <= state.replayedThrough)
+      }
+      if (state.step.actionIndex <= state.replayedThrough) {
         throw a2aError("history_not_exhausted", "Replay history was not exhausted");
+      }
       state.restoring = false;
       const frontierDigest = computeA2AFrontierDigest({
         executionId: state.identity!.executionId,
@@ -287,19 +309,23 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
         { attachmentId: attachment.attachmentId, actionIndex: state.step.actionIndex },
       );
     }
-    if (state.restoring) throw protocol("Live commands are forbidden before restore frontier");
+    if (state.restoring) {
+      throw protocol("Live commands are forbidden before restore frontier");
+    }
     if (message.type === "command" || message.type === "shutdown") {
       const commandId = message.commandId!;
       const commandDigest = canonicalSnapshot(message).sha;
       const accepted = state.acceptedCommands.get(commandId);
       if (accepted) {
-        if (accepted.digest !== commandDigest)
+        if (accepted.digest !== commandDigest) {
           throw a2aError("idempotency_conflict", "Command ID was reused with different content");
+        }
         observe(state, "duplicate", undefined, message.actionIndex);
         return accepted.response;
       }
-      if (state.acceptedCommands.size >= limits.maxCommandsPerAttachment)
+      if (state.acceptedCommands.size >= limits.maxCommandsPerAttachment) {
         throw protocol("Executor attachment command limit exceeded");
+      }
       let response: ServerProgramMessageV1;
       if (message.type === "command") {
         state.step = yield* driver.step(attachment, inflateCommand(message.payload.command));
@@ -337,8 +363,9 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
   function* acceptEpoch(state: ConnectionState, message: ClientProgramMessageV1): Operation<void> {
     pruneEpochTombstones();
     const latest = latestEpochs.get(message.executionId);
-    if (latest !== undefined && message.executionEpoch < latest.epoch)
+    if (latest !== undefined && message.executionEpoch < latest.epoch) {
       throw a2aError("stale_activation", "Execution epoch is stale");
+    }
     if (latest === undefined || message.executionEpoch > latest.epoch) {
       latestEpochs.set(message.executionId, {
         epoch: message.executionEpoch,
@@ -352,8 +379,9 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
           candidate.identity.executionEpoch < message.executionEpoch
         ) {
           candidate.fenced = true;
-          if (candidate.attachment && !candidate.shutdown)
+          if (candidate.attachment && !candidate.shutdown) {
             yield* driver.shutdown(candidate.attachment, "transport_lost");
+          }
           observe(candidate, "stale_fenced", "stale_activation");
         }
       }
@@ -364,13 +392,18 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
 
   function activeAttachmentCount(): number {
     let count = 0;
-    for (const state of states)
-      if (state.attachment && !state.shutdown && !state.fenced) count += 1;
+    for (const state of states) {
+      if (state.attachment && !state.shutdown && !state.fenced) {
+        count += 1;
+      }
+    }
     return count;
   }
 
   function trackEpoch(state: ConnectionState): void {
-    if (!state.identity || state.epochTracked) return;
+    if (!state.identity || state.epochTracked) {
+      return;
+    }
     const entry = latestEpochs.get(state.identity.executionId);
     if (entry) {
       entry.active += 1;
@@ -380,7 +413,9 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
   }
 
   function releaseEpoch(state: ConnectionState): void {
-    if (!state.identity || !state.epochTracked) return;
+    if (!state.identity || !state.epochTracked) {
+      return;
+    }
     const entry = latestEpochs.get(state.identity.executionId);
     if (entry) {
       entry.active = Math.max(0, entry.active - 1);
@@ -392,15 +427,20 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
   function pruneEpochTombstones(): void {
     const now = Date.now();
     for (const [executionId, entry] of latestEpochs) {
-      if (entry.active === 0 && now - entry.lastSeenAt >= limits.epochTombstoneTtlMs)
+      if (entry.active === 0 && now - entry.lastSeenAt >= limits.epochTombstoneTtlMs) {
         latestEpochs.delete(executionId);
+      }
     }
-    if (latestEpochs.size <= limits.maxEpochTombstones) return;
+    if (latestEpochs.size <= limits.maxEpochTombstones) {
+      return;
+    }
     const inactive = [...latestEpochs.entries()]
       .filter(([, entry]) => entry.active === 0)
       .sort((left, right) => left[1].lastSeenAt - right[1].lastSeenAt);
     for (const [executionId] of inactive) {
-      if (latestEpochs.size <= limits.maxEpochTombstones) break;
+      if (latestEpochs.size <= limits.maxEpochTombstones) {
+        break;
+      }
       latestEpochs.delete(executionId);
     }
   }
@@ -411,7 +451,9 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
     code?: A2AProgramErrorCode,
     actionIndex?: number,
   ): void {
-    if (!state.identity) return;
+    if (!state.identity) {
+      return;
+    }
     options.observe?.({
       event,
       executorId: options.executorId,
@@ -442,7 +484,9 @@ function requireAttachment(
   state: ConnectionState,
   message: ClientProgramMessageV1,
 ): ProgramAttachment {
-  if (!state.identity || !state.attachment) throw protocol("Message before attach");
+  if (!state.identity || !state.attachment) {
+    throw protocol("Message before attach");
+  }
   assertEnvelopeIdentity(message, {
     ...state.identity,
     attachmentId: state.attachment.attachmentId,
@@ -457,7 +501,9 @@ function identityOf(message: ClientProgramMessageV1): Identity {
   };
 }
 function requireInput(state: ConnectionState): Json {
-  if (state.input === undefined) throw protocol("Executor child input is missing");
+  if (state.input === undefined) {
+    throw protocol("Executor child input is missing");
+  }
   return state.input;
 }
 function inflateCommand(command: WireProgramCommandV1): ProgramCommand {
@@ -466,16 +512,19 @@ function inflateCommand(command: WireProgramCommandV1): ProgramCommand {
     : command;
 }
 function compareReplayStep(step: ProgramStep, entry: ReplayEntry): void {
-  if (step.actionIndex !== entry.actionIndex || step.type !== entry.type)
+  if (step.actionIndex !== entry.actionIndex || step.type !== entry.type) {
     throw a2aError("replay_diverged", "Replay action or kind mismatch");
-  if (step.type !== "operation" && step.type !== "emission")
+  }
+  if (step.type !== "operation" && step.type !== "emission") {
     throw a2aError("replay_diverged", "Program terminated before replay history ended");
+  }
   const descriptorKind = step.type === "operation" ? step.descriptor.kind : "emission";
   if (
     descriptorKind !== entry.descriptorKind ||
     canonicalSnapshot(step.descriptor).sha !== entry.descriptorDigest
-  )
+  ) {
     throw a2aError("replay_diverged", "Replay descriptor mismatch");
+  }
 }
 function responseEnvelope<T extends ServerProgramMessageV1["type"]>(
   state: ConnectionState,
@@ -483,7 +532,9 @@ function responseEnvelope<T extends ServerProgramMessageV1["type"]>(
   payload: Extract<ServerProgramMessageV1, { type: T }>["payload"],
   scope: { attachmentId?: string; actionIndex?: number; commandId?: string } = {},
 ): Extract<ServerProgramMessageV1, { type: T }> {
-  if (!state.identity) throw protocol("Executor identity is not established");
+  if (!state.identity) {
+    throw protocol("Executor identity is not established");
+  }
   return {
     protocolVersion: 1,
     extensionUri: CALLER_AUTHORITATIVE_EXTENSION_URI,
@@ -558,14 +609,17 @@ function validateResourceLimits(
     epochTombstoneTtlMs: input?.epochTombstoneTtlMs ?? 24 * 60 * 60 * 1_000,
   };
   for (const [name, value] of Object.entries(limits)) {
-    if (!Number.isSafeInteger(value) || value <= 0)
+    if (!Number.isSafeInteger(value) || value <= 0) {
       throw new CrankError("invalid_descriptor", `${name} must be a positive safe integer`);
+    }
   }
   return Object.freeze(limits);
 }
 
 function validateId(value: string, field: string): void {
-  if (!value || value.length > 256) throw new CrankError("invalid_descriptor", `Invalid ${field}`);
+  if (!value || value.length > 256) {
+    throw new CrankError("invalid_descriptor", `Invalid ${field}`);
+  }
 }
 function protocol(message: string): CrankError {
   return a2aError("program_protocol_error", message);

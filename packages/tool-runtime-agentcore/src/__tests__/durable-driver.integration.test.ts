@@ -154,7 +154,9 @@ describe("AgentCore crank-native ProgramDriver integration", () => {
           );
           const driver = createAgentCoreDurableProgramDriver(transport, { manifests });
           const first = registry.values().next().value;
-          if (!first || !driver.manifest) throw new Error("fixture manifest is unavailable");
+          if (!first || !driver.manifest) {
+            throw new Error("fixture manifest is unavailable");
+          }
           manifestCheck = run(() =>
             driver.manifest!({
               id: first.manifest.programId,

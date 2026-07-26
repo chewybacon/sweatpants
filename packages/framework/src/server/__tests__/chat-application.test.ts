@@ -7,7 +7,9 @@ function oneShotSubscription(value: string): Subscription<string, void> {
   let done = false;
   return {
     *next(): Operation<IteratorResult<string, void>> {
-      if (done) return { done: true, value: undefined };
+      if (done) {
+        return { done: true, value: undefined };
+      }
       done = true;
       return { done: false, value };
     },

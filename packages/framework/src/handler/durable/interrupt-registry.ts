@@ -51,8 +51,12 @@ function keyFor(threadId: string, scopeId: string, interruptId: string): string 
 }
 
 function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record)
     .sort()
@@ -93,7 +97,9 @@ function schemaTypeMatches(type: string, value: unknown): boolean {
 
 function validateJsonSchemaSubset(schema: unknown, value: unknown): boolean {
   const record = asRecord(schema);
-  if (!record) return true;
+  if (!record) {
+    return true;
+  }
 
   const enumValues = Array.isArray(record["enum"]) ? record["enum"] : undefined;
   if (
@@ -104,7 +110,9 @@ function validateJsonSchemaSubset(schema: unknown, value: unknown): boolean {
   }
 
   const type = record["type"];
-  if (typeof type === "string" && !schemaTypeMatches(type, value)) return false;
+  if (typeof type === "string" && !schemaTypeMatches(type, value)) {
+    return false;
+  }
   if (
     Array.isArray(type) &&
     type.every((entry) => typeof entry === "string") &&
@@ -113,8 +121,9 @@ function validateJsonSchemaSubset(schema: unknown, value: unknown): boolean {
     return false;
   }
 
-  if (record["const"] !== undefined && canonicalJson(record["const"]) !== canonicalJson(value))
+  if (record["const"] !== undefined && canonicalJson(record["const"]) !== canonicalJson(value)) {
     return false;
+  }
 
   const required = Array.isArray(record["required"])
     ? record["required"].filter((entry): entry is string => typeof entry === "string")
@@ -122,9 +131,13 @@ function validateJsonSchemaSubset(schema: unknown, value: unknown): boolean {
   const properties = asRecord(record["properties"]) ?? {};
   const objectValue = asRecord(value);
   if (required.length > 0) {
-    if (!objectValue) return false;
+    if (!objectValue) {
+      return false;
+    }
     for (const requiredKey of required) {
-      if (!(requiredKey in objectValue)) return false;
+      if (!(requiredKey in objectValue)) {
+        return false;
+      }
     }
   }
   if (objectValue) {
@@ -143,7 +156,9 @@ function validateJsonSchemaSubset(schema: unknown, value: unknown): boolean {
 
 export function registerInterruptsFromRunFinished(event: unknown): void {
   const runFinished = asRecord(event);
-  if (!runFinished || runFinished["type"] !== "RUN_FINISHED") return;
+  if (!runFinished || runFinished["type"] !== "RUN_FINISHED") {
+    return;
+  }
   const threadId = typeof runFinished["threadId"] === "string" ? runFinished["threadId"] : "";
   const runId = typeof runFinished["runId"] === "string" ? runFinished["runId"] : "";
   const outcome = asRecord(runFinished["outcome"]);
@@ -159,7 +174,9 @@ export function registerInterruptsFromRunFinished(event: unknown): void {
   const scopeId = scopeIdForInterruptRun(threadId, runId);
   for (const interrupt of outcome["interrupts"]) {
     const candidate = asRecord(interrupt);
-    if (!candidate || typeof candidate["id"] !== "string") continue;
+    if (!candidate || typeof candidate["id"] !== "string") {
+      continue;
+    }
     const metadata = asRecord(candidate["metadata"]) ?? {};
     const toolCallId =
       typeof candidate["toolCallId"] === "string" ? candidate["toolCallId"] : undefined;
@@ -224,7 +241,9 @@ export function deriveResumeScopeId(
   threadId: string,
   parentRunId: string | undefined,
 ): string | null {
-  if (parentRunId) return scopeIdForInterruptRun(threadId, parentRunId);
+  if (parentRunId) {
+    return scopeIdForInterruptRun(threadId, parentRunId);
+  }
   const open = openInterruptsForThread(threadId);
   const scopes = new Set(open.map((record) => record.scopeId));
   return scopes.size === 1 ? [...scopes][0]! : null;
@@ -233,7 +252,9 @@ export function deriveResumeScopeId(
 export function deriveResumeScopeFromEntries(
   resume: ResumeEntry[] | undefined,
 ): { threadId: string; scopeId: string } | null {
-  if (!resume?.length) return null;
+  if (!resume?.length) {
+    return null;
+  }
   const matched = resume.flatMap((entry) =>
     [...recordsByKey.values()].filter(
       (record) => record.interruptId === entry.interruptId && record.status === "open",
@@ -241,7 +262,9 @@ export function deriveResumeScopeFromEntries(
   );
   const threadIds = new Set(matched.map((record) => record.threadId));
   const scopeIds = new Set(matched.map((record) => record.scopeId));
-  if (threadIds.size !== 1 || scopeIds.size !== 1) return null;
+  if (threadIds.size !== 1 || scopeIds.size !== 1) {
+    return null;
+  }
   return { threadId: [...threadIds][0]!, scopeId: [...scopeIds][0]! };
 }
 
@@ -259,8 +282,9 @@ export function validateResumeEntries(params: {
   const openRecords = scopeRecords.filter((record) => record.status === "open");
 
   if (openRecords.length === 0) {
-    if (resume.length === 0)
+    if (resume.length === 0) {
       return { ok: true, scopeId, records: [], entries: [], idempotent: false };
+    }
     const allIdempotent = resume.every((entry) => {
       const record = scopeRecords.find((candidate) => candidate.interruptId === entry.interruptId);
       return record?.resolutionHash === resumeResolutionHash(entry);
@@ -324,7 +348,9 @@ export function validateResumeEntries(params: {
       const action = payloadRecord?.["action"];
       // Decline/cancel carries no business content and is valid independently
       // of the accept-content schema.
-      if (action === "decline" || action === "cancel") continue;
+      if (action === "decline" || action === "cancel") {
+        continue;
+      }
       const businessPayload =
         action === "accept" && "content" in payloadRecord!
           ? payloadRecord!["content"]

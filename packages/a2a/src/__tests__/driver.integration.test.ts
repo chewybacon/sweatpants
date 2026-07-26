@@ -116,7 +116,9 @@ describe("remote A2A ProgramDriver", () => {
       });
       const firstReadyRaw = yield* first.handle(encodeA2AProgramMessage(attach(1)));
       const firstReady = parseServerProgramMessage(firstReadyRaw!);
-      if (firstReady.type !== "attachment_ready") throw new Error("first attach failed");
+      if (firstReady.type !== "attachment_ready") {
+        throw new Error("first attach failed");
+      }
       yield* second.handle(encodeA2AProgramMessage(attach(2)));
       const command = { type: "start" as const, input: "hello" };
       const commandId = computeA2ACommandId({
@@ -175,7 +177,9 @@ describe("remote A2A ProgramDriver", () => {
       attach.payload.inputDigest = canonicalSnapshot("hello").sha;
       const readyRaw = yield* connection.handle(encodeA2AProgramMessage(attach));
       const ready = parseServerProgramMessage(readyRaw!);
-      if (ready.type !== "attachment_ready") throw new Error("expected attachment");
+      if (ready.type !== "attachment_ready") {
+        throw new Error("expected attachment");
+      }
       const command = { type: "start" as const, input: "hello" };
       const commandId = computeA2ACommandId({
         executionId,

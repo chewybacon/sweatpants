@@ -11,7 +11,9 @@ import { REFERENCE_REVIEWER_REMOTE } from "../../index.ts";
 
 const port = Number(process.env["A2A_CERT_PORT"]);
 const crashMarker = process.env["A2A_EXECUTOR_CRASH_MARKER"];
-if (!Number.isSafeInteger(port) || port <= 0) throw new Error("A2A_CERT_PORT is required");
+if (!Number.isSafeInteger(port) || port <= 0) {
+  throw new Error("A2A_CERT_PORT is required");
+}
 
 const executor = createA2AProgramExecutor({
   executorId: `cert-executor-${process.pid}`,
@@ -40,7 +42,9 @@ server.listen(port, "127.0.0.1", () => {
 });
 
 const shutdown = () => {
-  for (const client of webSockets.clients) client.terminate();
+  for (const client of webSockets.clients) {
+    client.terminate();
+  }
   webSockets.close();
   server.close(() => process.exit(0));
 };

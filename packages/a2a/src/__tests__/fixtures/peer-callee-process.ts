@@ -84,8 +84,9 @@ const pending = authority
     (record) =>
       record.payload.type === "PullRequested" && record.payload.descriptor.kind === "effect",
   );
-if (!pending || pending.payload.type !== "PullRequested")
+if (!pending || pending.payload.type !== "PullRequested") {
   throw new Error("callee authority did not journal its delegated effect request");
+}
 const resolutionCapability = authority.resolutionCapability(
   "peer-callee-session",
   taskId,
@@ -95,8 +96,9 @@ const resolutionCapability = authority.resolutionCapability(
 const service = new InMemoryDelegatedEffectsService({
   retention,
   validateOutcome(_taskId, _effectId, outcome) {
-    if (outcome.status === "ok" && typeof outcome.value !== "string")
+    if (outcome.status === "ok" && typeof outcome.value !== "string") {
       throw new Error("callee output schema rejected delegated effect response");
+    }
   },
 });
 service.createTask({
@@ -155,8 +157,9 @@ const server = createServer(async (request, response) => {
         outcome: body.outcome,
       }),
     );
-    if (resolution.status === "rejected")
+    if (resolution.status === "rejected") {
       throw new Error(`callee authority rejected peer response: ${resolution.code}`);
+    }
     await activateCallee();
     if (!droppedAck) {
       droppedAck = true;
@@ -249,11 +252,15 @@ function send(
 }
 async function jsonBody(request: import("node:http").IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  for await (const chunk of request) {
+    chunks.push(Buffer.from(chunk));
+  }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 function required(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} is required`);
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
   return value;
 }

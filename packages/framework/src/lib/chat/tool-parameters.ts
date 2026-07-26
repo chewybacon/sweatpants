@@ -69,7 +69,9 @@ function stripNonJson(value: unknown): unknown {
     const result: Record<string, unknown> = {};
     for (const [key, entry] of Object.entries(value)) {
       const normalized = stripNonJson(entry);
-      if (normalized !== undefined) result[key] = normalized;
+      if (normalized !== undefined) {
+        result[key] = normalized;
+      }
     }
     return result;
   }
@@ -94,7 +96,9 @@ function schemaHasParse<T>(schema: unknown): schema is ParseSchema<T> {
 }
 
 function issuePath(value: unknown): Array<string | number> {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
   return value.filter(
     (part): part is string | number => typeof part === "string" || typeof part === "number",
   );
@@ -158,8 +162,12 @@ export function createToolParameterValidationError(input: {
 export function getToolParameterValidationErrorPayload(
   error: unknown,
 ): ToolParameterValidationErrorPayload | undefined {
-  if (error instanceof ToolParameterValidationError) return error.payload;
-  if (!isRecord(error)) return undefined;
+  if (error instanceof ToolParameterValidationError) {
+    return error.payload;
+  }
+  if (!isRecord(error)) {
+    return undefined;
+  }
 
   const code = error["code"];
   const payload = error["payload"];

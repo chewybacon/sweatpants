@@ -28,14 +28,18 @@ const LEAF_CONSUMERS = ["durable-authoring-types"];
 
 function layerOf(filename) {
     for (const [index, layer] of LAYERS.entries()) {
-        if (filename.endsWith(`${layer}.ts`)) return index;
+        if (filename.endsWith(`${layer}.ts`)) {
+            return index;
+        }
     }
     return undefined;
 }
 
 function importedLayer(specifier) {
     for (const [index, layer] of LAYERS.entries()) {
-        if (specifier.endsWith(`${layer}.ts`) || specifier.endsWith(layer)) return index;
+        if (specifier.endsWith(`${layer}.ts`) || specifier.endsWith(layer)) {
+            return index;
+        }
     }
     return undefined;
 }
@@ -50,13 +54,19 @@ const layeredImports = {
     },
     create(context) {
         const filename = context.filename ?? context.getFilename();
-        if (LEAF_CONSUMERS.some((layer) => filename.endsWith(`${layer}.ts`))) return {};
+        if (LEAF_CONSUMERS.some((layer) => filename.endsWith(`${layer}.ts`))) {
+            return {};
+        }
         const own = layerOf(filename);
-        if (own === undefined) return {};
+        if (own === undefined) {
+            return {};
+        }
 
         function check(node, specifier) {
             const target = importedLayer(specifier);
-            if (target === undefined || target <= own) return;
+            if (target === undefined || target <= own) {
+                return;
+            }
             context.report({
                 node,
                 message:
@@ -72,10 +82,14 @@ const layeredImports = {
                 check(node, node.source.value);
             },
             ExportNamedDeclaration(node) {
-                if (node.source) check(node, node.source.value);
+                if (node.source) {
+                    check(node, node.source.value);
+                }
             },
             ExportAllDeclaration(node) {
-                if (node.source) check(node, node.source.value);
+                if (node.source) {
+                    check(node, node.source.value);
+                }
             },
         };
     },
@@ -100,8 +114,12 @@ const documentedWeld = {
             TSAsExpression(node) {
                 // Only the double form (`x as unknown as T`) defeats the checker
                 // outright; a single assertion still has to be assignable.
-                if (node.expression?.type !== "TSAsExpression") return;
-                if (safetyComments.some((comment) => documents(text, comment, node))) return;
+                if (node.expression?.type !== "TSAsExpression") {
+                    return;
+                }
+                if (safetyComments.some((comment) => documents(text, comment, node))) {
+                    return;
+                }
 
                 context.report({
                     node,
@@ -125,7 +143,9 @@ const documentedWeld = {
  * `;` or a brace means the comment belongs to something else.
  */
 function documents(text, comment, node) {
-    if (comment.end > node.start) return false;
+    if (comment.end > node.start) {
+        return false;
+    }
     const between = text.slice(comment.end, node.start);
     return !/[;{}]/.test(between);
 }

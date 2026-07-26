@@ -68,8 +68,8 @@ export function createSecureA2AHttpClient(): A2AHttpClient {
         ...(request.extensionUris?.length
           ? { [A2A_EXTENSIONS_HEADER]: request.extensionUris.join(",") }
           : {}),
-        ...(request.headers ?? {}),
-        ...(authorization?.headers ?? {}),
+        ...request.headers,
+        ...authorization?.headers,
       };
       rejectUnsafeHeaders(headers);
       const response = await pinnedRequest(
@@ -80,12 +80,19 @@ export function createSecureA2AHttpClient(): A2AHttpClient {
         request.body,
         request.signal,
       );
-      if (![301, 302, 303, 307, 308].includes(response.status)) return response;
-      if (redirects >= maxRedirects) throw a2aError("unsafe_url", "A2A redirect limit exceeded");
-      if (method === "POST" && ![307, 308].includes(response.status))
+      if (![301, 302, 303, 307, 308].includes(response.status)) {
+        return response;
+      }
+      if (redirects >= maxRedirects) {
+        throw a2aError("unsafe_url", "A2A redirect limit exceeded");
+      }
+      if (method === "POST" && ![307, 308].includes(response.status)) {
         throw a2aError("unsafe_url", "State-changing A2A redirects must preserve the HTTP method");
+      }
       const location = response.headers["location"];
-      if (!location) throw a2aError("unsafe_url", "A2A redirect omitted Location");
+      if (!location) {
+        throw a2aError("unsafe_url", "A2A redirect omitted Location");
+      }
       previous = validated.url;
       current = new URL(location, validated.url);
       // Authorization is recalculated after policy validation for every redirect.
@@ -136,8 +143,9 @@ function pinnedRequest(
   if (
     encodedBody !== undefined &&
     new TextEncoder().encode(encodedBody).byteLength > A2A_MAX_FRAME_BYTES
-  )
+  ) {
     return Promise.reject(a2aError("payload_too_large", "A2A HTTP request exceeds 2 MiB"));
+  }
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(a2aError("transport_lost", "A2A HTTP request aborted"));
@@ -169,8 +177,9 @@ function pinnedRequest(
       incoming.once("end", () => {
         const normalized: Record<string, string> = {};
         for (const [name, value] of Object.entries(incoming.headers)) {
-          if (value !== undefined)
+          if (value !== undefined) {
             normalized[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : value;
+          }
         }
         resolve({
           url,
@@ -180,7 +189,9 @@ function pinnedRequest(
         });
       });
     });
-    if (encodedBody !== undefined) request.write(encodedBody);
+    if (encodedBody !== undefined) {
+      request.write(encodedBody);
+    }
     request.end();
   });
 }
@@ -192,8 +203,11 @@ function createPinnedLookup(addresses: readonly string[]): LookupFunction {
     callback: (...args: unknown[]) => void,
   ) => {
     const records = addresses.map((address) => ({ address, family: isIP(address) }));
-    if (options?.all) callback(null, records);
-    else callback(null, records[0]?.address, records[0]?.family);
+    if (options?.all) {
+      callback(null, records);
+    } else {
+      callback(null, records[0]?.address, records[0]?.family);
+    }
   }) as LookupFunction;
 }
 

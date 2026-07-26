@@ -11,8 +11,8 @@
  * 4. Returns Response with ReadableStream that pulls via scope.run()
  * 5. Cleanup on completion or cancel
  */
-import { createContext, createScope } from 'effection'
-import type { Operation, Scope, Subscription } from 'effection'
+import { createContext, createScope } from "effection";
+import type { Operation, Scope, Subscription } from "effection";
 
 // =============================================================================
 // TYPES
@@ -24,32 +24,32 @@ import type { Operation, Scope, Subscription } from 'effection'
  */
 export interface HandlerContext {
   /** The incoming request */
-  request: Request
+  request: Request;
   /** Response headers (mutable during setup) */
-  headers: Headers
+  headers: Headers;
   /** Response status code (default 200) */
-  status: number
+  status: number;
 }
 
 /**
  * Effection context for accessing HandlerContext from within Operations.
  */
-export const HandlerContext = createContext<HandlerContext>('handler-context')
+export const HandlerContext = createContext<HandlerContext>("handler-context");
 
 /**
  * Options for createStreamingHandler
  */
 export interface StreamingHandlerOptions {
   /** Parent scope used for request scopes. */
-  parentScope?: Scope
+  parentScope?: Scope;
   /** Default headers to include in response */
-  defaultHeaders?: HeadersInit
+  defaultHeaders?: HeadersInit;
   /** Default status code (default 200) */
-  defaultStatus?: number
+  defaultStatus?: number;
   /** Serialize value to string (default: identity for strings, JSON.stringify for objects) */
-  serialize?: (value: string) => string
+  serialize?: (value: string) => string;
   /** Custom error handler - return a Response or undefined to use default behavior */
-  onSetupError?: (error: Error, ctx: HandlerContext) => Response | undefined
+  onSetupError?: (error: Error, ctx: HandlerContext) => Response | undefined;
 }
 
 /**
@@ -59,19 +59,19 @@ export interface StreamingHandlerOptions {
 export type SetupResult =
   | Subscription<string, void>
   | {
-    subscription: Subscription<string, void>
-    cleanup?: () => Operation<void>
-  }
+      subscription: Subscription<string, void>;
+      cleanup?: () => Operation<void>;
+    };
 
 /**
  * Setup function signature - receives nothing, gets context via yield* HandlerContext.expect()
  */
-export type SetupFn = () => Operation<SetupResult>
+export type SetupFn = () => Operation<SetupResult>;
 
-export type FetchHandler = (request: Request) => Promise<Response>
+export type FetchHandler = (request: Request) => Promise<Response>;
 
 export interface ScopedFetchHandler extends FetchHandler {
-  withScope(parentScope: Scope): FetchHandler
+  withScope(parentScope: Scope): FetchHandler;
 }
 
 // =============================================================================
@@ -92,7 +92,7 @@ export interface ScopedFetchHandler extends FetchHandler {
  * ```
  */
 export function* useHandlerContext(): Operation<HandlerContext> {
-  return yield* HandlerContext.expect()
+  return yield* HandlerContext.expect();
 }
 
 // =============================================================================
@@ -133,143 +133,145 @@ export function* useHandlerContext(): Operation<HandlerContext> {
  */
 export function createStreamingHandler(
   setup: SetupFn,
-  options: StreamingHandlerOptions = {}
+  options: StreamingHandlerOptions = {},
 ): ScopedFetchHandler {
   const buildHandler = (parentScope: Scope | undefined): ScopedFetchHandler => {
     const {
-      defaultHeaders = { 'Content-Type': 'application/x-ndjson' },
+      defaultHeaders = { "Content-Type": "application/x-ndjson" },
       defaultStatus = 200,
-      serialize = (v: string) => v + '\n',
+      serialize = (v: string) => v + "\n",
       onSetupError,
-    } = options
+    } = options;
 
     const handler = async function handler(request: Request): Promise<Response> {
-      const [scope, destroy] = parentScope ? createScope(parentScope) : createScope()
-    const encoder = new TextEncoder()
+      const [scope, destroy] = parentScope ? createScope(parentScope) : createScope();
+      const encoder = new TextEncoder();
 
-    // Create mutable context for setup to modify
-    const ctx: HandlerContext = {
-      request,
-      headers: new Headers(defaultHeaders),
-      status: defaultStatus,
-    }
+      // Create mutable context for setup to modify
+      const ctx: HandlerContext = {
+        request,
+        headers: new Headers(defaultHeaders),
+        status: defaultStatus,
+      };
 
-    let subscription: Subscription<string, void>
-    let cleanup: (() => Operation<void>) | undefined
-    let cleanedUp = false
-    let scopeDestroyed = false
+      let subscription: Subscription<string, void>;
+      let cleanup: (() => Operation<void>) | undefined;
+      let cleanedUp = false;
+      let scopeDestroyed = false;
 
-    // Helper to run cleanup exactly once
-    const runCleanup = async () => {
-      if (cleanedUp) return
-      cleanedUp = true
-      if (cleanup && !scopeDestroyed) {
-        try {
-          await scope.run(cleanup)
-        } catch {
-          // Ignore cleanup errors
+      // Helper to run cleanup exactly once
+      const runCleanup = async () => {
+        if (cleanedUp) {
+          return;
         }
-      }
-      if (!scopeDestroyed) {
-        scopeDestroyed = true
-        await destroy()
-      }
-    }
-
-    try {
-      // Run setup in scope with context
-      const result = await scope.run(function*() {
-        yield* HandlerContext.set(ctx)
-        return yield* setup()
-      })
-
-      // Normalize result
-      if ('subscription' in result) {
-        subscription = result.subscription
-        cleanup = result.cleanup
-      } else {
-        subscription = result
-      }
-    } catch (error) {
-      // Setup failed - destroy scope and return error response
-      await destroy()
-
-      const err = error instanceof Error ? error : new Error('Setup failed')
-
-      // Allow custom error handling
-      if (onSetupError) {
-        const customResponse = onSetupError(err, ctx)
-        if (customResponse) {
-          return customResponse
-        }
-      }
-
-      // Default error response
-      const errorBody = JSON.stringify({ error: err.message })
-      return new Response(errorBody, {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    // These statuses must not include a response body.
-    if (ctx.status === 204 || ctx.status === 205 || ctx.status === 304) {
-      await runCleanup()
-      return new Response(null, {
-        status: ctx.status,
-        headers: ctx.headers,
-      })
-    }
-
-    // Create pull-based stream
-    const stream = new ReadableStream<Uint8Array>({
-      async pull(controller) {
-        // If scope was already destroyed (e.g., by cancel), just close
-        if (scopeDestroyed) {
-          controller.close()
-          return
-        }
-
-        try {
-          const result = await scope.run(function*() {
-            return yield* subscription.next()
-          })
-
-          if (result.done) {
-            controller.close()
-            // Stream completed normally - run cleanup
-            await runCleanup()
-          } else {
-            controller.enqueue(encoder.encode(serialize(result.value)))
+        cleanedUp = true;
+        if (cleanup && !scopeDestroyed) {
+          try {
+            await scope.run(cleanup);
+          } catch {
+            // Ignore cleanup errors
           }
-        } catch (error) {
-          // Scope may have been destroyed (e.g., cancel was called)
-          // or an error occurred during streaming
-          if (!scopeDestroyed) {
-            controller.error(error)
-          } else {
-            controller.close()
-          }
-          // Error during streaming - run cleanup
-          await runCleanup()
         }
-      },
+        if (!scopeDestroyed) {
+          scopeDestroyed = true;
+          await destroy();
+        }
+      };
 
-      async cancel() {
-        // Client disconnected - run cleanup
-        await runCleanup()
-      },
-    })
+      try {
+        // Run setup in scope with context
+        const result = await scope.run(function* () {
+          yield* HandlerContext.set(ctx);
+          return yield* setup();
+        });
+
+        // Normalize result
+        if ("subscription" in result) {
+          subscription = result.subscription;
+          cleanup = result.cleanup;
+        } else {
+          subscription = result;
+        }
+      } catch (error) {
+        // Setup failed - destroy scope and return error response
+        await destroy();
+
+        const err = error instanceof Error ? error : new Error("Setup failed");
+
+        // Allow custom error handling
+        if (onSetupError) {
+          const customResponse = onSetupError(err, ctx);
+          if (customResponse) {
+            return customResponse;
+          }
+        }
+
+        // Default error response
+        const errorBody = JSON.stringify({ error: err.message });
+        return new Response(errorBody, {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // These statuses must not include a response body.
+      if (ctx.status === 204 || ctx.status === 205 || ctx.status === 304) {
+        await runCleanup();
+        return new Response(null, {
+          status: ctx.status,
+          headers: ctx.headers,
+        });
+      }
+
+      // Create pull-based stream
+      const stream = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          // If scope was already destroyed (e.g., by cancel), just close
+          if (scopeDestroyed) {
+            controller.close();
+            return;
+          }
+
+          try {
+            const result = await scope.run(function* () {
+              return yield* subscription.next();
+            });
+
+            if (result.done) {
+              controller.close();
+              // Stream completed normally - run cleanup
+              await runCleanup();
+            } else {
+              controller.enqueue(encoder.encode(serialize(result.value)));
+            }
+          } catch (error) {
+            // Scope may have been destroyed (e.g., cancel was called)
+            // or an error occurred during streaming
+            if (!scopeDestroyed) {
+              controller.error(error);
+            } else {
+              controller.close();
+            }
+            // Error during streaming - run cleanup
+            await runCleanup();
+          }
+        },
+
+        async cancel() {
+          // Client disconnected - run cleanup
+          await runCleanup();
+        },
+      });
 
       return new Response(stream, {
         status: ctx.status,
         headers: ctx.headers,
-      })
-    }
+      });
+    };
 
-    handler.withScope = (scope: Scope): FetchHandler => buildHandler(scope)
-    return handler
-  }
+    handler.withScope = (scope: Scope): FetchHandler => buildHandler(scope);
+    return handler;
+  };
 
-  return buildHandler(options.parentScope)
+  return buildHandler(options.parentScope);
 }

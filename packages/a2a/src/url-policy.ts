@@ -45,9 +45,12 @@ export async function validateA2AUrl(
   if (url.protocol !== expected && !localhostException) {
     throw a2aError("unsafe_url", `A2A ${options.purpose} endpoint must use ${expected}`);
   }
-  if (url.username || url.password)
+  if (url.username || url.password) {
     throw a2aError("unsafe_url", "Credentials are forbidden in A2A URLs");
-  if (url.hash) throw a2aError("unsafe_url", "Fragments are forbidden in A2A endpoint URLs");
+  }
+  if (url.hash) {
+    throw a2aError("unsafe_url", "Fragments are forbidden in A2A endpoint URLs");
+  }
   if (options.previousUrl?.protocol === "https:" && url.protocol !== "https:") {
     throw a2aError("unsafe_url", "HTTPS downgrade is forbidden");
   }
@@ -64,8 +67,9 @@ export async function validateA2AUrl(
   const allowedHosts = new Set((policy.allowedHosts ?? []).map((host) => host.toLowerCase()));
   const resolve = policy.resolve ?? defaultResolve;
   const addresses = await resolve(stripBrackets(url.hostname));
-  if (addresses.length === 0)
+  if (addresses.length === 0) {
     throw a2aError("unsafe_url", "A2A endpoint DNS returned no addresses");
+  }
   for (const address of addresses) {
     if (!isSafePublicAddress(address)) {
       const hostAllowed = allowedHosts.has(stripBrackets(url.hostname).toLowerCase());
@@ -89,10 +93,14 @@ export function normalizedTransportOrigin(value: URL | string): string {
 export function isSafePublicAddress(address: string): boolean {
   const normalized = stripZone(address).toLowerCase();
   const version = isIP(normalized);
-  if (version === 4) return isSafeIpv4(normalized);
+  if (version === 4) {
+    return isSafeIpv4(normalized);
+  }
   if (version === 6) {
     const mapped = mappedIpv4(normalized);
-    if (mapped) return isSafeIpv4(mapped);
+    if (mapped) {
+      return isSafeIpv4(mapped);
+    }
     return isSafeIpv6(normalized);
   }
   return false;
@@ -100,8 +108,12 @@ export function isSafePublicAddress(address: string): boolean {
 
 export function isLoopbackAddress(address: string): boolean {
   const normalized = stripZone(address).toLowerCase();
-  if (isIP(normalized) === 4) return inIpv4Cidr(normalized, "127.0.0.0", 8);
-  if (normalized === "::1") return true;
+  if (isIP(normalized) === 4) {
+    return inIpv4Cidr(normalized, "127.0.0.0", 8);
+  }
+  if (normalized === "::1") {
+    return true;
+  }
   const mapped = mappedIpv4(normalized);
   return Boolean(mapped && inIpv4Cidr(mapped, "127.0.0.0", 8));
 }
@@ -129,7 +141,9 @@ function isSafeIpv4(address: string): boolean {
 
 function isSafeIpv6(address: string): boolean {
   const value = ipv6ToBigInt(address);
-  if (value === undefined) return false;
+  if (value === undefined) {
+    return false;
+  }
   const denied: Array<[string, number]> = [
     ["::", 128],
     ["::1", 128],
@@ -153,7 +167,9 @@ function ipv4Number(address: string): number {
 }
 function inIpv6Cidr(value: bigint, network: string, bits: number): boolean {
   const base = ipv6ToBigInt(network);
-  if (base === undefined) return false;
+  if (base === undefined) {
+    return false;
+  }
   const shift = BigInt(128 - bits);
   return value >> shift === base >> shift;
 }
@@ -168,13 +184,19 @@ function ipv6ToBigInt(address: string): bigint | undefined {
       `:${((n >>> 16) & 0xffff).toString(16)}:${(n & 0xffff).toString(16)}`;
   }
   const pieces = source.split("::");
-  if (pieces.length > 2) return undefined;
+  if (pieces.length > 2) {
+    return undefined;
+  }
   const left = pieces[0] ? pieces[0].split(":") : [];
   const right = pieces.length === 2 && pieces[1] ? pieces[1].split(":") : [];
   const missing = 8 - left.length - right.length;
-  if (missing < 0 || (pieces.length === 1 && missing !== 0)) return undefined;
+  if (missing < 0 || (pieces.length === 1 && missing !== 0)) {
+    return undefined;
+  }
   const words = [...left, ...Array.from({ length: missing }, () => "0"), ...right];
-  if (words.length !== 8 || words.some((word) => !/^[0-9a-f]{1,4}$/i.test(word))) return undefined;
+  if (words.length !== 8 || words.some((word) => !/^[0-9a-f]{1,4}$/i.test(word))) {
+    return undefined;
+  }
   return words.reduce((value, word) => (value << 16n) | BigInt(parseInt(word, 16)), 0n);
 }
 function mappedIpv4(address: string): string | undefined {
@@ -195,7 +217,9 @@ function normalizeOrigin(value: string): string {
   return normalizedTransportOrigin(new URL(value));
 }
 async function defaultResolve(hostname: string): Promise<readonly string[]> {
-  if (isIP(hostname)) return [hostname];
+  if (isIP(hostname)) {
+    return [hostname];
+  }
   try {
     const records = await nodeLookup(hostname, { all: true, verbatim: true });
     return [...new Set(records.map((record) => record.address))];

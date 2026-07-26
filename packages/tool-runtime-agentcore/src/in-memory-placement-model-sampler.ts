@@ -20,8 +20,7 @@ import {
 } from "./placement-model-sampler.ts";
 
 export interface InMemoryPlacementModelSampler
-  extends PlacementModelSampler,
-    PlacementModelSampleProducerStore {
+  extends PlacementModelSampler, PlacementModelSampleProducerStore {
   claimProducer(
     identity: RemoteSampleIdentity,
     request: RemoteProducerFence & { readonly leaseExpiresAt: string },
@@ -108,7 +107,9 @@ export function createInMemoryPlacementModelSampler(options: {
 
   function get(identity: RemoteSampleIdentity): MutableSample {
     const sample = samples.get(identityKey(identity));
-    if (!sample) throw new CrankError("remote_sample_protocol_error", "Remote sample not found");
+    if (!sample) {
+      throw new CrankError("remote_sample_protocol_error", "Remote sample not found");
+    }
     classifyOrphan(sample);
     return sample;
   }
@@ -225,18 +226,19 @@ export function createInMemoryPlacementModelSampler(options: {
       if (
         sample.events.length > afterLsn ||
         !["starting", "streaming"].includes(sample.record.state)
-      ) return;
+      ) {
+        return;
+      }
       const task = yield* spawn(function* () {
         const subscription = yield* sample.signal;
         classifyOrphan(sample);
         if (
           sample.events.length > afterLsn ||
           !["starting", "streaming"].includes(sample.record.state)
-        ) return;
-        const leaseRemaining = Math.max(
-          0,
-          isoMs(sample.record.producerLeaseExpiresAt) - now(),
-        );
+        ) {
+          return;
+        }
+        const leaseRemaining = Math.max(0, isoMs(sample.record.producerLeaseExpiresAt) - now());
         yield* race([subscription.next(), sleep(leaseRemaining)]);
         classifyOrphan(sample);
       });
@@ -249,7 +251,9 @@ export function createInMemoryPlacementModelSampler(options: {
 
     *cancel({ attachment: requested }) {
       const sample = get(requested.identity);
-      if (["completed", "cancelled", "failed", "orphaned"].includes(sample.record.state)) return;
+      if (["completed", "cancelled", "failed", "orphaned"].includes(sample.record.state)) {
+        return;
+      }
       const disposition: ModelSampleDisposition = { status: "cancelled" };
       sample.record = {
         ...sample.record,
@@ -358,7 +362,9 @@ export function createInMemoryPlacementModelSampler(options: {
 
     *inspect(identity) {
       const sample = samples.get(identityKey(identity));
-      if (!sample) return null;
+      if (!sample) {
+        return null;
+      }
       classifyOrphan(sample);
       return structuredClone(sample.record);
     },

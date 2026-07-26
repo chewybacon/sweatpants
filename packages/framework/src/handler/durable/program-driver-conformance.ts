@@ -34,12 +34,16 @@ export function firstTraceDivergence(
   actual: unknown,
   path = "$",
 ): { path: string; expected: unknown; actual: unknown } | undefined {
-  if (Object.is(expected, actual)) return undefined;
+  if (Object.is(expected, actual)) {
+    return undefined;
+  }
   if (Array.isArray(expected) && Array.isArray(actual)) {
     const length = Math.max(expected.length, actual.length);
     for (let index = 0; index < length; index += 1) {
       const found = firstTraceDivergence(expected[index], actual[index], `${path}[${index}]`);
-      if (found) return found;
+      if (found) {
+        return found;
+      }
     }
     return undefined;
   }
@@ -47,7 +51,9 @@ export function firstTraceDivergence(
     const keys = [...new Set([...Object.keys(expected), ...Object.keys(actual)])].sort();
     for (const key of keys) {
       const found = firstTraceDivergence(expected[key], actual[key], `${path}.${key}`);
-      if (found) return found;
+      if (found) {
+        return found;
+      }
     }
     return undefined;
   }
@@ -55,7 +61,9 @@ export function firstTraceDivergence(
 }
 
 function display(value: unknown): string {
-  if (value === undefined) return "<missing>";
+  if (value === undefined) {
+    return "<missing>";
+  }
   return canonicalJson(value as Json);
 }
 

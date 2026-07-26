@@ -12,8 +12,11 @@ const executorScript = resolve(import.meta.dirname, "fixtures/executor-process.t
 const callerScript = resolve(import.meta.dirname, "fixtures/caller-process.ts");
 
 afterEach(async () => {
-  for (const child of children)
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  for (const child of children) {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+  }
   children.clear();
 });
 
@@ -57,7 +60,9 @@ describe("caller-authoritative A2A multi-process certification", () => {
       const recovered = await exited(startCaller(stateDir, endpoint));
       expect(recovered.code).toBe(0);
       const resultLine = recovered.stdout.split("\n").find((line) => line.startsWith("RESULT "));
-      if (!resultLine) throw new Error(`Recovered caller emitted no result: ${recovered.stderr}`);
+      if (!resultLine) {
+        throw new Error(`Recovered caller emitted no result: ${recovered.stderr}`);
+      }
       const evidence = JSON.parse(resultLine.slice("RESULT ".length));
       expect(evidence).toMatchObject({
         outcome: {
@@ -152,9 +157,11 @@ function exited(
     child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
     const done = (code: number | null, signal: NodeJS.Signals | null) =>
       resolveExit({ code, signal, stdout, stderr });
-    if (child.exitCode !== null || child.signalCode !== null)
+    if (child.exitCode !== null || child.signalCode !== null) {
       done(child.exitCode, child.signalCode);
-    else child.once("exit", done);
+    } else {
+      child.once("exit", done);
+    }
   });
 }
 
@@ -162,7 +169,9 @@ async function reservePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Failed to reserve port");
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to reserve port");
+  }
   await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
   return address.port;
 }

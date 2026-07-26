@@ -110,11 +110,9 @@ describe("whole-contract effect digest", () => {
 
     expect(effectContractDigest(separateInstance)).toBe(effectContractDigest(first));
     expect(effectContractDigest(effect("1", true))).not.toBe(effectContractDigest(first));
-    expect(
-      effectContractDigest(
-        effect("1", false, { mode: "unsafe" }),
-      ),
-    ).not.toBe(effectContractDigest(first));
+    expect(effectContractDigest(effect("1", false, { mode: "unsafe" }))).not.toBe(
+      effectContractDigest(first),
+    );
     expect(effectContractDigest(effect("2"))).not.toBe(effectContractDigest(first));
   });
 
@@ -193,7 +191,7 @@ describe("semantic emission policy", () => {
 
     await run(function* () {
       for (const emissionPolicy of [undefined, {}] as const) {
-        const selected = authority({ ...(emissionPolicy ? { emissionPolicy } : {}) });
+        const selected = authority(emissionPolicy ? { emissionPolicy } : {});
         const { programCapability } = yield* openTask(selected, `task-${String(emissionPolicy)}`);
         for (let actionIndex = 0; actionIndex < 5; actionIndex += 1) {
           yield* selected.emit({

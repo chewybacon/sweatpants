@@ -4,69 +4,67 @@
  * Demonstrates the pickCard tool for multi-turn tool calling.
  * Uses markdown pipeline for rendering.
  */
-import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/react-chat'
-import { pickCardPlugin } from '@/tools/pick-card'
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useRef, useEffect } from "react";
+import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
+import { pickCardPlugin } from "@/tools/pick-card";
 
-export const Route = createFileRoute('/chat/cards/')({
+export const Route = createFileRoute("/chat/cards/")({
   component: CardsChatDemo,
-})
+});
 
 /**
  * Renders a tool call part with its inline emissions.
  */
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
-  const hasEmissions = toolCall.emissions.length > 0
+  const hasEmissions = toolCall.emissions.length > 0;
 
   return (
     <div className="my-2">
       {toolCall.emissions.map((emission) => {
-        const Component = emission.component
-        if (!Component) return null
+        const Component = emission.component;
+        if (!Component) {
+          return null;
+        }
 
         return (
           <Component
             key={emission.id}
             {...emission.props}
             onRespond={emission.onRespond}
-            disabled={emission.status !== 'pending'}
+            disabled={emission.status !== "pending"}
             response={emission.response}
           />
-        )
+        );
       })}
 
-      {!hasEmissions && (toolCall.state === 'running' || toolCall.state === 'pending') && (
-        <div className="text-xs text-slate-500 animate-pulse">
-          Running {toolCall.name}...
-        </div>
+      {!hasEmissions && (toolCall.state === "running" || toolCall.state === "pending") && (
+        <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
       )}
 
-      {toolCall.state === 'error' && toolCall.error && (
-        <div className="text-xs text-red-400">
-          Error: {toolCall.error}
-        </div>
+      {toolCall.state === "error" && toolCall.error && (
+        <div className="text-xs text-red-400">Error: {toolCall.error}</div>
       )}
     </div>
-  )
+  );
 }
 
 /**
  * Renders a single message with its parts.
  */
 function Message({ message }: { message: ChatMessage }) {
-  const isUser = message.role === 'user'
-  const isSystem = message.role === 'system'
+  const isUser = message.role === "user";
+  const isSystem = message.role === "system";
 
   return (
-    <div className={`mb-8 ${isUser ? 'text-right' : ''}`}>
-      <div className={`inline-block max-w-[85%] ${isUser ? '' : 'w-full'}`}>
+    <div className={`mb-8 ${isUser ? "text-right" : ""}`}>
+      <div className={`inline-block max-w-[85%] ${isUser ? "" : "w-full"}`}>
         <div
           className={`text-xs mb-1 font-bold tracking-wider uppercase ${
-            isUser ? 'text-cyan-500' : 'text-purple-500'
+            isUser ? "text-cyan-500" : "text-purple-500"
           }`}
         >
-          {isUser ? 'You' : isSystem ? 'System' : 'Assistant'}
+          {isUser ? "You" : isSystem ? "System" : "Assistant"}
           {message.isStreaming && (
             <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>
           )}
@@ -75,12 +73,12 @@ function Message({ message }: { message: ChatMessage }) {
         <div
           className={`p-4 rounded-lg ${
             isUser
-              ? 'bg-cyan-950/30 border border-cyan-900/50 text-cyan-100'
-              : 'bg-slate-800/50 text-slate-200'
+              ? "bg-cyan-950/30 border border-cyan-900/50 text-cyan-100"
+              : "bg-slate-800/50 text-slate-200"
           }`}
         >
           {message.parts.map((part) => {
-            if (part.type === 'reasoning') {
+            if (part.type === "reasoning") {
               return (
                 <details key={part.id} className="mb-3 text-xs">
                   <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
@@ -91,24 +89,24 @@ function Message({ message }: { message: ChatMessage }) {
                     dangerouslySetInnerHTML={{ __html: part.rendered }}
                   />
                 </details>
-              )
+              );
             }
 
-            if (part.type === 'tool-call') {
-              return <ToolCallBlock key={part.id} toolCall={part} />
+            if (part.type === "tool-call") {
+              return <ToolCallBlock key={part.id} toolCall={part} />;
             }
 
-            if (part.type === 'text') {
+            if (part.type === "text") {
               return (
                 <div
                   key={part.id}
                   className="prose prose-invert prose-sm max-w-none leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: part.rendered }}
                 />
-              )
+              );
             }
 
-            return null
+            return null;
           })}
 
           {message.isStreaming && (
@@ -117,40 +115,34 @@ function Message({ message }: { message: ChatMessage }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function CardsChatDemo() {
-  const {
-    messages,
-    streamingMessage,
-    isStreaming,
-    pipelineReady,
-    send,
-    abort,
-    reset,
-    error,
-  } = useChat({
-    pipeline: 'markdown',
-    // Only the pick-card plugin - focused demo
-    tools: [],
-    plugins: [pickCardPlugin],
-    initialToolChoice: 'required',
-  })
+  const { messages, streamingMessage, isStreaming, pipelineReady, send, abort, reset, error } =
+    useChat({
+      pipeline: "markdown",
+      // Only the pick-card plugin - focused demo
+      tools: [],
+      plugins: [pickCardPlugin],
+      initialToolChoice: "required",
+    });
 
-  const [input, setInput] = useState('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [input, setInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingMessage?.parts.length])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, streamingMessage?.parts.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isStreaming) return
-    send(input.trim())
-    setInput('')
-  }
+    e.preventDefault();
+    if (!input.trim() || isStreaming) {
+      return;
+    }
+    send(input.trim());
+    setInput("");
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 font-mono">
@@ -158,12 +150,8 @@ function CardsChatDemo() {
         {/* Header */}
         <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
           <div>
-            <h1 className="text-3xl font-bold text-cyan-400 mb-2">
-              Card Picker
-            </h1>
-            <p className="text-slate-400 text-sm">
-              Multi-turn tool calling with the pickCard tool
-            </p>
+            <h1 className="text-3xl font-bold text-cyan-400 mb-2">Card Picker</h1>
+            <p className="text-slate-400 text-sm">Multi-turn tool calling with the pickCard tool</p>
           </div>
           <div className="text-xs">
             {pipelineReady ? (
@@ -182,13 +170,13 @@ function CardsChatDemo() {
               <p>Ask me to pick a card for you!</p>
               <div className="flex gap-2 text-xs flex-wrap justify-center">
                 <button
-                  onClick={() => setInput('Pick a card for me')}
+                  onClick={() => setInput("Pick a card for me")}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
                   "Pick a card"
                 </button>
                 <button
-                  onClick={() => setInput('I want to play a card game')}
+                  onClick={() => setInput("I want to play a card game")}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
                   "Card game"
@@ -222,11 +210,7 @@ function CardsChatDemo() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              isStreaming
-                ? 'Waiting for response...'
-                : 'Type a message...'
-            }
+            placeholder={isStreaming ? "Waiting for response..." : "Type a message..."}
             disabled={isStreaming}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
@@ -263,14 +247,12 @@ function CardsChatDemo() {
           <div className="flex items-center gap-4">
             <span>
               <span className="text-emerald-600">tool:</span>
-              {' pickCard'}
+              {" pickCard"}
             </span>
-            <span className="text-cyan-400">
-              {messages.length} messages
-            </span>
+            <span className="text-cyan-400">{messages.length} messages</span>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

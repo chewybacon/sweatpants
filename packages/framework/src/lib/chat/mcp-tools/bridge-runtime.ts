@@ -104,7 +104,9 @@ function createBufferedChannel<T>(): Channel<T, void> {
 
   return {
     *send(message: T) {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       queue.push(message);
       if (itemResolve) {
         itemResolve();
@@ -175,13 +177,17 @@ function createBufferedChannel<T>(): Channel<T, void> {
 
           // If closed and queue empty, close channel and exit
           if (closed && queue.length === 0) {
-            if (closeResolve) closeResolve();
+            if (closeResolve) {
+              closeResolve();
+            }
             break;
           }
 
           // Wait for more items or close
           yield* call(function waitForItem(): Promise<void> {
-            if (queue.length > 0 || closed) return Promise.resolve();
+            if (queue.length > 0 || closed) {
+              return Promise.resolve();
+            }
             return new Promise((resolve) => {
               itemResolve = resolve;
             });
@@ -356,8 +362,12 @@ function getMessageTextContent(msg: ExtendedMessage): string {
   const blocks = Array.isArray(msg.content) ? msg.content : [msg.content];
   return blocks
     .map((block) => {
-      if (block.type === "text") return block.text;
-      if (block.type === "tool_use") return JSON.stringify(block.input);
+      if (block.type === "text") {
+        return block.text;
+      }
+      if (block.type === "tool_use") {
+        return JSON.stringify(block.input);
+      }
       if (block.type === "tool_result") {
         const innerBlocks = Array.isArray(block.content) ? block.content : [block.content];
         return innerBlocks.map((b) => (b.type === "text" ? b.text : "")).join("");
@@ -1178,7 +1188,7 @@ export function createBridgeHost<
 
           // Merge limits (host options only; tools no longer carry limits)
           const limits: McpToolLimits = {
-            ...((config as { limits?: McpToolLimits }).limits ?? {}),
+            ...(config as { limits?: McpToolLimits }).limits,
             ...overrideLimits,
           };
 

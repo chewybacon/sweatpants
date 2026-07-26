@@ -7,7 +7,9 @@ import type { ChatEventTransform, Streamer } from "../options.ts";
 
 const delayedTerminal: ChatEventTransform = function* (input, output): Operation<void> {
   for (const event of yield* each(input)) {
-    if (event.type === "RUN_FINISHED") yield* sleep(20);
+    if (event.type === "RUN_FINISHED") {
+      yield* sleep(20);
+    }
     yield* output.send(event);
     yield* each.next();
   }
@@ -47,7 +49,9 @@ describe("AG-UI terminal draining", () => {
       yield* sleep(0);
       session.dispatch({ type: "send", content: "hello" });
       for (const state of yield* each(session.state)) {
-        if (state.error) return state.error;
+        if (state.error) {
+          return state.error;
+        }
         yield* each.next();
       }
       return "state stream closed without an error";

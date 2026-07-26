@@ -73,23 +73,26 @@ export function createHttpDelegatedEffectsClient(
       principalId: pin.foreign.principalId,
       ...(pin.foreign.tenantId ? { tenantId: pin.foreign.tenantId } : {}),
     });
-    if (response.status < 200 || response.status >= 300 || response.body === undefined)
+    if (response.status < 200 || response.status >= 300 || response.body === undefined) {
       throw new CrankError(
         "peer_transport_error",
         `Delegated-effects operation failed: ${response.status}`,
       );
+    }
     const echo = response.headers["a2a-extensions"] ?? response.headers["A2A-Extensions"];
-    for (const uri of [SWEATPANTS_PEER_PROFILE_URI, DELEGATED_EFFECTS_EXTENSION_URI])
+    for (const uri of [SWEATPANTS_PEER_PROFILE_URI, DELEGATED_EFFECTS_EXTENSION_URI]) {
       if (
         !echo
           ?.split(",")
           .map((value) => value.trim())
           .includes(uri)
-      )
+      ) {
         throw new CrankError(
           "extension_echo_mismatch",
           `Delegated-effects extension not echoed: ${uri}`,
         );
+      }
+    }
     return response.body;
   };
   return {
@@ -201,11 +204,13 @@ export class PeerDelegatedEffectCoordinator {
     const observed = { ...state.observedDigests };
     const cancellations = new Set(state.cancellationRequestedEffects);
     for (const event of page.events) {
-      if (event.cursor !== cursor + 1)
+      if (event.cursor !== cursor + 1) {
         throw new CrankError("peer_event_gap", "Delegated-effect event page contains a cursor gap");
+      }
       const previous = observed[event.eventId];
-      if (previous && previous !== event.eventDigest)
+      if (previous && previous !== event.eventDigest) {
         throw new CrankError("peer_event_conflict", "Delegated-effect event identity conflict");
+      }
       if (!previous) {
         observed[event.eventId] = event.eventDigest;
         queue.push(event);
@@ -237,13 +242,16 @@ export class PeerDelegatedEffectCoordinator {
       state.responseOutbox.some(
         (response) => !state.acknowledgedResponses.includes(response.responseId),
       )
-    )
+    ) {
       return state;
+    }
     const event = state.queue.find(
       (candidate): candidate is DelegatedEffectRequestEvent =>
         candidate.type === "effect_requested" && candidate.cursor > state.executionCursor,
     );
-    if (!event) return state;
+    if (!event) {
+      return state;
+    }
     this.#validateRequest(state, event);
     let outcome: OperationOutcome;
     if (state.cancellationRequestedEffects.includes(event.effectId)) {
@@ -292,24 +300,32 @@ export class PeerDelegatedEffectCoordinator {
   *deliverOutbox(state: PeerCallerFrontiers): Operation<PeerCallerFrontiers> {
     let next = state;
     for (const response of state.responseOutbox) {
-      if (next.acknowledgedResponses.includes(response.responseId)) continue;
+      if (next.acknowledgedResponses.includes(response.responseId)) {
+        continue;
+      }
       const status = yield* this.#client.getEffectStatus({
         pin: this.#pin,
         taskId: this.#taskId,
         effectId: response.effectId,
       });
-      if (status.status === "expired")
+      if (status.status === "expired") {
         throw new CrankError("peer_protocol_expired", "Delegated effect status expired");
+      }
       if (status.status === "resolved") {
         if (
           status.response.responseId !== response.responseId ||
           status.response.outcomeDigest !== response.outcomeDigest
-        )
+        ) {
           throw new CrankError("peer_response_conflict", "Callee recorded another effect response");
+        }
       } else {
         const ack = yield* this.#client.resolveEffect({ pin: this.#pin, response });
-        if (ack.responseId !== response.responseId || ack.outcomeDigest !== response.outcomeDigest)
+        if (
+          ack.responseId !== response.responseId ||
+          ack.outcomeDigest !== response.outcomeDigest
+        ) {
           throw new CrankError("peer_response_conflict", "Delegated effect acknowledgment differs");
+        }
       }
       const { activeEffectId: _activeEffectId, ...withoutActive } = next;
       next = Object.freeze({
@@ -329,8 +345,9 @@ export class PeerDelegatedEffectCoordinator {
       amendment.previousGrantDigest !== state.grantChainHead ||
       amendment.grantSet.previousDigest !== state.grantChainHead ||
       amendment.grantSet.version !== state.grantSets[state.grantSets.length - 1]!.version + 1
-    )
+    ) {
       throw new CrankError("peer_grant_amendment_invalid", "Caller grant amendment chain differs");
+    }
     const ack = yield* this.#client.applyAmendment({
       pin: this.#pin,
       taskId: this.#taskId,
@@ -339,11 +356,12 @@ export class PeerDelegatedEffectCoordinator {
     if (
       ack.amendmentId !== amendment.amendmentId ||
       ack.grantChainHead !== amendment.grantSet.digest
-    )
+    ) {
       throw new CrankError(
         "peer_grant_amendment_invalid",
         "Callee amendment acknowledgment differs",
       );
+    }
     return Object.freeze({
       ...state,
       grantChainHead: amendment.grantSet.digest,
@@ -359,8 +377,9 @@ export class PeerDelegatedEffectCoordinator {
           candidate.grantId === revocation.grantId &&
           candidate.grantVersion === revocation.grantVersion,
       );
-    if (!grant)
+    if (!grant) {
       throw new CrankError("peer_grant_revocation_invalid", "Caller grant is unavailable");
+    }
     return Object.freeze({
       ...state,
       revokedGrants: [...new Set([...state.revokedGrants, revocation.grantId])],
@@ -371,11 +390,12 @@ export class PeerDelegatedEffectCoordinator {
     state: PeerCallerFrontiers,
     revocation: PeerGrantRevocation,
   ): Operation<PeerGrantRevocationAck> {
-    if (!state.revokedGrants.includes(revocation.grantId))
+    if (!state.revokedGrants.includes(revocation.grantId)) {
       throw new CrankError(
         "peer_grant_revocation_invalid",
         "Grant must be revoked locally before delivery",
       );
+    }
     const ack = yield* this.#client.revokeGrant({
       pin: this.#pin,
       taskId: this.#taskId,
@@ -384,11 +404,12 @@ export class PeerDelegatedEffectCoordinator {
     if (
       ack.revocationId !== revocation.revocationId ||
       ack.revocationDigest !== revocation.revocationDigest
-    )
+    ) {
       throw new CrankError(
         "peer_grant_revocation_invalid",
         "Callee revocation acknowledgment differs",
       );
+    }
     return ack;
   }
 
@@ -420,11 +441,12 @@ export class PeerDelegatedEffectCoordinator {
       event.invocationId !== this.#pin.foreign.invocationId ||
       event.route !== "caller" ||
       canonicalSnapshot(event.input).sha !== event.inputDigest
-    )
+    ) {
       throw new CrankError(
         "peer_effect_request_invalid",
         "Delegated effect request binding differs",
       );
+    }
     const grant = state.grantSets
       .flatMap((grantSet) => grantSet.grants)
       .find(
@@ -437,20 +459,24 @@ export class PeerDelegatedEffectCoordinator {
       grant.contract.contractDigest !== event.contractDigest ||
       state.revokedGrants.includes(grant.grantId) ||
       Date.now() >= Date.parse(grant.expiresAt)
-    )
+    ) {
       throw new CrankError("peer_grant_denied", "Delegated effect is not currently authorized");
+    }
   }
 }
 
 function validatePage(page: DelegatedEffectEventPage, taskId: string, afterCursor: number): void {
-  if (page.taskId !== taskId || page.afterCursor !== afterCursor)
+  if (page.taskId !== taskId || page.afterCursor !== afterCursor) {
     throw new CrankError("peer_event_page_invalid", "Delegated-effect page frontier differs");
+  }
   const { pageDigest, ...body } = page;
   const computed = sha256(canonicalJson({ domain: "sweatpants.peer.event-page.v1", page: body }));
-  if (computed !== pageDigest)
+  if (computed !== pageDigest) {
     throw new CrankError("peer_event_page_invalid", "Delegated-effect page digest differs");
-  if (afterCursor > 0 && afterCursor < page.retainedFromCursor - 1)
+  }
+  if (afterCursor > 0 && afterCursor < page.retainedFromCursor - 1) {
     throw new CrankError("peer_cursor_expired", "Delegated-effect observation cursor expired");
+  }
 }
 
 /** Adapts an in-memory or remote promise client to the Effection port. */

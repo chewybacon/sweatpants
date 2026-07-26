@@ -57,7 +57,9 @@ function findCycles(
   }
 
   for (const node of nodes) {
-    if (color.get(node) === WHITE) visit(node);
+    if (color.get(node) === WHITE) {
+      visit(node);
+    }
   }
   return cycles;
 }
@@ -75,7 +77,9 @@ function packageGraph(): { nodes: string[]; edges: Map<string, Set<string>> } {
       continue;
     }
     const manifest = readJson<PackageJson>(manifestPath);
-    if (!manifest.name) continue;
+    if (!manifest.name) {
+      continue;
+    }
     byName.set(manifest.name, entry);
     nodes.push(manifest.name);
   }
@@ -104,7 +108,9 @@ function* sourceFiles(directory: string): Generator<string> {
     return;
   }
   for (const entry of entries) {
-    if (entry === "node_modules" || entry === "dist") continue;
+    if (entry === "node_modules" || entry === "dist") {
+      continue;
+    }
     const path = join(directory, entry);
     if (statSync(path).isDirectory()) {
       yield* sourceFiles(path);
@@ -186,7 +192,9 @@ function main(): void {
 
   if (introduced.length > 0) {
     console.error(`Module graph validation failed: ${introduced.length} new cycle(s).\n`);
-    for (const cycle of introduced) console.error(`  ${cycle}`);
+    for (const cycle of introduced) {
+      console.error(`  ${cycle}`);
+    }
     console.error(
       "\nCycles must be broken, not suppressed. The usual fix is to move the shared\n" +
         "declarations into a leaf module that both sides import. The baseline is a\n" +
@@ -197,7 +205,9 @@ function main(): void {
 
   if (fixed.length > 0) {
     console.error(`${fixed.length} baselined cycle(s) are fixed. Run with --update-baseline:\n`);
-    for (const cycle of fixed) console.error(`  ${cycle}`);
+    for (const cycle of fixed) {
+      console.error(`  ${cycle}`);
+    }
     process.exit(1);
   }
 

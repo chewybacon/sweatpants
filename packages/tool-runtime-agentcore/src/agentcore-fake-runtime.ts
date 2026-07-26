@@ -1,6 +1,6 @@
-import { resource, type Operation, type Stream, type Subscription } from 'effection'
-import type { WireElicitResult } from '@sweatpants/framework/chat/mcp-tools'
-import type { WireSampleResult } from '@sweatpants/framework/chat/mcp-tools'
+import { resource, type Operation, type Stream, type Subscription } from "effection";
+import type { WireElicitResult } from "@sweatpants/framework/chat/mcp-tools";
+import type { WireSampleResult } from "@sweatpants/framework/chat/mcp-tools";
 import type {
   AgentCoreToolEvent,
   AgentCoreToolRuntimeResponse,
@@ -11,258 +11,389 @@ import type {
   RespondToSampleRequest,
   RuntimeInvokeOptions,
   StartToolSessionRequest,
-} from './agentcore-types.ts'
+} from "./agentcore-types.ts";
 
 interface FakeSession {
-  toolSessionId: string
-  toolName: string
-  status: AgentCoreToolSessionHandle['status']
-  pending?:
-    | { type: 'elicit'; elicitId: string }
-    | { type: 'sample'; sampleId: string }
-    | undefined
-  nextSeq: number
-  events: Array<{ seq: number; id: string; event: AgentCoreToolEvent }>
-  acceptedCommands: Map<string, string>
+  toolSessionId: string;
+  toolName: string;
+  status: AgentCoreToolSessionHandle["status"];
+  pending?: { type: "elicit"; elicitId: string } | { type: "sample"; sampleId: string } | undefined;
+  nextSeq: number;
+  events: Array<{ seq: number; id: string; event: AgentCoreToolEvent }>;
+  acceptedCommands: Map<string, string>;
 }
 
-function streamFromResponses(responses: AgentCoreToolRuntimeResponse[]): Stream<AgentCoreToolRuntimeResponse, void> {
+function streamFromResponses(
+  responses: AgentCoreToolRuntimeResponse[],
+): Stream<AgentCoreToolRuntimeResponse, void> {
   return resource<Subscription<AgentCoreToolRuntimeResponse, void>>(function* (provide) {
-    let index = 0
+    let index = 0;
     yield* provide({
       *next(): Operation<IteratorResult<AgentCoreToolRuntimeResponse, void>> {
-        if (index >= responses.length) return { done: true, value: undefined }
-        return { done: false, value: responses[index++]! }
+        if (index >= responses.length) {
+          return { done: true, value: undefined };
+        }
+        return { done: false, value: responses[index++]! };
       },
-    })
-  })
+    });
+  });
 }
 
-function eventResponse(session: FakeSession, event: AgentCoreToolEvent): AgentCoreToolRuntimeResponse {
-  const seq = session.nextSeq++
-  const id = `${session.toolSessionId}:${seq}`
-  session.events.push({ seq, id, event })
-  return { type: 'tool_event', toolSessionId: session.toolSessionId, runtimeEventSeq: seq, runtimeEventId: id, event }
+function eventResponse(
+  session: FakeSession,
+  event: AgentCoreToolEvent,
+): AgentCoreToolRuntimeResponse {
+  const seq = session.nextSeq++;
+  const id = `${session.toolSessionId}:${seq}`;
+  session.events.push({ seq, id, event });
+  return {
+    type: "tool_event",
+    toolSessionId: session.toolSessionId,
+    runtimeEventSeq: seq,
+    runtimeEventId: id,
+    event,
+  };
 }
 
 function statusResponse(session: FakeSession): AgentCoreToolRuntimeResponse {
   return {
-    type: 'session_status',
+    type: "session_status",
     toolSessionId: session.toolSessionId,
     status: session.status,
     ...(session.pending !== undefined && { pendingRequest: session.pending }),
     lastRuntimeEventSeq: session.nextSeq - 1,
-  }
+  };
 }
 
 function commandFingerprint(request: object): string {
-  return JSON.stringify(request)
+  return JSON.stringify(request);
 }
 
 function sessionKey(handle: AgentCoreToolSessionHandle, toolSessionId = handle.sessionId): string {
-  return JSON.stringify([handle.runtimeSessionId, toolSessionId])
+  return JSON.stringify([handle.runtimeSessionId, toolSessionId]);
 }
 
-function isTerminalStatus(status: AgentCoreToolSessionHandle['status']): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'orphaned'
+function isTerminalStatus(status: AgentCoreToolSessionHandle["status"]): boolean {
+  return (
+    status === "completed" || status === "failed" || status === "cancelled" || status === "orphaned"
+  );
 }
 
 export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeClient<AgentCoreToolSessionHandle> {
-  readonly sessions = new Map<string, FakeSession>()
-  readonly invocations: Array<{ op: string; runtimeSessionId: string; request: unknown }> = []
-  readonly stoppedRuntimeSessionIds: string[] = []
+  readonly sessions = new Map<string, FakeSession>();
+  readonly invocations: Array<{ op: string; runtimeSessionId: string; request: unknown }> = [];
+  readonly stoppedRuntimeSessionIds: string[] = [];
 
-  start: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>['start'] = function* (
+  start: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>["start"] = function* (
     this: FakeAgentCoreRemoteToolRuntimeClient,
     handle: AgentCoreToolSessionHandle,
     request: StartToolSessionRequest,
-    _options?: RuntimeInvokeOptions
+    _options?: RuntimeInvokeOptions,
   ) {
-    this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request })
-    const existing = this.sessions.get(sessionKey(handle, request.toolSessionId))
+    this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request });
+    const existing = this.sessions.get(sessionKey(handle, request.toolSessionId));
     if (existing) {
-      const previous = existing.acceptedCommands.get(request.commandId)
+      const previous = existing.acceptedCommands.get(request.commandId);
       if (previous === commandFingerprint(request)) {
         return streamFromResponses([
-          { type: 'command_duplicate', toolSessionId: request.toolSessionId, commandId: request.commandId, originalStatus: 'accepted' },
+          {
+            type: "command_duplicate",
+            toolSessionId: request.toolSessionId,
+            commandId: request.commandId,
+            originalStatus: "accepted",
+          },
           statusResponse(existing),
-        ])
+        ]);
       }
-      return streamFromResponses([{ type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'toolSessionId already exists with different start command' }])
+      return streamFromResponses([
+        {
+          type: "command_conflict",
+          toolSessionId: request.toolSessionId,
+          commandId: request.commandId,
+          message: "toolSessionId already exists with different start command",
+        },
+      ]);
     }
 
     const session: FakeSession = {
       toolSessionId: request.toolSessionId,
       toolName: request.toolName,
-      status: 'running',
+      status: "running",
       nextSeq: 1,
       events: [],
       acceptedCommands: new Map([[request.commandId, commandFingerprint(request)]]),
-    }
-    this.sessions.set(sessionKey(handle, request.toolSessionId), session)
+    };
+    this.sessions.set(sessionKey(handle, request.toolSessionId), session);
 
-    const responses: AgentCoreToolRuntimeResponse[] = []
-    responses.push(eventResponse(session, { type: 'progress', message: `started ${request.toolName}`, progress: 0 }))
+    const responses: AgentCoreToolRuntimeResponse[] = [];
+    responses.push(
+      eventResponse(session, {
+        type: "progress",
+        message: `started ${request.toolName}`,
+        progress: 0,
+      }),
+    );
 
-    if (request.toolName.includes('elicit')) {
-      const elicitId = `${request.toolSessionId}:req:1`
-      session.status = 'awaiting_elicit'
-      session.pending = { type: 'elicit', elicitId }
-      responses.push(eventResponse(session, {
-        type: 'elicit_request',
-        elicitId,
-        key: 'confirm',
-        message: 'Confirm?',
-        schema: { type: 'object' },
-      }))
-      responses.push(statusResponse(session))
-      return streamFromResponses(responses)
-    }
-
-    if (request.toolName.includes('sample')) {
-      const sampleId = `${request.toolSessionId}:req:1`
-      session.status = 'awaiting_sample'
-      session.pending = { type: 'sample', sampleId }
-      responses.push(eventResponse(session, {
-        type: 'sample_request',
-        sampleId,
-        messages: [{ role: 'user', content: 'Say hello' }],
-      }))
-      responses.push(statusResponse(session))
-      return streamFromResponses(responses)
+    if (request.toolName.includes("elicit")) {
+      const elicitId = `${request.toolSessionId}:req:1`;
+      session.status = "awaiting_elicit";
+      session.pending = { type: "elicit", elicitId };
+      responses.push(
+        eventResponse(session, {
+          type: "elicit_request",
+          elicitId,
+          key: "confirm",
+          message: "Confirm?",
+          schema: { type: "object" },
+        }),
+      );
+      responses.push(statusResponse(session));
+      return streamFromResponses(responses);
     }
 
-    if (request.toolName.includes('error')) {
-      session.status = 'failed'
-      responses.push(eventResponse(session, { type: 'error', name: 'FakeToolError', message: 'fake failure' }))
-      responses.push(statusResponse(session))
-      return streamFromResponses(responses)
+    if (request.toolName.includes("sample")) {
+      const sampleId = `${request.toolSessionId}:req:1`;
+      session.status = "awaiting_sample";
+      session.pending = { type: "sample", sampleId };
+      responses.push(
+        eventResponse(session, {
+          type: "sample_request",
+          sampleId,
+          messages: [{ role: "user", content: "Say hello" }],
+        }),
+      );
+      responses.push(statusResponse(session));
+      return streamFromResponses(responses);
     }
 
-    session.status = 'completed'
-    responses.push(eventResponse(session, { type: 'result', result: { ok: true, toolName: request.toolName, params: request.params } }))
-    responses.push(statusResponse(session))
-    return streamFromResponses(responses)
-  }
-
-  respondToElicit: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>['respondToElicit'] = function* (
-    this: FakeAgentCoreRemoteToolRuntimeClient,
-    handle: AgentCoreToolSessionHandle,
-    request: RespondToElicitRequest,
-    _options?: RuntimeInvokeOptions
-  ) {
-    this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request })
-    const session = this.sessions.get(sessionKey(handle, request.toolSessionId))
-    if (!session) return streamFromResponses([{ type: 'session_not_found', toolSessionId: request.toolSessionId }])
-    const duplicate = this.checkDuplicate(session, request.commandId, request)
-    if (duplicate) return streamFromResponses([duplicate, statusResponse(session)])
-    if (isTerminalStatus(session.status)) return streamFromResponses([statusResponse(session)])
-    if (!session.pending || session.pending.type !== 'elicit' || session.pending.elicitId !== request.elicitId) {
-      return streamFromResponses([{ type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'not awaiting matching elicit' }])
+    if (request.toolName.includes("error")) {
+      session.status = "failed";
+      responses.push(
+        eventResponse(session, { type: "error", name: "FakeToolError", message: "fake failure" }),
+      );
+      responses.push(statusResponse(session));
+      return streamFromResponses(responses);
     }
-    session.acceptedCommands.set(request.commandId, commandFingerprint(request))
-    session.pending = undefined
-    session.status = 'completed'
-    const response = request.response as WireElicitResult<unknown>
-    const result = response.action === 'accept' ? response.content : { action: response.action }
-    return streamFromResponses([
-      eventResponse(session, { type: 'result', result }),
-      statusResponse(session),
-    ])
-  }
 
-  respondToSample: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>['respondToSample'] = function* (
-    this: FakeAgentCoreRemoteToolRuntimeClient,
-    handle: AgentCoreToolSessionHandle,
-    request: RespondToSampleRequest,
-    _options?: RuntimeInvokeOptions
-  ) {
-    this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request })
-    const session = this.sessions.get(sessionKey(handle, request.toolSessionId))
-    if (!session) return streamFromResponses([{ type: 'session_not_found', toolSessionId: request.toolSessionId }])
-    const duplicate = this.checkDuplicate(session, request.commandId, request)
-    if (duplicate) return streamFromResponses([duplicate, statusResponse(session)])
-    if (isTerminalStatus(session.status)) return streamFromResponses([statusResponse(session)])
-    if (!session.pending || session.pending.type !== 'sample' || session.pending.sampleId !== request.sampleId) {
-      return streamFromResponses([{ type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'not awaiting matching sample' }])
-    }
-    session.acceptedCommands.set(request.commandId, commandFingerprint(request))
-    session.pending = undefined
-    session.status = 'completed'
-    const response = request.response as WireSampleResult
-    return streamFromResponses([
-      eventResponse(session, { type: 'result', result: { text: response.text } }),
-      statusResponse(session),
-    ])
-  }
+    session.status = "completed";
+    responses.push(
+      eventResponse(session, {
+        type: "result",
+        result: { ok: true, toolName: request.toolName, params: request.params },
+      }),
+    );
+    responses.push(statusResponse(session));
+    return streamFromResponses(responses);
+  };
 
-  cancel: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>['cancel'] = function* (
+  respondToElicit: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>["respondToElicit"] =
+    function* (
+      this: FakeAgentCoreRemoteToolRuntimeClient,
+      handle: AgentCoreToolSessionHandle,
+      request: RespondToElicitRequest,
+      _options?: RuntimeInvokeOptions,
+    ) {
+      this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request });
+      const session = this.sessions.get(sessionKey(handle, request.toolSessionId));
+      if (!session) {
+        return streamFromResponses([
+          { type: "session_not_found", toolSessionId: request.toolSessionId },
+        ]);
+      }
+      const duplicate = this.checkDuplicate(session, request.commandId, request);
+      if (duplicate) {
+        return streamFromResponses([duplicate, statusResponse(session)]);
+      }
+      if (isTerminalStatus(session.status)) {
+        return streamFromResponses([statusResponse(session)]);
+      }
+      if (
+        !session.pending ||
+        session.pending.type !== "elicit" ||
+        session.pending.elicitId !== request.elicitId
+      ) {
+        return streamFromResponses([
+          {
+            type: "command_conflict",
+            toolSessionId: request.toolSessionId,
+            commandId: request.commandId,
+            message: "not awaiting matching elicit",
+          },
+        ]);
+      }
+      session.acceptedCommands.set(request.commandId, commandFingerprint(request));
+      session.pending = undefined;
+      session.status = "completed";
+      const response = request.response as WireElicitResult<unknown>;
+      const result = response.action === "accept" ? response.content : { action: response.action };
+      return streamFromResponses([
+        eventResponse(session, { type: "result", result }),
+        statusResponse(session),
+      ]);
+    };
+
+  respondToSample: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>["respondToSample"] =
+    function* (
+      this: FakeAgentCoreRemoteToolRuntimeClient,
+      handle: AgentCoreToolSessionHandle,
+      request: RespondToSampleRequest,
+      _options?: RuntimeInvokeOptions,
+    ) {
+      this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request });
+      const session = this.sessions.get(sessionKey(handle, request.toolSessionId));
+      if (!session) {
+        return streamFromResponses([
+          { type: "session_not_found", toolSessionId: request.toolSessionId },
+        ]);
+      }
+      const duplicate = this.checkDuplicate(session, request.commandId, request);
+      if (duplicate) {
+        return streamFromResponses([duplicate, statusResponse(session)]);
+      }
+      if (isTerminalStatus(session.status)) {
+        return streamFromResponses([statusResponse(session)]);
+      }
+      if (
+        !session.pending ||
+        session.pending.type !== "sample" ||
+        session.pending.sampleId !== request.sampleId
+      ) {
+        return streamFromResponses([
+          {
+            type: "command_conflict",
+            toolSessionId: request.toolSessionId,
+            commandId: request.commandId,
+            message: "not awaiting matching sample",
+          },
+        ]);
+      }
+      session.acceptedCommands.set(request.commandId, commandFingerprint(request));
+      session.pending = undefined;
+      session.status = "completed";
+      const response = request.response as WireSampleResult;
+      return streamFromResponses([
+        eventResponse(session, { type: "result", result: { text: response.text } }),
+        statusResponse(session),
+      ]);
+    };
+
+  cancel: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>["cancel"] = function* (
     this: FakeAgentCoreRemoteToolRuntimeClient,
     handle: AgentCoreToolSessionHandle,
     request: CancelToolSessionRequest,
-    _options?: RuntimeInvokeOptions
+    _options?: RuntimeInvokeOptions,
   ) {
-    this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request })
-    const session = this.sessions.get(sessionKey(handle, request.toolSessionId))
-    if (!session) return streamFromResponses([{ type: 'session_not_found', toolSessionId: request.toolSessionId }])
-    const duplicate = this.checkDuplicate(session, request.commandId, request)
-    if (duplicate) return streamFromResponses([duplicate, statusResponse(session)])
-    if (isTerminalStatus(session.status)) return streamFromResponses([statusResponse(session)])
-    session.acceptedCommands.set(request.commandId, commandFingerprint(request))
-    session.status = 'cancelled'
-    session.pending = undefined
+    this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request });
+    const session = this.sessions.get(sessionKey(handle, request.toolSessionId));
+    if (!session) {
+      return streamFromResponses([
+        { type: "session_not_found", toolSessionId: request.toolSessionId },
+      ]);
+    }
+    const duplicate = this.checkDuplicate(session, request.commandId, request);
+    if (duplicate) {
+      return streamFromResponses([duplicate, statusResponse(session)]);
+    }
+    if (isTerminalStatus(session.status)) {
+      return streamFromResponses([statusResponse(session)]);
+    }
+    session.acceptedCommands.set(request.commandId, commandFingerprint(request));
+    session.status = "cancelled";
+    session.pending = undefined;
     return streamFromResponses([
-      eventResponse(session, { type: 'cancelled', ...(request.reason !== undefined && { reason: request.reason }) }),
+      eventResponse(session, {
+        type: "cancelled",
+        ...(request.reason !== undefined && { reason: request.reason }),
+      }),
       statusResponse(session),
-    ])
-  }
+    ]);
+  };
 
-  inspect: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>['inspect'] = function* (
+  inspect: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>["inspect"] = function* (
     this: FakeAgentCoreRemoteToolRuntimeClient,
     handle: AgentCoreToolSessionHandle,
-    _options?: RuntimeInvokeOptions
+    _options?: RuntimeInvokeOptions,
   ) {
-    this.invocations.push({ op: 'inspect_tool_session', runtimeSessionId: handle.runtimeSessionId, request: { op: 'inspect_tool_session', toolSessionId: handle.sessionId } })
-    const session = this.sessions.get(sessionKey(handle))
-    if (!session) return { type: 'session_not_found', toolSessionId: handle.sessionId }
-    return statusResponse(session)
-  }
+    this.invocations.push({
+      op: "inspect_tool_session",
+      runtimeSessionId: handle.runtimeSessionId,
+      request: { op: "inspect_tool_session", toolSessionId: handle.sessionId },
+    });
+    const session = this.sessions.get(sessionKey(handle));
+    if (!session) {
+      return { type: "session_not_found", toolSessionId: handle.sessionId };
+    }
+    return statusResponse(session);
+  };
 
-  drainEvents: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>['drainEvents'] = function* (
+  drainEvents: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>["drainEvents"] = function* (
     this: FakeAgentCoreRemoteToolRuntimeClient,
     handle: AgentCoreToolSessionHandle,
     afterRuntimeEventSeq: number,
-    _options?: RuntimeInvokeOptions
+    _options?: RuntimeInvokeOptions,
   ) {
-    this.invocations.push({ op: 'drain_tool_session_events', runtimeSessionId: handle.runtimeSessionId, request: { op: 'drain_tool_session_events', toolSessionId: handle.sessionId, afterRuntimeEventSeq } })
-    const session = this.sessions.get(sessionKey(handle))
-    if (!session) return streamFromResponses([{ type: 'session_not_found', toolSessionId: handle.sessionId }])
-    return streamFromResponses(session.events
-      .filter((event) => event.seq > afterRuntimeEventSeq)
-      .map((event) => ({
-        type: 'tool_event' as const,
-        toolSessionId: session.toolSessionId,
-        runtimeEventSeq: event.seq,
-        runtimeEventId: event.id,
-        event: event.event,
-      })))
-  }
-
-  stopRuntimeSession: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>['stopRuntimeSession'] = function* (
-    this: FakeAgentCoreRemoteToolRuntimeClient,
-    handle: AgentCoreToolSessionHandle,
-    _options?: RuntimeInvokeOptions
-  ) {
-    this.invocations.push({ op: 'stop_runtime_session', runtimeSessionId: handle.runtimeSessionId, request: { op: 'stop_runtime_session', sessionId: handle.sessionId } })
-    this.stoppedRuntimeSessionIds.push(handle.runtimeSessionId)
-  }
-
-  private checkDuplicate(session: FakeSession, commandId: string, request: object): AgentCoreToolRuntimeResponse | null {
-    const previous = session.acceptedCommands.get(commandId)
-    if (!previous) return null
-    if (previous === commandFingerprint(request)) {
-      return { type: 'command_duplicate', toolSessionId: session.toolSessionId, commandId, originalStatus: 'accepted' }
+    this.invocations.push({
+      op: "drain_tool_session_events",
+      runtimeSessionId: handle.runtimeSessionId,
+      request: {
+        op: "drain_tool_session_events",
+        toolSessionId: handle.sessionId,
+        afterRuntimeEventSeq,
+      },
+    });
+    const session = this.sessions.get(sessionKey(handle));
+    if (!session) {
+      return streamFromResponses([{ type: "session_not_found", toolSessionId: handle.sessionId }]);
     }
-    return { type: 'command_conflict', toolSessionId: session.toolSessionId, commandId, message: 'commandId reused with different payload' }
+    return streamFromResponses(
+      session.events
+        .filter((event) => event.seq > afterRuntimeEventSeq)
+        .map((event) => ({
+          type: "tool_event" as const,
+          toolSessionId: session.toolSessionId,
+          runtimeEventSeq: event.seq,
+          runtimeEventId: event.id,
+          event: event.event,
+        })),
+    );
+  };
+
+  stopRuntimeSession: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>["stopRuntimeSession"] =
+    function* (
+      this: FakeAgentCoreRemoteToolRuntimeClient,
+      handle: AgentCoreToolSessionHandle,
+      _options?: RuntimeInvokeOptions,
+    ) {
+      this.invocations.push({
+        op: "stop_runtime_session",
+        runtimeSessionId: handle.runtimeSessionId,
+        request: { op: "stop_runtime_session", sessionId: handle.sessionId },
+      });
+      this.stoppedRuntimeSessionIds.push(handle.runtimeSessionId);
+    };
+
+  private checkDuplicate(
+    session: FakeSession,
+    commandId: string,
+    request: object,
+  ): AgentCoreToolRuntimeResponse | null {
+    const previous = session.acceptedCommands.get(commandId);
+    if (!previous) {
+      return null;
+    }
+    if (previous === commandFingerprint(request)) {
+      return {
+        type: "command_duplicate",
+        toolSessionId: session.toolSessionId,
+        commandId,
+        originalStatus: "accepted",
+      };
+    }
+    return {
+      type: "command_conflict",
+      toolSessionId: session.toolSessionId,
+      commandId,
+      message: "commandId reused with different payload",
+    };
   }
 }

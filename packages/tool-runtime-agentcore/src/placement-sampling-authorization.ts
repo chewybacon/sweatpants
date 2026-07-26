@@ -82,7 +82,9 @@ export function verifyPlacementSamplingAuthorization(options: {
   } catch {
     throw unauthorized();
   }
-  if (!isRecord(value)) throw unauthorized();
+  if (!isRecord(value)) {
+    throw unauthorized();
+  }
   const keys = [
     "version",
     "issuer",

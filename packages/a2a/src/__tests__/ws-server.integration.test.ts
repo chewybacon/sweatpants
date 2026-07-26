@@ -18,7 +18,9 @@ import {
 const servers: Array<{ http: Server; ws: WebSocketServer }> = [];
 afterEach(async () => {
   for (const server of servers.splice(0)) {
-    for (const client of server.ws.clients) client.terminate();
+    for (const client of server.ws.clients) {
+      client.terminate();
+    }
     await Promise.all([
       new Promise<void>((resolve) => server.ws.close(() => resolve())),
       new Promise<void>((resolve) => server.http.close(() => resolve())),
@@ -52,7 +54,9 @@ async function startExecutorServer() {
   await once(http, "listening");
   servers.push({ http, ws });
   const address = http.address();
-  if (!address || typeof address === "string") throw new Error("missing server port");
+  if (!address || typeof address === "string") {
+    throw new Error("missing server port");
+  }
   return { endpoint: `ws://127.0.0.1:${address.port}`, registry, executor };
 }
 

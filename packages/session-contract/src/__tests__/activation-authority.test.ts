@@ -159,7 +159,9 @@ describe("activation leases and restore fencing", () => {
         restoreTicket: prepared.restoreTicket,
         frontierDigest,
       });
-      if (bound.status !== "bound") throw new Error("frontier was not bound");
+      if (bound.status !== "bound") {
+        throw new Error("frontier was not bound");
+      }
       let errorCode: string | undefined;
       try {
         yield* value.emit({
@@ -217,7 +219,9 @@ describe("activation leases and restore fencing", () => {
         frontierDigest: "c".repeat(64),
       });
       expect(bound.status).toBe("bound");
-      if (bound.status !== "bound") throw new Error("frontier was not bound");
+      if (bound.status !== "bound") {
+        throw new Error("frontier was not bound");
+      }
       expect(
         yield* value.consumeRestoreTicket({
           sessionId: "s2",
@@ -236,7 +240,9 @@ describe("activation leases and restore fencing", () => {
           proof: { restoreTicket: issued.restoreTicket, frontierDigest: "c".repeat(64) },
         });
         expect(stale).toMatchObject({ status: "restore_stale", consecutiveStales: count });
-        if (count === 3) expect(stale).toMatchObject({ releaseRequired: true, retryAfterMs: 250 });
+        if (count === 3) {
+          expect(stale).toMatchObject({ releaseRequired: true, retryAfterMs: 250 });
+        }
       }
       expect(yield* value.claimActivation({ sessionId: "s2", ownerId: "other" })).toEqual({
         status: "busy",

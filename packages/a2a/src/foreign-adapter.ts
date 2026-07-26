@@ -248,9 +248,13 @@ export const foreignA2ATaskAdapter = createPinnedDurableProgram(
       while (true) {
         cancellationState = transition.state;
         const event = transition.event;
-        if (event.type === "terminal") return finish(event.result);
+        if (event.type === "terminal") {
+          return finish(event.result);
+        }
         if (event.type === "indeterminate") {
-          if (!intervene) return finish(indeterminateResult(transition.state, event.result));
+          if (!intervene) {
+            return finish(indeterminateResult(transition.state, event.result));
+          }
           const decision = yield* context.effect(
             FOREIGN_A2A_AMBIGUITY_DECISION_EFFECT,
             { state: transition.state, result: event.result },
@@ -269,8 +273,9 @@ export const foreignA2ATaskAdapter = createPinnedDurableProgram(
               reason: "Operator marked the foreign invocation abandoned",
             });
           }
-          if (decision.action === "confirm_outcome" && decision.outcome)
+          if (decision.action === "confirm_outcome" && decision.outcome) {
             return finish(decision.outcome);
+          }
           if (decision.action === "bind_task" && decision.taskId) {
             transition = yield* context.effect(
               FOREIGN_A2A_OBSERVE_EFFECT,
@@ -280,11 +285,12 @@ export const foreignA2ATaskAdapter = createPinnedDurableProgram(
             continue;
           }
           if (decision.action === "retry_may_duplicate") {
-            if (decision.acknowledgedDuplicateRisk !== true)
+            if (decision.acknowledgedDuplicateRisk !== true) {
               throw new CrankError(
                 "a2a_duplicate_risk_not_acknowledged",
                 "Operator retry requires duplicate-risk acknowledgment",
               );
+            }
             transition = yield* context.effect(FOREIGN_A2A_START_INTERVENE_EFFECT, input.request, {
               audience: "foreign:a2a",
             });
@@ -341,8 +347,9 @@ export const foreignA2ATaskAdapter = createPinnedDurableProgram(
           });
           continue;
         }
-        if (!transition.state.binding)
+        if (!transition.state.binding) {
           throw new CrankError("a2a_task_unbound", "Cannot answer an unbound interruption");
+        }
         const request: ForeignA2AContinueRequest = {
           pin: transition.state.pin,
           taskId: transition.state.binding.taskId,
@@ -430,19 +437,23 @@ export function createForeignA2AEffectRegistrations(options: {
       { mode: "idempotent", mechanism: "inherent" },
       function* (state) {
         const maxPolls = options.maxPollsPerObserveEffect ?? 120;
-        if (!Number.isSafeInteger(maxPolls) || maxPolls < 1)
+        if (!Number.isSafeInteger(maxPolls) || maxPolls < 1) {
           throw new CrankError("invalid_descriptor", "A2A observe poll budget must be positive");
+        }
         let current = state;
         let transition: ForeignA2ATransition | undefined;
         for (let poll = 0; poll < maxPolls; poll += 1) {
           yield* sleep(options.pollIntervalMs ?? 500);
           transition = yield* options.session.observe(current);
           current = transition.state;
-          if (transition.event.type !== "progress") break;
+          if (transition.event.type !== "progress") {
+            break;
+          }
           options.onProgress?.(transition.event, current);
         }
-        if (!transition)
+        if (!transition) {
           throw new CrankError("a2a_protocol_error", "A2A observer produced no transition");
+        }
         return { status: "ok", value: transition };
       },
       schemas,
@@ -461,11 +472,12 @@ export function createForeignA2AEffectRegistrations(options: {
       FOREIGN_A2A_AMBIGUITY_DECISION_EFFECT,
       { mode: "idempotent", mechanism: "pull_id_key" },
       function* (input, context) {
-        if (!options.intervene)
+        if (!options.intervene) {
           throw new CrankError(
             "a2a_intervention_unavailable",
             "No A2A operator intervention handler is installed",
           );
+        }
         return { status: "ok", value: yield* options.intervene(input, context) };
       },
       schemas,

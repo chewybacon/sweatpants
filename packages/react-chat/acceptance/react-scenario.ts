@@ -92,16 +92,22 @@ export function mountReactChat(
     let rendered: RenderHookResult<UseChatReturn, unknown> | undefined;
 
     const close = (): void => {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       closed = true;
       const error = new Error("React chat harness is closed");
-      for (const waiter of waiters.splice(0)) waiter.reject(error);
+      for (const waiter of waiters.splice(0)) {
+        waiter.reject(error);
+      }
       rendered?.unmount();
       rendered = undefined;
     };
 
     const assertOpen = (): void => {
-      if (closed) throw new Error("React chat harness is closed");
+      if (closed) {
+        throw new Error("React chat harness is closed");
+      }
     };
 
     const timeout = <T>(promise: Promise<T>, label: string): Promise<T> =>
@@ -129,7 +135,9 @@ export function mountReactChat(
       for (const waiter of [...waiters]) {
         try {
           const selected = waiter.select(chat);
-          if (selected === undefined) continue;
+          if (selected === undefined) {
+            continue;
+          }
           waiters.splice(waiters.indexOf(waiter), 1);
           waiter.resolve(selected);
         } catch (error) {
@@ -156,10 +164,14 @@ export function mountReactChat(
     });
 
     function waitFor<T>(label: string, select: (chat: UseChatReturn) => T | undefined): Promise<T> {
-      if (closed) return Promise.reject(new Error("React chat harness is closed"));
+      if (closed) {
+        return Promise.reject(new Error("React chat harness is closed"));
+      }
       for (let index = snapshots.length - 1; index >= 0; index -= 1) {
         const selected = select(snapshots[index]!);
-        if (selected !== undefined) return Promise.resolve(selected);
+        if (selected !== undefined) {
+          return Promise.resolve(selected);
+        }
       }
       return timeout(
         new Promise<T>((resolve, reject) => {
@@ -215,7 +227,9 @@ export function mountReactChat(
             terminal = snapshot;
           }
         }
-        if (terminal) return terminal;
+        if (terminal) {
+          return terminal;
+        }
         return yield* call(() =>
           waitFor("React run settlement", (chat) => {
             if (chat.isStreaming || chat.session.state.activeRun !== null) {
@@ -236,7 +250,9 @@ export function mountReactChat(
           waitFor("projected message", (chat) => {
             for (const message of chat.messages) {
               const projected = projectedMessage(message);
-              if (expectation.role !== undefined && projected.role !== expectation.role) continue;
+              if (expectation.role !== undefined && projected.role !== expectation.role) {
+                continue;
+              }
               if (
                 expectation.containing !== undefined &&
                 !projected.text.includes(expectation.containing)
@@ -255,14 +271,18 @@ export function mountReactChat(
             for (const tracking of chat.session.toolEmissions) {
               for (const emission of tracking.emissions) {
                 const payload = record(emission.payload);
-                if (expectation.toolName && emission.toolName !== expectation.toolName) continue;
+                if (expectation.toolName && emission.toolName !== expectation.toolName) {
+                  continue;
+                }
                 if (
                   expectation.componentKey &&
                   payload?.["componentKey"] !== expectation.componentKey
                 ) {
                   continue;
                 }
-                if (expectation.status && emission.status !== expectation.status) continue;
+                if (expectation.status && emission.status !== expectation.status) {
+                  continue;
+                }
                 return emissionHandle(chat, emission);
               }
             }

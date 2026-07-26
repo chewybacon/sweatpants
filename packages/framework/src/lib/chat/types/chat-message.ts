@@ -33,26 +33,26 @@
  * ```
  */
 
-import type { Frame } from '../frame.ts'
+import type { Frame } from "../frame.ts";
 
 // =============================================================================
 // PART ID GENERATION
 // =============================================================================
 
-let partIdCounter = 0
+let partIdCounter = 0;
 
 /**
  * Generate a unique part ID.
  */
 export function generatePartId(): string {
-  return `part-${++partIdCounter}-${Date.now()}`
+  return `part-${++partIdCounter}-${Date.now()}`;
 }
 
 /**
  * Reset part ID counter (for testing).
  */
 export function resetPartIdCounter(): void {
-  partIdCounter = 0
+  partIdCounter = 0;
 }
 
 // =============================================================================
@@ -70,17 +70,17 @@ export function resetPartIdCounter(): void {
  */
 export interface ChatEmission<TComponent = unknown> {
   /** Unique emission ID */
-  id: string
+  id: string;
   /** Current status */
-  status: 'pending' | 'complete'
+  status: "pending" | "complete";
   /** The component to render */
-  component: TComponent
+  component: TComponent;
   /** Props to pass to the component (excluding framework-specific props like onRespond) */
-  props: Record<string, unknown>
+  props: Record<string, unknown>;
   /** Response value once user completes interaction */
-  response?: unknown
+  response?: unknown;
   /** Callback to complete the emission - only present when pending */
-  onRespond?: (value: unknown) => void
+  onRespond?: (value: unknown) => void;
 }
 
 /**
@@ -95,23 +95,23 @@ export interface ChatEmission<TComponent = unknown> {
  */
 export interface PluginElicit {
   /** Unique elicitation ID */
-  id: string
+  id: string;
   /** Elicitation key (e.g., 'pickFlight', 'pickSeat') - used for component lookup */
-  key: string
+  key: string;
   /** Human-readable message/prompt for the elicitation */
-  message: string
+  message: string;
   /** Context data passed to the component (extracted from x-elicit-context) */
-  context?: unknown
+  context?: unknown;
   /** Current status */
-  status: 'pending' | 'responded'
+  status: "pending" | "responded";
   /** Response value once user completes interaction */
-  response?: unknown
+  response?: unknown;
   /** Session ID for the plugin tool execution */
-  sessionId: string
+  sessionId: string;
   /** Tool call ID this elicitation belongs to */
-  callId: string
+  callId: string;
   /** Tool name for component lookup */
-  toolName: string
+  toolName: string;
 }
 
 // =============================================================================
@@ -123,7 +123,7 @@ export interface PluginElicit {
  */
 interface BaseMessagePart {
   /** Unique part identifier (stable across updates) */
-  id: string
+  id: string;
 }
 
 /**
@@ -132,13 +132,13 @@ interface BaseMessagePart {
  * Contains the main response text from the model, rendered through the pipeline.
  */
 export interface TextPart extends BaseMessagePart {
-  type: 'text'
+  type: "text";
   /** Raw text content */
-  content: string
+  content: string;
   /** Rendered HTML from the pipeline (or escaped content as fallback) */
-  rendered: string
+  rendered: string;
   /** Rendered frame (contains blocks with HTML) - internal, use `rendered` instead */
-  frame?: Frame
+  frame?: Frame;
 }
 
 /**
@@ -148,13 +148,13 @@ export interface TextPart extends BaseMessagePart {
  * Also rendered through the pipeline for markdown/code highlighting.
  */
 export interface ReasoningPart extends BaseMessagePart {
-  type: 'reasoning'
+  type: "reasoning";
   /** Raw reasoning content */
-  content: string
+  content: string;
   /** Rendered HTML from the pipeline (or escaped content as fallback) */
-  rendered: string
+  rendered: string;
   /** Rendered frame (contains blocks with HTML) - internal, use `rendered` instead */
-  frame?: Frame
+  frame?: Frame;
 }
 
 /**
@@ -167,23 +167,23 @@ export interface ReasoningPart extends BaseMessagePart {
  * @typeParam TComponent - The UI framework's component type
  */
 export interface ToolCallPart<TComponent = unknown> extends BaseMessagePart {
-  type: 'tool-call'
+  type: "tool-call";
   /** Tool call ID (from the model) */
-  callId: string
+  callId: string;
   /** Tool name */
-  name: string
+  name: string;
   /** Arguments passed to the tool */
-  arguments: unknown
+  arguments: unknown;
   /** Current execution state */
-  state: 'pending' | 'running' | 'complete' | 'error'
+  state: "pending" | "running" | "complete" | "error";
   /** Tool result (when complete) */
-  result?: unknown
+  result?: unknown;
   /** Error message (when error) */
-  error?: string
+  error?: string;
   /** Interactive emissions from this tool (e.g., ctx.render() components) */
-  emissions: ChatEmission<TComponent>[]
+  emissions: ChatEmission<TComponent>[];
   /** Plugin elicitations from this tool (MCP plugin tools via ctx.elicit()) */
-  pluginElicits: PluginElicit[]
+  pluginElicits: PluginElicit[];
 }
 
 /**
@@ -191,11 +191,11 @@ export interface ToolCallPart<TComponent = unknown> extends BaseMessagePart {
  * are sent back to the model).
  */
 export interface ToolResultPart extends BaseMessagePart {
-  type: 'tool-result'
+  type: "tool-result";
   /** ID of the tool call this result is for */
-  callId: string
+  callId: string;
   /** The result value */
-  result: unknown
+  result: unknown;
 }
 
 /**
@@ -207,18 +207,18 @@ export type MessagePart<TComponent = unknown> =
   | TextPart
   | ReasoningPart
   | ToolCallPart<TComponent>
-  | ToolResultPart
+  | ToolResultPart;
 
 /**
  * Content part types that go through the pipeline.
  */
-export type ContentPart = TextPart | ReasoningPart
+export type ContentPart = TextPart | ReasoningPart;
 
 /**
  * Type guard for content parts (text or reasoning).
  */
 export function isContentPart(part: MessagePart): part is ContentPart {
-  return part.type === 'text' || part.type === 'reasoning'
+  return part.type === "text" || part.type === "reasoning";
 }
 
 // =============================================================================
@@ -251,17 +251,17 @@ export function isContentPart(part: MessagePart): part is ContentPart {
  */
 export interface ChatMessage<TComponent = unknown> {
   /** Unique message ID */
-  id: string
+  id: string;
   /** Message role */
-  role: 'user' | 'assistant' | 'system'
+  role: "user" | "assistant" | "system";
   /** Ordered list of message parts */
-  parts: MessagePart<TComponent>[]
+  parts: MessagePart<TComponent>[];
   /** Whether this message is currently streaming */
-  isStreaming: boolean
+  isStreaming: boolean;
   /** Timestamp when created */
-  createdAt?: Date
+  createdAt?: Date;
   /** Extensible metadata */
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
 }
 
 // =============================================================================
@@ -277,11 +277,11 @@ export interface ChatMessage<TComponent = unknown> {
  */
 export interface StreamingMessage<TComponent = unknown> {
   /** Role is always 'assistant' for streaming messages */
-  role: 'assistant'
+  role: "assistant";
   /** Parts accumulated so far (last one may be actively streaming) */
-  parts: MessagePart<TComponent>[]
+  parts: MessagePart<TComponent>[];
   /** ID of the currently streaming part (if any) */
-  activePartId: string | null
+  activePartId: string | null;
 }
 
 // =============================================================================
@@ -293,42 +293,44 @@ export interface StreamingMessage<TComponent = unknown> {
  * Joins all block rendered content into a single HTML string.
  */
 export function getRenderedFromFrame(frame: Frame | undefined): string | null {
-  if (!frame || !frame.blocks.length) return null
-  return frame.blocks.map(b => b.rendered).join('')
+  if (!frame || !frame.blocks.length) {
+    return null;
+  }
+  return frame.blocks.map((b) => b.rendered).join("");
 }
 
 /**
  * Create a new text part.
  */
-export function createTextPart(content: string = '', frame?: Frame): TextPart {
-  const rendered = getRenderedFromFrame(frame) ?? content
+export function createTextPart(content: string = "", frame?: Frame): TextPart {
+  const rendered = getRenderedFromFrame(frame) ?? content;
   const part: TextPart = {
     id: generatePartId(),
-    type: 'text',
+    type: "text",
     content,
     rendered,
-  }
+  };
   if (frame !== undefined) {
-    part.frame = frame
+    part.frame = frame;
   }
-  return part
+  return part;
 }
 
 /**
  * Create a new reasoning part.
  */
-export function createReasoningPart(content: string = '', frame?: Frame): ReasoningPart {
-  const rendered = getRenderedFromFrame(frame) ?? content
+export function createReasoningPart(content: string = "", frame?: Frame): ReasoningPart {
+  const rendered = getRenderedFromFrame(frame) ?? content;
   const part: ReasoningPart = {
     id: generatePartId(),
-    type: 'reasoning',
+    type: "reasoning",
     content,
     rendered,
-  }
+  };
   if (frame !== undefined) {
-    part.frame = frame
+    part.frame = frame;
   }
-  return part
+  return part;
 }
 
 /**
@@ -337,18 +339,18 @@ export function createReasoningPart(content: string = '', frame?: Frame): Reason
 export function createToolCallPart<TComponent = unknown>(
   callId: string,
   name: string,
-  args: unknown
+  args: unknown,
 ): ToolCallPart<TComponent> {
   return {
     id: generatePartId(),
-    type: 'tool-call',
+    type: "tool-call",
     callId,
     name,
     arguments: args,
-    state: 'pending',
+    state: "pending",
     emissions: [],
     pluginElicits: [],
-  }
+  };
 }
 
 /**
@@ -357,10 +359,10 @@ export function createToolCallPart<TComponent = unknown>(
 export function createToolResultPart(callId: string, result: unknown): ToolResultPart {
   return {
     id: generatePartId(),
-    type: 'tool-result',
+    type: "tool-result",
     callId,
     result,
-  }
+  };
 }
 
 /**
@@ -368,9 +370,9 @@ export function createToolResultPart(callId: string, result: unknown): ToolResul
  */
 export function getMessageTextContent(message: ChatMessage): string {
   return message.parts
-    .filter((part): part is TextPart => part.type === 'text')
-    .map(part => part.content)
-    .join('\n')
+    .filter((part): part is TextPart => part.type === "text")
+    .map((part) => part.content)
+    .join("\n");
 }
 
 /**
@@ -378,18 +380,18 @@ export function getMessageTextContent(message: ChatMessage): string {
  */
 export function getMessageReasoningContent(message: ChatMessage): string {
   return message.parts
-    .filter((part): part is ReasoningPart => part.type === 'reasoning')
-    .map(part => part.content)
-    .join('\n')
+    .filter((part): part is ReasoningPart => part.type === "reasoning")
+    .map((part) => part.content)
+    .join("\n");
 }
 
 /**
  * Get all tool calls from a message.
  */
 export function getMessageToolCalls<TComponent = unknown>(
-  message: ChatMessage<TComponent>
+  message: ChatMessage<TComponent>,
 ): ToolCallPart<TComponent>[] {
   return message.parts.filter(
-    (part): part is ToolCallPart<TComponent> => part.type === 'tool-call'
-  )
+    (part): part is ToolCallPart<TComponent> => part.type === "tool-call",
+  );
 }

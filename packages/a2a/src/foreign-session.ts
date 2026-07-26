@@ -78,13 +78,15 @@ export class ForeignA2ADurableSession {
     assertDuplicateRiskPolicy(request.pin);
     this.#report("dispatch", request.pin, request.message.messageId);
     assertFuture(request.pin.requestExpiresAt, "initial request");
-    if (request.message.messageId !== request.pin.initialMessageId)
+    if (request.message.messageId !== request.pin.initialMessageId) {
       throw new CrankError("a2a_identity_mismatch", "Initial A2A message ID differs from its pin");
-    if (request.message.taskId || request.message.contextId)
+    }
+    if (request.message.taskId || request.message.contextId) {
       throw new CrankError(
         "a2a_protocol_error",
         "Initial A2A message may not provide a task handle",
       );
+    }
     const state: ForeignA2AObservationState = {
       pin: request.pin,
       observationDigests: {},
@@ -92,8 +94,9 @@ export class ForeignA2ADurableSession {
       continuationIndex: 0,
     };
     const dispatched = yield* this.#dispatchInitial(request);
-    if ("indeterminate" in dispatched)
+    if ("indeterminate" in dispatched) {
       return { state, event: { type: "indeterminate", result: dispatched.indeterminate } };
+    }
     return transitionFromSend(state, dispatched.result);
   }
 
@@ -101,8 +104,9 @@ export class ForeignA2ADurableSession {
     state: ForeignA2AObservationState;
     event: ForeignA2ASessionEvent;
   }> {
-    if (!state.binding)
+    if (!state.binding) {
       throw new CrankError("a2a_task_unbound", "Cannot observe an unbound A2A invocation");
+    }
     this.#report(
       "observe",
       state.pin,
@@ -133,7 +137,9 @@ export class ForeignA2ADurableSession {
           });
           const iterator = stream[Symbol.asyncIterator]();
           const next = yield* call(() => iterator.next());
-          if (!next.done) return transitionFromTask(state, next.value);
+          if (!next.done) {
+            return transitionFromTask(state, next.value);
+          }
         } catch {
           // Subscription is a latency optimization. Authenticated GetTask is
           // always the recovery baseline after stream loss.
@@ -147,8 +153,9 @@ export class ForeignA2ADurableSession {
         ["a2a_observation_conflict", "a2a_binding_conflict", "a2a_protocol_error"].includes(
           error.code,
         )
-      )
+      ) {
         throw error;
+      }
       if (error instanceof CrankError && error.code === "remote_state_expired") {
         return {
           state,
@@ -187,26 +194,30 @@ export class ForeignA2ADurableSession {
       state.lastTask?.status.state,
     );
     assertContinuationGuarantee(request);
-    if (!state.binding || request.taskId !== state.binding.taskId)
+    if (!state.binding || request.taskId !== state.binding.taskId) {
       throw new CrankError("a2a_identity_mismatch", "Continuation does not target the bound task");
-    if (request.contextId !== state.binding.contextId)
+    }
+    if (request.contextId !== state.binding.contextId) {
       throw new CrankError(
         "a2a_identity_mismatch",
         "Continuation context does not match the bound task",
       );
+    }
     const expectedIndex = state.continuationIndex + 1;
-    if (!request.message.messageId)
+    if (!request.message.messageId) {
       throw new CrankError(
         "a2a_identity_mismatch",
         "Continuation message requires a stable identity",
       );
+    }
     const dispatched = yield* this.#dispatchContinuation(request);
     const advanced = { ...state, continuationIndex: expectedIndex };
-    if ("indeterminate" in dispatched)
+    if ("indeterminate" in dispatched) {
       return {
         state: advanced,
         event: { type: "indeterminate", result: dispatched.indeterminate },
       };
+    }
     return transitionFromSend(advanced, dispatched.result);
   }
 
@@ -235,27 +246,32 @@ export class ForeignA2ADurableSession {
       state.pin.guarantee.level !== "reconciled" ||
       !this.#client.resolveInvocation ||
       !this.#client.abortInvocation
-    )
+    ) {
       return { status: "creation_indeterminate" };
+    }
     const messageDigest = state.initialMessageDigest;
     try {
       const resolved = yield* this.#client.resolveInvocation({ pin: state.pin, messageDigest });
       if (resolved.status === "bound") {
-        if (resolved.result.type === "message")
+        if (resolved.result.type === "message") {
           return { status: "already_terminal", task: directMessageTask(resolved.result.message) };
+        }
         const task = yield* this.#client.cancelTask({
           pin: state.pin,
           taskId: resolved.result.task.id,
         });
         return classifyForeignCancellation(task);
       }
-      if (resolved.status === "aborted")
+      if (resolved.status === "aborted") {
         return { status: "definitely_not_created", abortExpiresAt: resolved.expiresAt };
+      }
       const aborted = yield* this.#client.abortInvocation({ pin: state.pin, messageDigest });
-      if (aborted.status === "aborted")
+      if (aborted.status === "aborted") {
         return { status: "definitely_not_created", abortExpiresAt: aborted.expiresAt };
-      if (aborted.result.type === "message")
+      }
+      if (aborted.result.type === "message") {
         return { status: "already_terminal", task: directMessageTask(aborted.result.message) };
+      }
       const task = yield* this.#client.cancelTask({
         pin: state.pin,
         taskId: aborted.result.task.id,
@@ -271,8 +287,12 @@ export class ForeignA2ADurableSession {
     let polls = 0;
     let delay = this.#polling.initialMs;
     while (true) {
-      if (event.type === "terminal") return event.result;
-      if (event.type === "indeterminate") return terminalIndeterminate(state, event.result);
+      if (event.type === "terminal") {
+        return event.result;
+      }
+      if (event.type === "indeterminate") {
+        return terminalIndeterminate(state, event.result);
+      }
       if (event.type === "interruption") {
         return {
           status: "interrupted",
@@ -282,7 +302,7 @@ export class ForeignA2ADurableSession {
         };
       }
       polls += 1;
-      if (polls > this.#polling.maxPolls)
+      if (polls > this.#polling.maxPolls) {
         return terminalIndeterminate(
           state,
           indeterminate(
@@ -293,6 +313,7 @@ export class ForeignA2ADurableSession {
             false,
           ),
         );
+      }
       const jitter = 1 + (this.#random() * 2 - 1) * this.#polling.jitter;
       yield* sleep(Math.max(1, Math.round(delay * jitter)));
       ({ state, event } = yield* this.observe(state));
@@ -327,14 +348,18 @@ export class ForeignA2ADurableSession {
       try {
         return { result: yield* this.#client.sendInitial(request) };
       } catch (error) {
-        if (!ambiguous(error)) throw error;
+        if (!ambiguous(error)) {
+          throw error;
+        }
         if (request.pin.guarantee.level === "reconciled" && this.#client.resolveInvocation) {
           const resolution = yield* this.#client.resolveInvocation({
             pin: request.pin,
             messageDigest,
           });
-          if (resolution.status === "bound") return { result: resolution.result };
-          if (resolution.status === "aborted")
+          if (resolution.status === "bound") {
+            return { result: resolution.result };
+          }
+          if (resolution.status === "aborted") {
             return {
               indeterminate: indeterminateFromPin(
                 request.pin,
@@ -344,7 +369,10 @@ export class ForeignA2ADurableSession {
                 false,
               ),
             };
-          if (attempt < attempts) continue;
+          }
+          if (attempt < attempts) {
+            continue;
+          }
         } else if (request.pin.guarantee.level === "idempotent_messages" && attempt < attempts) {
           continue;
         } else if (request.pin.ambiguityPolicy === "retry_may_duplicate" && attempt < attempts) {
@@ -372,13 +400,18 @@ export class ForeignA2ADurableSession {
       try {
         return { result: yield* this.#client.sendContinuation(request) };
       } catch (error) {
-        if (!ambiguous(error)) throw error;
+        if (!ambiguous(error)) {
+          throw error;
+        }
         if (
           ["reconciled", "idempotent_messages"].includes(request.pin.guarantee.level) &&
           attempt < attempts
-        )
+        ) {
           continue;
-        if (request.pin.ambiguityPolicy === "retry_may_duplicate" && attempt < attempts) continue;
+        }
+        if (request.pin.ambiguityPolicy === "retry_may_duplicate" && attempt < attempts) {
+          continue;
+        }
         return {
           indeterminate: indeterminateFromPin(
             request.pin,
@@ -423,8 +456,9 @@ function transitionFromTask(
   if (
     state.binding &&
     (state.binding.taskId !== task.id || state.binding.contextId !== task.contextId)
-  )
+  ) {
     throw new CrankError("a2a_binding_conflict", "Remote task binding changed");
+  }
   if (task.metadata && typeof task.metadata === "object" && !Array.isArray(task.metadata)) {
     const invocation = task.metadata[DURABLE_INVOCATION_EXTENSION_URI];
     if (
@@ -433,11 +467,12 @@ function transitionFromTask(
       !Array.isArray(invocation) &&
       typeof invocation["invocationId"] === "string" &&
       invocation["invocationId"] !== state.pin.invocationId
-    )
+    ) {
       throw new CrankError(
         "a2a_binding_conflict",
         "Operator-supplied task belongs to another invocation",
       );
+    }
   }
   let observations = state.observationDigests;
   if (task.status.message) {
@@ -465,8 +500,9 @@ function transitionFromTask(
 function interruptionFrom(task: ForeignA2ATask): ForeignA2AInterruption {
   const message = task.status.message;
   if (task.status.state === "input_required") {
-    if (!message)
+    if (!message) {
       throw new CrankError("a2a_protocol_error", "input-required task omitted status message");
+    }
     return {
       type: "input_required",
       taskId: task.id,
@@ -558,33 +594,39 @@ function ambiguous(error: unknown): boolean {
   return error instanceof ForeignA2ATransportError && error.acceptanceUnknown;
 }
 function boundedAttempts(value = 3): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > 10)
+  if (!Number.isSafeInteger(value) || value < 1 || value > 10) {
     throw new CrankError("invalid_descriptor", "A2A dispatch attempts must be between one and ten");
+  }
   return value;
 }
 function expired(value: string | undefined): boolean {
   return value !== undefined && Date.now() >= Date.parse(value);
 }
 function assertContinuationGuarantee(request: ForeignA2AContinueRequest): void {
-  if (!["reconciled", "idempotent_messages"].includes(request.pin.guarantee.level)) return;
+  if (!["reconciled", "idempotent_messages"].includes(request.pin.guarantee.level)) {
+    return;
+  }
   const expiresAt =
     request.messageIdempotencyExpiresAt ?? request.pin.guarantee.messageIdempotencyExpiresAt;
-  if (!expiresAt || Date.now() >= Date.parse(expiresAt))
+  if (!expiresAt || Date.now() >= Date.parse(expiresAt)) {
     throw new CrankError(
       "a2a_guarantee_expired",
       "Message idempotency guarantee expired before continuation dispatch",
     );
+  }
 }
 function assertFuture(value: string, label: string): void {
-  if (!Number.isFinite(Date.parse(value)) || Date.now() >= Date.parse(value))
+  if (!Number.isFinite(Date.parse(value)) || Date.now() >= Date.parse(value)) {
     throw new CrankError("a2a_guarantee_expired", `${label} expired before dispatch`);
+  }
 }
 function assertDuplicateRiskPolicy(pin: ForeignA2AObservationState["pin"]): void {
-  if (pin.ambiguityPolicy === "retry_may_duplicate" && pin.duplicateRiskAcknowledged !== true)
+  if (pin.ambiguityPolicy === "retry_may_duplicate" && pin.duplicateRiskAcknowledged !== true) {
     throw new CrankError(
       "a2a_duplicate_risk_not_acknowledged",
       "retry_may_duplicate requires an acknowledged durable pin",
     );
+  }
 }
 function validatePolling(value: Required<NonNullable<ForeignA2ASessionOptions["polling"]>>): void {
   if (
@@ -599,6 +641,7 @@ function validatePolling(value: Required<NonNullable<ForeignA2ASessionOptions["p
     value.jitter > 1 ||
     !Number.isSafeInteger(value.maxPolls) ||
     value.maxPolls <= 0
-  )
+  ) {
     throw new CrankError("invalid_descriptor", "Invalid A2A polling policy");
+  }
 }

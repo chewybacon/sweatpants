@@ -33,36 +33,36 @@ import {
   afterAll as $afterAll,
   afterEach as $afterEach,
   expect,
-} from 'vitest'
-import type { Operation, Scope } from 'effection'
-import { run, createScope } from 'effection'
+} from "vitest";
+import type { Operation, Scope } from "effection";
+import { run, createScope } from "effection";
 
 // Re-export expect for convenience
-export { expect }
+export { expect };
 
 /**
  * Type for test operation functions
  */
-export type TestOperation = () => Operation<void>
+export type TestOperation = () => Operation<void>;
 
 /**
  * Test adapter that manages Effection scopes per describe block
  */
 interface TestAdapter {
-  name: string
-  parent: TestAdapter | undefined
-  scope: Scope | undefined
-  destroy: (() => Promise<void>) | undefined
-  beforeAllOps: TestOperation[]
-  beforeEachOps: TestOperation[]
-  initialized: boolean
+  name: string;
+  parent: TestAdapter | undefined;
+  scope: Scope | undefined;
+  destroy: (() => Promise<void>) | undefined;
+  beforeAllOps: TestOperation[];
+  beforeEachOps: TestOperation[];
+  initialized: boolean;
 }
 
 // Stack of current adapters (for nested describes)
-const adapterStack: TestAdapter[] = []
+const adapterStack: TestAdapter[] = [];
 
 function currentAdapter(): TestAdapter | undefined {
-  return adapterStack[adapterStack.length - 1]
+  return adapterStack[adapterStack.length - 1];
 }
 
 /**
@@ -77,31 +77,33 @@ function createAdapter(name: string, parent: TestAdapter | undefined): TestAdapt
     beforeAllOps: [],
     beforeEachOps: [],
     initialized: false,
-  }
+  };
 }
 
 /**
  * Initialize the adapter's scope (runs beforeAll ops)
  */
 async function initAdapter(adapter: TestAdapter): Promise<void> {
-  if (adapter.initialized) return
+  if (adapter.initialized) {
+    return;
+  }
 
   // Initialize parent first
   if (adapter.parent && !adapter.parent.initialized) {
-    await initAdapter(adapter.parent)
+    await initAdapter(adapter.parent);
   }
 
   // Create scope (child of parent's scope if exists)
-  const [scope, destroy] = createScope()
-  adapter.scope = scope
-  adapter.destroy = destroy
+  const [scope, destroy] = createScope();
+  adapter.scope = scope;
+  adapter.destroy = destroy;
 
   // Run beforeAll operations
   for (const op of adapter.beforeAllOps) {
-    await run(op)
+    await run(op);
   }
 
-  adapter.initialized = true
+  adapter.initialized = true;
 }
 
 /**
@@ -109,129 +111,129 @@ async function initAdapter(adapter: TestAdapter): Promise<void> {
  */
 async function runTest(adapter: TestAdapter, op: TestOperation): Promise<void> {
   // Ensure adapter is initialized
-  await initAdapter(adapter)
+  await initAdapter(adapter);
 
   // Collect all beforeEach ops from ancestors
-  const allBeforeEach: TestOperation[] = []
-  let current: TestAdapter | undefined = adapter
+  const allBeforeEach: TestOperation[] = [];
+  let current: TestAdapter | undefined = adapter;
   while (current) {
-    allBeforeEach.unshift(...current.beforeEachOps)
-    current = current.parent
+    allBeforeEach.unshift(...current.beforeEachOps);
+    current = current.parent;
   }
 
   // Run in a new scope
   await run(function* () {
     // Run all beforeEach
     for (const setup of allBeforeEach) {
-      yield* setup()
+      yield* setup();
     }
     // Run the test
-    yield* op()
-  })
+    yield* op();
+  });
 }
 
 /**
  * describe() - wraps vitest's describe with Effection scope management
  */
 export function describe(name: string, fn: () => void): void {
-  const parent = currentAdapter()
-  const adapter = createAdapter(name, parent)
+  const parent = currentAdapter();
+  const adapter = createAdapter(name, parent);
 
   $describe(name, () => {
     // Push adapter onto stack for nested calls
-    adapterStack.push(adapter)
+    adapterStack.push(adapter);
 
     // Set up cleanup
     $afterAll(async () => {
       if (adapter.destroy) {
-        await adapter.destroy()
+        await adapter.destroy();
       }
-    })
+    });
 
     // Run the describe body (collects beforeAll, beforeEach, it calls)
-    fn()
+    fn();
 
     // Pop adapter
-    adapterStack.pop()
-  })
+    adapterStack.pop();
+  });
 }
 
 // Add skip and only variants
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-;(describe as any).skip = $describe.skip
+(describe as any).skip = $describe.skip;
 describe.only = function (name: string, fn: () => void): void {
-  const parent = currentAdapter()
-  const adapter = createAdapter(name, parent)
+  const parent = currentAdapter();
+  const adapter = createAdapter(name, parent);
 
   $describe.only(name, () => {
-    adapterStack.push(adapter)
+    adapterStack.push(adapter);
     $afterAll(async () => {
       if (adapter.destroy) {
-        await adapter.destroy()
+        await adapter.destroy();
       }
-    })
-    fn()
-    adapterStack.pop()
-  })
-}
+    });
+    fn();
+    adapterStack.pop();
+  });
+};
 
 /**
  * it() - wraps vitest's it to run Effection operations
  */
 export function it(desc: string, op?: TestOperation): void {
-  const adapter = currentAdapter()
+  const adapter = currentAdapter();
 
   if (!op) {
     // Pending test
-    $it.skip(desc, () => {})
-    return
+    $it.skip(desc, () => {});
+    return;
   }
 
   if (!adapter) {
     // No describe block - run standalone
     $it(desc, async () => {
-      await run(op)
-    })
-    return
+      await run(op);
+    });
+    return;
   }
 
   $it(desc, async () => {
-    await runTest(adapter, op)
-  })
+    await runTest(adapter, op);
+  });
 }
 
 // Add skip and only variants
 it.skip = function (desc: string, _op?: TestOperation): void {
-  $it.skip(desc, () => {})
-}
+  $it.skip(desc, () => {});
+};
 
 it.only = function (desc: string, op: TestOperation): void {
-  const adapter = currentAdapter()
+  const adapter = currentAdapter();
 
   if (!adapter) {
     $it.only(desc, async () => {
-      await run(op)
-    })
-    return
+      await run(op);
+    });
+    return;
   }
 
   $it.only(desc, async () => {
-    await runTest(adapter, op)
-  })
-}
+    await runTest(adapter, op);
+  });
+};
 
 /**
  * beforeAll() - run an Effection operation before all tests in the suite
  */
 export function beforeAll(op: TestOperation): void {
-  const adapter = currentAdapter()
+  const adapter = currentAdapter();
   if (adapter) {
-    adapter.beforeAllOps.push(op)
+    adapter.beforeAllOps.push(op);
   } else {
     // Fallback: just use vitest's beforeAll with run()
     $beforeAll(async () => {
-      await run(op)
-    })
+      await run(op);
+    });
   }
 }
 
@@ -239,14 +241,14 @@ export function beforeAll(op: TestOperation): void {
  * beforeEach() - run an Effection operation before each test
  */
 export function beforeEach(op: TestOperation): void {
-  const adapter = currentAdapter()
+  const adapter = currentAdapter();
   if (adapter) {
-    adapter.beforeEachOps.push(op)
+    adapter.beforeEachOps.push(op);
   } else {
     // Fallback: just use vitest's beforeEach with run()
     $beforeEach(async () => {
-      await run(op)
-    })
+      await run(op);
+    });
   }
 }
 
@@ -254,12 +256,12 @@ export function beforeEach(op: TestOperation): void {
  * afterAll() - cleanup after all tests (regular function, not generator)
  */
 export function afterAll(fn: () => void | Promise<void>): void {
-  $afterAll(fn)
+  $afterAll(fn);
 }
 
 /**
  * afterEach() - cleanup after each test (regular function, not generator)
  */
 export function afterEach(fn: () => void | Promise<void>): void {
-  $afterEach(fn)
+  $afterEach(fn);
 }

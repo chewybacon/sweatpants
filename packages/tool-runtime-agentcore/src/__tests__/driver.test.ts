@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { run, resource, type Operation } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/core";
-import { ToolRuntimeApi, createToolInventory, createToolInventoryEntry } from "@sweatpants/framework/chat";
+import {
+  ToolRuntimeApi,
+  createToolInventory,
+  createToolInventoryEntry,
+} from "@sweatpants/framework/chat";
 import { type ToolSessionRegistry, type ToolSession } from "@sweatpants/framework/chat/mcp-tools";
 import {
   FakeAgentCoreRemoteToolRuntimeClient,
@@ -75,7 +79,9 @@ function createFakeSession(): ToolSession {
         let emitted = false;
         yield* provide({
           *next() {
-            if (emitted) return { done: true as const, value: undefined };
+            if (emitted) {
+              return { done: true as const, value: undefined };
+            }
             emitted = true;
             return {
               done: false as const,
@@ -169,7 +175,11 @@ describe("AgentCore ToolRuntimeDriver", () => {
       try {
         yield* driver.execute({
           entry: {
-            definition: { name: "other", description: "Other tool", parameters: { type: "object" } },
+            definition: {
+              name: "other",
+              description: "Other tool",
+              parameters: { type: "object" },
+            },
           },
           call: {
             id: "call-mismatch",
@@ -257,7 +267,9 @@ describe("AgentCore ToolRuntimeDriver", () => {
         },
       });
       expect(initial).toMatchObject({ kind: "awaiting_elicit" });
-      if (initial.kind !== "awaiting_elicit") return;
+      if (initial.kind !== "awaiting_elicit") {
+        return;
+      }
 
       const resumed = yield* driver.resume({
         ref: initial.ref,

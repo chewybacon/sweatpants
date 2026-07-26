@@ -82,6 +82,8 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
       }),
     ]);
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
 }

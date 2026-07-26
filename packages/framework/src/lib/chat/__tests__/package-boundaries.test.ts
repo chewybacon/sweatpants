@@ -11,7 +11,9 @@ function readJson(path: string) {
 function listSourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const full = resolve(dir, entry);
-    if (statSync(full).isDirectory()) return listSourceFiles(full);
+    if (statSync(full).isDirectory()) {
+      return listSourceFiles(full);
+    }
     return full.endsWith(".ts") || full.endsWith(".tsx") ? [full] : [];
   });
 }

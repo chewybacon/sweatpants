@@ -40,9 +40,13 @@ export function createTestStreamer(): TestStreamer {
         yield* events.send({ type: "RUN_FINISHED", threadId, runId, outcome: { type: "success" } });
         break;
       }
-      if (event.type === "TEXT_MESSAGE_CONTENT") finalText += event.delta;
+      if (event.type === "TEXT_MESSAGE_CONTENT") {
+        finalText += event.delta;
+      }
       yield* events.send(event);
-      if (event.type === "RUN_ERROR") throw new Error(event.message);
+      if (event.type === "RUN_ERROR") {
+        throw new Error(event.message);
+      }
       yield* each.next();
     }
     return { type: "complete", text: finalText };
@@ -75,7 +79,9 @@ export function createImmediateStreamer(
     const threadId = "test-thread";
     const runId = crypto.randomUUID();
     yield* events.send({ type: "RUN_STARTED", threadId, runId });
-    for (const event of sourceEvents) yield* events.send(event);
+    for (const event of sourceEvents) {
+      yield* events.send(event);
+    }
     if (finalText) {
       const messageId = `assistant:${runId}`;
       yield* events.send({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" });

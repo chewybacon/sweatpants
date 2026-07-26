@@ -19,7 +19,9 @@ function mergeReplayState(
 
   for (const message of messages) {
     const trace = activityMessageToPluginReplayTrace(message);
-    if (trace) traces.set(trace.callId, trace);
+    if (trace) {
+      traces.set(trace.callId, trace);
+    }
   }
 
   return traces.size > 0 ? { toolTraces: [...traces.values()] } : undefined;
