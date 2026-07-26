@@ -24,10 +24,10 @@ scenario user  <- elicitations/transcript  <- real handler/runtime <- scenario m
 The script performs a cause and then consumes its consequence:
 
 ```ts
-const turn = yield* conversation.send("hello");
-const request = yield* s.model.request();
-yield* request.respond.text("hi");
-const transcript = yield* turn.settled();
+const turn = yield * conversation.send("hello");
+const request = yield * s.model.request();
+yield * request.respond.text("hi");
+const transcript = yield * turn.settled();
 ```
 
 This is race-free because scenario mode buffers model requests and elicitations until the script consumes them.

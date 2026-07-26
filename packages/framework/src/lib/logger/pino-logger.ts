@@ -3,16 +3,16 @@
  *
  * Default logger implementation using pino with pretty output in development.
  */
-import pino from 'pino'
-import type { Logger, LoggerFactory } from './types.ts'
+import pino from "pino";
+import type { Logger, LoggerFactory } from "./types.ts";
 
-const ROOT_NAME = 'framework'
+const ROOT_NAME = "framework";
 
 export interface PinoLoggerOptions {
   /** Log level (default: process.env.LOG_LEVEL || 'debug') */
-  level?: string
+  level?: string;
   /** Use pretty printing (default: true in development) */
-  pretty?: boolean
+  pretty?: boolean;
 }
 
 /**
@@ -27,22 +27,22 @@ export interface PinoLoggerOptions {
  */
 export function createPinoLoggerFactory(options: PinoLoggerOptions = {}): LoggerFactory {
   const {
-    level = process.env['LOG_LEVEL'] || 'debug',
-    pretty = process.env['NODE_ENV'] !== 'production',
-  } = options
+    level = process.env["LOG_LEVEL"] || "debug",
+    pretty = process.env["NODE_ENV"] !== "production",
+  } = options;
 
   const rootLogger = pretty
     ? pino({
         name: ROOT_NAME,
         level,
-        transport: { target: 'pino-pretty', options: { colorize: true } },
+        transport: { target: "pino-pretty", options: { colorize: true } },
       })
     : pino({
         name: ROOT_NAME,
         level,
-      })
+      });
 
   return (name: string): Logger => {
-    return rootLogger.child({ module: name }) as Logger
-  }
+    return rootLogger.child({ module: name }) as Logger;
+  };
 }

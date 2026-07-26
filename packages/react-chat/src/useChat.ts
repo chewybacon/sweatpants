@@ -47,17 +47,21 @@
  * }
  * ```
  */
-import { useMemo, useEffect, useRef, useState } from 'react'
-import { run, call } from 'effection'
-import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from './useChatSession.ts'
-import { deriveMessages, deriveStreamingMessage } from '@sweatpants/framework/chat'
+import { useMemo, useEffect, useRef, useState } from "react";
+import { run, call } from "effection";
+import {
+  useChatSession,
+  type UseChatSessionOptions,
+  type UseChatSessionReturn,
+} from "./useChatSession.ts";
+import { deriveMessages, deriveStreamingMessage } from "@sweatpants/framework/chat";
 import type {
   ChatMessage as BaseChatMessage,
   ToolCallPart as BaseToolCallPart,
   ChatEmission as BaseChatEmission,
   StreamingMessage as BaseStreamingMessage,
-} from '@sweatpants/framework/chat'
-import type { PipelineConfig, Processor } from './pipeline/types.ts'
+} from "@sweatpants/framework/chat";
+import type { PipelineConfig, Processor } from "./pipeline/types.ts";
 import {
   createPipelineTransform,
   // Built-in processors
@@ -72,39 +76,39 @@ import {
   isShikiReady,
   isMermaidReady,
   isMathReady,
-} from './pipeline/index.ts'
+} from "./pipeline/index.ts";
 
 // --- React-specific type aliases ---
 
 /**
  * A tool emission with React component type.
  */
-export type ChatEmission = BaseChatEmission<React.ComponentType<any>>
+export type ChatEmission = BaseChatEmission<React.ComponentType<any>>;
 
 /**
  * A tool call with React component type for emissions.
  */
-export type ChatToolCall = BaseToolCallPart<React.ComponentType<any>>
+export type ChatToolCall = BaseToolCallPart<React.ComponentType<any>>;
 
 /**
  * A chat message with React component type for emissions.
  */
-export type ChatMessage = BaseChatMessage<React.ComponentType<any>>
+export type ChatMessage = BaseChatMessage<React.ComponentType<any>>;
 
 /**
  * Streaming message with React component type for tool calls.
  */
-export type StreamingMessage = BaseStreamingMessage<React.ComponentType<any>>
+export type StreamingMessage = BaseStreamingMessage<React.ComponentType<any>>;
 
 /**
  * Pipeline preset names for easy configuration.
  */
-export type PipelinePreset = 'markdown' | 'shiki' | 'mermaid' | 'math' | 'full'
+export type PipelinePreset = "markdown" | "shiki" | "mermaid" | "math" | "full";
 
 /**
  * Options for useChat hook.
  */
-export interface UseChatOptions extends Omit<UseChatSessionOptions, 'transforms'> {
+export interface UseChatOptions extends Omit<UseChatSessionOptions, "transforms"> {
   /**
    * Configure the streaming pipeline.
    *
@@ -134,7 +138,7 @@ export interface UseChatOptions extends Omit<UseChatSessionOptions, 'transforms'
    *
    * @default 'markdown'
    */
-  pipeline?: PipelinePreset | PipelineConfig
+  pipeline?: PipelinePreset | PipelineConfig;
 
   /**
    * Custom transforms for the streaming pipeline.
@@ -144,7 +148,7 @@ export interface UseChatOptions extends Omit<UseChatSessionOptions, 'transforms'
    *
    * For advanced customization, use useChatSession directly.
    */
-  transforms?: UseChatSessionOptions['transforms']
+  transforms?: UseChatSessionOptions["transforms"];
 }
 
 /**
@@ -157,7 +161,7 @@ export interface UseChatReturn {
    * This includes both completed messages and the current streaming message
    * (if any). The streaming message is included at the end with isStreaming=true.
    */
-  messages: ChatMessage[]
+  messages: ChatMessage[];
 
   /**
    * The currently streaming message, if any.
@@ -165,12 +169,12 @@ export interface UseChatReturn {
    * This provides more detailed streaming state including delta and animation hints.
    * For most UIs, just use `messages` which includes the streaming message.
    */
-  streamingMessage: StreamingMessage | null
+  streamingMessage: StreamingMessage | null;
 
   /**
    * Whether a message is currently being streamed.
    */
-  isStreaming: boolean
+  isStreaming: boolean;
 
   /**
    * Whether all pipeline assets are ready.
@@ -181,34 +185,34 @@ export interface UseChatReturn {
    * Note: Streaming works even before assets are ready - the quick pass
    * provides immediate feedback while full rendering loads in the background.
    */
-  pipelineReady: boolean
+  pipelineReady: boolean;
 
   /**
    * Send a message.
    */
-  send: (content: string) => void
+  send: (content: string) => void;
 
   /**
    * Abort the current streaming message.
    */
-  abort: () => void
+  abort: () => void;
 
   /**
    * Reset the conversation (clear all messages).
    */
-  reset: () => void
+  reset: () => void;
 
   /**
    * Error message, if any.
    */
-  error: string | null
+  error: string | null;
 
   /**
    * Access to the underlying session for advanced use cases.
    *
    * Use this to access buffers, tool approvals, elicit state, etc.
    */
-  session: UseChatSessionReturn
+  session: UseChatSessionReturn;
 }
 
 // --- Pipeline Presets ---
@@ -218,26 +222,26 @@ export interface UseChatReturn {
  */
 function resolvePipelinePreset(preset: PipelinePreset): PipelineConfig {
   switch (preset) {
-    case 'markdown':
+    case "markdown":
       return {
         processors: [markdownProcessor],
-      }
-    case 'shiki':
+      };
+    case "shiki":
       return {
         processors: [markdownProcessor, shikiProcessor],
-      }
-    case 'mermaid':
+      };
+    case "mermaid":
       return {
         processors: [markdownProcessor, mermaidProcessor],
-      }
-    case 'math':
+      };
+    case "math":
       return {
         processors: [markdownProcessor, mathProcessor],
-      }
-    case 'full':
+      };
+    case "full":
       return {
         processors: [markdownProcessor, shikiProcessor, mermaidProcessor, mathProcessor],
-      }
+      };
   }
 }
 
@@ -245,36 +249,36 @@ function resolvePipelinePreset(preset: PipelinePreset): PipelineConfig {
  * Get the processors from a pipeline config.
  */
 function getProcessors(config: PipelineConfig): readonly Processor[] {
-  if (typeof config.processors === 'string') {
+  if (typeof config.processors === "string") {
     // It's a preset - resolve it
-    const resolved = resolvePipelinePreset(config.processors as PipelinePreset)
-    return resolved.processors as readonly Processor[]
+    const resolved = resolvePipelinePreset(config.processors as PipelinePreset);
+    return resolved.processors as readonly Processor[];
   }
-  return config.processors as readonly Processor[]
+  return config.processors as readonly Processor[];
 }
 
 /**
  * Check if a pipeline config uses Shiki.
  */
 function pipelineUsesShiki(config: PipelineConfig): boolean {
-  const processors = getProcessors(config)
-  return processors.some(p => p.name === 'shiki')
+  const processors = getProcessors(config);
+  return processors.some((p) => p.name === "shiki");
 }
 
 /**
  * Check if a pipeline config uses Mermaid.
  */
 function pipelineUsesMermaid(config: PipelineConfig): boolean {
-  const processors = getProcessors(config)
-  return processors.some(p => p.name === 'mermaid')
+  const processors = getProcessors(config);
+  return processors.some((p) => p.name === "mermaid");
 }
 
 /**
  * Check if a pipeline config uses Math.
  */
 function pipelineUsesMath(config: PipelineConfig): boolean {
-  const processors = getProcessors(config)
-  return processors.some(p => p.name === 'math')
+  const processors = getProcessors(config);
+  return processors.some((p) => p.name === "math");
 }
 
 // --- Hook Implementation ---
@@ -302,53 +306,53 @@ function pipelineUsesMath(config: PipelineConfig): boolean {
  * use useChatSession directly.
  */
 export function useChat(options: UseChatOptions = {}): UseChatReturn {
-  const { pipeline = 'markdown', transforms: customTransforms, ...sessionOptions } = options
+  const { pipeline = "markdown", transforms: customTransforms, ...sessionOptions } = options;
 
   // Resolve pipeline config
   const pipelineConfig = useMemo(() => {
-    if (typeof pipeline === 'string') {
-      return resolvePipelinePreset(pipeline)
+    if (typeof pipeline === "string") {
+      return resolvePipelinePreset(pipeline);
     }
-    return pipeline
-  }, [pipeline])
+    return pipeline;
+  }, [pipeline]);
 
   // Resolve pipeline into transforms (memoized)
   const transforms = useMemo(() => {
     // If custom transforms provided, use them directly
     if (customTransforms) {
-      return customTransforms
+      return customTransforms;
     }
 
     // Use the pipeline transform
-    return [createPipelineTransform(pipelineConfig)]
-  }, [pipelineConfig, customTransforms])
+    return [createPipelineTransform(pipelineConfig)];
+  }, [pipelineConfig, customTransforms]);
 
   // Track whether pipeline assets are ready
   const [pipelineReady, setPipelineReady] = useState(() => {
-    const shikiNeeded = pipelineUsesShiki(pipelineConfig)
-    const mermaidNeeded = pipelineUsesMermaid(pipelineConfig)
-    const mathNeeded = pipelineUsesMath(pipelineConfig)
+    const shikiNeeded = pipelineUsesShiki(pipelineConfig);
+    const mermaidNeeded = pipelineUsesMermaid(pipelineConfig);
+    const mathNeeded = pipelineUsesMath(pipelineConfig);
     return (
       (!shikiNeeded || isShikiReady()) &&
       (!mermaidNeeded || isMermaidReady()) &&
       (!mathNeeded || isMathReady())
-    )
-  })
+    );
+  });
 
   // Eager preload of pipeline assets on mount
-  const preloadStarted = useRef(false)
+  const preloadStarted = useRef(false);
   useEffect(() => {
     if (preloadStarted.current) {
-      return
+      return;
     }
 
-    const shikiNeeded = pipelineUsesShiki(pipelineConfig)
-    const mermaidNeeded = pipelineUsesMermaid(pipelineConfig)
-    const mathNeeded = pipelineUsesMath(pipelineConfig)
+    const shikiNeeded = pipelineUsesShiki(pipelineConfig);
+    const mermaidNeeded = pipelineUsesMermaid(pipelineConfig);
+    const mathNeeded = pipelineUsesMath(pipelineConfig);
 
     if (!shikiNeeded && !mermaidNeeded && !mathNeeded) {
-      setPipelineReady(true)
-      return
+      setPipelineReady(true);
+      return;
     }
 
     // Check if already ready
@@ -357,66 +361,73 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       (!mermaidNeeded || isMermaidReady()) &&
       (!mathNeeded || isMathReady())
     ) {
-      setPipelineReady(true)
-      return
+      setPipelineReady(true);
+      return;
     }
 
-    preloadStarted.current = true
+    preloadStarted.current = true;
 
     // Preload in background
     run(function* () {
       if (shikiNeeded && !isShikiReady()) {
-        yield* call(() => preloadShiki())
+        yield* call(() => preloadShiki());
       }
       if (mermaidNeeded && !isMermaidReady()) {
-        yield* preloadMermaid()
+        yield* preloadMermaid();
       }
       if (mathNeeded && !isMathReady()) {
-        yield* preloadMath()
+        yield* preloadMath();
       }
-      setPipelineReady(true)
+      setPipelineReady(true);
     }).catch((err) => {
-      console.warn('[useChat] Pipeline preload error:', err)
-      setPipelineReady(true)
-    })
-  }, [pipelineConfig])
+      console.warn("[useChat] Pipeline preload error:", err);
+      setPipelineReady(true);
+    });
+  }, [pipelineConfig]);
 
   // Use the low-level session hook
   const session = useChatSession({
     ...sessionOptions,
     transforms,
-  })
+  });
 
-  const { state, send, abort, reset, toolEmissions } = session
+  const { state, send, abort, reset, toolEmissions } = session;
 
   // Component extractor for React - extracts the _component from emission payload.
   // Framework contracts keep component references structural; React casts at the UI adapter boundary.
   const extractComponent = (emission: { payload: { _component?: unknown } }) =>
-    emission.payload._component as React.ComponentType<any> | undefined
+    emission.payload._component as React.ComponentType<any> | undefined;
 
   // Build options for deriveMessages (toolEmissions are React-local state)
-  const deriveOptions = useMemo(() => ({
-    toolEmissions: toolEmissions.reduce((acc, tracking) => {
-      acc[tracking.callId] = tracking
-      return acc
-    }, {} as Record<string, typeof toolEmissions[0]>),
-    pendingElicits: state.pendingElicits,
-  }), [toolEmissions, state.pendingElicits])
+  const deriveOptions = useMemo(
+    () => ({
+      toolEmissions: toolEmissions.reduce(
+        (acc, tracking) => {
+          acc[tracking.callId] = tracking;
+          return acc;
+        },
+        {} as Record<string, (typeof toolEmissions)[0]>,
+      ),
+      pendingElicits: state.pendingElicits,
+    }),
+    [toolEmissions, state.pendingElicits],
+  );
 
-// Derive messages using the framework-agnostic derivation function
-  const messages: ChatMessage[] = useMemo(
-    () => {
-const derived = deriveMessages<React.ComponentType<any>>(state, deriveOptions, extractComponent)
-      return derived
-    },
-    [state, deriveOptions]
-  )
+  // Derive messages using the framework-agnostic derivation function
+  const messages: ChatMessage[] = useMemo(() => {
+    const derived = deriveMessages<React.ComponentType<any>>(
+      state,
+      deriveOptions,
+      extractComponent,
+    );
+    return derived;
+  }, [state, deriveOptions]);
 
   // Derive streaming message using the framework-agnostic derivation function
   const streamingMessage: StreamingMessage | null = useMemo(
     () => deriveStreamingMessage<React.ComponentType<any>>(state, deriveOptions, extractComponent),
-    [state, deriveOptions]
-  )
+    [state, deriveOptions],
+  );
 
   return {
     messages,
@@ -428,5 +439,5 @@ const derived = deriveMessages<React.ComponentType<any>>(state, deriveOptions, e
     reset,
     error: state.error,
     session,
-  }
+  };
 }

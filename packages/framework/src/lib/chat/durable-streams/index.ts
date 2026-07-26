@@ -68,7 +68,7 @@ export type {
   RecoverSessionOptions,
   RetentionPolicy,
   PullStreamOptions,
-} from '@sweatpants/durable-streams'
+} from "@sweatpants/durable-streams";
 
 export {
   DEFAULT_RETENTION_POLICY,
@@ -77,7 +77,7 @@ export {
   createInMemoryRegistryStore,
   createPullStream,
   writeFromStreamToBuffer,
-} from '@sweatpants/durable-streams'
+} from "@sweatpants/durable-streams";
 
 // Redis store is imported from the `/redis` subpath at consumer sites that
 // need it (e.g. tool-runtime-agentcore). It is not re-exported here to avoid
@@ -85,10 +85,10 @@ export {
 // in-memory substrate. See REQ-060 / NFR-012.
 
 // Session registry (framework-specific orchestration)
-export { createSessionRegistry } from './session-registry.ts'
+export { createSessionRegistry } from "./session-registry.ts";
 
 // Web stream bridge
-export { createWebStreamFromBuffer } from './web-stream-bridge.ts'
+export { createWebStreamFromBuffer } from "./web-stream-bridge.ts";
 
 // =============================================================================
 // IoC/DI - Contexts, Accessors, and Setup Helpers
@@ -99,14 +99,10 @@ export {
   TokenBufferStoreContext,
   SessionRegistryStoreContext,
   SessionRegistryContext,
-} from './contexts.ts'
+} from "./contexts.ts";
 
 // Typed accessor operations (recommended for most use)
-export {
-  useTokenBufferStore,
-  useSessionRegistryStore,
-  useSessionRegistry,
-} from './use.ts'
+export { useTokenBufferStore, useSessionRegistryStore, useSessionRegistry } from "./use.ts";
 
 // Setup helpers (recommended entry point)
 export {
@@ -114,7 +110,7 @@ export {
   setupInMemoryDurableStreams,
   type DurableStreamsConfig,
   type DurableStreamsSetup,
-} from './setup.ts'
+} from "./setup.ts";
 
 // Shared memory store (for cross-scope persistence in tests and single-server deployments)
 export {
@@ -125,4 +121,4 @@ export {
   type SharedStorage,
   type SharedBufferState,
   type SharedDurableStreamsConfig,
-} from './shared-memory-store.ts'
+} from "./shared-memory-store.ts";

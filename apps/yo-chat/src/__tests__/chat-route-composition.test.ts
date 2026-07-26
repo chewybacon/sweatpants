@@ -21,7 +21,8 @@ describe("yo-chat chat application composition", () => {
   it("keeps the api.chat route as thin route glue", () => {
     const route = read("src/routes/api.chat.ts");
 
-    expect(route).toContain("from '../server/chat-application'");
+    // Quote style belongs to the formatter; the invariant is the import target.
+    expect(route).toMatch(/from ["']\.\.\/server\/chat-application["']/);
     expect(route).toContain("chatApp.handle(request)");
     expect(route).toContain("withDefaultSystemPrompt(request)");
     expect(route.split("\n").length).toBeLessThanOrEqual(30);
@@ -71,7 +72,7 @@ describe("yo-chat chat application composition", () => {
     const handler = read("src/server/chat-handler.ts");
 
     expect(envSchema).not.toContain("SWEATPANTS_EXECUTION_ENGINE");
-    expect(envSchema).not.toContain('z.enum(["legacy", "program-driver"])');
+    expect(envSchema).not.toMatch(/z\.enum\(\s*\[\s*["']legacy["']/);
     expect(handler).not.toContain("executionEngine");
     expect(handler).toContain("programDriverJournalStore");
     expect(handler).toContain("PROGRAM_DRIVER_CAPABILITY_SECRET");
@@ -96,7 +97,7 @@ describe("yo-chat chat application composition", () => {
     expect(playwrightConfig).toContain("VITE_ENABLE_SCRIPTED_RENDERING");
     expect(playwrightConfig).toContain("E2E_FULL");
     expect(playwrightConfig).toContain("deterministicBrowserSmokeSpecs");
-    expect(playwrightConfig).toContain('globalSetup: "./e2e/global-setup.ts"');
+    expect(playwrightConfig).toMatch(/globalSetup:\s*["']\.\/e2e\/global-setup\.ts["']/);
   });
 
   it("keeps production chat wiring in app-owned server modules", () => {

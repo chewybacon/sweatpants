@@ -9,20 +9,12 @@
  *
  * Works on code blocks, enhancing their HTML.
  */
-import type { Operation } from 'effection'
-import { call } from 'effection'
-import type { Frame, Processor } from '../types.ts'
-import {
-  updateBlockById,
-  setBlockRendered,
-  addTrace,
-} from '../frame.ts'
-import {
-  highlightCode,
-  preloadHighlighter,
-  isHighlighterReady,
-} from '../../shiki/loader.ts'
-import { registerBuiltinProcessor } from '../resolver.ts'
+import type { Operation } from "effection";
+import { call } from "effection";
+import type { Frame, Processor } from "../types.ts";
+import { updateBlockById, setBlockRendered, addTrace } from "../frame.ts";
+import { highlightCode, preloadHighlighter, isHighlighterReady } from "../../shiki/loader.ts";
+import { registerBuiltinProcessor } from "../resolver.ts";
 
 // =============================================================================
 // Quick Highlighting (Regex-based)
@@ -33,98 +25,107 @@ import { registerBuiltinProcessor } from '../resolver.ts'
  */
 const QUICK_PATTERNS: Record<string, Array<{ pattern: RegExp; className: string }>> = {
   javascript: [
-    { pattern: /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|this|class|extends|super|import|export|default|from|async|await|try|catch|finally|throw|typeof|instanceof|in|of|null|undefined|true|false)\b/g, className: 'keyword' },
-    { pattern: /(\/\/.*$)/gm, className: 'comment' },
-    { pattern: /(\/\*[\s\S]*?\*\/)/g, className: 'comment' },
-    { pattern: /(`(?:[^`\\]|\\.)*`)/g, className: 'string' },
-    { pattern: /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, className: 'string' },
-    { pattern: /\b(\d+\.?\d*)\b/g, className: 'number' },
-    { pattern: /\b([A-Z][a-zA-Z0-9_]*)\b/g, className: 'type' },
+    {
+      pattern:
+        /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|this|class|extends|super|import|export|default|from|async|await|try|catch|finally|throw|typeof|instanceof|in|of|null|undefined|true|false)\b/g,
+      className: "keyword",
+    },
+    { pattern: /(\/\/.*$)/gm, className: "comment" },
+    { pattern: /(\/\*[\s\S]*?\*\/)/g, className: "comment" },
+    { pattern: /(`(?:[^`\\]|\\.)*`)/g, className: "string" },
+    { pattern: /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, className: "string" },
+    { pattern: /\b(\d+\.?\d*)\b/g, className: "number" },
+    { pattern: /\b([A-Z][a-zA-Z0-9_]*)\b/g, className: "type" },
   ],
   python: [
-    { pattern: /\b(def|class|return|if|elif|else|for|while|in|not|and|or|is|None|True|False|import|from|as|with|try|except|finally|raise|yield|lambda|async|await|pass|break|continue|global|nonlocal)\b/g, className: 'keyword' },
-    { pattern: /\b(self|cls)\b/g, className: 'variable' },
-    { pattern: /(#.*)$/gm, className: 'comment' },
-    { pattern: /("""[\s\S]*?"""|'''[\s\S]*?''')/g, className: 'string' },
-    { pattern: /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, className: 'string' },
-    { pattern: /\b(\d+\.?\d*)\b/g, className: 'number' },
-    { pattern: /\b([A-Z][a-zA-Z0-9_]*)\b/g, className: 'type' },
+    {
+      pattern:
+        /\b(def|class|return|if|elif|else|for|while|in|not|and|or|is|None|True|False|import|from|as|with|try|except|finally|raise|yield|lambda|async|await|pass|break|continue|global|nonlocal)\b/g,
+      className: "keyword",
+    },
+    { pattern: /\b(self|cls)\b/g, className: "variable" },
+    { pattern: /(#.*)$/gm, className: "comment" },
+    { pattern: /("""[\s\S]*?"""|'''[\s\S]*?''')/g, className: "string" },
+    { pattern: /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, className: "string" },
+    { pattern: /\b(\d+\.?\d*)\b/g, className: "number" },
+    { pattern: /\b([A-Z][a-zA-Z0-9_]*)\b/g, className: "type" },
   ],
   json: [
-    { pattern: /("(?:[^"\\]|\\.)*")(?=\s*:)/g, className: 'property' },
-    { pattern: /("(?:[^"\\]|\\.)*")/g, className: 'string' },
-    { pattern: /\b(true|false|null)\b/g, className: 'keyword' },
-    { pattern: /\b(-?\d+\.?\d*)\b/g, className: 'number' },
+    { pattern: /("(?:[^"\\]|\\.)*")(?=\s*:)/g, className: "property" },
+    { pattern: /("(?:[^"\\]|\\.)*")/g, className: "string" },
+    { pattern: /\b(true|false|null)\b/g, className: "keyword" },
+    { pattern: /\b(-?\d+\.?\d*)\b/g, className: "number" },
   ],
   bash: [
-    { pattern: /\b(if|then|else|elif|fi|for|while|do|done|case|esac|function|return|exit|export|source|alias|unalias|cd|pwd|echo|printf|read|set|unset|declare|local|readonly)\b/g, className: 'keyword' },
-    { pattern: /(#.*)$/gm, className: 'comment' },
-    { pattern: /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, className: 'string' },
-    { pattern: /(\$\{?\w+\}?)/g, className: 'variable' },
+    {
+      pattern:
+        /\b(if|then|else|elif|fi|for|while|do|done|case|esac|function|return|exit|export|source|alias|unalias|cd|pwd|echo|printf|read|set|unset|declare|local|readonly)\b/g,
+      className: "keyword",
+    },
+    { pattern: /(#.*)$/gm, className: "comment" },
+    { pattern: /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, className: "string" },
+    { pattern: /(\$\{?\w+\}?)/g, className: "variable" },
   ],
-}
+};
 
 // Language aliases
-QUICK_PATTERNS['typescript'] = QUICK_PATTERNS['javascript']!
-QUICK_PATTERNS['tsx'] = QUICK_PATTERNS['javascript']!
-QUICK_PATTERNS['jsx'] = QUICK_PATTERNS['javascript']!
-QUICK_PATTERNS['sh'] = QUICK_PATTERNS['bash']!
-QUICK_PATTERNS['shell'] = QUICK_PATTERNS['bash']!
-QUICK_PATTERNS['zsh'] = QUICK_PATTERNS['bash']!
-QUICK_PATTERNS['py'] = QUICK_PATTERNS['python']!
+QUICK_PATTERNS["typescript"] = QUICK_PATTERNS["javascript"]!;
+QUICK_PATTERNS["tsx"] = QUICK_PATTERNS["javascript"]!;
+QUICK_PATTERNS["jsx"] = QUICK_PATTERNS["javascript"]!;
+QUICK_PATTERNS["sh"] = QUICK_PATTERNS["bash"]!;
+QUICK_PATTERNS["shell"] = QUICK_PATTERNS["bash"]!;
+QUICK_PATTERNS["zsh"] = QUICK_PATTERNS["bash"]!;
+QUICK_PATTERNS["py"] = QUICK_PATTERNS["python"]!;
 
 /**
  * Apply quick regex-based highlighting to code.
  */
 function quickHighlight(code: string, language: string): string {
-  const patterns = QUICK_PATTERNS[language.toLowerCase()]
+  const patterns = QUICK_PATTERNS[language.toLowerCase()];
 
   // Start with HTML escaping
-  let escaped = code
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+  let escaped = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   if (!patterns || patterns.length === 0) {
-    return escaped
+    return escaped;
   }
 
   // Build combined regex
-  const combinedParts: string[] = []
-  const patternInfo: Array<{ className: string; groupIndex: number }> = []
-  let groupCount = 0
+  const combinedParts: string[] = [];
+  const patternInfo: Array<{ className: string; groupIndex: number }> = [];
+  let groupCount = 0;
 
   for (const { pattern, className } of patterns) {
-    combinedParts.push(pattern.source)
-    patternInfo.push({ className, groupIndex: groupCount + 1 })
-    const groupsInPattern = (pattern.source.match(/\((?!\?)/g) || []).length
-    groupCount += groupsInPattern
+    combinedParts.push(pattern.source);
+    patternInfo.push({ className, groupIndex: groupCount + 1 });
+    const groupsInPattern = (pattern.source.match(/\((?!\?)/g) || []).length;
+    groupCount += groupsInPattern;
   }
 
-  const combinedRegex = new RegExp(combinedParts.join('|'), 'gm')
+  const combinedRegex = new RegExp(combinedParts.join("|"), "gm");
 
   return escaped.replace(combinedRegex, (...args) => {
-    const fullMatch = args[0]
-    const captureGroups = args.slice(1, -2)
+    const fullMatch = args[0];
+    const captureGroups = args.slice(1, -2);
 
     for (const { className, groupIndex } of patternInfo) {
-      const captured = captureGroups[groupIndex - 1]
+      const captured = captureGroups[groupIndex - 1];
       if (captured !== undefined) {
-        return `<span class="ql-${className}">${captured}</span>`
+        return `<span class="ql-${className}">${captured}</span>`;
       }
     }
 
-    return fullMatch
-  })
+    return fullMatch;
+  });
 }
 
 /**
  * Wrap highlighted code in a pre/code block.
  */
 function wrapCodeBlock(html: string, language: string, isQuick: boolean): string {
-  const langClass = language ? ` language-${language}` : ''
-  const passClass = isQuick ? ' quick-highlight' : ' shiki-highlight'
-  return `<pre class="code-block${passClass}"><code class="${langClass}">${html}</code></pre>`
+  const langClass = language ? ` language-${language}` : "";
+  const passClass = isQuick ? " quick-highlight" : " shiki-highlight";
+  return `<pre class="code-block${passClass}"><code class="${langClass}">${html}</code></pre>`;
 }
 
 // =============================================================================
@@ -148,77 +149,77 @@ function wrapCodeBlock(html: string, language: string, isQuick: boolean): string
  * ```
  */
 export const shiki: Processor = {
-  name: 'shiki',
-  description: 'Syntax highlighting with Shiki',
+  name: "shiki",
+  description: "Syntax highlighting with Shiki",
 
   // Depends on markdown for basic code block structure
-  dependencies: ['markdown'],
+  dependencies: ["markdown"],
 
   *preload() {
-    yield* call(() => preloadHighlighter())
+    yield* call(() => preloadHighlighter());
   },
 
   isReady: isHighlighterReady,
 
   process: function* (frame: Frame): Operation<Frame> {
-    let currentFrame = frame
-    let changed = false
+    let currentFrame = frame;
+    let changed = false;
 
     for (const block of frame.blocks) {
       // Only process code blocks
-      if (block.type !== 'code') {
-        continue
+      if (block.type !== "code") {
+        continue;
       }
 
       // Skip mermaid blocks (handled by mermaid processor)
-      if (block.language?.toLowerCase() === 'mermaid') {
-        continue
+      if (block.language?.toLowerCase() === "mermaid") {
+        continue;
       }
 
-      if (block.status === 'streaming') {
+      if (block.status === "streaming") {
         // Streaming: apply quick highlighting
-        if (block.renderPass === 'none' || block.renderPass === 'quick') {
-          const highlighted = quickHighlight(block.raw, block.language || '')
-          const rendered = wrapCodeBlock(highlighted, block.language || '', true)
+        if (block.renderPass === "none" || block.renderPass === "quick") {
+          const highlighted = quickHighlight(block.raw, block.language || "");
+          const rendered = wrapCodeBlock(highlighted, block.language || "", true);
 
           currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockRendered(b, rendered, 'quick')
-          )
+            setBlockRendered(b, rendered, "quick"),
+          );
 
-          if (block.renderPass === 'none') {
-            currentFrame = addTrace(currentFrame, 'shiki', 'update', {
+          if (block.renderPass === "none") {
+            currentFrame = addTrace(currentFrame, "shiki", "update", {
               blockId: block.id,
-              detail: `quick highlight: ${block.language || 'plain'}`,
-            })
+              detail: `quick highlight: ${block.language || "plain"}`,
+            });
           }
-          changed = true
+          changed = true;
         }
-      } else if (block.status === 'complete') {
+      } else if (block.status === "complete") {
         // Complete: apply full Shiki highlighting if not already done
-        if (block.renderPass !== 'full') {
-          const startTime = Date.now()
-          const rendered = yield* highlightCode(block.raw, block.language || '')
-          const durationMs = Date.now() - startTime
+        if (block.renderPass !== "full") {
+          const startTime = Date.now();
+          const rendered = yield* highlightCode(block.raw, block.language || "");
+          const durationMs = Date.now() - startTime;
 
           currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockRendered(b, rendered, 'full')
-          )
-          currentFrame = addTrace(currentFrame, 'shiki', 'update', {
+            setBlockRendered(b, rendered, "full"),
+          );
+          currentFrame = addTrace(currentFrame, "shiki", "update", {
             blockId: block.id,
-            detail: `full highlight: ${block.language || 'plain'}`,
+            detail: `full highlight: ${block.language || "plain"}`,
             durationMs,
-          })
-          changed = true
+          });
+          changed = true;
         }
       }
     }
 
-    return changed ? currentFrame : frame
+    return changed ? currentFrame : frame;
   },
-}
+};
 
 // Register as built-in for auto-dependency resolution
-registerBuiltinProcessor('shiki', () => shiki)
+registerBuiltinProcessor("shiki", () => shiki);
 
 // =============================================================================
 // Preload Helper (for external use)
@@ -228,9 +229,9 @@ registerBuiltinProcessor('shiki', () => shiki)
  * Preload Shiki highlighter.
  * Call this early to avoid delay when first code block completes.
  */
-export const preloadShiki = preloadHighlighter
+export const preloadShiki = preloadHighlighter;
 
 /**
  * Check if Shiki is ready.
  */
-export const isShikiReady = isHighlighterReady
+export const isShikiReady = isHighlighterReady;

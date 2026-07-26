@@ -1,17 +1,27 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
-    index: 'src/index.ts',
-    pipeline: 'src/pipeline/index.ts',
+    index: "src/index.ts",
+    pipeline: "src/pipeline/index.ts",
   },
-  tsconfig: '../ts-config/tsconfig.tsup.json',
-  format: ['cjs', 'esm'],
+  tsconfig: "../ts-config/tsconfig.tsup.json",
+  format: ["cjs", "esm"],
   dts: false,
   clean: true,
   sourcemap: true,
   minify: false,
-  external: ['@sweatpants/framework', 'react', 'effection', '@effectionx/raf', 'marked', 'shiki', 'mermaid', 'katex', 'tailwind-merge'],
+  external: [
+    "@sweatpants/framework",
+    "react",
+    "effection",
+    "@effectionx/raf",
+    "marked",
+    "shiki",
+    "mermaid",
+    "katex",
+    "tailwind-merge",
+  ],
   treeshake: true,
   skipNodeModulesBundle: true,
-})
+});

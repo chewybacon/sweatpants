@@ -19,9 +19,13 @@
  * @see {@link ./use.ts} for typed accessor operations
  * @see {@link ./setup.ts} for setup helpers
  */
-import { createContext } from 'effection'
-import type { Context } from 'effection'
-import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from '@sweatpants/durable-streams'
+import { createContext } from "effection";
+import type { Context } from "effection";
+import type {
+  TokenBufferStore,
+  SessionRegistryStore,
+  SessionRegistry,
+} from "@sweatpants/durable-streams";
 
 // =============================================================================
 // TOKEN BUFFER STORE CONTEXT
@@ -46,10 +50,7 @@ import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from '@s
  * ```
  */
 export const TokenBufferStoreContext: Context<TokenBufferStore<unknown> | undefined> =
-  createContext<TokenBufferStore<unknown> | undefined>(
-    'durable-streams:bufferStore',
-    undefined
-  )
+  createContext<TokenBufferStore<unknown> | undefined>("durable-streams:bufferStore", undefined);
 
 // =============================================================================
 // SESSION REGISTRY STORE CONTEXT
@@ -73,11 +74,9 @@ export const TokenBufferStoreContext: Context<TokenBufferStore<unknown> | undefi
  * yield* setupInMemoryDurableStreams()
  * ```
  */
-export const SessionRegistryStoreContext: Context<SessionRegistryStore | undefined> =
-  createContext<SessionRegistryStore | undefined>(
-    'durable-streams:registryStore',
-    undefined
-  )
+export const SessionRegistryStoreContext: Context<SessionRegistryStore | undefined> = createContext<
+  SessionRegistryStore | undefined
+>("durable-streams:registryStore", undefined);
 
 // =============================================================================
 // SESSION REGISTRY CONTEXT
@@ -101,8 +100,6 @@ export const SessionRegistryStoreContext: Context<SessionRegistryStore | undefin
  * const session = yield* registry.acquire(sessionId, { source: llmStream })
  * ```
  */
-export const SessionRegistryContext: Context<SessionRegistry<unknown> | undefined> =
-  createContext<SessionRegistry<unknown> | undefined>(
-    'durable-streams:registry',
-    undefined
-  )
+export const SessionRegistryContext: Context<SessionRegistry<unknown> | undefined> = createContext<
+  SessionRegistry<unknown> | undefined
+>("durable-streams:registry", undefined);

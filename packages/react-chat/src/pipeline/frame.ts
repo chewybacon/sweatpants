@@ -15,32 +15,32 @@ import type {
   TraceEntry,
   TraceAction,
   Annotation,
-} from './types.ts'
+} from "./types.ts";
 
 // =============================================================================
 // ID Generation
 // =============================================================================
 
-let frameCounter = 0
-let blockCounter = 0
+let frameCounter = 0;
+let blockCounter = 0;
 
 /**
  * Generate a unique frame ID.
  */
-export const generateFrameId = (): string => `frame-${++frameCounter}`
+export const generateFrameId = (): string => `frame-${++frameCounter}`;
 
 /**
  * Generate a unique block ID.
  */
-export const generateBlockId = (): string => `block-${++blockCounter}`
+export const generateBlockId = (): string => `block-${++blockCounter}`;
 
 /**
  * Reset ID counters (for testing).
  */
 export const resetIdCounters = (): void => {
-  frameCounter = 0
-  blockCounter = 0
-}
+  frameCounter = 0;
+  blockCounter = 0;
+};
 
 // =============================================================================
 // Frame Creation
@@ -55,20 +55,17 @@ export const emptyFrame = (): Frame => ({
   timestamp: Date.now(),
   trace: [],
   activeBlockIndex: null,
-})
+});
 
 /**
  * Create a new frame from an existing frame with updates.
  */
-export const updateFrame = (
-  frame: Frame,
-  updates: Partial<Omit<Frame, 'id'>>
-): Frame => ({
+export const updateFrame = (frame: Frame, updates: Partial<Omit<Frame, "id">>): Frame => ({
   ...frame,
   ...updates,
   id: generateFrameId(), // New frame gets new ID
   timestamp: Date.now(),
-})
+});
 
 // =============================================================================
 // Block Creation
@@ -78,13 +75,13 @@ export const updateFrame = (
  * Options for creating a new block.
  */
 export interface CreateBlockOptions {
-  type: BlockType
-  raw?: string
-  rendered?: string
-  status?: BlockStatus
-  renderPass?: RenderPass
-  language?: string
-  meta?: Record<string, unknown>
+  type: BlockType;
+  raw?: string;
+  rendered?: string;
+  status?: BlockStatus;
+  renderPass?: RenderPass;
+  language?: string;
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -93,29 +90,28 @@ export interface CreateBlockOptions {
 export const createBlock = (options: CreateBlockOptions): Block => ({
   id: generateBlockId(),
   type: options.type,
-  raw: options.raw ?? '',
-  rendered: options.rendered ?? '',
-  status: options.status ?? 'streaming',
-  renderPass: options.renderPass ?? 'none',
+  raw: options.raw ?? "",
+  rendered: options.rendered ?? "",
+  status: options.status ?? "streaming",
+  renderPass: options.renderPass ?? "none",
   ...(options.language !== undefined && { language: options.language }),
   ...(options.meta !== undefined && { meta: options.meta }),
-})
+});
 
 /**
  * Create a text block.
  */
-export const createTextBlock = (raw: string = '', status: BlockStatus = 'streaming'): Block =>
-  createBlock({ type: 'text', raw, status })
+export const createTextBlock = (raw: string = "", status: BlockStatus = "streaming"): Block =>
+  createBlock({ type: "text", raw, status });
 
 /**
  * Create a code block.
  */
 export const createCodeBlock = (
-  language: string = '',
-  raw: string = '',
-  status: BlockStatus = 'streaming'
-): Block =>
-  createBlock({ type: 'code', raw, status, language })
+  language: string = "",
+  raw: string = "",
+  status: BlockStatus = "streaming",
+): Block => createBlock({ type: "code", raw, status, language });
 
 // =============================================================================
 // Block Updates (Immutable)
@@ -124,13 +120,10 @@ export const createCodeBlock = (
 /**
  * Update a block immutably.
  */
-export const updateBlock = (
-  block: Block,
-  updates: Partial<Omit<Block, 'id' | 'type'>>
-): Block => ({
+export const updateBlock = (block: Block, updates: Partial<Omit<Block, "id" | "type">>): Block => ({
   ...block,
   ...updates,
-})
+});
 
 /**
  * Append raw content to a block.
@@ -138,15 +131,15 @@ export const updateBlock = (
 export const appendToBlock = (block: Block, content: string): Block => ({
   ...block,
   raw: block.raw + content,
-})
+});
 
 /**
  * Mark a block as complete.
  */
 export const completeBlock = (block: Block): Block => ({
   ...block,
-  status: 'complete',
-})
+  status: "complete",
+});
 
 /**
  * Set rendered output on a block with a render pass.
@@ -154,12 +147,12 @@ export const completeBlock = (block: Block): Block => ({
 export const setBlockRendered = (
   block: Block,
   rendered: string,
-  renderPass: RenderPass
+  renderPass: RenderPass,
 ): Block => ({
   ...block,
   rendered,
   renderPass,
-})
+});
 
 /**
  * Add an annotation to a block.
@@ -167,7 +160,7 @@ export const setBlockRendered = (
 export const addAnnotation = (block: Block, annotation: Annotation): Block => ({
   ...block,
   annotations: [...(block.annotations ?? []), annotation],
-})
+});
 
 /**
  * Add multiple annotations to a block.
@@ -175,7 +168,7 @@ export const addAnnotation = (block: Block, annotation: Annotation): Block => ({
 export const addAnnotations = (block: Block, annotations: readonly Annotation[]): Block => ({
   ...block,
   annotations: [...(block.annotations ?? []), ...annotations],
-})
+});
 
 // =============================================================================
 // Frame Block Operations (Immutable)
@@ -188,7 +181,7 @@ export const addBlock = (frame: Frame, block: Block): Frame =>
   updateFrame(frame, {
     blocks: [...frame.blocks, block],
     activeBlockIndex: frame.blocks.length, // New block is now active
-  })
+  });
 
 /**
  * Update a specific block in the frame by index.
@@ -196,16 +189,16 @@ export const addBlock = (frame: Frame, block: Block): Frame =>
 export const updateBlockAt = (
   frame: Frame,
   index: number,
-  updater: (block: Block) => Block
+  updater: (block: Block) => Block,
 ): Frame => {
   if (index < 0 || index >= frame.blocks.length) {
-    return frame // Index out of bounds, return unchanged
+    return frame; // Index out of bounds, return unchanged
   }
 
   return updateFrame(frame, {
     blocks: frame.blocks.map((b, i) => (i === index ? updater(b) : b)),
-  })
-}
+  });
+};
 
 /**
  * Update a specific block in the frame by ID.
@@ -213,52 +206,48 @@ export const updateBlockAt = (
 export const updateBlockById = (
   frame: Frame,
   blockId: string,
-  updater: (block: Block) => Block
+  updater: (block: Block) => Block,
 ): Frame =>
   updateFrame(frame, {
     blocks: frame.blocks.map((b) => (b.id === blockId ? updater(b) : b)),
-  })
+  });
 
 /**
  * Update the currently active block (if any).
  */
-export const updateActiveBlock = (
-  frame: Frame,
-  updater: (block: Block) => Block
-): Frame => {
+export const updateActiveBlock = (frame: Frame, updater: (block: Block) => Block): Frame => {
   if (frame.activeBlockIndex === null) {
-    return frame
+    return frame;
   }
-  return updateBlockAt(frame, frame.activeBlockIndex, updater)
-}
+  return updateBlockAt(frame, frame.activeBlockIndex, updater);
+};
 
 /**
  * Get the currently active block (if any).
  */
 export const getActiveBlock = (frame: Frame): Block | null => {
   if (frame.activeBlockIndex === null) {
-    return null
+    return null;
   }
-  return frame.blocks[frame.activeBlockIndex] ?? null
-}
+  return frame.blocks[frame.activeBlockIndex] ?? null;
+};
 
 /**
  * Get the last block (if any).
  */
 export const getLastBlock = (frame: Frame): Block | null =>
-  frame.blocks.length > 0 ? frame.blocks[frame.blocks.length - 1]! : null
+  frame.blocks.length > 0 ? frame.blocks[frame.blocks.length - 1]! : null;
 
 /**
  * Set the active block index.
  */
 export const setActiveBlock = (frame: Frame, index: number | null): Frame =>
-  updateFrame(frame, { activeBlockIndex: index })
+  updateFrame(frame, { activeBlockIndex: index });
 
 /**
  * Clear the active block (no block is streaming).
  */
-export const clearActiveBlock = (frame: Frame): Frame =>
-  setActiveBlock(frame, null)
+export const clearActiveBlock = (frame: Frame): Frame => setActiveBlock(frame, null);
 
 // =============================================================================
 // Trace Operations
@@ -272,10 +261,10 @@ export const addTrace = (
   processor: string,
   action: TraceAction,
   options: {
-    blockId?: string
-    detail?: string
-    durationMs?: number
-  } = {}
+    blockId?: string;
+    detail?: string;
+    durationMs?: number;
+  } = {},
 ): Frame =>
   updateFrame(frame, {
     trace: [
@@ -287,7 +276,7 @@ export const addTrace = (
         ...options,
       },
     ],
-  })
+  });
 
 /**
  * Create a trace entry without adding it to a frame.
@@ -296,16 +285,16 @@ export const createTrace = (
   processor: string,
   action: TraceAction,
   options: {
-    blockId?: string
-    detail?: string
-    durationMs?: number
-  } = {}
+    blockId?: string;
+    detail?: string;
+    durationMs?: number;
+  } = {},
 ): TraceEntry => ({
   processor,
   action,
   timestamp: Date.now(),
   ...options,
-})
+});
 
 // =============================================================================
 // Frame Queries
@@ -314,53 +303,48 @@ export const createTrace = (
 /**
  * Check if a frame has any blocks.
  */
-export const hasBlocks = (frame: Frame): boolean => frame.blocks.length > 0
+export const hasBlocks = (frame: Frame): boolean => frame.blocks.length > 0;
 
 /**
  * Check if a frame has any streaming blocks.
  */
 export const hasStreamingBlocks = (frame: Frame): boolean =>
-  frame.blocks.some((b) => b.status === 'streaming')
+  frame.blocks.some((b) => b.status === "streaming");
 
 /**
  * Get all blocks of a specific type.
  */
 export const getBlocksByType = (frame: Frame, type: BlockType): readonly Block[] =>
-  frame.blocks.filter((b) => b.type === type)
+  frame.blocks.filter((b) => b.type === type);
 
 /**
  * Get all code blocks.
  */
-export const getCodeBlocks = (frame: Frame): readonly Block[] =>
-  getBlocksByType(frame, 'code')
+export const getCodeBlocks = (frame: Frame): readonly Block[] => getBlocksByType(frame, "code");
 
 /**
  * Get all text blocks.
  */
-export const getTextBlocks = (frame: Frame): readonly Block[] =>
-  getBlocksByType(frame, 'text')
+export const getTextBlocks = (frame: Frame): readonly Block[] => getBlocksByType(frame, "text");
 
 /**
  * Find a block by ID.
  */
 export const findBlockById = (frame: Frame, blockId: string): Block | null =>
-  frame.blocks.find((b) => b.id === blockId) ?? null
+  frame.blocks.find((b) => b.id === blockId) ?? null;
 
 /**
  * Get blocks that need processing (incomplete render pass).
  */
-export const getBlocksNeedingRender = (
-  frame: Frame,
-  targetPass: RenderPass
-): readonly Block[] => {
-  const passOrder: RenderPass[] = ['none', 'quick', 'full']
-  const targetIndex = passOrder.indexOf(targetPass)
+export const getBlocksNeedingRender = (frame: Frame, targetPass: RenderPass): readonly Block[] => {
+  const passOrder: RenderPass[] = ["none", "quick", "full"];
+  const targetIndex = passOrder.indexOf(targetPass);
 
   return frame.blocks.filter((b) => {
-    const currentIndex = passOrder.indexOf(b.renderPass)
-    return currentIndex < targetIndex
-  })
-}
+    const currentIndex = passOrder.indexOf(b.renderPass);
+    return currentIndex < targetIndex;
+  });
+};
 
 // =============================================================================
 // Frame Rendering
@@ -371,11 +355,10 @@ export const getBlocksNeedingRender = (
  * Concatenates all block rendered output in order.
  */
 export const renderFrameToRendered = (frame: Frame): string =>
-  frame.blocks.map((b) => b.rendered).join('')
+  frame.blocks.map((b) => b.rendered).join("");
 
 /**
  * Render a frame to raw text.
  * Concatenates all block raw content in order.
  */
-export const renderFrameToRaw = (frame: Frame): string =>
-  frame.blocks.map((b) => b.raw).join('')
+export const renderFrameToRaw = (frame: Frame): string => frame.blocks.map((b) => b.raw).join("");

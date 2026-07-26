@@ -6,9 +6,9 @@ Redis-backed ProgramDriver durable journal authority.
 import { createRedisDurableJournalAuthority } from "@sweatpants/journal-authority-redis";
 
 const authority = createRedisDurableJournalAuthority(redisClient, {
-  journalId: "conversation:123",
-  keyring,
-  schemaRegistry,
+    journalId: "conversation:123",
+    keyring,
+    schemaRegistry,
 });
 ```
 

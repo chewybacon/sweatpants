@@ -31,17 +31,17 @@
  * })
  * ```
  */
-import { resource, call, createChannel, spawn, each } from 'effection'
-import type { Operation, Channel } from 'effection'
-import { createServer, type ViteDevServer, type InlineConfig } from 'vite'
+import { resource, call, createChannel, spawn, each } from "effection";
+import type { Operation, Channel } from "effection";
+import { createServer, type ViteDevServer, type InlineConfig } from "vite";
 
 /**
  * HMR event emitted when a file changes
  */
 export interface HmrEvent {
-  type: 'change' | 'add' | 'unlink'
-  file: string
-  timestamp: number
+  type: "change" | "add" | "unlink";
+  file: string;
+  timestamp: number;
 }
 
 /**
@@ -49,13 +49,13 @@ export interface HmrEvent {
  */
 export interface UseViteOptions {
   /** Root directory (defaults to cwd) */
-  root?: string
+  root?: string;
   /** Path to vite config file, or false to disable */
-  configFile?: string | false
+  configFile?: string | false;
   /** Log level */
-  logLevel?: 'info' | 'warn' | 'error' | 'silent'
+  logLevel?: "info" | "warn" | "error" | "silent";
   /** Additional watch patterns to ignore */
-  watchIgnore?: string[]
+  watchIgnore?: string[];
 }
 
 /**
@@ -66,23 +66,23 @@ export interface ViteHandle {
    * Import a module through Vite's transform pipeline.
    * Supports HMR - module will be re-executed on file changes.
    */
-  import<T = Record<string, unknown>>(url: string): Operation<T>
+  import<T = Record<string, unknown>>(url: string): Operation<T>;
 
   /**
    * Invalidate a module in Vite's cache.
    * Next import will re-transform and re-execute the module.
    */
-  invalidate(url: string): void
+  invalidate(url: string): void;
 
   /**
    * Stream of HMR events (file changes)
    */
-  hmrEvents: Channel<HmrEvent, void>
+  hmrEvents: Channel<HmrEvent, void>;
 
   /**
    * The underlying Vite dev server (for advanced use)
    */
-  server: ViteDevServer
+  server: ViteDevServer;
 }
 
 /**
@@ -96,9 +96,9 @@ export function useVite(options: UseViteOptions = {}): Operation<ViteHandle> {
     const {
       root = process.cwd(),
       configFile = false,
-      logLevel = 'silent',
+      logLevel = "silent",
       watchIgnore = [],
-    } = options
+    } = options;
 
     // Create Vite dev server in middleware mode
     const server = yield* call(() =>
@@ -110,52 +110,52 @@ export function useVite(options: UseViteOptions = {}): Operation<ViteHandle> {
           middlewareMode: true,
           hmr: true,
           watch: {
-            ignored: ['**/node_modules/**', '**/.git/**', ...watchIgnore],
+            ignored: ["**/node_modules/**", "**/.git/**", ...watchIgnore],
           },
         },
         optimizeDeps: {
           // Disable dependency pre-bundling for faster startup
           noDiscovery: true,
         },
-      })
-    )
+      }),
+    );
 
     // Create channel for HMR events
-    const hmrEvents = createChannel<HmrEvent, void>()
+    const hmrEvents = createChannel<HmrEvent, void>();
 
     // Watch for file changes and emit to channel
-    const emitChange = (type: 'change' | 'add' | 'unlink') => (file: string) => {
+    const emitChange = (type: "change" | "add" | "unlink") => (file: string) => {
       hmrEvents.send({
         type,
         file,
         timestamp: Date.now(),
-      })
-    }
+      });
+    };
 
-    server.watcher.on('change', emitChange('change'))
-    server.watcher.on('add', emitChange('add'))
-    server.watcher.on('unlink', emitChange('unlink'))
+    server.watcher.on("change", emitChange("change"));
+    server.watcher.on("add", emitChange("add"));
+    server.watcher.on("unlink", emitChange("unlink"));
 
     // Module cache for invalidation tracking
-    const moduleCache = new Map<string, unknown>()
+    const moduleCache = new Map<string, unknown>();
 
     // Create the handle
     const handle: ViteHandle = {
       *import<T>(url: string): Operation<T> {
         try {
-          const mod = yield* call(() => server.ssrLoadModule(url))
-          moduleCache.set(url, mod)
-          return mod as T
+          const mod = yield* call(() => server.ssrLoadModule(url));
+          moduleCache.set(url, mod);
+          return mod as T;
         } catch (e) {
           if (e instanceof Error) {
-            server.ssrFixStacktrace(e)
+            server.ssrFixStacktrace(e);
           }
-          throw e
+          throw e;
         }
       },
 
       invalidate(url: string) {
-        moduleCache.delete(url)
+        moduleCache.delete(url);
         // Vite's SSR module graph handles the actual invalidation
         // This is a hint that we should re-import on next access
       },
@@ -163,17 +163,17 @@ export function useVite(options: UseViteOptions = {}): Operation<ViteHandle> {
       hmrEvents,
 
       server,
-    }
+    };
 
     try {
       // Provide the handle to the caller
-      yield* provide(handle)
+      yield* provide(handle);
     } finally {
       // Cleanup: close the Vite server
-      hmrEvents.close()
-      yield* call(() => server.close())
+      hmrEvents.close();
+      yield* call(() => server.close());
     }
-  })
+  });
 }
 
 /**
@@ -191,38 +191,37 @@ export function useVite(options: UseViteOptions = {}): Operation<ViteHandle> {
  */
 export function autoReload<T = Record<string, unknown>>(
   vite: ViteHandle,
-  url: string
+  url: string,
 ): Operation<() => Operation<T>> {
   return resource(function* (provide) {
-    let current: T | undefined
+    let current: T | undefined;
 
     // Initial load
-    current = yield* vite.import<T>(url)
+    current = yield* vite.import<T>(url);
 
     // Watch for changes and reload
     yield* spawn(function* () {
       for (const event of yield* each(vite.hmrEvents)) {
         // Check if this change affects our module
         // Normalize paths for comparison
-        const normalizedUrl = url.replace(/^\.\//, '')
+        const normalizedUrl = url.replace(/^\.\//, "");
         const fileMatchesUrl =
-          event.file.endsWith(normalizedUrl) ||
-          event.file.includes(normalizedUrl)
+          event.file.endsWith(normalizedUrl) || event.file.includes(normalizedUrl);
 
         if (fileMatchesUrl) {
-          vite.invalidate(url)
-          current = yield* vite.import<T>(url)
+          vite.invalidate(url);
+          current = yield* vite.import<T>(url);
         }
-        yield* each.next()
+        yield* each.next();
       }
-    })
+    });
 
     // Provide getter function
     yield* provide(function* (): Operation<T> {
       if (!current) {
-        current = yield* vite.import<T>(url)
+        current = yield* vite.import<T>(url);
       }
-      return current
-    })
-  })
+      return current;
+    });
+  });
 }

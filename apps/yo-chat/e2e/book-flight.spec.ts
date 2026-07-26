@@ -489,12 +489,7 @@ test.describe("book_flight Plugin Tool", () => {
 
     // Regression assertion: after a completed first flow, the second flow must
     // enter a fresh SeatPicker runtime from thread history alone.
-    confirmationCount = await completeBookingFlow(
-      page,
-      "Return booking",
-      "3C",
-      confirmationCount,
-    );
+    confirmationCount = await completeBookingFlow(page, "Return booking", "3C", confirmationCount);
 
     expect(confirmationCount).toBeGreaterThanOrEqual(2);
   });

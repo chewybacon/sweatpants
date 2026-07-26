@@ -46,7 +46,12 @@ const served = serveAgent(
           }
         : {}),
     },
-    handlers: [modelRegistration, drawCardsRegistration, searchFlightsRegistration, reserveSeatRegistration],
+    handlers: [
+      modelRegistration,
+      drawCardsRegistration,
+      searchFlightsRegistration,
+      reserveSeatRegistration,
+    ],
     capabilityBindings: {},
     host: createStandardA2AHost({
       ...(persistentJournal ? { journalStore: persistentJournal } : {}),

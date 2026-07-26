@@ -87,6 +87,4 @@ export type OperativeTransport = Transport<OperativeOutgoing, OperativeIncoming>
 // Interrupt Messages (for future use)
 // ============================================================================
 
-export type InterruptMessage =
-  | { type: "cancel" }
-  | { type: "rewind"; toMessageId: string };
+export type InterruptMessage = { type: "cancel" } | { type: "rewind"; toMessageId: string };

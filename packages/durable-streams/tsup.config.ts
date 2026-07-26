@@ -1,17 +1,17 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
-    index: 'src/index.ts',
-    types: 'src/types.ts',
-    'in-memory-store': 'src/in-memory-store.ts',
-    'protocol-headers': 'src/protocol-headers.ts',
-    'read-transport': 'src/read-transport.ts',
-    'mutation-transport': 'src/mutation-transport.ts',
-    'sse-formatter': 'src/sse-formatter.ts',
-    'redis-store': 'src/redis-store.ts',
+    index: "src/index.ts",
+    types: "src/types.ts",
+    "in-memory-store": "src/in-memory-store.ts",
+    "protocol-headers": "src/protocol-headers.ts",
+    "read-transport": "src/read-transport.ts",
+    "mutation-transport": "src/mutation-transport.ts",
+    "sse-formatter": "src/sse-formatter.ts",
+    "redis-store": "src/redis-store.ts",
   },
-  format: ['esm'],
+  format: ["esm"],
   dts: {
     // tsup's declaration bundler builds each entry independently. The package
     // tsconfig is composite for `tsc -b`, but composite mode makes those
@@ -24,4 +24,4 @@ export default defineConfig({
   },
   clean: true,
   sourcemap: true,
-})
+});

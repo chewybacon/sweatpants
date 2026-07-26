@@ -199,11 +199,7 @@ describe("createImplementation", () => {
       result = yield* subscription.next();
     }
 
-    expect(progress).toEqual([
-      { processed: 1 },
-      { processed: 2 },
-      { processed: 3 },
-    ]);
+    expect(progress).toEqual([{ processed: 1 }, { processed: 2 }, { processed: 3 }]);
     expect(result.value).toEqual({ total: 3 });
   });
 

@@ -30,7 +30,7 @@
  * doesn't affect visual rendering but can be consumed by other systems
  * (e.g., TTS directives, math positions, link targets).
  */
-import type { Operation } from 'effection'
+import type { Operation } from "effection";
 
 // =============================================================================
 // Annotation Types
@@ -51,25 +51,25 @@ import type { Operation } from 'effection'
  */
 export interface Annotation {
   /** Annotation category (e.g., 'math', 'directive', 'link') */
-  readonly type: string
+  readonly type: string;
 
   /** Annotation subtype (e.g., 'inline', 'block', 'pause', 'laugh') */
-  readonly subtype?: string
+  readonly subtype?: string;
 
   /** Start position in block.raw */
-  readonly rawStart: number
+  readonly rawStart: number;
 
   /** End position in block.raw */
-  readonly rawEnd: number
+  readonly rawEnd: number;
 
   /** Start position in block.rendered (if tracked) */
-  readonly renderedStart?: number
+  readonly renderedStart?: number;
 
   /** End position in block.rendered (if tracked) */
-  readonly renderedEnd?: number
+  readonly renderedEnd?: number;
 
   /** Type-specific payload */
-  readonly data?: Readonly<Record<string, unknown>>
+  readonly data?: Readonly<Record<string, unknown>>;
 }
 
 // =============================================================================
@@ -83,7 +83,7 @@ export interface Annotation {
  * - 'quick': Fast initial render (regex highlighting, basic escaping)
  * - 'full': Complete high-quality render (Shiki, Mermaid SVG, etc.)
  */
-export type RenderPass = 'none' | 'quick' | 'full'
+export type RenderPass = "none" | "quick" | "full";
 
 /**
  * Block processing status.
@@ -91,12 +91,12 @@ export type RenderPass = 'none' | 'quick' | 'full'
  * - 'streaming': Block is still receiving content
  * - 'complete': Block content is finalized
  */
-export type BlockStatus = 'streaming' | 'complete'
+export type BlockStatus = "streaming" | "complete";
 
 /**
  * Block type discriminator.
  */
-export type BlockType = 'text' | 'code'
+export type BlockType = "text" | "code";
 
 /**
  * A block of content in the document.
@@ -106,37 +106,37 @@ export type BlockType = 'text' | 'code'
  */
 export interface Block {
   /** Stable identifier for tracking across frames */
-  readonly id: string
+  readonly id: string;
 
   /** Block type: 'text' for prose, 'code' for fenced code */
-  readonly type: BlockType
+  readonly type: BlockType;
 
   /** Raw source content (markdown text or code) */
-  readonly raw: string
+  readonly raw: string;
 
   /** Rendered output (HTML for browser, ANSI for terminal, empty if not yet rendered) */
-  readonly rendered: string
+  readonly rendered: string;
 
   /** Processing status */
-  readonly status: BlockStatus
+  readonly status: BlockStatus;
 
   /** Current render quality */
-  readonly renderPass: RenderPass
+  readonly renderPass: RenderPass;
 
   /** Language identifier for code blocks */
-  readonly language?: string
+  readonly language?: string;
 
   /**
    * Annotations extracted by processors.
    * These don't affect visual rendering but can be consumed by other systems.
    */
-  readonly annotations?: readonly Annotation[]
+  readonly annotations?: readonly Annotation[];
 
   /**
    * Extensible metadata for processors.
    * Processors can attach arbitrary data here.
    */
-  readonly meta?: Readonly<Record<string, unknown>>
+  readonly meta?: Readonly<Record<string, unknown>>;
 }
 
 // =============================================================================
@@ -146,29 +146,29 @@ export interface Block {
 /**
  * What action a processor took on a block.
  */
-export type TraceAction = 'create' | 'update' | 'skip' | 'error'
+export type TraceAction = "create" | "update" | "skip" | "error";
 
 /**
  * Debug/logging entry for what happened during processing.
  */
 export interface TraceEntry {
   /** Which processor produced this entry */
-  readonly processor: string
+  readonly processor: string;
 
   /** What action was taken */
-  readonly action: TraceAction
+  readonly action: TraceAction;
 
   /** Which block was affected (if any) */
-  readonly blockId?: string
+  readonly blockId?: string;
 
   /** Human-readable detail */
-  readonly detail?: string
+  readonly detail?: string;
 
   /** How long the operation took (ms) */
-  readonly durationMs?: number
+  readonly durationMs?: number;
 
   /** Timestamp when this entry was created */
-  readonly timestamp: number
+  readonly timestamp: number;
 }
 
 /**
@@ -179,22 +179,22 @@ export interface TraceEntry {
  */
 export interface Frame {
   /** Unique frame identifier (for debugging) */
-  readonly id: string
+  readonly id: string;
 
   /** Ordered list of content blocks */
-  readonly blocks: readonly Block[]
+  readonly blocks: readonly Block[];
 
   /** When this frame was created */
-  readonly timestamp: number
+  readonly timestamp: number;
 
   /** Processing trace for debugging */
-  readonly trace: readonly TraceEntry[]
+  readonly trace: readonly TraceEntry[];
 
   /**
    * Index of the currently streaming block, or null if none.
    * Used by parser to know which block to append to.
    */
-  readonly activeBlockIndex: number | null
+  readonly activeBlockIndex: number | null;
 }
 
 // =============================================================================
@@ -215,7 +215,7 @@ export interface Frame {
  * @param frame - Current frame state
  * @returns Updated frame (or same frame if no changes)
  */
-export type ProcessFn = (frame: Frame) => Operation<Frame>
+export type ProcessFn = (frame: Frame) => Operation<Frame>;
 
 /**
  * A Processor is a self-contained processing unit with metadata.
@@ -253,12 +253,12 @@ export interface Processor {
    * Unique identifier for this processor.
    * Used for dependency resolution and tracing.
    */
-  readonly name: string
+  readonly name: string;
 
   /**
    * Human-readable description.
    */
-  readonly description?: string
+  readonly description?: string;
 
   /**
    * Processors that must run before this one.
@@ -269,7 +269,7 @@ export interface Processor {
    * @example
    * dependencies: ['markdown'] // Shiki needs markdown to run first
    */
-  readonly dependencies?: readonly string[]
+  readonly dependencies?: readonly string[];
 
   /**
    * Preload async assets (highlighters, renderers, etc.)
@@ -277,14 +277,14 @@ export interface Processor {
    * Called eagerly when the pipeline is initialized.
    * Runs in parallel with other processor preloads.
    */
-  readonly preload?: () => Operation<void>
+  readonly preload?: () => Operation<void>;
 
   /**
    * Check if this processor's assets are ready.
    *
    * Used to show loading states or defer full rendering.
    */
-  readonly isReady?: () => boolean
+  readonly isReady?: () => boolean;
 
   /**
    * The processing function.
@@ -292,7 +292,7 @@ export interface Processor {
    * Transforms a Frame, typically by enhancing block HTML.
    * Should be stateless - all state lives in the Frame.
    */
-  readonly process: ProcessFn
+  readonly process: ProcessFn;
 }
 
 // =============================================================================
@@ -302,7 +302,7 @@ export interface Processor {
 /**
  * Preset names for common processor combinations.
  */
-export type ProcessorPreset = 'markdown' | 'shiki' | 'mermaid' | 'math' | 'full'
+export type ProcessorPreset = "markdown" | "shiki" | "mermaid" | "math" | "full";
 
 /**
  * Configuration for a processing pipeline.
@@ -320,26 +320,26 @@ export interface PipelineConfig {
    * - An array of Processor objects (dependencies auto-resolved)
    * - A preset name ('markdown', 'shiki', 'mermaid', 'full')
    */
-  readonly processors: readonly Processor[] | ProcessorPreset
+  readonly processors: readonly Processor[] | ProcessorPreset;
 
   /** Enable debug tracing */
-  readonly debug?: boolean
+  readonly debug?: boolean;
 }
 
 /**
  * Callback invoked when a new frame is ready.
  */
-export type FrameEmitter = (frame: Frame) => Operation<void>
+export type FrameEmitter = (frame: Frame) => Operation<void>;
 
 /**
  * Result of running the pipeline on a chunk.
  */
 export interface PipelineResult {
   /** The final frame after all processors */
-  readonly frame: Frame
+  readonly frame: Frame;
 
   /** Intermediate frames (for progressive enhancement) */
-  readonly intermediateFrames: readonly Frame[]
+  readonly intermediateFrames: readonly Frame[];
 }
 
 // =============================================================================
@@ -352,20 +352,20 @@ export interface PipelineResult {
  */
 export interface ParseContext {
   /** True when this is the final flush at stream end */
-  readonly flush: boolean
+  readonly flush: boolean;
 }
 
 /**
  * Internal parser function type.
  * @internal
  */
-export type Parser = (frame: Frame, chunk: string, ctx: ParseContext) => Frame
+export type Parser = (frame: Frame, chunk: string, ctx: ParseContext) => Frame;
 
 /**
  * Factory to create a parser with internal state.
  * @internal
  */
-export type ParserFactory = () => Parser
+export type ParserFactory = () => Parser;
 
 // =============================================================================
 // Resolved Pipeline (internal)
@@ -377,8 +377,8 @@ export type ParserFactory = () => Parser
  */
 export interface ResolvedProcessors {
   /** Processors in dependency order */
-  readonly processors: readonly Processor[]
+  readonly processors: readonly Processor[];
 
   /** Any processors that were auto-added as dependencies */
-  readonly addedDependencies: readonly string[]
+  readonly addedDependencies: readonly string[];
 }

@@ -4,16 +4,16 @@
  * Displays a list of available flights for the user to select.
  * Used by the book_flight tool's pickFlight elicitation.
  */
-import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
-import type { Flight } from '../tool'
+import type { RenderableProps } from "@sweatpants/framework/chat/browser-rendering";
+import type { Flight } from "../tool";
 
 // =============================================================================
 // TYPES
 // =============================================================================
 
 interface FlightListProps extends RenderableProps<{ flightId: string }> {
-  flights: Flight[]
-  message: string
+  flights: Flight[];
+  message: string;
 }
 
 // =============================================================================
@@ -33,7 +33,7 @@ function AirplaneIcon({ className }: { className?: string }) {
     >
       <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />
     </svg>
-  )
+  );
 }
 
 // =============================================================================
@@ -41,10 +41,10 @@ function AirplaneIcon({ className }: { className?: string }) {
 // =============================================================================
 
 interface FlightCardProps {
-  flight: Flight
-  selected: boolean
-  onSelect: () => void
-  disabled: boolean
+  flight: Flight;
+  selected: boolean;
+  onSelect: () => void;
+  disabled: boolean;
 }
 
 function FlightCard({ flight, selected, onSelect, disabled }: FlightCardProps) {
@@ -54,11 +54,12 @@ function FlightCard({ flight, selected, onSelect, disabled }: FlightCardProps) {
       disabled={disabled}
       className={`
         w-full p-4 rounded-lg border-2 transition-all text-left
-        ${selected
-          ? 'border-primary bg-primary/10'
-          : 'border-muted hover:border-primary/50 hover:bg-muted/50'
+        ${
+          selected
+            ? "border-primary bg-primary/10"
+            : "border-muted hover:border-primary/50 hover:bg-muted/50"
         }
-        ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}
+        ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}
       `}
     >
       <div className="flex items-center justify-between mb-2">
@@ -89,12 +90,10 @@ function FlightCard({ flight, selected, onSelect, disabled }: FlightCardProps) {
 
       <div className="flex items-center justify-between">
         <span className="text-2xl font-bold text-primary">${flight.price}</span>
-        {selected && (
-          <span className="text-sm text-primary font-medium">Selected</span>
-        )}
+        {selected && <span className="text-sm text-primary font-medium">Selected</span>}
       </div>
     </button>
-  )
+  );
 }
 
 // =============================================================================
@@ -102,11 +101,11 @@ function FlightCard({ flight, selected, onSelect, disabled }: FlightCardProps) {
 // =============================================================================
 
 export function FlightList({ flights, message, onRespond, disabled, response }: FlightListProps) {
-  const cleanMessage = message
+  const cleanMessage = message;
 
   // If already responded, show the selection
   if (disabled && response) {
-    const selectedFlight = flights.find(f => f.id === response.flightId)
+    const selectedFlight = flights.find((f) => f.id === response.flightId);
     return (
       <div className="my-3 p-4 bg-muted rounded-lg">
         <div className="flex items-center gap-2 mb-3">
@@ -119,9 +118,10 @@ export function FlightList({ flights, message, onRespond, disabled, response }: 
               key={flight.id}
               className={`
                 p-3 rounded-lg border
-                ${flight.id === response.flightId
-                  ? 'border-primary bg-primary/10'
-                  : 'border-muted-foreground/20 opacity-50'
+                ${
+                  flight.id === response.flightId
+                    ? "border-primary bg-primary/10"
+                    : "border-muted-foreground/20 opacity-50"
                 }
               `}
             >
@@ -144,7 +144,7 @@ export function FlightList({ flights, message, onRespond, disabled, response }: 
           </p>
         )}
       </div>
-    )
+    );
   }
 
   // Interactive state
@@ -166,7 +166,7 @@ export function FlightList({ flights, message, onRespond, disabled, response }: 
         ))}
       </div>
     </div>
-  )
+  );
 }
 
-FlightList.displayName = 'FlightList'
+FlightList.displayName = "FlightList";

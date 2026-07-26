@@ -14,7 +14,8 @@ import type {
 } from "../types.ts";
 import { z } from "zod";
 
-type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Expect<T extends true> = T;
 
 // Response-first ElicitDefinition
@@ -27,7 +28,9 @@ void 0 as unknown as _respOk;
 // Truthful result arms
 type AcceptArm = Extract<ToolElicitResult<{ n: number }, { ok: boolean }>, { action: "accept" }>;
 type DeclineArm = Extract<ToolElicitResult<{ n: number }, { ok: boolean }>, { action: "decline" }>;
-type _acceptHasExchange = Expect<Equal<AcceptArm["exchange"] extends { context: { n: number } } ? true : false, true>>;
+type _acceptHasExchange = Expect<
+  Equal<AcceptArm["exchange"] extends { context: { n: number } } ? true : false, true>
+>;
 type _declineNoContent = Expect<Equal<"content" extends keyof DeclineArm ? true : false, false>>;
 type _declineNoExchange = Expect<Equal<"exchange" extends keyof DeclineArm ? true : false, false>>;
 void 0 as unknown as _acceptHasExchange;

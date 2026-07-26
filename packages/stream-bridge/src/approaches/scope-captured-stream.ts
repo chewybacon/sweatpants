@@ -12,20 +12,20 @@
  * - Still needs scope.run() for each next()
  * - More complex state management
  */
-import { createScope, type Operation, type Scope, type Stream, type Subscription } from 'effection'
+import { createScope, type Operation, type Scope, type Stream, type Subscription } from "effection";
 
 export interface ScopeCapturedStreamOptions {
   /** Serialize each value to Uint8Array */
-  serialize?: (value: unknown) => Uint8Array
+  serialize?: (value: unknown) => Uint8Array;
 }
 
 export interface ScopeCapturedResult {
   /** The Response with streaming body */
-  response: Response
+  response: Response;
   /** The scope - caller must destroy when done */
-  scope: Scope
+  scope: Scope;
   /** Destroy the scope */
-  destroy: () => Promise<void>
+  destroy: () => Promise<void>;
 }
 
 /**
@@ -37,59 +37,60 @@ export interface ScopeCapturedResult {
  */
 export function createScopeCapturedStream<T>(
   stream: Stream<T, void>,
-  options: ScopeCapturedStreamOptions = {}
+  options: ScopeCapturedStreamOptions = {},
 ): Operation<ScopeCapturedResult> {
-  const serialize = options.serialize ?? ((v) => new TextEncoder().encode(JSON.stringify(v) + '\n'))
+  const serialize =
+    options.serialize ?? ((v) => new TextEncoder().encode(JSON.stringify(v) + "\n"));
 
-  const [scope, destroy] = createScope()
-  let subscription: Subscription<T, void> | null = null
-  let closed = false
+  const [scope, destroy] = createScope();
+  let subscription: Subscription<T, void> | null = null;
+  let closed = false;
 
   const readableStream = new ReadableStream<Uint8Array>({
     async start() {
       subscription = await scope.run(function* () {
-        return yield* stream
-      })
+        return yield* stream;
+      });
     },
 
     async pull(controller) {
       if (!subscription || closed) {
-        controller.close()
-        return
+        controller.close();
+        return;
       }
 
       try {
         const result = await scope.run(function* () {
-          return yield* subscription!.next()
-        })
+          return yield* subscription!.next();
+        });
 
         if (result.done) {
-          controller.close()
-          closed = true
+          controller.close();
+          closed = true;
         } else {
-          controller.enqueue(serialize(result.value))
+          controller.enqueue(serialize(result.value));
         }
       } catch (err) {
-        controller.error(err)
-        closed = true
+        controller.error(err);
+        closed = true;
       }
     },
 
     async cancel() {
-      closed = true
-      await destroy()
+      closed = true;
+      await destroy();
     },
-  })
+  });
 
   const response = new Response(readableStream, {
-    headers: { 'Content-Type': 'application/x-ndjson' },
-  })
+    headers: { "Content-Type": "application/x-ndjson" },
+  });
 
   return {
     *[Symbol.iterator]() {
-      return { response, scope, destroy }
+      return { response, scope, destroy };
     },
-  }
+  };
 }
 
 /**
@@ -103,33 +104,33 @@ export function createCapturedAsyncIterable<T>(
   subscription: Subscription<T, void>,
   serialize: (value: T) => Uint8Array,
 ): AsyncIterable<Uint8Array> {
-  let closed = false
+  let closed = false;
 
   return {
     [Symbol.asyncIterator]() {
       return {
         async next() {
           if (closed) {
-            return { done: true, value: undefined }
+            return { done: true, value: undefined };
           }
 
           const result = await scope.run(function* () {
-            return yield* subscription.next()
-          })
+            return yield* subscription.next();
+          });
 
           if (result.done) {
-            closed = true
-            return { done: true, value: undefined }
+            closed = true;
+            return { done: true, value: undefined };
           }
 
-          return { done: false, value: serialize(result.value) }
+          return { done: false, value: serialize(result.value) };
         },
 
         return() {
-          closed = true
-          return Promise.resolve({ done: true, value: undefined })
+          closed = true;
+          return Promise.resolve({ done: true, value: undefined });
         },
-      }
+      };
     },
-  }
+  };
 }

@@ -22,8 +22,8 @@ The acceptance worker has to invoke an authored `ToolDefinition` through an
 unsafe cast:
 
 ```ts
-const invoke = yield* (acceptanceBookingTool as any)(ctx);
-return yield* invoke(params);
+const invoke = yield * (acceptanceBookingTool as any)(ctx);
+return yield * invoke(params);
 ```
 
 The generated yo-chat worker repeats that cast for every tool and additionally
@@ -101,10 +101,11 @@ A sampling-capable ordinary tool used through the durable Program Runtime
 requires two separate setup calls over the same registry and tool set:
 
 ```ts
-yield* ProgramDriverForeignEffectsContext.set(
-  createToolSessionForeignEffectRegistrations({ registry, tools }),
-);
-yield* installLocalToolRuntime({ tools, registry, samplingProvider });
+yield *
+    ProgramDriverForeignEffectsContext.set(
+        createToolSessionForeignEffectRegistrations({ registry, tools }),
+    );
+yield * installLocalToolRuntime({ tools, registry, samplingProvider });
 ```
 
 Omitting the first call fails nested `ctx.sample()` with

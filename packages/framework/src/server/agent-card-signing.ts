@@ -17,7 +17,9 @@ export function createAgentCardJwsSigner(options: {
   readonly jwksUrl?: string;
   readonly header?: Json;
 }): AgentCardSigner {
-  if (!options.keyId || options.keyId.length > 512) {throw new Error("Agent Card key ID is invalid");}
+  if (!options.keyId || options.keyId.length > 512) {
+    throw new Error("Agent Card key ID is invalid");
+  }
   if (options.jwksUrl && new URL(options.jwksUrl).protocol !== "https:") {
     throw new Error("Agent Card JWKS URL must use HTTPS");
   }

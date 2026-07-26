@@ -30,6 +30,7 @@ Every workspace falls into one of three categories. Determine the category first
 **Examples**: `@sweatpants/framework`, `@sweatpants/elicit-context`, `@sweatpants/cli`
 
 **Characteristics**:
+
 - Consumed by other workspaces via imports
 - Need to generate `.d.ts` declaration files
 - Participate in `tsc -b` incremental build chain
@@ -42,6 +43,7 @@ Every workspace falls into one of three categories. Determine the category first
 **Examples**: `yo-agent` (tsup), `yo-chat` (vite), `yo-mcp` (tsup)
 
 **Characteristics**:
+
 - Leaf nodes - not imported by other workspaces
 - Use `noEmit: true` - bundler handles all output
 - Type-check via `tsc --noEmit`
@@ -56,6 +58,7 @@ Every workspace falls into one of three categories. Determine the category first
 **Examples**: `yo-slides` (Slidev presentations)
 
 **Characteristics**:
+
 - No tsconfig.json required
 - Excluded from all TypeScript tooling
 
@@ -65,26 +68,26 @@ Every workspace falls into one of three categories. Determine the category first
 
 ### tsc-Buildable Packages (Category 1)
 
-| Requirement | Required | Notes |
-|-------------|----------|-------|
-| `composite: true` | Yes | Enables project references |
-| `emitDeclarationOnly: true` | Yes | tsc emits .d.ts only, bundler handles JS |
-| `outDir` | Yes | Must be explicitly set (typically `./dist`) |
-| `references` array | Yes | List workspace dependencies |
-| Development exports | Yes | Must be first condition in exports |
-| Included in root references | Yes | Enables `tsc -b` from root |
+| Requirement                 | Required | Notes                                       |
+| --------------------------- | -------- | ------------------------------------------- |
+| `composite: true`           | Yes      | Enables project references                  |
+| `emitDeclarationOnly: true` | Yes      | tsc emits .d.ts only, bundler handles JS    |
+| `outDir`                    | Yes      | Must be explicitly set (typically `./dist`) |
+| `references` array          | Yes      | List workspace dependencies                 |
+| Development exports         | Yes      | Must be first condition in exports          |
+| Included in root references | Yes      | Enables `tsc -b` from root                  |
 
 ### Bundler-Based Applications (Category 2)
 
-| Requirement | Required | Notes |
-|-------------|----------|-------|
-| `composite: true` | No | Exempt - conflicts with noEmit |
-| `noEmit: true` | Yes | Inherited from base config |
-| `references` array | No | Not part of tsc -b chain |
-| Development exports | No | Apps don't export |
-| `check` script | Yes | Must have `tsc --noEmit` |
-| Extend base config | Recommended | For consistency |
-| Included in root references | No | Excluded from tsc -b |
+| Requirement                 | Required    | Notes                          |
+| --------------------------- | ----------- | ------------------------------ |
+| `composite: true`           | No          | Exempt - conflicts with noEmit |
+| `noEmit: true`              | Yes         | Inherited from base config     |
+| `references` array          | No          | Not part of tsc -b chain       |
+| Development exports         | No          | Apps don't export              |
+| `check` script              | Yes         | Must have `tsc --noEmit`       |
+| Extend base config          | Recommended | For consistency                |
+| Included in root references | No          | Excluded from tsc -b           |
 
 ### Non-TypeScript Workspaces (Category 3)
 
@@ -100,14 +103,14 @@ Development exports enable VSCode IntelliSense without pre-building. They are **
 
 ```json
 {
-  "exports": {
-    ".": {
-      "development": "./src/index.ts",
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+    "exports": {
+        ".": {
+            "development": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "default": "./dist/index.js"
+        }
     }
-  }
 }
 ```
 
@@ -135,18 +138,18 @@ For packages with multiple entry points:
 
 ```json
 {
-  "exports": {
-    ".": {
-      "development": "./src/index.ts",
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./vite": {
-      "development": "./src/vite/index.ts",
-      "types": "./dist/vite/index.d.ts",
-      "import": "./dist/vite/index.js"
+    "exports": {
+        ".": {
+            "development": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./vite": {
+            "development": "./src/vite/index.ts",
+            "types": "./dist/vite/index.d.ts",
+            "import": "./dist/vite/index.js"
+        }
     }
-  }
 }
 ```
 
@@ -158,22 +161,21 @@ For packages with multiple entry points:
 
 ```json
 {
-  "extends": "@sweatpants/ts-config/tsconfig.package.json",
-  "compilerOptions": {
-    "composite": true,
-    "emitDeclarationOnly": true,
-    "outDir": "./dist",
-    "rootDir": "./src"
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "references": [
-    { "path": "../other-package" }
-  ]
+    "extends": "@sweatpants/ts-config/tsconfig.package.json",
+    "compilerOptions": {
+        "composite": true,
+        "emitDeclarationOnly": true,
+        "outDir": "./dist",
+        "rootDir": "./src"
+    },
+    "include": ["src/**/*"],
+    "exclude": ["node_modules", "dist"],
+    "references": [{ "path": "../other-package" }]
 }
 ```
 
 **Key settings**:
+
 - `composite: true` - Enables project references
 - `emitDeclarationOnly: true` - Only emit `.d.ts`, bundler handles JS
 - `outDir` - Required with composite
@@ -183,19 +185,20 @@ For packages with multiple entry points:
 
 ```json
 {
-  "extends": "@sweatpants/ts-config/tsconfig.app.json",
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+    "extends": "@sweatpants/ts-config/tsconfig.app.json",
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            "@/*": ["./src/*"]
+        }
+    },
+    "include": ["src/**/*"],
+    "exclude": ["node_modules", "dist"]
 }
 ```
 
 **Key settings**:
+
 - Inherits `noEmit: true` from base
 - No `composite` or `references`
 - Path mappings for local aliases only
@@ -204,21 +207,22 @@ For packages with multiple entry points:
 
 ```json
 {
-  "extends": "@sweatpants/ts-config/tsconfig.base.json",
-  "compilerOptions": {
-    "declaration": true
-  },
-  "references": [
-    { "path": "./packages/elicit-context" },
-    { "path": "./packages/cli" },
-    { "path": "./packages/framework" },
-    { "path": "./apps/hydra" }
-  ],
-  "files": []
+    "extends": "@sweatpants/ts-config/tsconfig.base.json",
+    "compilerOptions": {
+        "declaration": true
+    },
+    "references": [
+        { "path": "./packages/elicit-context" },
+        { "path": "./packages/cli" },
+        { "path": "./packages/framework" },
+        { "path": "./apps/hydra" }
+    ],
+    "files": []
 }
 ```
 
 **Rules**:
+
 - Only include tsc-buildable workspaces (Category 1)
 - Exclude bundler-based apps (Category 2)
 - Exclude non-TypeScript workspaces (Category 3)
@@ -303,13 +307,13 @@ pnpm install
 
 ### Common Errors
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Referenced project must have setting 'composite': true` | Missing composite flag | Add `"composite": true` to referenced workspace's tsconfig |
-| `Cannot find module '@sweatpants/...'` | Missing dependency or development export | Check package.json has workspace dependency AND development export |
-| Go to Definition opens `.d.ts` file | Missing declarationMap | Verify base config has `"declarationMap": true` (already set) |
-| `error TS5096: Option 'allowImportingTsExtensions' can only be used when 'noEmit' is set` | Composite conflicts with base config | Add `"emitDeclarationOnly": true` to workspace tsconfig |
-| `error TS6305: Output file has not been built` | outDir not set | Add explicit `"outDir": "./dist"` |
+| Error                                                                                     | Cause                                    | Solution                                                           |
+| ----------------------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------ |
+| `Referenced project must have setting 'composite': true`                                  | Missing composite flag                   | Add `"composite": true` to referenced workspace's tsconfig         |
+| `Cannot find module '@sweatpants/...'`                                                    | Missing dependency or development export | Check package.json has workspace dependency AND development export |
+| Go to Definition opens `.d.ts` file                                                       | Missing declarationMap                   | Verify base config has `"declarationMap": true` (already set)      |
+| `error TS5096: Option 'allowImportingTsExtensions' can only be used when 'noEmit' is set` | Composite conflicts with base config     | Add `"emitDeclarationOnly": true` to workspace tsconfig            |
+| `error TS6305: Output file has not been built`                                            | outDir not set                           | Add explicit `"outDir": "./dist"`                                  |
 
 ### Path Mappings vs Development Exports
 
@@ -322,6 +326,7 @@ pnpm install
 ```
 
 **These should be removed** once the dependency has proper development exports. Development exports are the preferred mechanism because:
+
 - They work at runtime, not just compile time
 - They're declared by the package, not the consumer
 - They work consistently across all consumers
@@ -329,6 +334,7 @@ pnpm install
 ### When to Use Path Mappings
 
 Only use path mappings for:
+
 1. Local aliases within the same workspace (`@/*` → `./src/*`)
 2. Temporary workarounds while migrating to development exports
 3. Non-workspace dependencies that don't support development exports
@@ -337,11 +343,11 @@ Only use path mappings for:
 
 ## Type Checking Strategy
 
-| Category | Command | When to Run |
-|----------|---------|-------------|
-| tsc-Buildable | `pnpm tsc -b` | CI, pre-commit, after dependency changes |
-| Bundler Apps | `pnpm --filter <app> check` | CI, pre-commit |
-| All | `pnpm -r check` | CI (runs all workspace check scripts) |
+| Category      | Command                     | When to Run                              |
+| ------------- | --------------------------- | ---------------------------------------- |
+| tsc-Buildable | `pnpm tsc -b`               | CI, pre-commit, after dependency changes |
+| Bundler Apps  | `pnpm --filter <app> check` | CI, pre-commit                           |
+| All           | `pnpm -r check`             | CI (runs all workspace check scripts)    |
 
 ### CI Recommendations
 
@@ -349,8 +355,8 @@ Only use path mappings for:
 # Example CI step
 - name: Type Check
   run: |
-    pnpm tsc -b          # Check tsc-buildable workspaces
-    pnpm -r run check    # Check all workspaces with check script
+      pnpm tsc -b          # Check tsc-buildable workspaces
+      pnpm -r run check    # Check all workspaces with check script
 ```
 
 ---

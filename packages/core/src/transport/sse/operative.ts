@@ -1,10 +1,4 @@
-import {
-  resource,
-  call,
-  until,
-  type Operation,
-  type Subscription,
-} from "effection";
+import { resource, call, until, type Operation, type Subscription } from "effection";
 import type {
   OperativeTransport,
   OperativeIncoming,
@@ -37,9 +31,7 @@ export interface SSEOperativeOptions {
  * @param options - Configuration options
  * @returns An OperativeTransport
  */
-export function* createSSEOperative(
-  options: SSEOperativeOptions
-): Operation<OperativeTransport> {
+export function* createSSEOperative(options: SSEOperativeOptions): Operation<OperativeTransport> {
   const fetchFn = options.fetch ?? fetch;
 
   return yield* resource(function* (provide) {
@@ -49,13 +41,11 @@ export function* createSSEOperative(
           Accept: "text/event-stream",
           "Cache-Control": "no-cache",
         },
-      })
+      }),
     );
 
     if (!response.ok) {
-      throw new Error(
-        `SSE connection failed: ${response.status} ${response.statusText}`
-      );
+      throw new Error(`SSE connection failed: ${response.status} ${response.statusText}`);
     }
 
     if (!response.body) {
@@ -115,7 +105,7 @@ export function* createSSEOperative(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(message),
-          })
+          }),
         );
       },
     };

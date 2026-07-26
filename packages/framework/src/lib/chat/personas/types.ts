@@ -1,72 +1,72 @@
 // --- Capabilities ---
 // Import from core-types (single source of truth)
-import type { Capabilities } from '../core-types.ts'
-export type { Capabilities } from '../core-types.ts'
+import type { Capabilities } from "../core-types.ts";
+export type { Capabilities } from "../core-types.ts";
 
 // --- Configuration ---
 
 export type ConfigOption =
-  | { type: 'boolean'; default: boolean }
-  | { type: 'number'; default: number; min?: number; max?: number }
-  | { type: 'string'; default: string; options?: string[] }
+  | { type: "boolean"; default: boolean }
+  | { type: "number"; default: number; min?: number; max?: number }
+  | { type: "string"; default: string; options?: string[] };
 
-export type PersonaConfig = Record<string, boolean | number | string>
+export type PersonaConfig = Record<string, boolean | number | string>;
 
 // --- Effort Levels ---
 
-export type EffortLevel = 'auto' | 'low' | 'medium' | 'high'
+export type EffortLevel = "auto" | "low" | "medium" | "high";
 
 export interface EffortConfig {
   models?: {
-    ollama?: string
-    openai?: string
-  }
+    ollama?: string;
+    openai?: string;
+  };
   // Future: reasoning_effort, temperature, etc.
 }
 
 // --- Persona Definition ---
 
 export interface PersonaDefinition<
-  TConfig extends Record<string, ConfigOption> = Record<string, ConfigOption>
+  TConfig extends Record<string, ConfigOption> = Record<string, ConfigOption>,
 > {
-  name: string
-  description: string
+  name: string;
+  description: string;
 
   /** System prompt - can be static string or dynamic function */
-  systemPrompt: string | ((ctx: { config: PersonaConfig }) => string)
+  systemPrompt: string | ((ctx: { config: PersonaConfig }) => string);
 
   /** Effort configurations */
-  effortLevels?: Partial<Record<EffortLevel, EffortConfig>>
-  defaultEffort?: EffortLevel
+  effortLevels?: Partial<Record<EffortLevel, EffortConfig>>;
+  defaultEffort?: EffortLevel;
 
   /** Tools */
-  requiredTools: string[]
-  optionalTools?: string[]
+  requiredTools: string[];
+  optionalTools?: string[];
 
   /** Client-configurable options */
-  configurable?: TConfig
+  configurable?: TConfig;
 
   /** Required capabilities */
   requires?: {
-    thinking?: boolean
-    streaming?: boolean
-  }
+    thinking?: boolean;
+    streaming?: boolean;
+  };
 }
 
 // --- Resolved Persona ---
 
 export interface ResolvedPersona {
-  name: string
-  systemPrompt: string
-  tools: string[]
-  model?: { ollama?: string; openai?: string }
-  capabilities: Capabilities
+  name: string;
+  systemPrompt: string;
+  tools: string[];
+  model?: { ollama?: string; openai?: string };
+  capabilities: Capabilities;
 }
 
 // --- Helper ---
 
 export function definePersona<T extends Record<string, ConfigOption>>(
-  definition: PersonaDefinition<T>
+  definition: PersonaDefinition<T>,
 ): PersonaDefinition<T> {
-  return definition
+  return definition;
 }

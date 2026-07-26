@@ -1,7 +1,10 @@
 import { run } from "effection";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
-import { createDurableSchemaRegistry, validateRegisteredSchema } from "@sweatpants/session-contract";
+import {
+  createDurableSchemaRegistry,
+  validateRegisteredSchema,
+} from "@sweatpants/session-contract";
 
 import { toPortableSchema } from "../../schema/zod-adapter.ts";
 import { createTool } from "../create.ts";
@@ -22,7 +25,10 @@ describe("Zod Standard Schema adapter", () => {
   });
 
   it("runs Zod defaults/transforms once through the registered Standard Schema validator", async () => {
-    const schema = z.string().trim().transform((value) => value.toUpperCase());
+    const schema = z
+      .string()
+      .trim()
+      .transform((value) => value.toUpperCase());
     const lowered = toPortableSchema(schema, {
       identity: "tool:test/transformed",
       role: "tool_parameters",
@@ -43,11 +49,14 @@ describe("Zod Standard Schema adapter", () => {
 
   it("fails authoring when transformed output has no explicit trusted projection", () => {
     expect(() =>
-      toPortableSchema(z.string().transform((value) => value.length), {
-        identity: "tool:test/unprojectable",
-        role: "tool_output",
-        version: "1",
-      }),
+      toPortableSchema(
+        z.string().transform((value) => value.length),
+        {
+          identity: "tool:test/unprojectable",
+          role: "tool_output",
+          version: "1",
+        },
+      ),
     ).toThrow(/schema projection|explicit trusted projection/i);
   });
 

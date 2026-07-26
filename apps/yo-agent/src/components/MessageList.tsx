@@ -6,39 +6,39 @@
  *
  * Uses FrameRenderer for assistant messages to display rendered markdown/code.
  */
-import React from 'react'
-import { Box, Text } from 'ink'
-import Spinner from 'ink-spinner'
-import { FrameRenderer, type Frame } from '../pipeline/index.ts'
-import { Scrollable } from './Scrollable.tsx'
+import React from "react";
+import { Box, Text } from "ink";
+import Spinner from "ink-spinner";
+import { FrameRenderer, type Frame } from "../pipeline/index.ts";
+import { Scrollable } from "./Scrollable.tsx";
 
 export interface Message {
-  id: string
-  role: 'user' | 'assistant' | 'system' | 'tool'
-  content: string
-  toolName?: string
+  id: string;
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  toolName?: string;
   /** Rendered frame for assistant messages */
-  frame?: Frame
+  frame?: Frame;
 }
 
 interface MessageListProps {
-  messages: Message[]
-  isStreaming?: boolean
+  messages: Message[];
+  isStreaming?: boolean;
   /** Available height in lines (from parent) */
-  height?: number
+  height?: number;
   /** Current frame for the streaming assistant message */
-  currentFrame?: Frame | null
+  currentFrame?: Frame | null;
 }
 
-export function MessageList({ messages, isStreaming = false, height = 20, currentFrame }: MessageListProps) {
+export function MessageList({
+  messages,
+  isStreaming = false,
+  height = 20,
+  currentFrame,
+}: MessageListProps) {
   if (messages.length === 0 && !isStreaming) {
     return (
-      <Box 
-        flexDirection="column" 
-        justifyContent="flex-end" 
-        flexGrow={1}
-        padding={1}
-      >
+      <Box flexDirection="column" justifyContent="flex-end" flexGrow={1} padding={1}>
         <Text color="gray" dimColor>
           Welcome to yo-agent!
         </Text>
@@ -46,7 +46,7 @@ export function MessageList({ messages, isStreaming = false, height = 20, curren
           Press ESC to toggle plan/build modes.
         </Text>
       </Box>
-    )
+    );
   }
 
   return (
@@ -58,15 +58,13 @@ export function MessageList({ messages, isStreaming = false, height = 20, curren
         scrollbarThumbColor="cyan"
       >
         {messages.map((message, index) => (
-          <MessageBubble 
-            key={message.id} 
+          <MessageBubble
+            key={message.id}
             message={message}
             // Pass frame to the last assistant message if it's streaming
             frame={
-              isStreaming && 
-              message.role === 'assistant' && 
-              index === messages.length - 1 
-                ? currentFrame 
+              isStreaming && message.role === "assistant" && index === messages.length - 1
+                ? currentFrame
                 : undefined
             }
           />
@@ -74,79 +72,84 @@ export function MessageList({ messages, isStreaming = false, height = 20, curren
         {isStreaming && (
           <Box>
             <Text color="cyan">
-              <Spinner type="dots" />
-              {' '}Thinking...
+              <Spinner type="dots" /> Thinking...
             </Text>
           </Box>
         )}
       </Scrollable>
     </Box>
-  )
+  );
 }
 
 interface MessageBubbleProps {
-  message: Message
+  message: Message;
   /** Frame for rendered content (for streaming assistant messages) */
-  frame?: Frame | null | undefined
+  frame?: Frame | null | undefined;
 }
 
 function MessageBubble({ message, frame }: MessageBubbleProps) {
-  const { role, content, toolName } = message
+  const { role, content, toolName } = message;
 
   switch (role) {
-    case 'user':
+    case "user":
       return (
         <Box marginBottom={1}>
-          <Text color="green" bold>You: </Text>
+          <Text color="green" bold>
+            You:{" "}
+          </Text>
           <Text wrap="wrap">{content}</Text>
         </Box>
-      )
+      );
 
-    case 'assistant':
+    case "assistant":
       // Use frame from props (streaming) or message (completed)
-      const activeFrame = frame || message.frame
-      
+      const activeFrame = frame || message.frame;
+
       // If we have a frame, use FrameRenderer for rich output
       if (activeFrame && activeFrame.blocks.length > 0) {
         return (
           <Box flexDirection="column" marginBottom={1}>
-            <Text color="cyan" bold>Assistant:</Text>
+            <Text color="cyan" bold>
+              Assistant:
+            </Text>
             <Box marginLeft={2}>
               <FrameRenderer frame={activeFrame} />
             </Box>
           </Box>
-        )
+        );
       }
       // Fallback to plain text
       return (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color="cyan" bold>Assistant:</Text>
+          <Text color="cyan" bold>
+            Assistant:
+          </Text>
           <Box marginLeft={2}>
             <Text wrap="wrap">{content}</Text>
           </Box>
         </Box>
-      )
+      );
 
-    case 'tool':
+    case "tool":
       return (
         <Box marginBottom={1}>
           <Text color="yellow" dimColor>
             [Tool: {toolName}] {content.slice(0, 80)}
-            {content.length > 80 ? '...' : ''}
+            {content.length > 80 ? "..." : ""}
           </Text>
         </Box>
-      )
+      );
 
-    case 'system':
+    case "system":
       return (
         <Box marginBottom={1}>
           <Text color="gray" dimColor>
             System: {content}
           </Text>
         </Box>
-      )
+      );
 
     default:
-      return null
+      return null;
   }
 }

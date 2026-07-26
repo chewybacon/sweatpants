@@ -18,18 +18,18 @@ pnpm dev
 
 ## Modes
 
-| Mode | Key | Description |
-|------|-----|-------------|
-| `plan` | Default | Read-only tools for research and analysis |
+| Mode    | Key           | Description                                    |
+| ------- | ------------- | ---------------------------------------------- |
+| `plan`  | Default       | Read-only tools for research and analysis      |
 | `build` | ESC to toggle | Currently mocks responses with HAL 9000 quotes |
 
 ## Key Bindings
 
-| Key | Action |
-|-----|--------|
-| ESC | Toggle between plan/build modes |
-| Enter | Send message |
-| Ctrl+C | Exit |
+| Key    | Action                          |
+| ------ | ------------------------------- |
+| ESC    | Toggle between plan/build modes |
+| Enter  | Send message                    |
+| Ctrl+C | Exit                            |
 
 ## Architecture
 

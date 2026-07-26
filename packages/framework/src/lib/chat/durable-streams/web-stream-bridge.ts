@@ -6,10 +6,10 @@
  *
  * This module wraps the generic stream-bridge with TokenBuffer-specific logic.
  */
-import { createReadableStream } from '@sweatpants/stream-bridge'
-import type { Scope } from 'effection'
-import type { TokenBuffer, TokenFrame } from '@sweatpants/durable-streams'
-import { createPullStream } from '@sweatpants/durable-streams'
+import { createReadableStream } from "@sweatpants/stream-bridge";
+import type { Scope } from "effection";
+import type { TokenBuffer, TokenFrame } from "@sweatpants/durable-streams";
+import { createPullStream } from "@sweatpants/durable-streams";
 
 /**
  * Creates a Web ReadableStream from a TokenBuffer.
@@ -34,15 +34,15 @@ import { createPullStream } from '@sweatpants/durable-streams'
 export function createWebStreamFromBuffer(
   scope: Scope,
   buffer: TokenBuffer<string>,
-  startLSN = 0
+  startLSN = 0,
 ): ReadableStream<Uint8Array> {
-  const stream = createPullStream(buffer, startLSN)
-  const encoder = new TextEncoder()
+  const stream = createPullStream(buffer, startLSN);
+  const encoder = new TextEncoder();
 
   return createReadableStream(scope, stream, {
     serialize: (frame: TokenFrame<string>) => {
-      const json = JSON.stringify(frame) + '\n'
-      return encoder.encode(json)
+      const json = JSON.stringify(frame) + "\n";
+      return encoder.encode(json);
     },
-  })
+  });
 }

@@ -1,21 +1,17 @@
-import type { ToolCall } from '../types.ts'
-import type {
-  AgUiCheckpoint,
-  AgUiCustomState,
-  ConversationReplayState,
-} from './streaming.ts'
-import type { ServerToolResult } from '../core-types.ts'
-import type { ElicitRequestStreamEvent } from './streaming.ts'
+import type { ToolCall } from "../types.ts";
+import type { AgUiCheckpoint, AgUiCustomState, ConversationReplayState } from "./streaming.ts";
+import type { ServerToolResult } from "../core-types.ts";
+import type { ElicitRequestStreamEvent } from "./streaming.ts";
 
 export interface BuildAgUiCheckpointOptions {
-  threadId: string
-  runId: string
-  parentRunId?: string
-  messages: AgUiCheckpoint['messages']['messages']
-  assistantContent: string
-  toolCalls: ToolCall[]
-  serverToolResults: ServerToolResult[]
-  replay?: ConversationReplayState
+  threadId: string;
+  runId: string;
+  parentRunId?: string;
+  messages: AgUiCheckpoint["messages"]["messages"];
+  assistantContent: string;
+  toolCalls: ToolCall[];
+  serverToolResults: ServerToolResult[];
+  replay?: ConversationReplayState;
 }
 
 export function buildAgUiCheckpoint(options: BuildAgUiCheckpointOptions): AgUiCheckpoint {
@@ -28,7 +24,7 @@ export function buildAgUiCheckpoint(options: BuildAgUiCheckpointOptions): AgUiCh
     toolCalls,
     serverToolResults,
     replay,
-  } = options
+  } = options;
 
   return {
     run: {
@@ -49,26 +45,26 @@ export function buildAgUiCheckpoint(options: BuildAgUiCheckpointOptions): AgUiCh
       serverToolResults,
       ...(replay ? { replay } : {}),
     },
-  }
+  };
 }
 
 export function buildAgUiCustomState(options: {
-  replay?: ConversationReplayState
-  elicits?: ElicitRequestStreamEvent[]
+  replay?: ConversationReplayState;
+  elicits?: ElicitRequestStreamEvent[];
 }): AgUiCustomState {
   const pendingClientActions = (options.elicits ?? []).map((elicit) => ({
     toolCallId: elicit.callId,
     toolName: elicit.toolName,
-    kind: 'elicit' as const,
+    kind: "elicit" as const,
     sessionId: elicit.sessionId,
     elicitId: elicit.elicitId,
     key: elicit.key,
     message: elicit.message,
     schema: elicit.schema,
-  }))
+  }));
 
   return {
     ...(options.replay ? { replay: options.replay } : {}),
     ...(pendingClientActions.length > 0 ? { pendingClientActions } : {}),
-  }
+  };
 }

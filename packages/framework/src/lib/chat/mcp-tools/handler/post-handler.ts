@@ -17,14 +17,14 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from 'effection'
+import type { Operation } from "effection";
 import type {
   McpToolsCallRequest,
   McpElicitResponse,
   McpSampleResponse,
   McpPostResult,
-} from './types.ts'
-import type { McpSessionManager } from './session-manager.ts'
+} from "./types.ts";
+import type { McpSessionManager } from "./session-manager.ts";
 
 // =============================================================================
 // POST HANDLER OPTIONS
@@ -39,7 +39,7 @@ export interface PostHandlerOptions {
    * If tool doesn't complete within this time, upgrade to SSE.
    * Default: 5000 (5 seconds)
    */
-  immediateTimeout?: number | undefined
+  immediateTimeout?: number | undefined;
 }
 
 // =============================================================================
@@ -52,7 +52,7 @@ export interface PostHandlerOptions {
  * Creates a new session and returns SSE stream type.
  * Tool execution is deferred until the SSE stream starts,
  * ensuring everything runs in the same Effection scope.
- * 
+ *
  * NOTE: We don't try to detect immediate completion here because
  * subscribing to events would start tool execution in this scope,
  * which would then be orphaned when this scope.run() returns.
@@ -60,18 +60,18 @@ export interface PostHandlerOptions {
 export function* handleToolsCall(
   request: McpToolsCallRequest,
   manager: McpSessionManager,
-  _options: PostHandlerOptions = {}
+  _options: PostHandlerOptions = {},
 ): Operation<McpPostResult> {
   // Create new session (tool execution is deferred)
-  const state = yield* manager.createSession(request)
-  const { session, sessionId } = state
+  const state = yield* manager.createSession(request);
+  const { session, sessionId } = state;
 
   // Always upgrade to SSE - tool execution will start when SSE stream begins
   return {
-    type: 'sse',
+    type: "sse",
     sessionId,
     session,
-  }
+  };
 }
 
 // =============================================================================
@@ -83,18 +83,18 @@ export function* handleToolsCall(
  */
 export function* handleElicitResponse(
   response: McpElicitResponse,
-  manager: McpSessionManager
+  manager: McpSessionManager,
 ): Operation<McpPostResult> {
   // Forward response to session
-  yield* manager.handleElicitResponse(response)
+  yield* manager.handleElicitResponse(response);
 
   // Return acknowledgment
   return {
-    type: 'json',
+    type: "json",
     status: 202, // Accepted
-    body: { jsonrpc: '2.0', id: response.requestId, result: {} },
-    headers: { 'Mcp-Session-Id': response.sessionId },
-  }
+    body: { jsonrpc: "2.0", id: response.requestId, result: {} },
+    headers: { "Mcp-Session-Id": response.sessionId },
+  };
 }
 
 // =============================================================================
@@ -106,18 +106,18 @@ export function* handleElicitResponse(
  */
 export function* handleSampleResponse(
   response: McpSampleResponse,
-  manager: McpSessionManager
+  manager: McpSessionManager,
 ): Operation<McpPostResult> {
   // Forward response to session
-  yield* manager.handleSampleResponse(response)
+  yield* manager.handleSampleResponse(response);
 
   // Return acknowledgment
   return {
-    type: 'json',
+    type: "json",
     status: 202, // Accepted
-    body: { jsonrpc: '2.0', id: response.requestId, result: {} },
-    headers: { 'Mcp-Session-Id': response.sessionId },
-  }
+    body: { jsonrpc: "2.0", id: response.requestId, result: {} },
+    headers: { "Mcp-Session-Id": response.sessionId },
+  };
 }
 
 // =============================================================================
@@ -130,16 +130,16 @@ export function* handleSampleResponse(
 export function* handlePost(
   request: McpToolsCallRequest | McpElicitResponse | McpSampleResponse,
   manager: McpSessionManager,
-  options: PostHandlerOptions = {}
+  options: PostHandlerOptions = {},
 ): Operation<McpPostResult> {
   switch (request.type) {
-    case 'tools_call':
-      return yield* handleToolsCall(request, manager, options)
+    case "tools_call":
+      return yield* handleToolsCall(request, manager, options);
 
-    case 'elicit_response':
-      return yield* handleElicitResponse(request, manager)
+    case "elicit_response":
+      return yield* handleElicitResponse(request, manager);
 
-    case 'sample_response':
-      return yield* handleSampleResponse(request, manager)
+    case "sample_response":
+      return yield* handleSampleResponse(request, manager);
   }
 }

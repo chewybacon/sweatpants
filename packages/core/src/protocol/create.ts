@@ -11,10 +11,10 @@ import type {
 
 /**
  * Create a protocol definition from a set of methods.
- * 
+ *
  * A protocol is just a schema - it defines what methods exist and their
  * input/progress/output types, but doesn't include implementation.
- * 
+ *
  * @example
  * ```ts
  * const MyProtocol = createProtocol({
@@ -37,18 +37,18 @@ export function createProtocol<M extends Methods>(methods: M): Protocol<M> {
 
 /**
  * Create an inspector by binding an implementation to a protocol.
- * 
+ *
  * The implementation is a function that returns method handlers.
  * This allows handlers to be set up with access to the current scope/context.
- * 
+ *
  * Call `attach()` on the returned inspector to get a handle for invoking methods.
- * 
+ *
  * @example
  * ```ts
  * const inspector = createImplementation(MyProtocol, function*() {
  *   // Can set up resources, read context, etc.
  *   const db = yield* DatabaseContext.expect();
- *   
+ *
  *   return {
  *     search(args) {
  *       return resource(function*(provide) {
@@ -64,7 +64,7 @@ export function createProtocol<M extends Methods>(methods: M): Protocol<M> {
  *     },
  *   };
  * });
- * 
+ *
  * // Later, attach to get a handle
  * const handle = yield* inspector.attach();
  * const stream = handle.invoke({ name: "search", args: { query: "hello" } });
@@ -78,7 +78,7 @@ export function createImplementation<M extends Methods>(
     protocol,
     *attach(): Operation<Handle<M>> {
       const methods = yield* implementation();
-      
+
       return {
         protocol,
         methods,

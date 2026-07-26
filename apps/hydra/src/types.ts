@@ -1,9 +1,9 @@
 // src/types.ts
 // Shared types for the multiplex proxy
 
-import type { Server } from 'http';
-import type { Express } from 'express';
-import type { Task, Stream } from 'effection';
+import type { Server } from "http";
+import type { Express } from "express";
+import type { Task, Stream } from "effection";
 
 /**
  * Information about a running Express server
@@ -20,14 +20,14 @@ export interface ServerInfo {
 /**
  * Server events emitted by the pool (lspx-style signal events)
  */
-export type ServerEvent = 
-  | { type: 'started'; hostname: string; port: number }
-  | { type: 'stopped'; hostname: string }
-  | { type: 'error'; hostname: string; error: Error; message: string };
+export type ServerEvent =
+  | { type: "started"; hostname: string; port: number }
+  | { type: "stopped"; hostname: string }
+  | { type: "error"; hostname: string; error: Error; message: string };
 
 /**
  * The server pool interface exposed to consumers.
- * 
+ *
  * Refactored to use Promise-based API (not Operation) for easier integration
  * with Express handlers and other async code.
  */
@@ -37,26 +37,26 @@ export interface ServerPool {
    * Returns a Promise for easy use in async handlers.
    */
   getOrCreate(hostname: string): Promise<ServerInfo>;
-  
+
   /**
    * Get server info if it exists (sync)
    */
   get(hostname: string): ServerInfo | undefined;
-  
+
   /**
    * List all running servers (sync)
    */
   list(): ServerInfo[];
-  
+
   /**
    * Shutdown a specific server
    */
   shutdown(hostname: string): Promise<void>;
-  
+
   /**
    * Event stream for server lifecycle events.
    * Subscribe to receive notifications when servers start/stop/error.
-   * 
+   *
    * @example
    * ```typescript
    * yield* spawn(function*() {

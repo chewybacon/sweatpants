@@ -12,10 +12,7 @@ import type {
 /**
  * Helper to consume a stream and collect progress values.
  */
-function* consumeStream<T, R>(
-  stream: Stream<T, R>,
-  onProgress?: (value: T) => void
-): Operation<R> {
+function* consumeStream<T, R>(stream: Stream<T, R>, onProgress?: (value: T) => void): Operation<R> {
   const subscription: Subscription<T, R> = yield* stream;
   let next = yield* subscription.next();
 
@@ -52,9 +49,7 @@ describe("createCorrelation", () => {
     // Start the request
     let finalResponse: ElicitResponse | undefined;
     yield* spawn(function* () {
-      finalResponse = yield* consumeStream(
-        correlated.request<unknown, ElicitResponse>(request)
-      );
+      finalResponse = yield* consumeStream(correlated.request<unknown, ElicitResponse>(request));
     });
 
     yield* sleep(0);
@@ -102,7 +97,7 @@ describe("createCorrelation", () => {
         correlated.request<unknown, ElicitResponse>(request),
         (progress) => {
           progressReceived.push(progress);
-        }
+        },
       );
     });
 
@@ -165,7 +160,7 @@ describe("createCorrelation", () => {
           kind: "elicit",
           type: "location",
           payload: {},
-        })
+        }),
       );
     });
 
@@ -176,7 +171,7 @@ describe("createCorrelation", () => {
           kind: "elicit",
           type: "clipboard",
           payload: {},
-        })
+        }),
       );
     });
 
@@ -222,7 +217,7 @@ describe("createCorrelation", () => {
           kind: "elicit",
           type: "confirmation",
           payload: { message: "Book this flight?" },
-        })
+        }),
       );
     });
 
@@ -255,7 +250,7 @@ describe("createCorrelation", () => {
           kind: "elicit",
           type: "flight-selection",
           payload: { flights: [] },
-        })
+        }),
       );
     });
 
@@ -294,7 +289,7 @@ describe("createCorrelation", () => {
           kind: "elicit",
           type: "form",
           payload: { fields: [] },
-        })
+        }),
       );
     });
 

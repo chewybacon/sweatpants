@@ -6,10 +6,10 @@
  */
 
 // Re-export everything from types/index.ts
-export * from './types/index.ts'
+export * from "./types/index.ts";
 
 // Also export RenderFrame (React-specific type)
-import type { RenderDelta, ContentMetadata } from './types/index.ts'
+import type { RenderDelta, ContentMetadata } from "./types/index.ts";
 
 /**
  * A single render frame with full animation support.
@@ -19,13 +19,13 @@ import type { RenderDelta, ContentMetadata } from './types/index.ts'
  */
 export interface RenderFrame {
   /** Full content at this frame */
-  content: string
+  content: string;
   /** Processed HTML for full content (if available) */
-  html?: string
+  html?: string;
   /** Delta from previous frame - what's new */
-  delta: RenderDelta
+  delta: RenderDelta;
   /** Timestamp when this frame was produced */
-  timestamp: number
+  timestamp: number;
   /** Metadata from processor (e.g., code fence info) */
-  meta?: ContentMetadata
+  meta?: ContentMetadata;
 }

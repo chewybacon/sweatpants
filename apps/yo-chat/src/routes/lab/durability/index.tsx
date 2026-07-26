@@ -16,13 +16,11 @@ function DurabilityLabPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto max-w-3xl px-6 py-12">
-        <p className="text-sm uppercase tracking-widest text-cyan-400 mb-2">
-          Product demos
-        </p>
+        <p className="text-sm uppercase tracking-widest text-cyan-400 mb-2">Product demos</p>
         <h1 className="text-4xl font-bold mb-3">Durability Lab</h1>
         <p className="text-slate-300 mb-8 text-lg">
-          Production chat sessions that survive reconnect, tool pause/resume, and
-          human-in-the-loop — correctly. Each demo is under three minutes.
+          Production chat sessions that survive reconnect, tool pause/resume, and human-in-the-loop
+          — correctly. Each demo is under three minutes.
         </p>
 
         <ol className="space-y-6 mb-12">
@@ -95,8 +93,8 @@ function DurabilityLabPage() {
         <section className="rounded-xl border border-slate-700 bg-slate-900/60 p-6">
           <h2 className="text-xl font-semibold mb-2">Docs</h2>
           <p className="text-slate-300 mb-3">
-            Full write-ups live under{" "}
-            <code className="text-cyan-300">docs/demos/</code> in the monorepo.
+            Full write-ups live under <code className="text-cyan-300">docs/demos/</code> in the
+            monorepo.
           </p>
           <ul className="list-disc list-inside text-slate-300 space-y-1">
             <li>

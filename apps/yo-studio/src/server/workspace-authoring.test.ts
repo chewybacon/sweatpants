@@ -22,6 +22,8 @@ describe("yo-studio ordinary workspace authoring", () => {
     expect(source).toContain("return yield* context.workspace.list(input)");
     expect(source.match(/context\.record\(/g)).toHaveLength(2);
     expect(source).toContain('mechanism: "pull_id_key"');
-    expect(source).not.toMatch(/WorkspaceConnector|WorkspaceFence|protocolVersion|AWS|authentication/);
+    expect(source).not.toMatch(
+      /WorkspaceConnector|WorkspaceFence|protocolVersion|AWS|authentication/,
+    );
   });
 });

@@ -1,7 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { chatApp, withDefaultSystemPrompt } from '../server/chat-application'
+import { createFileRoute } from "@tanstack/react-router";
+import { chatApp, withDefaultSystemPrompt } from "../server/chat-application";
 
-export const Route = createFileRoute('/api/chat')({
+export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
       GET: ({ request }) => chatApp.handle(request),
@@ -9,4 +9,4 @@ export const Route = createFileRoute('/api/chat')({
       POST: async ({ request }) => chatApp.handle(await withDefaultSystemPrompt(request)),
     },
   },
-})
+});

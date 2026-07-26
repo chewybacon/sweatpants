@@ -3,12 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { getRuntimeMcpTool, runtimeMcpToolNames } from "./tool-registry.ts";
 
-const expectedTools = [
-  "ask_question",
-  "book_flight",
-  "calculator",
-  "tictactoe",
-];
+const expectedTools = ["ask_question", "book_flight", "calculator", "tictactoe"];
 
 describe("AgentCore ordinary tool registry", () => {
   it("ships every AgentCore-compatible ordinary yo-chat tool", () => {

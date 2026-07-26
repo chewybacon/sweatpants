@@ -5,10 +5,10 @@
  * Each elicitation key (pickFlight, pickSeat) has a handler that renders
  * a React component and returns the user's selection.
  */
-import { makePlugin, getElicitContext } from '@sweatpants/framework/chat'
-import { bookFlightTool, type Flight, type SeatMap } from './tool'
-import { FlightList } from './components/FlightList'
-import { SeatPicker } from './components/SeatPicker'
+import { makePlugin, getElicitContext } from "@sweatpants/framework/chat";
+import { bookFlightTool, type Flight, type SeatMap } from "./tool";
+import { FlightList } from "./components/FlightList";
+import { SeatPicker } from "./components/SeatPicker";
 
 // =============================================================================
 // CONTEXT TYPES
@@ -16,15 +16,15 @@ import { SeatPicker } from './components/SeatPicker'
 
 // Using type instead of interface to satisfy Record<string, unknown> constraint
 type PickFlightContext = {
-  flights: Flight[]
-  [key: string]: unknown
-}
+  flights: Flight[];
+  [key: string]: unknown;
+};
 
 type PickSeatContext = {
-  seatMap: SeatMap
-  flightInfo?: { airline: string; flightNumber: string }
-  [key: string]: unknown
-}
+  seatMap: SeatMap;
+  flightInfo?: { airline: string; flightNumber: string };
+  [key: string]: unknown;
+};
 
 // =============================================================================
 // PLUGIN DEFINITION
@@ -37,18 +37,18 @@ export const bookFlightPlugin = makePlugin(bookFlightTool)
      * Renders the FlightList component and returns the selected flight ID.
      */
     pickFlight: function* (req, ctx) {
-      const context = getElicitContext<PickFlightContext>(req)
-      const flights = context.flights ?? []
-      const cleanMessage = req.message
+      const context = getElicitContext<PickFlightContext>(req);
+      const flights = context.flights ?? [];
+      const cleanMessage = req.message;
 
       // Render the FlightList component and wait for user selection
       const result = yield* ctx.render(FlightList, {
         flights,
         message: cleanMessage,
-      })
+      });
 
       // Return the selection as an accept response
-      return { action: 'accept', content: result }
+      return { action: "accept", content: result };
     },
 
     /**
@@ -56,21 +56,25 @@ export const bookFlightPlugin = makePlugin(bookFlightTool)
      * Renders the SeatPicker component and returns the selected seat.
      */
     pickSeat: function* (req, ctx) {
-      const context = getElicitContext<PickSeatContext>(req)
-      const seatMap = context.seatMap ?? { rows: 10, seatsPerRow: ['A', 'B', 'C', 'D', 'E', 'F'], taken: [] }
-      const flightInfo = context.flightInfo
-      const cleanMessage = req.message
+      const context = getElicitContext<PickSeatContext>(req);
+      const seatMap = context.seatMap ?? {
+        rows: 10,
+        seatsPerRow: ["A", "B", "C", "D", "E", "F"],
+        taken: [],
+      };
+      const flightInfo = context.flightInfo;
+      const cleanMessage = req.message;
 
       // Build props, only including flightInfo if it exists
       const seatPickerProps = flightInfo
         ? { seatMap, message: cleanMessage, flightInfo }
-        : { seatMap, message: cleanMessage }
+        : { seatMap, message: cleanMessage };
 
       // Render the SeatPicker component and wait for user selection
-      const result = yield* ctx.render(SeatPicker, seatPickerProps)
+      const result = yield* ctx.render(SeatPicker, seatPickerProps);
 
       // Return the selection as an accept response
-      return { action: 'accept', content: result }
+      return { action: "accept", content: result };
     },
   })
-  .build()
+  .build();

@@ -23,13 +23,13 @@ import type { WebSocketWireMessage } from "./principal.ts";
  * @param url - The WebSocket server URL to connect to
  * @returns An OperativeTransport that receives requests and sends progress/responses
  */
-export function* createWebSocketOperative(
-  url: string
-): Operation<OperativeTransport> {
+export function* createWebSocketOperative(url: string): Operation<OperativeTransport> {
   return yield* resource(function* (provide) {
     const socket: WebSocketResource<string> = yield* useWebSocket(url);
-    const incomingChannel: Channel<OperativeIncoming, void> =
-      createChannel<OperativeIncoming, void>();
+    const incomingChannel: Channel<OperativeIncoming, void> = createChannel<
+      OperativeIncoming,
+      void
+    >();
 
     // Spawn a task to route incoming messages to the channel
     yield* spawn(function* () {
@@ -59,8 +59,7 @@ export function* createWebSocketOperative(
     });
 
     // Get the subscription from the channel
-    const subscription: Subscription<OperativeIncoming, void> =
-      yield* incomingChannel;
+    const subscription: Subscription<OperativeIncoming, void> = yield* incomingChannel;
 
     const transport: OperativeTransport = {
       *[Symbol.iterator]() {
@@ -69,9 +68,7 @@ export function* createWebSocketOperative(
 
       *send(message: OperativeOutgoing): Operation<void> {
         // Progress and Response messages are already in wire format
-        const wireMessage: WebSocketWireMessage = message as
-          | ProgressMessage
-          | ResponseMessage;
+        const wireMessage: WebSocketWireMessage = message as ProgressMessage | ResponseMessage;
         socket.send(JSON.stringify(wireMessage));
       },
     };

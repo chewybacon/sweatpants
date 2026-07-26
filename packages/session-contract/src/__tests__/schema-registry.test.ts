@@ -78,9 +78,9 @@ describe("DurableSchemaRegistry", () => {
       status: "invalid",
       issues: [{ message: "validated value is not bounded canonical JSON" }],
     });
-    expect(
-      safeSchemaIssues([{ message: "x".repeat(900), path: [{ key: "password" }] }]),
-    ).toEqual([{ message: "x".repeat(512), path: "password" }]);
+    expect(safeSchemaIssues([{ message: "x".repeat(900), path: [{ key: "password" }] }])).toEqual([
+      { message: "x".repeat(512), path: "password" },
+    ]);
   });
 
   it("commits descriptor digest to semantic identity, role, projections, and fidelity", () => {

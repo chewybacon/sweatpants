@@ -17,10 +17,10 @@
  *   4. Client finishes reading, releases
  *   5. Session is complete + refCount=0 → durable retention (buffer remains)
  */
-import { describe, it, expect } from './vitest-effection.ts'
-import { sleep, resource } from 'effection'
-import type { Operation, Subscription, Stream } from 'effection'
-import type { RetentionPolicy, TokenFrame } from '@sweatpants/durable-streams'
+import { describe, it, expect } from "./vitest-effection.ts";
+import { sleep, resource } from "effection";
+import type { Operation, Subscription, Stream } from "effection";
+import type { RetentionPolicy, TokenFrame } from "@sweatpants/durable-streams";
 import {
   createPullStream,
   createMockLLMStream,
@@ -28,7 +28,7 @@ import {
   useSessionRegistry,
   useTokenBufferStore,
   useSessionRegistryStore,
-} from './test-utils.ts'
+} from "./test-utils.ts";
 
 // =============================================================================
 // TEST HELPER: Create test registry with DI pattern
@@ -37,9 +37,9 @@ import {
 function* useTestRegistry(retentionPolicy?: RetentionPolicy) {
   // Setup DI contexts - returns the setup for direct access
   const { registry, bufferStore, registryStore } = yield* setupInMemoryDurableStreams<string>(
-    retentionPolicy ? { retentionPolicy } : {}
-  )
-  return { registry, bufferStore, registryStore }
+    retentionPolicy ? { retentionPolicy } : {},
+  );
+  return { registry, bufferStore, registryStore };
 }
 
 /**
@@ -48,14 +48,14 @@ function* useTestRegistry(retentionPolicy?: RetentionPolicy) {
  * and then use context accessors everywhere else.
  */
 function* useTestRegistryViaContext() {
-  yield* setupInMemoryDurableStreams<string>()
+  yield* setupInMemoryDurableStreams<string>();
 
   // Access via context - this is the recommended pattern for production code
-  const registry = yield* useSessionRegistry<string>()
-  const bufferStore = yield* useTokenBufferStore<string>()
-  const registryStore = yield* useSessionRegistryStore()
+  const registry = yield* useSessionRegistry<string>();
+  const bufferStore = yield* useTokenBufferStore<string>();
+  const registryStore = yield* useSessionRegistryStore();
 
-  return { registry, bufferStore, registryStore }
+  return { registry, bufferStore, registryStore };
 }
 
 function* waitForSessionStatus(
@@ -63,509 +63,509 @@ function* waitForSessionStatus(
   expected: string,
   timeoutMs = 1000,
 ): Operation<void> {
-  const startedAt = Date.now()
-  let current = yield* session.status()
+  const startedAt = Date.now();
+  let current = yield* session.status();
   while (current !== expected && Date.now() - startedAt < timeoutMs) {
-    yield* sleep(10)
-    current = yield* session.status()
+    yield* sleep(10);
+    current = yield* session.status();
   }
-  expect(current).toBe(expected)
+  expect(current).toBe(expected);
 }
 
 // =============================================================================
 // SCENARIO TESTS
 // =============================================================================
 
-describe('Session Registry', () => {
-  describe('DI Pattern', () => {
-    it('should work with context accessors after setup', function* () {
+describe("Session Registry", () => {
+  describe("DI Pattern", () => {
+    it("should work with context accessors after setup", function* () {
       // This test demonstrates the pure DI pattern
-      const { registry, bufferStore } = yield* useTestRegistryViaContext()
+      const { registry, bufferStore } = yield* useTestRegistryViaContext();
 
-      const session = yield* registry.acquire('di-test-1', {
-        source: createMockLLMStream('Hello DI'),
-      })
+      const session = yield* registry.acquire("di-test-1", {
+        source: createMockLLMStream("Hello DI"),
+      });
 
-      expect(session.id).toBe('di-test-1')
-      expect(yield* bufferStore.get('di-test-1')).not.toBe(null)
+      expect(session.id).toBe("di-test-1");
+      expect(yield* bufferStore.get("di-test-1")).not.toBe(null);
 
-      yield* waitForSessionStatus(session, 'complete')
-    })
+      yield* waitForSessionStatus(session, "complete");
+    });
 
-    it('should throw helpful error when contexts not configured', function* () {
+    it("should throw helpful error when contexts not configured", function* () {
       // Don't call setup - try to use accessor directly
-      let errorThrown = false
+      let errorThrown = false;
       try {
-        yield* useSessionRegistry<string>()
+        yield* useSessionRegistry<string>();
       } catch (err) {
-        errorThrown = true
-        expect((err as Error).message).toContain('SessionRegistry not configured')
-        expect((err as Error).message).toContain('setupDurableStreams')
+        errorThrown = true;
+        expect((err as Error).message).toContain("SessionRegistry not configured");
+        expect((err as Error).message).toContain("setupDurableStreams");
       }
-      expect(errorThrown).toBe(true)
-    })
-  })
+      expect(errorThrown).toBe(true);
+    });
+  });
 
-  describe('Basic Lifecycle', () => {
-    it('should create new session on first acquire', function* () {
-      const { registry, bufferStore } = yield* useTestRegistry()
+  describe("Basic Lifecycle", () => {
+    it("should create new session on first acquire", function* () {
+      const { registry, bufferStore } = yield* useTestRegistry();
 
-      const session = yield* registry.acquire('session-1', {
-        source: createMockLLMStream('Hello world'),
-      })
+      const session = yield* registry.acquire("session-1", {
+        source: createMockLLMStream("Hello world"),
+      });
 
-      expect(session.id).toBe('session-1')
-      expect(session.buffer).toBeDefined()
-      expect(yield* session.status()).toBe('streaming')
+      expect(session.id).toBe("session-1");
+      expect(session.buffer).toBeDefined();
+      expect(yield* session.status()).toBe("streaming");
 
       // Buffer should exist
-      const buffer = yield* bufferStore.get('session-1')
-      expect(buffer).not.toBe(null)
-    })
+      const buffer = yield* bufferStore.get("session-1");
+      expect(buffer).not.toBe(null);
+    });
 
-    it('should return same session on second acquire with incremented refCount', function* () {
-      const { registry, registryStore } = yield* useTestRegistry()
+    it("should return same session on second acquire with incremented refCount", function* () {
+      const { registry, registryStore } = yield* useTestRegistry();
 
-      const session1 = yield* registry.acquire('session-2', {
-        source: createMockLLMStream('Hello world'),
-      })
+      const session1 = yield* registry.acquire("session-2", {
+        source: createMockLLMStream("Hello world"),
+      });
 
       // Check initial refCount
-      const entry1 = yield* registryStore.get('session-2')
-      expect(entry1?.refCount).toBe(1)
+      const entry1 = yield* registryStore.get("session-2");
+      expect(entry1?.refCount).toBe(1);
 
       // Second acquire
-      const session2 = yield* registry.acquire('session-2')
+      const session2 = yield* registry.acquire("session-2");
 
       // Should be same session
-      expect(session2.id).toBe(session1.id)
-      expect(session2.buffer).toBe(session1.buffer)
+      expect(session2.id).toBe(session1.id);
+      expect(session2.buffer).toBe(session1.buffer);
 
       // RefCount should be 2
-      const entry2 = yield* registryStore.get('session-2')
-      expect(entry2?.refCount).toBe(2)
-    })
+      const entry2 = yield* registryStore.get("session-2");
+      expect(entry2?.refCount).toBe(2);
+    });
 
-    it('should auto-delete buffer when last release AND session complete', function* () {
-      const { registry, bufferStore, registryStore } = yield* useTestRegistry()
+    it("should auto-delete buffer when last release AND session complete", function* () {
+      const { registry, bufferStore, registryStore } = yield* useTestRegistry();
 
       // Create session with fast stream
-      const session = yield* registry.acquire('session-3', {
-        source: createMockLLMStream('Quick', { tokenDelayMs: 5 }),
-      })
+      const session = yield* registry.acquire("session-3", {
+        source: createMockLLMStream("Quick", { tokenDelayMs: 5 }),
+      });
 
       // Wait for stream to complete
-      yield* waitForSessionStatus(session, 'complete')
+      yield* waitForSessionStatus(session, "complete");
 
       // Release
-      yield* registry.release('session-3')
+      yield* registry.release("session-3");
 
       // Should be cleaned up
-      yield* sleep(20) // Give cleanup time to run
-      const entry = yield* registryStore.get('session-3')
-      expect(entry).toBe(null)
+      yield* sleep(20); // Give cleanup time to run
+      const entry = yield* registryStore.get("session-3");
+      expect(entry).toBe(null);
 
-      const buffer = yield* bufferStore.get('session-3')
-      expect(buffer).toBe(null)
-    })
+      const buffer = yield* bufferStore.get("session-3");
+      expect(buffer).toBe(null);
+    });
 
-    it('should retain streaming session after release', function* () {
-      const { registry, bufferStore } = yield* useTestRegistry()
+    it("should retain streaming session after release", function* () {
+      const { registry, bufferStore } = yield* useTestRegistry();
 
       // Create session with slow stream
-      const session = yield* registry.acquire('session-4', {
-        source: createMockLLMStream('Slow stream with many words', { tokenDelayMs: 50 }),
-      })
+      const session = yield* registry.acquire("session-4", {
+        source: createMockLLMStream("Slow stream with many words", { tokenDelayMs: 50 }),
+      });
 
-      expect(yield* session.status()).toBe('streaming')
+      expect(yield* session.status()).toBe("streaming");
 
       // Release while still streaming
-      yield* registry.release('session-4')
+      yield* registry.release("session-4");
 
       // Should NOT be cleaned up yet (deferred)
-      yield* sleep(20)
+      yield* sleep(20);
 
       // Buffer should still exist (LLM still writing)
-      const buffer = yield* bufferStore.get('session-4')
-      expect(buffer).not.toBe(null)
+      const buffer = yield* bufferStore.get("session-4");
+      expect(buffer).not.toBe(null);
 
       // Wait for stream to complete
-      yield* sleep(300)
+      yield* sleep(300);
 
       // Now should be cleaned up
-      yield* sleep(50)
-      const bufferAfter = yield* bufferStore.get('session-4')
-      expect(bufferAfter).toBe(null)
-    })
-  })
+      yield* sleep(50);
+      const bufferAfter = yield* bufferStore.get("session-4");
+      expect(bufferAfter).toBe(null);
+    });
+  });
 
-  describe('Client Disconnect/Reconnect (Option D)', () => {
-    it('should keep LLM writer alive when client disconnects mid-stream', function* () {
-      const { registry } = yield* useTestRegistry()
+  describe("Client Disconnect/Reconnect (Option D)", () => {
+    it("should keep LLM writer alive when client disconnects mid-stream", function* () {
+      const { registry } = yield* useTestRegistry();
 
       // Client connects, starts LLM
-      const session = yield* registry.acquire('reconnect-1', {
-        source: createMockLLMStream('Hello world from LLM', { tokenDelayMs: 20 }),
-      })
+      const session = yield* registry.acquire("reconnect-1", {
+        source: createMockLLMStream("Hello world from LLM", { tokenDelayMs: 20 }),
+      });
 
       // Read first token
       const reader: Subscription<TokenFrame<string>, void> = yield* createPullStream(
-        session.buffer
-      )
-      const firstToken = yield* reader.next()
-      expect((firstToken.value as TokenFrame<string>).token).toBe('Hello')
+        session.buffer,
+      );
+      const firstToken = yield* reader.next();
+      expect((firstToken.value as TokenFrame<string>).token).toBe("Hello");
 
       // Client "disconnects" (releases without reading all)
-      yield* registry.release('reconnect-1')
+      yield* registry.release("reconnect-1");
 
       // LLM writer should still be running - wait for it to finish
-      yield* sleep(150)
+      yield* sleep(150);
 
       // Buffer should have all tokens
-      const { tokens } = yield* session.buffer.read()
-      expect(tokens.join('')).toBe('Hello world from LLM')
+      const { tokens } = yield* session.buffer.read();
+      expect(tokens.join("")).toBe("Hello world from LLM");
 
       // Session should be complete
-      yield* waitForSessionStatus(session, 'complete')
-    })
+      yield* waitForSessionStatus(session, "complete");
+    });
 
-    it('should allow reconnect to resume reading from last LSN', function* () {
-      const { registry } = yield* useTestRegistry()
+    it("should allow reconnect to resume reading from last LSN", function* () {
+      const { registry } = yield* useTestRegistry();
 
       // Client 1 connects, starts LLM
-      const session1 = yield* registry.acquire('reconnect-2', {
-        source: createMockLLMStream('One Two Three Four', { tokenDelayMs: 20 }),
-      })
+      const session1 = yield* registry.acquire("reconnect-2", {
+        source: createMockLLMStream("One Two Three Four", { tokenDelayMs: 20 }),
+      });
 
       // Read first two tokens
       const reader1: Subscription<TokenFrame<string>, void> = yield* createPullStream(
-        session1.buffer
-      )
-      const t1 = yield* reader1.next()
-      expect((t1.value as TokenFrame<string>).token).toBe('One')
+        session1.buffer,
+      );
+      const t1 = yield* reader1.next();
+      expect((t1.value as TokenFrame<string>).token).toBe("One");
 
-      const t2 = yield* reader1.next()
-      expect((t2.value as TokenFrame<string>).token).toBe(' Two')
-      const disconnectLSN = (t2.value as TokenFrame<string>).lsn
+      const t2 = yield* reader1.next();
+      expect((t2.value as TokenFrame<string>).token).toBe(" Two");
+      const disconnectLSN = (t2.value as TokenFrame<string>).lsn;
 
       // Client 1 disconnects
-      yield* registry.release('reconnect-2')
+      yield* registry.release("reconnect-2");
 
       // Wait a bit, LLM continues
-      yield* sleep(50)
+      yield* sleep(50);
 
       // Client 2 reconnects from last LSN
-      const session2 = yield* registry.acquire('reconnect-2')
+      const session2 = yield* registry.acquire("reconnect-2");
 
       // Should be same buffer
-      expect(session2.buffer).toBe(session1.buffer)
+      expect(session2.buffer).toBe(session1.buffer);
 
       // Read remaining tokens from where we left off
       const reader2: Subscription<TokenFrame<string>, void> = yield* createPullStream(
         session2.buffer,
-        disconnectLSN
-      )
+        disconnectLSN,
+      );
 
-      const remaining: string[] = []
-      let result = yield* reader2.next()
+      const remaining: string[] = [];
+      let result = yield* reader2.next();
       while (!result.done) {
-        remaining.push((result.value as TokenFrame<string>).token)
-        result = yield* reader2.next()
+        remaining.push((result.value as TokenFrame<string>).token);
+        result = yield* reader2.next();
       }
 
-      expect(remaining.join('')).toBe(' Three Four')
-    })
+      expect(remaining.join("")).toBe(" Three Four");
+    });
 
-    it('should auto-delete session after reconnected client finishes reading', function* () {
-      const { registry, bufferStore, registryStore } = yield* useTestRegistry()
+    it("should auto-delete session after reconnected client finishes reading", function* () {
+      const { registry, bufferStore, registryStore } = yield* useTestRegistry();
 
       // Client 1 connects, starts fast LLM
-      yield* registry.acquire('reconnect-3', {
-        source: createMockLLMStream('Fast', { tokenDelayMs: 5 }),
-      })
+      yield* registry.acquire("reconnect-3", {
+        source: createMockLLMStream("Fast", { tokenDelayMs: 5 }),
+      });
 
       // Client 1 disconnects immediately
-      yield* registry.release('reconnect-3')
+      yield* registry.release("reconnect-3");
 
       // Wait for LLM to complete
-      yield* sleep(50)
+      yield* sleep(50);
 
       // Session still exists (durable retention, even when complete)
-      yield* sleep(50)
+      yield* sleep(50);
 
       // Client 2 reconnects - but session might be gone
       // Reconnect after completion should still work because the buffer is retained.
-      const entry = yield* registryStore.get('reconnect-3')
+      const entry = yield* registryStore.get("reconnect-3");
 
       // If entry is null, the session was cleaned up (expected in this case)
       // If entry exists, we can reconnect
       if (entry) {
-        yield* registry.acquire('reconnect-3')
-        yield* registry.release('reconnect-3')
+        yield* registry.acquire("reconnect-3");
+        yield* registry.release("reconnect-3");
       }
 
       // Final state: should be cleaned up
-      yield* sleep(50)
-      const bufferAfter = yield* bufferStore.get('reconnect-3')
-      expect(bufferAfter).toBe(null)
-    })
-  })
+      yield* sleep(50);
+      const bufferAfter = yield* bufferStore.get("reconnect-3");
+      expect(bufferAfter).toBe(null);
+    });
+  });
 
-  describe('Multi-Client', () => {
-    it('should track refCount for multiple concurrent clients', function* () {
-      const { registry, registryStore } = yield* useTestRegistry()
+  describe("Multi-Client", () => {
+    it("should track refCount for multiple concurrent clients", function* () {
+      const { registry, registryStore } = yield* useTestRegistry();
 
       // Client 1 connects
-      yield* registry.acquire('multi-1', {
-        source: createMockLLMStream('Shared stream', { tokenDelayMs: 20 }),
-      })
+      yield* registry.acquire("multi-1", {
+        source: createMockLLMStream("Shared stream", { tokenDelayMs: 20 }),
+      });
 
       // Client 2 connects
-      yield* registry.acquire('multi-1')
+      yield* registry.acquire("multi-1");
 
       // Client 3 connects
-      yield* registry.acquire('multi-1')
+      yield* registry.acquire("multi-1");
 
       // RefCount should be 3
-      const entry = yield* registryStore.get('multi-1')
-      expect(entry?.refCount).toBe(3)
-    })
+      const entry = yield* registryStore.get("multi-1");
+      expect(entry?.refCount).toBe(3);
+    });
 
-    it('should remove durable buffer after ALL clients release by default', function* () {
-      const { registry, bufferStore } = yield* useTestRegistry()
+    it("should remove durable buffer after ALL clients release by default", function* () {
+      const { registry, bufferStore } = yield* useTestRegistry();
 
       // Create session
-      yield* registry.acquire('multi-2', {
-        source: createMockLLMStream('Shared', { tokenDelayMs: 5 }),
-      })
-      yield* registry.acquire('multi-2')
-      yield* registry.acquire('multi-2')
+      yield* registry.acquire("multi-2", {
+        source: createMockLLMStream("Shared", { tokenDelayMs: 5 }),
+      });
+      yield* registry.acquire("multi-2");
+      yield* registry.acquire("multi-2");
 
       // Wait for completion
-      yield* sleep(50)
+      yield* sleep(50);
 
       // Release one client
-      yield* registry.release('multi-2')
-      yield* sleep(20)
+      yield* registry.release("multi-2");
+      yield* sleep(20);
 
       // Should still exist (refCount = 2)
-      let buffer = yield* bufferStore.get('multi-2')
-      expect(buffer).not.toBe(null)
+      let buffer = yield* bufferStore.get("multi-2");
+      expect(buffer).not.toBe(null);
 
       // Release second client
-      yield* registry.release('multi-2')
-      yield* sleep(20)
+      yield* registry.release("multi-2");
+      yield* sleep(20);
 
       // Should still exist (refCount = 1)
-      buffer = yield* bufferStore.get('multi-2')
-      expect(buffer).not.toBe(null)
+      buffer = yield* bufferStore.get("multi-2");
+      expect(buffer).not.toBe(null);
 
       // Release last client
-      yield* registry.release('multi-2')
-      yield* sleep(20)
+      yield* registry.release("multi-2");
+      yield* sleep(20);
 
       // Now refCount should be zero and buffer should be deleted.
-      buffer = yield* bufferStore.get('multi-2')
-      expect(buffer).toBe(null)
-    })
-  })
+      buffer = yield* bufferStore.get("multi-2");
+      expect(buffer).toBe(null);
+    });
+  });
 
-  describe('Error Handling', () => {
-    it('should throw when acquiring non-existent session without source', function* () {
-      const { registry } = yield* useTestRegistry()
+  describe("Error Handling", () => {
+    it("should throw when acquiring non-existent session without source", function* () {
+      const { registry } = yield* useTestRegistry();
 
-      let errorThrown = false
+      let errorThrown = false;
       try {
-        yield* registry.acquire('does-not-exist')
+        yield* registry.acquire("does-not-exist");
       } catch (err) {
-        errorThrown = true
-        expect((err as Error).message).toContain('no source provided')
+        errorThrown = true;
+        expect((err as Error).message).toContain("no source provided");
       }
 
-      expect(errorThrown).toBe(true)
-    })
+      expect(errorThrown).toBe(true);
+    });
 
-    it('should set error status when LLM stream fails', function* () {
-      const { registry } = yield* useTestRegistry()
+    it("should set error status when LLM stream fails", function* () {
+      const { registry } = yield* useTestRegistry();
 
       // Create a stream that fails
       const failingStream: Stream<string, void> = resource(function* (provide) {
-        let count = 0
+        let count = 0;
         yield* provide({
           *next(): Operation<IteratorResult<string, void>> {
-            count++
+            count++;
             if (count <= 2) {
-              yield* sleep(5)
-              return { done: false, value: `token${count}` }
+              yield* sleep(5);
+              return { done: false, value: `token${count}` };
             }
-            throw new Error('LLM Error')
+            throw new Error("LLM Error");
           },
-        })
-      })
+        });
+      });
 
-      const session = yield* registry.acquire('error-1', {
+      const session = yield* registry.acquire("error-1", {
         source: failingStream,
-      })
+      });
 
       // Wait for error
-      yield* sleep(50)
+      yield* sleep(50);
 
-      expect(yield* session.status()).toBe('error')
-    })
-  })
+      expect(yield* session.status()).toBe("error");
+    });
+  });
 
-  describe('Full E2E: Disconnect and Reconnect Flow', () => {
-    it('should handle complete flow: connect → read → disconnect → reconnect → finish → deleted', function* () {
-      const { registry, bufferStore } = yield* useTestRegistry()
-      const events: string[] = []
+  describe("Full E2E: Disconnect and Reconnect Flow", () => {
+    it("should handle complete flow: connect → read → disconnect → reconnect → finish → deleted", function* () {
+      const { registry, bufferStore } = yield* useTestRegistry();
+      const events: string[] = [];
 
       // 1. Client connects, starts LLM
-      events.push('client1:connect')
-      const session1 = yield* registry.acquire('e2e-session', {
-        source: createMockLLMStream('The quick brown fox', { tokenDelayMs: 30 }),
-      })
+      events.push("client1:connect");
+      const session1 = yield* registry.acquire("e2e-session", {
+        source: createMockLLMStream("The quick brown fox", { tokenDelayMs: 30 }),
+      });
 
       // 2. Read some tokens
       const reader1: Subscription<TokenFrame<string>, void> = yield* createPullStream(
-        session1.buffer
-      )
-      const t1 = yield* reader1.next()
-      events.push(`client1:read:${(t1.value as TokenFrame<string>).token}`)
-      const lastLSN = (t1.value as TokenFrame<string>).lsn
+        session1.buffer,
+      );
+      const t1 = yield* reader1.next();
+      events.push(`client1:read:${(t1.value as TokenFrame<string>).token}`);
+      const lastLSN = (t1.value as TokenFrame<string>).lsn;
 
       // 3. Client disconnects
-      events.push('client1:disconnect')
-      yield* registry.release('e2e-session')
+      events.push("client1:disconnect");
+      yield* registry.release("e2e-session");
 
       // 4. LLM keeps streaming
-      yield* sleep(50)
-      events.push('llm:still-streaming')
-      expect(yield* session1.status()).toBe('streaming')
+      yield* sleep(50);
+      events.push("llm:still-streaming");
+      expect(yield* session1.status()).toBe("streaming");
 
       // 5. Client reconnects
-      events.push('client2:reconnect')
-      const session2 = yield* registry.acquire('e2e-session')
-      expect(session2.buffer).toBe(session1.buffer)
+      events.push("client2:reconnect");
+      const session2 = yield* registry.acquire("e2e-session");
+      expect(session2.buffer).toBe(session1.buffer);
 
       // 6. Read remaining tokens
       const reader2: Subscription<TokenFrame<string>, void> = yield* createPullStream(
         session2.buffer,
-        lastLSN
-      )
+        lastLSN,
+      );
 
-      let result = yield* reader2.next()
+      let result = yield* reader2.next();
       while (!result.done) {
-        events.push(`client2:read:${(result.value as TokenFrame<string>).token}`)
-        result = yield* reader2.next()
+        events.push(`client2:read:${(result.value as TokenFrame<string>).token}`);
+        result = yield* reader2.next();
       }
-      events.push('client2:done-reading')
+      events.push("client2:done-reading");
 
       // 7. Release
-      events.push('client2:disconnect')
-      yield* registry.release('e2e-session')
+      events.push("client2:disconnect");
+      yield* registry.release("e2e-session");
 
       // 8. Should auto-delete durable buffer
-      yield* sleep(50)
-      const bufferAfter = yield* bufferStore.get('e2e-session')
-      expect(bufferAfter).toBe(null)
-      events.push('deleted:complete')
+      yield* sleep(50);
+      const bufferAfter = yield* bufferStore.get("e2e-session");
+      expect(bufferAfter).toBe(null);
+      events.push("deleted:complete");
 
       // Verify event flow
-      expect(events[0]).toBe('client1:connect')
-      expect(events[1]).toBe('client1:read:The')
-      expect(events[2]).toBe('client1:disconnect')
-      expect(events[3]).toBe('llm:still-streaming')
-      expect(events[4]).toBe('client2:reconnect')
-      expect(events.includes('client2:read: quick')).toBe(true)
-      expect(events.includes('client2:read: brown')).toBe(true)
-      expect(events.includes('client2:read: fox')).toBe(true)
-      expect(events[events.length - 1]).toBe('deleted:complete')
-    })
+      expect(events[0]).toBe("client1:connect");
+      expect(events[1]).toBe("client1:read:The");
+      expect(events[2]).toBe("client1:disconnect");
+      expect(events[3]).toBe("llm:still-streaming");
+      expect(events[4]).toBe("client2:reconnect");
+      expect(events.includes("client2:read: quick")).toBe(true);
+      expect(events.includes("client2:read: brown")).toBe(true);
+      expect(events.includes("client2:read: fox")).toBe(true);
+      expect(events[events.length - 1]).toBe("deleted:complete");
+    });
 
-    it('explicitly recovers an incomplete existing source only under a newer writer fence', function* () {
-      const { registry } = yield* useTestRegistry({ mode: 'retain_forever' })
+    it("explicitly recovers an incomplete existing source only under a newer writer fence", function* () {
+      const { registry } = yield* useTestRegistry({ mode: "retain_forever" });
       const stalled = resource<string, void>(function* (provide) {
         yield* provide({
           *next() {
-            yield* sleep(10_000)
-            return { done: true, value: undefined }
+            yield* sleep(10_000);
+            return { done: true, value: undefined };
           },
-        })
-      })
-      const opened = yield* registry.acquire('recover-source', {
+        });
+      });
+      const opened = yield* registry.acquire("recover-source", {
         source: stalled,
-        writer: { ownerId: 'host-a', activationEpoch: 1 },
-      })
-      let ordinarySourceFactories = 0
-      yield* registry.acquire('recover-source', {
+        writer: { ownerId: "host-a", activationEpoch: 1 },
+      });
+      let ordinarySourceFactories = 0;
+      yield* registry.acquire("recover-source", {
         source: () => {
-          ordinarySourceFactories += 1
-          return createMockLLMStream('must-not-start')
+          ordinarySourceFactories += 1;
+          return createMockLLMStream("must-not-start");
         },
-        writer: { ownerId: 'plain-acquire', activationEpoch: 99 },
-      })
-      expect(ordinarySourceFactories).toBe(0)
+        writer: { ownerId: "plain-acquire", activationEpoch: 99 },
+      });
+      expect(ordinarySourceFactories).toBe(0);
 
-      let factories = 0
-      const recovered = yield* registry.recover('recover-source', {
-        writer: { ownerId: 'host-b', activationEpoch: 2 },
+      let factories = 0;
+      const recovered = yield* registry.recover("recover-source", {
+        writer: { ownerId: "host-b", activationEpoch: 2 },
         recoverSource: () => {
-          factories += 1
-          return createMockLLMStream('recovered')
+          factories += 1;
+          return createMockLLMStream("recovered");
         },
-      })
-      yield* waitForSessionStatus(recovered, 'complete')
-      expect(factories).toBe(1)
-      expect((yield* opened.buffer.read(0)).tokens.join('')).toBe('recovered')
+      });
+      yield* waitForSessionStatus(recovered, "complete");
+      expect(factories).toBe(1);
+      expect((yield* opened.buffer.read(0)).tokens.join("")).toBe("recovered");
 
-      let staleFactoryCalled = false
+      let staleFactoryCalled = false;
       try {
-        yield* registry.recover('recover-source', {
-          writer: { ownerId: 'host-c', activationEpoch: 1 },
+        yield* registry.recover("recover-source", {
+          writer: { ownerId: "host-c", activationEpoch: 1 },
           recoverSource: () => {
-            staleFactoryCalled = true
-            return createMockLLMStream('wrong')
+            staleFactoryCalled = true;
+            return createMockLLMStream("wrong");
           },
-        })
+        });
       } catch {
         // Completed sessions and stale fences both reject before construction.
       }
-      expect(staleFactoryCalled).toBe(false)
-    })
+      expect(staleFactoryCalled).toBe(false);
+    });
 
-    it('should retain complete sessions with retain_forever policy', function* () {
+    it("should retain complete sessions with retain_forever policy", function* () {
       const { registry, bufferStore, registryStore } = yield* useTestRegistry({
-        mode: 'retain_forever',
-      })
+        mode: "retain_forever",
+      });
 
-      yield* registry.acquire('retain-forever', {
-        source: createMockLLMStream('keep me', { tokenDelayMs: 5 }),
-      })
+      yield* registry.acquire("retain-forever", {
+        source: createMockLLMStream("keep me", { tokenDelayMs: 5 }),
+      });
 
-      yield* sleep(50)
-      yield* registry.release('retain-forever')
-      yield* sleep(20)
+      yield* sleep(50);
+      yield* registry.release("retain-forever");
+      yield* sleep(20);
 
-      expect((yield* registryStore.get('retain-forever'))?.refCount).toBe(0)
-      expect(yield* bufferStore.get('retain-forever')).not.toBe(null)
-    })
+      expect((yield* registryStore.get("retain-forever"))?.refCount).toBe(0);
+      expect(yield* bufferStore.get("retain-forever")).not.toBe(null);
+    });
 
-    it('should delete complete sessions after ttl with retain_until_ttl policy', function* () {
+    it("should delete complete sessions after ttl with retain_until_ttl policy", function* () {
       const { registry, bufferStore } = yield* useTestRegistry({
-        mode: 'retain_until_ttl',
+        mode: "retain_until_ttl",
         ttlMs: 30,
-      })
+      });
 
-      yield* registry.acquire('retain-ttl', {
-        source: createMockLLMStream('expire me', { tokenDelayMs: 5 }),
-      })
+      yield* registry.acquire("retain-ttl", {
+        source: createMockLLMStream("expire me", { tokenDelayMs: 5 }),
+      });
 
-      yield* sleep(50)
-      yield* registry.release('retain-ttl')
-      expect(yield* bufferStore.get('retain-ttl')).not.toBe(null)
+      yield* sleep(50);
+      yield* registry.release("retain-ttl");
+      expect(yield* bufferStore.get("retain-ttl")).not.toBe(null);
 
-      yield* sleep(50)
-      expect(yield* bufferStore.get('retain-ttl')).toBe(null)
-    })
-  })
-})
+      yield* sleep(50);
+      expect(yield* bufferStore.get("retain-ttl")).toBe(null);
+    });
+  });
+});

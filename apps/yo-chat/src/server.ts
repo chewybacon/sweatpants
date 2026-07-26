@@ -1,3 +1,3 @@
-import handler from '@tanstack/react-start/server-entry'
+import handler from "@tanstack/react-start/server-entry";
 
-export default handler
+export default handler;

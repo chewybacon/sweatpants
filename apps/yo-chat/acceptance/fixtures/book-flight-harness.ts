@@ -164,10 +164,7 @@ export async function createBookFlightSubstrate(options: {
  * surfacing a foreign-tool failure as an ordinary result — the conversation
  * decides what to do about it.
  */
-function sampleMessage(
-  request: ModelProviderStreamRequest,
-  sequence: number,
-): AssistantMessage {
+function sampleMessage(request: ModelProviderStreamRequest, sequence: number): AssistantMessage {
   if (lastToolResultFailed(request)) {
     return bookFlightCall(`call-retry-${sequence}`);
   }

@@ -3,10 +3,10 @@
  *
  * Provides setup helpers for initializing the logging infrastructure.
  */
-import type { Operation } from 'effection'
-import type { LoggerFactory } from './types.ts'
-import { LoggerFactoryContext } from './context.ts'
-import { createPinoLoggerFactory } from './pino-logger.ts'
+import type { Operation } from "effection";
+import type { LoggerFactory } from "./types.ts";
+import { LoggerFactoryContext } from "./context.ts";
+import { createPinoLoggerFactory } from "./pino-logger.ts";
 
 /**
  * Setup logger infrastructure as a chat setup operation.
@@ -23,8 +23,8 @@ import { createPinoLoggerFactory } from './pino-logger.ts'
  * ```
  */
 export function* setupLogger(_ctx?: unknown): Operation<void> {
-  const factory = createPinoLoggerFactory()
-  yield* LoggerFactoryContext.set(factory)
+  const factory = createPinoLoggerFactory();
+  yield* LoggerFactoryContext.set(factory);
 }
 
 /**
@@ -41,6 +41,6 @@ export function* setupLogger(_ctx?: unknown): Operation<void> {
  */
 export function createLoggerSetup(factory: LoggerFactory) {
   return function* (_ctx?: unknown): Operation<void> {
-    yield* LoggerFactoryContext.set(factory)
-  }
+    yield* LoggerFactoryContext.set(factory);
+  };
 }

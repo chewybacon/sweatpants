@@ -14,12 +14,12 @@
  */
 
 // Tool definition
-export { bookFlightTool } from './tool'
-export type { BookFlightResult, Flight, SeatMap } from './tool'
+export { bookFlightTool } from "./tool";
+export type { BookFlightResult, Flight, SeatMap } from "./tool";
 
 // Plugin with elicit handlers
-export { bookFlightPlugin } from './plugin'
+export { bookFlightPlugin } from "./plugin";
 
 // Components (for testing or custom usage)
-export { FlightList } from './components/FlightList'
-export { SeatPicker } from './components/SeatPicker'
+export { FlightList } from "./components/FlightList";
+export { SeatPicker } from "./components/SeatPicker";

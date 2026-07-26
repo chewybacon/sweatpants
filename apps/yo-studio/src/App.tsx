@@ -52,7 +52,11 @@ function ToolCallGroup({ part }: { part: ChatToolCall }) {
     ...(part.result !== undefined
       ? {
           resultDetail: (
-            <CodeBlock code={JSON.stringify(part.result, null, 2)} language="json" maxHeight="40vh" />
+            <CodeBlock
+              code={JSON.stringify(part.result, null, 2)}
+              language="json"
+              maxHeight="40vh"
+            />
           ),
         }
       : {}),
@@ -87,15 +91,24 @@ function Message({ message }: { message: ChatMessage }) {
         switch (part.type) {
           case "text":
             return (
-              <ChatMessageBubble key={part.id} variant={message.role === "user" ? "filled" : "ghost"}>
-                <span className="chat-html-content" dangerouslySetInnerHTML={{ __html: part.rendered }} />
+              <ChatMessageBubble
+                key={part.id}
+                variant={message.role === "user" ? "filled" : "ghost"}
+              >
+                <span
+                  className="chat-html-content"
+                  dangerouslySetInnerHTML={{ __html: part.rendered }}
+                />
               </ChatMessageBubble>
             );
           case "reasoning":
             return (
               <ChatMessageBubble key={part.id} variant="ghost">
                 <Collapsible trigger="Reasoning" defaultIsOpen={false}>
-                  <span className="chat-html-content" dangerouslySetInnerHTML={{ __html: part.rendered }} />
+                  <span
+                    className="chat-html-content"
+                    dangerouslySetInnerHTML={{ __html: part.rendered }}
+                  />
                 </Collapsible>
               </ChatMessageBubble>
             );
@@ -191,7 +204,8 @@ export function App() {
     getOrCreateConversationId(window.localStorage),
   );
   const toolNames = useMemo(() => [...studioView.capabilityNames], []);
-  const placement = __YO_STUDIO_WORKSPACE_PLACEMENT__ === "aws" ? "AWS Lambda MicroVM" : "Local Effection runtime";
+  const placement =
+    __YO_STUDIO_WORKSPACE_PLACEMENT__ === "aws" ? "AWS Lambda MicroVM" : "Local Effection runtime";
   const runtimeLabel =
     __YO_STUDIO_WORKSPACE_PLACEMENT__ === "aws"
       ? `Node ${studioView.sandbox.image.node} · ARM64`
@@ -216,8 +230,8 @@ export function App() {
     >
       <VStack gap={6}>
         <Text type="body" color="secondary">
-          Author processless durable programs once, then project them through React, HTTP, and
-          MCP onto replaceable workspace compute.
+          Author processless durable programs once, then project them through React, HTTP, and MCP
+          onto replaceable workspace compute.
         </Text>
 
         <DurableChat key={conversationId} conversationId={conversationId} />
@@ -285,7 +299,9 @@ export function App() {
                 />
                 <ListItem
                   label="Network"
-                  endContent={<Badge variant="neutral" label={studioView.workspace.policy.network} />}
+                  endContent={
+                    <Badge variant="neutral" label={studioView.workspace.policy.network} />
+                  }
                 />
               </List>
               <Divider />

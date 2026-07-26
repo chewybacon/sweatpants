@@ -101,5 +101,3 @@ export interface SampleResult {
   /** Reason for stopping */
   finishReason?: "stop" | "length" | "content_filter" | "tool_calls";
 }
-
-

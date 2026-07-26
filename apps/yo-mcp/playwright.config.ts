@@ -1,11 +1,11 @@
-import { defineConfig, devices } from '@playwright/test'
+import { defineConfig, devices } from "@playwright/test";
 
-const isCI = process.env['CI']
-const reuseExistingServer = process.env['PLAYWRIGHT_REUSE_EXISTING_SERVER'] === '1' && !isCI
+const isCI = process.env["CI"];
+const reuseExistingServer = process.env["PLAYWRIGHT_REUSE_EXISTING_SERVER"] === "1" && !isCI;
 
 /**
  * Playwright config for yo-mcp E2E tests.
- * 
+ *
  * These tests drive the MCP Inspector UI to test tool flows:
  * - echo (simple, no backchannel)
  * - greet (sampling)
@@ -13,26 +13,26 @@ const reuseExistingServer = process.env['PLAYWRIGHT_REUSE_EXISTING_SERVER'] === 
  * - confirm (elicitation)
  */
 export default defineConfig({
-  testDir: './e2e',
+  testDir: "./e2e",
   fullyParallel: false, // Tools tests need sequential execution
   forbidOnly: !!isCI,
   retries: isCI ? 2 : 0,
   workers: 1, // Single worker to avoid port conflicts
-  reporter: isCI ? 'github' : 'html',
+  reporter: isCI ? "github" : "html",
   timeout: 120000, // Inspector-driven tool flows can be slow and occasionally need more than 60s
-  
+
   use: {
     // MCP Inspector runs on port 6274
-    baseURL: 'http://localhost:6274',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    baseURL: "http://localhost:6274",
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
   },
 
   projects: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
     },
   ],
 
@@ -40,21 +40,22 @@ export default defineConfig({
   webServer: [
     {
       // Start yo-mcp HTTP server
-      command: 'pnpm dev',
+      command: "pnpm dev",
       port: 3001, // Wait for this port to be listening
       reuseExistingServer,
       timeout: 30000,
-      stdout: 'pipe', // Show server output
+      stdout: "pipe", // Show server output
     },
     {
       // Start MCP Inspector (connects to yo-mcp)
       // DANGEROUSLY_OMIT_AUTH=true disables proxy auth for testing
       // MCP_AUTO_OPEN_ENABLED=false prevents auto-opening the browser
-      command: 'DANGEROUSLY_OMIT_AUTH=true MCP_AUTO_OPEN_ENABLED=false npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp',
+      command:
+        "DANGEROUSLY_OMIT_AUTH=true MCP_AUTO_OPEN_ENABLED=false npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp",
       port: 6274, // Inspector UI port
       reuseExistingServer,
       timeout: 30000,
-      stdout: 'pipe', // Show inspector output
+      stdout: "pipe", // Show inspector output
     },
   ],
-})
+});

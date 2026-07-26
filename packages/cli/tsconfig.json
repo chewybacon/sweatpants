@@ -1,12 +1,12 @@
 {
-  "extends": "../ts-config/tsconfig.package.json",
-  "compilerOptions": {
-    "composite": true,
-    "emitDeclarationOnly": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "ignoreDeprecations": "5.0"
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+    "extends": "../ts-config/tsconfig.package.json",
+    "compilerOptions": {
+        "composite": true,
+        "emitDeclarationOnly": true,
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "ignoreDeprecations": "5.0"
+    },
+    "include": ["src/**/*.ts"],
+    "exclude": ["node_modules", "dist"]
 }
