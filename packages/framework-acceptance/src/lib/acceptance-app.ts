@@ -190,6 +190,8 @@ export interface AcceptanceApplicationInspection {
 export interface AcceptanceApplicationOptions {
   maxToolIterations?: number;
   retainResponseStreams?: boolean;
+  /** Shared durable substrate used when a test-rig scenario replaces a Host generation. */
+  journalStore?: ProgramDriverJournalStore;
   durableDriverKind?: string;
   durableRoute?: ProgramRoute;
   createDurableDriver?(registry: DurableToolRegistry): ProgramDriver;
@@ -213,15 +215,17 @@ export function createAcceptanceApplication(
   };
   let toolSessionRegistry: ToolSessionRegistry | undefined;
   let toolSessionStore: ReturnType<typeof createInMemoryToolSessionStoreWithDebug> | undefined;
-  const journalStore = createInMemoryProgramDriverJournalStore({
-    keyring: createCapabilityKeyring("test-rig-acceptance", [
-      {
-        keyId: "test-v1",
-        secret: "test-rig-acceptance-secret-at-least-32-bytes",
-      },
-    ]),
-    schemaRegistry: programDriverSchemaRegistry(acceptanceDurableTool.artifacts.catalog),
-  });
+  const journalStore =
+    options.journalStore ??
+    createInMemoryProgramDriverJournalStore({
+      keyring: createCapabilityKeyring("test-rig-acceptance", [
+        {
+          keyId: "test-v1",
+          secret: "test-rig-acceptance-secret-at-least-32-bytes",
+        },
+      ]),
+      schemaRegistry: programDriverSchemaRegistry(acceptanceDurableTool.artifacts.catalog),
+    });
   inspect?.({
     journalStore,
     durableWorker,
