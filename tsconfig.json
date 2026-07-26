@@ -18,6 +18,9 @@
             "path": "./packages/journal-authority"
         },
         {
+            "path": "./packages/history-store"
+        },
+        {
             "path": "./packages/a2a"
         },
         {
