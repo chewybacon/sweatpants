@@ -119,7 +119,7 @@ const gates: Gate[] = [
     // it does not call an Effection or platform timer in the crank.
     exclude: [
       "__tests__",
-      "packages/session-contract/src/durable-types.ts",
+      "packages/session-contract/src/durable-authoring-types.ts",
       "packages/session-contract/src/authoring.ts",
     ],
   },
