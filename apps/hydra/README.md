@@ -10,19 +10,19 @@ Effection brings structured concurrency to JavaScript. Unlike Promises, every as
 
 The tutorial is organized in `docs/tutorial/`:
 
-| Chapter | Topic |
-|---------|-------|
-| 01 | The Problem with Promises |
-| 02 | Operations |
-| 03 | Actions |
-| 04 | Spawn |
-| 05 | Combinators (all, race) |
-| 06 | Resources |
-| 07 | Channels & Streams |
-| 08 | Signals |
-| 09 | Context |
-| 10 | Scope API |
-| 11 | Capstone Architecture |
+| Chapter | Topic                     |
+| ------- | ------------------------- |
+| 01      | The Problem with Promises |
+| 02      | Operations                |
+| 03      | Actions                   |
+| 04      | Spawn                     |
+| 05      | Combinators (all, race)   |
+| 06      | Resources                 |
+| 07      | Channels & Streams        |
+| 08      | Signals                   |
+| 09      | Context                   |
+| 10      | Scope API                 |
+| 11      | Capstone Architecture     |
 
 ## Setup
 

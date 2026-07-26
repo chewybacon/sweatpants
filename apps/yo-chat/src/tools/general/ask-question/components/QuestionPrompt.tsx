@@ -1,12 +1,12 @@
-import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
-import { useState } from 'react'
+import type { RenderableProps } from "@sweatpants/framework/chat/browser-rendering";
+import { useState } from "react";
 
 export interface QuestionPromptProps extends RenderableProps<{ answer: string }> {
-  question: string
+  question: string;
 }
 
 export function QuestionPrompt({ question, onRespond, disabled, response }: QuestionPromptProps) {
-  const [answer, setAnswer] = useState('')
+  const [answer, setAnswer] = useState("");
 
   if (disabled && response) {
     return (
@@ -14,15 +14,15 @@ export function QuestionPrompt({ question, onRespond, disabled, response }: Ques
         <p className="mb-2 text-sm text-muted-foreground">{question}</p>
         <p className="text-sm">{response.answer}</p>
       </div>
-    )
+    );
   }
 
   return (
     <form
       className="my-2 rounded-lg bg-muted p-3"
       onSubmit={(event) => {
-        event.preventDefault()
-        onRespond({ answer })
+        event.preventDefault();
+        onRespond({ answer });
       }}
     >
       <p className="mb-2 text-sm text-muted-foreground">{question}</p>
@@ -43,7 +43,7 @@ export function QuestionPrompt({ question, onRespond, disabled, response }: Ques
         </button>
       </div>
     </form>
-  )
+  );
 }
 
-QuestionPrompt.displayName = 'QuestionPrompt'
+QuestionPrompt.displayName = "QuestionPrompt";

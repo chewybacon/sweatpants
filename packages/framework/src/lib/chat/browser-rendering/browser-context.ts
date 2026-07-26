@@ -1,4 +1,4 @@
-import type { Operation } from 'effection'
+import type { Operation } from "effection";
 import {
   type RuntimePrimitive,
   type ComponentEmissionPayload,
@@ -6,55 +6,53 @@ import {
   type ComponentTypeLike,
   COMPONENT_EMISSION_TYPE,
   getComponentKey,
-} from './emissions.ts'
+} from "./emissions.ts";
 
-export type ApprovalResult =
-  | { approved: true }
-  | { approved: false; reason?: string }
+export type ApprovalResult = { approved: true } | { approved: false; reason?: string };
 
 export type PermissionType =
-  | 'geolocation'
-  | 'clipboard-read'
-  | 'clipboard-write'
-  | 'notifications'
-  | 'camera'
-  | 'microphone'
-  | (string & {})
+  | "geolocation"
+  | "clipboard-read"
+  | "clipboard-write"
+  | "notifications"
+  | "camera"
+  | "microphone"
+  | (string & {});
 
 export interface BaseToolContext {
-  callId: string
-  signal: AbortSignal
-  requestApproval(message: string): Operation<ApprovalResult>
-  requestPermission(type: PermissionType): Operation<ApprovalResult>
-  reportProgress(message: string): Operation<void>
+  callId: string;
+  signal: AbortSignal;
+  requestApproval(message: string): Operation<ApprovalResult>;
+  requestPermission(type: PermissionType): Operation<ApprovalResult>;
+  reportProgress(message: string): Operation<void>;
 }
 
 export interface BrowserToolContext extends BaseToolContext {
-  waitFor<TPayload, TResponse>(type: string, payload: TPayload): Operation<TResponse>
+  waitFor<TPayload, TResponse>(type: string, payload: TPayload): Operation<TResponse>;
 }
 
 export interface RenderableProps<TResponse> {
-  onRespond: (value: TResponse) => void
-  disabled?: boolean
-  response?: TResponse
+  onRespond: (value: TResponse) => void;
+  disabled?: boolean;
+  response?: TResponse;
 }
 
-export type ExtractResponse<TProps> = TProps extends RenderableProps<infer R> ? R : void
-export type UserProps<TProps> = Omit<TProps, keyof RenderableProps<unknown>>
+export type ExtractResponse<TProps> = TProps extends RenderableProps<infer R> ? R : void;
+export type UserProps<TProps> = Omit<TProps, keyof RenderableProps<unknown>>;
 
 export interface BrowserRenderContext extends BrowserToolContext {
   render<TProps, TResponse = ExtractResponse<TProps>>(
     Component: ComponentTypeLike<TProps>,
-    props: UserProps<TProps>
-  ): Operation<TResponse>
+    props: UserProps<TProps>,
+  ): Operation<TResponse>;
 }
 
 export interface ExecutionState {
-  callId: string
-  toolName: string
-  emissions: Emission<ComponentEmissionPayload>[]
-  startedAt: number
-  status: 'running' | 'complete' | 'error' | 'cancelled'
+  callId: string;
+  toolName: string;
+  emissions: Emission<ComponentEmissionPayload>[];
+  startedAt: number;
+  status: "running" | "complete" | "error" | "cancelled";
 }
 
 export function createExecutionState(callId: string, toolName: string): ExecutionState {
@@ -63,22 +61,20 @@ export function createExecutionState(callId: string, toolName: string): Executio
     toolName,
     emissions: [],
     startedAt: Date.now(),
-    status: 'running',
-  }
+    status: "running",
+  };
 }
 
 export interface CreateBrowserContextOptions {
-  runtime: RuntimePrimitive
-  callId: string
-  toolName: string
-  executionState?: ExecutionState
-  baseContext?: Partial<BaseToolContext>
-  signal?: AbortSignal
+  runtime: RuntimePrimitive;
+  callId: string;
+  toolName: string;
+  executionState?: ExecutionState;
+  baseContext?: Partial<BaseToolContext>;
+  signal?: AbortSignal;
 }
 
-export function createBrowserContext(
-  options: CreateBrowserContextOptions
-): BrowserRenderContext {
+export function createBrowserContext(options: CreateBrowserContextOptions): BrowserRenderContext {
   const {
     runtime,
     callId,
@@ -86,52 +82,54 @@ export function createBrowserContext(
     executionState = createExecutionState(callId, toolName),
     baseContext,
     signal = new AbortController().signal,
-  } = options
+  } = options;
 
   return {
     callId,
     signal,
-    requestApproval: baseContext?.requestApproval ?? function* (): Operation<ApprovalResult> {
-      return { approved: true }
-    },
-    requestPermission: baseContext?.requestPermission ?? function* (): Operation<ApprovalResult> {
-      return { approved: true }
-    },
+    requestApproval:
+      baseContext?.requestApproval ??
+      function* (): Operation<ApprovalResult> {
+        return { approved: true };
+      },
+    requestPermission:
+      baseContext?.requestPermission ??
+      function* (): Operation<ApprovalResult> {
+        return { approved: true };
+      },
     reportProgress: baseContext?.reportProgress ?? function* (): Operation<void> {},
     *waitFor<TPayload, TResponse>(type: string, payload: TPayload): Operation<TResponse> {
-      return yield* runtime.emit<TPayload, TResponse>(type, payload)
+      return yield* runtime.emit<TPayload, TResponse>(type, payload);
     },
     *render<TProps, TResponse = ExtractResponse<TProps>>(
       Component: ComponentTypeLike<TProps>,
-      props: UserProps<TProps>
+      props: UserProps<TProps>,
     ): Operation<TResponse> {
-      const componentKey = getComponentKey(Component)
+      const componentKey = getComponentKey(Component);
       const payload: ComponentEmissionPayload = {
         componentKey,
         props: props as Record<string, unknown>,
         _component: Component,
-      }
+      };
       const response = yield* runtime.emit<ComponentEmissionPayload, TResponse>(
         COMPONENT_EMISSION_TYPE,
-        payload
-      )
+        payload,
+      );
       executionState.emissions.push({
         id: `${callId}-render-${executionState.emissions.length + 1}`,
         type: COMPONENT_EMISSION_TYPE,
         payload,
         timestamp: Date.now(),
-        status: 'complete',
+        status: "complete",
         response,
-      } as Emission<ComponentEmissionPayload>)
-      return response
+      } as Emission<ComponentEmissionPayload>);
+      return response;
     },
-  }
+  };
 }
 
-export type ComponentUserProps<C extends ComponentTypeLike<any>> = C extends ComponentTypeLike<infer P>
-  ? UserProps<P>
-  : never
+export type ComponentUserProps<C extends ComponentTypeLike<any>> =
+  C extends ComponentTypeLike<infer P> ? UserProps<P> : never;
 
-export type ComponentResponse<C extends ComponentTypeLike<any>> = C extends ComponentTypeLike<infer P>
-  ? ExtractResponse<P>
-  : void
+export type ComponentResponse<C extends ComponentTypeLike<any>> =
+  C extends ComponentTypeLike<infer P> ? ExtractResponse<P> : void;

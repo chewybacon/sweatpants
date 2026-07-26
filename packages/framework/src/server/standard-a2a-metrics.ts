@@ -23,11 +23,21 @@ export function createStandardA2AMetrics(): {
   };
   return Object.freeze({
     observe(event) {
-      if (event.type === "request") {requests += 1;}
-      if (event.type === "error") {errors += 1;}
-      if (event.state) {increment(states, event.state);}
-      if (event.action) {increment(actions, event.action);}
-      if (event.code) {increment(errorCodes, event.code);}
+      if (event.type === "request") {
+        requests += 1;
+      }
+      if (event.type === "error") {
+        errors += 1;
+      }
+      if (event.state) {
+        increment(states, event.state);
+      }
+      if (event.action) {
+        increment(actions, event.action);
+      }
+      if (event.code) {
+        increment(errorCodes, event.code);
+      }
     },
     snapshot() {
       return Object.freeze({

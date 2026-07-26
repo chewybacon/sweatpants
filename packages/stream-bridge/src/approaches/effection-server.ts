@@ -18,27 +18,27 @@
  * - Runtime-specific (Deno vs Node)
  */
 
-import { run, spawn, call, type Operation, type Stream } from 'effection'
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { run, spawn, call, type Operation, type Stream } from "effection";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
-import { nodeRequestToWebRequest, sendWebResponse } from '../node-fetch-adapter.ts'
+import { nodeRequestToWebRequest, sendWebResponse } from "../node-fetch-adapter.ts";
 
 export interface EffectionHandler {
-  (request: Request): Operation<Response>
+  (request: Request): Operation<Response>;
 }
 
 export interface EffectionServerOptions {
-  port?: number
-  hostname?: string
+  port?: number;
+  hostname?: string;
 }
 
 export interface EffectionServer {
   /** The server address */
-  address: { port: number; hostname: string }
+  address: { port: number; hostname: string };
   /** Wait for server to close */
-  closed: Operation<void>
+  closed: Operation<void>;
   /** Stop the server */
-  stop: () => void
+  stop: () => void;
 }
 
 /**
@@ -63,57 +63,57 @@ export interface EffectionServer {
  * ```
  */
 export function createEffectionServer(
-  options: EffectionServerOptions & { handler: EffectionHandler }
+  options: EffectionServerOptions & { handler: EffectionHandler },
 ): Operation<EffectionServer> {
-  const { port = 3000, hostname = 'localhost', handler } = options
+  const { port = 3000, hostname = "localhost", handler } = options;
 
   return {
     *[Symbol.iterator]() {
-      let resolveClosed: () => void
+      let resolveClosed: () => void;
       const closedPromise = new Promise<void>((resolve) => {
-        resolveClosed = resolve
-      })
+        resolveClosed = resolve;
+      });
 
       const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-        handleRequestWithEffection(req, res, handler)
-      })
+        handleRequestWithEffection(req, res, handler);
+      });
 
       yield* call(async () => {
         await new Promise<void>((resolve) => {
-          server.listen(port, hostname, () => resolve())
-        })
-      })
+          server.listen(port, hostname, () => resolve());
+        });
+      });
 
-      const address = server.address() as { port: number; address: string }
+      const address = server.address() as { port: number; address: string };
 
       const stop = () => {
         server.close(() => {
-          resolveClosed()
-        })
-      }
+          resolveClosed();
+        });
+      };
 
       const closed: Operation<void> = {
         *[Symbol.iterator]() {
-          yield* call(() => closedPromise)
+          yield* call(() => closedPromise);
         },
-      }
+      };
 
       yield* spawn(function* () {
         yield* call(async () => {
           await new Promise<void>((resolve) => {
-            server.on('close', resolve)
-          })
-          resolveClosed()
-        })
-      })
+            server.on("close", resolve);
+          });
+          resolveClosed();
+        });
+      });
 
       return {
         address: { port: address.port, hostname: address.address || hostname },
         closed,
         stop,
-      }
+      };
     },
-  }
+  };
 }
 
 /**
@@ -124,26 +124,26 @@ export function createEffectionServer(
 function handleRequestWithEffection(
   req: IncomingMessage,
   res: ServerResponse,
-  handler: EffectionHandler
+  handler: EffectionHandler,
 ): void {
   run(function* () {
     try {
-      const host = req.headers.host ?? 'localhost'
-      const webRequest = nodeRequestToWebRequest(req, `http://${host}`)
-      const webResponse = yield* handler(webRequest)
-      yield* call(() => sendWebResponse(res, webResponse))
+      const host = req.headers.host ?? "localhost";
+      const webRequest = nodeRequestToWebRequest(req, `http://${host}`);
+      const webResponse = yield* handler(webRequest);
+      yield* call(() => sendWebResponse(res, webResponse));
     } catch (err) {
-      res.statusCode = 500
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: (err as Error).message }))
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: (err as Error).message }));
     }
   }).catch((err) => {
-    console.error('Handler error:', err)
+    console.error("Handler error:", err);
     if (!res.headersSent) {
-      res.statusCode = 500
-      res.end('Internal Server Error')
+      res.statusCode = 500;
+      res.end("Internal Server Error");
     }
-  })
+  });
 }
 
 /**
@@ -154,29 +154,29 @@ function handleRequestWithEffection(
  */
 export function createStreamBody<T>(
   stream: Stream<T, void>,
-  serialize: (value: T) => Uint8Array = (v) => new TextEncoder().encode(JSON.stringify(v) + '\n')
+  serialize: (value: T) => Uint8Array = (v) => new TextEncoder().encode(JSON.stringify(v) + "\n"),
 ): Operation<AsyncIterable<Uint8Array>> {
   return {
     *[Symbol.iterator]() {
-      const subscription = yield* stream
+      const subscription = yield* stream;
 
       const asyncIterable: AsyncIterable<Uint8Array> = {
         [Symbol.asyncIterator]() {
           return {
             next: async () => {
               const result = await run(function* () {
-                return yield* subscription.next()
-              })
+                return yield* subscription.next();
+              });
               if (result.done) {
-                return { done: true, value: undefined }
+                return { done: true, value: undefined };
               }
-              return { done: false, value: serialize(result.value) }
+              return { done: false, value: serialize(result.value) };
             },
-          }
+          };
         },
-      }
+      };
 
-      return asyncIterable
+      return asyncIterable;
     },
-  }
+  };
 }

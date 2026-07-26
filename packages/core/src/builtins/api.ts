@@ -21,17 +21,17 @@ function generateId(prefix: string): string {
 
 /**
  * The Sweatpants API for framework operations.
- * 
+ *
  * These operations route through the transport to the Operative (UI) side:
  * - elicit: Request structured data from the user
  * - notify: Send notifications/status updates
  * - sample: Request LLM completions
- * 
+ *
  * @example
  * ```ts
  * // Use operations directly
  * const result = yield* SweatpantsApi.operations.elicit({ ... });
- * 
+ *
  * // Add middleware
  * yield* SweatpantsApi.around({
  *   *sample([options], next) {
@@ -44,7 +44,7 @@ function generateId(prefix: string): string {
 export const SweatpantsApi = createApi("sweatpants", {
   /**
    * Elicit structured data from the user.
-   * 
+   *
    * @example
    * ```ts
    * const result = yield* elicit({
@@ -52,7 +52,7 @@ export const SweatpantsApi = createApi("sweatpants", {
    *   message: "Are you sure you want to proceed?",
    *   schema: z.boolean(),
    * });
-   * 
+   *
    * if (result.action === "accept") {
    *   console.log("User confirmed:", result.content);
    * }
@@ -105,7 +105,7 @@ export const SweatpantsApi = createApi("sweatpants", {
 
   /**
    * Send a notification to the user.
-   * 
+   *
    * @example
    * ```ts
    * yield* notify({ message: "Processing your request...", progress: 0.5 });
@@ -141,14 +141,14 @@ export const SweatpantsApi = createApi("sweatpants", {
 
   /**
    * Request an LLM completion.
-   * 
+   *
    * @example
    * ```ts
    * const result = yield* sample({
    *   prompt: "Explain quantum computing in simple terms",
    *   maxTokens: 150,
    * });
-   * 
+   *
    * console.log(result.text);
    * ```
    */

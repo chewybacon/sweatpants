@@ -1,6 +1,6 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { appendTestTokens, completeTestBuffer } from './test-writer.ts'
+import { appendTestTokens, completeTestBuffer } from "./test-writer.ts";
 
 import { createInMemoryBuffer } from "../in-memory-store.ts";
 import { toOffsetString } from "../protocol-headers.ts";

@@ -18,7 +18,9 @@ export function parseDurableNdjson(text: string): DurableFrame[] {
     .map((line) => JSON.parse(line) as DurableFrame);
 }
 
-export function unwrapEvents(frames: DurableFrame[]): Array<{ type?: string; [key: string]: unknown }> {
+export function unwrapEvents(
+  frames: DurableFrame[],
+): Array<{ type?: string; [key: string]: unknown }> {
   return frames.map((frame) => {
     if (frame.event && typeof frame.event === "object") {
       return frame.event as { type?: string; [key: string]: unknown };

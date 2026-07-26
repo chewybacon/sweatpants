@@ -4,15 +4,15 @@
  * Provides Effection-based dependency injection for loggers.
  * Use setupLogger() to configure logging, then useLogger() to get loggers.
  */
-import { createContext, type Operation } from 'effection'
-import type { Logger, LoggerFactory } from './types.ts'
-import { createNoopLogger } from './noop-logger.ts'
+import { createContext, type Operation } from "effection";
+import type { Logger, LoggerFactory } from "./types.ts";
+import { createNoopLogger } from "./noop-logger.ts";
 
 /**
  * Effection context for the logger factory.
  * Set via setupLogger() initializer hook.
  */
-export const LoggerFactoryContext = createContext<LoggerFactory>('LoggerFactory')
+export const LoggerFactoryContext = createContext<LoggerFactory>("LoggerFactory");
 
 /**
  * Get a logger for the given namespace.
@@ -27,9 +27,9 @@ export const LoggerFactoryContext = createContext<LoggerFactory>('LoggerFactory'
  * ```
  */
 export function* useLogger(name: string): Operation<Logger> {
-  const factory = yield* LoggerFactoryContext.get()
+  const factory = yield* LoggerFactoryContext.get();
   if (!factory) {
-    return createNoopLogger()
+    return createNoopLogger();
   }
-  return factory(name)
+  return factory(name);
 }

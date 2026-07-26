@@ -1,24 +1,18 @@
 {
-  "extends": "@sweatpants/ts-config/tsconfig.app.json",
-  "compilerOptions": {
-    "types": ["vite/client"],
-    "paths": {
-      "@/*": ["./src/*"]
+    "extends": "@sweatpants/ts-config/tsconfig.app.json",
+    "compilerOptions": {
+        "types": ["vite/client"],
+        "paths": {
+            "@/*": ["./src/*"]
+        },
+        "customConditions": ["development"]
     },
-    "customConditions": ["development"]
-  },
-  "include": [
-    "src",
-    "vite.config.ts",
-    "express-server.ts",
-    "components.json",
-    "todos.json"
-  ],
-  "exclude": ["dist", "node_modules"],
-  "references": [
-    { "path": "../../packages/framework/tsconfig.lib.json" },
-    { "path": "../../packages/model-provider-pi-ai/tsconfig.json" },
-    { "path": "../../packages/tool-runtime-local/tsconfig.json" },
-    { "path": "../../packages/tool-runtime-agentcore/tsconfig.json" }
-  ]
+    "include": ["src", "vite.config.ts", "express-server.ts", "components.json", "todos.json"],
+    "exclude": ["dist", "node_modules"],
+    "references": [
+        { "path": "../../packages/framework/tsconfig.lib.json" },
+        { "path": "../../packages/model-provider-pi-ai/tsconfig.json" },
+        { "path": "../../packages/tool-runtime-local/tsconfig.json" },
+        { "path": "../../packages/tool-runtime-agentcore/tsconfig.json" }
+    ]
 }

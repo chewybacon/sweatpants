@@ -62,11 +62,13 @@ const SamplePayloadSchema = z.object({
  */
 const SampleResultSchema = z.object({
   text: z.string(),
-  usage: z.object({
-    promptTokens: z.number(),
-    completionTokens: z.number(),
-    totalTokens: z.number(),
-  }).optional(),
+  usage: z
+    .object({
+      promptTokens: z.number(),
+      completionTokens: z.number(),
+      totalTokens: z.number(),
+    })
+    .optional(),
   model: z.string().optional(),
   finishReason: z.enum(["stop", "length", "content_filter", "tool_calls"]).optional(),
 });
@@ -74,10 +76,10 @@ const SampleResultSchema = z.object({
 /**
  * The Sweatpants Protocol defines the built-in operations that can be
  * invoked by the Principal (agent) and handled by the Operative (UI).
- * 
+ *
  * Use this protocol with `createImplementation` on the operative side
  * to handle elicit, notify, and sample requests.
- * 
+ *
  * @example
  * ```ts
  * // On the operative side
@@ -98,7 +100,7 @@ const SampleResultSchema = z.object({
  *     sample(payload) { ... },
  *   };
  * });
- * 
+ *
  * const handle = yield* inspector.attach();
  * yield* serveProtocol(handle, operativeTransport);
  * ```

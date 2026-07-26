@@ -1,15 +1,15 @@
 {
-  "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    // App: browser-based, no emit
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx",
-    "noEmit": true,
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        // App: browser-based, no emit
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "jsx": "react-jsx",
+        "noEmit": true,
 
-    // Apps can be a bit more lenient on unused vars
-    "noUnusedLocals": false,
-    "noUnusedParameters": false
-  },
-  "include": ["src"],
-  "exclude": ["dist", "node_modules"]
+        // Apps can be a bit more lenient on unused vars
+        "noUnusedLocals": false,
+        "noUnusedParameters": false
+    },
+    "include": ["src"],
+    "exclude": ["dist", "node_modules"]
 }

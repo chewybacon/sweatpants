@@ -183,16 +183,15 @@ export const NULL_RESULT_SCHEMA_DESCRIPTOR: PortableSchemaDescriptor =
   });
 
 /** Built-in descriptor for structured-child results (any bounded canonical JSON). */
-export const ANY_JSON_SCHEMA_DESCRIPTOR: PortableSchemaDescriptor =
-  createPortableSchemaDescriptor({
-    identity: "sweatpants/builtin/any-json",
-    role: "builtin",
-    version: "1",
-    vendor: "sweatpants",
-    inputProjection: true,
-    outputProjection: true,
-    fidelity: { input: "lossless", output: "lossless" },
-  });
+export const ANY_JSON_SCHEMA_DESCRIPTOR: PortableSchemaDescriptor = createPortableSchemaDescriptor({
+  identity: "sweatpants/builtin/any-json",
+  role: "builtin",
+  version: "1",
+  vendor: "sweatpants",
+  inputProjection: true,
+  outputProjection: true,
+  fidelity: { input: "lossless", output: "lossless" },
+});
 
 function isFidelityValue(value: unknown): value is "lossless" | "explicit" {
   return value === "lossless" || value === "explicit";

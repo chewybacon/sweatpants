@@ -29,14 +29,14 @@
  * Source of binding values extracted from a Request.
  */
 export interface BindingSource {
-  headers: Headers
-  searchParams: URLSearchParams
+  headers: Headers;
+  searchParams: URLSearchParams;
 }
 
 /**
  * A binder function that extracts a typed value from a BindingSource.
  */
-export type Binder<T> = (source: BindingSource) => T
+export type Binder<T> = (source: BindingSource) => T;
 
 // =============================================================================
 // PRIMITIVE BINDERS
@@ -56,23 +56,20 @@ export type Binder<T> = (source: BindingSource) => T
  * const sessionId = sessionIdBinder(source) // string | undefined
  * ```
  */
-export function stringParam(
-  headerName: string,
-  queryName: string
-): Binder<string | undefined> {
+export function stringParam(headerName: string, queryName: string): Binder<string | undefined> {
   return (source: BindingSource): string | undefined => {
-    const fromHeader = source.headers.get(headerName)
+    const fromHeader = source.headers.get(headerName);
     if (fromHeader !== null) {
-      return fromHeader
+      return fromHeader;
     }
 
-    const fromQuery = source.searchParams.get(queryName)
+    const fromQuery = source.searchParams.get(queryName);
     if (fromQuery !== null) {
-      return fromQuery
+      return fromQuery;
     }
 
-    return undefined
-  }
+    return undefined;
+  };
 }
 
 /**
@@ -90,29 +87,26 @@ export function stringParam(
  * const lastLSN = lastLSNBinder(source) // number | undefined
  * ```
  */
-export function intParam(
-  headerName: string,
-  queryName: string
-): Binder<number | undefined> {
+export function intParam(headerName: string, queryName: string): Binder<number | undefined> {
   return (source: BindingSource): number | undefined => {
-    const fromHeader = source.headers.get(headerName)
+    const fromHeader = source.headers.get(headerName);
     if (fromHeader !== null) {
-      const parsed = parseInt(fromHeader, 10)
+      const parsed = parseInt(fromHeader, 10);
       if (!isNaN(parsed)) {
-        return parsed
+        return parsed;
       }
     }
 
-    const fromQuery = source.searchParams.get(queryName)
+    const fromQuery = source.searchParams.get(queryName);
     if (fromQuery !== null) {
-      const parsed = parseInt(fromQuery, 10)
+      const parsed = parseInt(fromQuery, 10);
       if (!isNaN(parsed)) {
-        return parsed
+        return parsed;
       }
     }
 
-    return undefined
-  }
+    return undefined;
+  };
 }
 
 /**
@@ -125,40 +119,37 @@ export function intParam(
  * @param queryName - Query parameter name
  * @returns Binder that extracts boolean or undefined
  */
-export function boolParam(
-  headerName: string,
-  queryName: string
-): Binder<boolean | undefined> {
+export function boolParam(headerName: string, queryName: string): Binder<boolean | undefined> {
   const parseBoolean = (value: string): boolean | undefined => {
-    const lower = value.toLowerCase()
-    if (lower === 'true' || lower === '1' || lower === 'yes') {
-      return true
+    const lower = value.toLowerCase();
+    if (lower === "true" || lower === "1" || lower === "yes") {
+      return true;
     }
-    if (lower === 'false' || lower === '0' || lower === 'no') {
-      return false
+    if (lower === "false" || lower === "0" || lower === "no") {
+      return false;
     }
-    return undefined
-  }
+    return undefined;
+  };
 
   return (source: BindingSource): boolean | undefined => {
-    const fromHeader = source.headers.get(headerName)
+    const fromHeader = source.headers.get(headerName);
     if (fromHeader !== null) {
-      const parsed = parseBoolean(fromHeader)
+      const parsed = parseBoolean(fromHeader);
       if (parsed !== undefined) {
-        return parsed
+        return parsed;
       }
     }
 
-    const fromQuery = source.searchParams.get(queryName)
+    const fromQuery = source.searchParams.get(queryName);
     if (fromQuery !== null) {
-      const parsed = parseBoolean(fromQuery)
+      const parsed = parseBoolean(fromQuery);
       if (parsed !== undefined) {
-        return parsed
+        return parsed;
       }
     }
 
-    return undefined
-  }
+    return undefined;
+  };
 }
 
 // =============================================================================
@@ -185,18 +176,18 @@ export function boolParam(
  * ```
  */
 export function bindModel<T extends Record<string, Binder<unknown>>>(
-  binders: T
+  binders: T,
 ): Binder<{ [K in keyof T]: ReturnType<T[K]> }> {
   return (source: BindingSource): { [K in keyof T]: ReturnType<T[K]> } => {
-    const result = {} as { [K in keyof T]: ReturnType<T[K]> }
+    const result = {} as { [K in keyof T]: ReturnType<T[K]> };
 
     for (const key of Object.keys(binders) as Array<keyof T>) {
-      const binder = binders[key]!
-      result[key] = binder(source) as ReturnType<T[typeof key]>
+      const binder = binders[key]!;
+      result[key] = binder(source) as ReturnType<T[typeof key]>;
     }
 
-    return result
-  }
+    return result;
+  };
 }
 
 // =============================================================================
@@ -216,11 +207,11 @@ export function bindModel<T extends Record<string, Binder<unknown>>>(
  * ```
  */
 export function createBindingSource(request: Request): BindingSource {
-  const url = new URL(request.url)
+  const url = new URL(request.url);
   return {
     headers: request.headers,
     searchParams: url.searchParams,
-  }
+  };
 }
 
 /**
@@ -236,5 +227,5 @@ export function createBindingSource(request: Request): BindingSource {
  * ```
  */
 export function bindFromRequest<T>(request: Request, binder: Binder<T>): T {
-  return binder(createBindingSource(request))
+  return binder(createBindingSource(request));
 }

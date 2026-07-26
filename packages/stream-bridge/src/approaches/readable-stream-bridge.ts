@@ -13,11 +13,11 @@
  * - scope.run() overhead on every pull
  * - Mixing Effection and callback-based APIs
  */
-import { createScope, type Operation, type Scope, type Stream, type Subscription } from 'effection'
+import { createScope, type Operation, type Scope, type Stream, type Subscription } from "effection";
 
 export interface ReadableStreamBridgeOptions {
   /** Serialize each value to Uint8Array */
-  serialize?: (value: unknown) => Uint8Array
+  serialize?: (value: unknown) => Uint8Array;
 }
 
 /**
@@ -27,62 +27,63 @@ export interface ReadableStreamBridgeOptions {
  */
 export function createReadableStreamBridge<T>(
   stream: Stream<T, void>,
-  options: ReadableStreamBridgeOptions = {}
+  options: ReadableStreamBridgeOptions = {},
 ): Operation<Response> {
-  const serialize = options.serialize ?? ((v) => new TextEncoder().encode(JSON.stringify(v) + '\n'))
+  const serialize =
+    options.serialize ?? ((v) => new TextEncoder().encode(JSON.stringify(v) + "\n"));
 
-  const [scope, destroy] = createScope()
+  const [scope, destroy] = createScope();
 
-  let subscription: Subscription<T, void> | null = null
-  let initialized = false
-  let closed = false
+  let subscription: Subscription<T, void> | null = null;
+  let initialized = false;
+  let closed = false;
 
   const readableStream = new ReadableStream<Uint8Array>({
     async start() {
       await scope.run(function* () {
-        subscription = yield* stream
-        initialized = true
-      })
+        subscription = yield* stream;
+        initialized = true;
+      });
     },
 
     async pull(controller) {
       if (!initialized || !subscription || closed) {
-        controller.close()
-        return
+        controller.close();
+        return;
       }
 
       try {
-        const sub = subscription
+        const sub = subscription;
         const result = await scope.run(function* () {
-          return yield* sub.next()
-        })
+          return yield* sub.next();
+        });
 
         if (result.done) {
-          controller.close()
-          closed = true
-          await destroy()
+          controller.close();
+          closed = true;
+          await destroy();
         } else {
-          controller.enqueue(serialize(result.value))
+          controller.enqueue(serialize(result.value));
         }
       } catch (err) {
-        controller.error(err)
-        await destroy()
+        controller.error(err);
+        await destroy();
       }
     },
 
     async cancel() {
-      closed = true
-      await destroy()
+      closed = true;
+      await destroy();
     },
-  })
+  });
 
   return {
     *[Symbol.iterator]() {
       return new Response(readableStream, {
-        headers: { 'Content-Type': 'application/x-ndjson' },
-      })
+        headers: { "Content-Type": "application/x-ndjson" },
+      });
     },
-  }
+  };
 }
 
 /**
@@ -92,47 +93,48 @@ export function createReadableStreamBridge<T>(
 export function createReadableStreamFromScope<T>(
   scope: Scope,
   stream: Stream<T, void>,
-  options: ReadableStreamBridgeOptions = {}
+  options: ReadableStreamBridgeOptions = {},
 ): ReadableStream<Uint8Array> {
-  const serialize = options.serialize ?? ((v) => new TextEncoder().encode(JSON.stringify(v) + '\n'))
+  const serialize =
+    options.serialize ?? ((v) => new TextEncoder().encode(JSON.stringify(v) + "\n"));
 
-  let subscription: Subscription<T, void> | null = null
-  let initialized = false
-  let closed = false
+  let subscription: Subscription<T, void> | null = null;
+  let initialized = false;
+  let closed = false;
 
   return new ReadableStream<Uint8Array>({
     async start() {
       await scope.run(function* () {
-        subscription = yield* stream
-        initialized = true
-      })
+        subscription = yield* stream;
+        initialized = true;
+      });
     },
 
     async pull(controller) {
       if (!initialized || !subscription || closed) {
-        controller.close()
-        return
+        controller.close();
+        return;
       }
 
       try {
-        const sub = subscription
+        const sub = subscription;
         const result = await scope.run(function* () {
-          return yield* sub.next()
-        })
+          return yield* sub.next();
+        });
 
         if (result.done) {
-          controller.close()
-          closed = true
+          controller.close();
+          closed = true;
         } else {
-          controller.enqueue(serialize(result.value))
+          controller.enqueue(serialize(result.value));
         }
       } catch (err) {
-        controller.error(err)
+        controller.error(err);
       }
     },
 
     cancel() {
-      closed = true
+      closed = true;
     },
-  })
+  });
 }

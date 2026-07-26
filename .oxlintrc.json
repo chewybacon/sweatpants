@@ -1,14 +1,6 @@
 {
     "$schema": "./node_modules/oxlint/configuration_schema.json",
-    "plugins": [
-        "import",
-        "typescript",
-        "unicorn",
-        "oxc",
-        "react",
-        "promise",
-        "vitest"
-    ],
+    "plugins": ["import", "typescript", "unicorn", "oxc", "react", "promise", "vitest"],
     "categories": {
         "correctness": "error",
         "suspicious": "error"
@@ -153,11 +145,7 @@
             }
         },
         {
-            "files": [
-                "**/__tests__/**/*.ts",
-                "**/*.test.ts",
-                "**/testing/**/*.ts"
-            ],
+            "files": ["**/__tests__/**/*.ts", "**/*.test.ts", "**/testing/**/*.ts"],
             "rules": {
                 "no-restricted-globals": "off"
             }
@@ -173,11 +161,7 @@
             }
         },
         {
-            "files": [
-                "**/__tests__/**/*.ts",
-                "**/*.test.ts",
-                "**/testing/**/*.ts"
-            ],
+            "files": ["**/__tests__/**/*.ts", "**/*.test.ts", "**/testing/**/*.ts"],
             "rules": {
                 "sweatpants/documented-weld": "off"
             }
@@ -188,7 +172,5 @@
             "typecheck": true
         }
     },
-    "jsPlugins": [
-        "./scripts/oxlint-plugin-sweatpants.mjs"
-    ]
+    "jsPlugins": ["./scripts/oxlint-plugin-sweatpants.mjs"]
 }

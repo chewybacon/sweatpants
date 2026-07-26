@@ -14,10 +14,7 @@ import type {
   ProgressMessage,
   ResponseMessage,
 } from "../../types/transport.ts";
-import {
-  ProgressMessageSchema,
-  ResponseMessageSchema,
-} from "../../types/schemas.ts";
+import { ProgressMessageSchema, ResponseMessageSchema } from "../../types/schemas.ts";
 
 /**
  * Wire message types for WebSocket transport.
@@ -33,13 +30,13 @@ export type WebSocketWireMessage =
  * @param url - The WebSocket server URL to connect to
  * @returns A PrincipalTransport that sends requests and receives progress/responses
  */
-export function* createWebSocketPrincipal(
-  url: string
-): Operation<PrincipalTransport> {
+export function* createWebSocketPrincipal(url: string): Operation<PrincipalTransport> {
   return yield* resource(function* (provide) {
     const socket: WebSocketResource<string> = yield* useWebSocket(url);
-    const incomingChannel: Channel<PrincipalIncoming, void> =
-      createChannel<PrincipalIncoming, void>();
+    const incomingChannel: Channel<PrincipalIncoming, void> = createChannel<
+      PrincipalIncoming,
+      void
+    >();
 
     // Spawn a task to route incoming messages to the channel
     yield* spawn(function* () {
@@ -73,8 +70,7 @@ export function* createWebSocketPrincipal(
     });
 
     // Get the subscription from the channel
-    const subscription: Subscription<PrincipalIncoming, void> =
-      yield* incomingChannel;
+    const subscription: Subscription<PrincipalIncoming, void> = yield* incomingChannel;
 
     const transport: PrincipalTransport = {
       *[Symbol.iterator]() {

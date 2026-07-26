@@ -112,7 +112,7 @@ orphaned
 Terminal sessions are stopped explicitly:
 
 ```ts
-runtimeClient.stopRuntimeSession(handle)
+runtimeClient.stopRuntimeSession(handle);
 ```
 
 Paused states:

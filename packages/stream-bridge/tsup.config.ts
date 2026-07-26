@@ -1,10 +1,10 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
-    index: 'src/index.ts',
+    index: "src/index.ts",
   },
-  format: ['esm'],
+  format: ["esm"],
   dts: {
     // tsup's declaration bundler builds each entry independently. The package
     // tsconfig is composite for `tsc -b`, but composite mode makes those
@@ -17,4 +17,4 @@ export default defineConfig({
   },
   clean: true,
   sourcemap: true,
-})
+});

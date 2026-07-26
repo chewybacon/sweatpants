@@ -18,7 +18,6 @@ const FlightSchema = z.object({
   price: z.number(),
 });
 
-
 const SeatMapSchema = z.object({
   rows: z.number().int().min(1).max(20),
   seatsPerRow: z.array(z.string()).min(1),
@@ -42,9 +41,7 @@ const reserveSeat = defineEffect({
 });
 
 export const bookFlight = createDurableTool("book_flight", { version: "1.0.0" })
-  .description(
-    "Search flights, durably wait for a flight choice, then a seat choice, then reserve",
-  )
+  .description("Search flights, durably wait for a flight choice, then a seat choice, then reserve")
   .parameters(
     z.object({
       from: z.string().min(1).describe("Departure city or airport code"),

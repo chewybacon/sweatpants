@@ -1,11 +1,11 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
-    index: 'src/index.ts',
-    testing: 'src/testing/index.ts',
+    index: "src/index.ts",
+    testing: "src/testing/index.ts",
   },
-  format: ['esm'],
+  format: ["esm"],
   dts: {
     compilerOptions: {
       composite: false,
@@ -13,4 +13,4 @@ export default defineConfig({
   },
   clean: true,
   sourcemap: true,
-})
+});

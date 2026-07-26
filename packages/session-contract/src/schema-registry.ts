@@ -165,9 +165,7 @@ export function* validateRegisteredSchema(
 }
 
 /** Projects Standard Schema issues into bounded, redacted diagnostics. */
-export function safeSchemaIssues(
-  issues: readonly StandardSchemaV1.Issue[],
-): SafeSchemaIssue[] {
+export function safeSchemaIssues(issues: readonly StandardSchemaV1.Issue[]): SafeSchemaIssue[] {
   return issues.slice(0, MAX_ISSUES).map((issue) => {
     const message =
       typeof issue.message === "string"
@@ -178,18 +176,14 @@ export function safeSchemaIssues(
   });
 }
 
-function issuePath(
-  path: StandardSchemaV1.Issue["path"],
-): string | undefined {
+function issuePath(path: StandardSchemaV1.Issue["path"]): string | undefined {
   if (!path || path.length === 0) {
     return undefined;
   }
   const rendered = path
     .map((segment) => {
       const key =
-        typeof segment === "object" && segment !== null && "key" in segment
-          ? segment.key
-          : segment;
+        typeof segment === "object" && segment !== null && "key" in segment ? segment.key : segment;
       return typeof key === "symbol" ? "<symbol>" : String(key);
     })
     .join(".");
@@ -202,9 +196,7 @@ function builtinEntries(): DurableSchemaRegistryEntry[] {
     {
       descriptor: NULL_RESULT_SCHEMA_DESCRIPTOR,
       schema: standardSchemaOf("sweatpants", (value) =>
-        value === null
-          ? { value: null }
-          : { issues: [{ message: "value must be null" }] },
+        value === null ? { value: null } : { issues: [{ message: "value must be null" }] },
       ),
     },
     {

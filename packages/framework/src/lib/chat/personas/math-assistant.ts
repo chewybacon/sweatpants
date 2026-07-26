@@ -1,8 +1,8 @@
-import { definePersona } from './types.ts'
+import { definePersona } from "./types.ts";
 
 export const mathAssistant = definePersona({
-  name: 'math-assistant',
-  description: 'Precise calculator and math helper',
+  name: "math-assistant",
+  description: "Precise calculator and math helper",
 
   // Dynamic system prompt based on config
   systemPrompt: ({ config }) => `You are a precise math assistant.
@@ -10,42 +10,42 @@ export const mathAssistant = definePersona({
 When asked math questions:
 1. Use the calculator tool for ALL arithmetic operations - never calculate mentally
 2. ${
-  config['showSteps']
-      ? 'Show your reasoning step by step before using the calculator'
-      : 'Be concise and direct'
+    config["showSteps"]
+      ? "Show your reasoning step by step before using the calculator"
+      : "Be concise and direct"
   }
 3. After getting calculator results, explain what the result means
 4. If the user asks something unrelated to math, politely redirect them
 
 Always double-check your work.`,
 
-  requiredTools: ['calculator'],
+  requiredTools: ["calculator"],
   optionalTools: [],
 
   effortLevels: {
     low: {
       models: {
-        ollama: 'qwen2.5:3b',
-        openai: 'gpt-4o-mini',
+        ollama: "qwen2.5:3b",
+        openai: "gpt-4o-mini",
       },
     },
     medium: {
       models: {
-        ollama: 'qwen2.5:7b',
-        openai: 'gpt-4o',
+        ollama: "qwen2.5:7b",
+        openai: "gpt-4o",
       },
     },
     high: {
       models: {
-        ollama: 'qwen2.5:14b',
-        openai: 'o1',
+        ollama: "qwen2.5:14b",
+        openai: "o1",
       },
     },
   },
-  defaultEffort: 'medium',
+  defaultEffort: "medium",
 
   configurable: {
-    showSteps: { type: 'boolean', default: true },
+    showSteps: { type: "boolean", default: true },
   },
 
   // Math doesn't need thinking model necessarily, but could use one
@@ -53,4 +53,4 @@ Always double-check your work.`,
     thinking: false,
     streaming: true,
   },
-})
+});

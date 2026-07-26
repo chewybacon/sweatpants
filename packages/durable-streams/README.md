@@ -42,23 +42,24 @@ Retention is configured by framework setup/session-registry wiring using `Retent
 Example:
 
 ```ts
-yield* setupDurableStreams({
-  bufferStore,
-  registryStore,
-  retentionPolicy: { mode: 'retain_until_ttl', ttlMs: 60_000 },
-})
+yield *
+    setupDurableStreams({
+        bufferStore,
+        registryStore,
+        retentionPolicy: { mode: "retain_until_ttl", ttlMs: 60_000 },
+    });
 ```
 
 ## Integration Pattern (Framework Consumer)
 
 ```ts
 import {
-  createProtocolReadResponse,
-  createProtocolMutationResponse,
-  parseOffsetParam,
-  parseLiveMode,
-  parseTimeoutMs,
-} from '@sweatpants/durable-streams'
+    createProtocolReadResponse,
+    createProtocolMutationResponse,
+    parseOffsetParam,
+    parseLiveMode,
+    parseTimeoutMs,
+} from "@sweatpants/durable-streams";
 ```
 
 The framework durable handler owns chat/provider orchestration and passes protocol-level context/stores to these helpers.

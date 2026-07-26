@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const children = new Set<ChildProcess>();
 afterEach(async () => {
-  for (const child of children) {killProcessTree(child);}
+  for (const child of children) {
+    killProcessTree(child);
+  }
   children.clear();
 });
 
@@ -119,7 +121,9 @@ async function getTask(port: number, taskId: string) {
   return (await response.json()) as TaskWire;
 }
 function killProcessTree(child: ChildProcess): void {
-  if (!child.pid) {return;}
+  if (!child.pid) {
+    return;
+  }
   try {
     process.kill(-child.pid, "SIGKILL");
   } catch {
@@ -127,7 +131,9 @@ function killProcessTree(child: ChildProcess): void {
   }
 }
 function exited(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) {return Promise.resolve();}
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve();
+  }
   return new Promise((resolve) => child.once("exit", () => resolve()));
 }
 type TaskWire = {

@@ -1,13 +1,13 @@
 export interface ResolvedPersona {
-  name: string
-  systemPrompt: string
-  tools: string[]
-  model?: Record<string, string>
+  name: string;
+  systemPrompt: string;
+  tools: string[];
+  model?: Record<string, string>;
   capabilities: {
-    thinking: boolean
-    streaming: boolean
-    tools: string[]
-  }
+    thinking: boolean;
+    streaming: boolean;
+    tools: string[];
+  };
 }
 
 export type PersonaResolver = (
@@ -18,4 +18,4 @@ export type PersonaResolver = (
   enableOptionalTools?: string[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   effort?: any,
-) => ResolvedPersona
+) => ResolvedPersona;

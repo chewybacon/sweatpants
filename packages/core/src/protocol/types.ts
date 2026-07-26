@@ -71,17 +71,17 @@ export type InvocationResult<M extends Methods, N extends keyof M = keyof M> = S
  * A handler function for a single method.
  * Takes input args and returns a stream of progress/result.
  */
-export type MethodHandler<M extends Methods, N extends keyof M> = 
-  (args: z.infer<M[N]["input"]>) => Stream<z.infer<M[N]["progress"]>, z.infer<M[N]["output"]>>;
+export type MethodHandler<M extends Methods, N extends keyof M> = (
+  args: z.infer<M[N]["input"]>,
+) => Stream<z.infer<M[N]["progress"]>, z.infer<M[N]["output"]>>;
 
 /**
  * A record of method handlers matching a protocol's methods.
  */
 export type MethodHandlers<M extends Methods> = {
-  [N in keyof M]: (args: z.infer<M[N]["input"]>) => Stream<
-    z.infer<M[N]["progress"]>,
-    z.infer<M[N]["output"]>
-  >;
+  [N in keyof M]: (
+    args: z.infer<M[N]["input"]>,
+  ) => Stream<z.infer<M[N]["progress"]>, z.infer<M[N]["output"]>>;
 };
 
 // ============================================================================
@@ -105,10 +105,10 @@ export type Implementation<M extends Methods> = () => Operation<MethodHandlers<M
 export interface Handle<M extends Methods> {
   /** The protocol this handle implements */
   protocol: Protocol<M>;
-  
+
   /** The method handlers */
   methods: MethodHandlers<M>;
-  
+
   /** Invoke a method by name with arguments */
   invoke<N extends keyof M>(args: InvocationArgs<M, N>): InvocationResult<M, N>;
 }
@@ -124,7 +124,7 @@ export interface Handle<M extends Methods> {
 export interface Inspector<M extends Methods> {
   /** The protocol definition */
   protocol: Protocol<M>;
-  
+
   /** Attach the implementation and get a handle */
   attach(): Operation<Handle<M>>;
 }

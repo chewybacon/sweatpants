@@ -21,9 +21,9 @@
  * Capabilities reported by the chat session.
  */
 export interface Capabilities {
-  thinking: boolean
-  streaming: boolean
-  tools: string[]
+  thinking: boolean;
+  streaming: boolean;
+  tools: string[];
 }
 
 // =============================================================================
@@ -35,7 +35,7 @@ export interface Capabilities {
  * Plugins extend this interface for their own metadata.
  */
 export interface BaseContentMetadata {
-  [key: string]: unknown
+  [key: string]: unknown;
 }
 
 /**
@@ -46,9 +46,9 @@ export interface BaseContentMetadata {
  */
 export interface ContentMetadata extends BaseContentMetadata {
   /** Whether this content is inside a code fence */
-  inCodeFence?: boolean
+  inCodeFence?: boolean;
   /** The language of the code fence (e.g., 'python', 'typescript') */
-  language?: string
+  language?: string;
 }
 
 // =============================================================================
@@ -63,11 +63,11 @@ export interface ContentMetadata extends BaseContentMetadata {
  */
 export interface RenderDelta {
   /** The new content added since prev frame */
-  added: string
+  added: string;
   /** HTML for just the new content (if available) */
-  addedHtml?: string
+  addedHtml?: string;
   /** Starting character offset where new content begins */
-  startOffset: number
+  startOffset: number;
 }
 
 /**
@@ -78,11 +78,11 @@ export interface RenderDelta {
  */
 export interface RevealHint {
   /** How to reveal the content */
-  type: 'instant' | 'character' | 'word' | 'line'
+  type: "instant" | "character" | "word" | "line";
   /** Suggested duration in ms (for non-instant reveals) */
-  duration?: number
+  duration?: number;
   /** Whether this is the final chunk */
-  isComplete?: boolean
+  isComplete?: boolean;
 }
 
 // =============================================================================
@@ -93,9 +93,9 @@ export interface RevealHint {
  * Token usage statistics from the LLM.
  */
 export interface TokenUsage {
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
 }
 
 // =============================================================================
@@ -106,17 +106,17 @@ export interface TokenUsage {
  * Information about a tool call (normalized format).
  */
 export interface ToolCallInfo {
-  id: string
-  name: string
-  arguments: Record<string, unknown>
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
 }
 
 /**
  * Result from server-side tool execution.
  */
 export interface ServerToolResult {
-  id: string
-  name: string
-  content: string
-  isError: boolean
+  id: string;
+  name: string;
+  content: string;
+  isError: boolean;
 }

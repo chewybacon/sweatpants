@@ -22,21 +22,41 @@ describe("canonical AG-UI chat fold", () => {
     ]);
 
     expect(state.isStreaming).toBe(false);
-    expect(state.messages).toContainEqual({ id: "assistant-1", role: "assistant", content: "hello" });
-    expect(state.finalizedParts["assistant-1"]?.[0]).toMatchObject({ type: "text", content: "hello" });
+    expect(state.messages).toContainEqual({
+      id: "assistant-1",
+      role: "assistant",
+      content: "hello",
+    });
+    expect(state.finalizedParts["assistant-1"]?.[0]).toMatchObject({
+      type: "text",
+      content: "hello",
+    });
   });
 
   it("assembles AG-UI tool calls and results directly", () => {
     const state = fold([
       { type: "RUN_STARTED", ...correlation },
-      { type: "TOOL_CALL_START", toolCallId: "call-1", toolCallName: "search", parentMessageId: "assistant-tools-1" },
+      {
+        type: "TOOL_CALL_START",
+        toolCallId: "call-1",
+        toolCallName: "search",
+        parentMessageId: "assistant-tools-1",
+      },
       { type: "TOOL_CALL_ARGS", toolCallId: "call-1", delta: '{"query":"hi"}' },
       { type: "TOOL_CALL_END", toolCallId: "call-1" },
-      { type: "TOOL_CALL_RESULT", messageId: "tool-1", toolCallId: "call-1", toolCallName: "search", content: "found" },
+      {
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool-1",
+        toolCallId: "call-1",
+        toolCallName: "search",
+        content: "found",
+      },
       { type: "RUN_FINISHED", ...correlation, outcome: { type: "success" } },
     ]);
 
-    expect(state.messages.find((message) => message.id === "assistant-tools-1")?.tool_calls?.[0]).toMatchObject({
+    expect(
+      state.messages.find((message) => message.id === "assistant-tools-1")?.tool_calls?.[0],
+    ).toMatchObject({
       id: "call-1",
       function: { name: "search", arguments: { query: "hi" } },
     });
@@ -60,14 +80,16 @@ describe("canonical AG-UI chat fold", () => {
         ...correlation,
         outcome: {
           type: "interrupt",
-          interrupts: [{
-            id: "approve-1",
-            reason: "approval",
-            toolCallId: "call-1",
-            message: "Approve?",
-            responseSchema: { type: "object" },
-            metadata: { "sweatpants/toolName": "delete", "sweatpants/key": "approve" },
-          }],
+          interrupts: [
+            {
+              id: "approve-1",
+              reason: "approval",
+              toolCallId: "call-1",
+              message: "Approve?",
+              responseSchema: { type: "object" },
+              metadata: { "sweatpants/toolName": "delete", "sweatpants/key": "approve" },
+            },
+          ],
         },
       },
     ]);
@@ -89,7 +111,9 @@ describe("canonical AG-UI chat fold", () => {
       { type: "RUN_FINISHED", ...correlation, outcome: { type: "success" } },
     ];
     const replay = await run(function* () {
-      return yield* replayFramesToConversation(events.map((event, index) => ({ lsn: index + 1, event })));
+      return yield* replayFramesToConversation(
+        events.map((event, index) => ({ lsn: index + 1, event })),
+      );
     });
 
     expect(replay.events).toEqual(events);

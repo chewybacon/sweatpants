@@ -21,20 +21,27 @@ describe("SweatpantsProtocol", () => {
       // Create protocol implementation
       const inspector = createImplementation(SweatpantsProtocol, function* () {
         return {
-          elicit(payload): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.elicit.output>> {
+          elicit(
+            payload,
+          ): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.elicit.output>> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
                   // Simulate user accepting with a value
                   return {
                     done: true,
-                    value: { action: "accept" as const, content: `confirmed: ${payload.message}` } as const,
+                    value: {
+                      action: "accept" as const,
+                      content: `confirmed: ${payload.message}`,
+                    } as const,
                   };
                 },
               });
             });
           },
-          notify(_payload): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.notify.output>> {
+          notify(
+            _payload,
+          ): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.notify.output>> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -43,13 +50,16 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          sample(payload): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.sample.output>> {
+          sample(
+            payload,
+          ): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.sample.output>> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
-                  const prompt = typeof payload.prompt === "string" 
-                    ? payload.prompt 
-                    : payload.prompt.map((m: { content: string }) => m.content).join(" ");
+                  const prompt =
+                    typeof payload.prompt === "string"
+                      ? payload.prompt
+                      : payload.prompt.map((m: { content: string }) => m.content).join(" ");
                   return {
                     done: true,
                     value: { text: `Response to: ${prompt}` },
@@ -100,7 +110,9 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          notify(payload): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.notify.output>> {
+          notify(
+            payload,
+          ): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.notify.output>> {
             return resource(function* (provide) {
               notifications.push(payload.message);
               yield* provide({
@@ -163,7 +175,9 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          sample(_payload): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.sample.output>> {
+          sample(
+            _payload,
+          ): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.sample.output>> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -217,12 +231,20 @@ describe("SweatpantsProtocol", () => {
           },
           notify(): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.notify.output>> {
             return resource(function* (provide) {
-              yield* provide({ *next() { return { done: true, value: { ok: true } }; } });
+              yield* provide({
+                *next() {
+                  return { done: true, value: { ok: true } };
+                },
+              });
             });
           },
           sample(): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.sample.output>> {
             return resource(function* (provide) {
-              yield* provide({ *next() { return { done: true, value: { text: "" } }; } });
+              yield* provide({
+                *next() {
+                  return { done: true, value: { text: "" } };
+                },
+              });
             });
           },
         };

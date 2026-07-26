@@ -14,13 +14,17 @@
  * const session = yield* registry.acquire(sessionId, { source: llmStream })
  * ```
  */
-import type { Operation } from 'effection'
-import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from '@sweatpants/durable-streams'
+import type { Operation } from "effection";
+import type {
+  TokenBufferStore,
+  SessionRegistryStore,
+  SessionRegistry,
+} from "@sweatpants/durable-streams";
 import {
   TokenBufferStoreContext,
   SessionRegistryStoreContext,
   SessionRegistryContext,
-} from './contexts.ts'
+} from "./contexts.ts";
 
 // =============================================================================
 // USE TOKEN BUFFER STORE
@@ -38,14 +42,14 @@ import {
  * ```
  */
 export function* useTokenBufferStore<T>(): Operation<TokenBufferStore<T>> {
-  const store = yield* TokenBufferStoreContext.get()
+  const store = yield* TokenBufferStoreContext.get();
   if (!store) {
     throw new Error(
-      'TokenBufferStore not configured. ' +
-        'Call setupDurableStreams() or set TokenBufferStoreContext before use.'
-    )
+      "TokenBufferStore not configured. " +
+        "Call setupDurableStreams() or set TokenBufferStoreContext before use.",
+    );
   }
-  return store as TokenBufferStore<T>
+  return store as TokenBufferStore<T>;
 }
 
 // =============================================================================
@@ -64,14 +68,14 @@ export function* useTokenBufferStore<T>(): Operation<TokenBufferStore<T>> {
  * ```
  */
 export function* useSessionRegistryStore(): Operation<SessionRegistryStore> {
-  const store = yield* SessionRegistryStoreContext.get()
+  const store = yield* SessionRegistryStoreContext.get();
   if (!store) {
     throw new Error(
-      'SessionRegistryStore not configured. ' +
-        'Call setupDurableStreams() or set SessionRegistryStoreContext before use.'
-    )
+      "SessionRegistryStore not configured. " +
+        "Call setupDurableStreams() or set SessionRegistryStoreContext before use.",
+    );
   }
-  return store
+  return store;
 }
 
 // =============================================================================
@@ -93,12 +97,12 @@ export function* useSessionRegistryStore(): Operation<SessionRegistryStore> {
  * ```
  */
 export function* useSessionRegistry<T>(): Operation<SessionRegistry<T>> {
-  const registry = yield* SessionRegistryContext.get()
+  const registry = yield* SessionRegistryContext.get();
   if (!registry) {
     throw new Error(
-      'SessionRegistry not configured. ' +
-        'Call setupDurableStreams() or set SessionRegistryContext before use.'
-    )
+      "SessionRegistry not configured. " +
+        "Call setupDurableStreams() or set SessionRegistryContext before use.",
+    );
   }
-  return registry as SessionRegistry<T>
+  return registry as SessionRegistry<T>;
 }

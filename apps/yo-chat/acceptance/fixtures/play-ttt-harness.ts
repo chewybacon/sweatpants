@@ -413,7 +413,9 @@ export async function readJournal(
 /** Chooses the next board position answering the newest unresolved elicitation. */
 export function responsePosition(records: DurableSemanticRecord[]): number {
   const resolved = new Set(
-    records.flatMap((entry) => (entry.payload.type === "PullResolved" ? [entry.payload.pullId] : [])),
+    records.flatMap((entry) =>
+      entry.payload.type === "PullResolved" ? [entry.payload.pullId] : [],
+    ),
   );
   for (let index = records.length - 1; index >= 0; index -= 1) {
     const payload = records[index]?.payload;
@@ -447,7 +449,10 @@ function containsGameOver(value: Json | undefined): boolean {
 
 function findBoard(value: Json | undefined): Json[] | undefined {
   if (Array.isArray(value)) {
-    if (value.length === 9 && value.every((cell) => cell === null || cell === "X" || cell === "O")) {
+    if (
+      value.length === 9 &&
+      value.every((cell) => cell === null || cell === "X" || cell === "O")
+    ) {
       return value;
     }
     for (const child of value) {
@@ -476,7 +481,9 @@ function requiredRedisUrl(): string {
 }
 
 function isJsonRecord(value: Json | undefined): value is Record<string, Json> {
-  return value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value);
+  return (
+    value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
+  );
 }
 
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {

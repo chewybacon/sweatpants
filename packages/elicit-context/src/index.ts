@@ -7,10 +7,6 @@
  * @packageDocumentation
  */
 
-export { encodeElicitContext } from './encode.ts'
-export { decodeElicitContext } from './decode.ts'
-export type {
-  JsonSchema,
-  EncodedElicitContext,
-  DecodedElicitContext,
-} from './types.ts'
+export { encodeElicitContext } from "./encode.ts";
+export { decodeElicitContext } from "./decode.ts";
+export type { JsonSchema, EncodedElicitContext, DecodedElicitContext } from "./types.ts";

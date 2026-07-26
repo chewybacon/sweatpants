@@ -1,32 +1,32 @@
 {
-  "releaseId": "remote-dev-f9fdea17-20260722-2252",
-  "registryDigest": "54f221144b7c839b6b0df59d749125df839e4dae222cc1c0183f9d06e0435bc0",
-  "agentRuntimeName": "sweatpants_remote_dev_f9fdea17",
-  "agentRuntimeId": "sweatpants_remote_dev_f9fdea17-hiycNw5tff",
-  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:988857891049:runtime/sweatpants_remote_dev_f9fdea17-hiycNw5tff",
-  "imageUri": "988857891049.dkr.ecr.us-east-1.amazonaws.com/sweatpants-agentcore-durable-program-runtime@sha256:fafc5a36c13c2374e40d1354c88a35a3392e9b4ba369492d60cd1acb669a57fd",
-  "region": "us-east-1",
-  "filesystem": {
-    "mountPath": "/mnt/workspace"
-  },
-  "lifecycle": {
-    "idleRuntimeSessionTimeoutSeconds": 120,
-    "maxLifetimeSeconds": 28800
-  },
-  "endpoint": {
-    "agentRuntimeEndpointArn": "arn:aws:bedrock-agentcore:us-east-1:988857891049:runtime/sweatpants_remote_dev_f9fdea17-hiycNw5tff/runtime-endpoint/DEFAULT",
+    "releaseId": "remote-dev-f9fdea17-20260722-2252",
+    "registryDigest": "54f221144b7c839b6b0df59d749125df839e4dae222cc1c0183f9d06e0435bc0",
+    "agentRuntimeName": "sweatpants_remote_dev_f9fdea17",
+    "agentRuntimeId": "sweatpants_remote_dev_f9fdea17-hiycNw5tff",
     "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:988857891049:runtime/sweatpants_remote_dev_f9fdea17-hiycNw5tff",
-    "status": "READY",
-    "createdAt": "2026-07-22T22:50:44.718Z",
-    "lastUpdatedAt": "2026-07-22T22:50:45.788Z",
-    "name": "DEFAULT",
-    "id": "DEFAULT",
-    "liveVersion": "1",
-    "$metadata": {
-      "httpStatusCode": 200,
-      "requestId": "00f7f7a6-e44b-4c15-8683-fe8b283810d7",
-      "attempts": 1,
-      "totalRetryDelay": 0
+    "imageUri": "988857891049.dkr.ecr.us-east-1.amazonaws.com/sweatpants-agentcore-durable-program-runtime@sha256:fafc5a36c13c2374e40d1354c88a35a3392e9b4ba369492d60cd1acb669a57fd",
+    "region": "us-east-1",
+    "filesystem": {
+        "mountPath": "/mnt/workspace"
+    },
+    "lifecycle": {
+        "idleRuntimeSessionTimeoutSeconds": 120,
+        "maxLifetimeSeconds": 28800
+    },
+    "endpoint": {
+        "agentRuntimeEndpointArn": "arn:aws:bedrock-agentcore:us-east-1:988857891049:runtime/sweatpants_remote_dev_f9fdea17-hiycNw5tff/runtime-endpoint/DEFAULT",
+        "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:988857891049:runtime/sweatpants_remote_dev_f9fdea17-hiycNw5tff",
+        "status": "READY",
+        "createdAt": "2026-07-22T22:50:44.718Z",
+        "lastUpdatedAt": "2026-07-22T22:50:45.788Z",
+        "name": "DEFAULT",
+        "id": "DEFAULT",
+        "liveVersion": "1",
+        "$metadata": {
+            "httpStatusCode": 200,
+            "requestId": "00f7f7a6-e44b-4c15-8683-fe8b283810d7",
+            "attempts": 1,
+            "totalRetryDelay": 0
+        }
     }
-  }
 }

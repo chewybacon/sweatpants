@@ -29,10 +29,10 @@ The diagnostic response includes:
 - `process.memoryUsage()`
 - `process.resourceUsage()`
 - cgroup memory files:
-  - `/sys/fs/cgroup/memory.current`
-  - `/sys/fs/cgroup/memory.peak`
-  - `/sys/fs/cgroup/memory.max`
-  - `/sys/fs/cgroup/memory.stat`
+    - `/sys/fs/cgroup/memory.current`
+    - `/sys/fs/cgroup/memory.peak`
+    - `/sys/fs/cgroup/memory.max`
+    - `/sys/fs/cgroup/memory.stat`
 - retained tool-session counts by status
 
 The diagnostic operation lives in the tracer app protocol, not the generic package protocol:
@@ -138,19 +138,19 @@ Metric: UnblendedCost
 
 Relevant service summary:
 
-| Service | MTD cost |
-|---|---:|
-| Amazon Bedrock AgentCore | $65.382935 |
-| Amazon Bedrock | $0.181787 |
+| Service                          |   MTD cost |
+| -------------------------------- | ---------: |
+| Amazon Bedrock AgentCore         | $65.382935 |
+| Amazon Bedrock                   |  $0.181787 |
 | Total relevant Bedrock/AgentCore | $65.564723 |
 
 AgentCore usage-type summary:
 
-| Usage type | Cost | Usage |
-|---|---:|---:|
+| Usage type                              |       Cost |                Usage |
+| --------------------------------------- | ---------: | -------------------: |
 | `USE1-Runtime:Consumption-based:Memory` | $62.623915 | 6626.869355 GB-hours |
-| `USE1-Runtime:Consumption-based:vCPU` | $2.754529 | 30.776859 vCPU-hours |
-| Other AgentCore usage | negligible | n/a |
+| `USE1-Runtime:Consumption-based:vCPU`   |  $2.754529 | 30.776859 vCPU-hours |
+| Other AgentCore usage                   | negligible |                  n/a |
 
 Observed derived rates:
 
@@ -169,15 +169,15 @@ Observed runtime config shape included lifecycle, network, artifact, protocol, m
 
 ```json
 {
-  "lifecycleConfiguration": {
-    "idleRuntimeSessionTimeout": 900,
-    "maxLifetime": 28800
-  },
-  "agentRuntimeArtifact": {
-    "containerConfiguration": {
-      "containerUri": "..."
+    "lifecycleConfiguration": {
+        "idleRuntimeSessionTimeout": 900,
+        "maxLifetime": 28800
+    },
+    "agentRuntimeArtifact": {
+        "containerConfiguration": {
+            "containerUri": "..."
+        }
     }
-  }
 }
 ```
 
@@ -222,9 +222,9 @@ A raw completed session stayed inspectable after completion:
 
 ```json
 {
-  "type": "session_status",
-  "status": "completed",
-  "lastRuntimeEventSeq": 2
+    "type": "session_status",
+    "status": "completed",
+    "lastRuntimeEventSeq": 2
 }
 ```
 
@@ -236,11 +236,11 @@ A paused tool session, such as one awaiting elicitation, remains non-terminal an
 
 ```json
 {
-  "status": "awaiting_elicit",
-  "pendingRequest": {
-    "type": "elicit",
-    "elicitId": "..."
-  }
+    "status": "awaiting_elicit",
+    "pendingRequest": {
+        "type": "elicit",
+        "elicitId": "..."
+    }
 }
 ```
 
@@ -248,14 +248,14 @@ Diagnostics showed:
 
 ```json
 {
-  "sessions": {
-    "total": 1,
-    "terminal": 0,
-    "nonTerminal": 1,
-    "byStatus": {
-      "awaiting_elicit": 1
+    "sessions": {
+        "total": 1,
+        "terminal": 0,
+        "nonTerminal": 1,
+        "byStatus": {
+            "awaiting_elicit": 1
+        }
     }
-  }
 }
 ```
 
@@ -286,7 +286,7 @@ awaiting_sample
 The package calls:
 
 ```ts
-runtimeClient.stopRuntimeSession(handle)
+runtimeClient.stopRuntimeSession(handle);
 ```
 
 from terminal ingestion paths in:
@@ -299,8 +299,8 @@ src/agentcore-tool-session.ts
 The terminal handle is annotated with:
 
 ```ts
-stopRequestedAt
-stoppedAt
+stopRequestedAt;
+stoppedAt;
 ```
 
 Stop failure is best-effort:
@@ -371,18 +371,18 @@ A successful full `book_flight` e2e smoke took about **1.7 minutes wall-clock**.
 Estimated cost after stop-on-terminal:
 
 | Assumed billable memory | Memory cost | Approx total incl. vCPU |
-|---:|---:|---:|
-| 8 GB | ~$0.00214 | ~$0.00224 |
-| 16 GB | ~$0.00428 | ~$0.00447 |
-| 32 GB | ~$0.00857 | ~$0.00894 |
+| ----------------------: | ----------: | ----------------------: |
+|                    8 GB |   ~$0.00214 |               ~$0.00224 |
+|                   16 GB |   ~$0.00428 |               ~$0.00447 |
+|                   32 GB |   ~$0.00857 |               ~$0.00894 |
 
 Before stop-on-terminal, a completed tool session could remain alive until idle timeout. With a 15-minute idle tail, the same run could cost roughly:
 
 | Assumed billable memory | Memory cost | Approx total incl. vCPU |
-|---:|---:|---:|
-| 8 GB | ~$0.01890 | ~$0.01973 |
-| 16 GB | ~$0.03780 | ~$0.03946 |
-| 32 GB | ~$0.07560 | ~$0.07893 |
+| ----------------------: | ----------: | ----------------------: |
+|                    8 GB |   ~$0.01890 |               ~$0.01973 |
+|                   16 GB |   ~$0.03780 |               ~$0.03946 |
+|                   32 GB |   ~$0.07560 |               ~$0.07893 |
 
 The biggest win is therefore not lowering Node memory; it is stopping terminal AgentCore runtime sessions immediately.
 

@@ -34,9 +34,7 @@ export interface ToolSchemaArtifacts {
 
 export type LogLevel = "debug" | "info" | "warning" | "error";
 /** Validated (output) type of a Standard Schema; Zod schemas satisfy this. */
-export type InferSchema<T> = T extends StandardSchemaV1
-  ? StandardSchemaV1.InferOutput<T>
-  : unknown;
+export type InferSchema<T> = T extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<T> : unknown;
 /** Pre-validation (input) type of a Standard Schema; producers use this side. */
 export type InferSchemaInput<T> = T extends StandardSchemaV1
   ? StandardSchemaV1.InferInput<T>

@@ -3,103 +3,101 @@
  *
  * Search file contents using regex patterns. Read-only, safe for plan mode.
  */
-import { createTool } from '@sweatpants/core'
-import { z } from 'zod'
-import { call } from 'effection'
-import fg from 'fast-glob'
-import * as fs from 'node:fs/promises'
-import * as path from 'node:path'
+import { createTool } from "@sweatpants/core";
+import { z } from "zod";
+import { call } from "effection";
+import fg from "fast-glob";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 
 export interface Match {
-  file: string
-  line: number
-  content: string
+  file: string;
+  line: number;
+  content: string;
 }
 
-export const grepSearch = createTool('grep_search')
-  .description('Search file contents for a pattern')
+export const grepSearch = createTool("grep_search")
+  .description("Search file contents for a pattern")
   .parameters(
     z.object({
-      pattern: z.string().describe('Regex pattern to search for'),
+      pattern: z.string().describe("Regex pattern to search for"),
       include: z
         .string()
         .optional()
-        .default('**/*')
+        .default("**/*")
         .describe('Glob pattern for files to include (e.g., "**/*.ts")'),
       cwd: z
         .string()
         .optional()
-        .describe('Directory to search from (defaults to current working directory)'),
+        .describe("Directory to search from (defaults to current working directory)"),
       maxResults: z
         .number()
         .optional()
         .default(50)
-        .describe('Maximum number of matching lines to return'),
+        .describe("Maximum number of matching lines to return"),
       caseSensitive: z
         .boolean()
         .optional()
         .default(false)
-        .describe('Whether the search should be case sensitive'),
-    })
+        .describe("Whether the search should be case sensitive"),
+    }),
   )
   .execute(function* (params) {
-    const searchDir = params.cwd
-      ? path.resolve(process.cwd(), params.cwd)
-      : process.cwd()
+    const searchDir = params.cwd ? path.resolve(process.cwd(), params.cwd) : process.cwd();
 
     // Security: ensure search dir is within cwd
-    const cwd = process.cwd()
+    const cwd = process.cwd();
     if (!searchDir.startsWith(cwd)) {
-      return { error: 'Search directory must be within current working directory' }
+      return { error: "Search directory must be within current working directory" };
     }
 
     try {
-      const regex = new RegExp(params.pattern, params.caseSensitive ? 'g' : 'gi')
+      const regex = new RegExp(params.pattern, params.caseSensitive ? "g" : "gi");
 
       // Find files matching the include pattern
       const files: string[] = yield* call(() =>
         fg(params.include, {
           cwd: searchDir,
           onlyFiles: true,
-          ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/*.min.js'],
-        })
-      )
+          ignore: ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/*.min.js"],
+        }),
+      );
 
-      const matches: Match[] = []
-      let truncated = false
+      const matches: Match[] = [];
+      let truncated = false;
 
       for (const file of files) {
         if (matches.length >= params.maxResults) {
-          truncated = true
-          break
+          truncated = true;
+          break;
         }
 
-        const filePath = path.join(searchDir, file)
-        
+        const filePath = path.join(searchDir, file);
+
         try {
-          const content: string = yield* call(() => fs.readFile(filePath, 'utf-8'))
-          const lines = content.split('\n')
+          const content: string = yield* call(() => fs.readFile(filePath, "utf-8"));
+          const lines = content.split("\n");
 
           for (let i = 0; i < lines.length; i++) {
             if (matches.length >= params.maxResults) {
-              truncated = true
-              break
+              truncated = true;
+              break;
             }
 
-            const line = lines[i]
+            const line = lines[i];
             if (line !== undefined && regex.test(line)) {
               matches.push({
                 file,
                 line: i + 1,
                 content: line.slice(0, 200), // Truncate long lines
-              })
+              });
             }
             // Reset regex lastIndex for next test
-            regex.lastIndex = 0
+            regex.lastIndex = 0;
           }
         } catch {
           // Skip files that can't be read (binary, permissions, etc.)
-          continue
+          continue;
         }
       }
 
@@ -109,9 +107,9 @@ export const grepSearch = createTool('grep_search')
         matches,
         count: matches.length,
         truncated,
-      }
+      };
     } catch (e) {
-      const error = e instanceof Error ? e.message : String(e)
-      return { error: `Search failed: ${error}` }
+      const error = e instanceof Error ? e.message : String(e);
+      return { error: `Search failed: ${error}` };
     }
-  })
+  });

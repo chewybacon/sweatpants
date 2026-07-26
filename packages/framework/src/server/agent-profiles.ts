@@ -442,7 +442,9 @@ function agentCard(
         }
       : {}),
   } as unknown as Json).value;
-  if (!deployment.cardSigner) {return unsigned;}
+  if (!deployment.cardSigner) {
+    return unsigned;
+  }
   const signature = deployment.cardSigner.sign(unsigned);
   if (
     !signature.protected ||

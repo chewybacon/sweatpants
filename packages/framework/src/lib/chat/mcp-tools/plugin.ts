@@ -159,7 +159,9 @@ export type ElicitHandlersFor<TElicits extends ElicitsMap> = ElicitHandlers<
  * composition reads `execution` and routes the contract explicitly. Durable
  * contracts MUST NOT be installed into ordinary execution registries.
  */
-export interface PluginServerRegistration<TContract extends PluginToolContract = PluginToolContract> {
+export interface PluginServerRegistration<
+  TContract extends PluginToolContract = PluginToolContract,
+> {
   /** Tool name (for lookup) */
   toolName: string;
   /** Execution kind copied from the contract. */
@@ -218,9 +220,7 @@ export interface PluginBuilder<TContract extends PluginToolContract> {
    * Define exhaustive handlers for all elicitation keys declared by the
    * contract. Missing, extra, or wrongly typed handlers are compile errors.
    */
-  onElicit(
-    handlers: ElicitHandlers<TContract["elicits"]>,
-  ): PluginBuilderWithHandlers<TContract>;
+  onElicit(handlers: ElicitHandlers<TContract["elicits"]>): PluginBuilderWithHandlers<TContract>;
 }
 
 /**

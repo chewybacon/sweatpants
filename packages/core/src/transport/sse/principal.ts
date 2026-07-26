@@ -15,10 +15,7 @@ import type {
   ProgressMessage,
   ResponseMessage,
 } from "../../types/transport.ts";
-import {
-  ProgressMessageSchema,
-  ResponseMessageSchema,
-} from "../../types/schemas.ts";
+import { ProgressMessageSchema, ResponseMessageSchema } from "../../types/schemas.ts";
 
 interface SSEEvent {
   event?: string;
@@ -45,14 +42,14 @@ export interface SSEPrincipalOptions {
  * @param options - Configuration options
  * @returns A PrincipalTransport
  */
-export function* createSSEPrincipal(
-  options: SSEPrincipalOptions
-): Operation<PrincipalTransport> {
+export function* createSSEPrincipal(options: SSEPrincipalOptions): Operation<PrincipalTransport> {
   const fetchFn = options.fetch ?? fetch;
 
   return yield* resource(function* (provide) {
-    const incomingChannel: Channel<PrincipalIncoming, void> =
-      createChannel<PrincipalIncoming, void>();
+    const incomingChannel: Channel<PrincipalIncoming, void> = createChannel<
+      PrincipalIncoming,
+      void
+    >();
 
     // Spawn a task to read SSE events
     yield* spawn(function* () {
@@ -62,13 +59,11 @@ export function* createSSEPrincipal(
             Accept: "text/event-stream",
             "Cache-Control": "no-cache",
           },
-        })
+        }),
       );
 
       if (!response.ok) {
-        throw new Error(
-          `SSE connection failed: ${response.status} ${response.statusText}`
-        );
+        throw new Error(`SSE connection failed: ${response.status} ${response.statusText}`);
       }
 
       if (!response.body) {
@@ -103,18 +98,14 @@ export function* createSSEPrincipal(
                 // Try parsing as progress message
                 const progressResult = ProgressMessageSchema.safeParse(raw);
                 if (progressResult.success) {
-                  yield* incomingChannel.send(
-                    progressResult.data as ProgressMessage
-                  );
+                  yield* incomingChannel.send(progressResult.data as ProgressMessage);
                   continue;
                 }
 
                 // Try parsing as response message
                 const responseResult = ResponseMessageSchema.safeParse(raw);
                 if (responseResult.success) {
-                  yield* incomingChannel.send(
-                    responseResult.data as ResponseMessage
-                  );
+                  yield* incomingChannel.send(responseResult.data as ResponseMessage);
                 }
               } catch {
                 // Ignore malformed JSON
@@ -130,8 +121,7 @@ export function* createSSEPrincipal(
     });
 
     // Get the subscription from the channel
-    const subscription: Subscription<PrincipalIncoming, void> =
-      yield* incomingChannel;
+    const subscription: Subscription<PrincipalIncoming, void> = yield* incomingChannel;
 
     const transport: PrincipalTransport = {
       *[Symbol.iterator]() {
@@ -144,7 +134,7 @@ export function* createSSEPrincipal(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(message),
-          })
+          }),
         );
       },
     };

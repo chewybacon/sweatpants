@@ -52,9 +52,7 @@ function attachRequest(overrides: Record<string, unknown> = {}) {
 describe("in-memory placement model sampler", () => {
   it("issues bounded pull-scoped authorization and rejects expiry or claim mismatch", async () => {
     let now = 5_000;
-    const keyring = createCapabilityKeyring("host", [
-      { keyId: "k1", secret: "x".repeat(32) },
-    ]);
+    const keyring = createCapabilityKeyring("host", [{ keyId: "k1", secret: "x".repeat(32) }]);
     const issuer = createPlacementSamplingAuthorizationIssuer({
       keyring,
       now: () => now,
@@ -76,8 +74,9 @@ describe("in-memory placement model sampler", () => {
         effectContractDigest: contractDigest,
         classifications: ["private"],
       };
-      expect(verifyPlacementSamplingAuthorization({ token, keyring, expected, now: () => now }))
-        .toMatchObject({ identity, permissions: ["sample:attach", "sample:read", "sample:cancel"] });
+      expect(
+        verifyPlacementSamplingAuthorization({ token, keyring, expected, now: () => now }),
+      ).toMatchObject({ identity, permissions: ["sample:attach", "sample:read", "sample:cancel"] });
       now = 6_001;
       expect(() =>
         verifyPlacementSamplingAuthorization({ token, keyring, expected, now: () => now }),
@@ -108,8 +107,11 @@ describe("in-memory placement model sampler", () => {
         cancellation: new AbortController().signal,
       });
       expect(disposition).toMatchObject({ status: "ok", value: { text: "ab" } });
-      expect(yield* sampler.read({ version: 1, attachment: attached, afterLsn: 0 }))
-        .toMatchObject({ lsn: 2, state: "completed", terminalLsn: 2 });
+      expect(yield* sampler.read({ version: 1, attachment: attached, afterLsn: 0 })).toMatchObject({
+        lsn: 2,
+        state: "completed",
+        terminalLsn: 2,
+      });
     });
   });
 
@@ -155,9 +157,15 @@ describe("in-memory placement model sampler", () => {
     const relayed: unknown[] = [];
     const service = createPlacementModelSamplingService({
       sampler,
-      authorization: { *issue() { return "authorized"; } },
+      authorization: {
+        *issue() {
+          return "authorized";
+        },
+      },
       releaseId: () => "release-1",
-      resumeAfter: function* () { return 1; },
+      resumeAfter: function* () {
+        return 1;
+      },
     });
     await run(function* () {
       const disposition = yield* service.sample(request, {
@@ -256,11 +264,9 @@ describe("in-memory placement model sampler", () => {
       yield* sampler.append(identity, newer, [{ event: { delta: "new" } }]);
       let stale = "";
       try {
-        yield* sampler.append(
-          identity,
-          { ownerId: "attempt:a", producerEpoch: 1 },
-          [{ event: { delta: "old" } }],
-        );
+        yield* sampler.append(identity, { ownerId: "attempt:a", producerEpoch: 1 }, [
+          { event: { delta: "old" } },
+        ]);
       } catch (error) {
         stale = (error as { code?: string }).code ?? "";
       }

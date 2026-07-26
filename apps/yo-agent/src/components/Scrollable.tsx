@@ -9,22 +9,22 @@
  * - Mouse wheel scrolling support
  * - Works with dynamic content (streaming messages)
  */
-import React, { useState, useRef, useLayoutEffect, useCallback } from 'react'
-import { Box, getInnerHeight, getScrollHeight, type DOMElement } from 'ink'
-import { useMouse, type MouseEvent } from '../lib/MouseProvider.tsx'
+import React, { useState, useRef, useLayoutEffect, useCallback } from "react";
+import { Box, getInnerHeight, getScrollHeight, type DOMElement } from "ink";
+import { useMouse, type MouseEvent } from "../lib/MouseProvider.tsx";
 
 interface ScrollableProps {
-  children?: React.ReactNode
+  children?: React.ReactNode;
   /** Height of the scrollable area */
-  height?: number | string
+  height?: number | string;
   /** Whether to auto-scroll to bottom when children change */
-  scrollToBottom?: boolean
+  scrollToBottom?: boolean;
   /** Flex grow factor */
-  flexGrow?: number
+  flexGrow?: number;
   /** Scrollbar thumb color */
-  scrollbarThumbColor?: string
+  scrollbarThumbColor?: string;
   /** Scroll speed multiplier for mouse wheel */
-  scrollSpeed?: number
+  scrollSpeed?: number;
 }
 
 export function Scrollable({
@@ -32,100 +32,94 @@ export function Scrollable({
   height,
   scrollToBottom = true,
   flexGrow,
-  scrollbarThumbColor = 'gray',
+  scrollbarThumbColor = "gray",
   scrollSpeed = 3,
 }: ScrollableProps) {
-  const [scrollTop, setScrollTop] = useState(0)
-  const ref = useRef<DOMElement>(null)
+  const [scrollTop, setScrollTop] = useState(0);
+  const ref = useRef<DOMElement>(null);
   const [size, setSize] = useState({
     innerHeight: 0,
     scrollHeight: 0,
-  })
-  const sizeRef = useRef(size)
+  });
+  const sizeRef = useRef(size);
 
   useLayoutEffect(() => {
-    sizeRef.current = size
-  }, [size])
+    sizeRef.current = size;
+  }, [size]);
 
-  const childrenCountRef = useRef(0)
+  const childrenCountRef = useRef(0);
   // Track if user has manually scrolled up (breaks auto-scroll-to-bottom)
-  const isStickingToBottom = useRef(true)
+  const isStickingToBottom = useRef(true);
 
   // This effect runs on every render to correctly measure the container
   // and scroll to the bottom if new children are added.
   useLayoutEffect(() => {
     if (!ref.current) {
-      return
+      return;
     }
 
-    const innerHeight = Math.round(getInnerHeight(ref.current))
-    const scrollHeight = Math.round(getScrollHeight(ref.current))
+    const innerHeight = Math.round(getInnerHeight(ref.current));
+    const scrollHeight = Math.round(getScrollHeight(ref.current));
 
-    const isAtBottom = scrollTop >= size.scrollHeight - size.innerHeight - 1
+    const isAtBottom = scrollTop >= size.scrollHeight - size.innerHeight - 1;
 
-    if (
-      size.innerHeight !== innerHeight ||
-      size.scrollHeight !== scrollHeight
-    ) {
-      setSize({ innerHeight, scrollHeight })
+    if (size.innerHeight !== innerHeight || size.scrollHeight !== scrollHeight) {
+      setSize({ innerHeight, scrollHeight });
       // If we were at the bottom, stay at the bottom
       if (isAtBottom || isStickingToBottom.current) {
-        setScrollTop(Math.max(0, scrollHeight - innerHeight))
+        setScrollTop(Math.max(0, scrollHeight - innerHeight));
       }
     }
 
-    const childCountCurrent = React.Children.count(children)
+    const childCountCurrent = React.Children.count(children);
     if (scrollToBottom && childrenCountRef.current !== childCountCurrent) {
       // New children added - scroll to bottom if we're sticking
       if (isStickingToBottom.current) {
-        setScrollTop(Math.max(0, scrollHeight - innerHeight))
+        setScrollTop(Math.max(0, scrollHeight - innerHeight));
       }
     }
-    childrenCountRef.current = childCountCurrent
-  })
+    childrenCountRef.current = childCountCurrent;
+  });
 
-  const scrollBy = useCallback(
-    (delta: number) => {
-      const { scrollHeight, innerHeight } = sizeRef.current
-      setScrollTop((current) => {
-        const newScrollTop = Math.min(
-          Math.max(0, current + delta),
-          Math.max(0, scrollHeight - innerHeight)
-        )
-        
-        // Update sticking state based on scroll direction
-        if (delta < 0) {
-          // Scrolling up - user is reading history
-          isStickingToBottom.current = false
-        } else {
-          // Scrolling down - check if we're at bottom
-          const maxScroll = scrollHeight - innerHeight
-          if (newScrollTop >= maxScroll - 1) {
-            isStickingToBottom.current = true
-          }
+  const scrollBy = useCallback((delta: number) => {
+    const { scrollHeight, innerHeight } = sizeRef.current;
+    setScrollTop((current) => {
+      const newScrollTop = Math.min(
+        Math.max(0, current + delta),
+        Math.max(0, scrollHeight - innerHeight),
+      );
+
+      // Update sticking state based on scroll direction
+      if (delta < 0) {
+        // Scrolling up - user is reading history
+        isStickingToBottom.current = false;
+      } else {
+        // Scrolling down - check if we're at bottom
+        const maxScroll = scrollHeight - innerHeight;
+        if (newScrollTop >= maxScroll - 1) {
+          isStickingToBottom.current = true;
         }
-        
-        return newScrollTop
-      })
-    },
-    []
-  )
+      }
+
+      return newScrollTop;
+    });
+  }, []);
 
   // Handle mouse wheel events
   const handleMouse = useCallback(
     (event: MouseEvent): boolean | void => {
-      if (event.name === 'scroll-up') {
-        scrollBy(-scrollSpeed)
-        return true // Consume the event
-      } else if (event.name === 'scroll-down') {
-        scrollBy(scrollSpeed)
-        return true
+      if (event.name === "scroll-up") {
+        scrollBy(-scrollSpeed);
+        return true; // Consume the event
+      } else if (event.name === "scroll-down") {
+        scrollBy(scrollSpeed);
+        return true;
       }
     },
-    [scrollBy, scrollSpeed]
-  )
+    [scrollBy, scrollSpeed],
+  );
 
-  useMouse(handleMouse, { isActive: true })
+  useMouse(handleMouse, { isActive: true });
 
   return (
     <Box
@@ -145,5 +139,5 @@ export function Scrollable({
         {children}
       </Box>
     </Box>
-  )
+  );
 }

@@ -1,13 +1,13 @@
 {
-  "extends": "@sweatpants/ts-config/tsconfig.node.json",
-  "compilerOptions": {
-    "composite": true,
-    "outDir": "./dist",
-    "types": ["node"],
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["src/**/*.ts", "start.ts"],
-  "exclude": ["dist", "node_modules", "docs"]
+    "extends": "@sweatpants/ts-config/tsconfig.node.json",
+    "compilerOptions": {
+        "composite": true,
+        "outDir": "./dist",
+        "types": ["node"],
+        "paths": {
+            "@/*": ["./src/*"]
+        }
+    },
+    "include": ["src/**/*.ts", "start.ts"],
+    "exclude": ["dist", "node_modules", "docs"]
 }

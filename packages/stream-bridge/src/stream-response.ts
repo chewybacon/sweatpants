@@ -10,22 +10,22 @@
  * - Minimal pull() logic for best performance
  * - Proper cancellation handling with closed flag
  */
-import { createScope, type Operation, type Scope, type Stream, type Subscription } from 'effection'
+import { createScope, type Operation, type Scope, type Stream, type Subscription } from "effection";
 
 export interface StreamResponseOptions<T> {
   /** Serialize each value to Uint8Array. Defaults to NDJSON. */
-  serialize?: (value: T) => Uint8Array
+  serialize?: (value: T) => Uint8Array;
   /** Content-Type header. Defaults to 'application/x-ndjson' */
-  contentType?: string
+  contentType?: string;
 }
 
 export interface StreamResponseResult {
   /** The Response with streaming body */
-  response: Response
+  response: Response;
   /** The scope - caller must destroy when done */
-  scope: Scope
+  scope: Scope;
   /** Destroy the scope and cleanup resources */
-  destroy: () => Promise<void>
+  destroy: () => Promise<void>;
 }
 
 /**
@@ -51,59 +51,59 @@ export interface StreamResponseResult {
  */
 export function createStreamResponse<T>(
   stream: Stream<T, void>,
-  options: StreamResponseOptions<T> = {}
+  options: StreamResponseOptions<T> = {},
 ): Operation<StreamResponseResult> {
-  const serialize = options.serialize ?? defaultSerialize
-  const contentType = options.contentType ?? 'application/x-ndjson'
+  const serialize = options.serialize ?? defaultSerialize;
+  const contentType = options.contentType ?? "application/x-ndjson";
 
-  const [scope, destroy] = createScope()
-  let subscription: Subscription<T, void> | null = null
-  let closed = false
+  const [scope, destroy] = createScope();
+  let subscription: Subscription<T, void> | null = null;
+  let closed = false;
 
   const readableStream = new ReadableStream<Uint8Array>({
     async start() {
       subscription = await scope.run(function* () {
-        return yield* stream
-      })
+        return yield* stream;
+      });
     },
 
     async pull(controller) {
       if (!subscription || closed) {
-        controller.close()
-        return
+        controller.close();
+        return;
       }
 
       try {
         const result = await scope.run(function* () {
-          return yield* subscription!.next()
-        })
+          return yield* subscription!.next();
+        });
 
         if (result.done) {
-          controller.close()
-          closed = true
+          controller.close();
+          closed = true;
         } else {
-          controller.enqueue(serialize(result.value))
+          controller.enqueue(serialize(result.value));
         }
       } catch (err) {
-        controller.error(err)
-        closed = true
+        controller.error(err);
+        closed = true;
       }
     },
 
     cancel() {
-      closed = true
+      closed = true;
     },
-  })
+  });
 
   const response = new Response(readableStream, {
-    headers: { 'Content-Type': contentType },
-  })
+    headers: { "Content-Type": contentType },
+  });
 
   return {
     *[Symbol.iterator]() {
-      return { response, scope, destroy }
+      return { response, scope, destroy };
     },
-  }
+  };
 }
 
 /**
@@ -126,49 +126,49 @@ export function createStreamResponse<T>(
 export function createReadableStream<T>(
   scope: Scope,
   stream: Stream<T, void>,
-  options: StreamResponseOptions<T> = {}
+  options: StreamResponseOptions<T> = {},
 ): ReadableStream<Uint8Array> {
-  const serialize = options.serialize ?? defaultSerialize
+  const serialize = options.serialize ?? defaultSerialize;
 
-  let subscription: Subscription<T, void> | null = null
-  let closed = false
+  let subscription: Subscription<T, void> | null = null;
+  let closed = false;
 
   return new ReadableStream<Uint8Array>({
     async start() {
       subscription = await scope.run(function* () {
-        return yield* stream
-      })
+        return yield* stream;
+      });
     },
 
     async pull(controller) {
       if (!subscription || closed) {
-        controller.close()
-        return
+        controller.close();
+        return;
       }
 
       try {
         const result = await scope.run(function* () {
-          return yield* subscription!.next()
-        })
+          return yield* subscription!.next();
+        });
 
         if (result.done) {
-          controller.close()
-          closed = true
+          controller.close();
+          closed = true;
         } else {
-          controller.enqueue(serialize(result.value))
+          controller.enqueue(serialize(result.value));
         }
       } catch (err) {
-        controller.error(err)
-        closed = true
+        controller.error(err);
+        closed = true;
       }
     },
 
     cancel() {
-      closed = true
+      closed = true;
     },
-  })
+  });
 }
 
 function defaultSerialize<T>(value: T): Uint8Array {
-  return new TextEncoder().encode(JSON.stringify(value) + '\n')
+  return new TextEncoder().encode(JSON.stringify(value) + "\n");
 }

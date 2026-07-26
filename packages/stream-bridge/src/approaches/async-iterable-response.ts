@@ -12,13 +12,13 @@
  * - Still needs scope.run() for each iteration
  * - Less control over backpressure
  */
-import { createScope, type Operation, type Scope, type Stream, type Subscription } from 'effection'
+import { createScope, type Operation, type Scope, type Stream, type Subscription } from "effection";
 
 export interface AsyncIterableResponseOptions {
   /** Serialize each value to Uint8Array */
-  serialize?: (value: unknown) => Uint8Array
+  serialize?: (value: unknown) => Uint8Array;
   /** Content-Type header */
-  contentType?: string
+  contentType?: string;
 }
 
 /**
@@ -28,64 +28,65 @@ export interface AsyncIterableResponseOptions {
  */
 export function createAsyncIterableResponse<T>(
   stream: Stream<T, void>,
-  options: AsyncIterableResponseOptions = {}
+  options: AsyncIterableResponseOptions = {},
 ): Operation<Response> {
-  const serialize = options.serialize ?? ((v) => new TextEncoder().encode(JSON.stringify(v) + '\n'))
-  const contentType = options.contentType ?? 'application/x-ndjson'
+  const serialize =
+    options.serialize ?? ((v) => new TextEncoder().encode(JSON.stringify(v) + "\n"));
+  const contentType = options.contentType ?? "application/x-ndjson";
 
-  const [scope, destroy] = createScope()
-  let subscription: Subscription<T, void> | null = null
-  let closed = false
+  const [scope, destroy] = createScope();
+  let subscription: Subscription<T, void> | null = null;
+  let closed = false;
 
   const asyncIterable: AsyncIterable<Uint8Array> = {
     [Symbol.asyncIterator]() {
       return {
         async next() {
           if (closed) {
-            return { done: true, value: undefined }
+            return { done: true, value: undefined };
           }
 
           if (!subscription) {
             subscription = await scope.run(function* () {
-              return yield* stream
-            })
+              return yield* stream;
+            });
           }
 
           try {
             const result = await scope.run(function* () {
-              return yield* subscription!.next()
-            })
+              return yield* subscription!.next();
+            });
 
             if (result.done) {
-              closed = true
-              await destroy()
-              return { done: true, value: undefined }
+              closed = true;
+              await destroy();
+              return { done: true, value: undefined };
             }
 
-            return { done: false, value: serialize(result.value) }
+            return { done: false, value: serialize(result.value) };
           } catch (err) {
-            closed = true
-            await destroy()
-            throw err
+            closed = true;
+            await destroy();
+            throw err;
           }
         },
 
         async return() {
-          closed = true
-          await destroy()
-          return { done: true, value: undefined }
+          closed = true;
+          await destroy();
+          return { done: true, value: undefined };
         },
-      }
+      };
     },
-  }
+  };
 
   return {
     *[Symbol.iterator]() {
       return new Response(asyncIterable as unknown as BodyInit, {
-        headers: { 'Content-Type': contentType },
-      })
+        headers: { "Content-Type": contentType },
+      });
     },
-  }
+  };
 }
 
 /**
@@ -94,41 +95,42 @@ export function createAsyncIterableResponse<T>(
 export function createAsyncIterableFromScope<T>(
   scope: Scope,
   stream: Stream<T, void>,
-  options: AsyncIterableResponseOptions = {}
+  options: AsyncIterableResponseOptions = {},
 ): AsyncIterable<Uint8Array> {
-  const serialize = options.serialize ?? ((v) => new TextEncoder().encode(JSON.stringify(v) + '\n'))
+  const serialize =
+    options.serialize ?? ((v) => new TextEncoder().encode(JSON.stringify(v) + "\n"));
 
-  let closed = false
+  let closed = false;
 
   return {
     [Symbol.asyncIterator]() {
       return {
         async next() {
           if (closed) {
-            return { done: true, value: undefined }
+            return { done: true, value: undefined };
           }
 
           const subscription = await scope.run(function* () {
-            return yield* stream
-          })
+            return yield* stream;
+          });
 
           const result = await scope.run(function* () {
-            return yield* subscription.next()
-          })
+            return yield* subscription.next();
+          });
 
           if (result.done) {
-            closed = true
-            return { done: true, value: undefined }
+            closed = true;
+            return { done: true, value: undefined };
           }
 
-          return { done: false, value: serialize(result.value) }
+          return { done: false, value: serialize(result.value) };
         },
 
         return() {
-          closed = true
-          return Promise.resolve({ done: true, value: undefined })
+          closed = true;
+          return Promise.resolve({ done: true, value: undefined });
         },
-      }
+      };
     },
-  }
+  };
 }

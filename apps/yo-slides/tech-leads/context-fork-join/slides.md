@@ -2,14 +2,14 @@
 theme: default
 title: "Context is a Fork-Join Problem"
 info: |
-  ## Lessons from MCP tooling
-  Sweatpants Framework
+    ## Lessons from MCP tooling
+    Sweatpants Framework
 author: Grove Team
 keywords: mcp,context,architecture,tooling
 class: text-center
 highlighter: shiki
 drawings:
-  persist: false
+    persist: false
 transition: slide-left
 mdc: true
 colorSchema: light
@@ -170,12 +170,14 @@ sequenceDiagram
 # Why Client Affinity Matters
 
 The client owns:
+
 - The **user connection** (for elicitations)
 - The **LLM API key** (for sampling)
 
 <v-clicks>
 
 If sub-tools owned the LLM relationship:
+
 - They'd need their own API keys
 - Or the parent "loans" credentials down the tree
 - Cost/billing fragments across agents
@@ -217,8 +219,8 @@ A micro-chat with one purpose.
 
 ButterBot is shared vocabulary:
 
-| Engineering | Design | Business |
-|-------------|--------|----------|
+| Engineering    | Design             | Business         |
+| -------------- | ------------------ | ---------------- |
 | fork-join flow | scoped interaction | predictable cost |
 
 </v-click>
@@ -234,7 +236,6 @@ Context is not a blob. It's a concurrency problem.
 MCP gives us the fork/join primitives. Sweatpants shows the discipline.
 
 </v-click>
-
 
 <div class="mt-12 opacity-50 text-sm">
 

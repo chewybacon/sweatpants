@@ -22,12 +22,12 @@
  * const finalFrame = yield* pipeline.flush()
  * ```
  */
-import { createPipeline } from '@sweatpants/react-chat/pipeline'
-import type { PipelineConfig, Pipeline } from '@sweatpants/react-chat/pipeline'
+import { createPipeline } from "@sweatpants/react-chat/pipeline";
+import type { PipelineConfig, Pipeline } from "@sweatpants/react-chat/pipeline";
 
 // Processors
-import { terminalMarkdown } from './processors/terminal-markdown.ts'
-import { terminalCode } from './processors/terminal-code.ts'
+import { terminalMarkdown } from "./processors/terminal-markdown.ts";
+import { terminalCode } from "./processors/terminal-code.ts";
 
 // =============================================================================
 // Terminal Pipeline Configuration
@@ -37,10 +37,7 @@ import { terminalCode } from './processors/terminal-code.ts'
  * Default terminal processors.
  * Order matters - markdown runs first, then code highlighting.
  */
-export const terminalProcessors = [
-  terminalMarkdown,
-  terminalCode,
-]
+export const terminalProcessors = [terminalMarkdown, terminalCode];
 
 /**
  * Create a terminal pipeline instance.
@@ -53,31 +50,26 @@ export const terminalProcessors = [
 export function createTerminalPipeline(): Pipeline {
   const config: PipelineConfig = {
     processors: terminalProcessors,
-  }
+  };
 
-  return createPipeline(config)
+  return createPipeline(config);
 }
 
 // =============================================================================
 // Re-exports
 // =============================================================================
 
-export { terminalMarkdown } from './processors/terminal-markdown.ts'
-export { terminalCode, DEFAULT_THEME } from './processors/terminal-code.ts'
+export { terminalMarkdown } from "./processors/terminal-markdown.ts";
+export { terminalCode, DEFAULT_THEME } from "./processors/terminal-code.ts";
 
 // Renderer components
-export { FrameRenderer, frameToPlainText, frameToAnsi } from './renderer/FrameRenderer.tsx'
+export { FrameRenderer, frameToPlainText, frameToAnsi } from "./renderer/FrameRenderer.tsx";
 
 // Re-export frame types and utilities for convenience
-export type {
-  Frame,
-  Block,
-  Processor,
-  Pipeline,
-} from '@sweatpants/react-chat/pipeline'
+export type { Frame, Block, Processor, Pipeline } from "@sweatpants/react-chat/pipeline";
 
 export {
   emptyFrame,
   renderFrameToRendered,
   renderFrameToRaw,
-} from '@sweatpants/react-chat/pipeline'
+} from "@sweatpants/react-chat/pipeline";

@@ -20,10 +20,10 @@
  * event.responseSignal.send(result)
  * ```
  */
-import type { Operation, Channel } from 'effection'
-import type { z } from 'zod'
-import type { ElicitRequest, WireElicitResult } from './mcp-tool-types.ts'
-import type { PluginClientContext, PluginClientRegistration } from './plugin.ts'
+import type { Operation, Channel } from "effection";
+import type { z } from "zod";
+import type { ElicitRequest, WireElicitResult } from "./mcp-tool-types.ts";
+import type { PluginClientContext, PluginClientRegistration } from "./plugin.ts";
 import {
   type RuntimePrimitive,
   type ComponentEmissionPayload,
@@ -33,8 +33,8 @@ import {
   getComponentKey,
   createRuntime,
   createComponentHandler,
-} from '../browser-rendering/emissions.ts'
-import type { UserProps, ExtractResponse } from '../browser-rendering/browser-context.ts'
+} from "../browser-rendering/emissions.ts";
+import type { UserProps, ExtractResponse } from "../browser-rendering/browser-context.ts";
 
 // =============================================================================
 // CONTEXT CREATION
@@ -43,24 +43,26 @@ import type { UserProps, ExtractResponse } from '../browser-rendering/browser-co
 /**
  * Options for creating a PluginClientContext.
  */
-export interface CreatePluginClientContextOptions<TElicitRequest = ElicitRequest<string, z.ZodType>> {
+export interface CreatePluginClientContextOptions<
+  TElicitRequest = ElicitRequest<string, z.ZodType>,
+> {
   /** Tool call ID */
-  callId: string
+  callId: string;
 
   /** Tool name */
-  toolName: string
+  toolName: string;
 
   /** The current elicitation request */
-  elicitRequest: TElicitRequest
+  elicitRequest: TElicitRequest;
 
   /** Emission runtime for ctx.render() - if not provided, a channel must be given */
-  runtime?: RuntimePrimitive
+  runtime?: RuntimePrimitive;
 
   /** Channel for emissions (used to create runtime if not provided) */
-  emissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>
+  emissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>;
 
   /** Abort signal for cancellation */
-  signal?: AbortSignal
+  signal?: AbortSignal;
 }
 
 /**
@@ -75,16 +77,12 @@ export interface CreatePluginClientContextOptions<TElicitRequest = ElicitRequest
  * @returns PluginClientContext ready for use in handlers
  */
 export function createPluginClientContext<TElicitRequest = ElicitRequest<string, z.ZodType>>(
-  options: CreatePluginClientContextOptions<TElicitRequest>
+  options: CreatePluginClientContextOptions<TElicitRequest>,
 ): PluginClientContext<TElicitRequest> {
-  const {
-    callId,
-    elicitRequest,
-    signal = new AbortController().signal,
-  } = options
+  const { callId, elicitRequest, signal = new AbortController().signal } = options;
 
   // Get or create the runtime
-  let runtime = options.runtime
+  let runtime = options.runtime;
   if (!runtime && options.emissionChannel) {
     runtime = createRuntime(
       {
@@ -92,18 +90,18 @@ export function createPluginClientContext<TElicitRequest = ElicitRequest<string,
           [COMPONENT_EMISSION_TYPE]: createComponentHandler(options.emissionChannel),
         },
         emissionChannel: options.emissionChannel,
-        fallback: 'error',
+        fallback: "error",
       },
-      `${callId}-plugin`
-    )
+      `${callId}-plugin`,
+    );
   }
 
   if (!runtime) {
-    throw new Error('Either runtime or emissionChannel must be provided')
+    throw new Error("Either runtime or emissionChannel must be provided");
   }
 
   // Capture as const after the guard so TS can narrow in closures below
-  const resolvedRuntime = runtime
+  const resolvedRuntime = runtime;
 
   const ctx: PluginClientContext<TElicitRequest> = {
     callId,
@@ -113,21 +111,21 @@ export function createPluginClientContext<TElicitRequest = ElicitRequest<string,
     // render() implementation using emission runtime
     *render<TProps, TResponse = ExtractResponse<TProps>>(
       Component: ComponentTypeLike,
-      props: UserProps<TProps>
+      props: UserProps<TProps>,
     ): Operation<TResponse> {
-      const componentKey = getComponentKey(Component)
+      const componentKey = getComponentKey(Component);
 
       const payload: ComponentEmissionPayload = {
         componentKey,
         props: props as Record<string, unknown>,
         _component: Component,
-      }
+      };
 
       // Emit and wait for response
       return yield* resolvedRuntime.emit<ComponentEmissionPayload, TResponse>(
         COMPONENT_EMISSION_TYPE,
-        payload
-      )
+        payload,
+      );
     },
 
     // Optional reportProgress - no-op by default
@@ -135,9 +133,9 @@ export function createPluginClientContext<TElicitRequest = ElicitRequest<string,
       // Can be overridden if needed
       // For now, this is a no-op
     },
-  }
+  };
 
-  return ctx
+  return ctx;
 }
 
 // =============================================================================
@@ -164,19 +162,19 @@ export function* executeElicitHandler<
   key: K,
   // Use `any` for schema type to avoid Zod v3/v4 incompatibility issues
   request: ElicitRequest<K, any>,
-  ctx: PluginClientContext<ElicitRequest<K, any>>
+  ctx: PluginClientContext<ElicitRequest<K, any>>,
 ): Operation<WireElicitResult<unknown>> {
-  const handler = plugin.handlers[key]
+  const handler = plugin.handlers[key];
 
   if (!handler) {
     throw new Error(
       `Plugin "${plugin.toolName}" has no handler for elicitation key "${key}". ` +
-      `Available keys: ${Object.keys(plugin.handlers).join(', ')}`
-    )
+        `Available keys: ${Object.keys(plugin.handlers).join(", ")}`,
+    );
   }
 
   // Execute the handler
-  return yield* handler(request, ctx)
+  return yield* handler(request, ctx);
 }
 
 /**
@@ -192,23 +190,23 @@ export function* executeElicitHandler<
 export function* executeElicitHandlerFromRequest<TNormalized extends Record<string, unknown>>(
   plugin: PluginClientRegistration<TNormalized>,
   request: ElicitRequest<string, z.ZodType>,
-  ctx: PluginClientContext
+  ctx: PluginClientContext,
 ): Operation<WireElicitResult<unknown>> {
-  const key = request.key as keyof TNormalized & string
+  const key = request.key as keyof TNormalized & string;
 
   if (!(key in plugin.handlers)) {
     throw new Error(
       `Plugin "${plugin.toolName}" has no handler for elicitation key "${key}". ` +
-      `Available keys: ${Object.keys(plugin.handlers).join(', ')}`
-    )
+        `Available keys: ${Object.keys(plugin.handlers).join(", ")}`,
+    );
   }
 
   // Heterogeneous handler map: narrow through the map's own value type.
   const handler = plugin.handlers[key] as (
     req: ElicitRequest<string, z.ZodType>,
-    hctx: PluginClientContext
-  ) => Operation<WireElicitResult<unknown>>
-  return yield* handler(request, ctx)
+    hctx: PluginClientContext,
+  ) => Operation<WireElicitResult<unknown>>;
+  return yield* handler(request, ctx);
 }
 
 // =============================================================================
@@ -222,4 +220,4 @@ export function* executeElicitHandlerFromRequest<TNormalized extends Record<stri
 export type PluginContextForKey<
   TElicits extends Record<string, unknown>,
   K extends keyof TElicits & string,
-> = PluginClientContext<ElicitRequest<K, any>>
+> = PluginClientContext<ElicitRequest<K, any>>;

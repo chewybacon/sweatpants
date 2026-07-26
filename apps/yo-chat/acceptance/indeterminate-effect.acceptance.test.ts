@@ -187,10 +187,9 @@ describe("an indeterminate unsafe effect reaches the model", () => {
         "AttemptDetached",
       );
       expect(types, "an unsafe detached attempt is indeterminate").toContain("PullIndeterminate");
-      expect(
-        sawIndeterminate,
-        "the model must be told the effect outcome is indeterminate",
-      ).toBe(true);
+      expect(sawIndeterminate, "the model must be told the effect outcome is indeterminate").toBe(
+        true,
+      );
       expect(
         frames.some((frame) => frame.type === "RUN_ERROR"),
         "an indeterminate effect must not destroy the turn",

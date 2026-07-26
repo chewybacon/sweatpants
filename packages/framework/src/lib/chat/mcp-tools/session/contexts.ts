@@ -19,12 +19,12 @@
  *
  * @packageDocumentation
  */
-import { createContext, type Context, type Operation } from 'effection'
+import { createContext, type Context, type Operation } from "effection";
 import type {
   ToolSessionRegistry,
   ToolSessionStore,
   ToolSessionSamplingProvider,
-} from './types.ts'
+} from "./types.ts";
 
 // =============================================================================
 // CONTEXTS
@@ -33,23 +33,22 @@ import type {
 /**
  * Context for the tool session store.
  */
-export const ToolSessionStoreContext: Context<ToolSessionStore | undefined> =
-  createContext<ToolSessionStore | undefined>('mcp-tools:sessionStore', undefined)
+export const ToolSessionStoreContext: Context<ToolSessionStore | undefined> = createContext<
+  ToolSessionStore | undefined
+>("mcp-tools:sessionStore", undefined);
 
 /**
  * Context for the tool session registry.
  */
-export const ToolSessionRegistryContext: Context<ToolSessionRegistry | undefined> =
-  createContext<ToolSessionRegistry | undefined>('mcp-tools:sessionRegistry', undefined)
+export const ToolSessionRegistryContext: Context<ToolSessionRegistry | undefined> = createContext<
+  ToolSessionRegistry | undefined
+>("mcp-tools:sessionRegistry", undefined);
 
 /**
  * Context for the sampling provider.
  */
 export const ToolSessionSamplingProviderContext: Context<ToolSessionSamplingProvider | undefined> =
-  createContext<ToolSessionSamplingProvider | undefined>(
-    'mcp-tools:samplingProvider',
-    undefined
-  )
+  createContext<ToolSessionSamplingProvider | undefined>("mcp-tools:samplingProvider", undefined);
 
 // =============================================================================
 // ACCESSORS
@@ -60,14 +59,14 @@ export const ToolSessionSamplingProviderContext: Context<ToolSessionSamplingProv
  * Throws if not configured.
  */
 export function* useToolSessionStore(): Operation<ToolSessionStore> {
-  const store = yield* ToolSessionStoreContext.get()
+  const store = yield* ToolSessionStoreContext.get();
   if (!store) {
     throw new Error(
-      'ToolSessionStore not configured. ' +
-        'Call setupToolSessions() or set ToolSessionStoreContext before use.'
-    )
+      "ToolSessionStore not configured. " +
+        "Call setupToolSessions() or set ToolSessionStoreContext before use.",
+    );
   }
-  return store
+  return store;
 }
 
 /**
@@ -75,14 +74,14 @@ export function* useToolSessionStore(): Operation<ToolSessionStore> {
  * Throws if not configured.
  */
 export function* useToolSessionRegistry(): Operation<ToolSessionRegistry> {
-  const registry = yield* ToolSessionRegistryContext.get()
+  const registry = yield* ToolSessionRegistryContext.get();
   if (!registry) {
     throw new Error(
-      'ToolSessionRegistry not configured. ' +
-        'Call setupToolSessions() or set ToolSessionRegistryContext before use.'
-    )
+      "ToolSessionRegistry not configured. " +
+        "Call setupToolSessions() or set ToolSessionRegistryContext before use.",
+    );
   }
-  return registry
+  return registry;
 }
 
 /**
@@ -90,14 +89,14 @@ export function* useToolSessionRegistry(): Operation<ToolSessionRegistry> {
  * Throws if not configured.
  */
 export function* useToolSessionSamplingProvider(): Operation<ToolSessionSamplingProvider> {
-  const provider = yield* ToolSessionSamplingProviderContext.get()
+  const provider = yield* ToolSessionSamplingProviderContext.get();
   if (!provider) {
     throw new Error(
-      'ToolSessionSamplingProvider not configured. ' +
-        'Call setupToolSessions() or set ToolSessionSamplingProviderContext before use.'
-    )
+      "ToolSessionSamplingProvider not configured. " +
+        "Call setupToolSessions() or set ToolSessionSamplingProviderContext before use.",
+    );
   }
-  return provider
+  return provider;
 }
 
 // =============================================================================
@@ -108,19 +107,21 @@ export function* useToolSessionSamplingProvider(): Operation<ToolSessionSampling
  * Get the tool session store from context, or undefined if not set.
  */
 export function* useOptionalToolSessionStore(): Operation<ToolSessionStore | undefined> {
-  return yield* ToolSessionStoreContext.get()
+  return yield* ToolSessionStoreContext.get();
 }
 
 /**
  * Get the tool session registry from context, or undefined if not set.
  */
 export function* useOptionalToolSessionRegistry(): Operation<ToolSessionRegistry | undefined> {
-  return yield* ToolSessionRegistryContext.get()
+  return yield* ToolSessionRegistryContext.get();
 }
 
 /**
  * Get the sampling provider from context, or undefined if not set.
  */
-export function* useOptionalToolSessionSamplingProvider(): Operation<ToolSessionSamplingProvider | undefined> {
-  return yield* ToolSessionSamplingProviderContext.get()
+export function* useOptionalToolSessionSamplingProvider(): Operation<
+  ToolSessionSamplingProvider | undefined
+> {
+  return yield* ToolSessionSamplingProviderContext.get();
 }

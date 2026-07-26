@@ -3,51 +3,48 @@
  *
  * Reads the contents of a file. Read-only, safe for plan mode.
  */
-import { createTool } from '@sweatpants/core'
-import { z } from 'zod'
-import { call } from 'effection'
-import * as fs from 'node:fs/promises'
-import * as path from 'node:path'
+import { createTool } from "@sweatpants/core";
+import { z } from "zod";
+import { call } from "effection";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 
-export const readFile = createTool('read_file')
-  .description('Read the contents of a file')
+export const readFile = createTool("read_file")
+  .description("Read the contents of a file")
   .parameters(
     z.object({
-      path: z.string().describe('Path to the file to read'),
-      maxLines: z
-        .number()
-        .optional()
-        .default(500)
-        .describe('Maximum number of lines to read'),
-    })
+      path: z.string().describe("Path to the file to read"),
+      maxLines: z.number().optional().default(500).describe("Maximum number of lines to read"),
+    }),
   )
   .execute(function* (params) {
-    const filePath = path.resolve(process.cwd(), params.path)
+    const filePath = path.resolve(process.cwd(), params.path);
 
     // Security: ensure path is within cwd
-    const cwd = process.cwd()
+    const cwd = process.cwd();
     if (!filePath.startsWith(cwd)) {
-      return { error: 'Path must be within current working directory' }
+      return { error: "Path must be within current working directory" };
     }
 
     try {
-      const content: string = yield* call(() => fs.readFile(filePath, 'utf-8'))
+      const content: string = yield* call(() => fs.readFile(filePath, "utf-8"));
 
       // Limit lines if needed
-      const lines = content.split('\n')
-      const truncated = lines.length > params.maxLines
+      const lines = content.split("\n");
+      const truncated = lines.length > params.maxLines;
       const limitedContent = truncated
-        ? lines.slice(0, params.maxLines).join('\n') + `\n... (${lines.length - params.maxLines} more lines)`
-        : content
+        ? lines.slice(0, params.maxLines).join("\n") +
+          `\n... (${lines.length - params.maxLines} more lines)`
+        : content;
 
       return {
         path: params.path,
         content: limitedContent,
         lineCount: lines.length,
         truncated,
-      }
+      };
     } catch (e) {
-      const error = e instanceof Error ? e.message : String(e)
-      return { error: `Failed to read file: ${error}` }
+      const error = e instanceof Error ? e.message : String(e);
+      return { error: `Failed to read file: ${error}` };
     }
-  })
+  });

@@ -1,72 +1,72 @@
 export interface StreamMetadata {
-  tailOffset: number
-  closed: boolean
+  tailOffset: number;
+  closed: boolean;
 }
 
 export interface ParsedOffset {
-  value: number | null
-  isNow: boolean
+  value: number | null;
+  isNow: boolean;
 }
 
-export type LiveMode = 'long-poll' | 'sse'
+export type LiveMode = "long-poll" | "sse";
 
-const OFFSET_WIDTH = 16
+const OFFSET_WIDTH = 16;
 
 export function parseSessionIdFromPath(pathname: string): string | undefined {
-  const match = pathname.match(/\/sessions\/([^/]+)/)
+  const match = pathname.match(/\/sessions\/([^/]+)/);
   if (!match?.[1]) {
-    return undefined
+    return undefined;
   }
-  return decodeURIComponent(match[1])
+  return decodeURIComponent(match[1]);
 }
 
 export function parseOffsetParam(value: string | null): ParsedOffset {
   if (value === null) {
-    return { value: null, isNow: false }
+    return { value: null, isNow: false };
   }
 
-  if (value === 'now') {
-    return { value: null, isNow: true }
+  if (value === "now") {
+    return { value: null, isNow: true };
   }
 
-  if (value === '-1') {
-    return { value: 0, isNow: false }
+  if (value === "-1") {
+    return { value: 0, isNow: false };
   }
 
-  const parsed = Number.parseInt(value, 10)
+  const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed < 0) {
-    return { value: null, isNow: false }
+    return { value: null, isNow: false };
   }
 
-  return { value: parsed, isNow: false }
+  return { value: parsed, isNow: false };
 }
 
 export function parseLiveMode(value: string | null): LiveMode | undefined {
-  if (value === 'long-poll' || value === 'sse') {
-    return value
+  if (value === "long-poll" || value === "sse") {
+    return value;
   }
-  return undefined
+  return undefined;
 }
 
 export function parseTimeoutMs(value: string | null, fallbackMs = 30_000): number {
   if (value === null) {
-    return fallbackMs
+    return fallbackMs;
   }
 
-  const parsed = Number.parseInt(value, 10)
+  const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed < 0) {
-    return fallbackMs
+    return fallbackMs;
   }
 
-  return parsed * 1000
+  return parsed * 1000;
 }
 
 export function toOffsetString(offset: number): string {
-  return String(offset).padStart(OFFSET_WIDTH, '0')
+  return String(offset).padStart(OFFSET_WIDTH, "0");
 }
 
 export function createStreamCursor(now = Date.now(), intervalMs = 20_000): string {
-  return String(Math.floor(now / intervalMs))
+  return String(Math.floor(now / intervalMs));
 }
 
 export function createStreamETag(
@@ -74,8 +74,8 @@ export function createStreamETag(
   startOffset: number,
   metadata: StreamMetadata,
 ): string {
-  const closedMarker = metadata.closed ? 'c' : 'o'
-  return `"${sessionId}:${startOffset}:${metadata.tailOffset}:${closedMarker}"`
+  const closedMarker = metadata.closed ? "c" : "o";
+  return `"${sessionId}:${startOffset}:${metadata.tailOffset}:${closedMarker}"`;
 }
 
 export function applySnapshotHeaders(
@@ -83,12 +83,12 @@ export function applySnapshotHeaders(
   startOffset: number,
   metadata: StreamMetadata,
 ): void {
-  headers.set('Stream-Next-Offset', toOffsetString(metadata.tailOffset))
+  headers.set("Stream-Next-Offset", toOffsetString(metadata.tailOffset));
 
   if (startOffset >= metadata.tailOffset) {
-    headers.set('Stream-Up-To-Date', 'true')
+    headers.set("Stream-Up-To-Date", "true");
     if (metadata.closed) {
-      headers.set('Stream-Closed', 'true')
+      headers.set("Stream-Closed", "true");
     }
   }
 }

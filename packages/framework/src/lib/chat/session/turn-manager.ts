@@ -3,42 +3,40 @@
  *
  * Utilities for syncing conversation state and history across turns.
  */
-import type { ConversationState } from './streaming.ts'
-import type { Message } from '../types.ts'
-import {
-  assertMessageHasId,
-} from './message-identity.ts'
+import type { ConversationState } from "./streaming.ts";
+import type { Message } from "../types.ts";
+import { assertMessageHasId } from "./message-identity.ts";
 import {
   appendAssistantFinalMessage,
   appendAssistantToolCallMessage,
   createTranscriptState,
-} from './transcript.ts'
+} from "./transcript.ts";
 
-export type PendingToolCall = { id: string; name: string }
+export type PendingToolCall = { id: string; name: string };
 
 export function syncConversationStateForElicit(
   history: Message[],
-  conversationState: ConversationState
+  conversationState: ConversationState,
 ): PendingToolCall[] {
-  const conversationMessages = conversationState.messages
-  const seenIds = new Set(history.map((message) => message.id).filter(Boolean))
+  const conversationMessages = conversationState.messages;
+  const seenIds = new Set(history.map((message) => message.id).filter(Boolean));
 
   for (const convMsg of conversationMessages) {
-    const id = assertMessageHasId(convMsg, 'syncConversationStateForElicit')
+    const id = assertMessageHasId(convMsg, "syncConversationStateForElicit");
     if (seenIds.has(id)) {
-      continue
+      continue;
     }
 
     history.push({
       ...convMsg,
       id,
-    })
-    seenIds.add(id)
+    });
+    seenIds.add(id);
   }
 
   const hasAssistantWithTools = conversationMessages.some(
-    (msg) => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0
-  )
+    (msg) => msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0,
+  );
 
   if (!hasAssistantWithTools && conversationState.toolCalls.length > 0) {
     appendAssistantToolCallMessage(
@@ -46,49 +44,53 @@ export function syncConversationStateForElicit(
       createTranscriptState(history),
       conversationState.toolCalls.map((tc) => ({
         id: tc.id,
-        type: 'function' as const,
+        type: "function" as const,
         function: {
           name: tc.name,
           arguments: tc.arguments,
         },
       })),
-      conversationState.assistantContent || '',
-    )
+      conversationState.assistantContent || "",
+    );
   }
 
   return conversationState.toolCalls.map((tc) => ({
     id: tc.id,
     name: tc.name,
-  }))
+  }));
 }
 
 export function syncConversationStateForComplete(
   history: Message[],
   conversationState: ConversationState,
 ): void {
-  const seenIds = new Set(history.map((message) => message.id).filter(Boolean))
+  const seenIds = new Set(history.map((message) => message.id).filter(Boolean));
 
   for (const convMsg of conversationState.messages) {
-    const id = assertMessageHasId(convMsg, 'syncConversationStateForComplete')
+    const id = assertMessageHasId(convMsg, "syncConversationStateForComplete");
     if (seenIds.has(id)) {
-      continue
+      continue;
     }
 
     history.push({
       ...convMsg,
       id,
-    })
-    seenIds.add(id)
+    });
+    seenIds.add(id);
   }
 
   if (conversationState.assistantContent) {
-    const lastAssistant = history[history.length - 1]
-    if (!lastAssistant || lastAssistant.role !== 'assistant' || lastAssistant.content !== conversationState.assistantContent) {
+    const lastAssistant = history[history.length - 1];
+    if (
+      !lastAssistant ||
+      lastAssistant.role !== "assistant" ||
+      lastAssistant.content !== conversationState.assistantContent
+    ) {
       appendAssistantFinalMessage(
         history,
         createTranscriptState(history),
         conversationState.assistantContent,
-      )
+      );
     }
   }
 }
@@ -97,38 +99,38 @@ export function syncMessagesFromIndex(
   history: Message[],
   sourceMessages: Message[],
   startIndex: number,
-  toolResultsMap?: Map<string, string>
+  toolResultsMap?: Map<string, string>,
 ): void {
   for (let i = startIndex; i < sourceMessages.length; i++) {
-    const apiMsg = sourceMessages[i]!
-    let content = apiMsg.content
+    const apiMsg = sourceMessages[i]!;
+    let content = apiMsg.content;
 
-    if (apiMsg.role === 'tool' && apiMsg.tool_call_id && toolResultsMap) {
-      const updatedContent = toolResultsMap.get(apiMsg.tool_call_id)
+    if (apiMsg.role === "tool" && apiMsg.tool_call_id && toolResultsMap) {
+      const updatedContent = toolResultsMap.get(apiMsg.tool_call_id);
       if (updatedContent) {
-        content = updatedContent
+        content = updatedContent;
       }
     }
 
     const msg: Message = {
-      id: assertMessageHasId(apiMsg, 'syncMessagesFromIndex'),
+      id: assertMessageHasId(apiMsg, "syncMessagesFromIndex"),
       role: apiMsg.role,
       content: content,
       ...(apiMsg.replay ? { replay: apiMsg.replay } : {}),
-    }
+    };
 
     if (apiMsg.tool_calls && apiMsg.tool_calls.length > 0) {
       msg.tool_calls = apiMsg.tool_calls.map((tc) => ({
         id: tc.id,
-        type: 'function' as const,
+        type: "function" as const,
         function: tc.function,
-      }))
+      }));
     }
 
     if (apiMsg.tool_call_id) {
-      msg.tool_call_id = apiMsg.tool_call_id
+      msg.tool_call_id = apiMsg.tool_call_id;
     }
 
-    history.push(msg)
+    history.push(msg);
   }
 }

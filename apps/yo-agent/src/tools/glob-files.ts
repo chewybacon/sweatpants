@@ -3,37 +3,35 @@
  *
  * Find files matching a glob pattern. Read-only, safe for plan mode.
  */
-import { createTool } from '@sweatpants/core'
-import { z } from 'zod'
-import { call } from 'effection'
-import fg from 'fast-glob'
-import * as path from 'node:path'
+import { createTool } from "@sweatpants/core";
+import { z } from "zod";
+import { call } from "effection";
+import fg from "fast-glob";
+import * as path from "node:path";
 
-export const globFiles = createTool('glob_files')
-  .description('Find files matching a glob pattern')
+export const globFiles = createTool("glob_files")
+  .description("Find files matching a glob pattern")
   .parameters(
     z.object({
       pattern: z.string().describe('Glob pattern to match (e.g., "**/*.ts", "src/**/*.tsx")'),
       cwd: z
         .string()
         .optional()
-        .describe('Directory to search from (defaults to current working directory)'),
+        .describe("Directory to search from (defaults to current working directory)"),
       maxResults: z
         .number()
         .optional()
         .default(100)
-        .describe('Maximum number of results to return'),
-    })
+        .describe("Maximum number of results to return"),
+    }),
   )
   .execute(function* (params) {
-    const searchDir = params.cwd
-      ? path.resolve(process.cwd(), params.cwd)
-      : process.cwd()
+    const searchDir = params.cwd ? path.resolve(process.cwd(), params.cwd) : process.cwd();
 
     // Security: ensure search dir is within cwd
-    const cwd = process.cwd()
+    const cwd = process.cwd();
     if (!searchDir.startsWith(cwd)) {
-      return { error: 'Search directory must be within current working directory' }
+      return { error: "Search directory must be within current working directory" };
     }
 
     try {
@@ -41,22 +39,22 @@ export const globFiles = createTool('glob_files')
         fg(params.pattern, {
           cwd: searchDir,
           onlyFiles: true,
-          ignore: ['**/node_modules/**', '**/.git/**'],
-        })
-      )
+          ignore: ["**/node_modules/**", "**/.git/**"],
+        }),
+      );
 
-      const truncated = files.length > params.maxResults
-      const limitedFiles = truncated ? files.slice(0, params.maxResults) : files
+      const truncated = files.length > params.maxResults;
+      const limitedFiles = truncated ? files.slice(0, params.maxResults) : files;
 
       return {
         pattern: params.pattern,
-        cwd: params.cwd || '.',
+        cwd: params.cwd || ".",
         files: limitedFiles,
         count: files.length,
         truncated,
-      }
+      };
     } catch (e) {
-      const error = e instanceof Error ? e.message : String(e)
-      return { error: `Failed to glob files: ${error}` }
+      const error = e instanceof Error ? e.message : String(e);
+      return { error: `Failed to glob files: ${error}` };
     }
-  })
+  });

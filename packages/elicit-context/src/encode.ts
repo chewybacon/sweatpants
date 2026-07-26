@@ -1,4 +1,4 @@
-import type { JsonSchema, EncodedElicitContext } from './types.ts'
+import type { JsonSchema, EncodedElicitContext } from "./types.ts";
 
 /** Encodes context only in the canonical `x-elicit-context` schema extension. */
 export function encodeElicitContext<TContext = Record<string, unknown>>(
@@ -10,7 +10,7 @@ export function encodeElicitContext<TContext = Record<string, unknown>>(
     message,
     schema: {
       ...schema,
-      'x-elicit-context': context,
+      "x-elicit-context": context,
     },
-  }
+  };
 }

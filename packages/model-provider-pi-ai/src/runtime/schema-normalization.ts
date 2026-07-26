@@ -1,42 +1,42 @@
-import { z } from 'zod'
+import { z } from "zod";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isZodSchema(value: unknown): value is z.ZodType {
-  return isRecord(value)
-    && (typeof (value as { safeParse?: unknown }).safeParse === 'function'
-      || (typeof (value as { parse?: unknown }).parse === 'function' && '_def' in value))
+  return (
+    isRecord(value) &&
+    (typeof (value as { safeParse?: unknown }).safeParse === "function" ||
+      (typeof (value as { parse?: unknown }).parse === "function" && "_def" in value))
+  );
 }
 
 function stripNonJson(value: unknown): unknown {
-  if (value === undefined || typeof value === 'function' || typeof value === 'symbol') {
-    return undefined
+  if (value === undefined || typeof value === "function" || typeof value === "symbol") {
+    return undefined;
   }
 
-  if (typeof value === 'bigint') {
-    return value.toString()
+  if (typeof value === "bigint") {
+    return value.toString();
   }
 
   if (Array.isArray(value)) {
-    return value
-      .map(stripNonJson)
-      .filter((entry) => entry !== undefined)
+    return value.map(stripNonJson).filter((entry) => entry !== undefined);
   }
 
   if (isRecord(value)) {
-    const result: Record<string, unknown> = {}
+    const result: Record<string, unknown> = {};
     for (const [key, entry] of Object.entries(value)) {
-      const normalized = stripNonJson(entry)
+      const normalized = stripNonJson(entry);
       if (normalized !== undefined) {
-        result[key] = normalized
+        result[key] = normalized;
       }
     }
-    return result
+    return result;
   }
 
-  return value
+  return value;
 }
 
 /**
@@ -48,13 +48,13 @@ function stripNonJson(value: unknown): unknown {
  */
 export function toProviderJsonSchema(schema: unknown): Record<string, unknown> {
   if (isZodSchema(schema)) {
-    const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema)
-    return stripNonJson(jsonSchema) as Record<string, unknown>
+    const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema);
+    return stripNonJson(jsonSchema) as Record<string, unknown>;
   }
 
   if (isRecord(schema)) {
-    return stripNonJson(schema) as Record<string, unknown>
+    return stripNonJson(schema) as Record<string, unknown>;
   }
 
-  return { type: 'object', properties: {}, required: [] }
+  return { type: "object", properties: {}, required: [] };
 }

@@ -3,34 +3,34 @@
  *
  * A tool that demonstrates using sampling to generate a personalized greeting.
  */
-import { z } from 'zod'
-import { createTool } from '@sweatpants/core'
+import { z } from "zod";
+import { createTool } from "@sweatpants/core";
 
-export const greetTool = createTool('greet')
-  .description('Generate a personalized greeting using AI')
+export const greetTool = createTool("greet")
+  .description("Generate a personalized greeting using AI")
   .parameters(
     z.object({
-      name: z.string().describe('Name of the person to greet'),
+      name: z.string().describe("Name of the person to greet"),
       style: z
-        .enum(['formal', 'casual', 'poetic', 'pirate'])
-        .default('casual')
-        .describe('Style of greeting'),
-    })
+        .enum(["formal", "casual", "poetic", "pirate"])
+        .default("casual")
+        .describe("Style of greeting"),
+    }),
   )
   .samples()
   .execute(function* (params, ctx) {
-    yield* ctx.notify('Generating greeting...')
+    yield* ctx.notify("Generating greeting...");
 
     const greeting = yield* ctx.sample({
       prompt: `Generate a ${params.style} greeting for someone named "${params.name}". Keep it to 1-2 sentences.`,
       maxTokens: 100,
-    })
+    });
 
-    yield* ctx.log('info', `Generated greeting for ${params.name}`)
+    yield* ctx.log("info", `Generated greeting for ${params.name}`);
 
     return {
       name: params.name,
       style: params.style,
-      greeting: greeting.text ?? '',
-    }
-  })
+      greeting: greeting.text ?? "",
+    };
+  });

@@ -64,11 +64,7 @@ function BoardGrid({
       {board.map((cell, position) => {
         const isWinning = winningLine?.includes(position) ?? false;
         const isLast = position === lastPosition;
-        const ringClass = isWinning
-          ? "ttt-cell-winner"
-          : isLast
-            ? "ttt-cell-last"
-            : undefined;
+        const ringClass = isWinning ? "ttt-cell-winner" : isLast ? "ttt-cell-last" : undefined;
         if (cell !== null) {
           return (
             <Card
@@ -89,7 +85,13 @@ function BoardGrid({
         }
         if (disabled || gameOver) {
           return (
-            <Card key={position} padding={0} width={CELL_SIZE} height={CELL_SIZE} variant="transparent">
+            <Card
+              key={position}
+              padding={0}
+              width={CELL_SIZE}
+              height={CELL_SIZE}
+              variant="transparent"
+            >
               <Center height="100%">
                 <Text type="supporting" color="disabled">
                   {position}
@@ -121,7 +123,11 @@ function BoardGrid({
   );
 }
 
-function MoveRow({ move, isFinal, result }: {
+function MoveRow({
+  move,
+  isFinal,
+  result,
+}: {
   readonly move: GameMove;
   readonly isFinal: boolean;
   readonly result?: "model_wins" | "user_wins" | "draw";
@@ -191,7 +197,15 @@ export function TicTacToeGame({
         </HStack>
 
         {moveHistory.length > 0 ? (
-          <List header={<Text type="label" color="secondary">Move history</Text>} hasDividers density="compact">
+          <List
+            header={
+              <Text type="label" color="secondary">
+                Move history
+              </Text>
+            }
+            hasDividers
+            density="compact"
+          >
             {moveHistory.map((move, index) => (
               <MoveRow
                 key={move.moveNumber}
@@ -210,7 +224,9 @@ export function TicTacToeGame({
               label={gameOver ? "Game complete" : "Your turn"}
               isPulsing={!gameOver}
             />
-            <Text type="label">{gameOver ? (resultMessage ?? "Game over") : `Your turn — you are ${userSymbol}`}</Text>
+            <Text type="label">
+              {gameOver ? (resultMessage ?? "Game over") : `Your turn — you are ${userSymbol}`}
+            </Text>
           </HStack>
           <BoardGrid
             board={board}

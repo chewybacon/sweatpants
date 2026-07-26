@@ -21,17 +21,16 @@ import type {
  *
  * @returns A tuple of [PrincipalTransport, OperativeTransport] that are connected.
  */
-export function* createTransportPair(): Operation<
-  [PrincipalTransport, OperativeTransport]
-> {
+export function* createTransportPair(): Operation<[PrincipalTransport, OperativeTransport]> {
   // Channels for bidirectional communication
   // Principal sends requests → Operative receives them
-  const requestChannel: Channel<PrincipalOutgoing, void> =
-    createChannel<PrincipalOutgoing, void>();
+  const requestChannel: Channel<PrincipalOutgoing, void> = createChannel<PrincipalOutgoing, void>();
 
   // Operative sends responses → Principal receives them
-  const responseChannel: Channel<OperativeOutgoing, void> =
-    createChannel<OperativeOutgoing, void>();
+  const responseChannel: Channel<OperativeOutgoing, void> = createChannel<
+    OperativeOutgoing,
+    void
+  >();
 
   const principalTransport: PrincipalTransport = yield* createTransport<
     PrincipalOutgoing,
@@ -51,7 +50,7 @@ export function* createTransportPair(): Operation<
  */
 function createTransport<TSend, TReceive>(
   sendChannel: Channel<TSend, void>,
-  receiveChannel: Channel<TReceive, void>
+  receiveChannel: Channel<TReceive, void>,
 ): Operation<Transport<TSend, TReceive>> {
   return resource(function* (provide) {
     const subscription: Subscription<TReceive, void> = yield* receiveChannel;

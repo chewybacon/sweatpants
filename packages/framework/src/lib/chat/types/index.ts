@@ -14,7 +14,7 @@ export type {
   ToolResultPart,
   MessagePart,
   ContentPart,
-} from './chat-message.ts'
+} from "./chat-message.ts";
 
 export {
   generatePartId,
@@ -28,4 +28,4 @@ export {
   getMessageTextContent,
   getMessageReasoningContent,
   getMessageToolCalls,
-} from './chat-message.ts'
+} from "./chat-message.ts";

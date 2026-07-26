@@ -1,15 +1,15 @@
-import type { Operation } from 'effection'
-import type { TokenBufferStore } from '@sweatpants/durable-streams'
+import type { Operation } from "effection";
+import type { TokenBufferStore } from "@sweatpants/durable-streams";
 
-const CONVERSATION_INDEX_PREFIX = '__conversation_index__:'
-const CONVERSATION_CHECKPOINT_PREFIX = '__conversation_checkpoint__:'
+const CONVERSATION_INDEX_PREFIX = "__conversation_index__:";
+const CONVERSATION_CHECKPOINT_PREFIX = "__conversation_checkpoint__:";
 
 export function getConversationIndexId(conversationId: string): string {
-  return `${CONVERSATION_INDEX_PREFIX}${conversationId}`
+  return `${CONVERSATION_INDEX_PREFIX}${conversationId}`;
 }
 
 export function getConversationCheckpointId(conversationId: string): string {
-  return `${CONVERSATION_CHECKPOINT_PREFIX}${conversationId}`
+  return `${CONVERSATION_CHECKPOINT_PREFIX}${conversationId}`;
 }
 
 export function* recordConversationSession(
@@ -17,23 +17,23 @@ export function* recordConversationSession(
   conversationId: string,
   sessionId: string,
 ): Operation<void> {
-  const indexId = getConversationIndexId(conversationId)
-  let buffer = yield* bufferStore.get(indexId)
+  const indexId = getConversationIndexId(conversationId);
+  let buffer = yield* bufferStore.get(indexId);
 
   if (!buffer) {
-    buffer = yield* bufferStore.create(indexId)
+    buffer = yield* bufferStore.create(indexId);
   }
 
-  const { tokens } = yield* buffer.read(0)
+  const { tokens } = yield* buffer.read(0);
   if (tokens.includes(sessionId)) {
-    return
+    return;
   }
 
   const writer = yield* buffer.claimWriter({
     ownerId: `conversation-index:${conversationId}`,
     activationEpoch: 1,
-  })
-  yield* writer.append([sessionId])
+  });
+  yield* writer.append([sessionId]);
 }
 
 export function* recordConversationCheckpoint(
@@ -41,60 +41,60 @@ export function* recordConversationCheckpoint(
   conversationId: string,
   checkpointToken: string,
 ): Operation<void> {
-  const checkpointId = getConversationCheckpointId(conversationId)
-  const existing = yield* bufferStore.get(checkpointId)
+  const checkpointId = getConversationCheckpointId(conversationId);
+  const existing = yield* bufferStore.get(checkpointId);
   if (existing) {
-    yield* bufferStore.delete(checkpointId)
+    yield* bufferStore.delete(checkpointId);
   }
 
-  const buffer = yield* bufferStore.create(checkpointId)
+  const buffer = yield* bufferStore.create(checkpointId);
   const writer = yield* buffer.claimWriter({
     ownerId: `conversation-checkpoint:${conversationId}`,
     activationEpoch: 1,
-  })
-  yield* writer.append([checkpointToken])
-  yield* writer.complete()
+  });
+  yield* writer.append([checkpointToken]);
+  yield* writer.complete();
 }
 
 export function* readLatestConversationCheckpoint(
   bufferStore: TokenBufferStore<string>,
   conversationId: string,
 ): Operation<string | null> {
-  const checkpointId = getConversationCheckpointId(conversationId)
-  const buffer = yield* bufferStore.get(checkpointId)
+  const checkpointId = getConversationCheckpointId(conversationId);
+  const buffer = yield* bufferStore.get(checkpointId);
 
   if (!buffer) {
-    return null
+    return null;
   }
 
-  const { tokens } = yield* buffer.read(0)
-  return tokens[tokens.length - 1] ?? null
+  const { tokens } = yield* buffer.read(0);
+  return tokens[tokens.length - 1] ?? null;
 }
 
 export function* resolveLatestConversationSession(
   bufferStore: TokenBufferStore<string>,
   conversationId: string,
 ): Operation<string | null> {
-  const indexId = getConversationIndexId(conversationId)
-  const buffer = yield* bufferStore.get(indexId)
+  const indexId = getConversationIndexId(conversationId);
+  const buffer = yield* bufferStore.get(indexId);
 
   if (!buffer) {
-    return null
+    return null;
   }
 
-  const { tokens } = yield* buffer.read(0)
+  const { tokens } = yield* buffer.read(0);
 
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
-    const candidate = tokens[index]
+    const candidate = tokens[index];
     if (!candidate) {
-      continue
+      continue;
     }
 
-    const sessionBuffer = yield* bufferStore.get(candidate)
+    const sessionBuffer = yield* bufferStore.get(candidate);
     if (sessionBuffer) {
-      return candidate
+      return candidate;
     }
   }
 
-  return null
+  return null;
 }

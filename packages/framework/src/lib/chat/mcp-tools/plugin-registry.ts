@@ -22,7 +22,7 @@
  * ```
  */
 
-import type { PluginClientRegistrationInput } from './plugin.ts'
+import type { PluginClientRegistrationInput } from "./plugin.ts";
 
 // =============================================================================
 // PLUGIN REGISTRY INTERFACE
@@ -38,7 +38,7 @@ export interface PluginRegistry {
    * @param plugin - The plugin client registration to register
    * @throws If a plugin with the same tool name is already registered
    */
-  register(plugin: PluginClientRegistrationInput): void
+  register(plugin: PluginClientRegistrationInput): void;
 
   /**
    * Get a plugin by tool name.
@@ -46,7 +46,7 @@ export interface PluginRegistry {
    * @param toolName - The tool name to look up
    * @returns The plugin registration, or undefined if not found
    */
-  get(toolName: string): PluginClientRegistrationInput | undefined
+  get(toolName: string): PluginClientRegistrationInput | undefined;
 
   /**
    * Check if a plugin is registered for a tool name.
@@ -54,19 +54,19 @@ export interface PluginRegistry {
    * @param toolName - The tool name to check
    * @returns True if a plugin is registered
    */
-  has(toolName: string): boolean
+  has(toolName: string): boolean;
 
   /**
    * Get all registered tool names.
    *
    * @returns Array of tool names
    */
-  toolNames(): string[]
+  toolNames(): string[];
 
   /**
    * Get the number of registered plugins.
    */
-  readonly size: number
+  readonly size: number;
 }
 
 // =============================================================================
@@ -79,35 +79,35 @@ export interface PluginRegistry {
  * @returns A new PluginRegistry instance
  */
 export function createPluginRegistry(): PluginRegistry {
-  const plugins = new Map<string, PluginClientRegistrationInput>()
+  const plugins = new Map<string, PluginClientRegistrationInput>();
 
   return {
     register(plugin: PluginClientRegistrationInput): void {
       if (plugins.has(plugin.toolName)) {
         throw new Error(
           `Plugin for tool "${plugin.toolName}" is already registered. ` +
-          `Each tool can only have one plugin registration.`
-        )
+            `Each tool can only have one plugin registration.`,
+        );
       }
-      plugins.set(plugin.toolName, plugin)
+      plugins.set(plugin.toolName, plugin);
     },
 
     get(toolName: string): PluginClientRegistrationInput | undefined {
-      return plugins.get(toolName)
+      return plugins.get(toolName);
     },
 
     has(toolName: string): boolean {
-      return plugins.has(toolName)
+      return plugins.has(toolName);
     },
 
     toolNames(): string[] {
-      return Array.from(plugins.keys())
+      return Array.from(plugins.keys());
     },
 
     get size(): number {
-      return plugins.size
+      return plugins.size;
     },
-  }
+  };
 }
 
 // =============================================================================
@@ -129,12 +129,10 @@ export function createPluginRegistry(): PluginRegistry {
  * ])
  * ```
  */
-export function createPluginRegistryFrom(
-  plugins: PluginClientRegistrationInput[]
-): PluginRegistry {
-  const registry = createPluginRegistry()
+export function createPluginRegistryFrom(plugins: PluginClientRegistrationInput[]): PluginRegistry {
+  const registry = createPluginRegistry();
   for (const plugin of plugins) {
-    registry.register(plugin)
+    registry.register(plugin);
   }
-  return registry
+  return registry;
 }

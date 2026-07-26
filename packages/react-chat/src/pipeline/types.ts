@@ -1,1 +1,1 @@
-export * from '@sweatpants/framework/chat'
+export * from "@sweatpants/framework/chat";

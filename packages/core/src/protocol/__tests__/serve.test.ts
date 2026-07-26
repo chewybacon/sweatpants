@@ -157,7 +157,10 @@ describe("serveProtocol", () => {
 
     yield* sleep(0);
 
-    const stream = correlated.request<{ step: number }, { status: "accepted"; content: { total: number } }>({
+    const stream = correlated.request<
+      { step: number },
+      { status: "accepted"; content: { total: number } }
+    >({
       id: "req-1",
       kind: "elicit",
       type: "process",
@@ -174,11 +177,7 @@ describe("serveProtocol", () => {
       result = yield* subscription.next();
     }
 
-    expect(progress).toEqual([
-      { step: 1 },
-      { step: 2 },
-      { step: 3 },
-    ]);
+    expect(progress).toEqual([{ step: 1 }, { step: 2 }, { step: 3 }]);
     expect(result.value).toEqual({
       status: "accepted",
       content: { total: 3 },

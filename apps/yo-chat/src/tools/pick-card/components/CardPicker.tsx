@@ -1,9 +1,9 @@
-import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
-import type { Card } from '../cards'
+import type { RenderableProps } from "@sweatpants/framework/chat/browser-rendering";
+import type { Card } from "../cards";
 
 export interface CardPickerProps extends RenderableProps<{ picked: Card }> {
-  cards: Card[]
-  prompt: string
+  cards: Card[];
+  prompt: string;
 }
 
 export function CardPicker({ cards, prompt, onRespond, disabled, response }: CardPickerProps) {
@@ -19,9 +19,10 @@ export function CardPicker({ cards, prompt, onRespond, disabled, response }: Car
               disabled
               className={`
                 px-3 py-2 rounded border text-lg font-mono
-                ${card.display === response.picked.display
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-muted-foreground/20 text-muted-foreground/50'
+                ${
+                  card.display === response.picked.display
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-muted-foreground/20 text-muted-foreground/50"
                 }
               `}
             >
@@ -29,11 +30,9 @@ export function CardPicker({ cards, prompt, onRespond, disabled, response }: Car
             </button>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground mt-2">
-          You picked: {response.picked.display}
-        </p>
+        <p className="text-xs text-muted-foreground mt-2">You picked: {response.picked.display}</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -49,9 +48,10 @@ export function CardPicker({ cards, prompt, onRespond, disabled, response }: Car
             className={`
               px-3 py-2 rounded border text-lg font-mono
               transition-colors
-              ${disabled
-                ? 'cursor-not-allowed opacity-50'
-                : 'hover:border-primary hover:bg-primary/10 cursor-pointer'
+              ${
+                disabled
+                  ? "cursor-not-allowed opacity-50"
+                  : "hover:border-primary hover:bg-primary/10 cursor-pointer"
               }
               border-muted-foreground/40
             `}
@@ -61,7 +61,7 @@ export function CardPicker({ cards, prompt, onRespond, disabled, response }: Car
         ))}
       </div>
     </div>
-  )
+  );
 }
 
-CardPicker.displayName = 'CardPicker'
+CardPicker.displayName = "CardPicker";

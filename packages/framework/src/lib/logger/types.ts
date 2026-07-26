@@ -9,22 +9,22 @@
  * Logger interface compatible with pino's API.
  */
 export interface Logger {
-  trace(msg: string, ...args: unknown[]): void
-  trace(obj: object, msg?: string, ...args: unknown[]): void
-  debug(msg: string, ...args: unknown[]): void
-  debug(obj: object, msg?: string, ...args: unknown[]): void
-  info(msg: string, ...args: unknown[]): void
-  info(obj: object, msg?: string, ...args: unknown[]): void
-  warn(msg: string, ...args: unknown[]): void
-  warn(obj: object, msg?: string, ...args: unknown[]): void
-  error(msg: string, ...args: unknown[]): void
-  error(obj: object, msg?: string, ...args: unknown[]): void
-  child(bindings: Record<string, unknown>): Logger
+  trace(msg: string, ...args: unknown[]): void;
+  trace(obj: object, msg?: string, ...args: unknown[]): void;
+  debug(msg: string, ...args: unknown[]): void;
+  debug(obj: object, msg?: string, ...args: unknown[]): void;
+  info(msg: string, ...args: unknown[]): void;
+  info(obj: object, msg?: string, ...args: unknown[]): void;
+  warn(msg: string, ...args: unknown[]): void;
+  warn(obj: object, msg?: string, ...args: unknown[]): void;
+  error(msg: string, ...args: unknown[]): void;
+  error(obj: object, msg?: string, ...args: unknown[]): void;
+  child(bindings: Record<string, unknown>): Logger;
 }
 
 /**
  * Factory function that creates loggers for a given namespace.
  */
 export interface LoggerFactory {
-  (name: string): Logger
+  (name: string): Logger;
 }

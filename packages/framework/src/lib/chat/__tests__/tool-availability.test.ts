@@ -38,8 +38,9 @@ function readiness(overrides: Partial<Parameters<typeof projectAvailableToolCont
 
 describe("placement-aware tool availability", () => {
   it("exposes a durable contract only with complete exact placement", () => {
-    expect(projectAvailableToolContracts([ordinary, durable], readiness()).map((tool) => tool.name))
-      .toEqual(["ordinary", "durable"]);
+    expect(
+      projectAvailableToolContracts([ordinary, durable], readiness()).map((tool) => tool.name),
+    ).toEqual(["ordinary", "durable"]);
   });
 
   it.each([
@@ -47,10 +48,15 @@ describe("placement-aware tool availability", () => {
     ["program", { programs: new Set<string>() }],
     ["schema", { schemas: createDurableSchemaRegistry() }],
     ["binding", { durableDrivers: new Map<string, string>() }],
-  ])("omits and restores the durable contract when the exact %s placement is absent", (_name, gap) => {
-    expect(projectAvailableToolContracts([ordinary, durable], readiness(gap)).map((tool) => tool.name))
-      .toEqual(["ordinary"]);
-    expect(projectAvailableToolContracts([ordinary, durable], readiness()).map((tool) => tool.name))
-      .toEqual(["ordinary", "durable"]);
-  });
+  ])(
+    "omits and restores the durable contract when the exact %s placement is absent",
+    (_name, gap) => {
+      expect(
+        projectAvailableToolContracts([ordinary, durable], readiness(gap)).map((tool) => tool.name),
+      ).toEqual(["ordinary"]);
+      expect(
+        projectAvailableToolContracts([ordinary, durable], readiness()).map((tool) => tool.name),
+      ).toEqual(["ordinary", "durable"]);
+    },
+  );
 });

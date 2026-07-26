@@ -6,12 +6,12 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from 'effection'
+import type { Operation } from "effection";
 import type {
   ToolSessionStore,
   ToolSessionEntry,
   ToolSessionStatus,
-} from '@sweatpants/framework/chat/mcp-tools'
+} from "@sweatpants/framework/chat/mcp-tools";
 
 /**
  * Create an in-memory tool session store.
@@ -34,38 +34,38 @@ import type {
  * ```
  */
 export function createInMemoryToolSessionStore(): ToolSessionStore {
-  const entries = new Map<string, ToolSessionEntry>()
+  const entries = new Map<string, ToolSessionEntry>();
 
   return {
     *get(sessionId: string): Operation<ToolSessionEntry | null> {
-      return entries.get(sessionId) ?? null
+      return entries.get(sessionId) ?? null;
     },
 
     *set(sessionId: string, entry: ToolSessionEntry): Operation<void> {
-      entries.set(sessionId, entry)
+      entries.set(sessionId, entry);
     },
 
     *delete(sessionId: string): Operation<void> {
-      entries.delete(sessionId)
+      entries.delete(sessionId);
     },
 
     *updateRefCount(sessionId: string, delta: number): Operation<number> {
-      const entry = entries.get(sessionId)
+      const entry = entries.get(sessionId);
       if (!entry) {
-        throw new Error(`Session ${sessionId} not found in store`)
+        throw new Error(`Session ${sessionId} not found in store`);
       }
-      entry.refCount += delta
-      return entry.refCount
+      entry.refCount += delta;
+      return entry.refCount;
     },
 
     *updateStatus(sessionId: string, status: ToolSessionStatus): Operation<void> {
-      const entry = entries.get(sessionId)
+      const entry = entries.get(sessionId);
       if (!entry) {
-        throw new Error(`Session ${sessionId} not found in store`)
+        throw new Error(`Session ${sessionId} not found in store`);
       }
-      entry.status = status
+      entry.status = status;
     },
-  }
+  };
 }
 
 /**
@@ -74,55 +74,55 @@ export function createInMemoryToolSessionStore(): ToolSessionStore {
  */
 export function createInMemoryToolSessionStoreWithDebug(): ToolSessionStore & {
   /** Get all session IDs */
-  getSessionIds(): string[]
+  getSessionIds(): string[];
   /** Get entry count */
-  getCount(): number
+  getCount(): number;
   /** Clear all entries */
-  clear(): void
+  clear(): void;
 } {
-  const entries = new Map<string, ToolSessionEntry>()
+  const entries = new Map<string, ToolSessionEntry>();
 
   const store: ToolSessionStore = {
     *get(sessionId: string): Operation<ToolSessionEntry | null> {
-      return entries.get(sessionId) ?? null
+      return entries.get(sessionId) ?? null;
     },
 
     *set(sessionId: string, entry: ToolSessionEntry): Operation<void> {
-      entries.set(sessionId, entry)
+      entries.set(sessionId, entry);
     },
 
     *delete(sessionId: string): Operation<void> {
-      entries.delete(sessionId)
+      entries.delete(sessionId);
     },
 
     *updateRefCount(sessionId: string, delta: number): Operation<number> {
-      const entry = entries.get(sessionId)
+      const entry = entries.get(sessionId);
       if (!entry) {
-        throw new Error(`Session ${sessionId} not found in store`)
+        throw new Error(`Session ${sessionId} not found in store`);
       }
-      entry.refCount += delta
-      return entry.refCount
+      entry.refCount += delta;
+      return entry.refCount;
     },
 
     *updateStatus(sessionId: string, status: ToolSessionStatus): Operation<void> {
-      const entry = entries.get(sessionId)
+      const entry = entries.get(sessionId);
       if (!entry) {
-        throw new Error(`Session ${sessionId} not found in store`)
+        throw new Error(`Session ${sessionId} not found in store`);
       }
-      entry.status = status
+      entry.status = status;
     },
-  }
+  };
 
   return {
     ...store,
     getSessionIds() {
-      return Array.from(entries.keys())
+      return Array.from(entries.keys());
     },
     getCount() {
-      return entries.size
+      return entries.size;
     },
     clear() {
-      entries.clear()
+      entries.clear();
     },
-  }
+  };
 }

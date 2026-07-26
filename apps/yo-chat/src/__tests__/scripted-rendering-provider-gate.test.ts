@@ -1,51 +1,53 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { run } from 'effection'
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { run } from "effection";
 
-function mockEnv(scriptedRenderingProvider: 'yes' | undefined) {
-  vi.doMock('@/env', () => ({
+function mockEnv(scriptedRenderingProvider: "yes" | undefined) {
+  vi.doMock("@/env", () => ({
     env: {
-      DEFAULT_CHAT_MODEL_PROVIDER: 'github-copilot',
-      DEFAULT_CHAT_MODEL_ID: 'claude-sonnet-4.5',
+      DEFAULT_CHAT_MODEL_PROVIDER: "github-copilot",
+      DEFAULT_CHAT_MODEL_ID: "claude-sonnet-4.5",
       ALLOWED_CHAT_MODELS_JSON: undefined,
       UNSAFE_ALLOW_ANY_CHAT_MODEL: undefined,
       ENABLE_SCRIPTED_RENDERING_PROVIDER: scriptedRenderingProvider,
     },
-  }))
+  }));
 }
 
-describe('scripted rendering provider gate', () => {
+describe("scripted rendering provider gate", () => {
   beforeEach(() => {
-    vi.resetModules()
-  })
+    vi.resetModules();
+  });
 
   afterEach(() => {
-    vi.doUnmock('@/env')
-  })
+    vi.doUnmock("@/env");
+  });
 
-  it('rejects scripted rendering requests unless the explicit test provider flag is enabled', async () => {
-    mockEnv(undefined)
-    const { setupYoChatModelProvider } = await import('../server/model-provider')
+  it("rejects scripted rendering requests unless the explicit test provider flag is enabled", async () => {
+    mockEnv(undefined);
+    const { setupYoChatModelProvider } = await import("../server/model-provider");
 
-    await expect(run(function* () {
-      yield* setupYoChatModelProvider({
-        request: new Request('http://localhost/api/chat?scripted=rendering'),
-        body: {} as never,
-      })
-    })).rejects.toThrow(/Scripted rendering provider is disabled/)
-  })
+    await expect(
+      run(function* () {
+        yield* setupYoChatModelProvider({
+          request: new Request("http://localhost/api/chat?scripted=rendering"),
+          body: {} as never,
+        });
+      }),
+    ).rejects.toThrow(/Scripted rendering provider is disabled/);
+  });
 
-  it('installs the scripted rendering provider when explicitly enabled', async () => {
-    mockEnv('yes')
-    const { setupYoChatModelProvider } = await import('../server/model-provider')
-    const { ModelProviderApi } = await import('@sweatpants/framework/chat')
+  it("installs the scripted rendering provider when explicitly enabled", async () => {
+    mockEnv("yes");
+    const { setupYoChatModelProvider } = await import("../server/model-provider");
+    const { ModelProviderApi } = await import("@sweatpants/framework/chat");
 
     await run(function* () {
       yield* setupYoChatModelProvider({
-        request: new Request('http://localhost/api/chat?scripted=rendering'),
+        request: new Request("http://localhost/api/chat?scripted=rendering"),
         body: {} as never,
-      })
-      const model = yield* ModelProviderApi.model()
-      expect(model).toMatchObject({ id: 'scripted-rendering', provider: 'scripted-e2e' })
-    })
-  })
-})
+      });
+      const model = yield* ModelProviderApi.model();
+      expect(model).toMatchObject({ id: "scripted-rendering", provider: "scripted-e2e" });
+    });
+  });
+});

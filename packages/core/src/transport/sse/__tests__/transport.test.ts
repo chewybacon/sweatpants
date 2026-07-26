@@ -43,39 +43,37 @@ function useSSETestServer(): Operation<SSETestServer> {
     const postedRequests: TransportRequest[] = [];
     const sseResponses: ServerResponse[] = [];
 
-    const httpServer = createServer(
-      (req: IncomingMessage, res: ServerResponse) => {
-        if (req.url === "/sse" && req.method === "GET") {
-          // SSE endpoint
-          res.writeHead(200, {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-          });
-          sseResponses.push(res);
-        } else if (req.url === "/post" && req.method === "POST") {
-          // POST endpoint for requests
-          let body = "";
-          req.on("data", (chunk) => {
-            body += chunk;
-          });
-          req.on("end", () => {
-            try {
-              const request = JSON.parse(body);
-              postedRequests.push(request);
-              res.writeHead(200, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ ok: true }));
-            } catch {
-              res.writeHead(400);
-              res.end("Invalid JSON");
-            }
-          });
-        } else {
-          res.writeHead(404);
-          res.end("Not found");
-        }
+    const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+      if (req.url === "/sse" && req.method === "GET") {
+        // SSE endpoint
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        sseResponses.push(res);
+      } else if (req.url === "/post" && req.method === "POST") {
+        // POST endpoint for requests
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk;
+        });
+        req.on("end", () => {
+          try {
+            const request = JSON.parse(body);
+            postedRequests.push(request);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true }));
+          } catch {
+            res.writeHead(400);
+            res.end("Invalid JSON");
+          }
+        });
+      } else {
+        res.writeHead(404);
+        res.end("Not found");
       }
-    );
+    });
 
     // Listen on random port
     const listening = withResolvers<void>();
@@ -209,7 +207,12 @@ describe("SSE+POST Transport", () => {
         data: { status: "requesting-permission" },
       });
 
-      yield* waitForCondition(() => !!result && result.done === false && (result.value as { status?: string }).status === "requesting-permission");
+      yield* waitForCondition(
+        () =>
+          !!result &&
+          result.done === false &&
+          (result.value as { status?: string }).status === "requesting-permission",
+      );
 
       yield* operative.send({
         type: "progress",
@@ -217,7 +220,12 @@ describe("SSE+POST Transport", () => {
         data: { status: "acquiring" },
       });
 
-      yield* waitForCondition(() => !!result && result.done === false && (result.value as { status?: string }).status === "acquiring");
+      yield* waitForCondition(
+        () =>
+          !!result &&
+          result.done === false &&
+          (result.value as { status?: string }).status === "acquiring",
+      );
 
       // Operative sends final response
       yield* operative.send({

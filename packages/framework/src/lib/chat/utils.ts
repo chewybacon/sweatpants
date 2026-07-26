@@ -1,8 +1,8 @@
-import { validateToolParameters } from './tool-parameters.ts'
+import { validateToolParameters } from "./tool-parameters.ts";
 
 export interface ToolWithParameters {
-  name: string
-  parameters: unknown
+  name: string;
+  parameters: unknown;
 }
 
 export function validateToolParams(
@@ -15,5 +15,5 @@ export function validateToolParams(
     params,
     toolName: tool.name,
     callId,
-  })
+  });
 }

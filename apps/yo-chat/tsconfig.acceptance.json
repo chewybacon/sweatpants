@@ -1,21 +1,10 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "customConditions": [
-      "development"
-    ],
-    "types": [
-      "vite/client",
-      "node"
-    ]
-  },
-  "include": [
-    "acceptance/**/*.ts",
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "dist",
-    "node_modules"
-  ]
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "customConditions": ["development"],
+        "types": ["vite/client", "node"]
+    },
+    "include": ["acceptance/**/*.ts", "src/**/*.ts"],
+    "exclude": ["dist", "node_modules"]
 }

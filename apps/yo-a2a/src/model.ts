@@ -65,8 +65,12 @@ function modelContext(request: ChatModelSampleInputV2): Context {
 }
 function toProviderMessages(message: ChatMessageV1): Message[] {
   const text = message.parts.map((part) => valueText(part.value)).join("\n");
-  if (message.role === "user") {return [{ role: "user", content: text }];}
-  if (message.role === "system") {return [{ role: "system", content: text }];}
+  if (message.role === "user") {
+    return [{ role: "user", content: text }];
+  }
+  if (message.role === "system") {
+    return [{ role: "system", content: text }];
+  }
   if (message.role === "assistant") {
     return [{ role: "assistant", content: [{ type: "text", text: text || "Continuing." }] }];
   }

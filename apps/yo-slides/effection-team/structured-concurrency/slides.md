@@ -2,14 +2,14 @@
 theme: default
 title: "Structured Concurrency in the Wild: Building MCP-Native"
 info: |
-  ## Sweatpants Framework
-  A love letter to Effection
+    ## Sweatpants Framework
+    A love letter to Effection
 author: Grove Team
 keywords: effection,structured-concurrency,generators,mcp
 class: text-center
 highlighter: shiki
 drawings:
-  persist: false
+    persist: false
 transition: slide-left
 mdc: true
 colorSchema: light
@@ -38,17 +38,17 @@ Build a runtime where **tool generators stay alive across HTTP requests**.
 ```ts
 .execute(function* (params, ctx) {
   const flights = yield* searchFlights(params)
-  
+
   // HTTP request ends here. Generator suspends.
   const flight = yield* ctx.elicit('pickFlight', { flights })
   // Minutes/hours later... new HTTP request. Generator resumes.
-  
+
   const seat = yield* ctx.elicit('pickSeat', { seatMap })
   // Another suspend/resume cycle...
-  
+
   const tip = yield* ctx.sample({ prompt: 'Travel tip?' })
   // And another...
-  
+
   return { flight, seat, tip }
 })
 ```
@@ -64,8 +64,10 @@ This is **durable execution** without serializing the generator. The hard way. T
 </v-click>
 
 ---
+
 layout: center
 class: text-center
+
 ---
 
 # The Concurrency Challenges
@@ -113,25 +115,25 @@ Without structured concurrency, this is a nightmare:
 ```ts
 // The callback hell version
 async function runTool(params) {
-  const sessionId = uuid()
-  sessions.set(sessionId, { status: 'running', cleanup: [] })
-  
-  try {
-    const flights = await searchFlights(params)
-    sessions.get(sessionId).cleanup.push(() => cancelFlightHold())
-    
-    return new Promise((resolve, reject) => {
-      pendingElicits.set(sessionId, { resolve, reject })
-      sessions.get(sessionId).cleanup.push(() => pendingElicits.delete(sessionId))
-      emit('elicit', { sessionId, key: 'pickFlight', flights })
-      // Now we wait... and hope nothing goes wrong
-      // What if the session times out? What if the user disconnects?
-      // What about the cleanup handlers? Did we remember all of them?
-    })
-  } catch (e) {
-    sessions.get(sessionId).cleanup.forEach(fn => fn()) // Did we catch everything?
-    throw e
-  }
+    const sessionId = uuid();
+    sessions.set(sessionId, { status: "running", cleanup: [] });
+
+    try {
+        const flights = await searchFlights(params);
+        sessions.get(sessionId).cleanup.push(() => cancelFlightHold());
+
+        return new Promise((resolve, reject) => {
+            pendingElicits.set(sessionId, { resolve, reject });
+            sessions.get(sessionId).cleanup.push(() => pendingElicits.delete(sessionId));
+            emit("elicit", { sessionId, key: "pickFlight", flights });
+            // Now we wait... and hope nothing goes wrong
+            // What if the session times out? What if the user disconnects?
+            // What about the cleanup handlers? Did we remember all of them?
+        });
+    } catch (e) {
+        sessions.get(sessionId).cleanup.forEach((fn) => fn()); // Did we catch everything?
+        throw e;
+    }
 }
 ```
 
@@ -142,11 +144,11 @@ async function runTool(params) {
 ```ts
 .execute(function* (params, ctx) {
   const flights = yield* searchFlights(params)
-  
+
   const flight = yield* ctx.elicit('pickFlight', { flights })
   const seat = yield* ctx.elicit('pickSeat', { seatMap })
   const tip = yield* ctx.sample({ prompt: 'Travel tip?' })
-  
+
   return { flight, seat, tip }
 })
 ```
@@ -206,53 +208,55 @@ The core primitive for `ctx.elicit()`:
 ```ts
 // Inside the tool execution runtime
 function* elicit<T>(key: string, data: unknown): Operation<ElicitResult<T>> {
-  // Create a signal that will receive the response
-  const responseSignal = createSignal<ElicitResponse, void>()
-  
-  // Emit the elicit request (goes to client via SSE)
-  yield* events.send({
-    type: 'elicit_request',
-    id: uuid(),
-    key,
-    data,
-    responseSignal,  // The client will send() to this
-  })
-  
-  // Suspend until response arrives
-  const response = yield* responseSignal
-  
-  return response
+    // Create a signal that will receive the response
+    const responseSignal = createSignal<ElicitResponse, void>();
+
+    // Emit the elicit request (goes to client via SSE)
+    yield* events.send({
+        type: "elicit_request",
+        id: uuid(),
+        key,
+        data,
+        responseSignal, // The client will send() to this
+    });
+
+    // Suspend until response arrives
+    const response = yield* responseSignal;
+
+    return response;
 }
 ```
+
 ```ts
 // When the HTTP response comes in (different request!)
 function* handleElicitResponse(sessionId: string, elicitId: string, result: ElicitResult) {
-  const session = yield* registry.acquire(sessionId)
-  
-  try {
-    // Find the pending elicit request
-    const pending = session.pendingElicits.get(elicitId)
-    
-    // Resume the suspended generator!
-    pending.responseSignal.send(result)
-    //                     ^^^^^^^^^^^^
-    // This unblocks the yield* in the tool generator
-  } finally {
-    yield* registry.release(sessionId)
-  }
+    const session = yield* registry.acquire(sessionId);
+
+    try {
+        // Find the pending elicit request
+        const pending = session.pendingElicits.get(elicitId);
+
+        // Resume the suspended generator!
+        pending.responseSignal.send(result);
+        //                     ^^^^^^^^^^^^
+        // This unblocks the yield* in the tool generator
+    } finally {
+        yield* registry.release(sessionId);
+    }
 }
 ```
+
 ```ts
 // The beautiful part: cancellation is automatic
 function* elicit<T>(key: string, data: unknown): Operation<ElicitResult<T>> {
   const responseSignal = createSignal<ElicitResponse, void>()
-  
+
   yield* events.send({ type: 'elicit_request', responseSignal, ... })
-  
+
   // If the tool is cancelled while waiting here...
   const response = yield* responseSignal
   // ...we never reach here, and the signal is cleaned up
-  
+
   return response
 }
 // No try/finally needed. Structured concurrency handles it.
@@ -267,25 +271,25 @@ Tool emits events, SSE stream consumes them:
 
 ```ts
 function* createToolSession(tool, params): Operation<ToolSession> {
-  // Event buffer - producer and consumer can run at different rates
-  const events = createChannel<ToolSessionEvent>()
-  
-  // Spawn the tool execution as a child task
-  yield* spawn(function* () {
-    try {
-      const result = yield* tool.execute(params, createContext(events))
-      yield* events.send({ type: 'result', value: result })
-    } catch (error) {
-      yield* events.send({ type: 'error', error })
-    } finally {
-      events.close()
-    }
-  })
-  
-  return {
-    // SSE handler pulls from this
-    getEvents: () => events,
-  }
+    // Event buffer - producer and consumer can run at different rates
+    const events = createChannel<ToolSessionEvent>();
+
+    // Spawn the tool execution as a child task
+    yield* spawn(function* () {
+        try {
+            const result = yield* tool.execute(params, createContext(events));
+            yield* events.send({ type: "result", value: result });
+        } catch (error) {
+            yield* events.send({ type: "error", error });
+        } finally {
+            events.close();
+        }
+    });
+
+    return {
+        // SSE handler pulls from this
+        getEvents: () => events,
+    };
 }
 ```
 
@@ -308,59 +312,61 @@ Server pool that spawns backends on demand:
 ````md magic-move
 ```ts
 function useServerPool(config): Operation<ServerPool> {
-  return resource(function* (provide) {
-    const servers = new Map<string, ServerInfo>()
-    const scope = yield* useScope()  // Capture for spawning from callbacks
-    
-    const pool: ServerPool = {
-      async getOrCreate(hostname) {
-        if (servers.has(hostname)) return servers.get(hostname)
-        
-        // Spawn server as child of the pool
-        return await scope.run(function* () {
-          return yield* spawnServer(hostname)
-        })
-      },
-    }
-    
-    yield* provide(pool)
-    // When pool is shut down, ALL spawned servers are halted automatically
-  })
+    return resource(function* (provide) {
+        const servers = new Map<string, ServerInfo>();
+        const scope = yield* useScope(); // Capture for spawning from callbacks
+
+        const pool: ServerPool = {
+            async getOrCreate(hostname) {
+                if (servers.has(hostname)) return servers.get(hostname);
+
+                // Spawn server as child of the pool
+                return await scope.run(function* () {
+                    return yield* spawnServer(hostname);
+                });
+            },
+        };
+
+        yield* provide(pool);
+        // When pool is shut down, ALL spawned servers are halted automatically
+    });
 }
 ```
+
 ```ts
 // The spawnServer uses the daemon pattern
 function* spawnServer(hostname: string): Operation<ServerInfo> {
-  const handle = yield* useExpressServerDaemon(port, hostname)
-  
-  // Server is now running as a daemon
-  // If it crashes unexpectedly, this throws
-  // If parent is halted, server is shut down
-  
-  yield* suspend()  // Keep alive until halted
+    const handle = yield* useExpressServerDaemon(port, hostname);
+
+    // Server is now running as a daemon
+    // If it crashes unexpectedly, this throws
+    // If parent is halted, server is shut down
+
+    yield* suspend(); // Keep alive until halted
 }
 ```
+
 ```ts
 // Real code from hydra/server-pool.ts
 const task = scope.run(function* (): Operation<void> {
-  try {
-    const handle = yield* useExpressServerDaemon(port, hostname)
-    info.app = handle.app
-    info.server = handle.server
-    
-    emitEvent({ type: 'started', hostname, port })
-    resolveReady!(info)
-    
-    yield* suspend()  // Keep running until halted
-  } catch (error) {
-    emitEvent({ type: 'error', hostname, error })
-    rejectReady!(error)
-    throw error
-  } finally {
-    emitEvent({ type: 'stopped', hostname })
-    servers.delete(hostname)  // Cleanup on any exit path
-  }
-})
+    try {
+        const handle = yield* useExpressServerDaemon(port, hostname);
+        info.app = handle.app;
+        info.server = handle.server;
+
+        emitEvent({ type: "started", hostname, port });
+        resolveReady!(info);
+
+        yield* suspend(); // Keep running until halted
+    } catch (error) {
+        emitEvent({ type: "error", hostname, error });
+        rejectReady!(error);
+        throw error;
+    } finally {
+        emitEvent({ type: "stopped", hostname });
+        servers.delete(hostname); // Cleanup on any exit path
+    }
+});
 ```
 ````
 
@@ -372,21 +378,21 @@ The `useScope()` pattern for async callbacks:
 
 ```ts
 function useServerPool(config): Operation<ServerPool> {
-  return resource(function* (provide) {
-    const scope = yield* useScope()  // Capture the scope
-    
-    const pool = {
-      // This is an async function called from Express middleware!
-      async getOrCreate(hostname: string): Promise<ServerInfo> {
-        // But we can still spawn Effection tasks
-        return await scope.run(function* () {
-          return yield* doSpawnServer(hostname)
-        })
-      },
-    }
-    
-    yield* provide(pool)
-  })
+    return resource(function* (provide) {
+        const scope = yield* useScope(); // Capture the scope
+
+        const pool = {
+            // This is an async function called from Express middleware!
+            async getOrCreate(hostname: string): Promise<ServerInfo> {
+                // But we can still spawn Effection tasks
+                return await scope.run(function* () {
+                    return yield* doSpawnServer(hostname);
+                });
+            },
+        };
+
+        yield* provide(pool);
+    });
 }
 ```
 
@@ -408,29 +414,32 @@ HTTP proxy that routes to dynamic backends:
 
 ```ts
 function useSwitchboard(config, pool): Operation<SwitchboardHandle> {
-  return resource(function* (provide) {
-    const app = express()
-    const proxy = httpProxy.createProxyServer({ ws: true })
-    
-    // Main proxy handler - async callback, but pool.getOrCreate handles it
-    app.use(async (req, res, next) => {
-      const hostname = extractHostname(req)
-      const server = await pool.getOrCreate(hostname)  // May spawn!
-      proxy.web(req, res, { target: `http://localhost:${server.port}` })
-    })
-    
-    const server = yield* call(() => new Promise(resolve => {
-      const srv = app.listen(config.port, () => resolve(srv))
-    }))
-    
-    try {
-      yield* provide({ app, server, port: config.port })
-    } finally {
-      proxy.close()
-      server.close()
-      yield* call(() => new Promise(resolve => server.on('close', resolve)))
-    }
-  })
+    return resource(function* (provide) {
+        const app = express();
+        const proxy = httpProxy.createProxyServer({ ws: true });
+
+        // Main proxy handler - async callback, but pool.getOrCreate handles it
+        app.use(async (req, res, next) => {
+            const hostname = extractHostname(req);
+            const server = await pool.getOrCreate(hostname); // May spawn!
+            proxy.web(req, res, { target: `http://localhost:${server.port}` });
+        });
+
+        const server = yield* call(
+            () =>
+                new Promise((resolve) => {
+                    const srv = app.listen(config.port, () => resolve(srv));
+                }),
+        );
+
+        try {
+            yield* provide({ app, server, port: config.port });
+        } finally {
+            proxy.close();
+            server.close();
+            yield* call(() => new Promise((resolve) => server.on("close", resolve)));
+        }
+    });
 }
 ```
 
@@ -440,29 +449,29 @@ function useSwitchboard(config, pool): Operation<SwitchboardHandle> {
 
 ```ts
 // start.ts - the entire runtime in ~20 lines
-import { main } from 'effection'
-import { useServerPool } from './server-pool'
-import { useSwitchboard } from './switchboard'
+import { main } from "effection";
+import { useServerPool } from "./server-pool";
+import { useSwitchboard } from "./switchboard";
 
 await main(function* () {
-  // Create the server pool (manages backend instances)
-  const pool = yield* useServerPool({ basePort: 9000, maxServers: 100 })
-  
-  // Create the switchboard (HTTP proxy)
-  const switchboard = yield* useSwitchboard({ port: 8000 }, pool)
-  
-  console.log(`Switchboard ready on port ${switchboard.port}`)
-  
-  // Subscribe to pool events
-  yield* spawn(function* () {
-    for (const event of yield* each(pool.events)) {
-      console.log(`[Pool] ${event.type}:`, event.hostname)
-      yield* each.next()
-    }
-  })
-  
-  yield* suspend()  // Run forever (until Ctrl+C)
-})
+    // Create the server pool (manages backend instances)
+    const pool = yield* useServerPool({ basePort: 9000, maxServers: 100 });
+
+    // Create the switchboard (HTTP proxy)
+    const switchboard = yield* useSwitchboard({ port: 8000 }, pool);
+
+    console.log(`Switchboard ready on port ${switchboard.port}`);
+
+    // Subscribe to pool events
+    yield* spawn(function* () {
+        for (const event of yield* each(pool.events)) {
+            console.log(`[Pool] ${event.type}:`, event.hostname);
+            yield* each.next();
+        }
+    });
+
+    yield* suspend(); // Run forever (until Ctrl+C)
+});
 // Ctrl+C → main halts → switchboard halts → pool halts → all servers halt
 ```
 
@@ -473,14 +482,14 @@ await main(function* () {
 Same tool definition, multiple runtimes:
 
 ```ts
-const bookFlightTool = createTool('book_flight')
-  .elicits({ pickFlight, pickSeat })
-  .execute(function* (params, ctx) {
-    const flights = yield* searchFlights(params)
-    const flight = yield* ctx.elicit('pickFlight', { flights })
-    const seat = yield* ctx.elicit('pickSeat', { seatMap })
-    return { flight, seat }
-  })
+const bookFlightTool = createTool("book_flight")
+    .elicits({ pickFlight, pickSeat })
+    .execute(function* (params, ctx) {
+        const flights = yield* searchFlights(params);
+        const flight = yield* ctx.elicit("pickFlight", { flights });
+        const seat = yield* ctx.elicit("pickSeat", { seatMap });
+        return { flight, seat };
+    });
 ```
 
 <v-click>
@@ -490,6 +499,7 @@ const bookFlightTool = createTool('book_flight')
 <div class="p-4 bg-blue-50 rounded-lg">
 
 **In-App Runtime**
+
 - `ctx.elicit()` → React component
 - Signal bridges to UI
 - Same process
@@ -499,6 +509,7 @@ const bookFlightTool = createTool('book_flight')
 <div class="p-4 bg-green-50 rounded-lg">
 
 **MCP Server Runtime**
+
 - `ctx.elicit()` → MCP protocol
 - Signal bridges to HTTP
 - Durable across requests
@@ -556,8 +567,8 @@ The generator doesn't know or care which runtime it's in. **Effection operations
 </v-clicks>
 
 ---
-layout: center
----
+
+## layout: center
 
 # Key Takeaways
 
@@ -576,8 +587,10 @@ layout: center
 </v-clicks>
 
 ---
+
 layout: center
 class: text-center
+
 ---
 
 # Thank You

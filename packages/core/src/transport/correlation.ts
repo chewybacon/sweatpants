@@ -24,8 +24,11 @@ export interface CorrelatedTransport {
   /**
    * Send a request and get a stream of progress updates that closes with the final response.
    */
-  request<TProgress = unknown, TResponse extends ElicitResponse | NotifyResponse = ElicitResponse | NotifyResponse>(
-    message: TransportRequest
+  request<
+    TProgress = unknown,
+    TResponse extends ElicitResponse | NotifyResponse = ElicitResponse | NotifyResponse,
+  >(
+    message: TransportRequest,
   ): Stream<TProgress, TResponse>;
 }
 
@@ -43,15 +46,12 @@ interface PendingRequest {
  * @param transport - The underlying transport to wrap
  * @returns A correlated transport
  */
-export function* createCorrelation(
-  transport: PrincipalTransport
-): Operation<CorrelatedTransport> {
+export function* createCorrelation(transport: PrincipalTransport): Operation<CorrelatedTransport> {
   const pending = new Map<string, PendingRequest>();
 
   // Spawn a task to route incoming messages to the correct pending request
   yield* spawn(function* () {
-    const subscription: Subscription<PrincipalIncoming, void> =
-      yield* transport;
+    const subscription: Subscription<PrincipalIncoming, void> = yield* transport;
 
     let result = yield* subscription.next();
     while (!result.done) {
@@ -76,15 +76,14 @@ export function* createCorrelation(
 
   const correlated: CorrelatedTransport = {
     request<TProgress, TResponse extends ElicitResponse | NotifyResponse>(
-      message: TransportRequest
+      message: TransportRequest,
     ): Stream<TProgress, TResponse> {
       return resource(function* (provide) {
         const channel = createChannel<TProgress, TResponse>();
 
         try {
           // Provide the subscription to progress updates
-          const subscription: Subscription<TProgress, TResponse> =
-            yield* channel;
+          const subscription: Subscription<TProgress, TResponse> = yield* channel;
           pending.set(message.id, {
             id: message.id,
             channel: channel as Channel<unknown, unknown>,

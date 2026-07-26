@@ -1,4 +1,4 @@
-import type { Message, ToolCall } from '../types.ts'
+import type { Message, ToolCall } from "../types.ts";
 import {
   deriveTurnKeyFromToolCalls,
   messageIdForAssistantFinal,
@@ -6,57 +6,62 @@ import {
   messageIdForSystem,
   messageIdForTool,
   messageIdForUser,
-} from './message-identity.ts'
+} from "./message-identity.ts";
 
 export interface TranscriptState {
-  systemCount: number
-  userCount: number
-  currentTurnKey: string
+  systemCount: number;
+  userCount: number;
+  currentTurnKey: string;
 }
 
 export function createTranscriptState(messages: Message[] = []): TranscriptState {
   const state: TranscriptState = {
     systemCount: 0,
     userCount: 0,
-    currentTurnKey: 'u1',
-  }
+    currentTurnKey: "u1",
+  };
 
-  resetTranscriptState(state, messages)
-  return state
+  resetTranscriptState(state, messages);
+  return state;
 }
 
-export function resetTranscriptState(state: TranscriptState, messages: Message[] = []): TranscriptState {
-  state.systemCount = 0
-  state.userCount = 0
-  state.currentTurnKey = 'u1'
+export function resetTranscriptState(
+  state: TranscriptState,
+  messages: Message[] = [],
+): TranscriptState {
+  state.systemCount = 0;
+  state.userCount = 0;
+  state.currentTurnKey = "u1";
 
   for (const message of messages) {
-    if (message.role === 'system') {
-      state.systemCount += 1
-      continue
+    if (message.role === "system") {
+      state.systemCount += 1;
+      continue;
     }
 
-    if (message.role === 'user') {
-      state.userCount += 1
-      if (message.id?.startsWith('user:')) {
-        state.currentTurnKey = message.id.slice('user:'.length)
+    if (message.role === "user") {
+      state.userCount += 1;
+      if (message.id?.startsWith("user:")) {
+        state.currentTurnKey = message.id.slice("user:".length);
       } else {
-        state.currentTurnKey = `u${state.userCount}`
+        state.currentTurnKey = `u${state.userCount}`;
       }
-      continue
+      continue;
     }
 
-    if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
-      state.currentTurnKey = deriveTurnKeyFromToolCalls(message.tool_calls.map((toolCall) => toolCall.id))
-      continue
+    if (message.role === "assistant" && message.tool_calls && message.tool_calls.length > 0) {
+      state.currentTurnKey = deriveTurnKeyFromToolCalls(
+        message.tool_calls.map((toolCall) => toolCall.id),
+      );
+      continue;
     }
 
-    if (message.role === 'tool' && message.tool_call_id) {
-      state.currentTurnKey = message.tool_call_id
+    if (message.role === "tool" && message.tool_call_id) {
+      state.currentTurnKey = message.tool_call_id;
     }
   }
 
-  return state
+  return state;
 }
 
 export function appendSystemMessage(
@@ -66,12 +71,12 @@ export function appendSystemMessage(
 ): Message {
   const message: Message = {
     id: messageIdForSystem(state.systemCount),
-    role: 'system',
+    role: "system",
     content,
-  }
-  state.systemCount += 1
-  history.push(message)
-  return message
+  };
+  state.systemCount += 1;
+  history.push(message);
+  return message;
 }
 
 export function appendUserMessage(
@@ -79,15 +84,15 @@ export function appendUserMessage(
   state: TranscriptState,
   content: string,
 ): Message {
-  state.userCount += 1
-  state.currentTurnKey = `u${state.userCount}`
+  state.userCount += 1;
+  state.currentTurnKey = `u${state.userCount}`;
   const message: Message = {
     id: messageIdForUser(state.currentTurnKey),
-    role: 'user',
+    role: "user",
     content,
-  }
-  history.push(message)
-  return message
+  };
+  history.push(message);
+  return message;
 }
 
 export function appendAssistantToolCallMessage(
@@ -96,20 +101,20 @@ export function appendAssistantToolCallMessage(
   toolCalls: ToolCall[],
   content: string,
 ): Message {
-  const toolCallIds = toolCalls.map((toolCall) => toolCall.id)
-  state.currentTurnKey = deriveTurnKeyFromToolCalls(toolCallIds)
+  const toolCallIds = toolCalls.map((toolCall) => toolCall.id);
+  state.currentTurnKey = deriveTurnKeyFromToolCalls(toolCallIds);
   const message: Message = {
     id: messageIdForAssistantTools(toolCallIds),
-    role: 'assistant',
+    role: "assistant",
     content,
     tool_calls: toolCalls.map((toolCall) => ({
       id: toolCall.id,
-      type: 'function',
+      type: "function",
       function: toolCall.function,
     })),
-  }
-  history.push(message)
-  return message
+  };
+  history.push(message);
+  return message;
 }
 
 export function appendToolMessage(
@@ -117,18 +122,18 @@ export function appendToolMessage(
   state: TranscriptState,
   toolCallId: string,
   content: string,
-  replay?: Message['replay'],
+  replay?: Message["replay"],
 ): Message {
-  state.currentTurnKey = toolCallId
+  state.currentTurnKey = toolCallId;
   const message: Message = {
     id: messageIdForTool(toolCallId),
-    role: 'tool',
+    role: "tool",
     tool_call_id: toolCallId,
     content,
     ...(replay ? { replay } : {}),
-  }
-  history.push(message)
-  return message
+  };
+  history.push(message);
+  return message;
 }
 
 export function appendAssistantFinalMessage(
@@ -136,19 +141,19 @@ export function appendAssistantFinalMessage(
   state: TranscriptState,
   content: string,
 ): Message {
-  const id = messageIdForAssistantFinal(state.currentTurnKey)
+  const id = messageIdForAssistantFinal(state.currentTurnKey);
   const message: Message = {
     id,
-    role: 'assistant',
+    role: "assistant",
     content,
-  }
+  };
 
-  const existingIndex = history.findIndex((entry) => entry.id === id)
+  const existingIndex = history.findIndex((entry) => entry.id === id);
   if (existingIndex >= 0) {
-    history[existingIndex] = message
-    return message
+    history[existingIndex] = message;
+    return message;
   }
 
-  history.push(message)
-  return message
+  history.push(message);
+  return message;
 }

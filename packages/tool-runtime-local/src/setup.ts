@@ -5,21 +5,18 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from 'effection'
+import type { Operation } from "effection";
 import type {
   ToolSessionStore,
   ToolSessionSamplingProvider,
   ToolSessionRegistry,
-} from '@sweatpants/framework/chat/mcp-tools'
+} from "@sweatpants/framework/chat/mcp-tools";
 import {
   ToolSessionStoreContext,
   ToolSessionRegistryContext,
   ToolSessionSamplingProviderContext,
-} from './contexts.ts'
-import {
-  createToolSessionRegistry,
-  type ToolSessionRegistryOptions,
-} from './session-registry.ts'
+} from "./contexts.ts";
+import { createToolSessionRegistry, type ToolSessionRegistryOptions } from "./session-registry.ts";
 
 // =============================================================================
 // SETUP OPTIONS
@@ -34,26 +31,26 @@ export interface SetupToolSessionsOptions {
    * Use createInMemoryToolSessionStore() for single-process deployments,
    * or implement ToolSessionStore for distributed deployments.
    */
-  store: ToolSessionStore
+  store: ToolSessionStore;
 
   /**
    * Provider for LLM sampling when tools use ctx.sample().
    */
-  samplingProvider: ToolSessionSamplingProvider
+  samplingProvider: ToolSessionSamplingProvider;
 
   /**
    * Default timeout for sessions in milliseconds.
    * @default undefined (no timeout)
    */
-  defaultTimeout?: number
+  defaultTimeout?: number;
 
   /**
    * Worker mode configuration (optional).
    */
   worker?: {
-    workerUrl: string | URL
-    isDev?: boolean
-  }
+    workerUrl: string | URL;
+    isDev?: boolean;
+  };
 }
 
 // =============================================================================
@@ -102,27 +99,27 @@ export interface SetupToolSessionsOptions {
  * ```
  */
 export function* setupToolSessions(
-  options: SetupToolSessionsOptions
+  options: SetupToolSessionsOptions,
 ): Operation<ToolSessionRegistry> {
-  const { store, samplingProvider, defaultTimeout, worker } = options
+  const { store, samplingProvider, defaultTimeout, worker } = options;
 
   // Set store context
-  yield* ToolSessionStoreContext.set(store)
+  yield* ToolSessionStoreContext.set(store);
 
   // Set sampling provider context
-  yield* ToolSessionSamplingProviderContext.set(samplingProvider)
+  yield* ToolSessionSamplingProviderContext.set(samplingProvider);
 
   // Create registry
   const registryOptions: ToolSessionRegistryOptions = {
     ...(defaultTimeout !== undefined && { defaultTimeout }),
     ...(worker !== undefined && { worker }),
-  }
-  const registry = yield* createToolSessionRegistry(store, registryOptions)
+  };
+  const registry = yield* createToolSessionRegistry(store, registryOptions);
 
   // Set registry context
-  yield* ToolSessionRegistryContext.set(registry)
+  yield* ToolSessionRegistryContext.set(registry);
 
-  return registry
+  return registry;
 }
 
 // =============================================================================
@@ -139,4 +136,4 @@ export {
   useOptionalToolSessionStore,
   useOptionalToolSessionRegistry,
   useOptionalToolSessionSamplingProvider,
-} from './contexts.ts'
+} from "./contexts.ts";

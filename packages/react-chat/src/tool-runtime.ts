@@ -1,4 +1,4 @@
-import type { Operation } from 'effection'
+import type { Operation } from "effection";
 
 /**
  * Approval configuration for tools.
@@ -7,50 +7,48 @@ import type { Operation } from 'effection'
  * - 'confirm': Show confirmation dialog before execution
  * - 'permission': Requires browser permission grant
  */
-export type ApprovalType = 'none' | 'confirm' | 'permission'
+export type ApprovalType = "none" | "confirm" | "permission";
 
 /**
  * Result of an approval request.
  */
-export type ApprovalResult =
-  | { approved: true }
-  | { approved: false; reason?: string }
+export type ApprovalResult = { approved: true } | { approved: false; reason?: string };
 
 /**
  * Browser permission types that can be requested.
  */
 export type PermissionType =
-  | 'geolocation'
-  | 'clipboard-read'
-  | 'clipboard-write'
-  | 'notifications'
-  | 'camera'
-  | 'microphone'
-  | (string & {})
+  | "geolocation"
+  | "clipboard-read"
+  | "clipboard-write"
+  | "notifications"
+  | "camera"
+  | "microphone"
+  | (string & {});
 
 /**
  * What happens when user denies a tool.
  */
-export type DenialBehavior = 'error' | 'disable' | 'abort'
+export type DenialBehavior = "error" | "disable" | "abort";
 
 /**
  * Signal sent from React UI to approve/deny a tool.
  */
 export interface ApprovalSignalValue {
-  callId: string
-  approved: boolean
-  reason?: string
+  callId: string;
+  approved: boolean;
+  reason?: string;
 }
 
 /**
  * Context passed to client-side tool execution.
  */
 export interface ClientToolContext {
-  requestApproval(message: string): Operation<ApprovalResult>
-  requestPermission(type: PermissionType): Operation<ApprovalResult>
-  reportProgress(message: string): Operation<void>
-  signal: AbortSignal
-  callId: string
+  requestApproval(message: string): Operation<ApprovalResult>;
+  requestPermission(type: PermissionType): Operation<ApprovalResult>;
+  reportProgress(message: string): Operation<void>;
+  signal: AbortSignal;
+  callId: string;
 
   /**
    * Suspend the client generator and wait for UI input.
@@ -77,28 +75,25 @@ export interface ClientToolContext {
    * Tools should check if `ctx.waitFor` exists before using it, or the
    * tool registry can guarantee it's always available for tools that need it.
    */
-  waitFor?<TPayload, TResponse>(
-    type: string,
-    payload: TPayload
-  ): Operation<TResponse>
+  waitFor?<TPayload, TResponse>(type: string, payload: TPayload): Operation<TResponse>;
 }
 
 export class ToolDeniedError extends Error {
   constructor(
     public readonly toolName: string,
-    public readonly reason?: string
+    public readonly reason?: string,
   ) {
-    super(reason ?? `Tool "${toolName}" was denied by user`)
-    this.name = 'ToolDeniedError'
+    super(reason ?? `Tool "${toolName}" was denied by user`);
+    this.name = "ToolDeniedError";
   }
 }
 
 export class ToolTimeoutError extends Error {
   constructor(
     public readonly toolName: string,
-    public readonly timeoutMs: number
+    public readonly timeoutMs: number,
   ) {
-    super(`Tool "${toolName}" timed out after ${timeoutMs}ms`)
-    this.name = 'ToolTimeoutError'
+    super(`Tool "${toolName}" timed out after ${timeoutMs}ms`);
+    this.name = "ToolTimeoutError";
   }
 }

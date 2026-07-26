@@ -66,7 +66,9 @@ export class A2AInspector {
 
   async showDebug(): Promise<void> {
     const button = this.page.locator("#toggle-console-btn");
-    if ((await button.textContent())?.trim() === "Show") {await button.click();}
+    if ((await button.textContent())?.trim() === "Show") {
+      await button.click();
+    }
     await expect(this.debug).toBeVisible();
   }
 }

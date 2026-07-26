@@ -1,7 +1,7 @@
 import type { Operation, Subscription } from "effection";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { appendTestTokens, completeTestBuffer } from './test-writer.ts'
+import { appendTestTokens, completeTestBuffer } from "./test-writer.ts";
 
 import { createInMemoryBufferStore } from "../in-memory-store.ts";
 import type { ProtocolHandlerContext, ProtocolSetupResult } from "../http-types.ts";

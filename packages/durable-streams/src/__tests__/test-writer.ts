@@ -1,19 +1,19 @@
-import type { Operation } from 'effection'
+import type { Operation } from "effection";
 
-import type { TokenBuffer, TokenBufferWriter } from '../types.ts'
+import type { TokenBuffer, TokenBufferWriter } from "../types.ts";
 
 export function* testWriter<T>(buffer: TokenBuffer<T>): Operation<TokenBufferWriter<T>> {
-  return yield* buffer.claimWriter({ ownerId: `test:${buffer.id}`, activationEpoch: 1 })
+  return yield* buffer.claimWriter({ ownerId: `test:${buffer.id}`, activationEpoch: 1 });
 }
 
 export function* appendTestTokens<T>(buffer: TokenBuffer<T>, tokens: T[]): Operation<number> {
-  return yield* (yield* testWriter(buffer)).append(tokens)
+  return yield* (yield* testWriter(buffer)).append(tokens);
 }
 
 export function* completeTestBuffer<T>(buffer: TokenBuffer<T>): Operation<void> {
-  yield* (yield* testWriter(buffer)).complete()
+  yield* (yield* testWriter(buffer)).complete();
 }
 
 export function* failTestBuffer<T>(buffer: TokenBuffer<T>, error: Error): Operation<void> {
-  yield* (yield* testWriter(buffer)).fail(error)
+  yield* (yield* testWriter(buffer)).fail(error);
 }
