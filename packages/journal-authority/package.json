@@ -41,6 +41,17 @@
                 "default": "./dist/memory.js"
             },
             "default": "./src/memory.ts"
+        },
+        "./testing": {
+            "development": {
+                "import": "./src/instrumentation.ts",
+                "types": "./src/instrumentation.ts"
+            },
+            "import": {
+                "types": "./dist/instrumentation.d.ts",
+                "default": "./dist/instrumentation.js"
+            },
+            "default": "./src/instrumentation.ts"
         }
     },
     "scripts": {

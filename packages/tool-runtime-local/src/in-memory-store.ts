@@ -6,7 +6,7 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from "effection";
+import { action, type Operation } from "effection";
 import type {
   ToolSessionStore,
   ToolSessionEntry,
@@ -79,8 +79,27 @@ export function createInMemoryToolSessionStoreWithDebug(): ToolSessionStore & {
   getCount(): number;
   /** Clear all entries */
   clear(): void;
+  /**
+   * Event-driven wait until the store holds no sessions.
+   *
+   * Registry cleanup after release() is a settlement-driven task, so tests must
+   * synchronize on removal rather than sample the store immediately after a
+   * replacement Turn settles.
+   */
+  drained(): Operation<void>;
 } {
   const entries = new Map<string, ToolSessionEntry>();
+  const drainWaiters = new Set<() => void>();
+
+  function notifyDrained(): void {
+    if (entries.size > 0) {
+      return;
+    }
+    for (const waiter of [...drainWaiters]) {
+      drainWaiters.delete(waiter);
+      waiter();
+    }
+  }
 
   const store: ToolSessionStore = {
     *get(sessionId: string): Operation<ToolSessionEntry | null> {
@@ -93,6 +112,7 @@ export function createInMemoryToolSessionStoreWithDebug(): ToolSessionStore & {
 
     *delete(sessionId: string): Operation<void> {
       entries.delete(sessionId);
+      notifyDrained();
     },
 
     *updateRefCount(sessionId: string, delta: number): Operation<number> {
@@ -123,6 +143,19 @@ export function createInMemoryToolSessionStoreWithDebug(): ToolSessionStore & {
     },
     clear() {
       entries.clear();
+      notifyDrained();
+    },
+    drained(): Operation<void> {
+      return action<void>((resolve) => {
+        if (entries.size === 0) {
+          resolve();
+          return () => {};
+        }
+        drainWaiters.add(resolve);
+        return () => {
+          drainWaiters.delete(resolve);
+        };
+      });
     },
   };
 }
