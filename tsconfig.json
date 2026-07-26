@@ -21,6 +21,9 @@
             "path": "./packages/history-store"
         },
         {
+            "path": "./packages/durable-chat-runtime"
+        },
+        {
             "path": "./packages/a2a"
         },
         {

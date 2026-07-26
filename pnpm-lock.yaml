@@ -999,6 +999,37 @@ importers:
         specifier: 'catalog:'
         version: 4.1.13
 
+  packages/durable-chat-runtime:
+    dependencies:
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
+      '@sweatpants/history-store':
+        specifier: workspace:*
+        version: link:../history-store
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../journal-authority
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
+    devDependencies:
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/durable-effects:
     dependencies:
       '@sweatpants/foundation':
