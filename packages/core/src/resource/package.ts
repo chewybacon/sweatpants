@@ -4,7 +4,7 @@ import {
   canonicalSnapshot,
   sha256,
   sha256Bytes,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/foundation";
 
 import {
   DEFAULT_RESOURCE_LIMITS,

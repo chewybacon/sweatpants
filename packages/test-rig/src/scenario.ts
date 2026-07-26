@@ -121,6 +121,11 @@ export interface ScriptConversation {
   transcript(): ConversationTranscript;
 }
 
+export type SemanticFaultPoint = string;
+export type ScenarioHistoryPage = unknown;
+export type CheckpointEvidence = unknown;
+export type StorageMetrics = unknown;
+
 export interface ScriptStreamTurn {
   readonly sessionId: string;
   readonly events: readonly StreamFrame[];
@@ -144,6 +149,26 @@ export interface ScenarioContext {
   readonly streams: {
     openTurn(options: OpenStreamTurnOptions): Operation<ScriptStreamTurn>;
     reconnect(checkpoint: StreamCheckpoint): Operation<ScriptStreamTurn>;
+  };
+  /** Replaces or drains only the application Host; model/storage fixtures remain installed. */
+  readonly host: {
+    gracefulShutdown(options: { graceMs: number }): Operation<void>;
+    replace(): Operation<void>;
+    /** Catastrophic harness only: no finalizer behavior is implied. */
+    abandon(): Operation<void>;
+  };
+  /** Named semantic fault boundaries, never source line or private-method hooks. */
+  readonly faults: {
+    arm(point: SemanticFaultPoint): Operation<void>;
+    reached(point: SemanticFaultPoint): Operation<void>;
+  };
+  /** Read-only scenario evidence; it never drives a Turn. */
+  readonly history: {
+    page(sessionId: string, cursor?: string): Operation<ScenarioHistoryPage>;
+  };
+  readonly evidence: {
+    checkpoint(executionId: string): Operation<CheckpointEvidence | null>;
+    storageMetrics(): Operation<StorageMetrics>;
   };
   /** Low-level binding seam for package-owned client adapters such as React. */
   readonly transport: {
@@ -287,6 +312,22 @@ export function scenario<T>(
       *reconnect(checkpoint) {
         return toScriptStream(yield* op(() => rig.streams.reconnect(checkpoint)));
       },
+    },
+    host: {
+      gracefulShutdown: (options) => op(() => rig.lifecycle.gracefulShutdown(options)),
+      replace: () => op(() => rig.lifecycle.replace()),
+      abandon: () => op(() => rig.lifecycle.abandon()),
+    },
+    faults: {
+      arm: (point) => op(() => rig.lifecycle.armFault(point)),
+      reached: (point) => op(() => rig.lifecycle.waitForFault(point)),
+    },
+    history: {
+      page: (sessionId, cursor) => op(() => rig.lifecycle.readHistory(sessionId, cursor)),
+    },
+    evidence: {
+      checkpoint: (executionId) => op(() => rig.lifecycle.checkpointEvidence(executionId)),
+      storageMetrics: () => op(() => rig.lifecycle.storageMetrics()),
     },
     transport: { fetch: rig.fetch },
   };

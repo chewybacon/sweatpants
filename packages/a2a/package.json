@@ -47,6 +47,7 @@
         "test:interop": "vitest run src/__tests__/third-party-interop.live.test.ts --reporter=verbose"
     },
     "dependencies": {
+        "@sweatpants/foundation": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "ws": "catalog:"
     },

@@ -6,6 +6,9 @@
     },
     "references": [
         {
+            "path": "./packages/foundation"
+        },
+        {
             "path": "./packages/a2a"
         },
         {

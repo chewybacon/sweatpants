@@ -79,7 +79,18 @@ async function main(): Promise<void> {
     return [
       { name: "types", command: "pnpm", args: ["check"], timeoutMs: 10 * 60_000 },
       { name: "lint", command: "pnpm", args: ["lint"], timeoutMs: 5 * 60_000 },
-      { name: "build", command: "pnpm", args: ["build"], timeoutMs: 15 * 60_000 },
+      {
+        name: "build:clean",
+        command: "pnpm",
+        args: ["verify:clean-build"],
+        timeoutMs: 15 * 60_000,
+      },
+      {
+        name: "format:repository",
+        command: "pnpm",
+        args: ["format:check"],
+        timeoutMs: 5 * 60_000,
+      },
       {
         name: "verify:yo-chat-remote-collection",
         command: "pnpm",
@@ -344,7 +355,11 @@ async function main(): Promise<void> {
 
   function classifyFailure(log: string): string {
     const value = log.toLowerCase();
-    if (/401|unauthorized|authentication|token.*expired|token.*invalid/.test(value)) {
+    if (
+      /\b401\b|\bunauthorized\b|authentication (?:failed|required)|auth(?:entication)? (?:failed|required)|token.*(?:expired|invalid)/.test(
+        value,
+      )
+    ) {
       return "PROVIDER_AUTH_FAILED";
     }
     if (/eaddrinuse|address already in use|port .*occupied/.test(value)) {
