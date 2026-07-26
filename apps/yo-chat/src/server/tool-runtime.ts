@@ -1,3 +1,4 @@
+import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { call, type Operation } from "effection";
 import {
   createPluginSessionManager,
@@ -13,7 +14,6 @@ import {
   createDurableSchemaRegistry,
   createGeneratedPinnedDurableProgram,
   generateProgramArtifactIdentity,
-  type AgentCoreRuntimeRelease,
   type DurableProgramManifest,
   type Json,
 } from "@sweatpants/session-contract";

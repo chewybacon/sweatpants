@@ -1,3 +1,4 @@
+export type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
 export {
   createAgentCoreToolExecutionStrategy,
   createAgentCoreToolRuntimeDriver,

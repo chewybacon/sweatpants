@@ -1,3 +1,4 @@
+import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -18,7 +19,6 @@ import {
   createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
-  type AgentCoreRuntimeRelease,
   type Json,
   type ProgramRoute,
   type ProgramRunResult,

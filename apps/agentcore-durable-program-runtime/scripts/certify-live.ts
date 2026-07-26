@@ -1,3 +1,4 @@
+import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
@@ -10,7 +11,6 @@ import { run } from "effection";
 
 import {
   canonicalSnapshot,
-  type AgentCoreRuntimeRelease,
   type ProgramRoute,
   type ReplayOperationEntry,
 } from "@sweatpants/session-contract";

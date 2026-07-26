@@ -1,7 +1,7 @@
+import type { AgentCoreRuntimeRelease } from "../placement-types.ts";
 import { describe, expect, it } from "vitest";
 import {
   canonicalSnapshot,
-  type AgentCoreRuntimeRelease,
   type ReplayOperationEntry,
 } from "@sweatpants/session-contract";
 

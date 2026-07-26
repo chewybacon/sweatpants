@@ -1,11 +1,10 @@
+import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
 import {
   CrankError,
   canonicalSnapshot,
   effectContractDigest,
   exactProgramKey,
   stableOpaqueId,
-  type AgentCoreRuntimeRelease,
-  type AgentCoreTaskPlacement,
   type DurableProgramManifest,
   type PinnedProgram,
   type SandboxAffinity,
