@@ -1,6 +1,14 @@
 {
     "$schema": "./node_modules/oxlint/configuration_schema.json",
-    "plugins": ["import", "typescript", "unicorn", "oxc", "react", "promise", "vitest"],
+    "plugins": [
+        "import",
+        "typescript",
+        "unicorn",
+        "oxc",
+        "react",
+        "promise",
+        "vitest"
+    ],
     "categories": {
         "correctness": "error",
         "suspicious": "error"
@@ -9,7 +17,7 @@
         "no-console": "off",
         "no-debugger": "error",
         "prefer-const": "warn",
-        "no-duplicate-imports": "error",
+        "no-duplicate-imports": "warn",
         "eqeqeq": [
             "error",
             "always",
@@ -18,13 +26,17 @@
             }
         ],
         "curly": "warn",
-        "no-duplicate-imports": "warn",
         "no-shadow": "warn",
         "no-unused-vars": "warn",
         "require-yield": "off",
         "typescript/no-explicit-any": "warn",
         "typescript/no-non-null-assertion": "off",
-        "typescript/consistent-type-imports": "warn",
+        "typescript/consistent-type-imports": [
+            "warn",
+            {
+                "disallowTypeAnnotations": true
+            }
+        ],
         "typescript/no-import-type-side-effects": "warn",
         "import/default": "off",
         "import/no-cycle": "warn",
@@ -67,7 +79,23 @@
         "vitest/no-focused-tests": "error",
         "vitest/require-mock-type-parameters": "warn",
         "vitest/valid-expect": "warn",
-        "vitest/warn-todo": "warn"
+        "vitest/warn-todo": "warn",
+        "sweatpants/layered-imports": "error",
+        "typescript/no-deprecated": "warn",
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/no-floating-promises": "off",
+        "typescript/no-unnecessary-type-assertion": "warn",
+        "typescript/no-unnecessary-type-arguments": "warn",
+        "typescript/no-base-to-string": "warn",
+        "typescript/no-redundant-type-constituents": "warn",
+        "typescript/unbound-method": "warn",
+        "typescript/no-misused-spread": "warn",
+        "typescript/no-unnecessary-template-expression": "warn",
+        "typescript/restrict-template-expressions": "warn",
+        "typescript/no-unnecessary-boolean-literal-compare": "warn",
+        "typescript/await-thenable": "warn",
+        "typescript/require-array-sort-compare": "warn",
+        "typescript/no-duplicate-type-constituents": "warn"
     },
     "env": {
         "builtin": true
@@ -102,11 +130,65 @@
             "rules": {
                 "typescript/no-explicit-any": "off"
             }
+        },
+        {
+            "files": [
+                "packages/session-contract/src/**/*.ts",
+                "packages/journal-authority-redis/src/**/*.ts",
+                "packages/tool-runtime-local/src/**/*.ts",
+                "packages/framework/src/handler/durable/**/*.ts"
+            ],
+            "rules": {
+                "no-restricted-globals": [
+                    "error",
+                    {
+                        "name": "setTimeout",
+                        "message": "Durable execution paths must not poll a platform timer: a wait must be a journaled pull the authority owns, not wall-clock polling inside the crank. Use the authored clock (context.clock.sleep / waitUntil)."
+                    },
+                    {
+                        "name": "setInterval",
+                        "message": "Durable execution paths must not poll a platform timer: a wait must be a journaled pull the authority owns, not wall-clock polling inside the crank. Use the authored clock (context.clock.sleep / waitUntil)."
+                    }
+                ]
+            }
+        },
+        {
+            "files": [
+                "**/__tests__/**/*.ts",
+                "**/*.test.ts",
+                "**/testing/**/*.ts"
+            ],
+            "rules": {
+                "no-restricted-globals": "off"
+            }
+        },
+        {
+            "files": [
+                "packages/session-contract/src/**/*.ts",
+                "packages/journal-authority-redis/src/**/*.ts",
+                "packages/framework/src/handler/durable/**/*.ts"
+            ],
+            "rules": {
+                "sweatpants/documented-weld": "error"
+            }
+        },
+        {
+            "files": [
+                "**/__tests__/**/*.ts",
+                "**/*.test.ts",
+                "**/testing/**/*.ts"
+            ],
+            "rules": {
+                "sweatpants/documented-weld": "off"
+            }
         }
     ],
     "settings": {
         "vitest": {
             "typecheck": true
         }
-    }
+    },
+    "jsPlugins": [
+        "./scripts/oxlint-plugin-sweatpants.mjs"
+    ]
 }

@@ -3141,6 +3141,9 @@ function parseRestoreTicketClaims(value: unknown): RestoreTicketClaims {
     )
   )
     throw new CrankError("restore_stale");
+  // SAFETY: every field RestoreTicketClaims declares is checked immediately
+  // above and the guard throws restore_stale on any mismatch, so this point is
+  // unreachable for a shape the claims type does not describe.
   return value as unknown as RestoreTicketClaims;
 }
 

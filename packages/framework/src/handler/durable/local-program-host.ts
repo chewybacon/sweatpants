@@ -459,6 +459,9 @@ export function decodePinnedProgramCatalog(value: unknown): PinnedProgramCatalog
   if (candidate.digest !== canonicalSnapshot({ version: 1, entries: candidate.entries }).sha) {
     throw new CrankError("invalid_manifest", "Program catalog digest differs from entries");
   }
+  // SAFETY: the shape guard and the digest comparison above both throw
+  // invalid_manifest, so a candidate reaching here matched the catalog shape
+  // and hashed to its own declared digest.
   const catalog = candidate as unknown as PinnedProgramCatalog;
   for (const [target, entry] of Object.entries(catalog.entries)) {
     if (!target || target !== entry.target) {

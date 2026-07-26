@@ -64,6 +64,9 @@ export function normalizeProgramArtifactIdentityInput(
     digest: "0".repeat(64),
   });
 
+  // SAFETY: validateDurableManifest above rejects any manifest this identity
+  // input could carry, and canonicalSnapshot re-serializes through assertJson,
+  // so the value is both shape-checked and JSON-representable.
   return deepFreeze(
     canonicalSnapshot({
       format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,

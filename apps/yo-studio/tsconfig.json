@@ -1,7 +1,6 @@
 {
     "extends": "@sweatpants/ts-config/tsconfig.app.json",
     "compilerOptions": {
-        "baseUrl": ".",
         "paths": {
             "@/*": ["./src/*"]
         },

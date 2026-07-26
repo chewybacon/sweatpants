@@ -4,7 +4,6 @@
     "composite": true,
     "outDir": "./dist",
     "types": ["node"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
