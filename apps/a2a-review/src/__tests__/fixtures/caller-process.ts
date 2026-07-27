@@ -2,7 +2,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { run, type Operation } from "effection";
 import {
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
@@ -269,7 +269,7 @@ await run(function* () {
   }
   try {
     yield* ProgramDriverRegistryContext.with(drivers, function* () {
-      return yield* JournalAuthorityContext.with(persistedAuthority, function* () {
+      return yield* withJournalAuthority(persistedAuthority, function* () {
         return yield* DurableEffectRegistryContext.with(effects, function* () {
           return yield* ProgramRouteResolverContext.with(
             function* (program) {

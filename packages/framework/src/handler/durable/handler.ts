@@ -39,7 +39,7 @@ import {
   ToolInventoryApi,
   type ToolDefinition,
 } from "../../lib/chat/tool-inventory.ts";
-import { ToolRuntimeApi, ToolRuntimePort, type ToolRuntime } from "../../lib/chat/tool-runtime.ts";
+import { ToolRuntimePort } from "../../lib/chat/tool-runtime.ts";
 import { HistoryPolicyContext } from "../../lib/chat/history-policy.ts";
 import { useLogger } from "../../lib/logger/index.ts";
 import { bindModel, createBindingSource, stringParam } from "../model-binder.ts";
@@ -118,16 +118,6 @@ function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
     name: definition.name,
     description: definition.description,
     parameters: definition.parameters,
-  };
-}
-
-/** Binds the tool runtime installed for this request to the writer task. */
-function bindToolRuntimeToScope(requestScope: Scope): ToolRuntime {
-  return {
-    runtimeId: () => ToolRuntimeApi.invoke(requestScope, "runtimeId", []),
-    execute: (request) => ToolRuntimeApi.invoke(requestScope, "execute", [request]),
-    resume: (request) => ToolRuntimeApi.invoke(requestScope, "resume", [request]),
-    abort: (ref, reason) => ToolRuntimeApi.invoke(requestScope, "abort", [ref, reason]),
   };
 }
 
@@ -341,7 +331,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       // scope exactly like the model provider.
       const toolRuntimeInstalled = yield* ToolRuntimePort.isInstalled();
       const activeToolRuntime = toolRuntimeInstalled
-        ? bindToolRuntimeToScope(yield* useScope())
+        ? ToolRuntimePort.bind(yield* useScope())
         : undefined;
       // F5: resolve the optional history policy in request scope; the engine
       // runs in a background writer task without these contexts.

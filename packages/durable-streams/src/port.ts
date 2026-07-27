@@ -1,4 +1,4 @@
-import { useScope, type Operation, type Scope } from "effection";
+import { useScope, type Operation } from "effection";
 import { definePort } from "@sweatpants/foundation/port";
 import type {
   CreateSessionOptions,
@@ -100,50 +100,22 @@ export function installSessionRegistry<T>(registry: SessionRegistry<T>): Operati
 }
 
 /**
- * Binds the token buffer store installed in `scope` to a typed handle.
+ * Typed token buffer store bound to the calling scope.
  *
- * Dispatch is pinned so a consumer running in a detached task still reaches the
- * driver installed for its originating scope.
+ * The token type is restored here; storage itself never inspected it.
  */
-export function bindTokenBufferStore<T>(scope: Scope): TokenBufferStore<T> {
-  const api = TokenBufferStorePort.api;
-  return {
-    create: (id) => api.invoke(scope, "create", [id]) as Operation<TokenBuffer<T>>,
-    get: (id) => api.invoke(scope, "get", [id]) as Operation<TokenBuffer<T> | null>,
-    delete: (id) => api.invoke(scope, "delete", [id]),
-  };
-}
-
-export function bindSessionRegistry<T>(scope: Scope): SessionRegistry<T> {
-  const api = SessionRegistryPort.api;
-  return {
-    acquire: (sessionId: string, options?: CreateSessionOptions<T>) =>
-      api.invoke(scope, "acquire", [
-        sessionId,
-        options as CreateSessionOptions<unknown> | undefined,
-      ]) as Operation<SessionHandle<T>>,
-    release: (sessionId: string) => api.invoke(scope, "release", [sessionId]),
-  };
-}
-
-/** Typed token buffer store bound to the calling scope. */
 export function* useTokenBufferStore<T>(): Operation<TokenBufferStore<T>> {
-  return bindTokenBufferStore<T>(yield* useScope());
+  // SAFETY: inverse of the erasure performed by installTokenBufferStore.
+  return TokenBufferStorePort.bind(yield* useScope()) as TokenBufferStore<T>;
 }
 
 /** Session refcount store bound to the calling scope. */
 export function* useSessionRegistryStore(): Operation<SessionRegistryStore> {
-  const scope = yield* useScope();
-  const api = SessionRegistryStorePort.api;
-  return {
-    get: (sessionId) => api.invoke(scope, "get", [sessionId]),
-    set: (sessionId, entry) => api.invoke(scope, "set", [sessionId, entry]),
-    delete: (sessionId) => api.invoke(scope, "delete", [sessionId]),
-    updateRefCount: (sessionId, delta) => api.invoke(scope, "updateRefCount", [sessionId, delta]),
-  };
+  return SessionRegistryStorePort.bind(yield* useScope());
 }
 
 /** Typed session registry bound to the calling scope. */
 export function* useSessionRegistry<T>(): Operation<SessionRegistry<T>> {
-  return bindSessionRegistry<T>(yield* useScope());
+  // SAFETY: inverse of the erasure performed by installSessionRegistry.
+  return SessionRegistryPort.bind(yield* useScope()) as SessionRegistry<T>;
 }

@@ -1,5 +1,6 @@
-import { createContext, useScope, type Operation } from "effection";
+import { createContext, scoped, useScope, type Operation } from "effection";
 import { createApi } from "effection/experimental";
+import { definePort } from "@sweatpants/foundation/port";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
@@ -19,9 +20,7 @@ import {
 import { ProgramPlacementContext } from "./program-placement-context.ts";
 import { ModelSamplingOutcomeAcknowledgerContext } from "./model-sampling-acknowledgement.ts";
 import type {
-  AppendEmissionRequest,
   CancellationFrontier,
-  CompleteTaskRequest,
   DurableCancellationState,
   DurableEffectAuthorization,
   DurableEffectContext,
@@ -43,19 +42,71 @@ import type {
   ProgramRunResult,
   ProgramShutdownReason,
   ProgramStep,
-  ReserveOperationRequest,
-  ReserveOperationResult,
   RestoredFrontierProof,
-  ResolveOperationRequest,
   ResolveOperationResult,
-  TaskCloseReceipt,
 } from "./durable-types.ts";
 
-/** Scope-owned journal authority capability; absent outside an installed runtime. */
-export const JournalAuthorityContext = createContext<DurableJournalAuthorityService | undefined>(
-  "session-contract:journal-authority",
-  undefined,
+function* authorityUnavailable(): Operation<never> {
+  throw new CrankError("unknown_target", "No journal authority is installed");
+}
+
+function authorityUnavailableSync(): never {
+  throw new CrankError("unknown_target", "No journal authority is installed");
+}
+
+/**
+ * Journal authority as a port.
+ *
+ * Every member fails closed, so an uninstalled authority can never be mistaken
+ * for an authority that accepted a transition.
+ */
+export const JournalAuthorityPort = definePort<DurableJournalAuthorityService>(
+  "crank-journal-authority",
+  {
+    // Deliberately synchronous: identity is a pure read of already-claimed
+    // state, and nothing may inject waiting between a claim and its identity.
+    journalIdentity: authorityUnavailableSync,
+    taskExecutionState: authorityUnavailable,
+    taskInput: authorityUnavailable,
+    nonterminalSchemaDigests: authorityUnavailable,
+    markActivationStarted: authorityUnavailable,
+    recoverableSessions: authorityUnavailable,
+    claimActivation: authorityUnavailable,
+    renewActivation: authorityUnavailable,
+    releaseActivation: authorityUnavailable,
+    issueRestoreTicket: authorityUnavailable,
+    prepareProgramRestore: authorityUnavailable,
+    bindRestoreFrontier: authorityUnavailable,
+    consumeRestoreTicket: authorityUnavailable,
+    cancellationState: authorityUnavailable,
+    beginCancellationUnwind: authorityUnavailable,
+    bindProgramAttachment: authorityUnavailable,
+    ensureChildTask: authorityUnavailable,
+    reserve: authorityUnavailable,
+    resolve: authorityUnavailable,
+    emit: authorityUnavailable,
+    complete: authorityUnavailable,
+    forceOrphan: authorityUnavailable,
+  },
 );
+
+/** Installs one journal authority for the calling scope. */
+export function installJournalAuthority(
+  authority: DurableJournalAuthorityService,
+): Operation<void> {
+  return JournalAuthorityPort.installDriver(authority);
+}
+
+/** Runs `body` with `authority` installed in a child scope. */
+export function withJournalAuthority<T>(
+  authority: DurableJournalAuthorityService,
+  body: () => Operation<T>,
+): Operation<T> {
+  return scoped(function* () {
+    yield* installJournalAuthority(authority);
+    return yield* body();
+  });
+}
 /** Scope-owned durable effect registry; handlers inherit caller cancellation. */
 export const DurableEffectRegistryContext = createContext<DurableEffectRegistry | undefined>(
   "session-contract:durable-effect-registry",
@@ -169,13 +220,14 @@ export function createDurableEffectRegistry(
   return registry;
 }
 
-/** Resolves the current scoped authority or fails fast when not installed. */
+/**
+ * Journal authority bound to the calling scope.
+ *
+ * Callers that hand work to a detached task must resolve this before handing
+ * off, so dispatch stays pinned to the scope that owns the authority.
+ */
 export function* useJournalAuthority(): Operation<DurableJournalAuthorityService> {
-  const authority = yield* JournalAuthorityContext.get();
-  if (!authority) {
-    throw new CrankError("unknown_target", "No journal authority is installed");
-  }
-  return authority;
+  return JournalAuthorityPort.bind(yield* useScope());
 }
 
 /** Resolves the current scoped effect registry or fails fast when not installed. */
@@ -228,25 +280,13 @@ export const ProgramPeer = createApi("crank-program-peer", {
   },
 });
 
-/** Native authority API mediating reserve, resolve, emit, and complete transitions. */
-export const JournalAuthority = createApi("crank-journal-authority", {
-  *reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult> {
-    const authority = yield* useJournalAuthority();
-    return yield* authority.reserve(request);
-  },
-  *resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult> {
-    const authority = yield* useJournalAuthority();
-    return yield* authority.resolve(request);
-  },
-  *emit(request: AppendEmissionRequest): Operation<EmissionReceipt> {
-    const authority = yield* useJournalAuthority();
-    return yield* authority.emit(request);
-  },
-  *complete(request: CompleteTaskRequest): Operation<TaskCloseReceipt> {
-    const authority = yield* useJournalAuthority();
-    return yield* authority.complete(request);
-  },
-});
+/**
+ * Native authority API mediating durable transitions.
+ *
+ * This is the port's own api, so there is no separate facade that could drift
+ * from the service contract.
+ */
+export const JournalAuthority = JournalAuthorityPort.api;
 
 /** Native host-effect API that journals authorization and resolution receipts. */
 export const DurableEffects = createApi("crank-durable-effects", {

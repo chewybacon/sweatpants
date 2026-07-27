@@ -13,7 +13,7 @@ import {
 import {
   CrankError,
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
@@ -1031,7 +1031,7 @@ interface RuntimeInput {
 
 function* runExisting(input: RuntimeInput): Operation<ProgramRunResult> {
   return yield* ProgramDriverRegistryContext.with(input.drivers, function* () {
-    return yield* JournalAuthorityContext.with(input.journal.authority, function* () {
+    return yield* withJournalAuthority(input.journal.authority, function* () {
       return yield* DurableEffectRegistryContext.with(input.effects, function* () {
         return yield* ProgramRouteResolverContext.with(
           function* (_program, parentRoute): Operation<Json> {

@@ -6,7 +6,7 @@ import { run } from "effection";
 
 import {
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
@@ -127,7 +127,7 @@ async function activate(ownerId: string): Promise<ProgramRunResult> {
     let reason: "parked" | "terminal" | "failed" = "failed";
     try {
       const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(authority, function* () {
+        return yield* withJournalAuthority(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRuntime.operations.run({
               attach: {

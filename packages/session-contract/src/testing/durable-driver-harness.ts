@@ -3,7 +3,7 @@ import type { Operation } from "effection";
 import {
   DurableEffectRegistryContext,
   DurableProgramCancellation,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
@@ -321,7 +321,7 @@ export function* runDurableDriverRecoveryFixture(
     let releaseReason: "parked" | "terminal" | "failed" = "failed";
     try {
       const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(authority, function* () {
+        return yield* withJournalAuthority(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRuntime.operations.run({
               attach: { ...attach, executionEpoch },
@@ -471,7 +471,7 @@ export function* runDurableDriverCancellationFixture(
   });
 
   const first = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* JournalAuthorityContext.with(authority, function* () {
+    return yield* withJournalAuthority(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
       });
@@ -497,7 +497,7 @@ export function* runDurableDriverCancellationFixture(
     schemaRegistry: createDurableSchemaRegistry([...DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES]),
   });
   const second = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* JournalAuthorityContext.with(authority, function* () {
+    return yield* withJournalAuthority(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
       });

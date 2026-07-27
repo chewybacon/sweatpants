@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createTool, type AnyToolContract } from "@sweatpants/core";
 import {
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   assertJson,
@@ -204,7 +204,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       effectRegistrations(options.tool.manifest, outerContext, options.effectHandlers),
     );
     const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-      return yield* JournalAuthorityContext.with(authority, function* () {
+      return yield* withJournalAuthority(authority, function* () {
         return yield* DurableEffectRegistryContext.with(effects, function* () {
           return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
         });

@@ -20,7 +20,7 @@ export { createDurableChatHandler as createChatHandler } from "./handler.ts";
 export {
   DurableEffectRegistryContext,
   JournalAuthority,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramPeer,
   ProgramRuntime,

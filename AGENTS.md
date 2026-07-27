@@ -186,6 +186,10 @@ Rules:
   value member cannot fail closed; `definePort` rejects one.
 - Optional seams are probed with `Port.isInstalled()` rather than by handing out
   the driver, so an absent seam stays distinguishable from a broken one.
+- `Port.bind(scope)` returns a handle that dispatches against `scope`. Use it
+  when work is handed to a task that is deliberately not a child of the
+  installing scope, such as a Host-owned writer. Middleware still applies, so a
+  bound handle is not a driver handout.
 - Invariants that must hold for every adapter are composed inside `install*`,
   not written into each adapter and not installed as middleware.
 - A port member's return type decides what middleware may do to it, because

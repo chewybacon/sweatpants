@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { call, run, type Operation } from "effection";
 import {
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   canonicalJson,
@@ -121,7 +121,7 @@ await run(function* () {
       ["program", createLocalProgramDriver(createDurableToolRegistry([bundle.tool]))],
     ]),
     function* () {
-      return yield* JournalAuthorityContext.with(service, function* () {
+      return yield* withJournalAuthority(service, function* () {
         return yield* DurableEffectRegistryContext.with(
           createDurableEffectRegistry([registration]),
           function* () {
