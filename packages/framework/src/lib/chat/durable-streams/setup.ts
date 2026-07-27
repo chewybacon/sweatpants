@@ -23,7 +23,6 @@
 import type { Operation } from "effection";
 import type {
   RetentionPolicy,
-  SessionRegistry,
   RecoverableSessionRegistry,
   SessionRegistryStore,
   TokenBufferStore,
@@ -34,10 +33,10 @@ import {
 } from "@sweatpants/durable-streams";
 import { createSessionRegistry } from "./session-registry.ts";
 import {
-  TokenBufferStoreContext,
-  SessionRegistryStoreContext,
-  SessionRegistryContext,
-} from "./contexts.ts";
+  installTokenBufferStore,
+  installSessionRegistryStore,
+  installSessionRegistry,
+} from "@sweatpants/durable-streams";
 
 // =============================================================================
 // TYPES
@@ -74,8 +73,8 @@ export interface DurableStreamsSetup<T> {
 /**
  * Setup durable streams with provided stores.
  *
- * Creates the SessionRegistry and sets all contexts so they're available
- * via the `use*` accessor operations.
+ * Creates the SessionRegistry and installs all drivers so they resolve
+ * through the `use*` accessor operations.
  *
  * @param config - Configuration with custom buffer and registry stores
  * @returns Setup result with registry and stores
@@ -104,10 +103,10 @@ export function* setupDurableStreams<T>(
     retentionPolicy ? { retentionPolicy } : {},
   );
 
-  // Set all contexts for DI
-  yield* TokenBufferStoreContext.set(bufferStore as TokenBufferStore<unknown>);
-  yield* SessionRegistryStoreContext.set(registryStore);
-  yield* SessionRegistryContext.set(registry as SessionRegistry<unknown>);
+  // Install the drivers for this scope.
+  yield* installTokenBufferStore(bufferStore);
+  yield* installSessionRegistryStore(registryStore);
+  yield* installSessionRegistry(registry);
 
   return { registry, bufferStore, registryStore };
 }

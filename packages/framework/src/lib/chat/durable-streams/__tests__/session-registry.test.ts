@@ -92,11 +92,13 @@ describe("Session Registry", () => {
       yield* waitForSessionStatus(session, "complete");
     });
 
-    it("should throw helpful error when contexts not configured", function* () {
-      // Don't call setup - try to use accessor directly
+    it("should throw helpful error when no driver is installed", function* () {
+      // Accessors bind lazily, so an unconfigured seam fails at first use
+      // rather than at resolution.
       let errorThrown = false;
       try {
-        yield* useSessionRegistry<string>();
+        const registry = yield* useSessionRegistry<string>();
+        yield* registry.acquire("unconfigured");
       } catch (err) {
         errorThrown = true;
         expect((err as Error).message).toContain("SessionRegistry not configured");

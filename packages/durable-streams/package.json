@@ -97,6 +97,7 @@
         "test": "vitest"
     },
     "dependencies": {
+        "@sweatpants/foundation": "workspace:*",
         "effection": "catalog:"
     },
     "devDependencies": {

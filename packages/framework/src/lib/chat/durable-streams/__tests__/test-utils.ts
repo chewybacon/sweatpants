@@ -27,7 +27,11 @@ export {
   type DurableStreamsSetup,
 } from "../setup.ts";
 
-export { useSessionRegistry, useTokenBufferStore, useSessionRegistryStore } from "../use.ts";
+export {
+  useSessionRegistry,
+  useTokenBufferStore,
+  useSessionRegistryStore,
+} from "@sweatpants/durable-streams";
 
 // =============================================================================
 // MOCK LLM STREAM
