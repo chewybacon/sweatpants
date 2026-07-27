@@ -52,6 +52,17 @@
                 "default": "./dist/program-driver.js"
             },
             "default": "./src/program-driver.ts"
+        },
+        "./checkpoint": {
+            "development": {
+                "import": "./src/checkpoint.ts",
+                "types": "./src/checkpoint.ts"
+            },
+            "import": {
+                "types": "./dist/checkpoint.d.ts",
+                "default": "./dist/checkpoint.js"
+            },
+            "default": "./src/checkpoint.ts"
         }
     },
     "scripts": {
