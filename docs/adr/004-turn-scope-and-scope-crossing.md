@@ -87,6 +87,26 @@ The first two share one root cause and one fix. The third is a distinct and
 narrower case: an object whose configuration belongs to itself rather than to its
 callers. It would be wrong to "fix" it with a Turn scope.
 
+## Evidence
+
+`packages/framework/src/lib/chat/durable-streams/__tests__/turn-scope.test.ts`
+builds both scope shapes and pins four facts:
+
+1. With a parentless writer scope — what `useBackgroundTask` creates today — a
+   seam installed by the request is **not** visible to the writer. That is the
+   exact failure that forced `bind` into the handler.
+2. With the writer descended from a Turn scope, the same lookup resolves with no
+   `bind` at all.
+3. A Turn-parented writer still runs after its request scope has been destroyed,
+   so the durability property the orphan scope was protecting is preserved.
+4. Destroying the Turn scope tears the writer down. The parentless scope cannot
+   offer this: today nothing structurally reclaims a writer, which is a second,
+   independent defect the same change fixes.
+
+Point 4 was not part of the original diagnosis. Orphan scopes do not merely make
+seams invisible; they place the writer outside structured concurrency entirely,
+so its teardown depends on the task completing rather than on ownership.
+
 ## Consequences
 
 - Two of three current crossings are provisional and should disappear when the
@@ -96,10 +116,15 @@ callers. It would be wrong to "fix" it with a Turn scope.
 - A new foreign bind that cannot cite a reason of comparable weight is a design
   review trigger, not a lint fix.
 - Introducing the Turn scope is not free: the writer task's ownership currently
-  comes from the durable-streams session registry, so the Turn scope must own or
-  parent that task without weakening the guarantee that a response keeps
-  streaming after its request ends. That is why this ADR records the gap rather
-  than closing it in the same change.
+  comes from `useBackgroundTask`, which creates a scope with **no parent** and
+  copies Contexts across explicitly. Ports install as scope middleware and are
+  not copied by that mechanism, which is why the seam broke. Closing the gap
+  means replacing that helper — already scheduled for deletion in the target
+  architecture — and giving the Host an explicit Turn scope to parent writers
+  with. That is why this ADR records the gap rather than closing it here.
+- The change belongs with the `agent-host` extraction, which is the component
+  that will own Turn lifetime. Doing it before that decomposition would mean
+  doing it twice.
 
 ## Alternatives considered
 
