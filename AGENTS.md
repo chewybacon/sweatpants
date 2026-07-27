@@ -153,6 +153,58 @@ hand-written worker entry (see `apps/yo-chat/src/server/worker-tools.ts` and
 not the blessed path; `@sweatpants/vite-plugin`'s `nodeWorkerPlugin` remains
 required for `?modulePath` worker URL resolution.
 
+## Effectful Boundaries: Ports, Drivers, Middleware
+
+Effectful boundaries are declared once as a **Port** using `definePort` from
+`@sweatpants/foundation/port`. The declaration is simultaneously the contract
+type, the runtime operation list, and the fail-closed default. No Context is
+exported, so callers cannot reach around the seam to an installed driver.
+
+```ts
+export const ExecutionStorePort = definePort<ExecutionStore>("journal-authority-execution-store", {
+    *loadExecution(_executionId): Operation<VersionedExecution | null> {
+        return unavailable();
+    },
+});
+
+yield * ExecutionStorePort.installDriver(createMemoryExecutionStore());
+yield * ExecutionStorePort.api.operations.loadExecution(id);
+```
+
+Rules:
+
+- Drivers install at `at: "min"` (handled by `installDriver`) so policy and
+  observation middleware, which default to `at: "max"`, always surround them.
+  Installation order between a driver and middleware does not matter.
+- Installation is bound to the current Effection scope: inherited by children,
+  shadowable by a child, isolated between concurrent siblings, and discarded when
+  the scope exits. See `packages/foundation/src/port.test.ts`.
+- Drivers own persistence or transport mechanics only. Domain transition
+  validity, retry safety, fencing, and quiescence stay in the mandatory path and
+  must hold with no middleware installed.
+- Only portify a boundary that crosses a process, network, or storage edge,
+  needs scoped substitution in tests, or needs observation, deadlines, or
+  routing without touching call sites. Pure functions and pure domain
+  transitions stay plain and must run with no scope installed.
+- `packages/foundation/src/styles/` holds four worked variants (api-as-port,
+  derived facade, explicit facade, typed port) with tests. Read it before
+  proposing a different seam shape.
+
+### Naming: define, create, install, use
+
+- `define*` — immutable module-level declaration, evaluated once, no mutable
+  state: `definePort`, `defineDurableEffect`, `defineDurableProgramManifest`.
+- `create*` — constructs a runtime instance with its own state and lifetime:
+  `createMemoryExecutionStore`, `createToolSessionRegistry`, `createChannel`.
+- `install*` — binds an implementation or middleware into the current scope;
+  the effect ends when that scope exits: `installDriver`, `installExecutionStore`.
+- `use*` — reads a scoped capability inside an Operation: `useScope`,
+  `useJournalAuthority`.
+
+If calling it twice yields two independent stateful things, it is `create*`. If
+calling it twice is meaningless, it is `define*`. If its effect is bounded by a
+scope, it is `install*`.
+
 ## Landing the Plane (Session Completion)
 
 Before ending a coding session:
