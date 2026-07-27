@@ -14,6 +14,7 @@
         "clean:build": "tsx scripts/clean-build.ts",
         "verify:clean-build": "pnpm clean:build && pnpm build",
         "test": "pnpm run -r --workspace-concurrency=1 test",
+        "test:tooling": "vitest run --config vitest.scripts.config.ts",
         "test:e2e": "pnpm -C apps/yo-chat test:e2e && pnpm -C apps/yo-mcp test",
         "test:e2e:manual": "pnpm -C apps/yo-chat test:e2e:manual",
         "test:e2e:manual:ui": "pnpm -C apps/yo-chat test:e2e:manual:ui",
@@ -58,7 +59,8 @@
         "oxlint": "^1.58.0",
         "oxlint-tsgolint": "^7.0.2001",
         "tsx": "catalog:",
-        "typescript": "catalog:"
+        "typescript": "catalog:",
+        "vitest": "catalog:"
     },
     "packageManager": "pnpm@10.24.0",
     "pnpm": {
