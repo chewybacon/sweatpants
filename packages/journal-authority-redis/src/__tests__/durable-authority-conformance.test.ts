@@ -22,7 +22,7 @@ const factory: JournalAuthorityConformanceFactory = {
       journalIncarnation: "conformance-v1",
       keyPrefix: authorityKeyPrefix,
       keyring: options.keyring,
-      now: () => 1_000,
+      now: options.now,
       schemaRegistry: options.schemaRegistry,
     });
   },

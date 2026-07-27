@@ -16,6 +16,14 @@ import {
   stringGuard,
 } from "./schema-fixtures.ts";
 import type {
+  ClaimActivationRequest,
+  ClaimActivationResult,
+  RenewActivationRequest,
+  RenewActivationResult,
+  ReleaseActivationRequest,
+  ReleaseActivationResult,
+} from "../durable-authority-types.ts";
+import type {
   CancellationAcknowledgement,
   ReserveOperationRequest,
   ReserveOperationResult,
@@ -37,6 +45,12 @@ import type {
 export interface JournalAuthorityConformancePort {
   /** Clears a runnable marker at the start of a structured activation. */
   markActivationStarted(sessionId: string): Operation<void>;
+  /** Claims absent/expired runnable work under an authority-minted epoch. */
+  claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult>;
+  /** Renews only the exact current owner and epoch using authority time. */
+  renewActivation(request: RenewActivationRequest): Operation<RenewActivationResult>;
+  /** Releases exact ownership and re-derives runnable state. */
+  releaseActivation(request: ReleaseActivationRequest): Operation<ReleaseActivationResult>;
   /** Opens one exact pinned task and returns its attachment-bound program capability. */
   openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }>;
   /** Reserves or replays one action through the production authority boundary. */
@@ -94,6 +108,11 @@ export interface JournalAuthorityConformanceFactory {
     journalId: string;
     keyring: CapabilityKeyring;
     schemaRegistry: DurableSchemaRegistry;
+    /**
+     * Authority clock. Lease expiry is a storage-semantics behaviour, so it can
+     * only be certified when a case controls time rather than pinning it.
+     */
+    now: () => number;
   }): Operation<JournalAuthorityConformancePort>;
 }
 
@@ -223,6 +242,15 @@ export function adaptInMemoryAuthorityForConformance(
     *markActivationStarted(selectedSessionId) {
       yield* authority.markActivationStarted(selectedSessionId);
     },
+    *claimActivation(request) {
+      return yield* authority.claimActivation(request);
+    },
+    *renewActivation(request) {
+      return yield* authority.renewActivation(request);
+    },
+    *releaseActivation(request) {
+      return yield* authority.releaseActivation(request);
+    },
     *openTask(request) {
       return yield* authority.openTask(request);
     },
@@ -296,6 +324,13 @@ export function createJournalAuthorityConformanceCases(
       directElicitCancellation,
     ),
     defineCase(factory, "force orphan revokes work without clean cancellation", forceOrphan),
+    defineCase(factory, "activation lease fences a competing owner", activationLeaseFencing),
+    defineCase(
+      factory,
+      "expired activation lease is reclaimed under a new epoch",
+      activationLeaseExpiry,
+    ),
+    defineCase(factory, "stale epoch cannot renew or release an activation", staleActivationEpoch),
   ];
 }
 
@@ -305,6 +340,7 @@ function defineCase(
   scenario: (
     caseName: string,
     open: () => Operation<JournalAuthorityConformancePort>,
+    clock: { advance: (ms: number) => void },
   ) => Operation<void>,
 ): JournalAuthorityConformanceCase {
   const caseName = `${factory.backendName}: ${name}`;
@@ -315,14 +351,26 @@ function defineCase(
   return {
     name,
     *run() {
-      yield* scenario(caseName, () =>
-        factory.open({
-          journalId,
-          keyring,
-          schemaRegistry: createDurableSchemaRegistry([
-            ...JOURNAL_AUTHORITY_CONFORMANCE_SCHEMA_ENTRIES,
-          ]),
-        }),
+      // Shared mutable clock: every handle opened by a case observes the same
+      // authority time, so a lease expiring for one owner expires for all.
+      let currentMs = 1_000;
+      const clock = {
+        advance: (ms: number) => {
+          currentMs += ms;
+        },
+      };
+      yield* scenario(
+        caseName,
+        () =>
+          factory.open({
+            journalId,
+            keyring,
+            schemaRegistry: createDurableSchemaRegistry([
+              ...JOURNAL_AUTHORITY_CONFORMANCE_SCHEMA_ENTRIES,
+            ]),
+            now: () => currentMs,
+          }),
+        clock,
       );
     },
   };
@@ -914,6 +962,132 @@ function rootRequest(
     attachmentId,
     audience: "program-runtime",
   };
+}
+
+/**
+ * A held activation lease must exclude every other owner.
+ *
+ * This is the property that makes one crank turner safe (ADR-001): if two hosts
+ * could hold the same Session, both would drive the same journal.
+ */
+function* activationLeaseFencing(
+  caseName: string,
+  open: () => Operation<JournalAuthorityConformancePort>,
+): Operation<void> {
+  const first = yield* open();
+  yield* openRoot(first);
+
+  const claimed = yield* first.claimActivation({
+    sessionId,
+    ownerId: "owner-a",
+    leaseDurationMs: 30_000,
+  });
+  assert(caseName, claimed.status === "claimed", "first owner must claim a runnable session");
+
+  // A second host, unaware of the first, must be refused rather than given a
+  // second lease. `busy` also has to carry usable backoff.
+  const competing = yield* (yield* open()).claimActivation({
+    sessionId,
+    ownerId: "owner-b",
+    leaseDurationMs: 30_000,
+  });
+  assert(caseName, competing.status === "busy", "a held lease must refuse a competing owner");
+  assert(
+    caseName,
+    competing.status === "busy" && competing.retryAfterMs > 0,
+    "a busy claim must report positive backoff",
+  );
+}
+
+/**
+ * An expired lease must be reclaimable, and the new activation must carry a
+ * strictly greater epoch so fenced writes from the dead owner stay rejected.
+ */
+function* activationLeaseExpiry(
+  caseName: string,
+  open: () => Operation<JournalAuthorityConformancePort>,
+  clock: { advance: (ms: number) => void },
+): Operation<void> {
+  const first = yield* open();
+  yield* openRoot(first);
+
+  const claimed = yield* first.claimActivation({
+    sessionId,
+    ownerId: "owner-a",
+    leaseDurationMs: 30_000,
+  });
+  assert(caseName, claimed.status === "claimed", "first owner must claim");
+  const firstEpoch = claimed.status === "claimed" ? claimed.epoch : -1;
+
+  // Host death is indistinguishable from silence, so recovery depends entirely
+  // on the lease elapsing in authority time.
+  clock.advance(30_001);
+
+  const reclaimed = yield* (yield* open()).claimActivation({
+    sessionId,
+    ownerId: "owner-b",
+    leaseDurationMs: 30_000,
+  });
+  assert(caseName, reclaimed.status === "claimed", "an expired lease must be reclaimable");
+  assert(
+    caseName,
+    reclaimed.status === "claimed" && reclaimed.epoch > firstEpoch,
+    "a reclaimed activation must mint a strictly greater epoch",
+  );
+}
+
+/**
+ * Renewal and release must be exact in both owner and epoch, so a host that
+ * lost its lease cannot extend or retire an activation it no longer owns.
+ */
+function* staleActivationEpoch(
+  caseName: string,
+  open: () => Operation<JournalAuthorityConformancePort>,
+  clock: { advance: (ms: number) => void },
+): Operation<void> {
+  const first = yield* open();
+  yield* openRoot(first);
+  const claimed = yield* first.claimActivation({
+    sessionId,
+    ownerId: "owner-a",
+    leaseDurationMs: 30_000,
+  });
+  assert(caseName, claimed.status === "claimed", "first owner must claim");
+  const epoch = claimed.status === "claimed" ? claimed.epoch : -1;
+
+  assertEqual(
+    caseName,
+    yield* first.renewActivation({ sessionId, ownerId: "owner-b", epoch }),
+    { status: "stale_activation" },
+    "a different owner must not renew a lease",
+  );
+  assertEqual(
+    caseName,
+    yield* first.renewActivation({ sessionId, ownerId: "owner-a", epoch: epoch + 1 }),
+    { status: "stale_activation" },
+    "a future epoch must not renew a lease",
+  );
+
+  clock.advance(30_001);
+  const reclaimed = yield* (yield* open()).claimActivation({
+    sessionId,
+    ownerId: "owner-b",
+    leaseDurationMs: 30_000,
+  });
+  assert(caseName, reclaimed.status === "claimed", "expired lease must be reclaimable");
+
+  // The dead owner now tries to retire the activation the new owner holds.
+  assertEqual(
+    caseName,
+    yield* first.releaseActivation({
+      sessionId,
+      ownerId: "owner-a",
+      epoch,
+      reason: "scope_exit",
+    }),
+    { status: "stale_activation" },
+    "a superseded owner must not release the current activation",
+  );
 }
 
 function* openRoot(
