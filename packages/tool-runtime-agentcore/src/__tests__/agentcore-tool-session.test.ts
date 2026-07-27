@@ -3,7 +3,6 @@ import { describe, it, expect } from "vitest";
 import { run, each } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/core";
-import { useToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   FakeAgentCoreRemoteToolRuntimeClient,
@@ -347,17 +346,16 @@ describe("AgentCore ToolSession facade", () => {
     });
   });
 
-  it("setupAgentCoreToolSessions wires the AgentCore registry into context", async () => {
+  it("setupAgentCoreToolSessions returns a usable AgentCore registry", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
 
     const result = await run(function* () {
-      yield* setupAgentCoreToolSessions({
+      const registry = yield* setupAgentCoreToolSessions({
         stores,
         runtimeClient: runtime,
         profiles: [createProfile(["simple_tool"])],
       });
-      const registry = yield* useToolSessionRegistry();
       const session = yield* registry.create(
         simpleTool,
         { input: "from-context" },

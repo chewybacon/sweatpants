@@ -27,10 +27,7 @@ import type {
  * ```typescript
  * const store = createInMemoryToolSessionStore()
  *
- * yield* setupToolSessions({
- *   store,
- *   samplingProvider: myProvider,
- * })
+ * const registry = yield* createToolSessionRegistry(store)
  * ```
  */
 export function createInMemoryToolSessionStore(): ToolSessionStore {

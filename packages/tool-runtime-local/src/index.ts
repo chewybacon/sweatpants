@@ -26,20 +26,6 @@ export {
   createInMemoryToolSessionStoreWithDebug,
 } from "./in-memory-store.ts";
 
-export {
-  setupToolSessions,
-  type SetupToolSessionsOptions,
-  ToolSessionStoreContext,
-  ToolSessionRegistryContext,
-  ToolSessionSamplingProviderContext,
-  useToolSessionStore,
-  useToolSessionRegistry,
-  useToolSessionSamplingProvider,
-  useOptionalToolSessionStore,
-  useOptionalToolSessionRegistry,
-  useOptionalToolSessionSamplingProvider,
-} from "./setup.ts";
-
 export * from "./worker.ts";
 
 export {

@@ -160,18 +160,6 @@ export type {
 // DURABLE TOOL SESSIONS (HTTP-friendly, survives request boundaries)
 // =============================================================================
 
-export {
-  ToolSessionStoreContext,
-  ToolSessionRegistryContext,
-  ToolSessionSamplingProviderContext,
-  useToolSessionStore,
-  useToolSessionRegistry,
-  useToolSessionSamplingProvider,
-  useOptionalToolSessionStore,
-  useOptionalToolSessionRegistry,
-  useOptionalToolSessionSamplingProvider,
-} from "./session/contexts.ts";
-
 export type {
   // Session types
   ToolSession,
