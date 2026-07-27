@@ -1,13 +1,6 @@
-import { call, type Operation } from "effection";
-import type { Json } from "@sweatpants/foundation";
-import type { DurableReference, ExecutionId } from "@sweatpants/durable-execution";
-import type {
-  AppendReplayRequest,
-  CommitExecutionRequest,
-  CommitExecutionResult,
-  ExecutionStore,
-  VersionedExecution,
-} from "./store.ts";
+import type { Operation } from "effection";
+import type { ExecutionId } from "@sweatpants/durable-execution";
+import { ExecutionStoreApi } from "./api.ts";
 
 export interface StorageMetrics {
   readonly executionReads: number;
@@ -20,13 +13,22 @@ export interface StorageMetrics {
   readonly resumeBytes: number;
 }
 
-export interface InstrumentedExecutionStore extends ExecutionStore {
+export interface StorageMetricsRecorder {
   metrics(): StorageMetrics;
   reset(): void;
 }
 
-/** Wraps any store driver to certify bounded read/write behavior. */
-export function instrumentExecutionStore(inner: ExecutionStore): InstrumentedExecutionStore {
+function size(value: unknown): number {
+  return JSON.stringify(value ?? null)?.length ?? 0;
+}
+
+/**
+ * Installs observation-only metrics middleware for the calling scope.
+ *
+ * The middleware records evidence and delegates every call unchanged, so
+ * removing it cannot alter an accepted storage result.
+ */
+export function* installStorageMetrics(): Operation<StorageMetricsRecorder> {
   let executionReads = 0;
   let executionCommits = 0;
   let replayAppends = 0;
@@ -37,50 +39,49 @@ export function instrumentExecutionStore(inner: ExecutionStore): InstrumentedExe
   const executionsTouched = new Set<ExecutionId>();
   const replayObjects = new Set<string>();
 
-  function size(value: unknown): number {
-    return JSON.stringify(value ?? null)?.length ?? 0;
-  }
-
-  return {
-    *loadExecution(executionId): Operation<VersionedExecution | null> {
+  yield* ExecutionStoreApi.around({
+    *loadExecution([executionId], next) {
       executionReads += 1;
       executionsTouched.add(executionId);
-      const record = yield* inner.loadExecution(executionId);
+      const record = yield* next(executionId);
       resumeBytes += size(record);
       return record;
     },
-    *commitExecution(request: CommitExecutionRequest): Operation<CommitExecutionResult> {
+    *commitExecution([request], next) {
       executionCommits += 1;
       executionsTouched.add(request.executionId);
       mutationBytes += size(request.next);
-      return yield* inner.commitExecution(request);
+      return yield* next(request);
     },
-    *putPayload(value): Operation<DurableReference> {
+    *putPayload([value], next) {
       mutationBytes += size(value);
-      return yield* inner.putPayload(value);
+      return yield* next(value);
     },
-    *getPayload(reference): Operation<Json | Uint8Array | null> {
-      const value = yield* inner.getPayload(reference);
+    *getPayload([reference], next) {
+      const value = yield* next(reference);
       resumeBytes += size(value);
       return value;
     },
-    *appendReplay(request: AppendReplayRequest): Operation<DurableReference> {
+    *appendReplay([request], next) {
       replayAppends += 1;
       executionsTouched.add(request.executionId);
       mutationBytes += size(request.entries);
-      const reference = yield* inner.appendReplay(request);
+      const reference = yield* next(request);
       if (replayObjects.has(reference.id)) {
         replayObjectsRewritten += 1;
       }
       replayObjects.add(reference.id);
       return reference;
     },
-    *readReplay(head): Operation<readonly Json[]> {
+    *readReplay([head], next) {
       replayReads += 1;
-      const entries = yield* inner.readReplay(head);
+      const entries = yield* next(head);
       resumeBytes += size(entries);
       return entries;
     },
+  });
+
+  return {
     metrics(): StorageMetrics {
       return {
         executionReads,
@@ -102,7 +103,6 @@ export function instrumentExecutionStore(inner: ExecutionStore): InstrumentedExe
       mutationBytes = 0;
       resumeBytes = 0;
       executionsTouched.clear();
-      void call;
     },
   };
 }
