@@ -1616,6 +1616,9 @@ importers:
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../core
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract

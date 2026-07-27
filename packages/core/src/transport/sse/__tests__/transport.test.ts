@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { describe, it, expect } from "@effectionx/vitest";
-import { spawn, sleep, resource, withResolvers, type Operation } from "effection";
+import { action, spawn, resource, withResolvers, type Operation } from "effection";
 import { createSSEPrincipal } from "../principal.ts";
 import { createCorrelation, type CorrelatedTransport } from "../../correlation.ts";
 import type {
@@ -21,27 +21,44 @@ interface SSETestServer {
   operative: {
     send: (msg: ProgressMessage | ResponseMessage) => Operation<void>;
     received: TransportRequest[];
+    /** Subscribes to request arrivals; returns an unsubscribe function. */
+    onReceived: (listener: () => void) => () => void;
   };
 }
 
-function* waitForCondition(predicate: () => boolean, timeoutMs = 1000): Operation<void> {
-  const startedAt = Date.now();
-  while (!predicate()) {
-    if (Date.now() - startedAt > timeoutMs) {
-      throw new Error("Timed out waiting for condition");
+/**
+ * Event-driven arrival barrier.
+ *
+ * Polling with a wall-clock budget made this suite fail under parallel load
+ * even though the transport was healthy, so arrival is signalled by the test
+ * server instead of sampled.
+ */
+function waitForReceived(operative: SSETestServer["operative"], count: number): Operation<void> {
+  return action<void>((resolve) => {
+    if (operative.received.length >= count) {
+      resolve();
+      return () => {};
     }
-    yield* sleep(10);
-  }
-}
-
-function* waitForReceived(operative: SSETestServer["operative"], count: number): Operation<void> {
-  yield* waitForCondition(() => operative.received.length >= count);
+    return operative.onReceived(() => {
+      if (operative.received.length >= count) {
+        resolve();
+      }
+    });
+  });
 }
 
 function useSSETestServer(): Operation<SSETestServer> {
   return resource(function* (provide) {
     const postedRequests: TransportRequest[] = [];
     const sseResponses: ServerResponse[] = [];
+    const arrivalListeners = new Set<() => void>();
+    const connectionListeners = new Set<() => void>();
+
+    function announceArrival(): void {
+      for (const listener of [...arrivalListeners]) {
+        listener();
+      }
+    }
 
     const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
       if (req.url === "/sse" && req.method === "GET") {
@@ -52,6 +69,9 @@ function useSSETestServer(): Operation<SSETestServer> {
           Connection: "keep-alive",
         });
         sseResponses.push(res);
+        for (const listener of [...connectionListeners]) {
+          listener();
+        }
       } else if (req.url === "/post" && req.method === "POST") {
         // POST endpoint for requests
         let body = "";
@@ -62,6 +82,7 @@ function useSSETestServer(): Operation<SSETestServer> {
           try {
             const request = JSON.parse(body);
             postedRequests.push(request);
+            announceArrival();
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ ok: true }));
           } catch {
@@ -90,8 +111,18 @@ function useSSETestServer(): Operation<SSETestServer> {
     });
     const correlated = yield* createCorrelation(principal);
 
-    // Wait for SSE connection
-    yield* sleep(10);
+    // Wait for the server to observe the SSE connection rather than sleeping.
+    yield* action<void>((resolve) => {
+      if (sseResponses.length > 0) {
+        resolve();
+        return () => {};
+      }
+      const listener = () => resolve();
+      connectionListeners.add(listener);
+      return () => {
+        connectionListeners.delete(listener);
+      };
+    });
 
     try {
       yield* provide({
@@ -116,6 +147,12 @@ function useSSETestServer(): Operation<SSETestServer> {
             },
           }),
           received: postedRequests,
+          onReceived: (listener: () => void) => {
+            arrivalListeners.add(listener);
+            return () => {
+              arrivalListeners.delete(listener);
+            };
+          },
         },
       });
     } finally {
@@ -174,60 +211,28 @@ describe("SSE+POST Transport", () => {
         payload: { accuracy: "high" },
       };
 
-      let result: IteratorResult<unknown, ElicitResponse> | undefined;
-
-      yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>(message);
-
-        // First progress
-        result = yield* subscription.next();
-        expect(result.done).toBe(false);
-        expect(result.value).toEqual({ status: "requesting-permission" });
-
-        // Second progress
-        result = yield* subscription.next();
-        expect(result.done).toBe(false);
-        expect(result.value).toEqual({ status: "acquiring" });
-
-        // Final response
-        result = yield* subscription.next();
-        expect(result.done).toBe(true);
-        expect(result.value).toEqual({
-          status: "accepted",
-          content: { lat: 40.7128, lng: -74.006 },
-        });
-      });
-
+      // Causal script: request, then consume each delivered value in order.
+      const subscription = yield* correlated.request<unknown, ElicitResponse>(message);
       yield* waitForReceived(operative, 1);
 
-      // Operative sends progress updates
       yield* operative.send({
         type: "progress",
         id: "msg-1",
         data: { status: "requesting-permission" },
       });
-
-      yield* waitForCondition(
-        () =>
-          !!result &&
-          result.done === false &&
-          (result.value as { status?: string }).status === "requesting-permission",
-      );
+      const first = yield* subscription.next();
+      expect(first.done).toBe(false);
+      expect(first.value).toEqual({ status: "requesting-permission" });
 
       yield* operative.send({
         type: "progress",
         id: "msg-1",
         data: { status: "acquiring" },
       });
+      const second = yield* subscription.next();
+      expect(second.done).toBe(false);
+      expect(second.value).toEqual({ status: "acquiring" });
 
-      yield* waitForCondition(
-        () =>
-          !!result &&
-          result.done === false &&
-          (result.value as { status?: string }).status === "acquiring",
-      );
-
-      // Operative sends final response
       yield* operative.send({
         type: "response",
         id: "msg-1",
@@ -235,6 +240,12 @@ describe("SSE+POST Transport", () => {
           status: "accepted",
           content: { lat: 40.7128, lng: -74.006 },
         },
+      });
+      const final = yield* subscription.next();
+      expect(final.done).toBe(true);
+      expect(final.value).toEqual({
+        status: "accepted",
+        content: { lat: 40.7128, lng: -74.006 },
       });
     });
 
@@ -275,9 +286,9 @@ describe("SSE+POST Transport", () => {
     it("should handle multiple concurrent requests", function* () {
       const { correlated, operative } = yield* useSSETestServer();
 
-      const responses: Record<string, ElicitResponse | undefined> = {};
-
-      yield* spawn(function* () {
+      // Both requests are genuinely in flight; joining each task is the
+      // completion signal, so no polled predicate is required.
+      const first = yield* spawn(function* () {
         const subscription = yield* correlated.request<unknown, ElicitResponse>({
           id: "msg-1",
           kind: "elicit",
@@ -286,12 +297,10 @@ describe("SSE+POST Transport", () => {
         });
         const result = yield* subscription.next();
         expect(result.done).toBe(true);
-        if (result.done) {
-          responses["msg-1"] = result.value;
-        }
+        return result.value;
       });
 
-      yield* spawn(function* () {
+      const second = yield* spawn(function* () {
         const subscription = yield* correlated.request<unknown, ElicitResponse>({
           id: "msg-2",
           kind: "elicit",
@@ -300,13 +309,10 @@ describe("SSE+POST Transport", () => {
         });
         const result = yield* subscription.next();
         expect(result.done).toBe(true);
-        if (result.done) {
-          responses["msg-2"] = result.value;
-        }
+        return result.value;
       });
 
       yield* waitForReceived(operative, 2);
-
       expect(operative.received).toHaveLength(2);
 
       // Respond out of order
@@ -322,10 +328,8 @@ describe("SSE+POST Transport", () => {
         response: { status: "denied" },
       });
 
-      yield* waitForCondition(() => !!responses["msg-1"] && !!responses["msg-2"]);
-
-      expect(responses["msg-1"]).toEqual({ status: "denied" });
-      expect(responses["msg-2"]).toEqual({
+      expect(yield* first).toEqual({ status: "denied" });
+      expect(yield* second).toEqual({
         status: "accepted",
         content: { text: "Hello clipboard" },
       });

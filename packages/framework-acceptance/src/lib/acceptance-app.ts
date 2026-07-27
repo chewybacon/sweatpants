@@ -40,6 +40,8 @@ import {
   createLocalWorkerDurableProgramDriver,
   createToolSessionRegistry,
   installLocalProgramToolRuntime,
+  observeToolSessionDrain,
+  type ToolSessionDrainObserver,
 } from "@sweatpants/tool-runtime-local";
 import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants/test-rig";
 import { acceptanceBookingTool } from "../fixtures/acceptance-booking.tool.ts";
@@ -217,6 +219,7 @@ export function createAcceptanceApplication(
   };
   let toolSessionRegistry: ToolSessionRegistry | undefined;
   let toolSessionStore: ReturnType<typeof createInMemoryToolSessionStoreWithDebug> | undefined;
+  let sessionDrain: ToolSessionDrainObserver | undefined;
   const journalStore =
     options.journalStore ??
     createInMemoryProgramDriverJournalStore({
@@ -235,11 +238,11 @@ export function createAcceptanceApplication(
       return toolSessionRegistry;
     },
     get toolSessionIds() {
-      return toolSessionStore?.getSessionIds() ?? [];
+      return sessionDrain?.sessionIds() ?? toolSessionStore?.getSessionIds() ?? [];
     },
     *toolSessionsDrained(): Operation<void> {
-      if (toolSessionStore) {
-        yield* toolSessionStore.drained();
+      if (sessionDrain) {
+        yield* sessionDrain.drained();
       }
     },
   });
@@ -253,6 +256,9 @@ export function createAcceptanceApplication(
       yield* durableOptionsProvider.install();
 
       toolSessionStore = createInMemoryToolSessionStoreWithDebug();
+      // Observation is scoped middleware installed above the registry, so the
+      // store type stays free of test-only methods.
+      sessionDrain = yield* observeToolSessionDrain();
       const registry = yield* createToolSessionRegistry(toolSessionStore, {
         worker: {
           workerUrl: resolveFixtureBootstrapUrl("acceptance-tool-worker-bootstrap.mjs"),
