@@ -8,8 +8,8 @@ import { createApi } from "effection/experimental";
  * default. No Context is exported, so callers cannot reach around the seam to
  * an installed driver; the only way in is `installDriver`.
  *
- * This lives in `durable-effects` rather than `foundation` because foundation
- * must stay free of Effection runtime code.
+ * Foundation carries this because it is a portable composition primitive with
+ * no Node-only API, I/O, or domain noun (DR-042).
  */
 export interface Port<T extends object> {
   readonly api: Api<T>;

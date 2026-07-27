@@ -1153,6 +1153,9 @@ importers:
       '@sweatpants/elicit-context':
         specifier: workspace:*
         version: link:../elicit-context
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract

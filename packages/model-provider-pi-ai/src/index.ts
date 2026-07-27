@@ -14,7 +14,7 @@ import type {
 } from "./runtime/index.ts";
 import { createOllamaModel, createOpenAiResponsesModel, piAiRuntime } from "./runtime/index.ts";
 import {
-  ModelProviderContext,
+  installModelProvider,
   ModelProviderModelContext,
   ModelProviderStreamOptionsContext,
   type ModelProviderDriver,
@@ -304,7 +304,7 @@ export function redactSensitiveString(message: string | undefined): string | und
 
 export function createPiAiModelProviderDriver(runtime: Runtime = piAiRuntime): ModelProviderDriver {
   return {
-    stream(request) {
+    *stream(request) {
       return runtime.stream(request.model, request.context, request.options);
     },
     *sample(request): Operation<AssistantMessage> {
@@ -340,7 +340,7 @@ export interface InstallPiAiModelProviderOptions {
 export function* installPiAiModelProvider(
   options: InstallPiAiModelProviderOptions = {},
 ): Operation<void> {
-  yield* ModelProviderContext.set(options.driver ?? createPiAiModelProviderDriver());
+  yield* installModelProvider(options.driver ?? createPiAiModelProviderDriver());
   if (options.model) {
     yield* ModelProviderModelContext.set(options.model);
   }

@@ -1,7 +1,7 @@
 import { resource, run, type Operation, type Stream } from "effection";
 import { createClient, type RedisClientType } from "redis";
 import {
-  ModelProviderContext,
+  installModelProvider,
   ModelProviderModelContext,
   ToolInventoryContext,
   createToolInventory,
@@ -74,7 +74,7 @@ export async function createPlayTttSubstrate(options: {
 }): Promise<PlayTttSubstrate> {
   let sampleCount = 0;
   const driver: ModelProviderDriver = {
-    stream(request): Stream<StreamEvent, AssistantMessage> {
+    *stream(request): Operation<Stream<StreamEvent, AssistantMessage>> {
       sampleCount += 1;
       return completedStream(sampleMessage(request, sampleCount));
     },
@@ -134,7 +134,7 @@ function createApplication(
     programDriverJournalStore: journalStore,
     maxToolIterations: 5,
     setup: function* () {
-      yield* ModelProviderContext.set(driver);
+      yield* installModelProvider(driver);
       yield* ModelProviderModelContext.set(model);
     },
   });

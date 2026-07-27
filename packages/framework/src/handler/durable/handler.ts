@@ -23,7 +23,7 @@
  * - session-event-stream.ts: engine -> Host-owned buffer with persistence
  * - hydrate-responses.ts: checkpoint/buffer replay read responses
  */
-import { call, resource, type Operation } from "effection";
+import { call, resource, useScope, type Operation, type Scope } from "effection";
 import {
   useSessionRegistryStore,
   useSessionRegistry,
@@ -33,11 +33,7 @@ import {
   type TokenBufferStore,
 } from "../../lib/chat/durable-streams/index.ts";
 import { MaxIterationsContext, PersonaResolverContext } from "../../lib/chat/contexts.ts";
-import {
-  ModelProviderApi,
-  ModelProviderContext,
-  type ModelProviderDriver,
-} from "../../lib/chat/model-provider.ts";
+import { ModelProviderApi, useModel, useStreamOptions } from "../../lib/chat/model-provider.ts";
 import {
   ToolExposureApi,
   ToolInventoryApi,
@@ -125,15 +121,25 @@ function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
   };
 }
 
-function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runtime {
+/**
+ * Binds the model provider installed for this request to the runtime the chat
+ * engine consumes.
+ *
+ * The engine runs in a Host-owned writer task that is deliberately not a child
+ * of the request scope, so dispatch is pinned to the request scope rather than
+ * resolved wherever the writer happens to run.
+ */
+function createRuntimeFromModelProvider(requestScope: Scope): Runtime {
   return {
     stream(model, context, options) {
       return resource(function* (provide) {
-        const stream = driver.stream({
-          model,
-          context,
-          ...(options ? { options } : {}),
-        });
+        const stream = yield* ModelProviderApi.invoke(requestScope, "stream", [
+          {
+            model,
+            context,
+            ...(options ? { options } : {}),
+          },
+        ]);
         const subscription = yield* stream;
         yield* provide(subscription);
       });
@@ -303,14 +309,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         });
       }
 
-      // Get dependencies from contexts
-      const modelProviderDriver = yield* ModelProviderContext.get();
-      if (!modelProviderDriver) {
-        throw new Error("Model provider not configured. Install a ModelProviderDriver in scope.");
-      }
-      const runtime = createRuntimeFromModelProviderDriver(modelProviderDriver);
-      const model = yield* ModelProviderApi.model();
-      const contextStreamOptions = yield* ModelProviderApi.streamOptions();
+      // The model provider resolves through its port at call time, so the
+      // driver installed for this request scope is the one that runs.
+      const runtime = createRuntimeFromModelProvider(yield* useScope());
+      const model = yield* useModel();
+      const contextStreamOptions = yield* useStreamOptions();
       const streamOptions =
         contextStreamOptions || body.streamOptions
           ? { ...contextStreamOptions, ...body.streamOptions }

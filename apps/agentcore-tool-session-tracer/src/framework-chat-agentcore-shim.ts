@@ -7,7 +7,7 @@
 // shim keeps the AgentCore bundle minimal and ESM-safe.
 export { createTool } from "@sweatpants/core";
 export {
-  ModelProviderContext,
+  installModelProvider,
   ModelProviderModelContext,
   ModelProviderStreamOptionsContext,
 } from "../../../packages/framework/src/lib/chat/model-provider.ts";

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createClient } from "redis";
 import type { RuntimeTool } from "@sweatpants/core";
 import {
-  ModelProviderContext,
+  installModelProvider,
   ModelProviderModelContext,
   ToolInventoryContext,
   ToolRuntimeContext,
@@ -121,7 +121,7 @@ describe.skipIf(!externalSubstrateEnabled)(
         programDriverJournalStore: journalStore,
         maxToolIterations: 5,
         setup: function* () {
-          yield* ModelProviderContext.set(driver);
+          yield* installModelProvider(driver);
           yield* ModelProviderModelContext.set(model);
         },
       });

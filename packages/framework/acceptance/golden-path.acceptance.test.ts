@@ -21,7 +21,7 @@ import {
   createInMemoryProgramDriverJournalStore,
 } from "@sweatpants/framework/server";
 import {
-  ModelProviderContext,
+  installModelProvider,
   ModelProviderModelContext,
   ToolInventoryContext,
   ToolRuntimeContext,
@@ -137,7 +137,7 @@ function createScriptedModelProvider(options: {
       });
     },
     *sample(request): Operation<AssistantMessage> {
-      const subscription = yield* this.stream(request);
+      const subscription = yield* yield* this.stream(request);
       while (true) {
         const next = yield* subscription.next();
         if (next.done) {
@@ -232,7 +232,7 @@ describe("product facade golden path", () => {
 
     let providerCalls = 0;
     const provider: ModelProviderDriver = {
-      stream(request) {
+      *stream(request) {
         const idx = providerCalls++;
         if (idx === 0) {
           return createScriptedModelProvider({
@@ -249,7 +249,7 @@ describe("product facade golden path", () => {
         }).stream(request);
       },
       *sample(request): Operation<AssistantMessage> {
-        const subscription = yield* this.stream(request);
+        const subscription = yield* yield* this.stream(request);
         while (true) {
           const next = yield* subscription.next();
           if (next.done) {
@@ -282,7 +282,7 @@ describe("product facade golden path", () => {
           ]),
         }),
         setup: function* () {
-          yield* ModelProviderContext.set(provider);
+          yield* installModelProvider(provider);
           yield* ModelProviderModelContext.set(mockModel());
         },
         maxToolIterations: 2,

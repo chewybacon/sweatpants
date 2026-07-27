@@ -1,6 +1,6 @@
 import { resource, sleep, type Operation, type Stream } from "effection";
 import {
-  ModelProviderContext,
+  installModelProvider,
   ModelProviderModelContext,
   type AssistantMessage,
   type Model,
@@ -119,7 +119,7 @@ function assistantMessage(text: string): AssistantMessage {
 
 export function createScriptedRenderingModelProvider(): ModelProviderDriver {
   return {
-    stream(request) {
+    *stream(request) {
       const prompt = latestUserText(request.context).toLowerCase();
       const toolResult = latestToolResultText(request.context);
       if (prompt.includes("deterministic pick card") && !toolResult) {
@@ -195,6 +195,6 @@ export function createScriptedRenderingModelProvider(): ModelProviderDriver {
 }
 
 export function* installScriptedRenderingModelProvider(): Operation<void> {
-  yield* ModelProviderContext.set(createScriptedRenderingModelProvider());
+  yield* installModelProvider(createScriptedRenderingModelProvider());
   yield* ModelProviderModelContext.set(scriptedRenderingModel);
 }

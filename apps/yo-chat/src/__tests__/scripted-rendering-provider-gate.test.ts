@@ -39,14 +39,14 @@ describe("scripted rendering provider gate", () => {
   it("installs the scripted rendering provider when explicitly enabled", async () => {
     mockEnv("yes");
     const { setupYoChatModelProvider } = await import("../server/model-provider");
-    const { ModelProviderApi } = await import("@sweatpants/framework/chat");
+    const { useModel } = await import("@sweatpants/framework/chat");
 
     await run(function* () {
       yield* setupYoChatModelProvider({
         request: new Request("http://localhost/api/chat?scripted=rendering"),
         body: {} as never,
       });
-      const model = yield* ModelProviderApi.model();
+      const model = yield* useModel();
       expect(model).toMatchObject({ id: "scripted-rendering", provider: "scripted-e2e" });
     });
   });

@@ -1,7 +1,7 @@
 import { resource, run, type Operation, type Stream } from "effection";
 import type { RuntimeTool } from "@sweatpants/core";
 import {
-  ModelProviderContext,
+  installModelProvider,
   ModelProviderModelContext,
   ToolInventoryContext,
   ToolRuntimeContext,
@@ -87,7 +87,7 @@ export async function createBookFlightSubstrate(options: {
 }): Promise<BookFlightSubstrate> {
   let sampleIndex = 0;
   const driver: ModelProviderDriver = {
-    stream(request): Stream<StreamEvent, AssistantMessage> {
+    *stream(request): Operation<Stream<StreamEvent, AssistantMessage>> {
       sampleIndex += 1;
       return completedStream(sampleMessage(request, sampleIndex));
     },
@@ -126,7 +126,7 @@ export async function createBookFlightSubstrate(options: {
         programDriverJournalStore: journalStore,
         maxToolIterations: 5,
         setup: function* () {
-          yield* ModelProviderContext.set(driver);
+          yield* installModelProvider(driver);
           yield* ModelProviderModelContext.set(model);
         },
       });

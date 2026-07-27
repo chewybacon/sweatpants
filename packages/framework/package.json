@@ -143,6 +143,7 @@
         "@sweatpants/core": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/elicit-context": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/stream-bridge": "workspace:*",
         "pg": "^8.13.1",
