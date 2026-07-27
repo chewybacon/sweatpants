@@ -109,9 +109,7 @@ const documentedWeld = {
     create(context) {
         const source = context.sourceCode ?? context.getSourceCode();
         const text = source.getText();
-        const safetyComments = (source.getAllComments?.() ?? []).filter((comment) =>
-            /SAFETY:/.test(comment.value),
-        );
+        const comments = source.getAllComments?.() ?? [];
 
         return {
             TSAsExpression(node) {
@@ -120,7 +118,9 @@ const documentedWeld = {
                 if (node.expression?.type !== "TSAsExpression") {
                     return;
                 }
-                if (safetyComments.some((comment) => documents(text, comment, node))) {
+                if (
+                    documentedBy(text, comments, node, (comment) => /SAFETY:/.test(comment.value))
+                ) {
                     return;
                 }
 
@@ -137,20 +137,45 @@ const documentedWeld = {
 };
 
 /**
- * True when `comment` immediately precedes the statement containing `node`.
+ * True when a comment matching `matches` documents `node`.
  *
  * Rather than walking parents to find the enclosing statement — the outermost
  * one is what carries the comment, and the innermost is what a naive walk
- * finds — this checks that nothing but whitespace, an assignment, and
- * declaration keywords sit between the comment and the assertion. Crossing a
- * `;` or a brace means the comment belongs to something else.
+ * finds — this walks backwards from the node through the contiguous run of
+ * comment lines directly above it.
+ *
+ * Only the gap between the nearest comment and the node is checked for real
+ * code: crossing a `;` or a brace there means the comment belongs to something
+ * else. Punctuation *inside* comment text is ignored, because prose routinely
+ * contains semicolons and an earlier version of this helper rejected its own
+ * justifications for exactly that reason.
  */
-function documents(text, comment, node) {
-    if (comment.end > node.start) {
+function documentedBy(text, comments, node, matches) {
+    const preceding = comments
+        .filter((comment) => comment.end <= node.start)
+        .sort((left, right) => left.end - right.end);
+    if (preceding.length === 0) {
         return false;
     }
-    const between = text.slice(comment.end, node.start);
-    return !/[;{}]/.test(between);
+
+    const nearest = preceding.at(-1);
+    if (/[;{}]/.test(text.slice(nearest.end, node.start))) {
+        return false;
+    }
+
+    // Walk back through the comment block, stopping at the first gap that
+    // contains anything but whitespace.
+    for (let index = preceding.length - 1; index >= 0; index -= 1) {
+        const comment = preceding[index];
+        if (matches(comment)) {
+            return true;
+        }
+        const previous = preceding[index - 1];
+        if (!previous || text.slice(previous.end, comment.start).trim() !== "") {
+            return false;
+        }
+    }
+    return false;
 }
 
 /**
@@ -193,9 +218,7 @@ const documentedScopeCrossing = {
     create(context) {
         const source = context.sourceCode ?? context.getSourceCode();
         const text = source.getText();
-        const crossingComments = (source.getAllComments?.() ?? []).filter((comment) =>
-            /SCOPE-CROSSING:/.test(comment.value),
-        );
+        const comments = source.getAllComments?.() ?? [];
 
         return {
             CallExpression(node) {
@@ -210,7 +233,15 @@ const documentedScopeCrossing = {
                 if (isSelfBind(node)) {
                     return;
                 }
-                if (crossingComments.some((comment) => documents(text, comment, node))) {
+                // The kind is part of the marker, so an unclassified justification
+                // does not satisfy the rule. "distribution" is deliberately
+                // absent: at a real process boundary the bind is the defect, not
+                // something to annotate.
+                if (
+                    documentedBy(text, comments, node, (comment) =>
+                        /SCOPE-CROSSING \((?:missing node|ownership)\):/.test(comment.value),
+                    )
+                ) {
                     return;
                 }
 
@@ -218,8 +249,11 @@ const documentedScopeCrossing = {
                     node,
                     message:
                         "Binding a port to a foreign scope needs a `// SCOPE-CROSSING:` comment naming " +
-                        "the work that is not a child of the configuring scope. If you cannot name it, " +
-                        "the scope tree is probably missing a node the domain already has.",
+                        "the work that is not a child of the configuring scope, and its kind: a missing " +
+                        "scope node (fix by modelling it) or deliberate ownership (bind once, at " +
+                        "construction). If the far side is another thread, isolate, or machine, the bind " +
+                        "itself is the defect: pass serializable identity and re-resolve there. " +
+                        "See docs/adr/004-turn-scope-and-scope-crossing.md.",
                 });
             },
         };

@@ -193,6 +193,10 @@ Rules:
   far the scope tree has drifted from the domain model. Binding to the caller's
   own scope is exempt — it only materializes the port as an interface handle.
   See `docs/adr/004-turn-scope-and-scope-crossing.md`.
+- A scope boundary locally stands in for a process boundary in production. Across
+  a real distribution boundary — worker, isolate, microVM, machine — do not bind
+  and do not capture handles: only serializable identity crosses, and each side
+  resolves its own driver, fenced by owner and epoch where there is a writer.
 - Invariants that must hold for every adapter are composed inside `install*`,
   not written into each adapter and not installed as middleware.
 - A port member's return type decides what middleware may do to it, because
