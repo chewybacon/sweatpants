@@ -510,25 +510,27 @@ describe("crank-native durable runtime", () => {
         attach.taskId,
         "replacement",
       );
-      expect(() =>
-        authority
-          .reserve({
-            sessionId: attach.sessionId,
-            turnId: "turn-0",
-            taskId: attach.taskId,
-            actionIndex: 0,
-            pullIndex: 0,
-            descriptor: {
-              kind: "effect",
-              name: "mutate",
-              version: "1",
-              input: null,
-              resolver: { audience: "mutator" },
-            },
-            programCapability: opened.programCapability,
-          })
-          .next(),
-      ).toThrow(/stale_program_capability/);
+      // The guard rejects before the operation suspends, so stepping the
+      // iterator once is enough to observe it.
+      const staleReserve = (): IteratorResult<unknown> => {
+        const operation = authority.reserve({
+          sessionId: attach.sessionId,
+          turnId: "turn-0",
+          taskId: attach.taskId,
+          actionIndex: 0,
+          pullIndex: 0,
+          descriptor: {
+            kind: "effect",
+            name: "mutate",
+            version: "1",
+            input: null,
+            resolver: { audience: "mutator" },
+          },
+          programCapability: opened.programCapability,
+        });
+        return operation[Symbol.iterator]().next();
+      };
+      expect(staleReserve).toThrow(/stale_program_capability/);
       const parked = yield* authority.reserve({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -796,7 +798,7 @@ describe("crank-native durable runtime", () => {
           .some((record) => record.payload.type === "PullResolved"),
       ).toBe(false);
       expect(yield* unavailable.nonterminalSchemaDigests()).toContain(
-        manifest.effects.echo?.outputSchema.digest,
+        manifest.effects["echo"]?.outputSchema.digest,
       );
       // Cancellation without a payload schema remains available.
       expect(
@@ -1130,7 +1132,7 @@ describe("crank-native durable runtime", () => {
     const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const effects = createDurableEffectRegistry([
       {
-        definition: manifest.effects.echo!,
+        definition: manifest.effects["echo"]!,
         satisfies: { mode: "idempotent", mechanism: "pull_id_key" },
         handler: (input) =>
           (function* () {
@@ -1180,7 +1182,7 @@ describe("crank-native durable runtime", () => {
     const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const hostEffects = createDurableEffectRegistry([
       {
-        definition: manifest.effects.echo!,
+        definition: manifest.effects["echo"]!,
         satisfies: { mode: "idempotent", mechanism: "pull_id_key" },
         handler: (input) =>
           (function* () {
@@ -1378,7 +1380,7 @@ describe("crank-native durable runtime", () => {
     const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const effects = createDurableEffectRegistry([
       {
-        definition: manifest.effects.echo!,
+        definition: manifest.effects["echo"]!,
         satisfies: { mode: "idempotent", mechanism: "pull_id_key" },
         handler: (input) =>
           (function* () {

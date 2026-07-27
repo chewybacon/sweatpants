@@ -9,8 +9,9 @@ const program = { id: "program", version: "1", digest: "a".repeat(64) };
 function task(
   overrides: Partial<TaskControlState> & Pick<TaskControlState, "taskId">,
 ): TaskControlState {
+  // `overrides` already carries taskId and is spread below; naming it twice made
+  // the first assignment dead.
   return {
-    taskId: overrides.taskId,
     program,
     input: { storage: "inline", value: null },
     route: {},

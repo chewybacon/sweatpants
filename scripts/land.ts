@@ -79,6 +79,9 @@ async function main(): Promise<void> {
     return [
       { name: "types", command: "pnpm", args: ["check"], timeoutMs: 10 * 60_000 },
       { name: "lint", command: "pnpm", args: ["lint"], timeoutMs: 5 * 60_000 },
+      // Package builds exclude tests from tsc so declarations stay clean, which
+      // left test code unchecked entirely.
+      { name: "types:tests", command: "pnpm", args: ["check:tests"], timeoutMs: 10 * 60_000 },
       // Fixture tests for the custom rules themselves: `lint` proves the repo
       // obeys them, this proves they still detect what they claim to.
       { name: "test:tooling", command: "pnpm", args: ["test:tooling"], timeoutMs: 5 * 60_000 },

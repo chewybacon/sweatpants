@@ -112,7 +112,7 @@ describe("port scope semantics", () => {
       );
       yield* first;
       yield* second;
-      expect(results.toSorted()).toEqual(["first:ada", "second:grace"]);
+      expect([...results].sort()).toEqual(["first:ada", "second:grace"]);
     });
   });
 });

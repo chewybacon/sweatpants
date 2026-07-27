@@ -26,7 +26,7 @@ function normalizeSetupResult(result: ProtocolSetupResult): {
 
 function createContext(url: string, headers?: HeadersInit): ProtocolHandlerContext {
   return {
-    request: new Request(url, { headers }),
+    request: new Request(url, headers ? { headers } : {}),
     headers: new Headers(),
     status: 200,
   };

@@ -1,3 +1,4 @@
+import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   DURABLE_INVOCATION_FORMAT,
@@ -139,7 +140,7 @@ describe("provider-neutral sandbox and workspace", () => {
     const running: SandboxInspection = {
       logicalSandboxId: "logical",
       providerSandboxId: "private",
-      sandboxGeneration: "2",
+      generation: "2",
       state: "running",
       workspace: "present",
       capabilities,
@@ -175,15 +176,17 @@ describe("provider-neutral sandbox and workspace", () => {
 
   it("rejects restore when only the old sandbox advertised checkpoint support", async () => {
     const store = new InMemoryImmutableObjectStore();
-    const workspaceVersion = await createWorkspaceVersion({
-      store,
-      workspaceId: "workspace",
-      bytes: new TextEncoder().encode("committed"),
-      kind: "full",
-      taskId: "task",
-      sandboxGeneration: "1",
-      createdAt: "2026-01-01T00:00:00Z",
-    });
+    const workspaceVersion = await run(() =>
+      createWorkspaceVersion({
+        store,
+        workspaceId: "workspace",
+        bytes: new TextEncoder().encode("committed"),
+        kind: "full",
+        taskId: "task",
+        sandboxGeneration: "1",
+        createdAt: "2026-01-01T00:00:00Z",
+      }),
+    );
     expect(() =>
       chooseSandboxRecovery({
         inspection: null,
@@ -197,18 +200,21 @@ describe("provider-neutral sandbox and workspace", () => {
   it("materializes and verifies committed workspace bytes before restore", async () => {
     const store = new InMemoryImmutableObjectStore();
     const bytes = new TextEncoder().encode("committed workspace");
-    const version = await createWorkspaceVersion({
-      store,
-      workspaceId: "workspace",
-      bytes,
-      kind: "full",
-      taskId: "task",
-      sandboxGeneration: "1",
-      createdAt: "2026-01-01T00:00:00Z",
-    });
-    await expect(restoreWorkspaceVersion(store, version)).resolves.toEqual(bytes);
+    const version = await run(() =>
+      createWorkspaceVersion({
+        store,
+        workspaceId: "workspace",
+        bytes,
+        kind: "full",
+        taskId: "task",
+        sandboxGeneration: "1",
+        createdAt: "2026-01-01T00:00:00Z",
+      }),
+    );
+    expect(await run(() => restoreWorkspaceVersion(store, version))).toEqual(bytes);
+
     store.corrupt(version.materialization.object.digest, new Uint8Array([0]));
-    await expect(restoreWorkspaceVersion(store, version)).rejects.toMatchObject({
+    await expect(run(() => restoreWorkspaceVersion(store, version))).rejects.toMatchObject({
       code: "workspace_unavailable",
     });
   });

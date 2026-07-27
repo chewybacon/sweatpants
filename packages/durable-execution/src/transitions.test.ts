@@ -8,8 +8,9 @@ const inline = { storage: "inline" as const, value: null };
 function task(
   overrides: Partial<TaskControlState> & Pick<TaskControlState, "taskId">,
 ): TaskControlState {
+  // `overrides` already carries taskId and is spread below; naming it twice made
+  // the first assignment dead.
   return {
-    taskId: overrides.taskId,
     program,
     input: inline,
     route: {},
@@ -119,7 +120,8 @@ describe("pure durable execution transitions", () => {
     expect(parseTerminalCapsule(valid)).toEqual(valid);
     expect(() => parseTerminalCapsule({ ...valid, finalRevision: -1 })).toThrow();
     expect(() => parseTerminalCapsule({ ...valid, tasks: [] })).toThrow();
-    const { outcome: _outcome, ...missingOutcome } = valid;
+    const capsule = parseTerminalCapsule(valid);
+    const { outcome: _outcome, ...missingOutcome } = capsule;
     expect(() => parseTerminalCapsule(missingOutcome)).toThrow();
   });
 });
