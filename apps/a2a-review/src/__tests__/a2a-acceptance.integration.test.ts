@@ -2,7 +2,7 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
@@ -237,7 +237,7 @@ describe("authored chat reviewer composed through caller-authoritative A2A", () 
         audience: "parent-runtime",
       });
       return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(authority, function* () {
+        return yield* withJournalAuthority(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRouteResolverContext.with(
               function* (program) {

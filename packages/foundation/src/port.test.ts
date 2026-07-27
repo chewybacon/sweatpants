@@ -1,4 +1,4 @@
-import { run, scoped, spawn, sleep, type Operation } from "effection";
+import { run, scoped, spawn, sleep, useScope, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { definePort } from "./port.ts";
 
@@ -235,6 +235,51 @@ describe("one driver per scope", () => {
         expect(yield* GreeterPort.api.operations.greet("ada")).toBe("inner:ada");
       });
       expect(yield* GreeterPort.api.operations.greet("ada")).toBe("outer:ada");
+    });
+  });
+});
+
+describe("scope-bound handles", () => {
+  it("dispatches against the bound scope, not the caller's", async () => {
+    await run(function* () {
+      yield* GreeterPort.installDriver(driver("outer"));
+      const outer = GreeterPort.bind(yield* useScope());
+
+      yield* scoped(function* () {
+        yield* GreeterPort.installDriver(driver("inner"));
+        // Resolution here would find "inner"; the bound handle must not.
+        expect(yield* GreeterPort.api.operations.greet("ada")).toBe("inner:ada");
+        expect(yield* outer.greet("ada")).toBe("outer:ada");
+      });
+    });
+  });
+
+  it("still passes through middleware installed around the bound scope", async () => {
+    const log: string[] = [];
+    await run(function* () {
+      yield* GreeterPort.installDriver(driver("driver"));
+      yield* GreeterPort.api.around({
+        *greet(args, next) {
+          log.push("observed");
+          return yield* next(...args);
+        },
+      });
+      const bound = GreeterPort.bind(yield* useScope());
+      expect(yield* bound.greet("ada")).toBe("driver:ada");
+    });
+    expect(log).toEqual(["observed"]);
+  });
+
+  it("fails closed through a bound handle when nothing is installed", async () => {
+    await run(function* () {
+      const bound = GreeterPort.bind(yield* useScope());
+      let failed = false;
+      try {
+        yield* bound.greet("ada");
+      } catch (error) {
+        failed = error instanceof GreeterUnavailable;
+      }
+      expect(failed).toBe(true);
     });
   });
 });

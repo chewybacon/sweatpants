@@ -41,6 +41,7 @@
         "@noble/hashes": "^2.2.0",
         "@standard-schema/spec": "catalog:",
         "@sweatpants/durable-effects": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
         "effection": "catalog:"
     },
     "devDependencies": {

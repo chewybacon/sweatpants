@@ -10,7 +10,7 @@ import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
 import {
   MODEL_SAMPLE_EFFECT,
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
       let reason: "parked" | "terminal" | "failed" = "failed";
       try {
         const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* withJournalAuthority(authority, function* () {
             return yield* DurableEffectRegistryContext.with(effects, function* () {
               return yield* ProgramRuntime.operations.run({
                 attach: {

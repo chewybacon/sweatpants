@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/core";
 import {
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
@@ -338,7 +338,7 @@ function runProgram(
   effects: ReturnType<typeof createDurableEffectRegistry>,
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* JournalAuthorityContext.with(authority, function* () {
+    return yield* withJournalAuthority(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
       });

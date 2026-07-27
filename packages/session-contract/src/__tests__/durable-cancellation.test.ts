@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   DurableEffectRegistryContext,
   DurableProgramCancellation,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
@@ -309,7 +309,7 @@ describe("durable cancellation and partial results", () => {
         audience: "program-runtime",
       });
       const first = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(selected, function* () {
+        return yield* withJournalAuthority(selected, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRuntime.operations.run({
               attach: request,
@@ -321,7 +321,7 @@ describe("durable cancellation and partial results", () => {
       expect(first.state).toBe("parked");
       yield* selected.requestCancellation(request.sessionId, request.taskId, "stop", "cancel-1");
       const second = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(selected, function* () {
+        return yield* withJournalAuthority(selected, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRuntime.operations.run({
               attach: request,

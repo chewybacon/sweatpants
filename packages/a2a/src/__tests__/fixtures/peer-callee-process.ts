@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { run } from "effection";
 import {
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   assertJson,
@@ -196,7 +196,7 @@ async function activateCallee(): Promise<void> {
         ["program", createLocalProgramDriver(createDurableToolRegistry([calleeTool]))],
       ]),
       function* () {
-        return yield* JournalAuthorityContext.with(authority, function* () {
+        return yield* withJournalAuthority(authority, function* () {
           yield* ProgramRuntime.operations.run({
             attach: {
               sessionId: "peer-callee-session",

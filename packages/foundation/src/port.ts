@@ -21,6 +21,15 @@ import { createApi } from "effection/experimental";
 export interface Port<T extends object> {
   readonly api: Api<T>;
   /**
+   * A handle whose calls dispatch against `scope` rather than the caller's.
+   *
+   * Needed whenever work is handed to a task that is deliberately not a child
+   * of the installing scope, such as a Host-owned writer: the consumer must
+   * still reach the driver installed where the work originated. Middleware
+   * still applies, so this is not a driver handout.
+   */
+  bind(scope: Scope): T;
+  /**
    * Whether a driver is installed for the calling scope.
    *
    * Some seams are genuinely optional: a Host may run with no tool runtime at
@@ -65,6 +74,16 @@ export function definePort<T extends object>(name: string, declaration: T): Port
 
   return {
     api,
+    bind(scope: Scope): T {
+      // SAFETY: one entry per declared key, forwarding the exact argument tuple
+      // to `invoke`, which returns that member's own return type.
+      return Object.fromEntries(
+        keys.map((key) => [
+          key,
+          (...args: unknown[]) => api.invoke(scope, key as keyof T, args as never),
+        ]),
+      ) as T;
+    },
     isInstalled() {
       return presence.operations.installed();
     },

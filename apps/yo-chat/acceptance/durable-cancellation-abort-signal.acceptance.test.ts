@@ -6,7 +6,7 @@ import { createTool, type RuntimeTool } from "@sweatpants/core";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   NULL_RESULT_SCHEMA_DESCRIPTOR,
   ProgramDriverRegistryContext,
   ProgramRuntime,
@@ -185,7 +185,7 @@ function runProgram(
   effects: ReturnType<typeof createDurableEffectRegistry>,
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* JournalAuthorityContext.with(authority, function* () {
+    return yield* withJournalAuthority(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
       });

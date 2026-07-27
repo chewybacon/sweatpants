@@ -10,7 +10,7 @@ import {
   CrankError,
   DurableEffectRegistryContext,
   ExecutionDurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   MODEL_SAMPLE_EFFECT,
   ProgramDriverRegistryContext,
   ProgramPeer,
@@ -852,7 +852,7 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* withJournalAuthority(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
@@ -922,7 +922,7 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* withJournalAuthority(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
@@ -1018,7 +1018,7 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* withJournalAuthority(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
@@ -1096,7 +1096,7 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* withJournalAuthority(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
@@ -1158,7 +1158,7 @@ describe("crank-native durable runtime", () => {
         },
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(authority, function* () {
+        return yield* withJournalAuthority(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ExecutionDurableEffectRegistryContext.with(effects, function* () {
               return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
@@ -1208,7 +1208,7 @@ describe("crank-native durable runtime", () => {
         },
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(authority, function* () {
+        return yield* withJournalAuthority(authority, function* () {
           return yield* DurableEffectRegistryContext.with(hostEffects, function* () {
             return yield* ExecutionDurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
@@ -1251,7 +1251,7 @@ describe("crank-native durable runtime", () => {
         audience: "program-host",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(authority, function* () {
+        return yield* withJournalAuthority(authority, function* () {
           return yield* DurableEffectRegistryContext.with(
             createDurableEffectRegistry([]),
             function* () {
@@ -1308,7 +1308,7 @@ describe("crank-native durable runtime", () => {
         audience: "program-host",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(authority, function* () {
+        return yield* withJournalAuthority(authority, function* () {
           return yield* DurableEffectRegistryContext.with(
             createDurableEffectRegistry([]),
             function* () {
@@ -1348,7 +1348,7 @@ describe("crank-native durable runtime", () => {
         audience: "program-host",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(authority, function* () {
+        return yield* withJournalAuthority(authority, function* () {
           return yield* DurableEffectRegistryContext.with(
             createDurableEffectRegistry([]),
             function* () {
@@ -1423,7 +1423,7 @@ describe("crank-native durable runtime", () => {
         { at: "min" },
       );
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(authority, function* () {
+        return yield* withJournalAuthority(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRuntime.operations.run({
               attach,

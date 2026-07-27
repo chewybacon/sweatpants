@@ -5,7 +5,7 @@ import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   CrankError,
-  JournalAuthorityContext,
+  withJournalAuthority,
   NULL_RESULT_SCHEMA_DESCRIPTOR,
   ProgramDriverRegistryContext,
   ProgramRuntime,
@@ -340,7 +340,7 @@ describe("semantic emission policy", () => {
         audience: "test",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* JournalAuthorityContext.with(selected, function* () {
+        return yield* withJournalAuthority(selected, function* () {
           return yield* ProgramRuntime.operations.run({ attach });
         });
       });

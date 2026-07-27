@@ -2,7 +2,7 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
@@ -114,7 +114,7 @@ describe("pinned foreign A2A adapter program", () => {
           ["program", createLocalProgramDriver(createDurableToolRegistry([foreignA2ATaskAdapter]))],
         ]),
         function* () {
-          return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* withJournalAuthority(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry(registrations),
               function* () {

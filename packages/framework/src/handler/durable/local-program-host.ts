@@ -1,7 +1,7 @@
 import type { Operation } from "effection";
 import {
   DurableEffectRegistryContext,
-  JournalAuthorityContext,
+  withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
@@ -141,7 +141,7 @@ export function runLocalProgramActivation<T>(
   operation: () => Operation<T>,
 ): Operation<T> {
   return ProgramDriverRegistryContext.with(scope.drivers, function* () {
-    return yield* JournalAuthorityContext.with(scope.authority, function* () {
+    return yield* withJournalAuthority(scope.authority, function* () {
       return yield* DurableEffectRegistryContext.with(scope.effects, function* () {
         return yield* ExecutionDurableEffectRegistryContext.with(scope.effects, function* () {
           return yield* ProgramRouteResolverContext.with(scope.routeResolver, function* () {
