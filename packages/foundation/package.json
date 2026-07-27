@@ -30,6 +30,17 @@
                 "default": "./dist/json.js"
             },
             "default": "./src/json.ts"
+        },
+        "./port": {
+            "development": {
+                "import": "./src/port.ts",
+                "types": "./src/port.ts"
+            },
+            "import": {
+                "types": "./dist/port.d.ts",
+                "default": "./dist/port.js"
+            },
+            "default": "./src/port.ts"
         }
     },
     "scripts": {
@@ -39,7 +50,8 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@noble/hashes": "^2.2.0"
+        "@noble/hashes": "^2.2.0",
+        "effection": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",

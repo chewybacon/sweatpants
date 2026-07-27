@@ -1119,6 +1119,9 @@ importers:
       '@noble/hashes':
         specifier: ^2.2.0
         version: 2.2.0
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
     devDependencies:
       '@sweatpants/ts-config':
         specifier: workspace:*
