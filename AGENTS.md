@@ -179,6 +179,15 @@ Rules:
 - Installation is bound to the current Effection scope: inherited by children,
   shadowable by a child, isolated between concurrent siblings, and discarded when
   the scope exits. See `packages/foundation/src/port.test.ts`.
+- Exactly one driver per scope. Unlike `Context.set`, a second `installDriver`
+  in the same scope does not replace the first, so it is rejected. Override by
+  installing in a child scope.
+- Port members must be functions. `createApi` reads value members eagerly, so a
+  value member cannot fail closed; `definePort` rejects one.
+- Optional seams are probed with `Port.isInstalled()` rather than by handing out
+  the driver, so an absent seam stays distinguishable from a broken one.
+- Invariants that must hold for every adapter are composed inside `install*`,
+  not written into each adapter and not installed as middleware.
 - A port member's return type decides what middleware may do to it, because
   `Around<T>` derives middleware from that same type. `Operation<T>` admits
   generator middleware, so latency, fault injection, deadlines, and authority

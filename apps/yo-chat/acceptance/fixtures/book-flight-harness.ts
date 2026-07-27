@@ -4,7 +4,7 @@ import {
   installModelProvider,
   ModelProviderModelContext,
   ToolInventoryContext,
-  ToolRuntimeContext,
+  installToolRuntime,
   createToolInventory,
   createToolInventoryEntry,
   type AssistantMessage,
@@ -107,7 +107,9 @@ export async function createBookFlightSubstrate(options: {
   const toolSessionStore = createInMemoryToolSessionStore();
 
   const fallbackRuntime: ToolRuntime = {
-    id: "foreign-context-only",
+    *runtimeId() {
+      return "foreign-context-only";
+    },
     *execute(): Operation<never> {
       throw new Error("ToolRuntime fallback must not execute the ToolSession-native tool");
     },
@@ -138,7 +140,7 @@ export async function createBookFlightSubstrate(options: {
           yield* ToolInventoryContext.set(
             createToolInventory([createToolInventoryEntry(bookFlightTool)]),
           );
-          yield* ToolRuntimeContext.set(fallbackRuntime);
+          yield* installToolRuntime(fallbackRuntime);
           yield* ProgramDriverForeignEffectsContext.set(
             createToolSessionForeignEffectRegistrations({
               registry,

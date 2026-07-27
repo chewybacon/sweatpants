@@ -12,7 +12,7 @@ export {
   ModelProviderStreamOptionsContext,
 } from "../../../packages/framework/src/lib/chat/model-provider.ts";
 export {
-  ToolRuntimeContext,
+  installToolRuntime,
   ToolRuntimeError,
   createToolExecutionRef,
 } from "../../../packages/framework/src/lib/chat/tool-runtime.ts";

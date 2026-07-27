@@ -5,7 +5,7 @@ import {
   PluginSessionManagerContext,
   PluginSessionRegistryContext,
   ToolInventoryContext,
-  ToolRuntimeContext,
+  installToolRuntime,
   createStrategyToolRuntime,
   createToolInventory,
   createToolInventoryEntry,
@@ -237,7 +237,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
         effects: [createDrawPickCardsRegistration()],
       });
     }
-    yield* ToolRuntimeContext.set(
+    yield* installToolRuntime(
       createStrategyToolRuntime({
         id: "agentcore",
         strategies: [

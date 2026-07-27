@@ -23,7 +23,7 @@ import {
   type ToolInventoryEntry,
 } from "../../../lib/chat/tool-inventory.ts";
 import {
-  ToolRuntimeContext,
+  installToolRuntime,
   createToolExecutionRef,
   type ToolRuntime,
 } from "../../../lib/chat/tool-runtime.ts";
@@ -486,7 +486,9 @@ function createToolCtx(signal = new AbortController().signal): Parameters<MockTo
 function createTestToolRuntime(tools: MockTool[]): ToolRuntime {
   const byName = new Map(tools.map((tool) => [tool.name, tool] as const));
   return {
-    id: "test",
+    *runtimeId() {
+      return "test";
+    },
     *execute(request) {
       const tool = byName.get(request.call.function.name);
       const ref = createToolExecutionRef({
@@ -539,9 +541,15 @@ function createTestToolRuntime(tools: MockTool[]): ToolRuntime {
   };
 }
 
-export function* setupMockTools(tools: MockTool[]): Operation<void> {
+/**
+ * Installs the tool inventory plus one tool runtime.
+ *
+ * A scope holds exactly one tool runtime, so a caller supplying its own runtime
+ * passes it here rather than installing a second one over the top.
+ */
+export function* setupMockTools(tools: MockTool[], runtime?: ToolRuntime): Operation<void> {
   yield* ToolInventoryContext.set(createToolInventory(tools.map(toolEntry)));
-  yield* ToolRuntimeContext.set(createTestToolRuntime(tools));
+  yield* installToolRuntime(runtime ?? createTestToolRuntime(tools));
 }
 
 /**

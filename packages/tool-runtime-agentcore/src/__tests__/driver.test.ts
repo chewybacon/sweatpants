@@ -453,14 +453,14 @@ describe("AgentCore ToolRuntimeDriver", () => {
     });
   });
 
-  it("installer sets ToolRuntimeContext for ToolRuntimeApi", async () => {
+  it("installer makes the runtime resolvable through the tool runtime port", async () => {
     await run(function* () {
       yield* installAgentCoreToolRuntime({
         tools: [remoteTool],
         registry: createFakeRegistry(),
         samplingProvider,
       });
-      const result = yield* ToolRuntimeApi.execute({
+      const result = yield* ToolRuntimeApi.operations.execute({
         entry: createToolInventoryEntry(remoteTool),
         call: {
           id: "call-installed-agentcore",

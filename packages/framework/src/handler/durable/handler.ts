@@ -39,7 +39,7 @@ import {
   ToolInventoryApi,
   type ToolDefinition,
 } from "../../lib/chat/tool-inventory.ts";
-import { ToolRuntimeContext } from "../../lib/chat/tool-runtime.ts";
+import { ToolRuntimeApi, ToolRuntimePort, type ToolRuntime } from "../../lib/chat/tool-runtime.ts";
 import { HistoryPolicyContext } from "../../lib/chat/history-policy.ts";
 import { useLogger } from "../../lib/logger/index.ts";
 import { bindModel, createBindingSource, stringParam } from "../model-binder.ts";
@@ -118,6 +118,16 @@ function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
     name: definition.name,
     description: definition.description,
     parameters: definition.parameters,
+  };
+}
+
+/** Binds the tool runtime installed for this request to the writer task. */
+function bindToolRuntimeToScope(requestScope: Scope): ToolRuntime {
+  return {
+    runtimeId: () => ToolRuntimeApi.invoke(requestScope, "runtimeId", []),
+    execute: (request) => ToolRuntimeApi.invoke(requestScope, "execute", [request]),
+    resume: (request) => ToolRuntimeApi.invoke(requestScope, "resume", [request]),
+    abort: (ref, reason) => ToolRuntimeApi.invoke(requestScope, "abort", [ref, reason]),
   };
 }
 
@@ -326,7 +336,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       yield* restoreThreadInterruptStateIfNeeded(bufferStore, agUiThreadId);
       const agUiRunId = body.runId?.trim() || crypto.randomUUID();
 
-      const activeToolRuntime = yield* ToolRuntimeContext.get();
+      // The tool runtime seam is optional, and the engine runs in the writer
+      // task, so presence is probed here and dispatch is pinned to this request
+      // scope exactly like the model provider.
+      const toolRuntimeInstalled = yield* ToolRuntimePort.isInstalled();
+      const activeToolRuntime = toolRuntimeInstalled
+        ? bindToolRuntimeToScope(yield* useScope())
+        : undefined;
       // F5: resolve the optional history policy in request scope; the engine
       // runs in a background writer task without these contexts.
       const historyPolicy = yield* HistoryPolicyContext.get();
@@ -338,7 +354,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         threadId: agUiThreadId,
         runId: agUiRunId,
         openInterrupts: openInterruptsForThread(agUiThreadId),
-        toolRuntimeId: activeToolRuntime?.id ?? "program-runtime",
+        toolRuntimeId: activeToolRuntime ? yield* activeToolRuntime.runtimeId() : "program-runtime",
       });
 
       log.debug(

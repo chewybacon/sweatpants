@@ -24,7 +24,7 @@ import {
   installModelProvider,
   ModelProviderModelContext,
   ToolInventoryContext,
-  ToolRuntimeContext,
+  installToolRuntime,
   createToolInventory,
   createToolExecutionRef,
   validateToolParameters,
@@ -153,7 +153,9 @@ function createLocalToolRuntime(
 ): ToolRuntime {
   const byName = new Map(tools.map((tool) => [tool.name, tool] as const));
   return {
-    id: "golden-path-local",
+    *runtimeId() {
+      return "golden-path-local";
+    },
     *execute(request) {
       const tool = byName.get(request.call.function.name) as any;
       const ref = createToolExecutionRef({
@@ -273,7 +275,7 @@ describe("product facade golden path", () => {
             },
           ]),
         );
-        yield* ToolRuntimeContext.set(createLocalToolRuntime([echo as any]));
+        yield* installToolRuntime(createLocalToolRuntime([echo as any]));
       },
       handler: createChatHandler({
         programDriverJournalStore: createInMemoryProgramDriverJournalStore({

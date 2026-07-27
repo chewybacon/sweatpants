@@ -1,4 +1,5 @@
-import { createContext, type Operation, type Stream } from "effection";
+import { type Operation, type Stream } from "effection";
+import { definePort } from "@sweatpants/foundation/port";
 import type { ToolCall } from "./types.ts";
 import type { ToolInventoryEntry } from "./tool-inventory.ts";
 
@@ -121,7 +122,12 @@ export type ToolContinuationPayload = {
 };
 
 export interface ToolRuntime {
-  readonly id: string;
+  /**
+   * Runtime identity, exposed as an operation because port members are
+   * dispatched, not read: a value member would be evaluated eagerly and could
+   * not fail closed when no runtime is installed.
+   */
+  runtimeId(): Operation<string>;
   execute(request: ToolExecuteRequest): Operation<ToolExecution>;
   resume(request: ToolResumeRequest): Operation<ToolExecution>;
   abort(ref: ToolExecutionRef, reason?: string): Operation<void>;
@@ -168,6 +174,13 @@ export class ToolRuntimeError extends Error {
     super(message);
     this.name = "ToolRuntimeError";
   }
+}
+
+function unavailable(): never {
+  throw new ToolRuntimeError(
+    "TOOL_RUNTIME_NOT_CONFIGURED",
+    "Tool runtime not configured. Install a ToolRuntime in scope.",
+  );
 }
 
 export interface StrategyToolRuntimeOptions {
@@ -228,7 +241,9 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
   assertDisjointStrategyToolNames(strategies);
 
   return {
-    id: runtimeId,
+    *runtimeId(): Operation<string> {
+      return runtimeId;
+    },
 
     *execute(request: ToolExecuteRequest): Operation<ToolExecution> {
       const ctx: ToolExecutionContext = {
@@ -300,44 +315,58 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
   };
 }
 
-export const ToolRuntimeContext = createContext<ToolRuntime>("ToolRuntime");
+/**
+ * Tool execution as a port.
+ *
+ * This seam is optional: a Host may run purely through the program runtime with
+ * no tool runtime installed, so callers probe `isInstalled()` rather than being
+ * handed the driver.
+ */
+export const ToolRuntimePort = definePort<ToolRuntime>("tool-runtime", {
+  *runtimeId(): Operation<string> {
+    return unavailable();
+  },
+  *execute(_request: ToolExecuteRequest): Operation<ToolExecution> {
+    return unavailable();
+  },
+  *resume(_request: ToolResumeRequest): Operation<ToolExecution> {
+    return unavailable();
+  },
+  *abort(_ref: ToolExecutionRef, _reason?: string): Operation<void> {
+    return unavailable();
+  },
+});
 
-function* activeRuntime(): Operation<ToolRuntime> {
-  const runtime = yield* ToolRuntimeContext.get();
-  if (!runtime) {
+export const ToolRuntimeApi = ToolRuntimePort.api;
+
+function* assertOwnedBy(runtime: ToolRuntime, ref: ToolExecutionRef): Operation<void> {
+  const id = yield* runtime.runtimeId();
+  if (ref.runtimeId !== id) {
     throw new ToolRuntimeError(
-      "TOOL_RUNTIME_NOT_CONFIGURED",
-      "Tool runtime not configured. Install a ToolRuntime in scope.",
+      "WRONG_TOOL_RUNTIME",
+      `Wrong tool runtime: expected ${id}, received ${ref.runtimeId}`,
     );
   }
-  return runtime;
 }
 
-export const ToolRuntimeApi = {
-  *execute(request: ToolExecuteRequest): Operation<ToolExecution> {
-    const runtime = yield* activeRuntime();
-    return yield* runtime.execute(request);
-  },
-
-  *resume(request: ToolResumeRequest): Operation<ToolExecution> {
-    const runtime = yield* activeRuntime();
-    if (request.ref.runtimeId !== runtime.id) {
-      throw new ToolRuntimeError(
-        "WRONG_TOOL_RUNTIME",
-        `Wrong tool runtime: expected ${runtime.id}, received ${request.ref.runtimeId}`,
-      );
-    }
-    return yield* runtime.resume(request);
-  },
-
-  *abort(ref: ToolExecutionRef, reason?: string): Operation<void> {
-    const runtime = yield* activeRuntime();
-    if (ref.runtimeId !== runtime.id) {
-      throw new ToolRuntimeError(
-        "WRONG_TOOL_RUNTIME",
-        `Wrong tool runtime: expected ${runtime.id}, received ${ref.runtimeId}`,
-      );
-    }
-    yield* runtime.abort(ref, reason);
-  },
-};
+/**
+ * Installs one tool runtime adapter for the calling scope.
+ *
+ * Reference ownership is enforced here rather than inside each adapter, so the
+ * invariant holds for every driver and cannot be skipped by a custom runtime.
+ * It is composed at install time, not as middleware, because it is mandatory.
+ */
+export function installToolRuntime(runtime: ToolRuntime): Operation<void> {
+  return ToolRuntimePort.installDriver({
+    runtimeId: () => runtime.runtimeId(),
+    execute: (request) => runtime.execute(request),
+    *resume(request: ToolResumeRequest): Operation<ToolExecution> {
+      yield* assertOwnedBy(runtime, request.ref);
+      return yield* runtime.resume(request);
+    },
+    *abort(ref: ToolExecutionRef, reason?: string): Operation<void> {
+      yield* assertOwnedBy(runtime, ref);
+      yield* runtime.abort(ref, reason);
+    },
+  });
+}
