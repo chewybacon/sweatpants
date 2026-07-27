@@ -17,6 +17,7 @@ import { createLocalProgramHost, createPinnedProgramCatalog } from "../local-pro
 import {
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,
+  type ProgramDriverJournalStore,
 } from "../program-driver-journal.ts";
 
 const approvalProgram = createDurableTool("host_approval")
@@ -118,6 +119,57 @@ describe("LocalProgramHost", () => {
         ],
       });
       expect(JSON.stringify(trace)).not.toContain("capability");
+    });
+  });
+
+  it("resumes through the authority recovery query without downloading the journal", async () => {
+    const backing = sharedApprovalStore();
+    let journalReads = 0;
+    const observed: ProgramDriverJournalStore = {
+      *open(conversationId) {
+        const journal = yield* backing.open(conversationId);
+        return {
+          ...journal,
+          *readJournal(sessionId) {
+            journalReads += 1;
+            return yield* journal.readJournal(sessionId);
+          },
+        };
+      },
+    };
+    const firstHost = fixture(observed);
+    const replacementHost = fixture(observed);
+
+    await run(function* () {
+      const opened = yield* firstHost.open({
+        program: pin,
+        manifest: approvalProgram.manifest,
+        input: { prompt: "Recover without a scan?" },
+        catalog,
+      });
+      const parked = yield* opened.result;
+      expect(parked).toMatchObject({ state: "parked" });
+      expect(journalReads).toBe(0);
+
+      expect(yield* replacementHost.resume(opened.sessionId)).toMatchObject({ state: "parked" });
+      expect(journalReads).toBe(0);
+
+      if (parked.state !== "parked") {
+        throw new Error("fixture did not park");
+      }
+      expect(
+        yield* replacementHost.respond({
+          sessionId: opened.sessionId,
+          taskId: opened.taskId,
+          pullId: parked.pullId,
+          response: { action: "accept", content: { approved: true } },
+        }),
+      ).toEqual({ state: "completed", value: "approved" });
+      expect(yield* replacementHost.resume(opened.sessionId)).toEqual({
+        state: "completed",
+        value: "approved",
+      });
+      expect(journalReads).toBe(0);
     });
   });
 

@@ -16,8 +16,10 @@ import {
   type ConsumeRestoreTicketResult,
   type DurableAuthoritySnapshot,
   type DurableCancellationState,
+  type DurableOperationState,
   type DurableSemanticRecord,
   type DurableTaskExecutionState,
+  type DurableTaskRecoveryState,
   type EmissionReceipt,
   type EnsureChildTaskRequest,
   type EnsureChildTaskResult,
@@ -65,6 +67,17 @@ export interface RedisDurableJournalAuthority {
   taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
   /** Returns the canonical parsed input accepted for one task. */
   taskInput(sessionId: string, taskId: string): Operation<Json>;
+  /** Selects active root work or its terminal value without exposing the journal. */
+  taskRecoveryState(
+    sessionId: string,
+    requestedTaskId?: string,
+  ): Operation<DurableTaskRecoveryState>;
+  rootTaskCount(sessionId: string): Operation<number>;
+  operationState(
+    sessionId: string,
+    taskId: string,
+    pullId: string,
+  ): Operation<DurableOperationState>;
   /** Lists exact schema digests referenced by nonterminal tasks. */
   nonterminalSchemaDigests(): Operation<string[]>;
   /** Clears the runnable marker when an accepted activation starts. */
@@ -250,6 +263,18 @@ export function createRedisDurableJournalAuthority(
     *taskInput(sessionId, taskId) {
       const loaded = yield* call(load);
       return yield* authority(loaded.snapshot).taskInput(sessionId, taskId);
+    },
+    *taskRecoveryState(sessionId, requestedTaskId) {
+      const loaded = yield* call(load);
+      return yield* authority(loaded.snapshot).taskRecoveryState(sessionId, requestedTaskId);
+    },
+    *rootTaskCount(sessionId) {
+      const loaded = yield* call(load);
+      return yield* authority(loaded.snapshot).rootTaskCount(sessionId);
+    },
+    *operationState(sessionId, taskId, pullId) {
+      const loaded = yield* call(load);
+      return yield* authority(loaded.snapshot).operationState(sessionId, taskId, pullId);
     },
     *nonterminalSchemaDigests() {
       const loaded = yield* call(load);

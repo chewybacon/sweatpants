@@ -391,6 +391,45 @@ export interface DurableTaskExecutionState {
   readonly catalogDigest?: string;
 }
 
+/**
+ * Narrow recovery selection owned by the Authority.
+ *
+ * The Host asks for work; it does not download the semantic journal and rebuild
+ * Authority state in process. A requested active child resolves to its active
+ * root, matching structured execution ownership. Terminal outcomes are returned
+ * as values so an idempotent resume does not require a journal scan either.
+ */
+export type DurableTaskRecoveryState =
+  | {
+      readonly status: "active";
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly taskId: string;
+      readonly manifest: DurableProgramManifest;
+      readonly input: Json;
+      /** Every nonterminal task fenced with the selected root as one tree. */
+      readonly activeTasks: readonly {
+        readonly taskId: string;
+        readonly executionEpoch: number;
+      }[];
+    }
+  | {
+      readonly status: "terminal";
+      readonly taskId: string;
+      readonly outcome: OperationOutcome;
+    }
+  | { readonly status: "not_found" };
+
+/** Narrow operation lookup used by command handlers without exposing the journal. */
+export type DurableOperationState =
+  | {
+      readonly status: "found";
+      readonly descriptor: DurableOperationDescriptor;
+      readonly audience: string;
+      readonly outcome?: OperationOutcome;
+    }
+  | { readonly status: "not_found" };
+
 /** Narrow authority port mediating every durable state transition. */
 export interface DurableJournalAuthorityService {
   /** Host-private stable journal identity used by placement effect services. */
@@ -399,6 +438,19 @@ export interface DurableJournalAuthorityService {
   taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
   /** Returns the canonical parsed input accepted for a task; replay never reruns schema code. */
   taskInput(sessionId: string, taskId: string): Operation<Json>;
+  /** Selects active root work or its terminal value without exposing the journal. */
+  taskRecoveryState(
+    sessionId: string,
+    requestedTaskId?: string,
+  ): Operation<DurableTaskRecoveryState>;
+  /** Counts accepted roots for deterministic local Turn-id allocation. */
+  rootTaskCount(sessionId: string): Operation<number>;
+  /** Looks up one operation without exposing private capabilities or the journal. */
+  operationState(
+    sessionId: string,
+    taskId: string,
+    pullId: string,
+  ): Operation<DurableOperationState>;
   /** Lists exact schema digests referenced by nonterminal durable tasks for readiness/retirement. */
   nonterminalSchemaDigests(): Operation<string[]>;
   /** Legacy local activation marker. Distributed coordinators use claimActivation. */
