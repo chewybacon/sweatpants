@@ -28,7 +28,6 @@ import type {
   ToolSessionSamplingProvider,
 } from "@sweatpants/framework/chat/mcp-tools";
 import {
-  ToolSessionSamplingProviderContext,
   createLocalWorkerDurableProgramDriver,
   createToolSessionForeignEffectRegistrations,
   installLocalProgramToolRuntime,
@@ -155,7 +154,6 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
     schemas: schemaRegistry,
     durableDrivers: new Map(readyPrograms.map((tool) => [tool.name, driverKind])),
   });
-  yield* ToolSessionSamplingProviderContext.set(options.samplingProvider);
   yield* PluginSessionRegistryContext.set(options.registry);
   yield* PluginSessionManagerContext.set(options.pluginManager);
   yield* ToolInventoryContext.set(

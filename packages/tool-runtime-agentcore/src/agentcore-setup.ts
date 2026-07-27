@@ -1,5 +1,4 @@
 import type { Operation } from "effection";
-import { ToolSessionRegistryContext } from "@sweatpants/framework/chat/mcp-tools";
 import type { ToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
 import type {
   AgentCoreToolRuntimeProfile,
@@ -34,7 +33,5 @@ export function* setupAgentCoreToolSessions(
       createRuntimeSessionId: options.createRuntimeSessionId,
     }),
   };
-  const registry = createAgentCoreToolSessionRegistry(registryOptions);
-  yield* ToolSessionRegistryContext.set(registry);
-  return registry;
+  return createAgentCoreToolSessionRegistry(registryOptions);
 }
