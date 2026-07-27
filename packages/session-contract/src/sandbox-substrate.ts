@@ -124,9 +124,17 @@ export interface WorkspaceVersion {
   readonly materialization: WorkspaceMaterializationRef;
 }
 
+/**
+ * Content-addressed storage for workspace materializations.
+ *
+ * Effection-native (REQ-024) so a remote driver — S3, R2, a microVM host — is
+ * cancellable and composable rather than an unstructured promise at the edge.
+ * `ImmutableObjectRef` is serialisable identity, so it is the reference that
+ * crosses a process boundary, never a store handle (DR-061).
+ */
 export interface ImmutableObjectStore {
-  put(bytes: Uint8Array): Promise<ImmutableObjectRef>;
-  get(reference: ImmutableObjectRef): Promise<Uint8Array | null>;
+  put(bytes: Uint8Array): Operation<ImmutableObjectRef>;
+  get(reference: ImmutableObjectRef): Operation<Uint8Array | null>;
 }
 
 /** Deterministic immutable object store with digest verification and copy isolation. */
@@ -138,7 +146,7 @@ export class InMemoryImmutableObjectStore implements ImmutableObjectStore {
     private readonly namespace = "deterministic",
   ) {}
 
-  async put(bytes: Uint8Array): Promise<ImmutableObjectRef> {
+  *put(bytes: Uint8Array): Operation<ImmutableObjectRef> {
     const digest = sha256Bytes(bytes);
     this.objects.set(digest, bytes.slice());
     return {
@@ -150,7 +158,7 @@ export class InMemoryImmutableObjectStore implements ImmutableObjectStore {
     };
   }
 
-  async get(reference: ImmutableObjectRef): Promise<Uint8Array | null> {
+  *get(reference: ImmutableObjectRef): Operation<Uint8Array | null> {
     const bytes = this.objects.get(reference.digest);
     if (!bytes) {
       return null;
@@ -273,7 +281,7 @@ export function chooseSandboxRecovery(input: {
   return { kind: "bootstrap" };
 }
 
-export async function createWorkspaceVersion(input: {
+export function* createWorkspaceVersion(input: {
   readonly store: ImmutableObjectStore;
   readonly workspaceId: string;
   readonly parent?: WorkspaceVersion;
@@ -282,12 +290,12 @@ export async function createWorkspaceVersion(input: {
   readonly taskId: string;
   readonly sandboxGeneration: string;
   readonly createdAt: string;
-}): Promise<WorkspaceVersion> {
+}): Operation<WorkspaceVersion> {
   if (input.kind === "delta" && !input.parent) {
     throw new CrankError("workspace_materialization_failed", "Delta requires a parent version");
   }
-  const object = await input.store.put(input.bytes);
-  const verified = await input.store.get(object);
+  const object = yield* input.store.put(input.bytes);
+  const verified = yield* input.store.get(object);
   if (!verified || sha256Bytes(verified) !== object.digest) {
     throw new CrankError(
       "workspace_materialization_failed",
@@ -322,17 +330,17 @@ export async function createWorkspaceVersion(input: {
   };
 }
 
-export async function restoreWorkspaceVersion(
+export function* restoreWorkspaceVersion(
   store: ImmutableObjectStore,
   version: WorkspaceVersion,
-): Promise<Uint8Array> {
+): Operation<Uint8Array> {
   if (
     version.materialization.kind === "delta" &&
     version.materialization.baseVersionDigest !== version.parentDigest
   ) {
     throw new CrankError("workspace_unavailable", "Delta base does not match parent version");
   }
-  const bytes = await store.get(version.materialization.object);
+  const bytes = yield* store.get(version.materialization.object);
   if (!bytes) {
     throw new CrankError("workspace_unavailable", "Required workspace materialization is missing");
   }

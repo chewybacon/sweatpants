@@ -42,11 +42,18 @@ export interface EffectDescriptor {
 }
 
 /** Safe serialized expected failure passed across durable boundaries. */
-export interface SerializedEffectError {
+/**
+ * Declared as a type alias rather than an interface deliberately: interfaces get
+ * no implicit index signature, so an interface member makes the whole
+ * `OperationOutcome` algebra unassignable to `Json` even though every field is
+ * JSON-shaped. Journal entries are stored as `Json`, so that assignability is
+ * load-bearing.
+ */
+export type SerializedEffectError = {
   readonly code: string;
   readonly message: string;
   readonly details?: Json;
-}
+};
 
 /** Closed durable outcome algebra for effect and record pulls. */
 export type OperationOutcome =

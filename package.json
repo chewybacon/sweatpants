@@ -15,6 +15,7 @@
         "verify:clean-build": "pnpm clean:build && pnpm build",
         "test": "pnpm run -r --workspace-concurrency=1 test",
         "test:tooling": "vitest run --config vitest.scripts.config.ts",
+        "check:tests": "./scripts/check-tests.sh",
         "test:e2e": "pnpm -C apps/yo-chat test:e2e && pnpm -C apps/yo-mcp test",
         "test:e2e:manual": "pnpm -C apps/yo-chat test:e2e:manual",
         "test:e2e:manual:ui": "pnpm -C apps/yo-chat test:e2e:manual:ui",
