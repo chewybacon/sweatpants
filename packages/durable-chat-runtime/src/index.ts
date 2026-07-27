@@ -1,7 +1,8 @@
 import type { Operation } from "effection";
 import type { Json } from "@sweatpants/foundation";
 import type { TerminalCapsule } from "@sweatpants/durable-execution";
-import type { HistoryPointer, HistoryStore, SessionHead } from "@sweatpants/history-store";
+import { HistoryStoreApi } from "@sweatpants/history-store/port";
+import type { HistoryPointer, SessionHead } from "@sweatpants/history-store/contract";
 
 /** Explicit bounded-context fact accepted for read-model projection. */
 export interface ProjectionFactEnvelope {
@@ -29,7 +30,6 @@ export type PublishTurnResult =
 export interface PublishTurnRequest<Entry extends Json = Json> {
   readonly capsule: TerminalCapsule;
   readonly facts: readonly ProjectionFactEnvelope[];
-  readonly history: HistoryStore<Entry>;
   /** Bounded-context projector; it sees only accepted Projection Facts. */
   readonly project: (facts: readonly ProjectionFactEnvelope[]) => readonly Entry[];
   /** Marks the capsule published; must be idempotent for the same Turn. */
@@ -49,7 +49,8 @@ export function publicationKey(capsule: TerminalCapsule, headRevision: number | 
 export function* publishTurn<Entry extends Json = Json>(
   request: PublishTurnRequest<Entry>,
 ): Operation<PublishTurnResult> {
-  const { capsule, history } = request;
+  const { capsule } = request;
+  const history = HistoryStoreApi.operations;
   const head: SessionHead | null = yield* history.loadHead(capsule.sessionId);
   if (head?.latestCompletedExecutionId === capsule.executionId && head.historyHead) {
     yield* request.markPublished(head.historyHead);

@@ -30,6 +30,28 @@
                 "default": "./dist/memory.js"
             },
             "default": "./src/memory.ts"
+        },
+        "./port": {
+            "development": {
+                "import": "./src/port.ts",
+                "types": "./src/port.ts"
+            },
+            "import": {
+                "types": "./dist/port.d.ts",
+                "default": "./dist/port.js"
+            },
+            "default": "./src/port.ts"
+        },
+        "./contract": {
+            "development": {
+                "import": "./src/contract.ts",
+                "types": "./src/contract.ts"
+            },
+            "import": {
+                "types": "./dist/contract.d.ts",
+                "default": "./dist/contract.js"
+            },
+            "default": "./src/contract.ts"
         }
     },
     "scripts": {

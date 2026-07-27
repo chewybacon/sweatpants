@@ -1,6 +1,7 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createMemoryHistoryStore } from "@sweatpants/history-store/memory";
+import { HistoryStoreApi, installHistoryStore } from "@sweatpants/history-store/port";
 import type { TerminalCapsule } from "@sweatpants/durable-execution";
 import { publishTurn, type ProjectionFactEnvelope } from "./index.ts";
 
@@ -45,17 +46,17 @@ describe("terminal Turn publication", () => {
     const history = createMemoryHistoryStore<Entry>();
     const marked: string[] = [];
     await run(function* () {
+      yield* installHistoryStore(history);
       const result = yield* publishTurn({
         capsule,
         facts,
-        history,
         project,
         *markPublished(pointer) {
           marked.push(pointer.segmentId);
         },
       });
       expect(result).toMatchObject({ status: "published", headRevision: 0 });
-      expect((yield* history.readPage("session-1")).entries).toEqual([
+      expect((yield* HistoryStoreApi.operations.readPage("session-1")).entries).toEqual([
         { turn: "turn-1", text: "TERMINAL_V1" },
       ]);
     });
@@ -66,8 +67,9 @@ describe("terminal Turn publication", () => {
     const history = createMemoryHistoryStore<Entry>();
     const marked: string[] = [];
     await run(function* () {
+      yield* installHistoryStore(history);
       // Fault after immutable content exists but before Session Head advances.
-      yield* history.putSegment({
+      yield* HistoryStoreApi.operations.putSegment({
         segmentId: "session-1\u0000turn-1\u0000genesis",
         publicationKey: "session-1\u0000turn-1\u0000genesis",
         sessionId: "session-1",
@@ -80,7 +82,6 @@ describe("terminal Turn publication", () => {
       const recovered = yield* publishTurn({
         capsule,
         facts,
-        history,
         project,
         *markPublished(pointer) {
           marked.push(pointer.segmentId);
@@ -91,14 +92,13 @@ describe("terminal Turn publication", () => {
       const repeated = yield* publishTurn({
         capsule,
         facts,
-        history,
         project,
         *markPublished(pointer) {
           marked.push(pointer.segmentId);
         },
       });
       expect(repeated.status).toBe("already_published");
-      expect((yield* history.readPage("session-1")).entries).toEqual([
+      expect((yield* HistoryStoreApi.operations.readPage("session-1")).entries).toEqual([
         { turn: "turn-1", text: "TERMINAL_V1" },
       ]);
     });
