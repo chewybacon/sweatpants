@@ -1,7 +1,7 @@
-import { createContext, type Operation } from "effection";
-import { createApi } from "effection/experimental";
+import { definePort } from "@sweatpants/foundation/port";
 import type { Json } from "@sweatpants/foundation";
 import type { DurableReference, ExecutionId } from "@sweatpants/durable-execution";
+import type { Operation } from "effection";
 import type {
   AppendReplayRequest,
   CommitExecutionRequest,
@@ -9,12 +9,6 @@ import type {
   ExecutionStore,
   VersionedExecution,
 } from "./store.ts";
-
-/** Scope-installed persistence driver; absent outside an installed runtime. */
-export const ExecutionStoreContext = createContext<ExecutionStore | undefined>(
-  "journal-authority:execution-store",
-  undefined,
-);
 
 export class ExecutionStoreUnavailable extends Error {
   readonly code = "store_unavailable";
@@ -24,43 +18,42 @@ export class ExecutionStoreUnavailable extends Error {
   }
 }
 
-function* driver(): Operation<ExecutionStore> {
-  const installed = yield* ExecutionStoreContext.get();
-  if (!installed) {
-    throw new ExecutionStoreUnavailable();
-  }
-  return installed;
+function unavailable(): never {
+  throw new ExecutionStoreUnavailable();
 }
 
 /**
- * Execution storage as a dynamic API.
+ * Execution storage as a port.
  *
- * Callers never thread a store instance. Optional middleware may observe,
- * inject faults, or proxy these operations, while the delegated driver keeps
- * owning persistence mechanics and no domain transition policy.
+ * Callers never thread a store instance and cannot reach an installed driver
+ * directly. Optional middleware may observe, inject faults, or proxy these
+ * operations, while the adapter keeps owning persistence mechanics and no
+ * domain transition policy.
  */
-export const ExecutionStoreApi = createApi("journal-authority-execution-store", {
-  *loadExecution(executionId: ExecutionId): Operation<VersionedExecution | null> {
-    return yield* (yield* driver()).loadExecution(executionId);
+export const ExecutionStorePort = definePort<ExecutionStore>("journal-authority-execution-store", {
+  *loadExecution(_executionId: ExecutionId): Operation<VersionedExecution | null> {
+    return unavailable();
   },
-  *commitExecution(request: CommitExecutionRequest): Operation<CommitExecutionResult> {
-    return yield* (yield* driver()).commitExecution(request);
+  *commitExecution(_request: CommitExecutionRequest): Operation<CommitExecutionResult> {
+    return unavailable();
   },
-  *putPayload(value: Json | Uint8Array): Operation<DurableReference> {
-    return yield* (yield* driver()).putPayload(value);
+  *putPayload(_value: Json | Uint8Array): Operation<DurableReference> {
+    return unavailable();
   },
-  *getPayload(reference: DurableReference): Operation<Json | Uint8Array | null> {
-    return yield* (yield* driver()).getPayload(reference);
+  *getPayload(_reference: DurableReference): Operation<Json | Uint8Array | null> {
+    return unavailable();
   },
-  *appendReplay(request: AppendReplayRequest): Operation<DurableReference> {
-    return yield* (yield* driver()).appendReplay(request);
+  *appendReplay(_request: AppendReplayRequest): Operation<DurableReference> {
+    return unavailable();
   },
-  *readReplay(head: DurableReference | null): Operation<readonly Json[]> {
-    return yield* (yield* driver()).readReplay(head);
+  *readReplay(_head: DurableReference | null): Operation<readonly Json[]> {
+    return unavailable();
   },
 });
 
-/** Installs one execution-store driver for the calling scope. */
-export function* installExecutionStore(store: ExecutionStore): Operation<void> {
-  yield* ExecutionStoreContext.set(store);
+export const ExecutionStoreApi = ExecutionStorePort.api;
+
+/** Installs one execution-store adapter for the calling scope. */
+export function installExecutionStore(store: ExecutionStore): Operation<void> {
+  return ExecutionStorePort.installDriver(store);
 }

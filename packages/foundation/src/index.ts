@@ -10,3 +10,4 @@ export {
   stableOpaqueId,
   type Json,
 } from "./json.ts";
+export * from "./port.ts";
