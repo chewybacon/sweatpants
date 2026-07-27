@@ -155,6 +155,40 @@ Point 4 was not part of the original diagnosis. Orphan scopes do not merely make
 seams invisible; they place the writer outside structured concurrency entirely,
 so its teardown depends on the task completing rather than on ownership.
 
+## Why re-parenting is not a shortcut
+
+An attempt to satisfy DR-063 cheaply — keep `useBackgroundTask` but pass it the
+Host scope instead of letting it create a parentless one — deadlocked 63 tests
+and took the suite from under 5 s to over 300 s. The cause is a defect in the
+helper, confirmed by probe rather than inference:
+
+```ts
+*halt() {
+  state.status = "halted";
+  state.doneDeferred.resolve("halted");
+  if (destroyScope) { yield* call(() => destroyScope!()); }   // only set when
+}                                                             // the helper made
+                                                              // the scope
+```
+
+`halt()` stops the work **only when the helper owns the scope**. Given an
+external scope it flips the status to `halted`, resolves the completion promise,
+and leaves the task running. The handle then reports `halted` for work that is
+still executing.
+
+That is fatal for the writer: `recover()` halts a superseded writer before the
+successor claims the fence. Under an external scope the old writer keeps writing
+against a fence it has lost, and teardown waits on a task that was never
+stopped.
+
+The lesson is that ownership must mean **reclaimable**, not merely *parented*.
+Structural parenting alone gives "the parent waits", which is the wrong
+semantics for indefinite work; what a Turn scope needs is explicit halt with a
+deadline. `useBackgroundTask` cannot express that, so the Turn scope must be
+built on real Effection tasks (`spawn` and `Task.halt`) rather than on this
+helper. This is why the ownership fix is scheduled with the `agent-host`
+extraction rather than as a spot change.
+
 ## Consequences
 
 - Two of three current crossings are provisional and should disappear when the
