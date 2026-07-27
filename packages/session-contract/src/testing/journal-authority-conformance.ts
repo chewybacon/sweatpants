@@ -35,7 +35,9 @@ import type {
   ReserveOperationResult,
   ResolveOperationRequest,
   ResolveOperationResult,
+  DurableOperationState,
   DurableProgramManifest,
+  DurableTaskRecoveryState,
 } from "../durable-types.ts";
 import type {
   DurableSemanticRecord,
@@ -49,6 +51,17 @@ import type {
  * stores cross one testing boundary without leaking storage mechanics.
  */
 export interface JournalAuthorityConformancePort {
+  /** Selects active root work or its terminal value without exposing the journal. */
+  taskRecoveryState(
+    sessionId: string,
+    requestedTaskId?: string,
+  ): Operation<DurableTaskRecoveryState>;
+  rootTaskCount(sessionId: string): Operation<number>;
+  operationState(
+    sessionId: string,
+    taskId: string,
+    pullId: string,
+  ): Operation<DurableOperationState>;
   /** Clears a runnable marker at the start of a structured activation. */
   markActivationStarted(sessionId: string): Operation<void>;
   /** Claims absent/expired runnable work under an authority-minted epoch. */
@@ -251,6 +264,15 @@ export function adaptInMemoryAuthorityForConformance(
   authority: InMemoryDurableJournalAuthority,
 ): JournalAuthorityConformancePort {
   return {
+    *taskRecoveryState(selectedSessionId, requestedTaskId) {
+      return yield* authority.taskRecoveryState(selectedSessionId, requestedTaskId);
+    },
+    *rootTaskCount(selectedSessionId) {
+      return yield* authority.rootTaskCount(selectedSessionId);
+    },
+    *operationState(selectedSessionId, selectedTaskId, pullId) {
+      return yield* authority.operationState(selectedSessionId, selectedTaskId, pullId);
+    },
     *markActivationStarted(selectedSessionId) {
       yield* authority.markActivationStarted(selectedSessionId);
     },
@@ -345,6 +367,7 @@ export function createJournalAuthorityConformanceCases(
       directElicitCancellation,
     ),
     defineCase(factory, "force orphan revokes work without clean cancellation", forceOrphan),
+    defineCase(factory, "recovery selects active work without exposing the journal", recoveryQuery),
     defineCase(factory, "activation lease fences a competing owner", activationLeaseFencing),
     defineCase(
       factory,
@@ -989,6 +1012,41 @@ function rootRequest(
     attachmentId,
     audience: "program-runtime",
   };
+}
+
+/** Authority-owned recovery returns enough accepted state to resume one root. */
+function* recoveryQuery(
+  caseName: string,
+  open: () => Operation<JournalAuthorityConformancePort>,
+): Operation<void> {
+  const authority = yield* open();
+  const programCapability = yield* openRoot(authority);
+  assertEqual(caseName, yield* authority.rootTaskCount(sessionId), 1, "root count must be exact");
+
+  const reserved = requireAuthorized(
+    caseName,
+    yield* authority.reserve(effectRequest(programCapability, "echo", "host-effects")),
+  );
+  const operation = yield* authority.operationState(sessionId, taskId, reserved.pullId);
+  assert(caseName, operation.status === "found", "reserved operation must be queryable");
+  if (operation.status === "found") {
+    assertEqual(caseName, operation.audience, "host-effects", "query must preserve audience");
+    assert(caseName, operation.outcome === undefined, "pending operation must have no outcome");
+  }
+
+  const recovery = yield* authority.taskRecoveryState(sessionId);
+  assert(caseName, recovery.status === "active", "new root task must be recoverable");
+  if (recovery.status !== "active") {
+    return;
+  }
+  assertEqual(caseName, recovery.taskId, taskId, "recovery must select the root task");
+  assertEqual(caseName, recovery.input, null, "recovery must return canonical accepted input");
+  assertEqual(
+    caseName,
+    recovery.activeTasks,
+    [{ taskId, executionEpoch: 1 }],
+    "recovery must return the exact active tree fence",
+  );
 }
 
 /**

@@ -7,7 +7,9 @@ import {
   type DurableJournalAuthorityService,
   type DurableSchemaRegistry,
   type DurableSemanticRecord,
+  type DurableOperationState,
   type DurableTaskExecutionState,
+  type DurableTaskRecoveryState,
   type OpenDurableTaskRequest,
   type OperationOutcome,
   type ResolveOperationResult,
@@ -34,6 +36,16 @@ export interface ProgramDriverJournal {
   openTask(request: OpenDurableTaskRequest): Operation<void>;
   /** Reads authority-owned route/catalog state for process replacement. */
   executionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
+  /** Selects the runnable root or terminal result without downloading the journal. */
+  recoveryState(sessionId: string, requestedTaskId?: string): Operation<DurableTaskRecoveryState>;
+  /** Counts accepted root tasks without reading the journal. */
+  rootTaskCount(sessionId: string): Operation<number>;
+  /** Looks up one operation without exposing the journal. */
+  operationState(
+    sessionId: string,
+    taskId: string,
+    pullId: string,
+  ): Operation<DurableOperationState>;
   /** Atomically fences the previous attachment and returns the next authority epoch. */
   replaceAttachment(
     sessionId: string,
@@ -104,6 +116,15 @@ export function createInMemoryProgramDriverJournalStore(
         },
         *executionState(sessionId, taskId) {
           return yield* selected.taskExecutionState(sessionId, taskId);
+        },
+        *recoveryState(sessionId, requestedTaskId) {
+          return yield* selected.taskRecoveryState(sessionId, requestedTaskId);
+        },
+        *rootTaskCount(sessionId) {
+          return yield* selected.rootTaskCount(sessionId);
+        },
+        *operationState(sessionId, taskId, pullId) {
+          return yield* selected.operationState(sessionId, taskId, pullId);
         },
         *replaceAttachment(sessionId, taskId, attachmentId) {
           const replaced = yield* selected.replaceAttachment(

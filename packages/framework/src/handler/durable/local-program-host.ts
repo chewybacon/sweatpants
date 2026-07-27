@@ -243,43 +243,26 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
 
   function* resumeTask(sessionId: string, requestedTaskId?: string): Operation<ProgramRunResult> {
     const journal = yield* options.journalStore.open(sessionId);
-    const records = yield* journal.readJournal(sessionId);
-    const opened = selectRunnableTask(records, requestedTaskId);
-    if (!opened) {
-      const terminal = requestedTaskId
-        ? terminalOutcome(records, requestedTaskId)
-        : latestRootTerminal(records);
-      if (terminal) {
-        return outcomeToRunResult(terminal);
-      }
+    const recovery = yield* journal.recoveryState(sessionId, requestedTaskId);
+    if (recovery.status === "terminal") {
+      return outcomeToRunResult(recovery.outcome);
+    }
+    if (recovery.status === "not_found") {
       throw new CrankError("unknown_target", "No runnable program task in session");
     }
+
     const program = {
-      id: opened.programId,
-      version: opened.programVersion,
-      digest: opened.programDigest,
+      id: recovery.manifest.programId,
+      version: recovery.manifest.version,
+      digest: recovery.manifest.digest,
     };
     if (!findTool(program)) {
       throw new CrankError("program_version_unavailable", "Accepted program is unavailable");
     }
-    const accepted = yield* acceptedExecution(journal, sessionId, opened);
-    const closed = new Set(
-      records.flatMap((record) =>
-        record.payload.type === "TaskClosed" ? [record.payload.taskId] : [],
-      ),
+    const accepted = yield* acceptedExecution(journal, sessionId, recovery.taskId);
+    const states = new Map(
+      recovery.activeTasks.map((task) => [task.taskId, task.executionEpoch] as const),
     );
-    const activeTasks = records.flatMap((record) =>
-      record.payload.type === "TaskOpened" && !closed.has(record.payload.taskId)
-        ? [record.payload]
-        : [],
-    );
-    const states = new Map<string, number>();
-    for (const task of activeTasks) {
-      states.set(
-        task.taskId,
-        (yield* journal.executionState(sessionId, task.taskId)).executionEpoch,
-      );
-    }
     const ownedEpoch = ownedSessionEpochs.get(sessionId);
     const canReuseOwnedEpoch =
       ownedEpoch !== undefined && [...states.values()].every((epoch) => epoch === ownedEpoch);
@@ -287,8 +270,8 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
     let rootExecutionEpoch = canReuseOwnedEpoch ? ownedEpoch : undefined;
     if (!canReuseOwnedEpoch) {
       const targetEpoch = Math.max(0, ...states.values()) + 1;
-      for (const task of activeTasks) {
-        let taskEpoch = states.get(task.taskId)!;
+      for (const task of recovery.activeTasks) {
+        let taskEpoch = task.executionEpoch;
         while (taskEpoch < targetEpoch) {
           taskEpoch = (yield* journal.replaceAttachment(
             sessionId,
@@ -296,7 +279,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
             `local-host-resume:${crypto.randomUUID()}`,
           )).executionEpoch;
         }
-        if (task.taskId === opened.taskId) {
+        if (task.taskId === recovery.taskId) {
           rootExecutionEpoch = taskEpoch;
         }
       }
@@ -305,7 +288,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
       throw new CrankError("invalid_journal", "Runnable root was not fenced for recovery");
     }
     ownedSessionEpochs.set(sessionId, rootExecutionEpoch);
-    return yield* runTask(journal, sessionId, opened.taskId, program, opened.input, {
+    return yield* runTask(journal, sessionId, recovery.taskId, program, recovery.input, {
       ...accepted,
       executionEpoch: rootExecutionEpoch,
     });
@@ -316,10 +299,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
       validateProgram(request);
       const sessionId = request.sessionId ?? `local-session:${crypto.randomUUID()}`;
       const journal = yield* options.journalStore.open(sessionId);
-      const existing = yield* journal.readJournal(sessionId);
-      const rootCount = existing.filter(
-        (record) => record.payload.type === "TaskOpened" && !record.payload.parentTaskId,
-      ).length;
+      const rootCount = yield* journal.rootTaskCount(sessionId);
       const turnId = request.turnId ?? `turn-${rootCount}`;
       const taskId = request.taskId ?? `${turnId}/root`;
       const route = request.route ?? { driverKind: "program" };
@@ -364,39 +344,20 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
 
     *respond(request): Operation<ProgramRunResult> {
       const journal = yield* options.journalStore.open(request.sessionId);
-      const records = yield* journal.readJournal(request.sessionId);
-      const pending = [...records]
-        .reverse()
-        .find(
-          (record) =>
-            record.payload.type === "PullRequested" &&
-            record.payload.taskId === request.taskId &&
-            record.payload.pullId === request.pullId &&
-            record.payload.descriptor.kind === "elicit",
-        );
-      if (
-        !pending ||
-        pending.payload.type !== "PullRequested" ||
-        pending.payload.descriptor.kind !== "elicit"
-      ) {
+      const operation = yield* journal.operationState(
+        request.sessionId,
+        request.taskId,
+        request.pullId,
+      );
+      if (operation.status !== "found" || operation.descriptor.kind !== "elicit") {
         throw new CrankError("unknown_target", "No matching pending elicitation");
       }
       const outcome: OperationOutcome =
         request.response.action === "cancel"
           ? { status: "cancelled" }
           : { status: "ok", value: canonicalSnapshot(request.response).value };
-      const alreadyResolved = [...records]
-        .reverse()
-        .find(
-          (record) =>
-            record.payload.type === "PullResolved" &&
-            record.payload.taskId === request.taskId &&
-            record.payload.pullId === request.pullId,
-        );
-      if (alreadyResolved?.payload.type === "PullResolved") {
-        if (
-          canonicalSnapshot(alreadyResolved.payload.outcome).sha !== canonicalSnapshot(outcome).sha
-        ) {
+      if (operation.outcome !== undefined) {
+        if (canonicalSnapshot(operation.outcome).sha !== canonicalSnapshot(outcome).sha) {
           throw new CrankError("resolution_conflict", "Elicitation response conflicts");
         }
         return yield* resumeTask(request.sessionId);
@@ -405,7 +366,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
         sessionId: request.sessionId,
         taskId: request.taskId,
         pullId: request.pullId,
-        audience: `user:${pending.payload.descriptor.key}`,
+        audience: operation.audience,
         outcome,
       });
       if (resolution.status === "rejected") {
@@ -507,24 +468,20 @@ function assertCatalogDispatch(catalog: PinnedProgramCatalog, program: PinnedPro
 function* acceptedExecution(
   journal: ProgramDriverJournal,
   sessionId: string,
-  opened: Extract<DurableSemanticRecord["payload"], { type: "TaskOpened" }>,
+  taskId: string,
 ): Operation<AcceptedExecution> {
-  if (opened.catalog === undefined || opened.catalogDigest === undefined) {
-    throw new CrankError("invalid_journal", "Task has no accepted catalog");
-  }
-  const state = yield* journal.executionState(sessionId, opened.taskId);
-  if (state.route === undefined) {
-    throw new CrankError("invalid_journal", "Task has no authority-owned execution route");
-  }
-  // The journal stores the catalog as Json; decodePinnedProgramCatalog
-  // re-verifies the persisted shape (version, digest, entry keys) before it
-  // is trusted.
-  const catalog = decodePinnedProgramCatalog(opened.catalog);
+  const state = yield* journal.executionState(sessionId, taskId);
   if (
-    catalog.digest !== opened.catalogDigest ||
-    state.catalogDigest !== opened.catalogDigest ||
-    canonicalSnapshot(state.catalog).sha !== canonicalSnapshot(opened.catalog).sha
+    state.route === undefined ||
+    state.catalog === undefined ||
+    state.catalogDigest === undefined
   ) {
+    throw new CrankError("invalid_journal", "Task has no authority-owned execution state");
+  }
+  // The Authority returns Json; decodePinnedProgramCatalog re-verifies the
+  // persisted shape before the Host trusts it.
+  const catalog = decodePinnedProgramCatalog(state.catalog);
+  if (catalog.digest !== state.catalogDigest) {
     throw new CrankError("invalid_journal", "Task catalog differs from authority state");
   }
   return {
@@ -598,49 +555,6 @@ export function normalizeProgramTrace(
     }
   }
   return { version: 1, tasks: [...tasks.values()] };
-}
-
-function selectRunnableTask(records: readonly DurableSemanticRecord[], requestedTaskId?: string) {
-  const closed = new Set(
-    records.flatMap((record) =>
-      record.payload.type === "TaskClosed" ? [record.payload.taskId] : [],
-    ),
-  );
-  const opened = records.flatMap((record) =>
-    record.payload.type === "TaskOpened" && !closed.has(record.payload.taskId)
-      ? [record.payload]
-      : [],
-  );
-  if (opened.length === 0) {
-    return undefined;
-  }
-  if (!requestedTaskId) {
-    return opened.filter((task) => !task.parentTaskId).at(-1);
-  }
-  const byId = new Map(opened.map((task) => [task.taskId, task]));
-  let selected = byId.get(requestedTaskId);
-  while (selected?.parentTaskId) {
-    selected = byId.get(selected.parentTaskId);
-  }
-  return selected;
-}
-
-function terminalOutcome(records: readonly DurableSemanticRecord[], taskId: string) {
-  const record = [...records]
-    .reverse()
-    .find(
-      (candidate) => candidate.payload.type === "TaskClosed" && candidate.payload.taskId === taskId,
-    );
-  return record?.payload.type === "TaskClosed" ? record.payload.outcome : undefined;
-}
-
-function latestRootTerminal(records: readonly DurableSemanticRecord[]) {
-  const roots = records.flatMap((record) =>
-    record.payload.type === "TaskOpened" && !record.payload.parentTaskId
-      ? [record.payload.taskId]
-      : [],
-  );
-  return roots.length ? terminalOutcome(records, roots.at(-1)!) : undefined;
 }
 
 function outcomeToRunResult(outcome: OperationOutcome): ProgramRunResult {

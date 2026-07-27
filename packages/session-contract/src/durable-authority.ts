@@ -48,8 +48,10 @@ import type {
   DurableCancellationState,
   DurableJournalAuthorityService,
   DurableOperationDescriptor,
+  DurableOperationState,
   DurableProgramManifest,
   DurableTaskExecutionState,
+  DurableTaskRecoveryState,
   EmissionReceipt,
   EnsureChildTaskRequest,
   EnsureChildTaskResult,
@@ -379,6 +381,84 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       ...(task.catalog
         ? { catalog: structuredClone(task.catalog), catalogDigest: task.catalogDigest! }
         : {}),
+    };
+  }
+
+  *taskRecoveryState(
+    sessionId: string,
+    requestedTaskId?: string,
+  ): Operation<DurableTaskRecoveryState> {
+    const tasks = [...this.#tasks.values()].filter((task) => task.sessionId === sessionId);
+    const active = tasks.filter((task) => task.status === "active");
+
+    let selected: Task | undefined;
+    if (requestedTaskId) {
+      selected = active.find((task) => task.taskId === requestedTaskId);
+      while (selected?.parentTaskId) {
+        selected = active.find((task) => task.taskId === selected!.parentTaskId);
+      }
+    } else {
+      selected = active.filter((task) => !task.parentTaskId).at(-1);
+    }
+
+    if (selected) {
+      return {
+        status: "active",
+        sessionId: selected.sessionId,
+        turnId: selected.turnId,
+        taskId: selected.taskId,
+        manifest: structuredClone(selected.manifest),
+        input: structuredClone(selected.input),
+        activeTasks: active.map((task) => ({
+          taskId: task.taskId,
+          executionEpoch: task.executionEpoch,
+        })),
+      };
+    }
+
+    const terminalTaskId =
+      requestedTaskId ?? tasks.filter((task) => !task.parentTaskId).at(-1)?.taskId;
+    if (terminalTaskId) {
+      const terminal = [...(this.#records.get(sessionId) ?? [])]
+        .reverse()
+        .find(
+          (record) =>
+            record.payload.type === "TaskClosed" && record.payload.taskId === terminalTaskId,
+        );
+      if (terminal?.payload.type === "TaskClosed") {
+        return {
+          status: "terminal",
+          taskId: terminalTaskId,
+          outcome: structuredClone(terminal.payload.outcome),
+        };
+      }
+    }
+    return { status: "not_found" };
+  }
+
+  *rootTaskCount(sessionId: string): Operation<number> {
+    return [...this.#tasks.values()].filter(
+      (task) => task.sessionId === sessionId && !task.parentTaskId,
+    ).length;
+  }
+
+  *operationState(
+    sessionId: string,
+    taskId: string,
+    pullId: string,
+  ): Operation<DurableOperationState> {
+    const task = this.#tasks.get(taskKey(sessionId, taskId));
+    const pull = task
+      ? [...task.pullsByAction.values()].find((candidate) => candidate.pullId === pullId)
+      : undefined;
+    if (!pull) {
+      return { status: "not_found" };
+    }
+    return {
+      status: "found",
+      descriptor: structuredClone(pull.descriptor),
+      audience: pull.audience,
+      ...(pull.outcome !== undefined ? { outcome: structuredClone(pull.outcome) } : {}),
     };
   }
 
