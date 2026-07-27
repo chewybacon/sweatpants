@@ -7,7 +7,7 @@
  * - Multi-client support (fan-out via pull-based readers)
  * - Reconnection from last LSN (Log Sequence Number)
  * - Web Stream bridge for HTTP responses
- * - IoC/DI via Effection contexts
+ * - IoC/DI via scoped ports
  *
  * ## Quick Start (with DI)
  *
@@ -19,10 +19,10 @@
  *   createWebStreamFromBuffer,
  * } from './durable-streams'
  *
- * // At server startup - sets up contexts for DI
+ * // At server startup - installs the durable-streams drivers
  * yield* setupInMemoryDurableStreams<string>()
  *
- * // In request handler - access via context
+ * // In request handler - resolve through the port
  * const registry = yield* useSessionRegistry<string>()
  * const session = yield* registry.acquire(sessionId, { source: llmStream })
  * yield* ensure(() => registry.release(sessionId))
@@ -94,15 +94,12 @@ export { createWebStreamFromBuffer } from "./web-stream-bridge.ts";
 // IoC/DI - Contexts, Accessors, and Setup Helpers
 // =============================================================================
 
-// Contexts (raw Effection contexts for advanced use)
+// Scope-bound typed accessors over the durable-streams ports.
 export {
-  TokenBufferStoreContext,
-  SessionRegistryStoreContext,
-  SessionRegistryContext,
-} from "./contexts.ts";
-
-// Typed accessor operations (recommended for most use)
-export { useTokenBufferStore, useSessionRegistryStore, useSessionRegistry } from "./use.ts";
+  useTokenBufferStore,
+  useSessionRegistryStore,
+  useSessionRegistry,
+} from "@sweatpants/durable-streams";
 
 // Setup helpers (recommended entry point)
 export {

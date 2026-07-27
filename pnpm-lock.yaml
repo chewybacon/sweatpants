@@ -1079,6 +1079,9 @@ importers:
 
   packages/durable-streams:
     dependencies:
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -15271,7 +15274,7 @@ snapshots:
     dependencies:
       duplexer: 0.1.2
 
-  h3@2.0.1-rc.22(crossws@0.4.6(srvx@0.9.8)):
+  h3@2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16)):
     dependencies:
       rou3: 0.8.1
       srvx: 0.11.16
@@ -16357,7 +16360,7 @@ snapshots:
       crossws: 0.4.6(srvx@0.11.16)
       db0: 0.3.4
       env-runner: 0.1.14
-      h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.9.8))
+      h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16))
       hookable: 6.1.1
       nf3: 0.3.17
       ocache: 0.1.5

@@ -60,3 +60,4 @@ export { createSSEEventStream } from "./sse-formatter.ts";
 // @sweatpants/react-chat). See REQ-060 / NFR-012.
 
 export type { ProtocolHandlerContext, ProtocolSetupResult } from "./http-types.ts";
+export * from "./port.ts";
