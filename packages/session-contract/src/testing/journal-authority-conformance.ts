@@ -35,6 +35,7 @@ import type {
   ReserveOperationResult,
   ResolveOperationRequest,
   ResolveOperationResult,
+  DurableJournalAuthorityService,
   DurableOperationState,
   DurableProgramManifest,
   DurableTaskRecoveryState,
@@ -51,6 +52,18 @@ import type {
  * stores cross one testing boundary without leaking storage mechanics.
  */
 export interface JournalAuthorityConformancePort {
+  readonly journalIdentity: DurableJournalAuthorityService["journalIdentity"];
+  readonly taskExecutionState: DurableJournalAuthorityService["taskExecutionState"];
+  readonly taskInput: DurableJournalAuthorityService["taskInput"];
+  readonly nonterminalSchemaDigests: DurableJournalAuthorityService["nonterminalSchemaDigests"];
+  readonly recoverableSessions: DurableJournalAuthorityService["recoverableSessions"];
+  readonly bindProgramAttachment: DurableJournalAuthorityService["bindProgramAttachment"];
+  readonly cancellationState: DurableJournalAuthorityService["cancellationState"];
+  readonly beginCancellationUnwind: DurableJournalAuthorityService["beginCancellationUnwind"];
+  readonly prepareProgramRestore: DurableJournalAuthorityService["prepareProgramRestore"];
+  readonly emit: DurableJournalAuthorityService["emit"];
+  readonly complete: DurableJournalAuthorityService["complete"];
+  readonly ensureChildTask: DurableJournalAuthorityService["ensureChildTask"];
   /** Selects active root work or its terminal value without exposing the journal. */
   taskRecoveryState(
     sessionId: string,
@@ -264,6 +277,49 @@ export function adaptInMemoryAuthorityForConformance(
   authority: InMemoryDurableJournalAuthority,
 ): JournalAuthorityConformancePort {
   return {
+    journalIdentity: () => authority.journalIdentity(),
+    *taskExecutionState(selectedSessionId, selectedTaskId) {
+      return yield* authority.taskExecutionState(selectedSessionId, selectedTaskId);
+    },
+    *taskInput(selectedSessionId, selectedTaskId) {
+      return yield* authority.taskInput(selectedSessionId, selectedTaskId);
+    },
+    *nonterminalSchemaDigests() {
+      return yield* authority.nonterminalSchemaDigests();
+    },
+    *recoverableSessions() {
+      return yield* authority.recoverableSessions();
+    },
+    *bindProgramAttachment(selectedSessionId, selectedTaskId, attachmentId, executionEpoch) {
+      return yield* authority.bindProgramAttachment(
+        selectedSessionId,
+        selectedTaskId,
+        attachmentId,
+        executionEpoch,
+      );
+    },
+    *cancellationState(selectedSessionId, selectedTaskId) {
+      return yield* authority.cancellationState(selectedSessionId, selectedTaskId);
+    },
+    *beginCancellationUnwind(selectedSessionId, selectedTaskId, restoredFrontier) {
+      return yield* authority.beginCancellationUnwind(
+        selectedSessionId,
+        selectedTaskId,
+        restoredFrontier,
+      );
+    },
+    *prepareProgramRestore(request) {
+      return yield* authority.prepareProgramRestore(request);
+    },
+    *emit(request) {
+      return yield* authority.emit(request);
+    },
+    *complete(request) {
+      return yield* authority.complete(request);
+    },
+    *ensureChildTask(request) {
+      return yield* authority.ensureChildTask(request);
+    },
     *taskRecoveryState(selectedSessionId, requestedTaskId) {
       return yield* authority.taskRecoveryState(selectedSessionId, requestedTaskId);
     },
@@ -375,6 +431,9 @@ export function createJournalAuthorityConformanceCases(
       activationLeaseExpiry,
     ),
     defineCase(factory, "stale epoch cannot renew or release an activation", staleActivationEpoch),
+    defineCase(factory, "structured child allocation is deterministic", structuredChildAllocation),
+    defineCase(factory, "emission and completion close one bounded task", emissionAndCompletion),
+    defineCase(factory, "cancellation state enters one-shot unwind", cancellationStateUnwind),
     defineCase(factory, "restore ticket is consumable exactly once", restoreTicketSingleUse),
     defineCase(
       factory,
@@ -1020,9 +1079,35 @@ function* recoveryQuery(
   open: () => Operation<JournalAuthorityConformancePort>,
 ): Operation<void> {
   const authority = yield* open();
-  const programCapability = yield* openRoot(authority);
+  let programCapability = yield* openRoot(authority);
+  assert(caseName, authority.journalIdentity().id.length > 0, "journal identity must be stable");
   assertEqual(caseName, yield* authority.rootTaskCount(sessionId), 1, "root count must be exact");
+  assertEqual(caseName, yield* authority.taskInput(sessionId, taskId), null, "input must be exact");
+  assertEqual(
+    caseName,
+    yield* authority.taskExecutionState(sessionId, taskId),
+    { executionEpoch: 1 },
+    "execution state must expose the accepted epoch",
+  );
+  const schemaDigests = yield* authority.nonterminalSchemaDigests();
+  assert(
+    caseName,
+    schemaDigests.includes(idempotentManifest.inputSchema.digest) &&
+      schemaDigests.includes(idempotentManifest.outputSchema.digest),
+    "nonterminal schemas must include the pinned input and output",
+  );
+  assert(
+    caseName,
+    (yield* authority.recoverableSessions()).some((entry) => entry.sessionId === sessionId),
+    "opened root must make its Session recoverable",
+  );
 
+  programCapability = (yield* authority.bindProgramAttachment(
+    sessionId,
+    taskId,
+    "recovery-query",
+    1,
+  )).programCapability;
   const reserved = requireAuthorized(
     caseName,
     yield* authority.reserve(effectRequest(programCapability, "echo", "host-effects")),
@@ -1175,6 +1260,121 @@ function* staleActivationEpoch(
   );
 }
 
+/** Child allocation is deterministic and remains inside the root recovery tree. */
+function* structuredChildAllocation(
+  caseName: string,
+  open: () => Operation<JournalAuthorityConformancePort>,
+): Operation<void> {
+  const authority = yield* open();
+  const programCapability = yield* openRoot(authority);
+  const child = {
+    id: "conformance.child",
+    version: "1.0.0",
+    digest: "d".repeat(64),
+    input: null,
+  };
+  const reserved = yield* authority.reserve({
+    sessionId,
+    turnId,
+    taskId,
+    actionIndex: 0,
+    pullIndex: 0,
+    descriptor: { kind: "invoke", child },
+    programCapability,
+  });
+  assert(caseName, reserved.status === "pending", "invoke must park for its child");
+  if (reserved.status !== "pending") {
+    return;
+  }
+  const request = {
+    sessionId,
+    turnId,
+    parentTaskId: taskId,
+    parentPullId: reserved.pullId,
+    child,
+    manifest: {
+      ...idempotentManifest,
+      programId: child.id,
+      version: child.version,
+      digest: child.digest,
+    },
+    executionEpoch: 1,
+    audience: "program-runtime",
+  };
+  const allocated = yield* authority.ensureChildTask(request);
+  assertEqual(
+    caseName,
+    yield* authority.ensureChildTask(request),
+    allocated,
+    "duplicate child allocation must return the same identity",
+  );
+  const recovery = yield* authority.taskRecoveryState(sessionId, allocated.taskId);
+  assert(
+    caseName,
+    recovery.status === "active" && recovery.taskId === taskId,
+    "requesting an active child must recover its root",
+  );
+}
+
+/** Emission ordering and terminal closure are identical across stores. */
+function* emissionAndCompletion(
+  caseName: string,
+  open: () => Operation<JournalAuthorityConformancePort>,
+): Operation<void> {
+  const authority = yield* open();
+  const programCapability = yield* openRoot(authority);
+  const emission = yield* authority.emit({
+    sessionId,
+    taskId,
+    actionIndex: 0,
+    descriptor: { eventType: "progress", payload: { ordinal: 1 } },
+    programCapability,
+  });
+  assert(caseName, !emission.duplicate, "first emission must append");
+
+  const closeRequest = {
+    sessionId,
+    taskId,
+    actionIndex: 1,
+    outcome: { status: "ok" as const, value: "done" },
+    programCapability,
+  };
+  const closed = yield* authority.complete(closeRequest);
+  assert(caseName, !closed.duplicate, "first completion must close");
+  assert(
+    caseName,
+    (yield* authority.complete(closeRequest)).duplicate,
+    "identical completion must be idempotent",
+  );
+  assertEqual(
+    caseName,
+    yield* authority.taskRecoveryState(sessionId),
+    { status: "terminal", taskId, outcome: closeRequest.outcome },
+    "closed root must recover as its terminal value",
+  );
+}
+
+/** Cancellation is queryable and authored unwind begins exactly once. */
+function* cancellationStateUnwind(
+  caseName: string,
+  open: () => Operation<JournalAuthorityConformancePort>,
+): Operation<void> {
+  const authority = yield* open();
+  yield* openRoot(authority);
+  yield* authority.requestCancellation(sessionId, taskId, "operator", "cancel-command");
+
+  const requested = yield* authority.cancellationState(sessionId, taskId);
+  assert(caseName, requested.type === "requested", "cancellation must be durably requested");
+  const unwinding = yield* authority.beginCancellationUnwind(sessionId, taskId);
+  assert(caseName, unwinding.type === "unwinding", "requested cancellation must begin unwind");
+  assertEqual(
+    caseName,
+    yield* authority.beginCancellationUnwind(sessionId, taskId),
+    unwinding,
+    "duplicate unwind must return the first state",
+  );
+}
+
 /** A frontier digest is 32 bytes of hex; content is irrelevant to the authority. */
 const frontierDigest = "a".repeat(64);
 
@@ -1208,6 +1408,18 @@ function* restoreTicketSingleUse(
 ): Operation<void> {
   const authority = yield* open();
   const epoch = yield* activateRoot(caseName, authority, "owner-a");
+
+  const prepared = yield* authority.prepareProgramRestore({
+    sessionId,
+    taskId,
+    ownerId: "owner-a",
+    activationEpoch: epoch,
+    releaseId: "conformance-release",
+    sandboxSessionId: "conformance-sandbox",
+    replayDomain: "sweatpants.conformance.replay.v1",
+    frontierDomain: "sweatpants.conformance.frontier.v1",
+  });
+  assertEqual(caseName, prepared.replay, [], "new task must prepare an empty replay");
 
   const issued = yield* authority.issueRestoreTicket({
     sessionId,
