@@ -169,6 +169,20 @@ async function main(): Promise<void> {
     ...(mode === "deterministic" ? [] : liveStages()),
   ];
 
+  const coverageBaselinePath = join(root, "scripts", "test-coverage-baseline.json");
+  const coverageBaseline: Record<string, CoverageTotals> = await (async () => {
+    try {
+      return JSON.parse(await readFile(coverageBaselinePath, "utf8")) as Record<
+        string,
+        CoverageTotals
+      >;
+    } catch {
+      return {};
+    }
+  })();
+  const observedCoverage: Record<string, CoverageTotals> = {};
+  const updateCoverageBaseline = process.env["LAND_UPDATE_COVERAGE_BASELINE"] === "1";
+
   console.log(`Landing mode: ${mode}`);
   console.log(`Artifacts: ${relativeArtifact(artifactDir)}`);
   console.log(`Stages: ${stages.length}\n`);
@@ -190,6 +204,14 @@ async function main(): Promise<void> {
   summary.status = "passed";
   summary.completedAt = new Date().toISOString();
   await persistSummary();
+  if (updateCoverageBaseline) {
+    await writeFile(
+      coverageBaselinePath,
+      `${JSON.stringify({ ...coverageBaseline, ...observedCoverage }, undefined, 2)}\n`,
+    );
+    console.log(`Updated coverage baseline: scripts/test-coverage-baseline.json`);
+  }
+
   console.log(`LAND PASSED in ${formatDuration(Date.now() - Date.parse(summary.startedAt))}`);
   console.log(`Summary: ${relativeArtifact(join(artifactDir, "summary.json"))}`);
 
@@ -299,7 +321,15 @@ async function main(): Promise<void> {
 
     const fullLog = await readFile(logPath, "utf8");
     const skipped = stage.forbidSkips && hasSkippedTests(fullLog);
-    if (exit.code === 0 && !timedOut && !skipped) {
+    const coverage = readCoverage(fullLog);
+    if (coverage) {
+      observedCoverage[stage.name] = coverage;
+    }
+    const coverageFailure =
+      exit.code === 0 && coverage && !updateCoverageBaseline
+        ? compareCoverage(stage.name, coverage, coverageBaseline[stage.name])
+        : undefined;
+    if (exit.code === 0 && !timedOut && !skipped && !coverageFailure) {
       return {
         name: stage.name,
         command: displayCommand(stage),
@@ -307,6 +337,14 @@ async function main(): Promise<void> {
         durationMs: Date.now() - started,
         log: relativeArtifact(logPath),
       };
+    }
+
+    if (coverageFailure) {
+      console.error(`\nLAND FAILED [COVERAGE_REGRESSION]`);
+      console.error(coverageFailure);
+      console.error(`Full log: ${relativeArtifact(logPath)}`);
+      console.error(`Update deliberately with: LAND_UPDATE_COVERAGE_BASELINE=1 pnpm land`);
+      process.exit(1);
     }
 
     const classification = timedOut
@@ -350,6 +388,69 @@ async function main(): Promise<void> {
         process.kill(process.platform === "win32" ? pid : -pid, "SIGKILL");
       } catch {}
     }, 2_000).unref();
+  }
+
+  interface CoverageTotals {
+    passed: number;
+    skipped: number;
+    total: number;
+  }
+
+  /**
+   * Sums the vitest summary lines in a stage log.
+   *
+   * A stage may aggregate many packages, so every `Tests …` line contributes.
+   * Returns undefined when the stage produced no vitest summary at all, which is
+   * how non-test stages opt out.
+   */
+  function readCoverage(rawLog: string): CoverageTotals | undefined {
+    // Vitest colours its summary, so the counts are separated by escape
+    // sequences rather than plain spaces.
+    // eslint-disable-next-line no-control-regex
+    const log = rawLog.replace(/\u001B\[[0-9;]*m/g, "");
+    const pattern =
+      /Tests\s+(\d+) passed(?:\s*\|\s*(\d+) skipped)?(?:\s*\|\s*(\d+) todo)?\s*\((\d+)\)/g;
+    let match: RegExpExecArray | null;
+    let seen = false;
+    const totals: CoverageTotals = { passed: 0, skipped: 0, total: 0 };
+    while ((match = pattern.exec(log)) !== null) {
+      seen = true;
+      totals.passed += Number(match[1]);
+      totals.skipped += Number(match[2] ?? 0);
+      totals.total += Number(match[4]);
+    }
+    return seen ? totals : undefined;
+  }
+
+  /**
+   * Compares a stage against its recorded coverage.
+   *
+   * This exists because "passed" is not the same as "ran". Deleting an import
+   * once dropped a package from 507 to 449 collected tests while vitest still
+   * printed a green summary, and 16 Redis-backed tests skip themselves silently
+   * whenever Redis is absent. Both are invisible to an exit code.
+   */
+  function compareCoverage(
+    stageName: string,
+    actual: CoverageTotals,
+    baseline: CoverageTotals | undefined,
+  ): string | undefined {
+    if (!baseline) {
+      return undefined;
+    }
+    if (actual.total < baseline.total) {
+      return (
+        `${stageName}: collected ${actual.total} tests, baseline ${baseline.total}. ` +
+        `Tests disappeared rather than failing — check for a broken import or a renamed file.`
+      );
+    }
+    if (actual.skipped > baseline.skipped) {
+      return (
+        `${stageName}: ${actual.skipped} skipped, baseline ${baseline.skipped}. ` +
+        `New skips hide coverage; run the required service or update the baseline deliberately.`
+      );
+    }
+    return undefined;
   }
 
   function hasSkippedTests(log: string): boolean {
