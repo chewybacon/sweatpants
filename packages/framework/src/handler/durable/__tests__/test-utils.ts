@@ -29,7 +29,7 @@ import {
 } from "../../../lib/chat/tool-runtime.ts";
 import { validateToolParameters } from "../../../lib/chat/tool-parameters.ts";
 import {
-  ModelProviderContext,
+  installModelProvider,
   ModelProviderModelContext,
   type ModelProviderDriver,
 } from "../../../lib/chat/model-provider.ts";
@@ -328,7 +328,7 @@ function providerMessagesFromRuntimeContext(context: Parameters<Runtime["stream"
 
 export function createMockModelProviderDriver(provider: MockProvider): ModelProviderDriver {
   return {
-    stream(request) {
+    *stream(request) {
       return resource(function* (provide) {
         const subscription = yield* provider.stream(
           providerMessagesFromRuntimeContext(request.context),
@@ -406,7 +406,7 @@ export function createMockModelProviderDriver(provider: MockProvider): ModelProv
       });
     },
     *sample(request): Operation<AssistantMessage> {
-      const subscription = yield* this.stream(request);
+      const subscription = yield* yield* this.stream(request);
       while (true) {
         const next = yield* subscription.next();
         if (next.done) {
@@ -418,7 +418,7 @@ export function createMockModelProviderDriver(provider: MockProvider): ModelProv
 }
 
 export function* setupMockModelProvider(provider: MockProvider): Operation<void> {
-  yield* ModelProviderContext.set(createMockModelProviderDriver(provider));
+  yield* installModelProvider(createMockModelProviderDriver(provider));
   yield* ModelProviderModelContext.set(testModel());
 }
 

@@ -149,7 +149,7 @@ export function createScriptedStudioModelProvider(
 
 function scriptedDriver(currentWorkspaceVersion: () => string): ModelProviderDriver {
   return {
-    stream(request) {
+    *stream(request) {
       return completedStream(scriptedMessage(request, currentWorkspaceVersion()));
     },
     *sample(): Operation<AssistantMessage> {

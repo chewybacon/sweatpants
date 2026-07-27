@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { action, resource, run, type Operation, type Stream } from "effection";
 import {
-  ModelProviderContext,
+  installModelProvider,
   ModelProviderModelContext,
   ToolInventoryContext,
   ToolRuntimeContext,
@@ -63,7 +63,9 @@ describe("an indeterminate unsafe effect reaches the model", () => {
     let sawIndeterminate = false;
 
     const driver: ModelProviderDriver = {
-      stream(request: ModelProviderStreamRequest): Stream<StreamEvent, AssistantMessage> {
+      *stream(
+        request: ModelProviderStreamRequest,
+      ): Operation<Stream<StreamEvent, AssistantMessage>> {
         sampleIndex += 1;
         const serialized = JSON.stringify(request.context.messages);
         if (serialized.includes("effect_outcome_indeterminate")) {
@@ -146,7 +148,7 @@ describe("an indeterminate unsafe effect reaches the model", () => {
           programDriverJournalStore: journalStore,
           maxToolIterations: 4,
           setup: function* () {
-            yield* ModelProviderContext.set(driver);
+            yield* installModelProvider(driver);
             yield* ModelProviderModelContext.set(model);
           },
         }),
