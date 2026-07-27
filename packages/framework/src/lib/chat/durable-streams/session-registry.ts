@@ -376,7 +376,9 @@ export function* createSessionRegistry<T>(
           const capturedCleanupRuntime = cleanupRuntime;
           const capturedLog = log;
 
-          // Use useBackgroundTask instead of fireAndForget to ensure the scope stays alive
+          // Supervised rather than detached: this waiter must observe the writer
+          // finishing before it can apply retention. Ownership belongs to the
+          // registry, not to the caller that released the session. See DR-063.
           yield* useBackgroundTask(
             function* () {
               // Wait for writer to complete

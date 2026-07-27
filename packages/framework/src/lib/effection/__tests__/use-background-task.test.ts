@@ -7,7 +7,7 @@
 import { describe, it, expect } from "./vitest-effection.ts";
 import { it as plainIt } from "vitest";
 import { sleep, createScope, call, createContext } from "effection";
-import { useBackgroundTask, fireAndForget, useTaskPool } from "../use-background-task.ts";
+import { useBackgroundTask, useTaskPool } from "../use-background-task.ts";
 
 // =============================================================================
 // TEST CONTEXTS
@@ -270,27 +270,6 @@ describe("useBackgroundTask", () => {
 // =============================================================================
 // FIRE AND FORGET
 // =============================================================================
-
-describe("fireAndForget", () => {
-  it("should run operation without blocking", function* () {
-    const events: string[] = [];
-
-    yield* fireAndForget(function* () {
-      events.push("fire start");
-      yield* sleep(50);
-      events.push("fire end");
-    });
-
-    events.push("after fireAndForget");
-
-    // Should continue immediately
-    expect(events).toContain("after fireAndForget");
-
-    // Wait for the fire-and-forget to complete
-    yield* sleep(100);
-    expect(events).toContain("fire end");
-  });
-});
 
 // =============================================================================
 // TASK POOL
