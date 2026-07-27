@@ -7,7 +7,7 @@ import type {
   HistorySegment,
   HistoryStore,
   SessionHead,
-} from "./index.ts";
+} from "./contract.ts";
 
 export function createMemoryHistoryStore<Entry extends Json = Json>(): HistoryStore<Entry> {
   const heads = new Map<string, SessionHead>();
