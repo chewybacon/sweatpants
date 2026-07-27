@@ -1,7 +1,7 @@
 {
     "name": "@sweatpants/journal-authority-redis",
     "version": "0.1.0",
-    "description": "Redis-backed ProgramDriver durable journal authority",
+    "description": "Redis drivers for bounded execution storage and legacy ProgramDriver authority",
     "license": "MIT",
     "files": [
         "dist",
@@ -27,6 +27,9 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@sweatpants/durable-execution": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "effection": "catalog:"
     },

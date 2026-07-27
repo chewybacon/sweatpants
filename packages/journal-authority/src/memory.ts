@@ -13,7 +13,10 @@ import type {
 export function createMemoryExecutionStore(): ExecutionStore {
   const executions = new Map<ExecutionId, VersionedExecution>();
   const payloads = new Map<string, Json | Uint8Array>();
-  const replays = new Map<string, readonly Json[]>();
+  const replays = new Map<
+    string,
+    { readonly previous: DurableReference | null; readonly entries: readonly Json[] }
+  >();
   let sequence = 0;
 
   function reference(prefix: string, value: Json | Uint8Array): DurableReference {
@@ -51,12 +54,32 @@ export function createMemoryExecutionStore(): ExecutionStore {
     *appendReplay(request: AppendReplayRequest): Operation<DurableReference> {
       return yield* call(() => {
         const ref = reference("replay", { entries: [...request.entries] });
-        replays.set(ref.id, request.entries);
+        replays.set(ref.id, { previous: request.previous, entries: request.entries });
         return ref;
       });
     },
     *readReplay(head): Operation<readonly Json[]> {
-      return yield* call(() => (head ? (replays.get(head.id) ?? []) : []));
+      return yield* call(() => {
+        if (!head) {
+          return [];
+        }
+        const chunks: (readonly Json[])[] = [];
+        const seen = new Set<string>();
+        let cursor: DurableReference | null = head;
+        while (cursor) {
+          if (seen.has(cursor.id)) {
+            throw new Error(`Replay chain contains a cycle: ${cursor.id}`);
+          }
+          seen.add(cursor.id);
+          const chunk = replays.get(cursor.id);
+          if (!chunk) {
+            throw new Error(`Replay object is missing: ${cursor.id}`);
+          }
+          chunks.push(chunk.entries);
+          cursor = chunk.previous;
+        }
+        return chunks.reverse().flatMap((entries) => [...entries]);
+      });
     },
   };
 }

@@ -50,7 +50,10 @@ describe("memory execution store", () => {
         entries: [{ outcome: "second" }],
       });
       expect(yield* store.readReplay(first)).toEqual([{ outcome: "first" }]);
-      expect(yield* store.readReplay(second)).toEqual([{ outcome: "second" }]);
+      expect(yield* store.readReplay(second)).toEqual([
+        { outcome: "first" },
+        { outcome: "second" },
+      ]);
     });
   });
 });

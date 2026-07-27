@@ -58,9 +58,9 @@ export function createMemoryRedisClient(): RedisClientType {
       }
       return removed;
     },
-    async eval(_script: string, options: { keys: string[]; arguments: string[] }) {
-      const [stateKey, _channelKey, runnableKey] = options.keys;
-      const [expected, next, sessionId, keepRunnable] = options.arguments;
+    async eval(script: string, options: { keys: string[]; arguments: string[] }) {
+      const [stateKey, secondKey, runnableKey] = options.keys;
+      const [expected, next, third, keepRunnable] = options.arguments;
       if (!stateKey || expected === undefined || next === undefined) {
         return 0;
       }
@@ -68,6 +68,14 @@ export function createMemoryRedisClient(): RedisClientType {
         return 0;
       }
       strings.set(stateKey, next);
+      if (script.includes("SWEATPANTS_EXECUTION_STORE_V1")) {
+        if (!secondKey || third === undefined) {
+          return 0;
+        }
+        strings.set(secondKey, third);
+        return 1;
+      }
+      const sessionId = third;
       if (runnableKey && sessionId) {
         const runnable = sets.get(runnableKey) ?? new Set<string>();
         if (keepRunnable === "1") {
