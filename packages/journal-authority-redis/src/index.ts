@@ -1,3 +1,5 @@
+export { createRedisExecutionStore, type RedisExecutionStoreOptions } from "./execution-store.ts";
+
 export {
   createRedisDurableJournalAuthority,
   type RedisDurableJournalAuthority,
