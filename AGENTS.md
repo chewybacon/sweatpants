@@ -179,6 +179,16 @@ Rules:
 - Installation is bound to the current Effection scope: inherited by children,
   shadowable by a child, isolated between concurrent siblings, and discarded when
   the scope exits. See `packages/foundation/src/port.test.ts`.
+- Every port member MUST be declared as returning `Operation<T>`, even when the
+  underlying value is synchronous. `Around<T>` derives middleware from the
+  member's own return type, so a member typed `foo(): T` forces middleware to
+  return `T` synchronously: it cannot be a generator, and therefore no latency,
+  fault-injection, deadline, or authority middleware can ever wrap it. Callers
+  cannot detect the difference, because `Api.operations` lifts a plain return
+  into an operation, so the downgrade is silent at the definition site and only
+  bites whoever later needs to intercept the seam. Converting a member to
+  `Operation<T>` afterwards is a breaking change to every adapter.
+  `packages/foundation/src/port.test.ts` pins both halves of this.
 - Drivers own persistence or transport mechanics only. Domain transition
   validity, retry safety, fencing, and quiescence stay in the mandatory path and
   must hold with no middleware installed.

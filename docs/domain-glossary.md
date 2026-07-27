@@ -517,6 +517,8 @@ export const ExecutionStorePort = definePort<ExecutionStore>("journal-authority-
 
 A Port is not a singleton instance. It holds no mutable state, and two scopes may resolve two different Drivers concurrently.
 
+Every Port member returns `Operation<T>`, even when the value is synchronous. Middleware inherits the member's return type, so a synchronously typed member permits only synchronous interception and permanently excludes latency, fault-injection, deadline, and authority Middleware. Call sites cannot observe the difference, which makes the restriction silent until someone needs it.
+
 ### Driver
 
 **Status:** Agreed
