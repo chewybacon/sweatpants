@@ -12,6 +12,16 @@ export { createToolSession } from "./tool-session.ts";
 export { createToolSessionRegistry, type ToolSessionRegistryOptions } from "./session-registry.ts";
 
 export {
+  installToolSessionStore,
+  ToolSessionStoreApi,
+  ToolSessionStorePort,
+  ToolSessionStoreUnavailable,
+} from "./session-store-port.ts";
+export {
+  observeToolSessionDrain,
+  type ToolSessionDrainObserver,
+} from "./session-drain-observer.ts";
+export {
   createInMemoryToolSessionStore,
   createInMemoryToolSessionStoreWithDebug,
 } from "./in-memory-store.ts";

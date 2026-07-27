@@ -24,6 +24,7 @@ import type {
   ElicitsMap,
 } from "@sweatpants/framework/chat/mcp-tools";
 import { isExecutableToolContract, type ToolContract } from "@sweatpants/core";
+import { installToolSessionStore, ToolSessionStoreApi } from "./session-store-port.ts";
 import { validateToolParameters } from "@sweatpants/framework/chat";
 import { createToolSession } from "./tool-session.ts";
 import { createWorkerToolSession } from "./worker-tool-session.ts";
@@ -127,6 +128,22 @@ export function createToolSessionRegistry(
   return resource<ToolSessionRegistry>(function* (provide) {
     const { defaultTimeout, worker } = options;
     const ownerScope = yield* useScope();
+    // The supplied adapter becomes this scope's innermost driver, so every
+    // store call below is interceptable by middleware installed in an ancestor
+    // scope without widening the store type for observation. Registry methods
+    // run in caller scopes, so dispatch is pinned to the scope that owns the
+    // installed driver.
+    yield* installToolSessionStore(store);
+    const store_ = {
+      get: (sessionId: string) => ToolSessionStoreApi.invoke(ownerScope, "get", [sessionId]),
+      set: (sessionId: string, entry: ToolSessionEntry) =>
+        ToolSessionStoreApi.invoke(ownerScope, "set", [sessionId, entry]),
+      delete: (sessionId: string) => ToolSessionStoreApi.invoke(ownerScope, "delete", [sessionId]),
+      updateRefCount: (sessionId: string, delta: number) =>
+        ToolSessionStoreApi.invoke(ownerScope, "updateRefCount", [sessionId, delta]),
+      updateStatus: (sessionId: string, status: ToolSessionStatus) =>
+        ToolSessionStoreApi.invoke(ownerScope, "updateStatus", [sessionId, status]),
+    };
 
     // Tool sessions attach to the registry/application owner scope rather than
     // the request that invoked create(), so they survive HTTP park/resume while
@@ -137,7 +154,7 @@ export function createToolSessionRegistry(
      * Internal cleanup helper - removes session from store and active map.
      */
     function* cleanup(sessionId: string): Operation<void> {
-      yield* store.delete(sessionId);
+      yield* store_.delete(sessionId);
       activeSessions.delete(sessionId);
     }
 
@@ -223,7 +240,7 @@ export function createToolSessionRegistry(
           createdAt: Date.now(),
           status: "initializing",
         };
-        yield* store.set(session.id, entry as ToolSessionEntry);
+        yield* store_.set(session.id, entry as ToolSessionEntry);
 
         // Event-driven terminal status monitor; do not call status() concurrently
         // with a newly returned worker session. Immediate tools can settle while
@@ -233,8 +250,8 @@ export function createToolSessionRegistry(
           const status = session.settled
             ? yield* session.settled()
             : yield* waitForSettlement(session);
-          if (yield* store.get(session.id)) {
-            yield* store.updateStatus(session.id, status);
+          if (yield* store_.get(session.id)) {
+            yield* store_.updateStatus(session.id, status);
           }
         });
 
@@ -242,7 +259,7 @@ export function createToolSessionRegistry(
       },
 
       *get(sessionId: string): Operation<ToolSession | null> {
-        const entry = yield* store.get(sessionId);
+        const entry = yield* store_.get(sessionId);
         if (!entry) {
           return null;
         }
@@ -259,13 +276,13 @@ export function createToolSessionRegistry(
       },
 
       *acquire(sessionId: string): Operation<ToolSession> {
-        const entry = yield* store.get(sessionId);
+        const entry = yield* store_.get(sessionId);
         if (!entry) {
           throw new Error(`Session not found: ${sessionId}`);
         }
 
         // Increment refCount
-        yield* store.updateRefCount(sessionId, 1);
+        yield* store_.updateRefCount(sessionId, 1);
 
         // Return from active sessions if available
         const active = activeSessions.get(sessionId);
@@ -278,14 +295,14 @@ export function createToolSessionRegistry(
       },
 
       *release(sessionId: string): Operation<void> {
-        const entry = yield* store.get(sessionId);
+        const entry = yield* store_.get(sessionId);
         if (!entry) {
           // Session already cleaned up, nothing to do
           return;
         }
 
         // Decrement refCount
-        const newRefCount = yield* store.updateRefCount(sessionId, -1);
+        const newRefCount = yield* store_.updateRefCount(sessionId, -1);
 
         if (newRefCount === 0) {
           // Check if session is complete
@@ -304,7 +321,7 @@ export function createToolSessionRegistry(
               yield* waitForSettlement(session);
 
               // Re-check refCount (client might have reconnected)
-              const currentEntry = yield* store.get(sessionId);
+              const currentEntry = yield* store_.get(sessionId);
               if (currentEntry && currentEntry.refCount === 0) {
                 yield* cleanup(sessionId);
               }
