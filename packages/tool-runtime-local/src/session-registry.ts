@@ -132,10 +132,11 @@ export function createToolSessionRegistry(
     // store call below is interceptable by middleware installed in an ancestor
     // scope without widening the store type for observation.
     yield* installToolSessionStore(store);
-    // SCOPE-CROSSING: the registry is a resource owned by this scope, but its
-    // methods are called from arbitrary request scopes. The store it uses is a
+    // SCOPE-CROSSING (ownership): the registry is a resource owned by this scope,
+    // but its methods are called from arbitrary request scopes. The store is a
     // property of the registry, not of whoever calls it, so it is resolved once
-    // here rather than re-resolved per call. See ADR-004.
+    // here rather than per call. The store driver may itself be remote; that
+    // boundary is inside the driver, not across this handle. See ADR-004.
     const store_ = ToolSessionStorePort.bind(ownerScope);
 
     // Tool sessions attach to the registry/application owner scope rather than

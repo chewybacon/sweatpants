@@ -130,8 +130,11 @@ function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
  * exists, the seam must be pinned rather than resolved where the writer runs.
  */
 function createRuntimeFromModelProvider(turnScope: Scope): Runtime {
-  // SCOPE-CROSSING: the chat engine runs in the Host-owned writer task, which
-  // outlives the request that selected this model and is not descended from it.
+  // SCOPE-CROSSING (missing node): the chat engine runs in the Host-owned writer
+  // task, which outlives the request that selected this model and is not
+  // descended from it. Same process, so binding is sound; the Turn scope in
+  // ADR-004 removes it. Model inference itself is a network call made by the
+  // driver, not a boundary this handle crosses.
   const provider = ModelProviderPort.bind(turnScope);
   return {
     stream(model, context, options) {
@@ -327,8 +330,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       // The tool runtime seam is optional, so presence is probed here.
       const toolRuntimeInstalled = yield* ToolRuntimePort.isInstalled();
-      // SCOPE-CROSSING: as above, tool calls are issued by the engine from the
-      // writer task, not from this request scope. See ADR-004.
+      // SCOPE-CROSSING (missing node): as above, tool calls are issued by the
+      // engine from the writer task, not from this request scope. The runtime
+      // resolved here is a local dispatcher; any worker, microVM, or remote tool
+      // session lives behind it and crosses by session identity. See ADR-004.
       const activeToolRuntime = toolRuntimeInstalled
         ? ToolRuntimePort.bind(yield* useScope())
         : undefined;
