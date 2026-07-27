@@ -5,6 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     contract: "src/contract.ts",
     transitions: "src/transitions.ts",
+    checkpoint: "src/checkpoint.ts",
     "program-driver": "src/program-driver.ts",
   },
   format: ["esm"],
