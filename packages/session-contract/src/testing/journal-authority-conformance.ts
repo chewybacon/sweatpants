@@ -16,6 +16,12 @@ import {
   stringGuard,
 } from "./schema-fixtures.ts";
 import type {
+  BindRestoreFrontierRequest,
+  BindRestoreFrontierResult,
+  ConsumeRestoreTicketRequest,
+  ConsumeRestoreTicketResult,
+  IssueRestoreTicketRequest,
+  IssueRestoreTicketResult,
   ClaimActivationRequest,
   ClaimActivationResult,
   RenewActivationRequest,
@@ -51,6 +57,12 @@ export interface JournalAuthorityConformancePort {
   renewActivation(request: RenewActivationRequest): Operation<RenewActivationResult>;
   /** Releases exact ownership and re-derives runnable state. */
   releaseActivation(request: ReleaseActivationRequest): Operation<ReleaseActivationResult>;
+  /** Issues a host-private single-use ticket for one authority snapshot. */
+  issueRestoreTicket(request: IssueRestoreTicketRequest): Operation<IssueRestoreTicketResult>;
+  /** Binds the host-verified remote frontier digest without consuming the ticket. */
+  bindRestoreFrontier(request: BindRestoreFrontierRequest): Operation<BindRestoreFrontierResult>;
+  /** Atomically verifies and consumes one first-live-frontier ticket. */
+  consumeRestoreTicket(request: ConsumeRestoreTicketRequest): Operation<ConsumeRestoreTicketResult>;
   /** Opens one exact pinned task and returns its attachment-bound program capability. */
   openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }>;
   /** Reserves or replays one action through the production authority boundary. */
@@ -251,6 +263,15 @@ export function adaptInMemoryAuthorityForConformance(
     *releaseActivation(request) {
       return yield* authority.releaseActivation(request);
     },
+    *issueRestoreTicket(request) {
+      return yield* authority.issueRestoreTicket(request);
+    },
+    *bindRestoreFrontier(request) {
+      return yield* authority.bindRestoreFrontier(request);
+    },
+    *consumeRestoreTicket(request) {
+      return yield* authority.consumeRestoreTicket(request);
+    },
     *openTask(request) {
       return yield* authority.openTask(request);
     },
@@ -331,6 +352,12 @@ export function createJournalAuthorityConformanceCases(
       activationLeaseExpiry,
     ),
     defineCase(factory, "stale epoch cannot renew or release an activation", staleActivationEpoch),
+    defineCase(factory, "restore ticket is consumable exactly once", restoreTicketSingleUse),
+    defineCase(
+      factory,
+      "restore ticket does not survive activation takeover",
+      restoreTicketAfterTakeover,
+    ),
   ];
 }
 
@@ -1087,6 +1114,130 @@ function* staleActivationEpoch(
     }),
     { status: "stale_activation" },
     "a superseded owner must not release the current activation",
+  );
+}
+
+/** A frontier digest is 32 bytes of hex; content is irrelevant to the authority. */
+const frontierDigest = "a".repeat(64);
+
+/** Claims an activation and opens the root task, returning the minted epoch. */
+function* activateRoot(
+  caseName: string,
+  authority: JournalAuthorityConformancePort,
+  ownerId: string,
+): Operation<number> {
+  yield* openRoot(authority);
+  const claimed = yield* authority.claimActivation({
+    sessionId,
+    ownerId,
+    leaseDurationMs: 30_000,
+  });
+  assert(caseName, claimed.status === "claimed", `${ownerId} must claim a runnable session`);
+  return claimed.status === "claimed" ? claimed.epoch : -1;
+}
+
+/**
+ * A restore ticket must be redeemable once and only once.
+ *
+ * Single-use is what stops two hosts from both believing they restored the same
+ * frontier. In memory that is a map delete; in Redis it is a cross-command
+ * atomicity question, which is exactly the kind of difference a storage rewrite
+ * can lose silently.
+ */
+function* restoreTicketSingleUse(
+  caseName: string,
+  open: () => Operation<JournalAuthorityConformancePort>,
+): Operation<void> {
+  const authority = yield* open();
+  const epoch = yield* activateRoot(caseName, authority, "owner-a");
+
+  const issued = yield* authority.issueRestoreTicket({
+    sessionId,
+    taskId,
+    ownerId: "owner-a",
+    activationEpoch: epoch,
+    replayedThroughActionIndex: 0,
+    replayChainDigest: frontierDigest,
+  });
+
+  const bound = yield* authority.bindRestoreFrontier({
+    sessionId,
+    taskId,
+    ownerId: "owner-a",
+    activationEpoch: epoch,
+    restoreTicket: issued.restoreTicket,
+    frontierDigest,
+  });
+  assert(caseName, bound.status === "bound", "a fresh ticket must bind its frontier");
+  const proof = bound.status === "bound" ? bound.proof : undefined;
+  assert(caseName, proof !== undefined, "binding must yield a proof");
+
+  const consumeRequest: ConsumeRestoreTicketRequest = {
+    sessionId,
+    taskId,
+    ownerId: "owner-a",
+    activationEpoch: epoch,
+    proof: proof as ConsumeRestoreTicketRequest["proof"],
+  };
+
+  assertEqual(
+    caseName,
+    yield* authority.consumeRestoreTicket(consumeRequest),
+    { status: "consumed" },
+    "the first consumption must succeed",
+  );
+
+  const replayed = yield* authority.consumeRestoreTicket(consumeRequest);
+  assert(
+    caseName,
+    replayed.status === "restore_stale",
+    "replaying a consumed ticket must be refused",
+  );
+}
+
+/**
+ * A ticket minted under one activation must be worthless after takeover, even
+ * though it is still cryptographically valid.
+ */
+function* restoreTicketAfterTakeover(
+  caseName: string,
+  open: () => Operation<JournalAuthorityConformancePort>,
+  clock: { advance: (ms: number) => void },
+): Operation<void> {
+  const authority = yield* open();
+  const epoch = yield* activateRoot(caseName, authority, "owner-a");
+
+  const issued = yield* authority.issueRestoreTicket({
+    sessionId,
+    taskId,
+    ownerId: "owner-a",
+    activationEpoch: epoch,
+    replayedThroughActionIndex: 0,
+    replayChainDigest: frontierDigest,
+  });
+
+  // owner-a dies; its lease lapses and owner-b takes the Session.
+  clock.advance(30_001);
+  const successor = yield* open();
+  const reclaimed = yield* successor.claimActivation({
+    sessionId,
+    ownerId: "owner-b",
+    leaseDurationMs: 30_000,
+  });
+  assert(caseName, reclaimed.status === "claimed", "successor must reclaim the expired lease");
+
+  assertEqual(
+    caseName,
+    yield* successor.bindRestoreFrontier({
+      sessionId,
+      taskId,
+      ownerId: "owner-a",
+      activationEpoch: epoch,
+      restoreTicket: issued.restoreTicket,
+      frontierDigest,
+    }),
+    { status: "restore_stale" },
+    "a ticket from a superseded activation must not bind",
   );
 }
 
