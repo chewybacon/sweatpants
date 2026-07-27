@@ -23,10 +23,17 @@ export interface Port<T extends object> {
   /**
    * A handle whose calls dispatch against `scope` rather than the caller's.
    *
-   * Needed whenever work is handed to a task that is deliberately not a child
-   * of the installing scope, such as a Host-owned writer: the consumer must
-   * still reach the driver installed where the work originated. Middleware
-   * still applies, so this is not a driver handout.
+   * Binding to a *foreign* scope is a signal, not a convenience. It is
+   * sometimes correct — a Host-owned writer task is deliberately not a child of
+   * the request that configured it — but far more often it means the scope tree
+   * is missing a node the domain already has. Before reaching for it, ask
+   * whether the lifetime you actually mean exists as a scope.
+   * See `docs/adr/004-turn-scope-and-scope-crossing.md`.
+   *
+   * Binding to the caller's own scope is unremarkable: dispatch is unchanged,
+   * and the call only materializes the port as a plain interface handle.
+   *
+   * Middleware still applies either way, so this is never a driver handout.
    */
   bind(scope: Scope): T;
   /**

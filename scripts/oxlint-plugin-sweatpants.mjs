@@ -8,6 +8,9 @@
  *   layered-imports   the durable type layers form a DAG; a lower layer may
  *                     never import an upper one
  *   documented-weld   a double type assertion must say why it is sound
+ *   documented-scope-crossing
+ *                     pinning a port to a foreign scope must say why the work
+ *                     is not a child of the scope that configured it
  *
  * Both are syntax-only. Oxlint JS plugins do not yet have type information, so
  * anything requiring types belongs in the built-in typescript-eslint rules
@@ -150,10 +153,84 @@ function documents(text, comment, node) {
     return !/[;{}]/.test(between);
 }
 
+/**
+ * True for `bind(yield* useScope())`, which pins a port to the caller's own
+ * scope.
+ *
+ * That is the identity case: dispatch is unchanged, and the call only
+ * materializes the port as a plain interface handle. Nothing crosses a scope,
+ * so it needs no justification.
+ */
+function isSelfBind(node) {
+    const [argument] = node.arguments ?? [];
+    return (
+        argument?.type === "YieldExpression" &&
+        argument.argument?.type === "CallExpression" &&
+        argument.argument.callee?.name === "useScope"
+    );
+}
+
+/**
+ * `SomethingPort.bind(scope)` resolves against a scope other than the caller's.
+ *
+ * It is occasionally necessary — a Host-owned writer task is deliberately not a
+ * child of the request that configured it — but it is far more often a sign
+ * that the scope tree is missing a node the domain already has. Requiring a
+ * justification keeps the count visible and small; see
+ * `docs/adr/004-turn-scope-and-scope-crossing.md`.
+ *
+ * Matched on the `*Port` naming convention because oxlint plugins are
+ * syntax-only and cannot resolve the callee's type.
+ */
+const documentedScopeCrossing = {
+    meta: {
+        type: "problem",
+        docs: {
+            description: "pinning a port to a foreign scope must document why",
+        },
+        schema: [],
+    },
+    create(context) {
+        const source = context.sourceCode ?? context.getSourceCode();
+        const text = source.getText();
+        const crossingComments = (source.getAllComments?.() ?? []).filter((comment) =>
+            /SCOPE-CROSSING:/.test(comment.value),
+        );
+
+        return {
+            CallExpression(node) {
+                const callee = node.callee;
+                if (
+                    callee?.type !== "MemberExpression" ||
+                    callee.property?.name !== "bind" ||
+                    !(callee.object?.name ?? "").endsWith("Port")
+                ) {
+                    return;
+                }
+                if (isSelfBind(node)) {
+                    return;
+                }
+                if (crossingComments.some((comment) => documents(text, comment, node))) {
+                    return;
+                }
+
+                context.report({
+                    node,
+                    message:
+                        "Binding a port to a foreign scope needs a `// SCOPE-CROSSING:` comment naming " +
+                        "the work that is not a child of the configuring scope. If you cannot name it, " +
+                        "the scope tree is probably missing a node the domain already has.",
+                });
+            },
+        };
+    },
+};
+
 export default {
     meta: { name: "sweatpants" },
     rules: {
         "layered-imports": layeredImports,
         "documented-weld": documentedWeld,
+        "documented-scope-crossing": documentedScopeCrossing,
     },
 };

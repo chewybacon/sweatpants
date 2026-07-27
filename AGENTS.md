@@ -186,10 +186,13 @@ Rules:
   value member cannot fail closed; `definePort` rejects one.
 - Optional seams are probed with `Port.isInstalled()` rather than by handing out
   the driver, so an absent seam stays distinguishable from a broken one.
-- `Port.bind(scope)` returns a handle that dispatches against `scope`. Use it
-  when work is handed to a task that is deliberately not a child of the
-  installing scope, such as a Host-owned writer. Middleware still applies, so a
-  bound handle is not a driver handout.
+- `Port.bind(scope)` returns a handle that dispatches against `scope`. Binding to
+  a foreign scope requires a `// SCOPE-CROSSING:` comment naming the work that is
+  not a child of the configuring scope; `sweatpants/documented-scope-crossing`
+  enforces it. Treat a new one as a design question first: the count measures how
+  far the scope tree has drifted from the domain model. Binding to the caller's
+  own scope is exempt — it only materializes the port as an interface handle.
+  See `docs/adr/004-turn-scope-and-scope-crossing.md`.
 - Invariants that must hold for every adapter are composed inside `install*`,
   not written into each adapter and not installed as middleware.
 - A port member's return type decides what middleware may do to it, because

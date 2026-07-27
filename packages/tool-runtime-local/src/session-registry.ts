@@ -24,7 +24,7 @@ import type {
   ElicitsMap,
 } from "@sweatpants/framework/chat/mcp-tools";
 import { isExecutableToolContract, type ToolContract } from "@sweatpants/core";
-import { installToolSessionStore, ToolSessionStoreApi } from "./session-store-port.ts";
+import { installToolSessionStore, ToolSessionStorePort } from "./session-store-port.ts";
 import { validateToolParameters } from "@sweatpants/framework/chat";
 import { createToolSession } from "./tool-session.ts";
 import { createWorkerToolSession } from "./worker-tool-session.ts";
@@ -130,20 +130,13 @@ export function createToolSessionRegistry(
     const ownerScope = yield* useScope();
     // The supplied adapter becomes this scope's innermost driver, so every
     // store call below is interceptable by middleware installed in an ancestor
-    // scope without widening the store type for observation. Registry methods
-    // run in caller scopes, so dispatch is pinned to the scope that owns the
-    // installed driver.
+    // scope without widening the store type for observation.
     yield* installToolSessionStore(store);
-    const store_ = {
-      get: (sessionId: string) => ToolSessionStoreApi.invoke(ownerScope, "get", [sessionId]),
-      set: (sessionId: string, entry: ToolSessionEntry) =>
-        ToolSessionStoreApi.invoke(ownerScope, "set", [sessionId, entry]),
-      delete: (sessionId: string) => ToolSessionStoreApi.invoke(ownerScope, "delete", [sessionId]),
-      updateRefCount: (sessionId: string, delta: number) =>
-        ToolSessionStoreApi.invoke(ownerScope, "updateRefCount", [sessionId, delta]),
-      updateStatus: (sessionId: string, status: ToolSessionStatus) =>
-        ToolSessionStoreApi.invoke(ownerScope, "updateStatus", [sessionId, status]),
-    };
+    // SCOPE-CROSSING: the registry is a resource owned by this scope, but its
+    // methods are called from arbitrary request scopes. The store it uses is a
+    // property of the registry, not of whoever calls it, so it is resolved once
+    // here rather than re-resolved per call. See ADR-004.
+    const store_ = ToolSessionStorePort.bind(ownerScope);
 
     // Tool sessions attach to the registry/application owner scope rather than
     // the request that invoked create(), so they survive HTTP park/resume while
