@@ -179,16 +179,23 @@ Rules:
 - Installation is bound to the current Effection scope: inherited by children,
   shadowable by a child, isolated between concurrent siblings, and discarded when
   the scope exits. See `packages/foundation/src/port.test.ts`.
-- Every port member MUST be declared as returning `Operation<T>`, even when the
-  underlying value is synchronous. `Around<T>` derives middleware from the
-  member's own return type, so a member typed `foo(): T` forces middleware to
-  return `T` synchronously: it cannot be a generator, and therefore no latency,
-  fault-injection, deadline, or authority middleware can ever wrap it. Callers
-  cannot detect the difference, because `Api.operations` lifts a plain return
-  into an operation, so the downgrade is silent at the definition site and only
-  bites whoever later needs to intercept the seam. Converting a member to
-  `Operation<T>` afterwards is a breaking change to every adapter.
-  `packages/foundation/src/port.test.ts` pins both halves of this.
+- A port member's return type decides what middleware may do to it, because
+  `Around<T>` derives middleware from that same type. `Operation<T>` admits
+  generator middleware, so latency, fault injection, deadlines, and authority
+  checks can wrap the call. A plain `T` requires middleware to return `T`
+  synchronously, which permits observation and substitution but permanently
+  excludes anything that waits.
+- Default to `Operation<T>`, even when the value is synchronous. Call sites
+  cannot tell the difference, since `Api.operations` lifts a plain return into
+  an operation, so the restriction is invisible at the definition site and
+  surfaces only when someone needs to intercept the seam. Widening a member to
+  `Operation<T>` later breaks every adapter implementing it.
+- Declare a synchronous member deliberately when "this must never become
+  effectful" is the invariant you want, and say so in a comment. A sync clock,
+  epoch, or config read that the compiler forbids anyone from making slow or
+  I/O-bound is a legitimate design choice, not an oversight. Make the intent
+  explicit so a later reader does not "fix" it.
+  `packages/foundation/src/port.test.ts` pins both behaviors.
 - Drivers own persistence or transport mechanics only. Domain transition
   validity, retry safety, fencing, and quiescence stay in the mandatory path and
   must hold with no middleware installed.

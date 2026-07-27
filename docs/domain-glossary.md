@@ -517,7 +517,9 @@ export const ExecutionStorePort = definePort<ExecutionStore>("journal-authority-
 
 A Port is not a singleton instance. It holds no mutable state, and two scopes may resolve two different Drivers concurrently.
 
-Every Port member returns `Operation<T>`, even when the value is synchronous. Middleware inherits the member's return type, so a synchronously typed member permits only synchronous interception and permanently excludes latency, fault-injection, deadline, and authority Middleware. Call sites cannot observe the difference, which makes the restriction silent until someone needs it.
+A Port member's return type determines what Middleware may do to it, because Middleware inherits that type. `Operation<T>` admits effectful Middleware; a plain `T` admits only synchronous Middleware and permanently excludes latency, fault-injection, deadline, and authority interception. Call sites cannot observe the difference, so the choice is invisible until someone needs to intercept the seam.
+
+Default to `Operation<T>`. Choose a synchronous member when "this must never become effectful" is the intended invariant, and record that intent at the declaration.
 
 ### Driver
 
