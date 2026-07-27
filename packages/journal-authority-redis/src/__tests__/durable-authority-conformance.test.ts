@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { createClient, type RedisClientType } from "redis";
+import type { RedisClientType } from "redis";
 import { run } from "effection";
 
 import {
@@ -8,9 +8,9 @@ import {
 } from "@sweatpants/session-contract/testing";
 
 import { createRedisDurableJournalAuthority } from "../durable-authority.ts";
-import { createMemoryRedisClient } from "./memory-redis.ts";
+import { cleanupRedisBackend, connectRedisBackend, type RedisBackend } from "./redis-backend.ts";
 
-const redisUrl = process.env["REDIS_URL"] ?? "redis://localhost:6379";
+let backend: RedisBackend;
 const authorityKeyPrefix = `test:${process.pid}:authority-conformance:`;
 let client: RedisClientType;
 
@@ -28,33 +28,20 @@ const factory: JournalAuthorityConformanceFactory = {
   },
 };
 
-async function connectRedis(): Promise<RedisClientType> {
-  const candidate = createClient({ url: redisUrl });
-  try {
-    await candidate.connect();
-    await candidate.ping();
-    return candidate;
-  } catch {
-    if (candidate.isOpen) {
-      await candidate.disconnect();
-    }
-    return createMemoryRedisClient();
-  }
-}
-
 describe("JournalAuthority Redis conformance", () => {
   beforeAll(async () => {
-    client = await connectRedis();
+    backend = await connectRedisBackend();
+    client = backend.client;
   });
 
   afterAll(async () => {
-    if (client.isOpen) {
-      const keys = await client.keys(`${authorityKeyPrefix}*`);
-      if (keys.length > 0) {
-        await client.del(keys);
-      }
-      await client.disconnect();
-    }
+    await cleanupRedisBackend(backend, authorityKeyPrefix);
+  });
+
+  // Names the backend in the output so a green run against the in-memory command
+  // surface is never mistaken for certification of Redis semantics.
+  it("reports which backend certified this run", () => {
+    console.info(`[journal-authority-redis] conformance backend: ${backend.label}`);
   });
 
   for (const conformanceCase of createJournalAuthorityConformanceCases(factory)) {

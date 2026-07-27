@@ -8,9 +8,10 @@ import {
 } from "@sweatpants/session-contract/testing";
 
 import { createRedisDurableJournalAuthority } from "../durable-authority.ts";
-import { createMemoryRedisClient } from "./memory-redis.ts";
+import { cleanupRedisBackend, connectRedisBackend, type RedisBackend } from "./redis-backend.ts";
 
 const authorityKeyPrefix = `test:${process.pid}:sandbox-conformance:`;
+let backend: RedisBackend;
 let client: RedisClientType;
 
 const factory: DurableSandboxConformanceFactory = {
@@ -27,14 +28,19 @@ const factory: DurableSandboxConformanceFactory = {
 };
 
 describe("durable sandbox Redis conformance", () => {
-  beforeAll(() => {
-    client = createMemoryRedisClient();
+  beforeAll(async () => {
+    // This suite previously named Redis but always constructed the in-memory
+    // command surface, so it could not observe a Redis regression at all.
+    backend = await connectRedisBackend();
+    client = backend.client;
   });
 
   afterAll(async () => {
-    if (client.isOpen) {
-      await client.disconnect();
-    }
+    await cleanupRedisBackend(backend, authorityKeyPrefix);
+  });
+
+  it("reports which backend certified this run", () => {
+    console.info(`[journal-authority-redis] sandbox backend: ${backend.label}`);
   });
 
   for (const conformanceCase of createDurableSandboxConformanceCases(factory)) {
