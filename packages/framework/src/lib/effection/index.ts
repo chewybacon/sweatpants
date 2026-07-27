@@ -6,7 +6,6 @@
 
 export {
   useBackgroundTask,
-  fireAndForget,
   useTaskPool,
   type BackgroundTaskHandle,
   type BackgroundTaskOptions,

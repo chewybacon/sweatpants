@@ -382,32 +382,6 @@ export function* useBackgroundTask<T = void>(
 // =============================================================================
 
 /**
- * Run an operation in an independent scope (fire-and-forget).
- *
- * Unlike useBackgroundTask, this doesn't provide a handle - the task
- * runs fire-and-forget style. Useful for cleanup tasks or monitoring.
- *
- * NOTE: The operation runs in an independent scope, so contexts are NOT
- * automatically inherited. Capture any needed values via closure.
- *
- * @param operation - The operation to run
- *
- * @example
- * ```typescript
- * const logger = yield* useLogger('handler')
- *
- * yield* fireAndForget(function* () {
- *   // Use captured logger via closure
- *   logger.debug('sending metrics')
- *   yield* sendMetrics(data)
- * })
- * ```
- */
-export function* fireAndForget(operation: () => Operation<void>): Operation<void> {
-  yield* useBackgroundTask(operation);
-}
-
-/**
  * Create a task pool for running multiple background tasks with concurrency control.
  *
  * @param maxConcurrent - Maximum number of tasks to run concurrently
