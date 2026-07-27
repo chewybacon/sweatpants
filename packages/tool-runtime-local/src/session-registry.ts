@@ -13,7 +13,7 @@
  *
  * @packageDocumentation
  */
-import { type Operation, spawn, resource, createQueue, useScope } from "effection";
+import { type Operation, type Task, resource, createQueue, spawn, useScope } from "effection";
 import type {
   ToolSessionRegistry,
   ToolSessionStore,
@@ -149,6 +149,26 @@ export function createToolSessionRegistry(
     // the request that invoked create(), so they survive HTTP park/resume while
     // retaining normal structured teardown.
     const activeSessions = new Map<string, ToolSession>();
+    // Deferred cleanup is owned by the registry scope, never by whichever
+    // request scope happened to call release(). A request that exits while a
+    // session is still settling must not silently cancel its cleanup.
+    const cleanupTasks = new Set<Task<void>>();
+
+    function superviseCleanup(sessionId: string, session: ToolSession): void {
+      const task: Task<void> = ownerScope.run(function* () {
+        yield* waitForSettlement(session);
+        const currentEntry = yield* store_.get(sessionId);
+        if (currentEntry && currentEntry.refCount === 0) {
+          yield* cleanup(sessionId);
+        }
+      });
+      cleanupTasks.add(task);
+      void Promise.resolve(task)
+        .catch(() => undefined)
+        .finally(() => {
+          cleanupTasks.delete(task);
+        });
+    }
 
     /**
      * Internal cleanup helper - removes session from store and active map.
@@ -316,16 +336,8 @@ export function createToolSessionRegistry(
             // Session complete and no clients - cleanup immediately
             yield* cleanup(sessionId);
           } else {
-            // Session still running - event-driven cleanup waiter.
-            yield* spawn(function* () {
-              yield* waitForSettlement(session);
-
-              // Re-check refCount (client might have reconnected)
-              const currentEntry = yield* store_.get(sessionId);
-              if (currentEntry && currentEntry.refCount === 0) {
-                yield* cleanup(sessionId);
-              }
-            });
+            // Session still running - registry-owned, event-driven cleanup.
+            superviseCleanup(sessionId, session);
           }
         }
       },
@@ -334,6 +346,12 @@ export function createToolSessionRegistry(
     try {
       yield* provide(registry);
     } finally {
+      // Structured teardown: outstanding cleanup waiters are halted here rather
+      // than leaking past the registry lifetime.
+      for (const task of [...cleanupTasks]) {
+        yield* task.halt();
+      }
+      cleanupTasks.clear();
       activeSessions.clear();
     }
   });

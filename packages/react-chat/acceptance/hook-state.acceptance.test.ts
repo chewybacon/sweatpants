@@ -21,6 +21,10 @@ async function runHookProjection(binding: Binding): Promise<void> {
       modelId: REACT_ACCEPTANCE_MODEL_ID,
       createApplication: createReactAcceptanceApplication,
       scenarioTimeoutMs: 30_000,
+      // jsdom mount plus React act() dominates the first barrier in this suite.
+      // Measured loaded latency is seconds, so the inner backstop must not fire
+      // before the declared scenario budget it is supposed to protect.
+      barrierTimeoutMs: 20_000,
     },
     function* (s) {
       const ui = yield* mountReactChat(s, {
@@ -87,6 +91,10 @@ async function runRemountProjection(binding: Binding): Promise<void> {
       modelId: REACT_ACCEPTANCE_MODEL_ID,
       createApplication: createReactAcceptanceApplication,
       scenarioTimeoutMs: 30_000,
+      // jsdom mount plus React act() dominates the first barrier in this suite.
+      // Measured loaded latency is seconds, so the inner backstop must not fire
+      // before the declared scenario budget it is supposed to protect.
+      barrierTimeoutMs: 20_000,
     },
     function* (s) {
       const options = {
