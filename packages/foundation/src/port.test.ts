@@ -118,11 +118,12 @@ describe("port scope semantics", () => {
 });
 
 /**
- * A member whose declared return type is not an `Operation`.
+ * A member declared synchronously on purpose.
  *
- * This shape is legal, which is exactly why the rule below needs a test: the
- * downgrade is silent at the definition site and only bites whoever later tries
- * to write effectful middleware for the seam.
+ * The return type is the contract for middleware as well as for callers, so
+ * this shape states that nothing may ever make this call wait. That is a
+ * legitimate invariant for a clock, epoch, or config read; it is also the trap
+ * for anything that later needs fault or latency interception.
  */
 interface SynchronousMember {
   now(): number;
@@ -134,12 +135,12 @@ const SynchronousPort = definePort<SynchronousMember>("synchronous-member", {
   },
 });
 
-describe("port members must return operations to stay interceptable", () => {
+describe("a port member's return type decides what middleware may do", () => {
   it("dispatches a synchronous member and lifts it for callers", async () => {
     const observed = await run(function* () {
       yield* SynchronousPort.installDriver({ now: () => 41 });
       // `Api.operations` lifts a non-Operation return, so call sites cannot
-      // tell the difference. Nothing fails until middleware is needed.
+      // tell which choice was made. The consequence lands on middleware only.
       return yield* SynchronousPort.api.operations.now();
     });
     expect(observed).toBe(41);
@@ -160,8 +161,8 @@ describe("port members must return operations to stay interceptable", () => {
       yield* SynchronousPort.api.around({
         // @ts-expect-error Around<T> derives Middleware<TArgs, number> here, so
         // middleware must return a number synchronously. It cannot be a
-        // generator, which means no latency, fault, deadline, or authority
-        // middleware can ever wrap this member.
+        // generator. When the member is deliberately synchronous this rejection
+        // is the guarantee; when it is accidental it is the trap.
         *now(args, next) {
           yield* sleep(1);
           return next(...args);
