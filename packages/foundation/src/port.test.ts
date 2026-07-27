@@ -189,3 +189,52 @@ describe("a port member's return type decides what middleware may do", () => {
     expect(observed).toBe("driver:ada");
   });
 });
+
+describe("optional seams", () => {
+  it("reports whether a driver is installed without exposing it", async () => {
+    await run(function* () {
+      expect(yield* GreeterPort.isInstalled()).toBe(false);
+      yield* scoped(function* () {
+        yield* GreeterPort.installDriver(driver("driver"));
+        expect(yield* GreeterPort.isInstalled()).toBe(true);
+      });
+      // Presence follows scope exactly like the driver it reports on.
+      expect(yield* GreeterPort.isInstalled()).toBe(false);
+    });
+  });
+
+  it("refuses a value member that cannot fail closed", () => {
+    expect(() =>
+      definePort<{ readonly id: string }>("invalid-value-member", { id: "eagerly-read" }),
+    ).toThrow(/cannot fail closed/);
+  });
+});
+
+describe("one driver per scope", () => {
+  it("rejects a second install in the same scope instead of ignoring it", async () => {
+    await run(function* () {
+      yield* GreeterPort.installDriver(driver("first"));
+      let rejected: unknown;
+      try {
+        yield* GreeterPort.installDriver(driver("second"));
+      } catch (error) {
+        rejected = error;
+      }
+      // Drivers are terminal, so the second install would never have run.
+      // Context.set replaces; installDriver must not pretend to.
+      expect((rejected as Error).message).toMatch(/already has a driver installed in this scope/);
+      expect(yield* GreeterPort.api.operations.greet("ada")).toBe("first:ada");
+    });
+  });
+
+  it("still allows a child scope to shadow an installed driver", async () => {
+    await run(function* () {
+      yield* GreeterPort.installDriver(driver("outer"));
+      yield* scoped(function* () {
+        yield* GreeterPort.installDriver(driver("inner"));
+        expect(yield* GreeterPort.api.operations.greet("ada")).toBe("inner:ada");
+      });
+      expect(yield* GreeterPort.api.operations.greet("ada")).toBe("outer:ada");
+    });
+  });
+});

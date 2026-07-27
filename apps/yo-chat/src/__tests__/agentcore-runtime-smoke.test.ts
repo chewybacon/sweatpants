@@ -85,7 +85,7 @@ describe("yo-chat AgentCore runtime smoke", () => {
       expect(inventory.some((tool) => tool.definition.name === "book_flight")).toBe(true);
 
       const entry = yield* ToolInventoryApi.resolve("book_flight");
-      const result = yield* ToolRuntimeApi.execute({
+      const result = yield* ToolRuntimeApi.operations.execute({
         entry,
         call: {
           id: "call-book-flight",

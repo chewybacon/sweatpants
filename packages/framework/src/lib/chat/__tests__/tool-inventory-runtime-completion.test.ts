@@ -10,7 +10,7 @@ import {
   ToolInventoryContext,
   ToolInventoryError,
   ToolRuntimeApi,
-  ToolRuntimeContext,
+  installToolRuntime,
   ToolRuntimeError,
   createStrategyToolRuntime,
   createToolExecutionRef,
@@ -216,7 +216,9 @@ describe("tool inventory runtime completion contracts", () => {
 
   it("ToolRuntimeApi delegates and rejects missing/wrong runtimes", async () => {
     const runtime: ToolRuntime = {
-      id: "local",
+      *runtimeId() {
+        return "local";
+      },
       *execute(request) {
         return {
           kind: "completed",
@@ -235,10 +237,12 @@ describe("tool inventory runtime completion contracts", () => {
     };
 
     await run(function* () {
-      yield* ToolRuntimeContext.set(runtime);
-      expect((yield* ToolRuntimeApi.execute({ entry: echoEntry, call })).kind).toBe("completed");
+      yield* installToolRuntime(runtime);
+      expect((yield* ToolRuntimeApi.operations.execute({ entry: echoEntry, call })).kind).toBe(
+        "completed",
+      );
       try {
-        yield* ToolRuntimeApi.resume({
+        yield* ToolRuntimeApi.operations.resume({
           ref: { runtimeId: "other", executionId: "exec", callId: "call-1", toolName: "echo" },
           input: { type: "elicit_response", result: { action: "accept" } },
         });
@@ -250,7 +254,7 @@ describe("tool inventory runtime completion contracts", () => {
 
     await run(function* () {
       try {
-        yield* ToolRuntimeApi.execute({ entry: echoEntry, call });
+        yield* ToolRuntimeApi.operations.execute({ entry: echoEntry, call });
         throw new Error("expected missing runtime");
       } catch (error) {
         expect(error).toMatchObject({ code: "TOOL_RUNTIME_NOT_CONFIGURED" });

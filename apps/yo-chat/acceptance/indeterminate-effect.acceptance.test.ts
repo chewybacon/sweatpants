@@ -4,7 +4,7 @@ import {
   installModelProvider,
   ModelProviderModelContext,
   ToolInventoryContext,
-  ToolRuntimeContext,
+  installToolRuntime,
   createToolInventory,
   createToolInventoryEntry,
   type AssistantMessage,
@@ -108,7 +108,9 @@ describe("an indeterminate unsafe effect reaches the model", () => {
     const bufferStore = createInMemoryBufferStore<string>();
     const registryStore = createInMemoryRegistryStore();
     const fallback: ToolRuntime = {
-      id: "unused",
+      *runtimeId() {
+        return "unused";
+      },
       *execute(): Operation<never> {
         throw new Error("unused");
       },
@@ -157,7 +159,7 @@ describe("an indeterminate unsafe effect reaches the model", () => {
           yield* ToolInventoryContext.set(
             createToolInventory([createToolInventoryEntry(bookFlightTool)]),
           );
-          yield* ToolRuntimeContext.set(fallback);
+          yield* installToolRuntime(fallback);
           yield* ProgramDriverForeignEffectsContext.set([blockingStart, unusedContinue]);
         },
       });

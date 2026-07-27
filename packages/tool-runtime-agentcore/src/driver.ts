@@ -1,7 +1,7 @@
 import type { AnyToolContract } from "@sweatpants/core";
 import { action, resource, spawn, type Operation, type Stream } from "effection";
 import {
-  ToolRuntimeContext,
+  installToolRuntime,
   ToolRuntimeError,
   createStrategyToolRuntime,
   createToolExecutionRef,
@@ -366,6 +366,6 @@ export function* installAgentCoreToolRuntime(
   options: AgentCoreToolRuntimeDriverOptions,
 ): Operation<ToolRuntime> {
   const driver = createAgentCoreToolRuntimeDriver(options);
-  yield* ToolRuntimeContext.set(driver);
+  yield* installToolRuntime(driver);
   return driver;
 }

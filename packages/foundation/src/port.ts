@@ -1,4 +1,11 @@
-import type { Api, Around, Operation } from "effection";
+import {
+  createContext,
+  useScope,
+  type Api,
+  type Around,
+  type Operation,
+  type Scope,
+} from "effection";
 import { createApi } from "effection/experimental";
 
 /**
@@ -14,6 +21,14 @@ import { createApi } from "effection/experimental";
 export interface Port<T extends object> {
   readonly api: Api<T>;
   /**
+   * Whether a driver is installed for the calling scope.
+   *
+   * Some seams are genuinely optional: a Host may run with no tool runtime at
+   * all. Those callers need to branch on configuration without being handed the
+   * driver, which is what a Context would have leaked.
+   */
+  isInstalled(): Operation<boolean>;
+  /**
    * Installs one adapter as the innermost, terminal link for this scope.
    *
    * Drivers install at `min` so policy and observation middleware, which use
@@ -23,11 +38,48 @@ export interface Port<T extends object> {
 }
 
 export function definePort<T extends object>(name: string, declaration: T): Port<T> {
-  const api = createApi(name, declaration);
   const keys = Object.keys(declaration);
+  const valueMember = keys.find(
+    (key) => typeof (declaration as Record<string, unknown>)[key] !== "function",
+  );
+  if (valueMember) {
+    throw new TypeError(
+      `Port "${name}" member "${valueMember}" is not a function. ` +
+        "Value members are read eagerly by createApi, so they cannot fail closed; " +
+        "expose the value as an operation instead.",
+    );
+  }
+
+  const api = createApi(name, declaration);
+  // Presence is tracked by a companion api rather than a Context so that an
+  // optional seam can be probed without exposing the installed driver.
+  // Records which scope installed a driver so a second install in that same
+  // scope can be rejected. Ancestors hold a different scope value, which is how
+  // legitimate child-scope shadowing stays allowed.
+  const owner = createContext<Scope | undefined>(`${name}:owner`, undefined);
+  const presence = createApi(`${name}:installed`, {
+    *installed(): Operation<boolean> {
+      return false;
+    },
+  });
+
   return {
     api,
+    isInstalled() {
+      return presence.operations.installed();
+    },
     *installDriver(driver: T): Operation<void> {
+      const scope = yield* useScope();
+      if ((yield* owner.get()) === scope) {
+        throw new Error(
+          `Port "${name}" already has a driver installed in this scope. ` +
+            "Drivers are terminal, so a second install in the same scope would be " +
+            "silently ignored rather than replacing the first. Install the " +
+            "override in a child scope, or install only one driver here.",
+        );
+      }
+      yield* owner.set(scope);
+
       const middleware = Object.fromEntries(
         keys.map((key) => [
           key,
@@ -39,6 +91,14 @@ export function definePort<T extends object>(name: string, declaration: T): Port
       // forwards the exact argument tuple to the adapter, so it satisfies
       // Around<T> for every declared operation.
       yield* api.around(middleware as unknown as Partial<Around<T>>, { at: "min" });
+      yield* presence.around(
+        {
+          *installed() {
+            return true;
+          },
+        },
+        { at: "min" },
+      );
     },
   };
 }

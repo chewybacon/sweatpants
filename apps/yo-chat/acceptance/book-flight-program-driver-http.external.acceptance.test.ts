@@ -7,7 +7,7 @@ import {
   installModelProvider,
   ModelProviderModelContext,
   ToolInventoryContext,
-  ToolRuntimeContext,
+  installToolRuntime,
   createToolInventory,
   createToolInventoryEntry,
   type AssistantMessage,
@@ -108,7 +108,9 @@ describe.skipIf(!externalSubstrateEnabled)(
         ? createRedisProgramDriverJournalStore(redisClient, keyring)
         : createInMemoryProgramDriverJournalStore({ keyring });
       const runtime: ToolRuntime = {
-        id: "foreign-context-only",
+        *runtimeId() {
+          return "foreign-context-only";
+        },
         *execute(): Operation<never> {
           throw new Error("ToolRuntime fallback must not execute the ToolSession-native tool");
         },
@@ -142,7 +144,7 @@ describe.skipIf(!externalSubstrateEnabled)(
             yield* ToolInventoryContext.set(
               createToolInventory([createToolInventoryEntry(bookFlightTool)]),
             );
-            yield* ToolRuntimeContext.set(runtime);
+            yield* installToolRuntime(runtime);
             yield* ProgramDriverForeignEffectsContext.set(
               createToolSessionForeignEffectRegistrations({
                 registry,

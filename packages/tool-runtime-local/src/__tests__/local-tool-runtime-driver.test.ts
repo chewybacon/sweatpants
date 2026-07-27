@@ -223,7 +223,7 @@ describe("local ToolRuntimeDriver", () => {
     });
   });
 
-  it("installer sets ToolRuntimeContext for ToolRuntimeApi", async () => {
+  it("installer makes the runtime resolvable through the tool runtime port", async () => {
     await run(function* () {
       yield* installLocalToolRuntime({
         tools: [echoTool],
@@ -235,7 +235,7 @@ describe("local ToolRuntimeDriver", () => {
         registryOptions: { worker: localRuntimeWorkerConfig },
       });
 
-      const result = yield* ToolRuntimeApi.execute({
+      const result = yield* ToolRuntimeApi.operations.execute({
         entry: createToolInventoryEntry(echoTool),
         call: {
           id: "call-installed",

@@ -9,7 +9,7 @@ import {
   setupDurableStreams,
 } from "../../../lib/chat/durable-streams/index.ts";
 import {
-  ToolRuntimeContext,
+  installToolRuntime,
   createToolExecutionRef,
   type ToolRuntime,
 } from "../../../lib/chat/tool-runtime.ts";
@@ -178,10 +178,7 @@ function createTestHooks(
   return function* setup() {
     yield* setupDurableStreams({ bufferStore, registryStore });
     yield* setupMockModelProvider(provider);
-    yield* setupMockTools(tools);
-    if (runtimeOverride) {
-      yield* ToolRuntimeContext.set(runtimeOverride);
-    }
+    yield* setupMockTools(tools, runtimeOverride);
   };
 }
 
@@ -371,7 +368,9 @@ describe("strict AG-UI public conformance", () => {
     });
     let resumeCount = 0;
     const runtime: ToolRuntime = {
-      id: "eliciting-test-runtime",
+      *runtimeId() {
+        return "eliciting-test-runtime";
+      },
       *execute() {
         return {
           kind: "awaiting_elicit",
@@ -519,7 +518,9 @@ describe("strict AG-UI public conformance", () => {
     });
     let abortCount = 0;
     const runtime: ToolRuntime = {
-      id: "cancelling-test-runtime",
+      *runtimeId() {
+        return "cancelling-test-runtime";
+      },
       *execute() {
         return {
           kind: "awaiting_elicit",
