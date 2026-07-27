@@ -33,7 +33,7 @@ import {
   type TokenBufferStore,
 } from "../../lib/chat/durable-streams/index.ts";
 import { MaxIterationsContext, PersonaResolverContext } from "../../lib/chat/contexts.ts";
-import { ModelProviderApi, useModel, useStreamOptions } from "../../lib/chat/model-provider.ts";
+import { ModelProviderPort, useModel, useStreamOptions } from "../../lib/chat/model-provider.ts";
 import {
   ToolExposureApi,
   ToolInventoryApi,
@@ -122,30 +122,31 @@ function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
 }
 
 /**
- * Binds the model provider installed for this request to the runtime the chat
- * engine consumes.
+ * Adapts the model provider serving this Turn to the runtime the engine wants.
  *
- * The engine runs in a Host-owned writer task that is deliberately not a child
- * of the request scope, so dispatch is pinned to the request scope rather than
- * resolved wherever the writer happens to run.
+ * See `docs/adr/004-turn-scope-and-scope-crossing.md`: the provider is selected
+ * per request, but the Turn it serves finishes inside a Host-owned writer task
+ * that is deliberately not a child of the request scope. Until a Turn scope
+ * exists, the seam must be pinned rather than resolved where the writer runs.
  */
-function createRuntimeFromModelProvider(requestScope: Scope): Runtime {
+function createRuntimeFromModelProvider(turnScope: Scope): Runtime {
+  // SCOPE-CROSSING: the chat engine runs in the Host-owned writer task, which
+  // outlives the request that selected this model and is not descended from it.
+  const provider = ModelProviderPort.bind(turnScope);
   return {
     stream(model, context, options) {
       return resource(function* (provide) {
-        const stream = yield* ModelProviderApi.invoke(requestScope, "stream", [
-          {
-            model,
-            context,
-            ...(options ? { options } : {}),
-          },
-        ]);
+        const stream = yield* provider.stream({
+          model,
+          context,
+          ...(options ? { options } : {}),
+        });
         const subscription = yield* stream;
         yield* provide(subscription);
       });
     },
     *generateImages() {
-      throw new Error("ModelProviderApi runtime adapter does not support image generation");
+      throw new Error("Model provider runtime adapter does not support image generation");
     },
   };
 }
@@ -309,8 +310,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         });
       }
 
-      // The model provider resolves through its port at call time, so the
-      // driver installed for this request scope is the one that runs.
       const runtime = createRuntimeFromModelProvider(yield* useScope());
       const model = yield* useModel();
       const contextStreamOptions = yield* useStreamOptions();
@@ -326,10 +325,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       yield* restoreThreadInterruptStateIfNeeded(bufferStore, agUiThreadId);
       const agUiRunId = body.runId?.trim() || crypto.randomUUID();
 
-      // The tool runtime seam is optional, and the engine runs in the writer
-      // task, so presence is probed here and dispatch is pinned to this request
-      // scope exactly like the model provider.
+      // The tool runtime seam is optional, so presence is probed here.
       const toolRuntimeInstalled = yield* ToolRuntimePort.isInstalled();
+      // SCOPE-CROSSING: as above, tool calls are issued by the engine from the
+      // writer task, not from this request scope. See ADR-004.
       const activeToolRuntime = toolRuntimeInstalled
         ? ToolRuntimePort.bind(yield* useScope())
         : undefined;

@@ -73,6 +73,7 @@
         "vitest/valid-expect": "warn",
         "vitest/warn-todo": "warn",
         "sweatpants/layered-imports": "error",
+        "sweatpants/documented-scope-crossing": "error",
         "typescript/no-deprecated": "warn",
         "typescript/no-unsafe-type-assertion": "off",
         "typescript/no-floating-promises": "off",
