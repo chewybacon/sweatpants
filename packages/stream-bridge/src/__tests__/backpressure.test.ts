@@ -198,8 +198,10 @@ describe("Backpressure with HTTP", () => {
   });
 
   it("should verify pull-based timing", async () => {
-    // This test verifies that values are produced when pulled,
-    // not pushed ahead of time
+    // Demand-pull means a value is produced for a read, never pushed ahead of
+    // the consumer. Assert that interleaving directly instead of comparing wall
+    // clock timestamps against the same duration the consumer sleeps, which
+    // makes the check fail on ordinary scheduler jitter under load.
     const { stream, pullLog } = createTimedCountingGenerator({ maxCount: 20, delayMs: 10 });
 
     await run(function* () {
@@ -207,30 +209,24 @@ describe("Backpressure with HTTP", () => {
       const body = response.body!;
       const reader = body.getReader();
 
-      const readTimestamps: number[] = [];
+      const pullsObservedAfterRead: number[] = [];
 
-      // Read 5 values with delays between reads
-      for (let i = 0; i < 5; i++) {
+      // Read 5 values with delays between reads.
+      for (let index = 0; index < 5; index += 1) {
         yield* call(() => reader.read());
-        readTimestamps.push(Date.now());
+        pullsObservedAfterRead.push(pullLog.length);
         yield* call(() => new Promise((r) => setTimeout(r, 100)));
       }
 
       reader.releaseLock();
 
-      // Verify that values were pulled around the time we read them
-      // (not all at the beginning)
-      const pullTimestamps = pullLog.map((p) => p.pulledAt);
-
-      for (let i = 0; i < Math.min(5, pullTimestamps.length); i++) {
-        const readTime = readTimestamps[i];
-        const pullTime = pullTimestamps[i];
-
-        // Pull should happen around the same time as read (within 100ms)
-        // This proves the stream is pull-based
-        const diff = Math.abs(pullTime - readTime);
-        expect(diff).toBeLessThan(100);
+      // Production tracks demand: each read may pull at most one value ahead,
+      // and sleeping between reads must not let the producer run away.
+      for (const [index, observed] of pullsObservedAfterRead.entries()) {
+        expect(observed).toBeGreaterThanOrEqual(index + 1);
+        expect(observed).toBeLessThanOrEqual(index + 2);
       }
+      expect(pullLog.length).toBeLessThan(20);
     });
   });
 });

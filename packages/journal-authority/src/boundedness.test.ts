@@ -2,8 +2,9 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { completeChild, completeRoot } from "@sweatpants/durable-execution/transitions";
 import type { ExecutionTreeSnapshot, TaskControlState } from "@sweatpants/durable-execution";
+import { ExecutionStoreApi, installExecutionStore } from "./api.ts";
 import { createMemoryExecutionStore } from "./memory.ts";
-import { instrumentExecutionStore } from "./instrumentation.ts";
+import { installStorageMetrics } from "./metrics-middleware.ts";
 
 const program = { id: "program", version: "1", digest: "a".repeat(64) };
 
@@ -47,45 +48,50 @@ function parkedExecution(executionId: string, turnId: string): ExecutionTreeSnap
   };
 }
 
+function* completeTurn(executionId: string, index: number) {
+  const snapshot = parkedExecution(executionId, `turn-${index}`);
+  yield* ExecutionStoreApi.operations.commitExecution({
+    executionId,
+    expectedRevision: null,
+    next: snapshot,
+    privateRecords: [],
+  });
+  const folded = completeChild(snapshot, {
+    childTaskId: "child",
+    outcome: { status: "ok", value: index },
+  });
+  yield* ExecutionStoreApi.operations.appendReplay({
+    executionId,
+    taskId: "root",
+    previous: null,
+    entries: folded.replayAppends.map((append) => append.outcome),
+  });
+  const terminal = completeRoot(folded.next as ExecutionTreeSnapshot, {
+    outcome: { storage: "inline", value: `result-${index}` },
+    disposition: "completed",
+    finalRevision: 1,
+    completedAt: index,
+  });
+  yield* ExecutionStoreApi.operations.commitExecution({
+    executionId,
+    expectedRevision: 0,
+    next: terminal.next,
+    privateRecords: [],
+  });
+}
+
 describe.each([10, 100, 1000])("bounded execution certification at %i completed Turns", (size) => {
   it("resumes one active Turn without reading completed Turn journals", async () => {
-    const store = instrumentExecutionStore(createMemoryExecutionStore());
     await run(function* () {
+      yield* installExecutionStore(createMemoryExecutionStore());
+      const recorder = yield* installStorageMetrics();
+
       for (let index = 0; index < size; index += 1) {
-        const executionId = `completed-${index}`;
-        const snapshot = parkedExecution(executionId, `turn-${index}`);
-        yield* store.commitExecution({
-          executionId,
-          expectedRevision: null,
-          next: snapshot,
-          privateRecords: [],
-        });
-        const folded = completeChild(snapshot, {
-          childTaskId: "child",
-          outcome: { status: "ok", value: index },
-        });
-        yield* store.appendReplay({
-          executionId,
-          taskId: "root",
-          previous: null,
-          entries: folded.replayAppends.map((append) => append.outcome),
-        });
-        const terminal = completeRoot(folded.next as ExecutionTreeSnapshot, {
-          outcome: { storage: "inline", value: `result-${index}` },
-          disposition: "completed",
-          finalRevision: 1,
-          completedAt: index,
-        });
-        yield* store.commitExecution({
-          executionId,
-          expectedRevision: 0,
-          next: terminal.next,
-          privateRecords: [],
-        });
+        yield* completeTurn(`completed-${index}`, index);
       }
 
       const activeId = "active-execution";
-      yield* store.commitExecution({
+      yield* ExecutionStoreApi.operations.commitExecution({
         executionId: activeId,
         expectedRevision: null,
         next: parkedExecution(activeId, "active-turn"),
@@ -93,33 +99,59 @@ describe.each([10, 100, 1000])("bounded execution certification at %i completed 
       });
 
       // Catastrophic Host replacement: a fresh Host resumes only active work.
-      store.reset();
-      const resumed = yield* store.loadExecution(activeId);
+      recorder.reset();
+      const resumed = yield* ExecutionStoreApi.operations.loadExecution(activeId);
       expect(resumed).not.toBeNull();
       const decision = completeChild(resumed!.record as ExecutionTreeSnapshot, {
         childTaskId: "child",
         outcome: { status: "ok", value: "resumed" },
       });
-      yield* store.appendReplay({
+      yield* ExecutionStoreApi.operations.appendReplay({
         executionId: activeId,
         taskId: "root",
         previous: null,
         entries: decision.replayAppends.map((append) => append.outcome),
       });
-      yield* store.commitExecution({
+      yield* ExecutionStoreApi.operations.commitExecution({
         executionId: activeId,
         expectedRevision: resumed!.revision,
         next: decision.next,
         privateRecords: [],
       });
 
-      const metrics = store.metrics();
+      const metrics = recorder.metrics();
       expect(metrics.executionsTouched).toEqual([activeId]);
       expect(metrics.executionReads).toBe(1);
       expect(metrics.executionCommits).toBe(1);
       expect(metrics.replayObjectsRewritten).toBe(0);
       expect(metrics.resumeBytes).toBeLessThan(4096);
       expect(metrics.mutationBytes).toBeLessThan(4096);
+    });
+  });
+});
+
+describe("mandatory storage path without middleware", () => {
+  it("commits and rejects stale revisions with no middleware installed", async () => {
+    await run(function* () {
+      yield* installExecutionStore(createMemoryExecutionStore());
+      const snapshot = parkedExecution("execution-1", "turn-1");
+
+      expect(
+        yield* ExecutionStoreApi.operations.commitExecution({
+          executionId: "execution-1",
+          expectedRevision: null,
+          next: snapshot,
+          privateRecords: [],
+        }),
+      ).toEqual({ status: "accepted", revision: 0 });
+      expect(
+        yield* ExecutionStoreApi.operations.commitExecution({
+          executionId: "execution-1",
+          expectedRevision: null,
+          next: snapshot,
+          privateRecords: [],
+        }),
+      ).toEqual({ status: "conflict", actualRevision: 0 });
     });
   });
 });

@@ -44,14 +44,25 @@
         },
         "./testing": {
             "development": {
-                "import": "./src/instrumentation.ts",
-                "types": "./src/instrumentation.ts"
+                "import": "./src/metrics-middleware.ts",
+                "types": "./src/metrics-middleware.ts"
             },
             "import": {
-                "types": "./dist/instrumentation.d.ts",
-                "default": "./dist/instrumentation.js"
+                "types": "./dist/metrics-middleware.d.ts",
+                "default": "./dist/metrics-middleware.js"
             },
-            "default": "./src/instrumentation.ts"
+            "default": "./src/metrics-middleware.ts"
+        },
+        "./api": {
+            "development": {
+                "import": "./src/api.ts",
+                "types": "./src/api.ts"
+            },
+            "import": {
+                "types": "./dist/api.d.ts",
+                "default": "./dist/api.js"
+            },
+            "default": "./src/api.ts"
         }
     },
     "scripts": {
