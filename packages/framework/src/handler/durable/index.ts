@@ -59,11 +59,11 @@ export {
   programDriverSchemaRegistry,
 } from "./program-driver-journal.ts";
 export { programDriverChatEngineSchemaEntries } from "./program-driver-schema.ts";
-export { firstTraceDivergence, runProgramDriverConformance } from "./program-driver-conformance.ts";
+export { firstTraceDivergence, runProgramDriverConformance } from "@sweatpants/durable-execution";
 export type {
   ProgramDriverConformanceCase,
   ProgramDriverConformanceEvidence,
-} from "./program-driver-conformance.ts";
+} from "@sweatpants/durable-execution";
 export {
   createLocalProgramHost,
   createPinnedProgramCatalog,
