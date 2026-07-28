@@ -4,7 +4,6 @@ import { createTool, type AnyToolContract } from "@sweatpants/core";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRuntime,
   assertJson,
   assertReplayedCanonicalValue,
@@ -12,7 +11,6 @@ import {
   createDurableSchemaRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createProgramDriverRegistry,
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
   type DurableEffectHandler,
@@ -25,6 +23,10 @@ import {
   type Json,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import {
+  createProgramDriverRegistry,
+  ProgramDriverRegistryContext,
+} from "@sweatpants/durable-execution";
 
 import { createLocalDurableProgramDriver } from "./durable-driver.ts";
 
