@@ -94,7 +94,10 @@ describe("single crank-turner architecture", () => {
     expect(handler).toContain("source: (_responseTokenBuffer, responseTokenWriter)");
     // The sole append site lives in the extracted serialized event stream; the
     // handler wires it as the one session source.
-    const eventStream = source("src/handler/durable/session-event-stream.ts");
+    const eventStream = readFileSync(
+      resolve(frameworkRoot, "../durable-chat-runtime/src/response-streams/event-stream.ts"),
+      "utf8",
+    );
     expect(eventStream.match(/responseTokenBuffer\.append/g)).toHaveLength(1);
     expect(handler).not.toContain("responseTokenBuffer.append");
     expect(registry).toContain("buffer.claimWriter");
