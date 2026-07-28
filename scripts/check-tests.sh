@@ -9,7 +9,7 @@ set -uo pipefail
 # and that disables strict, exactOptionalPropertyTypes, and
 # noUncheckedIndexedAccess. It reports 87 errors under its own weakened settings.
 # It is excluded here rather than silently skipped, and is scheduled with the
-# framework decomposition. packages/core is likewise deferred (20 errors).
+# framework decomposition. It is now the only stated exception.
 excluded=("packages/framework")
 
 status=0

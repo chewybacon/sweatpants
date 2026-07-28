@@ -124,8 +124,8 @@ describe("createDurableTool fluent builder", () => {
     });
 
     expect(tool.identityProvenance.kind).toBe("generated-interface");
-    expect(agent.bindings.programs.direct?.program).toBe(tool);
-    expect(agent.bindings.programs.direct?.schemas).toEqual(tool.artifacts.catalog);
+    expect(agent.bindings.programs["direct"]?.program).toBe(tool);
+    expect(agent.bindings.programs["direct"]?.schemas).toEqual(tool.artifacts.catalog);
     expect(parseAgentManifest(agent.manifest)).toEqual(agent.manifest);
   });
 
@@ -166,18 +166,18 @@ describe("createDurableTool fluent builder", () => {
 
     expect(tool.manifest.outputSchema.outputProjection).toMatchObject({ type: "object" });
     expect(tool.manifest.outputSchema.role).toBe("program_output");
-    expect(tool.manifest.elicits.approval?.response.inputProjection).toMatchObject({
+    expect(tool.manifest.elicits["approval"]?.response.inputProjection).toMatchObject({
       type: "boolean",
     });
-    expect(tool.manifest.elicits.approval?.response.role).toBe("elicit_response");
+    expect(tool.manifest.elicits["approval"]?.response.role).toBe("elicit_response");
     // Artifacts retain the same descriptors plus a digest-keyed validator catalog.
     expect(tool.artifacts.parameters).toEqual(tool.manifest.inputSchema);
     expect(tool.artifacts.elicits["approval"]?.response).toEqual(
-      tool.manifest.elicits.approval?.response,
+      tool.manifest.elicits["approval"]?.response,
     );
     const digests = tool.artifacts.catalog.map((entry) => entry.descriptor.digest);
     expect(digests).toContain(tool.manifest.inputSchema.digest);
-    expect(digests).toContain(tool.manifest.elicits.approval?.response.digest);
+    expect(digests).toContain(tool.manifest.elicits["approval"]?.response.digest);
     expect(digests).toContain(echo.inputSchema.digest);
   });
 

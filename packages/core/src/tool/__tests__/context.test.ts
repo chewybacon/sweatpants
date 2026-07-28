@@ -12,7 +12,7 @@ describe("ToolCtx integration", () => {
       signal: new AbortController().signal,
       messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
       notify: function* (message, progress) {
-        notifications.push({ message, progress });
+        notifications.push({ message, ...(progress !== undefined ? { progress } : {}) });
       },
       log: function* (level, message) {
         logs.push({ level, message });
