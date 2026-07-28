@@ -2,13 +2,13 @@ import { workerMain } from "@effectionx/worker";
 import type { Operation } from "effection";
 import {
   CrankError,
-  ExecutionDurableEffectRegistryContext,
   createDurableEffectRegistry,
   createLocalProgramDriver,
   type DurableEffectRegistry,
   type DurableToolRegistry,
   type ProgramAttachment,
 } from "@sweatpants/session-contract";
+import { ExecutionDurableEffectRegistryContext } from "@sweatpants/durable-execution";
 
 import type {
   DurableProgramWorkerRequest,
