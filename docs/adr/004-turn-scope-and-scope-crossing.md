@@ -184,10 +184,18 @@ stopped.
 The lesson is that ownership must mean **reclaimable**, not merely *parented*.
 Structural parenting alone gives "the parent waits", which is the wrong
 semantics for indefinite work; what a Turn scope needs is explicit halt with a
-deadline. `useBackgroundTask` cannot express that, so the Turn scope must be
-built on real Effection tasks (`spawn` and `Task.halt`) rather than on this
-helper. This is why the ownership fix is scheduled with the `agent-host`
-extraction rather than as a spot change.
+deadline.
+
+The helper defect has since been fixed: a supplied scope is now a **parent**, and
+each task gets a distinct child scope that `halt()` and normal completion both
+destroy idempotently. A regression test proves the work stops rather than only
+its status changing. Applying that ownership to the registry also exposed a
+second assumption: the registry is not universally built in Host setup — some
+compositions build it in a request scope, correctly causing writers to die on
+disconnect. That application was reverted. The helper can now express truthful
+ownership, but composition must first supply an explicit Host/Turn owner rather
+than inferring one from the construction caller. This remains part of the
+`agent-host` extraction.
 
 ## Consequences
 
