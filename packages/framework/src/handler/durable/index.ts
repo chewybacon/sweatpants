@@ -94,7 +94,7 @@ export {
   nativeProgramIdentities,
   type ProgramDriverNativeToolBinding,
   type ProgramDriverNativeToolComposition,
-} from "./program-driver-native-tools.ts";
+} from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 /** ProgramRuntime journal composition contracts. */
 export type {
   InMemoryProgramDriverJournalStoreOptions,

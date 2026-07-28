@@ -46,7 +46,7 @@ import {
   nativeProgramIdentities,
   requiresFencedActivation,
   type ProgramDriverNativeToolComposition,
-} from "./program-driver-native-tools.ts";
+} from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import { runLocalProgramActivation } from "./local-program-host.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";

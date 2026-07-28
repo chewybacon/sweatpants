@@ -54,7 +54,7 @@ import {
 import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
 import { createProgramDriverChatEngine } from "./program-driver-chat-engine.ts";
 import { useOptionalProgramDriverForeignEffects } from "@sweatpants/durable-chat-runtime/program-driver/effects";
-import { useOptionalProgramDriverNativeTools } from "./program-driver-native-tools.ts";
+import { useOptionalProgramDriverNativeTools } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 import { buildAgUiCustomState } from "@sweatpants/chat-core";
 import { activitySnapshotsForMessages, toProviderHistorySnapshot } from "@sweatpants/chat-core";
 import {

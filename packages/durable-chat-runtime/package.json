@@ -152,6 +152,17 @@
             },
             "default": "./src/program-driver/effects.ts"
         },
+        "./program-driver/native-tools": {
+            "development": {
+                "import": "./src/program-driver/native-tools.ts",
+                "types": "./src/program-driver/native-tools.ts"
+            },
+            "import": {
+                "types": "./dist/program-driver/native-tools.d.ts",
+                "default": "./dist/program-driver/native-tools.js"
+            },
+            "default": "./src/program-driver/native-tools.ts"
+        },
         "./projection": {
             "development": {
                 "import": "./src/projection.ts",

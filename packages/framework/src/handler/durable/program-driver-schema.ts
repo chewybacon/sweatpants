@@ -12,9 +12,7 @@ import {
   type PortableSchemaDescriptor,
   type PortableSchemaRole,
 } from "@sweatpants/session-contract";
-import type { NativeProgramIdentity as NativeIdentity } from "./program-driver-native-tools.ts";
-
-export type { NativeProgramIdentity } from "./program-driver-native-tools.ts";
+import type { NativeProgramIdentity as NativeIdentity } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 
 export type ThinCatalogEntry =
   | { kind: "program"; target: string; program: NativeIdentity }
