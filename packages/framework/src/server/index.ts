@@ -8,7 +8,7 @@ import {
   type Scope,
 } from "effection";
 import type { FetchHandler, ScopedFetchHandler } from "../handler/streaming.ts";
-import { installHostScope } from "../lib/effection/host-scope.ts";
+import { createHostScopeOwner, installHostScopeOwner } from "../lib/effection/host-scope.ts";
 
 export {
   AgentFacadeError,
@@ -96,13 +96,15 @@ export interface ChatApplicationSetupContext {
 /** Fetch application whose root Effection scope is owned until close completes. */
 export interface ChatApplication {
   handle(request: Request): Promise<Response>;
-  close(): Promise<void>;
+  close(options?: { mode?: "graceful" | "catastrophic" }): Promise<void>;
 }
 
 /** Handler and optional scoped setup operation installed at composition. */
 export interface ChatApplicationConfig {
   handler: FetchHandler;
   setup?: (ctx: ChatApplicationSetupContext) => Operation<void>;
+  /** Maximum normal drain before remaining Host children are halted. */
+  shutdownDeadlineMs?: number;
 }
 
 const closedApplicationErrorMessage = "ChatApplication is closed";
@@ -132,6 +134,11 @@ function isHaltedError(error: unknown): boolean {
 export function createChatApplication(config: ChatApplicationConfig): ChatApplication {
   const baseHandler = config.handler;
   const [rootScope, destroyRootScope] = createScope();
+  const hostOwner = createHostScopeOwner(rootScope);
+  const shutdownDeadlineMs = config.shutdownDeadlineMs ?? 30_000;
+  if (!Number.isFinite(shutdownDeadlineMs) || shutdownDeadlineMs < 0) {
+    throw new Error("ChatApplication shutdownDeadlineMs must be a non-negative finite number");
+  }
 
   let closed = false;
   let setupPromise: Promise<Scope> | undefined;
@@ -144,7 +151,7 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
         rootScope
           .run(function* () {
             try {
-              yield* installHostScope(rootScope);
+              yield* installHostScopeOwner(hostOwner);
               const signal = yield* useAbortSignal();
               if (config.setup) {
                 yield* config.setup({ signal });
@@ -208,13 +215,29 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
         );
       }
     },
-    async close(): Promise<void> {
+    async close(closeOptions: { mode?: "graceful" | "catastrophic" } = {}): Promise<void> {
       if (closed) {
         return;
       }
       closed = true;
-      await destroyRootScope();
-      scopedHandler = undefined;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        if (closeOptions.mode !== "catastrophic") {
+          await Promise.race([
+            rootScope.run(() => hostOwner.drain()),
+            new Promise<void>((resolve) => {
+              timeout = setTimeout(resolve, shutdownDeadlineMs);
+            }),
+          ]);
+        }
+      } finally {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+        // Reclaims deadline-exceeding work and runs reachable finalizers.
+        await destroyRootScope();
+        scopedHandler = undefined;
+      }
     },
   };
 }
