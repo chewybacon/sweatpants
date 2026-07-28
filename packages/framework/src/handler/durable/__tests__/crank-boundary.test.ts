@@ -58,8 +58,8 @@ describe("single crank-turner architecture", () => {
   });
 
   it("keeps authored sampling on the canonical contract without preference-field tunneling", () => {
-    const program = source("src/lib/chat/authoring/program.ts");
-    const contracts = source("src/lib/chat/authoring/contracts.ts");
+    const program = source("../chat-core/src/authoring/program.ts");
+    const contracts = source("../chat-core/src/authoring/contracts.ts");
     expect(program).not.toContain("sweatpants.authored-model-bridge");
     expect(contracts).not.toContain("CHAT_MODEL_SAMPLE_INPUT_DESCRIPTOR");
     expect(contracts).not.toContain("CHAT_MODEL_SAMPLE_OUTPUT_DESCRIPTOR");

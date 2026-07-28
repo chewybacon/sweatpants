@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { call, run } from "effection";
 import { afterEach, describe, expect, it } from "vitest";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   canonicalJson,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
   defineDurableEffect,
 } from "@sweatpants/session-contract";

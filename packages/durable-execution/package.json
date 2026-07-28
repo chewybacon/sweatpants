@@ -63,6 +63,50 @@
                 "default": "./dist/checkpoint.js"
             },
             "default": "./src/checkpoint.ts"
+        },
+        "./program-contract": {
+            "development": {
+                "import": "./src/program-contract.ts",
+                "types": "./src/program-contract.ts"
+            },
+            "import": {
+                "types": "./dist/program-contract.d.ts",
+                "default": "./dist/program-contract.js"
+            },
+            "default": "./src/program-contract.ts"
+        },
+        "./program-authoring": {
+            "development": {
+                "import": "./src/program-authoring.ts",
+                "types": "./src/program-authoring.ts"
+            },
+            "import": {
+                "types": "./dist/program-authoring.d.ts",
+                "default": "./dist/program-authoring.js"
+            },
+            "default": "./src/program-authoring.ts"
+        },
+        "./program-authoring-runtime": {
+            "development": {
+                "import": "./src/program-authoring-runtime.ts",
+                "types": "./src/program-authoring-runtime.ts"
+            },
+            "import": {
+                "types": "./dist/program-authoring-runtime.d.ts",
+                "default": "./dist/program-authoring-runtime.js"
+            },
+            "default": "./src/program-authoring-runtime.ts"
+        },
+        "./program-identity": {
+            "development": {
+                "import": "./src/program-identity.ts",
+                "types": "./src/program-identity.ts"
+            },
+            "import": {
+                "types": "./dist/program-identity.d.ts",
+                "default": "./dist/program-identity.js"
+            },
+            "default": "./src/program-identity.ts"
         }
     },
     "scripts": {

@@ -1,9 +1,9 @@
 import type { Operation } from "effection";
+import { createDurableEffectRegistration } from "@sweatpants/session-contract";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
   assertJson,
-  createDurableEffectRegistration,
   type DurableEffectContext,
   type DurableEffectRegistration,
   type ForeignDurability,

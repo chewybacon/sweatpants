@@ -1,12 +1,10 @@
+import { CrankError, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
-  CrankError,
-  canonicalSnapshot,
   createPortableSchemaDescriptor,
   standardSchemaOf,
   type DurableSchemaRegistryEntry,
-  type Json,
   type PortableSchemaDescriptor,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/foundation/schema-descriptor";
 import { sortedResourceValues, type DataClassification } from "@sweatpants/core";
 
 export const CHAT_TURN_INPUT_FORMAT = "sweatpants.chat-turn-input.v1" as const;

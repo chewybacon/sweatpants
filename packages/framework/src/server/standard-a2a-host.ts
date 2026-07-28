@@ -57,7 +57,7 @@ import {
   type ChatTurnInputV1,
   type ChatTurnResultV1,
   type ReferencedTaskSummaryV1,
-} from "../lib/chat/authoring/index.ts";
+} from "@sweatpants/chat-core";
 import {
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,

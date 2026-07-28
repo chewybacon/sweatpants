@@ -8,11 +8,21 @@ import {
 
 describe("durable effect runtime", () => {
   it("commits every effect-contract field into a stable digest", () => {
+    const descriptor = (digest: string, role: "effect_input" | "effect_output") => ({
+      identity: `test.${digest}`,
+      role,
+      version: "1",
+      vendor: "test",
+      inputProjection: {},
+      outputProjection: {},
+      fidelity: { input: "explicit" as const, output: "explicit" as const },
+      digest,
+    });
     const base = {
       name: "test.effect",
       version: "1",
-      inputSchema: { digest: "input" },
-      outputSchema: { digest: "output" },
+      inputSchema: descriptor("input", "effect_input"),
+      outputSchema: descriptor("output", "effect_output"),
       retrySafety: { mode: "repeatable" as const },
     };
 

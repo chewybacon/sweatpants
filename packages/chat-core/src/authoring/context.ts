@@ -1,12 +1,12 @@
 import { sortedResourceValues } from "@sweatpants/core";
 import {
   CrankError,
-  DEFAULT_MAX_INLINE_BYTES,
   canonicalJson,
   canonicalSnapshot,
   sha256,
   type Json,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/foundation";
+import { DEFAULT_MAX_INLINE_BYTES } from "@sweatpants/durable-execution";
 import {
   CHAT_CONTEXT_POLICY_FORMAT,
   CHAT_TURN_INPUT_FORMAT,

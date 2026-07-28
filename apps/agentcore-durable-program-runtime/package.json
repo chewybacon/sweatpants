@@ -21,6 +21,7 @@
         "@aws-sdk/client-bedrock-agentcore-control": "^3.996.0",
         "@aws-sdk/client-s3": "^3.996.0",
         "@sweatpants/cli": "workspace:*",
+        "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/tool-runtime-agentcore": "workspace:*",
         "effection": "catalog:",

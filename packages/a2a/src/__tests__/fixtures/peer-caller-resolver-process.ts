@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { call, run, type Operation } from "effection";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
@@ -8,7 +9,6 @@ import {
   ProgramRuntime,
   canonicalJson,
   createCapabilityKeyring,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
   createDurableToolRegistry,

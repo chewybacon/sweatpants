@@ -142,6 +142,8 @@
         "@sweatpants/a2a": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/core": "workspace:*",
+        "@sweatpants/durable-effects": "workspace:*",
+        "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/elicit-context": "workspace:*",
         "@sweatpants/foundation": "workspace:*",

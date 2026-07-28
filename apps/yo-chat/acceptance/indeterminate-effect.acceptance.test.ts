@@ -27,10 +27,10 @@ import {
   createInMemoryProgramDriverJournalStore,
   type ProgramDriverJournalStore,
 } from "@sweatpants/framework/server";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
-  createDurableEffectRegistration,
   type DurableSemanticRecord,
 } from "@sweatpants/session-contract";
 import { bookFlightTool } from "../src/tools/book-flight/tool.ts";

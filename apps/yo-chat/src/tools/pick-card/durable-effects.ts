@@ -1,9 +1,6 @@
 import { effectRuntimeValidators } from "@sweatpants/core";
-import {
-  createDurableEffectRegistration,
-  sha256,
-  type DurableEffectRegistration,
-} from "@sweatpants/session-contract";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
+import { sha256, type DurableEffectRegistration } from "@sweatpants/session-contract";
 
 import { createCardDeck } from "./cards";
 import { drawPickCards } from "./durable";

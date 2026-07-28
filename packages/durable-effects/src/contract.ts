@@ -1,9 +1,8 @@
 import type { Json } from "@sweatpants/foundation";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
 
-/** Minimal portable schema identity required to pin an effect contract. */
-export interface EffectSchemaDescriptor {
-  readonly digest: string;
-}
+/** Portable schema descriptor required to pin an effect contract. */
+export type EffectSchemaDescriptor = PortableSchemaDescriptor;
 
 /** Retry policy declaring whether duplicate host execution is safe. */
 export type RetrySafety =

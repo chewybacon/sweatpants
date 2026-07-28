@@ -30,26 +30,27 @@ export {
   FOREIGN_TOOL_START_EFFECT,
   foreignToolAdapter,
   createCapabilityKeyring,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
-  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
+} from "@sweatpants/session-contract";
+export { createDurableEffectRegistration } from "@sweatpants/durable-effects";
+export {
+  createPinnedDurableProgram,
   defineDurableEffect,
   defineDurableProgramManifest,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 /** Crank-native authoring and runtime contracts exposed by the durable handler package. */
 export type {
-  DurableEffectRegistration,
   DurableProgramContext,
   DurableProgramManifest,
   DurableTool,
-  EffectDefinition,
   ForeignDurability,
   ForeignToolDisposition,
   ForeignToolRequest,
-  ProgramDriver,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+export type { ProgramDriver } from "@sweatpants/session-contract";
+export type { DurableEffectRegistration, EffectDefinition } from "@sweatpants/durable-effects";
 
 // Plugin session manager
 export { createPluginSessionManager } from "./plugin-session-manager.ts";

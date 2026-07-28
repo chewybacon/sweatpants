@@ -41,6 +41,28 @@
                 "default": "./dist/port.js"
             },
             "default": "./src/port.ts"
+        },
+        "./errors": {
+            "development": {
+                "import": "./src/errors.ts",
+                "types": "./src/errors.ts"
+            },
+            "import": {
+                "types": "./dist/errors.d.ts",
+                "default": "./dist/errors.js"
+            },
+            "default": "./src/errors.ts"
+        },
+        "./schema-descriptor": {
+            "development": {
+                "import": "./src/schema-descriptor.ts",
+                "types": "./src/schema-descriptor.ts"
+            },
+            "import": {
+                "types": "./dist/schema-descriptor.d.ts",
+                "default": "./dist/schema-descriptor.js"
+            },
+            "default": "./src/schema-descriptor.ts"
         }
     },
     "scripts": {
@@ -51,6 +73,7 @@
     },
     "dependencies": {
         "@noble/hashes": "^2.2.0",
+        "@standard-schema/spec": "catalog:",
         "effection": "catalog:"
     },
     "devDependencies": {

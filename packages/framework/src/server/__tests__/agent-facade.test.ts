@@ -18,7 +18,7 @@ import {
   createChatModelEffectRegistration,
   defineChatProgram,
   type ChatModelSampleOutputV2,
-} from "../../lib/chat/authoring/index.ts";
+} from "@sweatpants/chat-core";
 import {
   assertRemoteReferenceUsable,
   connectPeerAgent,

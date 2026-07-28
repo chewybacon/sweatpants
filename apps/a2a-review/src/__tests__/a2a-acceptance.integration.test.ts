@@ -1,5 +1,6 @@
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
@@ -8,7 +9,6 @@ import {
   ProgramRuntime,
   canonicalJson,
   createCapabilityKeyring,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
   createPinnedDurableProgram,

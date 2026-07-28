@@ -4,13 +4,13 @@ import { readFile } from "node:fs/promises";
 
 import { run } from "effection";
 
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,
