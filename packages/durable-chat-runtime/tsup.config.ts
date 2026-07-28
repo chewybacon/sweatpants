@@ -10,6 +10,7 @@ export default defineConfig({
     "interrupts/index": "src/interrupts/index.ts",
     "model-context/index": "src/model-context/index.ts",
     "program-driver/effects": "src/program-driver/effects.ts",
+    projection: "src/projection.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

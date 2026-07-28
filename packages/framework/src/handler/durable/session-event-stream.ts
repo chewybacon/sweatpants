@@ -22,7 +22,7 @@ import { recordThreadInterruptState } from "@sweatpants/durable-chat-runtime/int
 import {
   buildCheckpointSnapshotEventsFromFrames,
   toStrictPublicEvent,
-} from "./conversation-projection.ts";
+} from "@sweatpants/durable-chat-runtime/projection";
 
 export type LiveEventSink = (event: StreamEvent) => Operation<void>;
 export type ChatEngineSource =

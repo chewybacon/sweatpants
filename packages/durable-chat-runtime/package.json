@@ -107,6 +107,17 @@
                 "default": "./dist/program-driver/effects.js"
             },
             "default": "./src/program-driver/effects.ts"
+        },
+        "./projection": {
+            "development": {
+                "import": "./src/projection.ts",
+                "types": "./src/projection.ts"
+            },
+            "import": {
+                "types": "./dist/projection.d.ts",
+                "default": "./dist/projection.js"
+            },
+            "default": "./src/projection.ts"
         }
     },
     "scripts": {

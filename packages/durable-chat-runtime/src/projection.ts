@@ -17,7 +17,9 @@ import type {
   ChatSessionStreamEvent as ChatStreamEvent,
 } from "@sweatpants/chat-core";
 import type { OpenInterruptRecord } from "@sweatpants/durable-chat-runtime/interrupts";
-import { isRecord } from "./request-normalization.ts";
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 // =============================================================================
 // PUBLIC METADATA SANITIZATION

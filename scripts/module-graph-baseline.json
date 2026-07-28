@@ -1,7 +1,4 @@
 [
-    "module cycle in framework: handler/durable/program-driver-journal.ts -> handler/durable/program-driver-chat-engine.ts -> handler/durable/local-program-host.ts -> handler/durable/program-driver-journal.ts",
-    "module cycle in framework: handler/durable/program-driver-journal.ts -> handler/durable/program-driver-chat-engine.ts -> handler/durable/program-driver-journal.ts",
-    "module cycle in framework: handler/durable/types.ts -> handler/durable/program-driver-journal.ts -> handler/durable/program-driver-chat-engine.ts -> handler/durable/types.ts",
     "module cycle in framework: lib/chat/mcp-tools/mcp-tool-types.ts -> lib/chat/mcp-tools/model-context.ts -> lib/chat/mcp-tools/mcp-tool-types.ts",
     "module cycle in framework: server/agent-profiles.ts -> server/standard-a2a-host.ts -> server/agent-profiles.ts"
 ]
