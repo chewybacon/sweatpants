@@ -832,6 +832,9 @@ importers:
       '@sweatpants/durable-chat-runtime':
         specifier: workspace:*
         version: link:../../packages/durable-chat-runtime
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../../packages/durable-execution
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
@@ -1898,6 +1901,9 @@ importers:
 
   packages/workspace-runtime:
     dependencies:
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
