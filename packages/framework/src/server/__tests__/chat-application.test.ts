@@ -11,7 +11,7 @@ import {
 } from "effection";
 import type { RecoverableSessionRegistry } from "@sweatpants/durable-streams";
 import { createChatApplication, createChatHandler } from "../index.ts";
-import { createStreamingHandler } from "../../handler/streaming.ts";
+import { createStreamingHandler } from "@sweatpants/durable-chat-runtime/handler/streaming";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 
 function oneShotSubscription(value: string): Subscription<string, void> {

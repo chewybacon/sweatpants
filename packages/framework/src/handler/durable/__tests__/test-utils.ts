@@ -47,7 +47,7 @@ import {
 import { createDurableChatHandler } from "../handler.ts";
 import { createInMemoryProgramDriverJournalStore } from "../program-driver-journal.ts";
 import type { ChatHandlerSetup, DurableChatHandlerConfig, DurableStreamEvent } from "../types.ts";
-import type { StreamEvent } from "../../types.ts";
+import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
 
 /** Test-only handler composition with an isolated in-memory ProgramRuntime journal. */
 export function createTestDurableChatHandler(

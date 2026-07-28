@@ -42,9 +42,16 @@ import {
 import { ToolRuntimePort } from "../../lib/chat/tool-runtime.ts";
 import { HistoryPolicyContext } from "@sweatpants/chat-core";
 import { useLogger } from "../../lib/logger/index.ts";
-import { bindModel, createBindingSource, stringParam } from "../model-binder.ts";
-import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
-import type { StreamEvent } from "../types.ts";
+import {
+  bindModel,
+  createBindingSource,
+  stringParam,
+} from "@sweatpants/durable-chat-runtime/handler/model-binder";
+import {
+  createStreamingHandler,
+  useHandlerContext,
+} from "@sweatpants/durable-chat-runtime/handler/streaming";
+import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
 import { createProgramDriverChatEngine } from "./program-driver-chat-engine.ts";
 import { useOptionalProgramDriverForeignEffects } from "./program-driver-effects.ts";
 import { useOptionalProgramDriverNativeTools } from "./program-driver-native-tools.ts";

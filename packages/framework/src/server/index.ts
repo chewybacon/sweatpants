@@ -7,7 +7,10 @@ import {
   type Operation,
   type Scope,
 } from "effection";
-import type { FetchHandler, ScopedFetchHandler } from "../handler/streaming.ts";
+import type {
+  FetchHandler,
+  ScopedFetchHandler,
+} from "@sweatpants/durable-chat-runtime/handler/streaming";
 import { createHostScopeOwner, installHostScopeOwner } from "../lib/effection/host-scope.ts";
 import { installDurableStreamsOwner } from "@sweatpants/durable-chat-runtime/response-streams";
 
@@ -279,7 +282,11 @@ export {
   foreignToolAdapter,
 } from "../handler/durable/index.ts";
 
-export { createStreamingHandler, useHandlerContext, HandlerContext } from "../handler/streaming.ts";
+export {
+  createStreamingHandler,
+  useHandlerContext,
+  HandlerContext,
+} from "@sweatpants/durable-chat-runtime/handler/streaming";
 
 /** Crank-native persistence, authoring, and driver contracts for server composition. */
 export type {
@@ -333,4 +340,4 @@ export type {
   StreamingHandlerOptions,
   SetupResult,
   SetupFn,
-} from "../handler/streaming.ts";
+} from "@sweatpants/durable-chat-runtime/handler/streaming";

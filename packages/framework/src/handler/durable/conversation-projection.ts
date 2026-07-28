@@ -7,12 +7,15 @@
  * pending-resume consistency invariant.
  */
 import { resource, type Operation, type Stream } from "effection";
-import type { StreamEvent } from "../types.ts";
+import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
 import { buildAgUiCustomState } from "@sweatpants/chat-core";
 import { activitySnapshotsForMessages, toProviderHistorySnapshot } from "@sweatpants/chat-core";
 import { agUiMessagesToInternalMessages } from "@sweatpants/chat-core";
 import { replayFramesToConversation, type DurableFrame } from "@sweatpants/chat-core";
-import type { ElicitRequestStreamEvent } from "@sweatpants/chat-core";
+import type {
+  ElicitRequestStreamEvent,
+  ChatSessionStreamEvent as ChatStreamEvent,
+} from "@sweatpants/chat-core";
 import type { OpenInterruptRecord } from "./interrupt-registry.ts";
 import { isRecord } from "./request-normalization.ts";
 
@@ -45,6 +48,11 @@ function withPublicMetadata<T extends { metadata?: Record<string, unknown> }>(
   };
 }
 
+type RunFinishedInterrupt = Extract<
+  NonNullable<Extract<ChatStreamEvent, { type: "RUN_FINISHED" }>["outcome"]>,
+  { type: "interrupt" }
+>["interrupts"][number];
+
 /** Project an internal stream event to its public wire form, or null to drop it. */
 export function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
   switch (event.type) {
@@ -57,7 +65,7 @@ export function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
         ...runFinished,
         outcome: {
           ...runFinished.outcome,
-          interrupts: runFinished.outcome.interrupts.map((interrupt) =>
+          interrupts: runFinished.outcome.interrupts.map((interrupt: RunFinishedInterrupt) =>
             withPublicMetadata(interrupt),
           ),
         },

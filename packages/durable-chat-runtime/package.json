@@ -41,6 +41,39 @@
                 "default": "./dist/response-streams/testing.js"
             },
             "default": "./src/response-streams/__tests__/vitest-effection.ts"
+        },
+        "./handler/streaming": {
+            "development": {
+                "import": "./src/handler/streaming.ts",
+                "types": "./src/handler/streaming.ts"
+            },
+            "import": {
+                "types": "./dist/handler/streaming.d.ts",
+                "default": "./dist/handler/streaming.js"
+            },
+            "default": "./src/handler/streaming.ts"
+        },
+        "./handler/model-binder": {
+            "development": {
+                "import": "./src/handler/model-binder.ts",
+                "types": "./src/handler/model-binder.ts"
+            },
+            "import": {
+                "types": "./dist/handler/model-binder.d.ts",
+                "default": "./dist/handler/model-binder.js"
+            },
+            "default": "./src/handler/model-binder.ts"
+        },
+        "./handler/types": {
+            "development": {
+                "import": "./src/handler/types.ts",
+                "types": "./src/handler/types.ts"
+            },
+            "import": {
+                "types": "./dist/handler/types.d.ts",
+                "default": "./dist/handler/types.js"
+            },
+            "default": "./src/handler/types.ts"
         }
     },
     "scripts": {
@@ -49,6 +82,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/history-store": "workspace:*",

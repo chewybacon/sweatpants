@@ -10,10 +10,13 @@
  * 3. ReadableStream.pull() calls scope.run(() => subscription.next())
  * 4. Cleanup scope on completion or cancel
  */
-import { describe, it, expect } from "./vitest-effection.ts";
+import { describe, it, expect } from "@sweatpants/durable-chat-runtime/response-streams/testing";
 import { createScope, resource, sleep, call } from "effection";
 import type { Operation, Stream } from "effection";
-import { createStreamingHandler, useHandlerContext } from "../../streaming.ts";
+import {
+  createStreamingHandler,
+  useHandlerContext,
+} from "@sweatpants/durable-chat-runtime/handler/streaming";
 
 // =============================================================================
 // TEST HELPERS
