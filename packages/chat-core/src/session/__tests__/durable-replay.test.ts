@@ -3,7 +3,7 @@ import { each, run, type Operation } from "effection";
 import type { ChatEventTransform } from "../options.ts";
 import { deduplicateMessages, replayFramesToConversation } from "../durable-history.ts";
 import { chatReducer, initialChatState } from "../../state/reducer.ts";
-import type { Message } from "../../types.ts";
+import type { Message } from "@sweatpants/chat-core";
 
 const renderTransform: ChatEventTransform = function* (input, output): Operation<void> {
   for (const event of yield* each(input)) {

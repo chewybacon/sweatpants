@@ -1,4 +1,4 @@
-import type { ToolCall } from "../types.ts";
+import type { ToolCall } from "@sweatpants/chat-core";
 import type { AgUiCheckpoint, AgUiCustomState, ConversationReplayState } from "./streaming.ts";
 import type { ServerToolResult } from "@sweatpants/chat-core";
 import type { ElicitRequestStreamEvent } from "./streaming.ts";

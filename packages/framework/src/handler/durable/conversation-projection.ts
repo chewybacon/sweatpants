@@ -8,17 +8,11 @@
  */
 import { resource, type Operation, type Stream } from "effection";
 import type { StreamEvent } from "../types.ts";
-import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
-import {
-  activitySnapshotsForMessages,
-  toProviderHistorySnapshot,
-} from "../../lib/chat/session/ag-ui-projection.ts";
-import { agUiMessagesToInternalMessages } from "../../lib/chat/session/ag-ui-messages.ts";
-import {
-  replayFramesToConversation,
-  type DurableFrame,
-} from "../../lib/chat/session/durable-history.ts";
-import type { ElicitRequestStreamEvent } from "../../lib/chat/session/streaming.ts";
+import { buildAgUiCustomState } from "@sweatpants/chat-core";
+import { activitySnapshotsForMessages, toProviderHistorySnapshot } from "@sweatpants/chat-core";
+import { agUiMessagesToInternalMessages } from "@sweatpants/chat-core";
+import { replayFramesToConversation, type DurableFrame } from "@sweatpants/chat-core";
+import type { ElicitRequestStreamEvent } from "@sweatpants/chat-core";
 import type { OpenInterruptRecord } from "./interrupt-registry.ts";
 import { isRecord } from "./request-normalization.ts";
 
@@ -205,7 +199,15 @@ export function initialSnapshotBoundary(frames: DurableFrame[]): {
   return { messages, activities, state, nextIndex: index };
 }
 
-export function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnapshotBoundary>) {
+export function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnapshotBoundary>): {
+  messages: {
+    type: "MESSAGES_SNAPSHOT";
+    messages: ReturnType<typeof toProviderHistorySnapshot>;
+  } | null;
+  activities: Array<Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>>;
+  state: Extract<StreamEvent, { type: "STATE_SNAPSHOT" }> | null;
+  nextIndex: number;
+} {
   const internalMessages = boundary.messages
     ? agUiMessagesToInternalMessages(boundary.messages.messages)
     : [];

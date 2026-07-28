@@ -8,7 +8,7 @@
 import type { Operation, Subscription } from "effection";
 import type { SessionHandle, SessionRegistry } from "../../lib/chat/durable-streams/index.ts";
 import type { StreamEvent } from "../types.ts";
-import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
+import { buildAgUiCustomState } from "@sweatpants/chat-core";
 import { openInterruptsForThread } from "./interrupt-registry.ts";
 import {
   completedConversationHydrateEvents,

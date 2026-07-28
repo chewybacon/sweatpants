@@ -7,7 +7,7 @@ import {
   PLUGIN_REPLAY_ACTIVITY_TYPE,
   PLUGIN_REPLAY_LIMITS,
 } from "../plugin-replay.ts";
-import type { ToolExecutionTrace } from "../../browser-rendering/emissions.ts";
+import type { ToolExecutionTrace } from "@sweatpants/chat-core";
 
 function trace(interruptId: string, emissionId: string, timestamp: number): ToolExecutionTrace {
   return {

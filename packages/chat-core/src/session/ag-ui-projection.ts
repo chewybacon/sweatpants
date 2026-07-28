@@ -1,4 +1,4 @@
-import type { Message } from "../types.ts";
+import type { Message } from "@sweatpants/chat-core";
 import { internalMessagesToAgUiMessages, type AgUiMessage } from "./ag-ui-messages.ts";
 import {
   activityMessageToPluginReplayTrace,

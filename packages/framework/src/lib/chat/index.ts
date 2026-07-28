@@ -110,7 +110,7 @@ export {
 
 // Personas now owned by chat-core (re-exported above via export * from "@sweatpants/chat-core")
 
-// Browser-safe session/state/patch contracts used by UI adapters.
+// Session/state contracts now owned by chat-core (re-exported above and below)
 export {
   createChatSession,
   runChatSession,
@@ -129,7 +129,11 @@ export {
   loggingTransform,
   BaseUrlContext,
   StreamerContext,
-} from "./session/index.ts";
+  initialChatState,
+  chatReducer,
+  deriveMessages,
+  deriveStreamingMessage,
+} from "@sweatpants/chat-core";
 export type {
   ChatSession,
   ClientToolSessionOptions,
@@ -148,7 +152,7 @@ export type {
   StreamCompleteResult,
   StreamElicitResult,
   ElicitRequestStreamEvent,
-  StreamEvent as ChatSessionStreamEvent,
+  ChatSessionStreamEvent,
   StreamEventEntry,
   ChatFetch,
   Streamer,
@@ -156,15 +160,6 @@ export type {
   ChatEventTransform,
   SessionOptions,
   ChatCommand,
-} from "./session/index.ts";
-export {
-  initialChatState,
-  chatReducer,
-  groupTimelineByToolCall,
-  deriveMessages,
-  deriveStreamingMessage,
-} from "./state/index.ts";
-export type {
   ChatState,
   ChatStateEvent,
   LocalChatAction,
@@ -174,7 +169,7 @@ export type {
   ToolEmissionTrackingState,
   ElicitState,
   ElicitTrackingState,
-} from "./state/index.ts";
+} from "@sweatpants/chat-core";
 export { createPluginRegistry, createPluginRegistryFrom } from "./mcp-tools/plugin-registry.ts";
 export type { PluginRegistry } from "./mcp-tools/plugin-registry.ts";
 export { executeElicitHandlerFromRequest } from "./mcp-tools/plugin-executor.ts";

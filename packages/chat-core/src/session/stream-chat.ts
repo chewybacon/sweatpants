@@ -16,7 +16,7 @@ import { useAbortSignal } from "effection";
 import { parseNDJSON } from "@sweatpants/chat-core";
 import { BaseUrlContext } from "./contexts.ts";
 import type { ChatStateEvent } from "../state/events.ts";
-import type { Message } from "../types.ts";
+import type { Message } from "@sweatpants/chat-core";
 import type { StreamChatOptions } from "./options.ts";
 import type { StreamResult } from "./streaming.ts";
 import { executeChatFetch } from "./api-transport.ts";

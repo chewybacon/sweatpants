@@ -36,6 +36,44 @@ export { useTransformPipeline, passthroughTransform, loggingTransform } from "./
 // Contexts
 export { BaseUrlContext, StreamerContext } from "./contexts.ts";
 
+// AG-UI checkpoint/projection/messages
+export {
+  buildAgUiCheckpoint,
+  buildAgUiCustomState,
+  type BuildAgUiCheckpointOptions,
+} from "./ag-ui-checkpoint.ts";
+export {
+  replayActivitySnapshots,
+  providerHistoryMessages,
+  toProviderHistorySnapshot,
+  activitySnapshotsForMessages,
+} from "./ag-ui-projection.ts";
+export {
+  internalMessageToAgUiMessage,
+  internalMessagesToAgUiMessages,
+  agUiMessageToInternalMessage,
+  agUiMessagesToInternalMessages,
+  isAgUiMessageArray,
+  type AgUiFunctionCall,
+  type AgUiToolCall,
+  type AgUiMessage,
+} from "./ag-ui-messages.ts";
+
+// Durable history
+export { deduplicateMessages, type DurableFrame } from "./durable-history.ts";
+
+// Message identity
+export {
+  deriveTurnKeyFromToolCalls,
+  turnKeyFromToolCalls,
+  messageIdForUser,
+  messageIdForAssistantTools,
+  messageIdForTool,
+  messageIdForAssistantFinal,
+  messageIdForSystem,
+  assertMessageHasId,
+} from "./message-identity.ts";
+
 // Streaming types
 export type {
   AgUiCheckpoint,
@@ -43,6 +81,7 @@ export type {
   AgUiRunMetadata,
   ConversationState,
   ConversationReplayToolTrace,
+  ConversationReplayState,
   StreamResult,
   StreamCompleteResult,
   StreamElicitResult,

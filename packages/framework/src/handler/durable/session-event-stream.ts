@@ -9,7 +9,7 @@
 import { resource, type Operation, type Stream } from "effection";
 import type { TokenBufferStore, TokenBufferWriter } from "../../lib/chat/durable-streams/index.ts";
 import type { StreamEvent } from "../types.ts";
-import type { DurableFrame } from "../../lib/chat/session/durable-history.ts";
+import type { DurableFrame } from "@sweatpants/chat-core";
 import { recordConversationCheckpoint } from "./conversation-index.ts";
 import {
   interruptRecordsForThread,

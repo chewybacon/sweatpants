@@ -9,8 +9,8 @@ import type { ChatStateEvent } from "../state/events.ts";
 import type { Message } from "@sweatpants/chat-core";
 import type { StreamEvent, StreamResult } from "./streaming.ts";
 import type { ConversationReplayState } from "./replay-types.ts";
-import type { ToolExecutionTrace } from "../browser-rendering/emissions.ts";
-import type { PluginHandleInput } from "../mcp-tools/plugin.ts";
+import type { ToolExecutionTrace } from "@sweatpants/chat-core";
+import type { PluginReplayTraceSpec } from "@sweatpants/chat-core";
 import type { StreamOptions } from "@sweatpants/chat-core";
 
 // =============================================================================
@@ -157,7 +157,7 @@ export interface SessionOptions {
    * The old `enabledPlugins` string array option is removed — plugin tool
    * exposure is derived from the `plugins` array.
    */
-  plugins?: PluginHandleInput[];
+  plugins?: PluginReplayTraceSpec[];
 
   /**
    * Tools to enable by name (for server-side tool selection).

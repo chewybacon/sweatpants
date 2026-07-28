@@ -60,7 +60,7 @@
         }
     },
     "scripts": {
-        "build": "tsup src/index.ts src/model.ts src/chat.ts src/history.ts src/scenario.ts --format esm --dts",
+        "build": "tsup && tsc --emitDeclarationOnly --noEmit false --outDir dist --rootDir src",
         "typecheck": "tsc --noEmit",
         "check": "pnpm typecheck",
         "lint": "oxlint src",

@@ -49,8 +49,41 @@ export * from "./model-provider.ts";
 // History policy
 export * from "./history-policy.ts";
 
-// Runtime types (Model, Runtime, Context, StreamEvent, StreamOptions, etc.)
-export * from "./runtime/index.ts";
+// Runtime types (Model, Runtime, Context, StreamOptions, etc.)
+// Explicit exports to avoid StreamEvent name collision with session/streaming.ts
+export type {
+  Runtime,
+  ThinkingLevel,
+  ThinkingSetting,
+  ModelThinkingLevel,
+  ThinkingLevelMap,
+  ThinkingBudgets,
+  Model,
+  ImageModel,
+  InputModality,
+  OutputModality,
+  Context,
+  Tool,
+  Message as RuntimeMessage,
+  UserMessage,
+  SystemMessage,
+  AssistantMessage,
+  ToolResultMessage,
+  ContentBlock,
+  TextBlock,
+  ThinkingBlock,
+  ToolCallBlock,
+  ImageBlock,
+  StreamEvent as RuntimeStreamEvent,
+  ImageGenerationContext,
+  AssistantImages,
+  StreamOptions,
+  ImageGenerationOptions,
+  Usage,
+  StopReason,
+  Cost,
+  EventMetadata,
+} from "./runtime/index.ts";
 
 // Message part types
 export * from "./types/index.ts";
@@ -83,3 +116,120 @@ export {
   type RuntimeConfig,
   type RuntimePrimitive,
 } from "./emissions.ts";
+
+// Tool validation error types
+export {
+  TOOL_PARAMETER_VALIDATION_FAILED,
+  type ToolParameterValidationIssue,
+  type ToolParameterValidationErrorPayload,
+} from "./tool-validation.ts";
+
+// Minimal plugin spec for session options
+export type { PluginReplayTraceSpec } from "./plugin-spec.ts";
+
+// Chat state (reducer, timeline, derive)
+export {
+  chatReducer,
+  initialChatState,
+  groupTimelineByToolCall,
+  deriveMessages,
+  deriveCompletedMessages,
+  deriveStreamingMessage,
+} from "./state/index.ts";
+export type {
+  ChatState,
+  ChatStateEvent,
+  LocalChatAction,
+  LocalEmissionAction,
+  StreamingPartsState,
+  ToolEmissionState,
+  ToolEmissionTrackingState,
+  ElicitState,
+  ElicitTrackingState,
+  TimelineUserMessage,
+  TimelineAssistantText,
+  TimelineThinking,
+  TimelineToolCall,
+  TimelineStep,
+  TimelineItem,
+  TimelineToolCallGroup,
+  GroupedTimelineItem,
+  ComponentExtractor,
+} from "./state/index.ts";
+
+// Chat session (create, stream, replay, transforms)
+export {
+  createChatSession,
+  runChatSession,
+  streamChatOnce,
+  readDurableHistory,
+  replayFramesToConversation,
+  deduplicateMessages,
+  PLUGIN_REPLAY_ACTIVITY_TYPE,
+  PLUGIN_REPLAY_LIMITS,
+  normalizeClientReplayTrace,
+  mergePluginReplayTrace,
+  buildPluginReplayActivity,
+  activityMessageToPluginReplayTrace,
+  activitySnapshotToPluginReplayTrace,
+  useTransformPipeline,
+  passthroughTransform,
+  loggingTransform,
+  BaseUrlContext,
+  StreamerContext,
+  // AG-UI projection
+  buildAgUiCheckpoint,
+  buildAgUiCustomState,
+  replayActivitySnapshots,
+  providerHistoryMessages,
+  toProviderHistorySnapshot,
+  activitySnapshotsForMessages,
+  // AG-UI messages
+  internalMessageToAgUiMessage,
+  internalMessagesToAgUiMessages,
+  agUiMessageToInternalMessage,
+  agUiMessagesToInternalMessages,
+  isAgUiMessageArray,
+  // Message identity
+  deriveTurnKeyFromToolCalls,
+  turnKeyFromToolCalls,
+  messageIdForUser,
+  messageIdForAssistantTools,
+  messageIdForTool,
+  messageIdForAssistantFinal,
+  messageIdForSystem,
+  assertMessageHasId,
+} from "./session/index.ts";
+export type {
+  ChatSession,
+  ClientToolSessionOptions,
+  StreamChatOptions,
+  ElicitResponseData,
+  DurableHistoryReplay,
+  DurableFrame,
+  PluginReplayTraceSource,
+  PluginReplayActivityContent,
+  PluginReplayActivitySnapshotEvent,
+  AgUiCheckpoint,
+  AgUiCustomState,
+  AgUiRunMetadata,
+  ConversationState,
+  ConversationReplayToolTrace,
+  ConversationReplayState,
+  StreamResult,
+  StreamCompleteResult,
+  StreamElicitResult,
+  ElicitRequestStreamEvent,
+  StreamEvent as ChatSessionStreamEvent,
+  StreamEventEntry,
+  ChatFetch,
+  Streamer,
+  MessageRenderer,
+  ChatEventTransform,
+  SessionOptions,
+  ChatCommand,
+  BuildAgUiCheckpointOptions,
+  AgUiFunctionCall,
+  AgUiToolCall,
+  AgUiMessage,
+} from "./session/index.ts";

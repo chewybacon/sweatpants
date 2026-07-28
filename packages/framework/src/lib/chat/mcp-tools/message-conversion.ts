@@ -32,7 +32,7 @@ import {
   messageIdForAssistantTools,
   messageIdForTool,
   messageIdForUser,
-} from "../session/message-identity.ts";
+} from "@sweatpants/chat-core";
 
 /**
  * Type guard for ToolCallMessage (assistant message with tool_calls).

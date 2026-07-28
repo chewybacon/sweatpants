@@ -9,7 +9,7 @@
  * plugin-replay.ts now imports ConversationReplayToolTrace from this leaf
  * module instead of from streaming.ts, removing the back-edge.
  */
-import type { ToolExecutionTrace } from "../browser-rendering/emissions.ts";
+import type { ToolExecutionTrace } from "@sweatpants/chat-core";
 
 export interface ConversationReplayToolTrace {
   callId: string;

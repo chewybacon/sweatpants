@@ -4,7 +4,7 @@ export type { Message } from "../lib/chat/types.ts";
 export type { Message as ChatMessage } from "../lib/chat/types.ts";
 
 export type {
-  StreamEvent,
+  ChatSessionStreamEvent as StreamEvent,
   ConversationState,
   ElicitRequestStreamEvent,
-} from "../lib/chat/session/streaming.ts";
+} from "@sweatpants/chat-core";
