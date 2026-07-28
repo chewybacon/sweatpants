@@ -11,7 +11,7 @@
  * - LLM writer tasks run in background via useBackgroundTask, surviving client disconnects
  * - Reconnection works by acquiring the same sessionId while LLM is still streaming
  */
-import { sleep, type Operation } from "effection";
+import { sleep, type Operation, type Scope } from "effection";
 import type {
   TokenBufferStore,
   TokenBuffer,
@@ -70,7 +70,7 @@ const TASK_KEYS = {
 export function* createSessionRegistry<T>(
   bufferStore: TokenBufferStore<T>,
   registryStore: SessionRegistryStore,
-  config: { retentionPolicy?: RetentionPolicy } = {},
+  config: { retentionPolicy?: RetentionPolicy; ownerScope?: Scope } = {},
 ): Operation<RecoverableSessionRegistry<T>> {
   const log = yield* useLogger("durable-streams:registry");
   const retentionPolicy = config.retentionPolicy ?? DEFAULT_RETENTION_POLICY;
@@ -114,6 +114,7 @@ export function* createSessionRegistry<T>(
       },
       {
         name: taskName,
+        ...(config.ownerScope ? { scope: config.ownerScope } : {}),
         contexts: loggerFactory ? [{ context: LoggerFactoryContext, value: loggerFactory }] : [],
       },
     );
@@ -183,6 +184,7 @@ export function* createSessionRegistry<T>(
       },
       {
         name: `retention-ttl:${sessionId}`,
+        ...(config.ownerScope ? { scope: config.ownerScope } : {}),
       },
     );
 
@@ -403,7 +405,10 @@ export function* createSessionRegistry<T>(
                 );
               }
             },
-            { name: `cleanup-waiter:${sessionId}` },
+            {
+              name: `cleanup-waiter:${sessionId}`,
+              ...(config.ownerScope ? { scope: config.ownerScope } : {}),
+            },
           );
         }
       }

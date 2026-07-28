@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { createContext, ensure, sleep, type Operation, type Subscription } from "effection";
+import {
+  createContext,
+  ensure,
+  resource,
+  sleep,
+  suspend,
+  type Operation,
+  type Subscription,
+} from "effection";
+import type { RecoverableSessionRegistry } from "@sweatpants/durable-streams";
 import { createChatApplication, createChatHandler } from "../index.ts";
 import { createStreamingHandler } from "../../handler/streaming.ts";
+import { setupInMemoryDurableStreams } from "../../lib/chat/durable-streams/setup.ts";
 
 function oneShotSubscription(value: string): Subscription<string, void> {
   let done = false;
@@ -21,6 +31,48 @@ async function readResponseText(response: Response): Promise<string> {
 }
 
 describe("createChatApplication", () => {
+  it("owns durable writer work beyond requests and reclaims it on Host close", async () => {
+    let registry: RecoverableSessionRegistry<string> | undefined;
+    let writerStarted = false;
+    let writerHalted = false;
+
+    const handler = createStreamingHandler(function* () {
+      if (!registry) {
+        throw new Error("registry was not configured");
+      }
+      const source = resource<Subscription<string, void>>(function* (provide) {
+        yield* provide({
+          *next() {
+            writerStarted = true;
+            try {
+              yield* suspend();
+            } finally {
+              writerHalted = true;
+            }
+            return { done: true, value: undefined };
+          },
+        });
+      });
+      yield* registry.acquire("host-owned-writer", { source });
+      return oneShotSubscription("started");
+    });
+
+    const app = createChatApplication({
+      setup: function* () {
+        registry = (yield* setupInMemoryDurableStreams<string>()).registry;
+      },
+      handler,
+    });
+
+    const response = await app.handle(new Request("http://localhost/chat"));
+    expect(await readResponseText(response)).toBe("started");
+    expect(writerStarted).toBe(true);
+    expect(writerHalted).toBe(false);
+
+    await app.close();
+    expect(writerHalted).toBe(true);
+  });
+
   it("runs Effection app setup once and exposes app context to request scopes", async () => {
     const AppValueContext = createContext<string>("test-app-value");
     let setupCount = 0;
