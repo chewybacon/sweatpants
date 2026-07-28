@@ -111,6 +111,15 @@ export {
 
 // Shared memory store (for cross-scope persistence in tests and single-server deployments)
 export {
+  getConversationCheckpointId,
+  getConversationIndexId,
+  recordConversationCheckpoint,
+  recordConversationSession,
+  readLatestConversationCheckpoint,
+  resolveLatestConversationSession,
+} from "./conversation-index.ts";
+
+export {
   createSharedStorage,
   createSharedBufferStore,
   createSharedRegistryStore,
