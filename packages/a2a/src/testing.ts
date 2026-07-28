@@ -1,3 +1,4 @@
+import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { call, type Operation } from "effection";
 import type { ForeignA2AClientPort } from "./foreign-client.ts";
 import type {
@@ -6,11 +7,7 @@ import type {
   ForeignA2AStartRequest,
   ForeignA2ATask,
 } from "./foreign-task-types.ts";
-import type {
-  DurableProgramManifest,
-  DurableToolRegistry,
-  PinnedProgram,
-} from "@sweatpants/session-contract";
+import type { DurableProgramManifest, PinnedProgram } from "@sweatpants/session-contract";
 import type { A2AWebSocketConnector } from "./connector.ts";
 import type { A2AExecutorPrincipal, A2AProgramExecutor } from "./executor.ts";
 import { CALLER_AUTHORITATIVE_EXTENSION_URI } from "./types.ts";

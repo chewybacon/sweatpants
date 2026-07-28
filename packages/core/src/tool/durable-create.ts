@@ -1,3 +1,6 @@
+import { type EffectDefinition } from "@sweatpants/session-contract";
+
+import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import { z, type ZodSchema } from "zod";
@@ -5,7 +8,6 @@ import { canonicalJson, sha256, sortStrings } from "@sweatpants/foundation";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
-  CrankError,
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
@@ -18,7 +20,6 @@ import {
   type DurableProgramManifest,
   type DurableSchemaRegistryEntry,
   type DurableTool,
-  type EffectDefinition,
   type Json,
   type ModelSampleRequest,
   type ModelSampleResult,

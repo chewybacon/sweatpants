@@ -1,5 +1,6 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { assertJson, canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
-import { CrankError } from "@sweatpants/session-contract";
+
 import type { Json } from "@sweatpants/foundation";
 import type {
   PinnedProgram,

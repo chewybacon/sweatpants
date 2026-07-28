@@ -1,10 +1,13 @@
+import {
+  ProgramDriverRegistryContext,
+  createProgramDriverRegistry,
+} from "@sweatpants/durable-execution";
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
   canonicalJson,
@@ -15,7 +18,6 @@ import {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
-  createProgramDriverRegistry,
   sha256,
   type Json,
 } from "@sweatpants/session-contract";

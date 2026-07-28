@@ -1,3 +1,7 @@
+import {
+  ProgramDriverRegistryContext,
+  createProgramDriverRegistry,
+} from "@sweatpants/durable-execution";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { call, run, type Operation } from "effection";
@@ -5,7 +9,6 @@ import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRuntime,
   canonicalJson,
   createCapabilityKeyring,
@@ -14,7 +17,6 @@ import {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
-  createProgramDriverRegistry,
   type DurableJournalAuthorityService,
   type Json,
   type StandardSchemaV1,

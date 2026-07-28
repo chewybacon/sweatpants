@@ -1,6 +1,6 @@
 import { createContext, type Operation, type Scope } from "effection";
 import type { DurableEffectRegistry } from "@sweatpants/durable-effects";
-import { CrankError } from "@sweatpants/foundation";
+import { CrankError } from "./errors.ts";
 import type { DurableTool } from "./program-authoring.ts";
 import type { ProgramDriver } from "./program-driver-contract.ts";
 

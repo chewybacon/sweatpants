@@ -1,7 +1,7 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { call, race, type Operation } from "effection";
 
 import {
-  CrankError,
   type DurableJournalAuthorityService,
   type RecoverableSession,
 } from "@sweatpants/session-contract";

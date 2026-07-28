@@ -24,10 +24,16 @@ const SeatMapSchema = z.object({
   taken: z.array(z.string()),
 });
 
+const SearchFlightsInputSchema = z.object({
+  from: z.string().min(1),
+  destination: z.string().min(1),
+});
+const ReserveSeatInputSchema = z.object({ flightId: z.string(), seat: z.string() });
+
 const searchFlights = defineEffect({
   name: "yo-a2a.flights.search",
   version: "1",
-  input: z.object({ from: z.string().min(1), destination: z.string().min(1) }),
+  input: SearchFlightsInputSchema,
   output: z.object({ flights: z.array(FlightSchema).min(1) }),
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
@@ -35,7 +41,7 @@ const searchFlights = defineEffect({
 const reserveSeat = defineEffect({
   name: "yo-a2a.flights.reserve",
   version: "1",
-  input: z.object({ flightId: z.string(), seat: z.string() }),
+  input: ReserveSeatInputSchema,
   output: z.object({ ticketNumber: z.string() }),
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
@@ -135,7 +141,8 @@ const searchValidators = effectRuntimeValidators(searchFlights)!;
 export const searchFlightsRegistration = createDurableEffectRegistration(
   searchFlights,
   { mode: "idempotent", mechanism: "pull_id_key" },
-  function* (input) {
+  function* (value) {
+    const input = SearchFlightsInputSchema.parse(value);
     return {
       status: "ok",
       value: {
@@ -175,7 +182,8 @@ const reserveValidators = effectRuntimeValidators(reserveSeat)!;
 export const reserveSeatRegistration = createDurableEffectRegistration(
   reserveSeat,
   { mode: "idempotent", mechanism: "pull_id_key" },
-  function* (input) {
+  function* (value) {
+    const input = ReserveSeatInputSchema.parse(value);
     return {
       status: "ok",
       value: { ticketNumber: `TK-${input.flightId}-${input.seat}` },

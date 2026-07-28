@@ -1,4 +1,5 @@
-import { CrankError, sha256Bytes } from "@sweatpants/session-contract";
+import { CrankError } from "@sweatpants/durable-execution";
+import { sha256Bytes } from "@sweatpants/session-contract";
 
 export type A2AContentRetentionClass = "ephemeral" | "task" | "audit" | string;
 

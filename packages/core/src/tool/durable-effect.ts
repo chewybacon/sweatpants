@@ -1,12 +1,9 @@
+import { defineDurableEffect } from "@sweatpants/session-contract";
+import { type EffectDefinition, type RetrySafety } from "@sweatpants/session-contract";
+
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { z, ZodSchema } from "zod";
-import {
-  defineDurableEffect,
-  type DurableSchemaRegistryEntry,
-  type EffectDefinition,
-  type Json,
-  type RetrySafety,
-} from "@sweatpants/session-contract";
+import { type DurableSchemaRegistryEntry, type Json } from "@sweatpants/session-contract";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 

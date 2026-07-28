@@ -1,4 +1,4 @@
-import { resource, type Operation } from "effection";
+import { resource, type Operation, type Stream } from "effection";
 import {
   ToolInventoryContext,
   createToolInventory,
@@ -211,7 +211,7 @@ function scriptedMessage(
   };
 }
 
-function completedStream(message: AssistantMessage): ReturnType<ModelProviderDriver["stream"]> {
+function completedStream(message: AssistantMessage): Stream<never, AssistantMessage> {
   return resource(function* (provide) {
     yield* provide({
       *next(): Operation<IteratorResult<never, AssistantMessage>> {

@@ -1,8 +1,9 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 
 import { canonicalJson } from "./canonical.ts";
-import { CrankError } from "./types.ts";
+
 import type {
   CapabilityClaims,
   ProgramExecutionCapabilityClaims,

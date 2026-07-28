@@ -1,3 +1,4 @@
+import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -28,7 +29,6 @@ import {
 } from "@sweatpants/model-provider-pi-ai";
 import {
   createDurableToolRegistry,
-  type DurableToolRegistry,
   type ProgramDriver,
   type ProgramRoute,
 } from "@sweatpants/session-contract";

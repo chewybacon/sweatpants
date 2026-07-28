@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import {
   PROGRAM_ARTIFACT_IDENTITY_DOMAIN,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
@@ -14,7 +15,7 @@ import {
 } from "./durable-types.ts";
 import { canonicalJson, canonicalSnapshot, sha256 } from "./canonical.ts";
 import { createPinnedDurableProgram, validateDurableManifest } from "./authoring.ts";
-import { CrankError, type Json } from "./types.ts";
+import { type Json } from "./types.ts";
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const INPUT_KEYS = [

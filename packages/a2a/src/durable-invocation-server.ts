@@ -1,4 +1,5 @@
-import { CrankError } from "@sweatpants/session-contract";
+import { CrankError } from "@sweatpants/durable-execution";
+
 import type {
   AbortForeignInvocationResult,
   ResolveForeignInvocationResult,

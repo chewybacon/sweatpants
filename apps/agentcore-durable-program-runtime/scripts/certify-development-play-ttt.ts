@@ -17,13 +17,13 @@ import {
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,
-  type Json,
-  type ProgramRoute,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   createProgramDriverRegistry,
   ProgramDriverRegistryContext,
+  type ProgramRoute,
 } from "@sweatpants/durable-execution";
 import {
   createAgentCoreDurableProgramDriver,
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
       evaluatorAbi: "agentcore-development-v1",
     },
   };
-  const route = { driverKind: "agentcore", placement } as unknown as ProgramRoute;
+  const route: ProgramRoute = assertJson({ driverKind: "agentcore", placement });
   const connector = createSigV4AgentCoreWebSocketConnector();
   const driver = createAgentCoreDurableProgramDriver(
     createAgentCoreWebSocketProgramTransport(connector),
@@ -127,7 +127,7 @@ async function main(): Promise<void> {
             text: "first legal cell",
             calls: [],
             content: [],
-            parsed: { cell: firstEmptyPosition(request.messages) },
+            parsed: { cell: firstEmptyPosition(modelMessages(request)) },
           },
         };
       },
@@ -194,7 +194,7 @@ async function main(): Promise<void> {
   let responses = 0;
   for (let round = 0; outcome.state === "parked" && round < 12; round += 1) {
     const pending = [...authority.readJournal(sessionId)]
-      .toReversed()
+      .reverse()
       .find(
         (record) =>
           record.payload.type === "PullRequested" && record.payload.descriptor.kind === "elicit",
@@ -254,6 +254,17 @@ async function main(): Promise<void> {
     "utf8",
   );
   console.log(JSON.stringify(evidence));
+}
+
+function modelMessages(request: Json): Json[] {
+  if (!request || typeof request !== "object" || Array.isArray(request)) {
+    throw new Error("Model sample request must be an object");
+  }
+  const messages = request["messages"];
+  if (!Array.isArray(messages)) {
+    throw new Error("Model sample request messages are missing");
+  }
+  return messages;
 }
 
 function firstEmptyPosition(messages: Json[]): number {

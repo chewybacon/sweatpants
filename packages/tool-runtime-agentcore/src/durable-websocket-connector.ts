@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { AgentCoreRuntimeRelease } from "./placement-types.ts";
 import { createHash, createHmac } from "node:crypto";
 
@@ -11,7 +12,6 @@ import { SignatureV4 } from "@smithy/signature-v4";
 import { call, type Operation } from "effection";
 import { WebSocket, type RawData } from "ws";
 
-import { CrankError } from "@sweatpants/session-contract";
 import { AGENTCORE_MAX_FRAME_BYTES } from "./durable-protocol.ts";
 
 export interface AgentCoreWebSocketConnectRequest {

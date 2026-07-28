@@ -1,3 +1,5 @@
+import { type EffectDefinition } from "@sweatpants/session-contract";
+
 import {
   FOREIGN_MODEL_SAMPLE_EFFECT,
   canonicalSnapshot,
@@ -6,7 +8,6 @@ import {
   foreignToolSchemaEntries,
   type DurableProgramContext,
   type DurableSchemaRegistryEntry,
-  type EffectDefinition,
   type Json,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";

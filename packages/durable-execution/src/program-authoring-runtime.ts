@@ -1,6 +1,6 @@
 import { canonicalSnapshot } from "@sweatpants/foundation";
 import type { Json } from "@sweatpants/foundation";
-import { CrankError } from "@sweatpants/foundation";
+import { CrankError } from "./errors.ts";
 import {
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,

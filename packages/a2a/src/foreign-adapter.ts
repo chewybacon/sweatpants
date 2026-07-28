@@ -1,7 +1,7 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { sleep, type Operation } from "effection";
 import { createDurableEffectRegistration } from "@sweatpants/session-contract";
 import {
-  CrankError,
   assertJson,
   canonicalJson,
   createPinnedDurableProgram,

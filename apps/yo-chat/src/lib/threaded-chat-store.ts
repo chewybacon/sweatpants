@@ -325,7 +325,7 @@ export function createThreadedChatEngine(params: {
     const assistantMessageId = crypto.randomUUID();
     let assistantText = "";
 
-    const stream = modelProvider.stream({
+    const stream = yield* modelProvider.stream({
       model,
       context: { messages },
     });

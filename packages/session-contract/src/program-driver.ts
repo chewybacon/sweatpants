@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import {
   createQueue,
   createScope,
@@ -18,13 +19,8 @@ import {
 } from "./authoring.ts";
 import { canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
-import {
-  ProgramExecutionContext,
-  createProgramExecutionValue,
-  type ProgramExecutionValue,
-} from "./program-execution-context.ts";
 import { validateProgramIdentityProvenance } from "./program-identity.ts";
-import { CrankError, type Json } from "./types.ts";
+import { type Json } from "./types.ts";
 import type {
   AttachProgramRequest,
   DurableEffectRegistry,
@@ -43,22 +39,14 @@ import type {
 
 import {
   ExecutionDurableEffectRegistryContext,
+  ProgramExecutionContext,
   ProgramExecutionScopeContext,
+  createProgramExecutionValue,
   useDurableToolRegistry,
   type DurableToolRegistry,
   type ProgramDriver,
+  type ProgramExecutionValue,
 } from "@sweatpants/durable-execution";
-
-export {
-  DurableToolRegistryContext,
-  ExecutionDurableEffectRegistryContext,
-  ProgramDriverRegistryContext,
-  ProgramExecutionScopeContext,
-  createProgramDriverRegistry,
-  useDurableToolRegistry,
-  useProgramDriverRegistry,
-} from "@sweatpants/durable-execution";
-export type { DurableToolRegistry, ProgramDriverRegistry } from "@sweatpants/durable-execution";
 
 /** Builds a registry and rejects duplicate program IDs. */
 export function createDurableToolRegistry(

@@ -1,9 +1,12 @@
+import {
+  ProgramDriverRegistryContext,
+  createProgramDriverRegistry,
+} from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
@@ -11,7 +14,6 @@ import {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
-  createProgramDriverRegistry,
 } from "@sweatpants/session-contract";
 import {
   FOREIGN_A2A_ADAPTER_PROGRAM,

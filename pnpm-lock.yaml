@@ -208,6 +208,9 @@ importers:
       '@sweatpants/durable-effects':
         specifier: workspace:*
         version: link:../../packages/durable-effects
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../../packages/durable-execution
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
@@ -260,6 +263,9 @@ importers:
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:../../packages/durable-execution
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../../packages/foundation
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../../packages/session-contract
@@ -553,6 +559,9 @@ importers:
       '@radix-ui/react-slot':
         specifier: ^1.2.4
         version: 1.2.4(@types/react@19.2.8)(react@19.2.3)
+      '@sweatpants/chat-core':
+        specifier: workspace:*
+        version: link:../../packages/chat-core
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -562,9 +571,15 @@ importers:
       '@sweatpants/durable-effects':
         specifier: workspace:*
         version: link:../../packages/durable-effects
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../../packages/durable-execution
       '@sweatpants/durable-streams':
         specifier: workspace:*
         version: link:../../packages/durable-streams
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../../packages/foundation
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
@@ -1025,6 +1040,9 @@ importers:
       '@sweatpants/durable-effects':
         specifier: workspace:*
         version: link:../durable-effects
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
@@ -1380,6 +1398,9 @@ importers:
       '@sweatpants/durable-effects':
         specifier: workspace:*
         version: link:../durable-effects
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../framework
@@ -1704,6 +1725,9 @@ importers:
       '@sweatpants/durable-effects':
         specifier: workspace:*
         version: link:../durable-effects
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
       '@sweatpants/durable-streams':
         specifier: workspace:*
         version: link:../durable-streams
@@ -1879,6 +1903,9 @@ importers:
 
   packages/workspace-lambda-microvm:
     dependencies:
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract

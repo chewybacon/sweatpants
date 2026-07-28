@@ -1,9 +1,9 @@
+import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   canonicalSnapshot,
   createLocalProgramDriver,
-  type DurableToolRegistry,
   type ProgramAttachment,
   type ProgramShutdownReason,
 } from "@sweatpants/session-contract";

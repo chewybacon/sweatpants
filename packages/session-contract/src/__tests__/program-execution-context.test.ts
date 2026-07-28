@@ -1,3 +1,4 @@
+import { createProgramExecutionValue, useProgramExecution } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
@@ -5,8 +6,6 @@ import {
   createDurableToolRegistry,
   createLocalProgramDriver,
   createPinnedDurableProgram,
-  createProgramExecutionValue,
-  useProgramExecution,
   type AttachProgramRequest,
   type DurableProgramManifest,
 } from "../index.ts";

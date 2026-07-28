@@ -1,4 +1,4 @@
-import type { Message, ToolCall } from "@sweatpants/chat-core";
+import type { Message, ToolCall } from "../messages.ts";
 import type { PluginReplayActivityContent } from "./plugin-replay.ts";
 
 export interface AgUiFunctionCall {

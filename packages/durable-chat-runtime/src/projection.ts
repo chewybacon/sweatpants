@@ -7,7 +7,7 @@
  * pending-resume consistency invariant.
  */
 import { resource, type Operation, type Stream } from "effection";
-import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
+import type { StreamEvent } from "./handler/types.ts";
 import { buildAgUiCustomState } from "@sweatpants/chat-core";
 import { activitySnapshotsForMessages, toProviderHistorySnapshot } from "@sweatpants/chat-core";
 import { agUiMessagesToInternalMessages } from "@sweatpants/chat-core";
@@ -16,7 +16,7 @@ import type {
   ElicitRequestStreamEvent,
   ChatSessionStreamEvent as ChatStreamEvent,
 } from "@sweatpants/chat-core";
-import type { OpenInterruptRecord } from "@sweatpants/durable-chat-runtime/interrupts";
+import type { OpenInterruptRecord } from "./interrupts/index.ts";
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

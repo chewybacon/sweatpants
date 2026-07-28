@@ -99,9 +99,6 @@ export function* setupDurableStreams<T>(
 ): Operation<DurableStreamsSetup<T>> {
   const { bufferStore, registryStore, retentionPolicy } = config;
   const owner = config.owner ?? (yield* useDurableStreamsOwner());
-
-  // Host composition supplies an explicit structural owner. Standalone tests
-  // may omit it; no caller/request scope is guessed to be the owner.
   const registry = yield* createSessionRegistry(bufferStore, registryStore, {
     ...(retentionPolicy ? { retentionPolicy } : {}),
     ...(owner ? { ownerScope: owner.scope, registerWriter: owner.register } : {}),
@@ -149,7 +146,7 @@ export function* setupDurableStreams<T>(
  * ```
  */
 export function* setupInMemoryDurableStreams<T>(
-  options: { retentionPolicy?: RetentionPolicy } = {},
+  options: { retentionPolicy?: RetentionPolicy; owner?: DurableStreamsOwner } = {},
 ): Operation<DurableStreamsSetup<T>> {
   const bufferStore = createInMemoryBufferStore<T>();
   const registryStore = createInMemoryRegistryStore();
@@ -158,5 +155,6 @@ export function* setupInMemoryDurableStreams<T>(
     bufferStore,
     registryStore,
     ...(options.retentionPolicy ? { retentionPolicy: options.retentionPolicy } : {}),
+    ...(options.owner ? { owner: options.owner } : {}),
   });
 }

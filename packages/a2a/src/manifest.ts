@@ -1,3 +1,5 @@
+import { type DurableEffectRegistry } from "@sweatpants/session-contract";
+
 import {
   canonicalJson,
   canonicalSnapshot,
@@ -10,7 +12,7 @@ import {
   type DurableProgramManifest,
   type PinnedProgram,
 } from "@sweatpants/durable-execution";
-import type { DurableEffectRegistry } from "@sweatpants/session-contract";
+
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   type RemoteProgramManifestDocumentV1,

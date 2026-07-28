@@ -1,4 +1,4 @@
-import type { ToolExecutionTrace, EmissionTraceEntry } from "@sweatpants/chat-core";
+import type { ToolExecutionTrace, EmissionTraceEntry } from "../trace-types.ts";
 import type { ConversationReplayToolTrace } from "./replay-types.ts";
 
 export const PLUGIN_REPLAY_ACTIVITY_TYPE = "sweatpants:plugin-replay" as const;

@@ -1,3 +1,5 @@
+import { type OperationOutcome } from "@sweatpants/session-contract";
+
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -14,7 +16,6 @@ import {
   type DurableSchemaRegistry,
   type DurableSemanticRecord,
   type OpenDurableTaskRequest,
-  type OperationOutcome,
   type ResolveOperationResult,
   type Json,
 } from "@sweatpants/session-contract";

@@ -1,5 +1,6 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { createDurableTool } from "@sweatpants/core";
-import { CrankError, canonicalJson, sha256 } from "@sweatpants/session-contract";
+import { canonicalJson, sha256 } from "@sweatpants/session-contract";
 import type { WorkspaceFilesApi } from "@sweatpants/workspace-runtime/api";
 import type { Operation } from "effection";
 import { z } from "zod";

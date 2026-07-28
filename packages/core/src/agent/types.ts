@@ -1,7 +1,8 @@
+import { type EffectDefinition } from "@sweatpants/session-contract";
+
 import type {
   DurableSchemaRegistryEntry,
   DurableTool,
-  EffectDefinition,
   Json,
   PinnedProgram,
   ProgramIdentityProvenanceV1,

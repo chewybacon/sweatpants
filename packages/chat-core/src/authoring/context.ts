@@ -1,11 +1,6 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { sortedResourceValues } from "@sweatpants/core";
-import {
-  CrankError,
-  canonicalJson,
-  canonicalSnapshot,
-  sha256,
-  type Json,
-} from "@sweatpants/foundation";
+import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import { DEFAULT_MAX_INLINE_BYTES } from "@sweatpants/durable-execution";
 import {
   CHAT_CONTEXT_POLICY_FORMAT,

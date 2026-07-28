@@ -1,7 +1,8 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { call, race, sleep, useAbortSignal, type Operation } from "effection";
 import { canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
 import type { Json } from "@sweatpants/foundation";
-import { CrankError } from "@sweatpants/session-contract";
+
 import type {
   AttachProgramRequest,
   DurableProgramManifest,

@@ -11,16 +11,12 @@ import {
   encodeProgressNotification,
   encodeLogNotification,
   encodeElicitationRequest,
-  encodeToolCallResult,
-
-  // Decoder
+  encodeToolCallResult, // Decoder
   decodeElicitationResponse,
   decodeSamplingResponse,
   parseJsonRpcMessage,
   createDecoderContext,
-  decodeResponse,
-
-  // SSE
+  decodeResponse, // SSE
   formatSseEvent,
   formatMessageAsSse,
   parseSseEvent,
@@ -28,9 +24,7 @@ import {
   generateEventId,
   parseEventId,
   createPrimeEvent,
-  createCloseEvent,
-
-  // Types
+  createCloseEvent, // Types
   isJsonRpcError,
   isJsonRpcSuccess,
 } from "../index.ts";

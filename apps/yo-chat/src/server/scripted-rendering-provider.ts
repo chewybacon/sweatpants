@@ -1,4 +1,4 @@
-import { resource, sleep, type Operation, type Stream } from "effection";
+import { resource, sleep, type Operation } from "effection";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -6,10 +6,9 @@ import {
   type Model,
   type ModelProviderDriver,
 } from "@sweatpants/framework/chat";
+import type { RuntimeStreamEvent } from "@sweatpants/chat-core";
 
 type RuntimeContext = Parameters<ModelProviderDriver["stream"]>[0]["context"];
-type RuntimeStreamEvent =
-  ReturnType<ModelProviderDriver["stream"]> extends Stream<infer TEvent, unknown> ? TEvent : never;
 
 const scriptedRenderingModel: Model = {
   id: "scripted-rendering",

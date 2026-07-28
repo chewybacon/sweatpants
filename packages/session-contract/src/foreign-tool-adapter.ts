@@ -13,7 +13,8 @@ import {
   FOREIGN_TOOL_START_EFFECT,
 } from "./foreign-tool-contract.ts";
 import type { ModelSampleRequest, ModelSampleResult } from "./model-sample-contract.ts";
-import { CrankError, type Json } from "./types.ts";
+import { CrankError } from "@sweatpants/durable-execution";
+import type { Json } from "./types.ts";
 import type { DurableEffectRegistration, ForeignToolRequest } from "./durable-types.ts";
 
 /**

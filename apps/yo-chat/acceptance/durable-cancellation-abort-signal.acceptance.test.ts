@@ -1,3 +1,7 @@
+import {
+  ProgramDriverRegistryContext,
+  createProgramDriverRegistry,
+} from "@sweatpants/durable-execution";
 // @vitest-environment node
 import { action, createQueue, run, spawn, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
@@ -8,14 +12,12 @@ import {
   DurableEffectRegistryContext,
   withJournalAuthority,
   NULL_RESULT_SCHEMA_DESCRIPTOR,
-  ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createProgramDriverRegistry,
   defineDurableProgramManifest,
   foreignToolAdapter,
   type AttachProgramRequest,

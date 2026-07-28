@@ -1,7 +1,7 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
-  CrankError,
   canonicalSnapshot,
   exactProgramKey,
   stableOpaqueId,

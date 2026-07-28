@@ -1,6 +1,6 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import {
-  CrankError,
   assertJson,
   canonicalJson,
   canonicalSnapshot,

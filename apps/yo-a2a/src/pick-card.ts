@@ -12,10 +12,12 @@ const CardSchema = z.object({
 });
 type Card = z.infer<typeof CardSchema>;
 
+const DrawCardsInputSchema = z.object({ count: z.number().int().min(2).max(10) });
+
 const drawCards = defineEffect({
   name: "yo-a2a.cards.draw",
   version: "1",
-  input: z.object({ count: z.number().int().min(2).max(10) }),
+  input: DrawCardsInputSchema,
   output: z.object({ cards: z.array(CardSchema).min(2).max(10) }),
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
@@ -65,7 +67,8 @@ const drawValidators = effectRuntimeValidators(drawCards)!;
 export const drawCardsRegistration = createDurableEffectRegistration(
   drawCards,
   { mode: "idempotent", mechanism: "pull_id_key" },
-  function* (input) {
+  function* (value) {
+    const input = DrawCardsInputSchema.parse(value);
     return { status: "ok", value: { cards: shuffledDeck().slice(0, input.count) } };
   },
   { input: drawValidators.input, output: drawValidators.output },

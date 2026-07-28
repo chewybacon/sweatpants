@@ -1,6 +1,7 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { WebSocket, type RawData } from "ws";
-import { CrankError } from "@sweatpants/session-contract";
+
 import type { A2AExecutorPrincipal, A2AProgramExecutor } from "./executor.ts";
 import { A2A_MAX_FRAME_BYTES, CALLER_AUTHORITATIVE_EXTENSION_URI } from "./types.ts";
 import { a2aError } from "./protocol.ts";

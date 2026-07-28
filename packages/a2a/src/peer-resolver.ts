@@ -1,6 +1,6 @@
+import { PullApplicationError } from "@sweatpants/durable-execution";
 import {
   DurableProgramCancellation,
-  PullApplicationError,
   assertJson,
   canonicalJson,
   createPinnedDurableProgram,

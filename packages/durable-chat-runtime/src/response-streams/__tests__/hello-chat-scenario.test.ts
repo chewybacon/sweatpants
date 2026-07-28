@@ -35,8 +35,11 @@ import {
 // =============================================================================
 
 function* useTestRegistry() {
-  // Use the DI setup helper - sets contexts and returns the setup
-  const { registry, bufferStore, registryStore } = yield* setupInMemoryDurableStreams<string>();
+  // The test operation is the explicit owner for every writer it starts.
+  const scope = yield* useScope();
+  const { registry, bufferStore, registryStore } = yield* setupInMemoryDurableStreams<string>({
+    owner: { scope, register: () => undefined },
+  });
   return { registry, bufferStore, registryStore };
 }
 

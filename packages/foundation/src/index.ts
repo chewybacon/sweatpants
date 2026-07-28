@@ -12,10 +12,5 @@ export {
 } from "./json.ts";
 export * from "./port.ts";
 
-export {
-  CrankError,
-  PullApplicationError,
-  type RuntimeErrorCode,
-  type SerializedApplicationError,
-} from "./errors.ts";
+export type { SerializedApplicationError } from "./errors.ts";
 export * from "./schema-descriptor.ts";

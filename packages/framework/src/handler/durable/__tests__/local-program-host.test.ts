@@ -1,3 +1,4 @@
+import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createDurableTool } from "@sweatpants/core";
@@ -8,7 +9,6 @@ import {
   createLocalProgramDriver,
   createModelSamplingEffectRegistration,
   createModelSamplingRouter,
-  createProgramDriverRegistry,
   sha256,
 } from "@sweatpants/session-contract";
 import { z } from "zod";

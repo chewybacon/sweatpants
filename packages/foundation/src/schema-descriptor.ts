@@ -1,7 +1,14 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { assertJson, canonicalJson, canonicalSnapshot, sha256 } from "./json.ts";
 import type { Json } from "./json.ts";
-import { CrankError } from "./errors.ts";
+export class SchemaDescriptorError extends Error {
+  readonly code = "invalid_schema_descriptor";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "SchemaDescriptorError";
+  }
+}
 
 /**
  * Portable schema descriptors are the only schema artifact permitted to cross
@@ -221,8 +228,8 @@ function requireNonEmpty(value: string, field: string): void {
   }
 }
 
-function invalidDescriptor(message: string): CrankError {
-  return new CrankError("invalid_schema_descriptor", `Invalid schema descriptor: ${message}`);
+function invalidDescriptor(message: string): SchemaDescriptorError {
+  return new SchemaDescriptorError(`Invalid schema descriptor: ${message}`);
 }
 
 function deepFreeze<T>(value: T): T {
@@ -233,16 +240,4 @@ function deepFreeze<T>(value: T): T {
     }
   }
   return value;
-}
-
-/**
- * One descriptor paired with the validator that enforces it.
- *
- * Declared here rather than in `schema-registry.ts` so that contract modules
- * can describe their own entries without depending on the registry that
- * consumes them.
- */
-export interface DurableSchemaRegistryEntry {
-  readonly descriptor: PortableSchemaDescriptor;
-  readonly schema: StandardSchemaV1;
 }

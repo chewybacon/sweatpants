@@ -1,6 +1,6 @@
 import type { Channel, Operation, Task } from "effection";
 import { each, spawn } from "effection";
-import type { MessagePart } from "@sweatpants/chat-core";
+import type { MessagePart } from "../types/chat-message.ts";
 import type { ChatStateEvent } from "../state/events.ts";
 import { chatReducer, initialChatState } from "../state/reducer.ts";
 import type { ChatEventTransform } from "./options.ts";

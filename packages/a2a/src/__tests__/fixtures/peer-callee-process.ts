@@ -1,8 +1,11 @@
+import {
+  ProgramDriverRegistryContext,
+  createProgramDriverRegistry,
+} from "@sweatpants/durable-execution";
 import { createServer } from "node:http";
 import { run } from "effection";
 import {
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRuntime,
   assertJson,
   createCapabilityKeyring,
@@ -12,7 +15,6 @@ import {
   createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
   createPortableSchemaDescriptor,
-  createProgramDriverRegistry,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
 import {

@@ -1,9 +1,12 @@
+import {
+  ProgramDriverRegistryContext,
+  createProgramDriverRegistry,
+} from "@sweatpants/durable-execution";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { run, type Operation } from "effection";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
   canonicalJson,
@@ -14,7 +17,6 @@ import {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
-  createProgramDriverRegistry,
   sha256,
   type DurableJournalAuthorityService,
   type DurableSemanticRecord,

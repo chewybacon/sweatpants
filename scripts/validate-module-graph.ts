@@ -28,6 +28,7 @@ type WorkspacePackage = {
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packagesRoot = join(repoRoot, "packages");
+const appsRoot = join(repoRoot, "apps");
 const baselinePath = join(repoRoot, "scripts", "module-graph-baseline.json");
 
 /** Consumer -> allowed workspace dependencies for the final target graph. */
@@ -98,19 +99,21 @@ function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
 }
 
-function workspacePackages(): readonly WorkspacePackage[] {
+function workspacePackages(workspaceRoots: readonly string[]): readonly WorkspacePackage[] {
   const packages: WorkspacePackage[] = [];
-  for (const entry of readdirSync(packagesRoot)) {
-    const directory = join(packagesRoot, entry);
-    const manifestPath = join(directory, "package.json");
-    try {
-      statSync(manifestPath);
-    } catch {
-      continue;
-    }
-    const manifest = readJson<PackageJson>(manifestPath);
-    if (manifest.name) {
-      packages.push({ name: manifest.name, directory, manifest });
+  for (const workspaceRoot of workspaceRoots) {
+    for (const entry of readdirSync(workspaceRoot)) {
+      const directory = join(workspaceRoot, entry);
+      const manifestPath = join(directory, "package.json");
+      try {
+        statSync(manifestPath);
+      } catch {
+        continue;
+      }
+      const manifest = readJson<PackageJson>(manifestPath);
+      if (manifest.name) {
+        packages.push({ name: manifest.name, directory, manifest });
+      }
     }
   }
   return packages.sort((left, right) => left.name.localeCompare(right.name));
@@ -206,6 +209,16 @@ function importSpecifiers(source: string): readonly string[] {
   return [...values];
 }
 
+function statementImportSpecifiers(source: string): ReadonlySet<string> {
+  const values = new Set<string>();
+  const pattern =
+    /^\s*(?:import\s+(?:type\s+)?(?:[^"']+?\s+from\s+)?|export\s+(?:type\s+)?(?:\*|\{[^}]*\})\s+from\s*)["']([^"']+)["']/gm;
+  for (const match of source.matchAll(pattern)) {
+    values.add(match[1]!);
+  }
+  return values;
+}
+
 function relativeModuleGraphSpecifiers(source: string): readonly string[] {
   const values = new Set<string>();
   for (const match of source.matchAll(/from\s+["'](\.[^"']*)["']/g)) {
@@ -250,6 +263,14 @@ function fileGraph(packageSrc: string): { nodes: string[]; edges: Map<string, Se
   return { nodes, edges };
 }
 
+function isTestSource(file: string): boolean {
+  return (
+    file.includes(
+      `${process.platform === "win32" ? "\\" : "/"}__tests__${process.platform === "win32" ? "\\" : "/"}`,
+    ) || /\.(?:test|spec)\.tsx?$/.test(file)
+  );
+}
+
 function workspaceImport(specifier: string, names: ReadonlySet<string>): string | undefined {
   return [...names].find((name) => specifier === name || specifier.startsWith(`${name}/`));
 }
@@ -262,7 +283,10 @@ function isOutside(path: string, directory: string): boolean {
   );
 }
 
-function importFailures(packages: readonly WorkspacePackage[]): readonly string[] {
+function importFailures(
+  packages: readonly WorkspacePackage[],
+  options: { readonly allowSourceRelativeCrossingsFrom?: ReadonlySet<string> } = {},
+): readonly string[] {
   const failures: string[] = [];
   const names = new Set(packages.map((pkg) => pkg.name));
 
@@ -270,10 +294,15 @@ function importFailures(packages: readonly WorkspacePackage[]): readonly string[
     const src = join(pkg.directory, "src");
     const dependencies = declaredDependencies(pkg.manifest);
     for (const file of sourceFiles(src)) {
-      for (const specifier of importSpecifiers(readFileSync(file, "utf8"))) {
+      const source = readFileSync(file, "utf8");
+      const statementImports = statementImportSpecifiers(source);
+      for (const specifier of importSpecifiers(source)) {
         if (specifier.startsWith(".")) {
           const unresolved = resolve(dirname(file), specifier);
-          if (isOutside(unresolved, src)) {
+          if (
+            isOutside(unresolved, src) &&
+            !options.allowSourceRelativeCrossingsFrom?.has(pkg.directory)
+          ) {
             failures.push(
               `source-relative import crosses package root: ${relative(repoRoot, file)} -> ${specifier}`,
             );
@@ -281,7 +310,11 @@ function importFailures(packages: readonly WorkspacePackage[]): readonly string[
           continue;
         }
         const imported = workspaceImport(specifier, names);
-        if (imported && imported !== pkg.name && !dependencies.has(imported)) {
+        if (imported === pkg.name && statementImports.has(specifier) && !isTestSource(file)) {
+          failures.push(
+            `production package-self import hides module edges: ${relative(repoRoot, file)} -> ${specifier}`,
+          );
+        } else if (imported && imported !== pkg.name && !dependencies.has(imported)) {
           failures.push(
             `undeclared workspace import: ${relative(repoRoot, file)} -> ${specifier} (declare ${imported})`,
           );
@@ -303,7 +336,8 @@ function importFailures(packages: readonly WorkspacePackage[]): readonly string[
 
 function main(): void {
   const found: string[] = [];
-  const packages = workspacePackages();
+  const packages = workspacePackages([packagesRoot]);
+  const apps = workspacePackages([appsRoot]);
   const packageGraphResult = packageGraph(packages);
   for (const cycle of findCycles(packageGraphResult.nodes, packageGraphResult.edges)) {
     found.push(`package cycle: ${cycle.join(" -> ")}`);
@@ -326,7 +360,12 @@ function main(): void {
     }
   }
 
-  const policyFailures = importFailures(packages);
+  // Existing app source-relative debt is handled by the closure memo, but app
+  // workspace dependencies are checked now so clean builds cannot pass while
+  // production/tests rely on undeclared pnpm-hoisted packages.
+  const policyFailures = importFailures([...packages, ...apps], {
+    allowSourceRelativeCrossingsFrom: new Set(apps.map((app) => app.directory)),
+  });
   if (policyFailures.length > 0) {
     console.error(
       `Module graph validation failed: ${policyFailures.length} architecture violation(s).\n`,
