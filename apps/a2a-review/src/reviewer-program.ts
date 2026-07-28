@@ -1,7 +1,7 @@
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import { type EffectDefinition } from "@sweatpants/session-contract";
 
 import {
-  FOREIGN_MODEL_SAMPLE_EFFECT,
   canonicalSnapshot,
   createPinnedDurableProgram,
   createPortableSchemaDescriptor,
@@ -72,7 +72,7 @@ export function defineReviewerProgram(options: {
       outputSchema: REVIEW_OUTPUT_DESCRIPTOR,
       elicits: {},
       effects: {
-        [FOREIGN_MODEL_SAMPLE_EFFECT.name]: FOREIGN_MODEL_SAMPLE_EFFECT,
+        [MODEL_SAMPLE_EFFECT.name]: MODEL_SAMPLE_EFFECT,
         [options.askParentEffect.name]: options.askParentEffect,
       },
       capabilities: { durableEmissions: true, structuredChildren: false, replay: "strict" },
@@ -96,7 +96,7 @@ function* reviewerGenerator(
   askParentEffect: EffectDefinition<Json, Json, Json>,
 ) {
   const questionSample = yield* context.effect(
-    FOREIGN_MODEL_SAMPLE_EFFECT,
+    MODEL_SAMPLE_EFFECT,
     {
       messages: [
         {
@@ -113,7 +113,7 @@ function* reviewerGenerator(
     audience: "caller:reference-review",
   });
   const review = yield* context.effect(
-    FOREIGN_MODEL_SAMPLE_EFFECT,
+    MODEL_SAMPLE_EFFECT,
     {
       messages: [
         {

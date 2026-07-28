@@ -1,3 +1,5 @@
+import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/durable-effects";
+import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
 import { type EffectDefinition } from "@sweatpants/session-contract";
 
 import { CrankError } from "@sweatpants/durable-execution";
@@ -8,8 +10,6 @@ import { canonicalJson, sha256, sortStrings } from "@sweatpants/foundation";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
-  MODEL_SAMPLE_EFFECT,
-  MODEL_SAMPLE_SCHEMA_ENTRIES,
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
@@ -21,8 +21,6 @@ import {
   type DurableSchemaRegistryEntry,
   type DurableTool,
   type Json,
-  type ModelSampleRequest,
-  type ModelSampleResult,
   type PortableSchemaDescriptor,
   type WireElicitResultJson,
 } from "@sweatpants/session-contract";

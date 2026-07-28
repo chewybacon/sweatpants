@@ -12,7 +12,7 @@ import type {
   ForeignToolRequest,
   ForeignToolDisposition,
 } from "./durable-types.ts";
-import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "./model-sample-contract.ts";
+import { MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
 import type { Json } from "./types.ts";
 
 /** Pinned identity of the built-in foreign-tool adapter program. */
@@ -267,7 +267,6 @@ const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignTo
 export const FOREIGN_TOOL_CONTINUE_EFFECT = Object.freeze(continueDefinition);
 
 /** Canonical model-sampling effect used by foreign ToolSession lifting. */
-export const FOREIGN_MODEL_SAMPLE_EFFECT = MODEL_SAMPLE_EFFECT;
 
 /** Projects a foreign request into the pinned adapter child descriptor. */
 export function foreignToolAdapterChild(request: ForeignToolRequest): DurableChildDescriptor {

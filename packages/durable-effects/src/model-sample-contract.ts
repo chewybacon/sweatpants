@@ -1,12 +1,8 @@
 import { assertJson } from "@sweatpants/foundation";
-import {
-  createPortableSchemaDescriptor,
-  type PortableSchemaDescriptor,
-  type PortableSchemaRole,
-} from "@sweatpants/foundation/schema-descriptor";
+import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { DurableSchemaRegistryEntry } from "@sweatpants/foundation/schema-descriptor";
-import type { EffectDefinition } from "./contract.ts";
+import type { EffectDefinition, EffectSchemaDescriptor, EffectSchemaRole } from "./contract.ts";
 import type { Json } from "@sweatpants/foundation";
 
 export type ModelSampleCall = {
@@ -48,10 +44,10 @@ const schemaEntries: DurableSchemaRegistryEntry[] = [];
 
 function schema(
   identity: string,
-  role: PortableSchemaRole,
+  role: EffectSchemaRole,
   projection: Json,
   guard: (value: unknown) => string | undefined,
-): PortableSchemaDescriptor {
+): EffectSchemaDescriptor {
   const descriptor = createPortableSchemaDescriptor({
     identity,
     role,

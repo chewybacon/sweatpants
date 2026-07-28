@@ -1,9 +1,6 @@
+import type { ModelSampleRequest } from "@sweatpants/durable-effects";
 import type { Operation } from "effection";
-import {
-  type Json,
-  type ModelSampleDisposition,
-  type ModelSampleRequest,
-} from "@sweatpants/session-contract";
+import { type Json, type ModelSampleDisposition } from "@sweatpants/session-contract";
 
 import type {
   PlacementModelSampleProducerStore,

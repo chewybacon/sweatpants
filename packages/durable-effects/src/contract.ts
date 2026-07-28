@@ -1,8 +1,32 @@
 import type { Json } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
 
-/** Portable schema descriptor required to pin an effect contract. */
+/** Closed schema-role algebra owned by durable effects. */
+export type EffectSchemaRole = "effect_input" | "effect_output" | "effect_cancellation_partial";
+
+/**
+ * Portable descriptor accepted at authoring boundaries. Runtime construction
+ * refines it with `parseEffectSchemaDescriptor`; the broad input keeps generic
+ * schema-producing adapters independent of this domain's role algebra.
+ */
 export type EffectSchemaDescriptor = PortableSchemaDescriptor;
+export type ParsedEffectSchemaDescriptor = PortableSchemaDescriptor<EffectSchemaRole>;
+
+export function isEffectSchemaRole(role: string): role is EffectSchemaRole {
+  return (
+    role === "effect_input" || role === "effect_output" || role === "effect_cancellation_partial"
+  );
+}
+
+/** Refines a generic portable descriptor at the effect-domain boundary. */
+export function parseEffectSchemaDescriptor(
+  descriptor: PortableSchemaDescriptor<string>,
+): ParsedEffectSchemaDescriptor {
+  if (!isEffectSchemaRole(descriptor.role)) {
+    throw new TypeError(`Invalid effect schema role: ${descriptor.role}`);
+  }
+  return descriptor as ParsedEffectSchemaDescriptor;
+}
 
 /** Retry policy declaring whether duplicate host execution is safe. */
 export type RetrySafety =

@@ -1,12 +1,9 @@
+import type { ModelSampleRequest } from "@sweatpants/durable-effects";
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
-import {
-  MODEL_SAMPLE_EFFECT,
-  canonicalSnapshot,
-  createCapabilityKeyring,
-  type ModelSampleRequest,
-} from "@sweatpants/session-contract";
+import { canonicalSnapshot, createCapabilityKeyring } from "@sweatpants/session-contract";
 
 import { createInMemoryPlacementModelSampler } from "../in-memory-placement-model-sampler.ts";
 import { runPlacementModelSampleProducer } from "../placement-model-producer.ts";

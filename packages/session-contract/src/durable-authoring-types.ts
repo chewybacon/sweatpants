@@ -8,15 +8,19 @@
 
 import type { Operation } from "effection";
 import type { PortableSchemaDescriptor } from "./schema-descriptor.ts";
+import type {
+  DurableEffectAuthorization as CanonicalDurableEffectAuthorization,
+  DurableEffectContext as CanonicalDurableEffectContext,
+  DurableEffectHandler as CanonicalDurableEffectHandler,
+  DurableEffectRegistration as CanonicalDurableEffectRegistration,
+} from "@sweatpants/durable-effects";
 import type { Json } from "./types.ts";
 import type {
   DurableChildDescriptor,
-  DurableEffectDisposition,
   DurableOperationDescriptor,
   DurableProgramManifest,
   DurableTaskHandle,
   EffectDefinition,
-  EffectDescriptor,
   EmissionDescriptor,
   ForeignToolRequest,
   GeneratedProgramArtifactIdentityV1,
@@ -117,48 +121,21 @@ export interface DurableTool<I extends Json = Json, O extends Json = Json> {
   readonly identityArtifact?: GeneratedProgramArtifactIdentityV1;
 }
 
-/** Host dispatch authorization with attempt identity and resolution capability. */
-export interface DurableEffectAuthorization {
-  sessionId: string;
-  taskId: string;
-  pullId: string;
-  attemptId: string;
-  descriptor: EffectDescriptor;
-  /** Authority-derived whole-contract digest for handler compatibility checks. */
-  effectContractDigest: string;
-  resolutionCapability: string;
-  resolver: { audience: string; route?: string };
-}
+/** Canonical durable-effects dispatch authorization. */
+export type DurableEffectAuthorization = CanonicalDurableEffectAuthorization;
 
-/** Scoped host-effect context carrying stable idempotency IDs and cancellation. */
-export interface DurableEffectContext {
-  sessionId: string;
-  taskId: string;
-  pullId: string;
-  attemptId: string;
-  cancellation: AbortSignal;
-  resolver: { audience: string; route?: string };
-}
+/** Canonical durable-effects handler context. */
+export type DurableEffectContext = CanonicalDurableEffectContext;
 
-/** Effection-native host-effect handler returning one explicit disposition. */
+/** Canonical durable-effects handler identity. */
 export type DurableEffectHandler<
   I extends Json = Json,
   O extends Json = Json,
   P extends Json = never,
-> = (input: I, context: DurableEffectContext) => Operation<DurableEffectDisposition<O, P>>;
+> = CanonicalDurableEffectHandler<I, O, P>;
 
-/** Effect handler registration proving compatibility with its retry declaration. */
-export interface DurableEffectRegistration {
-  definition: EffectDefinition<Json, Json, Json>;
-  handler(
-    input: Json,
-    context: DurableEffectContext,
-  ): Operation<DurableEffectDisposition<Json, Json>>;
-  satisfies:
-    | { mode: "repeatable" }
-    | { mode: "unsafe" }
-    | { mode: "idempotent"; mechanism: "pull_id_key" | "inherent" };
-}
+/** Canonical durable-effects registration identity. */
+export type DurableEffectRegistration = CanonicalDurableEffectRegistration;
 
 /** Immutable symbolic effect registry installed at composition. */
 export type DurableEffectRegistry = ReadonlyMap<string, DurableEffectRegistration>;

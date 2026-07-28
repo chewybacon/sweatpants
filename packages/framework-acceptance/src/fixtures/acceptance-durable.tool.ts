@@ -1,4 +1,4 @@
-import { createDurableEffectRegistration } from "@sweatpants/session-contract";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import { z } from "zod";
 import { createDurableTool, defineEffect } from "@sweatpants/core";

@@ -1,14 +1,14 @@
 import { createContext, type Operation } from "effection";
 
 import { canonicalSnapshot } from "./canonical.ts";
-import { createDurableEffectRegistration } from "./durable-apis.ts";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   MODEL_SAMPLE_EFFECT,
   type ModelSampleCancellationPartial,
   type ModelSampleRequest,
   type ModelSampleResult,
-} from "./model-sample-contract.ts";
+} from "@sweatpants/durable-effects";
 import type { DurableEffectDisposition } from "./durable-types.ts";
 import {
   ProgramDeliveryWriterContext,

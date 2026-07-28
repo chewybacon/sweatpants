@@ -33,7 +33,6 @@ export {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
 } from "@sweatpants/session-contract";
-export { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 export {
   createPinnedDurableProgram,
   defineDurableEffect,

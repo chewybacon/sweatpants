@@ -1,12 +1,12 @@
+import type { ModelSampleRequest } from "@sweatpants/durable-effects";
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   canonicalSnapshot,
-  MODEL_SAMPLE_EFFECT,
   type Json,
   type ModelSampleDisposition,
-  type ModelSampleRequest,
   type ModelSamplingExecutionContext,
   type ModelSamplingService,
   type ProgramDeliveryEnvelope,

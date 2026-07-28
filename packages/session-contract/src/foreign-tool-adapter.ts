@@ -1,18 +1,18 @@
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import type { Operation } from "effection";
 
-import { createDurableEffectRegistration } from "./durable-apis.ts";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { createPinnedDurableProgram, defineDurableProgramManifest } from "./authoring.ts";
 import {
   FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
   FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
-  FOREIGN_MODEL_SAMPLE_EFFECT,
   FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR,
   FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
   FOREIGN_TOOL_ADAPTER_PROGRAM,
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
 } from "./foreign-tool-contract.ts";
-import type { ModelSampleRequest, ModelSampleResult } from "./model-sample-contract.ts";
+import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/durable-effects";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { Json } from "./types.ts";
 import type { DurableEffectRegistration, ForeignToolRequest } from "./durable-types.ts";
@@ -56,7 +56,7 @@ export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<Foreig
     effects: {
       [FOREIGN_TOOL_START_EFFECT.name]: FOREIGN_TOOL_START_EFFECT,
       [FOREIGN_TOOL_CONTINUE_EFFECT.name]: FOREIGN_TOOL_CONTINUE_EFFECT,
-      [FOREIGN_MODEL_SAMPLE_EFFECT.name]: FOREIGN_MODEL_SAMPLE_EFFECT,
+      [MODEL_SAMPLE_EFFECT.name]: MODEL_SAMPLE_EFFECT,
     },
     capabilities: {
       durableEmissions: false,
@@ -81,7 +81,7 @@ const adapterTool = createPinnedDurableProgram(
         const response =
           disposition.request.kind === "sample"
             ? yield* context.effect(
-                FOREIGN_MODEL_SAMPLE_EFFECT,
+                MODEL_SAMPLE_EFFECT,
                 classifyToolOwnedSample(disposition.request.payload),
                 {
                   audience: "model-runtime",
@@ -151,8 +151,8 @@ export const foreignToolAdapter: ForeignToolAdapter = Object.freeze({
   ...adapterTool,
   modelSampleRegistration(handler: (request: ModelSampleRequest) => Operation<ModelSampleResult>) {
     return createDurableEffectRegistration(
-      FOREIGN_MODEL_SAMPLE_EFFECT,
-      FOREIGN_MODEL_SAMPLE_EFFECT.retrySafety,
+      MODEL_SAMPLE_EFFECT,
+      MODEL_SAMPLE_EFFECT.retrySafety,
       function* (request) {
         return { status: "ok", value: yield* handler(request) };
       },

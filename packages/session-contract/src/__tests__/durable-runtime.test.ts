@@ -1,3 +1,4 @@
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import {
   ExecutionDurableEffectRegistryContext,
   ProgramDriverRegistryContext,
@@ -15,7 +16,6 @@ import { CrankError } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
-  MODEL_SAMPLE_EFFECT,
   ProgramPeer,
   ProgramRuntime,
   createCapabilityKeyring,

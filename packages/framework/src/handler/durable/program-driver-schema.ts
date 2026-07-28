@@ -1,6 +1,6 @@
+import type { ModelSampleRequest } from "@sweatpants/durable-effects";
+import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
 import {
-  MODEL_SAMPLE_EFFECT,
-  MODEL_SAMPLE_SCHEMA_ENTRIES,
   assertJson,
   canonicalSnapshot,
   createPortableSchemaDescriptor,
@@ -8,7 +8,6 @@ import {
   standardSchemaOf,
   type DurableSchemaRegistryEntry,
   type Json,
-  type ModelSampleRequest,
   type PortableSchemaDescriptor,
   type PortableSchemaRole,
 } from "@sweatpants/session-contract";

@@ -1,6 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { sleep, type Operation } from "effection";
-import { createDurableEffectRegistration } from "@sweatpants/session-contract";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   assertJson,
   canonicalJson,
