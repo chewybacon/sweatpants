@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  call,
   createContext,
   ensure,
   resource,
@@ -62,6 +63,7 @@ describe("createChatApplication", () => {
         registry = (yield* setupInMemoryDurableStreams<string>()).registry;
       },
       handler,
+      shutdownDeadlineMs: 0,
     });
 
     const response = await app.handle(new Request("http://localhost/chat"));
@@ -71,6 +73,54 @@ describe("createChatApplication", () => {
 
     await app.close();
     expect(writerHalted).toBe(true);
+  });
+
+  it("waits for Host-owned writers to drain before destroying their scope", async () => {
+    let registry: RecoverableSessionRegistry<string> | undefined;
+    let releaseWriter!: () => void;
+    const released = new Promise<void>((resolve) => {
+      releaseWriter = resolve;
+    });
+    let writerCompleted = false;
+
+    const handler = createStreamingHandler(function* () {
+      if (!registry) {
+        throw new Error("registry was not configured");
+      }
+      const source = resource<Subscription<string, void>>(function* (provide) {
+        yield* provide({
+          *next() {
+            yield* ensure(() => {
+              writerCompleted = true;
+            });
+            yield* call(() => released);
+            return { done: true, value: undefined };
+          },
+        });
+      });
+      yield* registry.acquire("drained-writer", { source });
+      return oneShotSubscription("started");
+    });
+
+    const app = createChatApplication({
+      setup: function* () {
+        registry = (yield* setupInMemoryDurableStreams<string>()).registry;
+      },
+      handler,
+      shutdownDeadlineMs: 1_000,
+    });
+    await readResponseText(await app.handle(new Request("http://localhost/chat")));
+
+    let closeSettled = false;
+    const closing = app.close().then(() => {
+      closeSettled = true;
+    });
+    await Promise.resolve();
+    expect(closeSettled).toBe(false);
+
+    releaseWriter();
+    await closing;
+    expect(writerCompleted).toBe(true);
   });
 
   it("runs Effection app setup once and exposes app context to request scopes", async () => {

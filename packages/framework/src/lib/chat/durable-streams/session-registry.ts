@@ -70,7 +70,11 @@ const TASK_KEYS = {
 export function* createSessionRegistry<T>(
   bufferStore: TokenBufferStore<T>,
   registryStore: SessionRegistryStore,
-  config: { retentionPolicy?: RetentionPolicy; ownerScope?: Scope } = {},
+  config: {
+    retentionPolicy?: RetentionPolicy;
+    ownerScope?: Scope;
+    registerWriter?: (work: BackgroundTaskHandle<void>) => void;
+  } = {},
 ): Operation<RecoverableSessionRegistry<T>> {
   const log = yield* useLogger("durable-streams:registry");
   const retentionPolicy = config.retentionPolicy ?? DEFAULT_RETENTION_POLICY;
@@ -91,7 +95,7 @@ export function* createSessionRegistry<T>(
     taskName: string,
   ): Operation<BackgroundTaskHandle<void>> {
     const loggerFactory = yield* LoggerFactoryContext.get();
-    return yield* useBackgroundTask(
+    const handle = yield* useBackgroundTask(
       function* () {
         const writerLog = yield* useLogger("durable-streams:writer");
         writerLog.debug({ sessionId }, "writer task started");
@@ -118,6 +122,8 @@ export function* createSessionRegistry<T>(
         contexts: loggerFactory ? [{ context: LoggerFactoryContext, value: loggerFactory }] : [],
       },
     );
+    config.registerWriter?.(handle);
+    return handle;
   }
 
   function createHandle(sessionId: string, buffer: TokenBuffer<T>): SessionHandle<T> {

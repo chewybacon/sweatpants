@@ -178,7 +178,7 @@ describe("an indeterminate unsafe effect reaches the model", () => {
     await startedSignal;
 
     // Replace the host while the unsafe attempt is still in flight.
-    await first.close();
+    await first.close({ mode: "catastrophic" });
     void stalled;
 
     const second = createRuntime();
