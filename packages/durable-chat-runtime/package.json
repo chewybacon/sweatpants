@@ -85,6 +85,17 @@
                 "default": "./dist/interrupts/index.js"
             },
             "default": "./src/interrupts/index.ts"
+        },
+        "./model-context": {
+            "development": {
+                "import": "./src/model-context/index.ts",
+                "types": "./src/model-context/index.ts"
+            },
+            "import": {
+                "types": "./dist/model-context/index.d.ts",
+                "default": "./dist/model-context/index.js"
+            },
+            "default": "./src/model-context/index.ts"
         }
     },
     "scripts": {
