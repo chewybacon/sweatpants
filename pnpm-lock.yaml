@@ -1068,6 +1068,9 @@ importers:
 
   packages/durable-chat-runtime:
     dependencies:
+      '@sweatpants/chat-core':
+        specifier: workspace:*
+        version: link:../chat-core
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:../durable-execution

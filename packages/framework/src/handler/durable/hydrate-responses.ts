@@ -10,7 +10,7 @@ import type {
   SessionHandle,
   SessionRegistry,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import type { StreamEvent } from "../types.ts";
+import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
 import { buildAgUiCustomState } from "@sweatpants/chat-core";
 import { openInterruptsForThread } from "./interrupt-registry.ts";
 import {

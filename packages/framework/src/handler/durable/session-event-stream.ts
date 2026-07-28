@@ -11,7 +11,7 @@ import type {
   TokenBufferStore,
   TokenBufferWriter,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import type { StreamEvent } from "../types.ts";
+import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
 import type { DurableFrame } from "@sweatpants/chat-core";
 import { recordConversationCheckpoint } from "./conversation-index.ts";
 import {
