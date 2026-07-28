@@ -102,6 +102,9 @@ function createFakeSession(): ToolSession {
     respondToSample() {
       return (function* () {})();
     },
+    emitWakeUp() {
+      return (function* () {})();
+    },
     cancel() {
       return (function* () {})();
     },
@@ -110,6 +113,8 @@ function createFakeSession(): ToolSession {
 
 function createFakeRegistry(): ToolSessionRegistry {
   const session = createFakeSession();
+  // SAFETY: generic result typing is irrelevant to this completed-session
+  // driver fixture; every create returns the same protocol-complete fake.
   return {
     *create(): Operation<ToolSession> {
       return session;
@@ -121,7 +126,7 @@ function createFakeRegistry(): ToolSessionRegistry {
       return session;
     },
     *release(): Operation<void> {},
-  };
+  } as unknown as ToolSessionRegistry;
 }
 
 describe("AgentCore ToolRuntimeDriver", () => {
@@ -197,7 +202,9 @@ describe("AgentCore ToolRuntimeDriver", () => {
   it("rejects invalid params before AgentCore session creation", async () => {
     await run(function* () {
       let createCalls = 0;
-      const registry: ToolSessionRegistry = {
+      // SAFETY: this boundary fake counts dispatch and always returns the same
+      // completed protocol session, independent of TResult.
+      const registry = {
         *create(): Operation<ToolSession> {
           createCalls++;
           return createFakeSession();
@@ -209,7 +216,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
           return createFakeSession();
         },
         *release(): Operation<void> {},
-      };
+      } as unknown as ToolSessionRegistry;
       const driver = createAgentCoreToolRuntimeDriver({
         tools: [remoteTool],
         registry,

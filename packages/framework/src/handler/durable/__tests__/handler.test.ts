@@ -77,6 +77,7 @@ async function makeRequest(
     conversationId?: string;
     lastLSN?: number;
     enabledTools?: boolean | string[];
+    systemPrompt?: string;
   } = {},
 ) {
   const { request } = createChatRequest(messages, options);

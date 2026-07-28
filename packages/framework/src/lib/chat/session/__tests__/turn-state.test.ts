@@ -7,7 +7,7 @@ function elicitParked(callId: string, elicitId: string): Extract<StreamResult, {
     type: "elicit",
     pendingElicitations: [
       {
-        type: "ELICIT_REQUEST",
+        type: "elicit_request",
         sessionId: callId,
         callId,
         toolName: "book_flight",
@@ -20,7 +20,7 @@ function elicitParked(callId: string, elicitId: string): Extract<StreamResult, {
     conversationState: {
       messages: [],
       assistantContent: "",
-      toolCalls: [{ id: callId, name: "book_flight", arguments: "{}" }],
+      toolCalls: [{ id: callId, name: "book_flight", arguments: {} }],
       serverToolResults: [],
     },
   };

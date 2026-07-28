@@ -44,9 +44,11 @@ afterEach(() => {
 
 const baseEffect = DURABLE_DRIVER_FIXTURE_TOOLS[0]!.manifest.effects["echo"]!;
 const consultation = defineDurableEffect<string, string>({
-  ...baseEffect,
   name: "app.consult_caller",
   version: "1.0.0",
+  inputSchema: baseEffect.inputSchema,
+  outputSchema: baseEffect.outputSchema,
+  retrySafety: baseEffect.retrySafety,
 });
 const contract = definePeerEffectContract(consultation);
 const inputSchema = DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES.find(

@@ -67,7 +67,7 @@ describe("AG-UI fold scenarios", () => {
     expect(complete.streaming.parts).toHaveLength(0);
     expect(complete.messages).toHaveLength(1);
     expect(complete.messages[0]?.tool_calls?.map((call) => call.id)).toEqual(["call-1", "call-2"]);
-    expect(complete.finalizedParts.host).toHaveLength(2);
+    expect(complete.finalizedParts["host"]).toHaveLength(2);
   });
 
   it("suppresses duplicate results for the same tool call", () => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MODEL_SAMPLE_EFFECT,
   createDurableProgramContext,
+  assertJson,
   type Json,
   type ProgramResume,
   type ProgramStepProposal,
@@ -287,10 +288,9 @@ describe("durable chat authoring", () => {
       },
       {
         status: "ok",
-        value: classifiedToolResult(
-          { text: "derived" },
-          { classifications: ["restricted"] },
-        ) as Json,
+        value: assertJson(
+          classifiedToolResult({ text: "derived" }, { classifications: ["restricted"] }),
+        ),
       },
     ]);
     const next = driven.proposals[2];

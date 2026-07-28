@@ -208,6 +208,9 @@ function createSessionManager<T>(
         throw new Error("Session not found and no source provided");
       }
 
+      if (typeof options.source === "function") {
+        throw new Error("Legacy SessionManager does not support recovery source factories");
+      }
       const buffer = yield* bufferStore.create(sessionId);
       const sessionOptions: { timeoutMs?: number } = {};
       if (options.timeoutMs !== undefined) {

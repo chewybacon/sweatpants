@@ -121,7 +121,7 @@ describe("foreign A2A protocol and state machine", () => {
             parts: [{ text: "respond" }],
           }
         : undefined;
-      expect(task(state, { statusMessage }).status.state).toBe(state);
+      expect(task(state, statusMessage ? { statusMessage } : {}).status.state).toBe(state);
     }
     expect(
       parseForeignA2ASendResult({

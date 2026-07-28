@@ -56,8 +56,9 @@ describe("History sync after tool calls", () => {
       const history: Message[] = [{ id: "msg-0", role: "user", content: "draw 3 cards" }];
 
       const currentMessages: Message[] = [
-        { role: "user", content: "draw 3 cards" },
+        { id: "history-1", role: "user", content: "draw 3 cards" },
         {
+          id: "history-11",
           role: "assistant",
           content: "",
           tool_calls: [
@@ -72,6 +73,7 @@ describe("History sync after tool calls", () => {
           ],
         },
         {
+          id: "history-12",
           role: "tool",
           content: "", // Empty initially (before phase 2)
           tool_call_id: "call_abc123",
@@ -109,8 +111,9 @@ describe("History sync after tool calls", () => {
       const history: Message[] = [{ id: "msg-0", role: "user", content: "test" }];
 
       const currentMessages: Message[] = [
-        { role: "user", content: "test" },
+        { id: "history-2", role: "user", content: "test" },
         {
+          id: "history-13",
           role: "assistant",
           content: "",
           tool_calls: [
@@ -122,6 +125,7 @@ describe("History sync after tool calls", () => {
           ],
         },
         {
+          id: "history-14",
           role: "tool",
           content: "", // Empty - client-side placeholder
           tool_call_id: "call_1",
@@ -141,8 +145,9 @@ describe("History sync after tool calls", () => {
       const history: Message[] = [{ id: "msg-0", role: "user", content: "test" }];
 
       const currentMessages: Message[] = [
-        { role: "user", content: "test" },
+        { id: "history-3", role: "user", content: "test" },
         {
+          id: "history-15",
           role: "assistant",
           content: "",
           tool_calls: [
@@ -154,6 +159,7 @@ describe("History sync after tool calls", () => {
           ],
         },
         {
+          id: "history-16",
           role: "tool",
           content: "Original content from server",
           tool_call_id: "call_1",
@@ -175,8 +181,9 @@ describe("History sync after tool calls", () => {
       ];
 
       const currentMessages: Message[] = [
-        { role: "user", content: "draw 3 cards and calculate 2+2" },
+        { id: "history-4", role: "user", content: "draw 3 cards and calculate 2+2" },
         {
+          id: "history-17",
           role: "assistant",
           content: "",
           tool_calls: [
@@ -192,8 +199,8 @@ describe("History sync after tool calls", () => {
             },
           ],
         },
-        { role: "tool", content: "", tool_call_id: "call_card" },
-        { role: "tool", content: "", tool_call_id: "call_calc" },
+        { id: "history-5", role: "tool", content: "", tool_call_id: "call_card" },
+        { id: "history-6", role: "tool", content: "", tool_call_id: "call_calc" },
       ];
 
       const toolResultsMap = new Map<string, string>([
@@ -223,8 +230,8 @@ describe("History sync after tool calls", () => {
 
       // Current messages include the same messages
       const currentMessages: Message[] = [
-        { role: "user", content: "hello" },
-        { role: "assistant", content: "hi there" },
+        { id: "history-7", role: "user", content: "hello" },
+        { id: "history-8", role: "assistant", content: "hi there" },
       ];
 
       const synced = syncHistoryWithCurrentMessages(history, currentMessages, new Map());
@@ -237,8 +244,9 @@ describe("History sync after tool calls", () => {
       const history: Message[] = [{ id: "msg-0", role: "user", content: "test" }];
 
       const currentMessages: Message[] = [
-        { role: "user", content: "test" },
+        { id: "history-9", role: "user", content: "test" },
         {
+          id: "history-18",
           role: "assistant",
           content: "",
           tool_calls: [
@@ -264,8 +272,9 @@ describe("Tool call format for OpenAI API", () => {
     const history: Message[] = [{ id: "msg-0", role: "user", content: "draw a card" }];
 
     const currentMessages: Message[] = [
-      { role: "user", content: "draw a card" },
+      { id: "history-10", role: "user", content: "draw a card" },
       {
+        id: "history-19",
         role: "assistant",
         content: "",
         tool_calls: [
@@ -277,6 +286,7 @@ describe("Tool call format for OpenAI API", () => {
         ],
       },
       {
+        id: "history-20",
         role: "tool",
         content: "",
         tool_call_id: "call_xyz",

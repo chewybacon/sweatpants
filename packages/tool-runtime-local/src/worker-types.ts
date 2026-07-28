@@ -288,7 +288,7 @@ export interface WorkerTool {
   name: string;
   /** Normalized elicitation declarations from the canonical ToolDefinition. */
   elicits?: ElicitsMap | Readonly<Record<string, ElicitDefinition>>;
-  handler: (params: unknown, ctx: WorkerToolContext) => Generator<unknown, unknown, unknown>;
+  handler: (params: unknown, ctx: WorkerToolContext) => Operation<unknown>;
 }
 
 // =============================================================================

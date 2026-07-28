@@ -1,15 +1,7 @@
 {
-    "extends": "./tsconfig.lib.json",
+    "extends": ["./tsconfig.lib.json", "@sweatpants/ts-config/tsconfig.tests.json"],
     "compilerOptions": {
-        "noEmit": true,
-        "composite": false,
-        "emitDeclarationOnly": false,
         "rootDir": ".",
-        "strict": false,
-        "noUnusedLocals": false,
-        "noUnusedParameters": false,
-        "exactOptionalPropertyTypes": false,
-        "noUncheckedIndexedAccess": false,
         "types": ["node"]
     },
     "include": [

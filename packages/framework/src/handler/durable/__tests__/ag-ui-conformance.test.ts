@@ -1,4 +1,4 @@
-import { call } from "effection";
+import { call, type Operation } from "effection";
 import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import { describe, expect, it } from "./vitest-effection.ts";
 
@@ -8,12 +8,9 @@ import {
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from "../../../lib/chat/durable-streams/index.ts";
-import {
-  installToolRuntime,
-  createToolExecutionRef,
-  type ToolRuntime,
-} from "../../../lib/chat/tool-runtime.ts";
+import { createToolExecutionRef, type ToolRuntime } from "../../../lib/chat/tool-runtime.ts";
 import { createInMemoryProgramDriverJournalStore } from "../program-driver-journal.ts";
+import type { Message } from "../../../lib/chat/types.ts";
 import type { ChatHandlerSetup } from "../types.ts";
 import {
   consumeDurableResponse,
@@ -66,7 +63,7 @@ const agUiMessageSchema = z.discriminatedUnion("role", [
       id: z.string(),
       role: z.literal("activity"),
       activityType: z.string(),
-      content: z.record(z.any()),
+      content: z.record(z.string(), z.any()),
     })
     .passthrough(),
   z.object({ id: z.string(), role: z.literal("reasoning"), content: z.string() }).passthrough(),
@@ -150,7 +147,7 @@ const agUiEventSchemas = z.discriminatedUnion("type", [
       type: z.literal("ACTIVITY_SNAPSHOT"),
       messageId: z.string(),
       activityType: z.string(),
-      content: z.record(z.any()),
+      content: z.record(z.string(), z.any()),
       replace: z.boolean().optional(),
     })
     .passthrough(),
@@ -186,6 +183,10 @@ function isUnknownRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function parseAgUiEvent(value: unknown): AgUiEvent {
+  return agUiEventSchemas.parse(value);
+}
+
 function assertSchemaValidPublicEvents(events: AgUiEvent[]) {
   expect(events.length).toBeGreaterThan(0);
   for (const event of events) {
@@ -212,28 +213,28 @@ function assertAgUiLifecycle(events: AgUiEvent[]) {
 
     switch (event.type) {
       case "TEXT_MESSAGE_START": {
-        const messageId = String(event.messageId);
+        const messageId = String(event["messageId"]);
         expect(activeTextMessages.has(messageId)).toBe(false);
         activeTextMessages.add(messageId);
         break;
       }
       case "TEXT_MESSAGE_CONTENT":
-        expect(activeTextMessages.has(String(event.messageId))).toBe(true);
+        expect(activeTextMessages.has(String(event["messageId"]))).toBe(true);
         break;
       case "TEXT_MESSAGE_END":
-        expect(activeTextMessages.delete(String(event.messageId))).toBe(true);
+        expect(activeTextMessages.delete(String(event["messageId"]))).toBe(true);
         break;
       case "TOOL_CALL_START": {
-        const toolCallId = String(event.toolCallId);
+        const toolCallId = String(event["toolCallId"]);
         expect(activeToolCalls.has(toolCallId)).toBe(false);
         activeToolCalls.add(toolCallId);
         break;
       }
       case "TOOL_CALL_ARGS":
-        expect(activeToolCalls.has(String(event.toolCallId))).toBe(true);
+        expect(activeToolCalls.has(String(event["toolCallId"]))).toBe(true);
         break;
       case "TOOL_CALL_END":
-        expect(activeToolCalls.delete(String(event.toolCallId))).toBe(true);
+        expect(activeToolCalls.delete(String(event["toolCallId"]))).toBe(true);
         break;
       case "RUN_FINISHED":
       case "RUN_ERROR":
@@ -263,7 +264,7 @@ function parseSseDataObjects(raw: string): AgUiEvent[] {
     frame
       .split("\n")
       .filter((line) => line.startsWith("data: "))
-      .map((line) => JSON.parse(line.slice("data: ".length)) as AgUiEvent),
+      .map((line) => parseAgUiEvent(JSON.parse(line.slice("data: ".length)))),
   );
 }
 
@@ -278,7 +279,7 @@ describe("strict AG-UI public conformance", () => {
     const response = yield* call(() => handler(request));
     const result = yield* call(() => consumeDurableResponse(response));
 
-    assertPublicConformance(result.events.map((entry) => entry.event as AgUiEvent));
+    assertPublicConformance(result.events.map((entry) => parseAgUiEvent(entry.event)));
   });
 
   it("runs a model-only HTTP turn through an injected ProgramRuntime journal", function* () {
@@ -296,7 +297,7 @@ describe("strict AG-UI public conformance", () => {
 
     const response = yield* call(() => handler(request));
     const result = yield* call(() => consumeDurableResponse(response));
-    const events = result.events.map((entry) => entry.event as AgUiEvent);
+    const events = result.events.map((entry) => parseAgUiEvent(entry.event));
     const journal = yield* journalStore.open(conversationId);
     const records = yield* journal.readJournal(conversationId);
 
@@ -340,7 +341,7 @@ describe("strict AG-UI public conformance", () => {
 
     const response = yield* call(() => handler(request));
     const result = yield* call(() => consumeDurableResponse(response));
-    const events = result.events.map((entry) => entry.event as AgUiEvent);
+    const events = result.events.map((entry) => parseAgUiEvent(entry.event));
     const journal = yield* journalStore.open(conversationId);
     const records = yield* journal.readJournal(conversationId);
     const effectNames = records.flatMap((record) =>
@@ -412,7 +413,7 @@ describe("strict AG-UI public conformance", () => {
 
     const firstResponse = yield* call(() => handler(firstRequest));
     const firstResult = yield* call(() => consumeDurableResponse(firstResponse));
-    const firstEvents = firstResult.events.map((entry) => entry.event as AgUiEvent);
+    const firstEvents = firstResult.events.map((entry) => parseAgUiEvent(entry.event));
     assertPublicConformance(firstEvents);
     const terminal = firstEvents.find((event) => event.type === "RUN_FINISHED");
     const outcome = isUnknownRecord(terminal?.["outcome"]) ? terminal["outcome"] : undefined;
@@ -477,7 +478,7 @@ describe("strict AG-UI public conformance", () => {
     );
     const secondResponse = yield* call(() => handler(secondRequest));
     const secondResult = yield* call(() => consumeDurableResponse(secondResponse));
-    const secondEvents = secondResult.events.map((entry) => entry.event as AgUiEvent);
+    const secondEvents = secondResult.events.map((entry) => parseAgUiEvent(entry.event));
     const journal = yield* journalStore.open(conversationId);
     const records = yield* journal.readJournal(conversationId);
 
@@ -550,7 +551,7 @@ describe("strict AG-UI public conformance", () => {
       programDriverJournalStore: journalStore,
     });
     const conversationId = "program-driver-cancel";
-    const messages = [{ id: "user:program-cancel", role: "user", content: "Wait" }];
+    const messages: Message[] = [{ id: "user:program-cancel", role: "user", content: "Wait" }];
     const { request: firstRequest } = createChatRequest(messages, {
       conversationId,
       enabledTools: true,
@@ -572,7 +573,7 @@ describe("strict AG-UI public conformance", () => {
     );
     const cancelResponse = yield* call(() => handler(cancelRequest));
     const cancelled = yield* call(() => consumeDurableResponse(cancelResponse));
-    const events = cancelled.events.map((entry) => entry.event as AgUiEvent);
+    const events = cancelled.events.map((entry) => parseAgUiEvent(entry.event));
     const journal = yield* journalStore.open(conversationId);
     const records = yield* journal.readJournal(conversationId);
 
@@ -619,7 +620,7 @@ describe("strict AG-UI public conformance", () => {
     const response = yield* call(() => handler(request));
     const result = yield* call(() => consumeDurableResponse(response));
 
-    const events = result.events.map((entry) => entry.event as AgUiEvent);
+    const events = result.events.map((entry) => parseAgUiEvent(entry.event));
     assertPublicConformance(events);
     expect(events.some((event) => event.type === "TOOL_CALL_RESULT")).toBe(true);
   });
@@ -647,7 +648,7 @@ describe("strict AG-UI public conformance", () => {
     const getResponse = yield* call(() => handler(getRequest));
     const hydrate = yield* call(() => consumeDurableResponse(getResponse));
 
-    const events = hydrate.events.map((entry) => entry.event as AgUiEvent);
+    const events = hydrate.events.map((entry) => parseAgUiEvent(entry.event));
     assertSchemaValidPublicEvents(events);
     expect(events[0]?.type).toBe("MESSAGES_SNAPSHOT");
     expect(events.some((event) => event.type === "STATE_SNAPSHOT")).toBe(true);
@@ -717,7 +718,7 @@ describe("strict AG-UI public conformance", () => {
     );
     const result = yield* call(() => consumeDurableResponse(response));
     const runStarted = result.events
-      .map((entry) => entry.event as AgUiEvent)
+      .map((entry) => parseAgUiEvent(entry.event))
       .find((event) => event.type === "RUN_STARTED") as
       | { type: "RUN_STARTED"; input?: { messages?: Array<{ id: string; role: string }> } }
       | undefined;
@@ -731,12 +732,12 @@ describe("strict AG-UI public conformance", () => {
     ]);
 
     const activitySnapshots = result.events
-      .map((entry) => entry.event as AgUiEvent)
+      .map((entry) => parseAgUiEvent(entry.event))
       .filter((event) => event.type === "ACTIVITY_SNAPSHOT") as Array<{
       type: "ACTIVITY_SNAPSHOT";
       messageId: string;
     }>;
-    expect(activitySnapshots.map((event) => event.messageId)).toContain(
+    expect(activitySnapshots.map((event) => event["messageId"])).toContain(
       `sweatpants:plugin-replay:${callId}`,
     );
   });
@@ -759,7 +760,7 @@ describe("strict AG-UI public conformance", () => {
     );
     const result = yield* call(() => consumeDurableResponse(response));
     const snapshots = result.events
-      .map((entry) => entry.event as AgUiEvent)
+      .map((entry) => parseAgUiEvent(entry.event))
       .filter((event) => event.type === "MESSAGES_SNAPSHOT") as Array<{
       type: "MESSAGES_SNAPSHOT";
       messages: Array<{ role: string; content?: string }>;
@@ -820,7 +821,7 @@ describe("strict AG-UI public conformance", () => {
 
     const result = yield* call(() => consumeDurableResponse(response));
     const snapshot = result.events
-      .map((entry) => entry.event as AgUiEvent)
+      .map((entry) => parseAgUiEvent(entry.event))
       .find((event) => event.type === "MESSAGES_SNAPSHOT") as
       | { type: "MESSAGES_SNAPSHOT"; messages: Array<{ id: string; role: string }> }
       | undefined;
@@ -834,7 +835,7 @@ describe("strict AG-UI public conformance", () => {
     expect(snapshot?.messages.some((message) => message.id === "unknown:1")).toBe(false);
 
     const activitySnapshots = result.events
-      .map((entry) => entry.event as AgUiEvent)
+      .map((entry) => parseAgUiEvent(entry.event))
       .filter((event) => event.type === "ACTIVITY_SNAPSHOT");
     expect(activitySnapshots).toEqual([]);
   });

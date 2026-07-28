@@ -35,7 +35,7 @@ describe("third-party A2A interoperability", () => {
         derivationKey:
           process.env["A2A_INTEROP_DERIVATION_KEY"] ??
           "third-party-interop-derivation-key-at-least-32-bytes",
-        localIdentity: { run: Date.now(), skillId },
+        localIdentity: { run: Date.now(), ...(skillId ? { skillId } : {}) },
         principalId: "third-party-interop",
       });
       const client = createHttpJsonForeignA2AClient({
@@ -43,7 +43,7 @@ describe("third-party A2A interoperability", () => {
           cardOrigin: discovery.cardOrigin,
           ...(authorization
             ? {
-                authorization: async (url) => (await authorization(url, "agent-card"))?.headers,
+                authorization: async () => authorization()?.headers,
               }
             : {}),
         }),
