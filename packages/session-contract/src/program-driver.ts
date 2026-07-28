@@ -1,5 +1,4 @@
 import {
-  createContext,
   createQueue,
   createScope,
   useAbortSignal,
@@ -36,37 +35,30 @@ import type {
   PinnedProgram,
   ProgramAttachment,
   ProgramCommand,
-  ProgramDriver,
   ProgramResume,
   ProgramShutdownReason,
   ProgramStep,
   ProgramStepProposal,
 } from "./durable-types.ts";
 
-/** Program-ID keyed immutable registry of crank-native tool definitions. */
-export type DurableToolRegistry = ReadonlyMap<string, DurableTool<any, any>>;
-/** Driver-kind keyed immutable registry installed in an Effection scope. */
-export type ProgramDriverRegistry = ReadonlyMap<string, ProgramDriver>;
+import {
+  ExecutionDurableEffectRegistryContext,
+  ProgramExecutionScopeContext,
+  useDurableToolRegistry,
+  type DurableToolRegistry,
+  type ProgramDriver,
+} from "@sweatpants/durable-execution";
 
-/** Scoped durable-tool inventory used by local program drivers. */
-export const DurableToolRegistryContext = createContext<DurableToolRegistry | undefined>(
-  "session-contract:durable-tool-registry",
-  undefined,
-);
-/** Scoped driver inventory used by ProgramRuntime. */
-export const ProgramDriverRegistryContext = createContext<ProgramDriverRegistry | undefined>(
-  "session-contract:program-driver-registry",
-  undefined,
-);
-/** Execution-local installed effects used only when routing selects program placement. */
-export const ExecutionDurableEffectRegistryContext = createContext<
-  DurableEffectRegistry | undefined
->("session-contract:execution-durable-effect-registry", undefined);
-/** Stable ProgramRuntime scope inherited by one attachment for ordinary Effection APIs. */
-export const ProgramExecutionScopeContext = createContext<Scope | undefined>(
-  "session-contract:program-execution-scope",
-  undefined,
-);
+export {
+  DurableToolRegistryContext,
+  ExecutionDurableEffectRegistryContext,
+  ProgramDriverRegistryContext,
+  ProgramExecutionScopeContext,
+  createProgramDriverRegistry,
+  useDurableToolRegistry,
+  useProgramDriverRegistry,
+} from "@sweatpants/durable-execution";
+export type { DurableToolRegistry, ProgramDriverRegistry } from "@sweatpants/durable-execution";
 
 /** Builds a registry and rejects duplicate program IDs. */
 export function createDurableToolRegistry(
@@ -84,31 +76,6 @@ export function createDurableToolRegistry(
       throw new CrankError("invalid_manifest", `Duplicate durable program ${key}`);
     }
     registry.set(key, tool);
-  }
-  return registry;
-}
-
-/** Builds a driver registry and rejects duplicate or empty driver kinds. */
-export function createProgramDriverRegistry(
-  drivers: Iterable<readonly [string, ProgramDriver]>,
-): ProgramDriverRegistry {
-  return new Map(drivers);
-}
-
-/** Resolves the current tool registry or fails fast outside an installed scope. */
-export function* useDurableToolRegistry(): Operation<DurableToolRegistry> {
-  const registry = yield* DurableToolRegistryContext.get();
-  if (!registry) {
-    throw new CrankError("unknown_target", "No durable tool registry is installed");
-  }
-  return registry;
-}
-
-/** Resolves the current driver registry or fails fast outside an installed scope. */
-export function* useProgramDriverRegistry(): Operation<ProgramDriverRegistry> {
-  const registry = yield* ProgramDriverRegistryContext.get();
-  if (!registry) {
-    throw new CrankError("unknown_target", "No program driver registry is installed");
   }
   return registry;
 }
