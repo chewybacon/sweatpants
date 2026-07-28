@@ -192,9 +192,13 @@ destroy idempotently. A regression test proves the work stops rather than only
 its status changing. Applying that ownership to the registry also exposed a
 second assumption: the registry is not universally built in Host setup — some
 compositions build it in a request scope, correctly causing writers to die on
-disconnect. That application was reverted. The helper can now express truthful
-ownership, but composition must first supply an explicit Host/Turn owner rather
-than inferring one from the construction caller. This remains part of the
+disconnect. That caller-scope application was reverted. `createChatApplication` now installs
+its root as an explicit internal Host owner, and durable-stream setup uses that
+owner when present—even if setup was invoked from a request child. Raw handlers
+without Host composition retain detached development semantics. An outside-in
+application test proves a writer survives its request and runs its finalizer on
+Host close; reconnect/cancellation acceptance remains green. The remaining gap
+is a distinct per-Turn scope beneath the Host, which still belongs with the
 `agent-host` extraction.
 
 ## Consequences
