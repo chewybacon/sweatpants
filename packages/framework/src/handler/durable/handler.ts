@@ -31,7 +31,7 @@ import {
   type SessionHandle,
   type SessionRegistry,
   type TokenBufferStore,
-} from "../../lib/chat/durable-streams/index.ts";
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import { MaxIterationsContext, PersonaResolverContext } from "../../lib/chat/contexts.ts";
 import { ModelProviderPort, useModel, useStreamOptions } from "@sweatpants/chat-core";
 import {

@@ -7,7 +7,10 @@
  * state as frames are consumed.
  */
 import { resource, type Operation, type Stream } from "effection";
-import type { TokenBufferStore, TokenBufferWriter } from "../../lib/chat/durable-streams/index.ts";
+import type {
+  TokenBufferStore,
+  TokenBufferWriter,
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import type { StreamEvent } from "../types.ts";
 import type { DurableFrame } from "@sweatpants/chat-core";
 import { recordConversationCheckpoint } from "./conversation-index.ts";

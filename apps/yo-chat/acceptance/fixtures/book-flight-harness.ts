@@ -18,7 +18,7 @@ import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
   setupDurableStreams,
-} from "@sweatpants/framework/chat/durable-streams";
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import {
   ProgramDriverForeignEffectsContext,
   createCapabilityKeyring,

@@ -62,7 +62,7 @@ Three lanes classify every workspace package:
   - `@sweatpants/framework/chat` — `defineChatProgram`, bounded protocol-neutral turn contracts, resource mount policy, `makePlugin`, plugin helpers, and chat types
   - `@sweatpants/framework/chat/browser-rendering` — plugin UI `RenderableProps` and rendering helpers
   - `@sweatpants/framework/chat/mcp-tools` — plugin registry helpers for MCP tool authoring
-  - `@sweatpants/framework/chat/durable-streams` — in-memory durable stream setup for product apps
+  - `@sweatpants/durable-chat-runtime/response-streams` — in-memory durable stream setup for product apps
 - **Internals** (canonical, not experimental by default): implementation modules under `packages/framework/src/**` that are not listed on the facade allowlist. Do not deep-import `@sweatpants/framework/src/...` from product apps.
 
 ## Phase 1 product facade (v0.1)
@@ -157,7 +157,7 @@ Scan of `apps/yo-chat` source (excluding `node_modules` / `dist`) for `@sweatpan
 | `@sweatpants/framework/server` | Product entry | high | app + handler |
 | `@sweatpants/framework/chat/mcp-tools` | Product entry | medium | plugin registry |
 | `@sweatpants/framework/chat/browser-rendering` | Product entry | medium | tool UI components |
-| `@sweatpants/framework/chat/durable-streams` | Product entry | low | durable setup |
+| `@sweatpants/durable-chat-runtime/response-streams` | Product entry | low | durable setup |
 | `@sweatpants/react-chat` | Product | medium | chat routes |
 | `@sweatpants/core` | Product tool surface | medium | `createTool` |
 | `@sweatpants/tool-runtime-local` | Canonical wiring | medium | local tools |

@@ -32,7 +32,7 @@ import {
   createInMemoryRegistryStore,
 } from "@sweatpants/durable-streams";
 import { createSessionRegistry } from "./session-registry.ts";
-import { useHostScopeOwner } from "../../effection/host-scope.ts";
+import { useDurableStreamsOwner, type DurableStreamsOwner } from "./owner.ts";
 import {
   installTokenBufferStore,
   installSessionRegistryStore,
@@ -53,6 +53,8 @@ export interface DurableStreamsConfig<T> {
   registryStore: SessionRegistryStore;
   /** Retention policy for completed streams */
   retentionPolicy?: RetentionPolicy;
+  /** Explicit Host/Turn owner; omitted only for standalone low-level tests. */
+  owner?: DurableStreamsOwner;
 }
 
 /**
@@ -96,11 +98,10 @@ export function* setupDurableStreams<T>(
   config: DurableStreamsConfig<T>,
 ): Operation<DurableStreamsSetup<T>> {
   const { bufferStore, registryStore, retentionPolicy } = config;
-  const owner = yield* useHostScopeOwner();
+  const owner = config.owner ?? (yield* useDurableStreamsOwner());
 
-  // Host composition supplies an explicit structural owner. Raw handlers have
-  // none and preserve detached development semantics; caller scope is never
-  // guessed to be the owner.
+  // Host composition supplies an explicit structural owner. Standalone tests
+  // may omit it; no caller/request scope is guessed to be the owner.
   const registry = yield* createSessionRegistry(bufferStore, registryStore, {
     ...(retentionPolicy ? { retentionPolicy } : {}),
     ...(owner ? { ownerScope: owner.scope, registerWriter: owner.register } : {}),

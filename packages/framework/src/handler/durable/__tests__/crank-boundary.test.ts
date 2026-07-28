@@ -73,16 +73,22 @@ describe("single crank-turner architecture", () => {
     );
     expect(tokenBuffer).not.toMatch(/^\s+(append|complete|fail)\(/m);
 
-    const registry = source("src/lib/chat/durable-streams/session-registry.ts");
+    const registry = readFileSync(
+      resolve(frameworkRoot, "../durable-chat-runtime/src/response-streams/session-registry.ts"),
+      "utf8",
+    );
     expect(registry).not.toContain("buffer.append(");
     expect(registry).not.toContain("buffer.complete(");
     expect(registry).not.toContain("buffer.fail(");
   });
 
   it("has exactly one response-buffer source writer in session orchestration", () => {
-    const registry = source("src/lib/chat/durable-streams/session-registry.ts");
+    const registry = readFileSync(
+      resolve(frameworkRoot, "../durable-chat-runtime/src/response-streams/session-registry.ts"),
+      "utf8",
+    );
     expect(registry.match(/writeFromStreamToBuffer\(/g)).toHaveLength(1);
-    expect(registry).toContain("useBackgroundTask");
+    expect(registry).toContain("startOwnedTask");
 
     const handler = source("src/handler/durable/handler.ts");
     expect(handler).toContain("source: (_responseTokenBuffer, responseTokenWriter)");

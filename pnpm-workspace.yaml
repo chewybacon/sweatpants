@@ -1,7 +1,6 @@
 packages:
     - packages/*
     - apps/*
-    # Historical Lambda placement spikes are intentionally not product workspaces.
     - "!apps/lambda-durable-program-runtime"
     - "!apps/lambda-microvm-sandbox"
 
@@ -30,7 +29,7 @@ catalog:
     "@types/compression": ^1.8.1
     "@types/express": ^5.0.6
     "@types/morgan": ^1.9.10
-    "@types/node": ^22.10.2
+    "@types/node": 22.19.5
     "@types/react": ^19.0.0
     "@types/react-dom": ^19.2.0
     "@types/ws": ^8.18.1

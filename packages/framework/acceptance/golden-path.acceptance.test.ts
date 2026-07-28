@@ -4,7 +4,7 @@
  * Imports ONLY product facade allowlisted paths:
  * - @sweatpants/framework/server
  * - @sweatpants/framework/chat
- * - @sweatpants/framework/chat/durable-streams
+ * - @sweatpants/durable-chat-runtime/response-streams
  * - @sweatpants/core
  *
  * Exercises: construct chat application, define a tool with createTool,
@@ -33,7 +33,7 @@ import {
   type ModelProviderDriver,
   type ToolRuntime,
 } from "@sweatpants/framework/chat";
-import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
+import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { eventsOfType, readDurableEvents } from "./ndjson.ts";
 
 function mockModel(): Model {

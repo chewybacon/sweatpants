@@ -8,7 +8,7 @@
  * - create() creates a new session and starts tool execution
  * - acquire() returns existing session, increments refCount
  * - release() decrements refCount, triggers cleanup when refCount=0 AND complete
- * - Tool execution runs in background via useBackgroundTask, surviving request teardown
+ * - Tool execution runs in the registry owner scope, surviving request teardown
  * - Reconnection works by acquiring the same sessionId while tool is still running
  *
  * @packageDocumentation
@@ -101,10 +101,9 @@ export interface ToolSessionRegistryOptions {
  * The registry manages tool execution and provides reference counting
  * for automatic cleanup when sessions are no longer needed.
  *
- * IMPORTANT: Session creation uses useBackgroundTask() to ensure the tool session
- * lives in an independent scope. This allows sessions to survive across HTTP
- * request boundaries even when the chat-engine scope for a single request exits
- * immediately after emitting an elicitation event.
+ * IMPORTANT: Session creation uses the registry owner scope to ensure the tool
+ * session survives HTTP request boundaries even when the chat-engine scope for a
+ * single request exits immediately after emitting an elicitation event.
  *
  * @param store - Store for tracking session entries
  * @param options - Registry configuration options

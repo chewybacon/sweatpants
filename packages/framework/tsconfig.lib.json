@@ -22,6 +22,9 @@
     ],
     "references": [
         {
+            "path": "../durable-chat-runtime"
+        },
+        {
             "path": "../durable-streams"
         },
         {

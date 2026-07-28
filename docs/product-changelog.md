@@ -78,7 +78,7 @@ Freeze the Phase 1 product facade allowlist and document the ≤4 conceptual pac
 - `@sweatpants/framework/chat`
 - `@sweatpants/framework/chat/browser-rendering`
 - `@sweatpants/framework/chat/mcp-tools`
-- `@sweatpants/framework/chat/durable-streams`
+- `@sweatpants/durable-chat-runtime/response-streams`
 - `@sweatpants/core` (and `/tool`, `/tools`)
 
 ### Migration note

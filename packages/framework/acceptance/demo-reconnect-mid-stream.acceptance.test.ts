@@ -21,7 +21,7 @@ import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
   setupDurableStreams,
-} from "../src/lib/chat/durable-streams/index.ts";
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import type { RetentionPolicy } from "@sweatpants/durable-streams";
 import type { ChatHandlerSetup } from "../src/handler/durable/types.ts";
 

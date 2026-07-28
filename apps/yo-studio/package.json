@@ -13,6 +13,7 @@
         "@astryxdesign/core": "^0.1.8",
         "@astryxdesign/theme-neutral": "^0.1.8",
         "@sweatpants/core": "workspace:*",
+        "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/react-chat": "workspace:*",

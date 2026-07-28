@@ -3,7 +3,7 @@
  *
  * Demonstrates testing a complex multi-turn MCP tool.
  */
-import { describe, it, expect } from "../../durable-streams/__tests__/vitest-effection.ts";
+import { describe, it, expect } from "@sweatpants/durable-chat-runtime/response-streams/testing";
 import { createMockMCPClient, runMCPTool } from "../mock-runtime.ts";
 import { bookFlightTool } from "../examples/book-flight.ts";
 

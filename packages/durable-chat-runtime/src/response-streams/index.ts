@@ -119,3 +119,15 @@ export {
   type SharedBufferState,
   type SharedDurableStreamsConfig,
 } from "./shared-memory-store.ts";
+
+export {
+  installDurableStreamsOwner,
+  useDurableStreamsOwner,
+  type DurableStreamsOwner,
+} from "./owner.ts";
+export {
+  startOwnedTask,
+  type OwnedTaskHandle,
+  type OwnedTaskOptions,
+  type OwnedTaskStatus,
+} from "./owned-task.ts";

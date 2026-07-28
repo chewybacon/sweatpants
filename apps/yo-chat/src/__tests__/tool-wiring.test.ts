@@ -15,7 +15,8 @@ describe("yo-chat tool wiring", () => {
       getSharedRedisClient: async () => null,
     }));
 
-    const { useTokenBufferStore } = await import("@sweatpants/framework/chat/durable-streams");
+    const { useTokenBufferStore } =
+      await import("@sweatpants/durable-chat-runtime/response-streams");
     const { setupYoChatDurableStreams } = await import("../server/durable-streams");
 
     await run(function* () {

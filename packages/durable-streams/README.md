@@ -72,8 +72,8 @@ Moved modules:
 - `packages/framework/src/handler/durable/read-transport.ts`
 - `packages/framework/src/handler/durable/mutation-transport.ts`
 - `packages/framework/src/handler/durable/sse-formatter.ts`
-- `packages/framework/src/lib/chat/durable-streams/types.ts` (core type source)
-- `packages/framework/src/lib/chat/durable-streams/in-memory-store.ts` (core in-memory source)
+- `packages/durable-streams/src/types.ts` (core type source)
+- `packages/durable-streams/src/in-memory-store.ts` (core in-memory source)
 
 New locations:
 

@@ -43,7 +43,7 @@ import type {
 import {
   setupInMemoryDurableStreams,
   type DurableStreamsSetup,
-} from "../../../lib/chat/durable-streams/index.ts";
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import { createDurableChatHandler } from "../handler.ts";
 import { createInMemoryProgramDriverJournalStore } from "../program-driver-journal.ts";
 import type { ChatHandlerSetup, DurableChatHandlerConfig, DurableStreamEvent } from "../types.ts";

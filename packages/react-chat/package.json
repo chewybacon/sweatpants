@@ -46,6 +46,9 @@
         "test:acceptance": "vitest run acceptance --environment jsdom",
         "build:types": "tsc -b tsconfig.json --force"
     },
+    "dependencies": {
+        "@sweatpants/durable-chat-runtime": "workspace:*"
+    },
     "devDependencies": {
         "@effectionx/raf": "catalog:",
         "@sweatpants/core": "workspace:*",

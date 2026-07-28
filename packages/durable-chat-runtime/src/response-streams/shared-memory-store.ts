@@ -32,7 +32,14 @@ import type {
   TokenBufferWriter,
 } from "@sweatpants/durable-streams";
 import { StaleTokenWriterError } from "@sweatpants/durable-streams";
-import type { Logger } from "../../logger/index.ts";
+interface Logger {
+  trace: (obj: object | string, msg?: string) => void;
+  debug: (obj: object | string, msg?: string) => void;
+  info: (obj: object | string, msg?: string) => void;
+  warn: (obj: object | string, msg?: string) => void;
+  error: (obj: object | string, msg?: string) => void;
+  child: (bindings: Record<string, unknown>) => Logger;
+}
 
 // Use a simple console-based logger at module level
 // (pino with transport can hang in certain environments like Vite SSR)

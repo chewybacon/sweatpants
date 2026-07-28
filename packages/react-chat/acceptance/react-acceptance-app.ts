@@ -14,7 +14,7 @@ import {
   createToolInventoryEntry,
   ToolInventoryContext,
 } from "@sweatpants/framework/chat";
-import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
+import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import {
   createInMemoryToolSessionStoreWithDebug,
   createToolSessionRegistry,

@@ -16,6 +16,7 @@
         "@effectionx/jsonl-store": "^0.3.1",
         "@shikijs/cli": "^3.20.0",
         "@sweatpants/core": "workspace:*",
+        "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/react-chat": "workspace:*",

@@ -463,7 +463,7 @@ yield* session.respondToElicit(elicitId, result)
 
 Stores serialized events for replay. Enables reconnection and multi-client fan-out.
 
-**File:** [`src/lib/chat/durable-streams/`](../src/lib/chat/durable-streams/)
+**File:** [`packages/durable-chat-runtime/src/response-streams/`](../packages/durable-chat-runtime/src/response-streams/)
 
 ---
 

@@ -18,7 +18,7 @@ import {
   type ExtendedMessage,
   type Message,
 } from "@sweatpants/framework/chat";
-import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
+import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createPiAiModelProviderDriver,

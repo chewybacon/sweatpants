@@ -7,7 +7,7 @@ import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
   setupDurableStreams,
-} from "../../../lib/chat/durable-streams/index.ts";
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import { createToolExecutionRef, type ToolRuntime } from "../../../lib/chat/tool-runtime.ts";
 import { createInMemoryProgramDriverJournalStore } from "../program-driver-journal.ts";
 import type { Message } from "../../../lib/chat/types.ts";

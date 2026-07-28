@@ -57,7 +57,7 @@ function Chat() {
 
 ```ts
 import { createChatApplication, createChatHandler } from "@sweatpants/framework/server";
-import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
+import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 
 export function createApp() {
     return createChatApplication({
