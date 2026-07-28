@@ -13,7 +13,7 @@
  */
 import type { Operation, Channel } from "effection";
 import { useAbortSignal } from "effection";
-import { parseNDJSON } from "../ndjson.ts";
+import { parseNDJSON } from "@sweatpants/chat-core";
 import { BaseUrlContext } from "./contexts.ts";
 import type { ChatStateEvent } from "../state/events.ts";
 import type { Message } from "../types.ts";

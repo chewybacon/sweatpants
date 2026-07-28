@@ -1,9 +1,9 @@
 import type { ChatState, ElicitTrackingState } from "./chat-state.ts";
 import { initialChatState } from "./chat-state.ts";
 import type { ChatStateEvent } from "./events.ts";
-import type { Message } from "../messages.ts";
-import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from "../types/chat-message.ts";
-import { getRenderedFromFrame } from "../types/chat-message.ts";
+import type { Message } from "@sweatpants/chat-core";
+import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from "@sweatpants/chat-core";
+import { getRenderedFromFrame } from "@sweatpants/chat-core";
 import { agUiMessagesToInternalMessages } from "../session/ag-ui-messages.ts";
 import { activitySnapshotToPluginReplayTrace } from "../session/plugin-replay.ts";
 

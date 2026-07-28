@@ -1,29 +1,13 @@
 /**
  * lib/chat/types.ts
  *
- * Re-export barrel for chat types. This file aggregates types from
- * their canonical owners (messages.ts, core-types.ts, session/, state/)
- * so that existing consumers can import from a single location during
- * the framework dissolution.
- *
- * No types are defined here — this is a pure re-export hub. The cycle
- * with session/state modules is broken because those modules import
- * Message from messages.ts, not from this barrel.
+ * Re-export barrel for chat types. Types owned by @sweatpants/chat-core
+ * are re-exported from that package. Types owned by session/state modules
+ * (which remain in framework until later dissolution stages) are re-exported
+ * from their canonical files.
  */
 
-// Re-export shared primitives from core-types
-export type {
-  Capabilities,
-  BaseContentMetadata,
-  ContentMetadata,
-  RenderDelta,
-  RevealHint,
-  TokenUsage,
-  ToolCallInfo,
-  ServerToolResult,
-} from "./core-types.ts";
-
-// Re-export message types from canonical owner
+// Re-export chat-core-owned types
 export type {
   Message,
   ToolCall,
@@ -32,7 +16,15 @@ export type {
   ClientToolSchema,
   OllamaChatRequest,
   OllamaChatChunk,
-} from "./messages.ts";
+  Capabilities,
+  BaseContentMetadata,
+  ContentMetadata,
+  RenderDelta,
+  RevealHint,
+  TokenUsage,
+  ToolCallInfo,
+  ServerToolResult,
+} from "@sweatpants/chat-core";
 
 export type {
   AgUiCheckpoint,

@@ -33,14 +33,14 @@ import {
   type TokenBufferStore,
 } from "../../lib/chat/durable-streams/index.ts";
 import { MaxIterationsContext, PersonaResolverContext } from "../../lib/chat/contexts.ts";
-import { ModelProviderPort, useModel, useStreamOptions } from "../../lib/chat/model-provider.ts";
+import { ModelProviderPort, useModel, useStreamOptions } from "@sweatpants/chat-core";
 import {
   ToolExposureApi,
   ToolInventoryApi,
   type ToolDefinition,
 } from "../../lib/chat/tool-inventory.ts";
 import { ToolRuntimePort } from "../../lib/chat/tool-runtime.ts";
-import { HistoryPolicyContext } from "../../lib/chat/history-policy.ts";
+import { HistoryPolicyContext } from "@sweatpants/chat-core";
 import { useLogger } from "../../lib/logger/index.ts";
 import { bindModel, createBindingSource, stringParam } from "../model-binder.ts";
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
@@ -74,7 +74,7 @@ import type {
   ProgramRuntimeChatEngineParams,
   ToolSchema,
 } from "./types.ts";
-import type { Runtime } from "../../lib/chat/runtime/index.ts";
+import type { Runtime } from "@sweatpants/chat-core";
 import {
   interruptRecordsForThread,
   openInterruptsForThread,

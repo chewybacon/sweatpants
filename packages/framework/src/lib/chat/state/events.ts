@@ -1,6 +1,6 @@
-import type { Frame } from "../frame.ts";
-import type { MessagePart } from "../types/chat-message.ts";
-import type { Message } from "../messages.ts";
+import type { Frame } from "@sweatpants/chat-core";
+import type { MessagePart } from "@sweatpants/chat-core";
+import type { Message } from "@sweatpants/chat-core";
 
 type ContentPartType = "text" | "reasoning";
 import type { StreamEvent } from "../session/streaming.ts";

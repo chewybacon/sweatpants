@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { run } from "effection";
-import { parseNDJSON } from "../ndjson.ts";
+import { parseNDJSON } from "@sweatpants/chat-core";
 
 // Helper to create a mock ReadableStream from string chunks
 function createMockStream(chunks: string[]): ReadableStream<Uint8Array> {

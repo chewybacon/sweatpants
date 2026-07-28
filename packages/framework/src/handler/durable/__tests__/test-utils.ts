@@ -32,14 +32,14 @@ import {
   installModelProvider,
   ModelProviderModelContext,
   type ModelProviderDriver,
-} from "../../../lib/chat/model-provider.ts";
+} from "@sweatpants/chat-core";
 import type {
   AssistantMessage,
   Model,
   Runtime,
   StreamEvent as RuntimeStreamEvent,
   Usage,
-} from "../../../lib/chat/runtime/index.ts";
+} from "@sweatpants/chat-core/runtime";
 import {
   setupInMemoryDurableStreams,
   type DurableStreamsSetup,

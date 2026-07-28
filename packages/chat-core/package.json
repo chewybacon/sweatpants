@@ -1,0 +1,160 @@
+{
+    "name": "@sweatpants/chat-core",
+    "version": "0.1.0",
+    "description": "Chat messages, Turn state, authoring, personas, model contracts, and portable codecs",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        },
+        "./messages": {
+            "development": {
+                "import": "./src/messages.ts",
+                "types": "./src/messages.ts"
+            },
+            "import": {
+                "types": "./dist/messages.d.ts",
+                "default": "./dist/messages.js"
+            }
+        },
+        "./core-types": {
+            "development": {
+                "import": "./src/core-types.ts",
+                "types": "./src/core-types.ts"
+            },
+            "import": {
+                "types": "./dist/core-types.d.ts",
+                "default": "./dist/core-types.js"
+            }
+        },
+        "./frame": {
+            "development": {
+                "import": "./src/frame.ts",
+                "types": "./src/frame.ts"
+            },
+            "import": {
+                "types": "./dist/frame.d.ts",
+                "default": "./dist/frame.js"
+            }
+        },
+        "./runtime": {
+            "development": {
+                "import": "./src/runtime/index.ts",
+                "types": "./src/runtime/index.ts"
+            },
+            "import": {
+                "types": "./dist/runtime/index.d.ts",
+                "default": "./dist/runtime/index.js"
+            }
+        },
+        "./model-provider": {
+            "development": {
+                "import": "./src/model-provider.ts",
+                "types": "./src/model-provider.ts"
+            },
+            "import": {
+                "types": "./dist/model-provider.d.ts",
+                "default": "./dist/model-provider.js"
+            }
+        },
+        "./history-policy": {
+            "development": {
+                "import": "./src/history-policy.ts",
+                "types": "./src/history-policy.ts"
+            },
+            "import": {
+                "types": "./dist/history-policy.d.ts",
+                "default": "./dist/history-policy.js"
+            }
+        },
+        "./ndjson": {
+            "development": {
+                "import": "./src/ndjson.ts",
+                "types": "./src/ndjson.ts"
+            },
+            "import": {
+                "types": "./dist/ndjson.d.ts",
+                "default": "./dist/ndjson.js"
+            }
+        },
+        "./stream": {
+            "development": {
+                "import": "./src/stream.ts",
+                "types": "./src/stream.ts"
+            },
+            "import": {
+                "types": "./dist/stream.d.ts",
+                "default": "./dist/stream.js"
+            }
+        },
+        "./sse": {
+            "development": {
+                "import": "./src/sse.ts",
+                "types": "./src/sse.ts"
+            },
+            "import": {
+                "types": "./dist/sse.d.ts",
+                "default": "./dist/sse.js"
+            }
+        },
+        "./personas": {
+            "development": {
+                "import": "./src/personas/index.ts",
+                "types": "./src/personas/index.ts"
+            },
+            "import": {
+                "types": "./dist/personas/index.d.ts",
+                "default": "./dist/personas/index.js"
+            }
+        },
+        "./registry-types": {
+            "development": {
+                "import": "./src/registry-types.ts",
+                "types": "./src/registry-types.ts"
+            },
+            "import": {
+                "types": "./dist/registry-types.d.ts",
+                "default": "./dist/registry-types.js"
+            }
+        },
+        "./setup-types": {
+            "development": {
+                "import": "./src/setup-types.ts",
+                "types": "./src/setup-types.ts"
+            },
+            "import": {
+                "types": "./dist/setup-types.d.ts",
+                "default": "./dist/setup-types.js"
+            }
+        }
+    },
+    "scripts": {
+        "build": "tsup && tsc -b --force",
+        "check": "tsc -b",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@sweatpants/core": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
+        "effection": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "@types/node": "catalog:",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    }
+}

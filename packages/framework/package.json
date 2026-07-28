@@ -140,6 +140,7 @@
     "dependencies": {
         "@standard-schema/spec": "catalog:",
         "@sweatpants/a2a": "workspace:*",
+        "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/core": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/elicit-context": "workspace:*",

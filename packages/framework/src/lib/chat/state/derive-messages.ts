@@ -32,7 +32,7 @@ import type {
   ChatEmission,
   StreamingMessage,
   PluginElicit,
-} from "../types/chat-message.ts";
+} from "@sweatpants/chat-core";
 
 // =============================================================================
 // COMPONENT EXTRACTOR TYPE
