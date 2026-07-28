@@ -5,8 +5,8 @@
  * message forms, and maps public AG-UI resume entries onto internal elicit
  * responses. Pure functions; no I/O, no contexts.
  */
-import type { ChatRequestBody, ElicitResponse } from "./types.ts";
-import type { OpenInterruptRecord } from "@sweatpants/durable-chat-runtime/interrupts";
+import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
+import type { OpenInterruptRecord } from "../interrupts/index.ts";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

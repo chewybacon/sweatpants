@@ -86,6 +86,39 @@
             },
             "default": "./src/handler/hydrate-responses.ts"
         },
+        "./handler/chat-types": {
+            "development": {
+                "import": "./src/handler/chat-types.ts",
+                "types": "./src/handler/chat-types.ts"
+            },
+            "import": {
+                "types": "./dist/handler/chat-types.d.ts",
+                "default": "./dist/handler/chat-types.js"
+            },
+            "default": "./src/handler/chat-types.ts"
+        },
+        "./handler/request-normalization": {
+            "development": {
+                "import": "./src/handler/request-normalization.ts",
+                "types": "./src/handler/request-normalization.ts"
+            },
+            "import": {
+                "types": "./dist/handler/request-normalization.d.ts",
+                "default": "./dist/handler/request-normalization.js"
+            },
+            "default": "./src/handler/request-normalization.ts"
+        },
+        "./handler/turn-plan": {
+            "development": {
+                "import": "./src/handler/turn-plan.ts",
+                "types": "./src/handler/turn-plan.ts"
+            },
+            "import": {
+                "types": "./dist/handler/turn-plan.d.ts",
+                "default": "./dist/handler/turn-plan.js"
+            },
+            "default": "./src/handler/turn-plan.ts"
+        },
         "./interrupts": {
             "development": {
                 "import": "./src/interrupts/index.ts",

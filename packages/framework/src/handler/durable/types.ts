@@ -1,15 +1,27 @@
-import type { Operation, Stream } from "effection";
+import type { Operation } from "effection";
 import type { Model, Runtime, StreamOptions } from "@sweatpants/chat-core";
-import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from "@sweatpants/chat-core";
+import type { ToolInventoryEntry, ToolRuntime } from "@sweatpants/chat-core";
 import type { HistoryPolicy } from "@sweatpants/chat-core";
-import type {
-  ResumeEntry,
-  StreamEvent,
-  ChatMessage,
-} from "@sweatpants/durable-chat-runtime/handler/types";
-import type { ToolExecutionTrace } from "@sweatpants/chat-core";
-import type { ConversationReplayState, AgUiRunMetadata } from "@sweatpants/chat-core";
+import type { StreamEvent, ChatMessage } from "@sweatpants/durable-chat-runtime/handler/types";
+import type { AgUiRunMetadata } from "@sweatpants/chat-core";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
+
+import type {
+  ChatHandlerSetup,
+  ElicitResponse,
+  PluginAbortRequest,
+} from "@sweatpants/durable-chat-runtime/handler/chat-types";
+
+export type {
+  ChatHandlerSetup,
+  ChatHandlerSetupContext,
+  ChatRequestBody,
+  DurableStreamEvent,
+  DurableStreamParams,
+  ElicitResponse,
+  ModelSelection,
+  PluginAbortRequest,
+} from "@sweatpants/durable-chat-runtime/handler/chat-types";
 
 export interface ToolSchema {
   name: string;
@@ -55,82 +67,7 @@ export interface ProgramRuntimeChatEngineParams {
   pluginAbort?: PluginAbortRequest;
 }
 
-export interface DurableStreamEvent {
-  lsn: number;
-  event: StreamEvent;
-}
-
-export interface ChatHandlerSetupContext {
-  request: Request;
-  body: ChatRequestBody;
-}
-
-export type ChatHandlerSetup = (ctx: ChatHandlerSetupContext) => Operation<void>;
-
-export interface ElicitResponse {
-  sessionId: string;
-  callId: string;
-  toolName?: string;
-  ref?: ToolExecutionRef;
-  elicitId: string;
-  result: {
-    action: "accept" | "decline" | "cancel";
-    content?: unknown;
-  };
-  /** Browser render trace for replaying plugin UI after refresh. */
-  trace?: ToolExecutionTrace;
-}
-
-export interface PluginAbortRequest {
-  /** Optional legacy runtime correlation; Program Runtime cancellation uses the active durable root. */
-  sessionId?: string;
-  reason?: string;
-}
-
-export interface ModelSelection {
-  provider: string;
-  id: string;
-}
-
-export interface ChatRequestBody {
-  /**
-   * Durable conversation identity. Preferred over threadId.
-   * This is the only durable chat key (crank journal, history, resume).
-   */
-  conversationId?: string;
-  /**
-   * AG-UI wire alias for conversationId. If conversationId is absent, threadId
-   * is accepted as the durable conversation key. Divergent threadId values are
-   * normalized to conversationId on the wire.
-   */
-  threadId?: string;
-  /**
-   * Ephemeral AG-UI run correlation for one request/turn. Never a durable chat
-   * key. If omitted, the server mints a fresh runId (never reuses stream id).
-   */
-  runId?: string;
-  /** Parent AG-UI run id for resumed runs. */
-  parentRunId?: string;
-  state?: unknown;
-  tools?: unknown[];
-  context?: Array<{ description: string; value: string }>;
-  forwardedProps?: unknown;
-  resume?: ResumeEntry[];
-  messages: ChatMessage[];
-  systemPrompt?: string;
-  persona?: string;
-  personaConfig?: unknown;
-  enableOptionalTools?: string[];
-  effort?: string;
-  streamOptions?: StreamOptions;
-  initialToolChoice?: StreamOptions["toolChoice"];
-  enabledTools?: boolean | string[];
-  enabledPlugins?: string[];
-  model?: ModelSelection;
-  elicitResponses?: ElicitResponse[];
-  replayState?: ConversationReplayState;
-  pluginAbort?: PluginAbortRequest;
-}
+export type ProgramRuntimeChatEngine = import("effection").Stream<StreamEvent, void>;
 
 /**
  * Durable handler configuration. ProgramRuntime is the sole execution engine,
@@ -141,10 +78,3 @@ export interface DurableChatHandlerConfig {
   maxToolIterations?: number;
   programDriverJournalStore: ProgramDriverJournalStore;
 }
-
-export interface DurableStreamParams {
-  sessionId?: string;
-  lastLSN?: number;
-}
-
-export type ProgramRuntimeChatEngine = Stream<StreamEvent, void>;
