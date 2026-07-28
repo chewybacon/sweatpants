@@ -8,6 +8,7 @@ export default defineConfig({
     "handler/model-binder": "src/handler/model-binder.ts",
     "handler/types": "src/handler/types.ts",
     "interrupts/index": "src/interrupts/index.ts",
+    "model-context/index": "src/model-context/index.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

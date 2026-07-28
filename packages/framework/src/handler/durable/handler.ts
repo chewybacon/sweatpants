@@ -84,12 +84,15 @@ import {
   openInterruptsForThread,
   upsertInterruptRecords,
 } from "@sweatpants/durable-chat-runtime/interrupts";
-import { resolvePrivateSystemPrompt } from "./model-context-registry.ts";
+import { resolvePrivateSystemPrompt } from "@sweatpants/durable-chat-runtime/model-context";
 import {
   readLatestThreadInterruptState,
   recordThreadInterruptState,
 } from "@sweatpants/durable-chat-runtime/interrupts";
-import { readLatestThreadSystemPrompt, recordThreadSystemPrompt } from "./model-context-store.ts";
+import {
+  readLatestThreadSystemPrompt,
+  recordThreadSystemPrompt,
+} from "@sweatpants/durable-chat-runtime/model-context";
 import { normalizeChatRequestBody } from "./request-normalization.ts";
 import { planTurn } from "./turn-plan.ts";
 import {
