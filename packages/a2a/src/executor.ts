@@ -1,18 +1,16 @@
 import type { Operation } from "effection";
-import {
-  CrankError,
-  canonicalSnapshot,
-  createLocalProgramDriver,
-  type AttachProgramRequest,
-  type DurableEffectRegistry,
-  type DurableToolRegistry,
-  type Json,
-  type PinnedProgram,
-  type ProgramAttachment,
-  type ProgramCommand,
-  type ProgramStep,
-  type ReplayEntry,
-} from "@sweatpants/session-contract";
+import { CrankError, createLocalProgramDriver } from "@sweatpants/session-contract";
+import { canonicalSnapshot } from "@sweatpants/foundation";
+import type { Json } from "@sweatpants/foundation";
+import type {
+  AttachProgramRequest,
+  PinnedProgram,
+  ProgramAttachment,
+  ProgramCommand,
+  ProgramStep,
+  ReplayEntry,
+} from "@sweatpants/durable-execution";
+import type { DurableEffectRegistry, DurableToolRegistry } from "@sweatpants/session-contract";
 import {
   a2aError,
   assertEnvelopeIdentity,
