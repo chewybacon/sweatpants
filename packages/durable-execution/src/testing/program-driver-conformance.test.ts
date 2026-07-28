@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  firstTraceDivergence,
-  runProgramDriverConformance,
-} from "../program-driver-conformance.ts";
-import type { NormalizedProgramTrace } from "../local-program-host.ts";
+import { firstTraceDivergence, runProgramDriverConformance } from "./program-driver-conformance.ts";
+import type { NormalizedProgramTrace } from "./program-driver-conformance.ts";
 
 const trace: NormalizedProgramTrace = {
   version: 1,

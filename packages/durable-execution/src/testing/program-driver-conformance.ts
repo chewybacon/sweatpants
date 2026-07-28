@@ -1,6 +1,32 @@
-import { canonicalJson, type Json } from "@sweatpants/session-contract";
+import { canonicalJson, type Json } from "@sweatpants/foundation";
+import type { OperationOutcome } from "@sweatpants/durable-effects/contract";
+import type { PinnedProgram } from "../program-contract.ts";
 
-import type { NormalizedProgramTrace } from "./local-program-host.ts";
+export interface NormalizedProgramOperationTrace {
+  actionIndex: number;
+  pullId: string;
+  descriptor: Json;
+  outcome?: OperationOutcome;
+}
+
+export interface NormalizedProgramTaskTrace {
+  taskId: string;
+  turnId: string;
+  parentTaskId?: string;
+  parentPullId?: string;
+  program: PinnedProgram;
+  acceptedInput: Json;
+  catalogDigest?: string;
+  operations: NormalizedProgramOperationTrace[];
+  semanticEmissions: Json[];
+  cancellations: Json[];
+  terminal?: OperationOutcome;
+}
+
+export interface NormalizedProgramTrace {
+  version: 1;
+  tasks: NormalizedProgramTaskTrace[];
+}
 
 export interface ProgramDriverConformanceCase {
   name: string;
