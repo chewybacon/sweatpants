@@ -1,15 +1,12 @@
-import {
-  CrankError,
-  assertJson,
-  canonicalJson,
-  canonicalSnapshot,
-  sha256,
-  type Json,
-  type PinnedProgram,
-  type ProgramCommand,
-  type ProgramStep,
-  type ReplayEntry,
-} from "@sweatpants/session-contract";
+import { assertJson, canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import { CrankError } from "@sweatpants/session-contract";
+import type { Json } from "@sweatpants/foundation";
+import type {
+  PinnedProgram,
+  ProgramCommand,
+  ProgramStep,
+  ReplayEntry,
+} from "@sweatpants/durable-execution";
 import {
   A2A_MAX_ERROR_TEXT_BYTES,
   A2A_MAX_FRAME_BYTES,
