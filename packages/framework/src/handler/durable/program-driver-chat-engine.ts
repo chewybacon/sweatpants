@@ -15,7 +15,6 @@ import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createLocalProgramDriver,
-  createProgramDriverRegistry,
   foreignToolAdapter,
   stableOpaqueId,
   stableProgramAttachmentId,
@@ -31,6 +30,7 @@ import {
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
 
+import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import type {
   AssistantMessage,
   ContentBlock,
