@@ -138,6 +138,26 @@
                 "types": "./dist/setup-types.d.ts",
                 "default": "./dist/setup-types.js"
             }
+        },
+        "./trace-types": {
+            "development": {
+                "import": "./src/trace-types.ts",
+                "types": "./src/trace-types.ts"
+            },
+            "import": {
+                "types": "./dist/trace-types.d.ts",
+                "default": "./dist/trace-types.js"
+            }
+        },
+        "./emissions": {
+            "development": {
+                "import": "./src/emissions.ts",
+                "types": "./src/emissions.ts"
+            },
+            "import": {
+                "types": "./dist/emissions.d.ts",
+                "default": "./dist/emissions.js"
+            }
         }
     },
     "scripts": {

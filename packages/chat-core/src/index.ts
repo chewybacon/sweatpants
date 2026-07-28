@@ -60,3 +60,26 @@ export * from "./personas/index.ts";
 
 // Registry interface
 export type { McpToolRegistry } from "./registry-types.ts";
+
+// Trace types (tool execution emissions)
+export type {
+  ComponentTypeLike,
+  ComponentEmissionPayload,
+  EmissionTraceEntry,
+  HydratedEmissionTraceEntry,
+  HydratedToolExecutionTrace,
+  ToolExecutionTrace,
+} from "./trace-types.ts";
+
+// Emission runtime primitives
+export {
+  createRuntime,
+  createComponentHandler,
+  getComponentKey,
+  COMPONENT_EMISSION_TYPE,
+  type Emission,
+  type PendingEmission,
+  type EmissionHandler,
+  type RuntimeConfig,
+  type RuntimePrimitive,
+} from "./emissions.ts";

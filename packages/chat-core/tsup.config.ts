@@ -15,6 +15,8 @@ export default defineConfig({
     "personas/index": "src/personas/index.ts",
     "registry-types": "src/registry-types.ts",
     "setup-types": "src/setup-types.ts",
+    "trace-types": "src/trace-types.ts",
+    emissions: "src/emissions.ts",
   },
   tsconfig: "../ts-config/tsconfig.tsup.json",
   format: ["cjs", "esm"],
