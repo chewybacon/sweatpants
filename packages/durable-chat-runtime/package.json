@@ -96,6 +96,17 @@
                 "default": "./dist/model-context/index.js"
             },
             "default": "./src/model-context/index.ts"
+        },
+        "./program-driver/effects": {
+            "development": {
+                "import": "./src/program-driver/effects.ts",
+                "types": "./src/program-driver/effects.ts"
+            },
+            "import": {
+                "types": "./dist/program-driver/effects.d.ts",
+                "default": "./dist/program-driver/effects.js"
+            },
+            "default": "./src/program-driver/effects.ts"
         }
     },
     "scripts": {
