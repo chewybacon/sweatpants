@@ -13,7 +13,7 @@ import type {
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
 import type { DurableFrame } from "@sweatpants/chat-core";
-import { recordConversationCheckpoint } from "./conversation-index.ts";
+import { recordConversationCheckpoint } from "@sweatpants/durable-chat-runtime/response-streams";
 import {
   interruptRecordsForThread,
   registerInterruptsFromRunFinished,

@@ -61,7 +61,7 @@ import {
   readLatestConversationCheckpoint,
   recordConversationSession,
   resolveLatestConversationSession,
-} from "./conversation-index.ts";
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import {
   createEmptyStream,
   createHeadMetadataResponse,
