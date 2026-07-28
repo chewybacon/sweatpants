@@ -21,7 +21,6 @@ export {
   DurableEffectRegistryContext,
   JournalAuthority,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramPeer,
   ProgramRuntime,
   FOREIGN_TOOL_ADAPTER_MANIFEST,
@@ -34,6 +33,7 @@ export {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
 } from "@sweatpants/session-contract";
+export { ProgramDriverRegistryContext } from "@sweatpants/durable-execution";
 export { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 export {
   createPinnedDurableProgram,
