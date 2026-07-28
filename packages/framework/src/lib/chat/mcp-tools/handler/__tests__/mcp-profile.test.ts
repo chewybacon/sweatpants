@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MCP_PROTOCOL_VERSION } from "@sweatpants/session-contract";
-import type { ToolSessionRegistry } from "../../session/types.ts";
+import type { ToolSessionRegistry } from "@sweatpants/tool-session";
 import { createMcpHandler, generateMcpManifest } from "../mcp-handler.ts";
 
 const unusedRegistry = {} as ToolSessionRegistry;

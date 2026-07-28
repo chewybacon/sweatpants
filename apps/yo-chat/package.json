@@ -39,6 +39,7 @@
         "@sweatpants/stream-bridge": "workspace:*",
         "@sweatpants/tool-runtime-agentcore": "workspace:*",
         "@sweatpants/tool-runtime-local": "workspace:*",
+        "@sweatpants/tool-session": "workspace:*",
         "@sweatpants/vite-plugin": "workspace:*",
         "@t3-oss/env-core": "catalog:",
         "@tailwindcss/vite": "catalog:",

@@ -39,7 +39,7 @@ import type {
   LogEvent,
   ElicitRequestEvent,
   ResultEvent,
-} from "../../session/types.ts";
+} from "@sweatpants/tool-session";
 
 describe("MCP Protocol", () => {
   describe("Message Encoder", () => {

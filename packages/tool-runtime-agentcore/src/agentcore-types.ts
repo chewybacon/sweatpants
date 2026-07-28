@@ -4,8 +4,8 @@ import type {
   ToolSessionStatus,
   ToolSessionEvent,
   WireSampleResult,
-} from "@sweatpants/framework/chat/mcp-tools";
-import type { WireElicitResult } from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
+import type { WireElicitResult } from "@sweatpants/tool-session";
 
 export const AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION =
   "sweatpants.agentcore.tool-session.v1" as const;

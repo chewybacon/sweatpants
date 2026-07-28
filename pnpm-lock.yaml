@@ -568,6 +568,9 @@ importers:
       '@sweatpants/tool-runtime-local':
         specifier: workspace:*
         version: link:../../packages/tool-runtime-local
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../../packages/tool-session
       '@sweatpants/vite-plugin':
         specifier: workspace:*
         version: link:../../packages/vite-plugin
@@ -752,6 +755,9 @@ importers:
       '@sweatpants/tool-runtime-local':
         specifier: workspace:*
         version: link:../../packages/tool-runtime-local
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../../packages/tool-session
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -1168,6 +1174,9 @@ importers:
       '@sweatpants/stream-bridge':
         specifier: workspace:*
         version: link:../stream-bridge
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../tool-session
       pg:
         specifier: ^8.13.1
         version: 8.19.0
@@ -1286,6 +1295,9 @@ importers:
       '@sweatpants/tool-runtime-local':
         specifier: workspace:*
         version: link:../tool-runtime-local
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../tool-session
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -1591,6 +1603,9 @@ importers:
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../tool-session
       redis:
         specifier: ^4.7.0
         version: 4.7.1
@@ -1643,6 +1658,9 @@ importers:
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../tool-session
     devDependencies:
       '@sweatpants/framework':
         specifier: workspace:*
@@ -1668,6 +1686,31 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.1.13
+
+  packages/tool-session:
+    dependencies:
+      '@sweatpants/core':
+        specifier: workspace:*
+        version: link:../core
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/ts-config:
     devDependencies:

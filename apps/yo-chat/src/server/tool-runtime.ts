@@ -4,10 +4,7 @@ import {
   createPluginSessionManager,
   type PluginSessionManager,
 } from "@sweatpants/framework/server";
-import type {
-  ToolSessionRegistry,
-  ToolSessionSamplingProvider,
-} from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,

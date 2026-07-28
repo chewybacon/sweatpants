@@ -1,10 +1,6 @@
 import { resource, type Operation, type Stream } from "effection";
 
-import type {
-  ToolSession,
-  ToolSessionEvent,
-  ToolSessionRegistry,
-} from "../../../lib/chat/mcp-tools/session/types.ts";
+import type { ToolSession, ToolSessionEvent, ToolSessionRegistry } from "@sweatpants/tool-session";
 import { createPluginSessionManager } from "../plugin-session-manager.ts";
 import { describe, expect, it } from "./vitest-effection.ts";
 

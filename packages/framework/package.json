@@ -146,6 +146,7 @@
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/stream-bridge": "workspace:*",
+        "@sweatpants/tool-session": "workspace:*",
         "pg": "^8.13.1",
         "pino": "^9.6.0",
         "pino-pretty": "^13.0.0",

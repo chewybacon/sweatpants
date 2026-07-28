@@ -43,7 +43,7 @@ import type {
   ResultEvent,
   ErrorEvent,
   CancelledEvent,
-} from "../session/types.ts";
+} from "@sweatpants/tool-session";
 import type { LogLevel as ToolLogLevel } from "../mcp-tool-types.ts";
 
 // =============================================================================

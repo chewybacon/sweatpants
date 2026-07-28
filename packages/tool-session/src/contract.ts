@@ -27,29 +27,63 @@
  */
 import type { Operation, Stream } from "effection";
 import type {
+  ElicitsMap,
+  LogLevel,
+  ModelPreferences,
+  SamplingToolChoice,
+  SamplingToolDefinition,
+  ToolContract,
+  ToolMessage,
   WireElicitResult,
   WireSampleResultBase,
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
-  SamplingToolDefinition,
-  SamplingToolChoice,
-  ModelPreferences,
-  ExtendedMessage,
-  LogLevel,
-  ElicitsMap,
-} from "../mcp-tool-types.ts";
-import type { ToolContract } from "@sweatpants/core";
+} from "@sweatpants/core";
 
-// Re-export result types for convenience
 export type {
+  ElicitsMap,
+  LogLevel,
+  ModelPreferences,
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
+  SamplingToolCall,
+  SamplingToolChoice,
+  SamplingToolDefinition,
+  WireElicitResult,
+  WireSampleResult,
   WireSampleResultBase,
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
-  WireSampleResult,
-} from "../mcp-tool-types.ts";
+} from "@sweatpants/core";
+
+/** Legacy string-message form retained until chat-core owns projection. */
+export interface LegacyToolMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+export interface LegacyToolCallMessage {
+  role: "assistant";
+  content: string;
+  tool_calls: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: Record<string, unknown> };
+  }>;
+}
+export interface LegacyToolResultMessage {
+  role: "tool";
+  content: string;
+  tool_call_id: string;
+}
+export type Message = LegacyToolMessage;
+export type ToolCallMessage = LegacyToolCallMessage;
+export type ToolResultMessage = LegacyToolResultMessage;
+export type ExtendedMessage =
+  | ToolMessage
+  | LegacyToolMessage
+  | LegacyToolCallMessage
+  | LegacyToolResultMessage;
 
 // =============================================================================
 // SESSION STATUS

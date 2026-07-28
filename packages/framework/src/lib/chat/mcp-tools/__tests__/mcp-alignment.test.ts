@@ -14,7 +14,7 @@ import {
   SCHEMA_TOOL_NAME,
 } from "../protocol/message-encoder.ts";
 import { createRawSampleExchange, createStructuredSampleExchange } from "../mcp-tool-types.ts";
-import type { SampleRequestEvent, ElicitRequestEvent } from "../session/types.ts";
+import type { SampleRequestEvent, ElicitRequestEvent } from "@sweatpants/tool-session";
 
 // =============================================================================
 // __SCHEMA__ META-TOOL ENCODING

@@ -47,10 +47,8 @@ import type {
   WorkerSampleSchemaConfig,
   WorkerSampleSchemaConfigMessages,
 } from "./worker-types.js";
+import type { ExtendedMessage, ToolCallMessage, ToolResultMessage } from "@sweatpants/tool-session";
 import type {
-  ExtendedMessage,
-  ToolCallMessage,
-  ToolResultMessage,
   LogLevel,
   SampleResultBase,
   SampleResultWithParsed,

@@ -51,6 +51,9 @@
             "path": "./packages/react-chat"
         },
         {
+            "path": "./packages/tool-session"
+        },
+        {
             "path": "./packages/tool-runtime-agentcore"
         },
         {

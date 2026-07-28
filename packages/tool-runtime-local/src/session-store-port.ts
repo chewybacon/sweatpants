@@ -4,7 +4,7 @@ import type {
   ToolSessionEntry,
   ToolSessionStatus,
   ToolSessionStore,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
 
 export class ToolSessionStoreUnavailable extends Error {
   readonly code = "tool_session_store_unavailable";

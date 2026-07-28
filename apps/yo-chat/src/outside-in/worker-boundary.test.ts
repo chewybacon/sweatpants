@@ -19,7 +19,7 @@ import {
 } from "@sweatpants/tool-runtime-local";
 import { calculator } from "@/tools/calculator";
 import { yoChatToolSessionWorkerConfig } from "@/server/tool-worker-config";
-import type { ToolSessionEvent } from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolSessionEvent } from "@sweatpants/tool-session";
 
 const PROBE_WORKER_URL = new URL("./lib/worker-probe-bootstrap.mjs", import.meta.url);
 

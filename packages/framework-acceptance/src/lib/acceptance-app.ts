@@ -19,10 +19,7 @@ import {
   type Message,
 } from "@sweatpants/framework/chat";
 import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
-import type {
-  ToolSessionRegistry,
-  ToolSessionSamplingProvider,
-} from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createPiAiModelProviderDriver,
   type AssistantMessage as ModelAssistantMessage,

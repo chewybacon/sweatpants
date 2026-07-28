@@ -47,6 +47,10 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/foundation",
   ],
   "@sweatpants/tool-session": [
+    // Transitional DR-041/REQ-041 edge: core is the authored-tool contract
+    // owner until the same stage renames it to agent-sdk. No framework edge is
+    // permitted.
+    "@sweatpants/core",
     "@sweatpants/agent-sdk",
     "@sweatpants/durable-effects",
     "@sweatpants/durable-execution",

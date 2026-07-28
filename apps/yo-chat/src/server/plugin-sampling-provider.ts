@@ -5,14 +5,14 @@ import type {
   SamplingToolCall,
   SamplingToolDefinition,
 } from "@sweatpants/framework/chat";
-import {
-  extendedMessageToProviderMessage,
-  type ToolSessionSamplingProvider,
-  type WireSampleResult,
-  type WireSampleResultBase,
-  type WireSampleResultWithParsed,
-  type WireSampleResultWithToolCalls,
-} from "@sweatpants/framework/chat/mcp-tools";
+import { extendedMessageToProviderMessage } from "@sweatpants/framework/chat/mcp-tools";
+import type {
+  ToolSessionSamplingProvider,
+  WireSampleResult,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
+} from "@sweatpants/tool-session";
 import {
   createPiAiModelProviderDriver,
   resolvePiAiModel,

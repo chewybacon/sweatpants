@@ -44,12 +44,9 @@ import type {
   ToolSessionStatus,
   ToolSessionEvent,
   WireSampleResult,
-} from "@sweatpants/framework/chat/mcp-tools";
-import type { WireElicitResult } from "@sweatpants/framework/chat/mcp-tools";
-import {
-  createToolSessionEventLog,
-  isTerminalToolSessionStatus,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
+import type { WireElicitResult } from "@sweatpants/tool-session";
+import { createToolSessionEventLog, isTerminalToolSessionStatus } from "@sweatpants/tool-session";
 import type { McpWorkerInitData } from "./worker-types.ts";
 import { WorkerSessionStateContext, type WorkerSessionState } from "./worker-session-context.ts";
 import { WorkerSessionApi } from "./worker-session-api.ts";

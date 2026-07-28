@@ -6,10 +6,8 @@
  * ## Quick Start
  *
  * ```typescript
- * import { createMcpHandler } from '@grove/framework/mcp-tools/handler'
- * import { createSessionRegistry } from '@grove/framework/mcp-tools/session'
- *
- * const registry = createSessionRegistry(store)
+ * Compose this transport with a ToolSessionRegistry supplied by a runtime
+ * adapter; the framework does not import or construct that adapter.
  * const tools = new Map([['my_tool', myTool]])
  *
  * const { handler } = createMcpHandler({

@@ -25,7 +25,7 @@ import { existsSync } from "node:fs";
 import type { Operation } from "effection";
 import { createChatApplication, createPluginSessionManager } from "@sweatpants/framework/server";
 import { setupLogger } from "@sweatpants/framework/chat";
-import type { ToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolSessionRegistry } from "@sweatpants/tool-session";
 import {
   createInMemoryToolSessionStore,
   createToolSessionRegistry,

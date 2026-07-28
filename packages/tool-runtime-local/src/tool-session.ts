@@ -21,21 +21,16 @@ import type {
   ToolSessionStatus,
   ToolSessionEvent,
   ToolSessionOptions,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
 import type { SamplesMap, ToolDefinition } from "@sweatpants/core";
-import type {
-  WireElicitResult,
-  WireSampleResult,
-  ElicitsMap,
-  ElicitId,
-} from "@sweatpants/framework/chat/mcp-tools";
+import type { WireElicitResult, WireSampleResult, ElicitsMap } from "@sweatpants/tool-session";
 import { validateToolParameters } from "@sweatpants/framework/chat";
 import {
   createBridgeHost,
-  createToolSessionEventLog,
-  isTerminalToolSessionStatus,
+  type ElicitId,
   type ElicitResponse,
 } from "@sweatpants/framework/chat/mcp-tools";
+import { createToolSessionEventLog, isTerminalToolSessionStatus } from "@sweatpants/tool-session";
 
 // =============================================================================
 // INTERNAL TYPES

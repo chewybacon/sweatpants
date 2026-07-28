@@ -20,7 +20,7 @@ import type {
   ToolSessionEvent as McpToolSessionEvent,
   ToolSessionRegistry,
   ToolSessionSamplingProvider,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
 import {
   createAgentCoreToolSessionRegistry,
   type AgentCoreToolSessionRegistryOptions,

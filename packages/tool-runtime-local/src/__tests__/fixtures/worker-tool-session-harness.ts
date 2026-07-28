@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { createWorkerToolSession } from "../../worker-tool-session.ts";
-import type { ToolSession, ToolSessionEvent } from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolSession, ToolSessionEvent } from "@sweatpants/tool-session";
 
 const scenario = process.argv[2];
 if (!scenario) {

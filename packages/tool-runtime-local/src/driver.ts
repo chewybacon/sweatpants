@@ -20,7 +20,7 @@ import type {
   ToolSessionRegistry,
   ToolSessionSamplingProvider,
   ToolSessionStore,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
 import { createInMemoryToolSessionStore } from "./in-memory-store.ts";
 import {
   createToolSessionRegistry,

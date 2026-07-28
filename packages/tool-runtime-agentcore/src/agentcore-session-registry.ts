@@ -4,7 +4,7 @@ import type {
   ToolSession,
   ToolSessionRegistry,
   ToolSessionOptions,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
 import { validateToolParameters } from "@sweatpants/framework/chat";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
