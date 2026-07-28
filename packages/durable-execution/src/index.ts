@@ -1,3 +1,4 @@
+export * from "./errors.ts";
 export * from "./contract.ts";
 export * from "./transitions.ts";
 export type {

@@ -12,7 +12,7 @@
 import { chatReducer, initialChatState } from "../state/reducer.ts";
 import type { ChatState } from "../state/chat-state.ts";
 import type { ChatStateEvent } from "../state/events.ts";
-import type { Message } from "@sweatpants/chat-core";
+import type { Message } from "../messages.ts";
 import type { ElicitResponseData } from "./options.ts";
 import type { ConversationReplayState, StreamResult } from "./streaming.ts";
 import {

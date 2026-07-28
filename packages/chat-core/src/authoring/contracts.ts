@@ -1,4 +1,5 @@
-import { CrankError, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { CrankError } from "@sweatpants/durable-execution";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   standardSchemaOf,

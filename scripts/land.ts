@@ -91,6 +91,9 @@ async function main(): Promise<void> {
         args: ["verify:clean-build"],
         timeoutMs: 15 * 60_000,
       },
+      // Apps resolve package exports from dist, so check them only after the
+      // clean build has regenerated every dependency artifact.
+      { name: "types:apps", command: "pnpm", args: ["check:apps"], timeoutMs: 10 * 60_000 },
       {
         name: "format:repository",
         command: "pnpm",

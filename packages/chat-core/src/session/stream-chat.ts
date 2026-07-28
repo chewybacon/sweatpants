@@ -13,10 +13,10 @@
  */
 import type { Operation, Channel } from "effection";
 import { useAbortSignal } from "effection";
-import { parseNDJSON } from "@sweatpants/chat-core";
+import { parseNDJSON } from "../ndjson.ts";
 import { BaseUrlContext } from "./contexts.ts";
 import type { ChatStateEvent } from "../state/events.ts";
-import type { Message } from "@sweatpants/chat-core";
+import type { Message } from "../messages.ts";
 import type { StreamChatOptions } from "./options.ts";
 import type { StreamResult } from "./streaming.ts";
 import { executeChatFetch } from "./api-transport.ts";

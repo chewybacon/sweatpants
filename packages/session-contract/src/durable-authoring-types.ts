@@ -150,7 +150,10 @@ export type DurableEffectHandler<
 /** Effect handler registration proving compatibility with its retry declaration. */
 export interface DurableEffectRegistration {
   definition: EffectDefinition<Json, Json, Json>;
-  handler: DurableEffectHandler<Json, Json, Json>;
+  handler(
+    input: Json,
+    context: DurableEffectContext,
+  ): Operation<DurableEffectDisposition<Json, Json>>;
   satisfies:
     | { mode: "repeatable" }
     | { mode: "unsafe" }

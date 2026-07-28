@@ -1,12 +1,13 @@
+import { type EffectDefinition } from "@sweatpants/session-contract";
+
+import { CrankError } from "@sweatpants/durable-execution";
 import {
-  CrankError,
   canonicalJson,
   canonicalSnapshot,
   sha256,
   validateEffectDefinition,
   validateProgramIdentityProvenance,
   type DurableSchemaRegistryEntry,
-  type EffectDefinition,
   type Json,
   type ProgramIdentityProvenanceV1,
 } from "@sweatpants/session-contract";

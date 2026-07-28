@@ -84,9 +84,6 @@ export {
 // pulling `redis` into the install graph of packages that only need the
 // in-memory substrate. See REQ-060 / NFR-012.
 
-// Session registry (framework-specific orchestration)
-export { createSessionRegistry } from "./session-registry.ts";
-
 // Web stream bridge
 export { createWebStreamFromBuffer } from "./web-stream-bridge.ts";
 
@@ -141,9 +138,3 @@ export {
   useDurableStreamsOwner,
   type DurableStreamsOwner,
 } from "./owner.ts";
-export {
-  startOwnedTask,
-  type OwnedTaskHandle,
-  type OwnedTaskOptions,
-  type OwnedTaskStatus,
-} from "./owned-task.ts";

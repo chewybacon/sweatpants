@@ -1,7 +1,7 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { createSignal, race, sleep, spawn, type Operation, type Signal } from "effection";
 import { StaleTokenWriterError } from "@sweatpants/durable-streams";
 import {
-  CrankError,
   canonicalSnapshot,
   stableOpaqueId,
   type Json,

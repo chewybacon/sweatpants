@@ -1,3 +1,9 @@
+import { defineDurableEffect } from "@sweatpants/session-contract";
+
+import {
+  ProgramDriverRegistryContext,
+  createProgramDriverRegistry,
+} from "@sweatpants/durable-execution";
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -5,7 +11,6 @@ import { createTool, type RuntimeTool } from "@sweatpants/core";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
@@ -13,8 +18,6 @@ import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createProgramDriverRegistry,
-  defineDurableEffect,
   defineDurableProgramManifest,
   foreignToolAdapter,
   type AttachProgramRequest,

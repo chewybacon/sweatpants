@@ -68,6 +68,7 @@
         "@smithy/protocol-http": "^5.5.1",
         "@smithy/signature-v4": "^5.5.1",
         "@sweatpants/durable-effects": "workspace:*",
+        "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",

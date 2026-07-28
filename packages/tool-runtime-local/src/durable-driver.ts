@@ -1,8 +1,8 @@
+import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import {
   createLocalProgramDriver,
   type AttachProgramRequest,
-  type DurableToolRegistry,
   type ProgramAttachment,
   type ProgramCommand,
   type ProgramDriver,

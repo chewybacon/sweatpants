@@ -1,7 +1,7 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
 import {
-  CrankError,
   assertJson,
   createPortableSchemaDescriptor,
   type DurableSchemaRegistryEntry,

@@ -1,3 +1,4 @@
+import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 
 import { canonicalSnapshot } from "./canonical.ts";
@@ -7,12 +8,7 @@ import {
   type PortableSchemaDescriptor,
   type PortableSchemaRole,
 } from "./schema-descriptor.ts";
-import {
-  CrankError,
-  PullApplicationError,
-  type Json,
-  type SerializedApplicationError,
-} from "./types.ts";
+import { type Json, type SerializedApplicationError } from "./types.ts";
 import type {
   DurableChildDescriptor,
   DurableProgramContext,

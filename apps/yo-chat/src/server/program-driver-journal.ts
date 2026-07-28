@@ -68,6 +68,15 @@ export function createRedisProgramDriverJournalStore(
         *executionState(sessionId, taskId) {
           return yield* authority.taskExecutionState(sessionId, taskId);
         },
+        *recoveryState(sessionId, requestedTaskId) {
+          return yield* authority.taskRecoveryState(sessionId, requestedTaskId);
+        },
+        *rootTaskCount(sessionId) {
+          return yield* authority.rootTaskCount(sessionId);
+        },
+        *operationState(sessionId, taskId, pullId) {
+          return yield* authority.operationState(sessionId, taskId, pullId);
+        },
         *replaceAttachment(sessionId, taskId, attachmentId) {
           const replaced = yield* authority.replaceAttachment(
             sessionId,

@@ -1,4 +1,9 @@
-import { createChatHandler, type ChatHandlerSetupContext } from "@sweatpants/framework/server";
+import {
+  createCapabilityKeyring,
+  createChatHandler,
+  createInMemoryProgramDriverJournalStore,
+  type ChatHandlerSetupContext,
+} from "@sweatpants/framework/server";
 import {
   MaxIterationsContext,
   ToolInventoryContext,
@@ -11,7 +16,10 @@ import {
   resolvePiAiModel,
   type ModelSelection,
 } from "@sweatpants/model-provider-pi-ai";
-import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
+import {
+  setupInMemoryDurableStreams,
+  type DurableStreamsOwner,
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import { installLocalToolRuntime } from "@sweatpants/tool-runtime-local";
 import type { Operation } from "effection";
 
@@ -22,10 +30,11 @@ export interface InProcessHandlerConfig {
   tools: AgentTool[];
   toolsModuleUrl: string | URL;
   maxIterations?: number;
+  owner: DurableStreamsOwner;
 }
 
 export function createInProcessHandler(config: InProcessHandlerConfig) {
-  const { model: modelSelection, tools, toolsModuleUrl, maxIterations = 10 } = config;
+  const { model: modelSelection, tools, toolsModuleUrl, maxIterations = 10, owner } = config;
 
   const toolWorkerBootstrapUrl = new URL(
     "../../src/lib/tool-worker-bootstrap.mjs",
@@ -35,7 +44,7 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
   workerUrl.searchParams.set("tools", String(toolsModuleUrl));
 
   const setupDurableStreams = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
-    yield* setupInMemoryDurableStreams<string>();
+    yield* setupInMemoryDurableStreams<string>({ owner });
   };
 
   const setupProvider = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
@@ -66,6 +75,11 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
       yield* setupMaxIterations(ctx);
     },
     maxToolIterations: maxIterations,
+    programDriverJournalStore: createInMemoryProgramDriverJournalStore({
+      keyring: createCapabilityKeyring("yo-agent-in-process", [
+        { keyId: "local", secret: "yo-agent-in-process-local-key-material" },
+      ]),
+    }),
   });
 
   async function inProcessFetch(input: string | Request, init?: RequestInit): Promise<Response> {

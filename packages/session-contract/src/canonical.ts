@@ -1,7 +1,8 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { sha256 as hashSha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
-import { CrankError, type Json } from "./types.ts";
+import { type Json } from "./types.ts";
 
 /** RFC 8785 uses ECMAScript JSON number serialization and UTF-16 key order. */
 export function canonicalJson(value: unknown): string {

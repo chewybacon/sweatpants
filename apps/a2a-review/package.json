@@ -14,6 +14,7 @@
         "@sweatpants/a2a": "workspace:*",
         "@sweatpants/core": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
+        "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "effection": "catalog:",

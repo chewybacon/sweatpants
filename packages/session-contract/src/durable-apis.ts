@@ -3,16 +3,15 @@ import { createApi } from "effection/experimental";
 import { definePort } from "@sweatpants/foundation/port";
 
 import {
-  createDurableEffectRegistration as createSharedDurableEffectRegistration,
+  attachDurableEffectRuntimeSchemas,
   durableEffectRuntimeSchemas as readSharedDurableEffectRuntimeSchemas,
   type DurableEffectRuntimeSchemas as SharedDurableEffectRuntimeSchemas,
-  type DurableEffectRegistration as SharedDurableEffectRegistration,
-  type EffectDefinition as SharedEffectDefinition,
 } from "@sweatpants/durable-effects";
 
 import { assertInlineSize, serializeDurableError } from "./authoring.ts";
 import { assertJson, canonicalSnapshot } from "./canonical.ts";
-import { CrankError, type Json } from "./types.ts";
+import { CrankError } from "@sweatpants/durable-execution";
+import { type Json } from "./types.ts";
 import {
   DurableEffectRouting,
   effectContractDigest,
@@ -135,12 +134,10 @@ export function durableEffectRuntimeSchemas(
 ): DurableEffectRuntimeSchemas | undefined {
   // SAFETY: both registration interfaces are the same serialized definition/handler shape;
   // the shared helper owns the WeakMap identity and no boundary data is reconstructed.
-  return readSharedDurableEffectRuntimeSchemas(
-    registration as unknown as SharedDurableEffectRegistration,
-  );
+  return readSharedDurableEffectRuntimeSchemas(registration);
 }
 
-/** Legacy-typed entry point delegating to the shared durable-effects registration implementation. */
+/** Creates one legacy registration while sharing runtime-schema identity with durable-effects. */
 export function createDurableEffectRegistration<
   I extends Json,
   O extends Json,
@@ -151,16 +148,15 @@ export function createDurableEffectRegistration<
   handler: (input: I, context: DurableEffectContext) => Operation<DurableEffectDisposition<O, P>>,
   schemas?: DurableEffectRuntimeSchemas,
 ): DurableEffectRegistration {
-  // SAFETY: the legacy and durable-effects definitions have identical validated
-  // JSON/schema/handler shape; this adapter preserves one shared registration identity.
-  return createSharedDurableEffectRegistration(
-    // SAFETY: the caller supplies the same validated effect definition contract;
-    // only the package-owned branded type differs during migration.
-    definition as unknown as SharedEffectDefinition<I, O, P>,
+  const registration: DurableEffectRegistration = {
+    definition,
     satisfies,
-    handler as never,
-    schemas,
-  ) as unknown as DurableEffectRegistration;
+    handler,
+  };
+  if (schemas) {
+    attachDurableEffectRuntimeSchemas(registration, schemas);
+  }
+  return registration;
 }
 
 /** Validates exact manifest contracts against the handlers selected by an assembly. */

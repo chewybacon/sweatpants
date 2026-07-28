@@ -1,5 +1,6 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { call, sleep, type Operation } from "effection";
-import { CrankError } from "@sweatpants/session-contract";
+
 import {
   ForeignA2ATransportError,
   classifyForeignCancellation,

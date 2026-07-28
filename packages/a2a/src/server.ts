@@ -1,7 +1,7 @@
+import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import {
   canonicalSnapshot,
   type DurableProgramManifest,
-  type DurableToolRegistry,
   type Json,
   type PinnedProgram,
 } from "@sweatpants/session-contract";

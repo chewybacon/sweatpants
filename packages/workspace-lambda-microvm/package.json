@@ -26,6 +26,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/workspace-runtime": "workspace:*",
         "effection": "catalog:"

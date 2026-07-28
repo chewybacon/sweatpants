@@ -55,12 +55,20 @@ export interface DurableEffectRuntimeSchemas {
   readonly output?: StandardSchemaV1;
 }
 
-const registrationSchemas = new WeakMap<DurableEffectRegistration, DurableEffectRuntimeSchemas>();
+const registrationSchemas = new WeakMap<object, DurableEffectRuntimeSchemas>();
 
 export function durableEffectRuntimeSchemas(
-  registration: DurableEffectRegistration,
+  registration: object,
 ): DurableEffectRuntimeSchemas | undefined {
   return registrationSchemas.get(registration);
+}
+
+/** Associates runtime validators with any package-owned registration object. */
+export function attachDurableEffectRuntimeSchemas(
+  registration: object,
+  schemas: DurableEffectRuntimeSchemas,
+): void {
+  registrationSchemas.set(registration, schemas);
 }
 
 export function createDurableEffectRegistration<
@@ -80,6 +88,6 @@ export function createDurableEffectRegistration<
       return handler(input as I, context) as Operation<DurableEffectDisposition<Json, Json>>;
     },
   };
-  if (schemas) registrationSchemas.set(registration, schemas);
+  if (schemas) attachDurableEffectRuntimeSchemas(registration, schemas);
   return registration;
 }

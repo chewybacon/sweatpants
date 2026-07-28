@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { call, type Operation } from "effection";
 
@@ -12,7 +13,7 @@ import {
 } from "./schema-descriptor.ts";
 
 export type { DurableSchemaRegistryEntry } from "./schema-descriptor.ts";
-import { CrankError, type Json } from "./types.ts";
+import { type Json } from "./types.ts";
 
 /**
  * Scope-local runtime validator registry keyed by portable schema digest.

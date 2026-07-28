@@ -32,6 +32,7 @@
         "format": "./node_modules/.bin/oxfmt .",
         "format:check": "./node_modules/.bin/oxfmt --check .",
         "check": "tsc -b",
+        "check:apps": "pnpm --filter './apps/**' --workspace-concurrency=3 --aggregate-output --if-present run check",
         "validate:exports": "tsx scripts/validate-package-exports.ts",
         "validate:module-graph": "tsx scripts/validate-module-graph.ts",
         "validate:product-surface": "tsx scripts/validate-product-surface.ts",

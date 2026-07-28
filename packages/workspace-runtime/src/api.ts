@@ -1,4 +1,5 @@
-import { CrankError, type SandboxActivationFence } from "@sweatpants/session-contract";
+import { CrankError } from "@sweatpants/durable-execution";
+import { type SandboxActivationFence } from "@sweatpants/session-contract";
 import type { Operation } from "effection";
 import { createApi } from "effection/experimental";
 

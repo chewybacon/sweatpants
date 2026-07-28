@@ -1,7 +1,7 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { call, type Operation } from "effection";
 import type { RedisClientType } from "redis";
 import {
-  CrankError,
   InMemoryDurableJournalAuthority,
   parseDurableAuthoritySnapshot,
   type AppendEmissionRequest,

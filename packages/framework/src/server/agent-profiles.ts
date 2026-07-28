@@ -1,11 +1,14 @@
 import {
-  CrankError,
+  type DurableEffectRegistration,
+  type EffectDefinition,
+} from "@sweatpants/session-contract";
+
+import { type DurableToolRegistry } from "@sweatpants/durable-execution";
+import { CrankError } from "@sweatpants/durable-execution";
+import {
   canonicalJson,
   canonicalSnapshot,
   createDurableToolRegistry,
-  type DurableEffectRegistration,
-  type DurableToolRegistry,
-  type EffectDefinition,
   type Json,
 } from "@sweatpants/session-contract";
 import {

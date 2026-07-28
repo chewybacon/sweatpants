@@ -1,6 +1,6 @@
 import type { Operation } from "effection";
 import type { Json } from "@sweatpants/foundation";
-import type { TerminalCapsule } from "@sweatpants/durable-execution";
+import type { ProjectionFrontier, TerminalCapsule } from "@sweatpants/durable-execution";
 import { HistoryStoreApi } from "@sweatpants/history-store/port";
 import type { HistoryPointer, SessionHead } from "@sweatpants/history-store/contract";
 
@@ -12,6 +12,15 @@ export interface ProjectionFactEnvelope {
   readonly sequence: number;
   readonly kind: string;
   readonly payload: Json;
+}
+
+export class ProjectionFactsInvalid extends Error {
+  readonly code = "projection_facts_invalid";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "ProjectionFactsInvalid";
+  }
 }
 
 export type PublishTurnResult =
@@ -29,7 +38,10 @@ export type PublishTurnResult =
 
 export interface PublishTurnRequest<Entry extends Json = Json> {
   readonly capsule: TerminalCapsule;
-  readonly facts: readonly ProjectionFactEnvelope[];
+  /** Loads the facts named by the authority-accepted Terminal Capsule frontier. */
+  readonly readAcceptedFacts: (
+    frontier: ProjectionFrontier,
+  ) => Operation<readonly ProjectionFactEnvelope[]>;
   /** Bounded-context projector; it sees only accepted Projection Facts. */
   readonly project: (facts: readonly ProjectionFactEnvelope[]) => readonly Entry[];
   /** Marks the capsule published; must be idempotent for the same Turn. */
@@ -63,7 +75,9 @@ export function* publishTurn<Entry extends Json = Json>(
 
   const previous = head?.historyHead ?? null;
   const firstPosition = previous ? previous.position + 1 : 0;
-  const entries = request.project(request.facts);
+  const facts = yield* request.readAcceptedFacts(capsule.projection);
+  assertAcceptedProjectionFacts(capsule, facts);
+  const entries = request.project(facts);
   const key = publicationKey(capsule, head?.revision ?? null);
   const pointer = yield* history.putSegment({
     segmentId: key,
@@ -89,4 +103,31 @@ export function* publishTurn<Entry extends Json = Json>(
 
   yield* request.markPublished(pointer);
   return { status: "published", pointer, headRevision: nextRevision };
+}
+
+function assertAcceptedProjectionFacts(
+  capsule: TerminalCapsule,
+  facts: readonly ProjectionFactEnvelope[],
+): void {
+  if (facts.length !== capsule.projection.throughSequence) {
+    throw new ProjectionFactsInvalid(
+      `Expected ${capsule.projection.throughSequence} accepted Projection Facts, received ${facts.length}`,
+    );
+  }
+  facts.forEach((fact, index) => {
+    if (
+      fact.executionId !== capsule.executionId ||
+      fact.sessionId !== capsule.sessionId ||
+      fact.turnId !== capsule.turnId
+    ) {
+      throw new ProjectionFactsInvalid(
+        `Projection Fact ${index + 1} does not belong to Terminal Capsule ${capsule.executionId}`,
+      );
+    }
+    if (fact.sequence !== index + 1) {
+      throw new ProjectionFactsInvalid(
+        `Projection Facts must be contiguous from sequence 1; received ${fact.sequence} at position ${index + 1}`,
+      );
+    }
+  });
 }

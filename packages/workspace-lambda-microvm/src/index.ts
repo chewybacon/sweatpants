@@ -1,8 +1,9 @@
+import { type ProgramExecutionValue } from "@sweatpants/durable-execution";
+import { CrankError } from "@sweatpants/durable-execution";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { call, sleep, useAbortSignal, withResolvers, type Operation } from "effection";
 
-import { CrankError, type ProgramExecutionValue } from "@sweatpants/session-contract";
 import {
   createHttpWorkspaceConnector,
   type WorkspaceConnector,

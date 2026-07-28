@@ -1,8 +1,9 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { isIP, type LookupFunction } from "node:net";
 
 import { call, type Operation } from "effection";
 import { WebSocket, type RawData } from "ws";
-import { CrankError } from "@sweatpants/session-contract";
+
 import {
   A2A_EXTENSIONS_HEADER,
   A2A_MAX_FRAME_BYTES,

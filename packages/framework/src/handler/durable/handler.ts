@@ -99,6 +99,7 @@ import {
   createEmptyChatEngine,
   createSerializedEventStream,
   type ChatEngineSource,
+  type TurnEventSink,
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import {
   createConversationHydrateResponse,
@@ -540,7 +541,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         };
         const engineSource: ChatEngineSource = resumePreflightError
           ? createEmptyChatEngine()
-          : (liveEvent) =>
+          : (liveEvent: TurnEventSink) =>
               createProgramDriverChatEngine({
                 ...engineParams,
                 journalStore: config.programDriverJournalStore,

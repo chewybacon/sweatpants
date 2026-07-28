@@ -1,6 +1,5 @@
 /** Shared canonical data and error contracts. */
-export type { Json, RuntimeErrorCode, SerializedApplicationError } from "./types.ts";
-export { CrankError, PullApplicationError } from "./types.ts";
+export type { Json, SerializedApplicationError } from "./types.ts";
 
 export {
   DURABLE_INVOCATION_FORMAT,
@@ -179,12 +178,12 @@ export type {
   ReserveOperationResult,
   ResolutionCapabilityClaims,
   ResolutionReceipt,
+  RetrySafety,
   ResolveOperationRequest,
   ResolveOperationResult,
   RestoredFrontierProof,
   RestoredProgramAttachment,
   RestoreTicketClaims,
-  RetrySafety,
   SandboxAffinity,
   TaskCloseReceipt,
   WaitDescriptor,
@@ -231,8 +230,8 @@ export {
   assertReplayedCanonicalValue,
   createDurableProgramContext,
   createPinnedDurableProgram,
-  defineDurableProgramManifest,
   defineDurableEffect,
+  defineDurableProgramManifest,
   serializeDurableError,
   validateDurableManifest,
   validateEffectDefinition,
@@ -273,25 +272,10 @@ export {
   type CapabilityKeyring,
 } from "./capabilities.ts";
 export {
-  PROGRAM_EXECUTION_FORMAT,
-  ProgramExecutionContext,
-  createProgramExecutionValue,
-  useProgramExecution,
-  type ProgramExecutionValue,
-} from "./program-execution-context.ts";
-export {
-  DurableToolRegistryContext,
-  ExecutionDurableEffectRegistryContext,
-  ProgramDriverRegistryContext,
   createDurableToolRegistry,
   createLocalProgramDriver,
   exactProgramKey,
-  createProgramDriverRegistry,
   stableProgramAttachmentId,
-  useDurableToolRegistry,
-  useProgramDriverRegistry,
-  type DurableToolRegistry,
-  type ProgramDriverRegistry,
 } from "./program-driver.ts";
 export {
   InMemoryDurableJournalAuthority,

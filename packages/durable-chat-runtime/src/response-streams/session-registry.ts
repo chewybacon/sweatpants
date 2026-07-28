@@ -122,7 +122,6 @@ export function* createSessionRegistry<T>(
       },
     );
     log.debug({ sessionId, taskName }, "writer task started");
-    config.registerWriter?.(handle);
     return handle;
   }
 
@@ -181,11 +180,15 @@ export function* createSessionRegistry<T>(
 
     const task = yield* startOwnedTask(
       function* () {
-        yield* sleep(ttlMs);
-        const entry = yield* registryStore.get(sessionId);
-        if (entry && entry.refCount === 0) {
-          log.debug({ sessionId, ttlMs }, "retention ttl reached, deleting");
-          yield* deleteDurableState(sessionId);
+        try {
+          yield* sleep(ttlMs);
+          const entry = yield* registryStore.get(sessionId);
+          if (entry && entry.refCount === 0) {
+            log.debug({ sessionId, ttlMs }, "retention ttl reached, deleting");
+            yield* deleteDurableState(sessionId);
+          }
+        } finally {
+          retentionTasks.delete(sessionId);
         }
       },
       {

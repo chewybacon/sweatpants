@@ -1,3 +1,8 @@
+import {
+  type DurableEffectHandler,
+  type DurableEffectRegistration,
+} from "@sweatpants/session-contract";
+
 import type { Operation } from "effection";
 import { z } from "zod";
 import { createTool, type AnyToolContract } from "@sweatpants/core";
@@ -13,8 +18,6 @@ import {
   createInMemoryDurableJournalAuthority,
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
-  type DurableEffectHandler,
-  type DurableEffectRegistration,
   type DurableProgramManifest,
   type DurableSchemaRegistry,
   type DurableSchemaRegistryEntry,

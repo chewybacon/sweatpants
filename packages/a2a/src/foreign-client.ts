@@ -1,5 +1,6 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { call, type Operation } from "effection";
-import { CrankError, canonicalJson, sha256, type Json } from "@sweatpants/session-contract";
+import { canonicalJson, sha256, type Json } from "@sweatpants/session-contract";
 import { A2A_EXTENSIONS_HEADER } from "./types.ts";
 import {
   createSecureA2AHttpClient,

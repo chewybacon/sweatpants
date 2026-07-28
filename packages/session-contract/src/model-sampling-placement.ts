@@ -16,7 +16,8 @@ import {
   type ProgramDeliveryWriter,
   type ProgramPlacementContextValue,
 } from "./program-placement-context.ts";
-import { CrankError, type Json } from "./types.ts";
+import { CrankError } from "@sweatpants/durable-execution";
+import type { Json } from "./types.ts";
 
 export {
   ProgramDeliveryWriterContext,

@@ -18,7 +18,7 @@
  * })
  * ```
  */
-import { resource, call, spawn, each, createSignal } from "effection";
+import { resource, call, spawn, each, createSignal, useScope } from "effection";
 import type { Operation, Stream } from "effection";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
@@ -71,6 +71,7 @@ export interface DevServerHandle {
  */
 export function useDevServer(options: DevServerOptions = {}): Operation<DevServerHandle> {
   return resource(function* (provide) {
+    const ownerScope = yield* useScope();
     const {
       root = process.cwd(),
       toolsPath = "./src/tools",
@@ -104,6 +105,7 @@ export function useDevServer(options: DevServerOptions = {}): Operation<DevServe
         model,
         tools: tools as any[],
         toolsModuleUrl: pathToFileURL(resolve(root, toolsPath, "index.ts")).toString(),
+        owner: { scope: ownerScope, register: () => undefined },
       });
     }
 

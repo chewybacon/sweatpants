@@ -1,9 +1,6 @@
-import type {
-  OperationOutcome,
-  PortableSchemaDescriptor,
-  RetrySafety,
-  Json,
-} from "@sweatpants/session-contract";
+import { type OperationOutcome, type RetrySafety } from "@sweatpants/session-contract";
+
+import type { PortableSchemaDescriptor, Json } from "@sweatpants/session-contract";
 import type { ForeignA2AInvocationPin, ForeignA2ATerminalResult } from "./foreign-task-types.ts";
 
 export const SWEATPANTS_PEER_PROFILE_URI =

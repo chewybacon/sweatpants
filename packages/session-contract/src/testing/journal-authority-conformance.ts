@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { all, type Operation } from "effection";
 
 import { canonicalJson } from "../canonical.ts";
@@ -7,7 +8,7 @@ import {
   type DurableSchemaRegistry,
   type DurableSchemaRegistryEntry,
 } from "../schema-registry.ts";
-import { CrankError } from "../types.ts";
+
 import {
   anyGuard,
   booleanGuard,

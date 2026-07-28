@@ -1,4 +1,4 @@
-import { CrankError } from "./types.ts";
+import { CrankError } from "@sweatpants/durable-execution";
 
 /** Named source module supplied to the static durable-purity scanner. */
 export interface DurableSourceModule {

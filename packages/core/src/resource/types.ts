@@ -1,5 +1,5 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import {
-  CrankError,
   type DurableSchemaRegistryEntry,
   type DurableTool,
   type Json,

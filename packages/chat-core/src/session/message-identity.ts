@@ -1,4 +1,4 @@
-import type { Message, ToolCall } from "@sweatpants/chat-core";
+import type { Message, ToolCall } from "../messages.ts";
 
 function sortedUnique(values: string[]): string[] {
   return [...new Set(values)].sort();

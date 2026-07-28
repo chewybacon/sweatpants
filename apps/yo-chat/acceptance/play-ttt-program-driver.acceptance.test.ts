@@ -1,3 +1,4 @@
+import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 // @vitest-environment node
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
@@ -8,7 +9,6 @@ import {
   createDurableEffectRegistry,
   createDurableToolRegistry,
   createLocalProgramDriver,
-  createProgramDriverRegistry,
   type Json,
 } from "@sweatpants/session-contract";
 import { createLocalWorkerDurableProgramDriver } from "@sweatpants/tool-runtime-local";

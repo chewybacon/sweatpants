@@ -27,6 +27,15 @@ export interface HistoryPage<Entry extends Json = Json> {
   readonly previousCursor: string | null;
   readonly head: HistoryPointer | null;
 }
+export class HistorySegmentConflictError extends Error {
+  readonly code = "history_segment_conflict";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "HistorySegmentConflictError";
+  }
+}
+
 export type HeadCommitResult =
   | { readonly status: "accepted"; readonly head: SessionHead }
   | { readonly status: "conflict"; readonly actual: SessionHead | null };

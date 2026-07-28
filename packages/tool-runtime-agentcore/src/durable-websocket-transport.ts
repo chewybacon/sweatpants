@@ -1,8 +1,8 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
 import { call, useAbortSignal, type Operation } from "effection";
 
 import {
-  CrankError,
   assertJson,
   canonicalSnapshot,
   type AttachProgramRequest,

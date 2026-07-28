@@ -1,5 +1,6 @@
 import { createContext, type Operation } from "effection";
-import { canonicalSnapshot, stableOpaqueId, CrankError } from "@sweatpants/foundation";
+import { canonicalSnapshot, stableOpaqueId } from "@sweatpants/foundation";
+import { CrankError } from "./errors.ts";
 import type { AttachProgramRequest, ProgramRoute } from "./program-driver-contract.ts";
 import type { PinnedProgram, SandboxAffinity } from "./program-contract.ts";
 

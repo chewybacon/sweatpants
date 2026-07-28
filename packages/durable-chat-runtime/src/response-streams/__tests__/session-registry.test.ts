@@ -18,7 +18,7 @@
  *   5. Session is complete + refCount=0 → durable retention (buffer remains)
  */
 import { describe, it, expect } from "./vitest-effection.ts";
-import { sleep, resource } from "effection";
+import { sleep, resource, useScope } from "effection";
 import type { Operation, Subscription, Stream } from "effection";
 import type { RetentionPolicy, TokenFrame } from "@sweatpants/durable-streams";
 import {
@@ -35,10 +35,11 @@ import {
 // =============================================================================
 
 function* useTestRegistry(retentionPolicy?: RetentionPolicy) {
-  // Setup DI contexts - returns the setup for direct access
-  const { registry, bufferStore, registryStore } = yield* setupInMemoryDurableStreams<string>(
-    retentionPolicy ? { retentionPolicy } : {},
-  );
+  const scope = yield* useScope();
+  const { registry, bufferStore, registryStore } = yield* setupInMemoryDurableStreams<string>({
+    ...(retentionPolicy ? { retentionPolicy } : {}),
+    owner: { scope, register: () => undefined },
+  });
   return { registry, bufferStore, registryStore };
 }
 
@@ -48,7 +49,10 @@ function* useTestRegistry(retentionPolicy?: RetentionPolicy) {
  * and then use context accessors everywhere else.
  */
 function* useTestRegistryViaContext() {
-  yield* setupInMemoryDurableStreams<string>();
+  const scope = yield* useScope();
+  yield* setupInMemoryDurableStreams<string>({
+    owner: { scope, register: () => undefined },
+  });
 
   // Access via context - this is the recommended pattern for production code
   const registry = yield* useSessionRegistry<string>();

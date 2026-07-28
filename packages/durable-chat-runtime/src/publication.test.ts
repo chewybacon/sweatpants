@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryHistoryStore } from "@sweatpants/history-store/memory";
 import { HistoryStoreApi, installHistoryStore } from "@sweatpants/history-store/port";
 import type { TerminalCapsule } from "@sweatpants/durable-execution";
-import { publishTurn, type ProjectionFactEnvelope } from "./index.ts";
+import { ProjectionFactsInvalid, publishTurn, type ProjectionFactEnvelope } from "./index.ts";
 
 type Entry = { readonly turn: string; readonly text: string };
 
@@ -49,7 +49,9 @@ describe("terminal Turn publication", () => {
       yield* installHistoryStore(history);
       const result = yield* publishTurn({
         capsule,
-        facts,
+        *readAcceptedFacts() {
+          return facts;
+        },
         project,
         *markPublished(pointer) {
           marked.push(pointer.segmentId);
@@ -81,7 +83,9 @@ describe("terminal Turn publication", () => {
 
       const recovered = yield* publishTurn({
         capsule,
-        facts,
+        *readAcceptedFacts() {
+          return facts;
+        },
         project,
         *markPublished(pointer) {
           marked.push(pointer.segmentId);
@@ -91,7 +95,9 @@ describe("terminal Turn publication", () => {
 
       const repeated = yield* publishTurn({
         capsule,
-        facts,
+        *readAcceptedFacts() {
+          return facts;
+        },
         project,
         *markPublished(pointer) {
           marked.push(pointer.segmentId);
@@ -103,5 +109,26 @@ describe("terminal Turn publication", () => {
       ]);
     });
     expect(marked).toHaveLength(2);
+  });
+
+  it("rejects facts outside the capsule's accepted identity and sequence frontier", async () => {
+    const history = createMemoryHistoryStore<Entry>();
+    let failure: unknown;
+    await run(function* () {
+      yield* installHistoryStore(history);
+      try {
+        yield* publishTurn({
+          capsule,
+          *readAcceptedFacts() {
+            return [{ ...facts[0]!, executionId: "other-execution" }];
+          },
+          project,
+          *markPublished() {},
+        });
+      } catch (error) {
+        failure = error;
+      }
+    });
+    expect(failure).toBeInstanceOf(ProjectionFactsInvalid);
   });
 });

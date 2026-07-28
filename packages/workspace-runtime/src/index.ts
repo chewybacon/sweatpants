@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { spawn as spawnProcess } from "node:child_process";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
@@ -10,7 +11,7 @@ import {
   sortStrings,
   type Json,
 } from "@sweatpants/foundation";
-import { CrankError } from "@sweatpants/session-contract";
+
 import { useProgramExecution } from "@sweatpants/durable-execution";
 import { call, resource, useAbortSignal, useScope, type Operation, type Task } from "effection";
 

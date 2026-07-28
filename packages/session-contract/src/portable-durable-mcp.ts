@@ -1,5 +1,6 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { canonicalJson, compareUnicodeCodePoints, sha256, sortStrings } from "./canonical.ts";
-import { CrankError, type Json } from "./types.ts";
+import { type Json } from "./types.ts";
 
 export const MCP_PROTOCOL_VERSION = "2025-11-25" as const;
 export const DURABLE_INVOCATION_META_KEY = "sweatpants.chat/invocation" as const;

@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 
 import { assertInlineSize, DEFAULT_MAX_INLINE_BYTES } from "./authoring.ts";
@@ -28,7 +29,7 @@ import {
   sha256,
   stableOpaqueId,
 } from "./canonical.ts";
-import { CrankError, type Json } from "./types.ts";
+import { type Json } from "./types.ts";
 import {
   effectContractDigest,
   hasLiveDurableEffect,

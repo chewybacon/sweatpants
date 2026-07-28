@@ -1,3 +1,5 @@
+import { type OperationOutcome } from "@sweatpants/session-contract";
+
 import type { Operation } from "effection";
 import {
   createDurableSchemaRegistry,
@@ -11,7 +13,6 @@ import {
   type DurableTaskExecutionState,
   type DurableTaskRecoveryState,
   type OpenDurableTaskRequest,
-  type OperationOutcome,
   type ResolveOperationResult,
 } from "@sweatpants/session-contract";
 

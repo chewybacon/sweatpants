@@ -3,7 +3,7 @@
  */
 import type { Operation } from "effection";
 import { call } from "effection";
-import type { Message } from "@sweatpants/chat-core";
+import type { Message } from "../messages.ts";
 import type { StreamChatOptions, ElicitResponseData } from "./options.ts";
 import { normalizeClientReplayTrace } from "./plugin-replay.ts";
 

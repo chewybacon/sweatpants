@@ -1,4 +1,4 @@
-import type { ResumeEntry } from "@sweatpants/durable-chat-runtime/handler/types";
+import type { ResumeEntry } from "../handler/types.ts";
 
 export type InterruptStatus = "open" | "resolved" | "cancelled" | "expired";
 

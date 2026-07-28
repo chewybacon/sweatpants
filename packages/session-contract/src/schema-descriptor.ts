@@ -1,6 +1,7 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { assertJson, canonicalJson, canonicalSnapshot, sha256 } from "./canonical.ts";
-import { CrankError, type Json } from "./types.ts";
+import { type Json } from "./types.ts";
 
 /**
  * Portable schema descriptors are the only schema artifact permitted to cross

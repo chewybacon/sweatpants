@@ -1,3 +1,10 @@
+import { defineDurableEffect } from "../index.ts";
+import { createDurableEffectRegistration } from "../index.ts";
+
+import {
+  ProgramDriverRegistryContext,
+  createProgramDriverRegistry,
+} from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
@@ -5,18 +12,14 @@ import {
   DurableEffectRegistryContext,
   DurableProgramCancellation,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createDurableSchemaRegistry,
   createLocalProgramDriver,
-  createProgramDriverRegistry,
-  defineDurableEffect,
   stableProgramAttachmentId,
   type DurableProgramManifest,
 } from "../index.ts";

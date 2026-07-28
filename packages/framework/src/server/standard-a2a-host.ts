@@ -1,3 +1,6 @@
+import { type DurableEffectRegistration } from "@sweatpants/session-contract";
+
+import { CrankError } from "@sweatpants/durable-execution";
 import { randomUUID } from "node:crypto";
 import {
   call,
@@ -11,7 +14,6 @@ import {
   type Subscription,
 } from "effection";
 import {
-  CrankError,
   DurableEffectRegistryContext,
   withJournalAuthority,
   ProgramRouteResolverContext,
@@ -25,7 +27,6 @@ import {
   createLocalProgramDriver,
   sha256,
   stableProgramAttachmentId,
-  type DurableEffectRegistration,
   type DurableOperationDescriptor,
   type DurableSemanticRecord,
   type DurableTool,

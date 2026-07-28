@@ -16,7 +16,8 @@ import {
   createPinnedDurableProgram,
   validateDurableManifest,
 } from "./program-authoring-runtime.ts";
-import { CrankError, type Json } from "@sweatpants/foundation";
+import type { Json } from "@sweatpants/foundation";
+import { CrankError } from "./errors.ts";
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const INPUT_KEYS = [

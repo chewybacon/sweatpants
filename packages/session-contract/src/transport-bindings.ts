@@ -1,5 +1,6 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { canonicalSnapshot } from "./canonical.ts";
-import { CrankError, type Json } from "./types.ts";
+import { type Json } from "./types.ts";
 import type {
   ReserveOperationResult,
   ResolutionReceipt,

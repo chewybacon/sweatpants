@@ -6,12 +6,12 @@
 
 import type { Operation, Channel } from "effection";
 import type { ChatStateEvent } from "../state/events.ts";
-import type { Message } from "@sweatpants/chat-core";
+import type { Message } from "../messages.ts";
 import type { StreamEvent, StreamResult } from "./streaming.ts";
 import type { ConversationReplayState } from "./replay-types.ts";
-import type { ToolExecutionTrace } from "@sweatpants/chat-core";
-import type { PluginReplayTraceSpec } from "@sweatpants/chat-core";
-import type { StreamOptions } from "@sweatpants/chat-core";
+import type { ToolExecutionTrace } from "../trace-types.ts";
+import type { PluginReplayTraceSpec } from "../plugin-spec.ts";
+import type { StreamOptions } from "../runtime/types.ts";
 
 // =============================================================================
 // STREAM EVENT OBSERVATION

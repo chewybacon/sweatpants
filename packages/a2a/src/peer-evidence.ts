@@ -1,5 +1,6 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import { sign, verify, type KeyLike } from "node:crypto";
-import { CrankError, canonicalJson, sha256 } from "@sweatpants/session-contract";
+import { canonicalJson, sha256 } from "@sweatpants/session-contract";
 import type { PeerTerminalEvidence } from "./peer-types.ts";
 
 export function createPeerTerminalEvidence(

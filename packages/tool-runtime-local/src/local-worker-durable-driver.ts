@@ -1,10 +1,7 @@
+import { type DurableToolRegistry } from "@sweatpants/durable-execution";
+import { CrankError } from "@sweatpants/durable-execution";
 import { useWorker, type WorkerResource } from "@effectionx/worker";
-import {
-  CrankError,
-  type DurableToolRegistry,
-  type ProgramAttachment,
-  type ProgramDriver,
-} from "@sweatpants/session-contract";
+import { type ProgramAttachment, type ProgramDriver } from "@sweatpants/session-contract";
 
 import type {
   DurableProgramWorkerRequest,

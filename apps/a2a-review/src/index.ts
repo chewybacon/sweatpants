@@ -1,3 +1,10 @@
+import { defineDurableEffect } from "@sweatpants/session-contract";
+import {
+  type DurableEffectContext,
+  type DurableEffectDisposition,
+  type DurableEffectRegistration,
+} from "@sweatpants/session-contract";
+
 import type { Operation } from "effection";
 import {
   advertiseCapability,
@@ -22,12 +29,8 @@ import {
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
   createPortableSchemaDescriptor,
-  defineDurableEffect,
   generateProgramArtifactIdentity,
   sha256,
-  type DurableEffectContext,
-  type DurableEffectDisposition,
-  type DurableEffectRegistration,
   type DurableSchemaRegistryEntry,
   type Json,
   type StandardSchemaV1,
