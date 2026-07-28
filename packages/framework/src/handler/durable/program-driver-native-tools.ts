@@ -1,10 +1,6 @@
 import { createContext, type Operation } from "effection";
-import type {
-  DurableEffectRegistration,
-  DurableTool,
-  ProgramDriver,
-  ProgramRoute,
-} from "@sweatpants/session-contract";
+import type { DurableEffectRegistration } from "@sweatpants/chat-core";
+import type { DurableTool, ProgramDriver, ProgramRoute } from "@sweatpants/durable-execution";
 
 export type NativeProgramIdentity = { id: string; version: string; digest: string };
 
