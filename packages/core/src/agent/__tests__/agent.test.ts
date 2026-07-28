@@ -70,8 +70,8 @@ describe("agent authoring", () => {
     expect(definition.manifest.identity.digest).toBe(
       "81b60d85ef548754e7ed9cb0b2abc5cf278e1c5c966dc93d394b78a6a7f1611b",
     );
-    expect(definition.bindings.programs.run?.program).toBe(tool);
-    expect(definition.manifest.programs.run?.provenance.kind).toBe("asserted");
+    expect(definition.bindings.programs["run"]?.program).toBe(tool);
+    expect(definition.manifest.programs["run"]?.provenance.kind).toBe("asserted");
     expect(() => JSON.stringify(definition)).toThrow(/manifest explicitly/);
     expect(JSON.stringify(definition.manifest)).not.toContain("durability");
   });

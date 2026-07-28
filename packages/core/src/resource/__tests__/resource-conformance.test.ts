@@ -237,8 +237,11 @@ describe("reader search safety and schemas", () => {
       ...pkg,
       bindings: { ...pkg.bindings, read: () => new TextEncoder().encode("changed") },
     };
-    const missingRegistry = { resolve: () => missingPackage } as ResourcePackageRegistry;
-    const corruptRegistry = { resolve: () => corruptPackage } as ResourcePackageRegistry;
+    // SAFETY: these boundary fakes deliberately expose only the operation under
+    // test; searchResources depends solely on ResourcePackageRegistry.resolve.
+    const missingRegistry = { resolve: () => missingPackage } as unknown as ResourcePackageRegistry;
+    // SAFETY: same one-method boundary fake as above.
+    const corruptRegistry = { resolve: () => corruptPackage } as unknown as ResourcePackageRegistry;
     expect(() => searchResources(view, missingRegistry, { kind: "model" }, "needle")).toThrowError(
       expect.objectContaining({ code: "resource_not_found" }),
     );
@@ -463,20 +466,19 @@ describe("hidden lookup and content-safe errors", () => {
       hideExistence: true,
     });
     expect(hidden.read.manifest.digest).not.toBe(internal.read.manifest.digest);
-    expect(() =>
-      hidden.read
-        .program(
-          {
-            ref: {
-              packageId: pkg.manifest.id,
-              packageDigest: pkg.manifest.digest,
-              path: "secret.txt",
-            },
-          },
-          {} as never,
-        )
-        .next(),
-    ).toThrowError(expect.objectContaining({ code: "resource_not_found" }));
+    const hiddenRead = hidden.read.program(
+      {
+        ref: {
+          packageId: pkg.manifest.id,
+          packageDigest: pkg.manifest.digest,
+          path: "secret.txt",
+        },
+      },
+      {} as never,
+    );
+    expect(() => hiddenRead[Symbol.iterator]().next()).toThrowError(
+      expect.objectContaining({ code: "resource_not_found" }),
+    );
   });
 
   it("does not place content or host path sentinels in safe failures or console output", () => {

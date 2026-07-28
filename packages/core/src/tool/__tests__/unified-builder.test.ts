@@ -39,6 +39,7 @@ describe("createTool(name) unified builder", () => {
       });
 
     const invoke = yield* Tool({
+      signal: new AbortController().signal,
       messages: [],
       notify: function* () {},
       log: function* () {},
@@ -69,6 +70,7 @@ describe("createTool(name) unified builder", () => {
       });
 
     const invoke = yield* Tool({
+      signal: new AbortController().signal,
       messages: [],
       notify: function* () {},
       log: function* () {},

@@ -7,7 +7,6 @@ import {
   createDurableToolRegistry,
   createLocalProgramDriver,
   sha256,
-  type Json,
   type ProgramResume,
   type ProgramStepProposal,
 } from "@sweatpants/session-contract";
@@ -16,14 +15,18 @@ import { createDurableTool } from "../durable-create.ts";
 import { defineDurableContextExtension } from "../durable-context-extension.ts";
 import { defineEffect } from "../durable-effect.ts";
 
-interface DataApi {
+type DataApi = {
   readValue(input: { key: string }): Operation<{ value: string; revision: string }>;
   writeValue(input: {
     key: string;
     value: string;
     expectedRevision: string;
   }): Operation<{ revision: string }>;
-}
+};
+
+type DataClient = DataApi & {
+  replaceValue(input: { key: string; value: string }): Operation<{ revision: string }>;
+};
 
 const Data = createApi<DataApi>("acceptance:data", {
   *readValue() {
@@ -34,7 +37,7 @@ const Data = createApi<DataApi>("acceptance:data", {
   },
 });
 
-const data = defineDurableContextExtension({
+const data = defineDurableContextExtension<"data", DataApi, DataClient>({
   name: "data",
   api: Data.operations,
   client({ api, self }) {
@@ -53,7 +56,7 @@ const data = defineDurableContextExtension({
   },
 });
 
-const alternativeData = defineDurableContextExtension({
+const alternativeData = defineDurableContextExtension<"data", DataApi, DataClient>({
   name: "data",
   api: Data.operations,
   client({ api }) {
@@ -62,6 +65,14 @@ const alternativeData = defineDurableContextExtension({
         return yield* api.readValue({ key: `alternative:${input.key}` });
       },
       writeValue: api.writeValue,
+      *replaceValue(input: { key: string; value: string }) {
+        const current = yield* api.readValue({ key: `alternative:${input.key}` });
+        return yield* api.writeValue({
+          key: input.key,
+          value: input.value,
+          expectedRevision: current.revision,
+        });
+      },
     };
   },
 });

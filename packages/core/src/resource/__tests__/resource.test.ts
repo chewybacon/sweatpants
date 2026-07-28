@@ -271,7 +271,9 @@ describe("directory compiler", () => {
         mode: "verify",
         outputFile,
       }),
-    ).rejects.toMatchObject<ResourceError>({ code: "stale_generated_resource_package" });
+    ).rejects.toMatchObject({
+      code: "stale_generated_resource_package",
+    } satisfies Partial<ResourceError>);
   });
 
   it("canonicalizes overlapping default JSON/text patterns and emits compact base64", async () => {
