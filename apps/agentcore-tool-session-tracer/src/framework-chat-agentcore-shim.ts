@@ -10,14 +10,14 @@ export {
   installModelProvider,
   ModelProviderModelContext,
   ModelProviderStreamOptionsContext,
-} from "../../../packages/framework/src/lib/chat/model-provider.ts";
+} from "@sweatpants/chat-core/model-provider";
 export {
   installToolRuntime,
   ToolRuntimeError,
   createToolExecutionRef,
 } from "../../../packages/framework/src/lib/chat/tool-runtime.ts";
 export type { ExtendedMessage } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts";
-export type { ModelProviderDriver } from "../../../packages/framework/src/lib/chat/model-provider.ts";
+export type { ModelProviderDriver } from "@sweatpants/chat-core/model-provider";
 export type {
   ElicitToolRequest,
   ToolExecuteRequest,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyHistoryPolicy, createMessageBudgetHistoryPolicy } from "../history-policy.ts";
-import type { Message } from "../runtime/types.ts";
+import { applyHistoryPolicy, createMessageBudgetHistoryPolicy } from "@sweatpants/chat-core";
+import type { Message } from "@sweatpants/chat-core/runtime";
 
 function user(content: string): Message {
   return { role: "user", content };

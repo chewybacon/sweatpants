@@ -44,10 +44,10 @@ import type {
   ContentBlock,
   Context as RuntimeContext,
   Message as RuntimeMessage,
-} from "../../lib/chat/runtime/index.ts";
+} from "@sweatpants/chat-core/runtime";
 import { runWithRenewedActivationLease } from "../activation-lease-coordinator.ts";
 import { useLogger } from "../../lib/logger/index.ts";
-import { applyHistoryPolicy } from "../../lib/chat/history-policy.ts";
+import { applyHistoryPolicy } from "@sweatpants/chat-core";
 import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
 import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
 import {

@@ -1,21 +1,98 @@
-// Types
+// Types — chat-core owns messages, core-types, frame, personas, codecs, model-provider, runtime types
 export * from "./types.ts";
+
+// Re-export chat-core-owned types and utilities (explicit names for tsup compatibility)
+export type {
+  Annotation,
+  RenderPass,
+  BlockStatus,
+  BlockType,
+  Block,
+  TraceAction,
+  TraceEntry,
+  Frame,
+  ProcessFn,
+  Processor,
+  ProcessorPreset,
+  PipelineConfig,
+  FrameEmitter,
+  PipelineResult,
+  ParseContext,
+  Parser,
+  ParserFactory,
+  ResolvedProcessors,
+} from "@sweatpants/chat-core";
+
+export type {
+  ChatEmission,
+  ChatMessage,
+  StreamingMessage,
+  TextPart,
+  ReasoningPart,
+  ToolCallPart,
+  ToolResultPart,
+  MessagePart,
+  ContentPart,
+  PluginElicit,
+} from "@sweatpants/chat-core";
+export {
+  generatePartId,
+  resetPartIdCounter,
+  createTextPart,
+  createReasoningPart,
+  createToolCallPart,
+  createToolResultPart,
+  getRenderedFromFrame,
+  isContentPart,
+  getMessageTextContent,
+  getMessageReasoningContent,
+  getMessageToolCalls,
+} from "@sweatpants/chat-core";
+
+export type { PersonaResolver, ResolvedPersona } from "@sweatpants/chat-core";
+export type { McpToolRegistry } from "@sweatpants/chat-core";
+
+export { parseNDJSON, type ParseNDJSONOptions } from "@sweatpants/chat-core";
+export { consumeAsync } from "@sweatpants/chat-core";
+export { parseSSE, type SSEEvent } from "@sweatpants/chat-core";
+
+export {
+  ModelProviderPort,
+  ModelProviderApi,
+  installModelProvider,
+  ModelProviderModelContext,
+  ModelProviderStreamOptionsContext,
+  useModel,
+  useStreamOptions,
+  type ModelProviderStreamRequest,
+  type ModelProviderSampleRequest,
+  type ModelProviderDriver,
+  ModelProviderUnavailable,
+} from "@sweatpants/chat-core";
+
+export {
+  HistoryPolicyContext,
+  applyHistoryPolicy,
+  createMessageBudgetHistoryPolicy,
+  type HistoryPolicyDecision,
+  type HistoryPolicyInput,
+  type HistoryPolicyResult,
+  type HistoryPolicy,
+  type MessageBudgetHistoryPolicyOptions,
+} from "@sweatpants/chat-core";
+
+export type { AssistantMessage, Model } from "@sweatpants/chat-core";
+
+export {
+  definePersona,
+  personas,
+  resolvePersona,
+  getPersonaManifest,
+  type PersonaName,
+} from "@sweatpants/chat-core";
 
 // Digest-covered protocol-neutral durable chat authoring.
 export * from "./authoring/index.ts";
-export * from "./types/index.ts";
-export * from "./frame.ts";
-export type { PersonaResolver, ResolvedPersona } from "./setup-types.ts";
-
-// Stream utilities
-export * from "./ndjson.ts";
-export * from "./stream.ts";
-export * from "./sse.ts";
-
-// Scope-driven driver contracts and APIs.
-export * from "./model-provider.ts";
-export * from "./history-policy.ts";
-export type { AssistantMessage, Model } from "./runtime/index.ts";
 export * from "./tool-inventory.ts";
 export * from "./tool-runtime.ts";
 export * from "./tool-parameters.ts";
@@ -31,7 +108,7 @@ export {
   PluginSessionManagerContext,
 } from "./contexts.ts";
 
-export * from "./personas/index.ts";
+// Personas now owned by chat-core (re-exported above via export * from "@sweatpants/chat-core")
 
 // Browser-safe session/state/patch contracts used by UI adapters.
 export {

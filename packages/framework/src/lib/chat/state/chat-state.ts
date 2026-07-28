@@ -1,5 +1,5 @@
-import type { Message } from "../messages.ts";
-import type { MessagePart } from "../types/chat-message.ts";
+import type { Message } from "@sweatpants/chat-core";
+import type { MessagePart } from "@sweatpants/chat-core";
 import type { ConversationReplayState } from "../session/replay-types.ts";
 import type {
   ElicitState,

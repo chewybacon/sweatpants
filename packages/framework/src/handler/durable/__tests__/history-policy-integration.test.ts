@@ -12,10 +12,7 @@ import {
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from "../../../lib/chat/durable-streams/index.ts";
-import {
-  HistoryPolicyContext,
-  createMessageBudgetHistoryPolicy,
-} from "../../../lib/chat/history-policy.ts";
+import { HistoryPolicyContext, createMessageBudgetHistoryPolicy } from "@sweatpants/chat-core";
 import type { ChatHandlerSetup } from "../types.ts";
 import type { Message } from "../../../lib/chat/types.ts";
 import {

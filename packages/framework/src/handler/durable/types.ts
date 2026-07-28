@@ -1,7 +1,7 @@
 import type { Operation, Stream } from "effection";
-import type { Model, Runtime, StreamOptions } from "../../lib/chat/runtime/index.ts";
+import type { Model, Runtime, StreamOptions } from "@sweatpants/chat-core";
 import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from "../../lib/chat/index.ts";
-import type { HistoryPolicy } from "../../lib/chat/history-policy.ts";
+import type { HistoryPolicy } from "@sweatpants/chat-core";
 import type { StreamEvent, ChatMessage } from "../types.ts";
 import type { ToolExecutionTrace } from "../../lib/chat/browser-rendering/index.ts";
 import type { ConversationReplayState, AgUiRunMetadata } from "../../lib/chat/session/streaming.ts";
@@ -13,7 +13,7 @@ export interface ToolSchema {
   parameters: Record<string, unknown>;
 }
 
-export type { McpToolRegistry } from "../../lib/chat/registry-types.ts";
+export type { McpToolRegistry } from "@sweatpants/chat-core";
 
 export interface ProgramRuntimeChatEngineParams {
   messages: ChatMessage[];

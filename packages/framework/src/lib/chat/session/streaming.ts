@@ -1,6 +1,6 @@
-import type { ToolCallInfo, ServerToolResult } from "../core-types.ts";
+import type { ToolCallInfo, ServerToolResult } from "@sweatpants/chat-core";
 import type { ToolParameterValidationErrorPayload } from "../tool-parameters.ts";
-import type { Message } from "../messages.ts";
+import type { Message } from "@sweatpants/chat-core";
 import type { AgUiMessage } from "./ag-ui-messages.ts";
 import type { PluginReplayActivitySnapshotEvent } from "./plugin-replay.ts";
 

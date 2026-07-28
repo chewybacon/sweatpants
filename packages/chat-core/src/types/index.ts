@@ -14,6 +14,7 @@ export type {
   ToolResultPart,
   MessagePart,
   ContentPart,
+  PluginElicit,
 } from "./chat-message.ts";
 
 export {

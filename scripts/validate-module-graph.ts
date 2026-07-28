@@ -57,6 +57,10 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/foundation",
   ],
   "@sweatpants/chat-core": [
+    // Transitional DR-048 edge: core is the authored-tool contract owner
+    // until the same stage renames it to agent-sdk. No framework edge is
+    // permitted.
+    "@sweatpants/core",
     "@sweatpants/agent-sdk",
     "@sweatpants/durable-effects",
     "@sweatpants/history-store",
