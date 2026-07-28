@@ -128,8 +128,9 @@ export interface ContextEntry<T = unknown> {
  */
 export interface BackgroundTaskOptions {
   /**
-   * External scope to run the task in.
-   * If not provided, a new independent scope is created.
+   * Optional owning scope. The task runs in its own child scope so `halt()` can
+   * reclaim this task without destroying siblings. If omitted, the child has no
+   * parent and therefore outlives the caller until explicitly halted.
    */
   scope?: Scope;
 
@@ -283,22 +284,16 @@ export function* useBackgroundTask<T = void>(
     doneDeferred: createDeferred<BackgroundTaskStatus>(),
   };
 
-  // Create scope if not provided
-  // IMPORTANT: We always create an independent scope (not a child scope)
-  // because child scopes would cause the parent to wait for us.
-  // Contexts must be passed explicitly via the `contexts` option.
-  let scope: Scope;
-  let destroyScope: (() => Promise<void>) | undefined;
-
-  if (externalScope) {
-    // Use the provided external scope directly
-    scope = externalScope;
-  } else {
-    // Create an independent scope
-    const [newScope, destroy] = createScope();
-    scope = newScope;
-    destroyScope = destroy;
-  }
+  // Every task gets its own reclaimable scope. When an owner is supplied the
+  // task is structurally below that owner but not below the request that called
+  // this helper. This preserves eager stream draining across disconnect while
+  // allowing Host teardown and explicit supersession to halt the exact task.
+  const [scope, destroyScope] = createScope(externalScope);
+  let destroyPromise: Promise<void> | undefined;
+  const destroyTaskScope = (): Promise<void> => {
+    destroyPromise ??= destroyScope().then(() => undefined);
+    return destroyPromise;
+  };
 
   // Create the handle
   const handle: BackgroundTaskHandle<T> = {
@@ -320,9 +315,7 @@ export function* useBackgroundTask<T = void>(
         state.status = "halted";
         state.doneDeferred.resolve("halted");
         onHalt?.();
-        if (destroyScope) {
-          yield* call(() => destroyScope!());
-        }
+        yield* call(destroyTaskScope);
       }
     },
 
@@ -344,7 +337,7 @@ export function* useBackgroundTask<T = void>(
   // IMPORTANT: We use scope.run() NOT spawn() so the parent doesn't wait
   state.status = "running";
 
-  scope.run(function* () {
+  const running = scope.run(function* () {
     try {
       // Set up contexts in the new scope
       for (const entry of contexts) {
@@ -372,6 +365,10 @@ export function* useBackgroundTask<T = void>(
       state.doneDeferred.resolve("error");
     }
   });
+  // A completed task must detach its child scope from a long-lived owner. Halt
+  // takes the same idempotent path, so completion/halt races cannot destroy a
+  // sibling or leak an owner edge.
+  running.then(destroyTaskScope, destroyTaskScope).catch(() => undefined);
 
   // Return the handle immediately (don't wait for task to complete)
   return handle;

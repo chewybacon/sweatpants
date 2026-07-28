@@ -135,6 +135,29 @@ describe("useBackgroundTask", () => {
       yield* call(() => destroyParent());
     });
 
+    it("halts work parented by an external scope instead of only changing status", function* () {
+      const [externalScope, destroyExternal] = createScope();
+      const ticks: number[] = [];
+      const handle = yield* useBackgroundTask(
+        function* () {
+          for (let index = 0; index < 100; index += 1) {
+            ticks.push(index);
+            yield* sleep(5);
+          }
+        },
+        { scope: externalScope },
+      );
+
+      yield* sleep(20);
+      yield* handle.halt();
+      const afterHalt = ticks.length;
+      yield* sleep(40);
+
+      expect(handle.status()).toBe("halted");
+      expect(ticks).toHaveLength(afterHalt);
+      yield* call(() => destroyExternal());
+    });
+
     it("should use external scope when provided", function* () {
       const events: string[] = [];
 
