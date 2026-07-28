@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { DurableTool } from "@sweatpants/session-contract";
+import type { DurableTool } from "@sweatpants/durable-execution";
 import {
   requiresFencedActivation,
   type ProgramDriverNativeToolBinding,
   type ProgramDriverNativeToolComposition,
-} from "../program-driver-native-tools.ts";
+} from "../native-tools.ts";
 
 function stubTool(name: string): DurableTool<never, never> {
   return {
