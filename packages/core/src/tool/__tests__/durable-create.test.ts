@@ -1,10 +1,9 @@
+import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
-  MODEL_SAMPLE_EFFECT,
-  MODEL_SAMPLE_SCHEMA_ENTRIES,
   createDurableProgramContext,
   type ProgramResume,
   type ProgramStepProposal,

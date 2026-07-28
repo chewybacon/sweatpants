@@ -3,7 +3,6 @@ import { createApi } from "effection/experimental";
 import { definePort } from "@sweatpants/foundation/port";
 
 import {
-  attachDurableEffectRuntimeSchemas,
   durableEffectRuntimeSchemas as readSharedDurableEffectRuntimeSchemas,
   type DurableEffectRuntimeSchemas as SharedDurableEffectRuntimeSchemas,
 } from "@sweatpants/durable-effects";
@@ -28,7 +27,6 @@ import type {
   CancellationFrontier,
   DurableCancellationState,
   DurableEffectAuthorization,
-  DurableEffectContext,
   DurableEffectDisposition,
   DurableEffectRegistration,
   DurableEffectRegistry,
@@ -135,28 +133,6 @@ export function durableEffectRuntimeSchemas(
   // SAFETY: both registration interfaces are the same serialized definition/handler shape;
   // the shared helper owns the WeakMap identity and no boundary data is reconstructed.
   return readSharedDurableEffectRuntimeSchemas(registration);
-}
-
-/** Creates one legacy registration while sharing runtime-schema identity with durable-effects. */
-export function createDurableEffectRegistration<
-  I extends Json,
-  O extends Json,
-  P extends Json = never,
->(
-  definition: EffectDefinition<I, O, P>,
-  satisfies: DurableEffectRegistration["satisfies"],
-  handler: (input: I, context: DurableEffectContext) => Operation<DurableEffectDisposition<O, P>>,
-  schemas?: DurableEffectRuntimeSchemas,
-): DurableEffectRegistration {
-  const registration: DurableEffectRegistration = {
-    definition,
-    satisfies,
-    handler,
-  };
-  if (schemas) {
-    attachDurableEffectRuntimeSchemas(registration, schemas);
-  }
-  return registration;
 }
 
 /** Validates exact manifest contracts against the handlers selected by an assembly. */

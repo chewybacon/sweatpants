@@ -10,7 +10,7 @@ import type {
   WireElicitResult,
   WireSampleResult,
 } from "@sweatpants/tool-session";
-import { createDurableEffectRegistration } from "@sweatpants/session-contract";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,

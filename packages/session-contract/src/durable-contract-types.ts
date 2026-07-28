@@ -8,7 +8,14 @@
  */
 
 import type { PortableSchemaDescriptor } from "./schema-descriptor.ts";
-import type { Json, SerializedApplicationError } from "./types.ts";
+import type { Json } from "./types.ts";
+import type {
+  DurableEffectDisposition as CanonicalDurableEffectDisposition,
+  EffectDefinition as CanonicalEffectDefinition,
+  EffectDescriptor as CanonicalEffectDescriptor,
+  OperationOutcome as CanonicalOperationOutcome,
+  RetrySafety as CanonicalRetrySafety,
+} from "@sweatpants/durable-effects";
 
 export const PROGRAM_ARTIFACT_IDENTITY_FORMAT = "sweatpants.program-artifact-identity.v1" as const;
 
@@ -62,41 +69,21 @@ export interface GeneratedProgramArtifactIdentityV1 {
 /** Portable JSON Schema projection carried on wire/browser transports. */
 export type JsonSchema = Json;
 
-/** Retry policy declaring whether duplicate host execution is safe. */
-export type RetrySafety =
-  | { mode: "repeatable" }
-  | { mode: "unsafe" }
-  | { mode: "idempotent"; mechanism: "pull_id_key" | "inherent" };
+/** Canonical durable-effects retry declaration. */
+export type RetrySafety = CanonicalRetrySafety;
 
-declare const effectInputType: unique symbol;
-declare const effectOutputType: unique symbol;
-declare const effectCancellationPartialType: unique symbol;
-
-/** Versioned effect contract carrying runtime schemas and compile-time witnesses. */
-export interface EffectDefinition<
+/** Canonical durable-effects contract identity. */
+export type EffectDefinition<
   I extends Json = Json,
   O extends Json = Json,
   P extends Json = never,
-> {
-  /** Compile-time-only carriers used to infer handler input/output/partial types. */
-  readonly [effectInputType]?: I;
-  readonly [effectOutputType]?: O;
-  readonly [effectCancellationPartialType]?: P;
-  name: string;
-  version: string;
-  inputSchema: PortableSchemaDescriptor;
-  outputSchema: PortableSchemaDescriptor;
-  cancellation?: { partialSchema: PortableSchemaDescriptor };
-  retrySafety: RetrySafety;
-}
+> = CanonicalEffectDefinition<I, O, P>;
 
-/** Closed terminal report returned by every durable effect handler. */
-export type DurableEffectDisposition<O extends Json, P extends Json = never> =
-  | { status: "ok"; value: O }
-  | { status: "error"; error: SerializedApplicationError }
-  | ([P] extends [never]
-      ? { status: "cancelled"; partial?: never }
-      : { status: "cancelled"; partial?: P });
+/** Canonical durable-effects terminal disposition. */
+export type DurableEffectDisposition<
+  O extends Json,
+  P extends Json = never,
+> = CanonicalDurableEffectDisposition<O, P>;
 
 declare const programInputType: unique symbol;
 declare const programOutputType: unique symbol;
@@ -127,14 +114,8 @@ export interface DurableProgramManifest<I extends Json = Json, O extends Json = 
   };
 }
 
-/** Journaled host-effect request bound to an explicit resolver audience. */
-export interface EffectDescriptor {
-  kind: "effect";
-  name: string;
-  version: string;
-  input: Json;
-  resolver: { audience: string; route?: string };
-}
+/** Canonical journaled host-effect request. */
+export type EffectDescriptor = CanonicalEffectDescriptor;
 
 /** Journaled user-input request with a persisted content-schema descriptor. */
 export interface DurableElicitDescriptor {
@@ -294,8 +275,5 @@ export interface EmissionDescriptor {
   payload: Json;
 }
 
-/** Exhaustive persisted outcome algebra for pulls and tasks. */
-export type OperationOutcome =
-  | { status: "ok"; value: Json }
-  | { status: "error"; error: SerializedApplicationError }
-  | { status: "cancelled"; partial?: Json };
+/** Canonical persisted effect/record outcome algebra. */
+export type OperationOutcome = CanonicalOperationOutcome;

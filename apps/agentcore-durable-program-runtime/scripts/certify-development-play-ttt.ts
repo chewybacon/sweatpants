@@ -1,3 +1,4 @@
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -9,7 +10,6 @@ import config from "../../yo-chat/sweatpants.config.ts";
 import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
-  MODEL_SAMPLE_EFFECT,
   DurableEffectRegistryContext,
   withJournalAuthority,
   ProgramRuntime,

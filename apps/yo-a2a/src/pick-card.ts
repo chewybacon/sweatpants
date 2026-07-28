@@ -1,6 +1,6 @@
 import { randomInt } from "node:crypto";
 import { createDurableTool, defineEffect, effectRuntimeValidators } from "@sweatpants/core";
-import { createDurableEffectRegistration } from "@sweatpants/framework/server";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { z } from "zod";
 
 const SUITS = ["hearts", "diamonds", "clubs", "spades"] as const;

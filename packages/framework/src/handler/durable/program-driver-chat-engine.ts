@@ -1,3 +1,8 @@
+import type {
+  ModelSampleCall,
+  ModelSampleRequest,
+  ModelSampleResult,
+} from "@sweatpants/durable-effects";
 import { type DurableEffectRegistration } from "@sweatpants/session-contract";
 
 import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
@@ -24,9 +29,6 @@ import {
   type DurableSemanticRecord,
   type DurableTool,
   type Json,
-  type ModelSampleCall,
-  type ModelSampleRequest,
-  type ModelSampleResult,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
 

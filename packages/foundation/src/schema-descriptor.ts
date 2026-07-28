@@ -18,11 +18,16 @@ export class SchemaDescriptorError extends Error {
  * digest through a scope-local {@link import("./schema-registry.ts").DurableSchemaRegistry}.
  */
 
-/** Closed role algebra binding a schema descriptor to its acceptance boundary. */
-export interface DurableSchemaRegistryEntry {
-  readonly descriptor: PortableSchemaDescriptor;
+/** Pairs one portable descriptor with its in-process validation authority. */
+export interface SchemaBinding<
+  D extends PortableSchemaDescriptor<string> = PortableSchemaDescriptor,
+> {
+  readonly descriptor: D;
   readonly schema: StandardSchemaV1;
 }
+
+/** @deprecated Runtime registries must define their domain-owned entry vocabulary. */
+export type DurableSchemaRegistryEntry = SchemaBinding;
 
 /** Constructs a minimal Standard Schema V1 wrapper for an in-repo validator. */
 export function standardSchemaOf(
@@ -32,6 +37,7 @@ export function standardSchemaOf(
   return { "~standard": { version: 1, vendor, validate } };
 }
 
+/** Transitional aggregate retained until domain role switchovers land. */
 export type PortableSchemaRole =
   | "tool_parameters"
   | "tool_output"
@@ -59,9 +65,9 @@ export interface PortableSchemaFidelity {
  * draft-2020-12 JSON Schema projections. `digest` commits to every other field
  * under a domain-separated SHA-256 of the JCS canonical form.
  */
-export interface PortableSchemaDescriptor {
+export interface PortableSchemaDescriptor<Role extends string = PortableSchemaRole> {
   readonly identity: string;
-  readonly role: PortableSchemaRole;
+  readonly role: Role;
   readonly version: string;
   readonly vendor: string;
   readonly inputProjection: Json;
@@ -73,23 +79,12 @@ export interface PortableSchemaDescriptor {
 /** Domain separation for portable schema descriptor digests. */
 export const SCHEMA_DESCRIPTOR_DIGEST_DOMAIN = "sweatpants:portable-schema-descriptor:v1";
 
-const ROLES: readonly PortableSchemaRole[] = [
-  "tool_parameters",
-  "tool_output",
-  "program_input",
-  "program_output",
-  "effect_input",
-  "effect_output",
-  "effect_cancellation_partial",
-  "elicit_response",
-  "elicit_context",
-  "builtin",
-];
+const MAX_ROLE_LENGTH = 128;
 
 /** Fields committed by {@link computePortableSchemaDigest}. */
-export interface PortableSchemaDescriptorFields {
+export interface PortableSchemaDescriptorFields<Role extends string = PortableSchemaRole> {
   readonly identity: string;
-  readonly role: PortableSchemaRole;
+  readonly role: Role;
   readonly version: string;
   readonly vendor: string;
   readonly inputProjection: Json;
@@ -98,7 +93,9 @@ export interface PortableSchemaDescriptorFields {
 }
 
 /** Computes the domain-separated JCS digest committing to every descriptor field. */
-export function computePortableSchemaDigest(fields: PortableSchemaDescriptorFields): string {
+export function computePortableSchemaDigest<Role extends string>(
+  fields: PortableSchemaDescriptorFields<Role>,
+): string {
   const canonical = canonicalJson({
     identity: fields.identity,
     role: fields.role,
@@ -112,21 +109,25 @@ export function computePortableSchemaDigest(fields: PortableSchemaDescriptorFiel
 }
 
 /** Validates, canonicalizes, digests, and freezes one portable schema descriptor. */
+export function createPortableSchemaDescriptor<Role extends string>(
+  fields: PortableSchemaDescriptorFields<Role>,
+): PortableSchemaDescriptor<Role>;
 export function createPortableSchemaDescriptor(
   fields: PortableSchemaDescriptorFields,
-): PortableSchemaDescriptor {
+): PortableSchemaDescriptor;
+export function createPortableSchemaDescriptor<Role extends string>(
+  fields: PortableSchemaDescriptorFields<Role>,
+): PortableSchemaDescriptor<Role> {
   requireNonEmpty(fields.identity, "identity");
+  requireBoundedRole(fields.role);
   requireNonEmpty(fields.version, "version");
   requireNonEmpty(fields.vendor, "vendor");
-  if (!ROLES.includes(fields.role)) {
-    throw invalidDescriptor(`unknown role ${String(fields.role)}`);
-  }
   if (!isFidelityValue(fields.fidelity.input) || !isFidelityValue(fields.fidelity.output)) {
     throw invalidDescriptor("fidelity must be lossless or explicit");
   }
   const inputProjection = canonicalSnapshot(assertJson(fields.inputProjection)).value;
   const outputProjection = canonicalSnapshot(assertJson(fields.outputProjection)).value;
-  const normalized: PortableSchemaDescriptorFields = {
+  const normalized: PortableSchemaDescriptorFields<Role> = {
     identity: fields.identity,
     role: fields.role,
     version: fields.version,
@@ -178,6 +179,8 @@ export function parsePortableSchemaDescriptor(value: unknown): PortableSchemaDes
   }
   const descriptor = createPortableSchemaDescriptor({
     identity: value["identity"],
+    // Domain parsers refine the generic role. The transitional default keeps
+    // existing consumers source-compatible until their atomic switchovers.
     role: value["role"] as PortableSchemaRole,
     version: value["version"],
     vendor: value["vendor"],
@@ -225,6 +228,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function requireNonEmpty(value: string, field: string): void {
   if (typeof value !== "string" || value.length === 0) {
     throw invalidDescriptor(`${field} must be non-empty`);
+  }
+}
+
+function requireBoundedRole(value: string): void {
+  requireNonEmpty(value, "role");
+  if (value.length > MAX_ROLE_LENGTH) {
+    throw invalidDescriptor(`role must be at most ${MAX_ROLE_LENGTH} characters`);
   }
 }
 

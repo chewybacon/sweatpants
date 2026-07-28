@@ -69,17 +69,6 @@ export {
   sortStrings,
 } from "./canonical.ts";
 export {
-  MODEL_SAMPLE_EFFECT,
-  MODEL_SAMPLE_INPUT_DESCRIPTOR,
-  MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
-  MODEL_SAMPLE_PARTIAL_DESCRIPTOR,
-  MODEL_SAMPLE_SCHEMA_ENTRIES,
-  type ModelSampleCall,
-  type ModelSampleCancellationPartial,
-  type ModelSampleRequest,
-  type ModelSampleResult,
-} from "./model-sample-contract.ts";
-export {
   ModelSamplingRouterContext,
   ProgramDeliveryWriterContext,
   ProgramPlacementContext,
@@ -301,7 +290,6 @@ export {
   appendDurableEmission,
   attachProgram,
   completeDurableTask,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
   durableEffectRuntimeSchemas,
   validateDurableEffectBindings,
@@ -347,7 +335,6 @@ export {
 export {
   FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
   FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
-  FOREIGN_MODEL_SAMPLE_EFFECT,
   FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR,
   FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
   FOREIGN_TOOL_ADAPTER_PROGRAM,

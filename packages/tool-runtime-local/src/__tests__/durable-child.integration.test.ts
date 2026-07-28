@@ -1,5 +1,5 @@
 import { defineDurableEffect } from "@sweatpants/session-contract";
-import { createDurableEffectRegistration } from "@sweatpants/session-contract";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import {
   ProgramDriverRegistryContext,

@@ -1,5 +1,5 @@
 import { createDurableTool, defineEffect, effectRuntimeValidators } from "@sweatpants/core";
-import { createDurableEffectRegistration } from "@sweatpants/framework/server";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { z } from "zod";
 
 /**

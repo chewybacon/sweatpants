@@ -1,5 +1,5 @@
 import { defineDurableEffect } from "../index.ts";
-import { createDurableEffectRegistration } from "../index.ts";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import {
   ProgramDriverRegistryContext,

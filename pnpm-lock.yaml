@@ -428,6 +428,9 @@ importers:
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@sweatpants/durable-effects':
+        specifier: workspace:*
+        version: link:../../packages/durable-effects
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework

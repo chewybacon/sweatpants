@@ -1,10 +1,10 @@
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 // @vitest-environment node
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
-  MODEL_SAMPLE_EFFECT,
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableToolRegistry,

@@ -255,7 +255,6 @@ export {
   createPinnedDurableProgram,
   defineDurableEffect,
   defineDurableProgramManifest,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
