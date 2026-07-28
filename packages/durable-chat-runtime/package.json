@@ -75,6 +75,17 @@
             },
             "default": "./src/handler/types.ts"
         },
+        "./handler/hydrate-responses": {
+            "development": {
+                "import": "./src/handler/hydrate-responses.ts",
+                "types": "./src/handler/hydrate-responses.ts"
+            },
+            "import": {
+                "types": "./dist/handler/hydrate-responses.d.ts",
+                "default": "./dist/handler/hydrate-responses.js"
+            },
+            "default": "./src/handler/hydrate-responses.ts"
+        },
         "./interrupts": {
             "development": {
                 "import": "./src/interrupts/index.ts",
