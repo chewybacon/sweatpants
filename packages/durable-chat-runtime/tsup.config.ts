@@ -7,6 +7,7 @@ export default defineConfig({
     "handler/streaming": "src/handler/streaming.ts",
     "handler/model-binder": "src/handler/model-binder.ts",
     "handler/types": "src/handler/types.ts",
+    "interrupts/index": "src/interrupts/index.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

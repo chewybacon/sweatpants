@@ -5,7 +5,7 @@ import {
   resetInterruptRegistry,
   scopeIdForInterruptRun,
   validateResumeEntries,
-} from "../interrupt-registry.ts";
+} from "../registry.ts";
 
 const threadId = "thread-schema-actions";
 const interruptedRunId = "run-interrupted";

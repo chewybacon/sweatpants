@@ -17,8 +17,8 @@ import { recordConversationCheckpoint } from "./conversation-index.ts";
 import {
   interruptRecordsForThread,
   registerInterruptsFromRunFinished,
-} from "./interrupt-registry.ts";
-import { recordThreadInterruptState } from "./interrupt-store.ts";
+} from "@sweatpants/durable-chat-runtime/interrupts";
+import { recordThreadInterruptState } from "@sweatpants/durable-chat-runtime/interrupts";
 import {
   buildCheckpointSnapshotEventsFromFrames,
   toStrictPublicEvent,

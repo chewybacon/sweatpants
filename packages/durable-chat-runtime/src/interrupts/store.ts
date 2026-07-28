@@ -1,7 +1,7 @@
 import type { Operation } from "effection";
 import type { TokenBufferStore } from "@sweatpants/durable-streams";
 
-import type { OpenInterruptRecord } from "./interrupt-registry.ts";
+import type { OpenInterruptRecord } from "./registry.ts";
 
 const THREAD_INTERRUPT_PREFIX = "__thread_interrupts__:";
 

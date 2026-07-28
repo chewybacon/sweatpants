@@ -6,7 +6,7 @@
  * responses. Pure functions; no I/O, no contexts.
  */
 import type { ChatRequestBody, ElicitResponse } from "./types.ts";
-import type { OpenInterruptRecord } from "./interrupt-registry.ts";
+import type { OpenInterruptRecord } from "@sweatpants/durable-chat-runtime/interrupts";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

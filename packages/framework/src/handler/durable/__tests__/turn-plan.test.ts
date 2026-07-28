@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { planTurn } from "../turn-plan.ts";
 import type { ChatRequestBody } from "../types.ts";
-import type { OpenInterruptRecord } from "../interrupt-registry.ts";
+import type { OpenInterruptRecord } from "@sweatpants/durable-chat-runtime/interrupts";
 
 function openInterrupt(overrides: Partial<OpenInterruptRecord> = {}): OpenInterruptRecord {
   return {
