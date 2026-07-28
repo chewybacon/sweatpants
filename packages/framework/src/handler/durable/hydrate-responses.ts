@@ -12,7 +12,7 @@ import type {
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
 import { buildAgUiCustomState } from "@sweatpants/chat-core";
-import { openInterruptsForThread } from "./interrupt-registry.ts";
+import { openInterruptsForThread } from "@sweatpants/durable-chat-runtime/interrupts";
 import {
   completedConversationHydrateEvents,
   createSyntheticFrameStream,

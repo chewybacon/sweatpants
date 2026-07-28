@@ -74,6 +74,17 @@
                 "default": "./dist/handler/types.js"
             },
             "default": "./src/handler/types.ts"
+        },
+        "./interrupts": {
+            "development": {
+                "import": "./src/interrupts/index.ts",
+                "types": "./src/interrupts/index.ts"
+            },
+            "import": {
+                "types": "./dist/interrupts/index.d.ts",
+                "default": "./dist/interrupts/index.js"
+            },
+            "default": "./src/interrupts/index.ts"
         }
     },
     "scripts": {

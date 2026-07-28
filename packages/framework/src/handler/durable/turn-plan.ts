@@ -13,7 +13,7 @@ import {
   deriveResumeScopeId,
   validateResumeEntries,
   type OpenInterruptRecord,
-} from "./interrupt-registry.ts";
+} from "@sweatpants/durable-chat-runtime/interrupts";
 import { mapResumeEntriesToElicitResponses } from "./request-normalization.ts";
 
 export type ResumeValidation = ReturnType<typeof validateResumeEntries>;

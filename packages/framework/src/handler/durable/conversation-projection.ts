@@ -16,7 +16,7 @@ import type {
   ElicitRequestStreamEvent,
   ChatSessionStreamEvent as ChatStreamEvent,
 } from "@sweatpants/chat-core";
-import type { OpenInterruptRecord } from "./interrupt-registry.ts";
+import type { OpenInterruptRecord } from "@sweatpants/durable-chat-runtime/interrupts";
 import { isRecord } from "./request-normalization.ts";
 
 // =============================================================================

@@ -25,7 +25,7 @@ import {
 import type { RetentionPolicy } from "@sweatpants/durable-streams";
 import { assertPendingResumeConsistency } from "../handler.ts";
 import type { ChatHandlerSetup } from "../types.ts";
-import { registerInterruptsFromRunFinished } from "../interrupt-registry.ts";
+import { registerInterruptsFromRunFinished } from "@sweatpants/durable-chat-runtime/interrupts";
 import { resetPrivateModelContextRegistry } from "../model-context-registry.ts";
 type LegacyTestTool = any;
 import type { Message } from "../../../lib/chat/types.ts";
