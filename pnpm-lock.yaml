@@ -1759,6 +1759,9 @@ importers:
       '@sweatpants/durable-effects':
         specifier: workspace:*
         version: link:../durable-effects
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
