@@ -6,7 +6,10 @@
  * the chat engine.
  */
 import type { Operation, Subscription } from "effection";
-import type { SessionHandle, SessionRegistry } from "../../lib/chat/durable-streams/index.ts";
+import type {
+  SessionHandle,
+  SessionRegistry,
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import type { StreamEvent } from "../types.ts";
 import { buildAgUiCustomState } from "@sweatpants/chat-core";
 import { openInterruptsForThread } from "./interrupt-registry.ts";

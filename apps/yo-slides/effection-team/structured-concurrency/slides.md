@@ -600,7 +600,7 @@ class: text-center
 ```
 apps/hydra/src/             # Server pool, switchboard
 packages/framework/src/lib/chat/mcp-tools/  # Tool runtime
-packages/framework/src/lib/chat/durable-streams/  # Session management
+packages/durable-chat-runtime/src/response-streams/  # Session management
 ```
 
 </div>

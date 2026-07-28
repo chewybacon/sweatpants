@@ -31,7 +31,7 @@ describe("yo-chat chat application composition", () => {
       "@sweatpants/model-provider-pi-ai",
       "@sweatpants/tool-runtime-local",
       "@sweatpants/tool-runtime-agentcore",
-      "@sweatpants/framework/chat/durable-streams",
+      "@sweatpants/durable-chat-runtime/response-streams",
       "createToolInventory",
       "installAgentCoreToolRuntime",
       "installLocalToolRuntime",

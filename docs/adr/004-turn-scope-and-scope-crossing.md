@@ -137,7 +137,7 @@ callers. It would be wrong to "fix" it with a Turn scope.
 
 ## Evidence
 
-`packages/framework/src/lib/chat/durable-streams/__tests__/turn-scope.test.ts`
+`packages/durable-chat-runtime/src/response-streams/__tests__/turn-scope.test.ts`
 builds both scope shapes and pins four facts:
 
 1. With a parentless writer scope — what `useBackgroundTask` creates today — a

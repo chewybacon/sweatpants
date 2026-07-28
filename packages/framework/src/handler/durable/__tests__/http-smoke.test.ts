@@ -14,8 +14,8 @@ import {
   createSharedStorage,
   getSharedStores,
   type SharedStorage,
-} from "../../../lib/chat/durable-streams/index.ts";
-import { setupDurableStreams } from "../../../lib/chat/durable-streams/setup.ts";
+} from "@sweatpants/durable-chat-runtime/response-streams";
+import { setupDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import type { RetentionPolicy } from "@sweatpants/durable-streams";
 import {
   createMockProvider,

@@ -6,7 +6,6 @@ export default defineConfig({
     server: "src/server/index.ts",
     "server/testing": "src/server/testing.ts",
     chat: "src/lib/chat/index.ts",
-    "chat/durable-streams": "src/lib/chat/durable-streams/index.ts",
     "chat/browser-rendering": "src/lib/chat/browser-rendering/index.ts",
     "chat/mcp-tools": "src/lib/chat/mcp-tools/index.ts",
     deployment: "src/deployment/index.ts",

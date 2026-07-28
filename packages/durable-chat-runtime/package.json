@@ -19,6 +19,28 @@
                 "default": "./dist/index.js"
             },
             "default": "./src/index.ts"
+        },
+        "./response-streams": {
+            "development": {
+                "import": "./src/response-streams/index.ts",
+                "types": "./src/response-streams/index.ts"
+            },
+            "import": {
+                "types": "./dist/response-streams/index.d.ts",
+                "default": "./dist/response-streams/index.js"
+            },
+            "default": "./src/response-streams/index.ts"
+        },
+        "./response-streams/testing": {
+            "development": {
+                "import": "./src/response-streams/__tests__/vitest-effection.ts",
+                "types": "./src/response-streams/__tests__/vitest-effection.ts"
+            },
+            "import": {
+                "types": "./dist/response-streams/testing.d.ts",
+                "default": "./dist/response-streams/testing.js"
+            },
+            "default": "./src/response-streams/__tests__/vitest-effection.ts"
         }
     },
     "scripts": {
@@ -28,6 +50,7 @@
     },
     "dependencies": {
         "@sweatpants/durable-execution": "workspace:*",
+        "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/history-store": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
         "effection": "catalog:"
@@ -35,6 +58,7 @@
     "devDependencies": {
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
+        "@types/node": "catalog:",
         "tsup": "catalog:",
         "typescript": "catalog:",
         "vitest": "catalog:"

@@ -32,7 +32,7 @@ describe("ADR-004: why the writer task cannot resolve per-Turn seams", () => {
         },
       });
 
-      // Mirrors `useBackgroundTask`: an independent scope with no parent.
+      // Low-level standalone composition may use an owner-less child scope.
       const [writerScope, destroyWriter] = createScope();
       try {
         return yield* writerScope.run(function* (): Operation<string> {

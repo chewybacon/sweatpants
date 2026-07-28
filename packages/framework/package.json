@@ -72,20 +72,6 @@
                 "default": "./dist/chat.cjs"
             }
         },
-        "./chat/durable-streams": {
-            "development": {
-                "import": "./src/lib/chat/durable-streams/index.ts",
-                "types": "./src/lib/chat/durable-streams/index.ts"
-            },
-            "import": {
-                "types": "./dist/lib/chat/durable-streams/index.d.ts",
-                "default": "./dist/chat/durable-streams.js"
-            },
-            "require": {
-                "types": "./dist/lib/chat/durable-streams/index.d.ts",
-                "default": "./dist/chat/durable-streams.cjs"
-            }
-        },
         "./chat/browser-rendering": {
             "development": {
                 "import": "./src/lib/chat/browser-rendering/index.ts",
@@ -142,6 +128,7 @@
         "@sweatpants/a2a": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/core": "workspace:*",
+        "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",

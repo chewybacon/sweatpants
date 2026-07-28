@@ -126,7 +126,7 @@ Public framework exports SHOULD remain limited to:
 - `@sweatpants/framework/chat`
 - `@sweatpants/framework/chat/mcp-tools`
 - `@sweatpants/framework/chat/browser-rendering`
-- `@sweatpants/framework/chat/durable-streams`
+- `@sweatpants/durable-chat-runtime/response-streams`
 - `@sweatpants/framework/server`
 
 ## Related Documents

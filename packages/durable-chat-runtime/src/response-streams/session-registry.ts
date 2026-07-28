@@ -8,7 +8,7 @@
  * Key behaviors:
  * - acquire() creates or returns existing session, increments refCount
  * - release() decrements refCount, detaches runtime tasks when refCount=0
- * - LLM writer tasks run in background via useBackgroundTask, surviving client disconnects
+ * - LLM writer tasks run in an explicit Host/Turn-owned child scope
  * - Reconnection works by acquiring the same sessionId while LLM is still streaming
  */
 import { sleep, type Operation, type Scope } from "effection";
@@ -24,8 +24,7 @@ import type {
   RetentionPolicy,
 } from "@sweatpants/durable-streams";
 import { DEFAULT_RETENTION_POLICY, writeFromStreamToBuffer } from "@sweatpants/durable-streams";
-import { useLogger, LoggerFactoryContext } from "../../logger/index.ts";
-import { useBackgroundTask, type BackgroundTaskHandle } from "../../effection/index.ts";
+import { startOwnedTask, type OwnedTaskHandle } from "./owned-task.ts";
 
 /**
  * Internal mutable state for tracking session status.
@@ -47,8 +46,8 @@ const TASK_KEYS = {
 /**
  * Creates a SessionRegistry for managing session lifecycles.
  *
- * The registry manages writer tasks internally using useBackgroundTask,
- * allowing them to run independently without blocking request completion.
+ * The registry manages writer tasks internally using explicit owned child
+ * scopes, allowing them to outlive a request without becoming orphan work.
  *
  * @param bufferStore - Store for creating and managing TokenBuffers
  * @param registryStore - Store for tracking session entries and refCounts
@@ -67,25 +66,29 @@ const TASK_KEYS = {
  * // ... use session.buffer ...
  * ```
  */
+const log = {
+  debug: (..._args: unknown[]) => undefined,
+  error: (..._args: unknown[]) => undefined,
+};
+
 export function* createSessionRegistry<T>(
   bufferStore: TokenBufferStore<T>,
   registryStore: SessionRegistryStore,
   config: {
     retentionPolicy?: RetentionPolicy;
     ownerScope?: Scope;
-    registerWriter?: (work: BackgroundTaskHandle<void>) => void;
+    registerWriter?: (work: OwnedTaskHandle<void>) => void;
   } = {},
 ): Operation<RecoverableSessionRegistry<T>> {
-  const log = yield* useLogger("durable-streams:registry");
   const retentionPolicy = config.retentionPolicy ?? DEFAULT_RETENTION_POLICY;
 
   // Track mutable state for each session (status updates from writer tasks)
   const sessionStates = new Map<string, MutableSessionState>();
 
   // Internal task tracking - NOT in SessionEntry to keep it serializable
-  // Map<sessionId, Map<taskKey, BackgroundTaskHandle>>
-  const sessionTasks = new Map<string, Map<string, BackgroundTaskHandle<void>>>();
-  const retentionTasks = new Map<string, BackgroundTaskHandle<void>>();
+  // Map<sessionId, Map<taskKey, OwnedTaskHandle>>
+  const sessionTasks = new Map<string, Map<string, OwnedTaskHandle<void>>>();
+  const retentionTasks = new Map<string, OwnedTaskHandle<void>>();
 
   function* startWriterTask(
     sessionId: string,
@@ -93,23 +96,20 @@ export function* createSessionRegistry<T>(
     writer: import("@sweatpants/durable-streams").TokenBufferWriter<T>,
     state: MutableSessionState,
     taskName: string,
-  ): Operation<BackgroundTaskHandle<void>> {
-    const loggerFactory = yield* LoggerFactoryContext.get();
-    const handle = yield* useBackgroundTask(
+  ): Operation<OwnedTaskHandle<void>> {
+    const handle = yield* startOwnedTask(
       function* () {
-        const writerLog = yield* useLogger("durable-streams:writer");
-        writerLog.debug({ sessionId }, "writer task started");
         try {
           yield* writeFromStreamToBuffer(source, writer);
           state.status = "complete";
-          writerLog.debug({ sessionId }, "writer task completed");
+          log.debug({ sessionId, taskName }, "writer task completed");
         } catch (err) {
           state.status = "error";
-          writerLog.error({ sessionId, error: (err as Error).message }, "writer task failed");
+          log.error({ sessionId, error: (err as Error).message }, "writer task failed");
           try {
             yield* writer.fail(err as Error);
           } catch (fenceError) {
-            writerLog.debug(
+            log.debug(
               { sessionId, error: (fenceError as Error).message },
               "writer was fenced while unwinding",
             );
@@ -117,11 +117,11 @@ export function* createSessionRegistry<T>(
         }
       },
       {
-        name: taskName,
-        ...(config.ownerScope ? { scope: config.ownerScope } : {}),
-        contexts: loggerFactory ? [{ context: LoggerFactoryContext, value: loggerFactory }] : [],
+        ...(config.ownerScope ? { ownerScope: config.ownerScope } : {}),
+        ...(config.registerWriter ? { register: config.registerWriter } : {}),
       },
     );
+    log.debug({ sessionId, taskName }, "writer task started");
     config.registerWriter?.(handle);
     return handle;
   }
@@ -179,7 +179,7 @@ export function* createSessionRegistry<T>(
       return;
     }
 
-    const task = yield* useBackgroundTask(
+    const task = yield* startOwnedTask(
       function* () {
         yield* sleep(ttlMs);
         const entry = yield* registryStore.get(sessionId);
@@ -189,8 +189,8 @@ export function* createSessionRegistry<T>(
         }
       },
       {
-        name: `retention-ttl:${sessionId}`,
-        ...(config.ownerScope ? { scope: config.ownerScope } : {}),
+        ...(config.ownerScope ? { ownerScope: config.ownerScope } : {}),
+        ...(config.registerWriter ? { register: config.registerWriter } : {}),
       },
     );
 
@@ -278,7 +278,7 @@ export function* createSessionRegistry<T>(
       const source =
         typeof options.source === "function" ? options.source(buffer, writer) : options.source;
 
-      log.debug({ sessionId }, "starting writer task via useBackgroundTask");
+      log.debug({ sessionId }, "starting writer task in owned scope");
       const writerTask = yield* startWriterTask(
         sessionId,
         source,
@@ -288,7 +288,7 @@ export function* createSessionRegistry<T>(
       );
 
       // Store task handle in internal map (not in SessionEntry - keep it serializable)
-      const tasks = new Map<string, BackgroundTaskHandle<void>>();
+      const tasks = new Map<string, OwnedTaskHandle<void>>();
       tasks.set(TASK_KEYS.WRITER, writerTask);
       sessionTasks.set(sessionId, tasks);
 
@@ -341,7 +341,7 @@ export function* createSessionRegistry<T>(
         state,
         `writer-recovery:${sessionId}:${options.writer.activationEpoch}`,
       );
-      const tasks = new Map<string, BackgroundTaskHandle<void>>();
+      const tasks = new Map<string, OwnedTaskHandle<void>>();
       tasks.set(TASK_KEYS.WRITER, writerTask);
       sessionTasks.set(sessionId, tasks);
       yield* registryStore.updateRefCount(sessionId, 1);
@@ -375,45 +375,37 @@ export function* createSessionRegistry<T>(
             yield* applyRetentionPolicy(sessionId, buffer);
           }
         } else {
-          // Writer still running - spawn runtime cleanup waiter as background task.
-          // This handles the case where client disconnects but LLM is still writing
-          log.debug({ sessionId }, "writer still running, spawning runtime cleanup waiter");
-
-          // Capture references for closure
-          const capturedRegistryStore = registryStore;
-          const capturedCleanupRuntime = cleanupRuntime;
-          const capturedLog = log;
-
-          // Supervised rather than detached: this waiter must observe the writer
-          // finishing before it can apply retention. Ownership belongs to the
-          // registry, not to the caller that released the session. See DR-063.
-          yield* useBackgroundTask(
+          if (!writerTask) {
+            yield* cleanupRuntime(sessionId);
+            return;
+          }
+          // Writer still running - supervise a cleanup waiter in the same
+          // explicit owner as the writer. This handles client disconnect while
+          // preserving eager draining and Host shutdown control.
+          log.debug({ sessionId }, "writer still running, spawning owned cleanup waiter");
+          yield* startOwnedTask(
             function* () {
-              // Wait for writer to complete
-              if (writerTask) {
-                yield* writerTask.waitForDone();
-              }
+              yield* writerTask.waitForDone();
 
-              // Re-check refCount (client might have reconnected)
-              const currentEntry = yield* capturedRegistryStore.get(sessionId);
+              const currentEntry = yield* registryStore.get(sessionId);
               if (currentEntry && currentEntry.refCount === 0) {
-                capturedLog.debug({ sessionId }, "cleanup waiter: applying retention policy");
+                log.debug({ sessionId }, "cleanup waiter: applying retention policy");
                 const buffer = yield* bufferStore.get(sessionId);
                 if (buffer) {
                   yield* applyRetentionPolicy(sessionId, buffer);
                 } else {
-                  yield* capturedCleanupRuntime(sessionId);
+                  yield* cleanupRuntime(sessionId);
                 }
               } else {
-                capturedLog.debug(
+                log.debug(
                   { sessionId, refCount: currentEntry?.refCount },
                   "cleanup waiter: client reconnected, keeping runtime state",
                 );
               }
             },
             {
-              name: `cleanup-waiter:${sessionId}`,
-              ...(config.ownerScope ? { scope: config.ownerScope } : {}),
+              ...(config.ownerScope ? { ownerScope: config.ownerScope } : {}),
+              ...(config.registerWriter ? { register: config.registerWriter } : {}),
             },
           );
         }

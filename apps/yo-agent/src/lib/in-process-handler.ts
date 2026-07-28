@@ -11,7 +11,7 @@ import {
   resolvePiAiModel,
   type ModelSelection,
 } from "@sweatpants/model-provider-pi-ai";
-import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
+import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { installLocalToolRuntime } from "@sweatpants/tool-runtime-local";
 import type { Operation } from "effection";
 

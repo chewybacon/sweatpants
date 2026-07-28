@@ -2,7 +2,7 @@ import {
   createInMemoryBufferStore,
   type TokenBuffer,
   type TokenBufferStore,
-} from "@sweatpants/framework/chat/durable-streams";
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import { createRedisTokenBufferStore } from "@sweatpants/durable-streams/redis";
 import type { Message } from "@sweatpants/framework/chat";
 import {

@@ -5,7 +5,7 @@ import {
   getSharedStores,
   setupDurableStreams,
   type RetentionPolicy,
-} from "@sweatpants/framework/chat/durable-streams";
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import { createRedisTokenBufferStore } from "@sweatpants/durable-streams/redis";
 import { getSharedRedisClient } from "@/lib/shared-redis";
 

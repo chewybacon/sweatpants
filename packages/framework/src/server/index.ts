@@ -9,6 +9,7 @@ import {
 } from "effection";
 import type { FetchHandler, ScopedFetchHandler } from "../handler/streaming.ts";
 import { createHostScopeOwner, installHostScopeOwner } from "../lib/effection/host-scope.ts";
+import { installDurableStreamsOwner } from "@sweatpants/durable-chat-runtime/response-streams";
 
 export {
   AgentFacadeError,
@@ -152,6 +153,7 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
           .run(function* () {
             try {
               yield* installHostScopeOwner(hostOwner);
+              yield* installDurableStreamsOwner(hostOwner);
               const signal = yield* useAbortSignal();
               if (config.setup) {
                 yield* config.setup({ signal });
