@@ -12,17 +12,19 @@ import {
   MODEL_SAMPLE_EFFECT,
   DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,
-  createProgramDriverRegistry,
   type Json,
   type ProgramRoute,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import {
+  createProgramDriverRegistry,
+  ProgramDriverRegistryContext,
+} from "@sweatpants/durable-execution";
 import {
   createAgentCoreDurableProgramDriver,
   createAgentCoreWebSocketProgramTransport,

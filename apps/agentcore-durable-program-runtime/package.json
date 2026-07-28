@@ -22,6 +22,7 @@
         "@aws-sdk/client-s3": "^3.996.0",
         "@sweatpants/cli": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
+        "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/tool-runtime-agentcore": "workspace:*",
         "effection": "catalog:",

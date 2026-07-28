@@ -257,6 +257,9 @@ importers:
       '@sweatpants/durable-effects':
         specifier: workspace:*
         version: link:../../packages/durable-effects
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../../packages/durable-execution
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../../packages/session-contract

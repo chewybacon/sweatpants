@@ -8,16 +8,18 @@ import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,
-  createProgramDriverRegistry,
   type ProgramRunResult,
   type ProgramRoute,
 } from "@sweatpants/session-contract";
+import {
+  createProgramDriverRegistry,
+  ProgramDriverRegistryContext,
+} from "@sweatpants/durable-execution";
 import {
   createAgentCoreDurableProgramDriver,
   createAgentCoreWebSocketProgramTransport,
