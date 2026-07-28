@@ -6,13 +6,10 @@
  * the chat engine.
  */
 import type { Operation, Subscription } from "effection";
-import type {
-  SessionHandle,
-  SessionRegistry,
-} from "@sweatpants/durable-chat-runtime/response-streams";
-import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
+import type { SessionHandle, SessionRegistry } from "../response-streams/index.ts";
+import type { StreamEvent } from "./types.ts";
 import { buildAgUiCustomState } from "@sweatpants/chat-core";
-import { openInterruptsForThread } from "@sweatpants/durable-chat-runtime/interrupts";
+import { openInterruptsForThread } from "../interrupts/index.ts";
 import {
   completedConversationHydrateEvents,
   createSyntheticFrameStream,
@@ -21,7 +18,7 @@ import {
   parseBufferedFrames,
   publicInterruptsFromRecords,
   sanitizeBoundarySnapshot,
-} from "@sweatpants/durable-chat-runtime/projection";
+} from "../projection.ts";
 import { createEmptyStream, parseOffsetParam, toOffsetString } from "@sweatpants/durable-streams";
 
 type ParsedOffset = ReturnType<typeof parseOffsetParam>;

@@ -103,7 +103,7 @@ import {
 import {
   createConversationHydrateResponse,
   createStoredConversationCheckpointResponse,
-} from "./hydrate-responses.ts";
+} from "@sweatpants/durable-chat-runtime/handler/hydrate-responses";
 
 export { assertPendingResumeConsistency } from "@sweatpants/durable-chat-runtime/projection";
 

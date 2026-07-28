@@ -7,6 +7,7 @@ export default defineConfig({
     "handler/streaming": "src/handler/streaming.ts",
     "handler/model-binder": "src/handler/model-binder.ts",
     "handler/types": "src/handler/types.ts",
+    "handler/hydrate-responses": "src/handler/hydrate-responses.ts",
     "interrupts/index": "src/interrupts/index.ts",
     "model-context/index": "src/model-context/index.ts",
     "program-driver/effects": "src/program-driver/effects.ts",
