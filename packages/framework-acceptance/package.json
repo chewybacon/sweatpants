@@ -13,6 +13,7 @@
     "dependencies": {
         "@sweatpants/a2a": "workspace:*",
         "@sweatpants/core": "workspace:*",
+        "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",

@@ -1,3 +1,4 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import type { DurableEffectDisposition, EffectDefinition } from "./contract.ts";
@@ -48,3 +49,37 @@ export interface DurableEffectRegistration {
 
 /** Immutable symbolic registration map installed by composition. */
 export type DurableEffectRegistry = ReadonlyMap<string, DurableEffectRegistration>;
+
+export interface DurableEffectRuntimeSchemas {
+  readonly input?: StandardSchemaV1;
+  readonly output?: StandardSchemaV1;
+}
+
+const registrationSchemas = new WeakMap<DurableEffectRegistration, DurableEffectRuntimeSchemas>();
+
+export function durableEffectRuntimeSchemas(
+  registration: DurableEffectRegistration,
+): DurableEffectRuntimeSchemas | undefined {
+  return registrationSchemas.get(registration);
+}
+
+export function createDurableEffectRegistration<
+  I extends Json,
+  O extends Json,
+  P extends Json = never,
+>(
+  definition: EffectDefinition<I, O, P>,
+  satisfies: DurableEffectRegistration["satisfies"],
+  handler: (input: I, context: DurableEffectContext) => Operation<DurableEffectDisposition<O, P>>,
+  schemas?: DurableEffectRuntimeSchemas,
+): DurableEffectRegistration {
+  const registration: DurableEffectRegistration = {
+    definition: definition as EffectDefinition<Json, Json, Json>,
+    satisfies,
+    handler(input, context) {
+      return handler(input as I, context) as Operation<DurableEffectDisposition<Json, Json>>;
+    },
+  };
+  if (schemas) registrationSchemas.set(registration, schemas);
+  return registration;
+}

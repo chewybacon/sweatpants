@@ -16,10 +16,10 @@ import {
   type ChatTurnInputV1,
 } from "@sweatpants/framework/chat";
 import { remoteExecutor, serveAgent } from "@sweatpants/framework/server";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
-  createDurableEffectRegistration,
   createGeneratedPinnedDurableProgram,
   createPortableSchemaDescriptor,
   defineDurableEffect,

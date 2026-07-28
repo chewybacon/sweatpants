@@ -1,6 +1,6 @@
 import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { durableEffectRuntimeSchemas } from "@sweatpants/durable-effects";
 import {
-  durableEffectRuntimeSchemas,
   parsePortableSchemaDescriptor,
   validateDurableManifest,
   type DurableEffectRegistry,

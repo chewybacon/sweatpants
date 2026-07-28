@@ -24,7 +24,7 @@ import {
   type ChatModelSampleInputV2,
   type ChatModelSampleOutputV2,
   type ChatProgramDefinition,
-} from "../../lib/chat/authoring/index.ts";
+} from "@sweatpants/chat-core";
 import { startAgentHarness } from "../testing.ts";
 import {
   createInMemoryProgramDriverJournalStore,

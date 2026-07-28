@@ -1,5 +1,6 @@
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
+import { createDurableEffectRegistration } from "@sweatpants/session-contract";
 import {
   DurableEffectRegistryContext,
   DurableProgramCancellation,
@@ -7,7 +8,6 @@ import {
   ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
   createPinnedDurableProgram,

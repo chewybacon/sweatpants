@@ -1,9 +1,9 @@
 import { sleep, type Operation } from "effection";
+import { createDurableEffectRegistration } from "@sweatpants/session-contract";
 import {
   CrankError,
   assertJson,
   canonicalJson,
-  createDurableEffectRegistration,
   createPinnedDurableProgram,
   createPortableSchemaDescriptor,
   defineDurableEffect,

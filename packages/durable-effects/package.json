@@ -52,6 +52,17 @@
                 "default": "./dist/runtime.js"
             },
             "default": "./src/runtime.ts"
+        },
+        "./model-sample": {
+            "development": {
+                "import": "./src/model-sample-contract.ts",
+                "types": "./src/model-sample-contract.ts"
+            },
+            "import": {
+                "types": "./dist/model-sample-contract.d.ts",
+                "default": "./dist/model-sample-contract.js"
+            },
+            "default": "./src/model-sample-contract.ts"
         }
     },
     "scripts": {
@@ -60,6 +71,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@standard-schema/spec": "catalog:",
         "@sweatpants/foundation": "workspace:*",
         "effection": "catalog:"
     },

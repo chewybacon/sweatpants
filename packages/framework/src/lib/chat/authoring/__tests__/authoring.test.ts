@@ -1,13 +1,13 @@
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
-  MODEL_SAMPLE_EFFECT,
   createDurableProgramContext,
   assertJson,
   type Json,
   type ProgramResume,
   type ProgramStepProposal,
 } from "@sweatpants/session-contract";
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
   DURABLE_DRIVER_FIXTURE_TOOLS,
@@ -26,7 +26,7 @@ import {
   selectChatContext,
   type ChatMessageV1,
   type ChatModelSampleOutputV2,
-} from "../index.ts";
+} from "@sweatpants/chat-core";
 
 const emptyProvenance = { classifications: [], sourceDigests: [] };
 function message(id: string, role: ChatMessageV1["role"], text: string): ChatMessageV1 {

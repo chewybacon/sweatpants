@@ -63,6 +63,7 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/core",
     "@sweatpants/agent-sdk",
     "@sweatpants/durable-effects",
+    "@sweatpants/durable-execution",
     "@sweatpants/history-store",
     "@sweatpants/foundation",
   ],

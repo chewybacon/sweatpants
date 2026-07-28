@@ -1,8 +1,8 @@
+import { durableEffectRuntimeSchemas } from "@sweatpants/durable-effects";
 import {
   CrankError,
   canonicalJson,
   canonicalSnapshot,
-  durableEffectRuntimeSchemas,
   sha256,
   validateEffectDefinition,
   type DurableEffectRegistry,

@@ -49,6 +49,7 @@
     "dependencies": {
         "@effectionx/worker": "catalog:",
         "@sweatpants/core": "workspace:*",
+        "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/tool-session": "workspace:*"

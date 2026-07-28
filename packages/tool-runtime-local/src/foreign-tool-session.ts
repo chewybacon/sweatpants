@@ -10,11 +10,11 @@ import type {
   WireElicitResult,
   WireSampleResult,
 } from "@sweatpants/tool-session";
+import { createDurableEffectRegistration } from "@sweatpants/session-contract";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
   assertJson,
-  createDurableEffectRegistration,
   type DurableEffectRegistration,
   type ForeignContinuation,
   type ForeignDurability,

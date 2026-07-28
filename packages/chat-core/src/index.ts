@@ -233,3 +233,6 @@ export type {
   AgUiToolCall,
   AgUiMessage,
 } from "./session/index.ts";
+
+// Durable chat authoring
+export * from "./authoring/index.ts";

@@ -7,6 +7,7 @@ import { run } from "effection";
 
 import config from "../../yo-chat/sweatpants.config.ts";
 import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   MODEL_SAMPLE_EFFECT,
   DurableEffectRegistryContext,
@@ -14,7 +15,6 @@ import {
   ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,

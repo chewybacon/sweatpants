@@ -1,30 +1,36 @@
 import type { Operation } from "effection";
 import {
-  PROGRAM_ARTIFACT_GENERATOR_VERSION,
-  PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   CrankError,
-  MODEL_SAMPLE_EFFECT,
-  MODEL_SAMPLE_SCHEMA_ENTRIES,
   assertJson,
   canonicalJson,
   canonicalSnapshot,
-  createDurableEffectRegistration,
-  createGeneratedPinnedDurableProgram,
-  generateProgramArtifactIdentity,
   sha256,
-  validateEffectDefinition,
+  type Json,
+} from "@sweatpants/foundation";
+import type {
+  PortableSchemaDescriptor,
+  DurableSchemaRegistryEntry,
+} from "@sweatpants/foundation/schema-descriptor";
+import {
+  MODEL_SAMPLE_EFFECT,
+  MODEL_SAMPLE_SCHEMA_ENTRIES,
+  createDurableEffectRegistration,
   type DurableEffectContext,
   type DurableEffectDisposition,
   type DurableEffectRegistration,
-  type DurableProgramManifest,
-  type DurableSchemaRegistryEntry,
-  type DurableTool,
-  type EffectDefinition,
-  type Json,
   type ModelSampleRequest,
   type ModelSampleResult,
-  type PortableSchemaDescriptor,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-effects";
+import {
+  PROGRAM_ARTIFACT_GENERATOR_VERSION,
+  PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+  createGeneratedPinnedDurableProgram,
+  generateProgramArtifactIdentity,
+  validateEffectDefinition,
+  type DurableProgramManifest,
+  type DurableTool,
+} from "@sweatpants/durable-execution";
+import type { EffectDefinition } from "@sweatpants/durable-effects";
 import {
   ResourcePackageRegistry,
   defineResourceView,

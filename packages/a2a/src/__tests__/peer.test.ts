@@ -1,10 +1,10 @@
 import { generateKeyPairSync } from "node:crypto";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
+import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   canonicalJson,
   canonicalSnapshot,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
 } from "@sweatpants/session-contract";
 import {
