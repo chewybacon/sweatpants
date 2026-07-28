@@ -11,14 +11,14 @@ import {
   type Json,
 } from "@sweatpants/session-contract";
 
-import type { ToolInventoryEntry } from "../../lib/chat/tool-inventory.ts";
+import type { ToolInventoryEntry } from "@sweatpants/chat-core";
 import { getToolParameterValidationErrorPayload } from "../../lib/chat/tool-parameters.ts";
 import type {
   ToolExecution,
   ToolExecutionEvent,
   ToolExecutionRef,
   ToolRuntime,
-} from "../../lib/chat/tool-runtime.ts";
+} from "@sweatpants/chat-core";
 
 const DRIVER = "framework-tool-runtime";
 const DURABILITY: ForeignDurability = "ephemeral_handle";

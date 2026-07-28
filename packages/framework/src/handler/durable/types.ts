@@ -1,13 +1,13 @@
 import type { Operation, Stream } from "effection";
 import type { Model, Runtime, StreamOptions } from "@sweatpants/chat-core";
-import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from "../../lib/chat/index.ts";
+import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from "@sweatpants/chat-core";
 import type { HistoryPolicy } from "@sweatpants/chat-core";
 import type {
   ResumeEntry,
   StreamEvent,
   ChatMessage,
 } from "@sweatpants/durable-chat-runtime/handler/types";
-import type { ToolExecutionTrace } from "../../lib/chat/browser-rendering/index.ts";
+import type { ToolExecutionTrace } from "@sweatpants/chat-core";
 import type { ConversationReplayState, AgUiRunMetadata } from "@sweatpants/chat-core";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 

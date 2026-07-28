@@ -236,3 +236,6 @@ export type {
 
 // Durable chat authoring
 export * from "./authoring/index.ts";
+
+// Shared chat-facing tool inventory and runtime contracts.
+export * from "./tool-contracts.ts";
