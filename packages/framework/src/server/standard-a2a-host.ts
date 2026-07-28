@@ -14,7 +14,6 @@ import {
   CrankError,
   DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
   assertJson,
@@ -24,7 +23,6 @@ import {
   createDurableEffectRegistry,
   createDurableToolRegistry,
   createLocalProgramDriver,
-  createProgramDriverRegistry,
   sha256,
   stableProgramAttachmentId,
   type DurableEffectRegistration,
@@ -35,6 +33,10 @@ import {
   type ProgramRunResult,
   type SerializedApplicationError,
 } from "@sweatpants/session-contract";
+import {
+  createProgramDriverRegistry,
+  ProgramDriverRegistryContext,
+} from "@sweatpants/durable-execution";
 import {
   createInMemoryImmutableContentStore,
   parseForeignA2AMessage,
