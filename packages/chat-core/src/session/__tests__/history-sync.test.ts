@@ -10,7 +10,7 @@
  * preventing it from calling tools again.
  */
 import { describe, it, expect } from "vitest";
-import type { Message } from "../../types.ts";
+import type { Message } from "@sweatpants/chat-core";
 
 /**
  * Simulate the history sync logic from create-session.ts

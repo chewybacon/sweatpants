@@ -43,13 +43,13 @@ import type {
   AssistantMessage,
   ContentBlock,
   Context as RuntimeContext,
-  Message as RuntimeMessage,
-} from "@sweatpants/chat-core/runtime";
+  RuntimeMessage,
+} from "@sweatpants/chat-core";
 import { runWithRenewedActivationLease } from "../activation-lease-coordinator.ts";
 import { useLogger } from "../../lib/logger/index.ts";
 import { applyHistoryPolicy } from "@sweatpants/chat-core";
-import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
-import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
+import { buildPluginReplayActivity } from "@sweatpants/chat-core";
+import type { ChatSessionStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import {
   nativeProgramIdentities,
   requiresFencedActivation,

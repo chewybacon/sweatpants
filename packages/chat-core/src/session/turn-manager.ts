@@ -4,7 +4,7 @@
  * Utilities for syncing conversation state and history across turns.
  */
 import type { ConversationState } from "./streaming.ts";
-import type { Message } from "../types.ts";
+import type { Message } from "@sweatpants/chat-core";
 import { assertMessageHasId } from "./message-identity.ts";
 import {
   appendAssistantFinalMessage,

@@ -1,23 +1,16 @@
 import type { AnyToolContract } from "@sweatpants/core";
 import { z } from "zod";
 
-export const TOOL_PARAMETER_VALIDATION_FAILED = "TOOL_PARAMETER_VALIDATION_FAILED" as const;
-
-export interface ToolParameterValidationIssue {
-  path: Array<string | number>;
-  message: string;
-  code?: string;
-  expected?: unknown;
-  received?: unknown;
-}
-
-export interface ToolParameterValidationErrorPayload {
-  code: typeof TOOL_PARAMETER_VALIDATION_FAILED;
-  toolName: string;
-  callId: string;
-  message: string;
-  issues: ToolParameterValidationIssue[];
-}
+export {
+  TOOL_PARAMETER_VALIDATION_FAILED,
+  type ToolParameterValidationIssue,
+  type ToolParameterValidationErrorPayload,
+} from "@sweatpants/chat-core";
+import {
+  TOOL_PARAMETER_VALIDATION_FAILED,
+  type ToolParameterValidationIssue,
+  type ToolParameterValidationErrorPayload,
+} from "@sweatpants/chat-core";
 
 export class ToolParameterValidationError extends Error {
   readonly code = TOOL_PARAMETER_VALIDATION_FAILED;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Message, ToolCall } from "../../types.ts";
+import type { Message, ToolCall } from "@sweatpants/chat-core";
 import {
   appendAssistantFinalMessage,
   appendAssistantToolCallMessage,

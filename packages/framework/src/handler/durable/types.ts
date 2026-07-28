@@ -4,7 +4,7 @@ import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from "../../li
 import type { HistoryPolicy } from "@sweatpants/chat-core";
 import type { StreamEvent, ChatMessage } from "../types.ts";
 import type { ToolExecutionTrace } from "../../lib/chat/browser-rendering/index.ts";
-import type { ConversationReplayState, AgUiRunMetadata } from "../../lib/chat/session/streaming.ts";
+import type { ConversationReplayState, AgUiRunMetadata } from "@sweatpants/chat-core";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 
 export interface ToolSchema {

@@ -37,9 +37,9 @@ import type {
   AssistantMessage,
   Model,
   Runtime,
-  StreamEvent as RuntimeStreamEvent,
+  RuntimeStreamEvent,
   Usage,
-} from "@sweatpants/chat-core/runtime";
+} from "@sweatpants/chat-core";
 import {
   setupInMemoryDurableStreams,
   type DurableStreamsSetup,

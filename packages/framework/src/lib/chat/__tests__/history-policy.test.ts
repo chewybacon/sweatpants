@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyHistoryPolicy, createMessageBudgetHistoryPolicy } from "@sweatpants/chat-core";
-import type { Message } from "@sweatpants/chat-core/runtime";
+import type { RuntimeMessage as Message } from "@sweatpants/chat-core";
 
 function user(content: string): Message {
   return { role: "user", content };

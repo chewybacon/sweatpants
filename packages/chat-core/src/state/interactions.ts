@@ -1,4 +1,4 @@
-import type { ComponentEmissionPayload } from "../browser-rendering/emissions.ts";
+import type { ComponentEmissionPayload } from "@sweatpants/chat-core";
 
 export interface ElicitState {
   elicitId: string;

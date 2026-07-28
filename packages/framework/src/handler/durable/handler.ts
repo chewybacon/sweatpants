@@ -48,11 +48,8 @@ import type { StreamEvent } from "../types.ts";
 import { createProgramDriverChatEngine } from "./program-driver-chat-engine.ts";
 import { useOptionalProgramDriverForeignEffects } from "./program-driver-effects.ts";
 import { useOptionalProgramDriverNativeTools } from "./program-driver-native-tools.ts";
-import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
-import {
-  activitySnapshotsForMessages,
-  toProviderHistorySnapshot,
-} from "../../lib/chat/session/ag-ui-projection.ts";
+import { buildAgUiCustomState } from "@sweatpants/chat-core";
+import { activitySnapshotsForMessages, toProviderHistorySnapshot } from "@sweatpants/chat-core";
 import {
   readLatestConversationCheckpoint,
   recordConversationSession,

@@ -1,4 +1,4 @@
-import type { Message, ToolCall } from "../types.ts";
+import type { Message, ToolCall } from "@sweatpants/chat-core";
 import {
   deriveTurnKeyFromToolCalls,
   messageIdForAssistantFinal,
