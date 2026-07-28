@@ -9,7 +9,7 @@ import type {
   ToolSessionRegistry,
   WireElicitResult,
   WireSampleResult,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,

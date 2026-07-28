@@ -70,6 +70,7 @@
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
+        "@sweatpants/tool-session": "workspace:*",
         "redis": "^4.7.0",
         "ws": "catalog:"
     },

@@ -7,7 +7,7 @@ import {
   createToolInventory,
   createToolInventoryEntry,
 } from "@sweatpants/framework/chat";
-import { type ToolSessionRegistry, type ToolSession } from "@sweatpants/framework/chat/mcp-tools";
+import { type ToolSessionRegistry, type ToolSession } from "@sweatpants/tool-session";
 import {
   FakeAgentCoreRemoteToolRuntimeClient,
   createAgentCoreToolExecutionStrategy,

@@ -1,5 +1,5 @@
 import type { Operation } from "effection";
-import type { ToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolSessionRegistry } from "@sweatpants/tool-session";
 import type {
   AgentCoreToolRuntimeProfile,
   AgentCoreToolSessionHandle,

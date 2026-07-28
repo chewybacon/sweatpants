@@ -1,6 +1,6 @@
 import { resource, type Operation, type Stream, type Subscription } from "effection";
-import type { WireElicitResult } from "@sweatpants/framework/chat/mcp-tools";
-import type { WireSampleResult } from "@sweatpants/framework/chat/mcp-tools";
+import type { WireElicitResult } from "@sweatpants/tool-session";
+import type { WireSampleResult } from "@sweatpants/tool-session";
 import type {
   AgentCoreToolEvent,
   AgentCoreToolRuntimeResponse,

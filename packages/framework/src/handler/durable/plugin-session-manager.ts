@@ -53,7 +53,7 @@ import type {
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
   ToolSessionSamplingProvider,
-} from "../../lib/chat/mcp-tools/session/types.ts";
+} from "@sweatpants/tool-session";
 // Note: concrete tool session registries should be created at server startup, not here.
 import type { ElicitsMap, WireElicitResult } from "../../lib/chat/mcp-tools/mcp-tool-types.ts";
 import type { ToolDefinition } from "@sweatpants/core";

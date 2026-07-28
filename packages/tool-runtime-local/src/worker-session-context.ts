@@ -5,12 +5,12 @@
  */
 
 import { createContext, type Operation, type Queue } from "effection";
-import type { WireElicitResult } from "@sweatpants/framework/chat/mcp-tools";
+import type { WireElicitResult } from "@sweatpants/tool-session";
 import type {
   ToolSessionEvent,
   ToolSessionStatus,
   WireSampleResult,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
 
 export interface WorkerSessionState {
   /** Pending elicit channels, keyed by elicitId */

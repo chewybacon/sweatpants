@@ -18,6 +18,7 @@
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/test-rig": "workspace:*",
         "@sweatpants/tool-runtime-local": "workspace:*",
+        "@sweatpants/tool-session": "workspace:*",
         "effection": "catalog:",
         "zod": "catalog:"
     },

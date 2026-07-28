@@ -8,7 +8,7 @@
  * event-log semantics so they cannot drift.
  */
 import { action, resource, type Operation, type Stream, type Subscription } from "effection";
-import type { ToolSessionEvent, ToolSessionStatus } from "./types.ts";
+import type { ToolSessionEvent, ToolSessionStatus } from "./contract.ts";
 
 export function isTerminalToolSessionStatus(status: ToolSessionStatus): boolean {
   return (

@@ -4,8 +4,8 @@ import {
   createToolSessionEventLog,
   isTerminalToolSessionStatus,
   statusForToolSessionEvent,
-} from "../event-log.ts";
-import type { ToolSessionEvent } from "../types.ts";
+} from "./event-log.ts";
+import type { ToolSessionEvent } from "./contract.ts";
 
 describe("statusForToolSessionEvent", () => {
   it("maps request and terminal events to their statuses", () => {

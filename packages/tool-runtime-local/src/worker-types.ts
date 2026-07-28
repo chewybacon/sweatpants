@@ -52,9 +52,8 @@ import type {
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
-  SampleToolsResult,
-  SampleSchemaResult,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
+import type { SampleToolsResult, SampleSchemaResult } from "@sweatpants/framework/chat/mcp-tools";
 
 // =============================================================================
 // WORKER INIT DATA

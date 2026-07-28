@@ -22,7 +22,7 @@ import type {
   ToolSessionOptions,
   ToolSessionStatus,
   ElicitsMap,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
 import { isExecutableToolContract, type ToolContract } from "@sweatpants/core";
 import { installToolSessionStore, ToolSessionStorePort } from "./session-store-port.ts";
 import { validateToolParameters } from "@sweatpants/framework/chat";

@@ -22,6 +22,7 @@
         "@sweatpants/core": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/tool-runtime-local": "workspace:*",
+        "@sweatpants/tool-session": "workspace:*",
         "effection": "catalog:",
         "zod": "catalog:"
     },

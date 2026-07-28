@@ -11,7 +11,7 @@ import type {
   ToolSessionStore,
   ToolSessionEntry,
   ToolSessionStatus,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
 
 /**
  * Create an in-memory tool session store.

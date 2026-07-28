@@ -50,7 +50,8 @@
         "@effectionx/worker": "catalog:",
         "@sweatpants/core": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/session-contract": "workspace:*"
+        "@sweatpants/session-contract": "workspace:*",
+        "@sweatpants/tool-session": "workspace:*"
     },
     "devDependencies": {
         "@sweatpants/framework": "workspace:*",

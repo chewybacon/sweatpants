@@ -23,10 +23,7 @@ import {
   type ProgramDriver,
   type ProgramRoute,
 } from "@sweatpants/session-contract";
-import type {
-  ToolSessionRegistry,
-  ToolSessionSamplingProvider,
-} from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createLocalWorkerDurableProgramDriver,
   createToolSessionForeignEffectRegistrations,

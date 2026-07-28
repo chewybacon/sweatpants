@@ -51,7 +51,7 @@ export interface ElicitToolRequest {
  * Wire-level tool execution event.
  *
  * Widened form of the canonical session event union
- * (`mcp-tools/session/types.ts` ToolSessionEvent): `lsn`/`timestamp` are
+ * (`@sweatpants/tool-session` ToolSessionEvent): `lsn`/`timestamp` are
  * optional because transports may re-sequence. The strict session events are
  * structurally assignable to this union — keep the field sets in sync so the
  * runtime→session seam needs no casts.

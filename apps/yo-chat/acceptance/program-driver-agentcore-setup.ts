@@ -1,7 +1,7 @@
 import type { RuntimeTool } from "@sweatpants/core";
 import type { Operation } from "effection";
 import { createPluginSessionManager } from "@sweatpants/framework/server";
-import type { ToolSessionSamplingProvider } from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createAgentCoreRemoteToolRuntimeClient,
   createAgentCoreToolSessionRegistry,

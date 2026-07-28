@@ -4,9 +4,9 @@ import type {
   ToolSessionEvent,
   ToolSessionStatus,
   WireSampleResult,
-} from "@sweatpants/framework/chat/mcp-tools";
-import type { WireElicitResult } from "@sweatpants/framework/chat/mcp-tools";
-import { statusForToolSessionEvent } from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session";
+import type { WireElicitResult } from "@sweatpants/tool-session";
+import { statusForToolSessionEvent } from "@sweatpants/tool-session";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   type AgentCoreToolEvent,
