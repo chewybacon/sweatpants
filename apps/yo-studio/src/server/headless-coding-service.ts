@@ -19,9 +19,9 @@ import {
   createDurableEffectRegistry,
   createDurableToolRegistry,
   createLocalProgramDriver,
-  createProgramDriverRegistry,
   type Json,
 } from "@sweatpants/session-contract";
+import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import {
   installLocalWorkspaceFilesProvider,
   installRemoteWorkspaceFilesProvider,
