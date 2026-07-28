@@ -1,6 +1,6 @@
-import type { Message } from "../types.ts";
+import type { Message } from "../messages.ts";
 import type { MessagePart } from "../types/chat-message.ts";
-import type { ConversationReplayState } from "../session/streaming.ts";
+import type { ConversationReplayState } from "../session/replay-types.ts";
 import type {
   ElicitState,
   ElicitTrackingState,

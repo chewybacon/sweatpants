@@ -1,5 +1,5 @@
 import type { ToolExecutionTrace, EmissionTraceEntry } from "../browser-rendering/emissions.ts";
-import type { ConversationReplayToolTrace } from "./streaming.ts";
+import type { ConversationReplayToolTrace } from "./replay-types.ts";
 
 export const PLUGIN_REPLAY_ACTIVITY_TYPE = "sweatpants:plugin-replay" as const;
 

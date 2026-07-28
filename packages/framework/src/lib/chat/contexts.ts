@@ -2,7 +2,7 @@ import { createContext } from "effection";
 
 import type { PersonaResolver } from "./setup-types.ts";
 import type { PluginRegistry } from "./mcp-tools/plugin-registry.ts";
-import type { McpToolRegistry } from "../../handler/durable/types.ts";
+import type { McpToolRegistry } from "./registry-types.ts";
 import type { ToolSessionRegistry, ToolSessionStore } from "@sweatpants/tool-session";
 import type { PluginSessionManager } from "../../handler/durable/plugin-session-manager.ts";
 

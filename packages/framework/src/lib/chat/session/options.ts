@@ -6,9 +6,9 @@
 
 import type { Operation, Channel } from "effection";
 import type { ChatStateEvent } from "../state/events.ts";
-import type { Message } from "../types.ts";
+import type { Message } from "../messages.ts";
 import type { StreamEvent, StreamResult } from "./streaming.ts";
-import type { ConversationReplayState } from "./streaming.ts";
+import type { ConversationReplayState } from "./replay-types.ts";
 import type { ToolExecutionTrace } from "../browser-rendering/emissions.ts";
 import type { PluginHandleInput } from "../mcp-tools/plugin.ts";
 import type { StreamOptions } from "../runtime/index.ts";
