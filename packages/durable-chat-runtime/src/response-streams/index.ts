@@ -111,6 +111,13 @@ export {
 
 // Shared memory store (for cross-scope persistence in tests and single-server deployments)
 export {
+  createEmptyChatEngine,
+  createSerializedEventStream,
+  type ChatEngineSource,
+  type TurnEventSink,
+} from "./event-stream.ts";
+
+export {
   getConversationCheckpointId,
   getConversationIndexId,
   recordConversationCheckpoint,

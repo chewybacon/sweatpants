@@ -7,27 +7,21 @@
  * state as frames are consumed.
  */
 import { resource, type Operation, type Stream } from "effection";
-import type {
-  TokenBufferStore,
-  TokenBufferWriter,
-} from "@sweatpants/durable-chat-runtime/response-streams";
-import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
+import type { TokenBufferStore, TokenBufferWriter } from "@sweatpants/durable-streams";
+import type { StreamEvent } from "../handler/types.ts";
 import type { DurableFrame } from "@sweatpants/chat-core";
-import { recordConversationCheckpoint } from "@sweatpants/durable-chat-runtime/response-streams";
+import { recordConversationCheckpoint } from "./conversation-index.ts";
 import {
   interruptRecordsForThread,
   registerInterruptsFromRunFinished,
-} from "@sweatpants/durable-chat-runtime/interrupts";
-import { recordThreadInterruptState } from "@sweatpants/durable-chat-runtime/interrupts";
-import {
-  buildCheckpointSnapshotEventsFromFrames,
-  toStrictPublicEvent,
-} from "@sweatpants/durable-chat-runtime/projection";
+} from "../interrupts/index.ts";
+import { recordThreadInterruptState } from "../interrupts/index.ts";
+import { buildCheckpointSnapshotEventsFromFrames, toStrictPublicEvent } from "../projection.ts";
 
-export type LiveEventSink = (event: StreamEvent) => Operation<void>;
+export type TurnEventSink = (event: StreamEvent) => Operation<void>;
 export type ChatEngineSource =
   | Stream<StreamEvent, void>
-  | ((liveEvent: LiveEventSink) => Stream<StreamEvent, void>);
+  | ((turnEventSink: TurnEventSink) => Stream<StreamEvent, void>);
 
 export function createEmptyChatEngine(): Stream<StreamEvent, void> {
   return resource(function* (provide) {
@@ -86,7 +80,7 @@ export function createSerializedEventStream(
       );
     }
 
-    const liveEvent: LiveEventSink = function* (rawEvent) {
+    const turnEventSink: TurnEventSink = function* (rawEvent) {
       if (!options?.responseTokenBuffer) {
         throw new Error("Live event delivery requires the Host-owned token buffer");
       }
@@ -100,7 +94,7 @@ export function createSerializedEventStream(
       emittedCount = Math.max(emittedCount, lsn);
       emittedFrames.push({ lsn, event });
     };
-    const selectedEngine = typeof engine === "function" ? engine(liveEvent) : engine;
+    const selectedEngine = typeof engine === "function" ? engine(turnEventSink) : engine;
     const subscription = yield* selectedEngine;
 
     yield* provide({

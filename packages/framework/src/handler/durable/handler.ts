@@ -99,7 +99,7 @@ import {
   createEmptyChatEngine,
   createSerializedEventStream,
   type ChatEngineSource,
-} from "./session-event-stream.ts";
+} from "@sweatpants/durable-chat-runtime/response-streams";
 import {
   createConversationHydrateResponse,
   createStoredConversationCheckpointResponse,
