@@ -105,7 +105,7 @@ import {
   createStoredConversationCheckpointResponse,
 } from "./hydrate-responses.ts";
 
-export { assertPendingResumeConsistency } from "./conversation-projection.ts";
+export { assertPendingResumeConsistency } from "@sweatpants/durable-chat-runtime/projection";
 
 // =============================================================================
 // PROTOCOL PARAMETER BINDER

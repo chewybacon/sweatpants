@@ -58,7 +58,7 @@ export {
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,
 } from "./program-driver-journal.ts";
-export { programDriverChatEngineSchemaEntries } from "./program-driver-chat-engine.ts";
+export { programDriverChatEngineSchemaEntries } from "./program-driver-schema.ts";
 export { firstTraceDivergence, runProgramDriverConformance } from "./program-driver-conformance.ts";
 export type {
   ProgramDriverConformanceCase,

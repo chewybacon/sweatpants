@@ -21,7 +21,7 @@ import {
   parseBufferedFrames,
   publicInterruptsFromRecords,
   sanitizeBoundarySnapshot,
-} from "./conversation-projection.ts";
+} from "@sweatpants/durable-chat-runtime/projection";
 import { createEmptyStream, parseOffsetParam, toOffsetString } from "@sweatpants/durable-streams";
 
 type ParsedOffset = ReturnType<typeof parseOffsetParam>;

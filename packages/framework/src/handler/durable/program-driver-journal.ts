@@ -15,7 +15,7 @@ import {
   type ResolveOperationResult,
 } from "@sweatpants/session-contract";
 
-import { programDriverChatEngineSchemaEntries } from "./program-driver-chat-engine.ts";
+import { programDriverChatEngineSchemaEntries } from "./program-driver-schema.ts";
 
 /**
  * Builds the digest-keyed validator registry for one program-driver
