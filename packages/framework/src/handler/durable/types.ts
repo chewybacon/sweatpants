@@ -13,11 +13,7 @@ export interface ToolSchema {
   parameters: Record<string, unknown>;
 }
 
-export interface McpToolRegistry {
-  get(name: string): unknown | undefined;
-  has(name: string): boolean;
-  names(): string[];
-}
+export type { McpToolRegistry } from "../../lib/chat/registry-types.ts";
 
 export interface ProgramRuntimeChatEngineParams {
   messages: ChatMessage[];

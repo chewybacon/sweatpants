@@ -1,18 +1,11 @@
 import type { ToolCallInfo, ServerToolResult } from "../core-types.ts";
-import type { ToolExecutionTrace } from "../browser-rendering/emissions.ts";
 import type { ToolParameterValidationErrorPayload } from "../tool-parameters.ts";
-import type { Message } from "../types.ts";
+import type { Message } from "../messages.ts";
 import type { AgUiMessage } from "./ag-ui-messages.ts";
 import type { PluginReplayActivitySnapshotEvent } from "./plugin-replay.ts";
 
-export interface ConversationReplayToolTrace {
-  callId: string;
-  toolName: string;
-  trace: ToolExecutionTrace;
-}
-export interface ConversationReplayState {
-  toolTraces: ConversationReplayToolTrace[];
-}
+export type { ConversationReplayToolTrace, ConversationReplayState } from "./replay-types.ts";
+import type { ConversationReplayState } from "./replay-types.ts";
 export interface AgUiRunMetadata {
   threadId: string;
   runId: string;
