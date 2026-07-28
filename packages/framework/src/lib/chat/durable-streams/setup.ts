@@ -32,6 +32,7 @@ import {
   createInMemoryRegistryStore,
 } from "@sweatpants/durable-streams";
 import { createSessionRegistry } from "./session-registry.ts";
+import { useHostScope } from "../../effection/host-scope.ts";
 import {
   installTokenBufferStore,
   installSessionRegistryStore,
@@ -95,13 +96,15 @@ export function* setupDurableStreams<T>(
   config: DurableStreamsConfig<T>,
 ): Operation<DurableStreamsSetup<T>> {
   const { bufferStore, registryStore, retentionPolicy } = config;
+  const ownerScope = yield* useHostScope();
 
-  // Create the registry (this is an Operation that may spawn tasks)
-  const registry = yield* createSessionRegistry(
-    bufferStore,
-    registryStore,
-    retentionPolicy ? { retentionPolicy } : {},
-  );
+  // Host composition supplies an explicit structural owner. Raw handlers have
+  // none and preserve detached development semantics; caller scope is never
+  // guessed to be the owner.
+  const registry = yield* createSessionRegistry(bufferStore, registryStore, {
+    ...(retentionPolicy ? { retentionPolicy } : {}),
+    ...(ownerScope ? { ownerScope } : {}),
+  });
 
   // Install the drivers for this scope.
   yield* installTokenBufferStore(bufferStore);

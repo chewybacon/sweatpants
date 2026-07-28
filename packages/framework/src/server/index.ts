@@ -8,6 +8,7 @@ import {
   type Scope,
 } from "effection";
 import type { FetchHandler, ScopedFetchHandler } from "../handler/streaming.ts";
+import { installHostScope } from "../lib/effection/host-scope.ts";
 
 export {
   AgentFacadeError,
@@ -143,6 +144,7 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
         rootScope
           .run(function* () {
             try {
+              yield* installHostScope(rootScope);
               const signal = yield* useAbortSignal();
               if (config.setup) {
                 yield* config.setup({ signal });
