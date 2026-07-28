@@ -1,13 +1,16 @@
-import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
-import { durableEffectRuntimeSchemas } from "@sweatpants/durable-effects";
 import {
+  canonicalJson,
+  canonicalSnapshot,
   parsePortableSchemaDescriptor,
+  type Json,
+} from "@sweatpants/foundation";
+import { durableEffectRuntimeSchemas, type EffectDefinition } from "@sweatpants/durable-effects";
+import {
   validateDurableManifest,
-  type DurableEffectRegistry,
   type DurableProgramManifest,
-  type EffectDefinition,
   type PinnedProgram,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import type { DurableEffectRegistry } from "@sweatpants/session-contract";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   type RemoteProgramManifestDocumentV1,

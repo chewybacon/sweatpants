@@ -1,4 +1,5 @@
-import { CrankError, assertJson, canonicalSnapshot, type Json } from "@sweatpants/session-contract";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { CrankError } from "@sweatpants/session-contract";
 import type {
   ForeignA2AArtifact,
   ForeignA2AMessage,

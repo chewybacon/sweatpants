@@ -1,5 +1,5 @@
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
-import type { PinnedProgram } from "@sweatpants/session-contract";
+import type { PinnedProgram } from "@sweatpants/durable-execution";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   type CallerAuthoritativeProgramExtensionParamsV1,
