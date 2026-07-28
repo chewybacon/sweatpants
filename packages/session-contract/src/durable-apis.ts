@@ -22,7 +22,7 @@ import {
   ProgramDriverRegistryContext,
   ProgramExecutionScopeContext,
   type ProgramDriverRegistry,
-} from "./program-driver.ts";
+} from "@sweatpants/durable-execution";
 import { ProgramPlacementContext } from "./program-placement-context.ts";
 import { ModelSamplingOutcomeAcknowledgerContext } from "./model-sampling-acknowledgement.ts";
 import type {
