@@ -2,7 +2,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP, type LookupFunction } from "node:net";
 
-import { canonicalJson, type Json } from "@sweatpants/session-contract";
+import { canonicalJson, type Json } from "@sweatpants/foundation";
 import {
   A2A_EXTENSIONS_HEADER,
   A2A_MAX_FRAME_BYTES,

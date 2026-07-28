@@ -1,4 +1,4 @@
-import type { Json } from "@sweatpants/session-contract";
+import type { Json } from "@sweatpants/foundation";
 
 export const DURABLE_INVOCATION_EXTENSION_URI =
   "https://github.com/chewybacon/sweatpants/blob/main/protocols/a2a/durable-invocation/v1/spec.md";
