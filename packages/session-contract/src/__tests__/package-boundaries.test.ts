@@ -9,16 +9,14 @@ describe("session-contract package boundaries", () => {
     const packageJson = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
     };
-    // DR-043/DR-054: the Phase 1 extraction makes durable-effects the only
-    // domain-bearing workspace dependency permitted beneath this legacy
-    // aggregate. DR-042/REQ-042 additionally permit foundation, which carries
-    // portable composition primitives (canonical JSON, hashing, definePort)
-    // and no domain nouns, so depending on it cannot reintroduce a cycle.
-    // Zod, framework, runtime, and Redis imports remain forbidden.
+    // The legacy aggregate may depend on the new durable-execution hub only
+    // while its ProgramRuntime/context consumers are being dissolved. No
+    // framework, tool-runtime, Zod, or Redis dependency is permitted.
     expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual([
       "@noble/hashes",
       "@standard-schema/spec",
       "@sweatpants/durable-effects",
+      "@sweatpants/durable-execution",
       "@sweatpants/foundation",
       "effection",
     ]);
