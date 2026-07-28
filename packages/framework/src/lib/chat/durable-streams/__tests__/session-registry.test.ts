@@ -486,7 +486,7 @@ describe("Session Registry", () => {
 
     it("explicitly recovers an incomplete existing source only under a newer writer fence", function* () {
       const { registry } = yield* useTestRegistry({ mode: "retain_forever" });
-      const stalled = resource<string, void>(function* (provide) {
+      const stalled = resource<Subscription<string, void>>(function* (provide) {
         yield* provide({
           *next() {
             yield* sleep(10_000);

@@ -9,7 +9,7 @@
  * regardless of consumer demand.
  */
 import { describe, it, expect } from "vitest";
-import { run, call, type Operation } from "effection";
+import { run, call } from "effection";
 import { createCountingGenerator } from "../test-utils.ts";
 import { createReadableStreamBridge } from "../approaches/readable-stream-bridge.ts";
 import { createAsyncIterableResponse } from "../approaches/async-iterable-response.ts";

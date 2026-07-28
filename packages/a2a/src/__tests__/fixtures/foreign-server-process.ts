@@ -57,7 +57,7 @@ const server = createServer(async (request, response) => {
   const body = await readBody(request);
   if (request.url === "/a2a/message:send" && request.method === "POST") {
     const extension = body?.metadata?.[DURABLE_INVOCATION_EXTENSION_URI];
-    let result = normalized;
+    let result: ForeignA2ASendResult = normalized;
     const isContinuation = mode === "continuation" && Boolean(body?.message?.taskId);
     if (isContinuation) {
       result = await service.processMessage(

@@ -33,6 +33,7 @@ import type {
   ToolElicitResult,
   ElicitsMap,
   SampleResultBase,
+  SamplesMap,
   ToolMessage,
 } from "@sweatpants/core";
 import type {
@@ -327,8 +328,9 @@ export function runMCPTool<
   TParams,
   TResult,
   TElicits extends ElicitsMap = {},
+  TSamples extends SamplesMap | true | undefined = undefined,
 >(
-  tool: ToolDefinition<TName, TParams, TResult, TElicits>,
+  tool: ToolDefinition<TName, TParams, TResult, TElicits, TSamples>,
   params: TParams,
   client: MockMCPClient,
   options: RunMCPToolOptions = {},
@@ -370,9 +372,13 @@ export function runMCPTool<
           `Tool "${String((tool as { name?: string }).name ?? "<unknown>")}" is not a callable ToolDefinition factory`,
         );
       }
-      const invoke = yield* (tool as ToolDefinition<TName, TParams, TResult, TElicits>)(
-        createCoreToolCtx(tool, clientCtx, signal) as unknown as ToolCtx<TElicits, undefined>,
-      );
+      // SAFETY: createCoreToolCtx supplies the common runtime services; the
+      // selected ToolDefinition carries the exact elicitation/sampling types.
+      const toolContext = createCoreToolCtx(tool, clientCtx, signal) as unknown as ToolCtx<
+        TElicits,
+        TSamples
+      >;
+      const invoke = yield* tool(toolContext);
       return yield* invoke(validatedParams);
     },
   };

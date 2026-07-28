@@ -1,4 +1,4 @@
-import { createScope, run, suspend, useScope, type Operation, type Scope } from "effection";
+import { createScope, run, suspend, useScope, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { definePort } from "@sweatpants/foundation/port";
 

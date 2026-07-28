@@ -18,7 +18,6 @@ import {
 } from "../../../lib/chat/history-policy.ts";
 import type { ChatHandlerSetup } from "../types.ts";
 import type { Message } from "../../../lib/chat/types.ts";
-import type { Message as ProviderMessage } from "../../../lib/chat/runtime/types.ts";
 import {
   createMockProvider,
   createTestDurableChatHandler,
@@ -63,7 +62,7 @@ const longHistory: Message[] = [
 
 describe("history policy through the durable handler", () => {
   it("without a policy the provider receives the full projected history", function* () {
-    const seenMessages: ProviderMessage[][] = [];
+    const seenMessages: Message[][] = [];
     const fallback = createMockProvider({ responses: "ok" });
     const provider = createMockProvider({
       customStream: (messages, options) => {
@@ -86,7 +85,7 @@ describe("history policy through the durable handler", () => {
   });
 
   it("an installed message-budget policy compacts old turns before the provider", function* () {
-    const seenMessages: ProviderMessage[][] = [];
+    const seenMessages: Message[][] = [];
     const fallback = createMockProvider({ responses: "ok" });
     const provider = createMockProvider({
       customStream: (messages, options) => {

@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { createWorkerToolSession } from "../../worker-tool-session.ts";
-import type { ToolSession, ToolSessionEvent } from "../../types.ts";
+import type { ToolSession, ToolSessionEvent } from "@sweatpants/framework/chat/mcp-tools";
 
 const scenario = process.argv[2];
 if (!scenario) {
@@ -582,9 +582,11 @@ async function main() {
       yield* collectEvents(session, events, function* (event) {
         if (event.type === "sample_request") {
           capturedSampleRequest = {
-            systemPrompt: event.systemPrompt,
-            maxTokens: event.maxTokens,
-            modelPreferences: event.modelPreferences,
+            ...(event.systemPrompt !== undefined ? { systemPrompt: event.systemPrompt } : {}),
+            ...(event.maxTokens !== undefined ? { maxTokens: event.maxTokens } : {}),
+            ...(event.modelPreferences !== undefined
+              ? { modelPreferences: event.modelPreferences }
+              : {}),
           };
           yield* sleep(25);
           yield* session.respondToSample(event.sampleId, {

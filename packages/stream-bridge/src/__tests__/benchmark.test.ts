@@ -38,7 +38,7 @@ async function benchmarkApproach(
 
       let count = 0;
       while (count < itemCount) {
-        const { done, value } = yield* call(() => reader.read());
+        const { done } = yield* call(() => reader.read());
         if (done) {
           break;
         }
@@ -196,7 +196,7 @@ describe("HTTP Throughput Benchmark", () => {
     const server = createServer(async (req, res) => {
       try {
         const webRequest = new Request(`http://localhost${req.url}`, {
-          method: req.method,
+          ...(req.method ? { method: req.method } : {}),
           headers: req.headers as Record<string, string>,
         });
         const webResponse = await run(() => handler(webRequest));
@@ -227,7 +227,7 @@ describe("HTTP Throughput Benchmark", () => {
     for (let i = 0; i < ITERATIONS; i++) {
       const start = performance.now();
       const response = await fetch(`http://localhost:${port}/stream`);
-      const text = await response.text();
+      await response.text();
       times.push(performance.now() - start);
     }
 

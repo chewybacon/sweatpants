@@ -141,7 +141,9 @@ describe("plugin replay helper", () => {
   });
 
   it("deduplicates partially upgraded traces by interrupt id plus original order", () => {
-    const incoming: ToolExecutionTrace = {
+    // SAFETY: intentionally models a partially upgraded persisted trace whose
+    // emission predates stable emissionId assignment.
+    const incoming = {
       version: 1,
       startedAt: 1,
       completedAt: 2,
@@ -155,7 +157,7 @@ describe("plugin replay helper", () => {
           timestamp: 1000,
         },
       ],
-    };
+    } as unknown as ToolExecutionTrace;
 
     const first = mergePluginReplayTrace(undefined, {
       threadId: "thread",
@@ -202,7 +204,8 @@ describe("plugin replay helper", () => {
       buildPluginReplayActivity({
         toolCallId: "old-call",
         toolName: "oldTool",
-        trace: invalidTrace as ToolExecutionTrace,
+        // SAFETY: malformed legacy boundary input is the subject of this test.
+        trace: invalidTrace as unknown as ToolExecutionTrace,
       }),
     ).toBeNull();
   });

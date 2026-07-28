@@ -28,7 +28,7 @@ describe("Backpressure Behavior", () => {
         const readTimes: number[] = [];
         for (let i = 0; i < 5; i++) {
           const start = performance.now();
-          const { done, value } = yield* call(() => reader.read());
+          const { done } = yield* call(() => reader.read());
           readTimes.push(performance.now() - start);
           if (done) {
             break;
@@ -80,11 +80,10 @@ describe("Backpressure Behavior", () => {
         const response = yield* createAsyncIterableResponse(stream);
         const body = response.body as unknown as AsyncIterable<Uint8Array>;
 
-        const decoder = new TextDecoder();
         let count = 0;
 
         yield* call(async () => {
-          for await (const chunk of body) {
+          for await (const _chunk of body) {
             count++;
             if (count >= 5) {
               break;
@@ -132,7 +131,7 @@ describe("Backpressure with HTTP", () => {
     const server = createServer(async (req, res) => {
       try {
         const webRequest = new Request(`http://localhost${req.url}`, {
-          method: req.method,
+          ...(req.method ? { method: req.method } : {}),
           headers: req.headers as Record<string, string>,
         });
         const webResponse = await run(() => handler(webRequest));

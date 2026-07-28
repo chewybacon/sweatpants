@@ -50,6 +50,9 @@ function createCompletedSession(): ToolSession {
     respondToSample() {
       return (function* () {})();
     },
+    emitWakeUp() {
+      return (function* () {})();
+    },
     cancel() {
       return (function* () {})();
     },
@@ -60,8 +63,10 @@ describe("@sweatpants/tool-runtime-agentcore strict parameter acceptance", () =>
   it("rejects invalid params before AgentCore registry/session dispatch and dispatches valid params", async () => {
     await run(function* () {
       const createArgs: unknown[] = [];
-      const registry: ToolSessionRegistry = {
-        *create(_tool, params): Operation<ToolSession> {
+      // SAFETY: generic TResult does not affect this strict-input fixture; the
+      // fake always returns one protocol-complete session.
+      const registry = {
+        *create(_tool: unknown, params: unknown): Operation<ToolSession> {
           createArgs.push(params);
           return createCompletedSession();
         },
@@ -72,7 +77,7 @@ describe("@sweatpants/tool-runtime-agentcore strict parameter acceptance", () =>
           return createCompletedSession();
         },
         *release(): Operation<void> {},
-      };
+      } as unknown as ToolSessionRegistry;
       const driver = createAgentCoreToolRuntimeDriver({
         tools: [remoteTool],
         registry,

@@ -55,7 +55,14 @@ export const bookFlightTool = createTool("book_flight")
   .output(
     z.object({
       success: z.boolean(),
-      booking: z.unknown().optional(),
+      booking: z
+        .object({
+          confirmationNumber: z.string(),
+          flightId: z.string(),
+          seatPreference: z.string(),
+          status: z.literal("confirmed"),
+        })
+        .optional(),
       reason: z.string().optional(),
       summary: z.string().optional(),
       message: z.string(),

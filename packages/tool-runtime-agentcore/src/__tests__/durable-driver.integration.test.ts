@@ -65,7 +65,13 @@ function createReplacingAgentCoreTransport(registry: DurableToolRegistry): {
         type: "start",
         input: request.attach.input,
       });
-      const entries = [...(request.replay[Symbol.iterator]?.() ?? [])];
+      const entries = [];
+      const iterator = request.replay[Symbol.iterator]?.();
+      if (iterator) {
+        for (let next = iterator.next(); !next.done; next = iterator.next()) {
+          entries.push(next.value);
+        }
+      }
       replayEntryCounts.push(entries.length);
       for (const entry of entries) {
         expect(step.actionIndex).toBe(entry.actionIndex);

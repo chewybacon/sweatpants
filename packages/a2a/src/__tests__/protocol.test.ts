@@ -7,13 +7,15 @@ import {
   parseClientProgramMessage,
   parseExecutorHello,
   projectProgramCommand,
+  type ClientProgramMessageV1,
+  type ExecutorHelloV1,
 } from "../index.ts";
 
 const program = { id: "reviewer", version: "1.0.0", digest: "a".repeat(64) };
 
 describe("caller-authoritative A2A protocol", () => {
   it("requires the exact first-frame extension echo", () => {
-    const hello = {
+    const hello: ExecutorHelloV1 = {
       type: "hello" as const,
       protocolVersion: 1 as const,
       extensionUri: CALLER_AUTHORITATIVE_EXTENSION_URI,
@@ -28,7 +30,7 @@ describe("caller-authoritative A2A protocol", () => {
   });
 
   it("rejects noncanonical and unknown envelope fields", () => {
-    const message = {
+    const message: Extract<ClientProgramMessageV1, { type: "attach_begin" }> = {
       protocolVersion: 1 as const,
       extensionUri: CALLER_AUTHORITATIVE_EXTENSION_URI,
       executionId: "execution-1",

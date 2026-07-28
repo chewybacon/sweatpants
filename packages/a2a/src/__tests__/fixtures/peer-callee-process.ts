@@ -13,7 +13,6 @@ import {
   createLocalProgramDriver,
   createPortableSchemaDescriptor,
   createProgramDriverRegistry,
-  type Json,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
 import {

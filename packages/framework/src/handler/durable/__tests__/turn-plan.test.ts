@@ -120,24 +120,25 @@ describe("planTurn", () => {
     ];
     const withResponses = planTurn({
       ...base,
-      body: body({ elicitResponses: responses, initialToolChoice: { name: "book_flight" } }),
+      body: body({ elicitResponses: responses, initialToolChoice: "required" }),
       openInterrupts: [openInterrupt()],
     });
     expect(withResponses.initialToolChoice).toBeUndefined();
 
     const withoutResponses = planTurn({
       ...base,
-      body: body({ initialToolChoice: { name: "book_flight" } }),
+      body: body({ initialToolChoice: "required" }),
       openInterrupts: [],
     });
-    expect(withoutResponses.initialToolChoice).toEqual({ name: "book_flight" });
+    expect(withoutResponses.initialToolChoice).toBe("required");
   });
 
   it("prefers the interrupt toolCallId for the supersession abort target", () => {
+    const { toolCallId: _omitted, ...interruptWithoutToolCallId } = openInterrupt();
     const plan = planTurn({
       ...base,
       body: body({ messages: [{ id: "user:1", role: "user", content: "stop" }] }),
-      openInterrupts: [openInterrupt({ toolCallId: undefined })],
+      openInterrupts: [interruptWithoutToolCallId],
     });
     expect(plan.effectivePluginAbort?.sessionId).toBe("interrupt-1");
   });

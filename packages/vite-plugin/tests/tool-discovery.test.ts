@@ -322,7 +322,7 @@ describe("discoverToolsInContent", () => {
       const tools = discoverTools(content);
 
       expect(tools).toHaveLength(1);
-      expect(tools[0].toolName).toBe("my-tool_v2");
+      expect(tools[0]!.toolName).toBe("my-tool_v2");
     });
 
     it("does not duplicate tools exported multiple ways", () => {
@@ -346,8 +346,8 @@ describe("discoverToolsInContent", () => {
         createOptions(),
       );
 
-      expect(tools[0].filePath).toBe("nested/my-tool.ts");
-      expect(tools[0].absolutePath).toBe("/project/src/tools/nested/my-tool.ts");
+      expect(tools[0]!.filePath).toBe("nested/my-tool.ts");
+      expect(tools[0]!.absolutePath).toBe("/project/src/tools/nested/my-tool.ts");
     });
 
     it("sets correct file paths (island)", () => {
@@ -359,8 +359,8 @@ describe("discoverToolsInContent", () => {
         createOptions(),
       );
 
-      expect(tools[0].filePath).toBe("my-tool.ts");
-      expect(tools[0].absolutePath).toBe("/project/src/feature/tools/my-tool.ts");
+      expect(tools[0]!.filePath).toBe("my-tool.ts");
+      expect(tools[0]!.absolutePath).toBe("/project/src/feature/tools/my-tool.ts");
     });
   });
 
@@ -375,7 +375,7 @@ describe("discoverToolsInContent", () => {
       );
 
       expect(tools).toHaveLength(1);
-      expect(tools[0].toolName).toBe("my_tool");
+      expect(tools[0]!.toolName).toBe("my_tool");
     });
 
     it("supports multiple export function names", () => {
@@ -390,7 +390,7 @@ describe("discoverToolsInContent", () => {
       );
 
       expect(tools).toHaveLength(1);
-      expect(tools[0].toolName).toBe("my_tool");
+      expect(tools[0]!.toolName).toBe("my_tool");
     });
   });
 
@@ -431,8 +431,8 @@ describe("discoverToolsInContent", () => {
       );
 
       expect(tools).toHaveLength(1);
-      expect(tools[0].filePath).toBe("general/ask_question.tsx");
-      expect(tools[0].absolutePath).toBe("/project/src/tools/general/ask_question.tsx");
+      expect(tools[0]!.filePath).toBe("general/ask_question.tsx");
+      expect(tools[0]!.absolutePath).toBe("/project/src/tools/general/ask_question.tsx");
     });
 
     it("discovers default export .tsx files", () => {
@@ -447,8 +447,8 @@ describe("discoverToolsInContent", () => {
       );
 
       expect(tools).toHaveLength(1);
-      expect(tools[0].toolName).toBe("ui_dialog");
-      expect(tools[0].filePath).toBe("dialogs/ui-dialog.tsx");
+      expect(tools[0]!.toolName).toBe("ui_dialog");
+      expect(tools[0]!.filePath).toBe("dialogs/ui-dialog.tsx");
     });
 
     it("calculates correct import paths for .tsx files", () => {
@@ -470,8 +470,8 @@ describe("discoverToolsInContent", () => {
       const tools = discoverTools(content);
 
       expect(tools).toHaveLength(1);
-      expect(tools[0].toolName).toBe("tictactoe");
-      expect(tools[0].exportName).toBe("tictactoeTool");
+      expect(tools[0]!.toolName).toBe("tictactoe");
+      expect(tools[0]!.exportName).toBe("tictactoeTool");
     });
 
     it("derives name from export identifier without Tool suffix (unchanged)", () => {
@@ -479,7 +479,7 @@ describe("discoverToolsInContent", () => {
       const tools = discoverTools(content);
 
       expect(tools).toHaveLength(1);
-      expect(tools[0].toolName).toBe("calculator");
+      expect(tools[0]!.toolName).toBe("calculator");
     });
 
     it("derives name from file basename for default export without name", () => {
@@ -492,7 +492,7 @@ describe("discoverToolsInContent", () => {
       );
 
       expect(tools).toHaveLength(1);
-      expect(tools[0].toolName).toBe("my_tool");
+      expect(tools[0]!.toolName).toBe("my_tool");
     });
 
     it("keeps explicit name as-is without prefixing", () => {
@@ -500,7 +500,7 @@ describe("discoverToolsInContent", () => {
       const tools = discoverTools(content);
 
       expect(tools).toHaveLength(1);
-      expect(tools[0].toolName).toBe("book_flight");
+      expect(tools[0]!.toolName).toBe("book_flight");
     });
 
     it("does not prefix nested tool names with directory path", () => {
@@ -513,7 +513,7 @@ describe("discoverToolsInContent", () => {
       );
 
       expect(tools).toHaveLength(1);
-      expect(tools[0].toolName).toBe("tictactoe");
+      expect(tools[0]!.toolName).toBe("tictactoe");
     });
   });
 });
@@ -555,6 +555,7 @@ describe("generateRegistryContent", () => {
         exportName: "calculator",
         toolName: "calculator",
         variableName: "calculator",
+        execution: "ordinary",
       },
     ];
 
@@ -577,6 +578,7 @@ describe("generateRegistryContent", () => {
         absolutePath: "/project/src/tools/my-tool.ts",
         toolName: "my_tool",
         variableName: "myTool",
+        execution: "ordinary",
       },
     ];
 
@@ -597,6 +599,7 @@ describe("generateRegistryContent", () => {
         exportName: "a",
         toolName: "tool_a",
         variableName: "a",
+        execution: "ordinary",
       },
       {
         filePath: "b.ts",
@@ -604,6 +607,7 @@ describe("generateRegistryContent", () => {
         exportName: "b",
         toolName: "tool_b",
         variableName: "b",
+        execution: "ordinary",
       },
     ];
 
@@ -636,6 +640,7 @@ describe("generateRegistryContent", () => {
         exportName: "zTool",
         toolName: "z_tool",
         variableName: "zTool",
+        execution: "ordinary",
       },
       {
         filePath: "a.ts",
@@ -643,6 +648,7 @@ describe("generateRegistryContent", () => {
         exportName: "aTool",
         toolName: "a_tool",
         variableName: "aTool",
+        execution: "ordinary",
       },
     ];
 
@@ -666,6 +672,7 @@ describe("generateRegistryContent", () => {
         exportName: "foo",
         toolName: "foo",
         variableName: "foo",
+        execution: "ordinary",
       },
     ];
 
@@ -754,7 +761,7 @@ describe("resolveToolDiscoveryOptions", () => {
 import { mkdtemp, writeFile, rm, mkdir, readFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { toolDiscoveryPlugin, generateWorkerContent } from "../src/index.ts";
+import { toolDiscoveryPlugin } from "../src/index.ts";
 
 describe("integration: toolDiscoveryPlugin", () => {
   let tempDir: string;

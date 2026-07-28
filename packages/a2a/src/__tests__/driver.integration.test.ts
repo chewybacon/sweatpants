@@ -15,6 +15,7 @@ import {
   createA2AProgramExecutor,
   encodeA2AProgramMessage,
   parseServerProgramMessage,
+  type ClientProgramMessageV1,
 } from "../index.ts";
 
 function createFixtureDriver(registry: ReturnType<typeof createDurableToolRegistry>) {
@@ -101,7 +102,9 @@ describe("remote A2A ProgramDriver", () => {
         principal: { principalId: "caller" },
         activatedExtension: CALLER_AUTHORITATIVE_EXTENSION_URI,
       });
-      const attach = (epoch: number) => ({
+      const attach = (
+        epoch: number,
+      ): Extract<ClientProgramMessageV1, { type: "attach_begin" }> => ({
         protocolVersion: 1 as const,
         extensionUri: CALLER_AUTHORITATIVE_EXTENSION_URI,
         executionId: "shared-execution",
@@ -161,8 +164,8 @@ describe("remote A2A ProgramDriver", () => {
         activatedExtension: CALLER_AUTHORITATIVE_EXTENSION_URI,
       });
       const executionId = "idempotency-execution";
-      const attach = {
-        protocolVersion: 1 as const,
+      const attach: Extract<ClientProgramMessageV1, { type: "attach_begin" }> = {
+        protocolVersion: 1,
         extensionUri: CALLER_AUTHORITATIVE_EXTENSION_URI,
         executionId,
         program,
@@ -187,8 +190,8 @@ describe("remote A2A ProgramDriver", () => {
         attachmentId: ready.payload.attachmentId,
         command,
       });
-      const frame = {
-        protocolVersion: 1 as const,
+      const frame: Extract<ClientProgramMessageV1, { type: "command" }> = {
+        protocolVersion: 1,
         extensionUri: CALLER_AUTHORITATIVE_EXTENSION_URI,
         executionId,
         program,

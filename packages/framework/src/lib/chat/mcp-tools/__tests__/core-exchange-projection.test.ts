@@ -41,12 +41,15 @@ function elicitExchange(context: { flightId: string }): ElicitExchange<{ flightI
 }
 
 function sampleExchange(): SampleExchange {
-  return {
-    messages: [
-      { role: "user", content: [{ type: "text", text: "Summarize this" }] },
-      { role: "assistant", content: [{ type: "text", text: "Summary" }] },
-    ],
+  const request: ToolMessage & { role: "user" } = {
+    role: "user",
+    content: [{ type: "text", text: "Summarize this" }],
   };
+  const response: ToolMessage & { role: "assistant" } = {
+    role: "assistant",
+    content: [{ type: "text", text: "Summary" }],
+  };
+  return { request, response, messages: [request, response] };
 }
 
 describe("core exchange to MCP projection", () => {

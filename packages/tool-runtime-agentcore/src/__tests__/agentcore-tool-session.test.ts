@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { run, each } from "effection";
+import { run } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/core";
 import {

@@ -221,7 +221,7 @@ describe("agent serving facade", () => {
         agent: definition.manifest,
         capabilityId: "chat",
         entrypoint: "chat",
-        program: definition.bindings.programs.chat!,
+        program: definition.bindings.programs["chat"]!,
       },
       httpClient: remoteHttp,
       urlPolicy: publicUrlPolicy,
@@ -246,7 +246,7 @@ describe("agent serving facade", () => {
           agent: definition.manifest,
           capabilityId: "chat",
           entrypoint: "chat",
-          program: definition.bindings.programs.chat!,
+          program: definition.bindings.programs["chat"]!,
         },
         httpClient: jsonClient(
           driftedDocument as unknown as Json,
@@ -286,7 +286,7 @@ describe("agent serving facade", () => {
 
   it("connects a peer only after exact requirement and caller-handler preflight", async () => {
     const peerServed = serveAgent(definition, peerProfile);
-    const requirement = peerServed.requirements.chat!;
+    const requirement = peerServed.requirements["chat"]!;
     const peer = await connectPeerAgent({
       source: { card: peerServed.card, cardOrigin: "https://agent.example.test" },
       skillId: "chat",
@@ -371,7 +371,7 @@ describe("agent serving facade", () => {
     const before = definition.manifest.identity.digest;
     const served = serveAgent(definition, peerProfile);
     expect(served.selfCheck().ok).toBe(true);
-    expect(served.requirements.chat?.requirements[0]?.contract.name).toBe("model.sample");
+    expect(served.requirements["chat"]?.requirements[0]?.contract.name).toBe("model.sample");
     expect(definition.manifest.identity.digest).toBe(before);
     expect(JSON.stringify(definition.manifest)).not.toContain("grant");
   });

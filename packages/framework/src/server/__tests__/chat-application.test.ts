@@ -137,8 +137,8 @@ describe("createChatHandler public config boundary", () => {
   it("rejects the legacy hook-array config at type level", () => {
     const legacyInitializerHooksKey = "initializerHooks" as const;
 
-    // @ts-expect-error legacy hook-array config is intentionally removed from public config.
     const _legacyConfig = {
+      // @ts-expect-error legacy hook-array config is intentionally removed from public config.
       [legacyInitializerHooksKey]: [],
     } satisfies Parameters<typeof createChatHandler>[0];
 

@@ -15,7 +15,7 @@ export const reactBookingPlugin = makePlugin(reactBookingTool)
   .onElicit({
     chooseFlight: function* (request, context) {
       const elicit = getElicitContext<{ flights: string[]; [key: string]: unknown }>(request);
-      const result = yield* context.render(FlightChoice, {
+      const result = yield* context.render<FlightChoiceProps, { flightId: string }>(FlightChoice, {
         flights: elicit.flights,
         message: request.message,
       });

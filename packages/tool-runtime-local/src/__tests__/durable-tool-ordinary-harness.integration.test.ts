@@ -182,7 +182,9 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       const effects = createDurableEffectRegistry([
         ...createToolSessionForeignEffectRegistrations({
           registry,
-          tools: new Map<string, RuntimeTool>([[facade.name, facade]]),
+          // SAFETY: the facade implements the callable RuntimeTool boundary;
+          // its legacy AnyToolContract declaration omits the schemas property.
+          tools: new Map<string, RuntimeTool>([[facade.name, facade as unknown as RuntimeTool]]),
         }),
         foreignToolAdapter.modelSampleRegistration(function* () {
           const round = outerModelSamples;
