@@ -49,7 +49,7 @@ export type {
   ForeignToolDisposition,
   ForeignToolRequest,
 } from "@sweatpants/durable-execution";
-export type { ProgramDriver } from "@sweatpants/session-contract";
+export type { ProgramDriver } from "@sweatpants/durable-execution";
 export type { DurableEffectRegistration, EffectDefinition } from "@sweatpants/durable-effects";
 
 // Plugin session manager
