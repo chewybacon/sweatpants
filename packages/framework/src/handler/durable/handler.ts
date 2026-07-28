@@ -37,9 +37,9 @@ import { ModelProviderPort, useModel, useStreamOptions } from "@sweatpants/chat-
 import {
   ToolExposureApi,
   ToolInventoryApi,
+  ToolRuntimePort,
   type ToolDefinition,
-} from "../../lib/chat/tool-inventory.ts";
-import { ToolRuntimePort } from "../../lib/chat/tool-runtime.ts";
+} from "@sweatpants/chat-core";
 import { HistoryPolicyContext } from "@sweatpants/chat-core";
 import { useLogger } from "../../lib/logger/index.ts";
 import {
