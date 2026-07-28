@@ -1,6 +1,6 @@
+import type { Json } from "@sweatpants/foundation";
 import type {
   DurableProgramManifest,
-  Json,
   PinnedProgram,
   ProgramCommand,
   ProgramShutdownReason,
@@ -8,7 +8,7 @@ import type {
   ReplayEmissionEntry,
   ReplayOperationEntry,
   SandboxAffinity,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 
 export const CALLER_AUTHORITATIVE_EXTENSION_URI =
   "https://github.com/chewybacon/sweatpants/blob/main/protocols/a2a/caller-authoritative-program/v1/spec.md";

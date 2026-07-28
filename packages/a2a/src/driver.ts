@@ -1,20 +1,18 @@
 import { call, race, sleep, useAbortSignal, type Operation } from "effection";
-import {
-  CrankError,
-  canonicalJson,
-  canonicalSnapshot,
-  sha256,
-  type AttachProgramRequest,
-  type DurableProgramManifest,
-  type Json,
-  type PinnedProgram,
-  type ProgramAttachment,
-  type ProgramDriver,
-  type ProgramRestoreRequest,
-  type ProgramStep,
-  type ReplayEntry,
-  type RestoredProgramAttachment,
-} from "@sweatpants/session-contract";
+import { canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import type { Json } from "@sweatpants/foundation";
+import { CrankError } from "@sweatpants/session-contract";
+import type {
+  AttachProgramRequest,
+  DurableProgramManifest,
+  PinnedProgram,
+  ProgramAttachment,
+  ProgramDriver,
+  ProgramRestoreRequest,
+  ProgramStep,
+  ReplayEntry,
+  RestoredProgramAttachment,
+} from "@sweatpants/durable-execution";
 import type { A2AWebSocketConnection, A2AWebSocketConnector } from "./connector.ts";
 import {
   assertEnvelopeIdentity,

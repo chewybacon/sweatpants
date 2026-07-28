@@ -1,7 +1,24 @@
 export * from "./contract.ts";
 export * from "./transitions.ts";
-export * from "./program-driver.ts";
-export type { ProgramDriver, ProgramRoute } from "./program-driver-contract.ts";
+export type {
+  AttachProgramRequest,
+  ProgramAttachment,
+  ProgramCommand,
+  ProgramDriver,
+  ProgramRoute,
+  ProgramRunRequest,
+  ProgramRunResult,
+  ProgramShutdownReason,
+  ProgramStep,
+  ProgramRestoreContext,
+  ProgramRestoreRequest,
+  ProgramReplayStream,
+  ReplayEntry,
+  ReplayEmissionEntry,
+  ReplayOperationEntry,
+  ResolutionReceipt,
+  RestoredProgramAttachment,
+} from "./program-driver-contract.ts";
 export * from "./checkpoint.ts";
 export * from "./program-contract.ts";
 export * from "./program-authoring.ts";
