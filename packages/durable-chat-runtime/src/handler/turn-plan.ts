@@ -7,13 +7,13 @@
  * engine receives. No I/O; interrupt state commits happen elsewhere only
  * after the crank durably accepts the respond commands.
  */
-import type { ChatRequestBody, ElicitResponse } from "./types.ts";
+import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
 import {
   deriveResumeScopeFromEntries,
   deriveResumeScopeId,
   validateResumeEntries,
   type OpenInterruptRecord,
-} from "@sweatpants/durable-chat-runtime/interrupts";
+} from "../interrupts/index.ts";
 import { mapResumeEntriesToElicitResponses } from "./request-normalization.ts";
 
 export type ResumeValidation = ReturnType<typeof validateResumeEntries>;

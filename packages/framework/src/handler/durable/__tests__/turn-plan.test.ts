@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planTurn } from "../turn-plan.ts";
+import { planTurn } from "@sweatpants/durable-chat-runtime/handler/turn-plan";
 import type { ChatRequestBody } from "../types.ts";
 import type { OpenInterruptRecord } from "@sweatpants/durable-chat-runtime/interrupts";
 

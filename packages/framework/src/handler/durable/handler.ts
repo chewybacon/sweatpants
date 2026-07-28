@@ -93,8 +93,8 @@ import {
   readLatestThreadSystemPrompt,
   recordThreadSystemPrompt,
 } from "@sweatpants/durable-chat-runtime/model-context";
-import { normalizeChatRequestBody } from "./request-normalization.ts";
-import { planTurn } from "./turn-plan.ts";
+import { normalizeChatRequestBody } from "@sweatpants/durable-chat-runtime/handler/request-normalization";
+import { planTurn } from "@sweatpants/durable-chat-runtime/handler/turn-plan";
 import {
   createEmptyChatEngine,
   createSerializedEventStream,
