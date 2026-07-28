@@ -28,7 +28,7 @@ import {
   type WorkspaceFence,
   type WorkspaceOperations,
 } from "@sweatpants/workspace-runtime";
-import { useProgramExecution, type ProgramExecutionValue } from "@sweatpants/session-contract";
+import { useProgramExecution, type ProgramExecutionValue } from "@sweatpants/durable-execution";
 import {
   createPiAiModelProviderDriver,
   installPiAiModelProvider,

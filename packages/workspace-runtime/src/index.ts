@@ -10,7 +10,8 @@ import {
   sortStrings,
   type Json,
 } from "@sweatpants/foundation";
-import { CrankError, useProgramExecution } from "@sweatpants/session-contract";
+import { CrankError } from "@sweatpants/session-contract";
+import { useProgramExecution } from "@sweatpants/durable-execution";
 import { call, resource, useAbortSignal, useScope, type Operation, type Task } from "effection";
 
 import {
