@@ -9,6 +9,7 @@ export default defineConfig({
     "handler/types": "src/handler/types.ts",
     "interrupts/index": "src/interrupts/index.ts",
     "model-context/index": "src/model-context/index.ts",
+    "program-driver/effects": "src/program-driver/effects.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

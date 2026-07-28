@@ -239,3 +239,4 @@ export * from "./authoring/index.ts";
 
 // Shared chat-facing tool inventory and runtime contracts.
 export * from "./tool-contracts.ts";
+export type { DurableEffectRegistration } from "@sweatpants/durable-effects";

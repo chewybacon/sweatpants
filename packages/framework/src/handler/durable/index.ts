@@ -88,7 +88,7 @@ export {
   highestRemoteOriginLsn,
   projectProgramDeliveryEnvelope,
 } from "./model-sampling-relay.ts";
-export { ProgramDriverForeignEffectsContext } from "./program-driver-effects.ts";
+export { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 export {
   ProgramDriverNativeToolsContext,
   nativeProgramIdentities,
