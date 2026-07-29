@@ -13,9 +13,7 @@ import { describe, expect, it } from "vitest";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
   withJournalAuthority,
-  NULL_RESULT_SCHEMA_DESCRIPTOR,
   ProgramRuntime,
   canonicalSnapshot,
   createCapabilityKeyring,
@@ -28,6 +26,10 @@ import {
   type DurableProgramManifest,
   type Json,
 } from "../index.ts";
+import {
+  ANY_JSON_SCHEMA_DESCRIPTOR,
+  NULL_RESULT_SCHEMA_DESCRIPTOR,
+} from "@sweatpants/foundation/schema-descriptor";
 
 const keyring = createCapabilityKeyring("effect-contract-policy-test", [
   { keyId: "key-1", secret: "x".repeat(32) },

@@ -13,7 +13,6 @@ import {
   canonicalJson,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableSchemaRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
@@ -21,6 +20,7 @@ import {
   type Json,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   compilePeerResolverBundle,
   peerContractAsEffectDefinition,

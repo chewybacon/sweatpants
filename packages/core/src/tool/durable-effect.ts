@@ -1,9 +1,10 @@
-import { defineDurableEffect } from "@sweatpants/session-contract";
-import { type EffectDefinition, type RetrySafety } from "@sweatpants/session-contract";
+import { defineDurableEffect } from "@sweatpants/durable-execution";
+import { type EffectDefinition, type RetrySafety } from "@sweatpants/durable-effects";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { z, ZodSchema } from "zod";
-import { type DurableSchemaRegistryEntry, type Json } from "@sweatpants/session-contract";
+import { type Json } from "@sweatpants/foundation";
+import { type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 
@@ -16,10 +17,7 @@ export interface DurableEffectRuntimeValidators {
   readonly cancellationPartial?: StandardSchemaV1;
 }
 
-const effectCatalogs = new WeakMap<
-  EffectDefinition<Json, Json, Json>,
-  readonly DurableSchemaRegistryEntry[]
->();
+const effectCatalogs = new WeakMap<EffectDefinition<Json, Json, Json>, readonly SchemaBinding[]>();
 const effectValidators = new WeakMap<
   EffectDefinition<Json, Json, Json>,
   DurableEffectRuntimeValidators
@@ -65,7 +63,7 @@ export function defineEffect<
   PSchema extends ZodSchema ? JsonOutput<z.infer<PSchema>> : never
 > {
   const identity = `effect:${options.name}`;
-  const catalog: DurableSchemaRegistryEntry[] = [];
+  const catalog: SchemaBinding[] = [];
   const input = toPortableSchema(options.input, {
     identity: `${identity}/input`,
     role: "effect_input",
@@ -122,7 +120,7 @@ export function defineEffect<
 /** Digest-keyed validator entries authored beside one effect definition. */
 export function effectCatalogEntries(
   definition: EffectDefinition<Json, Json, Json>,
-): readonly DurableSchemaRegistryEntry[] {
+): readonly SchemaBinding[] {
   return effectCatalogs.get(definition) ?? [];
 }
 

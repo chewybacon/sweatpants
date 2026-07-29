@@ -32,7 +32,6 @@ import {
   type RecoverableSession,
   type ReserveOperationRequest,
   type ReserveOperationResult,
-  type DurableSchemaRegistry,
   type Json,
   type ReleaseActivationRequest,
   type ReleaseActivationResult,
@@ -43,6 +42,7 @@ import {
   type ResolveOperationResult,
   type TaskCloseReceipt,
 } from "@sweatpants/session-contract";
+import { type DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 
 /** Redis authority configuration; keyring material remains process-local and is never persisted. */
 export interface RedisDurableJournalAuthorityOptions {

@@ -2,12 +2,12 @@ import { call, run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { advertiseCapability, defineAgent } from "@sweatpants/core";
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
   createCapabilityKeyring,
   createPinnedDurableProgram,
   sha256,
   type Json,
 } from "@sweatpants/session-contract";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 import {
   createInMemoryImmutableContentStore,
   parseForeignA2ASendResult,

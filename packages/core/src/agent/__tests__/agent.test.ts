@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { sha256 } from "@sweatpants/foundation";
+import { createPinnedDurableProgram } from "@sweatpants/durable-execution";
 import {
-  createPinnedDurableProgram,
   createPortableSchemaDescriptor,
-  sha256,
   standardSchemaOf,
-  type DurableSchemaRegistryEntry,
-} from "@sweatpants/session-contract";
+  type SchemaBinding,
+} from "@sweatpants/foundation/schema-descriptor";
 import { advertiseCapability, defineAgent, parseAgentManifest } from "../../index.ts";
 
 const input = createPortableSchemaDescriptor({
@@ -26,7 +26,7 @@ const output = createPortableSchemaDescriptor({
   outputProjection: true,
   fidelity: { input: "explicit", output: "explicit" },
 });
-const schemas: DurableSchemaRegistryEntry[] = [input, output].map((descriptor) => ({
+const schemas: SchemaBinding[] = [input, output].map((descriptor) => ({
   descriptor,
   schema: standardSchemaOf("test", (value) => ({ value })),
 }));

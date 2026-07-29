@@ -8,12 +8,12 @@ import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpan
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
-  createDurableSchemaRegistry,
   createGeneratedPinnedDurableProgram,
   generateProgramArtifactIdentity,
   type DurableProgramManifest,
   type Json,
 } from "@sweatpants/session-contract";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   createInMemoryToolSessionStore,
   createToolSessionRegistry,

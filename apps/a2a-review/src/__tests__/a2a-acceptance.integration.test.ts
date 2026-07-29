@@ -13,7 +13,6 @@ import {
   canonicalJson,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableSchemaRegistry,
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
@@ -21,6 +20,7 @@ import {
   sha256,
   type Json,
 } from "@sweatpants/session-contract";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   createChatModelEffectRegistration,
   type ChatModelSampleOutputV2,

@@ -7,7 +7,7 @@
  * protocol, or the authoring surface.
  */
 
-import type { PortableSchemaDescriptor } from "./schema-descriptor.ts";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
 import type { Json } from "./types.ts";
 import type {
   DurableEffectDisposition as CanonicalDurableEffectDisposition,

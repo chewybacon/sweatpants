@@ -8,19 +8,21 @@ import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/core";
 import {
   DurableEffectRegistryContext,
-  FOREIGN_TOOL_ADAPTER_MANIFEST,
   withJournalAuthority,
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  foreignToolAdapter,
   type AttachProgramRequest,
   type DurableSemanticRecord,
   type ForeignToolRequest,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import {
+  FOREIGN_TOOL_ADAPTER_MANIFEST,
+  foreignToolAdapter,
+} from "@sweatpants/tool-session/foreign";
 
 import {
   createInMemoryToolSessionStore,

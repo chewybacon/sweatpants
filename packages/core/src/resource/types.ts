@@ -1,11 +1,11 @@
 import { CrankError } from "@sweatpants/durable-execution";
+import { type Json } from "@sweatpants/foundation";
 import {
-  type DurableSchemaRegistryEntry,
   type DurableTool,
-  type Json,
   type PinnedProgram,
   type ProgramIdentityProvenanceV1,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
 
 export const RESOURCE_PACKAGE_FORMAT = "sweatpants.resource-package.v1" as const;
 export const RESOURCE_PACKAGE_DOMAIN = `${RESOURCE_PACKAGE_FORMAT}\n`;
@@ -211,7 +211,7 @@ export function sortedResourceValues<T>(
 
 export interface ResourceReaderProgram extends DurableTool {
   /** Exact input/output validators to install with this generated child. */
-  readonly schemaCatalog: readonly DurableSchemaRegistryEntry[];
+  readonly schemaCatalog: readonly SchemaBinding[];
 }
 
 export interface ResourceReaderPrograms {

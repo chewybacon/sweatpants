@@ -2,12 +2,9 @@ import { type OperationOutcome } from "@sweatpants/session-contract";
 
 import type { Operation } from "effection";
 import {
-  createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,
   type CapabilityKeyring,
-  type DurableSchemaRegistryEntry,
   type DurableJournalAuthorityService,
-  type DurableSchemaRegistry,
   type DurableSemanticRecord,
   type DurableOperationState,
   type DurableTaskExecutionState,
@@ -15,7 +12,13 @@ import {
   type OpenDurableTaskRequest,
   type ResolveOperationResult,
 } from "@sweatpants/session-contract";
+import {
+  createDurableSchemaRegistry,
+  type DurableSchemaRegistry,
+} from "@sweatpants/journal-authority/schema-registry";
+import { type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
 
+import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 import { programDriverChatEngineSchemaEntries } from "./program-driver-schema.ts";
 
 /**
@@ -24,9 +27,13 @@ import { programDriverChatEngineSchemaEntries } from "./program-driver-schema.ts
  * tool/effect validator entries.
  */
 export function programDriverSchemaRegistry(
-  entries: Iterable<DurableSchemaRegistryEntry> = [],
+  entries: Iterable<SchemaBinding> = [],
 ): ReturnType<typeof createDurableSchemaRegistry> {
-  return createDurableSchemaRegistry([...programDriverChatEngineSchemaEntries(), ...entries]);
+  return createDurableSchemaRegistry([
+    ...programDriverChatEngineSchemaEntries(),
+    ...foreignToolSchemaEntries(),
+    ...entries,
+  ]);
 }
 
 /** Authority operations required by the framework without exposing signing capabilities. */

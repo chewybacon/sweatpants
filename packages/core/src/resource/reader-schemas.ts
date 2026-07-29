@@ -1,9 +1,7 @@
 import { z } from "zod";
 
-import type {
-  DurableSchemaRegistryEntry,
-  PortableSchemaDescriptor,
-} from "@sweatpants/session-contract";
+import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import { type PortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import { RESOURCE_SEARCH_MATCH_SEMANTICS, type ReaderOperation } from "./types.ts";
@@ -100,7 +98,7 @@ const operationSchemas = {
 export interface ReaderSchemaArtifacts {
   readonly input: PortableSchemaDescriptor;
   readonly output: PortableSchemaDescriptor;
-  readonly catalog: readonly DurableSchemaRegistryEntry[];
+  readonly catalog: readonly SchemaBinding[];
 }
 
 const cache = new Map<ReaderOperation, ReaderSchemaArtifacts>();

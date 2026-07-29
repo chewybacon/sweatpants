@@ -1,10 +1,7 @@
 import { run } from "effection";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
-import {
-  createDurableSchemaRegistry,
-  validateRegisteredSchema,
-} from "@sweatpants/session-contract";
+import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 
 import { toPortableSchema } from "../../schema/zod-adapter.ts";
 import { createTool } from "../create.ts";
@@ -37,13 +34,9 @@ describe("Zod Standard Schema adapter", () => {
     });
     await expect(
       run(function* () {
-        return yield* validateRegisteredSchema(
-          createDurableSchemaRegistry([lowered.entry]),
-          lowered.descriptor.digest,
-          "  hello ",
-        );
+        return yield* validateStandardSchema(lowered.entry.schema, "  hello ");
       }),
-    ).resolves.toEqual({ status: "ok", value: "HELLO" });
+    ).resolves.toEqual({ value: "HELLO" });
     expect(lowered.descriptor.fidelity.output).toBe("explicit");
   });
 

@@ -1,8 +1,6 @@
 import type { Operation } from "effection";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
-  FOREIGN_TOOL_CONTINUE_EFFECT,
-  FOREIGN_TOOL_START_EFFECT,
   assertJson,
   type DurableEffectContext,
   type DurableEffectRegistration,
@@ -10,6 +8,10 @@ import {
   type ForeignToolDisposition,
   type Json,
 } from "@sweatpants/session-contract";
+import {
+  FOREIGN_TOOL_CONTINUE_EFFECT,
+  FOREIGN_TOOL_START_EFFECT,
+} from "@sweatpants/tool-session/foreign";
 
 import type { ToolInventoryEntry } from "@sweatpants/chat-core";
 import { getToolParameterValidationErrorPayload } from "../../lib/chat/tool-parameters.ts";

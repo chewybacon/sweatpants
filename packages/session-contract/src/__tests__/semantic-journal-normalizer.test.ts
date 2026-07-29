@@ -2,11 +2,11 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
   createCapabilityKeyring,
   createInMemoryDurableJournalAuthority,
   type DurableProgramManifest,
 } from "../index.ts";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 import type { DurableSemanticRecord } from "../durable-authority.ts";
 import {
   normalizeSemanticJournal,

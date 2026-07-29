@@ -1,16 +1,12 @@
+import { assertJson, canonicalJson, sha256, sha256Bytes, type Json } from "@sweatpants/foundation";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
-  assertJson,
-  canonicalJson,
   createGeneratedPinnedDurableProgram,
   generateProgramArtifactIdentity,
-  sha256,
-  sha256Bytes,
   type DurableProgramManifest,
-  type Json,
   type PinnedProgram,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 
 import { formatResourceUri, normalizeResourcePath, parseResourceUri } from "./package.ts";
 import { readerSchemaArtifacts } from "./reader-schemas.ts";

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createPinnedDurableProgram,
   createGeneratedPinnedDurableProgram,
@@ -14,6 +13,7 @@ import {
   validateProgramIdentityProvenance,
   type ProgramArtifactIdentityInputV1,
 } from "../index.ts";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 
 const manifest = {
   programId: "identity.test",

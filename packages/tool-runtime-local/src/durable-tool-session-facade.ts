@@ -13,24 +13,27 @@ import {
   assertJson,
   assertReplayedCanonicalValue,
   createDurableEffectRegistry,
-  createDurableSchemaRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
   type DurableProgramManifest,
-  type DurableSchemaRegistry,
-  type DurableSchemaRegistryEntry,
   type DurableSemanticRecord,
   type DurableTool,
   type Json,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
 import {
+  createDurableSchemaRegistry,
+  type DurableSchemaRegistry,
+} from "@sweatpants/journal-authority/schema-registry";
+import { type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import {
   createProgramDriverRegistry,
   ProgramDriverRegistryContext,
 } from "@sweatpants/durable-execution";
 
+import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 import { createLocalDurableProgramDriver } from "./durable-driver.ts";
 
 /** Runtime annotation identifying an ordinary tool backed by an inner durable journal. */
@@ -163,14 +166,16 @@ function* runFacadeProgram<I extends Json, O extends Json>(
   while (true) {
     const authoredCatalog = (
       options.tool as DurableTool<I, O> & {
-        artifacts?: { catalog?: readonly DurableSchemaRegistryEntry[] };
+        artifacts?: { catalog?: readonly SchemaBinding[] };
       }
     ).artifacts?.catalog;
     const authority = createInMemoryDurableJournalAuthority({
       journalId: `durable-tool-facade:${options.tool.manifest.programId}`,
       journalIncarnation: "1",
       keyring: options.keyring,
-      schemaRegistry: options.schemaRegistry ?? createDurableSchemaRegistry(authoredCatalog ?? []),
+      schemaRegistry:
+        options.schemaRegistry ??
+        createDurableSchemaRegistry([...foreignToolSchemaEntries(), ...(authoredCatalog ?? [])]),
       ...(snapshot ? { snapshot } : {}),
     });
     const taskId = "turn-0/root";

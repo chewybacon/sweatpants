@@ -18,6 +18,10 @@ describe("session-contract package boundaries", () => {
       "@sweatpants/durable-effects",
       "@sweatpants/durable-execution",
       "@sweatpants/foundation",
+      // DR-081: runtime schema-registry ownership has switched to Journal Authority.
+      "@sweatpants/journal-authority",
+      // DR-047: the foreign-tool contract and adapter now belong to Tool Session.
+      "@sweatpants/tool-session",
       "effection",
     ]);
 
@@ -29,8 +33,6 @@ describe("session-contract package boundaries", () => {
       "durable-types.ts",
       "index.ts",
       "program-driver.ts",
-      "schema-descriptor.ts",
-      "schema-registry.ts",
       "types.ts",
     ];
     for (const file of sourceFiles) {

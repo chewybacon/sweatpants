@@ -5,15 +5,17 @@ import {
   assertJson,
   canonicalJson,
   createPinnedDurableProgram,
-  createPortableSchemaDescriptor,
   defineDurableEffect,
   sha256,
   type DurableEffectContext,
   type DurableEffectRegistration,
-  type DurableSchemaRegistryEntry,
   type Json,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import {
+  createPortableSchemaDescriptor,
+  type SchemaBinding,
+} from "@sweatpants/foundation/schema-descriptor";
 import { ForeignA2ADurableSession } from "./foreign-session.ts";
 import { foreignA2AMessageDigest } from "./foreign-validation.ts";
 import type {
@@ -494,7 +496,7 @@ export function createForeignA2AEffectRegistrations(options: {
   ];
 }
 
-export const FOREIGN_A2A_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] = Object.freeze(
+export const FOREIGN_A2A_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze(
   [
     INPUT,
     OUTPUT,

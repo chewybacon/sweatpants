@@ -2,12 +2,9 @@ import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/du
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
-  createDurableProgramContext,
-  type ProgramResume,
-  type ProgramStepProposal,
-} from "@sweatpants/session-contract";
+import { createDurableProgramContext } from "@sweatpants/durable-execution";
+import { type ProgramResume, type ProgramStepProposal } from "@sweatpants/durable-execution";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 
 import { defineAgent, parseAgentManifest } from "../../agent/index.ts";
 import { createDurableTool } from "../durable-create.ts";

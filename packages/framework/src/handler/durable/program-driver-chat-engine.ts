@@ -10,7 +10,6 @@ import { resource, type Operation, type Stream } from "effection";
 import { encodeElicitContext } from "@sweatpants/elicit-context";
 import {
   ProgramRuntime,
-  TOOL_OWNED_SAMPLE_CLASSIFICATION,
   assertJson,
   assertReplayedCanonicalValue,
   canonicalJson,
@@ -21,7 +20,6 @@ import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createLocalProgramDriver,
-  foreignToolAdapter,
   stableOpaqueId,
   stableProgramAttachmentId,
   type DurableJournalAuthorityService,
@@ -31,6 +29,10 @@ import {
   type Json,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import {
+  TOOL_OWNED_SAMPLE_CLASSIFICATION,
+  foreignToolAdapter,
+} from "@sweatpants/tool-session/foreign";
 
 import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import type {

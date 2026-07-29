@@ -9,8 +9,8 @@ export type EffectSchemaRole = "effect_input" | "effect_output" | "effect_cancel
  * refines it with `parseEffectSchemaDescriptor`; the broad input keeps generic
  * schema-producing adapters independent of this domain's role algebra.
  */
-export type EffectSchemaDescriptor = PortableSchemaDescriptor<EffectSchemaRole>;
-export type ParsedEffectSchemaDescriptor = EffectSchemaDescriptor;
+export type EffectSchemaDescriptor = PortableSchemaDescriptor;
+export type ParsedEffectSchemaDescriptor = PortableSchemaDescriptor<EffectSchemaRole>;
 
 export function isEffectSchemaRole(role: string): role is EffectSchemaRole {
   return (

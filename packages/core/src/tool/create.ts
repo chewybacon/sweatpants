@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import type { ZodSchema } from "zod";
-import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/session-contract";
+import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 
 import { buildToolSchemaArtifacts } from "./artifacts.ts";
 import type {

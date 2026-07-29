@@ -2,13 +2,13 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
   createCapabilityKeyring,
   canonicalJson,
   createInMemoryDurableJournalAuthority,
   sha256,
   type DurableProgramManifest,
 } from "../index.ts";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 
 const manifest: DurableProgramManifest = {
   programId: "fixture.activation",

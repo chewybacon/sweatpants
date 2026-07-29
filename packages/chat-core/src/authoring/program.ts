@@ -9,7 +9,7 @@ import {
 } from "@sweatpants/foundation";
 import type {
   PortableSchemaDescriptor,
-  DurableSchemaRegistryEntry,
+  SchemaBinding,
 } from "@sweatpants/foundation/schema-descriptor";
 import {
   MODEL_SAMPLE_EFFECT,
@@ -117,12 +117,12 @@ export interface DefineChatProgramOptions {
   readonly contextPolicy?: ChatContextPolicyV1;
   readonly maxIterations?: number;
   /** Runtime validators for low-level effect/elicitation descriptors not authored through core helpers. */
-  readonly schemaCatalog?: readonly DurableSchemaRegistryEntry[];
+  readonly schemaCatalog?: readonly SchemaBinding[];
   readonly sampling?: ChatSamplingPolicyV1;
 }
 export type ChatProgramDefinition = DurableTool<ChatTurnInputV1 & Json, ChatTurnResultV1 & Json> & {
   readonly kind: "sweatpants.chat-program.v1";
-  readonly schemaCatalog: readonly DurableSchemaRegistryEntry[];
+  readonly schemaCatalog: readonly SchemaBinding[];
   readonly resourcePackages: readonly ResourcePackage[];
   readonly resourceView: ResourceView;
   readonly resourceReaders: ResourceReaderPrograms;
@@ -579,8 +579,8 @@ function normalizeProgramBinding(input: AgentProgramInput): AgentProgramBinding 
     invalid("tool executable binding is missing");
   }
   const extended = program as DurableTool & {
-    readonly schemaCatalog?: readonly DurableSchemaRegistryEntry[];
-    readonly artifacts?: { readonly catalog?: readonly DurableSchemaRegistryEntry[] };
+    readonly schemaCatalog?: readonly SchemaBinding[];
+    readonly artifacts?: { readonly catalog?: readonly SchemaBinding[] };
     readonly resourcePackages?: readonly ResourcePackage[];
     readonly resourceReaders?: ResourceReaderPrograms;
   };
@@ -812,7 +812,7 @@ function requireOperationSchemaCoverage(
   elicitations: Readonly<
     Record<string, { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }>
   >,
-  schemas: readonly DurableSchemaRegistryEntry[],
+  schemas: readonly SchemaBinding[],
 ): void {
   const installed = new Set(schemas.map((entry) => entry.descriptor.digest));
   const required = [
@@ -834,7 +834,7 @@ function requireOperationSchemaCoverage(
     invalid("effect or elicitation runtime schema binding is missing");
   }
 }
-function aggregateSchemas(entries: DurableSchemaRegistryEntry[]): DurableSchemaRegistryEntry[] {
+function aggregateSchemas(entries: SchemaBinding[]): SchemaBinding[] {
   const map = new Map(entries.map((entry) => [entry.descriptor.digest, entry]));
   return sortedValues(map.values(), (a, b) =>
     a.descriptor.digest.localeCompare(b.descriptor.digest),

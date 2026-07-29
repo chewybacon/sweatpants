@@ -37,6 +37,7 @@
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/framework": "workspace:*",
+        "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/journal-authority-redis": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/react-chat": "workspace:*",

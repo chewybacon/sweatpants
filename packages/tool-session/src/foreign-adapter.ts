@@ -2,7 +2,10 @@ import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import type { Operation } from "effection";
 
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
-import { createPinnedDurableProgram, defineDurableProgramManifest } from "./authoring.ts";
+import {
+  createPinnedDurableProgram,
+  defineDurableProgramManifest,
+} from "@sweatpants/durable-execution";
 import {
   FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
   FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
@@ -11,11 +14,12 @@ import {
   FOREIGN_TOOL_ADAPTER_PROGRAM,
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
-} from "./foreign-tool-contract.ts";
+} from "./foreign-contract.ts";
 import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/durable-effects";
 import { CrankError } from "@sweatpants/durable-execution";
-import type { Json } from "./types.ts";
-import type { DurableEffectRegistration, ForeignToolRequest } from "./durable-types.ts";
+import type { Json } from "@sweatpants/foundation";
+import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
+import type { ForeignToolRequest } from "@sweatpants/durable-execution";
 
 /**
  * Classification stamped onto every model.sample raised on behalf of a

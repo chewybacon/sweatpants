@@ -12,8 +12,6 @@ import type {
 } from "@sweatpants/tool-session";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
-  FOREIGN_TOOL_CONTINUE_EFFECT,
-  FOREIGN_TOOL_START_EFFECT,
   assertJson,
   type DurableEffectRegistration,
   type ForeignContinuation,
@@ -22,6 +20,10 @@ import {
   type ForeignToolDisposition,
   type Json,
 } from "@sweatpants/session-contract";
+import {
+  FOREIGN_TOOL_CONTINUE_EFFECT,
+  FOREIGN_TOOL_START_EFFECT,
+} from "@sweatpants/tool-session/foreign";
 
 const CONTINUATION_SCHEME = "sweatpants/tool-session-v1";
 

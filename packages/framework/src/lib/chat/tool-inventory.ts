@@ -1,5 +1,6 @@
 import type { AnyToolContract } from "@sweatpants/core";
-import type { DurableSchemaRegistry, DurableTool } from "@sweatpants/session-contract";
+import type { DurableTool } from "@sweatpants/session-contract";
+import type { DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { toToolParameterJsonSchema } from "./tool-parameters.ts";
 import type { ToolInventoryEntry } from "@sweatpants/chat-core";
 

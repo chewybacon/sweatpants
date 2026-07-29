@@ -18,11 +18,11 @@ import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createDurableSchemaRegistry,
   createLocalProgramDriver,
   stableProgramAttachmentId,
   type DurableProgramManifest,
 } from "../index.ts";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { booleanGuard, createSchemaFixture, nullGuard, stringGuard } from "../testing/index.ts";
 
 const keyring = createCapabilityKeyring("cancellation-test", [

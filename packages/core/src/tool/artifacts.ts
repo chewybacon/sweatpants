@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { DurableSchemaRegistryEntry } from "@sweatpants/session-contract";
+import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import type { ToolElicitSchemaArtifact, ToolSchemaArtifacts } from "./contract.ts";
@@ -20,7 +20,7 @@ export interface ToolSchemaArtifactInputs {
 
 /** Lowers all authored schemas of one tool into descriptors plus a validator catalog. */
 export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): ToolSchemaArtifacts {
-  const catalog: DurableSchemaRegistryEntry[] = [];
+  const catalog: SchemaBinding[] = [];
   const parameters = toPortableSchema(inputs.parameters, {
     identity: `${inputs.identity}/parameters`,
     role: "tool_parameters",

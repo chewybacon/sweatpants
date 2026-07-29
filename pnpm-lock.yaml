@@ -211,12 +211,21 @@ importers:
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:../../packages/durable-execution
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../../packages/foundation
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../../packages/journal-authority
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../../packages/session-contract
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../../packages/tool-session
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -266,6 +275,9 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../../packages/foundation
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../../packages/journal-authority
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../../packages/session-contract
@@ -586,6 +598,9 @@ importers:
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../../packages/journal-authority
       '@sweatpants/journal-authority-redis':
         specifier: workspace:*
         version: link:../../packages/journal-authority-redis
@@ -932,9 +947,15 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../journal-authority
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../tool-session
       ws:
         specifier: 'catalog:'
         version: 8.19.0
@@ -1022,6 +1043,9 @@ importers:
         specifier: 0.27.2
         version: 0.27.2
     devDependencies:
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.28
@@ -1049,9 +1073,6 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
-      '@sweatpants/session-contract':
-        specifier: workspace:*
-        version: link:../session-contract
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -1283,6 +1304,9 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../journal-authority
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract
@@ -1469,6 +1493,9 @@ importers:
 
   packages/journal-authority:
     dependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:../durable-execution
@@ -1638,6 +1665,12 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../journal-authority
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../tool-session
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -1795,6 +1828,9 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../journal-authority
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract
@@ -1829,9 +1865,21 @@ importers:
 
   packages/tool-session:
     dependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../core
+      '@sweatpants/durable-effects':
+        specifier: workspace:*
+        version: link:../durable-effects
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9

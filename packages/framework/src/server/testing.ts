@@ -13,12 +13,12 @@ import {
   sha256,
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
-  type DurableSchemaRegistry,
   type DurableSemanticRecord,
   type OpenDurableTaskRequest,
   type ResolveOperationResult,
   type Json,
 } from "@sweatpants/session-contract";
+import { type DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   programDriverSchemaRegistry,
   type ProgramDriverJournal,

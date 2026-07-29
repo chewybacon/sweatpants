@@ -8,23 +8,29 @@
  *
  * @example Basic test
  * ```typescript
- * import { createMockMCPClient, runMCPTool } from './mock-runtime.ts'
+ * import {
+  createMockMCPClient,
+  runMCPTool } from './mock-runtime.ts'
  *
  * const mockClient = createMockMCPClient({
  *   elicitResponses: [
- *     { action: 'accept', content: { flightId: 'FL123' } },
- *   ],
- *   sampleResponses: ['Flight FL123 departs at 10am'],
- * })
+ *     { action: 'accept',
+  content: { flightId: 'FL123' } },
+  *   ],
+  *   sampleResponses: ['Flight FL123 departs at 10am'],
+  * })
  *
- * const result = yield* runMCPTool(myTool, { destination: 'NYC' }, mockClient)
+ * const result = yield* runMCPTool(myTool,
+  { destination: 'NYC' },
+  mockClient)
  * expect(result).toBe('Booked flight FL123')
  * ```
  *
  * @packageDocumentation
  */
 import { useAbortSignal, type Operation } from "effection";
-import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/session-contract";
+import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
+import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import { z } from "zod";
 import type {
   ToolCtx,

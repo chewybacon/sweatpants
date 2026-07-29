@@ -3,11 +3,13 @@ import {
   assertJson,
   canonicalJson,
   createPinnedDurableProgram,
-  createPortableSchemaDescriptor,
   sha256,
-  type DurableSchemaRegistryEntry,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import {
+  createPortableSchemaDescriptor,
+  type SchemaBinding,
+} from "@sweatpants/foundation/schema-descriptor";
 import { foreignA2AAdapterChild } from "./foreign-adapter.ts";
 import type { ForeignA2AStartRequest, ForeignA2ATerminalResult } from "./foreign-task-types.ts";
 import { SWEATPANTS_PEER_PROFILE_URI, type PeerInvocationPin } from "./peer-types.ts";
@@ -62,7 +64,7 @@ export function peerAdapterChild(pin: PeerInvocationPin, request: ForeignA2AStar
   return { ...PEER_ADAPTER_PROGRAM, input: { pin, request } };
 }
 
-export const PEER_ADAPTER_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] = Object.freeze([
+export const PEER_ADAPTER_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze([
   { descriptor: INPUT, schema: jsonSchema() },
   { descriptor: OUTPUT, schema: jsonSchema() },
 ]);

@@ -7,6 +7,7 @@ export default defineConfig({
     port: "src/port.ts",
     errors: "src/errors.ts",
     "schema-descriptor": "src/schema-descriptor.ts",
+    "schema-validation": "src/schema-validation.ts",
   },
   format: ["esm"],
   dts: {

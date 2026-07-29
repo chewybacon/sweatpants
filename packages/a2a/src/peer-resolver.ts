@@ -4,12 +4,14 @@ import {
   assertJson,
   canonicalJson,
   createPinnedDurableProgram,
-  createPortableSchemaDescriptor,
   sha256,
-  type DurableSchemaRegistryEntry,
   type DurableTool,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import {
+  createPortableSchemaDescriptor,
+  type SchemaBinding,
+} from "@sweatpants/foundation/schema-descriptor";
 import { peerContractAsEffectDefinition } from "./peer-contracts.ts";
 import type {
   PeerEffectContract,
@@ -29,7 +31,7 @@ export type PeerResolverBundle = {
   readonly grant: PeerGrant;
   readonly contract: PeerEffectContract;
   readonly tool: DurableTool<PeerResolverInput, PeerResolverOutput>;
-  readonly schemaEntries: DurableSchemaRegistryEntry[];
+  readonly schemaEntries: SchemaBinding[];
 };
 
 /** Compiles one exact granted contract into one replay-pinned local resolver program. */

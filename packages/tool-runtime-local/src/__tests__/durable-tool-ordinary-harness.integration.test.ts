@@ -1,3 +1,4 @@
+import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 import { defineDurableEffect } from "@sweatpants/session-contract";
 
 import {
@@ -8,22 +9,24 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   DurableEffectRegistryContext,
-  FOREIGN_TOOL_ADAPTER_MANIFEST,
   withJournalAuthority,
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableSchemaRegistry,
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   defineDurableProgramManifest,
-  foreignToolAdapter,
   type AttachProgramRequest,
   type DurableSemanticRecord,
   type ForeignToolRequest,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import {
+  FOREIGN_TOOL_ADAPTER_MANIFEST,
+  foreignToolAdapter,
+} from "@sweatpants/tool-session/foreign";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { anyGuard, createSchemaFixture } from "@sweatpants/session-contract/testing";
 import type { RuntimeTool } from "@sweatpants/core";
 
@@ -82,6 +85,7 @@ const innerOutput = createSchemaFixture(
 );
 const innerSchemas = () =>
   createDurableSchemaRegistry([
+    ...foreignToolSchemaEntries(),
     sampleInput.entry,
     sampleOutput.entry,
     choiceSchema.entry,

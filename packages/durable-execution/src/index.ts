@@ -29,3 +29,6 @@ export * from "./program-runtime-context.ts";
 export * from "./program-execution-context.ts";
 export * from "./program-identity.ts";
 export * from "./testing/program-driver-conformance.ts";
+
+export * from "./program-context.ts";
+export * from "./local-program-driver.ts";

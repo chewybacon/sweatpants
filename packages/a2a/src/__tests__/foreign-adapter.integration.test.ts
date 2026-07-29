@@ -10,11 +10,11 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableSchemaRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
 } from "@sweatpants/session-contract";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   FOREIGN_A2A_ADAPTER_PROGRAM,
   FOREIGN_A2A_OBSERVE_EFFECT,

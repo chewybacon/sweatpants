@@ -26,7 +26,7 @@ export {
   type GeneratedProgramInterfaceIdentityV1,
   type ProgramArtifactIdentityInputV1,
   type ProgramIdentityProvenanceV1,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 
 // Re-export transport utilities and types
 export {

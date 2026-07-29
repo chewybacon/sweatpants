@@ -11,11 +11,11 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,
   type ProgramRunResult,
   type ProgramRoute,
 } from "@sweatpants/session-contract";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   createProgramDriverRegistry,
   ProgramDriverRegistryContext,

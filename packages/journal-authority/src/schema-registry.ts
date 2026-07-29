@@ -1,19 +1,21 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { call, type Operation } from "effection";
+import type { Operation } from "effection";
 
-import { assertJson, canonicalSnapshot } from "./canonical.ts";
-import { foreignToolSchemaEntries } from "./foreign-tool-contract.ts";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import {
+  safeSchemaIssues,
+  validateStandardSchema,
+  type SafeSchemaIssue,
+} from "@sweatpants/foundation/schema-validation";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   NULL_RESULT_SCHEMA_DESCRIPTOR,
   parsePortableSchemaDescriptor,
-  type DurableSchemaRegistryEntry,
+  standardSchemaOf,
   type PortableSchemaDescriptor,
-} from "./schema-descriptor.ts";
-
-export type { DurableSchemaRegistryEntry } from "./schema-descriptor.ts";
-import { type Json } from "./types.ts";
+  type SchemaBinding,
+} from "@sweatpants/foundation/schema-descriptor";
 
 /**
  * Scope-local runtime validator registry keyed by portable schema digest.
@@ -33,22 +35,16 @@ import { type Json } from "./types.ts";
 export interface DurableSchemaCatalog {
   readonly name: string;
   readonly version: string;
-  readonly entries: readonly DurableSchemaRegistryEntry[];
+  readonly entries: readonly SchemaBinding[];
 }
 
 /** Digest-keyed scope-local registry of runtime Standard Schema validators. */
 export interface DurableSchemaRegistry {
-  get(digest: string): DurableSchemaRegistryEntry | undefined;
+  get(digest: string): SchemaBinding | undefined;
   has(digest: string): boolean;
   descriptors(): readonly PortableSchemaDescriptor[];
   /** Returns digests referenced by callers that this registry cannot satisfy. */
   missing(required: Iterable<string>): string[];
-}
-
-/** Bounded, redacted validation issue safe for journals and public errors. */
-export interface SafeSchemaIssue {
-  readonly message: string;
-  readonly path?: string;
 }
 
 /** Closed registry validation result algebra. */
@@ -57,15 +53,11 @@ export type RegistrySchemaValidation =
   | { status: "invalid"; issues: SafeSchemaIssue[] }
   | { status: "unavailable"; digest: string };
 
-const MAX_ISSUES = 16;
-const MAX_ISSUE_MESSAGE_LENGTH = 512;
-const MAX_ISSUE_PATH_LENGTH = 256;
-
 /** Creates a versioned validator catalog after descriptor boundary validation. */
 export function createDurableSchemaCatalog(
   name: string,
   version: string,
-  entries: readonly DurableSchemaRegistryEntry[],
+  entries: readonly SchemaBinding[],
 ): DurableSchemaCatalog {
   if (!name || !version) {
     throw new CrankError("invalid_schema_catalog", "Catalog name and version are required");
@@ -79,9 +71,9 @@ export function createDurableSchemaCatalog(
 
 /** Creates a digest-keyed registry from entries; built-ins are always present. */
 export function createDurableSchemaRegistry(
-  entries: readonly DurableSchemaRegistryEntry[] = [],
+  entries: readonly SchemaBinding[] = [],
 ): DurableSchemaRegistry {
-  const byDigest = new Map<string, DurableSchemaRegistryEntry>();
+  const byDigest = new Map<string, SchemaBinding>();
   for (const builtin of builtinEntries()) {
     byDigest.set(builtin.descriptor.digest, builtin);
   }
@@ -112,22 +104,6 @@ export function reconcileSchemaCoverage(
 ): { complete: boolean; missing: string[] } {
   const missing = registry.missing(requiredDigests);
   return { complete: missing.length === 0, missing };
-}
-
-/**
- * Runs one Standard Schema validation through Effection. Promise-returning
- * validators are awaited as an Operation; raw Promises never become runtime
- * handler contracts.
- */
-export function* validateStandardSchema(
-  schema: StandardSchemaV1,
-  value: unknown,
-): Operation<StandardSchemaV1.Result<unknown>> {
-  const result = schema["~standard"].validate(value);
-  if (isPromiseLike(result)) {
-    return yield* call(() => Promise.resolve(result));
-  }
-  return result;
 }
 
 /**
@@ -165,35 +141,8 @@ export function* validateRegisteredSchema(
   }
 }
 
-/** Projects Standard Schema issues into bounded, redacted diagnostics. */
-export function safeSchemaIssues(issues: readonly StandardSchemaV1.Issue[]): SafeSchemaIssue[] {
-  return issues.slice(0, MAX_ISSUES).map((issue) => {
-    const message =
-      typeof issue.message === "string"
-        ? issue.message.slice(0, MAX_ISSUE_MESSAGE_LENGTH)
-        : "invalid value";
-    const path = issuePath(issue.path);
-    return path === undefined ? { message } : { message, path };
-  });
-}
-
-function issuePath(path: StandardSchemaV1.Issue["path"]): string | undefined {
-  if (!path || path.length === 0) {
-    return undefined;
-  }
-  const rendered = path
-    .map((segment) => {
-      const key =
-        typeof segment === "object" && segment !== null && "key" in segment ? segment.key : segment;
-      return typeof key === "symbol" ? "<symbol>" : String(key);
-    })
-    .join(".");
-  return rendered.slice(0, MAX_ISSUE_PATH_LENGTH);
-}
-
-function builtinEntries(): DurableSchemaRegistryEntry[] {
+function builtinEntries(): SchemaBinding[] {
   return [
-    ...foreignToolSchemaEntries(),
     {
       descriptor: NULL_RESULT_SCHEMA_DESCRIPTOR,
       schema: standardSchemaOf("sweatpants", (value) =>
@@ -213,21 +162,7 @@ function builtinEntries(): DurableSchemaRegistryEntry[] {
   ];
 }
 
-/** Constructs a minimal in-repo Standard Schema wrapper for built-in validators. */
-export function standardSchemaOf(
-  vendor: string,
-  validate: (value: unknown) => StandardSchemaV1.Result<unknown>,
-): StandardSchemaV1 {
-  return {
-    "~standard": {
-      version: 1,
-      vendor,
-      validate,
-    },
-  };
-}
-
-function normalizeEntry(entry: DurableSchemaRegistryEntry): DurableSchemaRegistryEntry {
+function normalizeEntry(entry: SchemaBinding): SchemaBinding {
   const descriptor = parsePortableSchemaDescriptor(entry.descriptor);
   const standard = entry.schema?.["~standard"];
   if (!standard || standard.version !== 1 || typeof standard.validate !== "function") {
@@ -239,10 +174,7 @@ function normalizeEntry(entry: DurableSchemaRegistryEntry): DurableSchemaRegistr
   return { descriptor, schema: entry.schema };
 }
 
-function addEntry(
-  byDigest: Map<string, DurableSchemaRegistryEntry>,
-  entry: DurableSchemaRegistryEntry,
-): void {
+function addEntry(byDigest: Map<string, SchemaBinding>, entry: SchemaBinding): void {
   const existing = byDigest.get(entry.descriptor.digest);
   if (existing) {
     // Digest commits to identity/role/version/vendor/projections, so a digest
@@ -253,7 +185,7 @@ function addEntry(
   byDigest.set(entry.descriptor.digest, entry);
 }
 
-function registryOver(byDigest: Map<string, DurableSchemaRegistryEntry>): DurableSchemaRegistry {
+function registryOver(byDigest: Map<string, SchemaBinding>): DurableSchemaRegistry {
   return {
     get: (digest) => byDigest.get(digest),
     has: (digest) => byDigest.has(digest),
@@ -270,12 +202,4 @@ function registryOver(byDigest: Map<string, DurableSchemaRegistryEntry>): Durabl
       return missing;
     },
   };
-}
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return Boolean(
-    value &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as { then?: unknown }).then === "function",
-  );
 }

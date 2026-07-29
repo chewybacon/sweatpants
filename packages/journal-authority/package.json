@@ -63,6 +63,17 @@
                 "default": "./dist/api.js"
             },
             "default": "./src/api.ts"
+        },
+        "./schema-registry": {
+            "development": {
+                "import": "./src/schema-registry.ts",
+                "types": "./src/schema-registry.ts"
+            },
+            "import": {
+                "types": "./dist/schema-registry.d.ts",
+                "default": "./dist/schema-registry.js"
+            },
+            "default": "./src/schema-registry.ts"
         }
     },
     "scripts": {
@@ -71,6 +82,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@standard-schema/spec": "catalog:",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "effection": "catalog:"

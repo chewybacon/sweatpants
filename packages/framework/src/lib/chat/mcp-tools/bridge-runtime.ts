@@ -32,7 +32,8 @@ import {
 } from "effection";
 import { z } from "zod";
 import { encodeElicitContext } from "@sweatpants/elicit-context";
-import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/session-contract";
+import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
+import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import { validateToolParameters } from "../tool-parameters.ts";
 import type {
   McpToolContextWithElicits,

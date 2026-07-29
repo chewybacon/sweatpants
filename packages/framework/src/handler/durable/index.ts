@@ -23,16 +23,18 @@ export {
   withJournalAuthority,
   ProgramPeer,
   ProgramRuntime,
-  FOREIGN_TOOL_ADAPTER_MANIFEST,
-  FOREIGN_TOOL_ADAPTER_PROGRAM,
-  FOREIGN_TOOL_CONTINUE_EFFECT,
-  FOREIGN_TOOL_START_EFFECT,
-  foreignToolAdapter,
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
 } from "@sweatpants/session-contract";
+export {
+  FOREIGN_TOOL_ADAPTER_MANIFEST,
+  FOREIGN_TOOL_ADAPTER_PROGRAM,
+  FOREIGN_TOOL_CONTINUE_EFFECT,
+  FOREIGN_TOOL_START_EFFECT,
+  foreignToolAdapter,
+} from "@sweatpants/tool-session/foreign";
 export {
   createPinnedDurableProgram,
   defineDurableEffect,
