@@ -29,7 +29,7 @@ function workerBootstrapUrl(): URL {
     resolve(process.cwd(), "src/fixtures/acceptance-tool-worker-bootstrap.mjs"),
     resolve(
       process.cwd(),
-      "packages/framework-acceptance/src/fixtures/acceptance-tool-worker-bootstrap.mjs",
+      "packages/platform-acceptance/src/fixtures/acceptance-tool-worker-bootstrap.mjs",
     ),
   ];
   const candidate = candidates.find(existsSync);

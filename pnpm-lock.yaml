@@ -1420,7 +1420,7 @@ importers:
         specifier: 'catalog:'
         version: 4.1.13
 
-  packages/framework-acceptance:
+  packages/platform-acceptance:
     dependencies:
       '@sweatpants/a2a':
         specifier: workspace:*

@@ -109,7 +109,7 @@ Acceptance tests are the preferred fast feedback loop for framework/package cont
 
 Acceptance tests are contractual. They should pass as written.
 
-Framework acceptance tests under `packages/framework-acceptance` MUST use the causal generator-based `withTestScenario` authoring style by default. Read `packages/framework-acceptance/AUTHORING.md` before adding or changing those tests. Promise barriers (`withTestRig`, `expectRequest`, raw turn handles) are an advanced escape hatch and require an inline explanation of why the scenario vocabulary is insufficient. Future feature specs and plans SHOULD present framework-acceptance examples in cause-then-consequence scenario form.
+Framework acceptance tests under `packages/platform-acceptance` MUST use the causal generator-based `withTestScenario` authoring style by default. Read `packages/platform-acceptance/AUTHORING.md` before adding or changing those tests. Promise barriers (`withTestRig`, `expectRequest`, raw turn handles) are an advanced escape hatch and require an inline explanation of why the scenario vocabulary is insufficient. Future feature specs and plans SHOULD present framework-acceptance examples in cause-then-consequence scenario form.
 
 Do **not** modify acceptance test expectations merely to make an implementation pass. Changing an acceptance test expectation requires explicit user approval and should normally be paired with a deliberate contract/design/spec update.
 
