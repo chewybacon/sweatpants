@@ -208,6 +208,7 @@ describe("automatic local durable parent/child recovery", () => {
     const tools = createDurableToolRegistry([parent, child]);
     const concrete = createLocalDurableProgramDriver(tools);
     const driver: ProgramDriver = {
+      capabilities: concrete.capabilities,
       *attach(request) {
         const attachment = yield* concrete.attach(request);
         activeAttachments += 1;

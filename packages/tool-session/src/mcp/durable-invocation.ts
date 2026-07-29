@@ -6,6 +6,7 @@ import {
   sortStrings,
 } from "@sweatpants/foundation";
 import { type Json } from "@sweatpants/foundation";
+import type { Operation } from "effection";
 
 export const MCP_PROTOCOL_VERSION = "2025-11-25" as const;
 export const DURABLE_INVOCATION_META_KEY = "sweatpants.chat/invocation" as const;
@@ -75,8 +76,8 @@ export interface DurableIdempotencyStore<T> {
   createOrReturn(
     identity: DurableInvocationIdentity,
     value: T,
-  ): Promise<IdempotencyCreateResult<T>>;
-  get(identity: DurableInvocationIdentity): Promise<T | null>;
+  ): Operation<IdempotencyCreateResult<T>>;
+  get(identity: DurableInvocationIdentity): Operation<T | null>;
 }
 
 interface IdempotencyEntry<T> {
@@ -88,10 +89,10 @@ interface IdempotencyEntry<T> {
 export class InMemoryDurableIdempotencyStore<T> implements DurableIdempotencyStore<T> {
   private readonly entries = new Map<string, IdempotencyEntry<T>>();
 
-  async createOrReturn(
+  *createOrReturn(
     identity: DurableInvocationIdentity,
     value: T,
-  ): Promise<IdempotencyCreateResult<T>> {
+  ): Operation<IdempotencyCreateResult<T>> {
     const key = invocationScopeKey(identity);
     const existing = this.entries.get(key);
     if (!existing) {
@@ -104,7 +105,7 @@ export class InMemoryDurableIdempotencyStore<T> implements DurableIdempotencySto
     return { status: "existing", value: existing.value };
   }
 
-  async get(identity: DurableInvocationIdentity): Promise<T | null> {
+  *get(identity: DurableInvocationIdentity): Operation<T | null> {
     const existing = this.entries.get(invocationScopeKey(identity));
     if (!existing || canonicalJson(existing.identity) !== canonicalJson(identity)) {
       return null;

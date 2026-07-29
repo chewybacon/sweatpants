@@ -2,6 +2,7 @@ import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import {
   exactProgramKey,
+  REPLAY_CHECKPOINT_CAPABILITIES,
   type AttachProgramRequest,
   type DurableProgramManifest,
   type ProgramAttachment,
@@ -35,6 +36,7 @@ export function createAgentCoreDurableProgramDriver(
   } = {},
 ): ProgramDriver {
   return {
+    capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     ...(options.manifests
       ? {
           *manifest(program) {

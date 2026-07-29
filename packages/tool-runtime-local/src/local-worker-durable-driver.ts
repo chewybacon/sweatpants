@@ -1,5 +1,5 @@
 import { type DurableToolRegistry } from "@sweatpants/durable-execution";
-import { CrankError } from "@sweatpants/durable-execution";
+import { CrankError, REPLAY_CHECKPOINT_CAPABILITIES } from "@sweatpants/durable-execution";
 import { useWorker, type WorkerResource } from "@effectionx/worker";
 import { type ProgramAttachment, type ProgramDriver } from "@sweatpants/durable-execution";
 
@@ -46,6 +46,7 @@ export function createLocalWorkerDurableProgramDriver(
   options: LocalWorkerDurableProgramDriverOptions,
 ): ProgramDriver {
   return {
+    capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     *attach(request) {
       const worker = yield* useWorker<
         DurableProgramWorkerRequest,

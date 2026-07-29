@@ -156,7 +156,29 @@ export interface RestoredProgramAttachment {
 }
 
 /** Scoped adapter port for attaching, restoring, stepping, and shutting down one artifact. */
+export interface ReplayCheckpointCapability {
+  readonly kind: "replay";
+  readonly version: 1;
+}
+
+export interface ContinuationCheckpointCapability {
+  readonly kind: "continuation";
+  readonly version: string;
+  readonly format: string;
+}
+
+export interface ProgramDriverCapabilities {
+  readonly replay: ReplayCheckpointCapability;
+  readonly continuation?: ContinuationCheckpointCapability;
+}
+
+export const REPLAY_CHECKPOINT_CAPABILITIES: ProgramDriverCapabilities = Object.freeze({
+  replay: Object.freeze({ kind: "replay", version: 1 }),
+});
+
 export interface ProgramDriver {
+  /** Current drivers restore by replay; continuation serialization is explicit and optional. */
+  readonly capabilities: ProgramDriverCapabilities;
   /** Acquires an attachment owned by the caller's Effection scope. */
   attach(request: AttachProgramRequest): Operation<ProgramAttachment>;
   /** Applies one ordered command and returns exactly one program step. */

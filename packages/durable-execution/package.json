@@ -42,17 +42,6 @@
             },
             "default": "./src/transitions.ts"
         },
-        "./program-driver": {
-            "development": {
-                "import": "./src/program-driver.ts",
-                "types": "./src/program-driver.ts"
-            },
-            "import": {
-                "types": "./dist/program-driver.d.ts",
-                "default": "./dist/program-driver.js"
-            },
-            "default": "./src/program-driver.ts"
-        },
         "./checkpoint": {
             "development": {
                 "import": "./src/checkpoint.ts",

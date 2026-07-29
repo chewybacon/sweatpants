@@ -7,6 +7,9 @@ export type {
   ProgramAttachment,
   ProgramCommand,
   ProgramDriver,
+  ProgramDriverCapabilities,
+  ReplayCheckpointCapability,
+  ContinuationCheckpointCapability,
   ProgramRoute,
   ProgramRunRequest,
   ProgramRunResult,
@@ -21,6 +24,7 @@ export type {
   ResolutionReceipt,
   RestoredProgramAttachment,
 } from "./program-driver-contract.ts";
+export { REPLAY_CHECKPOINT_CAPABILITIES } from "./program-driver-contract.ts";
 export * from "./checkpoint.ts";
 export * from "./program-contract.ts";
 export * from "./program-authoring.ts";

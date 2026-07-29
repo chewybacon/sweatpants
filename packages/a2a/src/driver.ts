@@ -1,4 +1,4 @@
-import { CrankError } from "@sweatpants/durable-execution";
+import { CrankError, REPLAY_CHECKPOINT_CAPABILITIES } from "@sweatpants/durable-execution";
 import { call, race, sleep, useAbortSignal, type Operation } from "effection";
 import { canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
 import type { Json } from "@sweatpants/foundation";
@@ -87,6 +87,7 @@ class A2AAttachmentHandle {
 export function createA2AProgramDriver(options: A2AProgramDriverOptions): ProgramDriver {
   const deadlines = validateDeadlines({ ...DEFAULT_DEADLINES, ...options.deadlines });
   const base: ProgramDriver = {
+    capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     *attach(request): Operation<ProgramAttachment> {
       assertInlineInput(request.input);
       const opened = yield* openConnection(options, deadlines, request, false);

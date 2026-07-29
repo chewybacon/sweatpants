@@ -16,6 +16,7 @@ import {
 } from "@sweatpants/a2a";
 import type { AgentManifestV1, AgentProgramBinding } from "@sweatpants/agent-sdk";
 import { AgentFacadeError } from "./agent-profiles.ts";
+import { call, type Operation } from "effection";
 
 export interface ExpectedRemoteProgramContract<I extends Json = Json, O extends Json = Json> {
   readonly agent: AgentManifestV1;
@@ -43,33 +44,35 @@ export interface PeerAgentHandle {
 export interface DynamicRemoteExecutorHandle extends RemoteExecutorHandle<Json, Json> {}
 export interface DynamicStandardAgentHandle extends StandardAgentHandle<Json> {}
 
-export async function connectRemoteExecutor<I extends Json, O extends Json>(
+export function connectRemoteExecutor<I extends Json, O extends Json>(
   options: DiscoverA2AProgramOptions & { readonly expected: ExpectedRemoteProgramContract<I, O> },
-): Promise<RemoteExecutorHandle<I, O>>;
-export async function connectRemoteExecutor(
+): Operation<RemoteExecutorHandle<I, O>>;
+export function connectRemoteExecutor(
   options: DiscoverA2AProgramOptions & { readonly capabilityId: string },
-): Promise<DynamicRemoteExecutorHandle>;
-export async function connectRemoteExecutor<I extends Json, O extends Json>(
+): Operation<DynamicRemoteExecutorHandle>;
+export function* connectRemoteExecutor<I extends Json, O extends Json>(
   options: DiscoverA2AProgramOptions & {
     readonly expected?: ExpectedRemoteProgramContract<I, O>;
     readonly capabilityId?: string;
   },
-): Promise<RemoteExecutorHandle<I, O> | DynamicRemoteExecutorHandle> {
-  const discovery = await discoverCallerAuthoritativeProgram(options);
+): Operation<RemoteExecutorHandle<I, O> | DynamicRemoteExecutorHandle> {
+  const discovery = yield* call(() => discoverCallerAuthoritativeProgram(options));
   const capabilityId = options.expected?.capabilityId ?? options.capabilityId;
   if (!capabilityId) {
     mismatch("remote_contract_mismatch", "A capability ID is required");
   }
   const program = discovery.programForSkill(capabilityId);
-  const manifest = await fetchRemoteProgramManifest({
-    endpoint: discovery.extension.params.manifestEndpoint,
-    program,
-    cardOrigin: sourceOrigin(options.source),
-    ...(options.httpClient ? { httpClient: options.httpClient } : {}),
-    ...(options.authorization ? { authorization: options.authorization } : {}),
-    ...(options.urlPolicy ? { urlPolicy: options.urlPolicy } : {}),
-    ...(options.signal ? { signal: options.signal } : {}),
-  });
+  const manifest = yield* call(() =>
+    fetchRemoteProgramManifest({
+      endpoint: discovery.extension.params.manifestEndpoint,
+      program,
+      cardOrigin: sourceOrigin(options.source),
+      ...(options.httpClient ? { httpClient: options.httpClient } : {}),
+      ...(options.authorization ? { authorization: options.authorization } : {}),
+      ...(options.urlPolicy ? { urlPolicy: options.urlPolicy } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+    }),
+  );
   if (options.expected) {
     const card = discovery.card as Record<string, Json>;
     if (
@@ -109,7 +112,7 @@ export async function connectRemoteExecutor<I extends Json, O extends Json>(
   });
 }
 
-export async function connectStandardAgent<T extends Json = Json>(
+export function* connectStandardAgent<T extends Json = Json>(
   options: ForeignA2ADiscoveryOptions & {
     readonly expected?: {
       readonly agentName?: string;
@@ -118,8 +121,8 @@ export async function connectStandardAgent<T extends Json = Json>(
       readonly payload?: T;
     };
   },
-): Promise<StandardAgentHandle<T>> {
-  const discovery = await discoverForeignA2AAgent(options);
+): Operation<StandardAgentHandle<T>> {
+  const discovery = yield* call(() => discoverForeignA2AAgent(options));
   if (
     options.expected?.agentName !== undefined &&
     options.expected.agentName !== discovery.agentName
@@ -141,10 +144,10 @@ export async function connectStandardAgent<T extends Json = Json>(
   return Object.freeze({ posture: "standard-a2a" as const, discovery });
 }
 
-export async function connectPeerAgent(
+export function* connectPeerAgent(
   options: SweatpantsPeerDiscoveryOptions,
-): Promise<PeerAgentHandle> {
-  const pin = await discoverSweatpantsPeer(options);
+): Operation<PeerAgentHandle> {
+  const pin = yield* call(() => discoverSweatpantsPeer(options));
   return Object.freeze({ posture: "sweatpants-peer" as const, pin });
 }
 
