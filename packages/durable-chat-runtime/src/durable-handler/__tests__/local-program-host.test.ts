@@ -2,7 +2,7 @@ import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createDurableTool } from "@sweatpants/agent-sdk";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createModelSamplingEffectRegistration,
   createModelSamplingRouter,

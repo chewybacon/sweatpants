@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { type SandboxCapabilities, type WorkspacePersistence } from "@sweatpants/session-contract";
+import { type SandboxCapabilities, type WorkspacePersistence } from "@sweatpants/workspace-runtime";
 import { canonicalSnapshot, sortStrings, type Json } from "@sweatpants/foundation";
 
 export type WorkspaceNetworkPolicy = "deny" | "trusted-development";

@@ -4,7 +4,7 @@ import { call, race, type Operation } from "effection";
 import {
   type DurableJournalAuthorityService,
   type RecoverableSession,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 
 export interface StartupRecoveryOptions {
   readonly maxSessions?: number;

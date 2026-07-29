@@ -18,7 +18,7 @@ import {
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import { createChatApplication } from "@sweatpants/agent-host/server";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createDurableChatHandler,
   createInMemoryProgramDriverJournalStore,
@@ -26,7 +26,7 @@ import {
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
-import type { DurableSemanticRecord } from "@sweatpants/session-contract";
+import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import type { Json } from "@sweatpants/foundation";
 import { createRedisProgramDriverJournalStore } from "../../src/server/program-driver-journal.ts";
 import { playTttTool } from "../../src/tools/play-ttt/tool.ts";

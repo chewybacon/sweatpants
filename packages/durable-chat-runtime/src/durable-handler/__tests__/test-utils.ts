@@ -18,7 +18,7 @@ import {
 } from "effection";
 import { z } from "zod";
 import { createTool, type ToolDefinition as CoreToolDefinition } from "@sweatpants/agent-sdk";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import type {
   ChatEvent,
   ChatResult,

@@ -7,7 +7,7 @@
 import { describe, expect, it } from "../src/durable-handler/__tests__/vitest-effection.ts";
 import { call } from "effection";
 import { createInMemoryProgramDriverJournalStore } from "../src/durable-handler/index.ts";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createMockProvider,
   createTestDurableChatHandler,

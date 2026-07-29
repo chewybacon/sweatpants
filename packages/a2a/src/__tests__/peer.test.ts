@@ -7,7 +7,7 @@ import { canonicalJson, canonicalSnapshot } from "@sweatpants/foundation";
 import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
   DURABLE_DRIVER_FIXTURE_TOOLS,
-} from "@sweatpants/session-contract/testing";
+} from "@sweatpants/journal-authority/testing";
 import {
   DELEGATED_EFFECTS_EXTENSION_URI,
   DURABLE_INVOCATION_EXTENSION_URI,

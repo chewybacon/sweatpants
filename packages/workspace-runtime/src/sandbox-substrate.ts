@@ -9,7 +9,7 @@ import {
 import { type Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 
-import type { Sha256 } from "./portable-durable-mcp.ts";
+type Sha256 = string;
 
 export type WorkspacePersistence =
   | "none"

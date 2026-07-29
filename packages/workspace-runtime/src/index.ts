@@ -22,6 +22,8 @@ import {
   type WorkspaceOperations,
 } from "./api.ts";
 
+export * from "./sandbox-substrate.ts";
+
 export {
   WorkspaceFiles,
   type WorkspaceFence,

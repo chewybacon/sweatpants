@@ -1,5 +1,5 @@
 import { call, type Operation } from "effection";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { describe, expect, it } from "./vitest-effection.ts";
 
 import { z } from "zod";

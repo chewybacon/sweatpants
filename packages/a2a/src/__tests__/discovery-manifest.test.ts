@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canonicalSnapshot } from "@sweatpants/foundation";
-import { DURABLE_DRIVER_FIXTURE_TOOLS } from "@sweatpants/session-contract/testing";
+import { DURABLE_DRIVER_FIXTURE_TOOLS } from "@sweatpants/journal-authority/testing";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   createRemoteProgramManifestDocument,

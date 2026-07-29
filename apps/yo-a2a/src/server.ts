@@ -4,7 +4,7 @@ import {
   createFileStandardA2ATaskDirectory,
   startAgentHarness,
 } from "@sweatpants/agent-host/server/testing";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { cardAgent } from "./agent.ts";
 import { reserveSeatRegistration, searchFlightsRegistration } from "./book-flight.ts";
 import { realModelRegistration, selectedModel } from "./model.ts";

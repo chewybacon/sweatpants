@@ -5,7 +5,7 @@ import {
   type ClaimActivationResult,
   type DurableJournalAuthorityService,
   type ReleaseActivationRequest,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 
 export interface AgentCoreActivationCoordinatorOptions {
   readonly authority: DurableJournalAuthorityService;

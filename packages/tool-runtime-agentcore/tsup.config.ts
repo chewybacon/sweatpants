@@ -13,7 +13,7 @@ export default defineConfig({
   sourcemap: true,
   minify: false,
   external: [
-    "@sweatpants/session-contract",
+    "@sweatpants/journal-authority",
     "effection",
     "zod",
     "@aws-sdk/client-bedrock-agentcore",

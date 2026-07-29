@@ -1,72 +1,72 @@
 {
-    "name": "@sweatpants/cli",
-    "version": "0.1.0",
-    "description": "CLI for generating TypeScript types from MCP servers with x-sweatpants extensions",
-    "keywords": [
-        "cli",
-        "codegen",
-        "mcp",
-        "sweatpants",
-        "typescript"
-    ],
-    "license": "MIT",
-    "author": "Sweatpants",
-    "bin": {
-        "sweatpants": "./dist/cli.js"
+  "name": "@sweatpants/cli",
+  "version": "0.1.0",
+  "description": "CLI for generating TypeScript types from MCP servers with x-sweatpants extensions",
+  "keywords": [
+    "cli",
+    "codegen",
+    "mcp",
+    "sweatpants",
+    "typescript"
+  ],
+  "license": "MIT",
+  "author": "Sweatpants",
+  "bin": {
+    "sweatpants": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/cli.js",
+  "types": "./dist/cli.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/cli.ts",
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js",
+      "default": "./dist/cli.js"
     },
-    "files": [
-        "dist"
-    ],
-    "type": "module",
-    "main": "./dist/cli.js",
-    "types": "./dist/cli.d.ts",
-    "exports": {
-        ".": {
-            "development": "./src/cli.ts",
-            "types": "./dist/cli.d.ts",
-            "import": "./dist/cli.js",
-            "default": "./dist/cli.js"
-        },
-        "./config": {
-            "development": "./src/config.ts",
-            "types": "./dist/config.d.ts",
-            "import": "./dist/config.js",
-            "default": "./dist/config.js"
-        },
-        "./remote-development": {
-            "development": "./src/remote-development.ts",
-            "types": "./dist/remote-development.d.ts",
-            "import": "./dist/remote-development.js",
-            "default": "./dist/remote-development.js"
-        },
-        "./remote-development-evaluator": {
-            "development": "./src/remote-development-evaluator.ts",
-            "types": "./dist/remote-development-evaluator.d.ts",
-            "import": "./dist/remote-development-evaluator.js",
-            "default": "./dist/remote-development-evaluator.js"
-        }
+    "./config": {
+      "development": "./src/config.ts",
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js",
+      "default": "./dist/config.js"
     },
-    "scripts": {
-        "build": "tsup && pnpm build:types",
-        "check": "tsc -b",
-        "test": "vitest run --passWithNoTests",
-        "build:types": "tsc -b tsconfig.json --force"
+    "./remote-development": {
+      "development": "./src/remote-development.ts",
+      "types": "./dist/remote-development.d.ts",
+      "import": "./dist/remote-development.js",
+      "default": "./dist/remote-development.js"
     },
-    "dependencies": {
-        "@aws-sdk/client-s3": "^3.996.0",
-        "@aws-sdk/client-sts": "^3.996.0",
-        "@aws-sdk/credential-provider-node": "^3.972.57",
-        "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/session-contract": "workspace:*",
-        "acorn": "^8.14.0",
-        "citty": "^0.1.6",
-        "esbuild": "0.27.2"
-    },
-    "devDependencies": {
-        "@sweatpants/foundation": "workspace:*",
-        "@types/node": "^20.0.0",
-        "tsup": "^8.0.0",
-        "typescript": "^5.3.0",
-        "vitest": "^1.6.0"
+    "./remote-development-evaluator": {
+      "development": "./src/remote-development-evaluator.ts",
+      "types": "./dist/remote-development-evaluator.d.ts",
+      "import": "./dist/remote-development-evaluator.js",
+      "default": "./dist/remote-development-evaluator.js"
     }
+  },
+  "scripts": {
+    "build": "tsup && pnpm build:types",
+    "check": "tsc -b",
+    "test": "vitest run --passWithNoTests",
+    "build:types": "tsc -b tsconfig.json --force"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.996.0",
+    "@aws-sdk/client-sts": "^3.996.0",
+    "@aws-sdk/credential-provider-node": "^3.972.57",
+    "@sweatpants/durable-execution": "workspace:*",
+    "acorn": "^8.14.0",
+    "citty": "^0.1.6",
+    "esbuild": "0.27.2",
+    "@sweatpants/journal-authority": "workspace:*"
+  },
+  "devDependencies": {
+    "@sweatpants/foundation": "workspace:*",
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.6.0"
+  }
 }

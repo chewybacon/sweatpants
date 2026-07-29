@@ -1,273 +1,272 @@
 {
-    "name": "@sweatpants/durable-chat-runtime",
-    "version": "0.1.0",
-    "description": "Host-side durable Turn runtime and publication orchestration",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        },
-        "./response-streams": {
-            "development": {
-                "import": "./src/response-streams/index.ts",
-                "types": "./src/response-streams/index.ts"
-            },
-            "import": {
-                "types": "./dist/response-streams/index.d.ts",
-                "default": "./dist/response-streams/index.js"
-            },
-            "default": "./src/response-streams/index.ts"
-        },
-        "./response-streams/testing": {
-            "development": {
-                "import": "./src/response-streams/__tests__/vitest-effection.ts",
-                "types": "./src/response-streams/__tests__/vitest-effection.ts"
-            },
-            "import": {
-                "types": "./dist/response-streams/testing.d.ts",
-                "default": "./dist/response-streams/testing.js"
-            },
-            "default": "./src/response-streams/__tests__/vitest-effection.ts"
-        },
-        "./handler/streaming": {
-            "development": {
-                "import": "./src/handler/streaming.ts",
-                "types": "./src/handler/streaming.ts"
-            },
-            "import": {
-                "types": "./dist/handler/streaming.d.ts",
-                "default": "./dist/handler/streaming.js"
-            },
-            "default": "./src/handler/streaming.ts"
-        },
-        "./handler/model-binder": {
-            "development": {
-                "import": "./src/handler/model-binder.ts",
-                "types": "./src/handler/model-binder.ts"
-            },
-            "import": {
-                "types": "./dist/handler/model-binder.d.ts",
-                "default": "./dist/handler/model-binder.js"
-            },
-            "default": "./src/handler/model-binder.ts"
-        },
-        "./handler/types": {
-            "development": {
-                "import": "./src/handler/types.ts",
-                "types": "./src/handler/types.ts"
-            },
-            "import": {
-                "types": "./dist/handler/types.d.ts",
-                "default": "./dist/handler/types.js"
-            },
-            "default": "./src/handler/types.ts"
-        },
-        "./handler/hydrate-responses": {
-            "development": {
-                "import": "./src/handler/hydrate-responses.ts",
-                "types": "./src/handler/hydrate-responses.ts"
-            },
-            "import": {
-                "types": "./dist/handler/hydrate-responses.d.ts",
-                "default": "./dist/handler/hydrate-responses.js"
-            },
-            "default": "./src/handler/hydrate-responses.ts"
-        },
-        "./handler/chat-types": {
-            "development": {
-                "import": "./src/handler/chat-types.ts",
-                "types": "./src/handler/chat-types.ts"
-            },
-            "import": {
-                "types": "./dist/handler/chat-types.d.ts",
-                "default": "./dist/handler/chat-types.js"
-            },
-            "default": "./src/handler/chat-types.ts"
-        },
-        "./handler/request-normalization": {
-            "development": {
-                "import": "./src/handler/request-normalization.ts",
-                "types": "./src/handler/request-normalization.ts"
-            },
-            "import": {
-                "types": "./dist/handler/request-normalization.d.ts",
-                "default": "./dist/handler/request-normalization.js"
-            },
-            "default": "./src/handler/request-normalization.ts"
-        },
-        "./handler/turn-plan": {
-            "development": {
-                "import": "./src/handler/turn-plan.ts",
-                "types": "./src/handler/turn-plan.ts"
-            },
-            "import": {
-                "types": "./dist/handler/turn-plan.d.ts",
-                "default": "./dist/handler/turn-plan.js"
-            },
-            "default": "./src/handler/turn-plan.ts"
-        },
-        "./interrupts": {
-            "development": {
-                "import": "./src/interrupts/index.ts",
-                "types": "./src/interrupts/index.ts"
-            },
-            "import": {
-                "types": "./dist/interrupts/index.d.ts",
-                "default": "./dist/interrupts/index.js"
-            },
-            "default": "./src/interrupts/index.ts"
-        },
-        "./model-context": {
-            "development": {
-                "import": "./src/model-context/index.ts",
-                "types": "./src/model-context/index.ts"
-            },
-            "import": {
-                "types": "./dist/model-context/index.d.ts",
-                "default": "./dist/model-context/index.js"
-            },
-            "default": "./src/model-context/index.ts"
-        },
-        "./program-driver/effects": {
-            "development": {
-                "import": "./src/program-driver/effects.ts",
-                "types": "./src/program-driver/effects.ts"
-            },
-            "import": {
-                "types": "./dist/program-driver/effects.d.ts",
-                "default": "./dist/program-driver/effects.js"
-            },
-            "default": "./src/program-driver/effects.ts"
-        },
-        "./program-driver/native-tools": {
-            "development": {
-                "import": "./src/program-driver/native-tools.ts",
-                "types": "./src/program-driver/native-tools.ts"
-            },
-            "import": {
-                "types": "./dist/program-driver/native-tools.d.ts",
-                "default": "./dist/program-driver/native-tools.js"
-            },
-            "default": "./src/program-driver/native-tools.ts"
-        },
-        "./projection": {
-            "development": {
-                "import": "./src/projection.ts",
-                "types": "./src/projection.ts"
-            },
-            "import": {
-                "types": "./dist/projection.d.ts",
-                "default": "./dist/projection.js"
-            },
-            "default": "./src/projection.ts"
-        },
-        "./tool-session/message-conversion": {
-            "development": {
-                "import": "./src/tool-session/message-conversion.ts",
-                "types": "./src/tool-session/message-conversion.ts"
-            },
-            "import": {
-                "types": "./dist/tool-session/message-conversion.d.ts",
-                "default": "./dist/tool-session/message-conversion.js"
-            },
-            "default": "./src/tool-session/message-conversion.ts"
-        },
-        "./durable-handler": {
-            "development": {
-                "import": "./src/durable-handler/index.ts",
-                "types": "./src/durable-handler/index.ts"
-            },
-            "import": {
-                "types": "./dist/durable-handler/index.d.ts",
-                "default": "./dist/durable-handler/index.js"
-            },
-            "default": "./src/durable-handler/index.ts"
-        },
-        "./contexts": {
-            "development": {
-                "import": "./src/contexts.ts",
-                "types": "./src/contexts.ts"
-            },
-            "import": {
-                "types": "./dist/contexts.d.ts",
-                "default": "./dist/contexts.js"
-            },
-            "default": "./src/contexts.ts"
-        },
-        "./tool-inventory": {
-            "development": {
-                "import": "./src/tool-inventory.ts",
-                "types": "./src/tool-inventory.ts"
-            },
-            "import": {
-                "types": "./dist/tool-inventory.d.ts",
-                "default": "./dist/tool-inventory.js"
-            },
-            "default": "./src/tool-inventory.ts"
-        },
-        "./host": {
-            "development": {
-                "import": "./src/host/host-scope.ts",
-                "types": "./src/host/host-scope.ts"
-            },
-            "import": {
-                "types": "./dist/host/host-scope.d.ts",
-                "default": "./dist/host/host-scope.js"
-            },
-            "default": "./src/host/host-scope.ts"
-        },
-        "./logger": {
-            "development": {
-                "import": "./src/logger/index.ts",
-                "types": "./src/logger/index.ts"
-            },
-            "import": {
-                "types": "./dist/logger/index.d.ts",
-                "default": "./dist/logger/index.js"
-            },
-            "default": "./src/logger/index.ts"
-        }
+  "name": "@sweatpants/durable-chat-runtime",
+  "version": "0.1.0",
+  "description": "Host-side durable Turn runtime and publication orchestration",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     },
-    "scripts": {
-        "build": "tsup",
-        "check": "tsc -b",
-        "test": "vitest run"
+    "./response-streams": {
+      "development": {
+        "import": "./src/response-streams/index.ts",
+        "types": "./src/response-streams/index.ts"
+      },
+      "import": {
+        "types": "./dist/response-streams/index.d.ts",
+        "default": "./dist/response-streams/index.js"
+      },
+      "default": "./src/response-streams/index.ts"
     },
-    "dependencies": {
-        "@standard-schema/spec": "catalog:",
-        "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/chat-core": "workspace:*",
-        "@sweatpants/durable-effects": "workspace:*",
-        "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/durable-streams": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/history-store": "workspace:*",
-        "@sweatpants/journal-authority": "workspace:*",
-        "@sweatpants/session-contract": "workspace:*",
-        "@sweatpants/tool-session": "workspace:*",
-        "effection": "catalog:",
-        "pino": "^9.6.0",
-        "zod": "catalog:"
+    "./response-streams/testing": {
+      "development": {
+        "import": "./src/response-streams/__tests__/vitest-effection.ts",
+        "types": "./src/response-streams/__tests__/vitest-effection.ts"
+      },
+      "import": {
+        "types": "./dist/response-streams/testing.d.ts",
+        "default": "./dist/response-streams/testing.js"
+      },
+      "default": "./src/response-streams/__tests__/vitest-effection.ts"
     },
-    "devDependencies": {
-        "@sweatpants/stream-bridge": "workspace:*",
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/node": "catalog:",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
+    "./handler/streaming": {
+      "development": {
+        "import": "./src/handler/streaming.ts",
+        "types": "./src/handler/streaming.ts"
+      },
+      "import": {
+        "types": "./dist/handler/streaming.d.ts",
+        "default": "./dist/handler/streaming.js"
+      },
+      "default": "./src/handler/streaming.ts"
+    },
+    "./handler/model-binder": {
+      "development": {
+        "import": "./src/handler/model-binder.ts",
+        "types": "./src/handler/model-binder.ts"
+      },
+      "import": {
+        "types": "./dist/handler/model-binder.d.ts",
+        "default": "./dist/handler/model-binder.js"
+      },
+      "default": "./src/handler/model-binder.ts"
+    },
+    "./handler/types": {
+      "development": {
+        "import": "./src/handler/types.ts",
+        "types": "./src/handler/types.ts"
+      },
+      "import": {
+        "types": "./dist/handler/types.d.ts",
+        "default": "./dist/handler/types.js"
+      },
+      "default": "./src/handler/types.ts"
+    },
+    "./handler/hydrate-responses": {
+      "development": {
+        "import": "./src/handler/hydrate-responses.ts",
+        "types": "./src/handler/hydrate-responses.ts"
+      },
+      "import": {
+        "types": "./dist/handler/hydrate-responses.d.ts",
+        "default": "./dist/handler/hydrate-responses.js"
+      },
+      "default": "./src/handler/hydrate-responses.ts"
+    },
+    "./handler/chat-types": {
+      "development": {
+        "import": "./src/handler/chat-types.ts",
+        "types": "./src/handler/chat-types.ts"
+      },
+      "import": {
+        "types": "./dist/handler/chat-types.d.ts",
+        "default": "./dist/handler/chat-types.js"
+      },
+      "default": "./src/handler/chat-types.ts"
+    },
+    "./handler/request-normalization": {
+      "development": {
+        "import": "./src/handler/request-normalization.ts",
+        "types": "./src/handler/request-normalization.ts"
+      },
+      "import": {
+        "types": "./dist/handler/request-normalization.d.ts",
+        "default": "./dist/handler/request-normalization.js"
+      },
+      "default": "./src/handler/request-normalization.ts"
+    },
+    "./handler/turn-plan": {
+      "development": {
+        "import": "./src/handler/turn-plan.ts",
+        "types": "./src/handler/turn-plan.ts"
+      },
+      "import": {
+        "types": "./dist/handler/turn-plan.d.ts",
+        "default": "./dist/handler/turn-plan.js"
+      },
+      "default": "./src/handler/turn-plan.ts"
+    },
+    "./interrupts": {
+      "development": {
+        "import": "./src/interrupts/index.ts",
+        "types": "./src/interrupts/index.ts"
+      },
+      "import": {
+        "types": "./dist/interrupts/index.d.ts",
+        "default": "./dist/interrupts/index.js"
+      },
+      "default": "./src/interrupts/index.ts"
+    },
+    "./model-context": {
+      "development": {
+        "import": "./src/model-context/index.ts",
+        "types": "./src/model-context/index.ts"
+      },
+      "import": {
+        "types": "./dist/model-context/index.d.ts",
+        "default": "./dist/model-context/index.js"
+      },
+      "default": "./src/model-context/index.ts"
+    },
+    "./program-driver/effects": {
+      "development": {
+        "import": "./src/program-driver/effects.ts",
+        "types": "./src/program-driver/effects.ts"
+      },
+      "import": {
+        "types": "./dist/program-driver/effects.d.ts",
+        "default": "./dist/program-driver/effects.js"
+      },
+      "default": "./src/program-driver/effects.ts"
+    },
+    "./program-driver/native-tools": {
+      "development": {
+        "import": "./src/program-driver/native-tools.ts",
+        "types": "./src/program-driver/native-tools.ts"
+      },
+      "import": {
+        "types": "./dist/program-driver/native-tools.d.ts",
+        "default": "./dist/program-driver/native-tools.js"
+      },
+      "default": "./src/program-driver/native-tools.ts"
+    },
+    "./projection": {
+      "development": {
+        "import": "./src/projection.ts",
+        "types": "./src/projection.ts"
+      },
+      "import": {
+        "types": "./dist/projection.d.ts",
+        "default": "./dist/projection.js"
+      },
+      "default": "./src/projection.ts"
+    },
+    "./tool-session/message-conversion": {
+      "development": {
+        "import": "./src/tool-session/message-conversion.ts",
+        "types": "./src/tool-session/message-conversion.ts"
+      },
+      "import": {
+        "types": "./dist/tool-session/message-conversion.d.ts",
+        "default": "./dist/tool-session/message-conversion.js"
+      },
+      "default": "./src/tool-session/message-conversion.ts"
+    },
+    "./durable-handler": {
+      "development": {
+        "import": "./src/durable-handler/index.ts",
+        "types": "./src/durable-handler/index.ts"
+      },
+      "import": {
+        "types": "./dist/durable-handler/index.d.ts",
+        "default": "./dist/durable-handler/index.js"
+      },
+      "default": "./src/durable-handler/index.ts"
+    },
+    "./contexts": {
+      "development": {
+        "import": "./src/contexts.ts",
+        "types": "./src/contexts.ts"
+      },
+      "import": {
+        "types": "./dist/contexts.d.ts",
+        "default": "./dist/contexts.js"
+      },
+      "default": "./src/contexts.ts"
+    },
+    "./tool-inventory": {
+      "development": {
+        "import": "./src/tool-inventory.ts",
+        "types": "./src/tool-inventory.ts"
+      },
+      "import": {
+        "types": "./dist/tool-inventory.d.ts",
+        "default": "./dist/tool-inventory.js"
+      },
+      "default": "./src/tool-inventory.ts"
+    },
+    "./host": {
+      "development": {
+        "import": "./src/host/host-scope.ts",
+        "types": "./src/host/host-scope.ts"
+      },
+      "import": {
+        "types": "./dist/host/host-scope.d.ts",
+        "default": "./dist/host/host-scope.js"
+      },
+      "default": "./src/host/host-scope.ts"
+    },
+    "./logger": {
+      "development": {
+        "import": "./src/logger/index.ts",
+        "types": "./src/logger/index.ts"
+      },
+      "import": {
+        "types": "./dist/logger/index.d.ts",
+        "default": "./dist/logger/index.js"
+      },
+      "default": "./src/logger/index.ts"
     }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "catalog:",
+    "@sweatpants/agent-sdk": "workspace:*",
+    "@sweatpants/chat-core": "workspace:*",
+    "@sweatpants/durable-effects": "workspace:*",
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/durable-streams": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/history-store": "workspace:*",
+    "@sweatpants/journal-authority": "workspace:*",
+    "@sweatpants/tool-session": "workspace:*",
+    "effection": "catalog:",
+    "pino": "^9.6.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/stream-bridge": "workspace:*",
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

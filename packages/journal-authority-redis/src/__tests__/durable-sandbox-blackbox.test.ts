@@ -5,7 +5,7 @@ import type { RedisClientType } from "redis";
 import {
   createDurableSandboxConformanceCases,
   type DurableSandboxConformanceFactory,
-} from "@sweatpants/session-contract/testing";
+} from "@sweatpants/workspace-runtime/testing";
 
 import { createRedisDurableJournalAuthority } from "../durable-authority.ts";
 import { cleanupRedisBackend, connectRedisBackend, type RedisBackend } from "./redis-backend.ts";

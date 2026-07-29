@@ -56,7 +56,7 @@ export { createSSEEventStream } from "./sse-formatter.ts";
 
 // Redis store is exported from the `/redis` subpath only, not the root.
 // This keeps `redis` out of the install graph of packages that only need
-// `/types` or `/in-memory-store` (e.g. @sweatpants/session-contract,
+// `/types` or `/in-memory-store` (e.g. @sweatpants/journal-authority,
 // @sweatpants/react-chat). See REQ-060 / NFR-012.
 
 export type { ProtocolHandlerContext, ProtocolSetupResult } from "./http-types.ts";

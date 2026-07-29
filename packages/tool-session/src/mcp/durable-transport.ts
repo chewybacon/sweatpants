@@ -1,7 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 import { type Json } from "@sweatpants/foundation";
-import type { ReserveOperationResult, ResolveOperationResult } from "./durable-authority-types.ts";
 import type { ResolutionReceipt } from "@sweatpants/durable-execution";
 
 /** MCP extension identifier for durable effect authorization and commit. */
@@ -68,18 +67,18 @@ export type DurableEffectsMrtrInputResponse =
   | {
       type: typeof MCP_DURABLE_AUTHORIZE_REQUEST;
       key: string;
-      disposition: ReserveOperationResult;
+      disposition: Json;
     }
   | {
       type: typeof MCP_DURABLE_COMMIT_REQUEST;
       key: string;
-      result: ResolveOperationResult;
+      result: Json;
     };
 
 /** Projects an authorization disposition into a detached transport DTO. */
 export function authorizationToMrtrResponse(
   key: string,
-  disposition: ReserveOperationResult,
+  disposition: Json,
 ): DurableEffectsMrtrInputResponse {
   return { type: MCP_DURABLE_AUTHORIZE_REQUEST, key, disposition: structuredClone(disposition) };
 }
@@ -87,7 +86,7 @@ export function authorizationToMrtrResponse(
 /** Projects a commit result into a detached transport DTO. */
 export function commitToMrtrResponse(
   key: string,
-  result: ResolveOperationResult,
+  result: Json,
 ): DurableEffectsMrtrInputResponse {
   return { type: MCP_DURABLE_COMMIT_REQUEST, key, result: structuredClone(result) };
 }

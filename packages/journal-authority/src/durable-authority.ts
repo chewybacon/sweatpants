@@ -5,7 +5,6 @@ import {
 } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
-import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 
 import {
   parsePortableSchemaDescriptor,
@@ -20,7 +19,7 @@ import {
   validateRegisteredSchema,
   type DurableSchemaRegistry,
   type RegistrySchemaValidation,
-} from "@sweatpants/journal-authority/schema-registry";
+} from "./schema-registry.ts";
 import {
   signCapability,
   signPrivateAuthorityToken,
@@ -372,7 +371,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       maxOutcomeBytes: options.maxOutcomeBytes ?? DEFAULT_MAX_INLINE_BYTES,
       ...(normalizedEmissionPolicy ? { emissionPolicy: normalizedEmissionPolicy } : {}),
     };
-    this.#schemas = schemaRegistry ?? createDurableSchemaRegistry(foreignToolSchemaEntries());
+    this.#schemas = schemaRegistry ?? createDurableSchemaRegistry();
     if (options.snapshot) {
       this.#restore(options.snapshot);
     }

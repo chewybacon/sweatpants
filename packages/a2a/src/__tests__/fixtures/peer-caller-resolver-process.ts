@@ -11,7 +11,7 @@ import {
   createCapabilityKeyring,
   createInMemoryDurableJournalAuthority,
   type DurableJournalAuthorityService,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {

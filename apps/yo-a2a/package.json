@@ -1,32 +1,32 @@
 {
-    "name": "@sweatpants/yo-a2a",
-    "version": "0.1.0",
-    "private": true,
-    "type": "module",
-    "scripts": {
-        "dev": "tsx --conditions=development src/server.ts",
-        "inspect": "./scripts/inspect.sh",
-        "check": "tsc --noEmit",
-        "test": "playwright test --config playwright.config.ts",
-        "test:process": "vitest run test/process-replacement.test.ts"
-    },
-    "dependencies": {
-        "@sweatpants/agent-host": "workspace:*",
-        "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/chat-core": "workspace:*",
-        "@sweatpants/durable-effects": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/model-provider-pi-ai": "workspace:*",
-        "@sweatpants/session-contract": "workspace:*",
-        "effection": "catalog:",
-        "zod": "catalog:"
-    },
-    "devDependencies": {
-        "@playwright/test": "^1.57.0",
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/node": "catalog:",
-        "tsx": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
-    }
+  "name": "@sweatpants/yo-a2a",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx --conditions=development src/server.ts",
+    "inspect": "./scripts/inspect.sh",
+    "check": "tsc --noEmit",
+    "test": "playwright test --config playwright.config.ts",
+    "test:process": "vitest run test/process-replacement.test.ts"
+  },
+  "dependencies": {
+    "@sweatpants/agent-host": "workspace:*",
+    "@sweatpants/agent-sdk": "workspace:*",
+    "@sweatpants/chat-core": "workspace:*",
+    "@sweatpants/durable-effects": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/model-provider-pi-ai": "workspace:*",
+    "effection": "catalog:",
+    "zod": "catalog:",
+    "@sweatpants/journal-authority": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

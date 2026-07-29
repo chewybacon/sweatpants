@@ -7,7 +7,7 @@ import { createCapabilityKeyring, type CapabilityKeyring } from "../capabilities
 import {
   createDurableSchemaRegistry,
   type DurableSchemaRegistry,
-} from "@sweatpants/journal-authority/schema-registry";
+} from "../schema-registry.ts";
 
 import {
   anyGuard,
@@ -15,7 +15,7 @@ import {
   createSchemaFixture,
   nullGuard,
   stringGuard,
-} from "@sweatpants/journal-authority/testing";
+} from "../schema-fixtures.ts";
 import type {
   BindRestoreFrontierRequest,
   BindRestoreFrontierResult,

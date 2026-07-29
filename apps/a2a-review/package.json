@@ -1,36 +1,35 @@
 {
-    "name": "@sweatpants/a2a-review-reference",
-    "version": "0.1.0",
-    "private": true,
-    "type": "module",
-    "scripts": {
-        "generate:artifact": "tsx scripts/generate-reviewer-artifact.ts --write",
-        "verify:artifact": "tsx scripts/generate-reviewer-artifact.ts",
-        "build": "pnpm verify:artifact && tsc -b",
-        "check": "pnpm verify:artifact && tsc -b",
-        "test": "pnpm verify:artifact && vitest run src"
-    },
-    "dependencies": {
-        "@standard-schema/spec": "catalog:",
-        "@sweatpants/a2a": "workspace:*",
-        "@sweatpants/agent-host": "workspace:*",
-        "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/chat-core": "workspace:*",
-        "@sweatpants/durable-effects": "workspace:*",
-        "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/journal-authority": "workspace:*",
-        "@sweatpants/session-contract": "workspace:*",
-        "@sweatpants/tool-session": "workspace:*",
-        "effection": "catalog:",
-        "ws": "catalog:"
-    },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/node": "catalog:",
-        "@types/ws": "catalog:",
-        "tsx": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
-    }
+  "name": "@sweatpants/a2a-review-reference",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate:artifact": "tsx scripts/generate-reviewer-artifact.ts --write",
+    "verify:artifact": "tsx scripts/generate-reviewer-artifact.ts",
+    "build": "pnpm verify:artifact && tsc -b",
+    "check": "pnpm verify:artifact && tsc -b",
+    "test": "pnpm verify:artifact && vitest run src"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "catalog:",
+    "@sweatpants/a2a": "workspace:*",
+    "@sweatpants/agent-host": "workspace:*",
+    "@sweatpants/agent-sdk": "workspace:*",
+    "@sweatpants/chat-core": "workspace:*",
+    "@sweatpants/durable-effects": "workspace:*",
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/journal-authority": "workspace:*",
+    "@sweatpants/tool-session": "workspace:*",
+    "effection": "catalog:",
+    "ws": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/ws": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

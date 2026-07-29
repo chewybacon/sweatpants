@@ -8,7 +8,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   minify: false,
-  external: ["@sweatpants/session-contract", "effection", "ws"],
+  external: ["@sweatpants/journal-authority", "effection", "ws"],
   treeshake: true,
   skipNodeModulesBundle: true,
 });

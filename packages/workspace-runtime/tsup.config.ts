@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: { index: "src/index.ts", api: "src/api.ts" },
+  entry: { index: "src/index.ts", api: "src/api.ts", testing: "src/testing.ts" },
   format: ["esm"],
   platform: "node",
   target: "node24",
@@ -10,5 +10,5 @@ export default defineConfig({
   },
   sourcemap: true,
   clean: true,
-  external: ["effection", "@sweatpants/session-contract"],
+  external: ["effection", "@sweatpants/journal-authority"],
 });

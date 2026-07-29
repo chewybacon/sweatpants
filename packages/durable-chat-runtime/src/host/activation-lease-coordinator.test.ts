@@ -1,7 +1,7 @@
 import { run, sleep } from "effection";
 import { describe, expect, it } from "vitest";
 
-import type { DurableJournalAuthorityService } from "@sweatpants/session-contract";
+import type { DurableJournalAuthorityService } from "@sweatpants/journal-authority";
 import { runWithRenewedActivationLease } from "./activation-lease-coordinator.ts";
 
 describe("activation lease coordinator", () => {

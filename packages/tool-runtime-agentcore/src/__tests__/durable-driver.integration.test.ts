@@ -11,7 +11,7 @@ import {
   normalizeSemanticJournal,
   runDurableDriverCancellationFixture,
   runDurableDriverRecoveryFixture,
-} from "@sweatpants/session-contract/testing";
+} from "@sweatpants/journal-authority/testing";
 
 import {
   computeFrontierDigest,

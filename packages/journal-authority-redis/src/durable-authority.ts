@@ -39,7 +39,7 @@ import {
   type ResolveOperationRequest,
   type ResolveOperationResult,
   type TaskCloseReceipt,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 import { type ProgramStep } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
 import { type DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";

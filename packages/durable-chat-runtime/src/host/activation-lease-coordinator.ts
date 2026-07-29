@@ -1,7 +1,7 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { race, sleep, type Operation } from "effection";
 
-import { type DurableJournalAuthorityService } from "@sweatpants/session-contract";
+import { type DurableJournalAuthorityService } from "@sweatpants/journal-authority";
 import { type ProgramRunResult } from "@sweatpants/durable-execution";
 
 /** Host coordinator timer; deliberately outside the durable crank implementation. */

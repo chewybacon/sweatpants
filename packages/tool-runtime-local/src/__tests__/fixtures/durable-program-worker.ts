@@ -1,5 +1,5 @@
 import { createDurableToolRegistry } from "@sweatpants/durable-execution";
-import { DURABLE_DRIVER_FIXTURE_TOOLS } from "@sweatpants/session-contract/testing";
+import { DURABLE_DRIVER_FIXTURE_TOOLS } from "@sweatpants/journal-authority/testing";
 
 import { runDurableProgramWorker } from "../../durable-worker-runner.ts";
 
