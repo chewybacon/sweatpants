@@ -14,7 +14,7 @@ import {
   createLocalProgramHost,
   createPinnedProgramCatalog,
   programDriverSchemaRegistry,
-} from "@sweatpants/framework/server";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
 
 import { playTttTool, type PlayTttResult } from "../src/tools/play-ttt/tool.ts";
 

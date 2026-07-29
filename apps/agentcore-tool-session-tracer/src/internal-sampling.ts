@@ -1,5 +1,5 @@
 import { run } from "effection";
-import type { Message } from "../../../packages/framework/src/lib/chat/types.ts";
+import type { Message } from "@sweatpants/chat-core";
 import type {
   ExtendedMessage,
   WireSampleResult,
@@ -8,8 +8,8 @@ import type {
   WireSampleResultWithToolCalls,
   SamplingToolCall,
   SamplingToolDefinition,
-} from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts";
-import { extendedMessageToProviderMessage } from "../../../packages/framework/src/lib/chat/mcp-tools/message-conversion.ts";
+} from "@sweatpants/tool-session/mcp";
+import { extendedMessageToProviderMessage } from "@sweatpants/durable-chat-runtime/tool-session/message-conversion";
 import {
   createPiAiModelProviderDriver,
   modelSelectionKey,

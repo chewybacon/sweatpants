@@ -9,7 +9,7 @@
  * - Current board state shown at the bottom
  * - Interactive only when waiting for user input
  */
-import type { RenderableProps } from "@sweatpants/framework/chat/browser-rendering";
+import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
 import type { Board, Player } from "../../tictactoe/types";
 import { GameMoveCard } from "./GameMoveCard";
 

@@ -1,7 +1,7 @@
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import type { ToolRuntime } from "@sweatpants/framework/chat";
-import { ProgramDriverForeignEffectsContext } from "@sweatpants/framework/server";
+import type { ToolRuntime } from "@sweatpants/tool-session/chat-runtime";
+import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
 import { installLocalToolRuntime, type LocalToolRuntimeDriverOptions } from "./driver.ts";
 import { createToolSessionForeignEffectRegistrations } from "./foreign-tool-session.ts";
 
@@ -17,12 +17,15 @@ import { createToolSessionForeignEffectRegistrations } from "./foreign-tool-sess
 export function* installLocalProgramToolRuntime(
   options: LocalToolRuntimeDriverOptions & {
     registry: NonNullable<LocalToolRuntimeDriverOptions["registry"]>;
+    installForeignEffects(
+      registrations: readonly [DurableEffectRegistration, DurableEffectRegistration],
+    ): Operation<void>;
   },
 ): Operation<ToolRuntime> {
   // Install first so worker-mode and duplicate-tool validation fail before any
   // foreign-effect context is published.
   const runtime = yield* installLocalToolRuntime(options);
-  yield* ProgramDriverForeignEffectsContext.set(
+  yield* options.installForeignEffects(
     createToolSessionForeignEffectRegistrations({
       registry: options.registry,
       tools: new Map(options.tools.map((tool: AnyToolContract) => [tool.name, tool])),

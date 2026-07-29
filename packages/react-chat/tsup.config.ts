@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     pipeline: "src/pipeline/index.ts",
+    "browser-rendering/index": "src/browser-rendering/index.ts",
   },
   tsconfig: "../ts-config/tsconfig.tsup.json",
   format: ["cjs", "esm"],
@@ -12,7 +13,6 @@ export default defineConfig({
   sourcemap: true,
   minify: false,
   external: [
-    "@sweatpants/framework",
     "react",
     "effection",
     "@effectionx/raf",

@@ -6,8 +6,8 @@ import {
   latestContextWindow,
   type ChatModelSampleInputV2,
   type ChatModelSampleOutputV2,
-} from "@sweatpants/framework/chat";
-import { createStandardA2AHost, serveAgent, standardA2A } from "@sweatpants/framework/server";
+} from "@sweatpants/chat-core";
+import { createStandardA2AHost, serveAgent, standardA2A } from "@sweatpants/agent-host/server";
 import {
   createPiAiModelProviderDriver,
   type AssistantMessage,

@@ -1,6 +1,6 @@
 # @sweatpants/durable-streams
 
-Internal durable stream protocol primitives extracted from `@sweatpants/framework`.
+Internal durable stream protocol primitives extracted from `@sweatpants/agent-host`.
 
 This package contains protocol and storage core pieces used by the framework durable handler:
 
@@ -68,10 +68,10 @@ The framework durable handler owns chat/provider orchestration and passes protoc
 
 Moved modules:
 
-- `packages/framework/src/handler/durable/protocol-headers.ts`
-- `packages/framework/src/handler/durable/read-transport.ts`
-- `packages/framework/src/handler/durable/mutation-transport.ts`
-- `packages/framework/src/handler/durable/sse-formatter.ts`
+- `packages/durable-chat-runtime/src/durable-handler/protocol-headers.ts`
+- `packages/durable-chat-runtime/src/durable-handler/read-transport.ts`
+- `packages/durable-chat-runtime/src/durable-handler/mutation-transport.ts`
+- `packages/durable-chat-runtime/src/durable-handler/sse-formatter.ts`
 - `packages/durable-streams/src/types.ts` (core type source)
 - `packages/durable-streams/src/in-memory-store.ts` (core in-memory source)
 

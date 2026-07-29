@@ -30,7 +30,7 @@ describe("session-contract package boundaries", () => {
     const sourceFiles = ["durable-apis.ts", "durable-authority.ts", "index.ts"];
     for (const file of sourceFiles) {
       const source = readFileSync(resolve(packageRoot, "src", file), "utf8");
-      expect(source, file).not.toContain("@sweatpants/framework");
+      expect(source, file).not.toContain(["@sweatpants", "framework"].join("/"));
       expect(source, file).not.toContain("@sweatpants/tool-runtime");
       expect(source, file).not.toContain(' from "redis"');
       expect(source, file).not.toContain(' from "zod"');

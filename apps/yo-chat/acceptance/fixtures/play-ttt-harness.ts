@@ -1,3 +1,4 @@
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { resource, run, type Operation, type Stream } from "effection";
 import { createClient, type RedisClientType } from "redis";
 import {
@@ -5,27 +6,26 @@ import {
   ModelProviderModelContext,
   ToolInventoryContext,
   createToolInventory,
-  createToolInventoryEntry,
   type AssistantMessage,
   type Model,
   type ModelProviderDriver,
   type ModelProviderStreamRequest,
   type StreamEvent,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
+import { createChatApplication } from "@sweatpants/agent-host/server";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import {
-  ProgramDriverNativeToolsContext,
-  createCapabilityKeyring,
-  createChatApplication,
   createDurableChatHandler,
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,
   type ProgramDriverJournalStore,
-} from "@sweatpants/framework/server";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
+import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 import type { DurableSemanticRecord } from "@sweatpants/session-contract";
 import type { Json } from "@sweatpants/foundation";
 import { createRedisProgramDriverJournalStore } from "../../src/server/program-driver-journal.ts";

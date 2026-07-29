@@ -129,7 +129,7 @@ export {
   TOOL_PARAMETER_VALIDATION_FAILED,
   type ToolParameterValidationIssue,
   type ToolParameterValidationErrorPayload,
-} from "./tool-validation.ts";
+} from "@sweatpants/agent-sdk/tool";
 
 // Minimal plugin spec for session options
 export type { PluginReplayTraceSpec } from "./plugin-spec.ts";

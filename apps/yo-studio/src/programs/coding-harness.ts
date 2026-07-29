@@ -1,4 +1,4 @@
-import { defineChatProgram, modelTool } from "@sweatpants/framework/chat";
+import { defineChatProgram, modelTool } from "@sweatpants/chat-core";
 
 import {
   playTttTool,

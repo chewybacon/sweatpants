@@ -1,22 +1,23 @@
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import type { AnyToolContract, RuntimeTool } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
 import {
   PluginSessionManagerContext,
   PluginSessionRegistryContext,
-  ToolInventoryContext,
-  installToolRuntime,
+} from "@sweatpants/durable-chat-runtime/contexts";
+import { projectAvailableToolContracts } from "@sweatpants/durable-chat-runtime/tool-inventory";
+import {
   createStrategyToolRuntime,
-  createToolInventory,
-  createToolInventoryEntry,
-  projectAvailableToolContracts,
-} from "@sweatpants/framework/chat";
+  installToolRuntime,
+} from "@sweatpants/tool-session/chat-runtime";
 import {
   ProgramDriverForeignEffectsContext,
   ProgramDriverNativeToolsContext,
   programDriverSchemaRegistry,
   type PluginSessionManager,
-} from "@sweatpants/framework/server";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
   createDurableToolRegistry,
   type ProgramDriver,
@@ -251,6 +252,9 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
     tools: ordinaryTools,
     registry: options.registry,
     samplingProvider: options.samplingProvider,
+    installForeignEffects: function* (registrations) {
+      yield* ProgramDriverForeignEffectsContext.set(registrations);
+    },
   });
 }
 

@@ -39,7 +39,7 @@ describe("scripted rendering provider gate", () => {
   it("installs the scripted rendering provider when explicitly enabled", async () => {
     mockEnv("yes");
     const { setupYoChatModelProvider } = await import("../server/model-provider");
-    const { useModel } = await import("@sweatpants/framework/chat");
+    const { useModel } = await import("@sweatpants/chat-core");
 
     await run(function* () {
       yield* setupYoChatModelProvider({

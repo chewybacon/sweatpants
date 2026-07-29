@@ -4,7 +4,7 @@ import {
   programDriverSchemaRegistry,
   type ProgramDriverJournal,
   type ProgramDriverJournalStore,
-} from "@sweatpants/framework/server";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
 import { createRedisDurableJournalAuthority } from "@sweatpants/journal-authority-redis";
 import type { RedisClientType } from "redis";
 import type {

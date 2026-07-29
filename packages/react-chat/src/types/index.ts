@@ -44,7 +44,7 @@ export type {
   ChatEventTransform,
   SessionOptions,
   ChatCommand,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 
 export {
   getRenderedFromFrame,
@@ -58,4 +58,4 @@ export {
   createToolResultPart,
   groupTimelineByToolCall,
   initialChatState,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";

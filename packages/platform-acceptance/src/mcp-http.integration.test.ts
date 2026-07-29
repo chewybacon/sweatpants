@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { call, run } from "effection";
 import { describe, expect, it } from "vitest";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
-import { createMcpHandler } from "@sweatpants/framework/chat/mcp-tools";
+import { createMcpHandler } from "@sweatpants/tool-session/mcp";
 import {
   createInMemoryToolSessionStore,
   createToolSessionRegistry,

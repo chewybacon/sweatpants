@@ -599,7 +599,7 @@ class: text-center
 
 ```
 apps/hydra/src/             # Server pool, switchboard
-packages/framework/src/lib/chat/mcp-tools/  # Tool runtime
+packages/tool-session/src/mcp/  # Tool runtime
 packages/durable-chat-runtime/src/response-streams/  # Session management
 ```
 

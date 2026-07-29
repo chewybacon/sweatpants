@@ -7,9 +7,9 @@ import {
   type ChatSessionStreamEvent,
   type ChatState,
   type ElicitState,
-  type PluginHandleInput,
   type SessionOptions,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
+import type { PluginHandleInput } from "@sweatpants/tool-session/mcp";
 
 export type ChatFetch = FrameworkChatFetch;
 

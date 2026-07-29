@@ -5,7 +5,10 @@
  * This uses the createStreamingHandler primitive.
  */
 import { createFileRoute } from "@tanstack/react-router";
-import { createStreamingHandler, useHandlerContext } from "@sweatpants/framework/server";
+import {
+  createStreamingHandler,
+  useHandlerContext,
+} from "@sweatpants/durable-chat-runtime/handler/streaming";
 import { resource, sleep, call } from "effection";
 import type { Operation, Stream } from "effection";
 

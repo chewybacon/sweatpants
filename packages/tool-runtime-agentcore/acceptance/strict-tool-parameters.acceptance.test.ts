@@ -1,9 +1,9 @@
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { run, resource, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import { type ToolSession, type ToolSessionRegistry } from "@sweatpants/tool-session";
-import { createToolInventoryEntry } from "@sweatpants/framework/chat";
 import { createAgentCoreToolRuntimeDriver } from "../src/index.ts";
 
 const remoteTool = createTool("remote_echo")

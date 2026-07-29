@@ -298,9 +298,9 @@ export function composeProcessFns(fns: ProcessFn[]): ProcessFn {
 // =============================================================================
 
 // Import patch types
-import type { ChatStateEvent } from "@sweatpants/framework/chat";
+import type { ChatStateEvent } from "@sweatpants/chat-core";
 
-import { generatePartId } from "@sweatpants/framework/chat";
+import { generatePartId } from "@sweatpants/chat-core";
 
 type ContentPartType = "text" | "reasoning";
 

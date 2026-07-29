@@ -11,7 +11,7 @@ import {
   type ChatMessageV1,
   type ChatModelSampleInputV2,
   type ChatModelSampleOutputV2,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
 
 const selection = {

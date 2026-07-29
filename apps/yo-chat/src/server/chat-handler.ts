@@ -1,8 +1,9 @@
-import { createCapabilityKeyring, createChatHandler } from "@sweatpants/framework/server";
+import { createChatHandler } from "@sweatpants/agent-host/server";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import { env } from "@/env";
 import { setupYoChatModelProvider } from "./model-provider";
 import { createYoChatProgramDriverJournalStore } from "./program-driver-journal";
-import type { ProgramDriverJournalStore } from "@sweatpants/framework/server";
+import type { ProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
 
 /** Expected composition failure for invalid ProgramRuntime configuration. */
 export class ProgramDriverConfigurationError extends Error {

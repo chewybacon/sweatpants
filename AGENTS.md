@@ -64,8 +64,8 @@ other.
 Each of these has silently cost real debugging time. Prefer failing loudly over
 falling back.
 
-- **`dist` vs `src`.** App tests resolve `@sweatpants/framework` to `dist/`, so
-  edits to framework source have no effect until `pnpm -C packages/framework build`.
+- **`dist` vs `src`.** App tests resolve `@sweatpants/agent-host` to `dist/`, so
+  edits to framework source have no effect until `pnpm -C packages/agent-host build`.
   The `development` export condition resolves to source; `packages/a2a`
   certification fixtures use `--conditions=development`.
 - **Redis conformance falls back to a fake.** `journal-authority-redis`'s conformance

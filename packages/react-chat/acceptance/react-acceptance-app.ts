@@ -1,20 +1,17 @@
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Operation } from "effection";
+import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import {
-  createCapabilityKeyring,
-  createChatApplication,
-  createChatHandler,
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,
-} from "@sweatpants/framework/server";
-import {
-  createToolInventory,
-  createToolInventoryEntry,
-  ToolInventoryContext,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
+import { createToolInventory, ToolInventoryContext } from "@sweatpants/chat-core";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
+import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createInMemoryToolSessionStoreWithDebug,
   createToolSessionRegistry,
@@ -66,6 +63,9 @@ export function createReactAcceptanceApplication(
       yield* installLocalProgramToolRuntime({
         tools: [reactBookingTool],
         registry,
+        installForeignEffects: function* (registrations) {
+          yield* ProgramDriverForeignEffectsContext.set(registrations);
+        },
         samplingProvider: {
           *sample() {
             throw new Error("React acceptance tool does not perform nested sampling");

@@ -6,7 +6,7 @@
  *
  * This is nearly identical to play-ttt's plugin - same UI, different tool logic.
  */
-import { makePlugin, getElicitContext } from "@sweatpants/framework/chat";
+import { makePlugin, getElicitContext } from "@sweatpants/tool-session/mcp";
 import { tictactoeTool } from "./tool.ts";
 import { GameChatView, type GameMove } from "../play-ttt/components/GameChatView.tsx";
 import type { Board, Player } from "./types.ts";

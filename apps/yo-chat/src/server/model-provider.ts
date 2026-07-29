@@ -1,5 +1,5 @@
 import type { Operation } from "effection";
-import type { ChatHandlerSetupContext } from "@sweatpants/framework/server";
+import type { ChatHandlerSetupContext } from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
   installPiAiModelProvider,
   parseAllowedModelsJson,

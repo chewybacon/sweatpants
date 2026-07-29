@@ -1,3 +1,4 @@
+import { validateRuntimeToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import { action, resource, spawn, type Operation, type Stream } from "effection";
 import {
@@ -5,7 +6,6 @@ import {
   ToolRuntimeError,
   createStrategyToolRuntime,
   createToolExecutionRef,
-  validateRuntimeToolParameters,
   type ElicitToolRequest,
   type ToolCall,
   type ToolExecution,
@@ -13,7 +13,7 @@ import {
   type ToolExecutionEvent,
   type ToolExecutionStrategy,
   type ToolRuntime,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/tool-session/chat-runtime";
 import type {
   WireElicitResult,
   ToolSession as McpToolSession,

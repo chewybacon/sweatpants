@@ -25,7 +25,7 @@ import type {
 } from "@sweatpants/tool-session";
 import { isExecutableToolContract, type ToolContract } from "@sweatpants/agent-sdk";
 import { installToolSessionStore, ToolSessionStorePort } from "./session-store-port.ts";
-import { validateToolParameters } from "@sweatpants/framework/chat";
+import { validateToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import { createToolSession } from "./tool-session.ts";
 import { createWorkerToolSession } from "./worker-tool-session.ts";
 

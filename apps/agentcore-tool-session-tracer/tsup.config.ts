@@ -17,16 +17,18 @@ export default defineConfig({
   // The runtime image intentionally excludes workspace dist artifacts. Bundle
   // app-authored tools and the core builder so no workspace symlink resolves to
   // a missing /packages/*/dist file at container startup.
-  noExternal: ["@sweatpants/framework", "@sweatpants/agent-sdk"],
+  noExternal: ["@sweatpants/agent-sdk", "@sweatpants/chat-core", "@sweatpants/tool-session"],
   esbuildOptions(options) {
     options.alias = {
       ...options.alias,
+      "@sweatpants/agent-sdk/tool": resolve(here, "../../packages/agent-sdk/src/tool/index.ts"),
       "@sweatpants/agent-sdk": resolve(here, "../../packages/agent-sdk/src/index.ts"),
-      "@sweatpants/framework/chat/browser-rendering": resolve(
+      "@sweatpants/react-chat/browser-rendering": resolve(
         here,
-        "../../packages/framework/src/lib/chat/browser-rendering/index.ts",
+        "../../packages/react-chat/src/browser-rendering/index.ts",
       ),
-      "@sweatpants/framework/chat": resolve(here, "src/framework-chat-agentcore-shim.ts"),
+      "@sweatpants/chat-core": resolve(here, "../../packages/chat-core/src/index.ts"),
+      "@sweatpants/tool-session/mcp": resolve(here, "../../packages/tool-session/src/mcp/index.ts"),
     };
   },
 });

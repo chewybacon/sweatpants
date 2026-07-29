@@ -15,17 +15,16 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { run, each } from "effection";
 import {
   createChatSession,
-  createPluginRegistryFrom,
   initialChatState,
   type ChatCommand,
   type ChatSession,
   type ClientToolSessionOptions,
   type ElicitTrackingState,
   type LocalEmissionAction as FrameworkLocalEmissionAction,
-  type PluginHandleInput,
   type ReasoningPart,
   type TextPart,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
+import { createPluginRegistryFrom, type PluginHandleInput } from "@sweatpants/tool-session/mcp";
 import { createPipelineTransform, markdown } from "./pipeline/index.ts";
 import type {
   ChatState,
@@ -33,7 +32,7 @@ import type {
   ToolEmissionState,
   SessionOptions,
 } from "./types.ts";
-import type { ToolExecutionTrace } from "@sweatpants/framework/chat/browser-rendering";
+import type { ToolExecutionTrace } from "@sweatpants/chat-core";
 import { useChatConfig } from "./ChatProvider.tsx";
 import { useElicitExecutor } from "./useElicitExecutor.ts";
 

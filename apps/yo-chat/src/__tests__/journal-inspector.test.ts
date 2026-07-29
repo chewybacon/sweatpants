@@ -1,9 +1,7 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import {
-  createCapabilityKeyring,
-  createInMemoryProgramDriverJournalStore,
-} from "@sweatpants/framework/server";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createInMemoryProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { type DurableProgramManifest } from "@sweatpants/durable-execution";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 

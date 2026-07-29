@@ -5,7 +5,7 @@
  * Each elicitation key (pickFlight, pickSeat) has a handler that renders
  * a React component and returns the user's selection.
  */
-import { makePlugin, getElicitContext } from "@sweatpants/framework/chat";
+import { makePlugin, getElicitContext } from "@sweatpants/tool-session/mcp";
 import { bookFlightTool, type Flight, type SeatMap } from "./tool";
 import { FlightList } from "./components/FlightList";
 import { SeatPicker } from "./components/SeatPicker";

@@ -1,4 +1,4 @@
-import { getElicitContext, makePlugin } from "@sweatpants/framework/chat";
+import { getElicitContext, makePlugin } from "@sweatpants/tool-session/mcp";
 
 import { CardPicker } from "./components/CardPicker";
 import { pickCard } from "./durable";

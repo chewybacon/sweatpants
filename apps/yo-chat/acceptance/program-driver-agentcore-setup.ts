@@ -1,6 +1,6 @@
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import { createPluginSessionManager } from "@sweatpants/framework/server";
+import { createPluginSessionManager } from "@sweatpants/durable-chat-runtime/durable-handler";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createAgentCoreRemoteToolRuntimeClient,

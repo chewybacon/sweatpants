@@ -9,7 +9,7 @@ import {
   reactChat,
   streamableMcp,
   workspaceSource,
-} from "@sweatpants/framework/deployment";
+} from "@sweatpants/agent-host/deployment";
 
 import { codingCapabilities } from "./capabilities/index.ts";
 import { codingHarness } from "./programs/coding-harness.ts";

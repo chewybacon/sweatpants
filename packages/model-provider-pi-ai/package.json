@@ -34,10 +34,10 @@
     },
     "dependencies": {
         "@earendil-works/pi-ai": "^0.80.1",
+        "@sweatpants/chat-core": "workspace:*",
         "zod": "catalog:"
     },
     "devDependencies": {
-        "@sweatpants/framework": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "effection": "catalog:",
         "tsup": "catalog:",
@@ -45,7 +45,6 @@
         "vitest": "catalog:"
     },
     "peerDependencies": {
-        "@sweatpants/framework": "workspace:*",
         "effection": ">=4.1.0-alpha.9 <5.0.0"
     }
 }

@@ -1,12 +1,10 @@
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { describe, expect, it } from "vitest";
 import { run, resource, type Operation } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import {
-  ToolRuntimeApi,
-  createToolInventory,
-  createToolInventoryEntry,
-} from "@sweatpants/framework/chat";
+import { ToolRuntimeApi } from "@sweatpants/tool-session/chat-runtime";
+import { createToolInventory } from "@sweatpants/chat-core";
 import { type ToolSessionRegistry, type ToolSession } from "@sweatpants/tool-session";
 import {
   FakeAgentCoreRemoteToolRuntimeClient,

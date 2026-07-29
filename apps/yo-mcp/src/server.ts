@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { run } from "effection";
-import { createMcpHandler } from "@sweatpants/framework/chat/mcp-tools";
+import { createMcpHandler } from "@sweatpants/tool-session/mcp";
 import type { SampleResultBase, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createInMemoryToolSessionStore,

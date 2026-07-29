@@ -417,4 +417,4 @@ ag_ui_run_started
 ## References
 
 - [Durable Stream Protocol](./durable-stream-protocol.md) — parent specification
-- Source of truth: `packages/framework/src/lib/chat/session/streaming.ts`
+- Source of truth: `packages/chat-core/src/session/streaming.ts`

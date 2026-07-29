@@ -85,6 +85,6 @@ src/
 
 ## See Also
 
-- [Framework Documentation](../../packages/framework/docs/README.md)
+- [Framework Documentation](../../packages/agent-host/docs/README.md)
 - [Core Tools Guide](../../packages/agent-sdk/README.md)
 - [yo-chat Reference App](../yo-chat/README.md)

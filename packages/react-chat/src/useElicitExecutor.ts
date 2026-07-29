@@ -16,21 +16,18 @@ import { useEffect, useRef } from "react";
 import type { ComponentType } from "react";
 import { run, createSignal } from "effection";
 import type { Task, Operation } from "effection";
-import type { PluginRegistry } from "@sweatpants/framework/chat";
-import type { ElicitTrackingState } from "@sweatpants/framework/chat";
-import type { ElicitState } from "@sweatpants/framework/chat";
-import type { LocalEmissionAction } from "@sweatpants/framework/chat";
-import { executeElicitHandlerFromRequest } from "@sweatpants/framework/chat";
-import type { PluginClientContext } from "@sweatpants/framework/chat";
-import type { ElicitRequest, ElicitId } from "@sweatpants/framework/chat";
-import { MODEL_CONTEXT_SCHEMA_KEY } from "@sweatpants/framework/chat";
+import type { ElicitState, ElicitTrackingState, LocalEmissionAction } from "@sweatpants/chat-core";
+import type { PluginRegistry } from "@sweatpants/tool-session/mcp";
+import { executeElicitHandlerFromRequest } from "./mcp-plugin-executor.ts";
+import type { ElicitId, ElicitRequest, PluginClientContext } from "@sweatpants/tool-session/mcp";
+import { MODEL_CONTEXT_SCHEMA_KEY } from "@sweatpants/tool-session/mcp";
 import {
   COMPONENT_EMISSION_TYPE,
   createToolTrace,
   type ComponentEmissionPayload,
   type Emission,
   type ToolExecutionTrace,
-} from "@sweatpants/framework/chat/browser-rendering";
+} from "./browser-rendering/index.ts";
 
 // =============================================================================
 // TYPES

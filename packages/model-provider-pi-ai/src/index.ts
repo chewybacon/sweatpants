@@ -18,7 +18,7 @@ import {
   ModelProviderModelContext,
   ModelProviderStreamOptionsContext,
   type ModelProviderDriver,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 
 export * from "./runtime/index.ts";
 

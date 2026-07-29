@@ -1,4 +1,4 @@
-import { getElicitContext, makePlugin } from "@sweatpants/framework/chat";
+import { getElicitContext, makePlugin } from "@sweatpants/tool-session/mcp";
 
 import { TicTacToeGame } from "./tic-tac-toe-game.tsx";
 import { playTttTool, type Board, type GameMove, type Player } from "./tic-tac-toe.ts";

@@ -27,7 +27,7 @@
  * - Final result collection
  *
  * Event-log semantics (LSN, status derivation, replay, settlement) come from
- * the shared `createToolSessionEventLog` kernel in @sweatpants/framework.
+ * the shared `createToolSessionEventLog` kernel in @sweatpants/tool-session.
  *
  * @packageDocumentation
  */

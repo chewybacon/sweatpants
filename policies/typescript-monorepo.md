@@ -27,7 +27,7 @@ Every workspace falls into one of three categories. Determine the category first
 
 **Definition**: Libraries/packages where TypeScript compiler (`tsc`) handles type declaration generation.
 
-**Examples**: `@sweatpants/framework`, `@sweatpants/tool-session/elicit-context`, `@sweatpants/cli`
+**Examples**: `@sweatpants/agent-host`, `@sweatpants/tool-session/elicit-context`, `@sweatpants/cli`
 
 **Characteristics**:
 
@@ -123,7 +123,7 @@ Development exports enable VSCode IntelliSense without pre-building. They are **
 ### How It Works
 
 ```
-[Consumer] --imports--> [@sweatpants/framework]
+[Consumer] --imports--> [@sweatpants/agent-host]
                               ↓
                     [development condition resolves to]
                               ↓
@@ -214,7 +214,7 @@ For packages with multiple entry points:
     "references": [
         { "path": "./packages/tool-session" },
         { "path": "./packages/cli" },
-        { "path": "./packages/framework" },
+        { "path": "./packages/agent-host" },
         { "path": "./apps/hydra" }
     ],
     "files": []
@@ -321,7 +321,7 @@ pnpm install
 
 ```json
 "paths": {
-  "@sweatpants/framework/*": ["../../packages/framework/src/*"]
+  "@sweatpants/agent-host/*": ["../../packages/agent-host/src/*"]
 }
 ```
 

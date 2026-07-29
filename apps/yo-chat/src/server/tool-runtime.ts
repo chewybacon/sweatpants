@@ -3,7 +3,7 @@ import { call, type Operation } from "effection";
 import {
   createPluginSessionManager,
   type PluginSessionManager,
-} from "@sweatpants/framework/server";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
 import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
