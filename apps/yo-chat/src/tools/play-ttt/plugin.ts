@@ -4,7 +4,7 @@
  * Provides client-side elicitation handlers for the play_ttt tool.
  * Uses the GameChatView component to render the game as a chat-style conversation.
  */
-import { makePlugin, getElicitContext } from "@sweatpants/framework/chat";
+import { makePlugin, getElicitContext } from "@sweatpants/tool-session/mcp";
 import { playTttTool } from "./tool";
 import { GameChatView, type GameMove } from "./components/GameChatView";
 import type { Board, Player } from "../tictactoe/types.ts";

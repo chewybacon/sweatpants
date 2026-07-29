@@ -54,13 +54,13 @@ import {
   type UseChatSessionOptions,
   type UseChatSessionReturn,
 } from "./useChatSession.ts";
-import { deriveMessages, deriveStreamingMessage } from "@sweatpants/framework/chat";
+import { deriveMessages, deriveStreamingMessage } from "@sweatpants/chat-core";
 import type {
   ChatMessage as BaseChatMessage,
   ToolCallPart as BaseToolCallPart,
   ChatEmission as BaseChatEmission,
   StreamingMessage as BaseStreamingMessage,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 import type { PipelineConfig, Processor } from "./pipeline/types.ts";
 import {
   createPipelineTransform,

@@ -6,7 +6,7 @@ import {
   type BridgeEvent,
   type ElicitResponse,
   type SampleResponse,
-} from "../../../packages/framework/src/lib/chat/mcp-tools/bridge-runtime.ts";
+} from "@sweatpants/tool-session/mcp";
 import { getRuntimeMcpTool, runtimeMcpToolNames } from "./tool-registry.ts";
 import type {
   ModelSelection,

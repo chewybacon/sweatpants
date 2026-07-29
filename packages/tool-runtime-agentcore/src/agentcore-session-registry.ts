@@ -5,7 +5,7 @@ import type {
   ToolSessionRegistry,
   ToolSessionOptions,
 } from "@sweatpants/tool-session";
-import { validateToolParameters } from "@sweatpants/framework/chat";
+import { validateToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   type AgentCoreToolEvent,

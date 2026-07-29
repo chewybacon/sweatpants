@@ -1,6 +1,22 @@
 {
     "extends": "@sweatpants/ts-config/tsconfig.package.json",
-    "compilerOptions": { "noEmit": true, "customConditions": ["development"] },
+    "compilerOptions": {
+        "noEmit": true,
+        "customConditions": ["development"]
+    },
     "include": ["src/**/*.ts"],
-    "references": [{ "path": "../chat-core" }, { "path": "../framework" }]
+    "references": [
+        {
+            "path": "../chat-core"
+        },
+        {
+            "path": "../tool-session"
+        },
+        {
+            "path": "../durable-chat-runtime"
+        },
+        {
+            "path": "../agent-host"
+        }
+    ]
 }

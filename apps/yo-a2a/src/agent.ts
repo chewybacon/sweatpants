@@ -5,7 +5,7 @@ import {
   defineResourcePackage,
   textResource,
 } from "@sweatpants/agent-sdk";
-import { defineChatProgram, modelReadable, modelTool } from "@sweatpants/framework/chat";
+import { defineChatProgram, modelReadable, modelTool } from "@sweatpants/chat-core";
 import { bookFlight } from "./book-flight.ts";
 import { echoMessage } from "./echo-message.ts";
 import { pickCard } from "./pick-card.ts";

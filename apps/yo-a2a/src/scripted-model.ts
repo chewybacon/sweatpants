@@ -2,7 +2,7 @@ import {
   createChatModelEffectRegistration,
   type ChatMessageV1,
   type ChatModelSampleOutputV2,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 import type { Json } from "@sweatpants/foundation";
 import { cardGuidance } from "./agent.ts";
 

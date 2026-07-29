@@ -21,8 +21,8 @@ import {
   modelTool,
   type ChatMessageV1,
   type ChatTurnInputV1,
-} from "@sweatpants/framework/chat";
-import { remoteExecutor, serveAgent } from "@sweatpants/framework/server";
+} from "@sweatpants/chat-core";
+import { remoteExecutor, serveAgent } from "@sweatpants/agent-host/server";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {

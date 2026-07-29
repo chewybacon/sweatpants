@@ -53,7 +53,7 @@ import type {
   SampleResultWithParsed,
   SampleResultWithToolCalls,
 } from "@sweatpants/tool-session";
-import type { SampleToolsResult, SampleSchemaResult } from "@sweatpants/framework/chat/mcp-tools";
+import type { SampleToolsResult, SampleSchemaResult } from "@sweatpants/tool-session/mcp";
 
 // =============================================================================
 // WORKER INIT DATA

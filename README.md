@@ -12,15 +12,15 @@ Sweatpants is a TypeScript agent/chat framework with a thin, versioned **product
 
 At most four conceptual targets (concrete package names today):
 
-| Conceptual           | Install / import today         | Job                                     |
-| -------------------- | ------------------------------ | --------------------------------------- |
-| `@sweatpants/react`  | `@sweatpants/react-chat`       | UI hooks / chat client                  |
-| `@sweatpants/server` | `@sweatpants/framework/server` | Durable handler + app wiring            |
-| `@sweatpants/tools`  | `@sweatpants/agent-sdk`        | `createTool` authoring                  |
-| `@sweatpants/chat`   | `@sweatpants/framework/chat`   | Plugins, session helpers, advanced chat |
+| Conceptual           | Install / import today          | Job                                     |
+| -------------------- | ------------------------------- | --------------------------------------- |
+| `@sweatpants/react`  | `@sweatpants/react-chat`        | UI hooks / chat client                  |
+| `@sweatpants/server` | `@sweatpants/agent-host/server` | Durable handler + app wiring            |
+| `@sweatpants/tools`  | `@sweatpants/agent-sdk`         | `createTool` authoring                  |
+| `@sweatpants/chat`   | `@sweatpants/chat-core`         | Plugins, session helpers, advanced chat |
 
 ```bash
-pnpm add @sweatpants/react-chat @sweatpants/framework @sweatpants/agent-sdk
+pnpm add @sweatpants/react-chat @sweatpants/agent-host @sweatpants/agent-sdk
 ```
 
 ## Quick start
@@ -56,7 +56,7 @@ function Chat() {
 ### Server wiring
 
 ```ts
-import { createChatApplication, createChatHandler } from "@sweatpants/framework/server";
+import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 
 export function createApp() {
@@ -113,7 +113,7 @@ export const bookFlight = createTool("book_flight")
 ### Plugin UI binding
 
 ```ts
-import { makePlugin, getElicitContext } from "@sweatpants/framework/chat";
+import { makePlugin, getElicitContext } from "@sweatpants/chat-core";
 import { bookFlight } from "./book-flight";
 
 export const bookFlightPlugin = makePlugin(bookFlight).onElicit({
@@ -152,7 +152,7 @@ pnpm validate:product-surface   # facade allowlist + product import policy
 pnpm validate:exports
 
 # Golden-path + differentiator acceptance
-pnpm -C packages/framework test:acceptance
+pnpm -C packages/agent-host test:acceptance
 
 # Reference app
 pnpm dev:yo-chat:local

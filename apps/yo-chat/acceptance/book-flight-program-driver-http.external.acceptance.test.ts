@@ -1,3 +1,5 @@
+import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-session/chat-runtime";
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 // @vitest-environment node
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
@@ -7,28 +9,25 @@ import {
   installModelProvider,
   ModelProviderModelContext,
   ToolInventoryContext,
-  installToolRuntime,
   createToolInventory,
-  createToolInventoryEntry,
   type AssistantMessage,
   type Model,
   type ModelProviderDriver,
   type StreamEvent,
-  type ToolRuntime,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
+import { createChatApplication } from "@sweatpants/agent-host/server";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import {
-  ProgramDriverForeignEffectsContext,
-  createCapabilityKeyring,
-  createChatApplication,
   createDurableChatHandler,
   createInMemoryProgramDriverJournalStore,
   type ProgramDriverJournalStore,
-} from "@sweatpants/framework/server";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
+import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createInMemoryToolSessionStore,
   createToolSessionForeignEffectRegistrations,

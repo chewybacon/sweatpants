@@ -39,7 +39,7 @@
             "path": "./packages/cli"
         },
         {
-            "path": "./packages/framework"
+            "path": "./packages/agent-host"
         },
         {
             "path": "./packages/model-provider-pi-ai"

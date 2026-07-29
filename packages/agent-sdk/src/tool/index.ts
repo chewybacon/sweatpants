@@ -31,6 +31,11 @@ export {
   type DurableEffectRuntimeValidators,
 } from "./durable-effect.ts";
 export { buildToolSchemaArtifacts, type ToolSchemaArtifactInputs } from "./artifacts.ts";
+export {
+  TOOL_PARAMETER_VALIDATION_FAILED,
+  type ToolParameterValidationErrorPayload,
+  type ToolParameterValidationIssue,
+} from "./validation.ts";
 export { isExecutableToolContract, projectToolContract } from "./contract.ts";
 export type {
   AnyToolContract,

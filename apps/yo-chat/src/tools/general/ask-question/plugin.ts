@@ -1,4 +1,4 @@
-import { getElicitContext, makePlugin } from "@sweatpants/framework/chat";
+import { getElicitContext, makePlugin } from "@sweatpants/tool-session/mcp";
 
 import { QuestionPrompt } from "./components/QuestionPrompt";
 import { askQuestion } from "./tool";

@@ -2,16 +2,19 @@
   "version": 1,
   "facadePaths": [
     "@sweatpants/react-chat",
-    "@sweatpants/workspace-lambda-microvm",
     "@sweatpants/react-chat/pipeline",
-    "@sweatpants/framework/server",
-    "@sweatpants/framework/server/testing",
-    "@sweatpants/framework/chat",
-    "@sweatpants/framework/chat/browser-rendering",
-    "@sweatpants/framework/chat/mcp-tools",
+    "@sweatpants/react-chat/browser-rendering",
+    "@sweatpants/agent-host/server",
+    "@sweatpants/agent-host/server/testing",
+    "@sweatpants/agent-host/deployment",
+    "@sweatpants/chat-core",
+    "@sweatpants/tool-session/mcp",
+    "@sweatpants/tool-session/chat-runtime",
+    "@sweatpants/tool-session/tool-parameters",
     "@sweatpants/durable-chat-runtime/response-streams",
-    "@sweatpants/framework/deployment",
+    "@sweatpants/durable-chat-runtime/durable-handler",
     "@sweatpants/workspace-runtime",
+    "@sweatpants/workspace-lambda-microvm",
     "@sweatpants/agent-sdk",
     "@sweatpants/agent-sdk/tool",
     "@sweatpants/agent-sdk/tools"
@@ -21,8 +24,6 @@
     "apps/yo-studio"
   ],
   "experimentalPathPatterns": [
-    "@sweatpants/framework/chat/isomorphic-tools",
-    "@sweatpants/framework/src/",
     "createIsomorphicTool",
     "defineIsomorphicTool",
     "defineServerOnlyTool",
@@ -31,7 +32,7 @@
   ],
   "knownExceptions": [],
   "goldenPathSuites": [
-    "packages/framework/acceptance/golden-path.acceptance.test.ts"
+    "packages/platform-acceptance/src/product/golden-path.acceptance.test.ts"
   ],
   "notes": {
     "advancedWiring": [

@@ -1,5 +1,5 @@
 import { run } from "effection";
-import type { ProgramDriverJournalStore } from "@sweatpants/framework/server";
+import type { ProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
 
 import { getActiveProgramDriverJournalStore } from "./chat-handler";
 

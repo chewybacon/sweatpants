@@ -11,10 +11,11 @@
         "test:process": "vitest run test/process-replacement.test.ts"
     },
     "dependencies": {
+        "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/framework": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "effection": "catalog:",

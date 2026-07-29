@@ -11,12 +11,8 @@
  * it only supplies the elicit answers a human would click.
  */
 import { call, run, sleep, spawn, each, type Operation } from "effection";
-import {
-  createChatSession,
-  type ChatState,
-  type ElicitState,
-  type PluginHandleInput,
-} from "@sweatpants/framework/chat";
+import { createChatSession, type ChatState, type ElicitState } from "@sweatpants/chat-core";
+import type { PluginHandleInput } from "@sweatpants/tool-session/mcp";
 import { withChatFetch, type ChatBinding, type ChatFetch } from "./chat-fetch.ts";
 import { createTranscriptCollector, normalizeStreamEvent, type Transcript } from "./transcript.ts";
 

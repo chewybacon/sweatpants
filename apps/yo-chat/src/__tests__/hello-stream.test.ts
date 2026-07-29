@@ -7,7 +7,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 // We'll test the handler directly without spinning up a server
-import { createStreamingHandler, useHandlerContext } from "@sweatpants/framework/server";
+import {
+  createStreamingHandler,
+  useHandlerContext,
+} from "@sweatpants/durable-chat-runtime/handler/streaming";
 import { resource, sleep, call } from "effection";
 import type { Operation, Stream } from "effection";
 

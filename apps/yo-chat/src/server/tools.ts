@@ -1,13 +1,13 @@
 import type { Operation } from "effection";
+import { resolvePersona } from "@sweatpants/chat-core";
 import {
   MaxIterationsContext,
   McpToolRegistryContext,
   PersonaResolverContext,
   PluginRegistryContext,
-  resolvePersona,
-} from "@sweatpants/framework/chat";
-import { createPluginRegistryFrom } from "@sweatpants/framework/chat/mcp-tools";
-import type { McpToolRegistry } from "@sweatpants/framework/server";
+} from "@sweatpants/durable-chat-runtime/contexts";
+import { createPluginRegistryFrom } from "@sweatpants/tool-session/mcp";
+import type { McpToolRegistry } from "@sweatpants/chat-core";
 import { workerTools } from "./worker-tools";
 import { bookFlightPlugin, bookFlightTool } from "../tools/book-flight";
 import { askQuestion, askQuestionPlugin } from "../tools/general/ask_question";

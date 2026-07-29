@@ -4,7 +4,7 @@
  * Displays a list of available flights for the user to select.
  * Used by the book_flight tool's pickFlight elicitation.
  */
-import type { RenderableProps } from "@sweatpants/framework/chat/browser-rendering";
+import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
 import type { Flight } from "../tool";
 
 // =============================================================================

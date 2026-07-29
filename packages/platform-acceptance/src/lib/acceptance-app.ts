@@ -1,25 +1,21 @@
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Operation } from "effection";
+import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import {
-  createCapabilityKeyring,
-  createChatApplication,
-  createChatHandler,
   createInMemoryProgramDriverJournalStore,
-  ProgramDriverNativeToolsContext,
   programDriverSchemaRegistry,
   type ProgramDriverJournalStore,
-} from "@sweatpants/framework/server";
-import {
-  createToolInventory,
-  createToolInventoryEntry,
-  ToolInventoryContext,
-  type ExtendedMessage,
-  type Message,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
+import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
+import { createToolInventory, ToolInventoryContext, type Message } from "@sweatpants/chat-core";
+import type { ExtendedMessage } from "@sweatpants/tool-session/mcp";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
+import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createPiAiModelProviderDriver,
@@ -269,6 +265,9 @@ export function createAcceptanceApplication(
         tools: [acceptanceBookingTool, acceptanceImmediateTool],
         registry,
         samplingProvider,
+        installForeignEffects: function* (registrations) {
+          yield* ProgramDriverForeignEffectsContext.set(registrations);
+        },
       });
 
       const durableRegistry = createDurableToolRegistry([acceptanceDurableTool]);

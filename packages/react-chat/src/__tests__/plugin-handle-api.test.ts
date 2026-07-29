@@ -8,8 +8,11 @@
  * - NFR-003: `.client` registrations are not accepted in `plugins`.
  */
 import { describe, it, expect } from "vitest";
-import type { PluginHandleInput, PluginClientRegistrationInput } from "@sweatpants/framework/chat";
-import type { UseChatOptions } from "@sweatpants/react-chat";
+import type {
+  PluginClientRegistrationInput,
+  PluginHandleInput,
+} from "@sweatpants/tool-session/mcp";
+import type { UseChatOptions } from "../useChat.ts";
 
 // A structurally-constructed plugin handle fixture (no zod needed for type tests).
 const clientReg: PluginClientRegistrationInput = {

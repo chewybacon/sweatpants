@@ -4,9 +4,9 @@ import type {
   Message as ChatMessage,
   ChatSessionStreamEvent,
   StreamOptions,
-  ToolExecutionRef,
   ToolExecutionTrace,
 } from "@sweatpants/chat-core";
+import type { ToolExecutionRef } from "@sweatpants/tool-session/chat-runtime";
 import type { ResumeEntry } from "./types.ts";
 
 export interface ChatHandlerSetupContext {

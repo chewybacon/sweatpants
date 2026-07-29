@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { getElicitContext, makePlugin } from "@sweatpants/framework/chat";
+import { getElicitContext, makePlugin } from "@sweatpants/tool-session/mcp";
 import { reactBookingTool } from "./react-booking.tool.ts";
 
 export interface FlightChoiceProps {

@@ -9,7 +9,7 @@ import { List, ListItem } from "@astryxdesign/core/List";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
-import type { RenderableProps } from "@sweatpants/framework/chat/browser-rendering";
+import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
 
 import type { Board, GameMove, Player } from "./tic-tac-toe.ts";
 

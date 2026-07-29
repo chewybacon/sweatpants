@@ -1,15 +1,12 @@
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createChatHandler } from "@sweatpants/agent-host/server";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import {
-  createCapabilityKeyring,
-  createChatHandler,
   createInMemoryProgramDriverJournalStore,
   type ChatHandlerSetupContext,
-} from "@sweatpants/framework/server";
-import {
-  MaxIterationsContext,
-  ToolInventoryContext,
-  createToolInventory,
-  createToolInventoryEntry,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
+import { MaxIterationsContext } from "@sweatpants/durable-chat-runtime/contexts";
 import type { ToolDefinition } from "@sweatpants/agent-sdk";
 import {
   installPiAiModelProvider,

@@ -36,6 +36,17 @@
                 "types": "./dist/pipeline/index.d.ts",
                 "default": "./dist/pipeline.cjs"
             }
+        },
+        "./browser-rendering": {
+            "development": {
+                "import": "./src/browser-rendering/index.ts",
+                "types": "./src/browser-rendering/index.ts"
+            },
+            "import": {
+                "types": "./dist/browser-rendering/index.d.ts",
+                "default": "./dist/browser-rendering/index.js"
+            },
+            "default": "./src/browser-rendering/index.ts"
         }
     },
     "scripts": {
@@ -47,12 +58,16 @@
         "build:types": "tsc -b tsconfig.json --force"
     },
     "dependencies": {
-        "@sweatpants/durable-chat-runtime": "workspace:*"
+        "@sweatpants/agent-host": "workspace:*",
+        "@sweatpants/chat-core": "workspace:*",
+        "@sweatpants/durable-chat-runtime": "workspace:*",
+        "@sweatpants/tool-session": "workspace:*",
+        "effection": "catalog:"
     },
     "devDependencies": {
         "@effectionx/raf": "catalog:",
         "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/framework": "workspace:*",
+        "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/test-rig": "workspace:*",
         "@sweatpants/tool-runtime-local": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
@@ -72,7 +87,6 @@
     },
     "peerDependencies": {
         "@effectionx/raf": "^0.1.1",
-        "@sweatpants/framework": "workspace:*",
         "effection": ">=4.1.0-alpha.9 <5.0.0",
         "katex": "^0.16.27",
         "marked": "^17.0.1",

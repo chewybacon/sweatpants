@@ -1,5 +1,5 @@
-import { createChatApplication } from "@sweatpants/framework/server";
-import { setupLogger } from "@sweatpants/framework/chat";
+import { createChatApplication } from "@sweatpants/agent-host/server";
+import { setupLogger } from "@sweatpants/agent-host/logging";
 import { setupYoChatDurableStreams } from "./durable-streams";
 import { setupYoChatBaseContexts } from "./tools";
 import { setupYoChatPluginsAndRuntime } from "./tool-runtime";

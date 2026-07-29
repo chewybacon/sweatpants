@@ -35,7 +35,7 @@ function DurabilityLabPage() {
               "Re-open the same route — the conversation id is stored in localStorage.",
               "Confirm the assistant message finishes without missing content from the disconnect.",
             ]}
-            testGate="pnpm -C packages/framework exec vitest run acceptance/demo-reconnect-mid-stream.acceptance.test.ts"
+            testGate="pnpm -C packages/durable-chat-runtime exec vitest run acceptance/demo-reconnect-mid-stream.acceptance.test.ts"
           />
 
           <DemoCard
@@ -49,7 +49,7 @@ function DurabilityLabPage() {
               "Return to the same conversation — the pending elicit should still be answerable.",
               "Pick a flight and finish the booking turn without a duplicate new elicit identity.",
             ]}
-            testGate="pnpm -C packages/framework exec vitest run acceptance/demo-elicit-pause-resume.acceptance.test.ts"
+            testGate="pnpm -C packages/platform-acceptance exec vitest run src/interactive-tool.acceptance.test.ts"
           />
 
           <DemoCard

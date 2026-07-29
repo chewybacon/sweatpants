@@ -56,12 +56,12 @@ import type {
   SampleToolsResult,
   SampleSchemaResult,
   SamplingToolDefinition,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session/mcp";
 import {
   createRawSampleExchange,
   createStructuredSampleExchange,
   SampleValidationError,
-} from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session/mcp";
 
 // =============================================================================
 // TYPE CONVERSION HELPERS

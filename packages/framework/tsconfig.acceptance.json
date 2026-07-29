@@ -1,9 +1,0 @@
-{
-    "extends": "./tsconfig.lib.json",
-    "compilerOptions": {
-        "noEmit": true,
-        "rootDir": ".",
-        "customConditions": ["development"]
-    },
-    "include": ["acceptance/**/*.ts", "src/**/*.ts"]
-}

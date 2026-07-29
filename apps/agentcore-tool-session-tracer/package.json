@@ -5,8 +5,7 @@
     "type": "module",
     "main": "dist/index.js",
     "scripts": {
-        "build": "pnpm build:deps && tsup",
-        "build:deps": "pnpm --filter @sweatpants/tool-session build",
+        "build": "tsup",
         "start": "node dist/index.js",
         "smoke:local": "pnpm build:deps && tsx scripts/run-local-smoke.ts",
         "smoke:book-flight:local": "pnpm build:deps && tsx scripts/run-book-flight-local-smoke.ts",
@@ -15,7 +14,7 @@
         "book-flight:live": "tsx scripts/run-live-book-flight.ts",
         "deploy:agentcore": "tsx scripts/deploy-agentcore-runtime.ts",
         "build:image": "./scripts/build-image.sh",
-        "check": "pnpm build:deps && tsc --noEmit",
+        "check": "tsc --noEmit",
         "test": "vitest --run"
     },
     "dependencies": {
@@ -29,9 +28,10 @@
         "@opentelemetry/semantic-conventions": "^1.41.1",
         "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
-        "@sweatpants/framework": "workspace:*",
+        "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/tool-runtime-agentcore": "workspace:*",
+        "@sweatpants/tool-session": "workspace:*",
         "bedrock-agentcore": "^0.2.0",
         "effection": "catalog:",
         "zod": "catalog:"

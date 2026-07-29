@@ -4,7 +4,7 @@ import {
   type TokenBufferStore,
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import { createRedisTokenBufferStore } from "@sweatpants/durable-streams/redis";
-import type { Message } from "@sweatpants/framework/chat";
+import type { Message } from "@sweatpants/chat-core";
 import {
   createPiAiModelProviderDriver,
   resolvePiAiModel,

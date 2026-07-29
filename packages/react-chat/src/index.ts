@@ -40,6 +40,7 @@
 export * from "./useChat.ts";
 export * from "./useChatSession.ts";
 export * from "./ChatProvider.tsx";
+export * from "./browser-rendering/index.ts";
 
 // --- Pipeline System ---
 export {

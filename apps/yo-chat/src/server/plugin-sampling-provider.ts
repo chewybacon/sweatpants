@@ -1,11 +1,11 @@
 import type { Operation } from "effection";
+import type { Message } from "@sweatpants/chat-core";
 import type {
   ExtendedMessage,
-  Message,
   SamplingToolCall,
   SamplingToolDefinition,
-} from "@sweatpants/framework/chat";
-import { extendedMessageToProviderMessage } from "@sweatpants/framework/chat/mcp-tools";
+} from "@sweatpants/tool-session/mcp";
+import { extendedMessageToProviderMessage } from "@sweatpants/durable-chat-runtime/tool-session/message-conversion";
 import type {
   ToolSessionSamplingProvider,
   WireSampleResult,

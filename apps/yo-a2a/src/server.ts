@@ -1,9 +1,9 @@
-import { createStandardA2AHost, serveAgent, standardA2A } from "@sweatpants/framework/server";
+import { createStandardA2AHost, serveAgent, standardA2A } from "@sweatpants/agent-host/server";
 import {
   createFileProgramDriverJournalStore,
   createFileStandardA2ATaskDirectory,
   startAgentHarness,
-} from "@sweatpants/framework/server/testing";
+} from "@sweatpants/agent-host/server/testing";
 import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import { cardAgent } from "./agent.ts";
 import { reserveSeatRegistration, searchFlightsRegistration } from "./book-flight.ts";

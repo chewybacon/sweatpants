@@ -14,7 +14,12 @@ const externalPackages = ["marked", "shiki", "katex", "mermaid", "@earendil-work
 // Workspace packages that should hot-reload in dev
 // Note: No resolve.alias needed - framework package.json exports have
 // "development" condition that Vite uses automatically in dev mode
-const workspacePackages = ["@sweatpants/framework"];
+const workspacePackages = [
+  "@sweatpants/agent-host",
+  "@sweatpants/durable-chat-runtime",
+  "@sweatpants/chat-core",
+  "@sweatpants/tool-session",
+];
 
 const config = defineConfig({
   // Prevent Vite from pre-bundling workspace packages (allows HMR)

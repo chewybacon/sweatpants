@@ -26,7 +26,7 @@ import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schem
 import {
   createChatModelEffectRegistration,
   type ChatModelSampleOutputV2,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   createA2AProgramDriver,

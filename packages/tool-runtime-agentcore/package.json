@@ -53,8 +53,7 @@
         }
     },
     "scripts": {
-        "build": "pnpm build:deps && tsup && pnpm build:types",
-        "build:deps": "pnpm --filter @sweatpants/framework build:types",
+        "build": "tsup && pnpm build:types",
         "dev": "tsup --watch",
         "check": "pnpm build:deps && tsc -b",
         "test": "vitest run src acceptance",
@@ -67,6 +66,7 @@
         "@aws-sdk/credential-provider-node": "^3.972.57",
         "@smithy/protocol-http": "^5.5.1",
         "@smithy/signature-v4": "^5.5.1",
+        "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
@@ -78,7 +78,6 @@
     },
     "devDependencies": {
         "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/framework": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",
         "@types/ws": "catalog:",
@@ -89,7 +88,6 @@
         "zod": "catalog:"
     },
     "peerDependencies": {
-        "@sweatpants/framework": "workspace:*",
         "effection": ">=4.1.0-alpha.9 <5.0.0"
     }
 }

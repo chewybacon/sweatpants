@@ -13,11 +13,12 @@
     "dependencies": {
         "@standard-schema/spec": "catalog:",
         "@sweatpants/a2a": "workspace:*",
+        "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/framework": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",

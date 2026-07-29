@@ -13,7 +13,6 @@ export default defineConfig({
   sourcemap: true,
   minify: false,
   external: [
-    "@sweatpants/framework",
     "@sweatpants/session-contract",
     "effection",
     "zod",

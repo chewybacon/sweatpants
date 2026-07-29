@@ -15,7 +15,7 @@ import type {
   WorkerSampleResponse,
 } from "@sweatpants/agent-sdk/transport/worker";
 import type { WireElicitResult, ExtendedMessage, ToolCallMessage } from "@sweatpants/tool-session";
-import { MODEL_CONTEXT_SCHEMA_KEY } from "@sweatpants/framework/chat";
+import { MODEL_CONTEXT_SCHEMA_KEY } from "@sweatpants/tool-session/mcp";
 import type { WireSampleResult } from "@sweatpants/tool-session";
 import { WorkerSessionStateContext } from "./worker-session-context.ts";
 

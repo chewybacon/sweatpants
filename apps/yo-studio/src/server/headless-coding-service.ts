@@ -5,7 +5,7 @@ import {
   type ChatMessageV1,
   type ChatModelSampleInputV2,
   type ChatModelSampleOutputV2,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 import {
   createInMemoryProgramDriverJournalStore,
   createLocalProgramHost,
@@ -13,7 +13,7 @@ import {
   programDriverSchemaRegistry,
   type LocalProgramHost,
   type NormalizedProgramTrace,
-} from "@sweatpants/framework/server";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
 import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";

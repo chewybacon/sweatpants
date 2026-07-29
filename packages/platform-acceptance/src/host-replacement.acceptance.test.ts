@@ -4,7 +4,7 @@ import {
   type TestApplicationFactoryContext,
   type TestRigOptions,
 } from "@sweatpants/test-rig";
-import type { ProgramDriverJournalStore } from "@sweatpants/framework/server";
+import type { ProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
   ACCEPTANCE_DURABLE_TOOL_NAME,
   ACCEPTANCE_MODEL_ID,

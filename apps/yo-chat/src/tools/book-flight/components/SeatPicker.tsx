@@ -5,7 +5,7 @@
  * Used by the book_flight tool's pickSeat elicitation.
  */
 import { useState } from "react";
-import type { RenderableProps } from "@sweatpants/framework/chat/browser-rendering";
+import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
 import type { SeatMap } from "../tool";
 
 // =============================================================================

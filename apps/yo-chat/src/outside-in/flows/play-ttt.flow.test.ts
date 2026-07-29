@@ -23,7 +23,7 @@ import {
   expectToolCalled,
 } from "../lib/assertions.ts";
 import { requireCopilotAuth } from "../lib/auth.ts";
-import type { ElicitState } from "@sweatpants/framework/chat";
+import type { ElicitState } from "@sweatpants/chat-core";
 import type { ChatBinding } from "../lib/chat-fetch.ts";
 import { runChatFlow } from "../lib/driver.ts";
 import { AssertionFailure, withFlakePolicy } from "../lib/flake.ts";

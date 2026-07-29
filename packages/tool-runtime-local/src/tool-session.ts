@@ -8,7 +8,7 @@
  * Architecture:
  * - Session is created and tool execution starts immediately (spawned)
  * - Event-log semantics (LSN, status, replay, settlement) come from the shared
- *   `createToolSessionEventLog` kernel in @sweatpants/framework
+ *   `createToolSessionEventLog` kernel in @sweatpants/tool-session
  * - Events: elicit_request, sample_request, result, error, cancelled
  * - For elicits: consumer returns to client, client responds, new request calls `respondToElicit()` then continues the stream
  * - For samples: consumer handles inline (calls LLM), then calls `respondToSample()` and continues the stream
@@ -24,12 +24,8 @@ import type {
 } from "@sweatpants/tool-session";
 import type { SamplesMap, ToolDefinition } from "@sweatpants/agent-sdk";
 import type { WireElicitResult, WireSampleResult, ElicitsMap } from "@sweatpants/tool-session";
-import { validateToolParameters } from "@sweatpants/framework/chat";
-import {
-  createBridgeHost,
-  type ElicitId,
-  type ElicitResponse,
-} from "@sweatpants/framework/chat/mcp-tools";
+import { validateToolParameters } from "@sweatpants/tool-session/tool-parameters";
+import { createBridgeHost, type ElicitId, type ElicitResponse } from "@sweatpants/tool-session/mcp";
 import { createToolSessionEventLog, isTerminalToolSessionStatus } from "@sweatpants/tool-session";
 
 // =============================================================================

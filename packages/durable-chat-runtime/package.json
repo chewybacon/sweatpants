@@ -173,6 +173,72 @@
                 "default": "./dist/projection.js"
             },
             "default": "./src/projection.ts"
+        },
+        "./tool-session/message-conversion": {
+            "development": {
+                "import": "./src/tool-session/message-conversion.ts",
+                "types": "./src/tool-session/message-conversion.ts"
+            },
+            "import": {
+                "types": "./dist/tool-session/message-conversion.d.ts",
+                "default": "./dist/tool-session/message-conversion.js"
+            },
+            "default": "./src/tool-session/message-conversion.ts"
+        },
+        "./durable-handler": {
+            "development": {
+                "import": "./src/durable-handler/index.ts",
+                "types": "./src/durable-handler/index.ts"
+            },
+            "import": {
+                "types": "./dist/durable-handler/index.d.ts",
+                "default": "./dist/durable-handler/index.js"
+            },
+            "default": "./src/durable-handler/index.ts"
+        },
+        "./contexts": {
+            "development": {
+                "import": "./src/contexts.ts",
+                "types": "./src/contexts.ts"
+            },
+            "import": {
+                "types": "./dist/contexts.d.ts",
+                "default": "./dist/contexts.js"
+            },
+            "default": "./src/contexts.ts"
+        },
+        "./tool-inventory": {
+            "development": {
+                "import": "./src/tool-inventory.ts",
+                "types": "./src/tool-inventory.ts"
+            },
+            "import": {
+                "types": "./dist/tool-inventory.d.ts",
+                "default": "./dist/tool-inventory.js"
+            },
+            "default": "./src/tool-inventory.ts"
+        },
+        "./host": {
+            "development": {
+                "import": "./src/host/host-scope.ts",
+                "types": "./src/host/host-scope.ts"
+            },
+            "import": {
+                "types": "./dist/host/host-scope.d.ts",
+                "default": "./dist/host/host-scope.js"
+            },
+            "default": "./src/host/host-scope.ts"
+        },
+        "./logger": {
+            "development": {
+                "import": "./src/logger/index.ts",
+                "types": "./src/logger/index.ts"
+            },
+            "import": {
+                "types": "./dist/logger/index.d.ts",
+                "default": "./dist/logger/index.js"
+            },
+            "default": "./src/logger/index.ts"
         }
     },
     "scripts": {
@@ -181,15 +247,23 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@standard-schema/spec": "catalog:",
+        "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
+        "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
         "@sweatpants/history-store": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
-        "effection": "catalog:"
+        "@sweatpants/session-contract": "workspace:*",
+        "@sweatpants/tool-session": "workspace:*",
+        "effection": "catalog:",
+        "pino": "^9.6.0",
+        "zod": "catalog:"
     },
     "devDependencies": {
-        "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/stream-bridge": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",
         "tsup": "catalog:",

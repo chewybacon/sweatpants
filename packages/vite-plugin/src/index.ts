@@ -1,5 +1,5 @@
 /**
- * @sweatpants/framework Vite Plugin
+ * @sweatpants/agent-host Vite Plugin
  *
  * Provides file-based discovery and registry generation for:
  * - Canonical core tools

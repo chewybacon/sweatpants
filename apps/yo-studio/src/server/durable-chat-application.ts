@@ -1,26 +1,25 @@
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { resource, type Operation, type Stream } from "effection";
 import {
   ToolInventoryContext,
   createToolInventory,
-  createToolInventoryEntry,
   type AssistantMessage,
   type Model,
   type ModelProviderDriver,
   type ModelProviderStreamRequest,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
+import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import {
-  ProgramDriverNativeToolsContext,
-  createCapabilityKeyring,
-  createChatApplication,
-  createDurableChatHandler,
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,
-} from "@sweatpants/framework/server";
+} from "@sweatpants/durable-chat-runtime/durable-handler";
+import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 import {
   installLocalWorkspaceFilesProvider,
   installRemoteWorkspaceFilesProvider,
@@ -104,7 +103,7 @@ export function createStudioDurableChatApplication(options: {
     }
   };
   const modelProvider = options.modelProvider ?? createPiAiStudioModelProvider();
-  const handler = createDurableChatHandler({
+  const handler = createChatHandler({
     programDriverJournalStore: journalStore,
     maxToolIterations: 8,
     setup: function* () {

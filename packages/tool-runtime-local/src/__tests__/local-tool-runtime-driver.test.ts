@@ -1,3 +1,4 @@
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
 import { existsSync } from "node:fs";
@@ -5,12 +6,9 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import {
-  ToolRuntimeApi,
-  createToolInventory,
-  createToolInventoryEntry,
-} from "@sweatpants/framework/chat";
-import { ProgramDriverForeignEffectsContext } from "@sweatpants/framework/server";
+import { ToolRuntimeApi } from "@sweatpants/tool-session/chat-runtime";
+import { createToolInventory } from "@sweatpants/chat-core";
+import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createInMemoryToolSessionStore,
   createLocalToolRuntimeDriver,
@@ -208,6 +206,9 @@ describe("local ToolRuntimeDriver", () => {
       yield* installLocalProgramToolRuntime({
         tools: [echoTool],
         registry,
+        installForeignEffects: function* (registrations) {
+          yield* ProgramDriverForeignEffectsContext.set(registrations);
+        },
         samplingProvider: {
           *sample() {
             return { text: "unused" };
