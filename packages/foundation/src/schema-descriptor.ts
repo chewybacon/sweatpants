@@ -20,14 +20,11 @@ export class SchemaDescriptorError extends Error {
 
 /** Pairs one portable descriptor with its in-process validation authority. */
 export interface SchemaBinding<
-  D extends PortableSchemaDescriptor<string> = PortableSchemaDescriptor,
+  D extends PortableSchemaDescriptor<string> = PortableSchemaDescriptor<string>,
 > {
   readonly descriptor: D;
   readonly schema: StandardSchemaV1;
 }
-
-/** @deprecated Runtime registries must define their domain-owned entry vocabulary. */
-export type DurableSchemaRegistryEntry = SchemaBinding;
 
 /** Constructs a minimal Standard Schema V1 wrapper for an in-repo validator. */
 export function standardSchemaOf(
@@ -36,19 +33,6 @@ export function standardSchemaOf(
 ): StandardSchemaV1 {
   return { "~standard": { version: 1, vendor, validate } };
 }
-
-/** Transitional aggregate retained until domain role switchovers land. */
-export type PortableSchemaRole =
-  | "tool_parameters"
-  | "tool_output"
-  | "program_input"
-  | "program_output"
-  | "effect_input"
-  | "effect_output"
-  | "effect_cancellation_partial"
-  | "elicit_response"
-  | "elicit_context"
-  | "builtin";
 
 /**
  * Projection fidelity per role:
@@ -65,7 +49,7 @@ export interface PortableSchemaFidelity {
  * draft-2020-12 JSON Schema projections. `digest` commits to every other field
  * under a domain-separated SHA-256 of the JCS canonical form.
  */
-export interface PortableSchemaDescriptor<Role extends string = PortableSchemaRole> {
+export interface PortableSchemaDescriptor<Role extends string = string> {
   readonly identity: string;
   readonly role: Role;
   readonly version: string;
@@ -82,7 +66,7 @@ export const SCHEMA_DESCRIPTOR_DIGEST_DOMAIN = "sweatpants:portable-schema-descr
 const MAX_ROLE_LENGTH = 128;
 
 /** Fields committed by {@link computePortableSchemaDigest}. */
-export interface PortableSchemaDescriptorFields<Role extends string = PortableSchemaRole> {
+export interface PortableSchemaDescriptorFields<Role extends string = string> {
   readonly identity: string;
   readonly role: Role;
   readonly version: string;
@@ -179,9 +163,8 @@ export function parsePortableSchemaDescriptor(value: unknown): PortableSchemaDes
   }
   const descriptor = createPortableSchemaDescriptor({
     identity: value["identity"],
-    // Domain parsers refine the generic role. The transitional default keeps
-    // existing consumers source-compatible until their atomic switchovers.
-    role: value["role"] as PortableSchemaRole,
+    // Owning domains refine the generic role after this structural parse.
+    role: value["role"],
     version: value["version"],
     vendor: value["vendor"],
     inputProjection: assertJson(value["inputProjection"]),
