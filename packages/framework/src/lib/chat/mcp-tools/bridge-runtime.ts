@@ -31,7 +31,7 @@ import {
   useAbortSignal,
 } from "effection";
 import { z } from "zod";
-import { encodeElicitContext } from "@sweatpants/elicit-context";
+import { encodeElicitContext } from "@sweatpants/tool-session/elicit-context";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import { validateToolParameters } from "../tool-parameters.ts";

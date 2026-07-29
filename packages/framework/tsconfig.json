@@ -21,8 +21,11 @@
         "e2e"
     ],
     "references": [
-        { "path": "../durable-chat-runtime" },
-        { "path": "../durable-streams" },
-        { "path": "../elicit-context" }
+        {
+            "path": "../durable-chat-runtime"
+        },
+        {
+            "path": "../durable-streams"
+        }
     ]
 }

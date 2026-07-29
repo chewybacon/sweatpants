@@ -35,7 +35,7 @@ Three lanes classify every workspace package:
 | `@sweatpants/session-contract` | Session kernel under the durable handler |
 | `@sweatpants/durable-streams` | Token buffers / reconnect protocol substrate |
 | `@sweatpants/stream-bridge` | Effection ↔ Web stream bridge |
-| `@sweatpants/elicit-context` | Elicit context encode/decode |
+| `@sweatpants/tool-session/elicit-context` | Elicit context encode/decode |
 | `@sweatpants/tool-runtime-local` | Local/worker tool runtime (advanced app wiring) |
 | `@sweatpants/tool-runtime-agentcore` | AgentCore remote tool runtime (advanced app wiring) |
 | `@sweatpants/model-provider-pi-ai` | Model provider adapter (advanced app wiring) |

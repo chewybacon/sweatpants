@@ -1307,7 +1307,7 @@ importers:
       '@sweatpants/durable-streams':
         specifier: workspace:*
         version: link:../durable-streams
-      '@sweatpants/elicit-context':
+      '@sweatpants/tool-session/elicit-context':
         specifier: workspace:*
         version: link:../elicit-context
       '@sweatpants/foundation':

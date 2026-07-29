@@ -49,6 +49,17 @@
                 "default": "./dist/foreign.js"
             },
             "default": "./src/foreign.ts"
+        },
+        "./elicit-context": {
+            "development": {
+                "import": "./src/elicit-context/index.ts",
+                "types": "./src/elicit-context/index.ts"
+            },
+            "import": {
+                "types": "./dist/elicit-context/index.d.ts",
+                "default": "./dist/elicit-context/index.js"
+            },
+            "default": "./src/elicit-context/index.ts"
         }
     },
     "scripts": {
