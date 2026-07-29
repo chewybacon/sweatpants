@@ -6,7 +6,7 @@
     "main": "dist/index.js",
     "scripts": {
         "build": "pnpm build:deps && tsup",
-        "build:deps": "pnpm --filter @sweatpants/tool-session/elicit-context build",
+        "build:deps": "pnpm --filter @sweatpants/tool-session build",
         "start": "node dist/index.js",
         "smoke:local": "pnpm build:deps && tsx scripts/run-local-smoke.ts",
         "smoke:book-flight:local": "pnpm build:deps && tsx scripts/run-book-flight-local-smoke.ts",
