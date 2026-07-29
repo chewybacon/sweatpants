@@ -6,10 +6,8 @@ packages:
 
 catalog:
     "@effectionx/context-api": ^0.2.1
-    "@effectionx/node": ^0.2.0
     "@effectionx/raf": ^0.1.1
     "@effectionx/signals": ^0.5.3
-    "@effectionx/stream-helpers": ^0.7.1
     "@effectionx/timebox": ^0.4.3
     "@effectionx/vitest": ^0.3.1
     "@effectionx/websocket": ^2.3.0

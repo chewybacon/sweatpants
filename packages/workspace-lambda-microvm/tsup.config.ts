@@ -8,5 +8,5 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
-  external: ["effection", "@sweatpants/journal-authority", "@sweatpants/workspace-runtime"],
+  external: ["effection", "@sweatpants/workspace-runtime"],
 });
