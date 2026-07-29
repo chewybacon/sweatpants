@@ -15,7 +15,7 @@ import {
   type DurableSemanticRecord,
   type OpenDurableTaskRequest,
   type ResolveOperationResult,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 import { sha256, type Json } from "@sweatpants/foundation";
 import { type DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {

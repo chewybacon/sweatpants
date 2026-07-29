@@ -8,7 +8,7 @@ import {
   withJournalAuthority,
   createCapabilityKeyring,
   createInMemoryDurableJournalAuthority,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,

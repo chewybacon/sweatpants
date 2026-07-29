@@ -11,7 +11,7 @@ import {
   type BookFlightSubstrate,
   type PublicEvent,
 } from "./fixtures/book-flight-harness.ts";
-import type { DurableSemanticRecord } from "@sweatpants/session-contract";
+import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 
 /** Observable result of one book_flight conversation, independent of placement. */
 interface BookingOutcome {

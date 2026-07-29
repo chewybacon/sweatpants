@@ -4,7 +4,7 @@ import {
   signPrivateAuthorityToken,
   verifyPrivateAuthorityToken,
   type CapabilityKeyring,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 
 import type {

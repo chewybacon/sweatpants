@@ -4,12 +4,12 @@ import { describe, it } from "vitest";
 import {
   createInMemoryDurableJournalAuthority,
   type InMemoryDurableJournalAuthority,
-} from "../durable-authority.ts";
+} from "@sweatpants/journal-authority";
 import {
   adaptInMemoryAuthorityForSandboxConformance,
   createDurableSandboxConformanceCases,
   type DurableSandboxConformanceFactory,
-} from "../testing/durable-sandbox-conformance.ts";
+} from "./conformance.ts";
 
 const authorities = new Map<string, InMemoryDurableJournalAuthority>();
 const factory: DurableSandboxConformanceFactory = {

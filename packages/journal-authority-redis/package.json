@@ -1,47 +1,47 @@
 {
-    "name": "@sweatpants/journal-authority-redis",
-    "version": "0.1.0",
-    "description": "Redis drivers for bounded execution storage and legacy ProgramDriver authority",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src",
-        "README.md"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "scripts": {
-        "build": "tsup",
-        "check": "tsc -b",
-        "test": "vitest run"
-    },
-    "dependencies": {
-        "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/journal-authority": "workspace:*",
-        "@sweatpants/session-contract": "workspace:*",
-        "effection": "catalog:"
-    },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/node": "catalog:",
-        "redis": "^4.7.0",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
-    },
-    "peerDependencies": {
-        "redis": "^4.7.0"
+  "name": "@sweatpants/journal-authority-redis",
+  "version": "0.1.0",
+  "description": "Redis drivers for bounded execution storage and legacy ProgramDriver authority",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/journal-authority": "workspace:*",
+    "effection": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "redis": "^4.7.0",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "@sweatpants/workspace-runtime": "workspace:*"
+  },
+  "peerDependencies": {
+    "redis": "^4.7.0"
+  }
 }

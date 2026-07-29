@@ -12,7 +12,7 @@ import {
   type DurableTaskRecoveryState,
   type OpenDurableTaskRequest,
   type ResolveOperationResult,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 import {
   createDurableSchemaRegistry,
   type DurableSchemaRegistry,

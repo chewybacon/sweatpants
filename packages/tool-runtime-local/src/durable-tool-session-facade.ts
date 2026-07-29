@@ -12,7 +12,7 @@ import {
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
   type DurableSemanticRecord,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,

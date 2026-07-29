@@ -1,5 +1,5 @@
 import { createChatHandler } from "@sweatpants/agent-host/server";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { env } from "@/env";
 import { setupYoChatModelProvider } from "./model-provider";
 import { createYoChatProgramDriverJournalStore } from "./program-driver-journal";

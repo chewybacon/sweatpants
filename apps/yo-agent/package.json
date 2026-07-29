@@ -1,47 +1,47 @@
 {
-    "name": "yo-agent",
-    "version": "0.0.1",
-    "private": true,
-    "bin": {
-        "yo-agent": "./dist/cli.js"
-    },
-    "type": "module",
-    "scripts": {
-        "dev": "tsx src/cli.tsx",
-        "build": "tsup",
-        "start": "node dist/cli.js",
-        "check": "tsc --noEmit"
-    },
-    "dependencies": {
-        "@effectionx/jsonl-store": "^0.3.1",
-        "@shikijs/cli": "^3.20.0",
-        "@sweatpants/agent-host": "workspace:*",
-        "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/chat-core": "workspace:*",
-        "@sweatpants/durable-chat-runtime": "workspace:*",
-        "@sweatpants/model-provider-pi-ai": "workspace:*",
-        "@sweatpants/react-chat": "workspace:*",
-        "@sweatpants/session-contract": "workspace:*",
-        "@sweatpants/tool-runtime-local": "workspace:*",
-        "@sweatpants/tool-session": "workspace:*",
-        "chalk": "^5.4.1",
-        "effection": "catalog:",
-        "fast-glob": "^3.3.2",
-        "ink": "npm:@jrichman/ink@6.4.6",
-        "ink-spinner": "^5.0.0",
-        "ink-text-input": "^6.0.0",
-        "marked": "^17.0.1",
-        "react": "catalog:",
-        "shiki": "^3.20.0",
-        "zod": "catalog:"
-    },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/node": "catalog:",
-        "@types/react": "catalog:",
-        "tsup": "^8.5.0",
-        "tsx": "catalog:",
-        "typescript": "catalog:",
-        "vite": "catalog:"
-    }
+  "name": "yo-agent",
+  "version": "0.0.1",
+  "private": true,
+  "bin": {
+    "yo-agent": "./dist/cli.js"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/cli.tsx",
+    "build": "tsup",
+    "start": "node dist/cli.js",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effectionx/jsonl-store": "^0.3.1",
+    "@shikijs/cli": "^3.20.0",
+    "@sweatpants/agent-host": "workspace:*",
+    "@sweatpants/agent-sdk": "workspace:*",
+    "@sweatpants/chat-core": "workspace:*",
+    "@sweatpants/durable-chat-runtime": "workspace:*",
+    "@sweatpants/model-provider-pi-ai": "workspace:*",
+    "@sweatpants/react-chat": "workspace:*",
+    "@sweatpants/tool-runtime-local": "workspace:*",
+    "@sweatpants/tool-session": "workspace:*",
+    "chalk": "^5.4.1",
+    "effection": "catalog:",
+    "fast-glob": "^3.3.2",
+    "ink": "npm:@jrichman/ink@6.4.6",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "marked": "^17.0.1",
+    "react": "catalog:",
+    "shiki": "^3.20.0",
+    "zod": "catalog:",
+    "@sweatpants/journal-authority": "workspace:*"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "tsup": "^8.5.0",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
 }

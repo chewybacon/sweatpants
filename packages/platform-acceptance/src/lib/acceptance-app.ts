@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Operation } from "effection";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,

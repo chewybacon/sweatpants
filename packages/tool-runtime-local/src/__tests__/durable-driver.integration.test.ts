@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   runDurableDriverCancellationFixture,
   runDurableDriverRecoveryFixture,
-} from "@sweatpants/session-contract/testing";
+} from "@sweatpants/journal-authority/testing";
 
 import {
   createLocalDurableProgramDriver,

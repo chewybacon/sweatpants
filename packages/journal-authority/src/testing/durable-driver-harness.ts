@@ -30,13 +30,13 @@ import {
   createDurableEffectRegistry,
 } from "@sweatpants/durable-effects/runtime";
 import type { SchemaBinding } from "@sweatpants/foundation/schema";
-import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
+import { createDurableSchemaRegistry } from "../schema-registry.ts";
 import {
   booleanGuard,
   createSchemaFixture,
   nullGuard,
   stringGuard,
-} from "@sweatpants/journal-authority/testing";
+} from "../schema-fixtures.ts";
 
 /** Dependencies for exercising one driver across park, snapshot, and recovery. */
 export interface DurableDriverRecoveryFixtureOptions {

@@ -19,7 +19,7 @@ import {
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import { createChatApplication } from "@sweatpants/agent-host/server";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createDurableChatHandler,
   createInMemoryProgramDriverJournalStore,
@@ -31,7 +31,7 @@ import {
   createToolSessionForeignEffectRegistrations,
   createToolSessionRegistry,
 } from "@sweatpants/tool-runtime-local";
-import type { DurableSemanticRecord } from "@sweatpants/session-contract";
+import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import { bookFlightTool } from "../../src/tools/book-flight/tool.ts";
 
 /** Public AG-UI frame projected from one durable response line. */

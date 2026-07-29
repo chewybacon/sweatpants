@@ -5,7 +5,7 @@ import { run } from "effection";
 import {
   createJournalAuthorityConformanceCases,
   type JournalAuthorityConformanceFactory,
-} from "@sweatpants/session-contract/testing";
+} from "@sweatpants/journal-authority/testing";
 
 import { createRedisDurableJournalAuthority } from "../durable-authority.ts";
 import { cleanupRedisBackend, connectRedisBackend, type RedisBackend } from "./redis-backend.ts";

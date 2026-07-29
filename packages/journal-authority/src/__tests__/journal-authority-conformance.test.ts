@@ -9,7 +9,7 @@ import {
   adaptInMemoryAuthorityForConformance,
   createJournalAuthorityConformanceCases,
   type JournalAuthorityConformanceFactory,
-} from "../testing/journal-authority-conformance.ts";
+} from "../testing/conformance.ts";
 
 const authorities = new Map<string, InMemoryDurableJournalAuthority>();
 const factory: JournalAuthorityConformanceFactory = {

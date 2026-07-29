@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { type SandboxActivationFence } from "@sweatpants/session-contract";
+import { type SandboxActivationFence } from "./sandbox-substrate.ts";
 import type { Operation } from "effection";
 import { createApi } from "effection/experimental";
 

@@ -24,6 +24,9 @@
  * @packageDocumentation
  */
 
+export * from "./durable-invocation.ts";
+export * from "./durable-transport.ts";
+
 // Types from unified types file
 export type {
   // Execution limits

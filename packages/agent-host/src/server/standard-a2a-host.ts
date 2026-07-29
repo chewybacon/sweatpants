@@ -17,7 +17,7 @@ import {
   withJournalAuthority,
   createCapabilityKeyring,
   type DurableSemanticRecord,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 import { ProgramRouteResolverContext } from "@sweatpants/durable-execution";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {

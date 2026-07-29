@@ -19,7 +19,7 @@ import {
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import { createChatApplication } from "@sweatpants/agent-host/server";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createDurableChatHandler,
   createInMemoryProgramDriverJournalStore,
@@ -27,7 +27,7 @@ import {
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
-import { type DurableSemanticRecord } from "@sweatpants/session-contract";
+import { type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,

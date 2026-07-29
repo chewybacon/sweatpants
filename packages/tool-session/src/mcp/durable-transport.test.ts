@@ -5,7 +5,7 @@ import {
   MCP_DURABLE_EFFECTS_EXTENSION,
   classifyMcpToolDurability,
   recoverMcpRequestState,
-} from "../index.ts";
+} from "./durable-transport.ts";
 import { scanDurableProgramSources } from "@sweatpants/durable-execution";
 
 describe("durable purity and transport boundaries", () => {

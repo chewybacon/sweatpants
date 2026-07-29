@@ -2,7 +2,7 @@ import { type DurableEffectRegistry, type OperationOutcome } from "@sweatpants/d
 
 import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
-import { withJournalAuthority, type DurableSemanticRecord } from "@sweatpants/session-contract";
+import { withJournalAuthority, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import { ProgramRouteResolverContext } from "@sweatpants/durable-execution";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {

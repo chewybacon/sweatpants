@@ -1,6 +1,6 @@
 import type { Operation } from "effection";
 
-import { createCapabilityKeyring, type CapabilityKeyring } from "../capabilities.ts";
+import { createCapabilityKeyring, type CapabilityKeyring } from "@sweatpants/journal-authority";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import type {
   ClaimActivationRequest,
@@ -13,13 +13,13 @@ import type {
   ResolveOperationRequest,
   ResolveOperationResult,
   TaskCloseReceipt,
-} from "../durable-authority-types.ts";
+} from "@sweatpants/journal-authority";
 import type { ResolutionReceipt, DurableProgramManifest } from "@sweatpants/durable-execution";
 import type {
   DurableSemanticRecord,
   InMemoryDurableJournalAuthority,
   OpenDurableTaskRequest,
-} from "../durable-authority.ts";
+} from "@sweatpants/journal-authority";
 
 const manifest: DurableProgramManifest = {
   programId: "conformance.sandbox.elicit-once",

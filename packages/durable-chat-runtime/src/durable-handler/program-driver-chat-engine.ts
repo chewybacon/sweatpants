@@ -11,7 +11,7 @@ import { encodeElicitContext } from "@sweatpants/tool-session/elicit-context";
 import {
   type DurableJournalAuthorityService,
   type DurableSemanticRecord,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   createModelSamplingEffectRegistration,

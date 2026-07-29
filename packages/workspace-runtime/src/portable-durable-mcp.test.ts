@@ -2,23 +2,25 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   DURABLE_INVOCATION_FORMAT,
-  FiniteHttpRestoreProtocol,
   InMemoryDurableIdempotencyStore,
-  InMemoryImmutableObjectStore,
   assertClientCapabilities,
-  assertSandboxFence,
-  chooseSandboxRecovery,
   createDurableInvocationIdentity,
   createMcpInventory,
-  createWorkspaceVersion,
   parseDurableInvocationMeta,
+} from "@sweatpants/tool-session/mcp";
+import {
+  FiniteHttpRestoreProtocol,
+  InMemoryImmutableObjectStore,
+  assertSandboxFence,
+  chooseSandboxRecovery,
+  createWorkspaceVersion,
   replayChainDigest,
   replayPageDigest,
   restoreWorkspaceVersion,
   type RestoreCreate,
   type SandboxCapabilities,
   type SandboxInspection,
-} from "../index.ts";
+} from "./sandbox-substrate.ts";
 import { sha256 } from "@sweatpants/foundation";
 
 const digest = (value: string) => sha256(value);

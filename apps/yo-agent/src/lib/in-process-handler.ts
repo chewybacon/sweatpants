@@ -1,6 +1,6 @@
 import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { createChatHandler } from "@sweatpants/agent-host/server";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createInMemoryProgramDriverJournalStore,
   type ChatHandlerSetupContext,

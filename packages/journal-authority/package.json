@@ -1,107 +1,109 @@
 {
-    "name": "@sweatpants/journal-authority",
-    "version": "0.1.0",
-    "description": "Journal authority APIs and execution-store contracts",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        },
-        "./store": {
-            "development": {
-                "import": "./src/store.ts",
-                "types": "./src/store.ts"
-            },
-            "import": {
-                "types": "./dist/store.d.ts",
-                "default": "./dist/store.js"
-            },
-            "default": "./src/store.ts"
-        },
-        "./memory": {
-            "development": {
-                "import": "./src/memory.ts",
-                "types": "./src/memory.ts"
-            },
-            "import": {
-                "types": "./dist/memory.d.ts",
-                "default": "./dist/memory.js"
-            },
-            "default": "./src/memory.ts"
-        },
-        "./testing": {
-            "development": {
-                "import": "./src/testing.ts",
-                "types": "./src/testing.ts"
-            },
-            "import": {
-                "types": "./dist/testing.d.ts",
-                "default": "./dist/testing.js"
-            },
-            "default": "./src/testing.ts"
-        },
-        "./api": {
-            "development": {
-                "import": "./src/api.ts",
-                "types": "./src/api.ts"
-            },
-            "import": {
-                "types": "./dist/api.d.ts",
-                "default": "./dist/api.js"
-            },
-            "default": "./src/api.ts"
-        },
-        "./turn-authority": {
-            "development": {
-                "import": "./src/turn-authority.ts",
-                "types": "./src/turn-authority.ts"
-            },
-            "import": {
-                "types": "./dist/turn-authority.d.ts",
-                "default": "./dist/turn-authority.js"
-            },
-            "default": "./src/turn-authority.ts"
-        },
-        "./schema-registry": {
-            "development": {
-                "import": "./src/schema-registry.ts",
-                "types": "./src/schema-registry.ts"
-            },
-            "import": {
-                "types": "./dist/schema-registry.d.ts",
-                "default": "./dist/schema-registry.js"
-            },
-            "default": "./src/schema-registry.ts"
-        }
+  "name": "@sweatpants/journal-authority",
+  "version": "0.1.0",
+  "description": "Journal authority APIs and execution-store contracts",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     },
-    "scripts": {
-        "build": "tsup",
-        "check": "tsc -b",
-        "test": "vitest run"
+    "./store": {
+      "development": {
+        "import": "./src/store.ts",
+        "types": "./src/store.ts"
+      },
+      "import": {
+        "types": "./dist/store.d.ts",
+        "default": "./dist/store.js"
+      },
+      "default": "./src/store.ts"
     },
-    "dependencies": {
-        "@standard-schema/spec": "catalog:",
-        "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "effection": "catalog:"
+    "./memory": {
+      "development": {
+        "import": "./src/memory.ts",
+        "types": "./src/memory.ts"
+      },
+      "import": {
+        "types": "./dist/memory.d.ts",
+        "default": "./dist/memory.js"
+      },
+      "default": "./src/memory.ts"
     },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
+    "./testing": {
+      "development": {
+        "import": "./src/testing.ts",
+        "types": "./src/testing.ts"
+      },
+      "import": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
+      },
+      "default": "./src/testing.ts"
+    },
+    "./api": {
+      "development": {
+        "import": "./src/api.ts",
+        "types": "./src/api.ts"
+      },
+      "import": {
+        "types": "./dist/api.d.ts",
+        "default": "./dist/api.js"
+      },
+      "default": "./src/api.ts"
+    },
+    "./turn-authority": {
+      "development": {
+        "import": "./src/turn-authority.ts",
+        "types": "./src/turn-authority.ts"
+      },
+      "import": {
+        "types": "./dist/turn-authority.d.ts",
+        "default": "./dist/turn-authority.js"
+      },
+      "default": "./src/turn-authority.ts"
+    },
+    "./schema-registry": {
+      "development": {
+        "import": "./src/schema-registry.ts",
+        "types": "./src/schema-registry.ts"
+      },
+      "import": {
+        "types": "./dist/schema-registry.d.ts",
+        "default": "./dist/schema-registry.js"
+      },
+      "default": "./src/schema-registry.ts"
     }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "catalog:",
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "effection": "catalog:",
+    "@noble/hashes": "^2.2.0",
+    "@sweatpants/durable-effects": "workspace:*"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

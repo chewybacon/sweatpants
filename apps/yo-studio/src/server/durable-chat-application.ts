@@ -14,7 +14,7 @@ import {
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,

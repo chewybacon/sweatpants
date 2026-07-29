@@ -3,7 +3,7 @@ import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
-import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 
 import { createInMemoryPlacementModelSampler } from "../in-memory-placement-model-sampler.ts";

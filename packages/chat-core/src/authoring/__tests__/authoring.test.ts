@@ -10,7 +10,7 @@ import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
   DURABLE_DRIVER_FIXTURE_TOOLS,
-} from "@sweatpants/session-contract/testing";
+} from "@sweatpants/journal-authority/testing";
 import { defineGuidance, defineResourcePackage, textResource } from "@sweatpants/agent-sdk";
 import {
   CHAT_MODEL_SAMPLE_EFFECT,

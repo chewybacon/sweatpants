@@ -10,7 +10,7 @@ import {
   type PlayTttSubstrate,
   type PublicEvent,
 } from "./fixtures/play-ttt-harness.ts";
-import type { DurableSemanticRecord } from "@sweatpants/session-contract";
+import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 
 /** Observable result of one play_ttt conversation, independent of placement. */
 interface PlayOutcome {

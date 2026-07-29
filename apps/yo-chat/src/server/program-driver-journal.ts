@@ -11,7 +11,7 @@ import type {
   CapabilityKeyring,
   DurableSemanticRecord,
   ResolveOperationResult,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/journal-authority";
 
 import { getSharedRedisClient } from "@/lib/shared-redis";
 import { pickCard } from "../tools/pick-card/durable";
