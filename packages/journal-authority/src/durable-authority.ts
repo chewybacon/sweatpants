@@ -445,9 +445,14 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   }
 
   *rootTaskCount(sessionId: string): Operation<number> {
-    return [...this.#tasks.values()].filter(
+    const roots = [...this.#tasks.values()].filter(
       (task) => task.sessionId === sessionId && !task.parentTaskId,
-    ).length;
+    );
+    const ordinal = roots.reduce((maximum, task) => {
+      const match = /^turn-(\d+)(?:\/root)?$/.exec(task.taskId);
+      return match ? Math.max(maximum, Number(match[1]) + 1) : maximum;
+    }, 0);
+    return Math.max(roots.length, ordinal);
   }
 
   *operationState(

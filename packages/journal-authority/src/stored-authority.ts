@@ -224,15 +224,36 @@ export function createStoredDurableJournalAuthority(
     };
   }
 
-  function control(checkpoint: DurableReference): ExecutionTreeSnapshot {
+  function archiveHead(current: VersionedExecution | null): DurableReference | null {
+    return current?.record.format === "sweatpants.execution-tree.v1"
+      ? (current.record.tasks[0]?.replayHead ?? null)
+      : null;
+  }
+
+  function control(
+    checkpoint: DurableReference,
+    replayHead: DurableReference | null,
+  ): ExecutionTreeSnapshot {
+    const authorityProgram = { id: "journal-authority", version: "1", digest: "0".repeat(64) };
     return {
       format: "sweatpants.execution-tree.v1",
       executionId,
       sessionId: options.journalId,
       turnId: "authority",
       rootTaskId: "authority",
-      rootProgram: { id: "journal-authority", version: "1", digest: "0".repeat(64) },
-      tasks: [],
+      rootProgram: authorityProgram,
+      tasks: [{
+        taskId: "authority",
+        program: authorityProgram,
+        input: { storage: "inline", value: null },
+        route: {},
+        status: "parked",
+        actionIndex: 0,
+        pullIndex: 0,
+        emissionIndex: 0,
+        replayHead,
+        pending: null,
+      }],
       runnableTaskIds: [],
       checkpoint,
       unpublishedProjection: { throughSequence: 0, facts: null },
@@ -246,15 +267,55 @@ export function createStoredDurableJournalAuthority(
       const loaded = yield* load(current);
       const value = authority(loaded.snapshot);
       const result = yield* operation(value);
-      const snapshot = assertJson(canonicalSnapshot(value.exportSnapshot()).value);
+      const exported = value.exportSnapshot();
+      const compacted = compactAuthoritySnapshot(exported);
+      const retainedEventIds = new Set(
+        compacted.records.flatMap(([, records]) => records.map((record) => record.eventId)),
+      );
+      const evicted = exported.records.flatMap(([, records]) =>
+        records.filter((record) => !retainedEventIds.has(record.eventId)),
+      );
+      let replayHead = archiveHead(current);
+      if (evicted.length > 0) {
+        replayHead = yield* store.appendReplay({
+          executionId,
+          taskId: "authority-archive",
+          previous: replayHead,
+          entries: evicted.map((record) => assertJson(record)),
+        });
+      }
+      const snapshot = assertJson(canonicalSnapshot(compacted).value);
       const checkpoint = yield* store.putPayload(snapshot);
-      return { status: "commit", next: control(checkpoint), privateRecords: [], result };
+      return {
+        status: "commit",
+        next: control(checkpoint, replayHead),
+        privateRecords: [],
+        result,
+      };
     });
   }
 
   function* read<T>(select: (value: InMemoryDurableJournalAuthority) => T): Operation<T> {
     const loaded = yield* load();
     return select(authority(loaded.snapshot));
+  }
+
+  function* readArchived(sessionId: string): Operation<DurableSemanticRecord[]> {
+    const current = yield* store.loadExecution(executionId);
+    const head = archiveHead(current);
+    if (!head) return [];
+    const entries = yield* store.readReplay(head);
+    const records = entries.filter(
+      (entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        !Array.isArray(entry) &&
+        entry["sessionId"] === sessionId,
+    );
+    const parsed = parseDurableAuthoritySnapshot(
+      JSON.stringify({ ...empty, records: [[sessionId, records]] }),
+    );
+    return parsed.records[0]?.[1] ?? [];
   }
 
   return {
@@ -370,7 +431,9 @@ export function createStoredDurableJournalAuthority(
       return yield* read((value) => value.resolutionCapability(sessionId, taskId, pullId));
     },
     *readJournal(sessionId) {
-      return yield* read((value) => value.readJournal(sessionId));
+      const archived = yield* readArchived(sessionId);
+      const current = yield* read((value) => value.readJournal(sessionId));
+      return [...archived, ...current];
     },
     *readTaskJournal(sessionId, rootTaskId) {
       return yield* read((value) => value.readTaskJournal(sessionId, rootTaskId));
@@ -381,5 +444,37 @@ export function createStoredDurableJournalAuthority(
     *exportSnapshot() {
       return yield* read((value) => value.exportSnapshot());
     },
+  };
+}
+
+/** Retains active trees or only the latest terminal tree for each Session. */
+function compactAuthoritySnapshot(snapshot: DurableAuthoritySnapshot): DurableAuthoritySnapshot {
+  const rootsBySession = new Map<string, typeof snapshot.tasks>();
+  for (const task of snapshot.tasks) {
+    if (task.parentTaskId) continue;
+    rootsBySession.set(task.sessionId, [...(rootsBySession.get(task.sessionId) ?? []), task]);
+  }
+  const retained = new Set<string>();
+  for (const roots of rootsBySession.values()) {
+    const active = roots.filter((root) => root.status === "active");
+    for (const root of active.length > 0 ? active : roots.slice(-1)) retained.add(root.taskId);
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const task of snapshot.tasks) {
+      if (task.parentTaskId && retained.has(task.parentTaskId) && !retained.has(task.taskId)) {
+        retained.add(task.taskId);
+        changed = true;
+      }
+    }
+  }
+  return {
+    ...snapshot,
+    tasks: snapshot.tasks.filter((task) => retained.has(task.taskId)),
+    records: snapshot.records.map(([sessionId, records]) => [
+      sessionId,
+      records.filter((record) => retained.has(record.payload.taskId)),
+    ]),
   };
 }
