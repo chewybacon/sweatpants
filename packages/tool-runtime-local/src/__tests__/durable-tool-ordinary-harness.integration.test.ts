@@ -183,6 +183,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       journalId: "ordinary-harness-outer",
       journalIncarnation: "1",
       keyring: outerKeyring,
+      schemaRegistry: innerSchemas(),
     });
     const sessionId = "ordinary-harness-session";
     const taskId = "turn-0/root";
@@ -320,6 +321,7 @@ function recreateAuthority(
     journalId: "ordinary-harness-outer",
     journalIncarnation: "1",
     keyring,
+    schemaRegistry: innerSchemas(),
     snapshot: authority.exportSnapshot(),
   });
 }

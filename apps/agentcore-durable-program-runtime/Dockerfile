@@ -14,7 +14,7 @@ COPY apps/yo-chat/src/tools/play-ttt/tool.ts ./apps/yo-chat/src/tools/play-ttt/t
 COPY apps/yo-chat/src/tools/tictactoe/types.ts ./apps/yo-chat/src/tools/tictactoe/types.ts
 
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @sweatpants/session-contract build \
+RUN pnpm --filter @sweatpants/durable-execution build \
  && pnpm --filter @sweatpants/cli build \
  && pnpm --filter @sweatpants/agent-sdk build \
  && pnpm -C packages/tool-runtime-agentcore exec tsup \

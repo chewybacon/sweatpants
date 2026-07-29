@@ -12,6 +12,7 @@ import {
   createInMemoryDurableJournalAuthority,
   type DurableSemanticRecord,
 } from "@sweatpants/journal-authority";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -26,6 +27,7 @@ import {
 import {
   FOREIGN_TOOL_ADAPTER_MANIFEST,
   foreignToolAdapter,
+  foreignToolSchemaEntries,
 } from "@sweatpants/tool-session/foreign";
 
 import {
@@ -151,6 +153,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
       journalId: "foreign-loss",
       journalIncarnation: "1",
       keyring,
+      schemaRegistry: createDurableSchemaRegistry(foreignToolSchemaEntries()),
     });
     const sessionId = "foreign-loss-session";
     const taskId = "turn-0/root";
@@ -266,6 +269,7 @@ function recreate(
     journalId: "foreign-loss",
     journalIncarnation: "1",
     keyring,
+    schemaRegistry: createDurableSchemaRegistry(foreignToolSchemaEntries()),
     snapshot: authority.exportSnapshot(),
   });
 }

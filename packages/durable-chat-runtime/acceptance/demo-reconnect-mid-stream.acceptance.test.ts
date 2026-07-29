@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "../src/durable-handler/__tests__/vitest-effection.ts";
 import { call } from "effection";
-import { createInMemoryProgramDriverJournalStore } from "../src/durable-handler/index.ts";
+import { createProgramDriverJournalStore } from "../src/durable-handler/index.ts";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createMockProvider,
@@ -96,7 +96,7 @@ describe("demo: reconnect mid-stream", () => {
     });
     const handler = createTestDurableChatHandler({
       setup: createSharedStoreHooks(provider),
-      programDriverJournalStore: createInMemoryProgramDriverJournalStore({
+      programDriverJournalStore: createProgramDriverJournalStore({
         keyring: createCapabilityKeyring("program-reconnect", [
           { keyId: "test-v1", secret: "program-reconnect-acceptance-key" },
         ]),

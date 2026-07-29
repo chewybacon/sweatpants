@@ -164,7 +164,7 @@ Canonical substrate packages (not the default shopping list):
 
 | Package                                   | Role                                       |
 | ----------------------------------------- | ------------------------------------------ |
-| `@sweatpants/session-contract`            | Session kernel under the durable handler   |
+| `@sweatpants/durable-execution`           | Session kernel under the durable handler   |
 | `@sweatpants/durable-streams`             | Token buffers / reconnect protocol         |
 | `@sweatpants/stream-bridge`               | Effection ↔ Web stream bridge              |
 | `@sweatpants/tool-runtime-local`          | Local/worker tool runtime (app wiring)     |

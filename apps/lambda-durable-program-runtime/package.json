@@ -1,28 +1,28 @@
 {
-  "name": "@sweatpants/lambda-durable-program-runtime",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "main": "dist/index.cjs",
-  "scripts": {
-    "build": "tsup",
-    "check": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
-  },
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.996.0",
-    "@sweatpants/cli": "workspace:*",
-    "@sweatpants/durable-execution": "workspace:*",
-    "@sweatpants/foundation": "workspace:*",
-    "effection": "catalog:",
-    "@sweatpants/journal-authority": "workspace:*"
-  },
-  "devDependencies": {
-    "@sweatpants/ts-config": "workspace:*",
-    "@types/aws-lambda": "^8.10.161",
-    "@types/node": "catalog:",
-    "tsup": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
-  }
+    "name": "@sweatpants/lambda-durable-program-runtime",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "dist/index.cjs",
+    "scripts": {
+        "build": "tsup",
+        "check": "tsc --noEmit",
+        "test": "vitest run --passWithNoTests"
+    },
+    "dependencies": {
+        "@aws-sdk/client-s3": "^3.996.0",
+        "@sweatpants/cli": "workspace:*",
+        "@sweatpants/durable-execution": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/journal-authority": "workspace:*",
+        "effection": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "@types/aws-lambda": "^8.10.161",
+        "@types/node": "catalog:",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    }
 }

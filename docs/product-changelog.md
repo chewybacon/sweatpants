@@ -26,7 +26,7 @@ Prefer `createDurableTool(name, { version })`, pass the resulting tool directly 
 
 ### Summary
 
-Added a production-bound `standardA2A()` host compiler with authenticated HTTP+JSON Agent Card discovery, task-generating message sends, exact-task cancellation, pull-based Task/artifact/status streaming, immutable terminal turns, explicit ordered `referenceTaskIds`, journal-derived projection, and bounded context acceptance. Public history is configurable as `task-only` or immutable `accepted-context`, including in-task elicitation prompts and responses. Added immutable digest-addressed content custody primitives to `@sweatpants/a2a` and a real-loopback `startAgentHarness()` under `@sweatpants/framework/server/testing`.
+Added a production-bound `standardA2A()` host compiler with authenticated HTTP+JSON Agent Card discovery, task-generating message sends, exact-task cancellation, pull-based Task/artifact/status streaming, immutable terminal turns, explicit ordered `referenceTaskIds`, journal-derived projection, and bounded context acceptance. Public history is configurable as `task-only` or immutable `accepted-context`, including in-task elicitation prompts and responses. Added immutable digest-addressed content custody primitives to `@sweatpants/a2a` and a real-loopback `startAgentHarness()` under `@sweatpants/agent-host/server/testing`.
 
 Added `apps/yo-a2a` as the real standard-agent vertical: a model-driven authored chat program loads guidance, invokes crank-native card/echo tools, parks on elicitation, resumes through task-directed A2A messages, and preserves conversation memory across immutable tasks. The pinned Inspector Playwright job drives this app through its Python SDK backend; the former standalone Inspector fixture app was removed.
 
@@ -40,7 +40,7 @@ A standard profile is ready only when it is bound to a real host created by `cre
 
 Added protocol-neutral bounded chat turns, deterministic accepted context views, digest-covered `defineChatProgram`, portable `AgentManifestV1` plus runtime `AgentDefinition`, descriptive advertised capabilities, exact entrypoints, explicit serving profiles, and posture-specific connection APIs.
 
-Portable agent authoring is exported from `@sweatpants/agent-sdk`, chat authoring from `@sweatpants/framework/chat`, and serving/connectivity from `@sweatpants/framework/server`. No `@sweatpants/agent` package was introduced. The `a2a-review` acceptance vertical now publishes its clean-context reviewer through the caller-authoritative facade while retaining caller-owned `model.sample`, `ask_parent`, credentials, and journal authority.
+Portable agent authoring is exported from `@sweatpants/agent-sdk`, chat authoring from `@sweatpants/chat-core`, and serving/connectivity from `@sweatpants/agent-host/server`. No `@sweatpants/agent` package was introduced. The `a2a-review` acceptance vertical now publishes its clean-context reviewer through the caller-authoritative facade while retaining caller-owned `model.sample`, `ask_parent`, credentials, and journal authority.
 
 ### Migration note
 
@@ -58,11 +58,11 @@ The generated acceptance artifact intentionally hashes the complete reviewer sou
 
 Added immutable resource packages, guidance metadata, exact package registries, scoped mounts, deterministic resource-reader programs, build-time directory generation/verification, and generated durable-program artifact identity to `@sweatpants/agent-sdk`.
 
-The low-level session-contract manifest-plus-generator constructor is now named `createPinnedDurableProgram`. Its previous `createDurableTool` name remains as a deprecated compatibility alias; the staged `@sweatpants/agent-sdk` `createDurableTool("name")` product builder is unchanged.
+The low-level Durable Execution manifest-plus-generator constructor is `createPinnedDurableProgram`. The staged `@sweatpants/agent-sdk` `createDurableTool("name")` product builder is unchanged.
 
 ### Migration note
 
-Low-level `@sweatpants/session-contract` consumers should replace `createDurableTool(manifest, program)` with `createPinnedDurableProgram(manifest, program)`. Existing asserted pins continue to load in compatibility mode, while release-strict validation requires generated artifact provenance.
+Low-level `@sweatpants/durable-execution` consumers should replace `createDurableTool(manifest, program)` with `createPinnedDurableProgram(manifest, program)`. Existing asserted pins continue to load in compatibility mode, while release-strict validation requires generated artifact provenance.
 
 ## 2026-07-09 — v0.1 facade freeze (initial)
 
@@ -74,13 +74,13 @@ Freeze the Phase 1 product facade allowlist and document the ≤4 conceptual pac
 
 - `@sweatpants/react-chat`
 - `@sweatpants/react-chat/pipeline`
-- `@sweatpants/framework/server`
-- `@sweatpants/framework/chat`
-- `@sweatpants/framework/chat/browser-rendering`
-- `@sweatpants/framework/chat/mcp-tools`
+- `@sweatpants/agent-host/server`
+- `@sweatpants/chat-core`
+- `@sweatpants/react-chat/browser-rendering`
+- `@sweatpants/tool-session/mcp`
 - `@sweatpants/durable-chat-runtime/response-streams`
 - `@sweatpants/agent-sdk` (and `/tool`, `/tools`)
 
 ### Migration note
 
-None for existing yo-chat-style apps already using the paths above. Do not introduce new isomorphic-tool public authoring or deep `@sweatpants/framework/src/...` imports in product apps.
+None for existing yo-chat-style apps already using the paths above. Do not introduce new isomorphic-tool public authoring or deep package-source imports in product apps.

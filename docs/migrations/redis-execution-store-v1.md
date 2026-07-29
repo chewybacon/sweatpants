@@ -1,6 +1,6 @@
 # Redis Execution Store v1 migration note
 
-Status: implementation stage for DR-064 / REQ-036.
+Status: active production layout for DR-064 / REQ-036.
 
 ## Old layout
 
@@ -44,10 +44,9 @@ legacy snapshot key. A deployment adopting v1 MUST start with a fresh key prefix
 or delete the legacy prefix before activation. Silently reading old snapshots
 would preserve the unbounded model this stage removes.
 
-The legacy ProgramDriver authority remains temporarily for consumers that have
-not yet moved to the Execution Store. It is not used by the new driver. Deleting
-that implementation is part of the remaining authority/package migration; this
-stage establishes and certifies the replacement storage path independently.
+All production authority consumers use the Execution Store path. The legacy
+whole-snapshot Redis implementation, package identity, key writer, and in-memory
+authority reconstruction adapter are deleted.
 
 ## Certification
 

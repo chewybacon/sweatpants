@@ -20,7 +20,7 @@ import type {
   ToolRuntime,
 } from "@sweatpants/tool-session/chat-runtime";
 
-const DRIVER = "framework-tool-runtime";
+const DRIVER = "chat-tool-runtime";
 const DURABILITY: ForeignDurability = "ephemeral_handle";
 
 type ToolRuntimeForeignOptions = {

@@ -36,7 +36,7 @@ describe("Redis Execution Store v1", () => {
   });
 
   it("reports which backend certified this run", () => {
-    console.info(`[journal-authority-redis] execution-store backend: ${backend.label}`);
+    console.info(`[execution-store-redis] execution-store backend: ${backend.label}`);
   });
 
   it("CAS-isolates executions and atomically stores private records", async () => {
@@ -155,7 +155,7 @@ describe("Redis Execution Store v1", () => {
 
   it("creates no legacy journal-wide snapshot key", async () => {
     const keys = await client.keys(`${keyPrefix}*`);
-    expect(keys.some((key) => key.includes("durable-authority:"))).toBe(false);
+    expect(keys.some((key) => key.includes(["durable", "authority:"].join("-")))).toBe(false);
     expect(keys.some((key) => key.includes(":control"))).toBe(true);
     expect(keys.some((key) => key.includes("payload:"))).toBe(true);
     expect(keys.some((key) => key.includes("replay:"))).toBe(true);

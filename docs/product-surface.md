@@ -24,7 +24,7 @@ Three lanes classify every workspace package:
 |---|---|
 | `@sweatpants/react-chat` | UI hooks / chat client (`useChat`, `useChatSession`, `ChatProvider`) |
 | `@sweatpants/react-chat/pipeline` | Rendering pipelines when required |
-| `@sweatpants/framework` **product entries** | Dual-nature (see below). Product import paths: `/server`, `/chat`, `/chat/browser-rendering`, `/chat/mcp-tools`, `/chat/durable-streams`; `/chat` owns `defineChatProgram`, while `/server` owns explicit agent serving profiles and connectivity |
+| `destination domain packages` **product entries** | Dual-nature (see below). Product import paths: `/server`, `/chat`, `/chat/browser-rendering`, `/chat/mcp-tools`, `/chat/durable-streams`; `/chat` owns `defineChatProgram`, while `/server` owns explicit agent serving profiles and connectivity |
 | `@sweatpants/agent-sdk` **authoring surface** | `createTool`, content-addressed resources/guidance, `defineAgent`, advertised capabilities, and portable manifest types (`.` / `/tool` / `/tools`) |
 | `@sweatpants/cli` | Tooling (codegen), not runtime core |
 
@@ -32,7 +32,7 @@ Three lanes classify every workspace package:
 
 | Package | Notes |
 |---|---|
-| `@sweatpants/session-contract` | Session kernel under the durable handler |
+| `@sweatpants/durable-execution` | Session kernel under the durable handler |
 | `@sweatpants/durable-streams` | Token buffers / reconnect protocol substrate |
 | `@sweatpants/stream-bridge` | Effection ↔ Web stream bridge |
 | `@sweatpants/tool-session/elicit-context` | Elicit context encode/decode |
@@ -41,29 +41,29 @@ Three lanes classify every workspace package:
 | `@sweatpants/model-provider-pi-ai` | Model provider adapter (advanced app wiring) |
 | `@sweatpants/vite-plugin` | Build/dev plugin for apps |
 | `@sweatpants/ts-config` | Shared TypeScript config |
-| `@sweatpants/framework` **internals** | Durable handler implementation, session runtime, mcp-tools implementation modules not on the facade allowlist |
+| `destination domain packages` **internals** | Durable handler implementation, session runtime, mcp-tools implementation modules not on the facade allowlist |
 
 ### Experimental / salvage
 
 | Area | Notes |
 |---|---|
-| Isomorphic-tool public authoring | `createIsomorphicTool` / `@sweatpants/framework/chat/isomorphic-tools` — not product authoring |
+| Isomorphic-tool public authoring | `createIsomorphicTool` / `@sweatpants/chat-core/isomorphic-tools` — not product authoring |
 | Retired `@sweatpants/agent` | Package removed; docs that describe it are salvage |
 | Archived durable-conversations spike | Not the active durable model (see ADR turn-scoped durable chat) |
 | Docs marked PARTIALLY STALE / ARCHIVED | Guidance for **new** work must not treat them as current API |
 
 ### Framework dual nature (required note)
 
-`@sweatpants/framework` is **dual-natured**:
+`destination domain packages` is **dual-natured**:
 
 - **Product entries** (import these):
-  - `@sweatpants/framework/server` — `createChatApplication`, `createChatHandler` / `createDurableChatHandler`, `serveAgent`, `createStandardA2AHost`, explicit profiles, and posture-specific connections
-  - `@sweatpants/framework/server/testing` — real-transport agent harness utilities for tests/development only
-  - `@sweatpants/framework/chat` — `defineChatProgram`, bounded protocol-neutral turn contracts, resource mount policy, `makePlugin`, plugin helpers, and chat types
-  - `@sweatpants/framework/chat/browser-rendering` — plugin UI `RenderableProps` and rendering helpers
-  - `@sweatpants/framework/chat/mcp-tools` — plugin registry helpers for MCP tool authoring
+  - `@sweatpants/agent-host/server` — `createChatApplication`, `createChatHandler` / `createDurableChatHandler`, `serveAgent`, `createStandardA2AHost`, explicit profiles, and posture-specific connections
+  - `@sweatpants/agent-host/server/testing` — real-transport agent harness utilities for tests/development only
+  - `@sweatpants/chat-core` — `defineChatProgram`, bounded protocol-neutral turn contracts, resource mount policy, `makePlugin`, plugin helpers, and chat types
+  - `@sweatpants/react-chat/browser-rendering` — plugin UI `RenderableProps` and rendering helpers
+  - `@sweatpants/tool-session/mcp` — plugin registry helpers for MCP tool authoring
   - `@sweatpants/durable-chat-runtime/response-streams` — in-memory durable stream setup for product apps
-- **Internals** (canonical, not experimental by default): implementation modules under `packages/framework/src/**` that are not listed on the facade allowlist. Do not deep-import `@sweatpants/framework/src/...` from product apps.
+- **Internals** (canonical, not experimental by default): implementation modules outside package export maps and the facade allowlist. Product apps must not deep-import package source paths.
 
 ## Phase 1 product facade (v0.1)
 
@@ -74,14 +74,14 @@ Three lanes classify every workspace package:
 | `useChat` | `@sweatpants/react-chat` |
 | `useChatSession` | `@sweatpants/react-chat` |
 | `ChatProvider` | `@sweatpants/react-chat` |
-| `createChatApplication` | `@sweatpants/framework/server` |
-| `createChatHandler` / `createDurableChatHandler` | `@sweatpants/framework/server` |
+| `createChatApplication` | `@sweatpants/agent-host/server` |
+| `createChatHandler` / `createDurableChatHandler` | `@sweatpants/agent-host/server` |
 | `createTool` | `@sweatpants/agent-sdk` |
-| `makePlugin` | `@sweatpants/framework/chat` |
+| `makePlugin` | `@sweatpants/chat-core` |
 | `defineAgent` / `advertiseCapability` | `@sweatpants/agent-sdk` |
-| `defineChatProgram` / `latestContextWindow` | `@sweatpants/framework/chat` |
-| `serveAgent` / `remoteExecutor` / `standardA2A` / `sweatpantsPeer` / `createStandardA2AHost` | `@sweatpants/framework/server` |
-| `startAgentHarness` | `@sweatpants/framework/server/testing` |
+| `defineChatProgram` / `latestContextWindow` | `@sweatpants/chat-core` |
+| `serveAgent` / `remoteExecutor` / `standardA2A` / `sweatpantsPeer` / `createStandardA2AHost` | `@sweatpants/agent-host/server` |
+| `startAgentHarness` | `@sweatpants/agent-host/server/testing` |
 
 Durable reconnect/resume behavior is documented via product session hooks (`useChat` / `useChatSession`) and the durable handler protocol (session/conversation id + offset/LSN).
 
@@ -101,7 +101,7 @@ Also runs as part of root `pnpm build` (after package builds and export validati
 
 These MAY remain available as canonical/experimental surfaces, but MUST NOT be advertised as the product happy path:
 
-- Direct session-contract `createAgent` fold harness as primary app authoring
+- Direct low-level Durable Execution fold harness as primary app authoring
 - Raw durable-streams store APIs as app-author primary surface
 - Transport primitives from `@sweatpants/agent-sdk/transport` as app-author primary surface
 - Isomorphic tool builders as public product authoring
@@ -123,9 +123,9 @@ Happy-path samples SHOULD prefer local/in-memory defaults (no Redis or AgentCore
 | Conceptual target | Concrete path (today) | Job |
 |---|---|---|
 | `@sweatpants/react` | `@sweatpants/react-chat` | UI hooks / chat client |
-| `@sweatpants/server` | `@sweatpants/framework/server` | Durable handler + app wiring |
+| `@sweatpants/server` | `@sweatpants/agent-host/server` | Durable handler + app wiring |
 | `@sweatpants/tools` | `@sweatpants/agent-sdk` (`createTool`) | Tool authoring |
-| `@sweatpants/chat` | `@sweatpants/framework/chat` | Session helpers, plugins, advanced chat |
+| `@sweatpants/chat` | `@sweatpants/chat-core` | Session helpers, plugins, advanced chat |
 
 Physical package renames are optional. Docs and facade maps are the Phase 4 exit path.
 
@@ -153,10 +153,10 @@ Scan of `apps/yo-chat` source (excluding `node_modules` / `dist`) for `@sweatpan
 
 | Import root | Lane | Count (approx) | Notes |
 |---|---|---|---|
-| `@sweatpants/framework/chat` | Product entry | high | plugins, elicit helpers |
-| `@sweatpants/framework/server` | Product entry | high | app + handler |
-| `@sweatpants/framework/chat/mcp-tools` | Product entry | medium | plugin registry |
-| `@sweatpants/framework/chat/browser-rendering` | Product entry | medium | tool UI components |
+| `@sweatpants/chat-core` | Product entry | high | plugins, elicit helpers |
+| `@sweatpants/agent-host/server` | Product entry | high | app + handler |
+| `@sweatpants/tool-session/mcp` | Product entry | medium | plugin registry |
+| `@sweatpants/react-chat/browser-rendering` | Product entry | medium | tool UI components |
 | `@sweatpants/durable-chat-runtime/response-streams` | Product entry | low | durable setup |
 | `@sweatpants/react-chat` | Product | medium | chat routes |
 | `@sweatpants/agent-sdk` | Product tool surface | medium | `createTool` |
@@ -173,12 +173,12 @@ Known grandfather exceptions: **none** (empty exception list in allowlist JSON).
 
 ## Golden-path acceptance
 
-Location: `packages/framework/acceptance/golden-path.acceptance.test.ts`
+Location: `packages/platform-acceptance/src/product/golden-path.acceptance.test.ts`
 
 Imports only product facade allowlisted paths. Exercises: start chat application, define a tool with `createTool`, send a message, complete a turn.
 
 ```bash
-pnpm -C packages/framework test:acceptance
+pnpm -C packages/platform-acceptance test
 ```
 
 ## Demos

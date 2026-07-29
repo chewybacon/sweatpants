@@ -7,7 +7,8 @@ import {
   type JournalAuthorityConformanceFactory,
 } from "@sweatpants/journal-authority/testing";
 
-import { createRedisDurableJournalAuthority } from "../durable-authority.ts";
+import { createRedisExecutionStore } from "../execution-store.ts";
+import { createStoredDurableJournalAuthority } from "@sweatpants/journal-authority";
 import { cleanupRedisBackend, connectRedisBackend, type RedisBackend } from "./redis-backend.ts";
 
 let backend: RedisBackend;
@@ -17,14 +18,16 @@ let client: RedisClientType;
 const factory: JournalAuthorityConformanceFactory = {
   backendName: "redis",
   *open(options) {
-    return createRedisDurableJournalAuthority(client, {
-      journalId: options.journalId,
-      journalIncarnation: "conformance-v1",
-      keyPrefix: authorityKeyPrefix,
-      keyring: options.keyring,
-      now: options.now,
-      schemaRegistry: options.schemaRegistry,
-    });
+    return createStoredDurableJournalAuthority(
+      createRedisExecutionStore(client, { keyPrefix: authorityKeyPrefix }),
+      {
+        journalId: options.journalId,
+        journalIncarnation: "conformance-v1",
+        keyring: options.keyring,
+        now: options.now,
+        schemaRegistry: options.schemaRegistry,
+      },
+    );
   },
 };
 
@@ -41,7 +44,7 @@ describe("JournalAuthority Redis conformance", () => {
   // Names the backend in the output so a green run against the in-memory command
   // surface is never mistaken for certification of Redis semantics.
   it("reports which backend certified this run", () => {
-    console.info(`[journal-authority-redis] conformance backend: ${backend.label}`);
+    console.info(`[execution-store-redis] conformance backend: ${backend.label}`);
   });
 
   for (const conformanceCase of createJournalAuthorityConformanceCases(factory)) {

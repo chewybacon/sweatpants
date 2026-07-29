@@ -9,7 +9,7 @@ import {
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import { createToolExecutionRef, type ToolRuntime } from "@sweatpants/tool-session/chat-runtime";
-import { createInMemoryProgramDriverJournalStore } from "../program-driver-journal.ts";
+import { createProgramDriverJournalStore } from "../program-driver-journal.ts";
 import type { Message } from "@sweatpants/chat-core";
 import type { ChatHandlerSetup } from "../types.ts";
 import {
@@ -247,7 +247,7 @@ function assertAgUiLifecycle(events: AgUiEvent[]) {
 }
 
 function createProgramDriverTestStore() {
-  return createInMemoryProgramDriverJournalStore({
+  return createProgramDriverJournalStore({
     keyring: createCapabilityKeyring("framework-program-driver-test", [
       { keyId: "test-v1", secret: "framework-program-driver-test-key" },
     ]),

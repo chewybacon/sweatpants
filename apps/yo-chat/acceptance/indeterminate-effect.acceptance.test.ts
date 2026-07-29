@@ -22,7 +22,7 @@ import { createChatApplication } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createDurableChatHandler,
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
@@ -103,7 +103,7 @@ describe("an indeterminate unsafe effect reaches the model", () => {
     const keyring = createCapabilityKeyring("indeterminate", [
       { keyId: "k", secret: "indeterminate-acceptance-key-32b!!" },
     ]);
-    const journalStore = createInMemoryProgramDriverJournalStore({ keyring });
+    const journalStore = createProgramDriverJournalStore({ keyring });
     const bufferStore = createInMemoryBufferStore<string>();
     const registryStore = createInMemoryRegistryStore();
     const fallback: ToolRuntime = {

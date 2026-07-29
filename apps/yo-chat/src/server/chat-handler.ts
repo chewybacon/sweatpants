@@ -2,7 +2,10 @@ import { createChatHandler } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { env } from "@/env";
 import { setupYoChatModelProvider } from "./model-provider";
-import { createYoChatProgramDriverJournalStore } from "./program-driver-journal";
+import {
+  createYoChatExecutionStore,
+  createYoChatProgramDriverJournalStore,
+} from "./program-driver-journal";
 import type { ProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
 
 /** Expected composition failure for invalid ProgramRuntime configuration. */
@@ -32,11 +35,13 @@ export function createYoChatHandler(): ReturnType<typeof createChatHandler> {
   const keyring = createCapabilityKeyring("yo-chat-program-driver", [
     { keyId: "yo-chat-program-driver-v1", secret },
   ]);
-  const journalStore = createYoChatProgramDriverJournalStore(keyring);
+  const executionStore = createYoChatExecutionStore();
+  const journalStore = createYoChatProgramDriverJournalStore(keyring, executionStore);
   activeProgramDriverJournalStore = journalStore;
   return createChatHandler({
     setup: setupYoChatModelProvider,
     maxToolIterations: 10,
     programDriverJournalStore: journalStore,
+    executionStore,
   });
 }

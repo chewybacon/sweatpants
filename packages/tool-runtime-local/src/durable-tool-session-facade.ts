@@ -8,11 +8,12 @@ import { z } from "zod";
 import { createTool, type AnyToolContract } from "@sweatpants/agent-sdk";
 import {
   withJournalAuthority,
-  createInMemoryDurableJournalAuthority,
+  createStoredDurableJournalAuthority,
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
   type DurableSemanticRecord,
 } from "@sweatpants/journal-authority";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -172,14 +173,14 @@ function* runFacadeProgram<I extends Json, O extends Json>(
         artifacts?: { catalog?: readonly SchemaBinding[] };
       }
     ).artifacts?.catalog;
-    const authority = createInMemoryDurableJournalAuthority({
+    const authority = createStoredDurableJournalAuthority(createMemoryExecutionStore(), {
       journalId: `durable-tool-facade:${options.tool.manifest.programId}`,
       journalIncarnation: "1",
       keyring: options.keyring,
       schemaRegistry:
         options.schemaRegistry ??
         createDurableSchemaRegistry([...foreignToolSchemaEntries(), ...(authoredCatalog ?? [])]),
-      ...(snapshot ? { snapshot } : {}),
+      ...(snapshot ? { initialSnapshot: snapshot } : {}),
     });
     const taskId = "turn-0/root";
     const attach = {
@@ -224,14 +225,14 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       });
     });
     activation += 1;
-    snapshot = authority.exportSnapshot();
+    snapshot = yield* authority.exportSnapshot();
     yield* options.stateStore.save(invocationId, snapshot);
     if (options.onActivation) {
       yield* options.onActivation({
         invocationId,
         activation,
         outcome,
-        journal: authority.readJournal(invocationId),
+        journal: yield* authority.readJournal(invocationId),
       });
     }
 
@@ -245,7 +246,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       throw new DurableToolFacadeError("program_cancelled", "Durable tool was cancelled");
     }
 
-    const request = pendingElicit(authority.readJournal(invocationId), outcome.pullId);
+    const request = pendingElicit(yield* authority.readJournal(invocationId), outcome.pullId);
     if (!request) {
       throw new DurableToolFacadeError(
         "unsupported_park",
@@ -262,8 +263,13 @@ function* runFacadeProgram<I extends Json, O extends Json>(
           : {}),
       },
     });
+    const resolutionCapability = yield* authority.resolutionCapability(
+      invocationId,
+      taskId,
+      request.pullId,
+    );
     const resolution = yield* authority.resolve({
-      capability: authority.resolutionCapability(invocationId, taskId, request.pullId),
+      capability: resolutionCapability,
       audience: `user:${request.descriptor.key}`,
       outcome: {
         status: "ok",
@@ -282,7 +288,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
         `Unable to resolve durable facade elicitation: ${resolution.code}`,
       );
     }
-    snapshot = authority.exportSnapshot();
+    snapshot = yield* authority.exportSnapshot();
     yield* options.stateStore.save(invocationId, snapshot);
   }
 }

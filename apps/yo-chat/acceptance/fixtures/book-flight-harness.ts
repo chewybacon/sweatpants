@@ -22,7 +22,7 @@ import { createChatApplication } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createDurableChatHandler,
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
@@ -97,7 +97,7 @@ export async function createBookFlightSubstrate(options: {
   const keyring = createCapabilityKeyring("book-flight-foreign", [
     { keyId: "test-v1", secret: "book-flight-foreign-program-driver-key" },
   ]);
-  const journalStore = createInMemoryProgramDriverJournalStore({ keyring });
+  const journalStore = createProgramDriverJournalStore({ keyring });
 
   // Shared durable state: journal, stream buffers, and foreign ToolSession
   // continuations all outlive any single runtime generation.

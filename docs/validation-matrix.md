@@ -86,12 +86,12 @@ tolerant); `play_ttt` uses structured agentic strategy.
 | Caller-authoritative A2A sub-agents survive process replacement | `packages/a2a` multi-process certification (`apps/a2a-review`, evidence: modelExecutions 3, consultationPulls 1, taskClosures 4) |
 | Foreign A2A tasks adapt into durable programs with honest indeterminacy (`onIndeterminate: "fail"`) | `packages/a2a/src/__tests__/foreign-adapter*.test.ts` |
 | Peer certification across independent journals | `342b7d4` certification suites |
-| Journal-backed standard A2A host: terminal immutability, idempotency, continuation reconciliation across host replacement | `packages/framework/src/server/__tests__/standard-a2a-host.test.ts` |
+| Journal-backed standard A2A host: terminal immutability, idempotency, continuation reconciliation across host replacement | `packages/agent-host/src/server/__tests__/standard-a2a-host.test.ts` |
 | Content custody: put-verify-reference, loss preserves task truth | `packages/a2a/src/__tests__/content-store.test.ts` + host custody test |
 | Third-party client compatibility, pinned artifact, patch-reviewed | `interop/a2a-inspector/` + `.github/workflows/a2a-inspector-interop.yml` |
 | Cancellation with typed partial results | `apps/yo-chat/acceptance/durable-cancellation-abort-signal.acceptance.test.ts` + durable-tool-cancellation spec suites |
 | Cloud stop/resume (AgentCore microVM) | `apps/agentcore-durable-program-runtime/live-evidence/release-20260715-2148-certification.json` |
-| Stream reconnect mid-turn | `packages/framework/acceptance/demo-reconnect-mid-stream.acceptance.test.ts` · `apps/yo-chat/e2e/durable-chat.spec.ts` (reload mid-stream) |
+| Stream reconnect mid-turn | `packages/durable-chat-runtime/acceptance/demo-reconnect-mid-stream.acceptance.test.ts` · `apps/yo-chat/e2e/durable-chat.spec.ts` (reload mid-stream) |
 
 ## Gaps (priority order)
 
@@ -104,7 +104,7 @@ tolerant); `play_ttt` uses structured agentic strategy.
 - **G2 — Journal-native book_flight process replacement.** ✅ Closed. The certification
   immediately found a real defect: the agent harness checkpointed journal state *after*
   sending HTTP responses, so a process death after acknowledging a parked task lost it.
-  Persistence now precedes acknowledgement (`packages/framework/src/server/testing.ts`).
+  Persistence now precedes acknowledgement (`packages/agent-host/src/server/testing.ts`).
 - **G3 — Pinned local-model CI gate.** The Ollama evidence is dev-machine-only with an
   unpinned model tag. Convert to a pinned artifact (model name + digest, mirroring
   `interop/a2a-inspector/inspector.pin.json`) driving tictactoe in CI, pass/fail decided by

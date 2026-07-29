@@ -29,13 +29,13 @@ const { messages, send, isStreaming } = useChat({
 Server side (happy path):
 
 ```ts
-import { createChatApplication, createChatHandler } from "@sweatpants/framework/server";
+import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
 ```
 
 ## Automated gate
 
 ```bash
-pnpm -C packages/framework exec vitest run acceptance/demo-reconnect-mid-stream.acceptance.test.ts
+pnpm -C packages/durable-chat-runtime exec vitest run acceptance/demo-reconnect-mid-stream.acceptance.test.ts
 ```
 
 Classification: **acceptance** (protocol/handler). Reuses durable handler + in-memory streams.

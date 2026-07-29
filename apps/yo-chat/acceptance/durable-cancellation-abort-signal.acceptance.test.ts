@@ -12,6 +12,7 @@ import {
   createCapabilityKeyring,
   createInMemoryDurableJournalAuthority,
 } from "@sweatpants/journal-authority";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -26,7 +27,7 @@ import {
   type ProgramRunResult,
 } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
-import { foreignToolAdapter } from "@sweatpants/tool-session/foreign";
+import { foreignToolAdapter, foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { NULL_RESULT_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import {
@@ -102,6 +103,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
       journalId: "abort-signal-acceptance",
       journalIncarnation: "1",
       keyring,
+      schemaRegistry: createDurableSchemaRegistry(foreignToolSchemaEntries()),
     });
     const sessionId = "abort-signal-acceptance-session";
     const parentTaskId = "turn-0/root";

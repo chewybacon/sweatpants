@@ -3,8 +3,8 @@
 Sweatpants separates portable authoring from deployment authority:
 
 - `@sweatpants/agent-sdk` exports `defineAgent`, `advertiseCapability`, portable `AgentManifestV1`, and local `AgentDefinition` bindings.
-- `@sweatpants/framework/chat` exports `defineChatProgram`, the protocol-neutral chat turn contracts, bounded context selection, resource mount helpers, and classified model-effect registration.
-- `@sweatpants/framework/server` exports explicit `remoteExecutor`, `standardA2A`, and `sweatpantsPeer` profiles, `serveAgent`, and posture-specific connection APIs.
+- `@sweatpants/chat-core` exports `defineChatProgram`, the protocol-neutral chat turn contracts, bounded context selection, resource mount helpers, and classified model-effect registration.
+- `@sweatpants/agent-host/server` exports explicit `remoteExecutor`, `standardA2A`, and `sweatpantsPeer` profiles, `serveAgent`, and posture-specific connection APIs.
 
 An `AgentDefinition` is runtime-only. Serialize `definition.manifest` explicitly; direct definition serialization throws rather than silently dropping executable, schema, or resource bindings.
 
@@ -22,7 +22,7 @@ import {
   defineChatProgram,
   latestContextWindow,
   modelReadable,
-} from "@sweatpants/framework/chat";
+} from "@sweatpants/chat-core";
 
 const resources = defineResourcePackage({
   id: "review-guidance",
@@ -102,7 +102,7 @@ Authored-chat v1 rejects non-empty `elicitations` because the v1 model output al
 ## Explicit authority posture
 
 ```ts
-import { remoteExecutor, serveAgent } from "@sweatpants/framework/server";
+import { remoteExecutor, serveAgent } from "@sweatpants/agent-host/server";
 
 const served = serveAgent(
   agent,
@@ -128,7 +128,7 @@ import {
   createStandardA2AHost,
   serveAgent,
   standardA2A,
-} from "@sweatpants/framework/server";
+} from "@sweatpants/agent-host/server";
 
 const served = serveAgent(
   agent,
@@ -159,7 +159,7 @@ elicitation prompts/responses, and final result. Model memory always follows the
 chat program's pinned context policy. A live, growing conversation is never
 projected into an already-terminal task.
 
-Use `startAgentHarness` from `@sweatpants/framework/server/testing` for a real
+Use `startAgentHarness` from `@sweatpants/agent-host/server/testing` for a real
 loopback HTTP server and discovery in tests. The evidence API exposes IDs,
 digests, journal event kinds, lineage, and state without credentials or content
 bodies. Its persistent reference journal accepts `agent` and derives the complete

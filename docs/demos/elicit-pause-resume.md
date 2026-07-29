@@ -17,7 +17,7 @@
 
 ```ts
 import { createTool } from "@sweatpants/agent-sdk";
-import { makePlugin, getElicitContext } from "@sweatpants/framework/chat";
+import { makePlugin, getElicitContext } from "@sweatpants/chat-core";
 
 // Tool authoring with elicit
 export const bookFlight = createTool("book_flight")
@@ -41,7 +41,7 @@ export const bookFlightPlugin = makePlugin(bookFlight).onElicit({
 ## Automated gate
 
 ```bash
-pnpm -C packages/framework exec vitest run acceptance/demo-elicit-pause-resume.acceptance.test.ts
+pnpm -C packages/platform-acceptance test
 ```
 
 Classification: **acceptance** (protocol/handler).

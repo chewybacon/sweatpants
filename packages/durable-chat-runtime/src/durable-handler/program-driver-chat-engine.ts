@@ -250,12 +250,16 @@ function* activateProgramDriverChatEngine(
   const liveEvent = params.liveEvent;
   const journal = yield* params.journalStore.open(params.conversationId);
   const scopedForeignEffects = params.foreignEffects;
-  let before = yield* journal.readJournal(params.conversationId);
-  const active = activeRoot(before);
-  const turnNumber = rootTaskCount(before);
+  const recovery = yield* journal.recoveryState(params.conversationId);
+  const active =
+    recovery.status === "active"
+      ? { taskId: recovery.taskId, turnId: recovery.turnId, input: recovery.input }
+      : undefined;
+  const turnNumber = yield* journal.rootTaskCount(params.conversationId);
   const taskId = active?.taskId ?? `turn-${turnNumber}/root`;
   const turnId = active?.turnId ?? `turn-${turnNumber}`;
-  const foreignDriver = scopedForeignEffects ? "tool-session" : "framework-tool-runtime";
+  let before = yield* journal.readJournal(params.conversationId, taskId);
+  const foreignDriver = scopedForeignEffects ? "tool-session" : "chat-tool-runtime";
   const requestedInput: ChatProgramInput = {
     messages: params.messages.map((message) => assertJson(message)),
     maxIterations: params.maxIterations,
@@ -294,12 +298,16 @@ function* activateProgramDriverChatEngine(
       if (!(error instanceof CrankError) || error.code !== "invalid_journal") {
         throw error;
       }
-      const raced = activeRoot(yield* journal.readJournal(params.conversationId));
-      if (raced?.taskId !== taskId || canonicalJson(raced.input) !== canonicalJson(input)) {
+      const raced = yield* journal.recoveryState(params.conversationId);
+      if (
+        raced.status !== "active" ||
+        raced.taskId !== taskId ||
+        canonicalJson(raced.input) !== canonicalJson(input)
+      ) {
         throw new CrankError("idempotency_conflict", "Concurrent root task input differs");
       }
     }
-    before = yield* journal.readJournal(params.conversationId);
+    before = yield* journal.readJournal(params.conversationId, taskId);
   }
 
   if (active && params.pluginAbort) {
@@ -340,7 +348,7 @@ function* activateProgramDriverChatEngine(
   const foreignEffects =
     boundForeignDriver === "tool-session"
       ? requireScopedForeignEffects(scopedForeignEffects)
-      : boundForeignDriver === "framework-tool-runtime"
+      : boundForeignDriver === "chat-tool-runtime"
         ? createToolRuntimeForeignEffectRegistrations({
             runtime: requireToolRuntime(params),
             entries: params.toolInventoryEntries ?? [],
@@ -447,7 +455,7 @@ function* activateProgramDriverChatEngine(
       );
     },
   );
-  const after = yield* journal.readJournal(params.conversationId);
+  const after = yield* journal.readJournal(params.conversationId, taskId);
   const events: StreamEvent[] = (params.elicitResponses ?? []).flatMap((response) => {
     if (!response.trace || !response.toolName) {
       return [];
@@ -727,28 +735,6 @@ function safeProviderErrorMessage(value: string | undefined): string | undefined
     .replaceAll(/(bearer|token|api[-_ ]?key)\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
     .trim()
     .slice(0, 512);
-}
-
-function activeRoot(records: DurableSemanticRecord[]) {
-  const closed = new Set(
-    records.flatMap((record) =>
-      record.payload.type === "TaskClosed" ? [record.payload.taskId] : [],
-    ),
-  );
-  const opened = records.filter(
-    (record) =>
-      record.payload.type === "TaskOpened" &&
-      record.payload.parentTaskId === undefined &&
-      !closed.has(record.payload.taskId),
-  );
-  const latest = opened.at(-1);
-  return latest?.payload.type === "TaskOpened" ? latest.payload : undefined;
-}
-
-function rootTaskCount(records: DurableSemanticRecord[]): number {
-  return records.filter(
-    (record) => record.payload.type === "TaskOpened" && record.payload.parentTaskId === undefined,
-  ).length;
 }
 
 function* cancelPendingElicits(
@@ -1486,7 +1472,7 @@ function requireToolRuntime(params: ProgramRuntimeChatEngineParams) {
 
 function createThinCatalog(
   params: ProgramDriverChatEngineParams,
-  foreignDriver: "tool-session" | "framework-tool-runtime",
+  foreignDriver: "tool-session" | "chat-tool-runtime",
 ): ThinProgramCatalog {
   const nativePrograms = nativeProgramIdentities(params.nativeTools);
   const entries: Record<string, ThinCatalogEntry> = {};

@@ -16,7 +16,7 @@ import {
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   programDriverSchemaRegistry,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
@@ -71,7 +71,7 @@ export function createStudioDurableChatApplication(options: {
   readonly modelProvider?: StudioModelProviderRuntime;
 }) {
   const definitions = Object.values(codingCapabilities);
-  const journalStore = createInMemoryProgramDriverJournalStore({
+  const journalStore = createProgramDriverJournalStore({
     keyring: createCapabilityKeyring("yo-studio-durable-chat", [
       { keyId: "active", secret: "yo-studio-durable-chat-development-key" },
     ]),

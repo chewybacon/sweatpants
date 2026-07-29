@@ -7,5 +7,7 @@ export * from "./capabilities.ts";
 export * from "./durable-authority-types.ts";
 export * from "./durable-authority.ts";
 export * from "./durable-apis.ts";
+export * from "./stored-authority.ts";
+export * from "./commit-loop.ts";
 
 export * from "./schema-registry.ts";
