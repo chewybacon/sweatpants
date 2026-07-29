@@ -53,7 +53,7 @@ export interface DurableStreamsConfig<T> {
   registryStore: SessionRegistryStore;
   /** Retention policy for completed streams */
   retentionPolicy?: RetentionPolicy;
-  /** Explicit Host/Turn owner; omitted only for standalone low-level tests. */
+  /** Explicit Host/Turn owner; otherwise the installed owner context is required. */
   owner?: DurableStreamsOwner;
 }
 
@@ -99,9 +99,15 @@ export function* setupDurableStreams<T>(
 ): Operation<DurableStreamsSetup<T>> {
   const { bufferStore, registryStore, retentionPolicy } = config;
   const owner = config.owner ?? (yield* useDurableStreamsOwner());
+  if (!owner) {
+    throw new Error(
+      "setupDurableStreams requires an explicit Host/Turn owner; ownerless setup is test-internal only",
+    );
+  }
   const registry = yield* createSessionRegistry(bufferStore, registryStore, {
     ...(retentionPolicy ? { retentionPolicy } : {}),
-    ...(owner ? { ownerScope: owner.scope, registerWriter: owner.register } : {}),
+    ownerScope: owner.scope,
+    registerWriter: owner.register,
   });
 
   // Install the drivers for this scope.

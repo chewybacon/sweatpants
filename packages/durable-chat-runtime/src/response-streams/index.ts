@@ -134,7 +134,10 @@ export {
 } from "./shared-memory-store.ts";
 
 export {
+  createDurableTurnOwner,
   installDurableStreamsOwner,
   useDurableStreamsOwner,
   type DurableStreamsOwner,
+  type DurableTurnHost,
+  type DurableTurnOwner,
 } from "./owner.ts";

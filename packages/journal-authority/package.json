@@ -64,6 +64,17 @@
             },
             "default": "./src/api.ts"
         },
+        "./turn-authority": {
+            "development": {
+                "import": "./src/turn-authority.ts",
+                "types": "./src/turn-authority.ts"
+            },
+            "import": {
+                "types": "./dist/turn-authority.d.ts",
+                "default": "./dist/turn-authority.js"
+            },
+            "default": "./src/turn-authority.ts"
+        },
         "./schema-registry": {
             "development": {
                 "import": "./src/schema-registry.ts",

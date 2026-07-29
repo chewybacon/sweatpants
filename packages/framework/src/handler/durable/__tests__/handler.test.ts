@@ -23,6 +23,10 @@ import {
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import type { RetentionPolicy } from "@sweatpants/durable-streams";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
+import { createMemoryHistoryStore } from "@sweatpants/history-store/memory";
+import type { HistoryStore } from "@sweatpants/history-store/contract";
+import type { Json } from "@sweatpants/foundation";
 import { assertPendingResumeConsistency } from "../handler.ts";
 import type { ChatHandlerSetup } from "../types.ts";
 import { registerInterruptsFromRunFinished } from "@sweatpants/durable-chat-runtime/interrupts";
@@ -666,6 +670,102 @@ describe("Durable Chat Handler", () => {
         expect(typeof event.lsn).toBe("number");
         expect(event.lsn).toBeGreaterThan(0);
       }
+    });
+
+    it("does not close the final response before Session Head publication", function* () {
+      const provider = createMockProvider({ responses: "Wait for publication" });
+      const memoryHistory = createMemoryHistoryStore();
+      let releasePublication!: () => void;
+      let publicationReached!: () => void;
+      const released = new Promise<void>((resolve) => {
+        releasePublication = resolve;
+      });
+      const reached = new Promise<void>((resolve) => {
+        publicationReached = resolve;
+      });
+      const historyStore: HistoryStore<Json> = {
+        ...memoryHistory,
+        *compareAndSwapHead(sessionId, expected, next) {
+          if (next.activeExecutionId === null) {
+            publicationReached();
+            yield* call(() => released);
+          }
+          return yield* memoryHistory.compareAndSwapHead(sessionId, expected, next);
+        },
+      };
+      const handler = createTestDurableChatHandler({
+        setup: createTestHooks(provider),
+        executionStore: createMemoryExecutionStore(),
+        historyStore,
+      });
+      let settled = false;
+      const response = makeRequest(handler, [
+        { id: "user:publication-order", role: "user", content: "Wait" },
+      ]).then((value) => {
+        settled = true;
+        return value;
+      });
+
+      yield* call(() => reached);
+      expect(settled).toBe(false);
+      releasePublication();
+      const completed = yield* call(() => response);
+      expect(completed.result.complete?.type).toBe("RUN_FINISHED");
+      expect(settled).toBe(true);
+    });
+
+    it("recovers terminal-unpublished history without invoking the provider again", function* () {
+      let providerInvocations = 0;
+      const provider = createMockProvider({
+        customStream(messages, options) {
+          providerInvocations += 1;
+          return createMockProvider({ responses: "Published exactly once" }).stream(
+            messages,
+            options,
+          );
+        },
+      });
+      const executionStore = createMemoryExecutionStore();
+      const memoryHistory = createMemoryHistoryStore();
+      let failBeforeSegment = true;
+      const historyStore: HistoryStore<Json> = {
+        loadHead: (sessionId) => memoryHistory.loadHead(sessionId),
+        *putSegment(segment) {
+          if (failBeforeSegment) {
+            failBeforeSegment = false;
+            throw new Error("semantic fault after terminal capsule commit");
+          }
+          return yield* memoryHistory.putSegment(segment);
+        },
+        compareAndSwapHead: (sessionId, expected, next) =>
+          memoryHistory.compareAndSwapHead(sessionId, expected, next),
+        readPage: (sessionId, cursor, limit) => memoryHistory.readPage(sessionId, cursor, limit),
+      };
+      const conversationId = "terminal-unpublished-recovery";
+      const config = {
+        setup: createTestHooks(provider, [], { retentionPolicy: { mode: "retain_forever" } }),
+        executionStore,
+        historyStore,
+      };
+
+      const first = createTestDurableChatHandler(config);
+      const firstResult = yield* call(() =>
+        makeRequest(first, [{ id: "user:fault", role: "user", content: "Publish this" }], {
+          conversationId,
+        }),
+      );
+      expect(firstResult.result.complete).toBeNull();
+      expect(providerInvocations).toBe(1);
+
+      const replacement = createTestDurableChatHandler(config);
+      const recovered = yield* call(() =>
+        makeRequest(replacement, [{ id: "user:fault", role: "user", content: "Publish this" }], {
+          conversationId,
+        }),
+      );
+      expect(recovered.result.complete?.type).toBe("RUN_FINISHED");
+      expect(providerInvocations).toBe(1);
+      expect((yield* memoryHistory.readPage(conversationId)).entries).toHaveLength(1);
     });
 
     it("should include LSN in correct order", function* () {

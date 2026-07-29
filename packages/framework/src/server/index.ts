@@ -162,6 +162,7 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
                 yield* config.setup({ signal });
               }
               const scope = yield* useScope();
+              hostOwner.adoptScope(scope);
               settled = true;
               resolve(scope);
               yield* suspend();

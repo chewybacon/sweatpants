@@ -5,6 +5,9 @@ import type { HistoryPolicy } from "@sweatpants/chat-core";
 import type { StreamEvent, ChatMessage } from "@sweatpants/durable-chat-runtime/handler/types";
 import type { AgUiRunMetadata } from "@sweatpants/chat-core";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
+import type { ExecutionStore } from "@sweatpants/journal-authority/store";
+import type { HistoryStore } from "@sweatpants/history-store/contract";
+import type { Json } from "@sweatpants/foundation";
 
 import type {
   ChatHandlerSetup,
@@ -65,6 +68,12 @@ export interface ProgramRuntimeChatEngineParams {
   /** Called only after all resume commands are durably accepted. */
   onResumeAccepted?: () => Operation<void>;
   pluginAbort?: PluginAbortRequest;
+  /** Commits accepted terminal authority output and publishes Session History. */
+  publishTerminal(request: {
+    outcome: Json;
+    disposition: "completed" | "failed" | "cancelled";
+    events: readonly StreamEvent[];
+  }): Operation<void>;
 }
 
 export type ProgramRuntimeChatEngine = import("effection").Stream<StreamEvent, void>;
@@ -77,4 +86,8 @@ export interface DurableChatHandlerConfig {
   setup?: ChatHandlerSetup;
   maxToolIterations?: number;
   programDriverJournalStore: ProgramDriverJournalStore;
+  /** Bounded terminal/publication authority persistence; shared for Host replacement. */
+  executionStore?: ExecutionStore;
+  /** Session History persistence; shared for Host replacement. */
+  historyStore?: HistoryStore<Json>;
 }

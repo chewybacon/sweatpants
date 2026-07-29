@@ -7,7 +7,15 @@
  * - Response consumption helpers
  * - DI setup helpers
  */
-import { resource, sleep, type Operation, type Stream } from "effection";
+import {
+  createScope,
+  resource,
+  sleep,
+  suspend,
+  useScope,
+  type Operation,
+  type Stream,
+} from "effection";
 import { z } from "zod";
 import { createTool, type ToolDefinition as CoreToolDefinition } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/session-contract";
@@ -45,6 +53,8 @@ import {
   type DurableStreamsSetup,
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import { createDurableChatHandler } from "../handler.ts";
+import { createHostScopeOwner, installHostScopeOwner } from "../../../lib/effection/host-scope.ts";
+import { installDurableStreamsOwner } from "@sweatpants/durable-chat-runtime/response-streams";
 import { createInMemoryProgramDriverJournalStore } from "../program-driver-journal.ts";
 import type { ChatHandlerSetup, DurableChatHandlerConfig, DurableStreamEvent } from "../types.ts";
 import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
@@ -54,7 +64,7 @@ export function createTestDurableChatHandler(
   config: Omit<DurableChatHandlerConfig, "programDriverJournalStore"> &
     Partial<Pick<DurableChatHandlerConfig, "programDriverJournalStore">>,
 ): ReturnType<typeof createDurableChatHandler> {
-  return createDurableChatHandler({
+  const handler = createDurableChatHandler({
     ...config,
     programDriverJournalStore:
       config.programDriverJournalStore ??
@@ -64,6 +74,29 @@ export function createTestDurableChatHandler(
         ]),
       }),
   });
+  const [hostScope] = createScope();
+  const hostOwner = createHostScopeOwner(hostScope);
+  let resolveInstalled!: () => void;
+  const installed = new Promise<void>((resolve) => {
+    resolveInstalled = resolve;
+  });
+  let scoped: ((request: Request) => Promise<Response>) | undefined;
+  void hostScope.run(function* () {
+    yield* installHostScopeOwner(hostOwner);
+    yield* installDurableStreamsOwner(hostOwner);
+    const compositionScope = yield* useScope();
+    hostOwner.adoptScope(compositionScope);
+    scoped = handler.withScope(compositionScope);
+    resolveInstalled();
+    yield* suspend();
+  });
+  return Object.assign(
+    async (request: Request) => {
+      await installed;
+      return scoped!(request);
+    },
+    { withScope: handler.withScope },
+  );
 }
 
 // =============================================================================

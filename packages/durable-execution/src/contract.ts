@@ -50,6 +50,15 @@ export interface TaskControlState {
   readonly pending: PendingBoundary | null;
 }
 
+export interface ProjectionFactEnvelope {
+  readonly executionId: ExecutionId;
+  readonly sessionId: SessionId;
+  readonly turnId: TurnId;
+  readonly sequence: number;
+  readonly kind: string;
+  readonly payload: Json;
+}
+
 export interface ProjectionFrontier {
   readonly throughSequence: number;
   readonly facts: DurableReference | null;

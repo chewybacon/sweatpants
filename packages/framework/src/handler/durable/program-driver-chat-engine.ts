@@ -472,6 +472,11 @@ function* activateProgramDriverChatEngine(
   );
   if (outcome.state === "completed") {
     events.push({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
+    yield* params.publishTerminal({
+      outcome: outcome.value,
+      disposition: "completed",
+      events,
+    });
   } else if (outcome.state === "parked") {
     const pending = pendingElicit(after, outcome.pullId);
     if (pending) {
@@ -508,9 +513,22 @@ function* activateProgramDriverChatEngine(
         code: "PROGRAM_CANCELLED",
         message: params.pluginAbort?.reason ?? "Program was cancelled",
       });
+      yield* params.publishTerminal({
+        outcome: {
+          code: "PROGRAM_CANCELLED",
+          message: params.pluginAbort?.reason ?? "Program was cancelled",
+        },
+        disposition: "cancelled",
+        events,
+      });
     }
   } else {
     events.push({ type: "RUN_ERROR", code: outcome.error.code, message: outcome.error.message });
+    yield* params.publishTerminal({
+      outcome: assertJson(outcome.error),
+      disposition: "failed",
+      events,
+    });
   }
 
   return events;
