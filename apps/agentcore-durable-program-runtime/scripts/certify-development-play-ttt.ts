@@ -16,8 +16,8 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createInMemoryDurableJournalAuthority,
-  type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import { type ProgramRunResult } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import {

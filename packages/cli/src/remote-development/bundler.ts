@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-import { canonicalJson } from "@sweatpants/session-contract";
+import { canonicalJson } from "@sweatpants/foundation";
 import { build, version as esbuildVersion } from "esbuild";
 
 import type { ConfiguredDurableTool, ProgramRootConfig } from "../config.ts";

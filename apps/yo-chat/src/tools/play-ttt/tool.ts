@@ -1,6 +1,6 @@
 /** Journal-native tic-tac-toe program and public tool contract. */
 import { createDurableTool } from "@sweatpants/core";
-import { sha256 } from "@sweatpants/session-contract";
+import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
 
 import {

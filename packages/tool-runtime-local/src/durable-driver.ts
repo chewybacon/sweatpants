@@ -8,7 +8,7 @@ import {
   type ProgramDriver,
   type ProgramShutdownReason,
   type ProgramStep,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 
 /** In-process canonical driver used as the semantic baseline. */
 export function createLocalDurableProgramDriver(registry?: DurableToolRegistry): ProgramDriver {

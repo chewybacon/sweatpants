@@ -1,13 +1,12 @@
 import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
-import { type EffectDefinition } from "@sweatpants/session-contract";
+import { type EffectDefinition } from "@sweatpants/durable-effects";
 
+import { type StandardSchemaV1 } from "@sweatpants/session-contract";
 import {
-  canonicalSnapshot,
   createPinnedDurableProgram,
   type DurableProgramContext,
-  type Json,
-  type StandardSchemaV1,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 import {
   createPortableSchemaDescriptor,

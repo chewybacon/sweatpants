@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   createDurableToolRegistry,
   createLocalProgramDriver,
-  sha256,
   type ProgramAttachment,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { sha256 } from "@sweatpants/foundation";
 import {
   ASK_PARENT_EFFECT,
   REFERENCE_ASK_PARENT_TOOL,

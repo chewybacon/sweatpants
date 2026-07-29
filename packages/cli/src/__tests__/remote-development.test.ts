@@ -10,9 +10,9 @@ import {
   createGeneratedPinnedDurableProgram,
   createPinnedDurableProgram,
   generateProgramArtifactIdentity,
-  sha256Bytes,
   type DurableTool,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { sha256Bytes } from "@sweatpants/foundation";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 
 import { defineConfig, definePrograms } from "../config.ts";

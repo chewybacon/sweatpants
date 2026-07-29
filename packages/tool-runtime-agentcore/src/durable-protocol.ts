@@ -1,11 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import {
-  assertJson,
-  canonicalJson,
-  canonicalSnapshot,
-  sha256,
   type AttachProgramRequest,
-  type Json,
   type ProgramAttachment,
   type ProgramCommand,
   type ProgramShutdownReason,
@@ -13,7 +8,14 @@ import {
   type ReplayEmissionEntry,
   type ReplayEntry,
   type ReplayOperationEntry,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import {
+  assertJson,
+  canonicalJson,
+  canonicalSnapshot,
+  sha256,
+  type Json,
+} from "@sweatpants/foundation";
 
 import { AGENTCORE_DURABLE_PROTOCOL_VERSION } from "./durable-placement.ts";
 

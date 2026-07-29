@@ -1,9 +1,9 @@
-import { type DurableEffectRegistry } from "@sweatpants/session-contract";
+import { type DurableEffectRegistry } from "@sweatpants/durable-effects";
 
 import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
-import { createLocalProgramDriver } from "@sweatpants/session-contract";
+import { createLocalProgramDriver } from "@sweatpants/durable-execution";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 import type { Json } from "@sweatpants/foundation";
 import type {

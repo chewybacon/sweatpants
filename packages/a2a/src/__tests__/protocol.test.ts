@@ -1,6 +1,7 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { describe, expect, it } from "vitest";
-import { canonicalJson, type ProgramCommand } from "@sweatpants/session-contract";
+import { type ProgramCommand } from "@sweatpants/durable-execution";
+import { canonicalJson } from "@sweatpants/foundation";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   computeA2ACommandId,

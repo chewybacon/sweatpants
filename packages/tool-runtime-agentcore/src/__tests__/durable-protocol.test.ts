@@ -1,6 +1,7 @@
 import type { AgentCoreRuntimeRelease } from "../placement-types.ts";
 import { describe, expect, it } from "vitest";
-import { canonicalSnapshot, type ReplayOperationEntry } from "@sweatpants/session-contract";
+import { type ReplayOperationEntry } from "@sweatpants/durable-execution";
+import { canonicalSnapshot } from "@sweatpants/foundation";
 
 import {
   computeFrontierDigest,

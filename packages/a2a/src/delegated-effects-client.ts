@@ -1,8 +1,8 @@
-import { type OperationOutcome } from "@sweatpants/session-contract";
+import { type OperationOutcome } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
 import { call, type Operation } from "effection";
-import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/session-contract";
+import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import type { ForeignA2AHttpTransport } from "./foreign-client.ts";
 import { DELEGATED_EFFECTS_EXTENSION_URI, SWEATPANTS_PEER_PROFILE_URI } from "./peer-types.ts";
 import type {

@@ -3,8 +3,6 @@ import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placemen
 import { call, useAbortSignal, type Operation } from "effection";
 
 import {
-  assertJson,
-  canonicalSnapshot,
   type AttachProgramRequest,
   type ProgramAttachment,
   type ProgramCommand,
@@ -12,7 +10,8 @@ import {
   type ProgramStep,
   type ReplayEntry,
   type RestoredProgramAttachment,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { assertJson, canonicalSnapshot } from "@sweatpants/foundation";
 import type { AgentCoreDurableProgramTransport } from "./durable-driver.ts";
 import {
   computeFrontierDigest,

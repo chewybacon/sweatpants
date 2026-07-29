@@ -1,4 +1,4 @@
-import { CrankError } from "@sweatpants/durable-execution";
+import { CrankError, DurableProgramCancellation } from "@sweatpants/durable-execution";
 import {
   createQueue,
   createScope,
@@ -15,7 +15,6 @@ import {
   assertReplayedCanonicalValue,
   createDurableProgramContext,
   serializeDurableError,
-  DurableProgramCancellation,
 } from "./authoring.ts";
 import { canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";

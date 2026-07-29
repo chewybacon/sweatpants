@@ -1,4 +1,4 @@
-import { type OperationOutcome } from "@sweatpants/session-contract";
+import { type OperationOutcome } from "@sweatpants/durable-effects";
 
 import type { Operation } from "effection";
 import {

@@ -1,4 +1,4 @@
-import { type OperationOutcome } from "@sweatpants/session-contract";
+import { type OperationOutcome } from "@sweatpants/durable-effects";
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -10,14 +10,13 @@ import type { AddressInfo } from "node:net";
 import {
   createInMemoryDurableJournalAuthority,
   parseDurableAuthoritySnapshot,
-  sha256,
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
   type DurableSemanticRecord,
   type OpenDurableTaskRequest,
   type ResolveOperationResult,
-  type Json,
 } from "@sweatpants/session-contract";
+import { sha256, type Json } from "@sweatpants/foundation";
 import { type DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   programDriverSchemaRegistry,

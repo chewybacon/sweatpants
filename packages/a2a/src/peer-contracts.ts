@@ -1,14 +1,9 @@
-import { type DurableEffectRegistry, type EffectDefinition } from "@sweatpants/session-contract";
+import { type DurableEffectRegistry, type EffectDefinition } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
 import { durableEffectRuntimeSchemas } from "@sweatpants/durable-effects";
-import {
-  canonicalJson,
-  canonicalSnapshot,
-  sha256,
-  validateEffectDefinition,
-  type Json,
-} from "@sweatpants/session-contract";
+import { validateEffectDefinition } from "@sweatpants/durable-execution";
+import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import type {
   PeerEffectContract,
   PeerEffectOffer,

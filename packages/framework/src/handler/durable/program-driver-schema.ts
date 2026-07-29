@@ -1,11 +1,7 @@
 import type { ModelSampleRequest } from "@sweatpants/durable-effects";
 import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
-import {
-  assertJson,
-  canonicalSnapshot,
-  defineDurableProgramManifest,
-  type Json,
-} from "@sweatpants/session-contract";
+import { defineDurableProgramManifest } from "@sweatpants/durable-execution";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   standardSchemaOf,

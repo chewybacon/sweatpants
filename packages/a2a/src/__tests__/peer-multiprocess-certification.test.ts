@@ -1,4 +1,4 @@
-import { defineDurableEffect } from "@sweatpants/session-contract";
+import { defineDurableEffect } from "@sweatpants/durable-execution";
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
@@ -8,7 +8,8 @@ import { resolve } from "node:path";
 import { call, run } from "effection";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
-import { canonicalJson, createDurableEffectRegistry } from "@sweatpants/session-contract";
+import { createDurableEffectRegistry } from "@sweatpants/session-contract";
+import { canonicalJson } from "@sweatpants/foundation";
 import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
   DURABLE_DRIVER_FIXTURE_TOOLS,

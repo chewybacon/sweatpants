@@ -11,8 +11,8 @@ import {
   createGeneratedPinnedDurableProgram,
   generateProgramArtifactIdentity,
   type DurableProgramManifest,
-  type Json,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { type Json } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   createInMemoryToolSessionStore,

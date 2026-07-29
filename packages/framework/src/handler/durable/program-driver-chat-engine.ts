@@ -3,32 +3,36 @@ import type {
   ModelSampleRequest,
   ModelSampleResult,
 } from "@sweatpants/durable-effects";
-import { type DurableEffectRegistration } from "@sweatpants/session-contract";
+import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
 import { resource, type Operation, type Stream } from "effection";
 import { encodeElicitContext } from "@sweatpants/elicit-context";
 import {
   ProgramRuntime,
-  assertJson,
-  assertReplayedCanonicalValue,
-  canonicalJson,
-  canonicalSnapshot,
   createDurableEffectRegistry,
   createModelSamplingEffectRegistration,
   createModelSamplingRouter,
+  type DurableJournalAuthorityService,
+  type DurableSemanticRecord,
+} from "@sweatpants/session-contract";
+import {
+  assertReplayedCanonicalValue,
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createLocalProgramDriver,
-  stableOpaqueId,
   stableProgramAttachmentId,
-  type DurableJournalAuthorityService,
   type DurableProgramContext,
-  type DurableSemanticRecord,
   type DurableTool,
-  type Json,
   type ProgramRunResult,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import {
+  assertJson,
+  canonicalJson,
+  canonicalSnapshot,
+  stableOpaqueId,
+  type Json,
+} from "@sweatpants/foundation";
 import {
   TOOL_OWNED_SAMPLE_CLASSIFICATION,
   foreignToolAdapter,

@@ -1,10 +1,6 @@
 import { type DurableToolRegistry } from "@sweatpants/durable-execution";
-import {
-  canonicalSnapshot,
-  type DurableProgramManifest,
-  type Json,
-  type PinnedProgram,
-} from "@sweatpants/session-contract";
+import { type DurableProgramManifest, type PinnedProgram } from "@sweatpants/durable-execution";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   A2A_EXTENSIONS_HEADER,
   CALLER_AUTHORITATIVE_EXTENSION_URI,

@@ -1,14 +1,11 @@
-import { type DurableEffectRegistry } from "@sweatpants/session-contract";
+import { type DurableEffectRegistry } from "@sweatpants/durable-effects";
 
 import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { CrankError } from "@sweatpants/durable-execution";
 import { workerMain } from "@effectionx/worker";
 import type { Operation } from "effection";
-import {
-  createDurableEffectRegistry,
-  createLocalProgramDriver,
-  type ProgramAttachment,
-} from "@sweatpants/session-contract";
+import { createDurableEffectRegistry } from "@sweatpants/session-contract";
+import { createLocalProgramDriver, type ProgramAttachment } from "@sweatpants/durable-execution";
 import { ExecutionDurableEffectRegistryContext } from "@sweatpants/durable-execution";
 
 import type {

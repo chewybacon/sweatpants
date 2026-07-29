@@ -1,12 +1,9 @@
 import { call, run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { advertiseCapability, defineAgent } from "@sweatpants/core";
-import {
-  createCapabilityKeyring,
-  createPinnedDurableProgram,
-  sha256,
-  type Json,
-} from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createPinnedDurableProgram } from "@sweatpants/durable-execution";
+import { sha256, type Json } from "@sweatpants/foundation";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 import {
   createInMemoryImmutableContentStore,

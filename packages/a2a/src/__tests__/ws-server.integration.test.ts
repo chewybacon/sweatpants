@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { run } from "effection";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
-import { createDurableToolRegistry } from "@sweatpants/session-contract";
+import { createDurableToolRegistry } from "@sweatpants/durable-execution";
 import { DURABLE_DRIVER_FIXTURE_TOOLS } from "@sweatpants/session-contract/testing";
 import {
   A2A_EXTENSIONS_HEADER,

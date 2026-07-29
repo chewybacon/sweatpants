@@ -11,7 +11,7 @@ import {
 import { run } from "effection";
 import { WebSocketServer, type WebSocket } from "ws";
 
-import { createDurableToolRegistry } from "@sweatpants/session-contract";
+import { createDurableToolRegistry } from "@sweatpants/durable-execution";
 import {
   createAgentCoreDurableEvaluator,
   encodeAgentCoreProgramMessage,

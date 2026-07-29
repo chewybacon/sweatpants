@@ -2,6 +2,7 @@ import { defineDurableEffect } from "../index.ts";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import {
+  DurableProgramCancellation,
   ProgramDriverRegistryContext,
   createProgramDriverRegistry,
   type DurableToolRegistry,
@@ -10,7 +11,6 @@ import type { Operation } from "effection";
 
 import {
   DurableEffectRegistryContext,
-  DurableProgramCancellation,
   withJournalAuthority,
   ProgramRuntime,
   createCapabilityKeyring,

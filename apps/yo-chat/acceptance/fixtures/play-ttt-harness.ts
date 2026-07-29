@@ -26,7 +26,8 @@ import {
   programDriverSchemaRegistry,
   type ProgramDriverJournalStore,
 } from "@sweatpants/framework/server";
-import type { DurableSemanticRecord, Json } from "@sweatpants/session-contract";
+import type { DurableSemanticRecord } from "@sweatpants/session-contract";
+import type { Json } from "@sweatpants/foundation";
 import { createRedisProgramDriverJournalStore } from "../../src/server/program-driver-journal.ts";
 import { playTttTool } from "../../src/tools/play-ttt/tool.ts";
 

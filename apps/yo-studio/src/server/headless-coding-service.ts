@@ -14,13 +14,9 @@ import {
   type LocalProgramHost,
   type NormalizedProgramTrace,
 } from "@sweatpants/framework/server";
-import {
-  createCapabilityKeyring,
-  createDurableEffectRegistry,
-  createDurableToolRegistry,
-  createLocalProgramDriver,
-  type Json,
-} from "@sweatpants/session-contract";
+import { createCapabilityKeyring, createDurableEffectRegistry } from "@sweatpants/session-contract";
+import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
+import { type Json } from "@sweatpants/foundation";
 import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import {
   installLocalWorkspaceFilesProvider,

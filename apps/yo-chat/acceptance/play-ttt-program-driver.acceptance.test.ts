@@ -4,13 +4,9 @@ import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
-import {
-  createCapabilityKeyring,
-  createDurableEffectRegistry,
-  createDurableToolRegistry,
-  createLocalProgramDriver,
-  type Json,
-} from "@sweatpants/session-contract";
+import { createCapabilityKeyring, createDurableEffectRegistry } from "@sweatpants/session-contract";
+import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
+import { type Json } from "@sweatpants/foundation";
 import { createLocalWorkerDurableProgramDriver } from "@sweatpants/tool-runtime-local";
 import {
   createInMemoryProgramDriverJournalStore,

@@ -10,16 +10,14 @@ import {
   DurableEffectRegistryContext,
   withJournalAuthority,
   ProgramRuntime,
-  canonicalJson,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createLocalProgramDriver,
   type DurableJournalAuthorityService,
-  type Json,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
+import { canonicalJson, type Json } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   compilePeerResolverBundle,

@@ -1,16 +1,9 @@
-import {
-  type DurableEffectRegistration,
-  type EffectDefinition,
-} from "@sweatpants/session-contract";
+import { type DurableEffectRegistration, type EffectDefinition } from "@sweatpants/durable-effects";
 
 import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { CrankError } from "@sweatpants/durable-execution";
-import {
-  canonicalJson,
-  canonicalSnapshot,
-  createDurableToolRegistry,
-  type Json,
-} from "@sweatpants/session-contract";
+import { createDurableToolRegistry } from "@sweatpants/durable-execution";
+import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   DELEGATED_EFFECTS_EXTENSION_URI,
   DURABLE_INVOCATION_EXTENSION_URI,

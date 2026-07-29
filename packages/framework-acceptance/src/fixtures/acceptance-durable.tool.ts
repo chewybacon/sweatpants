@@ -3,7 +3,7 @@ import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { z } from "zod";
 import { createDurableTool, defineEffect } from "@sweatpants/core";
 
-import { sha256 } from "@sweatpants/session-contract";
+import { sha256 } from "@sweatpants/foundation";
 
 export const ACCEPTANCE_DURABLE_TOOL_NAME = "acceptance_durable_selection";
 export const DURABLE_EFFECT_NAME = "acceptance.durable.options";

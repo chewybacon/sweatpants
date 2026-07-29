@@ -1,5 +1,5 @@
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
-import { defineDurableEffect } from "@sweatpants/session-contract";
+import { defineDurableEffect } from "@sweatpants/durable-execution";
 
 import {
   ProgramDriverRegistryContext,
@@ -15,16 +15,18 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
+  createInMemoryDurableJournalAuthority,
+  type DurableSemanticRecord,
+} from "@sweatpants/session-contract";
+import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
-  createInMemoryDurableJournalAuthority,
   defineDurableProgramManifest,
   type AttachProgramRequest,
-  type DurableSemanticRecord,
   type ForeignToolRequest,
-  type Json,
   type ProgramRunResult,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { type Json } from "@sweatpants/foundation";
 import { foreignToolAdapter } from "@sweatpants/tool-session/foreign";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { anyGuard, createSchemaFixture, nullGuard } from "@sweatpants/session-contract/testing";

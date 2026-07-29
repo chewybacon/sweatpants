@@ -1,7 +1,7 @@
-import { type OperationOutcome } from "@sweatpants/session-contract";
+import { type OperationOutcome } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/session-contract";
+import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import type {
   DelegatedEffectEvent,
   DelegatedEffectEventPage,

@@ -4,7 +4,7 @@ import type {
   ProgramCommand,
   ProgramShutdownReason,
   ProgramStep,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 
 /** Serializable attachment metadata; the evaluator handle remains worker-local. */
 export type DurableWorkerAttachmentMetadata = Omit<ProgramAttachment, "handle">;

@@ -1,5 +1,5 @@
 import { sign as nodeSign, type KeyObject } from "node:crypto";
-import { canonicalJson, type Json } from "@sweatpants/session-contract";
+import { canonicalJson, type Json } from "@sweatpants/foundation";
 
 export interface AgentCardSignatureV1 {
   readonly protected: string;

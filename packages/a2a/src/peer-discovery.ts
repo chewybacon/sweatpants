@@ -1,7 +1,7 @@
-import { type DurableEffectRegistry } from "@sweatpants/session-contract";
+import { type DurableEffectRegistry } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, type Json } from "@sweatpants/session-contract";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   discoverForeignA2AAgent,
   prepareForeignA2AInvocation,

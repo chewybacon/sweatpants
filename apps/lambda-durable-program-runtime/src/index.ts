@@ -13,11 +13,11 @@ import {
   createDurableToolRegistry,
   createLocalProgramDriver,
   exactProgramKey,
-  type Json,
   type PinnedProgram,
   type ProgramCommand,
   type ProgramStep,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { type Json } from "@sweatpants/foundation";
 
 interface LambdaCrankRequestV1 {
   readonly protocolVersion: 1;

@@ -2,13 +2,12 @@ import { CrankError } from "@sweatpants/durable-execution";
 import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
-  canonicalSnapshot,
   exactProgramKey,
-  stableOpaqueId,
   type DurableProgramManifest,
   type PinnedProgram,
   type SandboxAffinity,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { canonicalSnapshot, stableOpaqueId } from "@sweatpants/foundation";
 
 export const AGENTCORE_DURABLE_PROTOCOL_VERSION = 1 as const;
 export const DEFAULT_AGENTCORE_WORKSPACE_MOUNT = "/mnt/workspace";

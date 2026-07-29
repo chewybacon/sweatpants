@@ -2,11 +2,11 @@ import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
-  canonicalSnapshot,
   createLocalProgramDriver,
   type ProgramAttachment,
   type ProgramShutdownReason,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { canonicalSnapshot } from "@sweatpants/foundation";
 import {
   normalizeSemanticJournal,
   runDurableDriverCancellationFixture,

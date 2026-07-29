@@ -10,16 +10,16 @@ import {
   withJournalAuthority,
   ProgramRouteResolverContext,
   ProgramRuntime,
-  canonicalJson,
   createCapabilityKeyring,
   createDurableEffectRegistry,
+  createInMemoryDurableJournalAuthority,
+} from "@sweatpants/session-contract";
+import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
-  createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
-  sha256,
-  type Json,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { canonicalJson, sha256, type Json } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   createChatModelEffectRegistration,

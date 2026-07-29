@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sha256 } from "@sweatpants/session-contract";
+import { sha256 } from "@sweatpants/foundation";
 
 import {
   defineDeployment,

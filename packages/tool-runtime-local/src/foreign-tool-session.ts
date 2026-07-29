@@ -12,14 +12,13 @@ import type {
 } from "@sweatpants/tool-session";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
-  assertJson,
-  type DurableEffectRegistration,
   type ForeignContinuation,
   type ForeignDurability,
   type ForeignToolContinueRequest,
   type ForeignToolDisposition,
-  type Json,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
