@@ -1,12 +1,8 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { createSignal, race, sleep, spawn, type Operation, type Signal } from "effection";
 import { StaleTokenWriterError } from "@sweatpants/durable-streams";
-import {
-  canonicalSnapshot,
-  stableOpaqueId,
-  type Json,
-  type ModelSampleDisposition,
-} from "@sweatpants/session-contract";
+import { type ModelSampleDisposition } from "@sweatpants/session-contract";
+import { canonicalSnapshot, stableOpaqueId, type Json } from "@sweatpants/foundation";
 
 import {
   AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,

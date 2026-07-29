@@ -1,12 +1,8 @@
 import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { advertiseCapability, defineAgent } from "@sweatpants/core";
-import {
-  canonicalJson,
-  canonicalSnapshot,
-  createDurableEffectRegistry,
-  type Json,
-} from "@sweatpants/session-contract";
+import { createDurableEffectRegistry } from "@sweatpants/session-contract";
+import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   DELEGATED_EFFECTS_EXTENSION_URI,

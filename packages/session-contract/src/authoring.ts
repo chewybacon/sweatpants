@@ -1,4 +1,8 @@
-import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
+import {
+  CrankError,
+  DurableProgramCancellation,
+  PullApplicationError,
+} from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 
 import { canonicalSnapshot } from "./canonical.ts";
@@ -450,19 +454,6 @@ function isOperationOutcome(value: unknown): value is OperationOutcome {
   return (
     isRecord(error) && typeof error["code"] === "string" && typeof error["message"] === "string"
   );
-}
-
-/** Structured cancellation signal raised inside a resumed durable program task. */
-export class DurableProgramCancellation extends Error {
-  readonly reason?: string;
-
-  constructor(reason?: string) {
-    super("Durable program cancelled");
-    this.name = "DurableProgramCancellation";
-    if (reason !== undefined) {
-      this.reason = reason;
-    }
-  }
 }
 
 function snapshotChild(child: DurableChildDescriptor): DurableChildDescriptor {

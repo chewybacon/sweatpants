@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { sha256Bytes } from "@sweatpants/session-contract";
+import { sha256Bytes } from "@sweatpants/foundation";
 
 export type A2AContentRetentionClass = "ephemeral" | "task" | "audit" | string;
 

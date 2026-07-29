@@ -1,6 +1,7 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { canonicalSnapshot, createDurableToolRegistry } from "@sweatpants/session-contract";
+import { createDurableToolRegistry } from "@sweatpants/durable-execution";
+import { canonicalSnapshot } from "@sweatpants/foundation";
 import {
   DURABLE_DRIVER_FIXTURE_TOOLS,
   createInProcessA2AConnector,

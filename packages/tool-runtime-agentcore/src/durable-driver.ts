@@ -12,7 +12,7 @@ import {
   type ProgramShutdownReason,
   type ProgramStep,
   type RestoredProgramAttachment,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 
 /**
  * Controlled typed transport for crank-native AgentCore programs. Runtime

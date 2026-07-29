@@ -1,11 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { createHmac } from "node:crypto";
-import {
-  assertJson,
-  canonicalJson,
-  canonicalSnapshot,
-  type Json,
-} from "@sweatpants/session-contract";
+import { assertJson, canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createSecureA2AHttpClient,
   parseA2AJsonResponse,

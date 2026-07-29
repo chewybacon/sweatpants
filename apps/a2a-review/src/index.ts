@@ -1,9 +1,9 @@
-import { defineDurableEffect } from "@sweatpants/session-contract";
+import { defineDurableEffect } from "@sweatpants/durable-execution";
 import {
   type DurableEffectContext,
   type DurableEffectDisposition,
   type DurableEffectRegistration,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-effects";
 
 import type { Operation } from "effection";
 import {
@@ -24,15 +24,14 @@ import {
 } from "@sweatpants/framework/chat";
 import { remoteExecutor, serveAgent } from "@sweatpants/framework/server";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
+import { type StandardSchemaV1 } from "@sweatpants/session-contract";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
   generateProgramArtifactIdentity,
-  sha256,
-  type Json,
-  type StandardSchemaV1,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { sha256, type Json } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   type SchemaBinding,

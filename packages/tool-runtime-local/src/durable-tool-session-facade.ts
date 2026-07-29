@@ -1,7 +1,7 @@
 import {
   type DurableEffectHandler,
   type DurableEffectRegistration,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-effects";
 
 import type { Operation } from "effection";
 import { z } from "zod";
@@ -10,19 +10,20 @@ import {
   DurableEffectRegistryContext,
   withJournalAuthority,
   ProgramRuntime,
-  assertJson,
-  assertReplayedCanonicalValue,
   createDurableEffectRegistry,
-  createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
-  type DurableProgramManifest,
   type DurableSemanticRecord,
-  type DurableTool,
-  type Json,
-  type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import {
+  assertReplayedCanonicalValue,
+  createDurableToolRegistry,
+  type DurableProgramManifest,
+  type DurableTool,
+  type ProgramRunResult,
+} from "@sweatpants/durable-execution";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   createDurableSchemaRegistry,
   type DurableSchemaRegistry,

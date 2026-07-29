@@ -1,4 +1,4 @@
-import { type DurableEffectRegistry, type OperationOutcome } from "@sweatpants/session-contract";
+import { type DurableEffectRegistry, type OperationOutcome } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
@@ -10,23 +10,23 @@ import {
   ModelSamplingRouterContext,
   ModelSamplingOutcomeAcknowledgerContext,
   ProgramDeliveryWriterContext,
-  assertJson,
-  canonicalSnapshot,
-  exactProgramKey,
-  stableProgramAttachmentId,
   validateDurableEffectBindings,
-  type DurableProgramManifest,
   type DurableSemanticRecord,
-  type ForeignDurability,
-  type Json,
   type ModelSamplingRouter,
   type ModelSamplingOutcomeAcknowledger,
   type ProgramDeliveryWriter,
+} from "@sweatpants/session-contract";
+import {
+  exactProgramKey,
+  stableProgramAttachmentId,
+  type DurableProgramManifest,
+  type ForeignDurability,
   type PinnedProgram,
   type ProgramRoute,
   type ProgramRunResult,
   type WireElicitResultJson,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { FOREIGN_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/foreign";
 import {
   ExecutionDurableEffectRegistryContext,

@@ -7,14 +7,16 @@ import { run } from "effection";
 import {
   withJournalAuthority,
   ProgramRuntime,
-  assertJson,
   createCapabilityKeyring,
-  createPinnedDurableProgram,
-  createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createLocalProgramDriver,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import {
+  createPinnedDurableProgram,
+  createDurableToolRegistry,
+  createLocalProgramDriver,
+} from "@sweatpants/durable-execution";
+import { assertJson } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
 import {

@@ -31,7 +31,7 @@ import {
   createDurableToolRegistry,
   type ProgramDriver,
   type ProgramRoute,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 import {
   createInMemoryToolSessionStoreWithDebug,
   createLocalWorkerDurableProgramDriver,

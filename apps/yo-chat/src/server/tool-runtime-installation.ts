@@ -19,10 +19,10 @@ import {
 } from "@sweatpants/framework/server";
 import {
   createDurableToolRegistry,
-  type Json,
   type ProgramDriver,
   type ProgramRoute,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { type Json } from "@sweatpants/foundation";
 import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createLocalWorkerDurableProgramDriver,

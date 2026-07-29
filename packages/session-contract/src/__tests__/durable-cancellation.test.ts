@@ -2,6 +2,7 @@ import { defineDurableEffect } from "../index.ts";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import {
+  DurableProgramCancellation,
   ProgramDriverRegistryContext,
   createProgramDriverRegistry,
 } from "@sweatpants/durable-execution";
@@ -10,7 +11,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   DurableEffectRegistryContext,
-  DurableProgramCancellation,
   withJournalAuthority,
   ProgramRuntime,
   createCapabilityKeyring,

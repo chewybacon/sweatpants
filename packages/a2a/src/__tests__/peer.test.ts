@@ -2,11 +2,8 @@ import { generateKeyPairSync } from "node:crypto";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
-import {
-  canonicalJson,
-  canonicalSnapshot,
-  createDurableEffectRegistry,
-} from "@sweatpants/session-contract";
+import { createDurableEffectRegistry } from "@sweatpants/session-contract";
+import { canonicalJson, canonicalSnapshot } from "@sweatpants/foundation";
 import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
   DURABLE_DRIVER_FIXTURE_TOOLS,

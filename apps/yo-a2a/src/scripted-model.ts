@@ -3,7 +3,7 @@ import {
   type ChatMessageV1,
   type ChatModelSampleOutputV2,
 } from "@sweatpants/framework/chat";
-import type { Json } from "@sweatpants/session-contract";
+import type { Json } from "@sweatpants/foundation";
 import { cardGuidance } from "./agent.ts";
 
 /** Deterministic deployment binding used only by required browser/CI certification. */

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import { run } from "effection";
 
-import type { ProgramRoute } from "@sweatpants/session-contract";
+import type { ProgramRoute } from "@sweatpants/durable-execution";
 import {
   createAgentCoreDurableProgramDriver,
   createAgentCoreWebSocketProgramTransport,

@@ -3,13 +3,12 @@ import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 
 import {
-  canonicalSnapshot,
   createLocalProgramDriver,
-  type Json,
   type ProgramAttachment,
   type ProgramStep,
   type ReplayEntry,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   computeFrontierDigest,
   verifyReplayEntry,

@@ -1,4 +1,4 @@
-import type { DurableTool } from "@sweatpants/session-contract";
+import type { DurableTool } from "@sweatpants/durable-execution";
 
 // An authored inventory is intentionally heterogeneous in program input/output types.
 // oxlint-disable-next-line typescript/no-explicit-any

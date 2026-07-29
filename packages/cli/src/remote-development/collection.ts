@@ -3,15 +3,13 @@ import { parse } from "acorn";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
-  canonicalJson,
   createGeneratedPinnedDurableProgram,
   generateProgramArtifactIdentity,
-  sha256,
-  sha256Bytes as hashBytes,
   validateDurableManifest,
   validateProgramIdentityProvenance,
   type DurableProgramManifest,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { canonicalJson, sha256, sha256Bytes as hashBytes } from "@sweatpants/foundation";
 
 import type { ConfiguredDurableTool } from "../config.ts";
 

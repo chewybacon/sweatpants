@@ -187,7 +187,6 @@ export type {
 export type { StandardSchemaV1, StandardTypedV1 } from "@standard-schema/spec";
 export {
   DEFAULT_MAX_INLINE_BYTES,
-  DurableProgramCancellation,
   assertInlineSize,
   assertReplayedCanonicalValue,
   createDurableProgramContext,

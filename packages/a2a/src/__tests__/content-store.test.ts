@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sha256Bytes } from "@sweatpants/session-contract";
+import { sha256Bytes } from "@sweatpants/foundation";
 import { createInMemoryImmutableContentStore, putVerifiedContent } from "../content-store.ts";
 
 describe("immutable A2A content custody", () => {

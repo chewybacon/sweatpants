@@ -1,4 +1,4 @@
-import type { PinnedProgram, SandboxAffinity } from "@sweatpants/session-contract";
+import type { PinnedProgram, SandboxAffinity } from "@sweatpants/durable-execution";
 
 /**
  * AgentCore placement declarations.

@@ -1,4 +1,4 @@
-import { canonicalJson, sha256, sha256Bytes } from "@sweatpants/session-contract";
+import { canonicalJson, sha256, sha256Bytes } from "@sweatpants/foundation";
 
 import { validateCollectionProgramEntries } from "./evaluator-loader.ts";
 import { decodeDevelopmentCollectionArchive } from "./collection.ts";

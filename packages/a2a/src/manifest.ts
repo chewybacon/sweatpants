@@ -1,4 +1,4 @@
-import { type DurableEffectRegistry } from "@sweatpants/session-contract";
+import { type DurableEffectRegistry } from "@sweatpants/durable-effects";
 
 import {
   canonicalJson,

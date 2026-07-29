@@ -5,12 +5,11 @@ import { createDurableTool } from "@sweatpants/core";
 import {
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableToolRegistry,
-  createLocalProgramDriver,
   createModelSamplingEffectRegistration,
   createModelSamplingRouter,
-  sha256,
 } from "@sweatpants/session-contract";
+import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
+import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
 
 import { createLocalProgramHost, createPinnedProgramCatalog } from "../local-program-host.ts";

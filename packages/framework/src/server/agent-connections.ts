@@ -1,9 +1,5 @@
-import {
-  assertJson,
-  canonicalSnapshot,
-  type Json,
-  type PinnedProgram,
-} from "@sweatpants/session-contract";
+import { type PinnedProgram } from "@sweatpants/durable-execution";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   discoverCallerAuthoritativeProgram,
   discoverForeignA2AAgent,

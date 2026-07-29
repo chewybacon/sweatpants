@@ -1,6 +1,6 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { canonicalSnapshot, type Json } from "@sweatpants/session-contract";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { FOREIGN_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/foreign";
 import {
   DURABLE_INVOCATION_EXTENSION_URI,

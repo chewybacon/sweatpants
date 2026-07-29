@@ -12,13 +12,15 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  type AttachProgramRequest,
   type DurableSemanticRecord,
+} from "@sweatpants/session-contract";
+import {
+  createDurableToolRegistry,
+  type AttachProgramRequest,
   type ForeignToolRequest,
   type ProgramRunResult,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 import {
   FOREIGN_TOOL_ADAPTER_MANIFEST,
   foreignToolAdapter,

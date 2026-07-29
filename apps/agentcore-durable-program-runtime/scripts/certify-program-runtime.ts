@@ -12,9 +12,8 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createInMemoryDurableJournalAuthority,
-  type ProgramRunResult,
-  type ProgramRoute,
 } from "@sweatpants/session-contract";
+import { type ProgramRunResult, type ProgramRoute } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   createProgramDriverRegistry,

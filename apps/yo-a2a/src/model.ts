@@ -12,7 +12,7 @@ import {
   type ChatModelSampleInputV2,
   type ChatModelSampleOutputV2,
 } from "@sweatpants/framework/chat";
-import { assertJson, canonicalJson, type Json } from "@sweatpants/session-contract";
+import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
 
 const selection = {
   provider: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",

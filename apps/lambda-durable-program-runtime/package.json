@@ -12,6 +12,8 @@
     "dependencies": {
         "@aws-sdk/client-s3": "^3.996.0",
         "@sweatpants/cli": "workspace:*",
+        "@sweatpants/durable-execution": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "effection": "catalog:"
     },

@@ -1,12 +1,11 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import {
-  canonicalSnapshot,
   signPrivateAuthorityToken,
   verifyPrivateAuthorityToken,
   type CapabilityKeyring,
-  type Json,
 } from "@sweatpants/session-contract";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 
 import type {
   PlacementSamplingAuthorizationIssuer,

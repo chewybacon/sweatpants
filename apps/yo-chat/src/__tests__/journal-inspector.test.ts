@@ -4,7 +4,7 @@ import {
   createCapabilityKeyring,
   createInMemoryProgramDriverJournalStore,
 } from "@sweatpants/framework/server";
-import { type DurableProgramManifest } from "@sweatpants/session-contract";
+import { type DurableProgramManifest } from "@sweatpants/durable-execution";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 
 import { inspectProgramDriverJournal } from "../server/journal-inspector";

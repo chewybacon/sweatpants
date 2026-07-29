@@ -2,11 +2,10 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   createDurableProgramContext,
-  assertJson,
-  type Json,
   type ProgramResume,
   type ProgramStepProposal,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,

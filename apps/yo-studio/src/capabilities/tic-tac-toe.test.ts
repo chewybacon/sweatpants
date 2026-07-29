@@ -7,7 +7,7 @@ import {
   createDurableToolRegistry,
   createLocalProgramDriver,
   type ProgramStep,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 import {
   createWorkspaceService,
   installLocalWorkspaceFilesProvider,

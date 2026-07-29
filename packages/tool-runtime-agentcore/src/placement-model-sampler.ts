@@ -4,13 +4,12 @@ import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
-  canonicalSnapshot,
-  type Json,
   type ModelSampleDisposition,
   type ModelSamplingExecutionContext,
   type ModelSamplingService,
   type ProgramDeliveryEnvelope,
 } from "@sweatpants/session-contract";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 
 export const AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION = 1 as const;
 

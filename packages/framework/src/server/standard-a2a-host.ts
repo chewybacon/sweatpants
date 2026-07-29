@@ -1,4 +1,4 @@
-import { type DurableEffectRegistration } from "@sweatpants/session-contract";
+import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
 import { randomUUID } from "node:crypto";
@@ -18,22 +18,26 @@ import {
   withJournalAuthority,
   ProgramRouteResolverContext,
   ProgramRuntime,
+  createCapabilityKeyring,
+  createDurableEffectRegistry,
+  type DurableSemanticRecord,
+} from "@sweatpants/session-contract";
+import {
+  createDurableToolRegistry,
+  createLocalProgramDriver,
+  stableProgramAttachmentId,
+  type DurableOperationDescriptor,
+  type DurableTool,
+  type ProgramRunResult,
+} from "@sweatpants/durable-execution";
+import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
-  createCapabilityKeyring,
-  createDurableEffectRegistry,
-  createDurableToolRegistry,
-  createLocalProgramDriver,
   sha256,
-  stableProgramAttachmentId,
-  type DurableOperationDescriptor,
-  type DurableSemanticRecord,
-  type DurableTool,
   type Json,
-  type ProgramRunResult,
   type SerializedApplicationError,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/foundation";
 import {
   createProgramDriverRegistry,
   ProgramDriverRegistryContext,

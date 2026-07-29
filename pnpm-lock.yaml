@@ -443,6 +443,9 @@ importers:
       '@sweatpants/durable-effects':
         specifier: workspace:*
         version: link:../../packages/durable-effects
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../../packages/foundation
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
@@ -871,6 +874,9 @@ importers:
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:../../packages/durable-execution
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../../packages/foundation
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
@@ -1030,6 +1036,9 @@ importers:
       '@aws-sdk/credential-provider-node':
         specifier: ^3.972.57
         version: 3.972.71
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract
@@ -1428,6 +1437,9 @@ importers:
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:../durable-execution
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../framework
@@ -1767,6 +1779,9 @@ importers:
       '@sweatpants/durable-streams':
         specifier: workspace:*
         version: link:../durable-streams
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract

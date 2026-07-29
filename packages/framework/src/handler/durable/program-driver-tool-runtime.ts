@@ -1,13 +1,11 @@
 import type { Operation } from "effection";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
+import { type ForeignDurability, type ForeignToolDisposition } from "@sweatpants/durable-execution";
 import {
-  assertJson,
   type DurableEffectContext,
   type DurableEffectRegistration,
-  type ForeignDurability,
-  type ForeignToolDisposition,
-  type Json,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-effects";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,

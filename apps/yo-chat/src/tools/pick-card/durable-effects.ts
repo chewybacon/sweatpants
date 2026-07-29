@@ -1,4 +1,4 @@
-import { type DurableEffectRegistration } from "@sweatpants/session-contract";
+import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
 import { effectRuntimeValidators } from "@sweatpants/core";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { sha256, type Json } from "@sweatpants/foundation";

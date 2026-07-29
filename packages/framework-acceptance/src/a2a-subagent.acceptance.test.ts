@@ -15,7 +15,7 @@ import {
 } from "@sweatpants/a2a";
 import { createRegistryManifestProvider } from "@sweatpants/a2a/testing";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
-import type { ProgramDriver } from "@sweatpants/session-contract";
+import type { ProgramDriver } from "@sweatpants/durable-execution";
 import {
   ACCEPTANCE_DURABLE_TOOL_NAME,
   ACCEPTANCE_MODEL_ID,

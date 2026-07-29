@@ -28,11 +28,9 @@ import {
   type OpenDurableTaskRequest,
   type PrepareProgramRestoreRequest,
   type PreparedProgramRestore,
-  type ProgramStep,
   type RecoverableSession,
   type ReserveOperationRequest,
   type ReserveOperationResult,
-  type Json,
   type ReleaseActivationRequest,
   type ReleaseActivationResult,
   type RenewActivationRequest,
@@ -42,6 +40,8 @@ import {
   type ResolveOperationResult,
   type TaskCloseReceipt,
 } from "@sweatpants/session-contract";
+import { type ProgramStep } from "@sweatpants/durable-execution";
+import { type Json } from "@sweatpants/foundation";
 import { type DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 
 /** Redis authority configuration; keyring material remains process-local and is never persisted. */

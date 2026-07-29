@@ -1,6 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { createDurableTool, defineEffect } from "@sweatpants/core";
-import { sha256 } from "@sweatpants/session-contract";
+import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
 
 import { CardSchema } from "./cards";

@@ -9,11 +9,8 @@ import {
 } from "@aws-sdk/client-bedrock-agentcore";
 import { run } from "effection";
 
-import {
-  canonicalSnapshot,
-  type ProgramRoute,
-  type ReplayOperationEntry,
-} from "@sweatpants/session-contract";
+import { type ProgramRoute, type ReplayOperationEntry } from "@sweatpants/durable-execution";
+import { canonicalSnapshot } from "@sweatpants/foundation";
 import {
   computeReplayChainSeed,
   createAgentCoreDurableProgramDriver,
