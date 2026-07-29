@@ -1,5 +1,6 @@
 // Re-export all types
 export * from "./types/index.ts";
+export * from "./schema/roles.ts";
 
 // Content-addressed resources, guidance, readers, and build-time identity generation.
 export * from "./resource/index.ts";

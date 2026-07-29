@@ -4,7 +4,6 @@ import { CrankError } from "./errors.ts";
 import {
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,
-  type PortableSchemaRole,
 } from "@sweatpants/foundation/schema-descriptor";
 import type { EffectDefinition, RetrySafety } from "@sweatpants/durable-effects";
 import type { DurableProgramFactory, DurableTool } from "./program-authoring.ts";
@@ -115,7 +114,7 @@ function validateRetrySafety(safety: RetrySafety, path: string): void {
 
 function validateDescriptorField(
   descriptor: PortableSchemaDescriptor,
-  role: PortableSchemaRole,
+  role: string,
   path: string,
 ): void {
   let parsed: PortableSchemaDescriptor;
