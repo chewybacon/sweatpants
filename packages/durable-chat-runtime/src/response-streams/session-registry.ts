@@ -25,6 +25,7 @@ import type {
 } from "@sweatpants/durable-streams";
 import { DEFAULT_RETENTION_POLICY, writeFromStreamToBuffer } from "@sweatpants/durable-streams";
 import { startOwnedTask, type OwnedTaskHandle } from "./owned-task.ts";
+import { useDurableStreamsOwner, type DurableStreamsOwner } from "./owner.ts";
 
 /**
  * Internal mutable state for tracking session status.
@@ -88,6 +89,7 @@ export function* createSessionRegistry<T>(
   // Internal task tracking - NOT in SessionEntry to keep it serializable
   // Map<sessionId, Map<taskKey, OwnedTaskHandle>>
   const sessionTasks = new Map<string, Map<string, OwnedTaskHandle<void>>>();
+  const sessionOwners = new Map<string, DurableStreamsOwner>();
   const retentionTasks = new Map<string, OwnedTaskHandle<void>>();
 
   function* startWriterTask(
@@ -96,6 +98,7 @@ export function* createSessionRegistry<T>(
     writer: import("@sweatpants/durable-streams").TokenBufferWriter<T>,
     state: MutableSessionState,
     taskName: string,
+    owner: DurableStreamsOwner | undefined,
   ): Operation<OwnedTaskHandle<void>> {
     const handle = yield* startOwnedTask(
       function* () {
@@ -117,8 +120,12 @@ export function* createSessionRegistry<T>(
         }
       },
       {
-        ...(config.ownerScope ? { ownerScope: config.ownerScope } : {}),
-        ...(config.registerWriter ? { register: config.registerWriter } : {}),
+        ...(owner?.scope || config.ownerScope
+          ? { ownerScope: owner?.scope ?? config.ownerScope }
+          : {}),
+        ...(owner?.register || config.registerWriter
+          ? { register: owner?.register ?? config.registerWriter }
+          : {}),
       },
     );
     log.debug({ sessionId, taskName }, "writer task started");
@@ -155,6 +162,7 @@ export function* createSessionRegistry<T>(
     log.debug({ sessionId }, "cleaning up runtime task state");
     sessionStates.delete(sessionId);
     sessionTasks.delete(sessionId);
+    sessionOwners.delete(sessionId);
   }
 
   function* clearRetentionTask(sessionId: string): Operation<void> {
@@ -282,12 +290,15 @@ export function* createSessionRegistry<T>(
         typeof options.source === "function" ? options.source(buffer, writer) : options.source;
 
       log.debug({ sessionId }, "starting writer task in owned scope");
+      const invocationOwner = (yield* useDurableStreamsOwner()) ?? undefined;
+      if (invocationOwner) sessionOwners.set(sessionId, invocationOwner);
       const writerTask = yield* startWriterTask(
         sessionId,
         source,
         writer,
         state,
         `writer:${sessionId}`,
+        invocationOwner,
       );
 
       // Store task handle in internal map (not in SessionEntry - keep it serializable)
@@ -337,12 +348,16 @@ export function* createSessionRegistry<T>(
       const state: MutableSessionState = { status: "streaming" };
       sessionStates.set(sessionId, state);
       const source = options.recoverSource(buffer, writer);
+      const invocationOwner =
+        (yield* useDurableStreamsOwner()) ?? sessionOwners.get(sessionId) ?? undefined;
+      if (invocationOwner) sessionOwners.set(sessionId, invocationOwner);
       const writerTask = yield* startWriterTask(
         sessionId,
         source,
         writer,
         state,
         `writer-recovery:${sessionId}:${options.writer.activationEpoch}`,
+        invocationOwner,
       );
       const tasks = new Map<string, OwnedTaskHandle<void>>();
       tasks.set(TASK_KEYS.WRITER, writerTask);
@@ -380,6 +395,11 @@ export function* createSessionRegistry<T>(
         } else {
           if (!writerTask) {
             yield* cleanupRuntime(sessionId);
+            return;
+          }
+          const completedBuffer = yield* bufferStore.get(sessionId);
+          if (completedBuffer && (yield* completedBuffer.isComplete())) {
+            yield* applyRetentionPolicy(sessionId, completedBuffer);
             return;
           }
           // Writer still running - supervise a cleanup waiter in the same

@@ -6,6 +6,7 @@ export default defineConfig({
     memory: "src/memory.ts",
     api: "src/api.ts",
     testing: "src/testing.ts",
+    "turn-authority": "src/turn-authority.ts",
     "schema-registry": "src/schema-registry.ts",
   },
   format: ["esm"],

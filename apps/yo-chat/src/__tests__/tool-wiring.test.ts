@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
 
-import { run } from "effection";
+import { run, useScope } from "effection";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("yo-chat tool wiring", () => {
@@ -15,11 +15,15 @@ describe("yo-chat tool wiring", () => {
       getSharedRedisClient: async () => null,
     }));
 
-    const { useTokenBufferStore } =
+    const { installDurableStreamsOwner, useTokenBufferStore } =
       await import("@sweatpants/durable-chat-runtime/response-streams");
     const { setupYoChatDurableStreams } = await import("../server/durable-streams");
 
     await run(function* () {
+      yield* installDurableStreamsOwner({
+        scope: yield* useScope(),
+        register: () => undefined,
+      });
       yield* setupYoChatDurableStreams();
       const store = yield* useTokenBufferStore<string>();
       expect(store).toBeDefined();

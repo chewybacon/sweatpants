@@ -82,6 +82,19 @@ describe("single crank-turner architecture", () => {
     expect(registry).not.toContain("buffer.fail(");
   });
 
+  it("uses a Host-owned Turn without production scope binding and publishes terminal authority", () => {
+    const handler = source("src/handler/durable/handler.ts");
+    expect(handler).toContain("createDurableTurnOwner(hostOwner");
+    expect(handler.indexOf("loadHead(requestedConversationId)")).toBeLessThan(
+      handler.indexOf("createDurableTurnOwner(hostOwner"),
+    );
+    expect(handler).toContain("beginTurnPublication(");
+    expect(handler).toContain("completeAndPublishTurn(");
+    expect(handler).toContain("recoverTerminalPublication(");
+    expect(handler).not.toContain("ModelProviderPort.bind(");
+    expect(handler).not.toContain("ToolRuntimePort.bind(");
+  });
+
   it("has exactly one response-buffer source writer in session orchestration", () => {
     const registry = readFileSync(
       resolve(frameworkRoot, "../durable-chat-runtime/src/response-streams/session-registry.ts"),

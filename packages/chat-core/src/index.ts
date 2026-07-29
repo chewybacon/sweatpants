@@ -46,6 +46,13 @@ export * from "./sse.ts";
 // Model-provider port and context
 export * from "./model-provider.ts";
 
+export {
+  CHAT_TURN_COMPLETED_FACT,
+  createChatTurnCompletedFact,
+  projectChatTurnFacts,
+  type ChatTurnHistoryEntry,
+} from "./projection-facts.ts";
+
 // History policy
 export * from "./history-policy.ts";
 

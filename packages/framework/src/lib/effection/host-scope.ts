@@ -9,6 +9,8 @@ export interface HostOwnedWork {
 /** Explicit structural owner installed only by createChatApplication. */
 export interface HostScopeOwner {
   readonly scope: Scope;
+  /** Selects the long-lived composition scope after Host setup installs drivers. */
+  adoptScope(scope: Scope): void;
   register(work: HostOwnedWork): void;
   drain(): Operation<void>;
 }
@@ -23,15 +25,21 @@ const HostScopeOwnerContext = createContext<HostScopeOwner | undefined>(
   undefined,
 );
 
-export function createHostScopeOwner(scope: Scope): HostScopeOwner {
+export function createHostScopeOwner(rootScope: Scope): HostScopeOwner {
   const active = new Set<HostOwnedWork>();
+  let structuralScope = rootScope;
   return {
-    scope,
+    get scope() {
+      return structuralScope;
+    },
+    adoptScope(scope) {
+      structuralScope = scope;
+    },
     register(work) {
       active.add(work);
       // The monitor is a child of the Host, just like the work. It bounds the
       // registry rather than retaining every completed Turn for Host lifetime.
-      void scope.run(function* () {
+      void structuralScope.run(function* () {
         try {
           yield* work.waitForDone();
         } finally {

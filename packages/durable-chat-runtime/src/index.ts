@@ -1,18 +1,17 @@
 import type { Operation } from "effection";
 import type { Json } from "@sweatpants/foundation";
-import type { ProjectionFrontier, TerminalCapsule } from "@sweatpants/durable-execution";
+import type {
+  ProgramIdentity,
+  ProjectionFactEnvelope,
+  ProjectionFrontier,
+  StoredJson,
+  TerminalCapsule,
+} from "@sweatpants/durable-execution";
+import { TurnJournalAuthority } from "@sweatpants/journal-authority/turn-authority";
 import { HistoryStoreApi } from "@sweatpants/history-store/port";
 import type { HistoryPointer, SessionHead } from "@sweatpants/history-store/contract";
 
-/** Explicit bounded-context fact accepted for read-model projection. */
-export interface ProjectionFactEnvelope {
-  readonly executionId: string;
-  readonly sessionId: string;
-  readonly turnId: string;
-  readonly sequence: number;
-  readonly kind: string;
-  readonly payload: Json;
-}
+export type { ProjectionFactEnvelope } from "@sweatpants/durable-execution";
 
 export class ProjectionFactsInvalid extends Error {
   readonly code = "projection_facts_invalid";
@@ -103,6 +102,125 @@ export function* publishTurn<Entry extends Json = Json>(
 
   yield* request.markPublished(pointer);
   return { status: "published", pointer, headRevision: nextRevision };
+}
+
+export interface BeginTurnPublicationRequest {
+  readonly executionId: string;
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly rootTaskId: string;
+  readonly rootProgram: ProgramIdentity;
+}
+
+/** Opens bounded authority state and selects this execution as the Session's active Turn. */
+export function* beginTurnPublication(
+  request: BeginTurnPublicationRequest,
+): Operation<BeginTurnPublicationRequest> {
+  const history = HistoryStoreApi.operations;
+  while (true) {
+    const head = yield* history.loadHead(request.sessionId);
+    if (head?.activeExecutionId) {
+      const existing = yield* TurnJournalAuthority.operations.read(head.activeExecutionId);
+      if (!existing || existing.format === "sweatpants.terminal-execution.v1") {
+        throw new Error(
+          `Session ${request.sessionId} has invalid active execution ${head.activeExecutionId}`,
+        );
+      }
+      return {
+        executionId: existing.executionId,
+        sessionId: existing.sessionId,
+        turnId: existing.turnId,
+        rootTaskId: existing.rootTaskId,
+        rootProgram: existing.rootProgram,
+      };
+    }
+    yield* TurnJournalAuthority.operations.open(request);
+    const next: SessionHead = {
+      sessionId: request.sessionId,
+      revision: (head?.revision ?? -1) + 1,
+      historyHead: head?.historyHead ?? null,
+      activeExecutionId: request.executionId,
+      latestCompletedExecutionId: head?.latestCompletedExecutionId ?? null,
+    };
+    const commit = yield* history.compareAndSwapHead(
+      request.sessionId,
+      head?.revision ?? null,
+      next,
+    );
+    if (commit.status === "accepted") return request;
+  }
+}
+
+export interface CompleteAndPublishTurnRequest<Entry extends Json = Json> {
+  readonly executionId: string;
+  readonly outcome: StoredJson;
+  readonly disposition: TerminalCapsule["disposition"];
+  readonly completedAt: number;
+  readonly facts: readonly ProjectionFactEnvelope[];
+  readonly project: (facts: readonly ProjectionFactEnvelope[]) => readonly Entry[];
+}
+
+/** Commits terminality, then publishes and marks the capsule before returning. */
+export function* completeAndPublishTurn<Entry extends Json = Json>(
+  request: CompleteAndPublishTurnRequest<Entry>,
+): Operation<PublishTurnResult> {
+  const capsule = yield* TurnJournalAuthority.operations.complete(request);
+  return yield* publishAuthorityCapsule(capsule, request.project);
+}
+
+/**
+ * Publishes accepted terminal state selected by Session Head. No ProgramRuntime,
+ * provider, tool runtime, child, or chat engine is invoked on this path.
+ */
+export interface RecoveredTurnPublication {
+  readonly capsule: TerminalCapsule;
+  readonly facts: readonly ProjectionFactEnvelope[];
+  readonly result: PublishTurnResult;
+}
+
+export function* recoverTerminalPublication<Entry extends Json = Json>(
+  sessionId: string,
+  project: (facts: readonly ProjectionFactEnvelope[]) => readonly Entry[],
+): Operation<RecoveredTurnPublication | null> {
+  const head = yield* HistoryStoreApi.operations.loadHead(sessionId);
+  const executionId = head?.activeExecutionId ?? head?.latestCompletedExecutionId;
+  if (!executionId) return null;
+  const record = yield* TurnJournalAuthority.operations.read(executionId);
+  if (
+    !record ||
+    record.format !== "sweatpants.terminal-execution.v1" ||
+    record.publication === "published"
+  ) {
+    return null;
+  }
+  const facts = yield* TurnJournalAuthority.operations.readAcceptedFacts(record);
+  const result = yield* publishAuthorityCapsule(record, project);
+  return { capsule: record, facts, result };
+}
+
+function* publishAuthorityCapsule<Entry extends Json>(
+  capsule: TerminalCapsule,
+  project: (facts: readonly ProjectionFactEnvelope[]) => readonly Entry[],
+): Operation<PublishTurnResult> {
+  while (true) {
+    const result = yield* publishTurn({
+      capsule,
+      readAcceptedFacts: (frontier) => {
+        if (
+          frontier.throughSequence !== capsule.projection.throughSequence ||
+          frontier.facts?.id !== capsule.projection.facts?.id
+        ) {
+          throw new ProjectionFactsInvalid("Publication requested a non-accepted fact frontier");
+        }
+        return TurnJournalAuthority.operations.readAcceptedFacts(capsule);
+      },
+      project,
+      markPublished: function* () {
+        yield* TurnJournalAuthority.operations.markPublished(capsule.executionId);
+      },
+    });
+    if (result.status !== "conflict") return result;
+  }
 }
 
 function assertAcceptedProjectionFacts(

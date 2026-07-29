@@ -82,6 +82,18 @@ function* waitForSessionStatus(
 
 describe("Session Registry", () => {
   describe("DI Pattern", () => {
+    it("rejects production setup without an explicit Host/Turn owner", function* () {
+      let failure: unknown;
+      try {
+        yield* setupInMemoryDurableStreams<string>();
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toMatchObject({
+        message: expect.stringContaining("explicit Host/Turn owner"),
+      });
+    });
+
     it("should work with context accessors after setup", function* () {
       // This test demonstrates the pure DI pattern
       const { registry, bufferStore } = yield* useTestRegistryViaContext();

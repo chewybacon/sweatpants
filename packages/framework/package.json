@@ -133,6 +133,7 @@
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/history-store": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/stream-bridge": "workspace:*",
