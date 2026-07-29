@@ -1,11 +1,8 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { type StandardSchemaV1 } from "@sweatpants/session-contract";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { createPinnedDurableProgram } from "@sweatpants/durable-execution";
 import { assertJson, canonicalJson, sha256 } from "@sweatpants/foundation";
-import {
-  createPortableSchemaDescriptor,
-  type SchemaBinding,
-} from "@sweatpants/foundation/schema-descriptor";
+import { createPortableSchemaDescriptor, type SchemaBinding } from "@sweatpants/foundation/schema";
 import { foreignA2AAdapterChild } from "./foreign-adapter.ts";
 import type { ForeignA2AStartRequest, ForeignA2ATerminalResult } from "./foreign-task-types.ts";
 import { SWEATPANTS_PEER_PROFILE_URI, type PeerInvocationPin } from "./peer-types.ts";

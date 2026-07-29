@@ -1,6 +1,12 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalJson, canonicalSnapshot, sha256, sha256Bytes, sortStrings } from "./canonical.ts";
-import { type Json } from "./types.ts";
+import {
+  canonicalJson,
+  canonicalSnapshot,
+  sha256,
+  sha256Bytes,
+  sortStrings,
+} from "@sweatpants/foundation";
+import { type Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 
 import type { Sha256 } from "./portable-durable-mcp.ts";

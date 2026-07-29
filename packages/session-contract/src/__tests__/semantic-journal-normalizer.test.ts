@@ -1,12 +1,9 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
-import {
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-  type DurableProgramManifest,
-} from "../index.ts";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+import { createCapabilityKeyring, createInMemoryDurableJournalAuthority } from "../index.ts";
+import { type DurableProgramManifest } from "@sweatpants/durable-execution";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import type { DurableSemanticRecord } from "../durable-authority.ts";
 import {
   normalizeSemanticJournal,

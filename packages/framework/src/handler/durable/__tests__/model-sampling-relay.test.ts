@@ -1,7 +1,7 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createInMemoryBuffer } from "@sweatpants/durable-streams";
-import type { ProgramDeliveryEnvelope } from "@sweatpants/session-contract";
+import type { ProgramDeliveryEnvelope } from "@sweatpants/durable-effects/model-sample";
 
 import {
   createProgramDeliveryWriter,

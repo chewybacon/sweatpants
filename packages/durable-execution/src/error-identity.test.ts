@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
-import { serializeDurableError } from "../index.ts";
+import { serializeDurableError } from "@sweatpants/durable-execution";
 
 describe("canonical durable error identity", () => {
   it("preserves coded runtime and expected application failures", () => {

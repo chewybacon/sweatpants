@@ -7,15 +7,17 @@ import type { Operation } from "effection";
 import { z } from "zod";
 import { createTool, type AnyToolContract } from "@sweatpants/agent-sdk";
 import {
-  DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramRuntime,
-  createDurableEffectRegistry,
   createInMemoryDurableJournalAuthority,
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
   type DurableSemanticRecord,
 } from "@sweatpants/session-contract";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
+import {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
 import {
   assertReplayedCanonicalValue,
   createDurableToolRegistry,
@@ -28,7 +30,7 @@ import {
   createDurableSchemaRegistry,
   type DurableSchemaRegistry,
 } from "@sweatpants/journal-authority/schema-registry";
-import { type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import { type SchemaBinding } from "@sweatpants/foundation/schema";
 import {
   createProgramDriverRegistry,
   ProgramDriverRegistryContext,

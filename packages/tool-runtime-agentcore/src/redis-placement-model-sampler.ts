@@ -3,7 +3,7 @@ import { call, race, sleep, type Operation } from "effection";
 import type { RedisClientType } from "redis";
 import type { TokenBuffer, TokenBufferStore } from "@sweatpants/durable-streams";
 import { StaleTokenWriterError } from "@sweatpants/durable-streams";
-import { type ModelSampleDisposition } from "@sweatpants/session-contract";
+import { type ModelSampleDisposition } from "@sweatpants/durable-effects/model-sample";
 import {
   canonicalJson,
   canonicalSnapshot,

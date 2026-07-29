@@ -7,7 +7,7 @@ import {
   standardSchemaOf,
   type SchemaBinding,
   type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/foundation/schema";
 import type { NativeProgramIdentity as NativeIdentity } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 
 export type ThinCatalogEntry =

@@ -5,7 +5,7 @@ import {
   standardSchemaOf,
   type SchemaBinding,
   type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/foundation/schema";
 import { sortedResourceValues, type DataClassification } from "@sweatpants/agent-sdk";
 
 export const CHAT_TURN_INPUT_FORMAT = "sweatpants.chat-turn-input.v1" as const;

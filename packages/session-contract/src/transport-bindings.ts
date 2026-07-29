@@ -1,11 +1,8 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalSnapshot } from "./canonical.ts";
-import { type Json } from "./types.ts";
-import type {
-  ReserveOperationResult,
-  ResolutionReceipt,
-  ResolveOperationResult,
-} from "./durable-types.ts";
+import { canonicalSnapshot } from "@sweatpants/foundation";
+import { type Json } from "@sweatpants/foundation";
+import type { ReserveOperationResult, ResolveOperationResult } from "./durable-authority-types.ts";
+import type { ResolutionReceipt } from "@sweatpants/durable-execution";
 
 /** MCP extension identifier for durable effect authorization and commit. */
 export const MCP_DURABLE_EFFECTS_EXTENSION = "sweatpants.chat/durable-effects-v1";

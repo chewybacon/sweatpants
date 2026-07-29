@@ -8,11 +8,25 @@ import {
   createPinnedDurableProgram,
   type AttachProgramRequest,
   type DurableProgramManifest,
-} from "../index.ts";
-import { anyGuard, createSchemaFixture } from "../testing/index.ts";
+} from "@sweatpants/durable-execution";
+import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 
-const input = createSchemaFixture("execution-context/input", "program_input", true, anyGuard);
-const output = createSchemaFixture("execution-context/output", "program_output", true, anyGuard);
+function fixture(identity: string, role: "program_input" | "program_output") {
+  return {
+    descriptor: createPortableSchemaDescriptor({
+      identity,
+      role,
+      version: "1",
+      vendor: "test",
+      inputProjection: true,
+      outputProjection: true,
+      fidelity: { input: "explicit", output: "explicit" },
+    }),
+  };
+}
+
+const input = fixture("execution-context/input", "program_input");
+const output = fixture("execution-context/output", "program_output");
 const manifest: DurableProgramManifest = {
   programId: "execution-context-fixture",
   version: "1",

@@ -5,7 +5,7 @@ import {
   createPortableSchemaDescriptor,
   standardSchemaOf,
   type SchemaBinding,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/foundation/schema";
 import { advertiseCapability, defineAgent, parseAgentManifest } from "../../index.ts";
 
 const input = createPortableSchemaDescriptor({

@@ -41,7 +41,7 @@ describe("single crank-turner architecture", () => {
 
   it("keeps ProgramDriver implementations passive", () => {
     const roots = [
-      resolve(frameworkRoot, "../session-contract/src/program-driver.ts"),
+      resolve(frameworkRoot, "../durable-execution/src/local-program-driver.ts"),
       resolve(frameworkRoot, "../tool-runtime-local/src"),
       resolve(frameworkRoot, "../tool-runtime-agentcore/src"),
     ];

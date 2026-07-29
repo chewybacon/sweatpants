@@ -3,11 +3,11 @@ import { type EffectDefinition } from "@sweatpants/durable-effects";
 import { CrankError } from "@sweatpants/durable-execution";
 import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import {
-  validateEffectDefinition,
   validateProgramIdentityProvenance,
   type ProgramIdentityProvenanceV1,
 } from "@sweatpants/durable-execution";
-import { type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import { validateEffectDefinition } from "@sweatpants/durable-effects/authoring";
+import { type SchemaBinding } from "@sweatpants/foundation/schema";
 import { sortedResourceValues, type ResourcePackage } from "../resource/index.ts";
 import {
   AGENT_MANIFEST_DOMAIN,

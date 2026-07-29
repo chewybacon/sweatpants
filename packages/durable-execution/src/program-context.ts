@@ -7,7 +7,7 @@ import {
 import {
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/foundation/schema";
 import type { EffectDefinition, OperationOutcome, RetrySafety } from "@sweatpants/durable-effects";
 import { CrankError, PullApplicationError } from "./errors.ts";
 import type {
@@ -23,7 +23,8 @@ import type {
   RecordAttemptContext,
   RecordOptions,
 } from "./program-authoring.ts";
-import { validateEffectDefinition, DEFAULT_MAX_INLINE_BYTES } from "./program-authoring-runtime.ts";
+import { validateEffectDefinition } from "@sweatpants/durable-effects/authoring";
+import { DEFAULT_MAX_INLINE_BYTES } from "./program-authoring-runtime.ts";
 
 type EffectResolver = { audience: string; route?: string };
 

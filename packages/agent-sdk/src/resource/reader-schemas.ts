@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
-import { type PortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
+import type { SchemaBinding } from "@sweatpants/foundation/schema";
+import { type PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import { RESOURCE_SEARCH_MATCH_SEMANTICS, type ReaderOperation } from "./types.ts";

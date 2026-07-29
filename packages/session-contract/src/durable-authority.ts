@@ -1,14 +1,20 @@
-import { CrankError } from "@sweatpants/durable-execution";
+import {
+  CrankError,
+  assertInlineSize,
+  DEFAULT_MAX_INLINE_BYTES,
+} from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
+import type { OperationOutcome } from "@sweatpants/durable-effects";
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 
-import { assertInlineSize, DEFAULT_MAX_INLINE_BYTES } from "./authoring.ts";
+import {
+  parsePortableSchemaDescriptor,
+  type PortableSchemaDescriptor,
+} from "@sweatpants/foundation/schema";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   NULL_RESULT_SCHEMA_DESCRIPTOR,
-  parsePortableSchemaDescriptor,
-  type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/durable-execution";
 import {
   createDurableSchemaRegistry,
   validateRegisteredSchema,
@@ -29,8 +35,8 @@ import {
   canonicalSnapshot,
   sha256,
   stableOpaqueId,
-} from "./canonical.ts";
-import { type Json } from "./types.ts";
+} from "@sweatpants/foundation";
+import { type Json } from "@sweatpants/foundation";
 import {
   effectContractDigest,
   hasLiveDurableEffect,
@@ -49,9 +55,7 @@ import type {
   ConsumeRestoreTicketResult,
   DurableCancellationState,
   DurableJournalAuthorityService,
-  DurableOperationDescriptor,
   DurableOperationState,
-  DurableProgramManifest,
   DurableTaskExecutionState,
   DurableTaskRecoveryState,
   EmissionReceipt,
@@ -59,14 +63,8 @@ import type {
   EnsureChildTaskResult,
   IssueRestoreTicketRequest,
   IssueRestoreTicketResult,
-  OperationOutcome,
   PrepareProgramRestoreRequest,
   PreparedProgramRestore,
-  ProgramRoute,
-  ProgramStep,
-  ReplayEmissionEntry,
-  ReplayEntry,
-  ReplayOperationEntry,
   RecoverableSession,
   ReserveOperationRequest,
   ReserveOperationResult,
@@ -75,13 +73,22 @@ import type {
   ReleaseActivationResult,
   RenewActivationRequest,
   RenewActivationResult,
-  ResolutionReceipt,
   RestoredFrontierProof,
   ResolveOperationRequest,
   ResolveOperationResult,
   RestoreTicketClaims,
   TaskCloseReceipt,
-} from "./durable-types.ts";
+} from "./durable-authority-types.ts";
+import type {
+  DurableOperationDescriptor,
+  DurableProgramManifest,
+  ProgramRoute,
+  ProgramStep,
+  ReplayEmissionEntry,
+  ReplayEntry,
+  ReplayOperationEntry,
+  ResolutionReceipt,
+} from "@sweatpants/durable-execution";
 
 /** Closed attempt-state algebra persisted by the authority. */
 export type DurableAttemptState = "started" | "detached" | "completed" | "revoked" | "superseded";

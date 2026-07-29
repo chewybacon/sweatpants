@@ -1,5 +1,6 @@
 import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
+import { foreignToolAdapterChild } from "@sweatpants/tool-session/foreign";
 import {
   createLocalProgramDriver,
   type AttachProgramRequest,
@@ -12,7 +13,7 @@ import {
 
 /** In-process canonical driver used as the semantic baseline. */
 export function createLocalDurableProgramDriver(registry?: DurableToolRegistry): ProgramDriver {
-  return createLocalProgramDriver(registry);
+  return createLocalProgramDriver(registry, { foreignToolChild: foreignToolAdapterChild });
 }
 
 /** Typed worker binding. Implementations own serialization and worker lifetime. */

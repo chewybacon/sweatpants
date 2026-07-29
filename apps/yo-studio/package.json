@@ -14,6 +14,7 @@
         "@astryxdesign/theme-neutral": "^0.1.8",
         "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
+        "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/framework": "workspace:*",

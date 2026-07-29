@@ -1,17 +1,15 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { sleep, type Operation } from "effection";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
-import { type StandardSchemaV1 } from "@sweatpants/session-contract";
-import { createPinnedDurableProgram, defineDurableEffect } from "@sweatpants/durable-execution";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { createPinnedDurableProgram } from "@sweatpants/durable-execution";
+import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import {
   type DurableEffectContext,
   type DurableEffectRegistration,
 } from "@sweatpants/durable-effects";
 import { assertJson, canonicalJson, sha256, type Json } from "@sweatpants/foundation";
-import {
-  createPortableSchemaDescriptor,
-  type SchemaBinding,
-} from "@sweatpants/foundation/schema-descriptor";
+import { createPortableSchemaDescriptor, type SchemaBinding } from "@sweatpants/foundation/schema";
 import { ForeignA2ADurableSession } from "./foreign-session.ts";
 import { foreignA2AMessageDigest } from "./foreign-validation.ts";
 import type {

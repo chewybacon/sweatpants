@@ -4,7 +4,7 @@ import { advertiseCapability, defineAgent } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import { createPinnedDurableProgram } from "@sweatpants/durable-execution";
 import { sha256, type Json } from "@sweatpants/foundation";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import {
   createInMemoryImmutableContentStore,
   parseForeignA2ASendResult,

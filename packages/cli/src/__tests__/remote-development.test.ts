@@ -13,7 +13,7 @@ import {
   type DurableTool,
 } from "@sweatpants/durable-execution";
 import { sha256Bytes } from "@sweatpants/foundation";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 
 import { defineConfig, definePrograms } from "../config.ts";
 import {

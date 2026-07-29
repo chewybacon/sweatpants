@@ -5,8 +5,8 @@ import {
   MCP_DURABLE_EFFECTS_EXTENSION,
   classifyMcpToolDurability,
   recoverMcpRequestState,
-  scanDurableProgramSources,
 } from "../index.ts";
+import { scanDurableProgramSources } from "@sweatpants/durable-execution";
 
 describe("durable purity and transport boundaries", () => {
   it("scans the controlled static graph and rejects ambient nondeterminism and unlisted packages", () => {

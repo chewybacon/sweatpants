@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 
 import {
   ResourcePackageRegistry,

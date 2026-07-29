@@ -14,14 +14,16 @@ import {
   type Subscription,
 } from "effection";
 import {
-  DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramRouteResolverContext,
-  ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
   type DurableSemanticRecord,
 } from "@sweatpants/session-contract";
+import { ProgramRouteResolverContext } from "@sweatpants/durable-execution";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
+import {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
 import {
   createDurableToolRegistry,
   createLocalProgramDriver,

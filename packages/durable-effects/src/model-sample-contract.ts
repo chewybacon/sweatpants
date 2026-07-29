@@ -1,7 +1,7 @@
 import { assertJson } from "@sweatpants/foundation";
-import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
+import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import type { SchemaBinding } from "@sweatpants/foundation/schema";
 import type { EffectDefinition, EffectSchemaDescriptor, EffectSchemaRole } from "./contract.ts";
 import type { Json } from "@sweatpants/foundation";
 

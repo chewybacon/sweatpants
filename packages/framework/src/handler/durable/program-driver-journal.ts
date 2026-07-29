@@ -16,7 +16,7 @@ import {
   createDurableSchemaRegistry,
   type DurableSchemaRegistry,
 } from "@sweatpants/journal-authority/schema-registry";
-import { type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import { type SchemaBinding } from "@sweatpants/foundation/schema";
 
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 import { programDriverChatEngineSchemaEntries } from "./program-driver-schema.ts";

@@ -19,7 +19,7 @@ import {
   type SandboxCapabilities,
   type SandboxInspection,
 } from "../index.ts";
-import { sha256 } from "../canonical.ts";
+import { sha256 } from "@sweatpants/foundation";
 
 const digest = (value: string) => sha256(value);
 const capabilities: SandboxCapabilities = {

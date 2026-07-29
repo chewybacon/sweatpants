@@ -1,6 +1,6 @@
 /** Durable-execution-owned program contracts. */
 import type { Json } from "@sweatpants/foundation";
-import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { EffectDefinition, RetrySafety, OperationOutcome } from "@sweatpants/durable-effects";
 
 export const PROGRAM_ARTIFACT_IDENTITY_FORMAT = "sweatpants.program-artifact-identity.v1" as const;

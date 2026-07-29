@@ -7,23 +7,23 @@
  */
 
 import type { Operation } from "effection";
-import type { Json } from "./types.ts";
+import type { Json } from "@sweatpants/foundation";
+import type {
+  EffectDefinition,
+  EffectDescriptor,
+  OperationOutcome,
+} from "@sweatpants/durable-effects";
 import type {
   DurableChildDescriptor,
   DurableOperationDescriptor,
   DurableProgramManifest,
-  EffectDefinition,
-  EffectDescriptor,
   EmissionDescriptor,
-  OperationOutcome,
-  RecordedOperationDescriptor,
-} from "./durable-contract-types.ts";
-import type {
   ProgramRoute,
   ProgramStep,
+  RecordedOperationDescriptor,
   ReplayEntry,
   ResolutionReceipt,
-} from "./durable-protocol-types.ts";
+} from "@sweatpants/durable-execution";
 
 /** Private, authority-time activation ownership state. */
 export interface ActivationLeaseState {

@@ -7,10 +7,7 @@ import {
   sha256,
   type Json,
 } from "@sweatpants/foundation";
-import type {
-  PortableSchemaDescriptor,
-  SchemaBinding,
-} from "@sweatpants/foundation/schema-descriptor";
+import type { PortableSchemaDescriptor, SchemaBinding } from "@sweatpants/foundation/schema";
 import {
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
@@ -26,10 +23,10 @@ import {
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
   generateProgramArtifactIdentity,
-  validateEffectDefinition,
   type DurableProgramManifest,
   type DurableTool,
 } from "@sweatpants/durable-execution";
+import { validateEffectDefinition } from "@sweatpants/durable-effects/authoring";
 import type { EffectDefinition } from "@sweatpants/durable-effects";
 import {
   ResourcePackageRegistry,

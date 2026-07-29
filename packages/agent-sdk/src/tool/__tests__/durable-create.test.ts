@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createDurableProgramContext } from "@sweatpants/durable-execution";
 import { type ProgramResume, type ProgramStepProposal } from "@sweatpants/durable-execution";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 
 import { defineAgent, parseAgentManifest } from "../../agent/index.ts";
 import { createDurableTool } from "../durable-create.ts";

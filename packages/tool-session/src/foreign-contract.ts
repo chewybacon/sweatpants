@@ -2,7 +2,7 @@ import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/foundation/schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
   DurableChildDescriptor,

@@ -11,6 +11,7 @@
         "test": "pnpm verify:artifact && vitest run src"
     },
     "dependencies": {
+        "@standard-schema/spec": "catalog:",
         "@sweatpants/a2a": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",

@@ -44,14 +44,14 @@
         },
         "./testing": {
             "development": {
-                "import": "./src/metrics-middleware.ts",
-                "types": "./src/metrics-middleware.ts"
+                "import": "./src/testing.ts",
+                "types": "./src/testing.ts"
             },
             "import": {
-                "types": "./dist/metrics-middleware.d.ts",
-                "default": "./dist/metrics-middleware.js"
+                "types": "./dist/testing.d.ts",
+                "default": "./dist/testing.js"
             },
-            "default": "./src/metrics-middleware.ts"
+            "default": "./src/testing.ts"
         },
         "./api": {
             "development": {

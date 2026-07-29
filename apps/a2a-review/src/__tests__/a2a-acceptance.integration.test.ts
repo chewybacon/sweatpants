@@ -6,14 +6,16 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
-  DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramRouteResolverContext,
-  ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
   createInMemoryDurableJournalAuthority,
 } from "@sweatpants/session-contract";
+import { ProgramRouteResolverContext } from "@sweatpants/durable-execution";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
+import {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,

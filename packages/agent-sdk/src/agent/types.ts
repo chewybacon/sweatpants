@@ -6,7 +6,7 @@ import type {
   PinnedProgram,
   ProgramIdentityProvenanceV1,
 } from "@sweatpants/durable-execution";
-import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import type { SchemaBinding } from "@sweatpants/foundation/schema";
 import type { ResourcePackage, ResourceReaderPrograms } from "../resource/index.ts";
 
 export const AGENT_MANIFEST_FORMAT = "sweatpants.agent-manifest.v1" as const;

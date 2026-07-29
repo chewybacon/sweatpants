@@ -199,6 +199,9 @@ importers:
 
   apps/a2a-review:
     dependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
       '@sweatpants/a2a':
         specifier: workspace:*
         version: link:../../packages/a2a
@@ -871,6 +874,9 @@ importers:
       '@sweatpants/durable-chat-runtime':
         specifier: workspace:*
         version: link:../../packages/durable-chat-runtime
+      '@sweatpants/durable-effects':
+        specifier: workspace:*
+        version: link:../../packages/durable-effects
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:../../packages/durable-execution
@@ -944,6 +950,9 @@ importers:
 
   packages/a2a:
     dependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
       '@sweatpants/durable-effects':
         specifier: workspace:*
         version: link:../durable-effects

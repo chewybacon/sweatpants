@@ -18,16 +18,15 @@ export { createDurableChatHandler as createChatHandler } from "./handler.ts";
 // ProgramDriver authoring/runtime surface. Foreign ToolSession execution remains
 // available only through the explicit journaled foreign boundary.
 export {
-  DurableEffectRegistryContext,
   JournalAuthority,
   withJournalAuthority,
-  ProgramPeer,
-  ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
-  createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
 } from "@sweatpants/session-contract";
+export {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
 export {
   FOREIGN_TOOL_ADAPTER_MANIFEST,
   FOREIGN_TOOL_ADAPTER_PROGRAM,
@@ -35,9 +34,14 @@ export {
   FOREIGN_TOOL_START_EFFECT,
   foreignToolAdapter,
 } from "@sweatpants/tool-session/foreign";
+export { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
+export {
+  ProgramPeer,
+  ProgramRuntime,
+  createDurableToolRegistry,
+} from "@sweatpants/durable-execution";
 export {
   createPinnedDurableProgram,
-  defineDurableEffect,
   defineDurableProgramManifest,
 } from "@sweatpants/durable-execution";
 /** Crank-native authoring and runtime contracts exposed by the durable handler package. */

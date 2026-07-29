@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   computePortableSchemaDigest,
   createPortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/foundation/schema";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import { createDurableSchemaRegistry, validateRegisteredSchema } from "./schema-registry.ts";
 

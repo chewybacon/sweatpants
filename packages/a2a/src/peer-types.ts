@@ -1,7 +1,7 @@
 import { type OperationOutcome, type RetrySafety } from "@sweatpants/durable-effects";
 
 import type { Json } from "@sweatpants/foundation";
-import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { ForeignA2AInvocationPin, ForeignA2ATerminalResult } from "./foreign-task-types.ts";
 
 export const SWEATPANTS_PEER_PROFILE_URI =

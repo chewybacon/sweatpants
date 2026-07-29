@@ -6,7 +6,7 @@ import {
   createPortableSchemaDescriptor,
   type SchemaBinding,
   type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/foundation/schema";
 
 /**
  * First-party Zod → Standard Schema adapter.

@@ -4,21 +4,13 @@ import { CrankError } from "./errors.ts";
 import {
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
-import type { EffectDefinition, RetrySafety } from "@sweatpants/durable-effects";
+} from "@sweatpants/foundation/schema";
+import { validateEffectDefinition } from "@sweatpants/durable-effects/authoring";
+import type { EffectDefinition } from "@sweatpants/durable-effects/contract";
 import type { DurableProgramFactory, DurableTool } from "./program-authoring.ts";
 import type { DurableProgramManifest } from "./program-contract.ts";
 
 export const DEFAULT_MAX_INLINE_BYTES = 1024 * 1024;
-
-export function defineDurableEffect<
-  I extends Json = Json,
-  O extends Json = Json,
-  P extends Json = never,
->(definition: EffectDefinition<I, O, P>): EffectDefinition<I, O, P> {
-  validateEffectDefinition(definition);
-  return deepFreeze(structuredClone(definition));
-}
 
 export function defineDurableProgramManifest<I extends Json = Json, O extends Json = Json>(
   manifest: DurableProgramManifest<I, O>,
@@ -78,38 +70,6 @@ export function validateDurableManifest(manifest: DurableProgramManifest): void 
   )
     invalidManifest("capabilities");
   canonicalSnapshot(manifest);
-}
-
-export function validateEffectDefinition(definition: EffectDefinition<Json, Json, Json>): void {
-  if (!definition || typeof definition !== "object") invalidManifest("effect definition");
-  requireId(definition.name, "effect name");
-  requireId(definition.version, "effect version");
-  validateDescriptorField(definition.inputSchema, "effect_input", `${definition.name}.inputSchema`);
-  validateDescriptorField(
-    definition.outputSchema,
-    "effect_output",
-    `${definition.name}.outputSchema`,
-  );
-  if (definition.cancellation !== undefined)
-    validateDescriptorField(
-      definition.cancellation.partialSchema,
-      "effect_cancellation_partial",
-      `${definition.name}.cancellation.partialSchema`,
-    );
-  validateRetrySafety(definition.retrySafety, `${definition.name}.retrySafety`);
-}
-
-function validateRetrySafety(safety: RetrySafety, path: string): void {
-  if (
-    !safety ||
-    (safety.mode === "repeatable" && Object.keys(safety).length !== 1) ||
-    (safety.mode === "unsafe" && Object.keys(safety).length !== 1) ||
-    (safety.mode === "idempotent" &&
-      (Object.keys(safety).length !== 2 ||
-        (safety.mechanism !== "pull_id_key" && safety.mechanism !== "inherent"))) ||
-    (safety.mode !== "repeatable" && safety.mode !== "unsafe" && safety.mode !== "idempotent")
-  )
-    invalidManifest(path);
 }
 
 function validateDescriptorField(

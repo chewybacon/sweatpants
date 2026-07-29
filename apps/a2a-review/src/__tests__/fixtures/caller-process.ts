@@ -5,16 +5,18 @@ import {
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { run, type Operation } from "effection";
 import {
-  DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramRouteResolverContext,
-  ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
   createInMemoryDurableJournalAuthority,
   type DurableJournalAuthorityService,
   type DurableSemanticRecord,
 } from "@sweatpants/session-contract";
+import { ProgramRouteResolverContext } from "@sweatpants/durable-execution";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
+import {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,

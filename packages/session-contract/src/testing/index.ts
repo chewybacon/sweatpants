@@ -1,16 +1,7 @@
-export { canonicalSnapshot } from "../canonical.ts";
 export {
   normalizeSemanticJournal,
   normalizedSemanticJournalDigest,
 } from "./semantic-journal-normalizer.ts";
-export {
-  anyGuard,
-  booleanGuard,
-  createSchemaFixture,
-  nullGuard,
-  stringGuard,
-  type SchemaFixture,
-} from "./schema-fixtures.ts";
 export {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
   DURABLE_DRIVER_FIXTURE_TOOLS,

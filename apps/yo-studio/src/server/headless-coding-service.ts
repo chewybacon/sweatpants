@@ -14,7 +14,8 @@ import {
   type LocalProgramHost,
   type NormalizedProgramTrace,
 } from "@sweatpants/framework/server";
-import { createCapabilityKeyring, createDurableEffectRegistry } from "@sweatpants/session-contract";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
+import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
 import { createProgramDriverRegistry } from "@sweatpants/durable-execution";

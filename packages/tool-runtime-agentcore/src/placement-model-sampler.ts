@@ -8,7 +8,7 @@ import {
   type ModelSamplingExecutionContext,
   type ModelSamplingService,
   type ProgramDeliveryEnvelope,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-effects/model-sample";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 
 export const AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION = 1 as const;
