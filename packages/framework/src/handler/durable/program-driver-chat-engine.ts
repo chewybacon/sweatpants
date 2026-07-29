@@ -36,6 +36,7 @@ import {
 import {
   TOOL_OWNED_SAMPLE_CLASSIFICATION,
   foreignToolAdapter,
+  foreignToolAdapterChild,
 } from "@sweatpants/tool-session/foreign";
 
 import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
@@ -322,10 +323,10 @@ function* activateProgramDriverChatEngine(
   const drivers = createProgramDriverRegistry([
     [
       "program",
-      createLocalProgramDriver(
-        tools,
-        params.nativeTools?.setup ? { setup: params.nativeTools.setup } : {},
-      ),
+      createLocalProgramDriver(tools, {
+        foreignToolChild: foreignToolAdapterChild,
+        ...(params.nativeTools?.setup ? { setup: params.nativeTools.setup } : {}),
+      }),
     ],
     ...(params.nativeTools?.drivers ?? []),
   ]);

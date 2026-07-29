@@ -77,7 +77,7 @@ export const CALL_ID = "call_acceptance_1";
 function resolveFixtureBootstrapUrl(filename: string): URL {
   const candidates = [
     resolve(process.cwd(), `src/fixtures/${filename}`),
-    resolve(process.cwd(), `packages/framework-acceptance/src/fixtures/${filename}`),
+    resolve(process.cwd(), `packages/platform-acceptance/src/fixtures/${filename}`),
   ];
   const candidate = candidates.find((path) => existsSync(path));
   if (!candidate) {

@@ -6,9 +6,9 @@ Private deterministic test infrastructure for Sweatpants framework acceptance.
 
 Acceptance authors should normally read:
 
-1. [`../framework-acceptance/AUTHORING.md`](../framework-acceptance/AUTHORING.md)
+1. [`../platform-acceptance/AUTHORING.md`](../platform-acceptance/AUTHORING.md)
 2. [`src/scenario.ts`](./src/scenario.ts)
-3. A causal example such as [`../framework-acceptance/src/history.acceptance.test.ts`](../framework-acceptance/src/history.acceptance.test.ts)
+3. A causal example such as [`../platform-acceptance/src/history.acceptance.test.ts`](../platform-acceptance/src/history.acceptance.test.ts)
 
 Use `withTestScenario`; do not begin with the low-level promise barriers.
 

@@ -27,7 +27,12 @@ import type {
   ProgramResume,
   ProgramStepProposal,
 } from "./program-authoring.ts";
-import type { DurableProgramManifest, PinnedProgram } from "./program-contract.ts";
+import type {
+  DurableChildDescriptor,
+  DurableProgramManifest,
+  ForeignToolRequest,
+  PinnedProgram,
+} from "./program-contract.ts";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import type {
   AttachProgramRequest,
@@ -111,6 +116,8 @@ export function createLocalProgramDriver(
   options: {
     readonly detachedScope?: boolean;
     readonly executionEffects?: DurableEffectRegistry;
+    /** Tool Session composition supplies its foreign-child identity explicitly. */
+    readonly foreignToolChild?: (request: ForeignToolRequest) => DurableChildDescriptor;
     /** Installs ordinary APIs/middleware in the attachment execution scope. */
     readonly setup?: () => Operation<void>;
   } = {},
@@ -173,15 +180,18 @@ export function createLocalProgramDriver(
           throw protocol("start input mismatch");
         }
         state.started = true;
-        const context = createDurableProgramContext((proposal) => {
-          if (state.shutdown) {
-            throw new CrankError("stale_program_capability", "Attachment is shutting down");
-          }
-          validateProposal(proposal);
-          const resume = withResolvers<ProgramResume>("durable program boundary");
-          state.events.add({ type: "proposal", boundary: { proposal, resume } });
-          return resume.operation;
-        });
+        const context = createDurableProgramContext(
+          (proposal) => {
+            if (state.shutdown) {
+              throw new CrankError("stale_program_capability", "Attachment is shutting down");
+            }
+            validateProposal(proposal);
+            const resume = withResolvers<ProgramResume>("durable program boundary");
+            state.events.add({ type: "proposal", boundary: { proposal, resume } });
+            return resume.operation;
+          },
+          options.foreignToolChild ? { foreignToolChild: options.foreignToolChild } : {},
+        );
         state.context = context;
         state.scope.run(function* () {
           yield* ProgramExecutionContext.set(state.execution);

@@ -3,7 +3,7 @@
 Status: Follow-up backlog
 
 This document records framework authoring friction exposed while building
-`@sweatpants/framework-acceptance`. These are not failures of the test rig.
+`@sweatpants/platform-acceptance`. These are not failures of the test rig.
 They are framework/runtime seams that forced the acceptance fixture to know
 more about execution plumbing than an application author should.
 
