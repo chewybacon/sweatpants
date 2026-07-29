@@ -10,7 +10,7 @@ describe("yo-chat tool wiring", () => {
     vi.clearAllMocks();
   });
 
-  it("installs durable response-stream storage without a legacy crank runtime", async () => {
+  it("installs durable response-stream storage without a obsolete crank runtime", async () => {
     vi.doMock("@/lib/shared-redis", () => ({
       getSharedRedisClient: async () => null,
     }));

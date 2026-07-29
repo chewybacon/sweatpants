@@ -74,7 +74,6 @@ export interface JournalAuthorityConformancePort {
     pullId: string,
   ): Operation<DurableOperationState>;
   /** Clears a runnable marker at the start of a structured activation. */
-  markActivationStarted(sessionId: string): Operation<void>;
   /** Claims absent/expired runnable work under an authority-minted epoch. */
   claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult>;
   /** Renews only the exact current owner and epoch using authority time. */
@@ -328,9 +327,6 @@ export function adaptInMemoryAuthorityForConformance(
     *operationState(selectedSessionId, selectedTaskId, pullId) {
       return yield* authority.operationState(selectedSessionId, selectedTaskId, pullId);
     },
-    *markActivationStarted(selectedSessionId) {
-      yield* authority.markActivationStarted(selectedSessionId);
-    },
     *claimActivation(request) {
       return yield* authority.claimActivation(request);
     },
@@ -529,13 +525,6 @@ function* atomicResolution(
     (yield* independent.runnableSessions()).includes(sessionId),
     "ownerless resolution must mark the session runnable",
   );
-  yield* independent.markActivationStarted(sessionId);
-  assert(
-    caseName,
-    !(yield* independent.runnableSessions()).includes(sessionId),
-    "activation must consume the runnable marker",
-  );
-
   const duplicate = requireDuplicate(
     caseName,
     yield* first.resolve({

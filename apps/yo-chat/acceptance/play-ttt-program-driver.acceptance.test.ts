@@ -116,7 +116,7 @@ describe("journal-native play_ttt through ProgramRuntime", () => {
         operations.filter(
           (operation) =>
             operation.descriptor["kind"] === "record" &&
-            operation.descriptor["label"] === "play-ttt-symbol-coin-flip",
+            operation.descriptor["key"] === "play-ttt-symbol-coin-flip",
         ),
       ).toHaveLength(1);
       expect(

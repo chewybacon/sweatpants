@@ -142,7 +142,7 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
           (entry) =>
             entry.payload.type === "PullRequested" &&
             entry.payload.descriptor.kind === "record" &&
-            entry.payload.descriptor.label === "acceptance-recorded-value",
+            entry.payload.descriptor.key === "acceptance-recorded-value",
         ),
       ).toHaveLength(1);
       expect(JSON.stringify(journal)).not.toContain("function* ()");

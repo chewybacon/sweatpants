@@ -381,7 +381,7 @@ async function discoverToolsInFile(
   return discoverToolsInContent(content, file, toolsDir, options);
 }
 
-/** Reject legacy ordinary-tool shapes before emitting a canonical worker. */
+/** Reject noncanonical ordinary-tool shapes before emitting a canonical worker. */
 function assertWorkerCompatibleAuthoring(
   content: string,
   file: string,
@@ -411,8 +411,8 @@ function assertWorkerCompatibleAuthoring(
         return;
       }
       throw new Error(
-        `Unsupported legacy worker tool in ${file}: ${root}(...).build() does not produce the canonical callable RuntimeTool required by generated workers. ` +
-          `Migrate to ${root}(...).description(...).parameters(...).execute(...) or disable generateWorker for registry-only legacy discovery.`,
+        `Noncanonical worker tool in ${file}: ${root}(...).build() does not produce the canonical callable RuntimeTool required by generated workers. ` +
+          `Use ${root}(...).description(...).parameters(...).execute(...) or disable generateWorker for registry-only source discovery.`,
       );
     },
   });

@@ -93,46 +93,30 @@ export function createDurableProgramContext(
     return unwrapOutcome(outcome);
   } as DurableProgramContext["effect"];
   const record = ((
-    optionsOrOperation: string | RecordOptions | (() => Operation<Json>),
-    explicitOperation?: (context: RecordAttemptContext) => Operation<Json>,
+    options: RecordOptions,
+    operation: (context: RecordAttemptContext) => Operation<Json>,
   ) => {
     assertSchedulingAllowed();
-    const options =
-      typeof optionsOrOperation === "function"
-        ? {}
-        : typeof optionsOrOperation === "string"
-          ? { label: optionsOrOperation }
-          : optionsOrOperation;
     if (
-      typeof optionsOrOperation === "object" &&
-      Object.keys(optionsOrOperation).some((key) => key !== "label" && key !== "retrySafety")
+      !options ||
+      typeof options !== "object" ||
+      Object.keys(options).some((key) => key !== "key" && key !== "retrySafety")
     ) {
       throw new CrankError("invalid_descriptor", "Recorded operation options are not closed");
     }
-    const operation =
-      typeof optionsOrOperation === "function" ? optionsOrOperation : explicitOperation;
-    if (!operation) {
-      throw new CrankError("invalid_descriptor", "Recorded operation is required");
+    const key = requireId(options.key, "record key");
+    if (new TextEncoder().encode(key).byteLength > 128) {
+      throw new CrankError("invalid_descriptor", "Record key must be at most 128 UTF-8 bytes");
     }
-    const label = options.label;
-    if (
-      label !== undefined &&
-      (typeof label !== "string" ||
-        label.length === 0 ||
-        new TextEncoder().encode(label).byteLength > 128)
-    ) {
-      throw new CrankError("invalid_descriptor", "Record label must be 1 to 128 UTF-8 bytes");
+    if (typeof operation !== "function") {
+      throw new CrankError("invalid_descriptor", "Recorded operation is required");
     }
     const retrySafety = options.retrySafety ?? { mode: "repeatable" as const };
     validateRetrySafety(retrySafety, "record.retrySafety");
     return (function* (): Operation<Json> {
       const outcome = yield* propose({
         type: "operation",
-        descriptor: {
-          kind: "record",
-          ...(label === undefined ? {} : { label }),
-          retrySafety,
-        },
+        descriptor: { kind: "record", key, retrySafety },
         execute: function* (context: RecordAttemptContext) {
           recording = true;
           try {

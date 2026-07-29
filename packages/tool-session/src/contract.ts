@@ -57,12 +57,11 @@ export type {
   WireSampleResultWithToolCalls,
 } from "@sweatpants/agent-sdk";
 
-/** Legacy string-message form retained until chat-core owns projection. */
-export interface LegacyToolMessage {
+export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
 }
-export interface LegacyToolCallMessage {
+export interface ToolCallMessage {
   role: "assistant";
   content: string;
   tool_calls: Array<{
@@ -71,19 +70,12 @@ export interface LegacyToolCallMessage {
     function: { name: string; arguments: Record<string, unknown> };
   }>;
 }
-export interface LegacyToolResultMessage {
+export interface ToolResultMessage {
   role: "tool";
   content: string;
   tool_call_id: string;
 }
-export type Message = LegacyToolMessage;
-export type ToolCallMessage = LegacyToolCallMessage;
-export type ToolResultMessage = LegacyToolResultMessage;
-export type ExtendedMessage =
-  | ToolMessage
-  | LegacyToolMessage
-  | LegacyToolCallMessage
-  | LegacyToolResultMessage;
+export type ExtendedMessage = ToolMessage | Message | ToolCallMessage | ToolResultMessage;
 
 // =============================================================================
 // SESSION STATUS

@@ -557,6 +557,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     executionEpoch: number,
   ): Operation<{ programCapability: string }> {
     const task = this.#task(sessionId, taskId);
+    this.#runnable.delete(sessionId);
     this.#assertActive(task);
     if (task.executionEpoch !== executionEpoch) {
       throw new CrankError("stale_program_capability", "Attachment epoch is not current");
@@ -1501,10 +1502,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   }
 
   /** Clears a session's runnable marker when an accepted activation starts. */
-  *markActivationStarted(sessionId: string): Operation<void> {
-    this.#runnable.delete(sessionId);
-  }
-
   /** Returns work recoverable from durable runnable state or an expired owner. */
   *recoverableSessions(): Operation<RecoverableSession[]> {
     const now = this.#options.now();
@@ -2425,7 +2422,7 @@ export function createInMemoryDurableJournalAuthority(
  */
 export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthoritySnapshot {
   try {
-    const value = migrateDurableAuthoritySnapshot(assertJson(JSON.parse(serialized)));
+    const value = assertJson(JSON.parse(serialized));
     if (!isDurableAuthoritySnapshot(value)) {
       throw invalidSnapshot();
     }
@@ -2436,49 +2433,6 @@ export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthor
     }
     throw invalidSnapshot(error);
   }
-}
-
-function migrateDurableAuthoritySnapshot(value: Json): Json {
-  if (!isJsonRecord(value)) {
-    return value;
-  }
-  let migrated = value;
-  if (migrated["version"] === 2) {
-    if (
-      !hasExactKeys(migrated, ["version", "tasks", "records", "runnable", "nonce"]) ||
-      !Array.isArray(migrated["records"])
-    ) {
-      return migrated;
-    }
-    const taskRevisions = migrated["records"].flatMap((entry): Json[] =>
-      Array.isArray(entry) && typeof entry[0] === "string" && Array.isArray(entry[1])
-        ? [[entry[0], entry[1].length]]
-        : [],
-    );
-    migrated = {
-      ...migrated,
-      version: 3,
-      activationLeases: [],
-      lastActivationEpochBySession: [],
-      taskRevisions,
-      restoreNonces: [],
-      consecutiveRestoreStales: [],
-      activationNotBeforeMs: [],
-    };
-  }
-  if (migrated["version"] !== 3 || !Array.isArray(migrated["activationLeases"])) {
-    return migrated;
-  }
-  return {
-    ...migrated,
-    version: 4,
-    activationLeases: migrated["activationLeases"].flatMap((entry): Json[] =>
-      Array.isArray(entry) && typeof entry[0] === "string" && isJsonRecord(entry[1])
-        ? [[entry[0], { ...entry[1], leaseDurationMs: 30_000 }]]
-        : [],
-    ),
-    restoreFrontierDigests: [],
-  };
 }
 
 function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySnapshot {
@@ -2832,12 +2786,11 @@ function isDescriptorSnapshot(value: unknown): boolean {
   switch (value["kind"]) {
     case "record":
       return (
-        hasOnlyKeys(value, ["kind", "retrySafety"], ["label"]) &&
-        isRetrySafetySnapshot(value["retrySafety"]) &&
-        (value["label"] === undefined ||
-          (typeof value["label"] === "string" &&
-            value["label"].length > 0 &&
-            new TextEncoder().encode(value["label"]).byteLength <= 128))
+        hasExactKeys(value, ["kind", "key", "retrySafety"]) &&
+        typeof value["key"] === "string" &&
+        value["key"].length > 0 &&
+        new TextEncoder().encode(value["key"]).byteLength <= 128 &&
+        isRetrySafetySnapshot(value["retrySafety"])
       );
     case "effect":
       return (
@@ -3368,11 +3321,11 @@ function operationPolicy(
   switch (descriptor.kind) {
     case "record":
       if (
-        descriptor.label !== undefined &&
-        (descriptor.label.length === 0 ||
-          new TextEncoder().encode(descriptor.label).byteLength > 128)
+        typeof descriptor.key !== "string" ||
+        descriptor.key.length === 0 ||
+        new TextEncoder().encode(descriptor.key).byteLength > 128
       ) {
-        throw new CrankError("invalid_descriptor", "Invalid record label");
+        throw new CrankError("invalid_descriptor", "Invalid record key");
       }
       return { resultDescriptor: ANY_JSON_SCHEMA_DESCRIPTOR, audience: "program-execution" };
     case "effect": {

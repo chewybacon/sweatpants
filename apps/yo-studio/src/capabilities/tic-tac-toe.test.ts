@@ -75,7 +75,7 @@ describe("yo-studio play_ttt capability", () => {
           const actionIndex = step.actionIndex;
           let outcome;
           if (step.descriptor.kind === "record") {
-            labels.push(step.descriptor.label ?? "record");
+            labels.push(step.descriptor.key ?? "record");
             const authorized = yield* driver.step(attachment, {
               type: "authorize",
               actionIndex,

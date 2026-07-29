@@ -195,7 +195,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
         ...createToolSessionForeignEffectRegistrations({
           registry,
           // SAFETY: the facade implements the callable RuntimeTool boundary;
-          // its legacy AnyToolContract declaration omits the schemas property.
+          // its older AnyToolContract declaration omits the schemas property.
           tools: new Map<string, RuntimeTool>([[facade.name, facade as unknown as RuntimeTool]]),
         }),
         foreignToolAdapter.modelSampleRegistration(function* () {

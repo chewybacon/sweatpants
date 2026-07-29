@@ -321,6 +321,15 @@ describe("durable chat authoring", () => {
     ).toThrowError(expect.objectContaining({ code: "invalid_chat_program" }));
   });
 
+  it("rejects direct tool declarations that bypass modelTool classification", () => {
+    const direct = {
+      inspect: durableFixtureBinding,
+    } as unknown as Parameters<typeof defineChatProgram>[0]["tools"];
+    expect(() => chat("classified tools only", direct)).toThrowError(
+      expect.objectContaining({ code: "invalid_chat_program" }),
+    );
+  });
+
   it("rejects an unauthorized exact sample payload before provider invocation", async () => {
     let providerCalls = 0;
     const registration = createChatModelEffectRegistration({

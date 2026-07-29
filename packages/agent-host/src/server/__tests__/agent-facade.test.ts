@@ -128,6 +128,10 @@ describe("agent serving facade", () => {
     expect(served.selfCheck().ok).toBe(true);
     expect(Object.values(served.manifests)[0]?.program.digest).toBe(chat.manifest.digest);
     expect(JSON.stringify(served.card)).not.toContain("Be useful");
+    expect(served.card).toHaveProperty("supportedInterfaces");
+    expect(served.card).toHaveProperty("url", deployment.interfaceUrl);
+    expect(served.card).toHaveProperty("preferredTransport", "HTTP+JSON");
+    expect(served.card).not.toHaveProperty("protocolVersion");
   });
 
   it("preflights standard local effects and requires a real host for readiness", () => {

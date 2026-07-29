@@ -103,7 +103,7 @@ export interface DefineChatProgramOptions {
   readonly systemPrompt: ChatSystemPrompt;
   readonly guidance?: readonly GuidanceDefinition[];
   readonly resources?: Readonly<Record<string, ChatResourceMountDeclaration>>;
-  readonly tools?: Readonly<Record<string, AgentProgramInput | ChatModelToolDeclaration>>;
+  readonly tools?: Readonly<Record<string, ChatModelToolDeclaration>>;
   readonly effects?: Readonly<Record<string, EffectDefinition<Json, Json, Json>>>;
   readonly elicitations?: Readonly<
     Record<
@@ -545,28 +545,15 @@ function decodeAuthoredModelResult(value: ModelSampleResult): ChatModelSampleOut
   });
 }
 
-function normalizeModelToolDeclaration(
-  input: AgentProgramInput | ChatModelToolDeclaration,
-): ChatModelToolDeclaration {
-  if (
-    input &&
-    typeof input === "object" &&
-    "kind" in input &&
-    input.kind === "sweatpants.chat-model-tool.v1"
-  ) {
-    exactKeys(input, ["kind", "binding", "resultClassification"]);
-    return Object.freeze({
-      kind: "sweatpants.chat-model-tool.v1",
-      binding: input.binding,
-      resultClassification: requireClassification(input.resultClassification),
-    });
+function normalizeModelToolDeclaration(input: ChatModelToolDeclaration): ChatModelToolDeclaration {
+  if (!input || typeof input !== "object" || input.kind !== "sweatpants.chat-model-tool.v1") {
+    invalid("chat model tools must be declared with modelTool()");
   }
-  // Compatibility for existing direct tool declarations is fail-safe: unknown
-  // tool data is treated as restricted until the author supplies modelTool().
+  exactKeys(input, ["kind", "binding", "resultClassification"]);
   return Object.freeze({
     kind: "sweatpants.chat-model-tool.v1",
-    binding: input as AgentProgramInput,
-    resultClassification: "restricted",
+    binding: input.binding,
+    resultClassification: requireClassification(input.resultClassification),
   });
 }
 function normalizeProgramBinding(input: AgentProgramInput): AgentProgramBinding {

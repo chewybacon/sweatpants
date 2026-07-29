@@ -466,11 +466,7 @@ export interface WorkerSampleSchemaConfigMessages<T> extends WorkerSampleHelperC
  * It mirrors the canonical tool-facing context surface plus worker-specific
  * transport concerns.
  *
- * ## Progress with Backpressure
- *
- * Unlike the old fire-and-forget model, progress() now sends a request to the host
- * and waits for an ack. This provides backpressure - if the host is slow to process
- * events, the worker naturally slows down.
+ * Notifications use the canonical tool-context `notify` operation.
  */
 export interface WorkerToolContext {
   /** Scope-owned cancellation signal inherited from the worker invocation. */
@@ -483,17 +479,7 @@ export interface WorkerToolContext {
    */
   log(level: LogLevel, message: string): Operation<void>;
 
-  /**
-   * Send a progress notification.
-   * Blocks until the host acknowledges (backpressure).
-   */
-  progress(message: string, progress?: number): Operation<void>;
-
-  /**
-   * Alias for progress() - matches the MCP tool context API (ctx.notify()).
-   * Canonical session tools created with createTool() call ctx.notify(), so this alias
-   * allows them to run in worker mode without modification.
-   */
+  /** Send a canonical tool progress notification. */
   notify(message: string, progress?: number, level?: LogLevel): Operation<void>;
 
   // ---------------------------------------------------------------------------

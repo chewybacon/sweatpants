@@ -12,9 +12,6 @@
 // Main handler factory
 export { createDurableChatHandler } from "./handler.ts";
 
-// Alias for consolidation - createChatHandler is the durable handler
-export { createDurableChatHandler as createChatHandler } from "./handler.ts";
-
 // Plugin session manager
 export { createPluginSessionManager } from "./plugin-session-manager.ts";
 export {

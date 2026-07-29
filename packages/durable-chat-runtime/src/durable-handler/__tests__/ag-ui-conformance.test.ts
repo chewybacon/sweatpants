@@ -868,11 +868,11 @@ describe("strict AG-UI public conformance", () => {
     expect(JSON.stringify(result.events)).not.toContain("sweatpants/sessionId");
   });
 
-  it("rejects injected legacy public events in the conformance harness", function* () {
+  it("rejects injected obsolete public events in the conformance harness", function* () {
     expect(() =>
       assertPublicConformance([
         { type: "RUN_STARTED", threadId: "thread", runId: "run" },
-        { type: "ag_ui_tool_call_result", toolCallId: "call", content: "legacy" },
+        { type: "ag_ui_tool_call_result", toolCallId: "call", content: "obsolete" },
       ]),
     ).toThrow();
   });

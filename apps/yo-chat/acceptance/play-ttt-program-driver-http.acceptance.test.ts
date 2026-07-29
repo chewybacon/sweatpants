@@ -54,7 +54,7 @@ describe("journal-native play_ttt through the HTTP ProgramRuntime", () => {
           (entry) =>
             entry.payload.type === "PullRequested" &&
             entry.payload.descriptor.kind === "record" &&
-            entry.payload.descriptor.label === "play-ttt-symbol-coin-flip",
+            entry.payload.descriptor.key === "play-ttt-symbol-coin-flip",
         ),
       ).toHaveLength(1);
       expect(effectNames).not.toContain("tool.execute");

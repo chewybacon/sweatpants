@@ -72,7 +72,7 @@ describe("yo-chat chat application composition", () => {
     const handler = read("src/server/chat-handler.ts");
 
     expect(envSchema).not.toContain("SWEATPANTS_EXECUTION_ENGINE");
-    expect(envSchema).not.toMatch(/z\.enum\(\s*\[\s*["']legacy["']/);
+    expect(envSchema).not.toMatch(/z\.enum\(\s*\[\s*["']obsolete["']/);
     expect(handler).not.toContain("executionEngine");
     expect(handler).toContain("programDriverJournalStore");
     expect(handler).toContain("PROGRAM_DRIVER_CAPABILITY_SECRET");

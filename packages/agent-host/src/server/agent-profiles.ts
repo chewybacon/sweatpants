@@ -399,11 +399,9 @@ function agentCard(
     name: manifest.identity.name,
     description: manifest.description,
     version: manifest.identity.version,
-    // A2A SDK 0.3 compatibility fields retained for the pinned Inspector. The
-    // current interface list below remains authoritative for 1.0 clients.
+    // Required by the pinned A2A Inspector's current AgentCard contract.
     url: deployment.interfaceUrl,
     preferredTransport: deployment.protocolBinding ?? "HTTP+JSON",
-    protocolVersion: "0.3.0",
     supportedInterfaces: [
       {
         url: deployment.interfaceUrl,

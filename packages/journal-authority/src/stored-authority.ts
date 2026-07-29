@@ -58,7 +58,7 @@ export interface StoredDurableJournalAuthorityOptions {
   readonly now?: () => number;
   readonly maxOutcomeBytes?: number;
   readonly schemaRegistry?: DurableSchemaRegistry;
-  /** Test/import boundary for an already parsed snapshot; no storage adapter reads legacy keys. */
+  /** Test/import boundary for an already parsed current-format snapshot. */
   readonly initialSnapshot?: DurableAuthoritySnapshot;
 }
 
@@ -82,7 +82,6 @@ export interface StoredDurableJournalAuthority {
   /** Lists exact schema digests referenced by nonterminal tasks. */
   nonterminalSchemaDigests(): Operation<string[]>;
   /** Clears the runnable marker when an accepted activation starts. */
-  markActivationStarted(sessionId: string): Operation<void>;
   recoverableSessions(): Operation<RecoverableSession[]>;
   claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult>;
   renewActivation(request: RenewActivationRequest): Operation<RenewActivationResult>;
@@ -350,9 +349,6 @@ export function createStoredDurableJournalAuthority(
     *nonterminalSchemaDigests() {
       const loaded = yield* load();
       return yield* authority(loaded.snapshot).nonterminalSchemaDigests();
-    },
-    *markActivationStarted(sessionId) {
-      yield* mutate((value) => value.markActivationStarted(sessionId));
     },
     *recoverableSessions() {
       const loaded = yield* load();
