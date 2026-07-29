@@ -9,15 +9,9 @@ catalogs:
     '@effectionx/context-api':
       specifier: ^0.2.1
       version: 0.2.1
-    '@effectionx/node':
-      specifier: ^0.2.0
-      version: 0.2.0
     '@effectionx/raf':
       specifier: ^0.1.1
       version: 0.1.1
-    '@effectionx/stream-helpers':
-      specifier: ^0.7.1
-      version: 0.7.1
     '@effectionx/vitest':
       specifier: ^0.3.1
       version: 0.3.1
@@ -1109,12 +1103,6 @@ importers:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
     devDependencies:
-      '@effectionx/node':
-        specifier: 'catalog:'
-        version: 0.2.0(effection@4.1.0-alpha.9)
-      '@effectionx/stream-helpers':
-        specifier: 'catalog:'
-        version: 0.7.1(effection@4.1.0-alpha.9)
       '@effectionx/vitest':
         specifier: 'catalog:'
         version: 0.3.1(effection@4.1.0-alpha.9)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
@@ -1200,9 +1188,6 @@ importers:
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:../durable-execution
-      '@sweatpants/journal-authority':
-        specifier: workspace:*
-        version: link:../journal-authority
       acorn:
         specifier: ^8.14.0
         version: 8.15.0
@@ -1231,9 +1216,6 @@ importers:
 
   packages/durable-chat-runtime:
     dependencies:
-      '@standard-schema/spec':
-        specifier: 'catalog:'
-        version: 1.1.0
       '@sweatpants/agent-sdk':
         specifier: workspace:*
         version: link:../agent-sdk
@@ -1264,9 +1246,6 @@ importers:
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
-      pino:
-        specifier: ^9.6.0
-        version: 9.14.0
       zod:
         specifier: 'catalog:'
         version: 4.1.13
@@ -1782,9 +1761,6 @@ importers:
       '@effectionx/worker':
         specifier: 'catalog:'
         version: 0.5.2(effection@4.1.0-alpha.9)
-      '@sweatpants/agent-host':
-        specifier: workspace:*
-        version: link:../agent-host
       '@sweatpants/agent-sdk':
         specifier: workspace:*
         version: link:../agent-sdk
@@ -1896,9 +1872,6 @@ importers:
       '@babel/preset-typescript':
         specifier: ^7.24.0
         version: 7.28.5(@babel/core@7.28.6)
-      '@babel/types':
-        specifier: ^7.24.0
-        version: 7.28.6
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
@@ -1929,9 +1902,6 @@ importers:
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:../durable-execution
-      '@sweatpants/journal-authority':
-        specifier: workspace:*
-        version: link:../journal-authority
       '@sweatpants/workspace-runtime':
         specifier: workspace:*
         version: link:../workspace-runtime
@@ -2630,12 +2600,6 @@ packages:
     resolution: {integrity: sha512-5s2V//G0rSznZJhfCtIq5qfiT0CARz7TFKC6LTtkU4YxJEbTGH4KUXUxbVImhhSpZIgM4m9MfyfpmrKN9SkXpw==}
     engines: {node: '>= 16'}
 
-  '@effectionx/node@0.2.0':
-    resolution: {integrity: sha512-eBknFGcpylbnl6IIkyAbEJdE4Nc1s3nIgWXQ3fKG1ZtxCXli4D+RpQNYqn8BkXgCM/tAuGhxHHDU/x8D3msMuQ==}
-    engines: {node: '>= 22'}
-    peerDependencies:
-      effection: 4.1.0-alpha.9
-
   '@effectionx/process@0.6.2':
     resolution: {integrity: sha512-U94gqTNXASRw8KBJOtSE+MaWL09Tox7la9/rmJCzUpaLWSmrSOvH28NCv++PKKy8qNCErD+QQip5q+E8lARNEQ==}
     engines: {node: '>= 16'}
@@ -2646,12 +2610,6 @@ packages:
 
   '@effectionx/signals@0.5.3':
     resolution: {integrity: sha512-AJvbUeCD5QHJ0Lc+kVtvAOZUJjXCJcOVVkRVTyOE3DPnUNQnbxVpB2o/lmBN7dnjNlGI78F4lWLMjoGZ98XRcQ==}
-    peerDependencies:
-      effection: 4.1.0-alpha.9
-
-  '@effectionx/stream-helpers@0.7.1':
-    resolution: {integrity: sha512-g1uQCD0MaPzXC0HSCcRMXWeiBVZSyR5FHarBul4c6gSL2hbgvjBxybWvw8SHwVVq9oSZED8XGnzenHnwo1o1Sg==}
-    engines: {node: '>= 22'}
     peerDependencies:
       effection: 4.1.0-alpha.9
 
@@ -8511,9 +8469,6 @@ packages:
   remark-stringify@11.0.0:
     resolution: {integrity: sha512-1OSmLd3awB/t8qdoEOMazZkNsfVTeY4fTsgzcQFdXNq8ToTN4ZGwrMnlda4K6smTFKD+GRV6O48i6Z4iKgPPpw==}
 
-  remeda@2.33.4:
-    resolution: {integrity: sha512-ygHswjlc/opg2VrtiYvUOPLjxjtdKvjGz1/plDhkG66hjNjFr1xmfrs2ClNFo/E6TyUFiwYNh53bKV26oBoMGQ==}
-
   require-directory@2.1.1:
     resolution: {integrity: sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==}
     engines: {node: '>=0.10.0'}
@@ -10838,10 +10793,6 @@ snapshots:
     dependencies:
       effection: 4.1.0-alpha.9
 
-  '@effectionx/node@0.2.0(effection@4.1.0-alpha.9)':
-    dependencies:
-      effection: 4.1.0-alpha.9
-
   '@effectionx/process@0.6.2':
     dependencies:
       '@types/cross-spawn': 6.0.6
@@ -10858,14 +10809,6 @@ snapshots:
     dependencies:
       effection: 4.1.0-alpha.9
       immutable: 5.1.4
-
-  '@effectionx/stream-helpers@0.7.1(effection@4.1.0-alpha.9)':
-    dependencies:
-      '@effectionx/signals': 0.5.3(effection@4.1.0-alpha.9)
-      '@effectionx/timebox': 0.4.3(effection@4.1.0-alpha.9)
-      effection: 4.1.0-alpha.9
-      immutable: 5.1.4
-      remeda: 2.33.4
 
   '@effectionx/test-adapter@0.7.4(effection@4.1.0-alpha.9)':
     dependencies:
@@ -17238,8 +17181,6 @@ snapshots:
       '@types/mdast': 4.0.4
       mdast-util-to-markdown: 2.1.2
       unified: 11.0.5
-
-  remeda@2.33.4: {}
 
   require-directory@2.1.1: {}
 

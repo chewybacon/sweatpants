@@ -48,7 +48,6 @@
     },
     "dependencies": {
         "@effectionx/worker": "catalog:",
-        "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",

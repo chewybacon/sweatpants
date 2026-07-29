@@ -247,7 +247,6 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@standard-schema/spec": "catalog:",
         "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
@@ -258,7 +257,6 @@
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "effection": "catalog:",
-        "pino": "^9.6.0",
         "zod": "catalog:"
     },
     "devDependencies": {

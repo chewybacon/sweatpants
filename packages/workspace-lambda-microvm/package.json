@@ -27,7 +27,6 @@
     },
     "dependencies": {
         "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/workspace-runtime": "workspace:*",
         "effection": "catalog:"
     },

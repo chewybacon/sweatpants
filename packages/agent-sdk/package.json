@@ -102,8 +102,6 @@
         "effection": "catalog:"
     },
     "devDependencies": {
-        "@effectionx/node": "catalog:",
-        "@effectionx/stream-helpers": "catalog:",
         "@effectionx/vitest": "catalog:",
         "@effectionx/websocket": "catalog:",
         "@effectionx/worker": "catalog:",
