@@ -1,7 +1,7 @@
 import { assertJson } from "@sweatpants/foundation";
 import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { DurableSchemaRegistryEntry } from "@sweatpants/foundation/schema-descriptor";
+import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
 import type { EffectDefinition, EffectSchemaDescriptor, EffectSchemaRole } from "./contract.ts";
 import type { Json } from "@sweatpants/foundation";
 
@@ -40,7 +40,7 @@ export type ModelSampleCancellationPartial = {
   interrupted: true;
 } & Json;
 
-const schemaEntries: DurableSchemaRegistryEntry[] = [];
+const schemaEntries: SchemaBinding[] = [];
 
 function schema(
   identity: string,
@@ -233,6 +233,6 @@ const definition: EffectDefinition<
 
 /** One canonical repeatable sampling contract used by every authored program. */
 export const MODEL_SAMPLE_EFFECT = Object.freeze(definition);
-export const MODEL_SAMPLE_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] = Object.freeze([
+export const MODEL_SAMPLE_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze([
   ...schemaEntries,
 ]);
