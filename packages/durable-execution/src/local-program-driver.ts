@@ -42,6 +42,7 @@ import type {
   ProgramShutdownReason,
   ProgramStep,
 } from "./program-driver-contract.ts";
+import { REPLAY_CHECKPOINT_CAPABILITIES } from "./program-driver-contract.ts";
 import {
   ExecutionDurableEffectRegistryContext,
   ProgramExecutionScopeContext,
@@ -123,6 +124,7 @@ export function createLocalProgramDriver(
   } = {},
 ): ProgramDriver {
   return {
+    capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     *attach(request: AttachProgramRequest): Operation<ProgramAttachment> {
       const tools = registry ?? (yield* useDurableToolRegistry());
       const key = exactProgramKey(request.program);

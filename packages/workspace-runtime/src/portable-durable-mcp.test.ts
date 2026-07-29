@@ -92,17 +92,19 @@ describe("portable durable MCP boundary contracts", () => {
       arguments: { count: 3 },
     });
     const store = new InMemoryDurableIdempotencyStore<string>();
-    await expect(store.createOrReturn(identity, "task-1")).resolves.toEqual({
-      status: "created",
-      value: "task-1",
+    await run(function* () {
+      expect(yield* store.createOrReturn(identity, "task-1")).toEqual({
+        status: "created",
+        value: "task-1",
+      });
+      expect(yield* store.createOrReturn(identity, "task-2")).toEqual({
+        status: "existing",
+        value: "task-1",
+      });
+      expect(
+        yield* store.createOrReturn({ ...identity, argumentDigest: digest("different") }, "task-3"),
+      ).toEqual({ status: "conflict" });
     });
-    await expect(store.createOrReturn(identity, "task-2")).resolves.toEqual({
-      status: "existing",
-      value: "task-1",
-    });
-    await expect(
-      store.createOrReturn({ ...identity, argumentDigest: digest("different") }, "task-3"),
-    ).resolves.toEqual({ status: "conflict" });
     expect(() => parseDurableInvocationMeta({ ...metadata, unknown: true })).toThrow(
       /Unknown or missing metadata field/,
     );

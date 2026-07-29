@@ -1,5 +1,6 @@
 import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { run } from "effection";
 import { advertiseCapability, defineAgent } from "@sweatpants/agent-sdk";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
@@ -215,31 +216,7 @@ describe("agent serving facade", () => {
       remoteDocument as unknown as Json,
       CALLER_AUTHORITATIVE_EXTENSION_URI,
     );
-    const remote = await connectRemoteExecutor({
-      source: { card: remoteServed.card, cardOrigin: "https://agent.example.test" },
-      expected: {
-        agent: definition.manifest,
-        capabilityId: "chat",
-        entrypoint: "chat",
-        program: definition.bindings.programs["chat"]!,
-      },
-      httpClient: remoteHttp,
-      urlPolicy: publicUrlPolicy,
-    });
-    expect(remote.posture).toBe("remote-executor");
-    expect(remote.manifest.manifest.inputSchema.digest).toBe(chat.manifest.inputSchema.digest);
-    const dynamic = await connectRemoteExecutor({
-      source: { card: remoteServed.card, cardOrigin: "https://agent.example.test" },
-      capabilityId: "chat",
-      httpClient: remoteHttp,
-      urlPolicy: publicUrlPolicy,
-    });
-    expect(dynamic.program.digest).toBe(chat.manifest.digest);
-    const driftedDocument = createRemoteProgramManifestDocument({
-      ...chat.manifest,
-      capabilities: { ...chat.manifest.capabilities, durableEmissions: false },
-    });
-    await expect(
+    const remote = await run(() =>
       connectRemoteExecutor({
         source: { card: remoteServed.card, cardOrigin: "https://agent.example.test" },
         expected: {
@@ -248,67 +225,103 @@ describe("agent serving facade", () => {
           entrypoint: "chat",
           program: definition.bindings.programs["chat"]!,
         },
-        httpClient: jsonClient(
-          driftedDocument as unknown as Json,
-          CALLER_AUTHORITATIVE_EXTENSION_URI,
-        ),
+        httpClient: remoteHttp,
         urlPolicy: publicUrlPolicy,
       }),
+    );
+    expect(remote.posture).toBe("remote-executor");
+    expect(remote.manifest.manifest.inputSchema.digest).toBe(chat.manifest.inputSchema.digest);
+    const dynamic = await run(() =>
+      connectRemoteExecutor({
+        source: { card: remoteServed.card, cardOrigin: "https://agent.example.test" },
+        capabilityId: "chat",
+        httpClient: remoteHttp,
+        urlPolicy: publicUrlPolicy,
+      }),
+    );
+    expect(dynamic.program.digest).toBe(chat.manifest.digest);
+    const driftedDocument = createRemoteProgramManifestDocument({
+      ...chat.manifest,
+      capabilities: { ...chat.manifest.capabilities, durableEmissions: false },
+    });
+    await expect(
+      run(() =>
+        connectRemoteExecutor({
+          source: { card: remoteServed.card, cardOrigin: "https://agent.example.test" },
+          expected: {
+            agent: definition.manifest,
+            capabilityId: "chat",
+            entrypoint: "chat",
+            program: definition.bindings.programs["chat"]!,
+          },
+          httpClient: jsonClient(
+            driftedDocument as unknown as Json,
+            CALLER_AUTHORITATIVE_EXTENSION_URI,
+          ),
+          urlPolicy: publicUrlPolicy,
+        }),
+      ),
     ).rejects.toMatchObject({ code: "remote_contract_mismatch" });
 
-    const standard = await connectStandardAgent({
-      source: { card: remoteServed.card, cardOrigin: "https://agent.example.test" },
-      skillId: "chat",
-      principalId: "principal",
-      minimumGuarantee: "task_handle_only",
-      urlPolicy: publicUrlPolicy,
-      expected: {
-        agentName: definition.manifest.identity.name,
-        capabilityId: "chat",
-        cardDigest: canonicalSnapshot(remoteServed.card).sha,
-      },
-    });
-    expect(standard.posture).toBe("standard-a2a");
-    expect(() => requireRemoteExecutorHandle(standard as never)).toThrowError(
-      expect.objectContaining({ code: "remote_posture_mismatch" }),
-    );
-    await expect(
+    const standard = await run(() =>
       connectStandardAgent({
         source: { card: remoteServed.card, cardOrigin: "https://agent.example.test" },
         skillId: "chat",
         principalId: "principal",
         minimumGuarantee: "task_handle_only",
         urlPolicy: publicUrlPolicy,
-        expected: { cardDigest: "0".repeat(64) },
+        expected: {
+          agentName: definition.manifest.identity.name,
+          capabilityId: "chat",
+          cardDigest: canonicalSnapshot(remoteServed.card).sha,
+        },
       }),
+    );
+    expect(standard.posture).toBe("standard-a2a");
+    expect(() => requireRemoteExecutorHandle(standard as never)).toThrowError(
+      expect.objectContaining({ code: "remote_posture_mismatch" }),
+    );
+    await expect(
+      run(() =>
+        connectStandardAgent({
+          source: { card: remoteServed.card, cardOrigin: "https://agent.example.test" },
+          skillId: "chat",
+          principalId: "principal",
+          minimumGuarantee: "task_handle_only",
+          urlPolicy: publicUrlPolicy,
+          expected: { cardDigest: "0".repeat(64) },
+        }),
+      ),
     ).rejects.toMatchObject({ code: "remote_contract_mismatch" });
   });
 
   it("connects a peer only after exact requirement and caller-handler preflight", async () => {
     const peerServed = serveAgent(definition, peerProfile);
     const requirement = peerServed.requirements["chat"]!;
-    const peer = await connectPeerAgent({
-      source: { card: peerServed.card, cardOrigin: "https://agent.example.test" },
-      skillId: "chat",
-      principalId: "caller",
-      derivationKey: "peer-derivation-key-with-at-least-32-bytes",
-      localIdentity: { taskId: "local-task" },
-      calleeIdentity: "facade-agent",
-      effectRegistry: createDurableEffectRegistry([modelHandler]),
-      routes: {
-        "model.sample": {
-          contractDigest: requirement.requirements[0]!.contract.contractDigest,
-          route: "caller",
-          delegation: { mode: "none" },
+    const peer = await run(() =>
+      connectPeerAgent({
+        source: { card: peerServed.card, cardOrigin: "https://agent.example.test" },
+        skillId: "chat",
+        principalId: "caller",
+        derivationKey: "peer-derivation-key-with-at-least-32-bytes",
+        localIdentity: { taskId: "local-task" },
+        calleeIdentity: "facade-agent",
+        effectRegistry: createDurableEffectRegistry([modelHandler]),
+        routes: {
+          "model.sample": {
+            contractDigest: requirement.requirements[0]!.contract.contractDigest,
+            route: "caller",
+            delegation: { mode: "none" },
+          },
         },
-      },
-      httpClient: jsonClient(
-        requirement as unknown as Json,
-        `${SWEATPANTS_PEER_PROFILE_URI}, ${DELEGATED_EFFECTS_EXTENSION_URI}`,
-      ),
-      urlPolicy: publicUrlPolicy,
-      now: new Date("2030-01-01T00:00:00.000Z"),
-    });
+        httpClient: jsonClient(
+          requirement as unknown as Json,
+          `${SWEATPANTS_PEER_PROFILE_URI}, ${DELEGATED_EFFECTS_EXTENSION_URI}`,
+        ),
+        urlPolicy: publicUrlPolicy,
+        now: new Date("2030-01-01T00:00:00.000Z"),
+      }),
+    );
     expect(peer.posture).toBe("sweatpants-peer");
     expect(peer.pin.requirementManifest.manifestDigest).toBe(requirement.manifestDigest);
   });

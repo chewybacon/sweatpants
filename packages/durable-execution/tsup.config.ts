@@ -10,7 +10,6 @@ export default defineConfig({
     "program-authoring": "src/program-authoring.ts",
     "program-authoring-runtime": "src/program-authoring-runtime.ts",
     "program-identity": "src/program-identity.ts",
-    "program-driver": "src/program-driver.ts",
     runtime: "src/runtime.ts",
     testing: "src/testing.ts",
   },

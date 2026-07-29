@@ -3,6 +3,7 @@ import type { Operation } from "effection";
 import { foreignToolAdapterChild } from "@sweatpants/tool-session/foreign";
 import {
   createLocalProgramDriver,
+  REPLAY_CHECKPOINT_CAPABILITIES,
   type AttachProgramRequest,
   type ProgramAttachment,
   type ProgramCommand,
@@ -28,6 +29,7 @@ export function createWorkerDurableProgramDriver(
   transport: DurableWorkerProgramTransport,
 ): ProgramDriver {
   return {
+    capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     *attach(request) {
       const attachment = yield* transport.attach(request);
       return { ...attachment, driverKind: "worker" };

@@ -279,6 +279,7 @@ export function createAcceptanceApplication(
             registry: durableRegistry,
           });
       const durableDriver: ProgramDriver = {
+        capabilities: concreteDurableDriver.capabilities,
         *attach(request) {
           const attachment = yield* concreteDurableDriver.attach(request);
           durableWorker.activeAttachments += 1;

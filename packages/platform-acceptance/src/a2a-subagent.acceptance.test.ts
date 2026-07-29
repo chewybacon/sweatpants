@@ -110,6 +110,7 @@ async function invokeStructuredChild(binding: Binding, posture: Posture): Promis
                 manifest: createRegistryManifestProvider(registry),
               });
               return {
+                capabilities: network.capabilities,
                 *attach(request) {
                   const started = yield* call(() => ready);
                   return yield* network.attach({
