@@ -13,7 +13,6 @@ import {
   assertJson,
   canonicalSnapshot,
   exactProgramKey,
-  FOREIGN_TOOL_ADAPTER_PROGRAM,
   stableProgramAttachmentId,
   validateDurableEffectBindings,
   type DurableProgramManifest,
@@ -28,6 +27,7 @@ import {
   type ProgramRunResult,
   type WireElicitResultJson,
 } from "@sweatpants/session-contract";
+import { FOREIGN_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/foreign";
 import {
   ExecutionDurableEffectRegistryContext,
   ProgramDriverRegistryContext,

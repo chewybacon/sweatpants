@@ -28,11 +28,11 @@ import {
   parseDurableAuthoritySnapshot,
   signCapability,
   stableProgramAttachmentId,
-  createDurableSchemaRegistry,
   type AttachProgramRequest,
   type DurableProgramManifest,
   type Json,
 } from "../index.ts";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { anyGuard, booleanGuard, createSchemaFixture, stringGuard } from "../testing/index.ts";
 
 const programInput = createSchemaFixture(

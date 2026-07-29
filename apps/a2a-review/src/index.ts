@@ -28,13 +28,15 @@ import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
-  createPortableSchemaDescriptor,
   generateProgramArtifactIdentity,
   sha256,
-  type DurableSchemaRegistryEntry,
   type Json,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import {
+  createPortableSchemaDescriptor,
+  type SchemaBinding,
+} from "@sweatpants/foundation/schema-descriptor";
 import { defineReviewerProgram, type ReviewInput } from "./reviewer-program.ts";
 import { REFERENCE_REVIEWER_ARTIFACT_DIGEST } from "./reviewer-artifact.generated.ts";
 
@@ -255,14 +257,13 @@ export function createAskParentRegistration(options: {
   );
 }
 
-export const REFERENCE_ASK_PARENT_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] =
-  Object.freeze([
-    { descriptor: ASK_PROGRAM_INPUT_DESCRIPTOR, schema: askInputSchema },
-    { descriptor: ASK_PROGRAM_OUTPUT_DESCRIPTOR, schema: askOutputSchema },
-    { descriptor: ASK_INPUT_DESCRIPTOR, schema: askInputSchema },
-    { descriptor: ASK_OUTPUT_DESCRIPTOR, schema: askOutputSchema },
-    { descriptor: ASK_PARTIAL_DESCRIPTOR, schema: askPartialSchema },
-  ]);
+export const REFERENCE_ASK_PARENT_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze([
+  { descriptor: ASK_PROGRAM_INPUT_DESCRIPTOR, schema: askInputSchema },
+  { descriptor: ASK_PROGRAM_OUTPUT_DESCRIPTOR, schema: askOutputSchema },
+  { descriptor: ASK_INPUT_DESCRIPTOR, schema: askInputSchema },
+  { descriptor: ASK_OUTPUT_DESCRIPTOR, schema: askOutputSchema },
+  { descriptor: ASK_PARTIAL_DESCRIPTOR, schema: askPartialSchema },
+]);
 
 const askParentProgramManifest = {
   programId: "reference.review.ask-parent-tool",

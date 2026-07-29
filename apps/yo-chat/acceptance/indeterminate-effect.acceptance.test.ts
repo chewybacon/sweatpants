@@ -28,11 +28,11 @@ import {
   type ProgramDriverJournalStore,
 } from "@sweatpants/framework/server";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
+import { type DurableSemanticRecord } from "@sweatpants/session-contract";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
-  type DurableSemanticRecord,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/tool-session/foreign";
 import { bookFlightTool } from "../src/tools/book-flight/tool.ts";
 
 const model: Model = {

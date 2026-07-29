@@ -1,9 +1,5 @@
-import {
-  canonicalJson,
-  canonicalSnapshot,
-  sha256,
-  type PinnedProgram,
-} from "@sweatpants/session-contract";
+import { canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import { type PinnedProgram } from "@sweatpants/durable-execution";
 
 import {
   bindResourcePackage,

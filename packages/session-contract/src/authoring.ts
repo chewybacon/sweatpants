@@ -2,12 +2,11 @@ import { CrankError, PullApplicationError } from "@sweatpants/durable-execution"
 import type { Operation } from "effection";
 
 import { canonicalSnapshot } from "./canonical.ts";
-import { foreignToolAdapterChild } from "./foreign-tool-contract.ts";
+import { foreignToolAdapterChild } from "@sweatpants/tool-session/foreign";
 import {
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,
-  type PortableSchemaRole,
-} from "./schema-descriptor.ts";
+} from "@sweatpants/foundation/schema-descriptor";
 import { type Json, type SerializedApplicationError } from "./types.ts";
 import type {
   DurableChildDescriptor,
@@ -480,7 +479,7 @@ function snapshotChild(child: DurableChildDescriptor): DurableChildDescriptor {
 
 function validateDescriptorField(
   descriptor: PortableSchemaDescriptor,
-  role: PortableSchemaRole,
+  role: string,
   path: string,
 ): void {
   let parsed: PortableSchemaDescriptor;

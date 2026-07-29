@@ -1,5 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
+import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 
 import { assertInlineSize, DEFAULT_MAX_INLINE_BYTES } from "./authoring.ts";
 import {
@@ -7,13 +8,13 @@ import {
   NULL_RESULT_SCHEMA_DESCRIPTOR,
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,
-} from "./schema-descriptor.ts";
+} from "@sweatpants/foundation/schema-descriptor";
 import {
   createDurableSchemaRegistry,
   validateRegisteredSchema,
   type DurableSchemaRegistry,
   type RegistrySchemaValidation,
-} from "./schema-registry.ts";
+} from "@sweatpants/journal-authority/schema-registry";
 import {
   signCapability,
   signPrivateAuthorityToken,
@@ -364,7 +365,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       maxOutcomeBytes: options.maxOutcomeBytes ?? DEFAULT_MAX_INLINE_BYTES,
       ...(normalizedEmissionPolicy ? { emissionPolicy: normalizedEmissionPolicy } : {}),
     };
-    this.#schemas = schemaRegistry ?? createDurableSchemaRegistry();
+    this.#schemas = schemaRegistry ?? createDurableSchemaRegistry(foreignToolSchemaEntries());
     if (options.snapshot) {
       this.#restore(options.snapshot);
     }

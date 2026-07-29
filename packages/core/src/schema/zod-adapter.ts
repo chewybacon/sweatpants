@@ -1,14 +1,12 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import {
-  assertJson,
   createPortableSchemaDescriptor,
-  type DurableSchemaRegistryEntry,
-  type Json,
+  type SchemaBinding,
   type PortableSchemaDescriptor,
-  type PortableSchemaRole,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/foundation/schema-descriptor";
 
 /**
  * First-party Zod → Standard Schema adapter.
@@ -27,7 +25,7 @@ export interface PortableSchemaOptions {
   /** Explicit semantic schema identity, e.g. `yo-chat.pick-card/input`. */
   readonly identity: string;
   /** Acceptance-boundary role for this schema. */
-  readonly role: PortableSchemaRole;
+  readonly role: string;
   /**
    * Explicit semantic schema version. Changing refinements, transforms,
    * defaults, coercions, or any other validator behavior REQUIRES a new
@@ -49,7 +47,7 @@ export interface PortableSchemaOptions {
 /** Result of lowering one runtime schema: portable descriptor + registry entry. */
 export interface LoweredSchema {
   readonly descriptor: PortableSchemaDescriptor;
-  readonly entry: DurableSchemaRegistryEntry;
+  readonly entry: SchemaBinding;
 }
 
 /** True when a value exposes the Standard Schema V1 validation interface. */

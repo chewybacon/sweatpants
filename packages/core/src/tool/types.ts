@@ -3,9 +3,9 @@ import type { Operation } from "effection";
 import type { z, ZodSchema } from "zod";
 
 import type {
-  DurableSchemaRegistryEntry,
+  SchemaBinding,
   PortableSchemaDescriptor,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/foundation/schema-descriptor";
 
 /** Portable descriptors for one declared elicitation (content-schema semantics). */
 export interface ToolElicitSchemaArtifact {
@@ -25,7 +25,7 @@ export interface ToolSchemaArtifacts {
   readonly output?: PortableSchemaDescriptor;
   readonly elicits: Readonly<Record<string, ToolElicitSchemaArtifact>>;
   /** Runtime validators; never persisted or transported. */
-  readonly catalog: readonly DurableSchemaRegistryEntry[];
+  readonly catalog: readonly SchemaBinding[];
 }
 
 // =============================================================================

@@ -1,6 +1,6 @@
 import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/durable-effects";
 import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
-import { type EffectDefinition } from "@sweatpants/session-contract";
+import { type EffectDefinition } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -8,8 +8,8 @@ import type { Operation } from "effection";
 import { z, type ZodSchema } from "zod";
 import { canonicalJson, sha256, sortStrings } from "@sweatpants/foundation";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
+import { type Json } from "@sweatpants/foundation";
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
@@ -18,12 +18,14 @@ import {
   generateProgramArtifactIdentity,
   type DurableProgramContext,
   type DurableProgramManifest,
-  type DurableSchemaRegistryEntry,
   type DurableTool,
-  type Json,
-  type PortableSchemaDescriptor,
   type WireElicitResultJson,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+import {
+  type SchemaBinding,
+  type PortableSchemaDescriptor,
+} from "@sweatpants/foundation/schema-descriptor";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import { effectCatalogEntries } from "./durable-effect.ts";
@@ -370,7 +372,7 @@ function builder(state: BuilderState): unknown {
       const version = state.identity?.version ?? state.version!;
       const description = state.description!;
       const normalizedElicits = normalizeElicits(state.elicits ?? {});
-      const catalog: DurableSchemaRegistryEntry[] = [];
+      const catalog: SchemaBinding[] = [];
       const identityPrefix = `program:${state.name}`;
 
       const input = toPortableSchema(parameters, {

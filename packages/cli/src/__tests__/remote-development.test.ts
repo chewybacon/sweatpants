@@ -6,7 +6,6 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
   createPinnedDurableProgram,
@@ -14,6 +13,7 @@ import {
   sha256Bytes,
   type DurableTool,
 } from "@sweatpants/session-contract";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 
 import { defineConfig, definePrograms } from "../config.ts";
 import {

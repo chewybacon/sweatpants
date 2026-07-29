@@ -7,7 +7,7 @@
  */
 
 import type { Operation } from "effection";
-import type { PortableSchemaDescriptor } from "./schema-descriptor.ts";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
 import type {
   DurableEffectAuthorization as CanonicalDurableEffectAuthorization,
   DurableEffectContext as CanonicalDurableEffectContext,

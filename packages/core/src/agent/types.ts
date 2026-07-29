@@ -1,12 +1,12 @@
-import { type EffectDefinition } from "@sweatpants/session-contract";
+import { type EffectDefinition } from "@sweatpants/durable-effects";
 
+import type { Json } from "@sweatpants/foundation";
 import type {
-  DurableSchemaRegistryEntry,
   DurableTool,
-  Json,
   PinnedProgram,
   ProgramIdentityProvenanceV1,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
 import type { ResourcePackage, ResourceReaderPrograms } from "../resource/index.ts";
 
 export const AGENT_MANIFEST_FORMAT = "sweatpants.agent-manifest.v1" as const;
@@ -50,7 +50,7 @@ export interface AgentManifestV1 {
 // oxlint-disable-next-line typescript-eslint/no-explicit-any
 export interface AgentProgramBinding<I extends Json = any, O extends Json = Json> {
   readonly program: DurableTool<I, O>;
-  readonly schemas: readonly DurableSchemaRegistryEntry[];
+  readonly schemas: readonly SchemaBinding[];
   readonly resources: readonly ResourcePackage[];
   readonly readers?: ResourceReaderPrograms;
 }
@@ -64,7 +64,7 @@ export interface AgentRuntimeBindings {
   readonly conversation?: AgentProgramBinding;
   readonly programs: Readonly<Record<string, AgentProgramBinding>>;
   readonly effects: Readonly<Record<string, EffectDefinition<Json, Json, Json>>>;
-  readonly schemas: readonly DurableSchemaRegistryEntry[];
+  readonly schemas: readonly SchemaBinding[];
   readonly resources: readonly ResourcePackage[];
 }
 

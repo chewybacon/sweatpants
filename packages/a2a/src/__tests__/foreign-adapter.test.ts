@@ -1,10 +1,7 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import {
-  FOREIGN_TOOL_ADAPTER_PROGRAM,
-  canonicalSnapshot,
-  type Json,
-} from "@sweatpants/session-contract";
+import { canonicalSnapshot, type Json } from "@sweatpants/session-contract";
+import { FOREIGN_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/foreign";
 import {
   DURABLE_INVOCATION_EXTENSION_URI,
   FOREIGN_A2A_ADAPTER_PROGRAM,

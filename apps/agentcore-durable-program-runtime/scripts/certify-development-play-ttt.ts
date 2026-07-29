@@ -15,10 +15,10 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   createProgramDriverRegistry,

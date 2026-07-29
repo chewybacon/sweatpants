@@ -9,14 +9,14 @@ import {
   ProgramRuntime,
   assertJson,
   createCapabilityKeyring,
-  createDurableSchemaRegistry,
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
-  createPortableSchemaDescriptor,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
+import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
 import {
   DELEGATED_EFFECTS_EXTENSION_URI,
   SWEATPANTS_PEER_PROFILE_URI,

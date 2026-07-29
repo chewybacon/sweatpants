@@ -1,10 +1,9 @@
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import {
-  canonicalJson,
   generateProgramArtifactIdentity,
-  sha256,
   type GeneratedProgramArtifactIdentityV1,
   type ProgramArtifactIdentityInputV1,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
 
 import {
   binaryResource,

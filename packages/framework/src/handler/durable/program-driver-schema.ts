@@ -3,14 +3,15 @@ import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/du
 import {
   assertJson,
   canonicalSnapshot,
-  createPortableSchemaDescriptor,
   defineDurableProgramManifest,
-  standardSchemaOf,
-  type DurableSchemaRegistryEntry,
   type Json,
-  type PortableSchemaDescriptor,
-  type PortableSchemaRole,
 } from "@sweatpants/session-contract";
+import {
+  createPortableSchemaDescriptor,
+  standardSchemaOf,
+  type SchemaBinding,
+  type PortableSchemaDescriptor,
+} from "@sweatpants/foundation/schema-descriptor";
 import type { NativeProgramIdentity as NativeIdentity } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 
 export type ThinCatalogEntry =
@@ -36,11 +37,11 @@ export type ChatProgramInput = ChatSampleRequest & {
 
 type ChatSampleRequest = ModelSampleRequest;
 
-const chatEngineSchemaEntries: DurableSchemaRegistryEntry[] = [];
+const chatEngineSchemaEntries: SchemaBinding[] = [];
 
 function chatEngineSchema(
   identity: string,
-  role: PortableSchemaRole,
+  role: string,
   projection: Json,
   guard: (value: unknown) => string | undefined,
 ): PortableSchemaDescriptor {
@@ -155,6 +156,6 @@ export const manifest = defineDurableProgramManifest<ChatProgramInput, string>({
  * model-sampling effect. Deployments merge these with their generated tool
  * catalogs into the journal authority's schema registry.
  */
-export function programDriverChatEngineSchemaEntries(): readonly DurableSchemaRegistryEntry[] {
+export function programDriverChatEngineSchemaEntries(): readonly SchemaBinding[] {
   return [...MODEL_SAMPLE_SCHEMA_ENTRIES, ...chatEngineSchemaEntries];
 }

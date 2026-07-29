@@ -8,10 +8,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/core";
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
   DurableEffectRegistryContext,
   withJournalAuthority,
-  NULL_RESULT_SCHEMA_DESCRIPTOR,
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
@@ -19,12 +17,14 @@ import {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   defineDurableProgramManifest,
-  foreignToolAdapter,
   type AttachProgramRequest,
   type ForeignToolRequest,
   type Json,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import { foreignToolAdapter } from "@sweatpants/tool-session/foreign";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+import { NULL_RESULT_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 import {
   createInMemoryToolSessionStore,
   createLocalDurableProgramDriver,

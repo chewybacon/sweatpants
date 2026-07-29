@@ -1,16 +1,13 @@
-import { type EffectDefinition } from "@sweatpants/session-contract";
+import { type EffectDefinition } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
+import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import {
-  canonicalJson,
-  canonicalSnapshot,
-  sha256,
   validateEffectDefinition,
   validateProgramIdentityProvenance,
-  type DurableSchemaRegistryEntry,
-  type Json,
   type ProgramIdentityProvenanceV1,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
 import { sortedResourceValues, type ResourcePackage } from "../resource/index.ts";
 import {
   AGENT_MANIFEST_DOMAIN,
@@ -220,7 +217,7 @@ function normalizeBinding(input: AgentProgramInput, releaseStrict = false): Agen
 
 function validateSchemaCoverage(
   program: ErasedDurableTool,
-  schemas: readonly DurableSchemaRegistryEntry[],
+  schemas: readonly SchemaBinding[],
 ): void {
   const installed = new Set(schemas.map((entry) => entry.descriptor.digest));
   const manifest = program.manifest;
@@ -268,8 +265,8 @@ function aggregateEffects(
   return result;
 }
 
-function aggregateSchemas(bindings: readonly AgentProgramBinding[]): DurableSchemaRegistryEntry[] {
-  const byDigest = new Map<string, DurableSchemaRegistryEntry>();
+function aggregateSchemas(bindings: readonly AgentProgramBinding[]): SchemaBinding[] {
+  const byDigest = new Map<string, SchemaBinding>();
   for (const binding of bindings) {
     for (const entry of binding.schemas) {
       byDigest.set(entry.descriptor.digest, entry);
@@ -405,10 +402,10 @@ function isDurableTool(value: unknown): value is ErasedDurableTool {
     typeof value["program"] === "function",
   );
 }
-function programSchemas(program: ErasedDurableTool): DurableSchemaRegistryEntry[] {
+function programSchemas(program: ErasedDurableTool): SchemaBinding[] {
   const value = program as ErasedDurableTool & {
-    readonly schemaCatalog?: readonly DurableSchemaRegistryEntry[];
-    readonly artifacts?: { readonly catalog?: readonly DurableSchemaRegistryEntry[] };
+    readonly schemaCatalog?: readonly SchemaBinding[];
+    readonly artifacts?: { readonly catalog?: readonly SchemaBinding[] };
   };
   return [...(value.schemaCatalog ?? value.artifacts?.catalog ?? [])];
 }

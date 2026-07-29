@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   type ProgramArtifactIdentityInputV1,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 
 import { generateProgramIdentityModule } from "../index.ts";
 

@@ -5,6 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     contract: "src/contract.ts",
     "event-log": "src/event-log.ts",
+    foreign: "src/foreign.ts",
   },
   tsconfig: "../ts-config/tsconfig.tsup.json",
   format: ["cjs", "esm"],

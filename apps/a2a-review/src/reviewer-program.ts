@@ -4,13 +4,15 @@ import { type EffectDefinition } from "@sweatpants/session-contract";
 import {
   canonicalSnapshot,
   createPinnedDurableProgram,
-  createPortableSchemaDescriptor,
-  foreignToolSchemaEntries,
   type DurableProgramContext,
-  type DurableSchemaRegistryEntry,
   type Json,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
+import {
+  createPortableSchemaDescriptor,
+  type SchemaBinding,
+} from "@sweatpants/foundation/schema-descriptor";
 
 export type ReviewInput = { design: string; rubric: string; instructions: string };
 export type ReviewOutput = { review: Json };
@@ -61,7 +63,7 @@ const REVIEW_OUTPUT_DESCRIPTOR = descriptor("reference-review/reviewer-output", 
 export function defineReviewerProgram(options: {
   readonly artifactDigest: string;
   readonly askParentEffect: EffectDefinition<Json, Json, Json>;
-  readonly askParentSchemas: readonly DurableSchemaRegistryEntry[];
+  readonly askParentSchemas: readonly SchemaBinding[];
 }) {
   const tool = createPinnedDurableProgram(
     {
@@ -81,7 +83,7 @@ export function defineReviewerProgram(options: {
       return yield* reviewerGenerator(input, context, options.askParentEffect);
     },
   );
-  const schemaEntries: readonly DurableSchemaRegistryEntry[] = Object.freeze([
+  const schemaEntries: readonly SchemaBinding[] = Object.freeze([
     ...foreignToolSchemaEntries(),
     ...options.askParentSchemas,
     { descriptor: REVIEW_INPUT_DESCRIPTOR, schema: reviewInputSchema },

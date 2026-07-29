@@ -1,3 +1,4 @@
+import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
 import { CrankError } from "@sweatpants/durable-execution";
 import { all, type Operation } from "effection";
 
@@ -6,8 +7,7 @@ import { createCapabilityKeyring, type CapabilityKeyring } from "../capabilities
 import {
   createDurableSchemaRegistry,
   type DurableSchemaRegistry,
-  type DurableSchemaRegistryEntry,
-} from "../schema-registry.ts";
+} from "@sweatpants/journal-authority/schema-registry";
 
 import {
   anyGuard,
@@ -222,8 +222,8 @@ const conformanceMutateOutput = createSchemaFixture(
 );
 
 /** Registry entries required by every backend running the conformance corpus. */
-export const JOURNAL_AUTHORITY_CONFORMANCE_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] =
-  Object.freeze([
+export const JOURNAL_AUTHORITY_CONFORMANCE_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze(
+  [
     conformanceProgramInput.entry,
     conformanceProgramOutput.entry,
     conformanceApprovalResponse.entry,
@@ -231,7 +231,8 @@ export const JOURNAL_AUTHORITY_CONFORMANCE_SCHEMA_ENTRIES: readonly DurableSchem
     conformanceEchoOutput.entry,
     conformanceMutateInput.entry,
     conformanceMutateOutput.entry,
-  ]);
+  ],
+);
 
 const idempotentManifest: DurableProgramManifest = {
   programId: "conformance.authority",

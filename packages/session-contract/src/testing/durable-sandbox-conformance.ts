@@ -1,7 +1,7 @@
 import type { Operation } from "effection";
 
 import { createCapabilityKeyring, type CapabilityKeyring } from "../capabilities.ts";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "../schema-descriptor.ts";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
 import type {
   ClaimActivationRequest,
   ClaimActivationResult,

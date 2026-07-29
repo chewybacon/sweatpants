@@ -15,19 +15,22 @@
  * ## Usage
  *
  * ```typescript
- * import { createMcpHandler } from './handler'
+ * import {
+  createMcpHandler } from './handler'
  * import { createSessionRegistry } from '../session/index.ts'
  *
  * const registry = createSessionRegistry(store)
- * const tools = new Map([['my_tool', myTool]])
+ * const tools = new Map([['my_tool',
+  myTool]])
  *
  * const { handler } = createMcpHandler({
  *   registry,
- *   tools,
- * })
+  *   tools,
+  * })
  *
  * // Use with any HTTP framework
- * app.all('/mcp', handler)
+ * app.all('/mcp',
+  handler)
  * ```
  *
  * @packageDocumentation

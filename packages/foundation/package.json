@@ -63,6 +63,17 @@
                 "default": "./dist/schema-descriptor.js"
             },
             "default": "./src/schema-descriptor.ts"
+        },
+        "./schema-validation": {
+            "development": {
+                "import": "./src/schema-validation.ts",
+                "types": "./src/schema-validation.ts"
+            },
+            "import": {
+                "types": "./dist/schema-validation.d.ts",
+                "default": "./dist/schema-validation.js"
+            },
+            "default": "./src/schema-validation.ts"
         }
     },
     "scripts": {

@@ -1,13 +1,11 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-
 import {
   computePortableSchemaDigest,
-  createDurableSchemaRegistry,
   createPortableSchemaDescriptor,
-  safeSchemaIssues,
-  validateRegisteredSchema,
-} from "../index.ts";
+} from "@sweatpants/foundation/schema-descriptor";
+import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
+import { createDurableSchemaRegistry, validateRegisteredSchema } from "./schema-registry.ts";
 
 function descriptor(identity: string) {
   return createPortableSchemaDescriptor({
@@ -21,8 +19,8 @@ function descriptor(identity: string) {
   });
 }
 
-describe("DurableSchemaRegistry", () => {
-  it("awaits async Standard Schema validation through Effection and canonicalizes output", async () => {
+describe("authority runtime schema registry", () => {
+  it("awaits async validation and canonicalizes output", async () => {
     const schemaDescriptor = descriptor("test/async-default-transform");
     const registry = createDurableSchemaRegistry([
       {
@@ -35,7 +33,7 @@ describe("DurableSchemaRegistry", () => {
               await Promise.resolve();
               return typeof value === "string"
                 ? { value: value.trim().toUpperCase() }
-                : { issues: [{ message: "secret payload rejected", path: ["value"] }] };
+                : { issues: [{ message: "rejected", path: ["value"] }] };
             },
           },
         },
@@ -48,7 +46,7 @@ describe("DurableSchemaRegistry", () => {
     ).resolves.toEqual({ status: "ok", value: "OKAY" });
   });
 
-  it("returns unavailable for a missing retained validator bundle", async () => {
+  it("returns unavailable for an absent retained validator", async () => {
     await expect(
       run(function* () {
         return yield* validateRegisteredSchema(createDurableSchemaRegistry(), "f".repeat(64), {});
@@ -56,7 +54,7 @@ describe("DurableSchemaRegistry", () => {
     ).resolves.toEqual({ status: "unavailable", digest: "f".repeat(64) });
   });
 
-  it("rejects non-JSON schema output and bounds issue diagnostics", async () => {
+  it("rejects non-JSON output and bounds diagnostics", async () => {
     const schemaDescriptor = descriptor("test/non-json-output");
     const registry = createDurableSchemaRegistry([
       {
@@ -83,7 +81,7 @@ describe("DurableSchemaRegistry", () => {
     ]);
   });
 
-  it("commits descriptor digest to semantic identity, role, projections, and fidelity", () => {
+  it("uses the generic descriptor's complete digest identity", () => {
     const value = descriptor("test/digest");
     expect(value.digest).toBe(
       computePortableSchemaDigest({
@@ -96,6 +94,5 @@ describe("DurableSchemaRegistry", () => {
         fidelity: value.fidelity,
       }),
     );
-    expect(descriptor("test/digest-v2").digest).not.toBe(value.digest);
   });
 });

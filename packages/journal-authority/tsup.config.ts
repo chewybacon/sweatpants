@@ -6,6 +6,7 @@ export default defineConfig({
     memory: "src/memory.ts",
     api: "src/api.ts",
     "metrics-middleware": "src/metrics-middleware.ts",
+    "schema-registry": "src/schema-registry.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

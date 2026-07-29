@@ -3,7 +3,7 @@ import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   standardSchemaOf,
-  type DurableSchemaRegistryEntry,
+  type SchemaBinding,
   type PortableSchemaDescriptor,
 } from "@sweatpants/foundation/schema-descriptor";
 import { sortedResourceValues, type DataClassification } from "@sweatpants/core";
@@ -98,7 +98,7 @@ const resultDescriptor = descriptor("sweatpants.chat-turn/result", "program_outp
 export const CHAT_TURN_INPUT_DESCRIPTOR = inputDescriptor;
 export const CHAT_TURN_RESULT_DESCRIPTOR = resultDescriptor;
 
-export const CHAT_CONTRACT_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] = Object.freeze([
+export const CHAT_CONTRACT_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze([
   entry(inputDescriptor, (value) => normalizeChatTurnInput(value) as unknown as Json),
   entry(resultDescriptor, (value) => normalizeChatTurnResult(value) as unknown as Json),
 ]);
@@ -302,7 +302,7 @@ function descriptor(
 function entry(
   descriptorValue: PortableSchemaDescriptor,
   normalize: (value: unknown) => Json,
-): DurableSchemaRegistryEntry {
+): SchemaBinding {
   return {
     descriptor: descriptorValue,
     schema: standardSchemaOf("sweatpants", (value) => {

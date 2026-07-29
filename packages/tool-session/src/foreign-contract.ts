@@ -1,19 +1,17 @@
-import { assertJson } from "./canonical.ts";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   type PortableSchemaDescriptor,
-  type PortableSchemaRole,
-} from "./schema-descriptor.ts";
+} from "@sweatpants/foundation/schema-descriptor";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
   DurableChildDescriptor,
-  EffectDefinition,
   ForeignToolContinueRequest,
   ForeignToolRequest,
   ForeignToolDisposition,
-} from "./durable-types.ts";
+} from "@sweatpants/durable-execution";
+import type { EffectDefinition } from "@sweatpants/durable-effects";
 import { MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
-import type { Json } from "./types.ts";
 
 /** Pinned identity of the built-in foreign-tool adapter program. */
 export const FOREIGN_TOOL_ADAPTER_PROGRAM = Object.freeze({
@@ -32,7 +30,7 @@ const FOREIGN_DURABILITIES = [
 
 function builtinDescriptor(
   identity: string,
-  role: PortableSchemaRole,
+  role: string,
   projection: Json,
 ): PortableSchemaDescriptor {
   return createPortableSchemaDescriptor({

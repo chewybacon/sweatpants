@@ -6,10 +6,9 @@ import {
   createDurableProgramContext,
   createDurableToolRegistry,
   createLocalProgramDriver,
-  sha256,
-  type ProgramResume,
-  type ProgramStepProposal,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-execution";
+import { sha256 } from "@sweatpants/foundation";
+import { type ProgramResume, type ProgramStepProposal } from "@sweatpants/durable-execution";
 
 import { createDurableTool } from "../durable-create.ts";
 import { defineDurableContextExtension } from "../durable-context-extension.ts";

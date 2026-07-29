@@ -15,18 +15,18 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableSchemaRegistry,
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   type DurableProgramManifest,
-  type DurableSchemaRegistryEntry,
   type DurableSemanticRecord,
   type Json,
   type ProgramDriver,
   type ProgramRoute,
   type ProgramRunResult,
 } from "../index.ts";
+import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { booleanGuard, createSchemaFixture, nullGuard, stringGuard } from "./schema-fixtures.ts";
 
 /** Dependencies for exercising one driver across park, snapshot, and recovery. */
@@ -114,16 +114,15 @@ const cleanupOutput = createSchemaFixture(
 );
 
 /** Registry entries for every fixture descriptor used by the driver harness. */
-export const DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] =
-  Object.freeze([
-    echoInput.entry,
-    echoOutput.entry,
-    programInput.entry,
-    programOutput.entry,
-    approvalResponse.entry,
-    cleanupInput.entry,
-    cleanupOutput.entry,
-  ]);
+export const DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze([
+  echoInput.entry,
+  echoOutput.entry,
+  programInput.entry,
+  programOutput.entry,
+  approvalResponse.entry,
+  cleanupInput.entry,
+  cleanupOutput.entry,
+]);
 
 const echoDefinition = defineDurableEffect<string, string>({
   name: "echo",
