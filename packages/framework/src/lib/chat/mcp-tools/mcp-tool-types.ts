@@ -50,7 +50,7 @@ import type {
   ToolElicitResult as CoreToolElicitResult,
   WireElicitResult as CoreWireElicitResult,
   ToolMessage,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 import type { McpMessage } from "./protocol/types.js";
 
 // Re-export MCP types for convenience
@@ -1332,4 +1332,4 @@ export class McpDisconnectError extends Error {
   }
 }
 
-export type { ElicitExchange, SampleExchange } from "@sweatpants/core";
+export type { ElicitExchange, SampleExchange } from "@sweatpants/agent-sdk";

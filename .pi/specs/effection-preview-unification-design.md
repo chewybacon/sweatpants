@@ -113,7 +113,7 @@ Update the entire `pnpm` workspace so every direct and transitive `effection` de
   - Expected: no matches for legacy installed versions or direct legacy ranges.
 - `pnpm check`
 - Targeted tests for Effection-heavy packages, preferably:
-  - `pnpm -C packages/core test`
+  - `pnpm -C packages/agent-sdk test`
   - `pnpm -C packages/framework test`
   - Additional app tests if failures indicate app-level Effection behavior changes.
 

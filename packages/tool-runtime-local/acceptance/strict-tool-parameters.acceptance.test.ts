@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import { createToolInventoryEntry } from "@sweatpants/framework/chat";
 import { createLocalToolRuntimeDriver } from "../src/index.ts";
 

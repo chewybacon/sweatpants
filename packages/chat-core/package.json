@@ -27,7 +27,7 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@sweatpants/core": "workspace:*",
+        "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",

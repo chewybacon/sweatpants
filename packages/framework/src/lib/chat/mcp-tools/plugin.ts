@@ -54,7 +54,7 @@ import type {
   NormalizedElicitsMap,
   ToolExecutionKind,
   ToolSchemaArtifacts,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 import type { ElicitRequest, WireElicitResult } from "./mcp-tool-types.ts";
 
 // Re-export renderable types for plugin authors

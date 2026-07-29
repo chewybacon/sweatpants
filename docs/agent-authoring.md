@@ -2,7 +2,7 @@
 
 Sweatpants separates portable authoring from deployment authority:
 
-- `@sweatpants/core` exports `defineAgent`, `advertiseCapability`, portable `AgentManifestV1`, and local `AgentDefinition` bindings.
+- `@sweatpants/agent-sdk` exports `defineAgent`, `advertiseCapability`, portable `AgentManifestV1`, and local `AgentDefinition` bindings.
 - `@sweatpants/framework/chat` exports `defineChatProgram`, the protocol-neutral chat turn contracts, bounded context selection, resource mount helpers, and classified model-effect registration.
 - `@sweatpants/framework/server` exports explicit `remoteExecutor`, `standardA2A`, and `sweatpantsPeer` profiles, `serveAgent`, and posture-specific connection APIs.
 
@@ -17,7 +17,7 @@ import {
   defineGuidance,
   defineResourcePackage,
   textResource,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 import {
   defineChatProgram,
   latestContextWindow,

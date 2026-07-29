@@ -12,9 +12,9 @@
     "@sweatpants/durable-chat-runtime/response-streams",
     "@sweatpants/framework/deployment",
     "@sweatpants/workspace-runtime",
-    "@sweatpants/core",
-    "@sweatpants/core/tool",
-    "@sweatpants/core/tools"
+    "@sweatpants/agent-sdk",
+    "@sweatpants/agent-sdk/tool",
+    "@sweatpants/agent-sdk/tools"
   ],
   "productApps": [
     "apps/yo-chat",
@@ -23,7 +23,6 @@
   "experimentalPathPatterns": [
     "@sweatpants/framework/chat/isomorphic-tools",
     "@sweatpants/framework/src/",
-    "@sweatpants/agent",
     "createIsomorphicTool",
     "defineIsomorphicTool",
     "defineServerOnlyTool",

@@ -15,10 +15,10 @@ This package provides:
 
 ## Durable tool authoring
 
-Application authors normally use the Zod-first builders from `@sweatpants/core`:
+Application authors normally use the Zod-first builders from `@sweatpants/agent-sdk`:
 
 ```ts
-import { createDurableTool, defineEffect } from "@sweatpants/core";
+import { createDurableTool, defineEffect } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 
 const lookup = defineEffect({
@@ -45,7 +45,7 @@ canonical JSON values, portable schema descriptors, and exact semantic digests.
 
 ### Context extensions and inline recording
 
-Libraries can define typed durable context extensions through `@sweatpants/core` and tools declare
+Libraries can define typed durable context extensions through `@sweatpants/agent-sdk` and tools declare
 them explicitly with `.uses()`:
 
 ```ts

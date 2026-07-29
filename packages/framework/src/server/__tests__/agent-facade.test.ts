@@ -1,6 +1,6 @@
 import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { advertiseCapability, defineAgent } from "@sweatpants/core";
+import { advertiseCapability, defineAgent } from "@sweatpants/agent-sdk";
 import { createDurableEffectRegistry } from "@sweatpants/session-contract";
 import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {

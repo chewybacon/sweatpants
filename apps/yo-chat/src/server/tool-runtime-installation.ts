@@ -1,5 +1,5 @@
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
-import type { AnyToolContract, RuntimeTool } from "@sweatpants/core";
+import type { AnyToolContract, RuntimeTool } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
 import {
   PluginSessionManagerContext,

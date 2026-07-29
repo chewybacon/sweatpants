@@ -19,7 +19,7 @@
         "test:headed": "playwright test --headed"
     },
     "dependencies": {
-        "@sweatpants/core": "workspace:*",
+        "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/tool-runtime-local": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",

@@ -31,7 +31,7 @@ Testing is primarily repository-level integration testing because the feature is
   - `pnpm install`
   - `pnpm install --frozen-lockfile`
   - `pnpm check`
-  - `pnpm -C packages/core test`
+  - `pnpm -C packages/agent-sdk test`
   - `pnpm -C packages/framework test`
 
 ### 2.3 Coverage Goals
@@ -197,7 +197,7 @@ Testing is primarily repository-level integration testing because the feature is
 - **Steps**:
   1. Run `pnpm install`.
   2. Run `pnpm check`.
-  3. Run `pnpm -C packages/core test`.
+  3. Run `pnpm -C packages/agent-sdk test`.
   4. Run `pnpm -C packages/framework test`.
 - **Expected Result**: All commands complete successfully. If a targeted package test fails for an unrelated pre-existing reason, the failure is documented with evidence that it is unrelated to the Effection preview update.
 
@@ -396,7 +396,7 @@ pnpm install --frozen-lockfile
 pnpm list effection -r --depth 10
 rg "effection@(4\.0\.0|4\.0\.2|4\.1\.0-alpha\.7)|effection: (\^4\.0\.0|\^4\.1\.0-alpha\.7|4\.0\.0|4\.0\.2|4\.1\.0-alpha\.7)" pnpm-lock.yaml package.json pnpm-workspace.yaml apps packages
 pnpm check
-pnpm -C packages/core test
+pnpm -C packages/agent-sdk test
 pnpm -C packages/framework test
 ```
 

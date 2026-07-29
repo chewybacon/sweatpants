@@ -40,7 +40,7 @@ A standard profile is ready only when it is bound to a real host created by `cre
 
 Added protocol-neutral bounded chat turns, deterministic accepted context views, digest-covered `defineChatProgram`, portable `AgentManifestV1` plus runtime `AgentDefinition`, descriptive advertised capabilities, exact entrypoints, explicit serving profiles, and posture-specific connection APIs.
 
-Portable agent authoring is exported from `@sweatpants/core`, chat authoring from `@sweatpants/framework/chat`, and serving/connectivity from `@sweatpants/framework/server`. No `@sweatpants/agent` package was introduced. The `a2a-review` acceptance vertical now publishes its clean-context reviewer through the caller-authoritative facade while retaining caller-owned `model.sample`, `ask_parent`, credentials, and journal authority.
+Portable agent authoring is exported from `@sweatpants/agent-sdk`, chat authoring from `@sweatpants/framework/chat`, and serving/connectivity from `@sweatpants/framework/server`. No `@sweatpants/agent` package was introduced. The `a2a-review` acceptance vertical now publishes its clean-context reviewer through the caller-authoritative facade while retaining caller-owned `model.sample`, `ask_parent`, credentials, and journal authority.
 
 ### Migration note
 
@@ -56,9 +56,9 @@ The generated acceptance artifact intentionally hashes the complete reviewer sou
 
 ### Summary
 
-Added immutable resource packages, guidance metadata, exact package registries, scoped mounts, deterministic resource-reader programs, build-time directory generation/verification, and generated durable-program artifact identity to `@sweatpants/core`.
+Added immutable resource packages, guidance metadata, exact package registries, scoped mounts, deterministic resource-reader programs, build-time directory generation/verification, and generated durable-program artifact identity to `@sweatpants/agent-sdk`.
 
-The low-level session-contract manifest-plus-generator constructor is now named `createPinnedDurableProgram`. Its previous `createDurableTool` name remains as a deprecated compatibility alias; the staged `@sweatpants/core` `createDurableTool("name")` product builder is unchanged.
+The low-level session-contract manifest-plus-generator constructor is now named `createPinnedDurableProgram`. Its previous `createDurableTool` name remains as a deprecated compatibility alias; the staged `@sweatpants/agent-sdk` `createDurableTool("name")` product builder is unchanged.
 
 ### Migration note
 
@@ -79,7 +79,7 @@ Freeze the Phase 1 product facade allowlist and document the ≤4 conceptual pac
 - `@sweatpants/framework/chat/browser-rendering`
 - `@sweatpants/framework/chat/mcp-tools`
 - `@sweatpants/durable-chat-runtime/response-streams`
-- `@sweatpants/core` (and `/tool`, `/tools`)
+- `@sweatpants/agent-sdk` (and `/tool`, `/tools`)
 
 ### Migration note
 

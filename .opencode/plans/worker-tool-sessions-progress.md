@@ -14,7 +14,7 @@
 
 ## Key Decisions
 
-- Use `createApi` now (align with `@sweatpants/core` patterns).
+- Use `createApi` now (align with `@sweatpants/agent-sdk` patterns).
 - Support middleware on both request and response sides.
 - Use a single `WorkerSessionStateContext` initially; refine if tests demand more granularity.
 - Separate files for context and API definitions.
@@ -60,7 +60,7 @@
 ## Phase 4: Error Handling for Worker Crashes
 
 - [ ] Verify `@effectionx/worker` crash behavior
-- [ ] Add handling in `packages/core/src/transport/worker/host.ts` if needed
+- [ ] Add handling in `packages/agent-sdk/src/transport/worker/host.ts` if needed
 - **Note:** host-crash.test.ts exists but times out due to `@effectionx/worker` TypeScript stripping issue in Node.js
 
 ## Phase 5: App Integration
@@ -95,6 +95,6 @@
 
 ## Notes
 
-- The channel-per-request pattern mirrors `packages/core/src/transport/correlation.ts`.
+- The channel-per-request pattern mirrors `packages/agent-sdk/src/transport/correlation.ts`.
 - Middleware should be possible on both request and response sides via `WorkerSessionApi.decorate()`.
 - Any further context splitting should be driven by tests.

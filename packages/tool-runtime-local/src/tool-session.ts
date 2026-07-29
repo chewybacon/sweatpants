@@ -22,7 +22,7 @@ import type {
   ToolSessionEvent,
   ToolSessionOptions,
 } from "@sweatpants/tool-session";
-import type { SamplesMap, ToolDefinition } from "@sweatpants/core";
+import type { SamplesMap, ToolDefinition } from "@sweatpants/agent-sdk";
 import type { WireElicitResult, WireSampleResult, ElicitsMap } from "@sweatpants/tool-session";
 import { validateToolParameters } from "@sweatpants/framework/chat";
 import {

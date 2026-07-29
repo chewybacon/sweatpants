@@ -77,7 +77,7 @@
         "ws": "catalog:"
     },
     "devDependencies": {
-        "@sweatpants/core": "workspace:*",
+        "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",

@@ -12,7 +12,7 @@ import {
   defineGuidance,
   defineResourcePackage,
   textResource,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 import {
   CHAT_MODEL_SAMPLE_EFFECT,
   acceptChatTurn,

@@ -1,4 +1,4 @@
-import type { RuntimeTool } from "@sweatpants/core";
+import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import { createWorkerTool } from "./worker-tool-adapter.ts";
 import { createWorkerToolRegistry, runWorker } from "./worker-runner.ts";
 

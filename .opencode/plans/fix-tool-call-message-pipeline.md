@@ -71,7 +71,7 @@ packages/framework/src/lib/chat/mcp-tools/__tests__/sampling-structured.test.ts:
 - `packages/framework/src/lib/chat/mcp-tools/session/worker-session-api.ts` — Host-side request/response handling. `handleSampleRequest()` at line ~70.
 - `packages/framework/src/lib/chat/mcp-tools/session/types.ts` — Session event types. `SampleRequestEvent` at line ~125.
 - `packages/framework/src/handler/durable/plugin-session-manager.ts` — Host-side LLM caller. Lines ~336-450 handle `sample_request` events.
-- `packages/core/src/transport/worker/types.ts` — Core `WorkerMessage` type. Already supports content blocks (`WorkerToolUseContent`, `WorkerToolResultContent`).
+- `packages/agent-sdk/src/transport/worker/types.ts` — Core `WorkerMessage` type. Already supports content blocks (`WorkerToolUseContent`, `WorkerToolResultContent`).
 - `packages/framework/src/lib/chat/mcp-tools/protocol/types.ts` — MCP protocol types. `McpMessage`, `McpContentBlock`, `McpToolUseContent`, `McpToolResultContent`.
 - `packages/framework/src/lib/chat/types.ts` — Chat provider `Message` type at line ~128.
 - `packages/framework/src/lib/chat/mcp-tools/session/worker-types.ts` — Worker-side sample config types. `WorkerSampleSchemaConfigMessages.messages` is already `ExtendedMessage[]`.
@@ -225,10 +225,10 @@ Replaced lossy `getMessageTextContent()` flattening (which stripped `tool_calls`
 - [x] `pnpm test` in `packages/framework` — **712 passing**, 18 failing (all pre-existing)
   - 1 failure in `tool-discovery.test.ts` — worker entry format assertion mismatch (pre-existing)
   - 17 failures in `worker-tool-session.test.ts` — `@effectionx/worker` TS stripping issue (pre-existing)
-- [x] `pnpm test` in `packages/core` — **104 passing**, 9 failing (all pre-existing)
+- [x] `pnpm test` in `packages/agent-sdk` — **104 passing**, 9 failing (all pre-existing)
   - 1 failure in `host-crash.test.ts` — worker crash timeout (pre-existing)
   - 8 failures in `websocket/transport.test.ts` — WebSocket timeouts (pre-existing)
-- [x] `npx tsc --noEmit` — zero errors in both `packages/framework` and `packages/core`
+- [x] `npx tsc --noEmit` — zero errors in both `packages/framework` and `packages/agent-sdk`
 
 ---
 
@@ -254,7 +254,7 @@ Replaced lossy `getMessageTextContent()` flattening (which stripped `tool_calls`
 
 ## Notes
 
-- The `WorkerMessage` type in `packages/core/src/transport/worker/types.ts` already supports `WorkerToolUseContent` and `WorkerToolResultContent` content blocks. We didn't need to change core types.
+- The `WorkerMessage` type in `packages/agent-sdk/src/transport/worker/types.ts` already supports `WorkerToolUseContent` and `WorkerToolResultContent` content blocks. We didn't need to change core types.
 - The `WorkerSampleSchemaConfigMessages.messages` in `worker-types.ts` was already `ExtendedMessage[]`. The worker-side types were ahead of the host-side types.
 - The chat provider `Message` type already supports `tool_calls` and `tool_call_id`. The issue was purely in the MCP pipeline between worker and host.
 - `getMessageTextContent()` still exists in `bridge-runtime.ts` for token estimation — that's correct since token estimation only needs text content.

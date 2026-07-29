@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 
 export const REACT_BOOKING_TOOL_NAME = "react_acceptance_booking";
 export const REACT_BOOKING_RESULT_MARKER = "REACT_BOOKING_RESULT_V1";

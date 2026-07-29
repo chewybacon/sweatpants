@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ElicitExchange, SampleExchange, ToolMessage } from "@sweatpants/core";
+import type { ElicitExchange, SampleExchange, ToolMessage } from "@sweatpants/agent-sdk";
 import {
   projectCoreElicitExchangeToMcpMessages,
   projectCoreInteractionExchangeToMcpMessages,

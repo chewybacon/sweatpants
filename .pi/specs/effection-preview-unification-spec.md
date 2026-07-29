@@ -162,7 +162,7 @@ The implementation MUST pass `pnpm install`, `pnpm check`, and targeted tests fo
 **Acceptance Criteria**:
 - [ ] `pnpm install` completes successfully.
 - [ ] `pnpm check` completes successfully.
-- [ ] `pnpm -C packages/core test` completes successfully, or any failure is documented as unrelated to the Effection preview update.
+- [ ] `pnpm -C packages/agent-sdk test` completes successfully, or any failure is documented as unrelated to the Effection preview update.
 - [ ] `pnpm -C packages/framework test` completes successfully, or any failure is documented as unrelated to the Effection preview update.
 
 #### REQ-012: Source changes for preview compatibility MUST be minimal and dependency-focused
@@ -262,7 +262,7 @@ pnpm install
 pnpm list effection -r --depth 10
 rg "effection@(4\\.0\\.0|4\\.0\\.2|4\\.1\\.0-alpha\\.7)|effection: (\\^4\\.0\\.0|\\^4\\.1\\.0-alpha\\.7|4\\.0\\.0|4\\.0\\.2|4\\.1\\.0-alpha\\.7)" pnpm-lock.yaml package.json pnpm-workspace.yaml apps packages
 pnpm check
-pnpm -C packages/core test
+pnpm -C packages/agent-sdk test
 pnpm -C packages/framework test
 ```
 

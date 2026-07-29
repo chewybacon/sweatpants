@@ -2,7 +2,7 @@
  * Worker Runner
  *
  * This module runs inside a worker thread and executes tool generators.
- * It uses @sweatpants/core's worker transport for communication with the host.
+ * It uses @sweatpants/agent-sdk's worker transport for communication with the host.
  *
  * ## Lifecycle
  *
@@ -14,7 +14,7 @@
  *
  * ## Architecture
  *
- * Uses @sweatpants/core's worker transport:
+ * Uses @sweatpants/agent-sdk's worker transport:
  * - Worker sends requests via send.stream(request) (sample, elicit)
  * - Host sends a ready ACK, then processes requests and returns responses
  * - Progress/log are fire-and-forget (logged locally)
@@ -29,8 +29,8 @@ import {
   type WorkerMessage,
   type WorkerSampleResponse,
   type WorkerElicitResponse,
-} from "@sweatpants/core/transport/worker";
-import type { ElicitDefinition, ToolElicitResult } from "@sweatpants/core";
+} from "@sweatpants/agent-sdk/transport/worker";
+import type { ElicitDefinition, ToolElicitResult } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
 import { z } from "zod";
 import type {
@@ -185,7 +185,7 @@ function toWorkerToolDefinition(tool: SamplingToolDefinition): {
 /**
  * Run a tool session worker.
  *
- * This is the entry point for the worker thread. It uses @sweatpants/core's
+ * This is the entry point for the worker thread. It uses @sweatpants/agent-sdk's
  * runToolWorker to handle the communication protocol, and wraps the core
  * context with MCP-specific functionality (exchanges, retry helpers).
  *

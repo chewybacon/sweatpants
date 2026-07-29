@@ -13,7 +13,7 @@ import type {
   WorkerMessage,
   WorkerSampleRequest,
   WorkerSampleResponse,
-} from "@sweatpants/core/transport/worker";
+} from "@sweatpants/agent-sdk/transport/worker";
 import type { WireElicitResult, ExtendedMessage, ToolCallMessage } from "@sweatpants/tool-session";
 import { MODEL_CONTEXT_SCHEMA_KEY } from "@sweatpants/framework/chat";
 import type { WireSampleResult } from "@sweatpants/tool-session";

@@ -1,6 +1,6 @@
 import type { Operation } from "effection";
 import type { ZodSchema } from "zod";
-import type { ToolDefinition } from "@sweatpants/core";
+import type { ToolDefinition } from "@sweatpants/agent-sdk";
 
 export type LegacyCoreToolFactory = {
   (...args: unknown[]): Operation<unknown>;

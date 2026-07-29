@@ -23,7 +23,7 @@ import type {
   ToolSessionStatus,
   ElicitsMap,
 } from "@sweatpants/tool-session";
-import { isExecutableToolContract, type ToolContract } from "@sweatpants/core";
+import { isExecutableToolContract, type ToolContract } from "@sweatpants/agent-sdk";
 import { installToolSessionStore, ToolSessionStorePort } from "./session-store-port.ts";
 import { validateToolParameters } from "@sweatpants/framework/chat";
 import { createToolSession } from "./tool-session.ts";

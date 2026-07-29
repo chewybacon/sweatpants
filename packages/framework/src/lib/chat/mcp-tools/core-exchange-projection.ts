@@ -1,4 +1,4 @@
-import type { ElicitExchange, SampleExchange } from "@sweatpants/core";
+import type { ElicitExchange, SampleExchange } from "@sweatpants/agent-sdk";
 import type { McpMessage } from "./protocol/types.ts";
 
 type CoreExchange = ElicitExchange<unknown> | SampleExchange;

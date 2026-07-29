@@ -20,7 +20,7 @@ function testToolContext() {
   };
 }
 
-describe("@sweatpants/core strict tool parameter acceptance", () => {
+describe("@sweatpants/agent-sdk strict tool parameter acceptance", () => {
   it("rejects invalid required params before implementation and executes valid params", function* () {
     let implementationCalls = 0;
     let observedParams: unknown;

@@ -53,7 +53,7 @@ import {
   type ForeignA2ATask,
   type ImmutableContentStore,
 } from "@sweatpants/a2a";
-import type { AgentDefinition, AgentProgramBinding } from "@sweatpants/core";
+import type { AgentDefinition, AgentProgramBinding } from "@sweatpants/agent-sdk";
 import {
   acceptChatTurn,
   normalizeChatMessage,

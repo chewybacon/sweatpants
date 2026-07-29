@@ -4,7 +4,7 @@ import {
   type CorrelatedTransport,
   type TransportRequest,
   type NotifyResponse,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 
 export interface FrameworkBridgeConfig {
   callId: string;

@@ -15,7 +15,7 @@
  */
 import { createContext, type Operation } from "effection";
 import type { ToolSessionRegistry } from "@sweatpants/tool-session";
-import type { ToolDefinition } from "@sweatpants/core";
+import type { ToolDefinition } from "@sweatpants/agent-sdk";
 import type { ElicitsMap, WireElicitResult, WireSampleResultBase } from "../mcp-tool-types.ts";
 import type {
   McpSessionState,

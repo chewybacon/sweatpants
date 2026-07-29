@@ -38,7 +38,7 @@ import type {
   WireSampleResultBase,
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 
 export type {
   ElicitsMap,
@@ -55,7 +55,7 @@ export type {
   WireSampleResultBase,
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 
 /** Legacy string-message form retained until chat-core owns projection. */
 export interface LegacyToolMessage {

@@ -30,7 +30,7 @@ import {
 } from "@sweatpants/tool-session/foreign";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { anyGuard, createSchemaFixture } from "@sweatpants/session-contract/testing";
-import type { RuntimeTool } from "@sweatpants/core";
+import type { RuntimeTool } from "@sweatpants/agent-sdk";
 
 import {
   createDurableToolSessionFacade,

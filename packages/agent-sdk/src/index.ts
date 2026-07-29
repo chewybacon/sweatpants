@@ -181,6 +181,6 @@ export {
 // @effectionx/worker (which uses Node.js worker_threads) into browser bundles.
 //
 // For worker transport functionality, import from:
-//   @sweatpants/core/transport/worker
+//   @sweatpants/agent-sdk/transport/worker
 //
 // =============================================================================

@@ -1,4 +1,4 @@
-import type { RuntimeTool } from "@sweatpants/core";
+import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import { workerTools } from "../../yo-chat/src/server/worker-tools.ts";
 
 type RuntimeMcpTool = RuntimeTool;

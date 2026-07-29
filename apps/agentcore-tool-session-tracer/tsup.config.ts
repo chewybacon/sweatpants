@@ -17,11 +17,11 @@ export default defineConfig({
   // The runtime image intentionally excludes workspace dist artifacts. Bundle
   // app-authored tools and the core builder so no workspace symlink resolves to
   // a missing /packages/*/dist file at container startup.
-  noExternal: ["@sweatpants/framework", "@sweatpants/core"],
+  noExternal: ["@sweatpants/framework", "@sweatpants/agent-sdk"],
   esbuildOptions(options) {
     options.alias = {
       ...options.alias,
-      "@sweatpants/core": resolve(here, "../../packages/core/src/index.ts"),
+      "@sweatpants/agent-sdk": resolve(here, "../../packages/agent-sdk/src/index.ts"),
       "@sweatpants/framework/chat/browser-rendering": resolve(
         here,
         "../../packages/framework/src/lib/chat/browser-rendering/index.ts",

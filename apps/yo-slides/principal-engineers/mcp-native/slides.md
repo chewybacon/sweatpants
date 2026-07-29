@@ -33,7 +33,7 @@ colorSchema: light
 
 # Canonical Tools + Plugins
 
-Tools are authored once with `@sweatpants/core`.
+Tools are authored once with `@sweatpants/agent-sdk`.
 Browser UI is attached with plugin elicit handlers.
 
 ```ts

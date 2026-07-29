@@ -4,7 +4,7 @@ import {
   defineGuidance,
   defineResourcePackage,
   textResource,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 import { defineChatProgram, modelReadable, modelTool } from "@sweatpants/framework/chat";
 import { bookFlight } from "./book-flight.ts";
 import { echoMessage } from "./echo-message.ts";

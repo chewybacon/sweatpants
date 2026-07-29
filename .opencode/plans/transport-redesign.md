@@ -370,7 +370,7 @@ type OperativeTransport<TPayload, TProgress, TResponse> = Transport<
 ### Phase 1: Core Type Changes
 
 **Files to modify:**
-- `packages/core/src/types/transport.ts`
+- `packages/agent-sdk/src/types/transport.ts`
 
 **Changes:**
 1. Update `Transport` interface to add `TClose` and `TReply` type parameters
@@ -381,11 +381,11 @@ type OperativeTransport<TPayload, TProgress, TResponse> = Transport<
 ### Phase 2: Transport Implementations
 
 **Files to modify:**
-- `packages/core/src/transport/pair.ts` (in-memory transport pair)
-- `packages/core/src/transport/websocket/principal.ts`
-- `packages/core/src/transport/websocket/operative.ts`
-- `packages/core/src/transport/sse/principal.ts`
-- `packages/core/src/transport/sse/operative.ts`
+- `packages/agent-sdk/src/transport/pair.ts` (in-memory transport pair)
+- `packages/agent-sdk/src/transport/websocket/principal.ts`
+- `packages/agent-sdk/src/transport/websocket/operative.ts`
+- `packages/agent-sdk/src/transport/sse/principal.ts`
+- `packages/agent-sdk/src/transport/sse/operative.ts`
 
 **Changes:**
 1. Implement `send()` returning a sub-transport (channel scoped to request ID)
@@ -395,19 +395,19 @@ type OperativeTransport<TPayload, TProgress, TResponse> = Transport<
 ### Phase 3: Remove Correlation Layer
 
 **Files to delete:**
-- `packages/core/src/transport/correlation.ts`
+- `packages/agent-sdk/src/transport/correlation.ts`
 
 **Changes:**
 1. Delete the correlation module entirely (correlation is now built into Transport)
 2. Update any code that imports from `correlation.ts` to use direct `transport.send()`
-3. Remove `CorrelatedTransport` from `packages/core/src/index.ts` exports
+3. Remove `CorrelatedTransport` from `packages/agent-sdk/src/index.ts` exports
 
 ### Phase 4: Update Consumers
 
 **Files to modify:**
-- `packages/core/src/protocol/serve.ts`
-- `packages/core/src/agent/*.ts`
-- `packages/core/src/builtins/*.ts`
+- `packages/agent-sdk/src/protocol/serve.ts`
+- `packages/agent-sdk/src/agent/*.ts`
+- `packages/agent-sdk/src/builtins/*.ts`
 - Test files
 
 **Changes:**
@@ -417,9 +417,9 @@ type OperativeTransport<TPayload, TProgress, TResponse> = Transport<
 ### Phase 5: Tests
 
 **Files to modify:**
-- `packages/core/src/transport/__tests__/*.ts`
-- `packages/core/src/transport/websocket/__tests__/*.ts`
-- `packages/core/src/transport/sse/__tests__/*.ts`
+- `packages/agent-sdk/src/transport/__tests__/*.ts`
+- `packages/agent-sdk/src/transport/websocket/__tests__/*.ts`
+- `packages/agent-sdk/src/transport/sse/__tests__/*.ts`
 
 **Changes:**
 1. Add tests for nested transport behavior
@@ -455,7 +455,7 @@ type OperativeTransport<TPayload, TProgress, TResponse> = Transport<
 1. **Non-breaking first:** Add `TClose` and `TReply` with defaults that preserve current behavior
 2. **Implement new transports:** Create new transport implementations alongside existing ones
 3. **Gradual migration:** Update consumers one at a time
-4. **Remove correlation:** Delete `packages/core/src/transport/correlation.ts` and update imports
+4. **Remove correlation:** Delete `packages/agent-sdk/src/transport/correlation.ts` and update imports
 
 ---
 

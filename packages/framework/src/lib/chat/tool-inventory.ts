@@ -1,4 +1,4 @@
-import type { AnyToolContract } from "@sweatpants/core";
+import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { DurableTool } from "@sweatpants/durable-execution";
 import type { DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { toToolParameterJsonSchema } from "./tool-parameters.ts";

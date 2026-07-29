@@ -1,7 +1,7 @@
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import { z } from "zod";
-import { createDurableTool, defineEffect } from "@sweatpants/core";
+import { createDurableTool, defineEffect } from "@sweatpants/agent-sdk";
 
 import { sha256 } from "@sweatpants/foundation";
 

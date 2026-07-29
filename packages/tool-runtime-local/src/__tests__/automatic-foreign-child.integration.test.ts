@@ -8,7 +8,7 @@ import {
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createTool, type RuntimeTool } from "@sweatpants/core";
+import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,

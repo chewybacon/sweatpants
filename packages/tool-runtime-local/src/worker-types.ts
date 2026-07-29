@@ -35,7 +35,7 @@
 
 import type { Operation } from "effection";
 import type { z } from "zod";
-import type { ElicitDefinition, ElicitsMap, ToolElicitResult } from "@sweatpants/core";
+import type { ElicitDefinition, ElicitsMap, ToolElicitResult } from "@sweatpants/agent-sdk";
 import type {
   Message,
   ExtendedMessage,

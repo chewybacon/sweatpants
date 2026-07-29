@@ -14,7 +14,7 @@ describe("import-aware ordinary/durable discovery", () => {
   const options = resolveToolDiscoveryOptions();
   const tools = discoverToolsInContent(
     `
-      import { createTool as ordinaryBuilder, createDurableTool as durableBuilder } from '@sweatpants/core'
+      import { createTool as ordinaryBuilder, createDurableTool as durableBuilder } from '@sweatpants/agent-sdk'
       export const ordinary = ordinaryBuilder('same_surface')
       export const durable = durableBuilder('durable_surface')
     `,

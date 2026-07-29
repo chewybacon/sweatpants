@@ -1,11 +1,11 @@
 # Framework Internals
 
-This document describes the post-migration framework architecture. The framework no longer defines a second first-party tool authoring model. All first-party tools are canonical `@sweatpants/core` `ToolDefinition` values, and browser interaction is represented by declared elicits plus plugin handlers.
+This document describes the post-migration framework architecture. The framework no longer defines a second first-party tool authoring model. All first-party tools are canonical `@sweatpants/agent-sdk` `ToolDefinition` values, and browser interaction is represented by declared elicits plus plugin handlers.
 
 ## Architecture Overview
 
 ```txt
-@sweatpants/core
+@sweatpants/agent-sdk
   createTool
   ToolDefinition
   ToolCtx: notify, elicit, sample, log
@@ -119,7 +119,7 @@ All adapters use the same canonical tool metadata and event vocabulary.
 
 ## Public Boundaries
 
-The framework public surface exposes runtime, plugin, and rendering utilities. Tool authoring remains in `@sweatpants/core`.
+The framework public surface exposes runtime, plugin, and rendering utilities. Tool authoring remains in `@sweatpants/agent-sdk`.
 
 Public framework exports SHOULD remain limited to:
 

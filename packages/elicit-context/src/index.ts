@@ -2,7 +2,7 @@
  * @sweatpants/elicit-context
  *
  * x-elicit-context wire encoding for MCP elicitation.
- * Canonical elicit ontology lives in @sweatpants/core.
+ * Canonical elicit ontology lives in @sweatpants/agent-sdk.
  *
  * @packageDocumentation
  */

@@ -1,5 +1,5 @@
 import type { Operation } from "effection";
-import { advertiseCapability, defineAgent } from "@sweatpants/core";
+import { advertiseCapability, defineAgent } from "@sweatpants/agent-sdk";
 import {
   createChatModelEffectRegistration,
   defineChatProgram,

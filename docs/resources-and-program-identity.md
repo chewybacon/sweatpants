@@ -2,7 +2,7 @@
 
 ## Resource packages
 
-`@sweatpants/core` exposes `defineResourcePackage`, `textResource`, `jsonResource`, and `binaryResource` for immutable static content. A package manifest is portable metadata; local content bindings retain copied bytes and return copies on every read.
+`@sweatpants/agent-sdk` exposes `defineResourcePackage`, `textResource`, `jsonResource`, and `binaryResource` for immutable static content. A package manifest is portable metadata; local content bindings retain copied bytes and return copies on every read.
 
 Resource packages grant no authority. Mounts must explicitly select one scope:
 
@@ -32,4 +32,4 @@ Existing hand-pinned programs remain supported with `asserted` provenance. `vali
 
 An outer agent or deployment identity is only as trustworthy as every transitive program pin it contains. Migration from an asserted pin to a generated digest creates a new program identity and does not rewrite existing journal history.
 
-The canonical low-level session-contract constructor is `createPinnedDurableProgram`. The old low-level `createDurableTool` export is deprecated for one compatibility release. The staged product builder `createDurableTool("name")` from `@sweatpants/core` is unchanged.
+The canonical low-level session-contract constructor is `createPinnedDurableProgram`. The old low-level `createDurableTool` export is deprecated for one compatibility release. The staged product builder `createDurableTool("name")` from `@sweatpants/agent-sdk` is unchanged.

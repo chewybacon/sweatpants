@@ -4,7 +4,7 @@
  * Export all available tools for the MCP server.
  * All tools use the new createTool API with .elicits() pattern.
  */
-import type { RuntimeTool } from "@sweatpants/core";
+import type { RuntimeTool } from "@sweatpants/agent-sdk";
 
 // Import all tools
 import { echoTool } from "./echo";

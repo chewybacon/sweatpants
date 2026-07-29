@@ -4,13 +4,13 @@ Terms as they're used in the Sweatpants framework. Some may differ from general 
 
 ---
 
-## @sweatpants/core Concepts
+## @sweatpants/agent-sdk Concepts
 
 ### Agent
 
 A group of related tools with optional shared configuration. Created with `createAgent()`.
 
-**File:** legacy `packages/core/src/agent` has been deleted. The fresh wait-based fold implementation lives at [`packages/session-contract/src/create-agent.ts`](../../session-contract/src/create-agent.ts); reference-only salvage is documented in [`packages/session-contract/docs/legacy-agent-salvage.md`](../../session-contract/docs/legacy-agent-salvage.md).
+**File:** legacy `packages/agent-sdk/src/agent` has been deleted. The fresh wait-based fold implementation lives at [`packages/session-contract/src/create-agent.ts`](../../session-contract/src/create-agent.ts); reference-only salvage is documented in [`packages/session-contract/docs/legacy-agent-salvage.md`](../../session-contract/docs/legacy-agent-salvage.md).
 
 ```typescript
 const FlightAgent = createAgent({
@@ -36,7 +36,7 @@ const config = yield* FlightAgent.useConfig()
 
 A wrapper around `Transport` that maps request IDs to response streams. Used by Principal to track in-flight requests.
 
-**File:** [`packages/core/src/transport/correlation.ts`](../../core/src/transport/correlation.ts)
+**File:** [`packages/agent-sdk/src/transport/correlation.ts`](../../core/src/transport/correlation.ts)
 
 ```typescript
 const transport = createCorrelation(principalTransport)
@@ -63,9 +63,9 @@ while (!result.done) {
 
 ### Core Tool / Tool Factory
 
-A tool created with `createTool()` from `@sweatpants/core`. Returns a factory that, when called, activates the tool.
+A tool created with `createTool()` from `@sweatpants/agent-sdk`. Returns a factory that, when called, activates the tool.
 
-**File:** [`packages/core/src/tool/create.ts`](../../core/src/tool/create.ts)
+**File:** [`packages/agent-sdk/src/tool/create.ts`](../../core/src/tool/create.ts)
 
 ```typescript
 // Define tool
@@ -99,7 +99,7 @@ The side that handles user interaction in the Principal/Operative model. Typical
 - Shows UI, gets user input
 - Sends `ProgressMessage` and `ResponseMessage` back
 
-**File:** [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts)
+**File:** [`packages/agent-sdk/src/types/transport.ts`](../../core/src/types/transport.ts)
 
 **Compare with:** [Principal](#principal)
 
@@ -113,7 +113,7 @@ The side that initiates work in the Principal/Operative model. Typically the ser
 - Receives `ProgressMessage` and `ResponseMessage`
 - Runs tool code
 
-**File:** [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts)
+**File:** [`packages/agent-sdk/src/types/transport.ts`](../../core/src/types/transport.ts)
 
 **Compare with:** [Operative](#operative)
 
@@ -123,7 +123,7 @@ The side that initiates work in the Principal/Operative model. Typically the ser
 
 A bidirectional interface for sending and receiving messages. Extends Effection `Stream`.
 
-**File:** [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts)
+**File:** [`packages/agent-sdk/src/types/transport.ts`](../../core/src/types/transport.ts)
 
 ```typescript
 interface Transport<TSend, TReceive> extends Stream<TReceive, void> {
@@ -146,7 +146,7 @@ type OperativeTransport = Transport<OperativeOutgoing, OperativeIncoming>
 
 Effection context that provides a `CorrelatedTransport` to tools. Set by the framework when running core tools.
 
-**File:** [`packages/core/src/context/transport.ts`](../../core/src/context/transport.ts)
+**File:** [`packages/agent-sdk/src/context/transport.ts`](../../core/src/context/transport.ts)
 
 ```typescript
 // Framework sets up transport
@@ -167,7 +167,7 @@ const stream = transport.request({ ... })
 
 Message sent from Principal to Operative requesting an action.
 
-**File:** [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts)
+**File:** [`packages/agent-sdk/src/types/transport.ts`](../../core/src/types/transport.ts)
 
 ```typescript
 interface TransportRequest<TPayload = unknown> {
@@ -184,7 +184,7 @@ interface TransportRequest<TPayload = unknown> {
 
 ### Core Tool Adapter
 
-Projects canonical `@sweatpants/core` tools into framework model-safe tool definitions and runtime inventory entries.
+Projects canonical `@sweatpants/agent-sdk` tools into framework model-safe tool definitions and runtime inventory entries.
 
 **File:** [`src/lib/chat/core-tools/adapter.ts`](../src/lib/chat/core-tools/adapter.ts)
 
@@ -471,9 +471,9 @@ Stores serialized events for replay. Enables reconnection and multi-client fan-o
 
 ### Core Tool
 
-Canonical tool built with `createTool()` from `@sweatpants/core`. Core tools declare model parameters plus optional `elicits` and `samples`; runtime adapters execute them through local, MCP, or AgentCore sessions.
+Canonical tool built with `createTool()` from `@sweatpants/agent-sdk`. Core tools declare model parameters plus optional `elicits` and `samples`; runtime adapters execute them through local, MCP, or AgentCore sessions.
 
-**File:** [`packages/core/src/tool/`](../../core/src/tool/)
+**File:** [`packages/agent-sdk/src/tool/`](../../core/src/tool/)
 
 ---
 
