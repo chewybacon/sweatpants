@@ -1,4 +1,4 @@
-import { defineDurableEffect } from "../index.ts";
+import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import {
@@ -10,20 +10,29 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
 import {
-  DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
+  createInMemoryDurableJournalAuthority,
+} from "../index.ts";
+import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
-  createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
   stableProgramAttachmentId,
   type DurableProgramManifest,
-} from "../index.ts";
+} from "@sweatpants/durable-execution";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
+import {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import { booleanGuard, createSchemaFixture, nullGuard, stringGuard } from "../testing/index.ts";
+import {
+  booleanGuard,
+  createSchemaFixture,
+  nullGuard,
+  stringGuard,
+} from "@sweatpants/journal-authority/testing";
 
 const keyring = createCapabilityKeyring("cancellation-test", [
   { keyId: "active", secret: "durable-cancellation-test-secret!!" },

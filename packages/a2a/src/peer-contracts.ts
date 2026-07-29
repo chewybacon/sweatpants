@@ -2,7 +2,7 @@ import { type DurableEffectRegistry, type EffectDefinition } from "@sweatpants/d
 
 import { CrankError } from "@sweatpants/durable-execution";
 import { durableEffectRuntimeSchemas } from "@sweatpants/durable-effects";
-import { validateEffectDefinition } from "@sweatpants/durable-execution";
+import { validateEffectDefinition } from "@sweatpants/durable-effects/authoring";
 import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import type {
   PeerEffectContract,

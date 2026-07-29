@@ -1,5 +1,5 @@
 import type { Json } from "@sweatpants/foundation";
-import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 
 /** Closed schema-role algebra owned by durable effects. */
 export type EffectSchemaRole = "effect_input" | "effect_output" | "effect_cancellation_partial";

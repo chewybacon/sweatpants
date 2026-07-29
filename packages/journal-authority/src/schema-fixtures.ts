@@ -1,10 +1,10 @@
-import { assertJson } from "../canonical.ts";
+import { assertJson } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
-import { standardSchemaOf, type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
-import type { Json } from "../types.ts";
+} from "@sweatpants/foundation/schema";
+import { standardSchemaOf, type SchemaBinding } from "@sweatpants/foundation/schema";
+import type { Json } from "@sweatpants/foundation";
 
 /** One reusable descriptor + validator fixture for conformance and driver tests. */
 export interface SchemaFixture {

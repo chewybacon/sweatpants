@@ -1,6 +1,6 @@
-import { canonicalJson, sha256 } from "../canonical.ts";
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import type { DurableSemanticRecord } from "../durable-authority.ts";
-import type { Json } from "../types.ts";
+import type { Json } from "@sweatpants/foundation";
 
 /**
  * Removes only backend and activation coordination fields from the real

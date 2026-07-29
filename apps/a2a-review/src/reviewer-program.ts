@@ -1,17 +1,14 @@
 import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import { type EffectDefinition } from "@sweatpants/durable-effects";
 
-import { type StandardSchemaV1 } from "@sweatpants/session-contract";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   createPinnedDurableProgram,
   type DurableProgramContext,
 } from "@sweatpants/durable-execution";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
-import {
-  createPortableSchemaDescriptor,
-  type SchemaBinding,
-} from "@sweatpants/foundation/schema-descriptor";
+import { createPortableSchemaDescriptor, type SchemaBinding } from "@sweatpants/foundation/schema";
 
 export type ReviewInput = { design: string; rubric: string; instructions: string };
 export type ReviewOutput = { review: Json };

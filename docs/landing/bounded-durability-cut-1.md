@@ -10,7 +10,7 @@
 
 - `session-contract/schema-registry*` → `journal-authority/schema-registry*`.
 - `session-contract/foreign-tool-{contract,adapter}.ts` → `tool-session/foreign-{contract,adapter}.ts`.
-- Deleted `session-contract/schema-descriptor.ts` and its schema registry test/export surface.
+- Deleted `session-contract/schema.ts` and its schema registry test/export surface.
 - Added `foundation/schema-validation.ts`, `durable-execution/schema.ts`, `durable-execution/program-context.ts`, and `durable-execution/local-program-driver.ts`.
 
 ## Production and residue searches
@@ -18,7 +18,7 @@
 ```text
 rg DurableSchemaRegistryEntry packages apps               => 0
 rg PortableSchemaRole packages apps                       => 0
-rg session-contract/src/(schema-descriptor|schema-registry) => 0 production paths
+rg session-contract/src/(schema|schema-registry) => 0 production paths
 validate-module-graph                                      => 27 packages, no package cycles, no violations
 ```
 

@@ -9,13 +9,15 @@ import {
   type SafeSchemaIssue,
 } from "@sweatpants/foundation/schema-validation";
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
-  NULL_RESULT_SCHEMA_DESCRIPTOR,
   parsePortableSchemaDescriptor,
   standardSchemaOf,
   type PortableSchemaDescriptor,
   type SchemaBinding,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/foundation/schema";
+import {
+  ANY_JSON_SCHEMA_DESCRIPTOR,
+  NULL_RESULT_SCHEMA_DESCRIPTOR,
+} from "@sweatpants/durable-execution";
 
 /**
  * Scope-local runtime validator registry keyed by portable schema digest.

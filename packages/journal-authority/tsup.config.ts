@@ -5,7 +5,7 @@ export default defineConfig({
     store: "src/store.ts",
     memory: "src/memory.ts",
     api: "src/api.ts",
-    "metrics-middleware": "src/metrics-middleware.ts",
+    testing: "src/testing.ts",
     "schema-registry": "src/schema-registry.ts",
   },
   format: ["esm"],

@@ -7,7 +7,7 @@ import {
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   type ProgramArtifactIdentityInputV1,
 } from "@sweatpants/durable-execution";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 
 import { generateProgramIdentityModule } from "../index.ts";
 

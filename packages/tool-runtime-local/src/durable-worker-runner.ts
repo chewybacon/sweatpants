@@ -4,7 +4,7 @@ import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { CrankError } from "@sweatpants/durable-execution";
 import { workerMain } from "@effectionx/worker";
 import type { Operation } from "effection";
-import { createDurableEffectRegistry } from "@sweatpants/session-contract";
+import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { createLocalProgramDriver, type ProgramAttachment } from "@sweatpants/durable-execution";
 import { ExecutionDurableEffectRegistryContext } from "@sweatpants/durable-execution";
 

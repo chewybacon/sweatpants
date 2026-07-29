@@ -14,22 +14,23 @@ import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
   withJournalAuthority,
-  ProgramRuntime,
-  canonicalSnapshot,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
+  createInMemoryDurableJournalAuthority,
+} from "../index.ts";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
-  createInMemoryDurableJournalAuthority,
   createLocalProgramDriver,
   stableProgramAttachmentId,
   type DurableProgramManifest,
-  type Json,
-} from "../index.ts";
+} from "@sweatpants/durable-execution";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
+import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   NULL_RESULT_SCHEMA_DESCRIPTOR,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/durable-execution";
 
 const keyring = createCapabilityKeyring("effect-contract-policy-test", [
   { keyId: "key-1", secret: "x".repeat(32) },

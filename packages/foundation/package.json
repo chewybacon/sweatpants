@@ -53,16 +53,16 @@
             },
             "default": "./src/errors.ts"
         },
-        "./schema-descriptor": {
+        "./schema": {
             "development": {
-                "import": "./src/schema-descriptor.ts",
-                "types": "./src/schema-descriptor.ts"
+                "import": "./src/schema.ts",
+                "types": "./src/schema.ts"
             },
             "import": {
-                "types": "./dist/schema-descriptor.d.ts",
-                "default": "./dist/schema-descriptor.js"
+                "types": "./dist/schema.d.ts",
+                "default": "./dist/schema.js"
             },
-            "default": "./src/schema-descriptor.ts"
+            "default": "./src/schema.ts"
         },
         "./schema-validation": {
             "development": {

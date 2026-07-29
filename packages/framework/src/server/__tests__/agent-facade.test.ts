@@ -1,7 +1,7 @@
 import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { advertiseCapability, defineAgent } from "@sweatpants/agent-sdk";
-import { createDurableEffectRegistry } from "@sweatpants/session-contract";
+import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,

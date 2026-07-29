@@ -5,7 +5,7 @@ import {
   parsePortableSchemaDescriptor,
   standardSchemaOf,
   type SchemaBinding,
-} from "./schema-descriptor.ts";
+} from "./schema.ts";
 
 const fields = {
   identity: "example/custom",

@@ -5,7 +5,7 @@ import {
   createInMemoryProgramDriverJournalStore,
 } from "@sweatpants/framework/server";
 import { type DurableProgramManifest } from "@sweatpants/durable-execution";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 
 import { inspectProgramDriverJournal } from "../server/journal-inspector";
 

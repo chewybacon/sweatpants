@@ -1,4 +1,4 @@
-import { defineDurableEffect } from "@sweatpants/durable-execution";
+import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import {
   type DurableEffectContext,
   type DurableEffectDisposition,
@@ -24,7 +24,7 @@ import {
 } from "@sweatpants/framework/chat";
 import { remoteExecutor, serveAgent } from "@sweatpants/framework/server";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
-import { type StandardSchemaV1 } from "@sweatpants/session-contract";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
@@ -32,10 +32,7 @@ import {
   generateProgramArtifactIdentity,
 } from "@sweatpants/durable-execution";
 import { sha256, type Json } from "@sweatpants/foundation";
-import {
-  createPortableSchemaDescriptor,
-  type SchemaBinding,
-} from "@sweatpants/foundation/schema-descriptor";
+import { createPortableSchemaDescriptor, type SchemaBinding } from "@sweatpants/foundation/schema";
 import { defineReviewerProgram, type ReviewInput } from "./reviewer-program.ts";
 import { REFERENCE_REVIEWER_ARTIFACT_DIGEST } from "./reviewer-artifact.generated.ts";
 

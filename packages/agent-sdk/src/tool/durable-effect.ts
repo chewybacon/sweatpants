@@ -1,10 +1,10 @@
-import { defineDurableEffect } from "@sweatpants/durable-execution";
+import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import { type EffectDefinition, type RetrySafety } from "@sweatpants/durable-effects";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { z, ZodSchema } from "zod";
 import { type Json } from "@sweatpants/foundation";
-import { type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import { type SchemaBinding } from "@sweatpants/foundation/schema";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 

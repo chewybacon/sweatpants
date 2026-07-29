@@ -1,7 +1,7 @@
 import {
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/foundation/schema";
 
 /** Closed schema roles owned by the author-facing tool/resource SDK. */
 export type ToolResourceSchemaRole = "tool_parameters" | "tool_output";

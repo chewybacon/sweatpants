@@ -1,4 +1,7 @@
-import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
+import {
+  MODEL_SAMPLE_EFFECT,
+  createModelSamplingEffectRegistration,
+} from "@sweatpants/durable-effects/model-sample";
 import {
   ExecutionDurableEffectRegistryContext,
   ProgramDriverRegistryContext,
@@ -14,26 +17,33 @@ import { describe, expect, it } from "vitest";
 import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
-  DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramPeer,
-  ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
-  createPinnedDurableProgram,
-  createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createLocalProgramDriver,
-  createModelSamplingEffectRegistration,
   parseDurableAuthoritySnapshot,
   signCapability,
+} from "../index.ts";
+import { type Json } from "@sweatpants/foundation";
+import {
+  createPinnedDurableProgram,
+  createDurableToolRegistry,
+  createLocalProgramDriver,
   stableProgramAttachmentId,
   type AttachProgramRequest,
   type DurableProgramManifest,
-  type Json,
-} from "../index.ts";
+} from "@sweatpants/durable-execution";
+import { ProgramPeer, ProgramRuntime } from "@sweatpants/durable-execution";
+import {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import { anyGuard, booleanGuard, createSchemaFixture, stringGuard } from "../testing/index.ts";
+import {
+  anyGuard,
+  booleanGuard,
+  createSchemaFixture,
+  stringGuard,
+} from "@sweatpants/journal-authority/testing";
 
 const programInput = createSchemaFixture(
   "fixture.basic/input",

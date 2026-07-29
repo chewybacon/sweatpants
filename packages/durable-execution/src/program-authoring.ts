@@ -1,7 +1,7 @@
 /** Durable program authoring contracts. */
 import type { Operation } from "effection";
 import type { Json } from "@sweatpants/foundation";
-import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { EffectDefinition, RetrySafety, OperationOutcome } from "@sweatpants/durable-effects";
 import type {
   DurableChildDescriptor,

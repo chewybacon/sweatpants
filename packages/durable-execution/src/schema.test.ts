@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
+import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { parseProgramSchemaDescriptor } from "./schema.ts";
 
 function descriptor(role: string) {

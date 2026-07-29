@@ -10,13 +10,15 @@ import config from "../../yo-chat/sweatpants.config.ts";
 import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
-  DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
   createInMemoryDurableJournalAuthority,
 } from "@sweatpants/session-contract";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
+import {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
 import { type ProgramRunResult } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { assertJson, type Json } from "@sweatpants/foundation";

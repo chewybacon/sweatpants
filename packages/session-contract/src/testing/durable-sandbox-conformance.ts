@@ -1,7 +1,7 @@
 import type { Operation } from "effection";
 
 import { createCapabilityKeyring, type CapabilityKeyring } from "../capabilities.ts";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import type {
   ClaimActivationRequest,
   ClaimActivationResult,
@@ -10,12 +10,11 @@ import type {
   ReleaseActivationResult,
   ReserveOperationRequest,
   ReserveOperationResult,
-  ResolutionReceipt,
   ResolveOperationRequest,
   ResolveOperationResult,
   TaskCloseReceipt,
-  DurableProgramManifest,
-} from "../durable-types.ts";
+} from "../durable-authority-types.ts";
+import type { ResolutionReceipt, DurableProgramManifest } from "@sweatpants/durable-execution";
 import type {
   DurableSemanticRecord,
   InMemoryDurableJournalAuthority,

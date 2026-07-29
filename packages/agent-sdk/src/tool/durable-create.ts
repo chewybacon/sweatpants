@@ -21,11 +21,8 @@ import {
   type DurableTool,
   type WireElicitResultJson,
 } from "@sweatpants/durable-execution";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
-import {
-  type SchemaBinding,
-  type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
+import { type SchemaBinding, type PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import { effectCatalogEntries } from "./durable-effect.ts";

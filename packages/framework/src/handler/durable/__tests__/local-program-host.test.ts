@@ -2,12 +2,12 @@ import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import {
-  createCapabilityKeyring,
-  createDurableEffectRegistry,
   createModelSamplingEffectRegistration,
   createModelSamplingRouter,
-} from "@sweatpants/session-contract";
+} from "@sweatpants/durable-effects/model-sample";
+import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
 import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";

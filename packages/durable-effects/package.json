@@ -55,14 +55,14 @@
         },
         "./model-sample": {
             "development": {
-                "import": "./src/model-sample-contract.ts",
-                "types": "./src/model-sample-contract.ts"
+                "import": "./src/model-sample.ts",
+                "types": "./src/model-sample.ts"
             },
             "import": {
-                "types": "./dist/model-sample-contract.d.ts",
-                "default": "./dist/model-sample-contract.js"
+                "types": "./dist/model-sample.d.ts",
+                "default": "./dist/model-sample.js"
             },
-            "default": "./src/model-sample-contract.ts"
+            "default": "./src/model-sample.ts"
         }
     },
     "scripts": {

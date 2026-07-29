@@ -77,7 +77,7 @@ export {
 
 export { FakeAgentCoreRemoteToolRuntimeClient } from "./agentcore-fake-runtime.ts";
 
-export { exactProgramKey } from "@sweatpants/session-contract";
+export { exactProgramKey } from "@sweatpants/durable-execution";
 
 export {
   createAgentCoreDurableProgramDriver,

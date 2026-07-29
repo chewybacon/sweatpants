@@ -1,12 +1,11 @@
 import { createContext, type Operation } from "effection";
 
-import type { PinnedProgram, ProgramRoute } from "./durable-types.ts";
-import type { Json } from "./types.ts";
+import type { Json } from "@sweatpants/foundation";
 
 export interface ProgramPlacementContextValue {
   readonly journal: { readonly id: string; readonly incarnation: string };
-  readonly program: PinnedProgram;
-  readonly route: ProgramRoute;
+  readonly program: { readonly id: string; readonly version: string; readonly digest: string };
+  readonly route: Json;
   readonly driverKind: string;
 }
 
@@ -31,10 +30,10 @@ export interface ProgramDeliveryWriter {
 }
 
 export const ProgramPlacementContext = createContext<ProgramPlacementContextValue | undefined>(
-  "session-contract:program-placement",
+  "durable-effects:model-sampling-placement",
   undefined,
 );
 export const ProgramDeliveryWriterContext = createContext<ProgramDeliveryWriter | undefined>(
-  "session-contract:program-delivery-writer",
+  "durable-effects:model-sampling-delivery-writer",
   undefined,
 );

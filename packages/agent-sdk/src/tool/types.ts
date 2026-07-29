@@ -2,10 +2,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import type { z, ZodSchema } from "zod";
 
-import type {
-  SchemaBinding,
-  PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema-descriptor";
+import type { SchemaBinding, PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 
 /** Portable descriptors for one declared elicitation (content-schema semantics). */
 export interface ToolElicitSchemaArtifact {

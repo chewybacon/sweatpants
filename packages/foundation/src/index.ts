@@ -13,6 +13,6 @@ export {
 export * from "./port.ts";
 
 export type { SerializedApplicationError } from "./errors.ts";
-export * from "./schema-descriptor.ts";
+export * from "./schema.ts";
 
 export * from "./schema-validation.ts";

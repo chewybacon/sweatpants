@@ -2,13 +2,13 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 
-import { canonicalJson } from "./canonical.ts";
+import { canonicalJson } from "@sweatpants/foundation";
 
 import type {
   CapabilityClaims,
   ProgramExecutionCapabilityClaims,
   ResolutionCapabilityClaims,
-} from "./durable-types.ts";
+} from "./durable-authority-types.ts";
 
 const encoder = new TextEncoder();
 

@@ -12,8 +12,8 @@ import {
   validateProgramBindingsForRelease,
   validateProgramIdentityProvenance,
   type ProgramArtifactIdentityInputV1,
-} from "../index.ts";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/durable-execution";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 
 const manifest = {
   programId: "identity.test",

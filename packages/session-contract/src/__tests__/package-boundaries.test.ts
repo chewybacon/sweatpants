@@ -25,16 +25,9 @@ describe("session-contract package boundaries", () => {
       "effection",
     ]);
 
-    const sourceFiles = [
-      "authoring.ts",
-      "canonical.ts",
-      "durable-apis.ts",
-      "durable-authority.ts",
-      "durable-types.ts",
-      "index.ts",
-      "program-driver.ts",
-      "types.ts",
-    ];
+    // DR-079/DR-080 deleted the former effect/program declaration and
+    // implementation files; this guard now scans only the remaining Cut 4 authority shell.
+    const sourceFiles = ["durable-apis.ts", "durable-authority.ts", "index.ts"];
     for (const file of sourceFiles) {
       const source = readFileSync(resolve(packageRoot, "src", file), "utf8");
       expect(source, file).not.toContain("@sweatpants/framework");

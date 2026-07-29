@@ -5,7 +5,7 @@ import {
   type PinnedProgram,
   type ProgramIdentityProvenanceV1,
 } from "@sweatpants/durable-execution";
-import { type SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import { type SchemaBinding } from "@sweatpants/foundation/schema";
 
 export const RESOURCE_PACKAGE_FORMAT = "sweatpants.resource-package.v1" as const;
 export const RESOURCE_PACKAGE_DOMAIN = `${RESOURCE_PACKAGE_FORMAT}\n`;

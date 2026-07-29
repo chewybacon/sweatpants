@@ -1,23 +1,21 @@
 import { createContext, type Operation } from "effection";
 
-import { canonicalSnapshot } from "./canonical.ts";
-import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
-import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { createDurableEffectRegistration } from "./authoring.ts";
+import { effectContractDigest } from "./runtime.ts";
+import type { DurableEffectDisposition } from "./contract.ts";
 import {
   MODEL_SAMPLE_EFFECT,
   type ModelSampleCancellationPartial,
   type ModelSampleRequest,
   type ModelSampleResult,
-} from "@sweatpants/durable-effects";
-import type { DurableEffectDisposition } from "./durable-types.ts";
+} from "./model-sample-contract.ts";
 import {
   ProgramDeliveryWriterContext,
   ProgramPlacementContext,
   type ProgramDeliveryWriter,
   type ProgramPlacementContextValue,
-} from "./program-placement-context.ts";
-import { CrankError } from "@sweatpants/durable-execution";
-import type { Json } from "./types.ts";
+} from "./model-sampling-context.ts";
 
 export {
   ProgramDeliveryWriterContext,
@@ -25,7 +23,15 @@ export {
   type ProgramDeliveryEnvelope,
   type ProgramDeliveryWriter,
   type ProgramPlacementContextValue,
-} from "./program-placement-context.ts";
+} from "./model-sampling-context.ts";
+
+export class ModelSamplingPlacementError extends Error {
+  readonly code = "sampling_placement_unavailable";
+  constructor(message: string) {
+    super(message);
+    this.name = "ModelSamplingPlacementError";
+  }
+}
 
 export interface ModelSamplingExecutionContext {
   readonly placement: ProgramPlacementContextValue;
@@ -51,7 +57,7 @@ export interface ModelSamplingRouter {
 }
 
 export const ModelSamplingRouterContext = createContext<ModelSamplingRouter | undefined>(
-  "session-contract:model-sampling-router",
+  "durable-effects:model-sampling-router",
   undefined,
 );
 
@@ -66,8 +72,7 @@ export function createModelSamplingEffectRegistration() {
       const placement = yield* ProgramPlacementContext.get();
       const delivery = yield* ProgramDeliveryWriterContext.get();
       if (!router || !placement) {
-        throw new CrankError(
-          "sampling_placement_unavailable",
+        throw new ModelSamplingPlacementError(
           "Model sampling router or placement context is unavailable",
         );
       }
@@ -112,8 +117,7 @@ export function createModelSamplingRouter(options: {
         return yield* options.host.sample(request, context);
       }
       if (!options.execution) {
-        throw new CrankError(
-          "sampling_placement_unavailable",
+        throw new ModelSamplingPlacementError(
           "Execution-local model sampling is required but unavailable",
         );
       }
@@ -122,8 +126,7 @@ export function createModelSamplingRouter(options: {
         canonicalSnapshot(policy.classifications as Json).sha !==
           canonicalSnapshot((request.classifications ?? []) as Json).sha
       ) {
-        throw new CrankError(
-          "sampling_placement_unavailable",
+        throw new ModelSamplingPlacementError(
           "Execution-local model sampling classifications differ",
         );
       }

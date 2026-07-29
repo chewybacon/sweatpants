@@ -1,15 +1,12 @@
 import { PullApplicationError } from "@sweatpants/durable-execution";
-import { type StandardSchemaV1 } from "@sweatpants/session-contract";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   DurableProgramCancellation,
   createPinnedDurableProgram,
   type DurableTool,
 } from "@sweatpants/durable-execution";
 import { assertJson, canonicalJson, sha256 } from "@sweatpants/foundation";
-import {
-  createPortableSchemaDescriptor,
-  type SchemaBinding,
-} from "@sweatpants/foundation/schema-descriptor";
+import { createPortableSchemaDescriptor, type SchemaBinding } from "@sweatpants/foundation/schema";
 import { peerContractAsEffectDefinition } from "./peer-contracts.ts";
 import type {
   PeerEffectContract,

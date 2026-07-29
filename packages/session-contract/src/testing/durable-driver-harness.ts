@@ -1,4 +1,4 @@
-import { defineDurableEffect } from "../index.ts";
+import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import {
@@ -10,24 +10,33 @@ import {
 import type { Operation } from "effection";
 
 import {
-  DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
+  createInMemoryDurableJournalAuthority,
+  type DurableSemanticRecord,
+} from "../index.ts";
+import { type Json } from "@sweatpants/foundation";
+import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
-  createInMemoryDurableJournalAuthority,
   type DurableProgramManifest,
-  type DurableSemanticRecord,
-  type Json,
   type ProgramDriver,
   type ProgramRoute,
   type ProgramRunResult,
-} from "../index.ts";
-import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+} from "@sweatpants/durable-execution";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
+import {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
+import type { SchemaBinding } from "@sweatpants/foundation/schema";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import { booleanGuard, createSchemaFixture, nullGuard, stringGuard } from "./schema-fixtures.ts";
+import {
+  booleanGuard,
+  createSchemaFixture,
+  nullGuard,
+  stringGuard,
+} from "@sweatpants/journal-authority/testing";
 
 /** Dependencies for exercising one driver across park, snapshot, and recovery. */
 export interface DurableDriverRecoveryFixtureOptions {

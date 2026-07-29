@@ -1,53 +1,42 @@
-import { createContext, scoped, useScope, type Operation } from "effection";
-import { createApi } from "effection/experimental";
+import { scoped, useScope, type Operation } from "effection";
+import type { DurableEffectAuthorization, OperationOutcome } from "@sweatpants/durable-effects";
 import { definePort } from "@sweatpants/foundation/port";
 
-import {
-  durableEffectRuntimeSchemas as readSharedDurableEffectRuntimeSchemas,
-  type DurableEffectRuntimeSchemas as SharedDurableEffectRuntimeSchemas,
-} from "@sweatpants/durable-effects";
-
-import { assertInlineSize, serializeDurableError } from "./authoring.ts";
-import { assertJson, canonicalSnapshot } from "./canonical.ts";
+import { serializeDurableError } from "@sweatpants/durable-execution";
+import { canonicalSnapshot } from "@sweatpants/foundation";
 import { CrankError } from "@sweatpants/durable-execution";
-import { type Json } from "./types.ts";
-import {
-  DurableEffectRouting,
-  effectContractDigest,
-  registerLiveDurableEffect,
-} from "@sweatpants/durable-effects/runtime";
+import { DurableEffects, DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import {
   ProgramDriverRegistryContext,
   ProgramExecutionScopeContext,
+  ProgramPeer,
+  ProgramRouteResolverContext,
+  ProgramRuntime,
+  ProgramRuntimeDriverContext,
   type ProgramDriverRegistry,
+  type ProgramRuntimeDriver,
 } from "@sweatpants/durable-execution";
-import { ProgramPlacementContext } from "./program-placement-context.ts";
-import { ModelSamplingOutcomeAcknowledgerContext } from "./model-sampling-acknowledgement.ts";
+import {
+  ModelSamplingOutcomeAcknowledgerContext,
+  ProgramPlacementContext,
+} from "@sweatpants/durable-effects/model-sample";
 import type {
   CancellationFrontier,
   DurableCancellationState,
-  DurableEffectAuthorization,
-  DurableEffectDisposition,
-  DurableEffectRegistration,
-  DurableEffectRegistry,
   DurableJournalAuthorityService,
-  DurableProgramManifest,
-  EffectDefinition,
   EmissionReceipt,
-  OperationOutcome,
-  PinnedProgram,
+  RestoredFrontierProof,
+  ResolveOperationResult,
+} from "./durable-authority-types.ts";
+import type {
   ProgramAttachment,
-  ProgramCommand,
   ProgramDriver,
-  ProgramRestoreRequest,
   ProgramRunRequest,
   ProgramRoute,
   ProgramRunResult,
   ProgramShutdownReason,
   ProgramStep,
-  RestoredFrontierProof,
-  ResolveOperationResult,
-} from "./durable-types.ts";
+} from "@sweatpants/durable-execution";
 
 function* authorityUnavailable(): Operation<never> {
   throw new CrankError("unknown_target", "No journal authority is installed");
@@ -97,10 +86,11 @@ export const JournalAuthorityPort = definePort<DurableJournalAuthorityService>(
 );
 
 /** Installs one journal authority for the calling scope. */
-export function installJournalAuthority(
+export function* installJournalAuthority(
   authority: DurableJournalAuthorityService,
 ): Operation<void> {
-  return JournalAuthorityPort.installDriver(authority);
+  yield* JournalAuthorityPort.installDriver(authority);
+  yield* ProgramRuntimeDriverContext.set(legacyProgramRuntimeDriver);
 }
 
 /** Runs `body` with `authority` installed in a child scope. */
@@ -113,88 +103,6 @@ export function withJournalAuthority<T>(
     return yield* body();
   });
 }
-/** Scope-owned durable effect registry; handlers inherit caller cancellation. */
-export const DurableEffectRegistryContext = createContext<DurableEffectRegistry | undefined>(
-  "session-contract:durable-effect-registry",
-  undefined,
-);
-/** Deployment-owned child placement policy; program code remains location-neutral. */
-export const ProgramRouteResolverContext = createContext<
-  ((program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>) | undefined
->("session-contract:program-route-resolver", undefined);
-
-/** Optional scope-local runtime validators paired with one effect registration. */
-export type DurableEffectRuntimeSchemas = SharedDurableEffectRuntimeSchemas;
-
-/** Reads metadata from the shared durable-effects registration identity. */
-export function durableEffectRuntimeSchemas(
-  registration: DurableEffectRegistration,
-): DurableEffectRuntimeSchemas | undefined {
-  // SAFETY: both registration interfaces are the same serialized definition/handler shape;
-  // the shared helper owns the WeakMap identity and no boundary data is reconstructed.
-  return readSharedDurableEffectRuntimeSchemas(registration);
-}
-
-/** Validates exact manifest contracts against the handlers selected by an assembly. */
-export function validateDurableEffectBindings(
-  requiredDefinitions: Iterable<EffectDefinition<Json, Json, Json>>,
-  registry: DurableEffectRegistry,
-): void {
-  for (const required of requiredDefinitions) {
-    const key = effectKey(required.name, required.version);
-    const registration = registry.get(key);
-    if (!registration) {
-      throw new CrankError(
-        "unknown_target",
-        `No durable effect handler for ${required.name}@${required.version}`,
-      );
-    }
-    if (effectContractDigest(registration.definition) !== effectContractDigest(required)) {
-      throw new CrankError(
-        "invalid_manifest",
-        `Effect contract differs for ${required.name}@${required.version}`,
-      );
-    }
-  }
-}
-
-/** Creates an immutable registry and optionally preflights required contracts. */
-export function createDurableEffectRegistry(
-  registrations: Iterable<DurableEffectRegistration>,
-  requiredDefinitions: Iterable<EffectDefinition<Json, Json, Json>> = [],
-): DurableEffectRegistry {
-  const registry = new Map<string, DurableEffectRegistration>();
-  for (const registration of registrations) {
-    const definition = registration.definition;
-    if (registry.has(effectKey(definition.name, definition.version))) {
-      throw new CrankError(
-        "invalid_manifest",
-        `Duplicate effect ${definition.name}@${definition.version}`,
-      );
-    }
-    if (registration.handler.constructor.name === "AsyncFunction") {
-      throw new CrankError(
-        "invalid_manifest",
-        "Durable effect handlers must return Effection Operations, not Promises",
-      );
-    }
-    if (
-      registration.satisfies.mode !== definition.retrySafety.mode ||
-      (definition.retrySafety.mode === "idempotent" &&
-        (registration.satisfies.mode !== "idempotent" ||
-          registration.satisfies.mechanism !== definition.retrySafety.mechanism))
-    ) {
-      throw new CrankError(
-        "invalid_manifest",
-        `Handler does not satisfy retry contract for ${definition.name}`,
-      );
-    }
-    registry.set(effectKey(definition.name, definition.version), registration);
-  }
-  validateDurableEffectBindings(requiredDefinitions, registry);
-  return registry;
-}
-
 /**
  * Journal authority bound to the calling scope.
  *
@@ -205,56 +113,6 @@ export function* useJournalAuthority(): Operation<DurableJournalAuthorityService
   return JournalAuthorityPort.bind(yield* useScope());
 }
 
-/** Resolves the current scoped effect registry or fails fast when not installed. */
-export function* useDurableEffectRegistry(): Operation<DurableEffectRegistry> {
-  const registry = yield* DurableEffectRegistryContext.get();
-  if (!registry) {
-    throw new CrankError("unknown_target", "No durable effect registry is installed");
-  }
-  return registry;
-}
-
-/** Native program-peer API for attaching, stepping, and shutting down a pinned driver. */
-export const ProgramPeer = createApi("crank-program-peer", {
-  *attach(request: Parameters<ProgramDriver["attach"]>[0]): Operation<ProgramAttachment> {
-    const registry = yield* ProgramDriverRegistryContext.get();
-    if (!registry) {
-      throw new CrankError("unknown_target", "No program driver registry is installed");
-    }
-    const kind = driverKind(request.route);
-    const driver = registry.get(kind);
-    if (!driver) {
-      throw new CrankError("unknown_target", `No program driver for ${kind}`);
-    }
-    return yield* driver.attach(request);
-  },
-  *step(attachment: ProgramAttachment, command: ProgramCommand): Operation<ProgramStep> {
-    const driver = yield* driverFor(attachment.driverKind);
-    return yield* driver.step(attachment, command);
-  },
-  *restore(request: ProgramRestoreRequest) {
-    const driver = yield* driverFor(driverKind(request.attach.route));
-    if (!driver.restore) {
-      throw new CrankError("program_protocol_error", "Program driver has no restore fast path");
-    }
-    return yield* driver.restore(request);
-  },
-  *shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void> {
-    const driver = yield* driverFor(attachment.driverKind);
-    yield* driver.shutdown(attachment, reason);
-  },
-  *manifest(route: ProgramRoute, program: PinnedProgram): Operation<DurableProgramManifest> {
-    const driver = yield* driverFor(driverKind(route));
-    if (!driver.manifest) {
-      throw new CrankError(
-        "program_version_unavailable",
-        `Driver ${driverKind(route)} cannot resolve program manifests`,
-      );
-    }
-    return yield* driver.manifest(program);
-  },
-});
-
 /**
  * Native authority API mediating durable transitions.
  *
@@ -263,109 +121,42 @@ export const ProgramPeer = createApi("crank-program-peer", {
  */
 export const JournalAuthority = JournalAuthorityPort.api;
 
-/** Native host-effect API that journals authorization and resolution receipts. */
-export const DurableEffects = createApi("crank-durable-effects", {
-  *execute(authorization: DurableEffectAuthorization): Operation<ResolveOperationResult> {
-    const registry = yield* useDurableEffectRegistry();
-    const registration = registry.get(
-      effectKey(authorization.descriptor.name, authorization.descriptor.version),
-    );
-    if (!registration) {
-      throw new CrankError(
-        "unknown_target",
-        `No durable effect handler for ${authorization.descriptor.name}@${authorization.descriptor.version}`,
-      );
-    }
-    if (effectContractDigest(registration.definition) !== authorization.effectContractDigest) {
-      throw new CrankError(
-        "invalid_manifest",
-        `Effect contract differs for ${authorization.descriptor.name}@${authorization.descriptor.version}`,
-      );
-    }
-    // The authority already ran defaults/transforms exactly once and returned
-    // this effective descriptor with the authorization. Host dispatch performs
-    // structural canonicalization only.
-    const input = canonicalSnapshot(assertJson(authorization.descriptor.input)).value;
-    const controller = new AbortController();
-    const release = registerLiveDurableEffect(
-      authorization.sessionId,
-      authorization.taskId,
-      authorization.pullId,
-      authorization.attemptId,
-      (reason) => controller.abort(reason),
-    );
-    let outcome: OperationOutcome;
-    try {
-      const operation = registration.handler(input, {
-        sessionId: authorization.sessionId,
-        taskId: authorization.taskId,
-        pullId: authorization.pullId,
-        attemptId: authorization.attemptId,
-        cancellation: controller.signal,
-        resolver: authorization.resolver,
-      });
-      if (!isOperation(operation)) {
-        throw new CrankError(
-          "invalid_manifest",
-          "Durable effect handler returned a Promise or plain value",
-        );
-      }
-      const disposition = yield* operation;
-      if (!isEffectDisposition(disposition)) {
-        throw new CrankError("invalid_manifest", "Durable effect returned an invalid disposition");
-      }
-      if (disposition.status === "ok") {
-        // Output Standard Schema validation runs once in authority.resolve();
-        // host code supplies only bounded canonical pre-validation input.
-        const value = canonicalSnapshot(assertJson(disposition.value)).value;
-        assertInlineSize(value);
-        outcome = { status: "ok", value };
-      } else if (disposition.status === "cancelled") {
-        outcome =
-          disposition.partial === undefined
-            ? { status: "cancelled" }
-            : { status: "cancelled", partial: disposition.partial };
-      } else {
-        outcome = { status: "error", error: disposition.error };
-      }
-    } catch (error) {
-      outcome = controller.signal.aborted
-        ? { status: "cancelled" }
-        : { status: "error", error: serializeDurableError(error) };
-    } finally {
-      release();
-      if (!controller.signal.aborted) {
-        controller.abort();
+/** Resolves the durable-effects-owned dispatch outcome through Journal Authority. */
+function* executeDurableEffectAuthorization(
+  authorization: DurableEffectAuthorization,
+): Operation<ResolveOperationResult> {
+  let outcome: OperationOutcome;
+  try {
+    outcome = yield* DurableEffects.operations.execute(authorization);
+  } catch (error) {
+    outcome = { status: "error", error: serializeDurableError(error) };
+  }
+  const resolution = yield* JournalAuthority.operations.resolve({
+    capability: authorization.resolutionCapability,
+    audience: authorization.resolver.audience,
+    outcome,
+  });
+  if (resolution.status !== "rejected" && authorization.descriptor.name === "model.sample") {
+    const acknowledge = yield* ModelSamplingOutcomeAcknowledgerContext.get();
+    if (acknowledge) {
+      try {
+        yield* acknowledge({
+          sessionId: authorization.sessionId,
+          taskId: authorization.taskId,
+          pullId: authorization.pullId,
+          attemptId: authorization.attemptId,
+          outcomeDigest: canonicalSnapshot(outcome).sha,
+        });
+      } catch {
+        // Journal acceptance is authoritative; cleanup remains retryable.
       }
     }
-    const resolution = yield* JournalAuthority.operations.resolve({
-      capability: authorization.resolutionCapability,
-      audience: authorization.resolver.audience,
-      outcome,
-    });
-    if (resolution.status !== "rejected" && authorization.descriptor.name === "model.sample") {
-      const acknowledge = yield* ModelSamplingOutcomeAcknowledgerContext.get();
-      if (acknowledge) {
-        try {
-          yield* acknowledge({
-            sessionId: authorization.sessionId,
-            taskId: authorization.taskId,
-            pullId: authorization.pullId,
-            attemptId: authorization.attemptId,
-            outcomeDigest: canonicalSnapshot(outcome).sha,
-          });
-        } catch {
-          // Journal acceptance is authoritative. Remote retention remains
-          // unacknowledged and recoverable for a later cleanup/retry path.
-        }
-      }
-    }
-    return resolution;
-  },
-});
+  }
+  return resolution;
+}
 
 /** Structured runtime API that drives programs and their child topology to a durable boundary. */
-export const ProgramRuntime = createApi("crank-program-runtime", {
+const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
   *run(request: ProgramRunRequest): Operation<ProgramRunResult> {
     yield* ProgramExecutionScopeContext.set(yield* useScope());
     let attachment: ProgramAttachment | undefined;
@@ -799,49 +590,26 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
               outcome: authorized.authorizedOutcome,
             });
           } else {
-            const hostRegistry = yield* useDurableEffectRegistry();
-            const hostRegistration = hostRegistry.get(
-              effectKey(authorizationDescriptor.name, authorizationDescriptor.version),
+            resolution = yield* ProgramPlacementContext.with(
+              {
+                journal,
+                program: request.attach.program,
+                route: request.attach.route,
+                driverKind: driverKind(request.attach.route),
+              },
+              function* () {
+                return yield* executeDurableEffectAuthorization({
+                  sessionId: request.attach.sessionId,
+                  taskId: request.attach.taskId,
+                  pullId: reservation.pullId,
+                  attemptId: reservation.attemptId,
+                  descriptor: authorizationDescriptor,
+                  effectContractDigest: authorizationDigest,
+                  resolutionCapability: reservation.resolutionCapability,
+                  resolver: effectResolver,
+                });
+              },
             );
-            if (
-              !hostRegistration ||
-              effectContractDigest(hostRegistration.definition) !== authorizationDigest
-            ) {
-              resolution = yield* JournalAuthority.operations.resolve({
-                capability: reservation.resolutionCapability,
-                audience: effectResolver.audience,
-                outcome: {
-                  status: "error",
-                  error: serializeDurableError(
-                    new CrankError(
-                      "effect_placement_unavailable",
-                      "Host effect implementation is unavailable",
-                    ),
-                  ),
-                },
-              });
-            } else {
-              resolution = yield* ProgramPlacementContext.with(
-                {
-                  journal,
-                  program: request.attach.program,
-                  route: request.attach.route,
-                  driverKind: driverKind(request.attach.route),
-                },
-                function* () {
-                  return yield* DurableEffects.operations.execute({
-                    sessionId: request.attach.sessionId,
-                    taskId: request.attach.taskId,
-                    pullId: reservation.pullId,
-                    attemptId: reservation.attemptId,
-                    descriptor: authorizationDescriptor,
-                    effectContractDigest: authorizationDigest,
-                    resolutionCapability: reservation.resolutionCapability,
-                    resolver: effectResolver,
-                  });
-                },
-              );
-            }
           }
           if (resolution.status === "rejected") {
             throw new CrankError(resolution.code);
@@ -906,16 +674,8 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
       }
     }
   },
-});
+};
 
-/** Bound ProgramPeer operations for composition without API-object lookup. */
-export const {
-  attach: attachProgram,
-  restore: restoreProgram,
-  step: stepProgram,
-  shutdown: shutdownProgram,
-  manifest: resolveProgramManifest,
-} = ProgramPeer.operations;
 /** Bound JournalAuthority operations for composition without API-object lookup. */
 export const {
   reserve: reserveOperation,
@@ -923,10 +683,6 @@ export const {
   emit: appendDurableEmission,
   complete: completeDurableTask,
 } = JournalAuthority.operations;
-/** Bound durable host-effect execution operation. */
-export const { execute: executeDurableEffect } = DurableEffects.operations;
-/** Bound durable program orchestration operation. */
-export const { run: runDurableProgram } = ProgramRuntime.operations;
 
 function* driverFor(kind: string): Operation<ProgramDriver> {
   const registry: ProgramDriverRegistry | undefined = yield* ProgramDriverRegistryContext.get();
@@ -943,10 +699,6 @@ function driverKind(route: ProgramRoute): string {
   }
   const value = route["driverKind"] ?? route["kind"];
   return typeof value === "string" && value ? value : "program";
-}
-
-function effectKey(name: string, version: string): string {
-  return `${name}@${version}`;
 }
 
 function turnIdFor(taskId: string): string {
@@ -975,37 +727,4 @@ function shouldInjectBeforeStep(step: ProgramStep, frontier: CancellationFrontie
   return frontier.pullId === undefined
     ? step.actionIndex >= frontier.actionIndex
     : step.actionIndex > frontier.actionIndex;
-}
-
-function isEffectDisposition(value: unknown): value is DurableEffectDisposition<Json, Json> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const disposition = value as Record<string, unknown>;
-  if (disposition["status"] === "ok") {
-    return "value" in disposition;
-  }
-  if (disposition["status"] === "cancelled") {
-    return true;
-  }
-  if (disposition["status"] !== "error") {
-    return false;
-  }
-  const error = disposition["error"];
-  return Boolean(
-    error &&
-    typeof error === "object" &&
-    !Array.isArray(error) &&
-    typeof (error as Record<string, unknown>)["code"] === "string" &&
-    typeof (error as Record<string, unknown>)["message"] === "string",
-  );
-}
-
-function isOperation(value: unknown): value is Operation<unknown> {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    Symbol.iterator in value &&
-    typeof value[Symbol.iterator] === "function",
-  );
 }

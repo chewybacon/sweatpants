@@ -1,8 +1,8 @@
-import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import type { SchemaBinding } from "@sweatpants/foundation/schema";
 import { CrankError } from "@sweatpants/durable-execution";
 import { all, type Operation } from "effection";
 
-import { canonicalJson } from "../canonical.ts";
+import { canonicalJson } from "@sweatpants/foundation";
 import { createCapabilityKeyring, type CapabilityKeyring } from "../capabilities.ts";
 import {
   createDurableSchemaRegistry,
@@ -15,7 +15,7 @@ import {
   createSchemaFixture,
   nullGuard,
   stringGuard,
-} from "./schema-fixtures.ts";
+} from "@sweatpants/journal-authority/testing";
 import type {
   BindRestoreFrontierRequest,
   BindRestoreFrontierResult,
@@ -38,9 +38,9 @@ import type {
   ResolveOperationResult,
   DurableJournalAuthorityService,
   DurableOperationState,
-  DurableProgramManifest,
   DurableTaskRecoveryState,
-} from "../durable-types.ts";
+} from "../durable-authority-types.ts";
+import type { DurableProgramManifest } from "@sweatpants/durable-execution";
 import type {
   DurableSemanticRecord,
   InMemoryDurableJournalAuthority,

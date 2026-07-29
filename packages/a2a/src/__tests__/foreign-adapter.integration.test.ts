@@ -5,13 +5,15 @@ import {
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
-  DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
   createInMemoryDurableJournalAuthority,
 } from "@sweatpants/session-contract";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
+import {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
 import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {

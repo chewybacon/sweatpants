@@ -15,4 +15,4 @@ export type ModelSamplingOutcomeAcknowledger = (
 
 export const ModelSamplingOutcomeAcknowledgerContext = createContext<
   ModelSamplingOutcomeAcknowledger | undefined
->("session-contract:model-sampling-outcome-acknowledger", undefined);
+>("durable-effects:model-sampling-outcome-acknowledger", undefined);

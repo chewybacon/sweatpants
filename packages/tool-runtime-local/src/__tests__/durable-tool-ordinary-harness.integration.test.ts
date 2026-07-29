@@ -1,5 +1,5 @@
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
-import { defineDurableEffect } from "@sweatpants/durable-execution";
+import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 
 import {
   ProgramDriverRegistryContext,
@@ -8,14 +8,16 @@ import {
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
-  DurableEffectRegistryContext,
   withJournalAuthority,
-  ProgramRuntime,
   createCapabilityKeyring,
-  createDurableEffectRegistry,
   createInMemoryDurableJournalAuthority,
   type DurableSemanticRecord,
 } from "@sweatpants/session-contract";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
+import {
+  DurableEffectRegistryContext,
+  createDurableEffectRegistry,
+} from "@sweatpants/durable-effects/runtime";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
@@ -29,7 +31,7 @@ import {
   foreignToolAdapter,
 } from "@sweatpants/tool-session/foreign";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import { anyGuard, createSchemaFixture } from "@sweatpants/session-contract/testing";
+import { anyGuard, createSchemaFixture } from "@sweatpants/journal-authority/testing";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
 
 import {

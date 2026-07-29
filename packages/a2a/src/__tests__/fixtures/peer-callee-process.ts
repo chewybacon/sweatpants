@@ -6,11 +6,11 @@ import { createServer } from "node:http";
 import { run } from "effection";
 import {
   withJournalAuthority,
-  ProgramRuntime,
   createCapabilityKeyring,
   createInMemoryDurableJournalAuthority,
-  type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
@@ -18,7 +18,7 @@ import {
 } from "@sweatpants/durable-execution";
 import { assertJson } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema-descriptor";
+import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import {
   DELEGATED_EFFECTS_EXTENSION_URI,
   SWEATPANTS_PEER_PROFILE_URI,

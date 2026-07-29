@@ -6,7 +6,7 @@ export default defineConfig({
     contract: "src/contract.ts",
     authoring: "src/authoring.ts",
     runtime: "src/runtime.ts",
-    "model-sample-contract": "src/model-sample-contract.ts",
+    "model-sample": "src/model-sample.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

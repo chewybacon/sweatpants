@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { SchemaBinding } from "@sweatpants/foundation/schema-descriptor";
+import type { SchemaBinding } from "@sweatpants/foundation/schema";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import type { ToolElicitSchemaArtifact, ToolSchemaArtifacts } from "./contract.ts";
