@@ -1,5 +1,5 @@
 /** Journal-native tic-tac-toe program and public tool contract. */
-import { createDurableTool } from "@sweatpants/core";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
 

@@ -16,7 +16,7 @@
  * ## Usage (Host Side)
  *
  * ```typescript
- * import { createWorkerPrincipal } from "@sweatpants/core/transport/worker";
+ * import { createWorkerPrincipal } from "@sweatpants/agent-sdk/transport/worker";
  *
  * const { result } = yield* createWorkerPrincipal({
  *   workerUrl: "./tool-worker.js",
@@ -37,7 +37,7 @@
  * ## Usage (Worker Side)
  *
  * ```typescript
- * import { runToolWorker } from "@sweatpants/core/transport/worker";
+ * import { runToolWorker } from "@sweatpants/agent-sdk/transport/worker";
  *
  * await runToolWorker(function* (initData, ctx) {
  *   // Sample the LLM through the host backchannel

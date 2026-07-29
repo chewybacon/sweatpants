@@ -47,7 +47,7 @@ import {
   type ResourcePackage,
   type ResourceReaderPrograms,
   type ResourceView,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 import {
   CHAT_CONTRACT_SCHEMA_ENTRIES,
   CHAT_TURN_INPUT_DESCRIPTOR,

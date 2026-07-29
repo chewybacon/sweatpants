@@ -35,9 +35,9 @@ function canonicalToolSource(content: string): string {
     return content;
   }
   if (/\bdefineTool\s*\(/.test(content)) {
-    return `import { defineTool } from "@sweatpants/core";\n${content}`;
+    return `import { defineTool } from "@sweatpants/agent-sdk";\n${content}`;
   }
-  return `import { createTool, createDurableTool } from "@sweatpants/core";\n${content}`;
+  return `import { createTool, createDurableTool } from "@sweatpants/agent-sdk";\n${content}`;
 }
 
 function discoverTools(content: string, file = "/project/src/tools/my-tool.ts") {
@@ -125,7 +125,7 @@ describe("discoverToolsInContent", () => {
   describe("named export pattern", () => {
     it("discovers export const with createTool", () => {
       const content = `
-        import { createTool } from '@sweatpants/core'
+        import { createTool } from '@sweatpants/agent-sdk'
 
         export const calculator = createTool('calculator')
           .description('Calculate something')
@@ -145,7 +145,7 @@ describe("discoverToolsInContent", () => {
 
     it("discovers export const with createTool any import path", () => {
       const content = `
-        import { createTool } from '@sweatpants/core'
+        import { createTool } from '@sweatpants/agent-sdk'
 
         export const calculator = createTool('calculator')
           .description('Calculate something')
@@ -397,7 +397,7 @@ describe("discoverToolsInContent", () => {
   describe(".tsx file support", () => {
     it("discovers .tsx files with named exports", () => {
       const content = `
-        import { createTool } from '@sweatpants/core'
+        import { createTool } from '@sweatpants/agent-sdk'
 
         export const askQuestion = createTool('ask_question')
           .description('Ask a question to the user')

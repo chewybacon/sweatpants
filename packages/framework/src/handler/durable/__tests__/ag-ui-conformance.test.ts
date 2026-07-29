@@ -71,7 +71,7 @@ const agUiMessageSchema = z.discriminatedUnion("role", [
 
 // Test-local mirror of the AG-UI core EventSchemas for event families emitted by
 // Sweatpants public durable streams. Keep in lockstep with protocols/ag-ui
-// sdks/typescript/packages/core/src/events.ts when adding new public event types.
+// sdks/typescript/packages/agent-sdk/src/events.ts when adding new public event types.
 const agUiEventSchemas = z.discriminatedUnion("type", [
   z
     .object({

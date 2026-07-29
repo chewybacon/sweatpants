@@ -1,7 +1,7 @@
 /**
  * Worker-based Tool Session
  *
- * Adapts @sweatpants/core's worker transport to the ToolSession interface.
+ * Adapts @sweatpants/agent-sdk's worker transport to the ToolSession interface.
  * This allows the existing MCP handler infrastructure to work with tools
  * running in isolated worker threads.
  *
@@ -14,14 +14,14 @@
  *   ▼
  * WorkerToolSession (this module)
  *   │
- *   │ @effectionx/worker via @sweatpants/core
+ *   │ @effectionx/worker via @sweatpants/agent-sdk
  *   ▼
  * Worker (running tool generator via runWorker)
  * ```
  *
  * ## Communication Model
  *
- * Uses @sweatpants/core's createWorkerPrincipal which handles:
+ * Uses @sweatpants/agent-sdk's createWorkerPrincipal which handles:
  * - Worker lifecycle (spawn, cleanup on scope exit)
  * - Bidirectional communication (worker sends requests, host responds)
  * - Final result collection
@@ -38,7 +38,7 @@ import {
   type WorkerRequest,
   type WorkerResponse,
   type WorkerResult,
-} from "@sweatpants/core/transport/worker";
+} from "@sweatpants/agent-sdk/transport/worker";
 import type {
   ToolSession,
   ToolSessionStatus,

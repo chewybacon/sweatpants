@@ -1,7 +1,7 @@
 import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { createDurableTool } from "@sweatpants/core";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import {
   createCapabilityKeyring,
   createDurableEffectRegistry,

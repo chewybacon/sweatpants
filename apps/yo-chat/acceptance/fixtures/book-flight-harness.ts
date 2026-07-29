@@ -1,5 +1,5 @@
 import { resource, run, type Operation, type Stream } from "effection";
-import type { RuntimeTool } from "@sweatpants/core";
+import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import {
   installModelProvider,
   ModelProviderModelContext,

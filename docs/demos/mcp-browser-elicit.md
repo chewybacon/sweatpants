@@ -17,7 +17,7 @@ Optional: decline/cancel paths also return structured terminal results.
 ## Product imports (sample)
 
 ```ts
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import { makePlugin } from "@sweatpants/framework/chat";
 import type { RenderableProps } from "@sweatpants/framework/chat/browser-rendering";
 

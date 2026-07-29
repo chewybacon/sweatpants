@@ -8,7 +8,7 @@
  * - LLM sampling for travel tips
  */
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import { sleep } from "effection";
 
 // =============================================================================

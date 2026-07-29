@@ -1,4 +1,4 @@
-import type { RuntimeTool } from "@sweatpants/core";
+import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import type {
   LogLevel,
   NamedSampleResult,
@@ -13,7 +13,7 @@ import type {
   SampleToolsResult,
   ToolMessage,
   ToolSampleConfig,
-} from "@sweatpants/core/tool";
+} from "@sweatpants/agent-sdk/tool";
 import type { Operation } from "effection";
 import type {
   WorkerSampleConfig,

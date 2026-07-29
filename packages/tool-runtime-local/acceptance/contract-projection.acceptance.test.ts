@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createTool, isExecutableToolContract, projectToolContract } from "@sweatpants/core";
+import { createTool, isExecutableToolContract, projectToolContract } from "@sweatpants/agent-sdk";
 import { createToolInventoryEntry } from "@sweatpants/framework/chat";
 import {
   createInMemoryToolSessionStore,

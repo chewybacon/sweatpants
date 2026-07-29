@@ -72,7 +72,7 @@ import type {
   ToolMessage,
   ExtractElicitContext,
   ExtractElicitResponse,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 
 // =============================================================================
 // BUFFERED CHANNEL (Queue-based, never drops messages)

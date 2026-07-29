@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import {
   ToolExposureApi,
   ToolExposureError,

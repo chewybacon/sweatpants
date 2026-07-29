@@ -1,6 +1,6 @@
 import { isMainThread, threadId } from "node:worker_threads";
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 
 export const ACCEPTANCE_TOOL_NAME = "acceptance_booking";
 export const NESTED_SAMPLE_PROMPT_MARKER = "NESTED_SAMPLE_PROMPT_V1";

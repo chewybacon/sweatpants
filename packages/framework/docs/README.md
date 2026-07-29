@@ -22,7 +22,7 @@ Documentation for core contributors to the Sweatpants framework.
 
 ### Key Concepts
 
-#### @sweatpants/core
+#### @sweatpants/agent-sdk
 - [Core Tool / Tool Factory](./GLOSSARY.md#core-tool--tool-factory) - `createTool()` pattern
 - [Agent](./GLOSSARY.md#agent) - Group tools with shared config
 - [Principal / Operative](./GLOSSARY.md#principal) - Communication model
@@ -36,13 +36,13 @@ Documentation for core contributors to the Sweatpants framework.
 
 ### Code Locations
 
-#### Core Package (`packages/core/`)
+#### Core Package (`packages/agent-sdk/`)
 | Component | Location |
 |-----------|----------|
-| createTool | [`packages/core/src/tool/create.ts`](../../core/src/tool/create.ts) |
+| createTool | [`packages/agent-sdk/src/tool/create.ts`](../../core/src/tool/create.ts) |
 | createAgent | Deleted legacy sketch; fresh fold-mode implementation lives in [`packages/session-contract/src/create-agent.ts`](../../session-contract/src/create-agent.ts), with reference salvage in [`packages/session-contract/docs/legacy-agent-salvage.md`](../../session-contract/docs/legacy-agent-salvage.md) |
-| Built-ins (elicit, notify, sample) | [`packages/core/src/builtins/api.ts`](../../core/src/builtins/api.ts) |
-| Transport Types | [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts) |
+| Built-ins (elicit, notify, sample) | [`packages/agent-sdk/src/builtins/api.ts`](../../core/src/builtins/api.ts) |
+| Transport Types | [`packages/agent-sdk/src/types/transport.ts`](../../core/src/types/transport.ts) |
 
 #### Framework Package (`packages/framework/`)
 | Component | Location |

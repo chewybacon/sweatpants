@@ -2,7 +2,7 @@
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import { createClient } from "redis";
-import type { RuntimeTool } from "@sweatpants/core";
+import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import {
   installModelProvider,
   ModelProviderModelContext,

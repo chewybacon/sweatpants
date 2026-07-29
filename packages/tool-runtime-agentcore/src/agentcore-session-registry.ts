@@ -1,4 +1,4 @@
-import type { ToolContract, ElicitsMap } from "@sweatpants/core";
+import type { ToolContract, ElicitsMap } from "@sweatpants/agent-sdk";
 import type { Operation, Stream } from "effection";
 import type {
   ToolSession,

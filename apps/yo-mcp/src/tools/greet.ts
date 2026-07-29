@@ -4,7 +4,7 @@
  * A tool that demonstrates using sampling to generate a personalized greeting.
  */
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 
 export const greetTool = createTool("greet")
   .description("Generate a personalized greeting using AI")

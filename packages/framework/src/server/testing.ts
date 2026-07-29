@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { call, createScope, type Operation } from "effection";
-import type { AgentDefinition } from "@sweatpants/core";
+import type { AgentDefinition } from "@sweatpants/agent-sdk";
 import { sendWebResponse } from "@sweatpants/stream-bridge";
 import type { AddressInfo } from "node:net";
 import {

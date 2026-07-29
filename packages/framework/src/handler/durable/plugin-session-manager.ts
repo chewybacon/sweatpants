@@ -56,7 +56,7 @@ import type {
 } from "@sweatpants/tool-session";
 // Note: concrete tool session registries should be created at server startup, not here.
 import type { ElicitsMap, WireElicitResult } from "../../lib/chat/mcp-tools/mcp-tool-types.ts";
-import type { ToolDefinition } from "@sweatpants/core";
+import type { ToolDefinition } from "@sweatpants/agent-sdk";
 import type {
   ComponentEmissionPayload,
   PendingEmission,

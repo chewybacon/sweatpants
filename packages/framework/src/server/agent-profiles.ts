@@ -27,7 +27,7 @@ import {
   type AgentDefinition,
   type AgentProgramBinding,
   type AdvertisedCapabilityV1,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 import type { AgentCardSigner } from "./agent-card-signing.ts";
 import type {
   BoundStandardA2AHost,

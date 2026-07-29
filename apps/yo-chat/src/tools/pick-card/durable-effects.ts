@@ -1,5 +1,5 @@
 import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
-import { effectRuntimeValidators } from "@sweatpants/core";
+import { effectRuntimeValidators } from "@sweatpants/agent-sdk";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { sha256, type Json } from "@sweatpants/foundation";
 

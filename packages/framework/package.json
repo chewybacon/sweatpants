@@ -126,8 +126,8 @@
     "dependencies": {
         "@standard-schema/spec": "catalog:",
         "@sweatpants/a2a": "workspace:*",
+        "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
-        "@sweatpants/core": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",

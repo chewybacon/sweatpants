@@ -1,11 +1,11 @@
 /**
  * Example: Book Flight Core Tool exposed through MCP adapters.
  *
- * Tool authoring is canonical in `@sweatpants/core`; MCP-specific code should
+ * Tool authoring is canonical in `@sweatpants/agent-sdk`; MCP-specific code should
  * project this `ToolDefinition` at the adapter boundary instead of using a
  * separate MCP builder.
  */
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 
 const flightSchema = z.object({

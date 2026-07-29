@@ -41,7 +41,7 @@ import type {
   SampleResultBase,
   SamplesMap,
   ToolMessage,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 import type {
   WireElicitResult,
   ClientElicitConfig,

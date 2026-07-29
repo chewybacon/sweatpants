@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { sortedResourceValues } from "@sweatpants/core";
+import { sortedResourceValues } from "@sweatpants/agent-sdk";
 import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import { DEFAULT_MAX_INLINE_BYTES } from "@sweatpants/durable-execution";
 import {

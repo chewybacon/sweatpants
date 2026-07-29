@@ -5,7 +5,7 @@
  * - @sweatpants/framework/server
  * - @sweatpants/framework/chat
  * - @sweatpants/durable-chat-runtime/response-streams
- * - @sweatpants/core
+ * - @sweatpants/agent-sdk
  *
  * Exercises: construct chat application, define a tool with createTool,
  * send a user message, complete a turn (with tool call).
@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { call, resource, type Operation, type Subscription } from "effection";
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import {
   createCapabilityKeyring,
   createChatApplication,

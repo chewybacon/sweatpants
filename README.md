@@ -16,11 +16,11 @@ At most four conceptual targets (concrete package names today):
 | -------------------- | ------------------------------ | --------------------------------------- |
 | `@sweatpants/react`  | `@sweatpants/react-chat`       | UI hooks / chat client                  |
 | `@sweatpants/server` | `@sweatpants/framework/server` | Durable handler + app wiring            |
-| `@sweatpants/tools`  | `@sweatpants/core`             | `createTool` authoring                  |
+| `@sweatpants/tools`  | `@sweatpants/agent-sdk`        | `createTool` authoring                  |
 | `@sweatpants/chat`   | `@sweatpants/framework/chat`   | Plugins, session helpers, advanced chat |
 
 ```bash
-pnpm add @sweatpants/react-chat @sweatpants/framework @sweatpants/core
+pnpm add @sweatpants/react-chat @sweatpants/framework @sweatpants/agent-sdk
 ```
 
 ## Quick start
@@ -81,7 +81,7 @@ export function createApp() {
 ### Tool authoring
 
 ```ts
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 
 export const bookFlight = createTool("book_flight")

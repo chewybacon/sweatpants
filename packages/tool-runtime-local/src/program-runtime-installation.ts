@@ -1,4 +1,4 @@
-import type { AnyToolContract } from "@sweatpants/core";
+import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
 import type { ToolRuntime } from "@sweatpants/framework/chat";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/framework/server";

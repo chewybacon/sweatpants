@@ -1,5 +1,5 @@
 {
-    "name": "@sweatpants/core",
+    "name": "@sweatpants/agent-sdk",
     "version": "0.1.0",
     "description": "Core primitives for Sweatpants agent framework - transport, protocol, and data model",
     "keywords": [

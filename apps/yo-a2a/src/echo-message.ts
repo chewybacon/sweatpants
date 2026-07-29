@@ -1,4 +1,4 @@
-import { createDurableTool } from "@sweatpants/core";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 
 /** A real crank-native tool whose plain-text elicitation is easy to drive from chat UIs. */

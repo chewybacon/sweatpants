@@ -1,6 +1,6 @@
 import { sleep } from "effection";
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 
 export interface Flight {
   id: string;

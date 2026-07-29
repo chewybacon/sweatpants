@@ -9,7 +9,7 @@ import {
   InvokeAgentRuntimeCommand,
   StopRuntimeSessionCommand,
 } from "@aws-sdk/client-bedrock-agentcore";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   createAgentCoreRemoteToolRuntimeClient,

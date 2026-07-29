@@ -16,7 +16,7 @@
 ## Product imports (sample)
 
 ```ts
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import { makePlugin, getElicitContext } from "@sweatpants/framework/chat";
 
 // Tool authoring with elicit

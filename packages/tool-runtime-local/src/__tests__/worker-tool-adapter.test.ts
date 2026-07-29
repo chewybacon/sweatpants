@@ -1,7 +1,7 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import { createWorkerTool } from "../worker-tool-adapter.ts";
 import type { WorkerToolContext } from "../worker-types.ts";
 

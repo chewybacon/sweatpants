@@ -45,7 +45,7 @@ export interface ToolDiscoveryOptions {
   /**
    * Import-aware builder provenance. Aliases are resolved against these
    * module/export pairs instead of classifying bare callee text.
-   * @default createTool + createDurableTool from @sweatpants/core
+   * @default createTool + createDurableTool from @sweatpants/agent-sdk
    */
   builders?: ToolBuilderDiscoveryConfig[];
 
@@ -91,9 +91,9 @@ export function resolveToolDiscoveryOptions(
           (name) => ({ module: "*", export: name, execution: "ordinary" as const }),
         )
       : [
-          { module: "@sweatpants/core", export: "createTool", execution: "ordinary" as const },
+          { module: "@sweatpants/agent-sdk", export: "createTool", execution: "ordinary" as const },
           {
-            module: "@sweatpants/core",
+            module: "@sweatpants/agent-sdk",
             export: "createDurableTool",
             execution: "crank_native" as const,
           },

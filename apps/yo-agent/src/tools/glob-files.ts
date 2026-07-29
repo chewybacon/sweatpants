@@ -3,7 +3,7 @@
  *
  * Find files matching a glob pattern. Read-only, safe for plan mode.
  */
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 import { call } from "effection";
 import fg from "fast-glob";

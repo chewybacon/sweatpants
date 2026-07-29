@@ -25,7 +25,7 @@ Three lanes classify every workspace package:
 | `@sweatpants/react-chat` | UI hooks / chat client (`useChat`, `useChatSession`, `ChatProvider`) |
 | `@sweatpants/react-chat/pipeline` | Rendering pipelines when required |
 | `@sweatpants/framework` **product entries** | Dual-nature (see below). Product import paths: `/server`, `/chat`, `/chat/browser-rendering`, `/chat/mcp-tools`, `/chat/durable-streams`; `/chat` owns `defineChatProgram`, while `/server` owns explicit agent serving profiles and connectivity |
-| `@sweatpants/core` **authoring surface** | `createTool`, content-addressed resources/guidance, `defineAgent`, advertised capabilities, and portable manifest types (`.` / `/tool` / `/tools`) |
+| `@sweatpants/agent-sdk` **authoring surface** | `createTool`, content-addressed resources/guidance, `defineAgent`, advertised capabilities, and portable manifest types (`.` / `/tool` / `/tools`) |
 | `@sweatpants/cli` | Tooling (codegen), not runtime core |
 
 ### Canonical substrate
@@ -76,9 +76,9 @@ Three lanes classify every workspace package:
 | `ChatProvider` | `@sweatpants/react-chat` |
 | `createChatApplication` | `@sweatpants/framework/server` |
 | `createChatHandler` / `createDurableChatHandler` | `@sweatpants/framework/server` |
-| `createTool` | `@sweatpants/core` |
+| `createTool` | `@sweatpants/agent-sdk` |
 | `makePlugin` | `@sweatpants/framework/chat` |
-| `defineAgent` / `advertiseCapability` | `@sweatpants/core` |
+| `defineAgent` / `advertiseCapability` | `@sweatpants/agent-sdk` |
 | `defineChatProgram` / `latestContextWindow` | `@sweatpants/framework/chat` |
 | `serveAgent` / `remoteExecutor` / `standardA2A` / `sweatpantsPeer` / `createStandardA2AHost` | `@sweatpants/framework/server` |
 | `startAgentHarness` | `@sweatpants/framework/server/testing` |
@@ -103,7 +103,7 @@ These MAY remain available as canonical/experimental surfaces, but MUST NOT be a
 
 - Direct session-contract `createAgent` fold harness as primary app authoring
 - Raw durable-streams store APIs as app-author primary surface
-- Transport primitives from `@sweatpants/core/transport` as app-author primary surface
+- Transport primitives from `@sweatpants/agent-sdk/transport` as app-author primary surface
 - Isomorphic tool builders as public product authoring
 - AG-UI conformance internals, interrupt registries, and fold drivers as app-author primary surface
 
@@ -124,7 +124,7 @@ Happy-path samples SHOULD prefer local/in-memory defaults (no Redis or AgentCore
 |---|---|---|
 | `@sweatpants/react` | `@sweatpants/react-chat` | UI hooks / chat client |
 | `@sweatpants/server` | `@sweatpants/framework/server` | Durable handler + app wiring |
-| `@sweatpants/tools` | `@sweatpants/core` (`createTool`) | Tool authoring |
+| `@sweatpants/tools` | `@sweatpants/agent-sdk` (`createTool`) | Tool authoring |
 | `@sweatpants/chat` | `@sweatpants/framework/chat` | Session helpers, plugins, advanced chat |
 
 Physical package renames are optional. Docs and facade maps are the Phase 4 exit path.
@@ -159,7 +159,7 @@ Scan of `apps/yo-chat` source (excluding `node_modules` / `dist`) for `@sweatpan
 | `@sweatpants/framework/chat/browser-rendering` | Product entry | medium | tool UI components |
 | `@sweatpants/durable-chat-runtime/response-streams` | Product entry | low | durable setup |
 | `@sweatpants/react-chat` | Product | medium | chat routes |
-| `@sweatpants/core` | Product tool surface | medium | `createTool` |
+| `@sweatpants/agent-sdk` | Product tool surface | medium | `createTool` |
 | `@sweatpants/tool-runtime-local` | Canonical wiring | medium | local tools |
 | `@sweatpants/tool-runtime-agentcore` | Canonical wiring | low | optional remote tools |
 | `@sweatpants/durable-streams/redis` | Canonical wiring | low | Redis buffer when configured |

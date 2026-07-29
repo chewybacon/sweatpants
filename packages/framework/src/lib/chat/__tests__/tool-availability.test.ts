@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createDurableTool, createTool } from "@sweatpants/core";
+import { createDurableTool, createTool } from "@sweatpants/agent-sdk";
 import { sha256 } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 

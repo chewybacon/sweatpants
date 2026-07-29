@@ -9,7 +9,7 @@
  */
 import { resource, sleep, type Operation, type Stream } from "effection";
 import { z } from "zod";
-import { createTool, type ToolDefinition as CoreToolDefinition } from "@sweatpants/core";
+import { createTool, type ToolDefinition as CoreToolDefinition } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import type {
   ChatEvent,

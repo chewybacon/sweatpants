@@ -1,4 +1,4 @@
-import type { AnyToolContract } from "@sweatpants/core";
+import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 
 export {

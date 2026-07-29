@@ -12,7 +12,7 @@
     "dependencies": {
         "@astryxdesign/core": "^0.1.8",
         "@astryxdesign/theme-neutral": "^0.1.8",
-        "@sweatpants/core": "workspace:*",
+        "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",

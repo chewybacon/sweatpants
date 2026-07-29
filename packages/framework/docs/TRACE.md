@@ -1,12 +1,12 @@
 # Canonical Tool Execution Trace
 
 This document traces a browser-interactive tool after the canonical tool migration.
-Tool authoring lives in `@sweatpants/core`; framework plugins bind browser UI to declared elicit keys.
+Tool authoring lives in `@sweatpants/agent-sdk`; framework plugins bind browser UI to declared elicit keys.
 
 ## 1. Authoring
 
 ```ts
-import { createTool } from '@sweatpants/core'
+import { createTool } from '@sweatpants/agent-sdk'
 import { makePlugin } from '@sweatpants/framework/chat/mcp-tools'
 
 export const bookFlightTool = createTool('book_flight')

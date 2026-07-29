@@ -5,7 +5,7 @@ import {
 
 import type { Operation } from "effection";
 import { z } from "zod";
-import { createTool, type AnyToolContract } from "@sweatpants/core";
+import { createTool, type AnyToolContract } from "@sweatpants/agent-sdk";
 import {
   DurableEffectRegistryContext,
   withJournalAuthority,

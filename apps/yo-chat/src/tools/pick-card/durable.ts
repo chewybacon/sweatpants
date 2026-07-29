@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { createDurableTool, defineEffect } from "@sweatpants/core";
+import { createDurableTool, defineEffect } from "@sweatpants/agent-sdk";
 import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
 

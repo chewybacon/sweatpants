@@ -1,7 +1,7 @@
 import { action, race, type Operation } from "effection";
 
 import { isDurableToolSessionFacade } from "./durable-tool-session-facade.ts";
-import type { AnyToolContract } from "@sweatpants/core";
+import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type {
   ToolSession,
   ToolSessionEvent,

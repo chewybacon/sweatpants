@@ -1,4 +1,4 @@
-import type { AnyToolContract } from "@sweatpants/core";
+import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import { action, resource, spawn, type Operation, type Stream } from "effection";
 import {
   installToolRuntime,

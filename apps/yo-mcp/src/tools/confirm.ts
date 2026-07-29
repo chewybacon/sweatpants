@@ -4,7 +4,7 @@
  * A tool that demonstrates a simple confirmation flow with elicitation.
  */
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 
 const confirmSchema = z.object({
   confirmed: z.boolean().describe("Whether to proceed"),

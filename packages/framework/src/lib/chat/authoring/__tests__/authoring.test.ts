@@ -11,7 +11,7 @@ import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
   DURABLE_DRIVER_FIXTURE_TOOLS,
 } from "@sweatpants/session-contract/testing";
-import { defineGuidance, defineResourcePackage, textResource } from "@sweatpants/core";
+import { defineGuidance, defineResourcePackage, textResource } from "@sweatpants/agent-sdk";
 import {
   CHAT_MODEL_SAMPLE_EFFECT,
   acceptChatTurn,

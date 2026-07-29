@@ -226,7 +226,7 @@ export { executeElicitHandlerFromRequest } from "./mcp-tools/plugin-executor.ts"
 // Model context utilities (browser-safe subset of mcp-tools)
 export { getElicitContext, MODEL_CONTEXT_SCHEMA_KEY } from "./mcp-tools/model-context.ts";
 
-// Canonical core tool types. Author tools with createTool from @sweatpants/core.
+// Canonical core tool types. Author tools with createTool from @sweatpants/agent-sdk.
 export type {
   ToolDefinition as CoreToolDefinition,
   ToolCtx,
@@ -235,7 +235,7 @@ export type {
   SampleRequest as CoreSampleRequest,
   ToolExtension,
   ToolExtensionMetadata,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 
 // Sample result types for structured output and tool calling
 export type {

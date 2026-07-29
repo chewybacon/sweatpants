@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { run } from "effection";
 import { z } from "zod";
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   FakeAgentCoreRemoteToolRuntimeClient,

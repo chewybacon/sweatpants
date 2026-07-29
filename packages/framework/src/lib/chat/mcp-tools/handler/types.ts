@@ -17,7 +17,7 @@
  */
 import type { Operation } from "effection";
 import type { ToolSessionRegistry, ToolSession } from "@sweatpants/tool-session";
-import type { ToolDefinition } from "@sweatpants/core";
+import type { ToolDefinition } from "@sweatpants/agent-sdk";
 import type { ElicitsMap } from "../mcp-tool-types.ts";
 import type { JsonRpcId } from "../protocol/types.ts";
 

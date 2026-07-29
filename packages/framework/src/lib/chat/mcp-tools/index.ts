@@ -3,10 +3,10 @@
  *
  * MCP adapter/runtime utilities for canonical core tools.
  *
- * Tool authoring is owned by `@sweatpants/core`:
+ * Tool authoring is owned by `@sweatpants/agent-sdk`:
  *
  * ```typescript
- * import { createTool } from '@sweatpants/core/tools'
+ * import { createTool } from '@sweatpants/agent-sdk/tools'
  *
  * const analyze = createTool('analyze')
  *   .description('Analyze input')
@@ -35,7 +35,7 @@ export type {
   ElicitExchange as CoreElicitExchange,
   SampleExchange as CoreSampleExchange,
   SampleRequest as CoreSampleRequest,
-} from "@sweatpants/core";
+} from "@sweatpants/agent-sdk";
 
 // Types from unified types file
 export type {

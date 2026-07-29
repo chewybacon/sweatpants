@@ -27,7 +27,7 @@
             "path": "./packages/a2a"
         },
         {
-            "path": "./packages/core"
+            "path": "./packages/agent-sdk"
         },
         {
             "path": "./packages/durable-streams"

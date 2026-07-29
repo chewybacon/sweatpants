@@ -10,7 +10,7 @@ import {
   createToolInventory,
   createToolInventoryEntry,
 } from "@sweatpants/framework/chat";
-import type { ToolDefinition } from "@sweatpants/core";
+import type { ToolDefinition } from "@sweatpants/agent-sdk";
 import {
   installPiAiModelProvider,
   resolvePiAiModel,

@@ -3,7 +3,7 @@
  *
  * Reads the contents of a file. Read-only, safe for plan mode.
  */
-import { createTool } from "@sweatpants/core";
+import { createTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 import { call } from "effection";
 import * as fs from "node:fs/promises";

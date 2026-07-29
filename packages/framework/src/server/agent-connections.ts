@@ -14,7 +14,7 @@ import {
   type RemoteProgramManifestDocumentV1,
   type SweatpantsPeerDiscoveryOptions,
 } from "@sweatpants/a2a";
-import type { AgentManifestV1, AgentProgramBinding } from "@sweatpants/core";
+import type { AgentManifestV1, AgentProgramBinding } from "@sweatpants/agent-sdk";
 import { AgentFacadeError } from "./agent-profiles.ts";
 
 export interface ExpectedRemoteProgramContract<I extends Json = Json, O extends Json = Json> {
