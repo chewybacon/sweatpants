@@ -26,9 +26,6 @@
         },
         {
             "path": "../durable-streams"
-        },
-        {
-            "path": "../elicit-context"
         }
     ]
 }

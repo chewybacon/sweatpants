@@ -6,6 +6,7 @@ export default defineConfig({
     contract: "src/contract.ts",
     "event-log": "src/event-log.ts",
     foreign: "src/foreign.ts",
+    "elicit-context/index": "src/elicit-context/index.ts",
   },
   tsconfig: "../ts-config/tsconfig.tsup.json",
   format: ["cjs", "esm"],

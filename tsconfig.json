@@ -36,9 +36,6 @@
             "path": "./packages/session-contract"
         },
         {
-            "path": "./packages/elicit-context"
-        },
-        {
             "path": "./packages/cli"
         },
         {

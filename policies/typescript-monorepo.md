@@ -27,7 +27,7 @@ Every workspace falls into one of three categories. Determine the category first
 
 **Definition**: Libraries/packages where TypeScript compiler (`tsc`) handles type declaration generation.
 
-**Examples**: `@sweatpants/framework`, `@sweatpants/elicit-context`, `@sweatpants/cli`
+**Examples**: `@sweatpants/framework`, `@sweatpants/tool-session/elicit-context`, `@sweatpants/cli`
 
 **Characteristics**:
 

@@ -162,17 +162,17 @@ pnpm dev:yo-chat:local
 
 Canonical substrate packages (not the default shopping list):
 
-| Package                              | Role                                       |
-| ------------------------------------ | ------------------------------------------ |
-| `@sweatpants/session-contract`       | Session kernel under the durable handler   |
-| `@sweatpants/durable-streams`        | Token buffers / reconnect protocol         |
-| `@sweatpants/stream-bridge`          | Effection ↔ Web stream bridge              |
-| `@sweatpants/tool-runtime-local`     | Local/worker tool runtime (app wiring)     |
-| `@sweatpants/tool-runtime-agentcore` | AgentCore remote tool runtime (app wiring) |
-| `@sweatpants/model-provider-pi-ai`   | Model provider adapter (app wiring)        |
-| `@sweatpants/elicit-context`         | Elicit context encode/decode               |
-| `@sweatpants/vite-plugin`            | App Vite plugin                            |
-| `@sweatpants/cli`                    | MCP/codegen CLI tooling                    |
+| Package                                   | Role                                       |
+| ----------------------------------------- | ------------------------------------------ |
+| `@sweatpants/session-contract`            | Session kernel under the durable handler   |
+| `@sweatpants/durable-streams`             | Token buffers / reconnect protocol         |
+| `@sweatpants/stream-bridge`               | Effection ↔ Web stream bridge              |
+| `@sweatpants/tool-runtime-local`          | Local/worker tool runtime (app wiring)     |
+| `@sweatpants/tool-runtime-agentcore`      | AgentCore remote tool runtime (app wiring) |
+| `@sweatpants/model-provider-pi-ai`        | Model provider adapter (app wiring)        |
+| `@sweatpants/tool-session/elicit-context` | Elicit context encode/decode               |
+| `@sweatpants/vite-plugin`                 | App Vite plugin                            |
+| `@sweatpants/cli`                         | MCP/codegen CLI tooling                    |
 
 See [`docs/product-surface.md`](./docs/product-surface.md) for lane classification. Historical and superseded docs are deleted, not archived; recover them with `git log --follow --diff-filter=D -- docs/`.
 

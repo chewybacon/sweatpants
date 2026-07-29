@@ -203,7 +203,7 @@ What was done:
 What was deliberately NOT done (over-engineering for minimal gain):
 - Branded `JsonSchema` type — doesn't eliminate any casts (problem is on input side, not output)
 - Consolidating two `zodToJsonSchema` wrappers into shared utility — trivial one-liners in different modules
-- Splitting `ElicitRequest` server/client variants — out of scope, requires changing `@sweatpants/elicit-context` package
+- Splitting `ElicitRequest` server/client variants — out of scope, requires changing `@sweatpants/tool-session/elicit-context` package
 - `as z.ZodType` narrowing casts in `bridge-runtime.ts` — correct and necessary after runtime duck-type checks
 - `responseSchema as any` in `bridge-runtime.ts` — generic type erasure, needs ElicitsMap generics threaded through
 - `core-context.ts` casts — third-party `zod-to-json-schema` library type expectations

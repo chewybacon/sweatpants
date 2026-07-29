@@ -7,7 +7,7 @@ import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
 import { resource, type Operation, type Stream } from "effection";
-import { encodeElicitContext } from "@sweatpants/elicit-context";
+import { encodeElicitContext } from "@sweatpants/tool-session/elicit-context";
 import {
   ProgramRuntime,
   createDurableEffectRegistry,
