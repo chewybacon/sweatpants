@@ -212,7 +212,7 @@ For packages with multiple entry points:
         "declaration": true
     },
     "references": [
-        { "path": "./packages/elicit-context" },
+        { "path": "./packages/tool-session" },
         { "path": "./packages/cli" },
         { "path": "./packages/framework" },
         { "path": "./apps/hydra" }
@@ -276,7 +276,7 @@ pnpm tsc -b
 
 ```bash
 # Make a change to a dependency
-echo "// test" >> packages/elicit-context/src/index.ts
+echo "// test" >> packages/tool-session/src/elicit-context/index.ts
 
 # Rebuild
 pnpm tsc -b
