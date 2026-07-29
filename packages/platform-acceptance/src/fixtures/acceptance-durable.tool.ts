@@ -72,7 +72,7 @@ export const acceptanceDurableTool = createDurableTool(ACCEPTANCE_DURABLE_TOOL_N
         audience: "acceptance-durable-options",
       },
     );
-    const recorded = yield* context.record("acceptance-recorded-value", function* () {
+    const recorded = yield* context.record({ key: "acceptance-recorded-value" }, function* () {
       return `${DURABLE_RECORDED_MARKER}:${topic}`;
     });
     const sample = yield* context.sample({

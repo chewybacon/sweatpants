@@ -236,11 +236,11 @@ describe("createChatApplication", () => {
 });
 
 describe("createChatHandler public config boundary", () => {
-  it("rejects the legacy hook-array config at type level", () => {
+  it("rejects the removed hook-array config at type level", () => {
     const legacyInitializerHooksKey = "initializerHooks" as const;
 
     const _legacyConfig = {
-      // @ts-expect-error legacy hook-array config is intentionally removed from public config.
+      // @ts-expect-error removed hook-array config is intentionally removed from public config.
       [legacyInitializerHooksKey]: [],
     } satisfies Parameters<typeof createChatHandler>[0];
 

@@ -9,7 +9,7 @@ import { dirname, join, relative, resolve } from "node:path";
  * undeclared workspace dependencies, and prohibited edges in the target durable
  * runtime DAG. The target policy activates as each target package is introduced,
  * which keeps independently buildable migration stages possible without allowing
- * an extracted hub to grow an accidental legacy dependency.
+ * an extracted hub to grow an accidental reverse dependency.
  */
 
 type DependencyMap = Record<string, string>;

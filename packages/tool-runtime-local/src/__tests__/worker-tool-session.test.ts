@@ -219,7 +219,7 @@ describe("WorkerToolSession", () => {
 
   // ===========================================================================
   // canonical nested-context dialect — rich payloads always ride under `context`
-  // (the legacy top-level spread dialect was deleted with the unified types)
+  // (the removed top-level spread dialect was deleted with the unified types)
   // ===========================================================================
   describe("elicit with nested context payloads", () => {
     it("threads rich context through the canonical `context` property", async () => {

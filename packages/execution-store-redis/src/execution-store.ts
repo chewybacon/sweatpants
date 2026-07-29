@@ -50,7 +50,7 @@ return 1
 /**
  * Redis persistence for the bounded Execution Store.
  *
- * Unlike the legacy Redis authority this driver never reconstructs an
+ * Unlike the removed Redis authority this driver never reconstructs an
  * in-memory authority and never CAS-replaces a journal-wide snapshot. Control
  * CAS is per execution; payload and replay objects are immutable.
  */

@@ -124,7 +124,7 @@ export const playTttTool = createDurableTool("play_ttt")
   .execute(function* ({ gameId: requestedGameId }, context) {
     const assignment = yield* context.record(
       {
-        label: "yo-studio-play-ttt-symbol-coin-flip",
+        key: "yo-studio-play-ttt-symbol-coin-flip",
         retrySafety: { mode: "repeatable" },
       },
       function* () {
@@ -256,7 +256,7 @@ export const playTttTool = createDurableTool("play_ttt")
     const observed = yield* context.workspace.inspect();
     const gameWrite = yield* context.record(
       {
-        label: "yo-studio-play-ttt-write-game",
+        key: "yo-studio-play-ttt-write-game",
         retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
       },
       function* ({ pullId }) {
@@ -272,7 +272,7 @@ export const playTttTool = createDurableTool("play_ttt")
     );
     const recordWrite = yield* context.record(
       {
-        label: "yo-studio-play-ttt-write-record",
+        key: "yo-studio-play-ttt-write-record",
         retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
       },
       function* ({ pullId }) {

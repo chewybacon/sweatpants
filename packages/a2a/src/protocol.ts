@@ -553,14 +553,13 @@ function validateOperationDescriptor(value: Json | undefined): void {
   }
   switch (value["kind"]) {
     case "record": {
-      if (!onlyKeys(value, ["kind", "retrySafety"], ["label"])) {
+      if (!exactKeys(value, ["kind", "key", "retrySafety"])) {
         fail();
       }
       if (
-        value["label"] !== undefined &&
-        (typeof value["label"] !== "string" ||
-          value["label"].length === 0 ||
-          new TextEncoder().encode(value["label"]).byteLength > 128)
+        typeof value["key"] !== "string" ||
+        value["key"].length === 0 ||
+        new TextEncoder().encode(value["key"]).byteLength > 128
       ) {
         fail();
       }

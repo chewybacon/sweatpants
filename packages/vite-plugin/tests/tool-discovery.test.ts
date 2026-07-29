@@ -870,11 +870,14 @@ describe("integration: toolDiscoveryPlugin", () => {
     }
   });
 
-  it("rejects legacy build-style tools when worker generation is enabled", async () => {
+  it("rejects noncanonical build-style tools when worker generation is enabled", async () => {
     await setupTempProject();
 
     try {
-      await writeToolFile("legacy.ts", `export const legacy = createTool('legacy').build()`);
+      await writeToolFile(
+        "noncanonical.ts",
+        `export const noncanonical = createTool('noncanonical').build()`,
+      );
       const plugin = toolDiscoveryPlugin({
         dir: "src/tools",
         outFile: "src/__generated__/tool-registry.gen.ts",
@@ -888,7 +891,7 @@ describe("integration: toolDiscoveryPlugin", () => {
       }
 
       await expect((plugin.buildStart as () => Promise<void>)()).rejects.toThrow(
-        /Unsupported legacy worker tool.*\.build\(\).*\.description\(\.\.\.\)\.parameters\(\.\.\.\)\.execute/s,
+        /Noncanonical worker tool.*\.build\(\).*\.description\(\.\.\.\)\.parameters\(\.\.\.\)\.execute/s,
       );
       await expect(readWorker()).rejects.toThrow();
     } finally {

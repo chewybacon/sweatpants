@@ -204,7 +204,7 @@ describe("plugin replay helper", () => {
       buildPluginReplayActivity({
         toolCallId: "old-call",
         toolName: "oldTool",
-        // SAFETY: malformed legacy boundary input is the subject of this test.
+        // SAFETY: malformed boundary input is the subject of this test.
         trace: invalidTrace as unknown as ToolExecutionTrace,
       }),
     ).toBeNull();

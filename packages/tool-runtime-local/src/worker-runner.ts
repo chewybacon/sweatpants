@@ -382,20 +382,14 @@ function createMcpWorkerContext(
       };
     },
 
-    progress(message: string, progressValue?: number): Operation<void> {
-      // Core context has fire-and-forget progress
+    notify(message: string, progressValue?: number, level?: LogLevel): Operation<void> {
+      if (level) return ctx.log(level, message);
       coreCtx.progress(message, progressValue);
-      // Return a no-op operation for backpressure compatibility
       return {
         *[Symbol.iterator]() {
-          // No-op - progress is fire-and-forget in the new model
+          // The worker transport currently acknowledges notification delivery synchronously.
         },
       };
-    },
-
-    // Alias for progress() - MCP tools call ctx.notify() instead of ctx.progress()
-    notify(message: string, progressValue?: number, level?: LogLevel): Operation<void> {
-      return level ? ctx.log(level, message) : ctx.progress(message, progressValue);
     },
 
     // Sample - delegates to sampleImpl (overloads are defined in the interface)

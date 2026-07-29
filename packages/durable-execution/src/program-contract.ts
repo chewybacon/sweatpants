@@ -151,12 +151,10 @@ export interface DurableJoinDescriptor {
 }
 export interface RecordedOperationDescriptor {
   kind: "record";
-  /** Legacy semantic label retained while protocol consumers migrate. */
-  label?: string;
+  /** Stable identity for one execution-owned recorded operation. */
+  key: string;
   /** Retry classification for execution-owned recorded operations. */
   retrySafety: RetrySafety;
-  /** New opaque identity when supplied by the execution store. */
-  key?: string;
 }
 export type DurableOperationDescriptor =
   | EffectDescriptor

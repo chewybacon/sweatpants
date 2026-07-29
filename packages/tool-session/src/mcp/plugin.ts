@@ -144,11 +144,6 @@ export type ElicitHandlers<TNormalized> = {
   [K in keyof TNormalized & string]: ElicitHandler<K, TNormalized[K]>;
 };
 
-/** Legacy alias mapping an authored elicits map to its handler map. */
-export type ElicitHandlersFor<TElicits extends ElicitsMap> = ElicitHandlers<
-  NormalizedElicitsMap<TElicits>
->;
-
 // =============================================================================
 // PLUGIN TYPES
 // =============================================================================

@@ -149,6 +149,18 @@ function captureError(action: () => unknown): unknown {
 }
 
 describe("persisted boundary parsing", () => {
+  it("rejects pre-v4 snapshots instead of converting them", () => {
+    const snapshot = createInMemoryDurableJournalAuthority({
+      journalId: "current-format-only",
+      keyring,
+    }).exportSnapshot();
+    for (const version of [2, 3]) {
+      expect(() => parseDurableAuthoritySnapshot(JSON.stringify({ ...snapshot, version }))).toThrow(
+        "Invalid durable authority snapshot",
+      );
+    }
+  });
+
   it("rejects malformed nested authority collections", () => {
     expect(() =>
       parseDurableAuthoritySnapshot(
@@ -587,7 +599,7 @@ describe("crank-native durable runtime", () => {
       });
       const descriptor = {
         kind: "record" as const,
-        label: "random-value",
+        key: "random-value",
         retrySafety: { mode: "repeatable" as const },
       };
       const first = yield* authority.reserve({
@@ -666,7 +678,7 @@ describe("crank-native durable runtime", () => {
       });
       const descriptor = {
         kind: "record" as const,
-        label: "unsafe-send",
+        key: "unsafe-send",
         retrySafety: { mode: "unsafe" as const },
       };
       const first = yield* authority.reserve({
@@ -832,7 +844,7 @@ describe("crank-native durable runtime", () => {
     let recordedReads = 0;
     const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
       const ordinary = yield* OrdinaryFiles.operations.read(file);
-      const recorded = yield* context.record("stable-read", function* () {
+      const recorded = yield* context.record({ key: "stable-read" }, function* () {
         recordedReads += 1;
         return `recorded-${recordedReads}`;
       });
@@ -913,7 +925,7 @@ describe("crank-native durable runtime", () => {
   it("fences a changed replay descriptor without rewriting accepted history", async () => {
     let label = "stable-a";
     const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
-      yield* context.record(label, function* () {
+      yield* context.record({ key: label }, function* () {
         return "accepted";
       });
       yield* context.elicit<boolean>("approval", "Continue?", approvalResponse.descriptor);
@@ -1087,7 +1099,7 @@ describe("crank-native durable runtime", () => {
           );
         }
       })();
-      yield* context.record("checkpoint", function* () {
+      yield* context.record({ key: "checkpoint" }, function* () {
         return "recorded";
       });
       yield* context.elicit<boolean>("approval", "Continue?", approvalResponse.descriptor);
@@ -1244,7 +1256,7 @@ describe("crank-native durable runtime", () => {
   it("authorizes and records one execution-owned repeatable operation", async () => {
     let executions = 0;
     const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
-      return yield* context.record("draw-card", function* () {
+      return yield* context.record({ key: "draw-card" }, function* () {
         executions += 1;
         return "ace-of-spades";
       });
@@ -1293,7 +1305,7 @@ describe("crank-native durable runtime", () => {
       payload: {
         descriptor: {
           kind: "record",
-          label: "draw-card",
+          key: "draw-card",
           retrySafety: { mode: "repeatable" },
         },
       },
@@ -1302,7 +1314,7 @@ describe("crank-native durable runtime", () => {
 
   it("records an oversized inline value as a typed replayable failure", async () => {
     const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
-      return yield* context.record(function* () {
+      return yield* context.record({ key: "unlabeled-record" }, function* () {
         return "x".repeat(1024 * 1024 + 1);
       });
     });
@@ -1340,7 +1352,7 @@ describe("crank-native durable runtime", () => {
 
   it("rejects nested durable scheduling inside a recorded operation", async () => {
     const tool = createPinnedDurableProgram(manifest, function* (input, context) {
-      return yield* context.record(function* () {
+      return yield* context.record({ key: "unlabeled-record" }, function* () {
         return yield* context.effect<string>("echo", "1", input, {
           audience: "host-effects",
         });

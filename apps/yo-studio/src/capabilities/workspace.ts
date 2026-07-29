@@ -94,7 +94,7 @@ export const workspaceWriteTool = createDurableTool("workspace_write", { version
   .execute(function* (input, context) {
     return yield* context.record(
       {
-        label: "workspace-write",
+        key: "workspace-write",
         retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
       },
       function* ({ pullId }) {
@@ -111,7 +111,7 @@ export const workspaceTestTool = createDurableTool("workspace_test", { version: 
   .execute(function* (input, context) {
     return yield* context.record(
       {
-        label: "workspace-run-script",
+        key: "workspace-run-script",
         retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
       },
       function* ({ pullId }) {

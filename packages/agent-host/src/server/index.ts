@@ -257,4 +257,4 @@ import {
 export function createChatHandler(config: DurableChatHandlerConfig) {
   return createDurableChatHandler(config);
 }
-export type { DurableChatHandlerConfig as ChatHandlerConfig };
+export type { DurableChatHandlerConfig };

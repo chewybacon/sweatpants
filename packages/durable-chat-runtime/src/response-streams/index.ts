@@ -57,7 +57,6 @@ export type {
   TokenBufferStore,
   TokenBufferWriter,
   TokenWriterFence,
-  Session,
   CreateSessionOptions,
   TokenFrame,
   SessionHandle,

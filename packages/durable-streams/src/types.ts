@@ -47,20 +47,6 @@ export interface TokenBufferStore<T> {
   delete(id: string): Operation<void>;
 }
 
-export interface Session<T> {
-  readonly id: string;
-  readonly buffer: TokenBuffer<T>;
-  status(): Operation<SessionStatus>;
-  getError(): Operation<Error | null>;
-  abort(): Operation<void>;
-}
-
-export interface SessionStore<T> {
-  set(session: Session<T>): Operation<void>;
-  get(sessionId: string): Operation<Session<T> | null>;
-  delete(sessionId: string): Operation<void>;
-}
-
 export interface CreateSessionOptions<T> {
   /**
    * The sole eager source consumed by the session writer. A factory receives
@@ -83,16 +69,6 @@ export type RetentionPolicy =
 export const DEFAULT_RETENTION_POLICY: RetentionPolicy = {
   mode: "auto_delete_on_close",
 };
-
-export interface SessionManager<T> {
-  getOrCreate(sessionId: string, options?: CreateSessionOptions<T>): Operation<Session<T>>;
-  delete(sessionId: string): Operation<void>;
-}
-
-export interface SessionManagerConfig<T> {
-  bufferStore: TokenBufferStore<T>;
-  sessionStore?: SessionStore<T>;
-}
 
 export interface TokenFrame<T> {
   token: T;

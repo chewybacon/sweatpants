@@ -64,7 +64,6 @@ export const JournalAuthorityPort = definePort<DurableJournalAuthorityService>(
     rootTaskCount: authorityUnavailable,
     operationState: authorityUnavailable,
     nonterminalSchemaDigests: authorityUnavailable,
-    markActivationStarted: authorityUnavailable,
     recoverableSessions: authorityUnavailable,
     claimActivation: authorityUnavailable,
     renewActivation: authorityUnavailable,
@@ -230,7 +229,6 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           input: acceptedInput,
         });
       }
-      yield* authority.markActivationStarted(request.attach.sessionId);
       programCapability ??= (yield* authority.bindProgramAttachment(
         request.attach.sessionId,
         request.attach.taskId,

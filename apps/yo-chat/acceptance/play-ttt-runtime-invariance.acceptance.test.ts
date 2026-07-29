@@ -118,7 +118,7 @@ async function summarize(
       (entry) =>
         entry.payload.type === "PullRequested" &&
         entry.payload.descriptor.kind === "record" &&
-        entry.payload.descriptor.label === "play-ttt-symbol-coin-flip",
+        entry.payload.descriptor.key === "play-ttt-symbol-coin-flip",
     ).length,
     terminalRecord: journal.at(-1)?.payload.type,
     runtimeGenerations: generations,

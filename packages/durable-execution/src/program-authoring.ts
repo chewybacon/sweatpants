@@ -26,7 +26,7 @@ export interface RecordAttemptContext {
 }
 export type RecordedOperation = (context: RecordAttemptContext) => Operation<Json>;
 export interface RecordOptions {
-  readonly label?: string;
+  readonly key: string;
   readonly retrySafety?: RetrySafety;
 }
 
@@ -42,8 +42,6 @@ export interface DurableProgramContext {
     input: Json,
     resolver: { audience: string; route?: string },
   ): Operation<T>;
-  record<T extends Json>(operation: () => Operation<T>): Operation<T>;
-  record<T extends Json>(label: string, operation: () => Operation<T>): Operation<T>;
   record<T extends Json>(
     options: RecordOptions,
     operation: (context: RecordAttemptContext) => Operation<T>,

@@ -453,8 +453,6 @@ export interface DurableJournalAuthorityService {
   ): Operation<DurableOperationState>;
   /** Lists exact schema digests referenced by nonterminal durable tasks for readiness/retirement. */
   nonterminalSchemaDigests(): Operation<string[]>;
-  /** Legacy local activation marker. Distributed coordinators use claimActivation. */
-  markActivationStarted(sessionId: string): Operation<void>;
   /** Lists runnable work plus expired in-flight ownership for restart recovery. */
   recoverableSessions(): Operation<RecoverableSession[]>;
   /** Claims absent/expired runnable work under an authority-minted epoch. */

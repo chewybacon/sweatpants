@@ -88,7 +88,7 @@ The program flips a recorded coin for symbols, alternates model and user moves, 
   .execute(function* (_input, context) {
     const coinFlip = yield* context.record(
       {
-        label: "play-ttt-symbol-coin-flip",
+        key: "play-ttt-symbol-coin-flip",
         retrySafety: { mode: "repeatable" },
       },
       function* () {

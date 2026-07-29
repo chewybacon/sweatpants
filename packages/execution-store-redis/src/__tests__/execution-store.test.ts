@@ -153,7 +153,7 @@ describe("Redis Execution Store v1", () => {
     }
   });
 
-  it("creates no legacy journal-wide snapshot key", async () => {
+  it("creates no obsolete journal-wide snapshot key", async () => {
     const keys = await client.keys(`${keyPrefix}*`);
     expect(keys.some((key) => key.includes(["durable", "authority:"].join("-")))).toBe(false);
     expect(keys.some((key) => key.includes(":control"))).toBe(true);

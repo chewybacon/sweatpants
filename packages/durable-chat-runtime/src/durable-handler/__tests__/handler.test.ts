@@ -1582,7 +1582,7 @@ describe("Durable Chat Handler", () => {
       }
     });
 
-    it("should not emit legacy checkpoints for durable thread hydration", function* () {
+    it("should not emit obsolete checkpoints for durable thread hydration", function* () {
       const provider = createMockProvider({ responses: "Test" });
       const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
