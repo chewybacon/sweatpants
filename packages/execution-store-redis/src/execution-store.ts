@@ -12,9 +12,18 @@ import type {
 import { call, type Operation } from "effection";
 import type { RedisClientType } from "redis";
 
+export interface RedisExecutionStoreCommandEvidence {
+  readonly command: "GET" | "SET_NX" | "EVAL_CAS";
+  readonly key: string;
+  readonly bytesRead: number;
+  readonly bytesWritten: number;
+}
+
 export interface RedisExecutionStoreOptions {
   /** Isolates deployments and tests. MUST end in any desired separator. */
   readonly keyPrefix?: string;
+  /** Receives evidence at the exact Redis command boundary. */
+  readonly onCommand?: (evidence: RedisExecutionStoreCommandEvidence) => void;
 }
 
 type StoredPayload =
@@ -85,11 +94,25 @@ export function createRedisExecutionStore(
   async function putImmutable(ref: DurableReference, encoded: string): Promise<void> {
     // Identical content is an idempotent duplicate. A digest collision cannot
     // overwrite an existing object because SET NX is the only write path.
-    await client.setNX(objectKey(ref), encoded);
+    const key = objectKey(ref);
+    await client.setNX(key, encoded);
+    options.onCommand?.({
+      command: "SET_NX",
+      key,
+      bytesRead: 0,
+      bytesWritten: Buffer.byteLength(encoded),
+    });
   }
 
   async function getImmutable(reference: DurableReference): Promise<string | null> {
-    const encoded = await client.get(objectKey(reference));
+    const key = objectKey(reference);
+    const encoded = await client.get(key);
+    options.onCommand?.({
+      command: "GET",
+      key,
+      bytesRead: encoded === null ? 0 : Buffer.byteLength(encoded),
+      bytesWritten: 0,
+    });
     if (encoded === null) {
       return null;
     }
@@ -106,7 +129,14 @@ export function createRedisExecutionStore(
     readonly raw: string;
     readonly value: VersionedExecution | null;
   }> {
-    const raw = await client.get(controlKey(executionId));
+    const key = controlKey(executionId);
+    const raw = await client.get(key);
+    options.onCommand?.({
+      command: "GET",
+      key,
+      bytesRead: raw === null ? 0 : Buffer.byteLength(raw),
+      bytesWritten: 0,
+    });
     if (raw === null) {
       return { raw: "", value: null };
     }
@@ -131,12 +161,22 @@ export function createRedisExecutionStore(
 
       const revision = (actualRevision ?? -1) + 1;
       const next: VersionedExecution = { revision, record: request.next };
+      const control = controlKey(request.executionId);
+      const privateRecord = privateKey(request.executionId, revision);
+      const encodedNext = JSON.stringify(next);
+      const encodedPrivate = JSON.stringify(request.privateRecords);
       const accepted = yield* call(() =>
         client.eval(CAS_EXECUTION, {
-          keys: [controlKey(request.executionId), privateKey(request.executionId, revision)],
-          arguments: [loaded.raw, JSON.stringify(next), JSON.stringify(request.privateRecords)],
+          keys: [control, privateRecord],
+          arguments: [loaded.raw, encodedNext, encodedPrivate],
         }),
       );
+      options.onCommand?.({
+        command: "EVAL_CAS",
+        key: control,
+        bytesRead: Buffer.byteLength(loaded.raw),
+        bytesWritten: Buffer.byteLength(encodedNext) + Buffer.byteLength(encodedPrivate),
+      });
       if (Number(accepted) === 1) {
         return { status: "accepted", revision };
       }

@@ -4,10 +4,7 @@ import { all, type Operation } from "effection";
 
 import { canonicalJson } from "@sweatpants/foundation";
 import { createCapabilityKeyring, type CapabilityKeyring } from "../capabilities.ts";
-import {
-  createDurableSchemaRegistry,
-  type DurableSchemaRegistry,
-} from "../schema-registry.ts";
+import { createDurableSchemaRegistry, type DurableSchemaRegistry } from "../schema-registry.ts";
 
 import {
   anyGuard,

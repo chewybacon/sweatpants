@@ -15,6 +15,7 @@ export function createMemoryHistoryStore<Entry extends Json = Json>(): HistorySt
   const segments = new Map<string, HistorySegment<Entry>>();
   const segmentBodies = new Map<string, string>();
   const publication = new Map<string, { pointer: HistoryPointer; body: string }>();
+  const entriesBySession = new Map<string, Entry[]>();
   return {
     *loadHead(sessionId): Operation<SessionHead | null> {
       return yield* call(() => heads.get(sessionId) ?? null);
@@ -45,6 +46,9 @@ export function createMemoryHistoryStore<Entry extends Json = Json>(): HistorySt
         segments.set(segment.segmentId, stored);
         segmentBodies.set(segment.segmentId, body);
         publication.set(segment.publicationKey, { pointer, body });
+        const indexed = entriesBySession.get(segment.sessionId) ?? [];
+        indexed.push(...segment.entries.map((entry) => structuredClone(entry)));
+        entriesBySession.set(segment.sessionId, indexed);
         return pointer;
       });
     },
@@ -60,14 +64,7 @@ export function createMemoryHistoryStore<Entry extends Json = Json>(): HistorySt
     *readPage(sessionId, cursor, limit = 50): Operation<HistoryPage<Entry>> {
       return yield* call(() => {
         const head = heads.get(sessionId)?.historyHead ?? null;
-        const all: Entry[] = [];
-        let pointer = head;
-        while (pointer) {
-          const segment = segments.get(pointer.segmentId);
-          if (!segment || segment.sessionId !== sessionId) break;
-          all.unshift(...segment.entries);
-          pointer = segment.previous;
-        }
+        const all = entriesBySession.get(sessionId) ?? [];
         const start = cursor ? Number(cursor) : 0;
         const entries = all.slice(start, start + limit);
         const next = start + entries.length < all.length ? String(start + entries.length) : null;

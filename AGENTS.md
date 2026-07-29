@@ -3,8 +3,8 @@
 ## Architecture Orientation
 
 Read this before changing anything under `packages/`. It exists because the
-package names do not yet match the ports they implement, and several similarly
-named types are unrelated.
+package names follow their owned ports, while several similarly named placement
+types remain intentionally unrelated.
 
 ### The four placement axes
 
@@ -12,22 +12,22 @@ A request moves through four independently replaceable boxes. Most confusion
 comes from collapsing box 3 and box 4, which run different code under different
 constraints.
 
-| box                   | decides                                                             | port                                                                                   | live implementations                                                    |
-| --------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| 1. Ingress            | where HTTP lands                                                    | `createChatApplication` (`framework/src/server`)                                       | Node HTTP (`apps/yo-chat`)                                              |
-| 2. Journal authority  | where truth lives; the serialization domain                         | `DurableJournalAuthorityService` (22 methods, `session-contract/src/durable-types.ts`) | `InMemoryDurableJournalAuthority`; `createRedisDurableJournalAuthority` |
-| 3. Crank / activation | where the durable program generator runs; chatty with the authority | `ProgramRuntime`, `handler/durable/local-program-host.ts`                              | in-process (Node)                                                       |
-| 4. Tool execution     | where tool code runs; never touches the journal                     | see the two tiers below                                                                | see below                                                               |
+| box                   | decides                                                             | port                                                                                  | live implementations                                                     |
+| --------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1. Ingress            | where HTTP lands                                                    | `createChatApplication` (`agent-host/src/server`)                                     | Node HTTP (`apps/yo-chat`)                                               |
+| 2. Journal authority  | where truth lives; the serialization domain                         | `DurableJournalAuthorityService` (`journal-authority/src/durable-authority-types.ts`) | `createStoredDurableJournalAuthority` over memory/Redis Execution Stores |
+| 3. Crank / activation | where the durable program generator runs; chatty with the authority | `ProgramRuntime`, `handler/durable/local-program-host.ts`                             | in-process (Node)                                                        |
+| 4. Tool execution     | where tool code runs; never touches the journal                     | see the two tiers below                                                               | see below                                                                |
 
 Box 4 has two tiers, and they are different ports:
 
-- **Tier A — remote generator, no machine.** `ProgramDriver` (`session-contract`):
+- **Tier A — remote generator, no machine.** `ProgramDriver` (`durable-execution`):
   `attach / step / shutdown / restore? / restoreContext? / manifest?`. Replays
   from the journal and runs to the next park point. No shell, disk, or ports.
-  Implementations: `createLocalProgramDriver` (`session-contract/src/program-driver.ts`),
+  Implementations: `createLocalProgramDriver` (`durable-execution/src/program-driver.ts`),
   `tool-runtime-local` (`durable-driver.ts`, `local-worker-durable-driver.ts`),
   `tool-runtime-agentcore/src/durable-driver.ts`, `a2a/src/driver.ts`.
-- **Tier B — a machine with a disk.** `SandboxProvider` (`session-contract/src/sandbox-substrate.ts`):
+- **Tier B — a machine with a disk.** `SandboxProvider` (`workspace-runtime/src/sandbox-substrate.ts`):
   `create / inspect / connect / suspend? / resume? / restore? / terminate`, plus
   `SandboxCapabilities` (`shell`, `processExecution`, `localDisk`, `ports`,
   `workspacePersistence`). **This port has no implementations.** It is design
@@ -38,26 +38,25 @@ fit for it. Long unparked work lives in box 3, not box 4.
 
 ### Names that look related but are not
 
-- `SandboxProvider` (`session-contract`) — the Tier B runtime port. No impls.
-- `SandboxProviderDefinition` (`framework/src/deployment`) — a _deployment
+- `SandboxProvider` (`workspace-runtime`) — the Tier B runtime port. No impls.
+- `SandboxProviderDefinition` (`agent-host/src/deployment`) — a _deployment
   descriptor_ (`image`, `lifecycle`). Produced by `lambdaMicrovm()`. Unrelated
   to the port above.
 - `LambdaMicrovmWorkspaceManager` (`workspace-lambda-microvm`) — a workspace lease
   manager (`resolve / inspect / close`). Also unrelated to the port above.
-- `journal-authority-redis` — despite the name, this is a **journal authority**
-  implementation. It is 359 lines that load a snapshot, run the shared
-  `InMemoryDurableJournalAuthority`, and CAS-write the snapshot back. All
-  authority semantics live in `session-contract/src/durable-authority.ts`.
+- `execution-store-redis` — the bounded per-execution control/replay/payload
+  storage adapter. It owns no authority transition semantics and never
+  reconstructs an in-memory authority.
 
 ### There are two chat engines, and both are live
 
 They serve different product surfaces. Fixing one usually means considering the
 other.
 
-- `framework/src/handler/durable/program-driver-chat-engine.ts` — the HTTP chat
-  turn. Reached via `createDurableChatHandler`. This is what `apps/yo-chat` runs.
-- `framework/src/lib/chat/authoring/program.ts` — authored/generated chat
-  programs for A2A-served agents. Reached via `server/standard-a2a-host.ts`.
+- `durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts` — the
+  HTTP chat Turn reached via `createDurableChatHandler`; this is what yo-chat runs.
+- `chat-core/src/authoring/program.ts` — authored/generated chat programs for
+  A2A-served agents, reached through Agent Host's standard A2A composition.
 
 ### Configuration traps that make a wrong setup look right
 
@@ -65,18 +64,18 @@ Each of these has silently cost real debugging time. Prefer failing loudly over
 falling back.
 
 - **`dist` vs `src`.** App tests resolve `@sweatpants/agent-host` to `dist/`, so
-  edits to framework source have no effect until `pnpm -C packages/agent-host build`.
+  edits to Agent Host source have no effect until `pnpm -C packages/agent-host build`.
   The `development` export condition resolves to source; `packages/a2a`
   certification fixtures use `--conditions=development`.
-- **Redis conformance falls back to a fake.** `journal-authority-redis`'s conformance
-  suite calls `createMemoryRedisClient()` when it cannot connect, so it passes
-  green against a dead port. Confirm real usage before claiming Redis coverage.
+- **Redis certification fails closed.** Set `REDIS_URL` and `REDIS_REQUIRED=1`;
+  the live suite and bounded-storage command reject an unreachable server and
+  never substitute the unit-test fake.
 - **Worker vs in-process ToolSession registry.** Production `tool-runtime-local`
   requires a worker-backed registry (`driver.ts`). Tests that build an
   in-process registry exercise a configuration that never ships.
 - **Redis persists between runs.** In-memory stores are fresh each run; Redis is
   not. Namespace conversation and key prefixes per run, as
-  `apps/yo-chat/acceptance/fixtures/*-harness.ts` and the `journal-authority-redis`
+  `apps/yo-chat/acceptance/fixtures/*-harness.ts` and the `execution-store-redis`
   suite do.
 
 ### Durability model in one paragraph

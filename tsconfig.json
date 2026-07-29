@@ -1,64 +1,64 @@
 {
-  "extends": "@sweatpants/ts-config/tsconfig.base.json",
-  "compilerOptions": {
-    "declaration": true,
-    "ignoreDeprecations": "5.0"
-  },
-  "references": [
-    {
-      "path": "./packages/foundation"
+    "extends": "@sweatpants/ts-config/tsconfig.base.json",
+    "compilerOptions": {
+        "declaration": true,
+        "ignoreDeprecations": "5.0"
     },
-    {
-      "path": "./packages/durable-effects"
-    },
-    {
-      "path": "./packages/durable-execution"
-    },
-    {
-      "path": "./packages/journal-authority"
-    },
-    {
-      "path": "./packages/history-store"
-    },
-    {
-      "path": "./packages/durable-chat-runtime"
-    },
-    {
-      "path": "./packages/a2a"
-    },
-    {
-      "path": "./packages/agent-sdk"
-    },
-    {
-      "path": "./packages/durable-streams"
-    },
-    {
-      "path": "./packages/cli"
-    },
-    {
-      "path": "./packages/agent-host"
-    },
-    {
-      "path": "./packages/model-provider-pi-ai"
-    },
-    {
-      "path": "./packages/react-chat"
-    },
-    {
-      "path": "./packages/chat-core"
-    },
-    {
-      "path": "./packages/tool-session"
-    },
-    {
-      "path": "./packages/tool-runtime-agentcore"
-    },
-    {
-      "path": "./packages/tool-runtime-local"
-    },
-    {
-      "path": "./packages/vite-plugin"
-    }
-  ],
-  "files": []
+    "references": [
+        {
+            "path": "./packages/foundation"
+        },
+        {
+            "path": "./packages/durable-effects"
+        },
+        {
+            "path": "./packages/durable-execution"
+        },
+        {
+            "path": "./packages/journal-authority"
+        },
+        {
+            "path": "./packages/history-store"
+        },
+        {
+            "path": "./packages/durable-chat-runtime"
+        },
+        {
+            "path": "./packages/a2a"
+        },
+        {
+            "path": "./packages/agent-sdk"
+        },
+        {
+            "path": "./packages/durable-streams"
+        },
+        {
+            "path": "./packages/cli"
+        },
+        {
+            "path": "./packages/agent-host"
+        },
+        {
+            "path": "./packages/model-provider-pi-ai"
+        },
+        {
+            "path": "./packages/react-chat"
+        },
+        {
+            "path": "./packages/chat-core"
+        },
+        {
+            "path": "./packages/tool-session"
+        },
+        {
+            "path": "./packages/tool-runtime-agentcore"
+        },
+        {
+            "path": "./packages/tool-runtime-local"
+        },
+        {
+            "path": "./packages/vite-plugin"
+        }
+    ],
+    "files": []
 }

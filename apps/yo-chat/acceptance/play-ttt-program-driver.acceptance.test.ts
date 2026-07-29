@@ -10,7 +10,7 @@ import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants
 import { type Json } from "@sweatpants/foundation";
 import { createLocalWorkerDurableProgramDriver } from "@sweatpants/tool-runtime-local";
 import {
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   createLocalProgramHost,
   createPinnedProgramCatalog,
   programDriverSchemaRegistry,
@@ -58,7 +58,7 @@ describe("journal-native play_ttt through ProgramRuntime", () => {
             registry: programs,
           });
     const host = createLocalProgramHost({
-      journalStore: createInMemoryProgramDriverJournalStore({
+      journalStore: createProgramDriverJournalStore({
         keyring: createCapabilityKeyring("native-play-ttt", [
           { keyId: "active", secret: "native-play-ttt-key-material-32!!" },
         ]),

@@ -21,7 +21,7 @@ import { createChatApplication } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createDurableChatHandler,
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   programDriverSchemaRegistry,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
@@ -93,7 +93,7 @@ export async function createPlayTttSubstrate(options: {
   }
   const journalStore = redisClient
     ? createRedisProgramDriverJournalStore(redisClient, keyring)
-    : createInMemoryProgramDriverJournalStore({
+    : createProgramDriverJournalStore({
         keyring,
         schemaRegistry: programDriverSchemaRegistry(playTttTool.artifacts.catalog),
       });

@@ -172,9 +172,27 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 0.80.1
         version: 0.80.1(patch_hash=ae1781f0177093a5e9637ea8ec9aee23c708eae3d2f1744ab3db8a42eed42d4e)(ws@8.19.0)(zod@4.1.13)
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:packages/durable-execution
+      '@sweatpants/execution-store-redis':
+        specifier: workspace:*
+        version: link:packages/execution-store-redis
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:packages/foundation
+      '@sweatpants/history-store':
+        specifier: workspace:*
+        version: link:packages/history-store
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:packages/journal-authority
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:packages/ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
       oxc-parser:
         specifier: ^0.123.0
         version: 0.123.0(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
@@ -187,6 +205,9 @@ importers:
       oxlint-tsgolint:
         specifier: ^7.0.2001
         version: 7.0.2001
+      redis:
+        specifier: ^4.7.0
+        version: 4.7.1
       tsx:
         specifier: 'catalog:'
         version: 4.21.0
@@ -613,15 +634,15 @@ importers:
       '@sweatpants/durable-streams':
         specifier: workspace:*
         version: link:../../packages/durable-streams
+      '@sweatpants/execution-store-redis':
+        specifier: workspace:*
+        version: link:../../packages/execution-store-redis
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../../packages/foundation
       '@sweatpants/journal-authority':
         specifier: workspace:*
         version: link:../../packages/journal-authority
-      '@sweatpants/journal-authority-redis':
-        specifier: workspace:*
-        version: link:../../packages/journal-authority-redis
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../../packages/model-provider-pi-ai
@@ -1347,6 +1368,43 @@ importers:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
+  packages/execution-store-redis:
+    dependencies:
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../journal-authority
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@sweatpants/workspace-runtime':
+        specifier: workspace:*
+        version: link:../workspace-runtime
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      redis:
+        specifier: ^4.7.0
+        version: 4.7.1
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/foundation:
     dependencies:
       '@noble/hashes':
@@ -1418,43 +1476,6 @@ importers:
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
-      tsup:
-        specifier: 'catalog:'
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vitest:
-        specifier: 'catalog:'
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
-
-  packages/journal-authority-redis:
-    dependencies:
-      '@sweatpants/durable-execution':
-        specifier: workspace:*
-        version: link:../durable-execution
-      '@sweatpants/foundation':
-        specifier: workspace:*
-        version: link:../foundation
-      '@sweatpants/journal-authority':
-        specifier: workspace:*
-        version: link:../journal-authority
-      effection:
-        specifier: 4.1.0-alpha.9
-        version: 4.1.0-alpha.9
-    devDependencies:
-      '@sweatpants/ts-config':
-        specifier: workspace:*
-        version: link:../ts-config
-      '@sweatpants/workspace-runtime':
-        specifier: workspace:*
-        version: link:../workspace-runtime
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.19.5
-      redis:
-        specifier: ^4.7.0
-        version: 4.7.1
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)

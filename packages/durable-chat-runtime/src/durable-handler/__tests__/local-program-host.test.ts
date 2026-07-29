@@ -14,7 +14,7 @@ import { z } from "zod";
 
 import { createLocalProgramHost, createPinnedProgramCatalog } from "../local-program-host.ts";
 import {
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   programDriverSchemaRegistry,
   type ProgramDriverJournalStore,
 } from "../program-driver-journal.ts";
@@ -40,7 +40,7 @@ const approvalProgram = createDurableTool("host_approval")
   });
 
 function sharedApprovalStore() {
-  return createInMemoryProgramDriverJournalStore({
+  return createProgramDriverJournalStore({
     keyring: createCapabilityKeyring("local-host-test", [
       { keyId: "active", secret: "local-host-test-secret-32-bytes!!" },
     ]),
@@ -278,7 +278,7 @@ describe("LocalProgramHost", () => {
     };
     const programs = createDurableToolRegistry([parent, child]);
     const host = createLocalProgramHost({
-      journalStore: createInMemoryProgramDriverJournalStore({
+      journalStore: createProgramDriverJournalStore({
         keyring: createCapabilityKeyring("parent-child-host", [
           { keyId: "active", secret: "parent-child-host-secret-32-bytes" },
         ]),
@@ -336,7 +336,7 @@ describe("LocalProgramHost", () => {
     };
     const programs = createDurableToolRegistry([parent]);
     const host = createLocalProgramHost({
-      journalStore: createInMemoryProgramDriverJournalStore({
+      journalStore: createProgramDriverJournalStore({
         keyring: createCapabilityKeyring("catalog-host", [
           { keyId: "active", secret: "catalog-host-secret-at-least-32!!" },
         ]),
@@ -412,7 +412,7 @@ describe("LocalProgramHost", () => {
       },
     });
     const host = createLocalProgramHost({
-      journalStore: createInMemoryProgramDriverJournalStore({
+      journalStore: createProgramDriverJournalStore({
         keyring: createCapabilityKeyring("local-host-sample-test", [
           { keyId: "active", secret: "local-host-sample-test-secret-32!!" },
         ]),

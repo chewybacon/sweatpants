@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "certifiedAt": "2026-07-29T13:33:45.237Z",
+  "redis": {
+    "url": "redis://127.0.0.1:57067",
+    "majorVersion": 7,
+    "fakeFallback": false
+  },
+  "sizes": [
+    10,
+    100,
+    1000
+  ],
+  "results": {
+    "memory": {
+      "10": {
+        "resumeBytesRead": 1073,
+        "mutationBytesWritten": 734,
+        "recordsScanned": 1,
+        "restoreDurationMs": 0.09825000000000728,
+        "historyPageBytes": 321,
+        "historyPageEntries": 10,
+        "completedExecutionReads": 0,
+        "unrelatedExecutionWrites": 0
+      },
+      "100": {
+        "resumeBytesRead": 1074,
+        "mutationBytesWritten": 735,
+        "recordsScanned": 1,
+        "restoreDurationMs": 0.04075000000000273,
+        "historyPageBytes": 1681,
+        "historyPageEntries": 50,
+        "completedExecutionReads": 0,
+        "unrelatedExecutionWrites": 0
+      },
+      "1000": {
+        "resumeBytesRead": 1075,
+        "mutationBytesWritten": 736,
+        "recordsScanned": 1,
+        "restoreDurationMs": 0.032874999999989996,
+        "historyPageBytes": 1681,
+        "historyPageEntries": 50,
+        "completedExecutionReads": 0,
+        "unrelatedExecutionWrites": 0
+      }
+    },
+    "redis": {
+      "10": {
+        "resumeBytesRead": 1072,
+        "mutationBytesWritten": 809,
+        "recordsScanned": 1,
+        "restoreDurationMs": 1.2639999999999532,
+        "historyPageBytes": 321,
+        "historyPageEntries": 10,
+        "completedExecutionReads": 0,
+        "unrelatedExecutionWrites": 0,
+        "redisCommands": 4,
+        "redisPayloadBytes": 4123,
+        "redisKeys": [
+          "certification:62711:2026-07-29T13-33-43-550Z:execution:{redis-10-active}:control",
+          "certification:62711:2026-07-29T13-33-43-550Z:replay:6133ea8cede8965f4cd06f2f3ed05e446244bb210172eadf86db6447b0055e0c"
+        ]
+      },
+      "100": {
+        "resumeBytesRead": 1073,
+        "mutationBytesWritten": 811,
+        "recordsScanned": 1,
+        "restoreDurationMs": 1.0707499999999754,
+        "historyPageBytes": 1681,
+        "historyPageEntries": 50,
+        "completedExecutionReads": 0,
+        "unrelatedExecutionWrites": 0,
+        "redisCommands": 4,
+        "redisPayloadBytes": 4128,
+        "redisKeys": [
+          "certification:62711:2026-07-29T13-33-43-550Z:execution:{redis-100-active}:control",
+          "certification:62711:2026-07-29T13-33-43-550Z:replay:435e8fffecbd064b11330ace53dc485d717948cf3cac909fd0e61e0075b8dfcd"
+        ]
+      },
+      "1000": {
+        "resumeBytesRead": 1074,
+        "mutationBytesWritten": 813,
+        "recordsScanned": 1,
+        "restoreDurationMs": 1.036875000000009,
+        "historyPageBytes": 1681,
+        "historyPageEntries": 50,
+        "completedExecutionReads": 0,
+        "unrelatedExecutionWrites": 0,
+        "redisCommands": 4,
+        "redisPayloadBytes": 4133,
+        "redisKeys": [
+          "certification:62711:2026-07-29T13-33-43-550Z:execution:{redis-1000-active}:control",
+          "certification:62711:2026-07-29T13-33-43-550Z:replay:277d8c28bfd807029cb55488e093d95139e9562d668bd8ef4b2ecf219cde82b4"
+        ]
+      }
+    }
+  }
+}

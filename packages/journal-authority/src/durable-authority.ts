@@ -1391,6 +1391,32 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return structuredClone(this.#records.get(sessionId) ?? []);
   }
 
+  /** Reads only one root Structured Execution Tree, excluding completed sibling Turns. */
+  readTaskJournal(sessionId: string, rootTaskId: string): DurableSemanticRecord[] {
+    const records = this.#records.get(sessionId) ?? [];
+    const taskIds = new Set([rootTaskId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const record of records) {
+        if (
+          record.payload.type === "TaskOpened" &&
+          record.payload.parentTaskId &&
+          taskIds.has(record.payload.parentTaskId) &&
+          !taskIds.has(record.payload.taskId)
+        ) {
+          taskIds.add(record.payload.taskId);
+          changed = true;
+        }
+      }
+    }
+    return structuredClone(
+      records.filter((record) =>
+        "taskId" in record.payload ? taskIds.has(record.payload.taskId) : false,
+      ),
+    );
+  }
+
   /** Exports a defensive, versioned snapshot for persistence. */
   exportSnapshot(): DurableAuthoritySnapshot {
     const tasks: TaskSnapshot[] = [...this.#tasks.values()].map((task) => ({
@@ -1419,6 +1445,10 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       ...(task.close ? { close: task.close } : {}),
       ...(task.parentTaskId ? { parentTaskId: task.parentTaskId } : {}),
       ...(task.parentPullId ? { parentPullId: task.parentPullId } : {}),
+      ...(task.catalog
+        ? { catalog: structuredClone(task.catalog), catalogDigest: task.catalogDigest! }
+        : {}),
+      ...(task.route ? { route: structuredClone(task.route) } : {}),
     }));
     return {
       version: 4,

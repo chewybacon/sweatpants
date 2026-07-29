@@ -55,7 +55,7 @@ import {
 import { createDurableChatHandler } from "../handler.ts";
 import { createHostScopeOwner, installHostScopeOwner } from "../../host/host-scope.ts";
 import { installDurableStreamsOwner } from "@sweatpants/durable-chat-runtime/response-streams";
-import { createInMemoryProgramDriverJournalStore } from "../program-driver-journal.ts";
+import { createProgramDriverJournalStore } from "../program-driver-journal.ts";
 import type { ChatHandlerSetup, DurableChatHandlerConfig, DurableStreamEvent } from "../types.ts";
 import type { StreamEvent } from "@sweatpants/durable-chat-runtime/handler/types";
 
@@ -68,7 +68,7 @@ export function createTestDurableChatHandler(
     ...config,
     programDriverJournalStore:
       config.programDriverJournalStore ??
-      createInMemoryProgramDriverJournalStore({
+      createProgramDriverJournalStore({
         keyring: createCapabilityKeyring("framework-test-program-runtime", [
           { keyId: "test-v1", secret: "framework-test-program-runtime-secret" },
         ]),

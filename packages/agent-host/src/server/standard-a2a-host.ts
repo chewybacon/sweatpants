@@ -68,7 +68,7 @@ import {
   type ReferencedTaskSummaryV1,
 } from "@sweatpants/chat-core";
 import {
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   programDriverSchemaRegistry,
   type ProgramDriverJournal,
   type ProgramDriverJournalStore,
@@ -446,7 +446,7 @@ function bindStandardHost(
   const effects = createDurableEffectRegistry(binding.handlers);
   const journalStore =
     options.journalStore ??
-    createInMemoryProgramDriverJournalStore({
+    createProgramDriverJournalStore({
       keyring: createCapabilityKeyring(
         `standard-a2a:${binding.definition.manifest.identity.digest}`,
         [{ keyId: "process", secret: `${randomUUID()}${randomUUID()}` }],

@@ -7,7 +7,7 @@ import {
   type ChatModelSampleOutputV2,
 } from "@sweatpants/chat-core";
 import {
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   createLocalProgramHost,
   createPinnedProgramCatalog,
   programDriverSchemaRegistry,
@@ -91,7 +91,7 @@ export function createHeadlessCodingService(options: {
     }
   };
   const host: LocalProgramHost = createLocalProgramHost({
-    journalStore: createInMemoryProgramDriverJournalStore({
+    journalStore: createProgramDriverJournalStore({
       keyring: createCapabilityKeyring("yo-studio-headless", [
         { keyId: "active", secret: "yo-studio-headless-development-secret" },
       ]),

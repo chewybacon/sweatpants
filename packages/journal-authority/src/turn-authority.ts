@@ -11,6 +11,7 @@ import {
 import type { Operation } from "effection";
 import { createApi } from "effection/experimental";
 import { ExecutionStoreApi } from "./api.ts";
+import { runExecutionCommitLoop } from "./commit-loop.ts";
 
 export interface OpenAuthorityTurnRequest {
   readonly executionId: string;
@@ -43,60 +44,60 @@ export class TurnAuthorityBoundaryError extends Error {
  */
 export const TurnJournalAuthority = createApi("turn-journal-authority", {
   *open(request: OpenAuthorityTurnRequest): Operation<ExecutionTreeSnapshot | TerminalCapsule> {
-    while (true) {
-      const current = yield* ExecutionStoreApi.operations.loadExecution(request.executionId);
-      if (current) {
-        assertIdentity(current.record, request);
-        return current.record;
-      }
-      const snapshot = initialSnapshot(request);
-      const commit = yield* ExecutionStoreApi.operations.commitExecution({
-        executionId: request.executionId,
-        expectedRevision: null,
-        next: snapshot,
-        privateRecords: [],
-      });
-      if (commit.status === "accepted") return snapshot;
-    }
+    return yield* runExecutionCommitLoop(
+      ExecutionStoreApi.operations,
+      request.executionId,
+      function* (current) {
+        if (current) {
+          assertIdentity(current.record, request);
+          return { status: "return", result: current.record };
+        }
+        const snapshot = initialSnapshot(request);
+        return { status: "commit", next: snapshot, privateRecords: [], result: snapshot };
+      },
+    );
   },
 
   *complete(request: CompleteAuthorityTurnRequest): Operation<TerminalCapsule> {
-    while (true) {
-      const current = yield* ExecutionStoreApi.operations.loadExecution(request.executionId);
-      if (!current) {
-        throw new TurnAuthorityBoundaryError(`Execution ${request.executionId} is not open`);
-      }
-      if (current.record.format === "sweatpants.terminal-execution.v1") {
-        return parseTerminalCapsule(current.record);
-      }
-      assertFacts(current.record, request.facts);
-      const factsValue: Json = request.facts.map((fact) => ({
-        executionId: fact.executionId,
-        sessionId: fact.sessionId,
-        turnId: fact.turnId,
-        sequence: fact.sequence,
-        kind: fact.kind,
-        payload: fact.payload,
-      }));
-      const facts = yield* ExecutionStoreApi.operations.putPayload(factsValue);
-      const withFrontier: ExecutionTreeSnapshot = {
-        ...current.record,
-        unpublishedProjection: { throughSequence: request.facts.length, facts },
-      };
-      const decision = completeRoot(withFrontier, {
-        outcome: request.outcome,
-        disposition: request.disposition,
-        finalRevision: current.revision + 1,
-        completedAt: request.completedAt,
-      });
-      const commit = yield* ExecutionStoreApi.operations.commitExecution({
-        executionId: request.executionId,
-        expectedRevision: current.revision,
-        next: decision.next,
-        privateRecords: decision.privateRecords,
-      });
-      if (commit.status === "accepted") return decision.next as TerminalCapsule;
-    }
+    return yield* runExecutionCommitLoop(
+      ExecutionStoreApi.operations,
+      request.executionId,
+      function* (current) {
+        if (!current) {
+          throw new TurnAuthorityBoundaryError(`Execution ${request.executionId} is not open`);
+        }
+        if (current.record.format === "sweatpants.terminal-execution.v1") {
+          return { status: "return", result: parseTerminalCapsule(current.record) };
+        }
+        assertFacts(current.record, request.facts);
+        const factsValue: Json = request.facts.map((fact) => ({
+          executionId: fact.executionId,
+          sessionId: fact.sessionId,
+          turnId: fact.turnId,
+          sequence: fact.sequence,
+          kind: fact.kind,
+          payload: fact.payload,
+        }));
+        const facts = yield* ExecutionStoreApi.operations.putPayload(factsValue);
+        const withFrontier: ExecutionTreeSnapshot = {
+          ...current.record,
+          unpublishedProjection: { throughSequence: request.facts.length, facts },
+        };
+        const decision = completeRoot(withFrontier, {
+          outcome: request.outcome,
+          disposition: request.disposition,
+          finalRevision: current.revision + 1,
+          completedAt: request.completedAt,
+        });
+        const capsule = decision.next as TerminalCapsule;
+        return {
+          status: "commit",
+          next: capsule,
+          privateRecords: decision.privateRecords,
+          result: capsule,
+        };
+      },
+    );
   },
 
   *read(executionId: string): Operation<TerminalCapsule | ExecutionTreeSnapshot | null> {
@@ -122,22 +123,21 @@ export const TurnJournalAuthority = createApi("turn-journal-authority", {
   },
 
   *markPublished(executionId: string): Operation<TerminalCapsule> {
-    while (true) {
-      const current = yield* ExecutionStoreApi.operations.loadExecution(executionId);
-      if (!current || current.record.format !== "sweatpants.terminal-execution.v1") {
-        throw new TurnAuthorityBoundaryError(`Execution ${executionId} is not terminal`);
-      }
-      const capsule = parseTerminalCapsule(current.record);
-      if (capsule.publication === "published") return capsule;
-      const next: TerminalCapsule = { ...capsule, publication: "published" };
-      const commit = yield* ExecutionStoreApi.operations.commitExecution({
-        executionId,
-        expectedRevision: current.revision,
-        next,
-        privateRecords: [],
-      });
-      if (commit.status === "accepted") return next;
-    }
+    return yield* runExecutionCommitLoop(
+      ExecutionStoreApi.operations,
+      executionId,
+      function* (current) {
+        if (!current || current.record.format !== "sweatpants.terminal-execution.v1") {
+          throw new TurnAuthorityBoundaryError(`Execution ${executionId} is not terminal`);
+        }
+        const capsule = parseTerminalCapsule(current.record);
+        if (capsule.publication === "published") {
+          return { status: "return", result: capsule };
+        }
+        const next: TerminalCapsule = { ...capsule, publication: "published" };
+        return { status: "commit", next, privateRecords: [], result: next };
+      },
+    );
   },
 });
 

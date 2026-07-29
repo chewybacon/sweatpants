@@ -18,8 +18,8 @@ Optional: decline/cancel paths also return structured terminal results.
 
 ```ts
 import { createTool } from "@sweatpants/agent-sdk";
-import { makePlugin } from "@sweatpants/framework/chat";
-import type { RenderableProps } from "@sweatpants/framework/chat/browser-rendering";
+import { makePlugin } from "@sweatpants/chat-core";
+import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
 
 export const pickCard = createTool("pick_card")
   .description("Draw cards and let the user pick one")

@@ -7,7 +7,8 @@ import {
   type DurableSandboxConformanceFactory,
 } from "@sweatpants/workspace-runtime/testing";
 
-import { createRedisDurableJournalAuthority } from "../durable-authority.ts";
+import { createRedisExecutionStore } from "../execution-store.ts";
+import { createStoredDurableJournalAuthority } from "@sweatpants/journal-authority";
 import { cleanupRedisBackend, connectRedisBackend, type RedisBackend } from "./redis-backend.ts";
 
 const authorityKeyPrefix = `test:${process.pid}:sandbox-conformance:`;
@@ -17,13 +18,15 @@ let client: RedisClientType;
 const factory: DurableSandboxConformanceFactory = {
   backendName: "redis",
   *open(options) {
-    return createRedisDurableJournalAuthority(client, {
-      journalId: options.journalId,
-      journalIncarnation: "sandbox-conformance-v1",
-      keyPrefix: authorityKeyPrefix,
-      keyring: options.keyring,
-      now: () => 1_000,
-    });
+    return createStoredDurableJournalAuthority(
+      createRedisExecutionStore(client, { keyPrefix: authorityKeyPrefix }),
+      {
+        journalId: options.journalId,
+        journalIncarnation: "sandbox-conformance-v1",
+        keyring: options.keyring,
+        now: () => 1_000,
+      },
+    );
   },
 };
 
@@ -40,7 +43,7 @@ describe("durable sandbox Redis conformance", () => {
   });
 
   it("reports which backend certified this run", () => {
-    console.info(`[journal-authority-redis] sandbox backend: ${backend.label}`);
+    console.info(`[execution-store-redis] sandbox backend: ${backend.label}`);
   });
 
   for (const conformanceCase of createDurableSandboxConformanceCases(factory)) {

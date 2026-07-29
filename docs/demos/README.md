@@ -7,8 +7,8 @@ Product demos for the Sweatpants durability / human-in-the-loop wedge.
 
 | Demo | User path | Automated gate |
 |---|---|---|
-| Reconnect mid-stream | `/chat/basic` | `packages/framework/acceptance/demo-reconnect-mid-stream.acceptance.test.ts` |
-| Elicit pause/resume | `/chat/flight` | `packages/framework/acceptance/demo-elicit-pause-resume.acceptance.test.ts` |
+| Reconnect mid-stream | `/chat/basic` | `packages/durable-chat-runtime/acceptance/demo-reconnect-mid-stream.acceptance.test.ts` |
+| Elicit pause/resume | `/chat/flight` | `packages/platform-acceptance/src/product/golden-path.acceptance.test.ts` |
 | MCP → browser elicit → result | `/chat/cards` | `apps/yo-chat/acceptance/demo-mcp-browser-elicit.acceptance.test.ts` |
 
 All app import samples use the product facade only (see [product-surface.md](../product-surface.md)).
@@ -24,8 +24,8 @@ pnpm dev:yo-chat:local
 ## Run automated demo gates
 
 ```bash
-pnpm -C packages/framework exec vitest run acceptance/demo-reconnect-mid-stream.acceptance.test.ts
-pnpm -C packages/framework exec vitest run acceptance/demo-elicit-pause-resume.acceptance.test.ts
+pnpm -C packages/durable-chat-runtime exec vitest run acceptance/demo-reconnect-mid-stream.acceptance.test.ts
+pnpm -C packages/platform-acceptance test
 pnpm -C apps/yo-chat exec vitest run acceptance/demo-mcp-browser-elicit.acceptance.test.ts
 ```
 

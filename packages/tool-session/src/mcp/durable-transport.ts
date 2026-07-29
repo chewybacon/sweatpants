@@ -84,10 +84,7 @@ export function authorizationToMrtrResponse(
 }
 
 /** Projects a commit result into a detached transport DTO. */
-export function commitToMrtrResponse(
-  key: string,
-  result: Json,
-): DurableEffectsMrtrInputResponse {
+export function commitToMrtrResponse(key: string, result: Json): DurableEffectsMrtrInputResponse {
   return { type: MCP_DURABLE_COMMIT_REQUEST, key, result: structuredClone(result) };
 }
 

@@ -7,7 +7,7 @@ import type { Operation } from "effection";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   programDriverSchemaRegistry,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
@@ -215,7 +215,7 @@ export function createAcceptanceApplication(
   let sessionDrain: ToolSessionDrainObserver | undefined;
   const journalStore =
     options.journalStore ??
-    createInMemoryProgramDriverJournalStore({
+    createProgramDriverJournalStore({
       keyring: createCapabilityKeyring("test-rig-acceptance", [
         {
           keyId: "test-v1",

@@ -2,7 +2,7 @@ import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventor
 import { createChatHandler } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   type ChatHandlerSetupContext,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
@@ -72,7 +72,7 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
       yield* setupMaxIterations(ctx);
     },
     maxToolIterations: maxIterations,
-    programDriverJournalStore: createInMemoryProgramDriverJournalStore({
+    programDriverJournalStore: createProgramDriverJournalStore({
       keyring: createCapabilityKeyring("yo-agent-in-process", [
         { keyId: "local", secret: "yo-agent-in-process-local-key-material" },
       ]),

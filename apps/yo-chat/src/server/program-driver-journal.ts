@@ -1,17 +1,14 @@
 import { call, type Operation } from "effection";
 import {
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   programDriverSchemaRegistry,
   type ProgramDriverJournal,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
-import { createRedisDurableJournalAuthority } from "@sweatpants/journal-authority-redis";
+import { createRedisExecutionStore } from "@sweatpants/execution-store-redis";
 import type { RedisClientType } from "redis";
-import type {
-  CapabilityKeyring,
-  DurableSemanticRecord,
-  ResolveOperationResult,
-} from "@sweatpants/journal-authority";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
+import type { CapabilityKeyring, ExecutionStore } from "@sweatpants/journal-authority";
 
 import { getSharedRedisClient } from "@/lib/shared-redis";
 import { pickCard } from "../tools/pick-card/durable";
@@ -25,86 +22,65 @@ const yoChatProgramSchemaEntries = [
 /** Creates the yo-chat ProgramRuntime journal adapter over shared Redis or development memory. */
 export function createYoChatProgramDriverJournalStore(
   keyring: CapabilityKeyring,
+  executionStore: ExecutionStore = createYoChatExecutionStore(),
 ): ProgramDriverJournalStore {
-  const schemaRegistry = programDriverSchemaRegistry(yoChatProgramSchemaEntries);
-  const fallback = createInMemoryProgramDriverJournalStore({
+  return createProgramDriverJournalStore({
     keyring,
     journalPrefix: "yo-chat-program-driver",
-    schemaRegistry,
+    schemaRegistry: programDriverSchemaRegistry(yoChatProgramSchemaEntries),
+    executionStore,
   });
+}
+
+/** Selects one production store once; configured Redis and local memory never mix. */
+export function createYoChatExecutionStore(): ExecutionStore {
+  const memory = createMemoryExecutionStore();
+  let selected: ExecutionStore | undefined;
+
+  function* store(): Operation<ExecutionStore> {
+    if (!selected) {
+      const client = yield* call(() => getSharedRedisClient());
+      selected = client
+        ? createRedisExecutionStore(client, { keyPrefix: "sweatpants:execution-store:v1:" })
+        : memory;
+    }
+    return selected;
+  }
 
   return {
-    *open(conversationId): Operation<ProgramDriverJournal> {
-      const client = yield* call(() => getSharedRedisClient());
-      if (!client) {
-        return yield* fallback.open(conversationId);
-      }
-      return yield* createRedisProgramDriverJournalStore(client, keyring, schemaRegistry).open(
-        conversationId,
-      );
+    *loadExecution(executionId) {
+      return yield* (yield* store()).loadExecution(executionId);
+    },
+    *commitExecution(request) {
+      return yield* (yield* store()).commitExecution(request);
+    },
+    *putPayload(value) {
+      return yield* (yield* store()).putPayload(value);
+    },
+    *getPayload(reference) {
+      return yield* (yield* store()).getPayload(reference);
+    },
+    *appendReplay(request) {
+      return yield* (yield* store()).appendReplay(request);
+    },
+    *readReplay(head) {
+      return yield* (yield* store()).readReplay(head);
     },
   };
 }
 
-/** Creates a ProgramRuntime journal store over a caller-owned Redis connection. */
+/** Creates a ProgramRuntime journal store over the bounded Redis Execution Store. */
 export function createRedisProgramDriverJournalStore(
   client: RedisClientType,
   keyring: CapabilityKeyring,
   schemaRegistry = programDriverSchemaRegistry(yoChatProgramSchemaEntries),
 ): ProgramDriverJournalStore {
-  return {
-    *open(conversationId): Operation<ProgramDriverJournal> {
-      const authority = createRedisDurableJournalAuthority(client, {
-        journalId: `yo-chat-program-driver:${conversationId}`,
-        journalIncarnation: "1",
-        keyring,
-        schemaRegistry,
-      });
-      return {
-        authority,
-        *openTask(request): Operation<void> {
-          yield* authority.openTask(request);
-        },
-        *executionState(sessionId, taskId) {
-          return yield* authority.taskExecutionState(sessionId, taskId);
-        },
-        *recoveryState(sessionId, requestedTaskId) {
-          return yield* authority.taskRecoveryState(sessionId, requestedTaskId);
-        },
-        *rootTaskCount(sessionId) {
-          return yield* authority.rootTaskCount(sessionId);
-        },
-        *operationState(sessionId, taskId, pullId) {
-          return yield* authority.operationState(sessionId, taskId, pullId);
-        },
-        *replaceAttachment(sessionId, taskId, attachmentId) {
-          const replaced = yield* authority.replaceAttachment(
-            sessionId,
-            taskId,
-            attachmentId,
-            "program-runtime",
-          );
-          return { executionEpoch: replaced.executionEpoch };
-        },
-        *readJournal(sessionId): Operation<DurableSemanticRecord[]> {
-          return yield* authority.readJournal(sessionId);
-        },
-        *requestCancellation(sessionId, taskId, reason): Operation<void> {
-          yield* authority.requestCancellation(sessionId, taskId, reason);
-        },
-        *resolvePending(request): Operation<ResolveOperationResult> {
-          const capability = yield* authority.resolutionCapability(
-            request.sessionId,
-            request.taskId,
-            request.pullId,
-          );
-          return yield* authority.resolve({
-            capability,
-            audience: request.audience,
-            outcome: request.outcome,
-          });
-        },
-      };
-    },
-  };
+  return createProgramDriverJournalStore({
+    keyring,
+    journalPrefix: "yo-chat-program-driver",
+    schemaRegistry,
+    executionStore: createRedisExecutionStore(client, {
+      keyPrefix: "sweatpants:execution-store:v1:",
+    }),
+  });
 }

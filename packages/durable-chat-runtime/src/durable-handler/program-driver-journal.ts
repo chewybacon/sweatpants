@@ -3,7 +3,7 @@ import { type OperationOutcome } from "@sweatpants/durable-effects";
 import type { Operation } from "effection";
 import {
   createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
+  createStoredDurableJournalAuthority,
   type CapabilityKeyring,
   type DurableJournalAuthorityService,
   type DurableSemanticRecord,
@@ -13,6 +13,8 @@ import {
   type OpenDurableTaskRequest,
   type ResolveOperationResult,
 } from "@sweatpants/journal-authority";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
+import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import {
   createDurableSchemaRegistry,
   type DurableSchemaRegistry,
@@ -62,7 +64,7 @@ export interface ProgramDriverJournal {
     attachmentId: string,
   ): Operation<{ executionEpoch: number }>;
   /** Reads a parsed defensive semantic journal snapshot. */
-  readJournal(sessionId: string): Operation<DurableSemanticRecord[]>;
+  readJournal(sessionId: string, rootTaskId?: string): Operation<DurableSemanticRecord[]>;
   /** Idempotently records logical cancellation before pending work is resolved. */
   requestCancellation(sessionId: string, taskId: string, reason?: string): Operation<void>;
   /** Resolves an existing pull without exposing its private capability token. */
@@ -82,7 +84,7 @@ export interface ProgramDriverJournalStore {
 }
 
 /** Configuration for a process-local development journal store. */
-export interface InMemoryProgramDriverJournalStoreOptions {
+export interface ProgramDriverJournalStoreOptions {
   keyring: CapabilityKeyring;
   journalPrefix?: string;
   now?: () => number;
@@ -92,6 +94,8 @@ export interface InMemoryProgramDriverJournalStoreOptions {
    * generated tool/effect catalogs.
    */
   schemaRegistry?: DurableSchemaRegistry;
+  /** Bounded persistence shared by every authority opened through this composition. */
+  executionStore?: ExecutionStore;
 }
 
 /**
@@ -104,32 +108,27 @@ export function createDevelopmentProgramDriverJournalStore(options: {
   readonly audience: string;
   readonly secret: string;
 }): ProgramDriverJournalStore {
-  return createInMemoryProgramDriverJournalStore({
+  return createProgramDriverJournalStore({
     keyring: createCapabilityKeyring(options.audience, [
       { keyId: "development-v1", secret: options.secret },
     ]),
   });
 }
 
-export function createInMemoryProgramDriverJournalStore(
-  options: InMemoryProgramDriverJournalStoreOptions,
+export function createProgramDriverJournalStore(
+  options: ProgramDriverJournalStoreOptions,
 ): ProgramDriverJournalStore {
-  const authorities = new Map<string, ReturnType<typeof createInMemoryDurableJournalAuthority>>();
+  const executionStore = options.executionStore ?? createMemoryExecutionStore();
 
   return {
     *open(conversationId): Operation<ProgramDriverJournal> {
-      let authority = authorities.get(conversationId);
-      if (!authority) {
-        authority = createInMemoryDurableJournalAuthority({
-          journalId: `${options.journalPrefix ?? "framework-program-driver"}:${conversationId}`,
-          journalIncarnation: "1",
-          keyring: options.keyring,
-          ...(options.now ? { now: options.now } : {}),
-          schemaRegistry: options.schemaRegistry ?? programDriverSchemaRegistry(),
-        });
-        authorities.set(conversationId, authority);
-      }
-      const selected = authority;
+      const selected = createStoredDurableJournalAuthority(executionStore, {
+        journalId: `${options.journalPrefix ?? "program-driver"}:${conversationId}`,
+        journalIncarnation: "1",
+        keyring: options.keyring,
+        ...(options.now ? { now: options.now } : {}),
+        schemaRegistry: options.schemaRegistry ?? programDriverSchemaRegistry(),
+      });
       return {
         authority: selected,
         *openTask(request): Operation<void> {
@@ -156,19 +155,22 @@ export function createInMemoryProgramDriverJournalStore(
           );
           return { executionEpoch: replaced.executionEpoch };
         },
-        *readJournal(sessionId): Operation<DurableSemanticRecord[]> {
-          return selected.readJournal(sessionId);
+        *readJournal(sessionId, rootTaskId): Operation<DurableSemanticRecord[]> {
+          return rootTaskId
+            ? yield* selected.readTaskJournal(sessionId, rootTaskId)
+            : yield* selected.readJournal(sessionId);
         },
         *requestCancellation(sessionId, taskId, reason): Operation<void> {
           yield* selected.requestCancellation(sessionId, taskId, reason);
         },
         *resolvePending(request): Operation<ResolveOperationResult> {
+          const capability = yield* selected.resolutionCapability(
+            request.sessionId,
+            request.taskId,
+            request.pullId,
+          );
           return yield* selected.resolve({
-            capability: selected.resolutionCapability(
-              request.sessionId,
-              request.taskId,
-              request.pullId,
-            ),
+            capability,
             audience: request.audience,
             outcome: request.outcome,
           });

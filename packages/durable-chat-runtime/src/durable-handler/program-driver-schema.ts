@@ -15,7 +15,7 @@ export type ThinCatalogEntry =
   | {
       kind: "foreign-tool";
       target: string;
-      driver: "tool-session" | "framework-tool-runtime";
+      driver: "tool-session" | "chat-tool-runtime";
       tool: string;
       durability: "ephemeral_handle";
     };

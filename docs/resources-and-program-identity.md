@@ -32,4 +32,4 @@ Existing hand-pinned programs remain supported with `asserted` provenance. `vali
 
 An outer agent or deployment identity is only as trustworthy as every transitive program pin it contains. Migration from an asserted pin to a generated digest creates a new program identity and does not rewrite existing journal history.
 
-The canonical low-level session-contract constructor is `createPinnedDurableProgram`. The old low-level `createDurableTool` export is deprecated for one compatibility release. The staged product builder `createDurableTool("name")` from `@sweatpants/agent-sdk` is unchanged.
+The canonical low-level Durable Execution constructor is `createPinnedDurableProgram`. The staged product builder `createDurableTool("name")` from `@sweatpants/agent-sdk` is unchanged.

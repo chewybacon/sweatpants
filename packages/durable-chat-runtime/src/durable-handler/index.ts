@@ -19,7 +19,7 @@ export { createDurableChatHandler as createChatHandler } from "./handler.ts";
 export { createPluginSessionManager } from "./plugin-session-manager.ts";
 export {
   createDevelopmentProgramDriverJournalStore,
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   programDriverSchemaRegistry,
 } from "./program-driver-journal.ts";
 export { programDriverChatEngineSchemaEntries } from "./program-driver-schema.ts";
@@ -56,7 +56,7 @@ export {
 } from "../program-driver/native-tools.ts";
 /** ProgramRuntime journal composition contracts. */
 export type {
-  InMemoryProgramDriverJournalStoreOptions,
+  ProgramDriverJournalStoreOptions,
   ProgramDriverJournal,
   ProgramDriverJournalStore,
 } from "./program-driver-journal.ts";

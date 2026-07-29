@@ -24,7 +24,7 @@ import { createChatApplication } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createDurableChatHandler,
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
@@ -105,7 +105,7 @@ describe.skipIf(!externalSubstrateEnabled)(
       }
       const journalStore = redisClient
         ? createRedisProgramDriverJournalStore(redisClient, keyring)
-        : createInMemoryProgramDriverJournalStore({ keyring });
+        : createProgramDriverJournalStore({ keyring });
       const runtime: ToolRuntime = {
         *runtimeId() {
           return "foreign-context-only";

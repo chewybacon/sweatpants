@@ -6,7 +6,7 @@ import type { Operation } from "effection";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   programDriverSchemaRegistry,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { createToolInventory, ToolInventoryContext } from "@sweatpants/chat-core";
@@ -41,7 +41,7 @@ export function createReactAcceptanceApplication(
   context: TestApplicationFactoryContext,
 ): TestApplication {
   const inventory = createToolInventory([createToolInventoryEntry(reactBookingTool)]);
-  const journalStore = createInMemoryProgramDriverJournalStore({
+  const journalStore = createProgramDriverJournalStore({
     keyring: createCapabilityKeyring("react-chat-acceptance", [
       {
         keyId: "test-v1",

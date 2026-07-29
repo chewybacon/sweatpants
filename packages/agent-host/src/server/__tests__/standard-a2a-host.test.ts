@@ -33,7 +33,7 @@ import {
   type CreateStandardA2AHostOptions,
 } from "../index.ts";
 import {
-  createInMemoryProgramDriverJournalStore,
+  createProgramDriverJournalStore,
   programDriverSchemaRegistry,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 
@@ -173,7 +173,7 @@ function interruptionFixture() {
   const keyring = createCapabilityKeyring("interrupt-host", [
     { keyId: "test", secret: "interrupt-host-secret-at-least-32-bytes" },
   ]);
-  const journalStore = createInMemoryProgramDriverJournalStore({
+  const journalStore = createProgramDriverJournalStore({
     keyring,
     schemaRegistry: programDriverSchemaRegistry(CHAT_CONTRACT_SCHEMA_ENTRIES),
   });

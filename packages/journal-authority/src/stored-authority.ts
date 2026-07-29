@@ -1,67 +1,68 @@
-import { CrankError } from "@sweatpants/durable-execution";
-import { call, type Operation } from "effection";
-import type { RedisClientType } from "redis";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import {
+  CrankError,
+  type DurableReference,
+  type ExecutionTreeSnapshot,
+} from "@sweatpants/durable-execution";
+import type { Operation } from "effection";
+import type { DurableSchemaRegistry } from "./schema-registry.ts";
+import type { ExecutionStore, VersionedExecution } from "./store.ts";
+import { runExecutionCommitLoop } from "./commit-loop.ts";
 import {
   InMemoryDurableJournalAuthority,
   parseDurableAuthoritySnapshot,
-  type AppendEmissionRequest,
-  type BindRestoreFrontierRequest,
-  type BindRestoreFrontierResult,
-  type CapabilityKeyring,
-  type CancellationAcknowledgement,
-  type ClaimActivationRequest,
-  type ClaimActivationResult,
-  type CompleteTaskRequest,
-  type ConsumeRestoreTicketRequest,
-  type ConsumeRestoreTicketResult,
   type DurableAuthoritySnapshot,
-  type DurableCancellationState,
-  type DurableOperationState,
   type DurableSemanticRecord,
-  type DurableTaskExecutionState,
-  type DurableTaskRecoveryState,
-  type EmissionReceipt,
-  type EnsureChildTaskRequest,
-  type EnsureChildTaskResult,
-  type IssueRestoreTicketRequest,
-  type IssueRestoreTicketResult,
   type OpenDurableTaskRequest,
-  type PrepareProgramRestoreRequest,
-  type PreparedProgramRestore,
-  type RecoverableSession,
-  type ReserveOperationRequest,
-  type ReserveOperationResult,
-  type ReleaseActivationRequest,
-  type ReleaseActivationResult,
-  type RenewActivationRequest,
-  type RenewActivationResult,
-  type RestoredFrontierProof,
-  type ResolveOperationRequest,
-  type ResolveOperationResult,
-  type TaskCloseReceipt,
-} from "@sweatpants/journal-authority";
-import { type ProgramStep } from "@sweatpants/durable-execution";
-import { type Json } from "@sweatpants/foundation";
-import { type DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
+} from "./durable-authority.ts";
+import type {
+  AppendEmissionRequest,
+  BindRestoreFrontierRequest,
+  BindRestoreFrontierResult,
+  CancellationAcknowledgement,
+  ClaimActivationRequest,
+  ClaimActivationResult,
+  CompleteTaskRequest,
+  ConsumeRestoreTicketRequest,
+  ConsumeRestoreTicketResult,
+  DurableCancellationState,
+  DurableOperationState,
+  DurableTaskExecutionState,
+  DurableTaskRecoveryState,
+  EmissionReceipt,
+  EnsureChildTaskRequest,
+  EnsureChildTaskResult,
+  IssueRestoreTicketRequest,
+  IssueRestoreTicketResult,
+  PrepareProgramRestoreRequest,
+  PreparedProgramRestore,
+  RecoverableSession,
+  ReleaseActivationRequest,
+  ReleaseActivationResult,
+  RenewActivationRequest,
+  RenewActivationResult,
+  RestoredFrontierProof,
+  ReserveOperationRequest,
+  ReserveOperationResult,
+  ResolveOperationRequest,
+  ResolveOperationResult,
+  TaskCloseReceipt,
+} from "./durable-authority-types.ts";
+import type { CapabilityKeyring } from "./capabilities.ts";
+import type { ProgramStep } from "@sweatpants/durable-execution";
 
-/** Redis authority configuration; keyring material remains process-local and is never persisted. */
-export interface RedisDurableJournalAuthorityOptions {
-  journalId: string;
-  journalIncarnation?: string;
-  keyring: CapabilityKeyring;
-  keyPrefix?: string;
-  now?: () => number;
-  maxOutcomeBytes?: number;
-  /**
-   * Digest-keyed Standard Schema validator registry shared with the in-memory
-   * authority path. Runtime validators are never persisted to Redis; every
-   * CAS retry reloads state and reruns validation through this registry.
-   */
-  schemaRegistry?: DurableSchemaRegistry;
+export interface StoredDurableJournalAuthorityOptions {
+  readonly journalId: string;
+  readonly journalIncarnation?: string;
+  readonly keyring: CapabilityKeyring;
+  readonly now?: () => number;
+  readonly maxOutcomeBytes?: number;
+  readonly schemaRegistry?: DurableSchemaRegistry;
+  /** Test/import boundary for an already parsed snapshot; no storage adapter reads legacy keys. */
+  readonly initialSnapshot?: DurableAuthoritySnapshot;
 }
 
-/** CAS-backed durable authority port with processless journal reads and recovery operations. */
-export interface RedisDurableJournalAuthority {
+export interface StoredDurableJournalAuthority {
   journalIdentity(): { readonly id: string; readonly incarnation: string };
   /** Returns authority-owned placement and catalog recovery state. */
   taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
@@ -161,26 +162,19 @@ export interface RedisDurableJournalAuthority {
   resolutionCapability(sessionId: string, taskId: string, pullId: string): Operation<string>;
   /** Reads a parsed defensive semantic journal snapshot. */
   readJournal(sessionId: string): Operation<DurableSemanticRecord[]>;
+  /** Reads one root tree without scanning completed sibling Turns. */
+  readTaskJournal(sessionId: string, rootTaskId: string): Operation<DurableSemanticRecord[]>;
   /** Reads deterministic runnable session IDs. */
   runnableSessions(): Operation<string[]>;
+  /** Exports the parsed authority state for explicit test/state-transfer boundaries. */
+  exportSnapshot(): Operation<DurableAuthoritySnapshot>;
 }
 
-const CAS_SNAPSHOT = `
-local current = redis.call('GET', KEYS[1])
-if (current or '') ~= ARGV[1] then return 0 end
-redis.call('SET', KEYS[1], ARGV[2])
-return 1
-`;
-
-/**
- * Creates a Redis-backed authority. Each mutation reloads, parses, applies, and
- * atomically CAS-writes a complete snapshot; retry exhaustion throws CrankError.
- */
-export function createRedisDurableJournalAuthority(
-  client: RedisClientType,
-  options: RedisDurableJournalAuthorityOptions,
-): RedisDurableJournalAuthority {
-  const key = `${options.keyPrefix ?? "sweatpants:crank:"}durable-authority:${encodeURIComponent(options.journalId)}`;
+export function createStoredDurableJournalAuthority(
+  store: ExecutionStore,
+  options: StoredDurableJournalAuthorityOptions,
+): StoredDurableJournalAuthority {
+  const executionId = `authority:${options.journalId}`;
   const empty: DurableAuthoritySnapshot = {
     version: 4,
     tasks: [],
@@ -195,14 +189,6 @@ export function createRedisDurableJournalAuthority(
     consecutiveRestoreStales: [],
     activationNotBeforeMs: [],
   };
-
-  async function load(): Promise<{ raw: string; snapshot: DurableAuthoritySnapshot }> {
-    const raw = await client.get(key);
-    return {
-      raw: raw ?? "",
-      snapshot: raw ? parseDurableAuthoritySnapshot(raw) : empty,
-    };
-  }
 
   function authority(snapshot: DurableAuthoritySnapshot): InMemoryDurableJournalAuthority {
     return new InMemoryDurableJournalAuthority({
@@ -220,32 +206,54 @@ export function createRedisDurableJournalAuthority(
     });
   }
 
+  function* load(
+    supplied?: VersionedExecution | null,
+  ): Operation<{ revision: number | null; snapshot: DurableAuthoritySnapshot }> {
+    const current = supplied === undefined ? yield* store.loadExecution(executionId) : supplied;
+    if (!current) return { revision: null, snapshot: options.initialSnapshot ?? empty };
+    if (current.record.format !== "sweatpants.execution-tree.v1" || !current.record.checkpoint) {
+      throw new CrankError("invalid_journal", "Stored authority control record is invalid");
+    }
+    const payload = yield* store.getPayload(current.record.checkpoint);
+    if (payload === null || payload instanceof Uint8Array) {
+      throw new CrankError("invalid_journal", "Stored authority snapshot payload is unavailable");
+    }
+    return {
+      revision: current.revision,
+      snapshot: parseDurableAuthoritySnapshot(JSON.stringify(payload)),
+    };
+  }
+
+  function control(checkpoint: DurableReference): ExecutionTreeSnapshot {
+    return {
+      format: "sweatpants.execution-tree.v1",
+      executionId,
+      sessionId: options.journalId,
+      turnId: "authority",
+      rootTaskId: "authority",
+      rootProgram: { id: "journal-authority", version: "1", digest: "0".repeat(64) },
+      tasks: [],
+      runnableTaskIds: [],
+      checkpoint,
+      unpublishedProjection: { throughSequence: 0, facts: null },
+    };
+  }
+
   function* mutate<T>(
     operation: (value: InMemoryDurableJournalAuthority) => Operation<T>,
   ): Operation<T> {
-    for (let attempt = 0; attempt < 64; attempt += 1) {
-      const loaded = yield* call(load);
+    return yield* runExecutionCommitLoop(store, executionId, function* (current) {
+      const loaded = yield* load(current);
       const value = authority(loaded.snapshot);
       const result = yield* operation(value);
-      const encoded = JSON.stringify(value.exportSnapshot());
-      const accepted = yield* call(() =>
-        client.eval(CAS_SNAPSHOT, {
-          keys: [key],
-          arguments: [loaded.raw, encoded],
-        }),
-      );
-      if (Number(accepted) === 1) {
-        return result;
-      }
-    }
-    throw new CrankError(
-      "cas_contention",
-      "Redis durable authority update contention exceeded its retry budget",
-    );
+      const snapshot = assertJson(canonicalSnapshot(value.exportSnapshot()).value);
+      const checkpoint = yield* store.putPayload(snapshot);
+      return { status: "commit", next: control(checkpoint), privateRecords: [], result };
+    });
   }
 
   function* read<T>(select: (value: InMemoryDurableJournalAuthority) => T): Operation<T> {
-    const loaded = yield* call(load);
+    const loaded = yield* load();
     return select(authority(loaded.snapshot));
   }
 
@@ -257,34 +265,34 @@ export function createRedisDurableJournalAuthority(
       };
     },
     *taskExecutionState(sessionId, taskId) {
-      const loaded = yield* call(load);
+      const loaded = yield* load();
       return yield* authority(loaded.snapshot).taskExecutionState(sessionId, taskId);
     },
     *taskInput(sessionId, taskId) {
-      const loaded = yield* call(load);
+      const loaded = yield* load();
       return yield* authority(loaded.snapshot).taskInput(sessionId, taskId);
     },
     *taskRecoveryState(sessionId, requestedTaskId) {
-      const loaded = yield* call(load);
+      const loaded = yield* load();
       return yield* authority(loaded.snapshot).taskRecoveryState(sessionId, requestedTaskId);
     },
     *rootTaskCount(sessionId) {
-      const loaded = yield* call(load);
+      const loaded = yield* load();
       return yield* authority(loaded.snapshot).rootTaskCount(sessionId);
     },
     *operationState(sessionId, taskId, pullId) {
-      const loaded = yield* call(load);
+      const loaded = yield* load();
       return yield* authority(loaded.snapshot).operationState(sessionId, taskId, pullId);
     },
     *nonterminalSchemaDigests() {
-      const loaded = yield* call(load);
+      const loaded = yield* load();
       return yield* authority(loaded.snapshot).nonterminalSchemaDigests();
     },
     *markActivationStarted(sessionId) {
       yield* mutate((value) => value.markActivationStarted(sessionId));
     },
     *recoverableSessions() {
-      const loaded = yield* call(load);
+      const loaded = yield* load();
       return yield* authority(loaded.snapshot).recoverableSessions();
     },
     *claimActivation(request) {
@@ -364,8 +372,14 @@ export function createRedisDurableJournalAuthority(
     *readJournal(sessionId) {
       return yield* read((value) => value.readJournal(sessionId));
     },
+    *readTaskJournal(sessionId, rootTaskId) {
+      return yield* read((value) => value.readTaskJournal(sessionId, rootTaskId));
+    },
     *runnableSessions() {
       return yield* read((value) => value.runnableSessions());
+    },
+    *exportSnapshot() {
+      return yield* read((value) => value.exportSnapshot());
     },
   };
 }
