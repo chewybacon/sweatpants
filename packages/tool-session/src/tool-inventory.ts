@@ -1,4 +1,4 @@
-import { assertJsonObject } from "@sweatpants/foundation";
+import { requireJsonObject } from "@sweatpants/foundation";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { ToolInventoryEntry } from "./chat-runtime-contract.ts";
 
@@ -15,7 +15,7 @@ export function createToolInventoryEntry(
   tool: AnyToolContract,
   metadata?: Record<string, unknown>,
 ): ToolInventoryEntry {
-  const projection = assertJsonObject(
+  const projection = requireJsonObject(
     tool.artifacts.parameters.inputProjection,
     `tool ${tool.name} parameters`,
   );

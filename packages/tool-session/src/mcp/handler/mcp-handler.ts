@@ -36,7 +36,7 @@
  * @packageDocumentation
  */
 import { createScope, type Operation } from "effection";
-import { assertJsonObject, type JsonObject } from "@sweatpants/foundation";
+import { requireJsonObject, type Json, type JsonObject } from "@sweatpants/foundation";
 import type {
   McpHandlerConfig,
   McpHttpHandler,
@@ -154,8 +154,8 @@ type McpToolProjection = {
 };
 
 /** JSON Schema was authored and digested upstream; this only applies MCP's keyed constraint. */
-function portableSchemaObject(projection: unknown, label: string): JsonObject {
-  const { $id: _id, $schema: _schema, ...schema } = assertJsonObject(projection, label);
+function portableSchemaObject(projection: Json, label: string): JsonObject {
+  const { $id: _id, $schema: _schema, ...schema } = requireJsonObject(projection, label);
   return schema;
 }
 

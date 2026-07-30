@@ -1,7 +1,8 @@
 export {
   CanonicalJsonError,
   assertJson,
-  assertJsonObject,
+  parseJsonObject,
+  requireJsonObject,
   canonicalJson,
   canonicalSnapshot,
   compareUnicodeCodePoints,
