@@ -1,5 +1,8 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
+import type { Operation } from "effection";
 import { z } from "zod";
+import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 
 export {
   TOOL_PARAMETER_VALIDATION_FAILED,
@@ -23,116 +26,86 @@ export class ToolParameterValidationError extends Error {
   }
 }
 
-type SafeParseResult<T> = { success: true; data: T } | { success: false; error?: unknown };
-
-type SafeParseSchema<T> = {
-  safeParse(input: unknown): SafeParseResult<T>;
-};
-
-type ParseSchema<T> = {
-  parse(input: unknown): T;
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Runtime authority check for the public Standard Schema contract. */
+function isStandardSchema(value: unknown): value is StandardSchemaV1<unknown, unknown> {
+  if (!isRecord(value) || !isRecord(value["~standard"])) return false;
+  const standard = value["~standard"];
+  return standard["version"] === 1 && typeof standard["validate"] === "function";
+}
+
 function isZodSchema(value: unknown): value is z.ZodType {
-  return (
-    isRecord(value) &&
-    (typeof (value as { safeParse?: unknown }).safeParse === "function" ||
-      (typeof (value as { parse?: unknown }).parse === "function" && "_def" in value))
-  );
+  return isStandardSchema(value) && value["~standard"]["vendor"] === "zod";
 }
 
 function stripNonJson(value: unknown): unknown {
   if (value === undefined || typeof value === "function" || typeof value === "symbol") {
     return undefined;
   }
-
-  if (typeof value === "bigint") {
-    return value.toString();
-  }
-
+  if (typeof value === "bigint") return value.toString();
   if (Array.isArray(value)) {
     return value.map(stripNonJson).filter((entry) => entry !== undefined);
   }
-
   if (isRecord(value)) {
     const result: Record<string, unknown> = {};
     for (const [key, entry] of Object.entries(value)) {
       const normalized = stripNonJson(entry);
-      if (normalized !== undefined) {
-        result[key] = normalized;
-      }
+      if (normalized !== undefined) result[key] = normalized;
     }
     return result;
   }
-
   return value;
 }
 
-function schemaHasSafeParse<T>(schema: unknown): schema is SafeParseSchema<T> {
-  return (
-    !!schema &&
-    typeof schema === "object" &&
-    typeof (schema as { safeParse?: unknown }).safeParse === "function"
-  );
-}
-
-function schemaHasParse<T>(schema: unknown): schema is ParseSchema<T> {
-  return (
-    !!schema &&
-    typeof schema === "object" &&
-    typeof (schema as { parse?: unknown }).parse === "function"
-  );
-}
-
 function issuePath(value: unknown): Array<string | number> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+  if (!Array.isArray(value)) return [];
   return value.filter(
     (part): part is string | number => typeof part === "string" || typeof part === "number",
   );
 }
 
 function normalizeValidationIssues(error: unknown): ToolParameterValidationIssue[] {
-  const rawIssues =
-    isRecord(error) && Array.isArray(error["issues"])
+  const rawIssues = Array.isArray(error)
+    ? error
+    : isRecord(error) && Array.isArray(error["issues"])
       ? error["issues"]
       : isRecord(error) && Array.isArray(error["errors"])
         ? error["errors"]
         : [];
 
-  return rawIssues.map((issue): ToolParameterValidationIssue => {
-    const record = isRecord(issue) ? issue : {};
-    return {
-      path: issuePath(record["path"]),
-      message: typeof record["message"] === "string" ? record["message"] : "Invalid value",
-      ...(typeof record["code"] === "string" ? { code: record["code"] } : {}),
-      ...("expected" in record ? { expected: record["expected"] } : {}),
-      ...("received" in record ? { received: record["received"] } : {}),
-    };
-  });
+  // Do not copy validator issue records: they may contain rejected values.
+  // Public tool errors use the same bounded, value-free projection everywhere.
+  return safeSchemaIssues(
+    rawIssues.filter(isRecord).map((issue) => ({
+      path: issuePath(issue["path"]),
+      message: typeof issue["message"] === "string" ? issue["message"] : "Invalid value",
+    })),
+  ).map((issue) => ({
+    path: issue.path
+      ? issue.path
+          .split(".")
+          .filter(Boolean)
+          .map((part) => (/^\d+$/u.test(part) ? Number(part) : part))
+      : [],
+    message: issue.message,
+  }));
 }
 
-function validationMessage(
-  toolName: string,
-  issues: ToolParameterValidationIssue[],
-  fallback?: string,
-): string {
+function validationMessage(toolName: string, issues: ToolParameterValidationIssue[]): string {
   const summary =
     issues.length > 0
       ? issues
+          .slice(0, 16)
           .map((issue) => {
-            const path = issue.path.length > 0 ? issue.path.join(".") : "<root>";
-            return `${path}: ${issue.message}`;
+            const path = issue.path.length > 0 ? issue.path.join(".").slice(0, 256) : "<root>";
+            return `${path}: ${issue.message.slice(0, 512)}`;
           })
           .join("; ")
-      : (fallback ?? "parameter validation failed");
-
-  return `Invalid parameters for tool "${toolName}": ${summary}`;
+      : "parameter validation failed";
+  return `Invalid parameters for tool "${toolName.slice(0, 512)}": ${summary.slice(0, 8_192)}`;
 }
 
 export function createToolParameterValidationError(input: {
@@ -141,102 +114,69 @@ export function createToolParameterValidationError(input: {
   cause?: unknown;
 }): ToolParameterValidationError {
   const issues = normalizeValidationIssues(input.cause);
-  const fallback = input.cause instanceof Error ? input.cause.message : undefined;
   const payload: ToolParameterValidationErrorPayload = {
     code: TOOL_PARAMETER_VALIDATION_FAILED,
-    toolName: input.toolName,
-    callId: input.callId,
-    message: validationMessage(input.toolName, issues, fallback),
+    toolName: input.toolName.slice(0, 512),
+    callId: input.callId.slice(0, 512),
+    message: validationMessage(input.toolName, issues),
     issues,
   };
-  return new ToolParameterValidationError(payload, { cause: input.cause });
+  // Deliberately do not attach the raw validator exception as `cause`: it may
+  // contain the rejected value, provider response, or an unbounded stack.
+  return new ToolParameterValidationError(payload);
 }
 
 export function getToolParameterValidationErrorPayload(
   error: unknown,
 ): ToolParameterValidationErrorPayload | undefined {
-  if (error instanceof ToolParameterValidationError) {
-    return error.payload;
-  }
-  if (!isRecord(error)) {
-    return undefined;
-  }
-
-  const code = error["code"];
+  if (error instanceof ToolParameterValidationError) return error.payload;
+  if (!isRecord(error) || error["code"] !== TOOL_PARAMETER_VALIDATION_FAILED) return undefined;
   const payload = error["payload"];
-  if (code === TOOL_PARAMETER_VALIDATION_FAILED && isRecord(payload)) {
-    const toolName = typeof payload["toolName"] === "string" ? payload["toolName"] : undefined;
-    const callId = typeof payload["callId"] === "string" ? payload["callId"] : undefined;
-    const message = typeof payload["message"] === "string" ? payload["message"] : undefined;
-    if (toolName && callId && message) {
-      return {
-        code: TOOL_PARAMETER_VALIDATION_FAILED,
-        toolName,
-        callId,
-        message,
-        issues: Array.isArray(payload["issues"])
-          ? payload["issues"].map((issue) => {
-              const record = isRecord(issue) ? issue : {};
-              return {
-                path: issuePath(record["path"]),
-                message:
-                  typeof record["message"] === "string" ? record["message"] : "Invalid value",
-                ...(typeof record["code"] === "string" ? { code: record["code"] } : {}),
-                ...("expected" in record ? { expected: record["expected"] } : {}),
-                ...("received" in record ? { received: record["received"] } : {}),
-              };
-            })
-          : [],
-      };
-    }
-  }
-
-  return undefined;
+  if (!isRecord(payload)) return undefined;
+  const toolName =
+    typeof payload["toolName"] === "string" ? payload["toolName"].slice(0, 512) : undefined;
+  const callId =
+    typeof payload["callId"] === "string" ? payload["callId"].slice(0, 512) : undefined;
+  if (!toolName || !callId) return undefined;
+  const issues = normalizeValidationIssues({ issues: payload["issues"] });
+  return {
+    code: TOOL_PARAMETER_VALIDATION_FAILED,
+    toolName,
+    callId,
+    message: validationMessage(toolName, issues),
+    issues,
+  };
 }
 
-export function validateToolParameters<T = unknown>(input: {
-  schema: unknown;
+export function* parseToolParameters<T = unknown>(input: {
+  schema: StandardSchemaV1<unknown, T>;
   params: unknown;
   toolName: string;
   callId: string;
-}): T {
+}): Operation<T> {
   const { schema, params, toolName, callId } = input;
-
-  if (schemaHasSafeParse<T>(schema)) {
-    let result: SafeParseResult<T>;
-    try {
-      result = schema.safeParse(params);
-    } catch (cause) {
-      throw createToolParameterValidationError({ toolName, callId, cause });
-    }
-
-    if (!result.success || result.data === undefined) {
-      throw createToolParameterValidationError({
-        toolName,
-        callId,
-        cause: result.success ? undefined : result.error,
-      });
-    }
-    return result.data;
+  if (!isStandardSchema(schema)) {
+    throw createToolParameterValidationError({ toolName, callId });
   }
-
-  if (schemaHasParse<T>(schema)) {
-    try {
-      return schema.parse(params);
-    } catch (cause) {
-      throw createToolParameterValidationError({ toolName, callId, cause });
+  try {
+    const result = yield* validateStandardSchema(schema, params);
+    if (result.issues !== undefined) {
+      throw createToolParameterValidationError({ toolName, callId, cause: result.issues });
     }
+    // A successful Standard Schema result may legitimately contain undefined.
+    return result.value;
+  } catch (cause) {
+    if (cause instanceof ToolParameterValidationError) throw cause;
+    throw createToolParameterValidationError({ toolName, callId, cause });
   }
-
-  return params as T;
 }
 
-export function validateRuntimeToolParameters<T = unknown>(
+export function* parseRuntimeToolParameters<T = unknown>(
   tool: Pick<AnyToolContract, "name" | "parameters">,
   params: unknown,
   callId: string,
-): T {
-  return validateToolParameters<T>({
+): Operation<T> {
+  return yield* parseToolParameters<T>({
     schema: tool.parameters,
     params,
     toolName: tool.name,
@@ -245,14 +185,22 @@ export function validateRuntimeToolParameters<T = unknown>(
 }
 
 export function toToolParameterJsonSchema(schema: unknown): Record<string, unknown> {
-  if (isZodSchema(schema)) {
-    const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema);
-    return stripNonJson(jsonSchema) as Record<string, unknown>;
+  if (isStandardSchema(schema)) {
+    if (isZodSchema(schema)) {
+      const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema);
+      return stripNonJson(jsonSchema) as Record<string, unknown>;
+    }
+    // Test/integration adapters may carry an explicit projection beside their
+    // process-local Standard Schema. It is data-only and safe to send.
+    const projection = (schema as StandardSchemaV1 & { jsonSchema?: unknown })["jsonSchema"];
+    if (isRecord(projection)) {
+      return stripNonJson(projection) as Record<string, unknown>;
+    }
+    throw new TypeError("Standard Schema requires an explicit JSON Schema projection");
   }
-
   if (isRecord(schema)) {
     return stripNonJson(schema) as Record<string, unknown>;
   }
-
-  return { type: "object", properties: {}, required: [] };
+  // A missing projection must not silently advertise an unconstrained tool.
+  throw new TypeError("Tool parameters require a Standard Schema or JSON Schema projection");
 }

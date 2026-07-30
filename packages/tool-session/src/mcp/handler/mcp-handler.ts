@@ -36,7 +36,7 @@
  * @packageDocumentation
  */
 import { createScope, type Operation } from "effection";
-import { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
   McpHandlerConfig,
   McpHttpHandler,
@@ -53,6 +53,7 @@ import { createSseEventStream, type SseStreamOptions } from "./get-handler.ts";
 import { createPrimeEvent, createSseHeaders } from "../protocol/sse-formatter.ts";
 import { JSON_RPC_ERROR_CODES } from "../protocol/types.ts";
 import { MCP_PROTOCOL_VERSION } from "../protocol-version.ts";
+import { toToolParameterJsonSchema } from "../../tool-parameters.ts";
 
 // =============================================================================
 // HANDLER OPTIONS
@@ -142,11 +143,19 @@ function createInitializeResponse(
 /**
  * Serialize an ElicitsMap to JSON Schema format for the _meta extension.
  *
- * Converts Zod schemas in the elicits map to JSON Schema format:
+ * Converts Standard Schema values in the elicits map to JSON Schema format:
  * { [key]: { response: JsonSchema, context?: JsonSchema } }
  */
 function serializeElicitsMap(
-  elicits: Record<string, { response?: z.ZodType; context?: z.ZodType }> | undefined,
+  elicits:
+    | Record<
+        string,
+        {
+          response?: StandardSchemaV1;
+          context?: StandardSchemaV1;
+        }
+      >
+    | undefined,
 ):
   | Record<string, { response: Record<string, unknown>; context?: Record<string, unknown> }>
   | undefined {
@@ -165,22 +174,18 @@ function serializeElicitsMap(
     }
 
     try {
-      const responseSchema = z.toJSONSchema(def.response);
+      const responseSchema = toToolParameterJsonSchema(def.response);
       const entry: { response: Record<string, unknown>; context?: Record<string, unknown> } = {
         response: responseSchema,
       };
 
       if (def.context) {
-        try {
-          entry.context = z.toJSONSchema(def.context);
-        } catch {
-          // Skip context if conversion fails
-        }
+        entry.context = toToolParameterJsonSchema(def.context);
       }
 
       result[key] = entry;
     } catch {
-      // Skip this elicit key if response conversion fails
+      throw new Error(`Elicitation schema "${key}" has no supported JSON projection`);
     }
   }
 
@@ -201,19 +206,19 @@ function createToolsListResponse(
     // Extract tool metadata - tools have name, description, parameters, elicits, and requires
     const t = tool as {
       description?: string;
-      parameters?: z.ZodType;
-      elicits?: Record<string, { response?: z.ZodType; context?: z.ZodType }>;
+      parameters?: StandardSchemaV1;
+      elicits?: Record<string, { response?: StandardSchemaV1; context?: StandardSchemaV1 }>;
       requires?: { elicitation?: boolean; sampling?: boolean };
     };
 
-    // Convert Zod schema to JSON Schema
-    let inputSchema: Record<string, unknown> = { type: "object", properties: {} };
-    if (t.parameters) {
-      try {
-        inputSchema = z.toJSONSchema(t.parameters);
-      } catch {
-        // Fallback if conversion fails
-      }
+    // Convert the declared Standard Schema to its JSON Schema projection.
+    let inputSchema: Record<string, unknown>;
+    try {
+      inputSchema = t.parameters
+        ? toToolParameterJsonSchema(t.parameters)
+        : { type: "object", properties: {}, required: [] };
+    } catch {
+      throw new Error("Tool parameters have no supported schema projection");
     }
 
     // Build the base tool definition
@@ -804,19 +809,19 @@ export function generateMcpManifest(
   const toolList = Array.from(tools.entries()).map(([toolName, tool]) => {
     const t = tool as {
       description?: string;
-      parameters?: z.ZodType;
-      elicits?: Record<string, { response?: z.ZodType; context?: z.ZodType }>;
+      parameters?: StandardSchemaV1;
+      elicits?: Record<string, { response?: StandardSchemaV1; context?: StandardSchemaV1 }>;
       requires?: { elicitation?: boolean; sampling?: boolean };
     };
 
-    // Convert Zod schema to JSON Schema
-    let inputSchema: Record<string, unknown> = { type: "object", properties: {} };
-    if (t.parameters) {
-      try {
-        inputSchema = z.toJSONSchema(t.parameters);
-      } catch {
-        // Fallback if conversion fails
-      }
+    // Convert the declared Standard Schema to its JSON Schema projection.
+    let inputSchema: Record<string, unknown>;
+    try {
+      inputSchema = t.parameters
+        ? toToolParameterJsonSchema(t.parameters)
+        : { type: "object", properties: {}, required: [] };
+    } catch {
+      throw new Error("Tool parameters have no supported schema projection");
     }
 
     // Build the base tool definition

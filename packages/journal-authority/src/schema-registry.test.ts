@@ -5,7 +5,7 @@ import {
   createPortableSchemaDescriptor,
 } from "@sweatpants/foundation/schema";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
-import { createDurableSchemaRegistry, validateRegisteredSchema } from "./schema-registry.ts";
+import { createDurableSchemaRegistry, parseRegisteredSchema } from "./schema-registry.ts";
 
 function descriptor(identity: string) {
   return createPortableSchemaDescriptor({
@@ -41,7 +41,7 @@ describe("authority runtime schema registry", () => {
     ]);
     await expect(
       run(function* () {
-        return yield* validateRegisteredSchema(registry, schemaDescriptor.digest, "  okay ");
+        return yield* parseRegisteredSchema(registry, schemaDescriptor.digest, "  okay ");
       }),
     ).resolves.toEqual({ status: "ok", value: "OKAY" });
   });
@@ -49,7 +49,7 @@ describe("authority runtime schema registry", () => {
   it("returns unavailable for an absent retained validator", async () => {
     await expect(
       run(function* () {
-        return yield* validateRegisteredSchema(createDurableSchemaRegistry(), "f".repeat(64), {});
+        return yield* parseRegisteredSchema(createDurableSchemaRegistry(), "f".repeat(64), {});
       }),
     ).resolves.toEqual({ status: "unavailable", digest: "f".repeat(64) });
   });
@@ -70,7 +70,7 @@ describe("authority runtime schema registry", () => {
     ]);
     await expect(
       run(function* () {
-        return yield* validateRegisteredSchema(registry, schemaDescriptor.digest, "date");
+        return yield* parseRegisteredSchema(registry, schemaDescriptor.digest, "date");
       }),
     ).resolves.toEqual({
       status: "invalid",

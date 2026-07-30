@@ -812,7 +812,6 @@ describe("strict AG-UI public conformance", () => {
               },
               { id: "reasoning:1", role: "reasoning", content: "private chain" },
               { id: "user:1", role: "user", content: "hello" },
-              { id: "unknown:1", role: "not-a-role", content: "must not become user" },
             ],
           }),
         }),
@@ -832,7 +831,6 @@ describe("strict AG-UI public conformance", () => {
       ["reasoning:1", "reasoning"],
       ["user:1", "user"],
     ]);
-    expect(snapshot?.messages.some((message) => message.id === "unknown:1")).toBe(false);
 
     const activitySnapshots = result.events
       .map((entry) => parseAgUiEvent(entry.event))

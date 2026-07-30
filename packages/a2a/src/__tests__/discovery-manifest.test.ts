@@ -7,7 +7,7 @@ import {
   discoverCallerAuthoritativeProgram,
   isSafePublicAddress,
   parseRemoteProgramManifestDocument,
-  validateA2AUrl,
+  verifyA2AUrl,
 } from "../index.ts";
 
 const tool = DURABLE_DRIVER_FIXTURE_TOOLS[0]!;
@@ -101,7 +101,7 @@ describe("A2A discovery and manifests", () => {
     ]) {
       expect(isSafePublicAddress(address), address).toBe(false);
       await expect(
-        validateA2AUrl("https://review.example/card", {
+        verifyA2AUrl("https://review.example/card", {
           purpose: "agent-card",
           policy: { resolve: async () => [address] },
         }),

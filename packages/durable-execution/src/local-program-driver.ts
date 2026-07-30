@@ -20,7 +20,7 @@ import {
 import { canonicalSnapshot, stableOpaqueId, type Json } from "@sweatpants/foundation";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import type { DurableEffectRegistry } from "@sweatpants/durable-effects/authoring";
-import { validateProgramIdentityProvenance } from "./program-identity.ts";
+import { verifyProgramIdentityProvenance } from "./program-identity.ts";
 import type {
   DurableProgramContext,
   DurableTool,
@@ -61,7 +61,7 @@ export function createDurableToolRegistry(
 ): DurableToolRegistry {
   const registry = new Map<string, DurableTool<any, any>>();
   for (const tool of tools) {
-    validateProgramIdentityProvenance(tool);
+    verifyProgramIdentityProvenance(tool);
     const key = exactProgramKey({
       id: tool.manifest.programId,
       version: tool.manifest.version,
@@ -187,7 +187,7 @@ export function createLocalProgramDriver(
             if (state.shutdown) {
               throw new CrankError("stale_program_capability", "Attachment is shutting down");
             }
-            validateProposal(proposal);
+            assertProgramProposal(proposal);
             const resume = withResolvers<ProgramResume>("durable program boundary");
             state.events.add({ type: "proposal", boundary: { proposal, resume } });
             return resume.operation;
@@ -423,7 +423,7 @@ function canonicalOutcome(outcome: OperationOutcome): OperationOutcome {
   return value;
 }
 
-function validateProposal(proposal: ProgramStepProposal): void {
+function assertProgramProposal(proposal: ProgramStepProposal): void {
   if (
     !proposal ||
     typeof proposal !== "object" ||

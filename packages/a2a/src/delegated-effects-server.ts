@@ -53,7 +53,11 @@ type TaskRecord = {
 export interface DelegatedEffectsServiceOptions {
   readonly retention: PeerRetentionV1;
   readonly now?: () => number;
-  readonly validateOutcome?: (taskId: string, effectId: string, outcome: OperationOutcome) => void;
+  readonly verifyDelegatedOutcome?: (
+    taskId: string,
+    effectId: string,
+    outcome: OperationOutcome,
+  ) => void;
 }
 
 /** Callee-side journal projection for the delegated-effect event/outbox protocol. */
@@ -61,13 +65,13 @@ export class InMemoryDelegatedEffectsService {
   readonly #tasks = new Map<string, TaskRecord>();
   readonly #retention: PeerRetentionV1;
   readonly #now: () => number;
-  readonly #validateOutcome?: DelegatedEffectsServiceOptions["validateOutcome"];
+  readonly #verifyDelegatedOutcome?: DelegatedEffectsServiceOptions["verifyDelegatedOutcome"];
 
   constructor(options: DelegatedEffectsServiceOptions) {
-    validateRetention(options.retention);
+    assertRetentionPolicy(options.retention);
     this.#retention = { ...options.retention };
     this.#now = options.now ?? Date.now;
-    this.#validateOutcome = options.validateOutcome;
+    this.#verifyDelegatedOutcome = options.verifyDelegatedOutcome;
   }
 
   createTask(input: {
@@ -323,7 +327,7 @@ export class InMemoryDelegatedEffectsService {
         "Delegated effect response binding differs",
       );
     }
-    this.#validateOutcome?.(response.taskId, response.effectId, response.outcome);
+    this.#verifyDelegatedOutcome?.(response.taskId, response.effectId, response.outcome);
     effect.response = canonicalSnapshot(response).value as DelegatedEffectResponse;
     const ack: DelegatedEffectResponseAck = {
       status: "accepted",
@@ -479,7 +483,7 @@ function boundedDigest(value: Json, limit: number, label: string): string {
   }
   return snapshot.sha;
 }
-function validateRetention(retention: PeerRetentionV1): void {
+function assertRetentionPolicy(retention: PeerRetentionV1): void {
   for (const [name, value] of Object.entries(retention)) {
     if (!Number.isSafeInteger(value) || value <= 0) {
       throw new CrankError("invalid_descriptor", `Invalid peer retention ${name}`);

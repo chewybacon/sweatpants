@@ -23,7 +23,7 @@ import type {
   RecordAttemptContext,
   RecordOptions,
 } from "./program-authoring.ts";
-import { validateEffectDefinition } from "@sweatpants/durable-effects/authoring";
+import { assertEffectDefinition } from "@sweatpants/durable-effects/authoring";
 import { DEFAULT_MAX_INLINE_BYTES } from "./program-authoring-runtime.ts";
 
 type EffectResolver = { audience: string; route?: string };
@@ -65,7 +65,7 @@ export function createDurableProgramContext(
   ): Operation<Json> {
     const definition = typeof definitionOrName === "string" ? undefined : definitionOrName;
     if (definition) {
-      validateEffectDefinition(definition);
+      assertEffectDefinition(definition);
     }
     const name = definition?.name ?? definitionOrName;
     const version = definition?.version ?? versionOrInput;
@@ -112,7 +112,7 @@ export function createDurableProgramContext(
       throw new CrankError("invalid_descriptor", "Recorded operation is required");
     }
     const retrySafety = options.retrySafety ?? { mode: "repeatable" as const };
-    validateRetrySafety(retrySafety, "record.retrySafety");
+    assertRetrySafety(retrySafety, "record.retrySafety");
     return (function* (): Operation<Json> {
       const outcome = yield* propose({
         type: "operation",
@@ -346,7 +346,7 @@ function snapshotChild(child: DurableChildDescriptor): DurableChildDescriptor {
   };
 }
 
-function validateRetrySafety(safety: RetrySafety, path: string): void {
+function assertRetrySafety(safety: RetrySafety, path: string): void {
   if (
     !safety ||
     (safety.mode === "repeatable" && Object.keys(safety).length !== 1) ||

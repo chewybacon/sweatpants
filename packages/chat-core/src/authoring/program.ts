@@ -26,7 +26,7 @@ import {
   type DurableProgramManifest,
   type DurableTool,
 } from "@sweatpants/durable-execution";
-import { validateEffectDefinition } from "@sweatpants/durable-effects/authoring";
+import { assertEffectDefinition } from "@sweatpants/durable-effects/authoring";
 import type { EffectDefinition } from "@sweatpants/durable-effects";
 import {
   ResourcePackageRegistry,
@@ -288,7 +288,7 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
   };
   for (const effectName of sortedKeys(options.effects ?? {})) {
     const definition = options.effects![effectName]!;
-    validateEffectDefinition(definition);
+    assertEffectDefinition(definition);
     if (definition.name !== effectName) {
       invalid("effect key must equal symbolic name");
     }

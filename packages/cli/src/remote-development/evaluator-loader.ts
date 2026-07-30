@@ -3,7 +3,7 @@ import type { ConfiguredDurableTool } from "../config.ts";
 import { reconstructCollectionProgram } from "./collection.ts";
 import { RemoteDevelopmentError, type DevelopmentCollectionManifestV1 } from "./types.ts";
 
-export async function validateCollectionProgramEntries(
+export async function loadCollectionProgramEntries(
   manifest: DevelopmentCollectionManifestV1,
   files: ReadonlyMap<string, Uint8Array>,
 ): Promise<ReadonlyMap<string, ConfiguredDurableTool>> {

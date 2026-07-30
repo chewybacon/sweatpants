@@ -7,8 +7,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isZodSchema(value: unknown): value is z.ZodType {
   return (
     isRecord(value) &&
-    (typeof (value as { safeParse?: unknown }).safeParse === "function" ||
-      (typeof (value as { parse?: unknown }).parse === "function" && "_def" in value))
+    isRecord(value["~standard"]) &&
+    value["~standard"]["version"] === 1 &&
+    value["~standard"]["vendor"] === "zod" &&
+    typeof value["~standard"]["validate"] === "function"
   );
 }
 
@@ -56,5 +58,5 @@ export function toProviderJsonSchema(schema: unknown): Record<string, unknown> {
     return stripNonJson(schema) as Record<string, unknown>;
   }
 
-  return { type: "object", properties: {}, required: [] };
+  throw new TypeError("Provider schema requires a Standard Schema or JSON Schema projection");
 }

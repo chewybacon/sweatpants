@@ -19,6 +19,7 @@
  *
  * @packageDocumentation
  */
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   type Operation,
   type Channel,
@@ -30,11 +31,10 @@ import {
   call,
   useAbortSignal,
 } from "effection";
-import { z } from "zod";
 import { encodeElicitContext } from "../elicit-context/index.ts";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
-import { validateToolParameters } from "../tool-parameters.ts";
+import { parseToolParameters, toToolParameterJsonSchema } from "../tool-parameters.ts";
 import type {
   McpToolContextWithElicits,
   McpToolLimits,
@@ -431,8 +431,12 @@ interface BridgeExecutionState<TElicits extends ElicitsMap> {
  * Convert Zod schema to JSON Schema for MCP elicitation.
  * Uses Zod's built-in toJSONSchema() method.
  */
-function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
-  return z.toJSONSchema(schema);
+function schemaToJsonSchema(schema: unknown): Record<string, unknown> {
+  return toToolParameterJsonSchema(schema);
+}
+
+function samplingSchemaToJsonSchema(schema: unknown): Record<string, unknown> {
+  return toToolParameterJsonSchema(schema);
 }
 
 // =============================================================================
@@ -485,11 +489,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             sampleOptions.tools = config.tools.map((tool) => {
               const def: SamplingToolDefinition = {
                 name: tool.name,
-                // inputSchema could be Zod or already JSON Schema
-                inputSchema:
-                  "safeParse" in tool.inputSchema
-                    ? zodToJsonSchema(tool.inputSchema as z.ZodType)
-                    : tool.inputSchema,
+                inputSchema: samplingSchemaToJsonSchema(tool.inputSchema),
               };
               if (tool.description !== undefined) {
                 def.description = tool.description;
@@ -501,9 +501,9 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             sampleOptions.toolChoice = config.toolChoice;
           }
 
-          // Convert schema from Zod to JSON Schema if provided
+          // Convert the Standard Schema to its portable JSON projection.
           if ("schema" in config && config.schema) {
-            sampleOptions.schema = zodToJsonSchema(config.schema as z.ZodType);
+            sampleOptions.schema = schemaToJsonSchema(config.schema);
           }
 
           // Create a signal for the response
@@ -559,18 +559,18 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           if ("schema" in config && config.schema) {
             const schema = config.schema;
             try {
-              const jsonParsed = JSON.parse(result.text);
-              const zodResult = schema.safeParse(jsonParsed);
-              if (zodResult.success) {
+              const jsonParsed: unknown = JSON.parse(result.text);
+              const parsedResult = yield* validateStandardSchema(schema, jsonParsed);
+              if (parsedResult.issues === undefined) {
                 // Create structured exchange with 3 messages
                 const exchange = createStructuredSampleExchange(
                   promptTextStr,
-                  zodResult.data,
+                  parsedResult.value,
                   `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
                 );
                 return {
                   ...result,
-                  parsed: zodResult.data,
+                  parsed: parsedResult.value,
                   exchange,
                 };
               } else {
@@ -584,7 +584,10 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   ...result,
                   parsed: null,
                   parseError: {
-                    message: zodResult.error.message,
+                    message: safeSchemaIssues(parsedResult.issues ?? [])
+                      .map((issue) => issue.message)
+                      .join("; ")
+                      .slice(0, 512),
                     rawText: result.text,
                   },
                   exchange,
@@ -686,10 +689,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             sampleOptions.tools = config.tools.map((tool) => {
               const def: SamplingToolDefinition = {
                 name: tool.name,
-                inputSchema:
-                  "safeParse" in tool.inputSchema
-                    ? zodToJsonSchema(tool.inputSchema as z.ZodType)
-                    : tool.inputSchema,
+                inputSchema: samplingSchemaToJsonSchema(tool.inputSchema),
               };
               if (tool.description !== undefined) {
                 def.description = tool.description;
@@ -833,8 +833,8 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               sampleOptions.maxTokens = config.maxTokens;
             }
 
-            // Convert schema
-            sampleOptions.schema = zodToJsonSchema(config.schema as z.ZodType);
+            // Convert the Standard Schema to its portable JSON projection.
+            sampleOptions.schema = schemaToJsonSchema(config.schema);
 
             // Create response signal and send sample event
             const responseSignal = createSignal<SampleResponse, void>();
@@ -875,9 +875,9 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             // Parse schema
             const schema = config.schema;
             try {
-              const jsonParsed = JSON.parse(result.text);
-              const zodResult = schema.safeParse(jsonParsed);
-              if (zodResult.success) {
+              const jsonParsed: unknown = JSON.parse(result.text);
+              const parsedResult = yield* validateStandardSchema(schema, jsonParsed);
+              if (parsedResult.issues === undefined) {
                 // Update tool-local messages if using prompt mode
                 if ("prompt" in config && config.prompt) {
                   state.messages.push(
@@ -889,7 +889,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 // Create structured exchange
                 const exchange = createStructuredSampleExchange(
                   promptTextStr,
-                  zodResult.data,
+                  parsedResult.value,
                   `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
                 );
 
@@ -897,11 +897,14 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   text: result.text,
                   ...(result.model !== undefined && { model: result.model }),
                   ...(result.stopReason !== undefined && { stopReason: result.stopReason }),
-                  parsed: zodResult.data,
+                  parsed: parsedResult.value,
                   exchange,
                 };
               } else {
-                lastError = zodResult.error.message;
+                lastError = safeSchemaIssues(parsedResult.issues ?? [])
+                  .map((issue) => issue.message)
+                  .join("; ")
+                  .slice(0, 512);
                 const exchange = createStructuredSampleExchange(
                   promptTextStr,
                   null,
@@ -911,7 +914,10 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   ...result,
                   parsed: null,
                   parseError: {
-                    message: zodResult.error.message,
+                    message: safeSchemaIssues(parsedResult.issues ?? [])
+                      .map((issue) => issue.message)
+                      .join("; ")
+                      .slice(0, 512),
                     rawText: result.text,
                   },
                   exchange,
@@ -981,7 +987,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           const contextData = context as ExtractElicitContext<TElicits[K]>;
 
           // Encode context into schema and message using x-elicit-context transport
-          const baseSchema = zodToJsonSchema(responseSchema as z.ZodType);
+          const baseSchema = schemaToJsonSchema(responseSchema);
           const { message: encodedMessage, schema: encodedSchema } = encodeElicitContext(
             message,
             contextData,
@@ -997,7 +1003,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             seq,
             message: encodedMessage,
             schema: {
-              zod: responseSchema,
+              standard: responseSchema,
               json: encodedSchema,
             },
           };
@@ -1180,7 +1186,7 @@ export function createBridgeHost<
       return {
         *[Symbol.iterator]() {
           const { tool, params, limits: overrideLimits, systemPrompt } = config;
-          const validatedParams = validateToolParameters<TParams>({
+          const validatedParams = yield* parseToolParameters<TParams>({
             schema: tool.parameters,
             params,
             toolName: tool.name,
@@ -1307,7 +1313,7 @@ export function runBridgeTool<
   return {
     *[Symbol.iterator]() {
       const callId = config.callId ?? config.tool.name;
-      const params = validateToolParameters<TParams>({
+      const params = yield* parseToolParameters<TParams>({
         schema: config.tool.parameters,
         params: config.params,
         toolName: config.tool.name,
@@ -1345,7 +1351,7 @@ export function runBridgeTool<
                 throw new Error(`No handler for elicitation key "${event.request.key}"`);
               }
               const result = yield* handler(
-                event.request as ElicitRequest<keyof TElicits & string, z.ZodType>,
+                event.request as ElicitRequest<keyof TElicits & string, StandardSchemaV1>,
               );
               event.responseSignal.send({ id: event.request.id, result });
               break;

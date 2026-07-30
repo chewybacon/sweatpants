@@ -347,6 +347,19 @@ describe("MCP Protocol", () => {
         }
       });
 
+      it("rejects malformed known tools/call requests", () => {
+        const parsed = parseJsonRpcMessage(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: { name: 42 },
+          }),
+        );
+
+        expect(parsed.type).toBe("invalid");
+      });
+
       it("should handle invalid JSON", () => {
         const parsed = parseJsonRpcMessage("not json");
 
@@ -358,6 +371,22 @@ describe("MCP Protocol", () => {
     });
 
     describe("decodeResponse with context", () => {
+      it("rejects malformed pending elicitation responses", () => {
+        const ctx = createDecoderContext();
+        ctx.addPendingElicitation("req_bad", "elicit_bad");
+
+        const decoded = decodeResponse(
+          {
+            jsonrpc: "2.0",
+            id: "req_bad",
+            result: null,
+          } as never,
+          ctx,
+        );
+
+        expect(decoded.type).toBe("unknown");
+      });
+
       it("should correlate response with pending request", () => {
         const ctx = createDecoderContext();
         ctx.addPendingElicitation("req_1", "elicit_123");

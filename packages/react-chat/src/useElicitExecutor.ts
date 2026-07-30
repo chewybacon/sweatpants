@@ -312,7 +312,15 @@ function* executePluginHandler(
     seq: 0,
     message: elicit.message,
     schema: {
-      zod: {} as any, // Not used by handlers, they use getElicitContext
+      // The client executor only reads the portable JSON projection. Keep a
+      // process-local Standard Schema authority rather than a Zod-shaped slot.
+      standard: {
+        "~standard": {
+          version: 1,
+          vendor: "sweatpants",
+          validate: (value: unknown) => ({ value }),
+        },
+      },
       json: schemaWithContext,
     },
   };

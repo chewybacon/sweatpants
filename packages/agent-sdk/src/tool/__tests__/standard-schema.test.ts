@@ -1,6 +1,7 @@
 import { run } from "effection";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 
 import { toPortableSchema } from "../../schema/zod-adapter.ts";
@@ -51,6 +52,33 @@ describe("Zod Standard Schema adapter", () => {
         },
       ),
     ).toThrow(/schema projection|explicit trusted projection/i);
+  });
+
+  it("accepts a non-Zod Standard Schema in the public tool builder", async () => {
+    const schema: StandardSchemaV1<unknown, { count: number }> = {
+      "~standard": {
+        version: 1,
+        vendor: "custom-test",
+        validate(value) {
+          return typeof value === "object" && value !== null && "count" in value
+            ? { value: { count: Number((value as { count: unknown }).count) } }
+            : { issues: [{ message: "count is required" }] };
+        },
+      },
+    };
+    const tool = createTool("custom_schema_tool")
+      .description("custom")
+      .parameters(schema, {
+        inputProjection: { type: "object", properties: { count: { type: "number" } } },
+        outputProjection: { type: "object", properties: { count: { type: "number" } } },
+      })
+      .execute(function* (input) {
+        return input.count;
+      });
+    const invoke = await run(function* () {
+      return yield* tool({} as never);
+    });
+    await expect(run(() => invoke({ count: "3" } as never))).resolves.toBe(3);
   });
 
   it("ordinary definitions expose one execution-neutral contract plus callable execution", async () => {

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
 
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import type { DurableReference, ExecutionId } from "@sweatpants/durable-execution";
@@ -37,6 +38,61 @@ type StoredReplay = {
   readonly previous: DurableReference | null;
   readonly entries: readonly Json[];
 };
+
+const durableReferenceSchema = z
+  .object({
+    id: z.string().min(1).max(1_024),
+    byteLength: z.number().int().nonnegative().safe(),
+    version: z.string().min(1).max(64),
+    integrity: z
+      .object({ algorithm: z.literal("sha256"), value: z.string().regex(/^[0-9a-f]{64}$/) })
+      .strict()
+      .optional(),
+  })
+  .strict();
+const versionedExecutionSchema = z
+  .object({
+    revision: z.number().int().nonnegative().safe(),
+    record: z.record(z.string(), z.json()),
+  })
+  .strict();
+const storedPayloadSchema = z.discriminatedUnion("kind", [
+  z.object({ version: z.literal(1), kind: z.literal("json"), value: z.json() }).strict(),
+  z.object({ version: z.literal(1), kind: z.literal("bytes"), base64: z.string() }).strict(),
+]);
+const storedReplaySchema = z
+  .object({
+    version: z.literal(1),
+    executionId: z.string().min(1).max(512),
+    taskId: z.string().min(1).max(512),
+    previous: z.union([z.null(), durableReferenceSchema]),
+    entries: z.array(z.json()).max(100_000),
+  })
+  .strict();
+
+function parseStoredVersionedExecution(value: unknown): VersionedExecution {
+  try {
+    return versionedExecutionSchema.parse(value) as unknown as VersionedExecution;
+  } catch {
+    throw new Error("Redis execution control record is invalid");
+  }
+}
+
+function parseStoredPayload(value: unknown): StoredPayload {
+  try {
+    return storedPayloadSchema.parse(value) as StoredPayload;
+  } catch {
+    throw new Error("Redis execution payload is invalid");
+  }
+}
+
+function parseStoredReplay(value: unknown): StoredReplay {
+  try {
+    return storedReplaySchema.parse(value) as unknown as StoredReplay;
+  } catch {
+    throw new Error("Redis replay object is invalid");
+  }
+}
 
 const CAS_EXECUTION = `
 -- SWEATPANTS_EXECUTION_STORE_V1
@@ -140,11 +196,11 @@ export function createRedisExecutionStore(
     if (raw === null) {
       return { raw: "", value: null };
     }
-    const parsed = JSON.parse(raw) as Partial<VersionedExecution>;
-    if (!Number.isInteger(parsed.revision) || parsed.revision! < 0 || parsed.record === undefined) {
+    try {
+      return { raw, value: parseStoredVersionedExecution(JSON.parse(raw)) };
+    } catch {
       throw new Error(`Redis execution control record is invalid: ${executionId}`);
     }
-    return { raw, value: parsed as VersionedExecution };
   }
 
   return {
@@ -203,10 +259,7 @@ export function createRedisExecutionStore(
       if (encoded === null) {
         return null;
       }
-      const stored = JSON.parse(encoded) as StoredPayload;
-      if (stored.version !== 1) {
-        throw new Error(`Unsupported Redis payload version: ${reference.id}`);
-      }
+      const stored = parseStoredPayload(JSON.parse(encoded));
       return stored.kind === "bytes"
         ? new Uint8Array(Buffer.from(stored.base64, "base64"))
         : stored.value;
@@ -242,10 +295,7 @@ export function createRedisExecutionStore(
         if (encoded === null) {
           throw new Error(`Redis replay object is missing: ${cursor.id}`);
         }
-        const stored = JSON.parse(encoded) as StoredReplay;
-        if (stored.version !== 1 || !Array.isArray(stored.entries)) {
-          throw new Error(`Redis replay object is invalid: ${cursor.id}`);
-        }
+        const stored = parseStoredReplay(JSON.parse(encoded));
         chunks.push(stored.entries);
         cursor = stored.previous;
       }

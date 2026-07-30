@@ -5,6 +5,10 @@
  * message forms, and maps public AG-UI resume entries onto internal elicit
  * responses. Pure functions; no I/O, no contexts.
  */
+import { z } from "zod";
+import { CrankError } from "@sweatpants/durable-execution";
+import { normalizeClientReplayTrace } from "@sweatpants/chat-core";
+import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
 import type { OpenInterruptRecord } from "../interrupts/index.ts";
 
@@ -123,6 +127,225 @@ function normalizeIncomingMessages(messages: unknown): ChatRequestBody["messages
   return normalized;
 }
 
+const jsonValueSchema = z.json();
+const rawToolCallSchema = z
+  .object({
+    id: z.string().min(1).max(512),
+    type: z.literal("function"),
+    function: z
+      .object({
+        name: z.string().min(1).max(512),
+        arguments: z.union([
+          z.record(z.string(), jsonValueSchema),
+          z
+            .string()
+            .max(256 * 1024)
+            .refine((text) => {
+              try {
+                const parsed: unknown = JSON.parse(text);
+                return isRecord(parsed);
+              } catch {
+                return false;
+              }
+            }),
+        ]),
+      })
+      .strict(),
+  })
+  .strict();
+const rawMessageSchema = z
+  .object({
+    id: z.string().max(512).optional(),
+    role: z.enum(["assistant", "tool", "activity", "developer", "system", "reasoning", "user"]),
+    content: jsonValueSchema.optional(),
+    partial: z.boolean().optional(),
+    tool_calls: z.array(rawToolCallSchema).max(128).optional(),
+    toolCalls: z.array(rawToolCallSchema).max(128).optional(),
+    tool_call_id: z.string().max(512).optional(),
+    toolCallId: z.string().max(512).optional(),
+    activityType: z.string().max(512).optional(),
+    replay: z
+      .object({
+        toolName: z.string().max(512).optional(),
+        trace: z.array(jsonValueSchema).max(256).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .superRefine((message, context) => {
+    if (
+      message.role === "tool" &&
+      !(
+        (typeof message.tool_call_id === "string" && message.tool_call_id.length > 0) ||
+        (typeof message.toolCallId === "string" && message.toolCallId.length > 0)
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["tool_call_id"],
+        message: "tool messages require a non-empty tool call id",
+      });
+    }
+    if (
+      message.role === "activity" &&
+      !(typeof message.activityType === "string" && message.activityType.length > 0)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["activityType"],
+        message: "activity messages require an activity type",
+      });
+    }
+  });
+const resumeEntrySchema = z
+  .object({
+    interruptId: z.string().min(1).max(512),
+    status: z.enum(["resolved", "cancelled"]),
+    payload: jsonValueSchema.optional(),
+  })
+  .strict();
+const traceEmissionSchema = z
+  .object({
+    order: z.number().int().nonnegative().safe(),
+    emissionId: z.string().min(1).max(512),
+    sourceInterruptId: z.string().max(512).optional(),
+    componentKey: z.string().min(1).max(512),
+    props: z.record(z.string(), jsonValueSchema),
+    response: jsonValueSchema.optional(),
+    timestamp: z.number().finite(),
+  })
+  .strict();
+const elicitResponseSchema = z
+  .object({
+    sessionId: z.string().min(1).max(512),
+    callId: z.string().min(1).max(512),
+    toolName: z.string().max(512).optional(),
+    elicitId: z.string().min(1).max(512),
+    result: z
+      .object({
+        action: z.enum(["accept", "decline", "cancel"]),
+        content: jsonValueSchema.optional(),
+      })
+      .strict(),
+    ref: z
+      .object({
+        runtimeId: z.string().min(1).max(512),
+        executionId: z.string().min(1).max(512),
+        callId: z.string().min(1).max(512),
+        toolName: z.string().max(512),
+        sessionId: z.string().max(512).optional(),
+      })
+      .strict()
+      .optional(),
+    trace: z
+      .object({
+        version: z.literal(1),
+        emissions: z.array(traceEmissionSchema).max(256),
+        startedAt: z.number().finite(),
+        completedAt: z.number().finite(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+const streamOptionsSchema = z
+  .object({
+    apiKey: z.string().max(4_096).nullable().optional(),
+    env: z.record(z.string(), z.string().nullable()).optional(),
+    sessionId: z.string().max(512).optional(),
+    toolChoice: z.enum(["auto", "none", "required"]).optional(),
+    maxTokens: z.number().int().positive().max(16_000).optional(),
+    temperature: z.number().finite().min(0).max(2).optional(),
+    topP: z.number().finite().min(0).max(1).optional(),
+    topK: z.number().int().positive().max(100_000).optional(),
+    thinking: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
+    thinkingBudgets: z
+      .object({
+        minimal: z.number().int().positive().max(16_000).optional(),
+        low: z.number().int().positive().max(16_000).optional(),
+        medium: z.number().int().positive().max(16_000).optional(),
+        high: z.number().int().positive().max(16_000).optional(),
+      })
+      .strict()
+      .optional(),
+    responseFormat: z
+      .object({
+        type: z.literal("json_schema"),
+        name: z.string().max(512).optional(),
+        schema: z.record(z.string(), jsonValueSchema),
+      })
+      .strict()
+      .optional(),
+    providerOptions: z.record(z.string(), jsonValueSchema).optional(),
+  })
+  .strict();
+const chatRequestBodySchema = z
+  .object({
+    conversationId: z.string().max(512).optional(),
+    threadId: z.string().max(512).optional(),
+    runId: z.string().max(512).optional(),
+    parentRunId: z.string().max(512).optional(),
+    state: jsonValueSchema.optional(),
+    tools: z.array(jsonValueSchema).max(256).optional(),
+    context: z
+      .array(
+        z.object({ description: z.string().max(16_384), value: z.string().max(16_384) }).strict(),
+      )
+      .max(256)
+      .optional(),
+    forwardedProps: jsonValueSchema.optional(),
+    resume: z.array(resumeEntrySchema).max(256).optional(),
+    messages: z.array(rawMessageSchema).max(256),
+    systemPrompt: z
+      .string()
+      .max(64 * 1024)
+      .optional(),
+    persona: z.string().max(512).optional(),
+    personaConfig: jsonValueSchema.optional(),
+    enableOptionalTools: z.array(z.string().max(512)).max(256).optional(),
+    effort: z.string().max(512).optional(),
+    streamOptions: streamOptionsSchema.optional(),
+    initialToolChoice: z.enum(["auto", "none", "required"]).optional(),
+    enabledTools: z.union([z.boolean(), z.array(z.string().max(512)).max(256)]).optional(),
+    enabledPlugins: z.array(z.string().max(512)).max(256).optional(),
+    model: z
+      .object({ provider: z.string().min(1).max(512), id: z.string().min(1).max(512) })
+      .strict()
+      .optional(),
+    elicitResponses: z.array(elicitResponseSchema).max(256).optional(),
+    replayState: jsonValueSchema.optional(),
+    pluginAbort: z
+      .object({
+        sessionId: z.string().max(512).optional(),
+        reason: z.string().max(4_096).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export function parseChatRequestBody(value: unknown): ChatRequestBody {
+  try {
+    const parsed = chatRequestBodySchema.parse(value);
+    // SAFETY: Zod has already proved every field and nested value. The cast only
+    // removes Zod's `undefined` markers from optional properties under
+    // `exactOptionalPropertyTypes`; no external value crosses this boundary.
+    return {
+      ...parsed,
+      messages: normalizeIncomingMessages(parsed.messages),
+    } as unknown as ChatRequestBody;
+  } catch (error) {
+    const message =
+      error instanceof z.ZodError
+        ? `Chat request shape is invalid: ${safeSchemaIssues(error.issues)
+            .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
+            .join("; ")}`
+        : "Chat request could not be parsed";
+    throw new CrankError("invalid_chat_request", message);
+  }
+}
+
 export function normalizeChatRequestBody(body: ChatRequestBody): ChatRequestBody {
   return {
     ...body,
@@ -178,9 +401,9 @@ export function mapResumeEntriesToElicitResponses(
         toolName: record.toolName ?? "",
       },
     };
-    const trace = traces[entry.interruptId];
-    if (trace !== undefined) {
-      response.trace = trace as NonNullable<ElicitResponse["trace"]>;
+    const trace = normalizeClientReplayTrace(traces[entry.interruptId]);
+    if (trace) {
+      response.trace = trace;
     }
     mapped.push(response);
   }

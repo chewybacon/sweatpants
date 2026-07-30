@@ -11,12 +11,12 @@ import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
 import {
   deriveResumeScopeFromEntries,
   deriveResumeScopeId,
-  validateResumeEntries,
+  verifyResumeEntries,
   type OpenInterruptRecord,
 } from "../interrupts/index.ts";
 import { mapResumeEntriesToElicitResponses } from "./request-normalization.ts";
 
-export type ResumeValidation = ReturnType<typeof validateResumeEntries>;
+export type ResumeValidation = ReturnType<typeof verifyResumeEntries>;
 
 export interface TurnPlan {
   /** Open interrupts for the thread at planning time. */
@@ -68,7 +68,7 @@ export function planTurn(params: {
     ? null
     : body.resume
       ? requestedResumeScopeId || resumeScopeFromEntries
-        ? validateResumeEntries({
+        ? verifyResumeEntries({
             threadId: resumeScopeFromEntries?.threadId ?? threadId,
             scopeId: requestedResumeScopeId ?? resumeScopeFromEntries!.scopeId,
             runId,
@@ -80,7 +80,7 @@ export function planTurn(params: {
             message: "Unable to determine resume scope",
           } as const)
       : hasOpenInterrupts && requestedResumeScopeId
-        ? validateResumeEntries({
+        ? verifyResumeEntries({
             threadId,
             scopeId: requestedResumeScopeId,
             runId,

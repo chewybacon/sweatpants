@@ -6,8 +6,8 @@
 import { describe, it, expect } from "vitest";
 import {
   parseHeaders,
-  validatePostHeaders,
-  validateGetHeaders,
+  assertPostHeaders,
+  assertGetHeaders,
   classifyRequest,
 } from "../request-parser.ts";
 import { McpHandlerError } from "../types.ts";
@@ -66,43 +66,43 @@ describe("request-parser", () => {
     });
   });
 
-  describe("validatePostHeaders", () => {
+  describe("assertPostHeaders", () => {
     it("accepts application/json content type", () => {
-      expect(() => validatePostHeaders({ contentType: "application/json" })).not.toThrow();
+      expect(() => assertPostHeaders({ contentType: "application/json" })).not.toThrow();
     });
 
     it("accepts application/json with charset", () => {
       expect(() =>
-        validatePostHeaders({ contentType: "application/json; charset=utf-8" }),
+        assertPostHeaders({ contentType: "application/json; charset=utf-8" }),
       ).not.toThrow();
     });
 
     it("rejects non-JSON content type", () => {
-      expect(() => validatePostHeaders({ contentType: "text/plain" })).toThrow(McpHandlerError);
+      expect(() => assertPostHeaders({ contentType: "text/plain" })).toThrow(McpHandlerError);
     });
 
     it("accepts missing content type", () => {
-      expect(() => validatePostHeaders({})).not.toThrow();
+      expect(() => assertPostHeaders({})).not.toThrow();
     });
   });
 
-  describe("validateGetHeaders", () => {
+  describe("assertGetHeaders", () => {
     it("accepts text/event-stream", () => {
-      expect(() => validateGetHeaders({ accept: "text/event-stream" })).not.toThrow();
+      expect(() => assertGetHeaders({ accept: "text/event-stream" })).not.toThrow();
     });
 
     it("accepts text/event-stream among multiple types", () => {
       expect(() =>
-        validateGetHeaders({ accept: "application/json, text/event-stream" }),
+        assertGetHeaders({ accept: "application/json, text/event-stream" }),
       ).not.toThrow();
     });
 
     it("rejects missing accept header", () => {
-      expect(() => validateGetHeaders({})).toThrow(McpHandlerError);
+      expect(() => assertGetHeaders({})).toThrow(McpHandlerError);
     });
 
     it("rejects non-SSE accept header", () => {
-      expect(() => validateGetHeaders({ accept: "application/json" })).toThrow(McpHandlerError);
+      expect(() => assertGetHeaders({ accept: "application/json" })).toThrow(McpHandlerError);
     });
   });
 

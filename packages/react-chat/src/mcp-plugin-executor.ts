@@ -21,7 +21,7 @@
  * ```
  */
 import type { Operation, Channel } from "effection";
-import type { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ElicitRequest, WireElicitResult } from "@sweatpants/tool-session/mcp";
 import type {
   ExtractResponse,
@@ -48,7 +48,7 @@ import {
  * Options for creating a PluginClientContext.
  */
 export interface CreatePluginClientContextOptions<
-  TElicitRequest = ElicitRequest<string, z.ZodType>,
+  TElicitRequest = ElicitRequest<string, StandardSchemaV1>,
 > {
   /** Tool call ID */
   callId: string;
@@ -80,7 +80,7 @@ export interface CreatePluginClientContextOptions<
  * @param options - Context options
  * @returns PluginClientContext ready for use in handlers
  */
-export function createPluginClientContext<TElicitRequest = ElicitRequest<string, z.ZodType>>(
+export function createPluginClientContext<TElicitRequest = ElicitRequest<string, StandardSchemaV1>>(
   options: CreatePluginClientContextOptions<TElicitRequest>,
 ): PluginClientContext<TElicitRequest> {
   const { callId, elicitRequest, signal = new AbortController().signal } = options;
@@ -165,8 +165,8 @@ export function* executeElicitHandler<
   plugin: PluginClientRegistration<TNormalized>,
   key: K,
   // Use `any` for schema type to avoid Zod v3/v4 incompatibility issues
-  request: ElicitRequest<K, any>,
-  ctx: PluginClientContext<ElicitRequest<K, any>>,
+  request: ElicitRequest<K, StandardSchemaV1>,
+  ctx: PluginClientContext<ElicitRequest<K, StandardSchemaV1>>,
 ): Operation<WireElicitResult<unknown>> {
   const handler = plugin.handlers[key];
 
@@ -193,7 +193,7 @@ export function* executeElicitHandler<
  */
 export function* executeElicitHandlerFromRequest<TNormalized extends Record<string, unknown>>(
   plugin: PluginClientRegistration<TNormalized>,
-  request: ElicitRequest<string, z.ZodType>,
+  request: ElicitRequest<string, StandardSchemaV1>,
   ctx: PluginClientContext,
 ): Operation<WireElicitResult<unknown>> {
   const key = request.key as keyof TNormalized & string;
@@ -207,7 +207,7 @@ export function* executeElicitHandlerFromRequest<TNormalized extends Record<stri
 
   // Heterogeneous handler map: narrow through the map's own value type.
   const handler = plugin.handlers[key] as (
-    req: ElicitRequest<string, z.ZodType>,
+    req: ElicitRequest<string, StandardSchemaV1>,
     hctx: PluginClientContext,
   ) => Operation<WireElicitResult<unknown>>;
   return yield* handler(request, ctx);

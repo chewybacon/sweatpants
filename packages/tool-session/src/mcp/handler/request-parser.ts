@@ -75,7 +75,7 @@ export function parseHeaders(request: Request): McpRequestHeaders {
 /**
  * Validate headers for a POST request.
  */
-export function validatePostHeaders(headers: McpRequestHeaders): void {
+export function assertPostHeaders(headers: McpRequestHeaders): void {
   if (headers.contentType && !headers.contentType.includes("application/json")) {
     throw new McpHandlerError(
       MCP_HANDLER_ERRORS.INVALID_REQUEST,
@@ -88,7 +88,7 @@ export function validatePostHeaders(headers: McpRequestHeaders): void {
 /**
  * Validate headers for a GET request.
  */
-export function validateGetHeaders(headers: McpRequestHeaders): void {
+export function assertGetHeaders(headers: McpRequestHeaders): void {
   if (!headers.accept?.includes("text/event-stream")) {
     throw new McpHandlerError(
       MCP_HANDLER_ERRORS.NOT_ACCEPTABLE,
@@ -122,7 +122,7 @@ export function* parseRequest(request: Request): Operation<McpParsedRequest> {
   // Parse body for POST
   let body: unknown;
   if (method === "POST") {
-    validatePostHeaders(headers);
+    assertPostHeaders(headers);
     try {
       body = yield* call(() => request.json());
     } catch {
@@ -136,7 +136,7 @@ export function* parseRequest(request: Request): Operation<McpParsedRequest> {
 
   // Validate GET headers
   if (method === "GET") {
-    validateGetHeaders(headers);
+    assertGetHeaders(headers);
   }
 
   return {

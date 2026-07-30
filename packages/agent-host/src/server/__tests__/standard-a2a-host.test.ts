@@ -119,11 +119,13 @@ function fixture(
       historyProjection,
       host: createStandardA2AHost({
         ...hostOptions,
-        *authenticate(request) {
-          return request.headers.get("authorization") === "Bearer good"
-            ? { principalId: "alice", tenantId: "tenant-a" }
-            : undefined;
-        },
+        authenticate:
+          hostOptions.authenticate ??
+          function* (request) {
+            return request.headers.get("authorization") === "Bearer good"
+              ? { principalId: "alice", tenantId: "tenant-a" }
+              : undefined;
+          },
       }),
     }),
   );
@@ -298,6 +300,20 @@ describe("journal-backed standard A2A host", () => {
     await expect(
       execute(host.sendMessage(message("same", "changed", first.contextId), principal)),
     ).rejects.toMatchObject({ code: "message_idempotency_conflict" });
+  });
+
+  it("does not treat a malformed falsy authentication result as anonymous", async () => {
+    const { host } = fixture({
+      allowAnonymousDevelopment: true,
+      *authenticate() {
+        return null;
+      },
+    });
+
+    const response = await host.handle(
+      new Request("http://127.0.0.1:43210/.well-known/agent-card.json"),
+    );
+    expect(response.status).toBe(401);
   });
 
   it("serves authenticated HTTP+JSON discovery, send and task retrieval", async () => {

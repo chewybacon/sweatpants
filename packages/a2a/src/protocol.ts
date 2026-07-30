@@ -1,4 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
+import { z } from "zod";
 import { assertJson, canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
 
 import type { Json } from "@sweatpants/foundation";
@@ -24,6 +25,40 @@ import {
 const encoder = new TextEncoder();
 const DIGEST = /^[0-9a-f]{64}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._~:/@+-]{0,255}$/;
+const protocolIdentifierSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._~:/@+-]{0,255}$/u);
+const digestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
+const programSchema = z
+  .object({
+    id: protocolIdentifierSchema,
+    version: protocolIdentifierSchema,
+    digest: digestSchema,
+  })
+  .strict();
+const envelopeSchema = z
+  .object({
+    protocolVersion: z.number().int().safe(),
+    extensionUri: z.string().max(512),
+    executionId: protocolIdentifierSchema,
+    program: programSchema,
+    executionEpoch: z.number().int().positive().safe(),
+    type: z.string().min(1).max(128),
+    payload: z.record(z.string(), z.json()),
+    attachmentId: protocolIdentifierSchema.optional(),
+    actionIndex: z.number().int().nonnegative().safe().optional(),
+    commandId: protocolIdentifierSchema.optional(),
+  })
+  .strict();
+const executorHelloSchema = z
+  .object({
+    type: z.literal("hello"),
+    protocolVersion: z.number().int().safe(),
+    extensionUri: z.string().max(512),
+    executorId: protocolIdentifierSchema,
+    maxFrameBytes: z.literal(A2A_MAX_FRAME_BYTES),
+    capabilities: z.object({ streamedRestore: z.boolean() }).strict(),
+  })
+  .strict();
+
 const clientTypes = new Set([
   "attach_begin",
   "command",
@@ -79,46 +114,27 @@ export function encodeA2AProgramMessage(
 
 export function parseExecutorHello(frame: string | Uint8Array): ExecutorHelloV1 {
   const value = parseCanonicalFrame(frame);
-  if (
-    !record(value) ||
-    !exactKeys(value, [
-      "type",
-      "protocolVersion",
-      "extensionUri",
-      "executorId",
-      "maxFrameBytes",
-      "capabilities",
-    ]) ||
-    value["type"] !== "hello"
-  ) {
+  let parsed: ExecutorHelloV1;
+  try {
+    parsed = executorHelloSchema.parse(value) as ExecutorHelloV1;
+  } catch {
     throw a2aError("extension_echo_mismatch", "Expected a closed executor hello frame");
   }
   if (
-    value["protocolVersion"] !== A2A_PROTOCOL_VERSION ||
-    value["extensionUri"] !== CALLER_AUTHORITATIVE_EXTENSION_URI
+    parsed.protocolVersion !== A2A_PROTOCOL_VERSION ||
+    parsed.extensionUri !== CALLER_AUTHORITATIVE_EXTENSION_URI
   ) {
     throw a2aError("extension_echo_mismatch", "Executor extension identity does not match");
   }
-  if (!identifier(value["executorId"]) || value["maxFrameBytes"] !== A2A_MAX_FRAME_BYTES) {
-    fail();
-  }
-  const capabilities = value["capabilities"];
-  if (
-    !record(capabilities) ||
-    !exactKeys(capabilities, ["streamedRestore"]) ||
-    typeof capabilities["streamedRestore"] !== "boolean"
-  ) {
-    fail();
-  }
-  return canonicalSnapshot(value).value as unknown as ExecutorHelloV1;
+  return canonicalSnapshot(parsed).value as unknown as ExecutorHelloV1;
 }
 
 export function parseClientProgramMessage(frame: string | Uint8Array): ClientProgramMessageV1 {
-  return parseEnvelope(frame, clientTypes, validateClientPayload) as ClientProgramMessageV1;
+  return parseEnvelope(frame, clientTypes, assertA2AClientPayload) as ClientProgramMessageV1;
 }
 
 export function parseServerProgramMessage(frame: string | Uint8Array): ServerProgramMessageV1 {
-  return parseEnvelope(frame, serverTypes, validateServerPayload) as ServerProgramMessageV1;
+  return parseEnvelope(frame, serverTypes, assertA2AServerPayload) as ServerProgramMessageV1;
 }
 
 /**
@@ -240,62 +256,48 @@ export function assertEnvelopeIdentity(
 function parseEnvelope(
   frame: string | Uint8Array,
   allowedTypes: ReadonlySet<string>,
-  validatePayload: (type: string, envelope: Record<string, Json>) => void,
+  parsePayload: (type: string, envelope: Record<string, Json>) => void,
 ): ClientProgramMessageV1 | ServerProgramMessageV1 {
   const value = parseCanonicalFrame(frame);
-  if (!record(value)) {
-    throw protocol("Envelope must be an object");
-  }
-  if (
-    !onlyKeys(
-      value,
-      [
-        "protocolVersion",
-        "extensionUri",
-        "executionId",
-        "program",
-        "executionEpoch",
-        "type",
-        "payload",
-      ],
-      ["attachmentId", "actionIndex", "commandId"],
-    )
-  ) {
+  let envelope: Record<string, Json>;
+  try {
+    envelope = envelopeSchema.parse(value) as unknown as Record<string, Json>;
+  } catch {
     throw protocol("Envelope fields are not closed");
   }
-  if (value["protocolVersion"] !== 1) {
+  if (envelope["protocolVersion"] !== 1) {
     throw a2aError("protocol_version_unsupported", "Unsupported A2A program protocol version");
   }
-  if (value["extensionUri"] !== CALLER_AUTHORITATIVE_EXTENSION_URI) {
+  if (envelope["extensionUri"] !== CALLER_AUTHORITATIVE_EXTENSION_URI) {
     throw a2aError("extension_echo_mismatch", "A2A extension identity mismatch");
   }
-  if (!identifier(value["executionId"]) || !positiveInteger(value["executionEpoch"])) {
+  if (!identifier(envelope["executionId"]) || !positiveInteger(envelope["executionEpoch"])) {
     fail();
   }
-  validateProgram(value["program"]);
-  const type = value["type"];
+  assertA2AProgram(envelope["program"]);
+  const type = envelope["type"];
   if (typeof type !== "string" || !allowedTypes.has(type)) {
     throw protocol("Unknown message type");
   }
-  if (value["attachmentId"] !== undefined && !identifier(value["attachmentId"])) {
+  if (envelope["attachmentId"] !== undefined && !identifier(envelope["attachmentId"])) {
     fail();
   }
-  if (value["actionIndex"] !== undefined && !nonnegativeInteger(value["actionIndex"])) {
+  if (envelope["actionIndex"] !== undefined && !nonnegativeInteger(envelope["actionIndex"])) {
     fail();
   }
-  if (value["commandId"] !== undefined && !identifier(value["commandId"])) {
+  if (envelope["commandId"] !== undefined && !identifier(envelope["commandId"])) {
     fail();
   }
-  if (!record(value["payload"])) {
+  if (!record(envelope["payload"])) {
     throw protocol("Payload must be an object");
   }
-  validatePayload(type, value);
-  return canonicalSnapshot(value).value as unknown as
+  parsePayload(type, envelope);
+  return canonicalSnapshot(envelope).value as unknown as
     | ClientProgramMessageV1
     | ServerProgramMessageV1;
 }
 
-function validateClientPayload(type: string, envelope: Record<string, Json>): void {
+function assertA2AClientPayload(type: string, envelope: Record<string, Json>): void {
   const payload = envelope["payload"] as Record<string, Json>;
   switch (type) {
     case "attach_begin":
@@ -331,7 +333,7 @@ function validateClientPayload(type: string, envelope: Record<string, Json>): vo
         fail();
       }
       requireAttachmentAndCommand(envelope);
-      validateCommand(payload["command"] as Record<string, Json>, envelope);
+      assertA2ACommand(payload["command"] as Record<string, Json>, envelope);
       break;
     }
     case "shutdown":
@@ -351,7 +353,7 @@ function validateClientPayload(type: string, envelope: Record<string, Json>): vo
       if (envelope["commandId"] !== undefined) {
         fail();
       }
-      validateReplayEntry(payload, type === "replay_operation" ? "operation" : "emission");
+      assertA2AReplayEntry(payload, type === "replay_operation" ? "operation" : "emission");
       if (envelope["actionIndex"] !== payload["actionIndex"]) {
         fail();
       }
@@ -373,7 +375,7 @@ function validateClientPayload(type: string, envelope: Record<string, Json>): vo
   }
 }
 
-function validateServerPayload(type: string, envelope: Record<string, Json>): void {
+function assertA2AServerPayload(type: string, envelope: Record<string, Json>): void {
   const payload = envelope["payload"] as Record<string, Json>;
   switch (type) {
     case "attachment_ready":
@@ -394,7 +396,7 @@ function validateServerPayload(type: string, envelope: Record<string, Json>): vo
       if (!exactKeys(payload, ["step"])) {
         fail();
       }
-      validateStep(payload["step"]);
+      assertA2AStep(payload["step"]);
       if (record(payload["step"]) && envelope["actionIndex"] !== payload["step"]["actionIndex"]) {
         fail();
       }
@@ -421,7 +423,7 @@ function validateServerPayload(type: string, envelope: Record<string, Json>): vo
       ) {
         fail();
       }
-      validateStep(payload["step"]);
+      assertA2AStep(payload["step"]);
       if (record(payload["step"]) && envelope["actionIndex"] !== payload["step"]["actionIndex"]) {
         fail();
       }
@@ -441,7 +443,7 @@ function validateServerPayload(type: string, envelope: Record<string, Json>): vo
   }
 }
 
-function validateCommand(command: Record<string, Json>, envelope: Record<string, Json>): void {
+function assertA2ACommand(command: Record<string, Json>, envelope: Record<string, Json>): void {
   switch (command["type"]) {
     case "start":
       if (!exactKeys(command, ["type", "input"]) || envelope["actionIndex"] !== undefined) {
@@ -455,8 +457,8 @@ function validateCommand(command: Record<string, Json>, envelope: Record<string,
       ) {
         fail();
       }
-      validateOutcome(command["outcome"]);
-      validateReceipt(command["receipt"]);
+      assertA2AOutcome(command["outcome"]);
+      assertA2AReceipt(command["receipt"]);
       requireMatchingAction(command, envelope);
       break;
     case "authorize":
@@ -473,7 +475,7 @@ function validateCommand(command: Record<string, Json>, envelope: Record<string,
         fail();
       }
       if (command["descriptor"] !== undefined) {
-        validateOperationDescriptor(command["descriptor"]);
+        assertA2AOperationDescriptor(command["descriptor"]);
       }
       if (
         command["effectContractDigest"] !== undefined &&
@@ -505,7 +507,7 @@ function validateCommand(command: Record<string, Json>, envelope: Record<string,
   }
 }
 
-function validateStep(value: Json | undefined): asserts value is Json {
+function assertA2AStep(value: Json | undefined): asserts value is Json {
   if (!record(value) || !nonnegativeInteger(value["actionIndex"])) {
     fail();
   }
@@ -514,9 +516,9 @@ function validateStep(value: Json | undefined): asserts value is Json {
       if (!onlyKeys(value, ["type", "actionIndex", "descriptor"], ["authorizedOutcome"])) {
         fail();
       }
-      validateOperationDescriptor(value["descriptor"]);
+      assertA2AOperationDescriptor(value["descriptor"]);
       if (value["authorizedOutcome"] !== undefined) {
-        validateOutcome(value["authorizedOutcome"]);
+        assertA2AOutcome(value["authorizedOutcome"]);
       }
       break;
     case "emission":
@@ -540,14 +542,14 @@ function validateStep(value: Json | undefined): asserts value is Json {
       if (!exactKeys(value, ["type", "actionIndex", "error"])) {
         fail();
       }
-      validateApplicationError(value["error"]);
+      assertA2AApplicationError(value["error"]);
       break;
     default:
       fail();
   }
 }
 
-function validateOperationDescriptor(value: Json | undefined): void {
+function assertA2AOperationDescriptor(value: Json | undefined): void {
   if (!record(value)) {
     fail();
   }
@@ -641,7 +643,7 @@ function validateOperationDescriptor(value: Json | undefined): void {
       if (!exactKeys(value, ["kind", "child"])) {
         fail();
       }
-      validateChild(value["child"]);
+      assertA2AChild(value["child"]);
       break;
     case "all":
     case "race":
@@ -649,7 +651,7 @@ function validateOperationDescriptor(value: Json | undefined): void {
         fail();
       }
       for (const child of value["children"] as Json[]) {
-        validateChild(child);
+        assertA2AChild(child);
       }
       break;
     case "spawn":
@@ -662,7 +664,7 @@ function validateOperationDescriptor(value: Json | undefined): void {
   }
 }
 
-function validateChild(value: Json | undefined): void {
+function assertA2AChild(value: Json | undefined): void {
   if (!record(value) || !exactKeys(value, ["id", "version", "digest", "input"])) {
     fail();
   }
@@ -671,7 +673,7 @@ function validateChild(value: Json | undefined): void {
   }
 }
 
-function validateOutcome(value: Json | undefined): void {
+function assertA2AOutcome(value: Json | undefined): void {
   if (!record(value)) {
     fail();
   }
@@ -683,7 +685,7 @@ function validateOutcome(value: Json | undefined): void {
     if (!exactKeys(value, ["status", "error"])) {
       fail();
     }
-    validateApplicationError(value["error"]);
+    assertA2AApplicationError(value["error"]);
   } else if (value["status"] === "cancelled") {
     if (!onlyKeys(value, ["status"], ["partial"])) {
       fail();
@@ -693,7 +695,7 @@ function validateOutcome(value: Json | undefined): void {
   }
 }
 
-function validateApplicationError(value: Json | undefined): void {
+function assertA2AApplicationError(value: Json | undefined): void {
   if (!record(value) || !onlyKeys(value, ["code", "message"], ["details"])) {
     fail();
   }
@@ -702,7 +704,7 @@ function validateApplicationError(value: Json | undefined): void {
   }
 }
 
-function validateReceipt(value: Json | undefined): void {
+function assertA2AReceipt(value: Json | undefined): void {
   if (
     !record(value) ||
     !exactKeys(value, [
@@ -729,7 +731,7 @@ function validateReceipt(value: Json | undefined): void {
   }
 }
 
-function validateReplayEntry(
+function assertA2AReplayEntry(
   payload: Record<string, Json>,
   expected: "operation" | "emission",
 ): void {
@@ -754,8 +756,8 @@ function validateReplayEntry(
     fail();
   }
   if (expected === "operation") {
-    validateOutcome(payload["outcome"]);
-    validateReceipt(payload["receipt"]);
+    assertA2AOutcome(payload["outcome"]);
+    assertA2AReceipt(payload["receipt"]);
   } else if (!identifier(payload["offset"])) {
     fail();
   }
@@ -781,7 +783,7 @@ function parseCanonicalFrame(frame: string | Uint8Array): Json {
   return value;
 }
 
-function validateProgram(value: Json | undefined): asserts value is Json {
+function assertA2AProgram(value: Json | undefined): asserts value is Json {
   if (!record(value) || !exactKeys(value, ["id", "version", "digest"])) {
     fail();
   }

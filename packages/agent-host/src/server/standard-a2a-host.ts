@@ -1,4 +1,5 @@
 import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
+import { z } from "zod";
 
 import { CrankError } from "@sweatpants/durable-execution";
 import { randomUUID } from "node:crypto";
@@ -348,7 +349,7 @@ export interface CreateStandardA2AHostOptions {
   readonly generateTaskNonce?: () => string;
   readonly allowClientContextIds?: boolean;
   readonly allowAnonymousDevelopment?: boolean;
-  readonly authenticate?: (request: Request) => Operation<StandardA2ARequestContext | undefined>;
+  readonly authenticate?: (request: Request) => Operation<unknown | undefined>;
   readonly authorize?: (input: {
     readonly context: StandardA2ARequestContext;
     readonly action: StandardA2AAuthorizationAction;
@@ -439,7 +440,7 @@ function bindStandardHost(
       "Standard serving requires an authored chat conversation program",
     );
   }
-  validateTransport(binding.deployment);
+  verifyDeploymentTransport(binding.deployment);
   const tools = allPrograms(conversation);
   const registry = createDurableToolRegistry(tools.map((item) => item.program));
   const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(registry)]]);
@@ -1767,31 +1768,38 @@ function* authenticate(
   options: CreateStandardA2AHostOptions,
   request: Request,
 ): Operation<StandardA2ARequestContext> {
-  const authenticated = options.authenticate ? yield* options.authenticate(request) : undefined;
-  if (authenticated) {
-    return validateRequestContext(authenticated);
+  if (options.authenticate) {
+    const authenticated = yield* options.authenticate(request);
+    // Only an explicit absence permits the development fallback. Any value
+    // returned by a configured provider is boundary data and must parse.
+    if (authenticated !== undefined) {
+      return parseRequestContext(authenticated);
+    }
   }
   if (options.allowAnonymousDevelopment) {
     return { principalId: "anonymous-development" };
   }
   throw hostError("authentication_failed", "Authentication is required");
 }
-function validateRequestContext(value: StandardA2ARequestContext): StandardA2ARequestContext {
-  if (!value.principalId || value.principalId.length > 512) {
+const requestContextSchema = z
+  .object({
+    principalId: z.string().min(1).max(512),
+    tenantId: z.string().min(1).max(512).optional(),
+    clientId: z.string().min(1).max(512).optional(),
+    traceparent: z
+      .string()
+      .regex(/^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/i)
+      .optional(),
+    tracestate: z.string().max(512).optional(),
+  })
+  .strict();
+
+function parseRequestContext(value: unknown): StandardA2ARequestContext {
+  try {
+    return Object.freeze(requestContextSchema.parse(value)) as unknown as StandardA2ARequestContext;
+  } catch {
     throw hostError("authentication_failed", "Authentication is invalid");
   }
-  const traceparent = value.traceparent?.toLowerCase();
-  const validTrace =
-    traceparent && /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/.test(traceparent)
-      ? traceparent
-      : undefined;
-  return Object.freeze({
-    principalId: value.principalId,
-    ...(value.tenantId ? { tenantId: value.tenantId } : {}),
-    ...(value.clientId ? { clientId: value.clientId } : {}),
-    ...(validTrace ? { traceparent: validTrace } : {}),
-    ...(validTrace && value.tracestate ? { tracestate: value.tracestate.slice(0, 512) } : {}),
-  });
 }
 function* authorize(
   options: CreateStandardA2AHostOptions,
@@ -1805,7 +1813,7 @@ function* authorize(
   options.onTelemetry?.({ type: "request", action, ...boundary });
 }
 
-function validateTransport(deployment: PublicAgentDeployment): void {
+function verifyDeploymentTransport(deployment: PublicAgentDeployment): void {
   const url = new URL(deployment.interfaceUrl);
   if (url.protocol === "https:") {
     return;
@@ -1845,7 +1853,7 @@ async function boundedBody(request: Request, maxBytes: number): Promise<Json> {
     throw hostError("task_input_too_large", "A2A request body exceeds its bound");
   }
   try {
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as Json;
+    return assertJson(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
   } catch {
     throw hostError("request_invalid", "A2A request body is invalid JSON");
   }
@@ -1854,7 +1862,7 @@ function parseIncomingMessage(value: unknown, sdk03: boolean): ForeignA2AMessage
   if (!sdk03) {
     return parseForeignA2AMessage(value);
   }
-  const message = bodyRecord(value as Json);
+  const message = bodyRecord(assertJson(value));
   const { content, ...withoutContent } = message;
   return parseForeignA2AMessage({ ...withoutContent, parts: content });
 }

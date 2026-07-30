@@ -3,10 +3,10 @@ import { type EffectDefinition } from "@sweatpants/durable-effects";
 import { CrankError } from "@sweatpants/durable-execution";
 import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import {
-  validateProgramIdentityProvenance,
+  verifyProgramIdentityProvenance,
   type ProgramIdentityProvenanceV1,
 } from "@sweatpants/durable-execution";
-import { validateEffectDefinition } from "@sweatpants/durable-effects/authoring";
+import { assertEffectDefinition } from "@sweatpants/durable-effects/authoring";
 import { type SchemaBinding } from "@sweatpants/foundation/schema";
 import { sortedResourceValues, type ResourcePackage } from "../resource/index.ts";
 import {
@@ -77,7 +77,7 @@ export function defineAgent(options: DefineAgentOptions): AgentDefinition {
     ...(conversation ? [conversation] : []),
     ...Object.values(programs),
   ];
-  validateIdentityConflicts(allBindings);
+  assertIdentityConflicts(allBindings);
   const effects = aggregateEffects(allBindings);
   const schemas = aggregateSchemas(allBindings);
   const resources = aggregateResources(allBindings);
@@ -188,7 +188,7 @@ function normalizeBinding(input: AgentProgramInput, releaseStrict = false): Agen
     );
   }
   try {
-    validateProgramIdentityProvenance(candidate, { releaseStrict });
+    verifyProgramIdentityProvenance(candidate, { releaseStrict });
   } catch (error) {
     if (error instanceof CrankError && error.code === "asserted_program_identity_forbidden") {
       throw error;
@@ -204,7 +204,7 @@ function normalizeBinding(input: AgentProgramInput, releaseStrict = false): Agen
       "Program input/output runtime schema bindings are missing",
     );
   }
-  validateSchemaCoverage(candidate, schemas);
+  assertSchemaCoverage(candidate, schemas);
   return Object.freeze({
     program: candidate,
     schemas: Object.freeze(schemas),
@@ -215,10 +215,7 @@ function normalizeBinding(input: AgentProgramInput, releaseStrict = false): Agen
   });
 }
 
-function validateSchemaCoverage(
-  program: ErasedDurableTool,
-  schemas: readonly SchemaBinding[],
-): void {
+function assertSchemaCoverage(program: ErasedDurableTool, schemas: readonly SchemaBinding[]): void {
   const installed = new Set(schemas.map((entry) => entry.descriptor.digest));
   const manifest = program.manifest;
   const required = [
@@ -251,7 +248,7 @@ function aggregateEffects(
   const result: Record<string, EffectDefinition<Json, Json, Json>> = {};
   for (const binding of bindings) {
     for (const [name, definition] of Object.entries(binding.program.manifest.effects)) {
-      validateEffectDefinition(definition);
+      assertEffectDefinition(definition);
       const current = result[name];
       if (current && canonicalJson(current) !== canonicalJson(definition)) {
         throw new AgentAuthoringError(
@@ -289,7 +286,7 @@ function aggregateResources(bindings: readonly AgentProgramBinding[]): ResourceP
   );
 }
 
-function validateIdentityConflicts(bindings: readonly AgentProgramBinding[]): void {
+function assertIdentityConflicts(bindings: readonly AgentProgramBinding[]): void {
   const byIdVersion = new Map<string, string>();
   for (const binding of bindings) {
     const manifest = binding.program.manifest;

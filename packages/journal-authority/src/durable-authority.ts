@@ -16,7 +16,7 @@ import {
 } from "@sweatpants/durable-execution";
 import {
   createDurableSchemaRegistry,
-  validateRegisteredSchema,
+  parseRegisteredSchema,
   type DurableSchemaRegistry,
   type RegistrySchemaValidation,
 } from "./schema-registry.ts";
@@ -481,7 +481,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (this.#tasks.has(key)) {
       throw new CrankError("invalid_journal", "Task already exists");
     }
-    const input = yield* this.#validateThroughRegistry(
+    const input = yield* this.#parseRegisteredSchemaValue(
       request.manifest.inputSchema.digest,
       request.input,
       "invalid_descriptor",
@@ -737,7 +737,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (descriptor.kind === "effect") {
       // Effect input transforms/defaults run exactly once here; the canonical
       // parsed input becomes the durable effective descriptor.
-      const parsedInput = yield* this.#validateThroughRegistry(
+      const parsedInput = yield* this.#parseRegisteredSchemaValue(
         policy.inputDigest!,
         descriptor.input,
         "invalid_descriptor",
@@ -745,7 +745,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       effectiveDescriptor = { ...descriptor, input: parsedInput };
     }
     if (descriptor.kind === "elicit" && policy.contextDigest && descriptor.context !== undefined) {
-      const parsedContext = yield* this.#validateThroughRegistry(
+      const parsedContext = yield* this.#parseRegisteredSchemaValue(
         policy.contextDigest,
         descriptor.context,
         "invalid_descriptor",
@@ -886,7 +886,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       if (!definition?.cancellation) {
         reason = "schema_validation_failed";
       } else {
-        const validated = yield* validateRegisteredSchema(
+        const validated = yield* parseRegisteredSchema(
           this.#schemas,
           definition.cancellation.partialSchema.digest,
           outcome.partial,
@@ -952,7 +952,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
           return { status: "rejected", code: "schema_validation_failed" };
         }
         if (envelope.action === "accept") {
-          const validated = yield* validateRegisteredSchema(
+          const validated = yield* parseRegisteredSchema(
             this.#schemas,
             pull.resultSchemaDigest,
             envelope.content,
@@ -974,7 +974,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
           };
         }
       } else {
-        const validated = yield* validateRegisteredSchema(
+        const validated = yield* parseRegisteredSchema(
           this.#schemas,
           pull.resultSchemaDigest,
           outcome.value,
@@ -1143,7 +1143,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (outcome.status === "ok") {
       outcome = {
         status: "ok",
-        value: yield* this.#validateThroughRegistry(
+        value: yield* this.#parseRegisteredSchemaValue(
           task.manifest.outputSchema.digest,
           outcome.value,
           "schema_validation_failed",
@@ -2275,8 +2275,8 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   }
 
   /** Validates through the digest-selected registry validator, throwing on failure. */
-  *#validateThroughRegistry(digest: string, value: unknown, errorCode: string): Operation<Json> {
-    const validated: RegistrySchemaValidation = yield* validateRegisteredSchema(
+  *#parseRegisteredSchemaValue(digest: string, value: unknown, errorCode: string): Operation<Json> {
+    const validated: RegistrySchemaValidation = yield* parseRegisteredSchema(
       this.#schemas,
       digest,
       value,

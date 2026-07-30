@@ -1,6 +1,7 @@
 import { createApi } from "effection/experimental";
 import type { Operation, Subscription } from "effection";
-import type { ZodSchema } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import { TransportContext } from "../context/transport.ts";
 import type { ElicitResponse, NotifyResponse } from "../types/transport.ts";
 import type {
@@ -58,7 +59,7 @@ export const SweatpantsApi = createApi("sweatpants", {
    * }
    * ```
    */
-  *elicit<TSchema extends ZodSchema>(
+  *elicit<TSchema extends StandardSchemaV1>(
     options: ElicitOptions<TSchema>,
   ): Operation<ElicitResult<TSchema>> {
     const transport = yield* TransportContext.expect();
@@ -71,7 +72,9 @@ export const SweatpantsApi = createApi("sweatpants", {
       payload: {
         type: options.type,
         message: options.message,
-        schema: options.schema,
+        // Runtime validators are process-local. Only an explicitly supplied
+        // portable descriptor may cross the transport boundary.
+        schemaDescriptor: options.schemaDescriptor,
         meta: options.meta,
       },
     });
@@ -88,8 +91,11 @@ export const SweatpantsApi = createApi("sweatpants", {
 
     // Map Principal/Operative transport status dialect → action vocabulary
     if (response.status === "accepted") {
-      type AcceptedResult = Extract<ElicitResult<TSchema>, { action: "accept" }>;
-      return { action: "accept", content: response.content as AcceptedResult["content"] };
+      const parsed = yield* validateStandardSchema(options.schema, response.content);
+      if (parsed.issues !== undefined) {
+        throw new Error("Elicit response does not satisfy its declared schema");
+      }
+      return { action: "accept", content: parsed.value };
     } else if (response.status === "declined") {
       return { action: "decline" };
     } else if (response.status === "cancelled") {

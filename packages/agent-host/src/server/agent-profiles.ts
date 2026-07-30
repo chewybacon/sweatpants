@@ -171,7 +171,7 @@ export function serveAgent(definition: AgentDefinition, profile: AgentServingPro
   if (!profile || !["remote-executor", "standard-a2a", "sweatpants-peer"].includes(profile.kind)) {
     fail("profile_required", "Exactly one explicit serving profile is required");
   }
-  validateDeployment(profile.deployment);
+  verifyPublicAgentDeployment(profile.deployment);
   if (profile.kind === "remote-executor") {
     return compileRemote(definition, profile);
   }
@@ -253,7 +253,7 @@ function compileStandard(
     fail("profile_incompatible", "standardA2A requires one conversation program");
   }
   preflightLocalEffects(uniqueProgramBindings([conversation]), profile.handlers);
-  validateOptionalCapabilityBindings(definition, profile.capabilityBindings);
+  assertOptionalCapabilityBindings(definition, profile.capabilityBindings);
   const card = agentCard(definition, profile.deployment, []);
   const host = profile.host?.bind
     ? profile.host.bind({
@@ -468,7 +468,7 @@ function selectedBindings(
   }
   return selected;
 }
-function validateOptionalCapabilityBindings(
+function assertOptionalCapabilityBindings(
   definition: AgentDefinition,
   mappings: Readonly<Record<string, string>>,
 ): void {
@@ -533,7 +533,7 @@ function uniqueRegistrations(values: DurableEffectRegistration[]): DurableEffect
   );
   return [...map.values()];
 }
-function validateDeployment(value: PublicAgentDeployment): void {
+function verifyPublicAgentDeployment(value: PublicAgentDeployment): void {
   if (!value || typeof value.interfaceUrl !== "string") {
     fail("profile_incompatible", "Profile deployment endpoint is missing");
   }

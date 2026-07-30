@@ -31,7 +31,7 @@ import {
   installToolRuntime,
   type ToolRuntime,
 } from "@sweatpants/tool-session/chat-runtime";
-import { validateToolParameters } from "@sweatpants/tool-session/tool-parameters";
+import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { eventsOfType, readDurableEvents } from "./ndjson.ts";
 
@@ -172,7 +172,7 @@ function createLocalToolRuntime(
           },
         };
       }
-      const params = validateToolParameters({
+      const params = yield* parseToolParameters({
         schema: tool.parameters,
         params: request.call.function.arguments,
         toolName: tool.name,

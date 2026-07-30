@@ -99,7 +99,8 @@
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
-        "effection": "catalog:"
+        "effection": "catalog:",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@effectionx/vitest": "catalog:",
@@ -117,7 +118,6 @@
     },
     "peerDependencies": {
         "@effectionx/websocket": "^2.3.0",
-        "@effectionx/worker": "^0.5.2",
-        "zod": "^4.0.0"
+        "@effectionx/worker": "^0.5.2"
     }
 }

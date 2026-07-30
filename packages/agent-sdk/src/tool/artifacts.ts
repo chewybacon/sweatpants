@@ -3,7 +3,7 @@ import type { SchemaBinding } from "@sweatpants/foundation/schema";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import type { ToolElicitSchemaArtifact, ToolSchemaArtifacts } from "./contract.ts";
-import type { ElicitDefinition } from "./types.ts";
+import type { ElicitDefinition, SchemaProjectionOptions } from "./types.ts";
 
 /** Inputs for lowering one tool's runtime schemas into portable artifacts. */
 export interface ToolSchemaArtifactInputs {
@@ -12,7 +12,9 @@ export interface ToolSchemaArtifactInputs {
   /** Semantic schema version shared by the tool's schema domain. */
   readonly version: string;
   readonly parameters: StandardSchemaV1;
+  readonly parametersProjections?: SchemaProjectionOptions;
   readonly output?: StandardSchemaV1 | undefined;
+  readonly outputProjections?: SchemaProjectionOptions;
   readonly elicits: Readonly<
     Record<string, ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>>
   >;
@@ -25,6 +27,7 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
     identity: `${inputs.identity}/parameters`,
     role: "tool_parameters",
     version: inputs.version,
+    ...(inputs.parametersProjections ?? {}),
   });
   catalog.push(parameters.entry);
 
@@ -34,6 +37,7 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
       identity: `${inputs.identity}/output`,
       role: "tool_output",
       version: inputs.version,
+      ...(inputs.outputProjections ?? {}),
     });
     catalog.push(output.entry);
   }
@@ -44,6 +48,7 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
       identity: `${inputs.identity}/elicits/${key}/response`,
       role: "elicit_response",
       version: inputs.version,
+      ...(definition.responseProjections ?? {}),
     });
     catalog.push(response.entry);
     let context;
@@ -52,6 +57,7 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
         identity: `${inputs.identity}/elicits/${key}/context`,
         role: "elicit_context",
         version: inputs.version,
+        ...(definition.contextProjections ?? {}),
       });
       catalog.push(context.entry);
     }

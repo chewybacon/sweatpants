@@ -1,11 +1,11 @@
 export {
   decodeDevelopmentCollectionArchive,
   reconstructCollectionProgram,
-  validateDevelopmentCollectionManifest,
+  parseDevelopmentCollectionManifest,
 } from "./remote-development/collection.ts";
 export {
   importDevelopmentProgramEntry,
-  validateCollectionProgramEntries,
+  loadCollectionProgramEntries,
 } from "./remote-development/evaluator-loader.ts";
 export {
   PUBLISHED_COLLECTION_FORMAT,

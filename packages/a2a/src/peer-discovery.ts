@@ -32,7 +32,7 @@ import {
   type PeerRetentionV1,
   type SweatpantsPeerProfileParamsV1,
 } from "./peer-types.ts";
-import { validateA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
+import { verifyA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
 
 export interface SweatpantsPeerDiscoveryOptions extends Omit<
   ForeignA2ADiscoveryOptions,
@@ -70,12 +70,12 @@ export async function discoverSweatpantsPeer(
   const profileDeclaration = extension(foreign.card, SWEATPANTS_PEER_PROFILE_URI);
   const profile = parsePeerProfileParams(profileDeclaration["params"]);
   await Promise.all([
-    validateA2AUrl(profile.requirementManifestEndpoint, {
+    verifyA2AUrl(profile.requirementManifestEndpoint, {
       purpose: "manifest",
       ...(options.urlPolicy ? { policy: options.urlPolicy } : {}),
       cardOrigin: foreign.cardOrigin,
     }),
-    validateA2AUrl(profile.delegatedEffectsEndpoint, {
+    verifyA2AUrl(profile.delegatedEffectsEndpoint, {
       purpose: "manifest",
       ...(options.urlPolicy ? { policy: options.urlPolicy } : {}),
       cardOrigin: foreign.cardOrigin,

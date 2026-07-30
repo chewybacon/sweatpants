@@ -12,14 +12,14 @@ export {
 } from "./remote-development/bundler.ts";
 export {
   importDevelopmentProgramEntry,
-  validateCollectionProgramEntries,
+  loadCollectionProgramEntries,
 } from "./remote-development/evaluator-loader.ts";
 export {
   buildDevelopmentCollection,
   decodeDevelopmentCollectionArchive,
   parseSemverMajor,
   reconstructCollectionProgram,
-  validateDevelopmentCollectionManifest,
+  parseDevelopmentCollectionManifest,
   type BuildDevelopmentCollectionInput,
   type BuiltDevelopmentCollection,
   type ProgramBundleInput,
@@ -32,7 +32,7 @@ export {
   environmentSlug,
   environmentTags,
   publishDevelopmentCollection,
-  validatePublishedCollectionRef,
+  parsePublishedCollectionRef,
   verifyCollectionReadiness,
   type ActiveCollectionSnapshot,
   type ActiveCollectionStore,

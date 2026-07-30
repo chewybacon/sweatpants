@@ -4,7 +4,7 @@ export {
   defineDurableContextExtension,
   type DurableContextExtension,
   type DurableContextExtensionOptions,
-  validateDurableExtensionDeclarations,
+  assertDurableExtensionDeclarations,
   type DurableClientApi,
   type DurableClientMethod,
   type DurableClientShape,

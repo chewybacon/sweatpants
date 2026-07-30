@@ -85,7 +85,7 @@ class A2AAttachmentHandle {
 
 /** Projects ProgramDriver over authenticated A2A-negotiated WSS; the caller journal stays authoritative. */
 export function createA2AProgramDriver(options: A2AProgramDriverOptions): ProgramDriver {
-  const deadlines = validateDeadlines({ ...DEFAULT_DEADLINES, ...options.deadlines });
+  const deadlines = parseA2AProgramDriverDeadlines({ ...DEFAULT_DEADLINES, ...options.deadlines });
   const base: ProgramDriver = {
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     *attach(request): Operation<ProgramAttachment> {
@@ -566,7 +566,9 @@ function* streamReplay(
     yield* visit(next.value);
   }
 }
-function validateDeadlines(value: A2AProgramDriverDeadlines): A2AProgramDriverDeadlines {
+function parseA2AProgramDriverDeadlines(
+  value: A2AProgramDriverDeadlines,
+): A2AProgramDriverDeadlines {
   for (const deadline of Object.values(value)) {
     if (!Number.isSafeInteger(deadline) || deadline <= 0) {
       throw new CrankError("invalid_descriptor", "A2A deadlines must be positive integers");

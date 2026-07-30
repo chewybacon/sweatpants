@@ -121,8 +121,6 @@ If an acceptance test consistently fails:
 
 ### E2E Tests: Land the Plane
 
-Use the bounded landing orchestrator after narrow implementation gates:
-
 ```bash
 pnpm land       # mandatory deterministic landing gate
 pnpm land:live  # provider/model-dependent validation only

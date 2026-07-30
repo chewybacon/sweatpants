@@ -38,7 +38,7 @@
  * @packageDocumentation
  */
 import type { Operation } from "effection";
-import type { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
   ElicitDefinition,
   ElicitsMap as BaseElicitsMap,
@@ -124,7 +124,7 @@ export interface ClientElicitConfig<T> {
   message: string;
 
   /**
-   * Zod schema for the expected response.
+   * Standard Schema for the expected response.
    *
    * Note: MCP elicitation only supports flat objects with primitive properties:
    * - string (with optional format: email, uri, date, date-time)
@@ -134,7 +134,7 @@ export interface ClientElicitConfig<T> {
    *
    * Nested objects and arrays are NOT supported.
    */
-  schema: z.ZodType<T>;
+  schema: StandardSchemaV1<unknown, T>;
 }
 
 // =============================================================================
@@ -329,7 +329,7 @@ export interface ElicitId {
  */
 export interface ElicitRequest<
   TKey extends string = string,
-  TSchema extends z.ZodType = z.ZodType,
+  TSchema extends StandardSchemaV1 = StandardSchemaV1,
 > {
   /** Structured id for correlation/logging */
   id: ElicitId;
@@ -361,7 +361,7 @@ export interface ElicitRequest<
    * Use `getElicitContext(req)` to extract it.
    */
   schema: {
-    zod: TSchema;
+    standard: TSchema;
     json: Record<string, unknown>;
   };
 
@@ -534,10 +534,10 @@ export interface SamplingToolDefinition {
   description?: string;
 
   /**
-   * Input schema as Zod type or raw JSON Schema.
-   * Zod schemas will be converted to JSON Schema internally.
+   * Input schema as Standard Schema or raw JSON Schema.
+   * First-party Zod schemas satisfy Standard Schema automatically.
    */
-  inputSchema: z.ZodType | Record<string, unknown>;
+  inputSchema: StandardSchemaV1 | Record<string, unknown>;
 }
 
 /**
@@ -598,11 +598,11 @@ interface SampleConfigPlain extends SampleConfigBase {
  */
 interface SampleConfigWithSchema<T = unknown> extends SampleConfigBase {
   /**
-   * Zod schema for structured output.
+   * Standard Schema for structured output.
    * The model's response will be parsed and validated against this schema.
    * Uses provider's native structured output when available.
    */
-  schema: z.ZodType<T>;
+  schema: StandardSchemaV1<unknown, T>;
   tools?: never;
   toolChoice?: never;
 }
@@ -882,8 +882,8 @@ export interface SampleToolsConfigMessages extends SampleHelperConfigBase {
 export interface SampleSchemaConfig<T> extends SampleHelperConfigBase {
   /** The prompt to send */
   prompt: string;
-  /** Zod schema for structured output */
-  schema: z.ZodType<T>;
+  /** Standard Schema for structured output */
+  schema: StandardSchemaV1<unknown, T>;
 }
 
 /**
@@ -892,8 +892,8 @@ export interface SampleSchemaConfig<T> extends SampleHelperConfigBase {
 export interface SampleSchemaConfigMessages<T> extends SampleHelperConfigBase {
   /** Explicit messages array (supports tool call/result messages) */
   messages: ExtendedMessage[];
-  /** Zod schema for structured output */
-  schema: z.ZodType<T>;
+  /** Standard Schema for structured output */
+  schema: StandardSchemaV1<unknown, T>;
 }
 
 /**

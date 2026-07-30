@@ -208,7 +208,7 @@ export function defineDurableContextExtension<
 }
 
 /** Validates aliases and rejects duplicate extension tokens. */
-export function validateDurableExtensionDeclarations(extensions: DurableExtensionMap): void {
+export function assertDurableExtensionDeclarations(extensions: DurableExtensionMap): void {
   const tokens = new Set<DurableContextExtension>();
   for (const [alias, extension] of Object.entries(extensions)) {
     assertExtensionAlias(alias);

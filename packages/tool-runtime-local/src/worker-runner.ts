@@ -32,7 +32,6 @@ import {
 } from "@sweatpants/agent-sdk/transport/worker";
 import type { ElicitDefinition, ToolElicitResult } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import { z } from "zod";
 import type {
   WorkerTool,
   WorkerToolRegistry,
@@ -48,6 +47,7 @@ import type {
   WorkerSampleSchemaConfigMessages,
 } from "./worker-types.js";
 import type { ExtendedMessage, ToolCallMessage, ToolResultMessage } from "@sweatpants/tool-session";
+import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
 import type {
   LogLevel,
   SampleResultBase,
@@ -141,23 +141,9 @@ function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
   return msg as WorkerMessage;
 }
 
-/**
- * Convert a schema that may be a Zod type or already a JSON Schema object
- * into a plain JSON Schema record suitable for postMessage/wire serialization.
- *
- * Duck-types on `safeParse` to detect Zod schemas at runtime, since the generic
- * parameter is erased to `unknown` by the time it reaches the worker runner.
- */
+/** Converts a Standard Schema or explicit JSON Schema to bounded wire data. */
 function toJsonSchemaRecord(schema: unknown): Record<string, unknown> {
-  if (schema && typeof (schema as { safeParse?: unknown }).safeParse === "function") {
-    // Zod schema — convert to JSON Schema using Zod v4's built-in converter.
-    // Functions can't be cloned for postMessage, so we must serialize to plain JSON.
-    // Strip $schema meta-field — it's unnecessary for wire protocol and some providers reject it.
-    const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema as z.ZodType);
-    return jsonSchema as Record<string, unknown>;
-  }
-  // Already a JSON Schema object
-  return schema as Record<string, unknown>;
+  return toToolParameterJsonSchema(schema);
 }
 
 /**

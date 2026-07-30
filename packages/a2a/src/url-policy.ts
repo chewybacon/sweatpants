@@ -20,7 +20,7 @@ export interface ValidatedA2AUrl {
 }
 
 /** Validates scheme, origin and every resolved address before network I/O. */
-export async function validateA2AUrl(
+export async function verifyA2AUrl(
   value: string | URL,
   options: {
     purpose: A2AUrlPurpose;

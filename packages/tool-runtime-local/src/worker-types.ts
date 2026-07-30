@@ -34,7 +34,7 @@
  */
 
 import type { Operation } from "effection";
-import type { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ElicitDefinition, ElicitsMap, ToolElicitResult } from "@sweatpants/agent-sdk";
 import type {
   Message,
@@ -323,10 +323,10 @@ interface WorkerSampleConfigPlain extends WorkerSampleConfigBase {
  */
 interface WorkerSampleConfigWithSchema<T = unknown> extends WorkerSampleConfigBase {
   /**
-   * Zod schema for structured output.
-   * Will be serialized to JSON schema for transport.
+   * Standard Schema for structured output.
+   * Its portable JSON projection is serialized for transport.
    */
-  schema: z.ZodType<T>;
+  schema: StandardSchemaV1<unknown, T>;
   tools?: never;
   toolChoice?: never;
 }
@@ -441,8 +441,8 @@ export interface WorkerSampleToolsConfigMessages extends WorkerSampleHelperConfi
 export interface WorkerSampleSchemaConfig<T> extends WorkerSampleHelperConfigBase {
   /** The prompt to send */
   prompt: string;
-  /** Zod schema for structured output */
-  schema: z.ZodType<T>;
+  /** Standard Schema for structured output */
+  schema: StandardSchemaV1<unknown, T>;
 }
 
 /**
@@ -451,8 +451,8 @@ export interface WorkerSampleSchemaConfig<T> extends WorkerSampleHelperConfigBas
 export interface WorkerSampleSchemaConfigMessages<T> extends WorkerSampleHelperConfigBase {
   /** Explicit messages array */
   messages: ExtendedMessage[];
-  /** Zod schema for structured output */
-  schema: z.ZodType<T>;
+  /** Standard Schema for structured output */
+  schema: StandardSchemaV1<unknown, T>;
 }
 
 // =============================================================================

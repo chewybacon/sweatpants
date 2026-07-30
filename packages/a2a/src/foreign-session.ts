@@ -6,7 +6,7 @@ import {
   classifyForeignCancellation,
   type ForeignA2AClientPort,
 } from "./foreign-client.ts";
-import { validateForeignA2AInvocationPin } from "./foreign-discovery.ts";
+import { verifyForeignA2AInvocationPin } from "./foreign-discovery.ts";
 import {
   assertConsistentForeignObservation,
   foreignA2AMessageDigest,
@@ -68,14 +68,14 @@ export class ForeignA2ADurableSession {
     };
     this.#random = options.random ?? Math.random;
     this.#onObservation = options.onObservation;
-    validatePolling(this.#polling);
+    assertA2APollingPolicy(this.#polling);
   }
 
   *start(request: ForeignA2AStartRequest): Operation<{
     state: ForeignA2AObservationState;
     event: ForeignA2ASessionEvent;
   }> {
-    validateForeignA2AInvocationPin(request.pin);
+    verifyForeignA2AInvocationPin(request.pin);
     assertDuplicateRiskPolicy(request.pin);
     this.#report("dispatch", request.pin, request.message.messageId);
     assertFuture(request.pin.requestExpiresAt, "initial request");
@@ -185,7 +185,7 @@ export class ForeignA2ADurableSession {
     state: ForeignA2AObservationState,
     request: ForeignA2AContinueRequest,
   ): Operation<{ state: ForeignA2AObservationState; event: ForeignA2ASessionEvent }> {
-    validateForeignA2AInvocationPin(request.pin);
+    verifyForeignA2AInvocationPin(request.pin);
     assertDuplicateRiskPolicy(request.pin);
     this.#report(
       "respond",
@@ -629,7 +629,9 @@ function assertDuplicateRiskPolicy(pin: ForeignA2AObservationState["pin"]): void
     );
   }
 }
-function validatePolling(value: Required<NonNullable<ForeignA2ASessionOptions["polling"]>>): void {
+function assertA2APollingPolicy(
+  value: Required<NonNullable<ForeignA2ASessionOptions["polling"]>>,
+): void {
   if (
     !Number.isSafeInteger(value.initialMs) ||
     value.initialMs <= 0 ||

@@ -31,7 +31,8 @@
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
-        "effection": "catalog:"
+        "effection": "catalog:",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",

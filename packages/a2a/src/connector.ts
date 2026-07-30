@@ -11,7 +11,7 @@ import {
   type A2ARequestAuthorization,
 } from "./types.ts";
 import { a2aError } from "./protocol.ts";
-import { validateA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
+import { verifyA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
 
 export interface A2AWebSocketConnection {
   send(frame: string | Uint8Array): Operation<void>;
@@ -52,7 +52,7 @@ export function createNodeA2AWebSocketConnector(
         throw transportLost();
       }
       const validated = yield* call(() =>
-        validateA2AUrl(request.endpoint, {
+        verifyA2AUrl(request.endpoint, {
           purpose: "driver",
           ...(options.urlPolicy ? { policy: options.urlPolicy } : {}),
           cardOrigin: request.cardOrigin,
@@ -65,7 +65,7 @@ export function createNodeA2AWebSocketConnector(
         [A2A_EXTENSIONS_HEADER]: CALLER_AUTHORITATIVE_EXTENSION_URI,
         ...authorization?.headers,
       };
-      validateHeaders(headers);
+      assertWebSocketHeaders(headers);
       const socketOptions = {
         headers,
         maxPayload: A2A_MAX_FRAME_BYTES,
@@ -225,7 +225,7 @@ function createPinnedLookup(addresses: readonly string[]): LookupFunction {
     }
   }) as LookupFunction;
 }
-function validateHeaders(headers: Readonly<Record<string, string>>): void {
+function assertWebSocketHeaders(headers: Readonly<Record<string, string>>): void {
   for (const [name, value] of Object.entries(headers)) {
     if (
       ["host", "connection", "upgrade", "sec-websocket-key", "sec-websocket-protocol"].includes(

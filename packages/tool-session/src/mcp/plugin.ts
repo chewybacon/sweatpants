@@ -321,7 +321,7 @@ export interface PluginClientRegistrationInput {
   toolName: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlers: Record<string, (req: any, ctx: any) => Operation<WireElicitResult<unknown>>>;
-  schemas: Record<string, ElicitDefinition<unknown, unknown>>;
+  schemas: Record<string, ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>>;
   artifacts?: ToolSchemaArtifacts["elicits"];
   replayTrace?: PluginReplayTraceHook;
 }

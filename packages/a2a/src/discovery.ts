@@ -12,7 +12,7 @@ import {
   type A2AAuthorizationProvider,
   type A2AHttpClient,
 } from "./http-client.ts";
-import { normalizedTransportOrigin, validateA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
+import { normalizedTransportOrigin, verifyA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
 
 export type A2AAgentCardSource =
   | { card: unknown; cardUrl?: string; cardOrigin?: string }
@@ -66,7 +66,7 @@ export async function discoverCallerAuthoritativeProgram(
   if (!record(card)) {
     throw a2aError("agent_card_invalid", "Agent Card must be an object");
   }
-  validateAgentCardCore(card);
+  assertAgentCardCore(card);
   const capabilities = card["capabilities"];
   if (!record(capabilities) || !Array.isArray(capabilities["extensions"])) {
     throw a2aError("extension_not_advertised", "Agent Card does not advertise extensions");
@@ -100,18 +100,18 @@ export async function discoverCallerAuthoritativeProgram(
     );
   }
   await Promise.all([
-    validateA2AUrl(params.manifestEndpoint, {
+    verifyA2AUrl(params.manifestEndpoint, {
       purpose: "manifest",
       ...(options.urlPolicy ? { policy: options.urlPolicy } : {}),
       cardOrigin: originForEndpoints,
     }),
-    validateA2AUrl(params.driverEndpoint, {
+    verifyA2AUrl(params.driverEndpoint, {
       purpose: "driver",
       ...(options.urlPolicy ? { policy: options.urlPolicy } : {}),
       cardOrigin: originForEndpoints,
     }),
   ]);
-  validateSkillMappings(card, params);
+  assertSkillMappings(card, params);
   const snapshot = canonicalSnapshot(card);
   return Object.freeze({
     card: snapshot.value,
@@ -187,7 +187,7 @@ export function parsePinnedProgram(value: unknown): PinnedProgram {
   return Object.freeze({ id: value["id"], version: value["version"], digest: value["digest"] });
 }
 
-function validateAgentCardCore(card: Record<string, Json>): void {
+function assertAgentCardCore(card: Record<string, Json>): void {
   if (
     !nonempty(card["name"]) ||
     !nonempty(card["version"]) ||
@@ -208,7 +208,7 @@ function validateAgentCardCore(card: Record<string, Json>): void {
   }
 }
 
-function validateSkillMappings(
+function assertSkillMappings(
   card: Record<string, Json>,
   params: CallerAuthoritativeProgramExtensionParamsV1,
 ): void {

@@ -1,9 +1,9 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
-import type { ZodSchema } from "zod";
 import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 
 import { buildToolSchemaArtifacts } from "./artifacts.ts";
+import { isStandardSchema } from "../schema/zod-adapter.ts";
 import type {
   CreateToolBuilderBase,
   ToolCtx,
@@ -12,6 +12,7 @@ import type {
   SamplesMap,
   ToolDefinition,
   ToolExtensionMetadata,
+  SchemaProjectionOptions,
 } from "./types.ts";
 
 /**
@@ -29,8 +30,10 @@ export function createTool<TName extends string>(name: TName): CreateToolBuilder
 interface UnifiedBuilderState {
   name: string;
   description?: string;
-  parameters?: ZodSchema;
-  output?: ZodSchema;
+  parameters?: StandardSchemaV1;
+  parametersProjections?: SchemaProjectionOptions;
+  output?: StandardSchemaV1;
+  outputProjections?: SchemaProjectionOptions;
   elicits?: ElicitsMap;
   samples?: SamplesMap | true;
   annotations: Record<string, unknown>;
@@ -42,15 +45,29 @@ function createUnifiedToolBuilder(state: UnifiedBuilderState): unknown {
     description(desc: string) {
       return createUnifiedToolBuilder({ ...state, description: desc });
     },
-    parameters(schema: ZodSchema) {
+    parameters(schema: StandardSchemaV1, projections?: SchemaProjectionOptions) {
+      if (!isStandardSchema(schema)) {
+        throw new Error(`Tool "${state.name}": parameters must implement Standard Schema V1`);
+      }
       if (!state.description) {
         throw new Error(`Tool "${state.name}": .description() must be called before .parameters()`);
       }
-      return createUnifiedToolBuilder({ ...state, parameters: schema });
+      return createUnifiedToolBuilder({
+        ...state,
+        parameters: schema,
+        ...(projections ? { parametersProjections: projections } : {}),
+      });
     },
-    output(schema: ZodSchema) {
+    output(schema: StandardSchemaV1, projections?: SchemaProjectionOptions) {
+      if (!isStandardSchema(schema)) {
+        throw new Error(`Tool "${state.name}": output must implement Standard Schema V1`);
+      }
       assertHasParameters(state, ".output()");
-      return createUnifiedToolBuilder({ ...state, output: schema });
+      return createUnifiedToolBuilder({
+        ...state,
+        output: schema,
+        ...(projections ? { outputProjections: projections } : {}),
+      });
     },
     elicits(elicits: ElicitsMap) {
       assertHasParameters(state, ".elicits()");
@@ -95,7 +112,11 @@ function createUnifiedToolBuilder(state: UnifiedBuilderState): unknown {
         name: state.name,
         description: state.description!,
         parameters: state.parameters!,
-        output: state.output,
+        ...(state.parametersProjections
+          ? { parametersProjections: state.parametersProjections }
+          : {}),
+        ...(state.output ? { output: state.output } : {}),
+        ...(state.outputProjections ? { outputProjections: state.outputProjections } : {}),
         elicits: state.elicits ?? {},
         samples: state.samples,
         annotations: state.annotations,
@@ -122,8 +143,10 @@ function assertUnifiedReady(state: UnifiedBuilderState, terminal: string): void 
 function finalizeCoreUnifiedTool(options: {
   name: string;
   description: string;
-  parameters: ZodSchema;
-  output?: ZodSchema | undefined;
+  parameters: StandardSchemaV1;
+  parametersProjections?: SchemaProjectionOptions;
+  output?: StandardSchemaV1 | undefined;
+  outputProjections?: SchemaProjectionOptions;
   elicits: ElicitsMap;
   samples?: SamplesMap | true | undefined;
   annotations: Record<string, unknown>;
@@ -136,8 +159,12 @@ function finalizeCoreUnifiedTool(options: {
   const artifacts = buildToolSchemaArtifacts({
     identity: `tool:${options.name}`,
     version: schemaVersionAnnotation(options.annotations),
-    parameters: options.parameters as StandardSchemaV1,
-    output: options.output as StandardSchemaV1 | undefined,
+    parameters: options.parameters,
+    ...(options.parametersProjections
+      ? { parametersProjections: options.parametersProjections }
+      : {}),
+    output: options.output,
+    ...(options.outputProjections ? { outputProjections: options.outputProjections } : {}),
     elicits: normalizedElicits as Record<
       string,
       ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>
@@ -152,30 +179,36 @@ function finalizeCoreUnifiedTool(options: {
           (function* (): Operation<unknown> {
             // Validation flows through the Standard Schema interface; sync or
             // Promise-returning validators compose as Effection operations.
-            const parsed = yield* validateStandardSchema(
-              options.parameters as StandardSchemaV1,
-              input,
-            );
-            if (parsed.issues !== undefined || parsed.value === undefined) {
+            let parsed: StandardSchemaV1.Result<unknown>;
+            try {
+              if (!isStandardSchema(options.parameters)) {
+                throw new Error("parameters schema authority is unavailable");
+              }
+              parsed = yield* validateStandardSchema(options.parameters, input);
+            } catch {
+              throw codedToolError("invalid_tool_input", "Tool input validation failed");
+            }
+            if (parsed.issues !== undefined) {
               throw codedToolError(
                 "invalid_tool_input",
-                `Invalid input for tool "${options.name}": ${describeIssues(
-                  parsed.issues ?? undefined,
-                )}`,
+                `Invalid input for tool "${options.name}": ${describeIssues(parsed.issues)}`,
               );
             }
             const result = yield* options.impl(parsed.value, ctx);
             if (options.output) {
-              const parsedOutput = yield* validateStandardSchema(
-                options.output as StandardSchemaV1,
-                result,
-              );
-              if (parsedOutput.issues !== undefined || parsedOutput.value === undefined) {
+              let parsedOutput: StandardSchemaV1.Result<unknown>;
+              try {
+                if (!isStandardSchema(options.output)) {
+                  throw new Error("output schema authority is unavailable");
+                }
+                parsedOutput = yield* validateStandardSchema(options.output, result);
+              } catch {
+                throw codedToolError("invalid_tool_output", "Tool output validation failed");
+              }
+              if (parsedOutput.issues !== undefined) {
                 throw codedToolError(
                   "invalid_tool_output",
-                  `Invalid output for tool "${options.name}": ${describeIssues(
-                    parsedOutput.issues ?? undefined,
-                  )}`,
+                  `Invalid output for tool "${options.name}": ${describeIssues(parsedOutput.issues)}`,
                 );
               }
               return parsedOutput.value;

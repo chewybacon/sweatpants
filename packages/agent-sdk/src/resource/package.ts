@@ -263,7 +263,7 @@ export function bindResourcePackage(
       supplied.set(path, new Uint8Array(value));
     }
   }
-  validateCompleteBindings(manifest, supplied, limits);
+  verifyCompleteResourceBindings(manifest, supplied, limits);
   return createPackage(manifest, supplied, limits);
 }
 
@@ -345,7 +345,7 @@ export function parseResourceUri(uri: string): ResourceFileRefV1 {
   return ref;
 }
 
-export function validateCompleteBindings(
+export function verifyCompleteResourceBindings(
   manifest: ResourcePackageManifestV1,
   bindings: ReadonlyMap<string, Uint8Array>,
   limits: ResourceLimits,

@@ -53,7 +53,8 @@
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
-        "ws": "catalog:"
+        "ws": "catalog:",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",

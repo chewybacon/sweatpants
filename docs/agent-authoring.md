@@ -93,6 +93,38 @@ const agent = defineAgent({
 
 A fluent durable tool is itself an `AgentProgramInput`. `defineChatProgram()` and `defineAgent()` derive its runtime schema catalog and empty resource list; authors do not construct `AgentProgramBinding` objects or cast tools to low-level types.
 
+### Validator-neutral schemas
+
+Authoring accepts Standard Schema V1 directly. Zod 4 remains a zero-adapter option, while a custom validator can provide the same runtime contract:
+
+```ts
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+const countSchema: StandardSchemaV1<unknown, { count: number }> = {
+  "~standard": {
+    version: 1,
+    vendor: "example-validator",
+    validate(value) {
+      return typeof value === "object" && value !== null && "count" in value
+        ? { value: { count: Number((value as { count: unknown }).count) } }
+        : { issues: [{ message: "count is required" }] };
+    },
+  },
+};
+
+const portableCountTool = createDurableTool("count", { version: "1.0.0" })
+  .description("Count a value")
+  .parameters(countSchema, {
+    inputProjection: { type: "object", properties: { count: { type: "number" } } },
+    outputProjection: { type: "number" },
+  })
+  .execute(function* ({ count }) {
+    return count;
+  });
+```
+
+The validator object remains process-local. Durable manifests carry only its digest-bearing descriptor and the explicit projections; restore selects the exact runtime binding by digest.
+
 Omitting a digest creates deterministic `generated-interface` provenance from the complete durable manifest: program name and version, schemas, effects, elicitations, and capabilities. This identity deliberately does **not** claim to cover executor source and is rejected by `releaseStrict`. Build tooling can instead supply `implementationArtifactDigest` in the `createDurableTool` options to use the existing validated `generated-artifact` path. Explicit `.identity({ version, digest })` remains the asserted low-level escape hatch. Runtime correctness never depends on a build plugin.
 
 Model-visible durable tools should be wrapped with `modelTool(tool, { resultClassification })`. The declared classification ceiling taints every returned value independently of payload shape; direct legacy tool declarations conservatively default to `restricted`. A tool may raise, but never lower, that ceiling with the explicit `classifiedToolResult` envelope. Ordinary output fields named `classifications` or `sources` have no provenance meaning. The `resources.*` namespace is reserved for generated readers.

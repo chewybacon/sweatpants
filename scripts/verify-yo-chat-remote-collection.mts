@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import config from "../apps/yo-chat/sweatpants.config.ts";
 import {
     bundleConfiguredPrograms,
-    validateCollectionProgramEntries,
+    loadCollectionProgramEntries,
 } from "../packages/cli/src/remote-development.ts";
 
 async function main(): Promise<void> {
@@ -16,7 +16,7 @@ async function main(): Promise<void> {
         allowedEvaluatorImports: ["node:process"],
     });
 
-    const programs = await validateCollectionProgramEntries(built.manifest, built.files);
+    const programs = await loadCollectionProgramEntries(built.manifest, built.files);
     if (!programs.has("play_ttt")) {
         throw new Error("Real play_ttt program was not reconstructed from the collection");
     }

@@ -6,6 +6,7 @@
 
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { z } from "zod";
 
 /**
  * MCP Manifest structure (matches the server's generateMcpManifest output)
@@ -75,9 +76,7 @@ async function fetchFromFile(filePath: string): Promise<McpManifest> {
   const content = await readFile(filePath, "utf-8");
 
   try {
-    const manifest = JSON.parse(content) as McpManifest;
-    validateManifest(manifest);
-    return manifest;
+    return parseMcpManifest(JSON.parse(content));
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(`Invalid JSON in manifest file: ${filePath}`);
@@ -110,33 +109,73 @@ async function fetchFromUrl(input: string): Promise<McpManifest> {
     );
   }
 
-  const manifest = (await response.json()) as McpManifest;
-  validateManifest(manifest);
-  return manifest;
+  return parseMcpManifest(await response.json());
 }
 
-/**
- * Validate that a manifest has the required structure.
- */
-function validateManifest(manifest: unknown): asserts manifest is McpManifest {
-  if (!manifest || typeof manifest !== "object") {
-    throw new Error("Manifest must be an object");
-  }
+const jsonSchema = z.record(z.string(), z.json());
+const manifestSchema = z
+  .object({
+    version: z.string().min(1).max(64),
+    server: z
+      .object({
+        name: z.string().min(1).max(512),
+        version: z.string().min(1).max(128),
+        description: z.string().max(16_384).optional(),
+      })
+      .strict(),
+    mcp: z
+      .object({
+        endpoint: z.string().min(1).max(2_048),
+        protocolVersion: z.string().min(1).max(128),
+      })
+      .strict(),
+    tools: z
+      .array(
+        z
+          .object({
+            name: z.string().min(1).max(512),
+            description: z.string().max(16_384),
+            inputSchema: jsonSchema,
+            _meta: z
+              .object({
+                "x-sweatpants": z
+                  .object({
+                    elicits: z
+                      .record(
+                        z.string().min(1).max(512),
+                        z
+                          .object({
+                            response: jsonSchema,
+                            context: jsonSchema.optional(),
+                          })
+                          .strict(),
+                      )
+                      .optional(),
+                    requires: z
+                      .object({
+                        elicitation: z.boolean().optional(),
+                        sampling: z.boolean().optional(),
+                      })
+                      .strict()
+                      .optional(),
+                  })
+                  .strict()
+                  .optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+      )
+      .max(1_024),
+  })
+  .strict();
 
-  const m = manifest as Record<string, unknown>;
-
-  if (!m["tools"] || !Array.isArray(m["tools"])) {
-    throw new Error("Manifest must have a tools array");
-  }
-
-  for (const tool of m["tools"] as unknown[]) {
-    if (!tool || typeof tool !== "object") {
-      throw new Error("Each tool must be an object");
-    }
-
-    const t = tool as Record<string, unknown>;
-    if (typeof t["name"] !== "string") {
-      throw new Error("Each tool must have a name");
-    }
+/** Parses the complete current MCP manifest shape from an untrusted value. */
+export function parseMcpManifest(value: unknown): McpManifest {
+  try {
+    return manifestSchema.parse(value) as unknown as McpManifest;
+  } catch {
+    throw new Error("MCP manifest has an invalid closed shape");
   }
 }

@@ -5,8 +5,9 @@ import { type EffectDefinition } from "@sweatpants/durable-effects";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
-import { z, type ZodSchema } from "zod";
+import { z } from "zod";
 import { canonicalJson, sha256, sortStrings } from "@sweatpants/foundation";
+import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import { type Json } from "@sweatpants/foundation";
 import {
@@ -27,7 +28,7 @@ import { type SchemaBinding, type PortableSchemaDescriptor } from "@sweatpants/f
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import { effectCatalogEntries } from "./durable-effect.ts";
 import {
-  validateDurableExtensionDeclarations,
+  assertDurableExtensionDeclarations,
   type DurableExtensionContext,
   type DurableExtensionMap,
 } from "./durable-context-extension.ts";
@@ -39,6 +40,7 @@ import type {
   ExtractElicitResponse,
   NormalizedElicitsMap,
   ToolExtensionMetadata,
+  SchemaProjectionOptions,
 } from "./types.ts";
 
 type JsonCompatible<T> = [T] extends [null | boolean | number | string | undefined]
@@ -73,7 +75,7 @@ type EffectFromMap<E extends EffectMap> = E[keyof E];
 type SamplingTool = {
   readonly name: string;
   readonly description?: string;
-  readonly inputSchema: ZodSchema | Readonly<Record<string, unknown>>;
+  readonly inputSchema: StandardSchemaV1 | Readonly<Record<string, unknown>>;
 };
 type SamplingRequestBase = {
   readonly prompt?: string;
@@ -173,9 +175,15 @@ export interface CreateDurableToolBuilderWithDescription<N extends string> {
 }
 
 export interface CreateDurableToolBuilderWithIdentity<N extends string> {
-  parameters<S extends ZodSchema>(
-    schema: S & (JsonCompatible<z.infer<S>> extends true ? unknown : never),
-  ): CreateDurableToolBuilderWithParameters<N, JsonOutput<z.infer<S>>, undefined, {}>;
+  parameters<S extends StandardSchemaV1>(
+    schema: S & (JsonCompatible<StandardSchemaV1.InferOutput<S>> extends true ? unknown : never),
+    projections?: SchemaProjectionOptions,
+  ): CreateDurableToolBuilderWithParameters<
+    N,
+    JsonOutput<StandardSchemaV1.InferOutput<S>>,
+    undefined,
+    {}
+  >;
 }
 
 export interface CreateDurableToolBuilderWithParameters<
@@ -184,9 +192,10 @@ export interface CreateDurableToolBuilderWithParameters<
   O extends Json | undefined,
   E extends ElicitsMap,
 > {
-  output<S extends ZodSchema>(
-    schema: S & (JsonCompatible<z.infer<S>> extends true ? unknown : never),
-  ): CreateDurableToolBuilderWithParameters<N, I, JsonOutput<z.infer<S>>, E>;
+  output<S extends StandardSchemaV1>(
+    schema: S & (JsonCompatible<StandardSchemaV1.InferOutput<S>> extends true ? unknown : never),
+    projections?: SchemaProjectionOptions,
+  ): CreateDurableToolBuilderWithParameters<N, I, JsonOutput<StandardSchemaV1.InferOutput<S>>, E>;
   elicits<Next extends ElicitsMap>(
     elicits: Next,
   ): CreateDurableToolBuilderWithParameters<N, I, O, Next>;
@@ -233,8 +242,10 @@ type BuilderState = {
   version?: string;
   implementationArtifactDigest?: string;
   resourcePackageDigests?: readonly string[];
-  parameters?: ZodSchema;
-  output?: ZodSchema;
+  parameters?: StandardSchemaV1;
+  parametersProjections?: SchemaProjectionOptions;
+  output?: StandardSchemaV1;
+  outputProjections?: SchemaProjectionOptions;
   elicits?: ElicitsMap;
   effects?: EffectMap;
   samples?: boolean;
@@ -304,17 +315,25 @@ function builder(state: BuilderState): unknown {
       }
       return builder({ ...state, identity: { ...identity } });
     },
-    parameters(parameters: ZodSchema) {
+    parameters(parameters: StandardSchemaV1, projections?: SchemaProjectionOptions) {
       requireStage(
         state.identity ?? state.version,
         ".identity() or a version option",
         ".parameters()",
       );
-      return builder({ ...state, parameters });
+      return builder({
+        ...state,
+        parameters,
+        ...(projections ? { parametersProjections: projections } : {}),
+      });
     },
-    output(output: ZodSchema) {
+    output(output: StandardSchemaV1, projections?: SchemaProjectionOptions) {
       requireStage(state.parameters, ".parameters()", ".output()");
-      return builder({ ...state, output });
+      return builder({
+        ...state,
+        output,
+        ...(projections ? { outputProjections: projections } : {}),
+      });
     },
     elicits(elicits: ElicitsMap) {
       requireStage(state.parameters, ".parameters()", ".elicits()");
@@ -328,7 +347,7 @@ function builder(state: BuilderState): unknown {
         }
       }
       const merged = { ...state.extensions, ...extensions };
-      validateDurableExtensionDeclarations(merged);
+      assertDurableExtensionDeclarations(merged);
       return builder({ ...state, extensions: merged });
     },
     effects(effects: EffectMap) {
@@ -376,6 +395,7 @@ function builder(state: BuilderState): unknown {
         identity: `${identityPrefix}/input`,
         role: "program_input",
         version,
+        ...(state.parametersProjections ?? {}),
       });
       catalog.push(input.entry);
       let outputDescriptor: PortableSchemaDescriptor;
@@ -384,6 +404,7 @@ function builder(state: BuilderState): unknown {
           identity: `${identityPrefix}/output`,
           role: "program_output",
           version,
+          ...(state.outputProjections ?? {}),
         });
         catalog.push(output.entry);
         outputDescriptor = output.descriptor;
@@ -653,16 +674,17 @@ function* sampleStructured<T>(
       schema: portableSamplingSchema(schema),
     });
     const candidate = result.parsed ?? parseSampleText(result.text);
-    const validated = schema["~standard"].validate(candidate);
-    if (validated instanceof Promise) {
-      throw new Error("Durable sampleSchema requires a synchronous Standard Schema validator");
+    let validated: StandardSchemaV1.Result<T>;
+    try {
+      validated = yield* validateStandardSchema(schema, candidate);
+    } catch {
+      lastMessage = "validator threw while checking model output";
+      continue;
     }
     if (validated.issues === undefined) {
-      return Object.assign({}, result, { parsed: validated.value }) as ModelSampleResult & {
-        parsed: T;
-      };
+      return Object.assign({}, result, { parsed: validated.value });
     }
-    lastMessage = validated.issues
+    lastMessage = safeSchemaIssues(validated.issues)
       .slice(0, 4)
       .map((issue) => issue.message)
       .join("; ")
@@ -691,14 +713,31 @@ function assertSamplingRequest(
 function portableSamplingSchema(
   schema: StandardSchemaV1 | Readonly<Record<string, unknown>>,
 ): Json {
-  if ("~standard" in schema) {
+  if (isStandardSchemaValue(schema)) {
+    if (schema["~standard"].vendor !== "zod") {
+      throw new CrankError(
+        "schema_projection_unavailable",
+        "Durable sampling requires an explicit portable projection for non-Zod schemas",
+      );
+    }
     try {
       return z.toJSONSchema(schema as z.ZodType) as Json;
     } catch {
-      throw new Error("Durable sampling schema must provide a portable JSON Schema projection");
+      throw new CrankError(
+        "schema_projection_unavailable",
+        "Durable sampling schema must provide a portable JSON Schema projection",
+      );
     }
   }
   return schema as Json;
+}
+
+function isStandardSchemaValue(value: unknown): value is StandardSchemaV1 {
+  if (!value || typeof value !== "object" || !("~standard" in value)) return false;
+  const standard = (value as { "~standard"?: { version?: unknown; validate?: unknown } })[
+    "~standard"
+  ];
+  return Boolean(standard && standard.version === 1 && typeof standard.validate === "function");
 }
 
 function parseSampleText(text: string): unknown {
@@ -711,14 +750,11 @@ function parseSampleText(text: string): unknown {
 
 function normalizeElicits(
   elicits: ElicitsMap,
-): Record<string, ElicitDefinition<ZodSchema, ZodSchema | undefined>> {
+): Record<string, ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>> {
   return Object.fromEntries(
     Object.entries(elicits).map(([key, entry]) => {
-      const definition: ElicitDefinition<ZodSchema, ZodSchema | undefined> = isElicitDefinition(
-        entry,
-      )
-        ? { ...entry }
-        : { response: entry };
+      const definition: ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined> =
+        isElicitDefinition(entry) ? { ...entry } : { response: entry as StandardSchemaV1 };
       if (definition.response === undefined) {
         throw new Error(`Durable tool elicit "${key}" is missing a response schema`);
       }
@@ -727,7 +763,9 @@ function normalizeElicits(
   );
 }
 
-function isElicitDefinition(value: unknown): value is ElicitDefinition<ZodSchema, ZodSchema> {
+function isElicitDefinition(
+  value: unknown,
+): value is ElicitDefinition<StandardSchemaV1, StandardSchemaV1> {
   return Boolean(
     value &&
     typeof value === "object" &&

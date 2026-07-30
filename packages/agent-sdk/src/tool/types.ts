@@ -1,10 +1,14 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
-import type { z, ZodSchema } from "zod";
-
+import type { Json } from "@sweatpants/foundation";
 import type { SchemaBinding, PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 
 /** Portable descriptors for one declared elicitation (content-schema semantics). */
+export interface SchemaProjectionOptions {
+  readonly inputProjection?: Json;
+  readonly outputProjection?: Json;
+}
+
 export interface ToolElicitSchemaArtifact {
   /** Accepted-content descriptor; never the outer wire action envelope. */
   readonly response: PortableSchemaDescriptor;
@@ -85,17 +89,24 @@ export interface ToolMessage {
  *
  * Type parameters are **response-first** (required before optional).
  */
-export interface ElicitDefinition<TResponseSchema = ZodSchema, TContextSchema = undefined> {
+export interface ElicitDefinition<
+  TResponseSchema extends StandardSchemaV1 = StandardSchemaV1,
+  TContextSchema extends StandardSchemaV1 | undefined = undefined,
+> {
   readonly description?: string;
   readonly response: TResponseSchema;
   readonly context?: TContextSchema;
   readonly annotations?: Readonly<Record<string, unknown>>;
   readonly metadata?: Readonly<Record<string, unknown>>;
+  /** Explicit projections required for non-Zod durable schemas. */
+  readonly responseProjections?: SchemaProjectionOptions;
+  readonly contextProjections?: SchemaProjectionOptions;
 }
 
-export type ElicitEntry<TResponseSchema = ZodSchema, TContextSchema = undefined> =
-  | TResponseSchema
-  | ElicitDefinition<TResponseSchema, TContextSchema>;
+export type ElicitEntry<
+  TResponseSchema extends StandardSchemaV1 = StandardSchemaV1,
+  TContextSchema extends StandardSchemaV1 | undefined = undefined,
+> = TResponseSchema | ElicitDefinition<TResponseSchema, TContextSchema>;
 
 export type ElicitsMap = Record<string, ElicitEntry<any, any>>;
 
@@ -280,7 +291,7 @@ export interface ModelPreferences {
 export interface SamplingToolDefinition {
   name: string;
   description?: string;
-  inputSchema: ZodSchema | Record<string, unknown>;
+  inputSchema: StandardSchemaV1 | Record<string, unknown>;
 }
 
 export type SamplingToolChoice = "auto" | "required" | "none";
@@ -298,7 +309,7 @@ interface SampleConfigPlain extends SampleConfigBase {
 }
 
 interface SampleConfigWithSchema<T = unknown> extends SampleConfigBase {
-  schema: ZodSchema<T>;
+  schema: StandardSchemaV1<unknown, T>;
   tools?: never;
   toolChoice?: never;
 }
@@ -354,7 +365,7 @@ export interface SampleToolsResult {
 }
 
 export interface SampleSchemaConfigBase<T> extends SampleConfigBase {
-  schema: ZodSchema<T>;
+  schema: StandardSchemaV1<unknown, T>;
   retries?: number;
 }
 
@@ -525,9 +536,16 @@ export interface CreateToolBuilderBase<TName extends string> {
 }
 
 export interface CreateToolBuilderWithDescription<TName extends string> {
-  parameters<TSchema extends ZodSchema>(
+  parameters<TSchema extends StandardSchemaV1>(
     schema: TSchema,
-  ): CreateToolBuilderWithParams<TName, z.infer<TSchema>, undefined, undefined, undefined>;
+    projections?: SchemaProjectionOptions,
+  ): CreateToolBuilderWithParams<
+    TName,
+    StandardSchemaV1.InferOutput<TSchema>,
+    undefined,
+    undefined,
+    undefined
+  >;
 }
 
 export interface CreateToolBuilderWithParams<
@@ -537,9 +555,16 @@ export interface CreateToolBuilderWithParams<
   TElicits extends ElicitsMap | undefined = undefined,
   TSamples extends SamplesMap | true | undefined = undefined,
 > {
-  output<TSchema extends ZodSchema>(
+  output<TSchema extends StandardSchemaV1>(
     schema: TSchema,
-  ): CreateToolBuilderWithParams<TName, TInput, z.infer<TSchema>, TElicits, TSamples>;
+    projections?: SchemaProjectionOptions,
+  ): CreateToolBuilderWithParams<
+    TName,
+    TInput,
+    StandardSchemaV1.InferOutput<TSchema>,
+    TElicits,
+    TSamples
+  >;
   elicits<TNextElicits extends ElicitsMap>(
     elicits: TNextElicits,
   ): CreateToolBuilderWithParams<TName, TInput, TOutput, TNextElicits, TSamples>;

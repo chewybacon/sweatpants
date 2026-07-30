@@ -9,8 +9,8 @@ import {
   generateProgramArtifactIdentity,
   generateProgramInterfaceIdentity,
   normalizeProgramArtifactIdentityInput,
-  validateProgramBindingsForRelease,
-  validateProgramIdentityProvenance,
+  verifyProgramBindingsForRelease,
+  verifyProgramIdentityProvenance,
   type ProgramArtifactIdentityInputV1,
 } from "@sweatpants/durable-execution";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
@@ -68,9 +68,9 @@ describe("program artifact identity", () => {
     });
     expect(binding.manifest.digest).toBe(identity.digest);
     expect(binding.identityProvenance.kind).toBe("generated-artifact");
-    expect(() => validateProgramIdentityProvenance(binding, { releaseStrict: true })).not.toThrow();
+    expect(() => verifyProgramIdentityProvenance(binding, { releaseStrict: true })).not.toThrow();
     expect(() =>
-      validateProgramIdentityProvenance({
+      verifyProgramIdentityProvenance({
         ...binding,
         manifest: { ...binding.manifest, digest: "f".repeat(64) },
       }),
@@ -89,8 +89,8 @@ describe("program artifact identity", () => {
     expect(identity.digest).not.toBe(changed.digest);
     expect(binding.manifest.digest).toBe(identity.digest);
     expect(binding.identityProvenance).toEqual(identity.provenance);
-    expect(() => validateProgramIdentityProvenance(binding)).not.toThrow();
-    expect(() => validateProgramIdentityProvenance(binding, { releaseStrict: true })).toThrowError(
+    expect(() => verifyProgramIdentityProvenance(binding)).not.toThrow();
+    expect(() => verifyProgramIdentityProvenance(binding, { releaseStrict: true })).toThrowError(
       expect.objectContaining({ code: "interface_program_identity_forbidden" }),
     );
   });
@@ -101,7 +101,7 @@ describe("program artifact identity", () => {
       return null;
     });
     expect(tool.identityProvenance).toEqual({ kind: "asserted" });
-    expect(() => validateProgramBindingsForRelease([tool])).toThrowError(
+    expect(() => verifyProgramBindingsForRelease([tool])).toThrowError(
       expect.objectContaining({ code: "asserted_program_identity_forbidden" }),
     );
   });

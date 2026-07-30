@@ -18,18 +18,26 @@ export function defineDurableEffect<
   O extends Json = Json,
   P extends Json = never,
 >(definition: EffectDefinition<I, O, P>): EffectDefinition<I, O, P> {
-  validateEffectDefinition(definition);
+  assertEffectDefinition(definition);
   return deepFreeze(structuredClone(definition));
 }
 
-export function validateEffectDefinition(definition: EffectDefinition<Json, Json, Json>): void {
+export function assertEffectDefinition(definition: EffectDefinition<Json, Json, Json>): void {
   if (!definition || typeof definition !== "object") invalid("effect definition");
   requireId(definition.name, "effect name");
   requireId(definition.version, "effect version");
-  validateDescriptor(definition.inputSchema, "effect_input", `${definition.name}.inputSchema`);
-  validateDescriptor(definition.outputSchema, "effect_output", `${definition.name}.outputSchema`);
+  assertEffectSchemaDescriptor(
+    definition.inputSchema,
+    "effect_input",
+    `${definition.name}.inputSchema`,
+  );
+  assertEffectSchemaDescriptor(
+    definition.outputSchema,
+    "effect_output",
+    `${definition.name}.outputSchema`,
+  );
   if (definition.cancellation !== undefined) {
-    validateDescriptor(
+    assertEffectSchemaDescriptor(
       definition.cancellation.partialSchema,
       "effect_cancellation_partial",
       `${definition.name}.cancellation.partialSchema`,
@@ -50,7 +58,7 @@ export function validateEffectDefinition(definition: EffectDefinition<Json, Json
   canonicalSnapshot(definition);
 }
 
-function validateDescriptor(
+function assertEffectSchemaDescriptor(
   value: unknown,
   role: "effect_input" | "effect_output" | "effect_cancellation_partial",
   path: string,

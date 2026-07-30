@@ -2,7 +2,7 @@ import { type DurableEffectRegistry, type EffectDefinition } from "@sweatpants/d
 
 import { CrankError } from "@sweatpants/durable-execution";
 import { durableEffectRuntimeSchemas } from "@sweatpants/durable-effects";
-import { validateEffectDefinition } from "@sweatpants/durable-effects/authoring";
+import { assertEffectDefinition } from "@sweatpants/durable-effects/authoring";
 import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import type {
   PeerEffectContract,
@@ -21,7 +21,7 @@ const GRANT_DOMAIN = "sweatpants.peer.grant-set.v1";
 export function definePeerEffectContract(
   definition: EffectDefinition<Json, Json, Json>,
 ): PeerEffectContract {
-  validateEffectDefinition(definition);
+  assertEffectDefinition(definition);
   const body = {
     name: definition.name,
     version: definition.version,
@@ -149,7 +149,7 @@ export function buildPeerOffer(input: {
     if (offered.route === "denied" && requirement.required) {
       throw new CrankError("peer_required_effect_unavailable", "Required effect may not be denied");
     }
-    validateDelegation(offered);
+    verifyPeerDelegation(offered);
     offers.push(snapshotOffer(offered));
   }
   return Object.freeze({
@@ -258,7 +258,7 @@ export function peerContractAsEffectDefinition(
       : {}),
     retrySafety: contract.retrySafety,
   };
-  validateEffectDefinition(definition);
+  assertEffectDefinition(definition);
   if (definePeerEffectContract(definition).contractDigest !== contract.contractDigest) {
     throw new CrankError("peer_effect_contract_mismatch", "Effect whole-contract digest mismatch");
   }
@@ -341,7 +341,7 @@ function snapshotGrant(value: PeerGrant): PeerGrant {
   peerContractAsEffectDefinition(value.contract);
   return canonicalSnapshot(value).value as PeerGrant;
 }
-function validateDelegation(offer: PeerEffectOffer): void {
+function verifyPeerDelegation(offer: PeerEffectOffer): void {
   if (offer.delegation.mode === "none") {
     return;
   }

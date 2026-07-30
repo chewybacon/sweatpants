@@ -8,6 +8,7 @@ import {
   type BedrockAgentCoreClientConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { AgentCoreToolRuntimeResponse } from "./agentcore-types.ts";
+import { parseAgentCoreToolRuntimeResponse } from "./agentcore-boundary-parsers.ts";
 import type { AgentCoreInvokeInput, AgentCoreInvoker } from "./agentcore-runtime-client.ts";
 
 export interface AwsSdkAgentCoreInvokerOptions {
@@ -114,26 +115,25 @@ export function parseAgentCoreSseResponses(raw: string): AgentCoreToolRuntimeRes
       continue;
     }
     let text = dataLines.join("\n");
+    if (text === "[DONE]") continue;
+    let value: unknown;
     try {
-      const parsed = JSON.parse(text) as unknown;
-      if (typeof parsed === "string") {
-        text = parsed.startsWith("data:") ? parsed.slice(5).trim() : parsed;
-      } else if (parsed && typeof parsed === "object" && "data" in parsed) {
-        responses.push((parsed as { data: AgentCoreToolRuntimeResponse }).data);
-        continue;
+      value = JSON.parse(text) as unknown;
+      if (typeof value === "string") {
+        text = value.startsWith("data:") ? value.slice(5).trim() : value;
+        if (text === "[DONE]") continue;
+        value = JSON.parse(text) as unknown;
       }
     } catch {
-      // Keep raw text and try below.
+      throw new Error("AgentCore returned malformed JSON SSE data");
+    }
+    if (value && typeof value === "object" && !Array.isArray(value) && "data" in value) {
+      value = (value as Record<string, unknown>)["data"];
     }
     try {
-      const parsed = JSON.parse(text) as unknown;
-      if (parsed && typeof parsed === "object" && "data" in parsed) {
-        responses.push((parsed as { data: AgentCoreToolRuntimeResponse }).data);
-      } else {
-        responses.push(parsed as AgentCoreToolRuntimeResponse);
-      }
+      responses.push(parseAgentCoreToolRuntimeResponse(value));
     } catch {
-      // Ignore non-JSON SSE data lines.
+      throw new Error("AgentCore returned a malformed tool-runtime response");
     }
   }
   return responses;
