@@ -7,7 +7,6 @@ import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
 import { resource, type Operation, type Stream } from "effection";
-import { z } from "zod";
 import { encodeElicitContext } from "@sweatpants/tool-session/elicit-context";
 import {
   type DurableJournalAuthorityService,
@@ -1334,18 +1333,21 @@ function parseRuntimeContentBlock(value: Json): ContentBlock | undefined {
   }
 }
 
-function toolCallArguments(value: unknown): Record<string, unknown> {
+/**
+ * Journal-stored assistant messages carry model arguments verbatim. Some
+ * providers stored them as a JSON string, so decoding that string is this
+ * hop's only job — shape stays the authored tool's decision at `execute`.
+ */
+function toolCallArguments(value: Json | undefined): Json {
   if (typeof value === "string") {
     try {
-      return unknownRecordSchema.safeParse(JSON.parse(value)).data ?? {};
+      return JSON.parse(value) as Json;
     } catch {
-      return {};
+      return value;
     }
   }
-  return unknownRecordSchema.safeParse(value).data ?? {};
+  return value ?? null;
 }
-
-const unknownRecordSchema = z.record(z.string(), z.unknown());
 
 function snapshotAssistantContent(content: AssistantMessage["content"]): Json[] {
   return content.map((block) => {

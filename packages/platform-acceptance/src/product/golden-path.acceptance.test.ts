@@ -50,7 +50,7 @@ function mockModel(): Model {
 
 function createScriptedModelProvider(options: {
   text: string;
-  toolCall?: { id: string; name: string; arguments: Record<string, unknown> };
+  toolCall?: { id: string; name: string; arguments: Record<string, string> };
 }): ModelProviderDriver {
   return {
     *stream(): Operation<Stream<RuntimeStreamEvent, AssistantMessage>> {
@@ -64,7 +64,7 @@ function createScriptedModelProvider(options: {
                 type: "toolCall";
                 id: string;
                 name: string;
-                arguments: Record<string, unknown>;
+                arguments: Record<string, string>;
               };
               partial: AssistantMessage;
             }

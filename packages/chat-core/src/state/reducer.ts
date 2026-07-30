@@ -6,7 +6,7 @@ import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from "../type
 import { getRenderedFromFrame } from "../types/chat-message.ts";
 import { agUiMessagesToInternalMessages } from "../session/ag-ui-messages.ts";
 import { activitySnapshotToPluginReplayTrace } from "../session/plugin-replay.ts";
-import { z } from "zod";
+import type { Json } from "@sweatpants/foundation";
 
 export type { ChatStateEvent, LocalChatAction } from "./events.ts";
 export { initialChatState };
@@ -36,12 +36,16 @@ function upsertToolResult(messages: Message[], message: Message): Message[] {
   );
 }
 
-function parseArguments(value: string): Record<string, unknown> {
+/**
+ * Streaming argument deltas arrive as partial JSON text. Until the text is
+ * complete it is not decodable, so the partial text itself is the honest value
+ * to carry — an empty object would claim the model asked for nothing.
+ */
+function parseArguments(value: string): Json {
   try {
-    const parsed = z.record(z.string(), z.json()).safeParse(JSON.parse(value));
-    return parsed.success ? parsed.data : {};
+    return JSON.parse(value) as Json;
   } catch {
-    return {};
+    return value;
   }
 }
 

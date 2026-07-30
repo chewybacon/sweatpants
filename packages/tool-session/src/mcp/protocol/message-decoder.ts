@@ -15,6 +15,7 @@
  * @packageDocumentation
  */
 import { z } from "zod";
+import type { Json } from "@sweatpants/foundation";
 import type {
   JsonRpcResponse,
   JsonRpcRequest,
@@ -54,7 +55,7 @@ export type DecodedSampleResult =
 export type DecodedMessage =
   | { type: "elicitation_response"; elicitId: string; result: WireElicitResult<unknown> }
   | { type: "sampling_response"; sampleId: string; result: DecodedSampleResult }
-  | { type: "tool_call"; name: string; args: Record<string, unknown>; requestId: string | number }
+  | { type: "tool_call"; name: string; args: Json; requestId: string | number }
   | { type: "error"; code: number; message: string; data?: unknown }
   | { type: "unknown"; raw: unknown };
 
@@ -202,15 +203,17 @@ export function decodeSamplingResponse(
 // =============================================================================
 
 /**
- * Decode an MCP tools/call request.
+ * Decode an MCP tools/call request. `parseToolCallRequest` is the owning parser
+ * and already proves `params.name`, so this decoder demands the parsed shape
+ * instead of inventing an empty name for a request that cannot exist.
  */
 export function decodeToolCallRequest(
-  request: JsonRpcRequest<"tools/call", McpToolCallParams>,
+  request: JsonRpcRequest<"tools/call", McpToolCallParams> & { params: McpToolCallParams },
 ): DecodedMessage {
   return {
     type: "tool_call",
-    name: request.params?.name ?? "",
-    args: request.params?.arguments ?? {},
+    name: request.params.name,
+    args: request.params.arguments ?? {},
     requestId: request.id,
   };
 }

@@ -3,7 +3,8 @@ import {
   generateImages as piGenerateImages,
   streamSimple as piStreamSimple,
 } from "@earendil-works/pi-ai/compat";
-import { isProviderRecord, toProviderJsonSchema } from "./schema-normalization.ts";
+import { toProviderJsonSchema } from "./schema-normalization.ts";
+import type { Json } from "@sweatpants/foundation";
 import type {
   AssistantImages as PiAssistantImages,
   AssistantMessage as PiAssistantMessage,
@@ -112,7 +113,7 @@ function toPiContentBlock(block: ContentBlock): unknown {
     case "toolCall":
       return {
         ...block,
-        arguments: normalizeToolArguments(block.arguments),
+        arguments: decodeToolArguments(block.arguments),
       };
     default:
       return block;
@@ -156,11 +157,19 @@ function fromPiContentBlock(block: unknown): ContentBlock {
   }
 
   if (candidate.type === "toolCall") {
+    // A tool call without identity cannot be executed or correlated. Inventing
+    // one here would push a fabricated id into journals, digests, and replay.
+    if (typeof candidate["id"] !== "string" || candidate["id"].length === 0) {
+      throw new Error("Provider returned a tool call without an id");
+    }
+    if (typeof candidate["name"] !== "string" || candidate["name"].length === 0) {
+      throw new Error(`Provider returned tool call "${candidate["id"]}" without a name`);
+    }
     return {
       type: "toolCall",
-      id: typeof candidate["id"] === "string" ? candidate["id"] : "",
-      name: typeof candidate["name"] === "string" ? candidate["name"] : "",
-      arguments: normalizeToolArguments(candidate["arguments"]),
+      id: candidate["id"],
+      name: candidate["name"],
+      arguments: decodeToolArguments(candidate["arguments"]),
       ...(typeof candidate["thoughtSignature"] === "string"
         ? { thoughtSignature: candidate["thoughtSignature"] }
         : {}),
@@ -278,19 +287,21 @@ function safeMetadata(metadata: Record<string, unknown>): Record<string, unknown
   return result;
 }
 
-function normalizeToolArguments(value: unknown): Record<string, unknown> {
-  if (isProviderRecord(value)) {
-    return value;
-  }
+/**
+ * Provider wire convention: some providers send arguments as a JSON string.
+ * Decoding that string is the provider's job. Everything else passes through
+ * untouched — including text the model failed to make valid JSON, which the
+ * authored parameter schema will reject with an accurate diagnostic.
+ */
+function decodeToolArguments(value: unknown): Json {
   if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(value);
-      return isProviderRecord(parsed) ? parsed : {};
+      return JSON.parse(value) as Json;
     } catch {
-      return {};
+      return value;
     }
   }
-  return {};
+  return value as Json;
 }
 
 function fromPiToolCall(toolCall: PiToolCall): ToolCallBlock {
@@ -298,7 +309,7 @@ function fromPiToolCall(toolCall: PiToolCall): ToolCallBlock {
     type: "toolCall",
     id: toolCall.id,
     name: toolCall.name,
-    arguments: normalizeToolArguments(toolCall.arguments),
+    arguments: decodeToolArguments(toolCall.arguments),
     ...(toolCall.thoughtSignature ? { thoughtSignature: toolCall.thoughtSignature } : {}),
   };
 }

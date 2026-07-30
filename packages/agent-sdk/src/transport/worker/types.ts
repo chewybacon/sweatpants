@@ -34,6 +34,7 @@
  */
 
 import type { Operation } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import { z } from "zod";
 
 const progressMessageSchema = z.object({ type: z.literal("progress") }).loose();
@@ -254,7 +255,8 @@ export interface WorkerToolUseContent {
   type: "tool_use";
   id: string;
   name: string;
-  input: Record<string, unknown>;
+  /** Model-authored arguments, carried verbatim across the worker boundary. */
+  input: Json;
 }
 
 /**
@@ -320,8 +322,8 @@ export interface WorkerToolCall {
   id: string;
   /** Tool name */
   name: string;
-  /** Tool arguments */
-  arguments: Record<string, unknown>;
+  /** Model-authored arguments; narrowed only by the authored schema at `execute`. */
+  arguments: Json;
 }
 
 // =============================================================================

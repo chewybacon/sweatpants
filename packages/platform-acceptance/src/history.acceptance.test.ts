@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   normalizeResponsesHistory,
   withTestScenario,
@@ -102,9 +103,12 @@ async function runHistoryScenario(binding: Binding): Promise<void> {
       if (!priorCall || priorCall.type !== "assistant_tool_call") {
         throw new Error("missing prior route-bearing tool call");
       }
+      // Arguments arrive open from the model; the consumer that needs an
+      // object is the one that proves it.
+      const priorArguments = z.record(z.string(), z.json()).parse(priorCall.arguments);
       expect({
-        from: priorCall.arguments["destination"],
-        destination: priorCall.arguments["from"],
+        from: priorArguments["destination"],
+        destination: priorArguments["from"],
       }).toEqual({ from: "LAX", destination: "NYC" });
 
       yield* followUp.respond.text("You booked NYC to LAX; return is LAX to NYC.");

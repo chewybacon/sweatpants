@@ -1,4 +1,5 @@
 import type { Operation, Stream } from "effection";
+import type { Json } from "@sweatpants/foundation";
 
 export interface Runtime {
   stream(
@@ -128,7 +129,13 @@ export interface ToolCallBlock {
   type: "toolCall";
   id: string;
   name: string;
-  arguments: Record<string, unknown>;
+  /**
+   * Model-authored arguments stay open all the way to `execute`, where the
+   * tool's own parameter schema is the only authority that may narrow them.
+   * Undecodable model output survives verbatim so the authored validator can
+   * report the real cause instead of receiving a fabricated empty object.
+   */
+  arguments: Json;
   /** Opaque provider replay signature associated with this tool call. */
   thoughtSignature?: string;
 }

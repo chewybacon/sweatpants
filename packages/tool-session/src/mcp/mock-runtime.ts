@@ -29,6 +29,7 @@
  * @packageDocumentation
  */
 import { useAbortSignal, type Operation } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
@@ -440,7 +441,7 @@ function createCoreToolCtx(
             request: requestMsg,
             response: responseMsg,
             messages: [requestMsg, responseMsg],
-            withArguments(fn: (c: unknown) => Record<string, unknown>) {
+            withArguments(fn: (c: unknown) => Json) {
               const args = fn(request.context);
               return [
                 {

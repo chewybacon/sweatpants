@@ -1,4 +1,4 @@
-import { run } from "effection";
+import { run, type Operation } from "effection";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { createPiAiRuntime } from "../runtime/pi-ai.ts";
@@ -35,6 +35,10 @@ const finalPiMessage = {
   stopReason: "stop" as const,
   timestamp: 1,
 };
+
+function assistantMessageWith(content: unknown[]): unknown {
+  return { ...finalPiMessage, content };
+}
 
 function mockPiStream(events: unknown[], finalMessage: unknown = finalPiMessage): void {
   piAiMocks.streamSimple.mockReturnValue({
@@ -597,5 +601,85 @@ describe("pi-ai provider boundary normalization", () => {
     ).rejects.toThrow("responseFormat cannot be combined with application tools");
 
     expect(piAiMocks.streamSimple).not.toHaveBeenCalled();
+  });
+  it("carries model arguments through untouched, including text it failed to encode", async () => {
+    const runtime = createPiAiRuntime();
+    const message = assistantMessageWith([
+      { type: "text", text: "calling" },
+      {
+        type: "toolCall",
+        id: "call_1",
+        name: "book_flight",
+        arguments: '{"origin":"NYC"',
+      },
+    ]);
+    mockPiStream([], message);
+
+    const result = await run(function* (): Operation<AssistantMessage> {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [{ role: "user", content: "book it" }],
+      });
+      let next = yield* subscription.next();
+      while (!next.done) {
+        next = yield* subscription.next();
+      }
+      return next.value;
+    });
+
+    const call = result.content.find((block) => block.type === "toolCall");
+    // Not `{}`: the model's real output survives so the authored parameter
+    // schema can report the actual cause instead of "missing required field".
+    expect(call).toMatchObject({ arguments: '{"origin":"NYC"' });
+  });
+
+  it("decodes provider JSON-string arguments exactly once", async () => {
+    const runtime = createPiAiRuntime();
+    mockPiStream(
+      [],
+      assistantMessageWith([
+        {
+          type: "toolCall",
+          id: "call_2",
+          name: "book_flight",
+          arguments: '{"origin":"NYC","destination":"LA"}',
+        },
+      ]),
+    );
+
+    const result = await run(function* (): Operation<AssistantMessage> {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [{ role: "user", content: "book it" }],
+      });
+      let next = yield* subscription.next();
+      while (!next.done) {
+        next = yield* subscription.next();
+      }
+      return next.value;
+    });
+
+    expect(result.content.find((block) => block.type === "toolCall")).toMatchObject({
+      arguments: { origin: "NYC", destination: "LA" },
+    });
+  });
+
+  it("refuses to invent identity for a tool call the provider left unidentified", async () => {
+    const runtime = createPiAiRuntime();
+    mockPiStream(
+      [],
+      assistantMessageWith([{ type: "toolCall", name: "book_flight", arguments: {} }]),
+    );
+
+    await expect(
+      run(function* () {
+        const subscription = yield* runtime.stream(testModel, {
+          messages: [{ role: "user", content: "book it" }],
+        });
+        let next = yield* subscription.next();
+        while (!next.done) {
+          next = yield* subscription.next();
+        }
+        return next.value;
+      }),
+    ).rejects.toThrow("without an id");
   });
 });

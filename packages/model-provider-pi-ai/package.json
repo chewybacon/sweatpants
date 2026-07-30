@@ -35,6 +35,7 @@
     "dependencies": {
         "@earendil-works/pi-ai": "^0.80.1",
         "@sweatpants/chat-core": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
         "zod": "catalog:"
     },
     "devDependencies": {

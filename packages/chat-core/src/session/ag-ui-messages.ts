@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { Message, ToolCall } from "../messages.ts";
+import type { Json } from "@sweatpants/foundation";
 import type { PluginReplayActivityContent } from "./plugin-replay.ts";
 
 const jsonObjectSchema = z.record(z.string(), z.json());
@@ -30,23 +31,24 @@ export type AgUiMessage =
     }
   | { id: string; role: "reasoning"; content: string };
 
-function serializeArguments(args: Record<string, unknown>): string {
-  try {
-    return JSON.stringify(args);
-  } catch {
-    return "{}";
-  }
+function serializeArguments(args: Json): string {
+  // `Json` cannot contain cycles or unserializable values, so this cannot throw.
+  return JSON.stringify(args);
 }
 
-function parseArguments(args: string): Record<string, unknown> {
+/**
+ * AG-UI carries tool arguments as a JSON string. Decoding that string is this
+ * codec's job; judging the decoded shape is the authored tool's. Undecodable
+ * text survives verbatim rather than becoming a fabricated empty object.
+ */
+function parseArguments(args: string): Json {
   if (!args) {
     return {};
   }
   try {
-    const parsed = jsonObjectSchema.safeParse(JSON.parse(args));
-    return parsed.success ? parsed.data : {};
+    return JSON.parse(args) as Json;
   } catch {
-    return {};
+    return args;
   }
 }
 

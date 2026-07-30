@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Json } from "@sweatpants/foundation";
 
 export type NormalizedHistoryRecord =
   | { type: "user_text"; text: string }
@@ -7,7 +8,7 @@ export type NormalizedHistoryRecord =
       type: "assistant_tool_call";
       callId: string;
       name: string;
-      arguments: Record<string, unknown>;
+      arguments: Json;
     }
   | { type: "tool_result"; callId: string; output: unknown };
 
@@ -22,7 +23,6 @@ interface WireItem extends Record<string, unknown> {
   output?: unknown;
 }
 const wireItemSchema = z.object({}).loose();
-const recordSchema = z.record(z.string(), z.unknown());
 
 /** Provider history is deliberately tolerant: unusable entries are skipped, not fatal. */
 const records = (value: unknown): WireItem[] =>
@@ -34,19 +34,16 @@ const textParts = (value: unknown, kind: string): string =>
     .filter((p) => p.type === kind)
     .map((p) => (typeof p.text === "string" ? p.text : ""))
     .join("");
-const args = (value: unknown): Record<string, unknown> => {
-  const direct = recordSchema.safeParse(value);
-  if (direct.success) {
-    return direct.data;
-  }
+/** OpenAI Responses carries arguments as a JSON string; text that never decoded survives. */
+const args = (value: unknown): Json => {
   if (typeof value === "string") {
     try {
-      return recordSchema.safeParse(JSON.parse(value)).data ?? {};
+      return JSON.parse(value) as Json;
     } catch {
-      return {};
+      return value;
     }
   }
-  return {};
+  return (value ?? null) as Json;
 };
 
 /** Read-only semantic projection of OpenAI Responses input, in wire order. */

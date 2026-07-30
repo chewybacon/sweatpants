@@ -10,6 +10,7 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { normalizeClientReplayTrace } from "@sweatpants/chat-core";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
+import type { Json } from "@sweatpants/foundation";
 import type { OpenInterruptRecord } from "../interrupts/index.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -28,11 +29,20 @@ function forwardedClientReplayTraces(forwardedProps: unknown): Record<string, un
   return isRecord(traces) ? traces : {};
 }
 
-function parseToolArguments(
-  value: Record<string, z.infer<typeof jsonValueSchema>> | string,
-): Record<string, unknown> {
-  if (typeof value !== "string") return value;
-  return z.record(z.string(), jsonValueSchema).parse(JSON.parse(value));
+/**
+ * Clients may replay tool arguments either decoded or as the provider's JSON
+ * string. Decoding the string is this ingress's job; judging the decoded shape
+ * belongs to the authored tool at `execute`, so undecodable text survives.
+ */
+function parseToolArguments(value: Json | string): Json {
+  if (typeof value !== "string") {
+    return value;
+  }
+  try {
+    return JSON.parse(value) as Json;
+  } catch {
+    return value;
+  }
 }
 
 function normalizeIncomingMessages(

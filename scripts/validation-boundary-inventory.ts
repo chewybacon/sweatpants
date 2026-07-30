@@ -172,7 +172,10 @@ export function scanUncheckedBoundaryCasts(
     const visit = (node: ts.Node): void => {
       if (ts.isAsExpression(node) && isExternalDecodeCall(node.expression)) {
         const assertedType = node.type.getText(sourceFile);
-        if (assertedType !== "unknown") {
+        // `unknown` contains the value; `Json` is the exact codomain of a JSON
+        // decode, so it claims nothing beyond "this came from JSON". Any other
+        // type asserts a domain shape nobody proved.
+        if (assertedType !== "unknown" && assertedType !== "Json") {
           const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
           violations.push({
             file: file.startsWith(root) ? file.slice(root.length + 1) : file,
