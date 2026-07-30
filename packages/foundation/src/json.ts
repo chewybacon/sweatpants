@@ -77,17 +77,20 @@ export function sortStrings(
   return result;
 }
 
+/** Parses unknown input into a fresh canonical keyed JSON object. */
+export function parseJsonObject(value: unknown, path = "$"): JsonObject {
+  return requireJsonObject(assertJson(value, path), path);
+}
+
 /**
- * Parses unknown input into canonical JSON that is known to be keyed, such as a
- * JSON Schema document. This is the single containment point for callers whose
- * domain guarantees an object, so they need no downstream narrowing.
+ * Narrows already-parsed JSON to its keyed-object variant without traversing,
+ * cloning, or revalidating its children.
  */
-export function assertJsonObject(value: unknown, path = "$"): JsonObject {
-  const json = assertJson(value, path);
-  if (json === null || typeof json !== "object" || Array.isArray(json)) {
+export function requireJsonObject(value: Json, path = "$"): JsonObject {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw invalid(path, "expected a keyed JSON object");
   }
-  return json;
+  return value;
 }
 
 /**

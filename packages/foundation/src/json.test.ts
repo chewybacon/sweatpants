@@ -4,6 +4,8 @@ import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
+  parseJsonObject,
+  requireJsonObject,
   sha256,
   stableOpaqueId,
 } from "./json.ts";
@@ -24,5 +26,23 @@ describe("foundation canonical JSON", () => {
 
     expect(() => assertJson({ value: Number.NaN })).toThrow(CanonicalJsonError);
     expect(() => canonicalJson(sparse)).toThrow(/sparse array slot/);
+  });
+
+  it("parses unknown keyed objects into fresh canonical JSON", () => {
+    const input = { nested: { value: -0 } };
+    const parsed = parseJsonObject(input);
+
+    expect(parsed).toEqual({ nested: { value: 0 } });
+    expect(parsed).not.toBe(input);
+    expect(() => parseJsonObject([])).toThrow(/expected a keyed JSON object/);
+  });
+
+  it("narrows parsed JSON without cloning or walking it again", () => {
+    const parsed = assertJson({ nested: { value: true } });
+    const object = requireJsonObject(parsed);
+
+    expect(object).toBe(parsed);
+    expect(() => requireJsonObject(null)).toThrow(/expected a keyed JSON object/);
+    expect(() => requireJsonObject([])).toThrow(/expected a keyed JSON object/);
   });
 });

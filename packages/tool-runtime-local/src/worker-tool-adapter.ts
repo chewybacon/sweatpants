@@ -1,5 +1,5 @@
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
-import { assertJsonObject, type JsonObject } from "@sweatpants/foundation";
+import { requireJsonObject, type JsonObject } from "@sweatpants/foundation";
 import type {
   LogLevel,
   NamedSampleResult,
@@ -52,7 +52,7 @@ export function createWorkerTool(tool: RuntimeTool): WorkerTool {
       $id: _id,
       $schema: _schema,
       ...schema
-    } = assertJsonObject(
+    } = requireJsonObject(
       artifact.response.inputProjection,
       `tool ${tool.name} elicitation ${key} response`,
     );
