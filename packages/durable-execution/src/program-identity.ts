@@ -12,10 +12,7 @@ import {
 } from "./program-contract.ts";
 import type { DurableProgramFactory, DurableTool } from "./program-authoring.ts";
 import { canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
-import {
-  createPinnedDurableProgram,
-  validateDurableManifest,
-} from "./program-authoring-runtime.ts";
+import { createPinnedDurableProgram, parseDurableManifest } from "./program-authoring-runtime.ts";
 import type { Json } from "@sweatpants/foundation";
 import { CrankError } from "./errors.ts";
 
@@ -59,14 +56,14 @@ export function normalizeProgramArtifactIdentityInput(
   if (!isRecord(input.manifest) || "digest" in input.manifest) {
     invalidIdentity("manifest must omit digest");
   }
-  // Ordinary durable-manifest validation remains the authority for descriptors,
+  // Ordinary durable-manifest parsing remains the authority for descriptors,
   // effects, elicitations, and replay capabilities.
-  validateDurableManifest({
+  parseDurableManifest({
     ...(input.manifest as Omit<DurableProgramManifest, "digest">),
     digest: "0".repeat(64),
   });
 
-  // SAFETY: validateDurableManifest above rejects any manifest this identity
+  // SAFETY: parseDurableManifest above rejects any manifest this identity
   // input could carry, and canonicalSnapshot re-serializes through assertJson,
   // so the value is both shape-checked and JSON-representable.
   return deepFreeze(
@@ -90,7 +87,7 @@ export function deriveProgramArtifactDigest(input: ProgramArtifactIdentityInputV
 export function generateProgramInterfaceIdentity(
   manifest: Omit<DurableProgramManifest, "digest">,
 ): GeneratedProgramInterfaceIdentityV1 {
-  validateDurableManifest({ ...manifest, digest: "0".repeat(64) });
+  parseDurableManifest({ ...manifest, digest: "0".repeat(64) });
   const input = canonicalSnapshot({
     format: PROGRAM_INTERFACE_IDENTITY_FORMAT,
     generatorVersion: PROGRAM_INTERFACE_GENERATOR_VERSION,
@@ -153,7 +150,7 @@ interface ProgramIdentityBindingEvidence {
 }
 
 /** Validates binding provenance, optionally enforcing generated-only release policy. */
-export function validateProgramIdentityProvenance(
+export function verifyProgramIdentityProvenance(
   binding: ProgramIdentityBindingEvidence,
   options: { readonly releaseStrict?: boolean } = {},
 ): void {
@@ -201,12 +198,12 @@ export function validateProgramIdentityProvenance(
 }
 
 /** Enforces implementation-artifact identity policy over an authored program inventory. */
-export function validateProgramBindingsForRelease(
+export function verifyProgramBindingsForRelease(
   bindings: Iterable<ProgramIdentityBindingEvidence>,
   options: { readonly releaseStrict?: boolean } = { releaseStrict: true },
 ): void {
   for (const binding of bindings) {
-    validateProgramIdentityProvenance(binding, options);
+    verifyProgramIdentityProvenance(binding, options);
   }
 }
 

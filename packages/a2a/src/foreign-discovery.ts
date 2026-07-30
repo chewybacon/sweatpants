@@ -7,7 +7,7 @@ import {
   type A2AAuthorizationProvider,
   type A2AHttpClient,
 } from "./http-client.ts";
-import { normalizedTransportOrigin, validateA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
+import { normalizedTransportOrigin, verifyA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
 import {
   DURABLE_INVOCATION_EXTENSION_URI,
   type DurableInvocationExtensionParamsV1,
@@ -100,7 +100,7 @@ export async function discoverForeignA2AAgent(
     throw new CrankError("agent_card_invalid", "Selected A2A skill is not advertised");
   }
   const selectedInterface = selectInterface(card, options.bindingPreference);
-  await validateA2AUrl(selectedInterface.url, {
+  await verifyA2AUrl(selectedInterface.url, {
     purpose: "manifest",
     ...(options.urlPolicy ? { policy: options.urlPolicy } : {}),
     cardOrigin,
@@ -117,12 +117,12 @@ export async function discoverForeignA2AAgent(
   });
   if (guarantee.extension) {
     await Promise.all([
-      validateA2AUrl(guarantee.extension.resolveEndpoint, {
+      verifyA2AUrl(guarantee.extension.resolveEndpoint, {
         purpose: "manifest",
         ...(options.urlPolicy ? { policy: options.urlPolicy } : {}),
         cardOrigin,
       }),
-      validateA2AUrl(guarantee.extension.abortEndpoint, {
+      verifyA2AUrl(guarantee.extension.abortEndpoint, {
         purpose: "manifest",
         ...(options.urlPolicy ? { policy: options.urlPolicy } : {}),
         cardOrigin,
@@ -200,37 +200,64 @@ export function prepareForeignA2AInvocation(input: {
     principalId: input.principalId,
     ...(tenantId ? { tenantId } : {}),
   });
-  validateForeignA2AInvocationPin(pin);
+  verifyForeignA2AInvocationPin(pin);
   return pin;
 }
 
-export function validateForeignA2AInvocationPin(pin: ForeignA2AInvocationPin): void {
+export function verifyForeignA2AInvocationPin(
+  pin: unknown,
+): asserts pin is ForeignA2AInvocationPin {
   if (
-    !pin.cardDigest.match(/^[0-9a-f]{64}$/) ||
-    !pin.invocationId ||
-    !pin.initialMessageId ||
-    !pin.principalId ||
-    !Number.isFinite(Date.parse(pin.requestExpiresAt))
+    !record(pin) ||
+    !nonempty(pin["cardDigest"]) ||
+    !/^[0-9a-f]{64}$/.test(pin["cardDigest"]) ||
+    !nonempty(pin["agentName"]) ||
+    !nonempty(pin["skillId"]) ||
+    !record(pin["interface"]) ||
+    !nonempty(pin["interface"]["url"]) ||
+    !nonempty(pin["interface"]["protocolVersion"]) ||
+    !Array.isArray(pin["extensionUris"]) ||
+    !pin["extensionUris"].every(nonempty) ||
+    !record(pin["guarantee"]) ||
+    !nonempty(pin["guarantee"]["level"]) ||
+    !nonempty(pin["guarantee"]["source"]) ||
+    !nonempty(pin["guarantee"]["negotiatedAt"]) ||
+    !["surface", "intervene", "retry_may_duplicate"].includes(String(pin["ambiguityPolicy"])) ||
+    !nonempty(pin["invocationId"]) ||
+    !nonempty(pin["initialMessageId"]) ||
+    !nonempty(pin["principalId"]) ||
+    !nonempty(pin["requestExpiresAt"]) ||
+    (pin["tenantId"] !== undefined && !nonempty(pin["tenantId"]))
   ) {
     throw new CrankError("a2a_pin_invalid", "Foreign A2A invocation pin identity is invalid");
   }
-  if (pin.guarantee.level === "reconciled") {
+  const candidate = pin as ForeignA2AInvocationPin;
+  if (
+    !candidate.cardDigest.match(/^[0-9a-f]{64}$/) ||
+    !candidate.invocationId ||
+    !candidate.initialMessageId ||
+    !candidate.principalId ||
+    !Number.isFinite(Date.parse(candidate.requestExpiresAt))
+  ) {
+    throw new CrankError("a2a_pin_invalid", "Foreign A2A invocation pin identity is invalid");
+  }
+  if (candidate.guarantee.level === "reconciled") {
     if (
-      pin.guarantee.source !== "durable_invocation_extension" ||
-      !pin.extensionUris.includes(DURABLE_INVOCATION_EXTENSION_URI) ||
-      !pin.guarantee.extension
+      candidate.guarantee.source !== "durable_invocation_extension" ||
+      !candidate.extensionUris.includes(DURABLE_INVOCATION_EXTENSION_URI) ||
+      !candidate.guarantee.extension
     ) {
       throw new CrankError(
         "a2a_pin_invalid",
         "Reconciled guarantee requires pinned durable-invocation extension evidence",
       );
     }
-    parseDurableInvocationParams(pin.guarantee.extension);
+    parseDurableInvocationParams(candidate.guarantee.extension);
   }
-  if (pin.guarantee.level === "idempotent_messages") {
+  if (candidate.guarantee.level === "idempotent_messages") {
     if (
-      !["idempotency_extension", "operator_attestation"].includes(pin.guarantee.source) ||
-      !pin.guarantee.messageIdempotencyExpiresAt
+      !["idempotency_extension", "operator_attestation"].includes(candidate.guarantee.source) ||
+      !candidate.guarantee.messageIdempotencyExpiresAt
     ) {
       throw new CrankError(
         "a2a_pin_invalid",
@@ -238,7 +265,10 @@ export function validateForeignA2AInvocationPin(pin: ForeignA2AInvocationPin): v
       );
     }
   }
-  if (pin.ambiguityPolicy === "retry_may_duplicate" && pin.duplicateRiskAcknowledged !== true) {
+  if (
+    candidate.ambiguityPolicy === "retry_may_duplicate" &&
+    candidate.duplicateRiskAcknowledged !== true
+  ) {
     throw new CrankError(
       "a2a_duplicate_risk_not_acknowledged",
       "retry_may_duplicate pin lacks durable duplicate-risk acknowledgment",

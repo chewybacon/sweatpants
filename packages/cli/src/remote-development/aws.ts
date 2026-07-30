@@ -6,6 +6,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 import { defaultProvider } from "@aws-sdk/credential-provider-node";
+import { z } from "zod";
 
 import type {
   ActiveCollectionSnapshot,
@@ -20,6 +21,7 @@ import {
   type ActiveCollectionRecordV1,
   type DevelopmentEnvironmentIdentityV1,
 } from "./types.ts";
+import { parsePublishedCollectionRef } from "./control.ts";
 
 export class AwsS3VersionedObjectStore implements VersionedObjectStore {
   constructor(private readonly client: S3Client) {}
@@ -110,7 +112,7 @@ export class AwsS3ActiveCollectionStore implements ActiveCollectionStore {
     } catch {
       throw new RemoteDevelopmentError("environment_drift", "Active collection record is corrupt");
     }
-    const record = validateActiveRecord(value, environment);
+    const record = verifyActiveCollectionRecord(parseActiveCollectionRecord(value), environment);
     return { revision: output.ETag, record };
   }
 
@@ -121,7 +123,7 @@ export class AwsS3ActiveCollectionStore implements ActiveCollectionStore {
   ): Promise<
     { readonly status: "written"; readonly revision: string } | { readonly status: "conflict" }
   > {
-    validateActiveRecord(record, environment);
+    verifyActiveCollectionRecord(parseActiveCollectionRecord(record), environment);
     try {
       const output = await this.client.send(
         new PutObjectCommand({
@@ -178,34 +180,57 @@ function awsCredentials(): ReturnType<typeof defaultProvider> {
   );
 }
 
-function validateActiveRecord(
-  value: unknown,
-  environment: DevelopmentEnvironmentIdentityV1,
-): ActiveCollectionRecordV1 {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    (value as { format?: unknown }).format !== ACTIVE_COLLECTION_FORMAT
-  ) {
+const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
+const environmentIdentitySchema = z
+  .object({
+    accountId: z.string().min(1).max(256),
+    region: z.string().min(1).max(128),
+    project: z.string().min(1).max(256),
+    owner: z.string().min(1).max(256),
+    name: z.string().min(1).max(256),
+  })
+  .strict();
+const activeCollectionRecordSchema = z
+  .object({
+    format: z.literal(ACTIVE_COLLECTION_FORMAT),
+    environment: environmentIdentitySchema,
+    epoch: z.number().int().positive().safe(),
+    writerId: z.string().min(1).max(512),
+    collection: z.unknown(),
+    evaluatorReleaseId: z.string().min(1).max(512),
+    evaluatorAbi: z.string().min(1).max(512),
+    readinessDigest: sha256Schema,
+    activatedAt: z.string().datetime({ offset: true }),
+    previousCollectionDigest: sha256Schema.optional(),
+  })
+  .strict();
+
+export function parseActiveCollectionRecord(value: unknown): ActiveCollectionRecordV1 {
+  try {
+    const parsed = activeCollectionRecordSchema.parse(value);
+    return Object.freeze({
+      ...parsed,
+      collection: parsePublishedCollectionRef(parsed.collection),
+    }) as unknown as ActiveCollectionRecordV1;
+  } catch {
     throw new RemoteDevelopmentError(
       "environment_drift",
       "Active collection record does not use the closed v1 format",
     );
   }
-  const record = value as ActiveCollectionRecordV1;
-  if (
-    !Number.isSafeInteger(record.epoch) ||
-    record.epoch <= 0 ||
-    !record.writerId ||
-    JSON.stringify(record.environment) !== JSON.stringify(environment)
-  ) {
+}
+
+export function verifyActiveCollectionRecord(
+  record: ActiveCollectionRecordV1,
+  environment: DevelopmentEnvironmentIdentityV1,
+): ActiveCollectionRecordV1 {
+  if (JSON.stringify(record.environment) !== JSON.stringify(environment)) {
     throw new RemoteDevelopmentError(
       "environment_drift",
       "Active collection record identity is invalid",
     );
   }
-  return Object.freeze(record);
+  return record;
 }
 
 function mapAwsError(error: unknown, message: string): RemoteDevelopmentError {

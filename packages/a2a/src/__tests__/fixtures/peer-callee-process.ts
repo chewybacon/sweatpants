@@ -98,7 +98,7 @@ const resolutionCapability = authority.resolutionCapability(
 
 const service = new InMemoryDelegatedEffectsService({
   retention,
-  validateOutcome(_taskId, _effectId, outcome) {
+  verifyDelegatedOutcome(_taskId, _effectId, outcome) {
     if (outcome.status === "ok" && typeof outcome.value !== "string") {
       throw new Error("callee output schema rejected delegated effect response");
     }

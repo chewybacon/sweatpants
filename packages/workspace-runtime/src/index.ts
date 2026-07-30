@@ -145,7 +145,7 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
   const committed = new Map<string, CommittedOperation>();
 
   function bind(fence: WorkspaceFence, nextScripts?: Readonly<Record<string, string>>): void {
-    validateFence(fence);
+    assertWorkspaceFence(fence);
     const normalizedScripts = nextScripts ? normalizeScripts(nextScripts) : undefined;
     if (activeFence) {
       if (activeFence.taskId !== fence.taskId) {
@@ -320,7 +320,7 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
   };
 
   function* execute(request: WorkspaceRequest): Operation<WorkspaceResponse> {
-    validateRequest(request);
+    assertWorkspaceRequestAtExecution(request);
     const execution = { fence: request.fence, operationId: request.operationId };
     switch (request.type) {
       case "inspect": {
@@ -919,11 +919,11 @@ function normalizeScripts(
   return Object.freeze(output);
 }
 
-function validateRequest(request: WorkspaceRequest): void {
+function assertWorkspaceRequestAtExecution(request: WorkspaceRequest): void {
   parseWorkspaceRequest(request);
 }
 
-function validateFence(fence: WorkspaceFence): void {
+function assertWorkspaceFence(fence: WorkspaceFence): void {
   parseFence(fence);
 }
 

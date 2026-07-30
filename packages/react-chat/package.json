@@ -58,6 +58,7 @@
         "build:types": "tsc -b tsconfig.json --force"
     },
     "dependencies": {
+        "@standard-schema/spec": "catalog:",
         "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",

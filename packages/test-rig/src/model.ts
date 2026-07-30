@@ -137,7 +137,7 @@ function envelope(
 function errorEnvelope(code: string, message: string) {
   return { error: { code, type: "simulator_error", message: message.slice(0, 2000) } };
 }
-function validateExpectation(expectation: RequestExpectation, request: CapturedModelRequest): void {
+function assertExpectation(expectation: RequestExpectation, request: CapturedModelRequest): void {
   if (typeof expectation === "function") {
     expectation(request);
   } else if (!partial(request.body, expectation)) {
@@ -240,7 +240,7 @@ export async function startModelSimulator(
               }
               try {
                 if (waiter.expectation) {
-                  validateExpectation(waiter.expectation, handle);
+                  assertExpectation(waiter.expectation, handle);
                 }
                 waiter.wait.resolve(handle);
               } catch (cause) {
@@ -260,7 +260,7 @@ export async function startModelSimulator(
           return;
         }
         try {
-          validateExpectation(registered.expectation, request);
+          assertExpectation(registered.expectation, request);
         } catch (cause) {
           const e = poison(cause instanceof Error ? cause : new Error(String(cause)));
           registered.wait.reject(e);
@@ -633,7 +633,7 @@ export async function startModelSimulator(
         if (buffered) {
           if (expectation) {
             try {
-              validateExpectation(expectation, buffered);
+              assertExpectation(expectation, buffered);
             } catch (cause) {
               throw poison(cause instanceof Error ? cause : new Error(String(cause)));
             }

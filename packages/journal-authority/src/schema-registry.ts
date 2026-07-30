@@ -113,7 +113,7 @@ export function reconcileSchemaCoverage(
  * canonicalizing successful output as bounded `Json`. Missing digests report
  * `unavailable` so callers can reject with `schema_version_unavailable`.
  */
-export function* validateRegisteredSchema(
+export function* parseRegisteredSchema(
   registry: DurableSchemaRegistry,
   digest: string,
   value: unknown,

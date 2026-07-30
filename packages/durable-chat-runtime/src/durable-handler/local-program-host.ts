@@ -15,7 +15,7 @@ import {
 } from "@sweatpants/durable-effects/model-sample";
 import {
   DurableEffectRegistryContext,
-  validateDurableEffectBindings,
+  assertDurableEffectBindings,
 } from "@sweatpants/durable-effects/runtime";
 import {
   exactProgramKey,
@@ -178,7 +178,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
     return options.programs.get(exactProgramKey(program));
   }
 
-  function validateProgram(request: OpenLocalProgramRequest): void {
+  function verifyLocalProgramRequest(request: OpenLocalProgramRequest): void {
     const tool = findTool(request.program);
     if (!tool) {
       throw new CrankError(
@@ -194,9 +194,9 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
     ) {
       throw new CrankError("invalid_manifest", "Program pin and manifest differ");
     }
-    validateCatalog(request.catalog);
+    parseCatalog(request.catalog);
     assertCatalogDispatch(request.catalog, request.program);
-    validateDurableEffectBindings(Object.values(request.manifest.effects), options.effects);
+    assertDurableEffectBindings(Object.values(request.manifest.effects), options.effects);
   }
 
   function* runTask(
@@ -299,7 +299,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
 
   return {
     *open(request): Operation<LocalProgramRun> {
-      validateProgram(request);
+      verifyLocalProgramRequest(request);
       const sessionId = request.sessionId ?? `local-session:${crypto.randomUUID()}`;
       const journal = yield* options.journalStore.open(sessionId);
       const rootCount = yield* journal.rootTaskCount(sessionId);
@@ -401,7 +401,7 @@ export function createPinnedProgramCatalog(
   };
 }
 
-export function validateCatalog(catalog: PinnedProgramCatalog): void {
+export function parseCatalog(catalog: PinnedProgramCatalog): void {
   decodePinnedProgramCatalog(catalog);
 }
 

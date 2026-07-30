@@ -2,13 +2,13 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { call, type Operation } from "effection";
 
 /** Runs a Standard Schema validator without allowing its Promise to escape. */
-export function* validateStandardSchema(
-  schema: StandardSchemaV1,
-  value: unknown,
-): Operation<StandardSchemaV1.Result<unknown>> {
+export function* validateStandardSchema<Input = unknown, Output = unknown>(
+  schema: StandardSchemaV1<Input, Output>,
+  value: Input,
+): Operation<StandardSchemaV1.Result<Output>> {
   const result = schema["~standard"].validate(value);
   if (isPromiseLike(result)) {
-    return yield* call(() => Promise.resolve(result));
+    return yield* call(() => Promise.resolve(result)) as Operation<StandardSchemaV1.Result<Output>>;
   }
   return result;
 }

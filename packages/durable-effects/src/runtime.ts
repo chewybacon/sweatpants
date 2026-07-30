@@ -42,7 +42,7 @@ export function durableEffectKey(name: string, version: string): string {
 }
 
 /** Validates exact authored contracts against their selected handlers. */
-export function validateDurableEffectBindings(
+export function assertDurableEffectBindings(
   requiredDefinitions: Iterable<EffectDefinition<Json, Json, Json>>,
   registry: DurableEffectRegistry,
 ): void {
@@ -97,7 +97,7 @@ export function createDurableEffectRegistry(
     }
     registry.set(key, registration);
   }
-  validateDurableEffectBindings(requiredDefinitions, registry);
+  assertDurableEffectBindings(requiredDefinitions, registry);
   return registry;
 }
 

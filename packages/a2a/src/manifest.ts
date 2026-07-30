@@ -8,7 +8,7 @@ import {
 } from "@sweatpants/foundation";
 import { durableEffectRuntimeSchemas, type EffectDefinition } from "@sweatpants/durable-effects";
 import {
-  validateDurableManifest,
+  parseDurableManifest,
   type DurableProgramManifest,
   type PinnedProgram,
 } from "@sweatpants/durable-execution";
@@ -223,7 +223,7 @@ function parseClosedDurableManifest(value: unknown): DurableProgramManifest {
     throw mismatch("Program capability fields are not closed");
   }
   try {
-    validateDurableManifest(value as unknown as DurableProgramManifest);
+    parseDurableManifest(value);
   } catch (error) {
     throw a2aError("manifest_mismatch", "Embedded durable manifest is invalid", error);
   }

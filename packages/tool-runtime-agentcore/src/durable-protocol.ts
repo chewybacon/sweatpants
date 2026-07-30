@@ -139,17 +139,17 @@ export function encodeAgentCoreProgramMessage(
 }
 
 export function parseHostProgramMessage(frame: string | Uint8Array): HostProgramMessage {
-  return parseMessage(frame, hostTypes, validateHostPayload) as HostProgramMessage;
+  return parseMessage(frame, hostTypes, assertHostPayload) as HostProgramMessage;
 }
 
 export function parseRuntimeProgramMessage(frame: string | Uint8Array): RuntimeProgramMessage {
-  return parseMessage(frame, runtimeTypes, validateRuntimePayload) as RuntimeProgramMessage;
+  return parseMessage(frame, runtimeTypes, assertRuntimePayload) as RuntimeProgramMessage;
 }
 
 function parseMessage(
   frame: string | Uint8Array,
   allowed: ReadonlySet<string>,
-  validatePayload: (type: string, envelope: Record<string, Json>) => void,
+  parsePayload: (type: string, envelope: Record<string, Json>) => void,
 ): HostProgramMessage | RuntimeProgramMessage {
   const bytes = typeof frame === "string" ? new TextEncoder().encode(frame) : frame;
   if (bytes.byteLength > AGENTCORE_MAX_FRAME_BYTES) {
@@ -196,11 +196,11 @@ function parseMessage(
   if (!record(value["payload"])) {
     throw protocol("program_protocol_error", "Payload must be an object");
   }
-  validatePayload(type, value);
+  parsePayload(type, value);
   return canonicalSnapshot(value).value as unknown as HostProgramMessage | RuntimeProgramMessage;
 }
 
-function validateHostPayload(type: string, envelope: Record<string, Json>): void {
+function assertHostPayload(type: string, envelope: Record<string, Json>): void {
   const payload = envelope["payload"] as Record<string, Json>;
   switch (type) {
     case "restore_begin": {
@@ -240,7 +240,7 @@ function validateHostPayload(type: string, envelope: Record<string, Json>): void
     }
     case "replay_operation":
     case "replay_emission":
-      validateReplayEntry(payload, type === "replay_operation" ? "operation" : "emission");
+      assertReplayEntry(payload, type === "replay_operation" ? "operation" : "emission");
       if (
         envelope["actionIndex"] !== payload["actionIndex"] ||
         !nonempty(envelope["attachmentId"])
@@ -296,7 +296,7 @@ function validateHostPayload(type: string, envelope: Record<string, Json>): void
   }
 }
 
-function validateRuntimePayload(type: string, envelope: Record<string, Json>): void {
+function assertRuntimePayload(type: string, envelope: Record<string, Json>): void {
   const payload = envelope["payload"] as Record<string, Json>;
   switch (type) {
     case "restore_ready":
@@ -355,7 +355,7 @@ function validateRuntimePayload(type: string, envelope: Record<string, Json>): v
   }
 }
 
-function validateReplayEntry(
+function assertReplayEntry(
   payload: Record<string, Json>,
   expected: "operation" | "emission",
 ): void {

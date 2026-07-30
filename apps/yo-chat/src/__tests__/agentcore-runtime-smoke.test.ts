@@ -2,6 +2,19 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { run } from "effection";
 import type * as AgentCoreModule from "@sweatpants/tool-runtime-agentcore";
+import { assertJson } from "@sweatpants/foundation";
+import { standardSchemaOf } from "@sweatpants/foundation/schema";
+
+const anyToolParameters = Object.assign(
+  standardSchemaOf("agentcore-smoke", (value) => {
+    try {
+      return { value: assertJson(value) };
+    } catch {
+      return { issues: [{ message: "value must be canonical JSON" }] };
+    }
+  }),
+  { jsonSchema: { type: "object", additionalProperties: true } },
+);
 
 describe("yo-chat AgentCore runtime smoke", () => {
   beforeEach(() => {
@@ -44,14 +57,14 @@ describe("yo-chat AgentCore runtime smoke", () => {
         {
           name: "book_flight",
           description: "Book a flight",
-          parameters: { type: "object", properties: {} },
+          parameters: anyToolParameters,
         },
       ],
       allTools: [
         {
           name: "book_flight",
           description: "Book a flight",
-          parameters: { type: "object", properties: {} },
+          parameters: anyToolParameters,
         },
       ],
     }));

@@ -61,8 +61,8 @@ export { McpHandlerError, MCP_HANDLER_ERRORS } from "./types.ts";
 // Request parsing (for custom handlers)
 export {
   parseHeaders,
-  validatePostHeaders,
-  validateGetHeaders,
+  assertPostHeaders,
+  assertGetHeaders,
   parseRequest,
   classifyRequest,
   parseAndClassify,

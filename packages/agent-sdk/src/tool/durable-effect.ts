@@ -2,7 +2,6 @@ import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import { type EffectDefinition, type RetrySafety } from "@sweatpants/durable-effects";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { z, ZodSchema } from "zod";
 import { type Json } from "@sweatpants/foundation";
 import { type SchemaBinding } from "@sweatpants/foundation/schema";
 
@@ -23,11 +22,11 @@ const effectValidators = new WeakMap<
   DurableEffectRuntimeValidators
 >();
 
-/** Zod-first authoring options for one versioned durable effect contract. */
+/** Standard Schema authoring options for one versioned durable effect contract. */
 export interface DefineEffectOptions<
-  ISchema extends ZodSchema,
-  OSchema extends ZodSchema,
-  PSchema extends ZodSchema | undefined,
+  ISchema extends StandardSchemaV1,
+  OSchema extends StandardSchemaV1,
+  PSchema extends StandardSchemaV1 | undefined,
 > {
   readonly name: string;
   /**
@@ -41,26 +40,31 @@ export interface DefineEffectOptions<
   readonly retrySafety: RetrySafety;
   /** Explicit trusted output projections for transformed schemas. */
   readonly projections?: {
-    readonly inputOutputProjection?: Json;
-    readonly outputOutputProjection?: Json;
+    readonly inputProjection?: Json;
+    readonly outputProjection?: Json;
+    readonly cancellationPartialProjection?: Json;
   };
 }
 
 /**
- * Authors a durable effect contract with Zod schemas. The persisted
+ * Authors a durable effect contract with Standard Schema validators. The persisted
  * `EffectDefinition` carries only portable descriptors; runtime validators and
  * digest-keyed catalog entries stay scope-local beside the definition.
  */
 export function defineEffect<
-  ISchema extends ZodSchema,
-  OSchema extends ZodSchema,
-  PSchema extends ZodSchema | undefined = undefined,
+  ISchema extends StandardSchemaV1,
+  OSchema extends StandardSchemaV1,
+  PSchema extends StandardSchemaV1 | undefined = undefined,
 >(
-  options: DefineEffectOptions<ISchema, OSchema, PSchema extends ZodSchema ? PSchema : never>,
+  options: DefineEffectOptions<
+    ISchema,
+    OSchema,
+    PSchema extends StandardSchemaV1 ? PSchema : never
+  >,
 ): EffectDefinition<
-  JsonOutput<z.infer<ISchema>>,
-  JsonOutput<z.infer<OSchema>>,
-  PSchema extends ZodSchema ? JsonOutput<z.infer<PSchema>> : never
+  JsonOutput<StandardSchemaV1.InferOutput<ISchema>>,
+  JsonOutput<StandardSchemaV1.InferOutput<OSchema>>,
+  PSchema extends StandardSchemaV1 ? JsonOutput<StandardSchemaV1.InferOutput<PSchema>> : never
 > {
   const identity = `effect:${options.name}`;
   const catalog: SchemaBinding[] = [];
@@ -68,8 +72,8 @@ export function defineEffect<
     identity: `${identity}/input`,
     role: "effect_input",
     version: options.version,
-    ...(options.projections?.inputOutputProjection !== undefined
-      ? { outputProjection: options.projections.inputOutputProjection }
+    ...(options.projections?.inputProjection !== undefined
+      ? { inputProjection: options.projections.inputProjection }
       : {}),
   });
   catalog.push(input.entry);
@@ -77,8 +81,8 @@ export function defineEffect<
     identity: `${identity}/output`,
     role: "effect_output",
     version: options.version,
-    ...(options.projections?.outputOutputProjection !== undefined
-      ? { outputProjection: options.projections.outputOutputProjection }
+    ...(options.projections?.outputProjection !== undefined
+      ? { outputProjection: options.projections.outputProjection }
       : {}),
   });
   catalog.push(output.entry);
@@ -89,6 +93,9 @@ export function defineEffect<
       identity: `${identity}/cancellation-partial`,
       role: "effect_cancellation_partial",
       version: options.version,
+      ...(options.projections?.cancellationPartialProjection !== undefined
+        ? { outputProjection: options.projections.cancellationPartialProjection }
+        : {}),
     });
     catalog.push(partial.entry);
     cancellation = { partialSchema: partial.descriptor };
@@ -108,12 +115,12 @@ export function defineEffect<
     output: options.output,
     ...(partialValidator ? { cancellationPartial: partialValidator } : {}),
   });
-  // SAFETY: JsonOutput type witnesses are pinned by the authored Zod schemas
+  // SAFETY: JsonOutput type witnesses are pinned by the authored Standard Schema validators
   // whose validators are registered under the descriptor digests.
   return definition as unknown as EffectDefinition<
-    JsonOutput<z.infer<ISchema>>,
-    JsonOutput<z.infer<OSchema>>,
-    PSchema extends ZodSchema ? JsonOutput<z.infer<PSchema>> : never
+    JsonOutput<StandardSchemaV1.InferOutput<ISchema>>,
+    JsonOutput<StandardSchemaV1.InferOutput<OSchema>>,
+    PSchema extends StandardSchemaV1 ? JsonOutput<StandardSchemaV1.InferOutput<PSchema>> : never
   >;
 }
 

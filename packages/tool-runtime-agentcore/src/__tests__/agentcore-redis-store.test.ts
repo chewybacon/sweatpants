@@ -166,6 +166,18 @@ describe("AgentCore Redis stores", () => {
     expect(result.afterDelete).toBeNull();
   });
 
+  it("rejects malformed persisted handles before nested access", async () => {
+    const client = new InMemoryRedisLikeClient();
+    const store = createRedisAgentCoreToolSessionHandleStore(client, { keyPrefix: "test:" });
+    client.strings.set("test:tool-session:session-1:handle", JSON.stringify({}));
+
+    await expect(
+      run(function* () {
+        return yield* store.get("session-1");
+      }),
+    ).rejects.toThrow("Redis AgentCore tool-session handle is invalid");
+  });
+
   it("does not return expired handles", async () => {
     const client = new InMemoryRedisLikeClient();
     const store = createRedisAgentCoreToolSessionHandleStore(client, { keyPrefix: "test:" });
@@ -213,6 +225,20 @@ describe("AgentCore Redis stores", () => {
       "progress",
       "result",
     ]);
+  });
+
+  it("rejects malformed persisted event entries", async () => {
+    const client = new InMemoryRedisLikeClient();
+    const store = createRedisAgentCoreToolSessionEventStore(client, { keyPrefix: "test:" });
+    client.streams.set("test:tool-session:session-1:events", [
+      { id: "1-0", message: { lsn: "1", event: JSON.stringify({ type: "result" }) } },
+    ]);
+
+    await expect(
+      run(function* () {
+        return yield* store.readAfter("session-1", 0);
+      }),
+    ).rejects.toThrow();
   });
 
   it("deduplicates exact remote events and allows same sequence with different runtime ids", async () => {

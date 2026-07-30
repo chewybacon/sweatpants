@@ -24,6 +24,8 @@
  * - hydrate-responses.ts: checkpoint/buffer replay read responses
  */
 import { call, resource, type Operation } from "effection";
+import { z } from "zod";
+import { CrankError } from "@sweatpants/durable-execution";
 import {
   useSessionRegistryStore,
   useSessionRegistry,
@@ -80,7 +82,7 @@ import {
 import { resolvePrivateSystemPrompt } from "../model-context/index.ts";
 import { readLatestThreadInterruptState, recordThreadInterruptState } from "../interrupts/index.ts";
 import { readLatestThreadSystemPrompt, recordThreadSystemPrompt } from "../model-context/index.ts";
-import { normalizeChatRequestBody } from "../handler/request-normalization.ts";
+import { parseChatRequestBody } from "../handler/request-normalization.ts";
 import { planTurn } from "../handler/turn-plan.ts";
 import {
   createEmptyChatEngine,
@@ -106,6 +108,8 @@ import {
 import { assertJson } from "@sweatpants/foundation";
 
 export { assertPendingResumeConsistency } from "../projection.ts";
+
+const MAX_CHAT_REQUEST_BYTES = 2 * 1024 * 1024;
 
 // =============================================================================
 // PROTOCOL PARAMETER BINDER
@@ -239,7 +243,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       // Parse request body for mutating requests only.
       const body =
         request.method === "POST" && !isProtocolMutation
-          ? normalizeChatRequestBody((yield* call(() => request.json())) as ChatRequestBody)
+          ? parseChatRequestBody(yield* readBoundedChatRequest(request))
           : ({ messages: [] } as ChatRequestBody);
 
       // Durable conversation identity resolution:
@@ -357,9 +361,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   !resolvedConversationSessionId &&
                   storedConversationCheckpoint
                 ) {
-                  const checkpointEvents = JSON.parse(
+                  const checkpointEvents = parseStoredCheckpointEvents(
                     storedConversationCheckpoint,
-                  ) as StreamEvent[];
+                  );
                   return yield* createStoredConversationCheckpointResponse({
                     ctx,
                     conversationId: requestedConversationId!,
@@ -819,7 +823,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           event: {
             type: "RUN_ERROR",
             message: error.message,
-            code: "internal_error",
+            code: error instanceof CrankError ? error.code : "internal_error",
           },
         };
         const body = JSON.stringify(errorEvent) + "\n";
@@ -830,4 +834,49 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       },
     },
   );
+}
+
+const storedCheckpointEventsSchema = z.array(z.record(z.string(), z.json())).max(100_000);
+
+function parseStoredCheckpointEvents(raw: string): StreamEvent[] {
+  try {
+    const value: unknown = JSON.parse(raw);
+    return storedCheckpointEventsSchema.parse(value) as unknown as StreamEvent[];
+  } catch {
+    throw new CrankError("invalid_chat_request", "Stored conversation checkpoint is malformed");
+  }
+}
+
+function* readBoundedChatRequest(request: Request): Operation<unknown> {
+  if (!request.body) {
+    return {};
+  }
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const result = yield* call(() => reader.read());
+      if (result.done) break;
+      total += result.value.byteLength;
+      if (total > MAX_CHAT_REQUEST_BYTES) {
+        yield* call(() => reader.cancel());
+        throw new CrankError("payload_too_large", "Chat request body exceeds the 2 MiB limit");
+      }
+      chunks.push(result.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+  } catch {
+    throw new CrankError("invalid_chat_request", "Chat request body must be valid JSON");
+  }
 }

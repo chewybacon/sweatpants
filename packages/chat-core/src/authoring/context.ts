@@ -86,7 +86,7 @@ export function selectChatContext(
   policy: ChatContextPolicyV1,
   input: ChatContextSelectionInput,
 ): ChatContextViewV1 {
-  validatePolicy(policy);
+  verifyChatContextPolicy(policy);
   if (
     typeof input.frontier !== "string" ||
     input.frontier.length === 0 ||
@@ -245,7 +245,7 @@ function normalizeSummary(value: ReferencedTaskSummaryV1): ReferencedTaskSummary
   }
   return deepFreeze({ taskId: value.taskId, summary: normalizeChatMessage(value.summary) });
 }
-function validatePolicy(policy: ChatContextPolicyV1): void {
+function verifyChatContextPolicy(policy: ChatContextPolicyV1): void {
   const rebuilt = latestContextWindow({
     id: policy.id,
     version: policy.version,

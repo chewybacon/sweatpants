@@ -10,7 +10,9 @@ import {
   encodeAgentCoreProgramMessage,
   linkReplayEntry,
   parseHostProgramMessage,
-  validateAgentCoreRuntimeRelease,
+  parseAgentCoreRuntimeRelease,
+  parseAgentCoreTaskPlacement,
+  verifyAgentCoreRuntimeRelease,
   verifyReplayEntry,
 } from "../index.ts";
 
@@ -38,7 +40,7 @@ const attach = {
 
 describe("AgentCore durable placement and protocol", () => {
   it("validates lifecycle bounds and deterministically isolates invocation placements", () => {
-    expect(validateAgentCoreRuntimeRelease(release)).toEqual(release);
+    expect(verifyAgentCoreRuntimeRelease(parseAgentCoreRuntimeRelease(release))).toEqual(release);
     const first = createInvocationAgentCorePlacement({
       journalId: "j",
       rootTaskId: "one",
@@ -63,11 +65,21 @@ describe("AgentCore durable placement and protocol", () => {
     expect(first.runtimeSessionId).toBe(again.runtimeSessionId);
     expect(first.runtimeSessionId).not.toBe(second.runtimeSessionId);
     expect(() =>
-      validateAgentCoreRuntimeRelease({
-        ...release,
-        lifecycle: { ...release.lifecycle, idleRuntimeSessionTimeoutSeconds: 301 },
-      }),
+      verifyAgentCoreRuntimeRelease(
+        parseAgentCoreRuntimeRelease({
+          ...release,
+          lifecycle: { ...release.lifecycle, idleRuntimeSessionTimeoutSeconds: 301 },
+        }),
+      ),
     ).toThrow(/idle timeout/);
+  });
+
+  it("rejects malformed provider release and placement values before nested access", () => {
+    expect(() => parseAgentCoreRuntimeRelease(null)).toThrow(/release metadata/);
+    expect(() => parseAgentCoreRuntimeRelease({ ...release, filesystem: null })).toThrow(
+      /release metadata/,
+    );
+    expect(() => parseAgentCoreTaskPlacement({ release })).toThrow(/placement/);
   });
 
   it("round-trips closed canonical frames and rejects identity/control extensions", () => {

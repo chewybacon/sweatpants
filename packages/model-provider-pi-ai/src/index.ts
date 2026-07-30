@@ -72,7 +72,7 @@ function sanitizeIdentifier(value: string): string {
   return value.replace(/[\r\n\t]/g, " ").slice(0, 200);
 }
 
-function validateModelSelectionFields(value: unknown, label: string): ModelSelection {
+function parseModelSelectionFields(value: unknown, label: string): ModelSelection {
   if (!isRecord(value)) {
     throw new ModelSelectionError(`${label} must be an object with provider and id fields`);
   }
@@ -90,7 +90,7 @@ function validateModelSelectionFields(value: unknown, label: string): ModelSelec
 }
 
 export function parseModelSelection(value: unknown, label = "model"): ModelSelection {
-  return validateModelSelectionFields(value, label);
+  return parseModelSelectionFields(value, label);
 }
 
 export function parseRequestModelSelection(
@@ -100,7 +100,7 @@ export function parseRequestModelSelection(
   if (value === undefined || value === null) {
     return undefined;
   }
-  const selection = validateModelSelectionFields(value, label);
+  const selection = parseModelSelectionFields(value, label);
   const keys = Object.keys(value as Record<string, unknown>);
   const extras = keys.filter((key) => key !== "provider" && key !== "id");
   if (extras.length > 0) {

@@ -57,7 +57,7 @@ export class InMemoryDurableInvocationService {
   readonly #now: () => number;
 
   constructor(options: { retention: ForeignA2ARetentionV1; now?: () => number }) {
-    validateRetention(options.retention);
+    assertRetentionPolicy(options.retention);
     this.#retention = Object.freeze({ ...options.retention });
     this.#now = options.now ?? Date.now;
   }
@@ -225,7 +225,7 @@ function parseExpiry(value: string): number {
   }
   return result;
 }
-function validateRetention(value: ForeignA2ARetentionV1): void {
+function assertRetentionPolicy(value: ForeignA2ARetentionV1): void {
   for (const [name, duration] of Object.entries(value)) {
     if (
       !Number.isSafeInteger(duration) ||

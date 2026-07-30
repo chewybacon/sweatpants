@@ -6,7 +6,7 @@ import { run } from "effection";
 
 import {
   decodeDevelopmentCollectionArchive,
-  validateCollectionProgramEntries,
+  loadCollectionProgramEntries,
   type PublishedCollectionRefV1,
 } from "@sweatpants/cli/remote-development-evaluator";
 import {
@@ -42,7 +42,7 @@ interface LambdaCrankResponseV1 {
 }
 
 interface LoadedCollection {
-  readonly programs: Awaited<ReturnType<typeof validateCollectionProgramEntries>>;
+  readonly programs: Awaited<ReturnType<typeof loadCollectionProgramEntries>>;
 }
 
 const bucket = requiredEnvironment("SWEATPANTS_DEVELOPMENT_BUCKET");
@@ -137,7 +137,7 @@ async function loadCollection(collection: PublishedCollectionRefV1): Promise<Loa
     ) {
       throw new Error("collection identity or evaluator ABI differs");
     }
-    return { programs: await validateCollectionProgramEntries(built.manifest, built.files) };
+    return { programs: await loadCollectionProgramEntries(built.manifest, built.files) };
   })();
   cache.set(key, loading);
   try {

@@ -11,7 +11,7 @@ export {
   parseResourceUri,
   resolveResourceLimits,
   textResource,
-  validateCompleteBindings,
+  verifyCompleteResourceBindings,
   type DefineResourcePackageOptions,
   type ResourceFileOptions,
 } from "./package.ts";

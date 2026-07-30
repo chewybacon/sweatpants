@@ -96,7 +96,7 @@ export async function compileResourceDirectory(
   ];
   const json = options.json ?? ["**/*.json"];
   const mediaTypes = { ...options.mediaTypes };
-  validatePatterns(include, ignore, text, json, Object.keys(mediaTypes));
+  assertResourcePatterns(include, ignore, text, json, Object.keys(mediaTypes));
   const includeMatchers = compileGlobPatterns(include);
   const ignoreMatchers = compileGlobPatterns(ignore);
   const textMatchers = compileGlobPatterns(text);
@@ -356,7 +356,7 @@ function mediaTypeFor(path: string, mappings: readonly MediaTypeMatcher[]): stri
   return defaults[extension] ?? "application/octet-stream";
 }
 
-function validatePatterns(...groups: readonly (readonly string[])[]): void {
+function assertResourcePatterns(...groups: readonly (readonly string[])[]): void {
   for (const group of groups) {
     if (
       !Array.isArray(group) ||

@@ -167,11 +167,6 @@ export {
 
   // Parsing
   parseJsonRpcMessage,
-
-  // Validation
-  validateToolCallRequest,
-  validateElicitationResponse,
-  validateSamplingResponse,
 } from "./message-decoder.ts";
 
 // =============================================================================

@@ -95,7 +95,7 @@ function schemaTypeMatches(type: string, value: unknown): boolean {
   }
 }
 
-function validateJsonSchemaSubset(schema: unknown, value: unknown): boolean {
+function verifyJsonSchemaSubset(schema: unknown, value: unknown): boolean {
   const record = asRecord(schema);
   if (!record) {
     return true;
@@ -144,7 +144,7 @@ function validateJsonSchemaSubset(schema: unknown, value: unknown): boolean {
     for (const [property, propertySchema] of Object.entries(properties)) {
       if (
         property in objectValue &&
-        !validateJsonSchemaSubset(propertySchema, objectValue[property])
+        !verifyJsonSchemaSubset(propertySchema, objectValue[property])
       ) {
         return false;
       }
@@ -268,7 +268,7 @@ export function deriveResumeScopeFromEntries(
   return { threadId: [...threadIds][0]!, scopeId: [...scopeIds][0]! };
 }
 
-export function validateResumeEntries(params: {
+export function verifyResumeEntries(params: {
   threadId: string;
   scopeId: string;
   runId: string;
@@ -355,7 +355,7 @@ export function validateResumeEntries(params: {
         action === "accept" && "content" in payloadRecord!
           ? payloadRecord!["content"]
           : entry.payload;
-      if (!validateJsonSchemaSubset(record.responseSchema, businessPayload)) {
+      if (!verifyJsonSchemaSubset(record.responseSchema, businessPayload)) {
         return {
           ok: false,
           code: "RESUME_PAYLOAD_INVALID",

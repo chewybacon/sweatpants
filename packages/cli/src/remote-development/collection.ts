@@ -5,8 +5,8 @@ import {
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
   generateProgramArtifactIdentity,
-  validateDurableManifest,
-  validateProgramIdentityProvenance,
+  parseDurableManifest,
+  verifyProgramIdentityProvenance,
   type DurableProgramManifest,
 } from "@sweatpants/durable-execution";
 import { canonicalJson, sha256, sha256Bytes as hashBytes } from "@sweatpants/foundation";
@@ -103,7 +103,7 @@ export function buildDevelopmentCollection(
         `Invalid or duplicate program root ${bounded(bundle.publicKey)}`,
       );
     }
-    validateAuthoredBundle(bundle);
+    assertAuthoredBundle(bundle);
     const major = parseSemverMajor(bundle.program.manifest.version);
     const entrypoint = `programs/${bundle.publicKey}.mjs`;
     const schemaPath = `schemas/${bundle.publicKey}.json`;
@@ -176,7 +176,7 @@ export function buildDevelopmentCollection(
     collectionDigest,
     files,
   });
-  validateDevelopmentCollectionManifest(manifest);
+  parseDevelopmentCollectionManifest(manifest);
   const encodedFiles: Record<string, string> = {};
   for (const [path, value] of sortValues(contents.entries(), ([left], [right]) =>
     compareText(left, right),
@@ -224,7 +224,7 @@ export function decodeDevelopmentCollectionArchive(
     readonly format: typeof ARCHIVE_FORMAT;
     readonly manifest: unknown;
   };
-  const manifest = validateDevelopmentCollectionManifest(archive.manifest);
+  const manifest = parseDevelopmentCollectionManifest(archive.manifest);
   const contents = new Map<string, { bytes: Uint8Array; kind: CollectionFileEntryV1["kind"] }>();
   const expectedPaths = new Set(manifest.files.map((file) => file.path));
   if (Object.keys(archive.files).length !== expectedPaths.size) {
@@ -250,7 +250,7 @@ export function decodeDevelopmentCollectionArchive(
   });
 }
 
-export function validateDevelopmentCollectionManifest(
+export function parseDevelopmentCollectionManifest(
   value: unknown,
 ): DevelopmentCollectionManifestV1 {
   if (
@@ -338,7 +338,7 @@ export function validateDevelopmentCollectionManifest(
       resourcePackageDigests,
     });
   }
-  const files = rawFiles.map((file, index) => validateFile(file, index));
+  const files = rawFiles.map((file, index) => parseCollectionFile(file, index));
   if (!isSorted(files.map((file) => file.path))) {
     fail("invalid_collection_manifest", "Collection files are not path-sorted");
   }
@@ -373,7 +373,7 @@ export function reconstructCollectionProgram(
   entry: CollectionProgramEntryV1,
   entryBytes: Uint8Array,
 ): ConfiguredDurableTool {
-  validateDevelopmentProgramEntry(entry, authoredProgram, entryBytes);
+  verifyDevelopmentProgramEntry(entry, authoredProgram, entryBytes);
   const { digest: _authoredDigest, ...manifest } = authoredProgram.manifest;
   const identity = generateProgramArtifactIdentity({
     format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,
@@ -389,7 +389,7 @@ export function reconstructCollectionProgram(
     );
   }
   const releaseProgram = createGeneratedPinnedDurableProgram(identity, authoredProgram.program);
-  validateProgramIdentityProvenance(releaseProgram, { releaseStrict: true });
+  verifyProgramIdentityProvenance(releaseProgram, { releaseStrict: true });
   return releaseProgram;
 }
 
@@ -408,7 +408,7 @@ export function parseSemverMajor(version: unknown): number {
   return major;
 }
 
-function validateDevelopmentProgramEntry(
+function verifyDevelopmentProgramEntry(
   entry: CollectionProgramEntryV1,
   authoredProgram: ConfiguredDurableTool,
   entryBytes: Uint8Array,
@@ -426,9 +426,9 @@ function validateDevelopmentProgramEntry(
   }
 }
 
-function validateAuthoredBundle(bundle: ProgramBundleInput): void {
+function assertAuthoredBundle(bundle: ProgramBundleInput): void {
   try {
-    validateDurableManifest(bundle.program.manifest);
+    parseDurableManifest(bundle.program.manifest);
   } catch {
     fail(
       "invalid_program_root",
@@ -459,7 +459,7 @@ function constructReleaseProgram(
   });
   const releaseProgram = createGeneratedPinnedDurableProgram(identity, bundle.program.program);
   try {
-    validateProgramIdentityProvenance(releaseProgram, { releaseStrict: true });
+    verifyProgramIdentityProvenance(releaseProgram, { releaseStrict: true });
   } catch {
     fail(
       "non_release_strict_program",
@@ -549,7 +549,7 @@ function literalString(value: unknown): string | undefined {
     : undefined;
 }
 
-function validateFile(value: unknown, index: number): CollectionFileEntryV1 {
+function parseCollectionFile(value: unknown, index: number): CollectionFileEntryV1 {
   if (!isRecord(value) || !hasExactKeys(value, FILE_KEYS)) {
     fail("invalid_collection_manifest", `Invalid file entry ${index}`);
   }

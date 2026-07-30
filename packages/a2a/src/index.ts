@@ -76,7 +76,7 @@ export {
   isLoopbackAddress,
   isSafePublicAddress,
   normalizedTransportOrigin,
-  validateA2AUrl,
+  verifyA2AUrl,
   type A2AUrlPolicy,
   type A2AUrlPurpose,
   type ValidatedA2AUrl,
@@ -149,7 +149,7 @@ export {
   discoverForeignA2AAgent,
   parseDurableInvocationParams,
   prepareForeignA2AInvocation,
-  validateForeignA2AInvocationPin,
+  verifyForeignA2AInvocationPin,
   type DiscoveredForeignA2AAgent,
   type ForeignA2ADiscoveryOptions,
 } from "./foreign-discovery.ts";

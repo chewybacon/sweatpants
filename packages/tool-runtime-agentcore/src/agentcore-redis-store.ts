@@ -5,6 +5,11 @@ import type {
   SerializableToolSessionHandleStore,
   ToolSessionEventStore,
 } from "./agentcore-types.ts";
+import {
+  parseAgentCoreEventDedupRecord,
+  parseAgentCoreToolEvent,
+  parseAgentCoreToolSessionHandle,
+} from "./agentcore-boundary-parsers.ts";
 
 interface RedisStreamEntry {
   id: string;
@@ -42,7 +47,12 @@ function isExpired(handle: AgentCoreToolSessionHandle): boolean {
 }
 
 function parseHandle(raw: string): AgentCoreToolSessionHandle {
-  return JSON.parse(raw) as AgentCoreToolSessionHandle;
+  try {
+    const value: unknown = JSON.parse(raw);
+    return parseAgentCoreToolSessionHandle(value);
+  } catch {
+    throw new Error("Redis AgentCore tool-session handle is invalid");
+  }
 }
 
 function isTerminalEvent(event: AgentCoreToolEvent): boolean {
@@ -190,7 +200,11 @@ export function createRedisAgentCoreToolSessionEventStore(
     if (!raw) {
       throw new Error("Redis event entry missing event");
     }
-    return { lsn, event: JSON.parse(raw) as AgentCoreToolEvent };
+    if (!Number.isSafeInteger(lsn) || lsn <= 0) {
+      throw new Error("Redis event entry has an invalid LSN");
+    }
+    const value: unknown = JSON.parse(raw);
+    return { lsn, event: parseAgentCoreToolEvent(value) };
   }
 
   function* markTerminalValue(sessionId: string): Operation<void> {
@@ -225,11 +239,8 @@ export function createRedisAgentCoreToolSessionEventStore(
       const dkey = dedupKey(sessionId, runtimeEventSeq, runtimeEventId);
       const existing = yield* call(() => client.get(dkey));
       if (existing) {
-        const parsed = JSON.parse(existing) as {
-          runtimeEventId: string;
-          event: AgentCoreToolEvent;
-          lsn: number;
-        };
+        const value: unknown = JSON.parse(existing);
+        const parsed = parseAgentCoreEventDedupRecord(value);
         const same =
           parsed.runtimeEventId === runtimeEventId &&
           JSON.stringify(parsed.event) === JSON.stringify(event);

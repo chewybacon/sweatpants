@@ -59,7 +59,8 @@
         "@sweatpants/durable-execution": "workspace:*",
         "acorn": "^8.14.0",
         "citty": "^0.1.6",
-        "esbuild": "0.27.2"
+        "esbuild": "0.27.2",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/foundation": "workspace:*",

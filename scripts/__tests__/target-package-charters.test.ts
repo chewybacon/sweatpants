@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -56,6 +56,24 @@ describe("target package charters", () => {
       /from ["']@sweatpants\/(?:journal-authority|history-store|agent-host|chat-core|execution-store-redis)/,
       /from ["'](?:node:http|redis|react)["']/,
     ]);
+  });
+
+  it("keeps concrete Zod ownership explicit", () => {
+    const packageDirs = readdirSync(resolve(root, "packages"));
+    for (const packageName of packageDirs) {
+      if (!existsSync(resolve(root, "packages", packageName, "src"))) continue;
+      const source = productionSource(packageName);
+      if (!/import\s+(?!type\b)[^;\n]*from [\"']zod[\"']/.test(source)) {
+        continue;
+      }
+      const packageJson = JSON.parse(
+        readFileSync(resolve(root, "packages", packageName, "package.json"), "utf8"),
+      ) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+      expect(packageJson.dependencies?.["zod"], packageName).toBeDefined();
+    }
+    expect(productionSource("foundation")).not.toMatch(
+      /import\s+(?!type\b)[^;\n]*from [\"']zod[\"']/,
+    );
   });
 
   it("keeps authored service and repository ports Effection-native", () => {

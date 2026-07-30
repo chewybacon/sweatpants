@@ -1,0 +1,2083 @@
+{
+  "format": "sweatpants.validation-boundary-inventory.v1",
+  "entries": [
+    {
+      "id": "VAL-001",
+      "file": "packages/a2a/src/connector.ts",
+      "symbol": "validateHeaders",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/connector.ts:68",
+        "packages/a2a/src/connector.ts:228"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "assertWebSocketHeaders",
+      "evidence": [
+        "packages/a2a/src/connector.ts",
+        "packages/a2a/src/__tests__/ws-server.integration.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-002",
+      "file": "packages/a2a/src/delegated-effects-client.ts",
+      "symbol": "validateRequest",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/delegated-effects-client.ts:251",
+        "packages/a2a/src/delegated-effects-client.ts:434",
+        "packages/workspace-runtime/src/index.ts:323",
+        "packages/workspace-runtime/src/index.ts:922"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "verifyDelegatedEffectRequest",
+      "evidence": [
+        "packages/a2a/src/delegated-effects-client.ts",
+        "packages/a2a/src/__tests__/peer.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-003",
+      "file": "packages/a2a/src/delegated-effects-client.ts",
+      "symbol": "validatePage",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/delegated-effects-client.ts:197",
+        "packages/a2a/src/delegated-effects-client.ts:464"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "verifyDelegatedEffectEventPage",
+      "evidence": [
+        "packages/a2a/src/delegated-effects-client.ts",
+        "packages/a2a/src/__tests__/peer.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-004",
+      "file": "packages/a2a/src/delegated-effects-server.ts",
+      "symbol": "validateRetention",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/delegated-effects-server.ts:67",
+        "packages/a2a/src/delegated-effects-server.ts:482",
+        "packages/a2a/src/durable-invocation-server.ts:60",
+        "packages/a2a/src/durable-invocation-server.ts:228"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertRetentionPolicy",
+      "evidence": [
+        "packages/a2a/src/delegated-effects-server.ts",
+        "packages/a2a/src/__tests__/peer.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-005",
+      "file": "packages/a2a/src/delegated-effects-server.ts",
+      "symbol": "validateOutcome",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/__tests__/fixtures/peer-callee-process.ts:101",
+        "packages/a2a/src/delegated-effects-server.ts:56",
+        "packages/a2a/src/delegated-effects-server.ts:64",
+        "packages/a2a/src/delegated-effects-server.ts:70",
+        "packages/a2a/src/delegated-effects-server.ts:326",
+        "packages/a2a/src/protocol.ts:458",
+        "packages/a2a/src/protocol.ts:519",
+        "packages/a2a/src/protocol.ts:674",
+        "packages/a2a/src/protocol.ts:757"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyDelegatedOutcome",
+      "evidence": [
+        "packages/a2a/src/delegated-effects-server.ts",
+        "packages/a2a/src/__tests__/peer.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-006",
+      "file": "packages/a2a/src/discovery.ts",
+      "symbol": "validateAgentCardCore",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/discovery.ts:69",
+        "packages/a2a/src/discovery.ts:190"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "assertAgentCardCore",
+      "evidence": [
+        "packages/a2a/src/discovery.ts",
+        "packages/a2a/src/__tests__/discovery-manifest.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-007",
+      "file": "packages/a2a/src/discovery.ts",
+      "symbol": "validateSkillMappings",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/discovery.ts:114",
+        "packages/a2a/src/discovery.ts:211"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "assertSkillMappings",
+      "evidence": [
+        "packages/a2a/src/discovery.ts",
+        "packages/a2a/src/__tests__/discovery-manifest.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-008",
+      "file": "packages/a2a/src/driver.ts",
+      "symbol": "validateDeadlines",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/driver.ts:88",
+        "packages/a2a/src/driver.ts:569"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "parseA2AProgramDriverDeadlines",
+      "evidence": [
+        "packages/a2a/src/driver.ts",
+        "packages/a2a/src/__tests__/driver.integration.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-009",
+      "file": "packages/a2a/src/durable-invocation-server.ts",
+      "symbol": "validateRetention",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/delegated-effects-server.ts:67",
+        "packages/a2a/src/delegated-effects-server.ts:482",
+        "packages/a2a/src/durable-invocation-server.ts:60",
+        "packages/a2a/src/durable-invocation-server.ts:228"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertRetentionPolicy",
+      "evidence": [
+        "packages/a2a/src/durable-invocation-server.ts",
+        "packages/a2a/src/__tests__/driver.integration.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-010",
+      "file": "packages/a2a/src/executor.ts",
+      "symbol": "validateResourceLimits",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/executor.ts:119",
+        "packages/a2a/src/executor.ts:604"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "parseA2AExecutorResourceLimits",
+      "evidence": [
+        "packages/a2a/src/executor.ts",
+        "packages/a2a/src/__tests__/driver.integration.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-011",
+      "file": "packages/a2a/src/executor.ts",
+      "symbol": "validateId",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/executor.ts:110",
+        "packages/a2a/src/executor.ts:111",
+        "packages/a2a/src/executor.ts:621"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AIdentifier",
+      "evidence": [
+        "packages/a2a/src/executor.ts",
+        "packages/a2a/src/__tests__/driver.integration.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-012",
+      "file": "packages/a2a/src/foreign-discovery.ts",
+      "symbol": "validateForeignA2AInvocationPin",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/foreign-discovery.ts:203",
+        "packages/a2a/src/foreign-discovery.ts:207",
+        "packages/a2a/src/foreign-session.ts:9",
+        "packages/a2a/src/foreign-session.ts:78",
+        "packages/a2a/src/foreign-session.ts:188",
+        "packages/a2a/src/index.ts:152"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "verifyForeignA2AInvocationPin",
+      "evidence": [
+        "packages/a2a/src/foreign-discovery.ts",
+        "packages/a2a/src/__tests__/foreign-discovery.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-013",
+      "file": "packages/a2a/src/foreign-session.ts",
+      "symbol": "validatePolling",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/foreign-session.ts:71",
+        "packages/a2a/src/foreign-session.ts:632"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2APollingPolicy",
+      "evidence": [
+        "packages/a2a/src/foreign-session.ts",
+        "packages/a2a/src/__tests__/foreign-discovery.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-014",
+      "file": "packages/a2a/src/foreign-session.ts",
+      "symbol": "validateForeignA2AInvocationPin",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/foreign-discovery.ts:203",
+        "packages/a2a/src/foreign-discovery.ts:207",
+        "packages/a2a/src/foreign-session.ts:9",
+        "packages/a2a/src/foreign-session.ts:78",
+        "packages/a2a/src/foreign-session.ts:188",
+        "packages/a2a/src/index.ts:152"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "verifyForeignA2AInvocationPin",
+      "evidence": [
+        "packages/a2a/src/foreign-session.ts",
+        "packages/a2a/src/__tests__/foreign-discovery.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-015",
+      "file": "packages/a2a/src/peer-contracts.ts",
+      "symbol": "validateDelegation",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/peer-contracts.ts:152",
+        "packages/a2a/src/peer-contracts.ts:344"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyPeerDelegation",
+      "evidence": [
+        "packages/a2a/src/peer-contracts.ts",
+        "packages/a2a/src/__tests__/peer.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-016",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateClientPayload",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:117",
+        "packages/a2a/src/protocol.ts:298"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AClientPayload",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-017",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateServerPayload",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:121",
+        "packages/a2a/src/protocol.ts:376"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AServerPayload",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-018",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateCommand",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:334",
+        "packages/a2a/src/protocol.ts:444"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2ACommand",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-019",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateStep",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:397",
+        "packages/a2a/src/protocol.ts:424",
+        "packages/a2a/src/protocol.ts:508"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AStep",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-020",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateOperationDescriptor",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:476",
+        "packages/a2a/src/protocol.ts:517",
+        "packages/a2a/src/protocol.ts:550"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AOperationDescriptor",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-021",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateChild",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:644",
+        "packages/a2a/src/protocol.ts:652",
+        "packages/a2a/src/protocol.ts:665"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AChild",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-022",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateOutcome",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/__tests__/fixtures/peer-callee-process.ts:101",
+        "packages/a2a/src/delegated-effects-server.ts:56",
+        "packages/a2a/src/delegated-effects-server.ts:64",
+        "packages/a2a/src/delegated-effects-server.ts:70",
+        "packages/a2a/src/delegated-effects-server.ts:326",
+        "packages/a2a/src/protocol.ts:458",
+        "packages/a2a/src/protocol.ts:519",
+        "packages/a2a/src/protocol.ts:674",
+        "packages/a2a/src/protocol.ts:757"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AOutcome",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-023",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateApplicationError",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:543",
+        "packages/a2a/src/protocol.ts:686",
+        "packages/a2a/src/protocol.ts:696"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AApplicationError",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-024",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateReceipt",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:459",
+        "packages/a2a/src/protocol.ts:705",
+        "packages/a2a/src/protocol.ts:758"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AReceipt",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-025",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateReplayEntry",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:354",
+        "packages/a2a/src/protocol.ts:732",
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:243",
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:358"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AReplayEntry",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-026",
+      "file": "packages/a2a/src/protocol.ts",
+      "symbol": "validateProgram",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:275",
+        "packages/a2a/src/protocol.ts:784",
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:181",
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:302"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertA2AProgram",
+      "evidence": [
+        "packages/a2a/src/protocol.ts",
+        "packages/a2a/src/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-027",
+      "file": "packages/a2a/src/url-policy.ts",
+      "symbol": "validateA2AUrl",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/__tests__/discovery-manifest.test.ts:10",
+        "packages/a2a/src/__tests__/discovery-manifest.test.ts:104",
+        "packages/a2a/src/connector.ts:14",
+        "packages/a2a/src/connector.ts:55",
+        "packages/a2a/src/discovery.ts:15",
+        "packages/a2a/src/discovery.ts:103",
+        "packages/a2a/src/discovery.ts:108",
+        "packages/a2a/src/foreign-discovery.ts:10",
+        "packages/a2a/src/foreign-discovery.ts:103",
+        "packages/a2a/src/foreign-discovery.ts:120",
+        "packages/a2a/src/foreign-discovery.ts:125",
+        "packages/a2a/src/http-client.ts:12",
+        "packages/a2a/src/http-client.ts:55",
+        "packages/a2a/src/index.ts:79",
+        "packages/a2a/src/peer-discovery.ts:35",
+        "packages/a2a/src/peer-discovery.ts:73",
+        "packages/a2a/src/peer-discovery.ts:78",
+        "packages/a2a/src/url-policy.ts:23"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyA2AUrl",
+      "evidence": [
+        "packages/a2a/src/url-policy.ts",
+        "packages/a2a/src/__tests__/discovery-manifest.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-028",
+      "file": "packages/agent-host/src/deployment/index.ts",
+      "symbol": "validateProgramCapabilities",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-host/src/deployment/index.ts:365",
+        "packages/agent-host/src/deployment/index.ts:405"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertProgramCapabilityConsistency",
+      "evidence": [
+        "packages/agent-host/src/deployment/index.ts",
+        "packages/agent-host/src/deployment/deployment.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-029",
+      "file": "packages/agent-host/src/deployment/index.ts",
+      "symbol": "validateWorkspaceProvider",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-host/src/deployment/index.ts:364",
+        "packages/agent-host/src/deployment/index.ts:430"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertWorkspaceProviderCompatibility",
+      "evidence": [
+        "packages/agent-host/src/deployment/index.ts",
+        "packages/agent-host/src/deployment/deployment.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-030",
+      "file": "packages/agent-host/src/server/agent-profiles.ts",
+      "symbol": "validateOptionalCapabilityBindings",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-host/src/server/agent-profiles.ts:256",
+        "packages/agent-host/src/server/agent-profiles.ts:471"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertOptionalCapabilityBindings",
+      "evidence": [
+        "packages/agent-host/src/server/agent-profiles.ts",
+        "packages/agent-host/src/server/__tests__/standard-a2a-host.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-031",
+      "file": "packages/agent-host/src/server/agent-profiles.ts",
+      "symbol": "validateDeployment",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-host/src/server/agent-profiles.ts:174",
+        "packages/agent-host/src/server/agent-profiles.ts:536"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyPublicAgentDeployment",
+      "evidence": [
+        "packages/agent-host/src/server/agent-profiles.ts",
+        "packages/agent-host/src/server/__tests__/standard-a2a-host.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-032",
+      "file": "packages/agent-host/src/server/standard-a2a-host.ts",
+      "symbol": "validateRequestContext",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-host/src/server/standard-a2a-host.ts:1772",
+        "packages/agent-host/src/server/standard-a2a-host.ts:1779"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "parseRequestContext",
+      "evidence": [
+        "packages/agent-host/src/server/standard-a2a-host.ts",
+        "packages/agent-host/src/server/__tests__/standard-a2a-host.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-033",
+      "file": "packages/agent-host/src/server/standard-a2a-host.ts",
+      "symbol": "validateTransport",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-host/src/server/standard-a2a-host.ts:442",
+        "packages/agent-host/src/server/standard-a2a-host.ts:1808"
+      ],
+      "trust": "I",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyDeploymentTransport",
+      "evidence": [
+        "packages/agent-host/src/server/standard-a2a-host.ts",
+        "packages/agent-host/src/server/__tests__/standard-a2a-host.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-034",
+      "file": "packages/agent-sdk/src/agent/agent.ts",
+      "symbol": "validateSchemaCoverage",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-sdk/src/agent/agent.ts:207",
+        "packages/agent-sdk/src/agent/agent.ts:218"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertSchemaCoverage",
+      "evidence": [
+        "packages/agent-sdk/src/agent/agent.ts",
+        "packages/agent-sdk/src/agent/__tests__/agent.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-035",
+      "file": "packages/agent-sdk/src/agent/agent.ts",
+      "symbol": "validateIdentityConflicts",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-sdk/src/agent/agent.ts:80",
+        "packages/agent-sdk/src/agent/agent.ts:292"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertIdentityConflicts",
+      "evidence": [
+        "packages/agent-sdk/src/agent/agent.ts",
+        "packages/agent-sdk/src/agent/__tests__/agent.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-036",
+      "file": "packages/agent-sdk/src/resource/directory.ts",
+      "symbol": "validatePatterns",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-sdk/src/resource/directory.ts:99",
+        "packages/agent-sdk/src/resource/directory.ts:359"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertResourcePatterns",
+      "evidence": [
+        "packages/agent-sdk/src/resource/directory.ts",
+        "packages/agent-sdk/src/resource/__tests__/resource-conformance.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-037",
+      "file": "packages/agent-sdk/src/resource/package.ts",
+      "symbol": "validateCompleteBindings",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-sdk/src/resource/index.ts:14",
+        "packages/agent-sdk/src/resource/package.ts:266",
+        "packages/agent-sdk/src/resource/package.ts:348"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyCompleteResourceBindings",
+      "evidence": [
+        "packages/agent-sdk/src/resource/package.ts",
+        "packages/agent-sdk/src/resource/__tests__/resource-conformance.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-038",
+      "file": "packages/agent-sdk/src/tool/durable-context-extension.ts",
+      "symbol": "validateDurableExtensionDeclarations",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-sdk/src/index.ts:54",
+        "packages/agent-sdk/src/tool/durable-context-extension.ts:211",
+        "packages/agent-sdk/src/tool/durable-create.ts:30",
+        "packages/agent-sdk/src/tool/durable-create.ts:331",
+        "packages/agent-sdk/src/tool/index.ts:7"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertDurableExtensionDeclarations",
+      "evidence": [
+        "packages/agent-sdk/src/tool/durable-context-extension.ts",
+        "packages/agent-sdk/src/tool/__tests__/standard-schema.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-039",
+      "file": "packages/chat-core/src/authoring/context.ts",
+      "symbol": "validatePolicy",
+      "declarationKind": "function",
+      "callers": [
+        "packages/chat-core/src/authoring/context.ts:89",
+        "packages/chat-core/src/authoring/context.ts:248"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyChatContextPolicy",
+      "evidence": [
+        "packages/chat-core/src/authoring/context.ts",
+        "packages/chat-core/src/__tests__/history-policy.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-040",
+      "file": "packages/cli/src/lib/fetch-manifest.ts",
+      "symbol": "validateManifest",
+      "declarationKind": "function",
+      "callers": [
+        "packages/cli/src/lib/fetch-manifest.ts:79",
+        "packages/cli/src/lib/fetch-manifest.ts:114",
+        "packages/cli/src/lib/fetch-manifest.ts:121"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "parseMcpManifest",
+      "evidence": [
+        "packages/cli/src/lib/fetch-manifest.ts",
+        "packages/cli/src/__tests__/fetch-manifest.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-041",
+      "file": "packages/cli/src/remote-development/aws.ts",
+      "symbol": "validateActiveRecord",
+      "declarationKind": "function",
+      "callers": [
+        "packages/cli/src/remote-development/aws.ts:113",
+        "packages/cli/src/remote-development/aws.ts:124",
+        "packages/cli/src/remote-development/aws.ts:181"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "parseActiveCollectionRecord",
+      "evidence": [
+        "packages/cli/src/remote-development/aws.ts",
+        "packages/cli/src/__tests__/remote-development.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-042",
+      "file": "packages/cli/src/remote-development/collection.ts",
+      "symbol": "validateDevelopmentCollectionManifest",
+      "declarationKind": "function",
+      "callers": [
+        "packages/cli/src/remote-development-evaluator.ts:4",
+        "packages/cli/src/remote-development.ts:22",
+        "packages/cli/src/remote-development/collection.ts:179",
+        "packages/cli/src/remote-development/collection.ts:227",
+        "packages/cli/src/remote-development/collection.ts:253"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD",
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "parseDevelopmentCollectionManifest",
+      "evidence": [
+        "packages/cli/src/remote-development/collection.ts",
+        "packages/cli/src/__tests__/remote-development.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-043",
+      "file": "packages/cli/src/remote-development/collection.ts",
+      "symbol": "validateDevelopmentProgramEntry",
+      "declarationKind": "function",
+      "callers": [
+        "packages/cli/src/remote-development/collection.ts:376",
+        "packages/cli/src/remote-development/collection.ts:411"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD",
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyDevelopmentProgramEntry",
+      "evidence": [
+        "packages/cli/src/remote-development/collection.ts",
+        "packages/cli/src/__tests__/remote-development.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-044",
+      "file": "packages/cli/src/remote-development/collection.ts",
+      "symbol": "validateAuthoredBundle",
+      "declarationKind": "function",
+      "callers": [
+        "packages/cli/src/remote-development/collection.ts:106",
+        "packages/cli/src/remote-development/collection.ts:429"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertAuthoredBundle",
+      "evidence": [
+        "packages/cli/src/remote-development/collection.ts",
+        "packages/cli/src/__tests__/remote-development.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-045",
+      "file": "packages/cli/src/remote-development/collection.ts",
+      "symbol": "validateFile",
+      "declarationKind": "function",
+      "callers": [
+        "packages/cli/src/remote-development/collection.ts:341",
+        "packages/cli/src/remote-development/collection.ts:552"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD",
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "parseCollectionFile",
+      "evidence": [
+        "packages/cli/src/remote-development/collection.ts",
+        "packages/cli/src/__tests__/remote-development.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-046",
+      "file": "packages/cli/src/remote-development/control.ts",
+      "symbol": "validatePublishedCollectionRef",
+      "declarationKind": "function",
+      "callers": [
+        "packages/cli/src/remote-development.ts:35",
+        "packages/cli/src/remote-development/control.ts:98",
+        "packages/cli/src/remote-development/control.ts:290"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "parsePublishedCollectionRef",
+      "evidence": [
+        "packages/cli/src/remote-development/control.ts",
+        "packages/cli/src/__tests__/remote-development.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-047",
+      "file": "packages/cli/src/remote-development/evaluator-loader.ts",
+      "symbol": "validateCollectionProgramEntries",
+      "declarationKind": "function",
+      "callers": [
+        "packages/cli/src/remote-development-evaluator.ts:8",
+        "packages/cli/src/remote-development.ts:15",
+        "packages/cli/src/remote-development/control.ts:3",
+        "packages/cli/src/remote-development/control.ts:125",
+        "packages/cli/src/remote-development/evaluator-loader.ts:6"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD",
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "loadCollectionProgramEntries",
+      "evidence": [
+        "packages/cli/src/remote-development/evaluator-loader.ts",
+        "packages/cli/src/__tests__/remote-development.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-048",
+      "file": "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts",
+      "symbol": "validateProgram",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:275",
+        "packages/a2a/src/protocol.ts:784",
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:181",
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:302"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyLocalProgramRequest",
+      "evidence": [
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts",
+        "packages/durable-chat-runtime/src/handler/__tests__/request-normalization.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-049",
+      "file": "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts",
+      "symbol": "validateCatalog",
+      "declarationKind": "function",
+      "callers": [
+        "packages/durable-chat-runtime/src/durable-handler/index.ts:28",
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:197",
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:404"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "parseCatalog",
+      "evidence": [
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts",
+        "packages/durable-chat-runtime/src/handler/__tests__/request-normalization.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-050",
+      "file": "packages/durable-chat-runtime/src/interrupts/registry.ts",
+      "symbol": "validateResumeEntries",
+      "declarationKind": "function",
+      "callers": [
+        "packages/durable-chat-runtime/src/handler/turn-plan.ts:14",
+        "packages/durable-chat-runtime/src/handler/turn-plan.ts:19",
+        "packages/durable-chat-runtime/src/handler/turn-plan.ts:71",
+        "packages/durable-chat-runtime/src/handler/turn-plan.ts:83",
+        "packages/durable-chat-runtime/src/interrupts/__tests__/registry.test.ts:7",
+        "packages/durable-chat-runtime/src/interrupts/__tests__/registry.test.ts:45",
+        "packages/durable-chat-runtime/src/interrupts/__tests__/registry.test.ts:57",
+        "packages/durable-chat-runtime/src/interrupts/__tests__/registry.test.ts:71",
+        "packages/durable-chat-runtime/src/interrupts/registry.ts:271"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "verifyResumeEntries",
+      "evidence": [
+        "packages/durable-chat-runtime/src/interrupts/registry.ts",
+        "packages/durable-chat-runtime/src/interrupts/__tests__/registry.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-051",
+      "file": "packages/durable-chat-runtime/src/interrupts/registry.ts",
+      "symbol": "validateJsonSchemaSubset",
+      "declarationKind": "function",
+      "callers": [
+        "packages/durable-chat-runtime/src/interrupts/registry.ts:98",
+        "packages/durable-chat-runtime/src/interrupts/registry.ts:147",
+        "packages/durable-chat-runtime/src/interrupts/registry.ts:358"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyJsonSchemaSubset",
+      "evidence": [
+        "packages/durable-chat-runtime/src/interrupts/registry.ts",
+        "packages/durable-chat-runtime/src/handler/__tests__/request-normalization.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-052",
+      "file": "packages/durable-effects/src/authoring.ts",
+      "symbol": "validateEffectDefinition",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/peer-contracts.ts:5",
+        "packages/a2a/src/peer-contracts.ts:24",
+        "packages/a2a/src/peer-contracts.ts:261",
+        "packages/agent-sdk/src/agent/agent.ts:9",
+        "packages/agent-sdk/src/agent/agent.ts:254",
+        "packages/chat-core/src/authoring/program.ts:29",
+        "packages/chat-core/src/authoring/program.ts:291",
+        "packages/durable-effects/src/authoring.ts:21",
+        "packages/durable-effects/src/authoring.ts:25",
+        "packages/durable-execution/src/program-authoring-runtime.ts:8",
+        "packages/durable-execution/src/program-authoring-runtime.ts:62",
+        "packages/durable-execution/src/program-context.ts:26",
+        "packages/durable-execution/src/program-context.ts:68"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertEffectDefinition",
+      "evidence": [
+        "packages/durable-effects/src/authoring.ts",
+        "packages/durable-effects/src/runtime.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-053",
+      "file": "packages/durable-effects/src/authoring.ts",
+      "symbol": "validateDescriptor",
+      "declarationKind": "function",
+      "callers": [
+        "packages/durable-effects/src/authoring.ts:29",
+        "packages/durable-effects/src/authoring.ts:30",
+        "packages/durable-effects/src/authoring.ts:32",
+        "packages/durable-effects/src/authoring.ts:53"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertEffectSchemaDescriptor",
+      "evidence": [
+        "packages/durable-effects/src/authoring.ts",
+        "packages/durable-effects/src/runtime.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-054",
+      "file": "packages/durable-effects/src/runtime.ts",
+      "symbol": "validateDurableEffectBindings",
+      "declarationKind": "function",
+      "callers": [
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:18",
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:199",
+        "packages/durable-effects/src/runtime.ts:45",
+        "packages/durable-effects/src/runtime.ts:100"
+      ],
+      "trust": "I",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertDurableEffectBindings",
+      "evidence": [
+        "packages/durable-effects/src/runtime.ts",
+        "packages/durable-effects/src/runtime.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-055",
+      "file": "packages/durable-execution/src/local-program-driver.ts",
+      "symbol": "validateProposal",
+      "declarationKind": "function",
+      "callers": [
+        "packages/durable-execution/src/local-program-driver.ts:190",
+        "packages/durable-execution/src/local-program-driver.ts:426"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertProgramProposal",
+      "evidence": [
+        "packages/durable-execution/src/local-program-driver.ts",
+        "packages/durable-execution/src/program-driver-capabilities.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-056",
+      "file": "packages/durable-execution/src/program-authoring-runtime.ts",
+      "symbol": "validateDurableManifest",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/manifest.ts:11",
+        "packages/a2a/src/manifest.ts:226",
+        "packages/cli/src/remote-development/collection.ts:8",
+        "packages/cli/src/remote-development/collection.ts:431",
+        "packages/durable-execution/src/program-authoring-runtime.ts:18",
+        "packages/durable-execution/src/program-authoring-runtime.ts:26",
+        "packages/durable-execution/src/program-authoring-runtime.ts:42",
+        "packages/durable-execution/src/program-identity.ts:17",
+        "packages/durable-execution/src/program-identity.ts:64",
+        "packages/durable-execution/src/program-identity.ts:69",
+        "packages/durable-execution/src/program-identity.ts:93"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "parseDurableManifest",
+      "evidence": [
+        "packages/durable-execution/src/program-authoring-runtime.ts",
+        "packages/durable-execution/src/program-identity.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-057",
+      "file": "packages/durable-execution/src/program-authoring-runtime.ts",
+      "symbol": "validateDescriptorField",
+      "declarationKind": "function",
+      "callers": [
+        "packages/durable-execution/src/program-authoring-runtime.ts:49",
+        "packages/durable-execution/src/program-authoring-runtime.ts:50",
+        "packages/durable-execution/src/program-authoring-runtime.ts:54",
+        "packages/durable-execution/src/program-authoring-runtime.ts:56",
+        "packages/durable-execution/src/program-authoring-runtime.ts:75"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertDescriptorField",
+      "evidence": [
+        "packages/durable-execution/src/program-authoring-runtime.ts",
+        "packages/durable-execution/src/program-identity.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-058",
+      "file": "packages/durable-execution/src/program-context.ts",
+      "symbol": "validateRetrySafety",
+      "declarationKind": "function",
+      "callers": [
+        "packages/durable-execution/src/program-context.ts:115",
+        "packages/durable-execution/src/program-context.ts:349"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertRetrySafety",
+      "evidence": [
+        "packages/durable-execution/src/program-context.ts",
+        "packages/durable-execution/src/program-identity.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-059",
+      "file": "packages/durable-execution/src/program-identity.ts",
+      "symbol": "validateProgramIdentityProvenance",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-sdk/src/agent/agent.ts:6",
+        "packages/agent-sdk/src/agent/agent.ts:191",
+        "packages/agent-sdk/src/index.ts:24",
+        "packages/cli/src/remote-development/collection.ts:9",
+        "packages/cli/src/remote-development/collection.ts:392",
+        "packages/cli/src/remote-development/collection.ts:462",
+        "packages/durable-execution/src/local-program-driver.ts:23",
+        "packages/durable-execution/src/local-program-driver.ts:64",
+        "packages/durable-execution/src/program-identity.test.ts:13",
+        "packages/durable-execution/src/program-identity.test.ts:71",
+        "packages/durable-execution/src/program-identity.test.ts:73",
+        "packages/durable-execution/src/program-identity.test.ts:92",
+        "packages/durable-execution/src/program-identity.test.ts:93",
+        "packages/durable-execution/src/program-identity.ts:156",
+        "packages/durable-execution/src/program-identity.ts:209"
+      ],
+      "trust": "I",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyProgramIdentityProvenance",
+      "evidence": [
+        "packages/durable-execution/src/program-identity.ts",
+        "packages/durable-execution/src/program-identity.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-060",
+      "file": "packages/durable-execution/src/program-identity.ts",
+      "symbol": "validateProgramBindingsForRelease",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-sdk/src/index.ts:23",
+        "packages/durable-execution/src/program-identity.test.ts:12",
+        "packages/durable-execution/src/program-identity.test.ts:104",
+        "packages/durable-execution/src/program-identity.ts:204"
+      ],
+      "trust": "D",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "verifyProgramBindingsForRelease",
+      "evidence": [
+        "packages/durable-execution/src/program-identity.ts",
+        "packages/durable-execution/src/program-identity.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-061",
+      "file": "packages/journal-authority/src/durable-authority.ts",
+      "symbol": "validateThroughRegistry",
+      "declarationKind": "function",
+      "callers": [
+        "packages/journal-authority/src/durable-authority.ts:484",
+        "packages/journal-authority/src/durable-authority.ts:740",
+        "packages/journal-authority/src/durable-authority.ts:748",
+        "packages/journal-authority/src/durable-authority.ts:1146",
+        "packages/journal-authority/src/durable-authority.ts:2278"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "parseRegisteredSchemaValue",
+      "evidence": [
+        "packages/journal-authority/src/durable-authority.ts",
+        "packages/journal-authority/src/__tests__/durable-runtime.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-062",
+      "file": "packages/journal-authority/src/schema-registry.ts",
+      "symbol": "validateRegisteredSchema",
+      "declarationKind": "function",
+      "callers": [
+        "packages/journal-authority/src/durable-authority.ts:19",
+        "packages/journal-authority/src/durable-authority.ts:889",
+        "packages/journal-authority/src/durable-authority.ts:955",
+        "packages/journal-authority/src/durable-authority.ts:977",
+        "packages/journal-authority/src/durable-authority.ts:2279",
+        "packages/journal-authority/src/schema-registry.test.ts:8",
+        "packages/journal-authority/src/schema-registry.test.ts:44",
+        "packages/journal-authority/src/schema-registry.test.ts:52",
+        "packages/journal-authority/src/schema-registry.test.ts:73",
+        "packages/journal-authority/src/schema-registry.ts:116"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "parseRegisteredSchema",
+      "evidence": [
+        "packages/journal-authority/src/schema-registry.ts",
+        "packages/journal-authority/src/schema-registry.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-063",
+      "file": "packages/model-provider-pi-ai/src/index.ts",
+      "symbol": "validateModelSelectionFields",
+      "declarationKind": "function",
+      "callers": [
+        "packages/model-provider-pi-ai/src/index.ts:75",
+        "packages/model-provider-pi-ai/src/index.ts:93",
+        "packages/model-provider-pi-ai/src/index.ts:103"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "parseModelSelectionFields",
+      "evidence": [
+        "packages/model-provider-pi-ai/src/index.ts",
+        "packages/model-provider-pi-ai/src/__tests__/provider-boundary.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-064",
+      "file": "packages/test-rig/src/model.ts",
+      "symbol": "validateExpectation",
+      "declarationKind": "function",
+      "callers": [
+        "packages/test-rig/src/model.ts:140",
+        "packages/test-rig/src/model.ts:243",
+        "packages/test-rig/src/model.ts:263",
+        "packages/test-rig/src/model.ts:636"
+      ],
+      "trust": "I",
+      "seams": [
+        "FI"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertExpectation",
+      "evidence": [
+        "packages/test-rig/src/model.ts",
+        "packages/test-rig/src/model.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-065",
+      "file": "packages/tool-runtime-agentcore/src/durable-placement.ts",
+      "symbol": "validateSandboxAffinity",
+      "declarationKind": "function",
+      "callers": [
+        "packages/tool-runtime-agentcore/src/durable-placement.ts:18",
+        "packages/tool-runtime-agentcore/src/durable-placement.ts:71",
+        "packages/tool-runtime-agentcore/src/index.ts:95"
+      ],
+      "trust": "I",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "parseSandboxAffinity",
+      "evidence": [
+        "packages/tool-runtime-agentcore/src/durable-placement.ts",
+        "packages/tool-runtime-agentcore/src/__tests__/driver.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-066",
+      "file": "packages/tool-runtime-agentcore/src/durable-placement.ts",
+      "symbol": "validateAgentCoreRuntimeRelease",
+      "declarationKind": "function",
+      "callers": [
+        "packages/tool-runtime-agentcore/src/__tests__/durable-protocol.test.ts:13",
+        "packages/tool-runtime-agentcore/src/__tests__/durable-protocol.test.ts:41",
+        "packages/tool-runtime-agentcore/src/__tests__/durable-protocol.test.ts:66",
+        "packages/tool-runtime-agentcore/src/durable-placement.ts:26",
+        "packages/tool-runtime-agentcore/src/durable-placement.ts:70",
+        "packages/tool-runtime-agentcore/src/durable-placement.ts:133",
+        "packages/tool-runtime-agentcore/src/durable-websocket-transport.ts:30",
+        "packages/tool-runtime-agentcore/src/durable-websocket-transport.ts:282",
+        "packages/tool-runtime-agentcore/src/index.ts:94"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "parseAgentCoreRuntimeRelease",
+      "evidence": [
+        "packages/tool-runtime-agentcore/src/durable-placement.ts",
+        "packages/tool-runtime-agentcore/src/__tests__/durable-protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-067",
+      "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
+      "symbol": "validateHostPayload",
+      "declarationKind": "function",
+      "callers": [
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:142",
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:203"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertHostPayload",
+      "evidence": [
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts",
+        "packages/tool-runtime-agentcore/src/__tests__/durable-protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-068",
+      "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
+      "symbol": "validateRuntimePayload",
+      "declarationKind": "function",
+      "callers": [
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:146",
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:299"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertRuntimePayload",
+      "evidence": [
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts",
+        "packages/tool-runtime-agentcore/src/__tests__/durable-protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-069",
+      "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
+      "symbol": "validateReplayEntry",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/protocol.ts:354",
+        "packages/a2a/src/protocol.ts:732",
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:243",
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:358"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertReplayEntry",
+      "evidence": [
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts",
+        "packages/tool-runtime-agentcore/src/__tests__/durable-protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-070",
+      "file": "packages/tool-session/src/mcp/handler/request-parser.ts",
+      "symbol": "validatePostHeaders",
+      "declarationKind": "function",
+      "callers": [
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:9",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:69",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:71",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:76",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:81",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:85",
+        "packages/tool-session/src/mcp/handler/index.ts:64",
+        "packages/tool-session/src/mcp/handler/request-parser.ts:78",
+        "packages/tool-session/src/mcp/handler/request-parser.ts:125",
+        "packages/tool-session/src/mcp/index.ts:276"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertPostHeaders",
+      "evidence": [
+        "packages/tool-session/src/mcp/handler/request-parser.ts",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-071",
+      "file": "packages/tool-session/src/mcp/handler/request-parser.ts",
+      "symbol": "validateGetHeaders",
+      "declarationKind": "function",
+      "callers": [
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:10",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:89",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:91",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:96",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:101",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts:105",
+        "packages/tool-session/src/mcp/handler/index.ts:65",
+        "packages/tool-session/src/mcp/handler/request-parser.ts:91",
+        "packages/tool-session/src/mcp/handler/request-parser.ts:139",
+        "packages/tool-session/src/mcp/index.ts:277"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertGetHeaders",
+      "evidence": [
+        "packages/tool-session/src/mcp/handler/request-parser.ts",
+        "packages/tool-session/src/mcp/handler/__tests__/handler.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-072",
+      "file": "packages/tool-session/src/mcp/protocol/message-decoder.ts",
+      "symbol": "validateToolCallRequest",
+      "declarationKind": "function",
+      "callers": [
+        "packages/tool-session/src/mcp/index.ts:167",
+        "packages/tool-session/src/mcp/protocol/index.ts:172",
+        "packages/tool-session/src/mcp/protocol/message-decoder.ts:382"
+      ],
+      "trust": "D",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "delete",
+      "replacement": "parseToolCallRequest",
+      "evidence": [
+        "packages/tool-session/src/mcp/protocol/message-decoder.ts",
+        "packages/tool-session/src/mcp/protocol/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-073",
+      "file": "packages/tool-session/src/mcp/protocol/message-decoder.ts",
+      "symbol": "validateElicitationResponse",
+      "declarationKind": "function",
+      "callers": [
+        "packages/tool-session/src/mcp/index.ts:168",
+        "packages/tool-session/src/mcp/protocol/index.ts:173",
+        "packages/tool-session/src/mcp/protocol/message-decoder.ts:401"
+      ],
+      "trust": "D",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "delete",
+      "replacement": "parseElicitationResponse",
+      "evidence": [
+        "packages/tool-session/src/mcp/protocol/message-decoder.ts",
+        "packages/tool-session/src/mcp/protocol/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-074",
+      "file": "packages/tool-session/src/mcp/protocol/message-decoder.ts",
+      "symbol": "validateSamplingResponse",
+      "declarationKind": "function",
+      "callers": [
+        "packages/tool-session/src/mcp/index.ts:169",
+        "packages/tool-session/src/mcp/protocol/index.ts:174",
+        "packages/tool-session/src/mcp/protocol/message-decoder.ts:423"
+      ],
+      "trust": "D",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "delete",
+      "replacement": "parseSamplingResponse",
+      "evidence": [
+        "packages/tool-session/src/mcp/protocol/message-decoder.ts",
+        "packages/tool-session/src/mcp/protocol/__tests__/protocol.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-075",
+      "file": "packages/tool-session/src/tool-parameters.ts",
+      "symbol": "validateToolParameters",
+      "declarationKind": "function",
+      "callers": [
+        "packages/durable-chat-runtime/src/durable-handler/__tests__/test-utils.ts:38",
+        "packages/durable-chat-runtime/src/durable-handler/__tests__/test-utils.ts:542",
+        "packages/platform-acceptance/src/product/golden-path.acceptance.test.ts:34",
+        "packages/platform-acceptance/src/product/golden-path.acceptance.test.ts:175",
+        "packages/tool-runtime-agentcore/src/agentcore-session-registry.ts:8",
+        "packages/tool-runtime-agentcore/src/agentcore-session-registry.ts:216",
+        "packages/tool-runtime-local/src/session-registry.ts:28",
+        "packages/tool-runtime-local/src/session-registry.ts:196",
+        "packages/tool-runtime-local/src/tool-session.ts:27",
+        "packages/tool-runtime-local/src/tool-session.ts:95",
+        "packages/tool-session/src/mcp/bridge-runtime.ts:37",
+        "packages/tool-session/src/mcp/bridge-runtime.ts:1183",
+        "packages/tool-session/src/mcp/bridge-runtime.ts:1310",
+        "packages/tool-session/src/tool-parameters.ts:197",
+        "packages/tool-session/src/tool-parameters.ts:239"
+      ],
+      "trust": "B+GAP",
+      "seams": [
+        "AD",
+        "UA"
+      ],
+      "structuralAuthority": "zod",
+      "disposition": "delete",
+      "replacement": "parseToolParameters",
+      "evidence": [
+        "packages/tool-session/src/tool-parameters.ts",
+        "packages/platform-acceptance/src/product/golden-path.acceptance.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-076",
+      "file": "packages/tool-session/src/tool-parameters.ts",
+      "symbol": "validateRuntimeToolParameters",
+      "declarationKind": "function",
+      "callers": [
+        "packages/tool-runtime-agentcore/src/driver.ts:1",
+        "packages/tool-runtime-agentcore/src/driver.ts:270",
+        "packages/tool-runtime-local/src/driver.ts:1",
+        "packages/tool-runtime-local/src/driver.ts:228",
+        "packages/tool-session/src/tool-parameters.ts:234"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD",
+        "UA"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "parseRuntimeToolParameters",
+      "evidence": [
+        "packages/tool-session/src/tool-parameters.ts",
+        "packages/tool-session/src/tool-parameters.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-077",
+      "file": "packages/workspace-runtime/src/index.ts",
+      "symbol": "validateRequest",
+      "declarationKind": "function",
+      "callers": [
+        "packages/a2a/src/delegated-effects-client.ts:251",
+        "packages/a2a/src/delegated-effects-client.ts:434",
+        "packages/workspace-runtime/src/index.ts:323",
+        "packages/workspace-runtime/src/index.ts:922"
+      ],
+      "trust": "B",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertWorkspaceRequestAtExecution",
+      "evidence": [
+        "packages/workspace-runtime/src/index.ts",
+        "packages/workspace-runtime/src/workspace-runtime.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-078",
+      "file": "packages/workspace-runtime/src/index.ts",
+      "symbol": "validateFence",
+      "declarationKind": "function",
+      "callers": [
+        "packages/workspace-runtime/src/index.ts:148",
+        "packages/workspace-runtime/src/index.ts:926"
+      ],
+      "trust": "I",
+      "seams": [
+        "AD"
+      ],
+      "structuralAuthority": "none",
+      "disposition": "delete",
+      "replacement": "assertWorkspaceFence",
+      "evidence": [
+        "packages/workspace-runtime/src/index.ts",
+        "packages/workspace-runtime/src/workspace-runtime.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-079",
+      "file": "packages/a2a/src/foreign-adapter.ts",
+      "symbol": "validate",
+      "declarationKind": "callback",
+      "callers": [
+        "packages/a2a/src/peer-adapter.ts:106",
+        "packages/a2a/src/peer-resolver.ts:122",
+        "packages/agent-sdk/src/protocol/serve.ts:86",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:15",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:55",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:58",
+        "packages/agent-sdk/src/tool/durable-create.ts:676",
+        "packages/durable-chat-runtime/src/handler/turn-plan.ts:6",
+        "packages/durable-effects/src/model-sample-contract.ts:78",
+        "packages/durable-effects/src/model-sample-contract.ts:80",
+        "packages/foundation/src/schema-validation.ts:9",
+        "packages/foundation/src/schema.ts:32",
+        "packages/foundation/src/schema.ts:34",
+        "packages/journal-authority/src/schema-registry.ts:170",
+        "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts:47",
+        "packages/test-rig/src/scenario.ts:107",
+        "packages/tool-session/src/foreign-contract.ts:52",
+        "packages/tool-session/src/mcp/bridge-runtime.ts:1038"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA",
+        "AD"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "standard-schema-callback",
+      "evidence": [
+        "packages/a2a/src/foreign-adapter.ts:62",
+        "packages/tool-session/src/tool-parameters.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-080",
+      "file": "packages/a2a/src/peer-adapter.ts",
+      "symbol": "validate",
+      "declarationKind": "callback",
+      "callers": [
+        "packages/a2a/src/foreign-adapter.ts:62",
+        "packages/a2a/src/peer-resolver.ts:122",
+        "packages/agent-sdk/src/protocol/serve.ts:86",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:15",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:55",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:58",
+        "packages/agent-sdk/src/tool/durable-create.ts:676",
+        "packages/durable-chat-runtime/src/handler/turn-plan.ts:6",
+        "packages/durable-effects/src/model-sample-contract.ts:78",
+        "packages/durable-effects/src/model-sample-contract.ts:80",
+        "packages/foundation/src/schema-validation.ts:9",
+        "packages/foundation/src/schema.ts:32",
+        "packages/foundation/src/schema.ts:34",
+        "packages/journal-authority/src/schema-registry.ts:170",
+        "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts:47",
+        "packages/test-rig/src/scenario.ts:107",
+        "packages/tool-session/src/foreign-contract.ts:52",
+        "packages/tool-session/src/mcp/bridge-runtime.ts:1038"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA",
+        "AD"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "standard-schema-callback",
+      "evidence": [
+        "packages/a2a/src/peer-adapter.ts:106",
+        "packages/tool-session/src/tool-parameters.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-081",
+      "file": "packages/a2a/src/peer-resolver.ts",
+      "symbol": "validate",
+      "declarationKind": "callback",
+      "callers": [
+        "packages/a2a/src/foreign-adapter.ts:62",
+        "packages/a2a/src/peer-adapter.ts:106",
+        "packages/agent-sdk/src/protocol/serve.ts:86",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:15",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:55",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:58",
+        "packages/agent-sdk/src/tool/durable-create.ts:676",
+        "packages/durable-chat-runtime/src/handler/turn-plan.ts:6",
+        "packages/durable-effects/src/model-sample-contract.ts:78",
+        "packages/durable-effects/src/model-sample-contract.ts:80",
+        "packages/foundation/src/schema-validation.ts:9",
+        "packages/foundation/src/schema.ts:32",
+        "packages/foundation/src/schema.ts:34",
+        "packages/journal-authority/src/schema-registry.ts:170",
+        "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts:47",
+        "packages/test-rig/src/scenario.ts:107",
+        "packages/tool-session/src/foreign-contract.ts:52",
+        "packages/tool-session/src/mcp/bridge-runtime.ts:1038"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA",
+        "AD"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "standard-schema-callback",
+      "evidence": [
+        "packages/a2a/src/peer-resolver.ts:122",
+        "packages/tool-session/src/tool-parameters.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-082",
+      "file": "packages/agent-sdk/src/schema/zod-adapter.ts",
+      "symbol": "validate",
+      "declarationKind": "callback",
+      "callers": [
+        "packages/a2a/src/foreign-adapter.ts:62",
+        "packages/a2a/src/peer-adapter.ts:106",
+        "packages/a2a/src/peer-resolver.ts:122",
+        "packages/agent-sdk/src/protocol/serve.ts:86",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:15",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:58",
+        "packages/agent-sdk/src/tool/durable-create.ts:676",
+        "packages/durable-chat-runtime/src/handler/turn-plan.ts:6",
+        "packages/durable-effects/src/model-sample-contract.ts:78",
+        "packages/durable-effects/src/model-sample-contract.ts:80",
+        "packages/foundation/src/schema-validation.ts:9",
+        "packages/foundation/src/schema.ts:32",
+        "packages/foundation/src/schema.ts:34",
+        "packages/journal-authority/src/schema-registry.ts:170",
+        "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts:47",
+        "packages/test-rig/src/scenario.ts:107",
+        "packages/tool-session/src/foreign-contract.ts:52",
+        "packages/tool-session/src/mcp/bridge-runtime.ts:1038"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA",
+        "AD"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "standard-schema-callback",
+      "evidence": [
+        "packages/agent-sdk/src/schema/zod-adapter.ts:55",
+        "packages/tool-session/src/tool-parameters.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-083",
+      "file": "packages/foundation/src/schema-validation.ts",
+      "symbol": "validateStandardSchema",
+      "declarationKind": "function",
+      "callers": [
+        "packages/agent-sdk/src/tool/create.ts:3",
+        "packages/agent-sdk/src/tool/create.ts:175",
+        "packages/agent-sdk/src/tool/create.ts:186",
+        "packages/journal-authority/src/schema-registry.ts:8",
+        "packages/journal-authority/src/schema-registry.ts:127",
+        "packages/tool-session/src/mcp/bridge-runtime.ts:36",
+        "packages/tool-session/src/mcp/bridge-runtime.ts:1042",
+        "packages/tool-session/src/mcp/mock-runtime.ts:33",
+        "packages/tool-session/src/mcp/mock-runtime.ts:363",
+        "packages/tool-session/src/tool-parameters.ts:5",
+        "packages/tool-session/src/tool-parameters.ts:183"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA",
+        "AD"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "standard-schema-callback",
+      "evidence": [
+        "packages/foundation/src/schema-validation.ts:5",
+        "packages/agent-sdk/src/tool/__tests__/standard-schema.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-084",
+      "file": "packages/tool-session/src/foreign-contract.ts",
+      "symbol": "validate",
+      "declarationKind": "callback",
+      "callers": [
+        "packages/a2a/src/foreign-adapter.ts:62",
+        "packages/a2a/src/peer-adapter.ts:106",
+        "packages/a2a/src/peer-resolver.ts:122",
+        "packages/agent-sdk/src/protocol/serve.ts:86",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:15",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:55",
+        "packages/agent-sdk/src/schema/zod-adapter.ts:58",
+        "packages/agent-sdk/src/tool/durable-create.ts:676",
+        "packages/durable-chat-runtime/src/handler/turn-plan.ts:6",
+        "packages/durable-effects/src/model-sample-contract.ts:78",
+        "packages/durable-effects/src/model-sample-contract.ts:80",
+        "packages/foundation/src/schema-validation.ts:9",
+        "packages/foundation/src/schema.ts:32",
+        "packages/foundation/src/schema.ts:34",
+        "packages/journal-authority/src/schema-registry.ts:170",
+        "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts:47",
+        "packages/test-rig/src/scenario.ts:107",
+        "packages/tool-session/src/mcp/bridge-runtime.ts:1038"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA",
+        "AD"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "standard-schema-callback",
+      "evidence": [
+        "packages/tool-session/src/foreign-contract.ts:52",
+        "packages/tool-session/src/tool-parameters.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-085",
+      "file": "packages/agent-sdk/src/tool/durable-create.ts",
+      "symbol": "validate",
+      "declarationKind": "callback",
+      "callers": [
+        "packages/agent-sdk/src/tool/durable-create.ts:676"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "standard-schema-callback",
+      "evidence": [
+        "packages/agent-sdk/src/tool/durable-create.ts:737",
+        "packages/tool-session/src/tool-parameters.test.ts"
+      ]
+    },
+    {
+      "id": "VAL-086",
+      "file": "packages/react-chat/src/useElicitExecutor.ts",
+      "symbol": "validate",
+      "declarationKind": "callback",
+      "callers": [
+        "packages/react-chat/src/useElicitExecutor.ts:321"
+      ],
+      "trust": "B",
+      "seams": [
+        "UA"
+      ],
+      "structuralAuthority": "standard-schema",
+      "disposition": "standard-schema-callback",
+      "evidence": [
+        "packages/react-chat/src/useElicitExecutor.ts:321",
+        "packages/tool-session/src/tool-parameters.test.ts"
+      ]
+    }
+  ]
+}

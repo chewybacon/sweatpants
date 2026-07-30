@@ -164,9 +164,6 @@ export {
   decodeResponse,
   createDecoderContext,
   parseJsonRpcMessage,
-  validateToolCallRequest,
-  validateElicitationResponse,
-  validateSamplingResponse,
 
   // SSE
   formatSseEvent,
@@ -273,8 +270,8 @@ export {
 
   // Request parsing
   parseHeaders,
-  validatePostHeaders,
-  validateGetHeaders,
+  assertPostHeaders,
+  assertGetHeaders,
   parseRequest,
   classifyRequest,
   parseAndClassify,

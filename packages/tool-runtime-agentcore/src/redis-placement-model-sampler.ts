@@ -1,5 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { call, race, sleep, type Operation } from "effection";
+import { z } from "zod";
 import type { RedisClientType } from "redis";
 import type { TokenBuffer, TokenBufferStore } from "@sweatpants/durable-streams";
 import { StaleTokenWriterError } from "@sweatpants/durable-streams";
@@ -73,8 +74,49 @@ return 'ok'
 function keyFor(prefix: string, identity: RemoteSampleIdentity): string {
   return `${prefix}${canonicalSnapshot(identity as unknown as Json).sha}`;
 }
+const remoteSampleIdentitySchema = z
+  .object({
+    journalId: z.string().min(1).max(512),
+    journalIncarnation: z.string().min(1).max(512),
+    sessionId: z.string().min(1).max(512),
+    taskId: z.string().min(1).max(512),
+    pullId: z.string().min(1).max(512),
+  })
+  .strict();
+const remoteSampleRecordSchema = z
+  .object({
+    version: z.literal(1),
+    identity: remoteSampleIdentitySchema,
+    releaseId: z.string().min(1).max(512),
+    requestDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    effectContractDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    classificationsDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    streamId: z.string().min(1).max(512),
+    state: z.enum(["starting", "streaming", "completed", "cancelled", "failed", "orphaned"]),
+    producerOwnerId: z.string().min(1).max(512),
+    producerEpoch: z.number().int().nonnegative().safe(),
+    producerLeaseExpiresAt: z.string().datetime({ offset: true }),
+    terminalLsn: z.number().int().nonnegative().safe().optional(),
+    disposition: z.json().optional(),
+    dispositionDigest: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    acknowledgedOutcomeDigest: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    acknowledgedAt: z.string().datetime({ offset: true }).optional(),
+    retentionExpiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
 function parseRecord(raw: string): RemoteSampleRecord {
-  return JSON.parse(raw) as RemoteSampleRecord;
+  try {
+    const value: unknown = JSON.parse(raw);
+    return remoteSampleRecordSchema.parse(value) as unknown as RemoteSampleRecord;
+  } catch {
+    throw new CrankError("remote_sample_protocol_error", "Remote sample record is malformed");
+  }
 }
 function attachment(record: RemoteSampleRecord): RemoteSampleAttachment {
   return {

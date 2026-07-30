@@ -107,8 +107,8 @@ type Identity = {
 
 /** Reference compute-only executor. It owns generator frames, never journal authority or credentials. */
 export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2AProgramExecutor {
-  validateId(options.executorId, "executorId");
-  validateId(options.computeGeneration, "computeGeneration");
+  assertA2AIdentifier(options.executorId, "executorId");
+  assertA2AIdentifier(options.computeGeneration, "computeGeneration");
   const driver = createLocalProgramDriver(options.registry, {
     detachedScope: true,
     ...(options.executionEffects ? { executionEffects: options.executionEffects } : {}),
@@ -116,7 +116,7 @@ export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2
   const latestEpochs = new Map<string, { epoch: number; lastSeenAt: number; active: number }>();
   const states = new Set<ConnectionState>();
   const streamedRestore = options.streamedRestore ?? true;
-  const limits = validateResourceLimits(options.resourceLimits);
+  const limits = parseA2AExecutorResourceLimits(options.resourceLimits);
 
   return {
     openConnection(request): A2AExecutorConnection {
@@ -601,7 +601,7 @@ function allowedCode(value: string): A2AProgramErrorCode {
     ? (value as A2AProgramErrorCode)
     : "program_protocol_error";
 }
-function validateResourceLimits(
+function parseA2AExecutorResourceLimits(
   input: A2AProgramExecutorOptions["resourceLimits"],
 ): A2AExecutorResourceLimits {
   const limits: A2AExecutorResourceLimits = {
@@ -618,7 +618,7 @@ function validateResourceLimits(
   return Object.freeze(limits);
 }
 
-function validateId(value: string, field: string): void {
+function assertA2AIdentifier(value: string, field: string): void {
   if (!value || value.length > 256) {
     throw new CrankError("invalid_descriptor", `Invalid ${field}`);
   }

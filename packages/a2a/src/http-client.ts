@@ -2,14 +2,14 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP, type LookupFunction } from "node:net";
 
-import { canonicalJson, type Json } from "@sweatpants/foundation";
+import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
 import {
   A2A_EXTENSIONS_HEADER,
   A2A_MAX_FRAME_BYTES,
   type A2ARequestAuthorization,
 } from "./types.ts";
 import { a2aError } from "./protocol.ts";
-import { normalizedTransportOrigin, validateA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
+import { normalizedTransportOrigin, verifyA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
 
 export interface A2AHttpResponse {
   readonly url: URL;
@@ -52,7 +52,7 @@ export function createSecureA2AHttpClient(): A2AHttpClient {
     let current = request.url instanceof URL ? new URL(request.url) : new URL(request.url);
     let previous: URL | undefined;
     for (let redirects = 0; ; redirects += 1) {
-      const validated = await validateA2AUrl(current, {
+      const validated = await verifyA2AUrl(current, {
         purpose: request.purpose,
         ...(request.policy ? { policy: request.policy } : {}),
         ...(request.cardOrigin ? { cardOrigin: request.cardOrigin } : {}),
@@ -110,9 +110,9 @@ export function parseA2AJsonResponse(response: A2AHttpResponse): Json {
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(response.body);
-    return JSON.parse(text) as Json;
-  } catch (error) {
-    throw a2aError("agent_card_invalid", "A2A endpoint returned malformed JSON", error);
+    return assertJson(JSON.parse(text));
+  } catch {
+    throw a2aError("agent_card_invalid", "A2A endpoint returned malformed JSON");
   }
 }
 

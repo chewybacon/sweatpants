@@ -14,6 +14,7 @@
  *
  * @packageDocumentation
  */
+import { z } from "zod";
 import type {
   JsonRpcResponse,
   JsonRpcRequest,
@@ -283,15 +284,16 @@ export function decodeResponse(response: JsonRpcResponse, ctx: DecoderContext): 
 
   switch (pending.type) {
     case "elicitation":
-      return decodeElicitationResponse(
-        response as JsonRpcResponse<McpElicitationResult>,
-        pending.id,
-      );
-    case "sampling":
-      return decodeSamplingResponse(
-        response as JsonRpcResponse<McpCreateMessageResult>,
-        pending.id,
-      );
+      const elicitation = parseElicitationResponse(response);
+      return elicitation
+        ? decodeElicitationResponse(elicitation, pending.id)
+        : { type: "unknown", raw: response };
+    case "sampling": {
+      const sampling = parseSamplingResponse(response);
+      return sampling
+        ? decodeSamplingResponse(sampling, pending.id)
+        : { type: "unknown", raw: response };
+    }
   }
 }
 
@@ -319,122 +321,194 @@ export function parseJsonRpcMessage(raw: string): ParsedJsonRpcMessage {
     return { type: "invalid", raw, error: "Invalid JSON" };
   }
 
-  if (typeof parsed !== "object" || parsed === null) {
+  if (!isRecord(parsed)) {
     return { type: "invalid", raw: parsed, error: "Not an object" };
   }
-
-  const obj = parsed as Record<string, unknown>;
-
-  if (obj["jsonrpc"] !== "2.0") {
+  if (parsed["jsonrpc"] !== "2.0") {
     return { type: "invalid", raw: parsed, error: "Not JSON-RPC 2.0" };
   }
 
-  // Check for response (has result or error)
-  if (isJsonRpcResponseShape(obj)) {
-    return { type: "response", message: obj };
+  const response = parseJsonRpcResponse(parsed);
+  if (response) {
+    return { type: "response", message: response };
   }
 
-  // Check for request (has id and method)
-  if (isJsonRpcRequestShape(obj)) {
-    return { type: "request", message: obj };
+  if ("id" in parsed && typeof parsed["method"] === "string") {
+    const id = parsed["id"];
+    if (!validJsonRpcId(id) || id === null || parsed["method"].length === 0) {
+      return { type: "invalid", raw: parsed, error: "Invalid request identity" };
+    }
+    if (parsed["method"] === "tools/call") {
+      const toolCall = parseToolCallRequest(parsed);
+      return toolCall
+        ? { type: "request", message: toolCall }
+        : { type: "invalid", raw: parsed, error: "Invalid tools/call request" };
+    }
+    const message: JsonRpcRequest = {
+      jsonrpc: "2.0",
+      id,
+      method: parsed["method"],
+      ...(parsed["params"] !== undefined ? { params: parsed["params"] } : {}),
+    };
+    return { type: "request", message };
   }
 
-  // Check for notification (has method but no id)
-  if (isJsonRpcNotificationShape(obj)) {
-    return { type: "notification", message: obj };
+  if (!("id" in parsed) && typeof parsed["method"] === "string") {
+    const message: JsonRpcNotification = {
+      jsonrpc: "2.0",
+      method: parsed["method"],
+      ...(parsed["params"] !== undefined ? { params: parsed["params"] } : {}),
+    };
+    return { type: "notification", message };
   }
 
   return { type: "invalid", raw: parsed, error: "Unknown message type" };
 }
 
-// =============================================================================
-// STRUCTURAL TYPE PREDICATES
-// =============================================================================
-
-/**
- * Type predicate: object has the shape of a JSON-RPC response (has result or error, plus jsonrpc).
- */
-function isJsonRpcResponseShape(obj: object): obj is JsonRpcResponse {
-  return "result" in obj || "error" in obj;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * Type predicate: object has the shape of a JSON-RPC request (has id and method, plus jsonrpc).
- */
-function isJsonRpcRequestShape(obj: object): obj is JsonRpcRequest {
-  return "id" in obj && "method" in obj;
+const jsonRpcIdSchema = z.union([z.string().max(512), z.number().finite(), z.null()]);
+const jsonRpcErrorSchema = z
+  .object({
+    code: z.number().int().finite(),
+    message: z.string().max(16_384),
+    data: z.json().optional(),
+  })
+  .strict();
+const jsonRpcSuccessSchema = z
+  .object({
+    jsonrpc: z.literal("2.0"),
+    id: z.union([z.string().max(512), z.number().finite()]),
+    result: z.json(),
+  })
+  .strict();
+const jsonRpcErrorResponseSchema = z
+  .object({ jsonrpc: z.literal("2.0"), id: jsonRpcIdSchema, error: jsonRpcErrorSchema })
+  .strict();
+const mcpContentBlockSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.object({ type: z.literal("text"), text: z.string() }).strict(),
+    z.object({ type: z.literal("image"), data: z.string(), mimeType: z.string() }).strict(),
+    z.object({ type: z.literal("audio"), data: z.string(), mimeType: z.string() }).strict(),
+    z
+      .object({
+        type: z.literal("resource"),
+        resource: z
+          .object({
+            uri: z.string(),
+            text: z.string().optional(),
+            blob: z.string().optional(),
+            mimeType: z.string().optional(),
+          })
+          .strict(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("tool_use"),
+        id: z.string().min(1),
+        name: z.string().min(1),
+        input: z.record(z.string(), z.json()),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("tool_result"),
+        toolUseId: z.string().min(1),
+        content: z.array(mcpContentBlockSchema),
+        isError: z.boolean().optional(),
+      })
+      .strict(),
+  ]),
+);
+const toolCallParamsSchema = z
+  .object({
+    name: z.string().min(1).max(512),
+    arguments: z.record(z.string(), z.json()).optional(),
+  })
+  .strict();
+const elicitationResultSchema = z
+  .object({
+    action: z.enum(["accept", "decline", "cancel"]),
+    content: z.record(z.string(), z.json()).optional(),
+  })
+  .strict();
+const samplingResultSchema = z
+  .object({
+    role: z.literal("assistant"),
+    content: z.union([mcpContentBlockSchema, z.array(mcpContentBlockSchema).min(1)]),
+    model: z.string().max(512),
+    stopReason: z.string().max(128).optional(),
+  })
+  .strict();
+
+function validJsonRpcId(value: unknown): value is string | number | null {
+  return jsonRpcIdSchema.safeParse(value).success;
 }
 
-/**
- * Type predicate: object has the shape of a JSON-RPC notification (has method but no id, plus jsonrpc).
- */
-function isJsonRpcNotificationShape(obj: object): obj is JsonRpcNotification {
-  return "method" in obj && !("id" in obj);
+function onlyKeys(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): boolean {
+  const allowed = new Set([...required, ...optional]);
+  return (
+    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
+  );
 }
 
-// =============================================================================
-// VALIDATION HELPERS
-// =============================================================================
-
-/**
- * Validate that a tools/call request has required fields.
- */
-export function validateToolCallRequest(
-  request: JsonRpcRequest,
-): request is JsonRpcRequest<"tools/call", McpToolCallParams> {
-  if (request.method !== "tools/call") {
-    return false;
-  }
-  if (!request.params) {
-    return false;
-  }
-  const params = request.params as Record<string, unknown>;
-  if (typeof params["name"] !== "string") {
-    return false;
-  }
-  return true;
+function parseJsonRpcResponse(value: unknown): JsonRpcResponse | undefined {
+  const error = jsonRpcErrorResponseSchema.safeParse(value);
+  if (error.success) return error.data as JsonRpcResponse;
+  const success = jsonRpcSuccessSchema.safeParse(value);
+  return success.success ? (success.data as JsonRpcResponse) : undefined;
 }
 
-/**
- * Validate that an elicitation response has required fields.
- */
-export function validateElicitationResponse(
-  response: JsonRpcResponse,
-): response is JsonRpcResponse<McpElicitationResult> {
-  if (isJsonRpcError(response)) {
-    return true;
-  } // Errors are valid responses
-  if (!isJsonRpcSuccess(response)) {
-    return false;
+function parseToolCallRequest(
+  value: unknown,
+): JsonRpcRequest<"tools/call", McpToolCallParams> | undefined {
+  if (!isRecord(value) || value["jsonrpc"] !== "2.0" || value["method"] !== "tools/call") {
+    return undefined;
   }
-  const result = response.result as Record<string, unknown>;
-  if (!result["action"]) {
-    return false;
-  }
-  if (!["accept", "decline", "cancel"].includes(result["action"] as string)) {
-    return false;
-  }
-  return true;
+  if (!validJsonRpcId(value["id"]) || value["id"] === null) return undefined;
+  const params = toolCallParamsSchema.safeParse(value["params"]);
+  if (!params.success) return undefined;
+  if (!onlyKeys(value, ["jsonrpc", "id", "method"], ["params"])) return undefined;
+  return {
+    jsonrpc: "2.0",
+    id: value["id"],
+    method: "tools/call",
+    params: {
+      name: params.data.name,
+      ...(params.data.arguments !== undefined ? { arguments: params.data.arguments } : {}),
+    },
+  };
 }
 
-/**
- * Validate that a sampling response has required fields.
- */
-export function validateSamplingResponse(
-  response: JsonRpcResponse,
-): response is JsonRpcResponse<McpCreateMessageResult> {
-  if (isJsonRpcError(response)) {
-    return true;
-  } // Errors are valid responses
-  if (!isJsonRpcSuccess(response)) {
-    return false;
-  }
-  const result = response.result as Record<string, unknown>;
-  if (result["role"] !== "assistant") {
-    return false;
-  }
-  if (!result["content"]) {
-    return false;
-  }
-  return true;
+function parseElicitationResponse(
+  value: unknown,
+): JsonRpcResponse<McpElicitationResult> | undefined {
+  const response = parseJsonRpcResponse(value);
+  if (!response) return undefined;
+  if (isJsonRpcError(response)) return response as JsonRpcResponse<McpElicitationResult>;
+  if (!isJsonRpcSuccess(response)) return undefined;
+  const result = elicitationResultSchema.safeParse(response.result);
+  return result.success
+    ? ({ ...response, result: result.data } as JsonRpcResponse<McpElicitationResult>)
+    : undefined;
+}
+
+function parseSamplingResponse(
+  value: unknown,
+): JsonRpcResponse<McpCreateMessageResult> | undefined {
+  const response = parseJsonRpcResponse(value);
+  if (!response) return undefined;
+  if (isJsonRpcError(response)) return response as JsonRpcResponse<McpCreateMessageResult>;
+  if (!isJsonRpcSuccess(response)) return undefined;
+  const result = samplingResultSchema.safeParse(response.result);
+  return result.success
+    ? ({ ...response, result: result.data } as JsonRpcResponse<McpCreateMessageResult>)
+    : undefined;
 }

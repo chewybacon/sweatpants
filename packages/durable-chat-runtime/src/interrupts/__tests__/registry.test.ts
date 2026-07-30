@@ -4,7 +4,7 @@ import {
   registerInterruptsFromRunFinished,
   resetInterruptRegistry,
   scopeIdForInterruptRun,
-  validateResumeEntries,
+  verifyResumeEntries,
 } from "../registry.ts";
 
 const threadId = "thread-schema-actions";
@@ -42,7 +42,7 @@ describe("interrupt resume action validation", () => {
   it.each(["decline", "cancel"] as const)(
     "accepts %s without applying the accepted-content schema",
     (action) => {
-      const result = validateResumeEntries({
+      const result = verifyResumeEntries({
         threadId,
         scopeId,
         runId: `run-${action}`,
@@ -54,7 +54,7 @@ describe("interrupt resume action validation", () => {
   );
 
   it("validates accept.content against the response schema", () => {
-    const invalid = validateResumeEntries({
+    const invalid = verifyResumeEntries({
       threadId,
       scopeId,
       runId: "run-invalid",
@@ -68,7 +68,7 @@ describe("interrupt resume action validation", () => {
     });
     expect(invalid).toMatchObject({ ok: false, code: "RESUME_PAYLOAD_INVALID" });
 
-    const valid = validateResumeEntries({
+    const valid = verifyResumeEntries({
       threadId,
       scopeId,
       runId: "run-valid",

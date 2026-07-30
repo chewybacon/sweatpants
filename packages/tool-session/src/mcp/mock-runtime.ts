@@ -29,9 +29,9 @@
  * @packageDocumentation
  */
 import { useAbortSignal, type Operation } from "effection";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
-import { z } from "zod";
 import type {
   ToolCtx,
   ToolDefinition,
@@ -54,7 +54,7 @@ interface MockSampleConfig<T = unknown> {
   prompt?: string;
   messages?: readonly unknown[];
   systemPrompt?: string;
-  schema?: z.ZodType<T>;
+  schema?: StandardSchemaV1<unknown, T>;
   maxTokens?: number;
   modelPreferences?: unknown;
 }
@@ -405,13 +405,16 @@ function createCoreToolCtx(
       key: string,
       request: { message: string; context?: unknown },
     ): Operation<ToolElicitResult<unknown, unknown>> {
-      const def = (tool.elicits as Record<string, { response?: unknown }>)[key];
+      const def = (tool.elicits as Record<string, { response?: StandardSchemaV1 }>)[key];
+      if (!def?.response) {
+        throw new Error(`Elicit key "${key}" has no Standard Schema authority`);
+      }
       if (!def) {
         throw new Error(`Unknown elicit key "${key}" for tool "${tool.name}"`);
       }
       const response = yield* clientCtx.elicit({
         message: request.message,
-        schema: def.response as z.ZodType,
+        schema: def.response,
       });
       if (response.action === "accept") {
         const toolUseId = `elicit_${key}`;

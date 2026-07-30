@@ -84,7 +84,8 @@
         "@sweatpants/workspace-runtime": "workspace:*",
         "effection": "catalog:",
         "pino": "^9.6.0",
-        "pino-pretty": "^13.0.0"
+        "pino-pretty": "^13.0.0",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",

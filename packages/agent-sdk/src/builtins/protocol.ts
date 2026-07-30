@@ -7,7 +7,7 @@ import { createProtocol } from "../protocol/create.ts";
 const ElicitPayloadSchema = z.object({
   type: z.string(),
   message: z.string(),
-  schema: z.unknown(), // Zod schema serialized
+  schemaDescriptor: z.record(z.string(), z.json()).optional(),
   meta: z.record(z.string(), z.unknown()).optional(),
 });
 

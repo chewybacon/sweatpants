@@ -3,6 +3,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { run, createChannel } from "effection";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
 import {
   createPluginClientContext,
@@ -21,8 +22,8 @@ function createElicitRequest<K extends string>(
   key: K,
   message: string,
   callId: string = "call-123",
-  schema?: z.ZodType,
-): ElicitRequest<K, z.ZodType> {
+  schema?: StandardSchemaV1,
+): ElicitRequest<K, StandardSchemaV1> {
   return {
     id: { toolName: "test_tool", key, callId, seq: 1 } as ElicitId,
     key,
@@ -31,7 +32,13 @@ function createElicitRequest<K extends string>(
     seq: 1,
     message,
     schema: {
-      zod: schema ?? z.object({}),
+      standard: schema ?? {
+        "~standard": {
+          version: 1,
+          vendor: "test",
+          validate: (value: unknown) => ({ value }),
+        },
+      },
       json: {},
     },
   };

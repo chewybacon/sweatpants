@@ -27,7 +27,8 @@ import type {
 } from "./durable-websocket-connector.ts";
 import {
   createInvocationAgentCorePlacement,
-  validateAgentCoreRuntimeRelease,
+  parseAgentCoreTaskPlacement,
+  verifyAgentCoreRuntimeRelease,
 } from "./durable-placement.ts";
 
 export type AgentCoreDurableProgramRoute =
@@ -263,23 +264,20 @@ function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
   const deploymentRelease = request.route["release"] as unknown;
   const journalId = request.route["journalId"];
   const result =
-    placement && typeof placement === "object" && !Array.isArray(placement)
-      ? (placement as AgentCoreTaskPlacement)
-      : deploymentRelease &&
-          typeof deploymentRelease === "object" &&
-          !Array.isArray(deploymentRelease) &&
-          typeof journalId === "string"
+    placement !== undefined
+      ? parseAgentCoreTaskPlacement(placement)
+      : deploymentRelease !== undefined && typeof journalId === "string"
         ? createInvocationAgentCorePlacement({
             journalId,
             rootTaskId: request.taskId,
             program: request.program,
-            release: deploymentRelease as AgentCoreRuntimeRelease,
+            release: deploymentRelease,
           })
         : undefined;
   if (!result) {
     throw new CrankError("placement_unavailable", "Missing AgentCore private placement");
   }
-  validateAgentCoreRuntimeRelease(result.release);
+  const release = verifyAgentCoreRuntimeRelease(result.release);
   if (
     result.taskId !== request.taskId ||
     result.program.id !== request.program.id ||
@@ -292,9 +290,13 @@ function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
       "AgentCore task placement does not match attach request",
     );
   }
+  const normalizedResult = { ...result, release };
   return development && typeof development === "object" && !Array.isArray(development)
-    ? ({ ...result, development: canonicalSnapshot(development).value } as AgentCoreTaskPlacement)
-    : result;
+    ? ({
+        ...normalizedResult,
+        development: canonicalSnapshot(development).value,
+      } as AgentCoreTaskPlacement)
+    : normalizedResult;
 }
 
 function* send(

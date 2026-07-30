@@ -35,7 +35,7 @@ import {
   createToolExecutionRef,
   type ToolRuntime,
 } from "@sweatpants/tool-session/chat-runtime";
-import { validateToolParameters } from "@sweatpants/tool-session/tool-parameters";
+import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -539,7 +539,7 @@ function createTestToolRuntime(tools: MockTool[]): ToolRuntime {
           },
         };
       }
-      const params = validateToolParameters({
+      const params = yield* parseToolParameters({
         schema: tool.parameters,
         params: request.call.function.arguments,
         toolName: tool.name,

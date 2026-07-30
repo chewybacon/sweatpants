@@ -194,7 +194,7 @@ export class PeerDelegatedEffectCoordinator {
   }
 
   recordPage(state: PeerCallerFrontiers, page: DelegatedEffectEventPage): PeerCallerFrontiers {
-    validatePage(page, this.#taskId, state.observationCursor);
+    verifyDelegatedEffectEventPage(page, this.#taskId, state.observationCursor);
     let cursor = state.observationCursor;
     const queue = [...state.queue];
     const observed = { ...state.observedDigests };
@@ -248,7 +248,7 @@ export class PeerDelegatedEffectCoordinator {
     if (!event) {
       return state;
     }
-    this.#validateRequest(state, event);
+    this.#verifyDelegatedEffectRequest(state, event);
     let outcome: OperationOutcome;
     if (state.cancellationRequestedEffects.includes(event.effectId)) {
       outcome = { status: "cancelled" };
@@ -431,7 +431,10 @@ export class PeerDelegatedEffectCoordinator {
     };
   }
 
-  #validateRequest(state: PeerCallerFrontiers, event: DelegatedEffectRequestEvent): void {
+  #verifyDelegatedEffectRequest(
+    state: PeerCallerFrontiers,
+    event: DelegatedEffectRequestEvent,
+  ): void {
     if (
       event.taskId !== this.#taskId ||
       event.invocationId !== this.#pin.foreign.invocationId ||
@@ -461,7 +464,11 @@ export class PeerDelegatedEffectCoordinator {
   }
 }
 
-function validatePage(page: DelegatedEffectEventPage, taskId: string, afterCursor: number): void {
+function verifyDelegatedEffectEventPage(
+  page: DelegatedEffectEventPage,
+  taskId: string,
+  afterCursor: number,
+): void {
   if (page.taskId !== taskId || page.afterCursor !== afterCursor) {
     throw new CrankError("peer_event_page_invalid", "Delegated-effect page frontier differs");
   }

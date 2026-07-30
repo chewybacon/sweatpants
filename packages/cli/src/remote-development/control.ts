@@ -1,6 +1,7 @@
+import { z } from "zod";
 import { canonicalJson, sha256, sha256Bytes } from "@sweatpants/foundation";
 
-import { validateCollectionProgramEntries } from "./evaluator-loader.ts";
+import { loadCollectionProgramEntries } from "./evaluator-loader.ts";
 import { decodeDevelopmentCollectionArchive } from "./collection.ts";
 import {
   ACTIVE_COLLECTION_FORMAT,
@@ -95,7 +96,7 @@ export async function verifyCollectionReadiness(input: {
   readonly evaluatorReleaseId: string;
   readonly evaluatorAbi: string;
 }): Promise<CollectionReadinessEvidenceV1> {
-  validatePublishedCollectionRef(input.collection);
+  parsePublishedCollectionRef(input.collection);
   requireText(input.evaluatorReleaseId, "evaluator release");
   requireText(input.evaluatorAbi, "evaluator ABI");
   const object = await input.store.get(
@@ -122,7 +123,7 @@ export async function verifyCollectionReadiness(input: {
   if (built.manifest.evaluatorAbi !== input.evaluatorAbi) {
     throw new RemoteDevelopmentError("evaluator_abi_mismatch", "Collection evaluator ABI differs");
   }
-  await validateCollectionProgramEntries(built.manifest, built.files);
+  await loadCollectionProgramEntries(built.manifest, built.files);
   const readinessDigest = sha256(
     `sweatpants.collection-readiness.v1\n${canonicalJson({
       collection: input.collection,
@@ -287,19 +288,31 @@ export function environmentTags(
   });
 }
 
-export function validatePublishedCollectionRef(value: PublishedCollectionRefV1): void {
-  if (
-    value.format !== PUBLISHED_COLLECTION_FORMAT ||
-    !value.bucket ||
-    !value.key ||
-    !value.versionId ||
-    !/^[0-9a-f]{64}$/u.test(value.objectDigest) ||
-    !/^[0-9a-f]{64}$/u.test(value.collectionDigest) ||
-    !Number.isSafeInteger(value.bytes) ||
-    value.bytes < 0 ||
-    !isUtc(value.publishedAt) ||
-    (value.expiresAt !== undefined && !isUtc(value.expiresAt))
-  ) {
+const publishedCollectionReferenceSchema = z
+  .object({
+    format: z.literal(PUBLISHED_COLLECTION_FORMAT),
+    bucket: z.string().min(1).max(512),
+    key: z.string().min(1).max(2_048),
+    versionId: z.string().min(1).max(512),
+    objectDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+    collectionDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+    bytes: z
+      .number()
+      .int()
+      .nonnegative()
+      .safe()
+      .max(512 * 1024 * 1024),
+    publishedAt: z.string().refine(isUtc),
+    expiresAt: z.string().refine(isUtc).optional(),
+  })
+  .strict();
+
+export function parsePublishedCollectionRef(value: unknown): PublishedCollectionRefV1 {
+  try {
+    return Object.freeze(
+      publishedCollectionReferenceSchema.parse(value),
+    ) as unknown as PublishedCollectionRefV1;
+  } catch {
     throw new RemoteDevelopmentError(
       "invalid_collection_manifest",
       "Published collection reference is incomplete or mutable",

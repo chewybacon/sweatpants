@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
@@ -14,41 +15,96 @@ export const DEFAULT_AGENTCORE_WORKSPACE_MOUNT = "/mnt/workspace";
 export const DEFAULT_AGENTCORE_IDLE_TIMEOUT_SECONDS = 180;
 export const DEFAULT_AGENTCORE_MAX_LIFETIME_SECONDS = 28_800;
 
-/** Validates a closed trusted affinity value. V1 resolves invocation only. */
-export function validateSandboxAffinity(value: SandboxAffinity): SandboxAffinity {
-  if (!value.key || !["invocation", "conversation", "workspace"].includes(value.kind)) {
+const sandboxAffinitySchema = z
+  .object({
+    kind: z.enum(["invocation", "conversation", "workspace"]),
+    key: z.string().min(1).max(512),
+  })
+  .strict();
+const agentCoreRuntimeReleaseSchema = z
+  .object({
+    releaseId: z.string().min(1).max(512),
+    runtimeArn: z.string().min(1).max(2_048),
+    region: z.string().min(1).max(128),
+    imageDigest: z.string().min(1).max(512),
+    protocolVersion: z.literal(AGENTCORE_DURABLE_PROTOCOL_VERSION),
+    registryDigest: z.string().min(1).max(512),
+    iamProfile: z.string().min(1).max(512),
+    networkProfile: z.string().min(1).max(512),
+    filesystem: z
+      .object({
+        kind: z.literal("managed_session_storage"),
+        mountPath: z.string().min(1).max(2_048),
+      })
+      .strict(),
+    lifecycle: z
+      .object({
+        idleRuntimeSessionTimeoutSeconds: z.number().int(),
+        maxLifetimeSeconds: z.number().int(),
+      })
+      .strict(),
+  })
+  .strict();
+const pinnedProgramSchema = z
+  .object({
+    id: z.string().min(1).max(512),
+    version: z.string().min(1).max(128),
+    digest: z.string().regex(/^[0-9a-f]{64}$/),
+  })
+  .strict();
+const agentCoreTaskPlacementSchema = z
+  .object({
+    journalId: z.string().min(1).max(512),
+    taskId: z.string().min(1).max(512),
+    affinity: sandboxAffinitySchema,
+    runtimeSessionId: z.string().min(1).max(512),
+    release: agentCoreRuntimeReleaseSchema,
+    program: pinnedProgramSchema,
+    createdAt: z.string().datetime({ offset: true }),
+    terminalAt: z.string().datetime({ offset: true }).optional(),
+    lastComputeGeneration: z.string().min(1).max(512).optional(),
+  })
+  .strict();
+
+/** Parses a closed affinity value at an AgentCore adapter ingress. */
+export function parseSandboxAffinity(value: unknown): SandboxAffinity {
+  try {
+    return canonicalSnapshot(sandboxAffinitySchema.parse(value))
+      .value as unknown as SandboxAffinity;
+  } catch {
     throw new CrankError("invalid_command", "Unknown or empty sandbox affinity");
   }
-  return canonicalSnapshot(value).value;
 }
 
-/** Rejects mutable/unsafe lifecycle metadata before a release enters readiness. */
-export function validateAgentCoreRuntimeRelease(
-  release: AgentCoreRuntimeRelease,
-): AgentCoreRuntimeRelease {
-  if (
-    !release.releaseId ||
-    !release.runtimeArn ||
-    !release.region ||
-    !release.imageDigest ||
-    !release.registryDigest ||
-    !release.iamProfile ||
-    !release.networkProfile ||
-    release.protocolVersion !== AGENTCORE_DURABLE_PROTOCOL_VERSION
-  ) {
+/** Parses closed AgentCore lifecycle metadata before nested access. */
+export function parseAgentCoreRuntimeRelease(value: unknown): AgentCoreRuntimeRelease {
+  try {
+    return agentCoreRuntimeReleaseSchema.parse(value) as unknown as AgentCoreRuntimeRelease;
+  } catch {
     throw new CrankError("placement_unavailable", "AgentCore release metadata is incomplete");
   }
-  if (
-    release.filesystem.kind !== "managed_session_storage" ||
-    !release.filesystem.mountPath.startsWith("/")
-  ) {
+}
+
+export function parseAgentCoreTaskPlacement(value: unknown): AgentCoreTaskPlacement {
+  try {
+    return agentCoreTaskPlacementSchema.parse(value) as unknown as AgentCoreTaskPlacement;
+  } catch {
+    throw new CrankError("placement_unavailable", "AgentCore task placement is malformed");
+  }
+}
+
+/** Verifies AgentCore lifecycle and managed-storage policy after parsing. */
+export function verifyAgentCoreRuntimeRelease(
+  release: AgentCoreRuntimeRelease,
+): AgentCoreRuntimeRelease {
+  if (!release.filesystem.mountPath.startsWith("/")) {
     throw new CrankError("placement_unavailable", "Managed storage requires an absolute mount");
   }
   const { idleRuntimeSessionTimeoutSeconds: idle, maxLifetimeSeconds: maximum } = release.lifecycle;
-  if (!Number.isInteger(idle) || idle < 120 || idle > 300) {
+  if (idle < 120 || idle > 300) {
     throw new CrankError("placement_unavailable", "AgentCore idle timeout must be 120-300 seconds");
   }
-  if (!Number.isInteger(maximum) || maximum < idle || maximum > 28_800) {
+  if (maximum < idle || maximum > 28_800) {
     throw new CrankError("placement_unavailable", "AgentCore maximum lifetime is invalid");
   }
   return canonicalSnapshot(release).value;
@@ -58,7 +114,7 @@ export interface InvocationPlacementRequest {
   readonly journalId: string;
   readonly rootTaskId: string;
   readonly program: PinnedProgram;
-  readonly release: AgentCoreRuntimeRelease;
+  readonly release: unknown;
   readonly now?: () => Date;
   readonly mintRuntimeSessionId?: (rootTaskId: string) => string;
 }
@@ -67,8 +123,8 @@ export interface InvocationPlacementRequest {
 export function createInvocationAgentCorePlacement(
   request: InvocationPlacementRequest,
 ): AgentCoreTaskPlacement {
-  const release = validateAgentCoreRuntimeRelease(request.release);
-  const affinity = validateSandboxAffinity({ kind: "invocation", key: request.rootTaskId });
+  const release = verifyAgentCoreRuntimeRelease(parseAgentCoreRuntimeRelease(request.release));
+  const affinity = parseSandboxAffinity({ kind: "invocation", key: request.rootTaskId });
   const runtimeSessionId =
     request.mintRuntimeSessionId?.(request.rootTaskId) ??
     stableOpaqueId("sp-ac", [request.journalId, request.rootTaskId, release.releaseId]);
@@ -130,7 +186,7 @@ export function reconcileAgentCoreDurableReadiness(
     if (!input.release) {
       missing.add("release");
     } else {
-      validateAgentCoreRuntimeRelease(input.release);
+      verifyAgentCoreRuntimeRelease(parseAgentCoreRuntimeRelease(input.release));
     }
   } catch {
     missing.add("release");

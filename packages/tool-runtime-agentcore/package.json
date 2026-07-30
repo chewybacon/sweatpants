@@ -74,7 +74,8 @@
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "redis": "^4.7.0",
-        "ws": "catalog:"
+        "ws": "catalog:",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/agent-sdk": "workspace:*",
@@ -84,8 +85,7 @@
         "effection": "catalog:",
         "tsup": "catalog:",
         "typescript": "catalog:",
-        "vitest": "catalog:",
-        "zod": "catalog:"
+        "vitest": "catalog:"
     },
     "peerDependencies": {
         "effection": ">=4.1.0-alpha.9 <5.0.0"

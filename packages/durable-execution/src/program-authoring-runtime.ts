@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 import type { Json } from "@sweatpants/foundation";
 import { CrankError } from "./errors.ts";
@@ -5,7 +6,7 @@ import {
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,
 } from "@sweatpants/foundation/schema";
-import { validateEffectDefinition } from "@sweatpants/durable-effects/authoring";
+import { assertEffectDefinition } from "@sweatpants/durable-effects/authoring";
 import type { EffectDefinition } from "@sweatpants/durable-effects/contract";
 import type { DurableProgramFactory, DurableTool } from "./program-authoring.ts";
 import type { DurableProgramManifest } from "./program-contract.ts";
@@ -15,15 +16,16 @@ export const DEFAULT_MAX_INLINE_BYTES = 1024 * 1024;
 export function defineDurableProgramManifest<I extends Json = Json, O extends Json = Json>(
   manifest: DurableProgramManifest<I, O>,
 ): DurableProgramManifest<I, O> {
-  validateDurableManifest(manifest);
-  return deepFreeze(structuredClone(manifest));
+  return deepFreeze(
+    structuredClone(parseDurableManifest(manifest)) as DurableProgramManifest<I, O>,
+  );
 }
 
 export function createPinnedDurableProgram<I extends Json = Json, O extends Json = Json>(
   manifest: DurableProgramManifest<I, O>,
   program: DurableProgramFactory<I, O>,
 ): DurableTool<I, O> {
-  validateDurableManifest(manifest);
+  const parsedManifest = parseDurableManifest(manifest) as DurableProgramManifest<I, O>;
   if (typeof program !== "function" || isAsyncFunction(program)) {
     throw new CrankError(
       "invalid_manifest",
@@ -32,47 +34,74 @@ export function createPinnedDurableProgram<I extends Json = Json, O extends Json
   }
   const tool: DurableTool<I, O> = {
     durability: "crank_native",
-    manifest: deepFreeze(structuredClone(manifest)),
+    manifest: deepFreeze(structuredClone(parsedManifest)),
     program,
     identityProvenance: Object.freeze({ kind: "asserted" }),
   };
   return Object.freeze(tool);
 }
 
-export function validateDurableManifest(manifest: DurableProgramManifest): void {
-  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest))
-    invalidManifest("manifest");
+const jsonValueSchema = z.json();
+const descriptorSchema = z.record(z.string(), jsonValueSchema);
+const durableManifestShapeSchema = z
+  .object({
+    programId: z.string().min(1).max(512),
+    version: z.string().min(1).max(128),
+    digest: z.string().min(1).max(128),
+    inputSchema: descriptorSchema,
+    outputSchema: descriptorSchema,
+    elicits: z.record(
+      z.string().min(1).max(512),
+      z.object({ response: descriptorSchema, context: descriptorSchema.optional() }).strict(),
+    ),
+    effects: z.record(z.string().min(1).max(512), z.record(z.string(), jsonValueSchema)),
+    capabilities: z
+      .object({
+        durableEmissions: z.boolean(),
+        structuredChildren: z.boolean(),
+        replay: z.literal("strict"),
+      })
+      .strict(),
+  })
+  .strict();
+
+/** Parses a complete durable manifest from an untrusted distribution value. */
+export function parseDurableManifest(value: unknown): DurableProgramManifest {
+  let parsed: DurableProgramManifest;
+  try {
+    parsed = durableManifestShapeSchema.parse(value) as unknown as DurableProgramManifest;
+  } catch {
+    throw new CrankError("invalid_manifest", "Invalid durable manifest shape");
+  }
+  verifyDurableManifest(parsed);
+  return canonicalSnapshot(parsed).value as unknown as DurableProgramManifest;
+}
+
+/** Verifies semantic descriptor roles, effect identity, and canonical manifest form. */
+export function verifyDurableManifest(manifest: DurableProgramManifest): void {
   requireId(manifest.programId, "programId");
   requireId(manifest.version, "version");
-  if (typeof manifest.digest !== "string" || !/^[0-9a-f]{64}$/.test(manifest.digest))
+  if (!/^[0-9a-f]{64}$/.test(manifest.digest)) {
     invalidManifest("digest must be a lowercase SHA-256 hex value");
-  validateDescriptorField(manifest.inputSchema, "program_input", "inputSchema");
-  validateDescriptorField(manifest.outputSchema, "program_output", "outputSchema");
-  if (!isRecord(manifest.elicits)) invalidManifest("elicits");
+  }
+  assertDescriptorField(manifest.inputSchema, "program_input", "inputSchema");
+  assertDescriptorField(manifest.outputSchema, "program_output", "outputSchema");
   for (const [key, declaration] of Object.entries(manifest.elicits)) {
     requireId(key, "elicit key");
-    validateDescriptorField(declaration.response, "elicit_response", `elicits.${key}.response`);
+    assertDescriptorField(declaration.response, "elicit_response", `elicits.${key}.response`);
     if (declaration.context !== undefined)
-      validateDescriptorField(declaration.context, "elicit_context", `elicits.${key}.context`);
+      assertDescriptorField(declaration.context, "elicit_context", `elicits.${key}.context`);
   }
-  if (!isRecord(manifest.effects)) invalidManifest("effects");
   for (const [key, definition] of Object.entries(manifest.effects) as Array<
     [string, EffectDefinition<Json, Json, Json>]
   >) {
-    validateEffectDefinition(definition);
+    assertEffectDefinition(definition);
     if (definition.name !== key) invalidManifest(`effect key ${key} must equal its symbolic name`);
   }
-  if (
-    !manifest.capabilities ||
-    manifest.capabilities.replay !== "strict" ||
-    typeof manifest.capabilities.durableEmissions !== "boolean" ||
-    typeof manifest.capabilities.structuredChildren !== "boolean"
-  )
-    invalidManifest("capabilities");
   canonicalSnapshot(manifest);
 }
 
-function validateDescriptorField(
+function assertDescriptorField(
   descriptor: PortableSchemaDescriptor,
   role: string,
   path: string,
@@ -90,9 +119,6 @@ function validateDescriptorField(
   }
   if (parsed.role !== role && parsed.role !== "builtin")
     invalidManifest(`${path} descriptor role must be ${role}`);
-}
-function isRecord(value: unknown): value is Record<string, any> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 function requireId(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0)

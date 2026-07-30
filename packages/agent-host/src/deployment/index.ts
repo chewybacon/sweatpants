@@ -361,8 +361,8 @@ export function defineDeployment<
   if (options.modelSampling.provider !== options.modelProvider.name) {
     invalid("model sampling provider does not match the deployment model provider");
   }
-  validateWorkspaceProvider(options.workspace, options.sandbox);
-  validateProgramCapabilities(options.programs, options.capabilities);
+  assertWorkspaceProviderCompatibility(options.workspace, options.sandbox);
+  assertProgramCapabilityConsistency(options.programs, options.capabilities);
   const projectionKinds = options.projections.map((projection) => projection.kind);
   if (new Set(projectionKinds).size !== projectionKinds.length) {
     invalid("deployment projections must be unique by kind");
@@ -402,7 +402,7 @@ export function defineDeployment<
   });
 }
 
-function validateProgramCapabilities(
+function assertProgramCapabilityConsistency(
   programs: Readonly<Record<string, ProgramDefinition>>,
   capabilities: Readonly<Record<string, ProgramDefinition>>,
 ): void {
@@ -427,7 +427,7 @@ function validateProgramCapabilities(
   }
 }
 
-function validateWorkspaceProvider(
+function assertWorkspaceProviderCompatibility(
   workspace: WorkspaceDefinition,
   sandbox: SandboxProviderDefinition,
 ): void {

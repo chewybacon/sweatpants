@@ -1,4 +1,4 @@
-import type { z, ZodSchema } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 // ============================================================================
 // Elicit Types
@@ -7,13 +7,15 @@ import type { z, ZodSchema } from "zod";
 /**
  * Options for eliciting structured data from the user.
  */
-export interface ElicitOptions<TSchema extends ZodSchema> {
+export interface ElicitOptions<TSchema extends StandardSchemaV1> {
   /** The type of elicitation (e.g., "form", "confirmation", "selection") */
   type: string;
   /** Message or prompt to display to the user */
   message: string;
-  /** Zod schema for validating the response */
+  /** Standard Schema for validating the response in the local process. */
   schema: TSchema;
+  /** Optional portable descriptor for UI/transport consumers. */
+  schemaDescriptor?: Record<string, unknown>;
   /** Optional metadata for the UI */
   meta?: Record<string, unknown>;
 }
@@ -23,8 +25,8 @@ export interface ElicitOptions<TSchema extends ZodSchema> {
  * Distinct from tool-side ToolElicitResult — this is the Principal/Operative
  * protocol result for SweatpantsApi.elicit.
  */
-export type ElicitResult<TSchema extends ZodSchema> =
-  | { action: "accept"; content: z.infer<TSchema> }
+export type ElicitResult<TSchema extends StandardSchemaV1> =
+  | { action: "accept"; content: StandardSchemaV1.InferOutput<TSchema> }
   | { action: "decline"; reason?: string }
   | { action: "cancel"; reason?: string };
 

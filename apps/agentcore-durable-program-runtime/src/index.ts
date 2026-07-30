@@ -5,7 +5,7 @@ import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
   decodeDevelopmentCollectionArchive,
-  validateCollectionProgramEntries,
+  loadCollectionProgramEntries,
   type PublishedCollectionRefV1,
 } from "@sweatpants/cli/remote-development-evaluator";
 import { run } from "effection";
@@ -104,7 +104,7 @@ async function loadCollection(collection: PublishedCollectionRefV1): Promise<Loa
     ) {
       throw new Error("collection identity or evaluator ABI differs");
     }
-    const programs = await validateCollectionProgramEntries(built.manifest, built.files);
+    const programs = await loadCollectionProgramEntries(built.manifest, built.files);
     return {
       manifest: built.manifest,
       registry: createDurableToolRegistry(programs.values()),
