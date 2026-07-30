@@ -1494,10 +1494,11 @@ function taskInteractionHistory(
     const continuation = continuationByPull.get(payload.pullId);
     if (resolved?.type === "PullResolved" && resolved.outcome.status === "ok" && continuation) {
       const value = resolved.outcome.value;
-      const content =
-        value && typeof value === "object" && !Array.isArray(value) && value["action"] === "accept"
-          ? (value["content"] ?? null)
-          : value;
+      const acceptedElicit = z
+        .object({ action: z.literal("accept"), content: z.json().optional() })
+        .loose()
+        .safeParse(value);
+      const content = acceptedElicit.success ? (acceptedElicit.data.content ?? null) : value;
       history.push({
         messageId: continuation.messageId,
         role: "user",
@@ -1867,10 +1868,11 @@ function parseIncomingMessage(value: unknown, sdk03: boolean): ForeignA2AMessage
   return parseForeignA2AMessage({ ...withoutContent, parts: content });
 }
 function bodyRecord(value: Json): Record<string, Json> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  const parsed = z.record(z.string(), z.json()).safeParse(value);
+  if (!parsed.success) {
     throw hostError("task_input_too_large", "A2A request body must be an object");
   }
-  return value;
+  return parsed.data;
 }
 function jsonResponse(value: Json, status = 200, headers?: HeadersInit): Response {
   return new Response(canonicalJson(value), {

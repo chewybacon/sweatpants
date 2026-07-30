@@ -1222,6 +1222,9 @@ importers:
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
     devDependencies:
       '@sweatpants/journal-authority':
         specifier: workspace:*
@@ -1351,6 +1354,9 @@ importers:
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
     devDependencies:
       '@sweatpants/ts-config':
         specifier: workspace:*
@@ -1749,6 +1755,9 @@ importers:
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
     devDependencies:
       '@sweatpants/ts-config':
         specifier: workspace:*
@@ -2022,6 +2031,9 @@ importers:
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
     devDependencies:
       '@sweatpants/tool-session':
         specifier: workspace:*

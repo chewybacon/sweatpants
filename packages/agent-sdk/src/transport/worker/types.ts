@@ -34,6 +34,10 @@
  */
 
 import type { Operation } from "effection";
+import { z } from "zod";
+
+const progressMessageSchema = z.object({ type: z.literal("progress") }).loose();
+const logMessageSchema = z.object({ type: z.literal("log") }).loose();
 
 // =============================================================================
 // REQUEST/RESPONSE MESSAGES (via worker.send())
@@ -367,24 +371,14 @@ export interface WorkerToolContext {
  * Check if a message is a progress message.
  */
 export function isProgressMessage(msg: unknown): msg is WorkerProgressMessage {
-  return (
-    typeof msg === "object" &&
-    msg !== null &&
-    "type" in msg &&
-    (msg as WorkerProgressMessage).type === "progress"
-  );
+  return progressMessageSchema.safeParse(msg).success;
 }
 
 /**
  * Check if a message is a log message.
  */
 export function isLogMessage(msg: unknown): msg is WorkerLogMessage {
-  return (
-    typeof msg === "object" &&
-    msg !== null &&
-    "type" in msg &&
-    (msg as WorkerLogMessage).type === "log"
-  );
+  return logMessageSchema.safeParse(msg).success;
 }
 
 /**

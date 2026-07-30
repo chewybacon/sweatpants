@@ -22,6 +22,7 @@
  */
 import type { Operation } from "effection";
 import { call } from "effection";
+import { z } from "zod";
 import { MCP_PROTOCOL_VERSION } from "../protocol-version.ts";
 import type {
   McpParsedRequest,
@@ -48,6 +49,38 @@ import type {
   McpElicitationResult,
   McpCreateMessageResult,
 } from "../protocol/types.ts";
+
+const requestIdSchema = z.union([z.string().max(512), z.number().finite()]);
+const jsonRpcRequestSchema = z
+  .object({
+    jsonrpc: z.literal("2.0"),
+    id: requestIdSchema,
+    method: z.string().min(1),
+    params: z.json().optional(),
+  })
+  .passthrough();
+const jsonRpcNotificationSchema = z
+  .object({ jsonrpc: z.literal("2.0"), method: z.string().min(1), params: z.json().optional() })
+  .passthrough()
+  .refine((value) => !("id" in value));
+const jsonRpcResponseSchema = z
+  .object({
+    jsonrpc: z.literal("2.0"),
+    id: z.union([requestIdSchema, z.null()]),
+    result: z.json().optional(),
+    error: z
+      .object({ code: z.number().finite(), message: z.string(), data: z.json().optional() })
+      .strict()
+      .optional(),
+  })
+  .passthrough()
+  .refine((value) => value.result !== undefined || value.error !== undefined);
+const elicitationResultSchema = z
+  .object({ action: z.enum(["accept", "decline", "cancel"]), content: z.json().optional() })
+  .passthrough();
+const samplingResultSchema = z
+  .object({ role: z.literal("assistant"), content: z.json(), model: z.string() })
+  .passthrough();
 
 // =============================================================================
 // HEADER PARSING
@@ -155,11 +188,7 @@ export function* parseRequest(request: Request): Operation<McpParsedRequest> {
  * Check if a value is a valid JSON-RPC request.
  */
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const obj = value as Record<string, unknown>;
-  return obj["jsonrpc"] === "2.0" && obj["id"] !== undefined && typeof obj["method"] === "string";
+  return jsonRpcRequestSchema.safeParse(value).success;
 }
 
 /**
@@ -168,22 +197,14 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
 function isJsonRpcNotification(
   value: unknown,
 ): value is { jsonrpc: "2.0"; method: string; params?: unknown } {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const obj = value as Record<string, unknown>;
-  return obj["jsonrpc"] === "2.0" && obj["id"] === undefined && typeof obj["method"] === "string";
+  return jsonRpcNotificationSchema.safeParse(value).success;
 }
 
 /**
  * Check if a value is a valid JSON-RPC response.
  */
 function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const obj = value as Record<string, unknown>;
-  return obj["jsonrpc"] === "2.0" && obj["id"] !== undefined && ("result" in obj || "error" in obj);
+  return jsonRpcResponseSchema.safeParse(value).success;
 }
 
 // =============================================================================
@@ -378,25 +399,14 @@ function classifyPostBody(
  * Check if a result looks like an elicitation result.
  */
 function isElicitationResult(result: unknown): result is McpElicitationResult {
-  if (typeof result !== "object" || result === null) {
-    return false;
-  }
-  const obj = result as Record<string, unknown>;
-  const action = obj["action"];
-  return typeof action === "string" && ["accept", "decline", "cancel"].includes(action);
+  return elicitationResultSchema.safeParse(result).success;
 }
 
 /**
  * Check if a result looks like a sampling result.
  */
 function isSamplingResult(result: unknown): result is McpCreateMessageResult {
-  if (typeof result !== "object" || result === null) {
-    return false;
-  }
-  const obj = result as Record<string, unknown>;
-  return (
-    obj["role"] === "assistant" && obj["content"] !== undefined && typeof obj["model"] === "string"
-  );
+  return samplingResultSchema.safeParse(result).success;
 }
 
 /**

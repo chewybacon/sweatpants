@@ -1,4 +1,5 @@
 import { canonicalSnapshot, sortStrings } from "@sweatpants/foundation";
+import { z } from "zod";
 import type { OperationOutcome } from "@sweatpants/durable-effects/contract";
 import {
   InvalidExecutionTransition,
@@ -8,6 +9,51 @@ import {
   type TaskControlState,
   type TerminalCapsule,
 } from "./contract.ts";
+
+const nonemptySchema = z.string().min(1).max(4_096);
+const durableReferenceSchema = z
+  .strictObject({
+    id: nonemptySchema,
+    byteLength: z.number().int().nonnegative().safe().optional(),
+    version: z.string().min(1).max(256).optional(),
+    integrity: z
+      .strictObject({ algorithm: nonemptySchema, value: nonemptySchema })
+      .optional(),
+  })
+  .transform((value) => ({
+    id: value.id,
+    ...(value.byteLength !== undefined ? { byteLength: value.byteLength } : {}),
+    ...(value.version !== undefined ? { version: value.version } : {}),
+    ...(value.integrity !== undefined ? { integrity: value.integrity } : {}),
+  }));
+const storedJsonSchema = z.discriminatedUnion("storage", [
+  z.strictObject({ storage: z.literal("inline"), value: z.json() }),
+  z.strictObject({ storage: z.literal("reference"), reference: durableReferenceSchema }),
+]);
+const programIdentitySchema = z.strictObject({
+  id: nonemptySchema,
+  version: nonemptySchema,
+  digest: nonemptySchema,
+});
+const projectionFrontierSchema = z.strictObject({
+  throughSequence: z.number().int().nonnegative().safe(),
+  facts: z.union([durableReferenceSchema, z.null()]),
+});
+const terminalCapsuleSchema = z.strictObject({
+  type: z.literal("terminal"),
+  format: z.literal("sweatpants.terminal-execution.v1"),
+  executionId: nonemptySchema,
+  sessionId: nonemptySchema,
+  turnId: nonemptySchema,
+  rootTaskId: nonemptySchema,
+  rootProgram: programIdentitySchema,
+  outcome: storedJsonSchema,
+  disposition: z.enum(["completed", "failed", "cancelled", "superseded"]),
+  finalRevision: z.number().int().nonnegative().safe(),
+  completedAt: z.number().finite(),
+  projection: projectionFrontierSchema,
+  publication: z.enum(["unpublished", "published"]),
+});
 
 export interface CompleteChildCommand {
   readonly childTaskId: string;
@@ -128,49 +174,11 @@ export function completeRoot(
 
 /** Strict boundary parser for a persisted Terminal Capsule. */
 export function parseTerminalCapsule(value: unknown): TerminalCapsule {
-  if (!isRecord(value)) {
-    throw new InvalidExecutionTransition("Terminal Capsule must be an object");
+  const parsed = terminalCapsuleSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new InvalidExecutionTransition("Terminal Capsule structure is invalid");
   }
-  const required = [
-    "type",
-    "format",
-    "executionId",
-    "sessionId",
-    "turnId",
-    "rootTaskId",
-    "rootProgram",
-    "outcome",
-    "disposition",
-    "finalRevision",
-    "completedAt",
-    "projection",
-    "publication",
-  ];
-  if (Object.keys(value).length !== required.length || !required.every((key) => key in value)) {
-    throw new InvalidExecutionTransition("Terminal Capsule fields are incomplete or unexpected");
-  }
-  if (
-    value["type"] !== "terminal" ||
-    value["format"] !== "sweatpants.terminal-execution.v1" ||
-    !nonempty(value["executionId"]) ||
-    !nonempty(value["sessionId"]) ||
-    !nonempty(value["turnId"]) ||
-    !nonempty(value["rootTaskId"]) ||
-    !isProgramIdentity(value["rootProgram"]) ||
-    !isStoredJson(value["outcome"]) ||
-    !["completed", "failed", "cancelled", "superseded"].includes(String(value["disposition"])) ||
-    !Number.isSafeInteger(value["finalRevision"]) ||
-    (value["finalRevision"] as number) < 0 ||
-    typeof value["completedAt"] !== "number" ||
-    !Number.isFinite(value["completedAt"]) ||
-    !isProjectionFrontier(value["projection"]) ||
-    !["unpublished", "published"].includes(String(value["publication"]))
-  ) {
-    throw new InvalidExecutionTransition("Terminal Capsule field value is invalid");
-  }
-  // SAFETY: every required field, discriminant, scalar constraint, and closed
-  // top-level key was validated above before canonical cloning.
-  return canonicalSnapshot(value).value as unknown as TerminalCapsule;
+  return canonicalSnapshot(parsed.data).value;
 }
 
 function task(snapshot: ExecutionTreeSnapshot, taskId: string): TaskControlState {
@@ -183,42 +191,4 @@ function task(snapshot: ExecutionTreeSnapshot, taskId: string): TaskControlState
 
 function uniqueSorted(values: readonly string[]): string[] {
   return sortStrings([...new Set(values)]);
-}
-
-function nonempty(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function isProgramIdentity(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    nonempty(value["id"]) &&
-    nonempty(value["version"]) &&
-    nonempty(value["digest"])
-  );
-}
-
-function isReference(value: unknown): boolean {
-  return isRecord(value) && nonempty(value["id"]);
-}
-
-function isStoredJson(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    ((value["storage"] === "inline" && "value" in value) ||
-      (value["storage"] === "reference" && isReference(value["reference"])))
-  );
-}
-
-function isProjectionFrontier(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    Number.isSafeInteger(value["throughSequence"]) &&
-    (value["throughSequence"] as number) >= 0 &&
-    (value["facts"] === null || isReference(value["facts"]))
-  );
 }

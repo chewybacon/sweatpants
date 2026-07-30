@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { ToolInventoryEntry } from "./chat-runtime-contract.ts";
 import { toToolParameterJsonSchema } from "./tool-parameters.ts";
@@ -9,13 +10,9 @@ export function createToolInventoryEntry(
 ): ToolInventoryEntry {
   const projection = tool.artifacts?.parameters?.inputProjection;
   let parameters: Record<string, unknown>;
-  if (
-    projection !== undefined &&
-    projection !== null &&
-    typeof projection === "object" &&
-    !Array.isArray(projection)
-  ) {
-    const { $id: _id, $schema: _schema, ...rest } = projection as Record<string, unknown>;
+  const parsedProjection = z.record(z.string(), z.json()).safeParse(projection);
+  if (parsedProjection.success) {
+    const { $id: _id, $schema: _schema, ...rest } = parsedProjection.data;
     parameters = rest;
   } else {
     parameters = toToolParameterJsonSchema(tool.parameters);

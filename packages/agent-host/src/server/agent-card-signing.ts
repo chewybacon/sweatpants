@@ -1,5 +1,6 @@
 import { sign as nodeSign, type KeyObject } from "node:crypto";
 import { canonicalJson, type Json } from "@sweatpants/foundation";
+import { z } from "zod";
 
 export interface AgentCardSignatureV1 {
   readonly protected: string;
@@ -52,16 +53,19 @@ export function createAgentCardJwsSigner(options: {
 
 /** RFC 8785 input with signatures and known absent/default protobuf fields removed. */
 export function agentCardSigningProjection(card: Json): Json {
-  if (!card || typeof card !== "object" || Array.isArray(card)) {
+  const parsed = z.record(z.string(), z.json()).safeParse(card);
+  if (!parsed.success) {
     throw new Error("Agent Card signing input must be an object");
   }
-  const clone = structuredClone(card) as Record<string, Json>;
+  const clone = structuredClone(parsed.data);
   delete clone["signatures"];
-  if (clone["capabilities"] && typeof clone["capabilities"] === "object") {
-    const capabilities = clone["capabilities"] as Record<string, Json>;
-    if (Array.isArray(capabilities["extensions"]) && capabilities["extensions"].length === 0) {
-      delete capabilities["extensions"];
-    }
+  const capabilities = z
+    .object({ extensions: z.array(z.json()).optional() })
+    .loose()
+    .safeParse(clone["capabilities"]);
+  if (capabilities.success && capabilities.data.extensions?.length === 0) {
+    const capabilityRecord = clone["capabilities"] as Record<string, Json>;
+    delete capabilityRecord["extensions"];
   }
   return clone;
 }

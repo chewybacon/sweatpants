@@ -14,6 +14,7 @@
  * @packageDocumentation
  */
 import { createContext, type Operation } from "effection";
+import { z } from "zod";
 import type { ToolSessionRegistry } from "../../contract.ts";
 import type { ToolDefinition } from "@sweatpants/agent-sdk";
 import type { ElicitsMap, WireElicitResult, WireSampleResultBase } from "../mcp-tool-types.ts";
@@ -27,6 +28,25 @@ import type {
 } from "./types.ts";
 import { McpHandlerError, MCP_HANDLER_ERRORS } from "./types.ts";
 import type { JsonRpcId } from "../protocol/types.ts";
+
+const textContentBlockSchema = z
+  .object({ type: z.literal("text"), text: z.string() })
+  .passthrough();
+const contentArraySchema = z.array(z.unknown());
+
+function sampleTextFromContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  const array = contentArraySchema.safeParse(content);
+  if (array.success) {
+    return array.data
+      .map((block) => textContentBlockSchema.safeParse(block))
+      .filter((result): result is { success: true; data: { type: "text"; text: string } } => result.success)
+      .map((result) => result.data.text)
+      .join("");
+  }
+  const block = textContentBlockSchema.safeParse(content);
+  return block.success ? block.data.text : JSON.stringify(content);
+}
 
 // =============================================================================
 // SESSION MANAGER CONTEXT
@@ -328,27 +348,8 @@ export class McpSessionManager {
       );
     }
 
-    // Extract text content from MCP content blocks
-    let textContent: string;
-    if (typeof content === "string") {
-      textContent = content;
-    } else if (Array.isArray(content)) {
-      textContent = content
-        .filter(
-          (block): block is { type: "text"; text: string } =>
-            typeof block === "object" && block !== null && block.type === "text",
-        )
-        .map((block) => block.text)
-        .join("");
-    } else if (typeof content === "object" && content !== null) {
-      const block = content as { type?: string; text?: string };
-      textContent =
-        block.type === "text" && typeof block.text === "string"
-          ? block.text
-          : JSON.stringify(content);
-    } else {
-      textContent = String(content);
-    }
+    // Parse the provider content compatibility union once before projection.
+    const textContent = sampleTextFromContent(content);
 
     const sampleResult: WireSampleResultBase = {
       text: textContent,

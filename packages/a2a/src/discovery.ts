@@ -1,4 +1,5 @@
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { z } from "zod";
 import type { PinnedProgram } from "@sweatpants/durable-execution";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
@@ -13,6 +14,27 @@ import {
   type A2AHttpClient,
 } from "./http-client.ts";
 import { normalizedTransportOrigin, verifyA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
+
+const boundedTextSchema = z.string().min(1).max(256);
+const pinnedProgramSchema = z.strictObject({
+  id: boundedTextSchema,
+  version: boundedTextSchema,
+  digest: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+const callerAuthoritativeParamsSchema = z.strictObject({
+  protocolVersion: z.literal(1),
+  manifestEndpoint: z.string().min(1).max(4_096),
+  driverEndpoint: z.string().min(1).max(4_096),
+  programs: z
+    .array(
+      z.strictObject({
+        skillId: boundedTextSchema,
+        program: pinnedProgramSchema,
+      }),
+    )
+    .min(1)
+    .max(1_024),
+});
 
 export type A2AAgentCardSource =
   | { card: unknown; cardUrl?: string; cardOrigin?: string }
@@ -140,51 +162,32 @@ export async function discoverCallerAuthoritativeProgram(
 export function parseCallerAuthoritativeExtensionParams(
   value: unknown,
 ): CallerAuthoritativeProgramExtensionParamsV1 {
-  if (
-    !record(value) ||
-    !exactKeys(value, ["protocolVersion", "manifestEndpoint", "driverEndpoint", "programs"]) ||
-    value["protocolVersion"] !== 1 ||
-    typeof value["manifestEndpoint"] !== "string" ||
-    typeof value["driverEndpoint"] !== "string" ||
-    !Array.isArray(value["programs"]) ||
-    value["programs"].length === 0
-  ) {
+  const parsed = callerAuthoritativeParamsSchema.safeParse(value);
+  if (!parsed.success) {
     throw a2aError("agent_card_invalid", "Invalid caller-authoritative extension parameters");
   }
   const skills = new Set<string>();
-  const programs = value["programs"].map((mapping) => {
-    if (
-      !record(mapping) ||
-      !exactKeys(mapping, ["skillId", "program"]) ||
-      !nonempty(mapping["skillId"])
-    ) {
-      throw a2aError("agent_card_invalid", "Invalid A2A skill mapping");
-    }
-    if (skills.has(mapping["skillId"])) {
+  const programs = parsed.data.programs.map((mapping) => {
+    if (skills.has(mapping.skillId)) {
       throw a2aError("agent_card_invalid", "Duplicate A2A skill mapping");
     }
-    skills.add(mapping["skillId"]);
-    const program = parsePinnedProgram(mapping["program"]);
-    return Object.freeze({ skillId: mapping["skillId"], program });
+    skills.add(mapping.skillId);
+    return Object.freeze({ skillId: mapping.skillId, program: Object.freeze(mapping.program) });
   });
   return Object.freeze({
     protocolVersion: 1,
-    manifestEndpoint: value["manifestEndpoint"],
-    driverEndpoint: value["driverEndpoint"],
-    programs: Object.freeze(
-      programs,
-    ) as unknown as CallerAuthoritativeProgramExtensionParamsV1["programs"],
+    manifestEndpoint: parsed.data.manifestEndpoint,
+    driverEndpoint: parsed.data.driverEndpoint,
+    programs,
   });
 }
 
 export function parsePinnedProgram(value: unknown): PinnedProgram {
-  if (!record(value) || !exactKeys(value, ["id", "version", "digest"])) {
+  const parsed = pinnedProgramSchema.safeParse(value);
+  if (!parsed.success) {
     throw a2aError("agent_card_invalid", "Invalid pinned A2A program identity");
   }
-  if (!nonempty(value["id"]) || !nonempty(value["version"]) || !digest(value["digest"])) {
-    throw a2aError("agent_card_invalid", "Invalid pinned A2A program identity");
-  }
-  return Object.freeze({ id: value["id"], version: value["version"], digest: value["digest"] });
+  return Object.freeze(parsed.data);
 }
 
 function assertAgentCardCore(card: Record<string, Json>): void {
@@ -244,12 +247,6 @@ function record(value: unknown): value is Record<string, Json> {
 }
 function nonempty(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 256;
-}
-function digest(value: unknown): value is string {
-  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
-}
-function exactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
 }
 function onlyKeys(
   value: Record<string, Json>,

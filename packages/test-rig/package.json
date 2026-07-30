@@ -71,7 +71,8 @@
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
-        "effection": "catalog:"
+        "effection": "catalog:",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",

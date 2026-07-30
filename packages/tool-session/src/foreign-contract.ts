@@ -12,6 +12,7 @@ import type {
 } from "@sweatpants/durable-execution";
 import type { EffectDefinition } from "@sweatpants/durable-effects";
 import { MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
+import { z } from "zod";
 
 /** Pinned identity of the built-in foreign-tool adapter program. */
 export const FOREIGN_TOOL_ADAPTER_PROGRAM = Object.freeze({
@@ -27,6 +28,23 @@ const FOREIGN_DURABILITIES = [
   "server_task",
   "crank_native",
 ] as const;
+const foreignStartSchema = z.strictObject({
+  driver: z.string().min(1).max(512),
+  tool: z.string().min(1).max(512),
+  input: z.json(),
+  durability: z.enum(FOREIGN_DURABILITIES),
+  route: z.string().max(4_096).optional(),
+});
+const foreignContinueSchema = z.strictObject({
+  continuation: z.strictObject({
+    driver: z.string().min(1).max(512),
+    state: z.json(),
+  }),
+  response: z.strictObject({
+    kind: z.enum(["sample", "elicit", "cancel"]),
+    value: z.json(),
+  }),
+});
 
 function builtinDescriptor(
   identity: string,
@@ -158,67 +176,13 @@ export const FOREIGN_INPUT_CONTEXT_DESCRIPTOR = builtinDescriptor(
   true,
 );
 
-function isRecordValue(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+const foreignStartGuard = (value: unknown): string | undefined =>
+  foreignStartSchema.safeParse(value).success ? undefined : "foreign start request is invalid";
 
-const foreignStartGuard = (value: unknown): string | undefined => {
-  const structural = anyJsonGuard(value);
-  if (structural) {
-    return structural;
-  }
-  if (!isRecordValue(value)) {
-    return "foreign start request must be an object";
-  }
-  if (typeof value["driver"] !== "string" || typeof value["tool"] !== "string") {
-    return "driver and tool must be strings";
-  }
-  if (!("input" in value)) {
-    return "input is required";
-  }
-  if (!FOREIGN_DURABILITIES.includes(value["durability"] as never)) {
-    return "durability is invalid";
-  }
-  if (value["route"] !== undefined && typeof value["route"] !== "string") {
-    return "route must be a string";
-  }
-  const allowed = new Set(["driver", "tool", "input", "durability", "route"]);
-  if (!Object.keys(value).every((key) => allowed.has(key))) {
-    return "foreign start request has unexpected keys";
-  }
-  return undefined;
-};
-
-const foreignContinueGuard = (value: unknown): string | undefined => {
-  const structural = anyJsonGuard(value);
-  if (structural) {
-    return structural;
-  }
-  if (!isRecordValue(value)) {
-    return "foreign continue request must be an object";
-  }
-  const continuation = value["continuation"];
-  const response = value["response"];
-  if (
-    !isRecordValue(continuation) ||
-    typeof continuation["driver"] !== "string" ||
-    !("state" in continuation)
-  ) {
-    return "continuation is invalid";
-  }
-  if (
-    !isRecordValue(response) ||
-    !["sample", "elicit", "cancel"].includes(String(response["kind"])) ||
-    !("value" in response)
-  ) {
-    return "response is invalid";
-  }
-  const allowed = new Set(["continuation", "response"]);
-  if (!Object.keys(value).every((key) => allowed.has(key))) {
-    return "foreign continue request has unexpected keys";
-  }
-  return undefined;
-};
+const foreignContinueGuard = (value: unknown): string | undefined =>
+  foreignContinueSchema.safeParse(value).success
+    ? undefined
+    : "foreign continue request is invalid";
 
 /** Runtime validator entries for every built-in foreign adapter descriptor. */
 export function foreignToolSchemaEntries(): Array<{

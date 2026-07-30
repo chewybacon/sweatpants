@@ -7,12 +7,21 @@ import {
 } from "@sweatpants/foundation";
 import { type Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
+import { z } from "zod";
 
 export const MCP_PROTOCOL_VERSION = "2025-11-25" as const;
 export const DURABLE_INVOCATION_META_KEY = "sweatpants.chat/invocation" as const;
 export const DURABLE_INVOCATION_FORMAT = "sweatpants.chat/durable-invocations.v1" as const;
 export const MCP_INVENTORY_FORMAT = "sweatpants.mcp-inventory.v1" as const;
 export const MAX_IDEMPOTENCY_KEY_BYTES = 256;
+const durableInvocationMetaSchema = z.strictObject({
+  format: z.literal(DURABLE_INVOCATION_FORMAT),
+  idempotencyKey: z.string().refine((value) => {
+    const bytes = new TextEncoder().encode(value).byteLength;
+    return bytes >= 1 && bytes <= MAX_IDEMPOTENCY_KEY_BYTES;
+  }),
+  inventoryGeneration: z.string().regex(/^[a-f0-9]{64}$/u),
+});
 
 export type Sha256 = string;
 export type RequiredClientCapability = "elicitation" | "sampling";
@@ -115,20 +124,11 @@ export class InMemoryDurableIdempotencyStore<T> implements DurableIdempotencySto
 }
 
 export function parseDurableInvocationMeta(value: unknown): DurableInvocationMeta {
-  const object = exactObject(value, ["format", "idempotencyKey", "inventoryGeneration"]);
-  if (object["format"] !== DURABLE_INVOCATION_FORMAT) {
-    throw new CrankError("invalid_mcp_request", "Unsupported durable invocation metadata format");
+  const parsed = durableInvocationMetaSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new CrankError("invalid_mcp_request", "Invalid durable invocation metadata");
   }
-  const idempotencyKey = requireString(object["idempotencyKey"], "idempotencyKey");
-  const bytes = new TextEncoder().encode(idempotencyKey).byteLength;
-  if (bytes < 1 || bytes > MAX_IDEMPOTENCY_KEY_BYTES) {
-    throw new CrankError("invalid_mcp_request", "Idempotency key must be 1..256 UTF-8 bytes");
-  }
-  return {
-    format: DURABLE_INVOCATION_FORMAT,
-    idempotencyKey,
-    inventoryGeneration: requireSha(object["inventoryGeneration"], "inventoryGeneration"),
-  };
+  return parsed.data;
 }
 
 export function createMcpInventory(input: McpInventoryInput): McpInventoryGeneration {
@@ -205,19 +205,6 @@ function invocationScopeKey(identity: DurableInvocationIdentity): string {
     inventoryGeneration: identity.inventoryGeneration,
     idempotencyKeyHash: identity.idempotencyKeyHash,
   });
-}
-
-function exactObject(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new CrankError("invalid_mcp_request", "Expected object");
-  }
-  const object = value as Record<string, unknown>;
-  const actual = sortStrings(Object.keys(object));
-  const expected = sortStrings(keys);
-  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
-    throw new CrankError("invalid_mcp_request", "Unknown or missing metadata field");
-  }
-  return object;
 }
 
 function requireString(value: unknown, field: string): string {

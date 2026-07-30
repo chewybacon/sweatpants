@@ -31,7 +31,8 @@
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
-        "effection": "catalog:"
+        "effection": "catalog:",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/journal-authority": "workspace:*",

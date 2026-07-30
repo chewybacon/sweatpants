@@ -26,9 +26,27 @@ export interface ValidationBoundaryInventoryEntry {
   readonly evidence: readonly string[];
 }
 
+export type ShapeOwnerClassification = "B" | "R" | "S" | "G" | "C";
+
+export interface ManualShapeOwner {
+  readonly id: string;
+  readonly file: string;
+  readonly line: number;
+  readonly symbol: string;
+  readonly classification: ShapeOwnerClassification;
+  /** Owning parser (B), prior proof (R), or parsed input type (S). */
+  readonly authority?: string;
+  /** Required for the narrowly approved generic and compatibility exceptions. */
+  readonly rationale?: string;
+  readonly evidence: readonly string[];
+}
+
 export interface ValidationBoundaryInventory {
-  readonly format: "sweatpants.validation-boundary-inventory.v1";
+  readonly format: "sweatpants.validation-boundary-inventory.v2";
+  /** Historical validation-boundary records retained with their stable VAL ids. */
   readonly entries: readonly ValidationBoundaryInventoryEntry[];
+  /** Every production owner which manually inspects runtime structure. */
+  readonly shapeOwners: readonly ManualShapeOwner[];
 }
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
@@ -170,6 +188,93 @@ export function scanUncheckedBoundaryCasts(
   return violations;
 }
 
+function isManualShapeInspection(node: ts.Node): boolean {
+  if (ts.isCallExpression(node)) {
+    const callee = node.expression.getText();
+    if (callee === "Array.isArray" || /(?:^|\.)isRecord$/u.test(callee)) return true;
+    if (
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.expression.getText() === "Object" &&
+      ["keys", "entries", "values", "getPrototypeOf", "hasOwn"].includes(
+        node.expression.name.text,
+      )
+    ) return true;
+  }
+  if (ts.isTypeOfExpression(node) && ts.isBinaryExpression(node.parent)) {
+    const other = node.parent.left === node ? node.parent.right : node.parent.left;
+    if (
+      ts.isStringLiteral(other) &&
+      ["object", "string", "number", "boolean"].includes(other.text)
+    ) return true;
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    (node.operatorToken.kind === ts.SyntaxKind.InKeyword ||
+      (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
+        (node.left.kind === ts.SyntaxKind.NullKeyword || node.right.kind === ts.SyntaxKind.NullKeyword)))
+  ) return true;
+  return false;
+}
+
+function ownerOf(node: ts.Node, sourceFile: ts.SourceFile): { node: ts.Node; symbol: string } {
+  let current: ts.Node | undefined = node;
+  while (current && current !== sourceFile) {
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isMethodDeclaration(current) ||
+      ts.isConstructorDeclaration(current) ||
+      ts.isGetAccessorDeclaration(current) ||
+      ts.isSetAccessorDeclaration(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isFunctionExpression(current)
+    ) {
+      const direct = nameOf(current);
+      const variable = ts.isVariableDeclaration(current.parent) ? nameOf(current.parent) : undefined;
+      const property = ts.isPropertyAssignment(current.parent) ? nameOf(current.parent) : undefined;
+      return { node: current, symbol: direct ?? variable ?? property ?? `<callback@${sourceFile.getLineAndCharacterOfPosition(current.getStart(sourceFile)).line + 1}>` };
+    }
+    current = current.parent;
+  }
+  return { node: sourceFile, symbol: "<module>" };
+}
+
+/** Inventories shape-inspection owners, not individual expressions. */
+export function scanManualShapeOwners(files = sourceFiles(resolve(root, "packages"))): ScannedDeclaration[] {
+  const owners = new Map<string, ScannedDeclaration>();
+  for (const file of files) {
+    const sourceFile = ts.createSourceFile(
+      file,
+      readFileSync(file, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    );
+    const visit = (node: ts.Node): void => {
+      if (isManualShapeInspection(node)) {
+        const owner = ownerOf(node, sourceFile);
+        const ownerText = owner.node.getText(sourceFile);
+        // Exclude ordinary typed algorithms (for example filtering a string[]).
+        // Owners over unknown/JSON/decoded values and generic record predicates
+        // remain in scope regardless of their function name.
+        if (
+          owner.symbol !== "<module>" &&
+          !/\b(?:unknown|Json(?:Value)?|Record\s*<\s*string\s*,\s*unknown\s*>|any)\b/u.test(ownerText) &&
+          !/(?:isRecord|parse|decode|normaliz|provider|payload|response|request|snapshot|checkpoint)/iu.test(owner.symbol)
+        ) return;
+        const line = sourceFile.getLineAndCharacterOfPosition(owner.node.getStart(sourceFile)).line + 1;
+        const relative = file.startsWith(root) ? file.slice(root.length + 1) : file;
+        const key = `${relative}:${line}:${owner.symbol}`;
+        owners.set(key, { file: relative, line, symbol: owner.symbol, declarationKind: "function" });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+  return [...owners.values()].sort((left, right) =>
+    `${left.file}:${left.line}:${left.symbol}`.localeCompare(`${right.file}:${right.line}:${right.symbol}`),
+  );
+}
+
 export function scanValidationDeclarations(): ScannedDeclaration[] {
   const declarations: ScannedDeclaration[] = [];
   for (const file of sourceFiles(resolve(root, "packages"))) {
@@ -281,7 +386,11 @@ export function createInitialInventory(): ValidationBoundaryInventory {
       evidence: [`${declaration.file}:${declaration.line}`],
     } satisfies ValidationBoundaryInventoryEntry;
   });
-  return { format: "sweatpants.validation-boundary-inventory.v1", entries };
+  return {
+    format: "sweatpants.validation-boundary-inventory.v2",
+    entries,
+    shapeOwners: [],
+  };
 }
 
 function isStringArray(value: unknown): value is readonly string[] {
@@ -294,11 +403,11 @@ export function assertInventory(value: unknown): asserts value is ValidationBoun
     throw new Error("Validation inventory must be an object");
   }
   const inventory = value as Record<string, unknown>;
-  if (inventory["format"] !== "sweatpants.validation-boundary-inventory.v1") {
+  if (inventory["format"] !== "sweatpants.validation-boundary-inventory.v2") {
     throw new Error("Validation inventory has an unsupported format");
   }
-  if (!Array.isArray(inventory["entries"])) {
-    throw new Error("Validation inventory entries must be an array");
+  if (!Array.isArray(inventory["entries"]) || !Array.isArray(inventory["shapeOwners"])) {
+    throw new Error("Validation inventory entries and shapeOwners must be arrays");
   }
   const ids = new Set<string>();
   for (const candidate of inventory["entries"]) {
@@ -360,6 +469,36 @@ export function assertInventory(value: unknown): asserts value is ValidationBoun
       );
     }
   }
+
+  const ownerIds = new Set<string>();
+  const ownerLocators = new Set<string>();
+  for (const candidate of inventory["shapeOwners"]) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new Error("Manual shape owner must be an object");
+    }
+    const owner = candidate as Record<string, unknown>;
+    if (
+      typeof owner["id"] !== "string" ||
+      !/^SHAPE-\d{3,}$/u.test(owner["id"]) ||
+      typeof owner["file"] !== "string" ||
+      typeof owner["line"] !== "number" ||
+      typeof owner["symbol"] !== "string" ||
+      !["B", "R", "S", "G", "C"].includes(String(owner["classification"])) ||
+      !isStringArray(owner["evidence"]) || owner["evidence"].length === 0
+    ) throw new Error("Manual shape owner has invalid required fields");
+    if (ownerIds.has(owner["id"])) throw new Error(`Duplicate shape owner id ${String(owner["id"])}`);
+    ownerIds.add(owner["id"] as string);
+    const locator = `${String(owner["file"])}:${String(owner["line"])}:${String(owner["symbol"])}`;
+    if (ownerLocators.has(locator)) throw new Error(`Duplicate shape owner ${locator}`);
+    ownerLocators.add(locator);
+    const classification = owner["classification"];
+    if (["B", "R", "S"].includes(String(classification)) && typeof owner["authority"] !== "string") {
+      throw new Error(`Shape owner ${String(owner["id"])} needs authority evidence`);
+    }
+    if (["G", "C"].includes(String(classification)) && typeof owner["rationale"] !== "string") {
+      throw new Error(`Shape owner ${String(owner["id"])} needs an exception rationale`);
+    }
+  }
 }
 
 function evidencePath(locator: string): string {
@@ -400,6 +539,24 @@ export function assertInventoryEvidence(inventory: ValidationBoundaryInventory):
   }
 }
 
+/** Fails when source gains, loses, or moves an unreviewed shape owner. */
+export function assertManualShapeOwnerCoverage(
+  inventory: ValidationBoundaryInventory,
+  scanned: readonly ScannedDeclaration[] = scanManualShapeOwners(),
+): void {
+  const locator = (owner: { file: string; line: number; symbol: string }) =>
+    `${owner.file}:${owner.line}:${owner.symbol}`;
+  const expected = new Set(inventory.shapeOwners.map(locator));
+  const actual = new Set(scanned.map(locator));
+  const missing = [...actual].filter((value) => !expected.has(value));
+  const stale = [...expected].filter((value) => !actual.has(value));
+  if (missing.length || stale.length) {
+    throw new Error(
+      `Manual shape-owner inventory drift${missing.length ? `; unclassified: ${missing.join(", ")}` : ""}${stale.length ? `; stale: ${stale.join(", ")}` : ""}`,
+    );
+  }
+}
+
 export function readInventory(path = inventoryPath): ValidationBoundaryInventory {
   const value: unknown = JSON.parse(readFileSync(path, "utf8"));
   assertInventory(value);
@@ -416,8 +573,9 @@ export function writeInitialInventory(path = inventoryPath): void {
     id: `VAL-${String(historical.length + index + 1).padStart(3, "0")}`,
   }));
   const inventory: ValidationBoundaryInventory = {
-    format: "sweatpants.validation-boundary-inventory.v1",
+    format: "sweatpants.validation-boundary-inventory.v2",
     entries: [...historical, ...entries],
+    shapeOwners: existsSync(path) ? readInventory(path).shapeOwners : [],
   };
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(inventory, null, 2)}\n`);

@@ -1,5 +1,9 @@
+import { z } from "zod";
+
 import type { Message, ToolCall } from "../messages.ts";
 import type { PluginReplayActivityContent } from "./plugin-replay.ts";
+
+const jsonObjectSchema = z.record(z.string(), z.json());
 
 export interface AgUiFunctionCall {
   name: string;
@@ -39,10 +43,8 @@ function parseArguments(args: string): Record<string, unknown> {
     return {};
   }
   try {
-    const parsed = JSON.parse(args) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
+    const parsed = jsonObjectSchema.safeParse(JSON.parse(args));
+    return parsed.success ? parsed.data : {};
   } catch {
     return {};
   }
@@ -113,10 +115,8 @@ export function internalMessageToAgUiMessage(message: Message): AgUiMessage {
 
 function parseActivityContent(content: string): Record<string, unknown> {
   try {
-    const parsed = JSON.parse(content) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : { value: content };
+    const parsed = jsonObjectSchema.safeParse(JSON.parse(content));
+    return parsed.success ? parsed.data : { value: content };
   } catch {
     return { value: content };
   }

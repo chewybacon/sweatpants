@@ -1,11 +1,11 @@
 import { action, race, type Operation } from "effection";
+import { z } from "zod";
 
 import { isDurableToolSessionFacade } from "./durable-tool-session-facade.ts";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type {
   ToolSession,
   ToolSessionEvent,
-  SamplingToolCall,
   ToolSessionRegistry,
   WireElicitResult,
   WireSampleResult,
@@ -26,13 +26,60 @@ import {
 
 const CONTINUATION_SCHEME = "sweatpants/tool-session-v1";
 
-type ToolSessionContinuationState = {
-  scheme: typeof CONTINUATION_SCHEME;
-  sessionId: string;
-  afterLsn: number;
-  pending: { kind: "sample" | "elicit"; requestId: string };
-  durability: ForeignDurability;
+const foreignDurabilitySchema = z.enum([
+  "opaque",
+  "ephemeral_handle",
+  "resumable_handle",
+  "server_task",
+  "crank_native",
+]);
+
+const continuationStateSchema = z.strictObject({
+  scheme: z.literal(CONTINUATION_SCHEME),
+  sessionId: z.string().min(1),
+  afterLsn: z.number().int(),
+  pending: z.strictObject({
+    kind: z.enum(["sample", "elicit"]),
+    requestId: z.string().min(1),
+  }),
+  durability: foreignDurabilitySchema,
+});
+
+type ToolSessionContinuationState = z.infer<typeof continuationStateSchema>;
+
+const samplingToolCallSchema = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  arguments: z.record(z.string(), z.json()),
+});
+
+const sampleBaseFields = {
+  text: z.string(),
+  model: z.string().optional(),
+  stopReason: z.string().optional(),
+  // Historical model adapters include these bounded transcript fields. They
+  // are accepted at this compatibility seam but are not forwarded.
+  calls: z.array(z.json()).max(256).optional(),
+  content: z.array(z.json()).max(256).optional(),
 };
+
+const sampleResponseSchema = z.union([
+  z.strictObject({ ...sampleBaseFields, toolCalls: z.array(samplingToolCallSchema) }),
+  z.strictObject({
+    ...sampleBaseFields,
+    parsed: z.json(),
+    parseError: z
+      .strictObject({ message: z.string(), rawText: z.string() })
+      .optional(),
+  }),
+  z.strictObject(sampleBaseFields),
+]);
+
+const elicitResponseSchema = z.discriminatedUnion("action", [
+  z.strictObject({ action: z.literal("accept"), content: z.json() }),
+  z.strictObject({ action: z.literal("decline"), reason: z.string().optional() }),
+  z.strictObject({ action: z.literal("cancel"), reason: z.string().optional() }),
+]);
 
 /** Scoped ToolSession registry and immutable authored-tool inventory used by the adapter. */
 export interface ToolSessionForeignDriverOptions {
@@ -352,137 +399,39 @@ function createContinuation(
 }
 
 function decodeContinuation(value: ForeignContinuation): ToolSessionContinuationState | undefined {
-  if (value.driver !== "tool-session") {
-    return undefined;
-  }
-  const state = value.state;
-  if (state === null || typeof state !== "object" || Array.isArray(state)) {
-    return undefined;
-  }
-  if (state["scheme"] !== CONTINUATION_SCHEME) {
-    return undefined;
-  }
-  const sessionId = state["sessionId"];
-  const afterLsn = state["afterLsn"];
-  const pending = state["pending"];
-  const durability = state["durability"];
-  if (
-    typeof sessionId !== "string" ||
-    typeof afterLsn !== "number" ||
-    pending === null ||
-    typeof pending !== "object" ||
-    Array.isArray(pending) ||
-    (pending["kind"] !== "sample" && pending["kind"] !== "elicit") ||
-    typeof pending["requestId"] !== "string" ||
-    !isForeignDurability(durability)
-  ) {
-    return undefined;
-  }
-  return {
-    scheme: CONTINUATION_SCHEME,
-    sessionId,
-    afterLsn,
-    pending: { kind: pending["kind"], requestId: pending["requestId"] },
-    durability,
-  };
+  if (value.driver !== "tool-session") return undefined;
+  return continuationStateSchema.safeParse(value.state).data;
 }
 
 function decodeSampleResponse(value: Json): WireSampleResult | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const text = value["text"];
-  if (typeof text !== "string") {
-    return undefined;
-  }
-  const model = value["model"];
-  const stopReason = value["stopReason"];
+  const result = sampleResponseSchema.safeParse(value);
+  if (!result.success) return undefined;
+  const response = result.data;
   const base = {
-    text,
-    ...(typeof model === "string" ? { model } : {}),
-    ...(typeof stopReason === "string" ? { stopReason } : {}),
+    text: response.text,
+    ...(response.model !== undefined ? { model: response.model } : {}),
+    ...(response.stopReason !== undefined ? { stopReason: response.stopReason } : {}),
   };
-  const toolCalls = value["toolCalls"];
-  if (Array.isArray(toolCalls)) {
-    const decoded = toolCalls.map(decodeToolCall);
-    if (decoded.some((call) => call === undefined)) {
-      return undefined;
-    }
-    return { ...base, toolCalls: decoded.filter(isDefined) };
-  }
-  if ("parsed" in value) {
-    const parseError = decodeParseError(value["parseError"]);
+  if ("toolCalls" in response) return { ...base, toolCalls: response.toolCalls };
+  if ("parsed" in response) {
     return {
       ...base,
-      parsed: value["parsed"],
-      ...(parseError ? { parseError } : {}),
+      parsed: response.parsed,
+      ...(response.parseError !== undefined ? { parseError: response.parseError } : {}),
     };
   }
   return base;
 }
 
-function decodeToolCall(value: Json): SamplingToolCall | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const id = value["id"];
-  const name = value["name"];
-  const args = value["arguments"];
-  if (
-    typeof id !== "string" ||
-    typeof name !== "string" ||
-    args === null ||
-    typeof args !== "object" ||
-    Array.isArray(args)
-  ) {
-    return undefined;
-  }
-  return { id, name, arguments: args };
-}
-
-function decodeParseError(
-  value: Json | undefined,
-): { message: string; rawText: string } | undefined {
-  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const message = value["message"];
-  const rawText = value["rawText"];
-  return typeof message === "string" && typeof rawText === "string"
-    ? { message, rawText }
-    : undefined;
-}
-
-function isDefined<T>(value: T | undefined): value is T {
-  return value !== undefined;
-}
-
 function decodeElicitResponse(value: Json): WireElicitResult<unknown> | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const action = value["action"];
-  if (action === "accept" && "content" in value) {
-    return { action, content: value["content"] };
-  }
-  if (action === "decline" || action === "cancel") {
-    const reason = value["reason"];
-    return {
-      action,
-      ...(typeof reason === "string" ? { reason } : {}),
-    };
-  }
-  return undefined;
-}
-
-function isForeignDurability(value: Json | undefined): value is ForeignDurability {
-  return (
-    value === "opaque" ||
-    value === "ephemeral_handle" ||
-    value === "resumable_handle" ||
-    value === "server_task" ||
-    value === "crank_native"
-  );
+  const result = elicitResponseSchema.safeParse(value);
+  if (!result.success) return undefined;
+  const response = result.data;
+  if (response.action === "accept") return response;
+  return {
+    action: response.action,
+    ...(response.reason !== undefined ? { reason: response.reason } : {}),
+  };
 }
 
 function failure(

@@ -271,25 +271,10 @@ function parseEnvelope(
   if (envelope["extensionUri"] !== CALLER_AUTHORITATIVE_EXTENSION_URI) {
     throw a2aError("extension_echo_mismatch", "A2A extension identity mismatch");
   }
-  if (!identifier(envelope["executionId"]) || !positiveInteger(envelope["executionEpoch"])) {
-    fail();
-  }
   assertA2AProgram(envelope["program"]);
   const type = envelope["type"];
   if (typeof type !== "string" || !allowedTypes.has(type)) {
     throw protocol("Unknown message type");
-  }
-  if (envelope["attachmentId"] !== undefined && !identifier(envelope["attachmentId"])) {
-    fail();
-  }
-  if (envelope["actionIndex"] !== undefined && !nonnegativeInteger(envelope["actionIndex"])) {
-    fail();
-  }
-  if (envelope["commandId"] !== undefined && !identifier(envelope["commandId"])) {
-    fail();
-  }
-  if (!record(envelope["payload"])) {
-    throw protocol("Payload must be an object");
   }
   parsePayload(type, envelope);
   return canonicalSnapshot(envelope).value as unknown as
@@ -843,9 +828,6 @@ function affinity(value: unknown): boolean {
     ["invocation", "conversation", "workspace"].includes(String(value["kind"])) &&
     identifier(value["key"]),
   );
-}
-function positiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 function nonnegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;

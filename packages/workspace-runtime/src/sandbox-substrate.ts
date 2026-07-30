@@ -4,10 +4,10 @@ import {
   canonicalSnapshot,
   sha256,
   sha256Bytes,
-  sortStrings,
 } from "@sweatpants/foundation";
 import { type Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
+import { z } from "zod";
 
 type Sha256 = string;
 
@@ -30,6 +30,25 @@ export interface SandboxCapabilities {
   readonly ports: boolean;
   readonly networkPolicy: boolean;
 }
+
+const sandboxCapabilitiesSchema = z.strictObject({
+  requestResponse: z.literal(true),
+  websocket: z.boolean(),
+  warmAttachments: z.boolean(),
+  memorySuspend: z.boolean(),
+  localDisk: z.boolean(),
+  workspacePersistence: z.enum([
+    "none",
+    "sandbox_lease",
+    "provider_durable",
+    "checkpoint_restore",
+  ]),
+  checkpointRestore: z.boolean(),
+  shell: z.boolean(),
+  processExecution: z.boolean(),
+  ports: z.boolean(),
+  networkPolicy: z.boolean(),
+});
 
 export type SandboxLifecycleState =
   | "creating"
@@ -186,50 +205,11 @@ export class InMemoryImmutableObjectStore implements ImmutableObjectStore {
 }
 
 export function parseSandboxCapabilities(value: unknown): SandboxCapabilities {
-  const fields = [
-    "requestResponse",
-    "websocket",
-    "warmAttachments",
-    "memorySuspend",
-    "localDisk",
-    "workspacePersistence",
-    "checkpointRestore",
-    "shell",
-    "processExecution",
-    "ports",
-    "networkPolicy",
-  ] as const;
-  const object = exactObject(value, fields);
-  if (object["requestResponse"] !== true) {
-    throw new CrankError("sandbox_unavailable", "Finite request/response is mandatory");
+  const parsed = sandboxCapabilitiesSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new CrankError("sandbox_unavailable", "Sandbox capability shape is invalid");
   }
-  const persistence = object["workspacePersistence"];
-  if (
-    !(["none", "sandbox_lease", "provider_durable", "checkpoint_restore"] as unknown[]).includes(
-      persistence,
-    )
-  ) {
-    throw new CrankError("sandbox_unavailable", "Invalid workspace persistence scope");
-  }
-  const boolean = (field: (typeof fields)[number]): boolean => {
-    if (typeof object[field] !== "boolean") {
-      throw new CrankError("sandbox_unavailable", `${field} must be boolean`);
-    }
-    return object[field] as boolean;
-  };
-  const capabilities: SandboxCapabilities = {
-    requestResponse: true,
-    websocket: boolean("websocket"),
-    warmAttachments: boolean("warmAttachments"),
-    memorySuspend: boolean("memorySuspend"),
-    localDisk: boolean("localDisk"),
-    workspacePersistence: persistence as WorkspacePersistence,
-    checkpointRestore: boolean("checkpointRestore"),
-    shell: boolean("shell"),
-    processExecution: boolean("processExecution"),
-    ports: boolean("ports"),
-    networkPolicy: boolean("networkPolicy"),
-  };
+  const capabilities = parsed.data;
   if (
     capabilities.workspacePersistence === "checkpoint_restore" &&
     !capabilities.checkpointRestore
@@ -514,20 +494,4 @@ export class FiniteHttpRestoreProtocol {
     }
     return state;
   }
-}
-
-function exactObject(value: unknown, fields: readonly string[]): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new CrankError("sandbox_unavailable", "Expected capability object");
-  }
-  const object = value as Record<string, unknown>;
-  const actual = sortStrings(Object.keys(object));
-  const expected = sortStrings(fields);
-  if (
-    actual.length !== expected.length ||
-    actual.some((field, index) => field !== expected[index])
-  ) {
-    throw new CrankError("sandbox_unavailable", "Unknown or missing sandbox capability");
-  }
-  return object;
 }

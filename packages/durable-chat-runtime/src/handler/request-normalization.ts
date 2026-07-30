@@ -12,7 +12,7 @@ import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
 import type { OpenInterruptRecord } from "../interrupts/index.ts";
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -28,65 +28,45 @@ function forwardedClientReplayTraces(forwardedProps: unknown): Record<string, un
   return isRecord(traces) ? traces : {};
 }
 
-function parseToolArguments(value: unknown): Record<string, unknown> {
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value) as unknown;
-      return isRecord(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-  return isRecord(value) ? value : {};
+function parseToolArguments(
+  value: Record<string, z.infer<typeof jsonValueSchema>> | string,
+): Record<string, unknown> {
+  if (typeof value !== "string") return value;
+  return z.record(z.string(), jsonValueSchema).parse(JSON.parse(value));
 }
 
-function normalizeIncomingMessages(messages: unknown): ChatRequestBody["messages"] {
-  if (!Array.isArray(messages)) {
-    return [];
-  }
+function normalizeIncomingMessages(
+  messages: readonly z.infer<typeof rawMessageSchema>[],
+): ChatRequestBody["messages"] {
   const normalized: ChatRequestBody["messages"] = [];
 
   for (let index = 0; index < messages.length; index++) {
-    const message = messages[index];
-    if (!isRecord(message)) {
-      continue;
-    }
-
-    const role = message["role"];
-    const id =
-      typeof message["id"] === "string" && message["id"].length > 0
-        ? message["id"]
-        : `${typeof role === "string" ? role : "message"}:${index}`;
+    const message = messages[index]!;
+    const role = message.role;
+    const id = message.id && message.id.length > 0 ? message.id : `${role}:${index}`;
     const content =
-      typeof message["content"] === "string"
-        ? message["content"]
-        : message["content"] === undefined
+      typeof message.content === "string"
+        ? message.content
+        : message.content === undefined
           ? ""
-          : JSON.stringify(message["content"]);
+          : JSON.stringify(message.content);
 
     if (role === "assistant") {
-      const toolCalls = Array.isArray(message["tool_calls"])
-        ? message["tool_calls"]
-        : Array.isArray(message["toolCalls"])
-          ? message["toolCalls"]
-          : [];
+      const toolCalls = message.tool_calls ?? message.toolCalls ?? [];
       normalized.push({
         id,
         role: "assistant" as const,
         content,
         ...(toolCalls.length > 0
           ? {
-              tool_calls: toolCalls.filter(isRecord).map((toolCall) => {
-                const fn = isRecord(toolCall["function"]) ? toolCall["function"] : {};
-                return {
-                  id: typeof toolCall["id"] === "string" ? toolCall["id"] : `tool:${index}`,
-                  type: "function" as const,
-                  function: {
-                    name: typeof fn["name"] === "string" ? fn["name"] : "unknown",
-                    arguments: parseToolArguments(fn["arguments"]),
-                  },
-                };
-              }),
+              tool_calls: toolCalls.map((toolCall) => ({
+                id: toolCall.id,
+                type: "function" as const,
+                function: {
+                  name: toolCall.function.name,
+                  arguments: parseToolArguments(toolCall.function.arguments),
+                },
+              })),
             }
           : {}),
       });
@@ -344,13 +324,6 @@ export function parseChatRequestBody(value: unknown): ChatRequestBody {
         : "Chat request could not be parsed";
     throw new CrankError("invalid_chat_request", message);
   }
-}
-
-export function normalizeChatRequestBody(body: ChatRequestBody): ChatRequestBody {
-  return {
-    ...body,
-    messages: normalizeIncomingMessages(body.messages),
-  };
 }
 
 function mapResolvedResumePayload(payload: unknown): ElicitResponse["result"] {

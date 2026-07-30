@@ -2,6 +2,7 @@ import { type DurableEffectRegistry } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { z } from "zod";
 import {
   discoverForeignA2AAgent,
   prepareForeignA2AInvocation,
@@ -182,16 +183,18 @@ export function callPeerAgent(pin: PeerInvocationPin, request: ForeignA2AStartRe
 }
 
 export function verifyPeerTaskEcho(task: ForeignA2ATask, pin: PeerInvocationPin): void {
-  if (!task.metadata || typeof task.metadata !== "object" || Array.isArray(task.metadata)) {
+  const metadata = z.record(z.string(), z.json()).safeParse(task.metadata);
+  if (!metadata.success) {
     throw new CrankError("peer_grant_echo_mismatch", "Peer task omitted profile metadata");
   }
-  const profile = task.metadata[SWEATPANTS_PEER_PROFILE_URI];
+  const profile = z
+    .object({ grantSetDigest: z.string(), requirementManifestDigest: z.string() })
+    .loose()
+    .safeParse(metadata.data[SWEATPANTS_PEER_PROFILE_URI]);
   if (
-    !profile ||
-    typeof profile !== "object" ||
-    Array.isArray(profile) ||
-    profile["grantSetDigest"] !== pin.grantSet.digest ||
-    profile["requirementManifestDigest"] !== pin.requirementManifest.manifestDigest
+    !profile.success ||
+    profile.data.grantSetDigest !== pin.grantSet.digest ||
+    profile.data.requirementManifestDigest !== pin.requirementManifest.manifestDigest
   ) {
     throw new CrankError("peer_grant_echo_mismatch", "Peer task grant/manifest echo differs");
   }

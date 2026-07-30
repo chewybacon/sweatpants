@@ -10,12 +10,12 @@ import {
   type ReplayOperationEntry,
 } from "@sweatpants/durable-execution";
 import {
-  assertJson,
   canonicalJson,
   canonicalSnapshot,
   sha256,
   type Json,
 } from "@sweatpants/foundation";
+import { z } from "zod";
 
 import { AGENTCORE_DURABLE_PROTOCOL_VERSION } from "./durable-placement.ts";
 
@@ -109,6 +109,17 @@ const runtimeTypes = new Set([
   "shutdown_complete",
   "rejected",
 ]);
+const durableEnvelopeSchema = z.strictObject({
+  protocolVersion: z.number().int().safe(),
+  type: z.string().min(1).max(128),
+  releaseId: z.string().min(1).max(4_096),
+  taskId: z.string().min(1).max(4_096),
+  activationEpoch: z.number().int().nonnegative().safe(),
+  attachmentId: z.string().min(1).max(4_096).optional(),
+  actionIndex: z.number().int().nonnegative().safe().optional(),
+  payload: z.record(z.string(), z.json()),
+});
+
 const errorCodes = new Set<AgentCoreDurableProgramErrorCode>([
   "placement_unavailable",
   "program_version_unavailable",
@@ -155,49 +166,41 @@ function parseMessage(
   if (bytes.byteLength > AGENTCORE_MAX_FRAME_BYTES) {
     throw protocol("payload_too_large", "Frame exceeds 2 MiB");
   }
-  let value: Json;
+  let decoded: unknown;
   try {
-    value = assertJson(
-      JSON.parse(
-        typeof frame === "string" ? frame : new TextDecoder("utf-8", { fatal: true }).decode(frame),
-      ),
+    decoded = JSON.parse(
+      typeof frame === "string" ? frame : new TextDecoder("utf-8", { fatal: true }).decode(frame),
     );
   } catch (error) {
     throw protocol("program_protocol_error", "Malformed canonical JSON", error);
   }
-  if (!record(value)) {
-    throw protocol("program_protocol_error", "Envelope must be an object");
+  const parsed = durableEnvelopeSchema.safeParse(decoded);
+  if (!parsed.success) {
+    const closed = parsed.error.issues.some((issue) => issue.code === "unrecognized_keys");
+    throw protocol(
+      "program_protocol_error",
+      closed ? "Envelope fields are not closed" : "Envelope structure is invalid",
+    );
   }
-  const required = ["protocolVersion", "type", "releaseId", "taskId", "activationEpoch", "payload"];
-  const optional = ["attachmentId", "actionIndex"];
-  if (!onlyKeys(value, required, optional)) {
-    throw protocol("program_protocol_error", "Envelope fields are not closed");
-  }
-  if (value["protocolVersion"] !== AGENTCORE_DURABLE_PROTOCOL_VERSION) {
-    throw protocol("protocol_version_unsupported", "Unsupported protocol version");
-  }
-  const type = value["type"];
-  if (typeof type !== "string" || !allowed.has(type)) {
+  const envelope = parsed.data;
+  if (!allowed.has(envelope.type)) {
     throw protocol("program_protocol_error", "Unknown protocol message type");
   }
-  if (
-    !nonempty(value["releaseId"]) ||
-    !nonempty(value["taskId"]) ||
-    !integer(value["activationEpoch"])
-  ) {
-    throw protocol("program_protocol_error", "Invalid envelope identity");
+  if (envelope.protocolVersion !== AGENTCORE_DURABLE_PROTOCOL_VERSION) {
+    throw protocol("protocol_version_unsupported", "Unsupported protocol version");
   }
-  if (value["attachmentId"] !== undefined && !nonempty(value["attachmentId"])) {
-    throw protocol("program_protocol_error", "Invalid attachment identity");
-  }
-  if (value["actionIndex"] !== undefined && !integer(value["actionIndex"])) {
-    throw protocol("program_protocol_error", "Invalid action index");
-  }
-  if (!record(value["payload"])) {
-    throw protocol("program_protocol_error", "Payload must be an object");
-  }
-  parsePayload(type, value);
-  return canonicalSnapshot(value).value as unknown as HostProgramMessage | RuntimeProgramMessage;
+  const canonicalEnvelope: Record<string, Json> = {
+    protocolVersion: envelope.protocolVersion,
+    type: envelope.type,
+    releaseId: envelope.releaseId,
+    taskId: envelope.taskId,
+    activationEpoch: envelope.activationEpoch,
+    payload: envelope.payload,
+  };
+  if (envelope.attachmentId !== undefined) canonicalEnvelope["attachmentId"] = envelope.attachmentId;
+  if (envelope.actionIndex !== undefined) canonicalEnvelope["actionIndex"] = envelope.actionIndex;
+  parsePayload(envelope.type, canonicalEnvelope);
+  return canonicalSnapshot(canonicalEnvelope).value as unknown as HostProgramMessage | RuntimeProgramMessage;
 }
 
 function assertHostPayload(type: string, envelope: Record<string, Json>): void {
@@ -477,16 +480,6 @@ function digest(value: unknown): value is string {
 }
 function exactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
   return Object.keys(value).length === keys.length && keys.every((key) => key in value);
-}
-function onlyKeys(
-  value: Record<string, Json>,
-  required: readonly string[],
-  optional: readonly string[],
-): boolean {
-  const allowed = new Set([...required, ...optional]);
-  return (
-    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
-  );
 }
 function fail(): never {
   throw protocol("program_protocol_error", "Invalid protocol payload");

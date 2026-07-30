@@ -1,4 +1,5 @@
 import { canonicalSnapshot } from "@sweatpants/foundation";
+import { z } from "zod";
 import {
   InvalidExecutionTransition,
   type DurableReference,
@@ -10,6 +11,77 @@ import {
   type StoredJson,
   type TaskId,
 } from "./contract.ts";
+
+const checkpointTextSchema = z.string().min(1).max(4_096);
+const checkpointReferenceSchema = z
+  .strictObject({
+    id: checkpointTextSchema,
+    byteLength: z.number().int().nonnegative().safe().optional(),
+    version: z.string().min(1).max(256).optional(),
+    integrity: z
+      .strictObject({ algorithm: checkpointTextSchema, value: checkpointTextSchema })
+      .optional(),
+  })
+  .transform((value) => ({
+    id: value.id,
+    ...(value.byteLength !== undefined ? { byteLength: value.byteLength } : {}),
+    ...(value.version !== undefined ? { version: value.version } : {}),
+    ...(value.integrity !== undefined ? { integrity: value.integrity } : {}),
+  }));
+const checkpointStoredJsonSchema = z.discriminatedUnion("storage", [
+  z.strictObject({ storage: z.literal("inline"), value: z.json() }),
+  z.strictObject({ storage: z.literal("reference"), reference: checkpointReferenceSchema }),
+]);
+const checkpointProgramSchema = z.strictObject({
+  id: checkpointTextSchema,
+  version: checkpointTextSchema,
+  digest: checkpointTextSchema,
+});
+const parkedTaskCheckpointSchema = z
+  .strictObject({
+    taskId: checkpointTextSchema,
+    parentTaskId: checkpointTextSchema.optional(),
+    program: checkpointProgramSchema,
+    input: checkpointStoredJsonSchema,
+    route: z.json(),
+    replayHead: z.union([checkpointReferenceSchema, z.null()]),
+    parkedFrontier: z.strictObject({ pullId: checkpointTextSchema, kind: checkpointTextSchema }),
+    actionIndex: z.number().int().nonnegative().safe(),
+  })
+  .transform((value) => ({
+    taskId: value.taskId,
+    ...(value.parentTaskId !== undefined ? { parentTaskId: value.parentTaskId } : {}),
+    program: value.program,
+    input: value.input,
+    route: value.route,
+    replayHead: value.replayHead,
+    parkedFrontier: value.parkedFrontier,
+    actionIndex: value.actionIndex,
+  }));
+const recoveryCheckpointSchema = z.strictObject({
+  format: z.literal("sweatpants.recovery-checkpoint.v1"),
+  executionId: checkpointTextSchema,
+  executionRevision: z.number().int().nonnegative().safe(),
+  activationEpoch: z.number().int().nonnegative().safe(),
+  rootTaskId: checkpointTextSchema,
+  tasks: z.array(parkedTaskCheckpointSchema).min(1).max(16_384),
+  pendingInputs: z
+    .array(z.strictObject({ taskId: checkpointTextSchema, pullId: checkpointTextSchema }))
+    .max(16_384),
+  requiredOutcomes: z
+    .array(
+      z.strictObject({
+        parentTaskId: checkpointTextSchema,
+        childTaskId: checkpointTextSchema,
+        pullId: checkpointTextSchema,
+      }),
+    )
+    .max(16_384),
+  projection: z.strictObject({
+    throughSequence: z.number().int().nonnegative().safe(),
+    facts: z.union([checkpointReferenceSchema, z.null()]),
+  }),
+});
 
 export interface ParkedTaskCheckpoint {
   readonly taskId: TaskId;
@@ -120,42 +192,18 @@ export function proposeQuiescentCut(
   return { status: "checkpointed", checkpoint: canonicalSnapshot(checkpoint).value };
 }
 
-/** Boundary parser rejecting a checkpoint missing any required category. */
+/** Boundary parser rejecting malformed or incomplete persisted checkpoints. */
 export function parseRecoveryCheckpoint(value: unknown): RecoveryCheckpoint {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new InvalidExecutionTransition("Recovery Checkpoint must be an object");
-  }
-  const record = value as Record<string, unknown>;
-  const required = [
-    "format",
-    "executionId",
-    "executionRevision",
-    "activationEpoch",
-    "rootTaskId",
-    "tasks",
-    "pendingInputs",
-    "requiredOutcomes",
-    "projection",
-  ];
-  if (Object.keys(record).length !== required.length || !required.every((key) => key in record)) {
-    throw new InvalidExecutionTransition("Recovery Checkpoint categories are incomplete");
-  }
-  if (
-    record["format"] !== "sweatpants.recovery-checkpoint.v1" ||
-    typeof record["executionId"] !== "string" ||
-    !Number.isSafeInteger(record["executionRevision"]) ||
-    !Number.isSafeInteger(record["activationEpoch"]) ||
-    typeof record["rootTaskId"] !== "string" ||
-    !Array.isArray(record["tasks"]) ||
-    !Array.isArray(record["pendingInputs"]) ||
-    !Array.isArray(record["requiredOutcomes"])
-  ) {
+  const parsed = recoveryCheckpointSchema.safeParse(value);
+  if (!parsed.success) {
+    const taskIssue = parsed.error.issues.find((issue) => issue.path[0] === "tasks");
+    if (taskIssue?.code === "too_small") {
+      throw new InvalidExecutionTransition("Recovery Checkpoint must retain parked topology");
+    }
+    if (taskIssue?.code === "invalid_type") {
+      throw new InvalidExecutionTransition("Recovery Checkpoint categories are incomplete");
+    }
     throw new InvalidExecutionTransition("Recovery Checkpoint field value is invalid");
   }
-  if (record["tasks"].length === 0) {
-    throw new InvalidExecutionTransition("Recovery Checkpoint must retain parked topology");
-  }
-  // SAFETY: every required category, discriminant, and scalar constraint was
-  // validated above before canonical cloning.
-  return canonicalSnapshot(record).value as unknown as RecoveryCheckpoint;
+  return canonicalSnapshot(parsed.data).value;
 }

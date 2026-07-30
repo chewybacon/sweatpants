@@ -1,4 +1,5 @@
 import { assertJson } from "@sweatpants/foundation";
+import { z } from "zod";
 import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { SchemaBinding } from "@sweatpants/foundation/schema";
@@ -74,15 +75,45 @@ function schema(
   return descriptor;
 }
 
+const modelSampleRequestSchema = z.strictObject({
+  messages: z.array(z.json()),
+  systemPrompt: z.json().optional(),
+  maxTokens: z.number().int().positive().safe().optional(),
+  modelPreferences: z.json().optional(),
+  classifications: z.array(z.json()).optional(),
+  sampling: z.json().optional(),
+  tools: z.array(z.json()).optional(),
+  toolChoice: z.json().optional(),
+  schema: z.json().optional(),
+});
+const modelSampleResultSchema = z.strictObject({
+  text: z.string(),
+  calls: z.array(
+    z.strictObject({
+      id: z.string().min(1),
+      target: z.string().min(1),
+      input: z.json(),
+      thoughtSignature: z.string().optional(),
+    }),
+  ),
+  content: z.array(z.json()),
+  model: z.string().optional(),
+  stopReason: z.string().optional(),
+  toolCalls: z.array(z.json()).optional(),
+  parsed: z.json().optional(),
+  parseError: z.strictObject({ message: z.string(), rawText: z.string() }).optional(),
+});
+const modelSamplePartialSchema = z.strictObject({
+  text: z.string().max(32_768),
+  interrupted: z.literal(true),
+});
+
 function standardSchema(
   validate: (value: unknown) => StandardSchemaV1.Result<unknown>,
 ): StandardSchemaV1 {
   return { "~standard": { version: 1, vendor: "sweatpants", validate } };
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
 
 export const MODEL_SAMPLE_INPUT_DESCRIPTOR = schema(
   "sweatpants.model-sample/input",
@@ -103,35 +134,10 @@ export const MODEL_SAMPLE_INPUT_DESCRIPTOR = schema(
     },
     additionalProperties: false,
   },
-  (value) => {
-    if (!isObject(value) || !Array.isArray(value["messages"])) {
-      return "model sample request requires messages";
-    }
-    const allowed = new Set([
-      "messages",
-      "systemPrompt",
-      "maxTokens",
-      "modelPreferences",
-      "classifications",
-      "sampling",
-      "tools",
-      "toolChoice",
-      "schema",
-    ]);
-    if (!Object.keys(value).every((key) => allowed.has(key))) {
-      return "model sample request has unexpected keys";
-    }
-    if (
-      value["maxTokens"] !== undefined &&
-      (!Number.isSafeInteger(value["maxTokens"]) || (value["maxTokens"] as number) < 1)
-    ) {
-      return "maxTokens must be a positive integer";
-    }
-    if (value["tools"] !== undefined && !Array.isArray(value["tools"])) {
-      return "tools must be an array";
-    }
-    return undefined;
-  },
+  (value) =>
+    modelSampleRequestSchema.safeParse(value).success
+      ? undefined
+      : "model sample request structure is invalid",
 );
 
 export const MODEL_SAMPLE_OUTPUT_DESCRIPTOR = schema(
@@ -170,30 +176,10 @@ export const MODEL_SAMPLE_OUTPUT_DESCRIPTOR = schema(
     },
     additionalProperties: false,
   },
-  (value) => {
-    if (!isObject(value)) {
-      return "model sample result must be an object";
-    }
-    if (typeof value["text"] !== "string") {
-      return "text must be a string";
-    }
-    if (!Array.isArray(value["calls"]) || !Array.isArray(value["content"])) {
-      return "calls and content must be arrays";
-    }
-    for (const call of value["calls"]) {
-      if (
-        !isObject(call) ||
-        typeof call["id"] !== "string" ||
-        call["id"].length === 0 ||
-        typeof call["target"] !== "string" ||
-        call["target"].length === 0 ||
-        !("input" in call)
-      ) {
-        return "calls entries must be {id, target, input}";
-      }
-    }
-    return undefined;
-  },
+  (value) =>
+    modelSampleResultSchema.safeParse(value).success
+      ? undefined
+      : "model sample result structure is invalid",
 );
 
 export const MODEL_SAMPLE_PARTIAL_DESCRIPTOR = schema(
@@ -209,11 +195,7 @@ export const MODEL_SAMPLE_PARTIAL_DESCRIPTOR = schema(
     additionalProperties: false,
   },
   (value) =>
-    isObject(value) &&
-    typeof value["text"] === "string" &&
-    value["text"].length <= 32_768 &&
-    value["interrupted"] === true &&
-    Object.keys(value).length === 2
+    modelSamplePartialSchema.safeParse(value).success
       ? undefined
       : "cancellation partial must be { text, interrupted: true }",
 );

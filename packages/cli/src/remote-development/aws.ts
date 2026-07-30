@@ -247,23 +247,25 @@ function mapAwsError(error: unknown, message: string): RemoteDevelopmentError {
   return new RemoteDevelopmentError(code, message, { details: { awsError: bounded(name) } });
 }
 
+const awsErrorSchema = z.object({ name: z.unknown() }).loose();
+const awsMetadataSchema = z
+  .object({ $metadata: z.object({ httpStatusCode: z.number().optional() }).loose() })
+  .loose();
+
 function isMissing(error: unknown): boolean {
   const name = awsName(error);
   return name === "NoSuchKey" || name === "NoSuchVersion" || name === "NotFound";
 }
 
 function isConflict(error: unknown): boolean {
-  const status =
-    error && typeof error === "object"
-      ? (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode
-      : undefined;
+  const parsed = awsMetadataSchema.safeParse(error);
+  const status = parsed.success ? parsed.data.$metadata.httpStatusCode : undefined;
   return status === 409 || status === 412 || awsName(error) === "PreconditionFailed";
 }
 
 function awsName(error: unknown): string {
-  return error && typeof error === "object" && "name" in error
-    ? String((error as { name: unknown }).name)
-    : "UnknownAwsError";
+  const parsed = awsErrorSchema.safeParse(error);
+  return parsed.success ? String(parsed.data.name) : "UnknownAwsError";
 }
 
 function bounded(value: unknown): string {

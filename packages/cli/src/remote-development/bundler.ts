@@ -2,6 +2,7 @@ import { realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { canonicalJson } from "@sweatpants/foundation";
+import { z } from "zod";
 import { build, version as esbuildVersion } from "esbuild";
 
 import type { ConfiguredDurableTool, ProgramRootConfig } from "../config.ts";
@@ -176,21 +177,16 @@ function encodeSchemaCatalog(program: ConfiguredDurableTool, publicKey: string):
   const artifacts = (
     program as ConfiguredDurableTool & { readonly artifacts?: { readonly catalog?: unknown } }
   ).artifacts;
-  if (!artifacts || !Array.isArray(artifacts.catalog)) {
+  const catalog = z
+    .array(z.object({ descriptor: z.unknown() }).loose())
+    .safeParse(artifacts?.catalog);
+  if (!catalog.success) {
     throw new RemoteDevelopmentError(
       "invalid_program_root",
-      `Program root ${bounded(publicKey)} has no runtime schema catalog`,
+      `Program root ${bounded(publicKey)} has no valid runtime schema catalog`,
     );
   }
-  const descriptors = artifacts.catalog.map((entry: unknown) => {
-    if (!entry || typeof entry !== "object" || !("descriptor" in entry)) {
-      throw new RemoteDevelopmentError(
-        "invalid_program_root",
-        `Program root ${bounded(publicKey)} has an invalid runtime schema catalog`,
-      );
-    }
-    return entry.descriptor;
-  });
+  const descriptors = catalog.data.map((entry) => entry.descriptor);
   return Uint8Array.from(Buffer.from(canonicalJson(descriptors), "utf8"));
 }
 
