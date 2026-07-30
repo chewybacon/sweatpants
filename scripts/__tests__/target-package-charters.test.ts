@@ -43,6 +43,14 @@ describe("target package charters", () => {
     ]);
   });
 
+  it("keeps Model Provider neutral and concrete adapters off Chat Core", () => {
+    expectNoMatches(productionSource("model-provider"), [
+      /from ["']@sweatpants\/(?:chat-core|model-provider-pi-ai|durable-chat-runtime|agent-host)/,
+      /from ["'](?:node:http|redis|react)["']/,
+    ]);
+    expect(productionSource("model-provider-pi-ai")).not.toMatch(/from ["']@sweatpants\/chat-core/);
+  });
+
   it("keeps Chat Core free of hosting, authority persistence, Redis, and MCP handlers", () => {
     expectNoMatches(productionSource("chat-core"), [
       /from ["']@sweatpants\/(?:agent-host|journal-authority|execution-store-redis)/,

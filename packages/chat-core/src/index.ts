@@ -1,8 +1,9 @@
 /**
  * @packageDocumentation
  *
- * @sweatpants/chat-core — chat messages, Turn state, model contracts,
- * personas, and portable codecs.
+ * @sweatpants/chat-core — chat messages, Turn state, personas, and portable codecs.
+ * Protocol-neutral model contracts and the provider port live in
+ * @sweatpants/model-provider.
  *
  * This package owns the protocol-neutral chat domain types that are shared
  * across the durable runtime, UI adapters, and tool runtimes. It does NOT
@@ -43,9 +44,6 @@ export * from "./ndjson.ts";
 export * from "./stream.ts";
 export * from "./sse.ts";
 
-// Model-provider port and context
-export * from "./model-provider.ts";
-
 export {
   CHAT_TURN_COMPLETED_FACT,
   createChatTurnCompletedFact,
@@ -55,42 +53,6 @@ export {
 
 // History policy
 export * from "./history-policy.ts";
-
-// Runtime types (Model, Runtime, Context, StreamOptions, etc.)
-// Explicit exports to avoid StreamEvent name collision with session/streaming.ts
-export type {
-  Runtime,
-  ThinkingLevel,
-  ThinkingSetting,
-  ModelThinkingLevel,
-  ThinkingLevelMap,
-  ThinkingBudgets,
-  Model,
-  ImageModel,
-  InputModality,
-  OutputModality,
-  Context,
-  Tool,
-  Message as RuntimeMessage,
-  UserMessage,
-  SystemMessage,
-  AssistantMessage,
-  ToolResultMessage,
-  ContentBlock,
-  TextBlock,
-  ThinkingBlock,
-  ToolCallBlock,
-  ImageBlock,
-  StreamEvent as RuntimeStreamEvent,
-  ImageGenerationContext,
-  AssistantImages,
-  StreamOptions,
-  ImageGenerationOptions,
-  Usage,
-  StopReason,
-  Cost,
-  EventMetadata,
-} from "./runtime/index.ts";
 
 // Message part types
 export * from "./types/index.ts";

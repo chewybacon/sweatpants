@@ -1,13 +1,12 @@
 import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { resource, type Operation, type Stream } from "effection";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
 import {
-  ToolInventoryContext,
-  createToolInventory,
   type AssistantMessage,
   type Model,
   type ModelProviderDriver,
   type ModelProviderStreamRequest,
-} from "@sweatpants/chat-core";
+} from "@sweatpants/model-provider";
 import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,

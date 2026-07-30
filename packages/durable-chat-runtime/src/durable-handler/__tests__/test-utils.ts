@@ -43,14 +43,12 @@ import {
   installModelProvider,
   ModelProviderModelContext,
   type ModelProviderDriver,
-} from "@sweatpants/chat-core";
-import type {
-  AssistantMessage,
-  Model,
-  Runtime,
-  RuntimeStreamEvent,
-  Usage,
-} from "@sweatpants/chat-core";
+  type AssistantMessage,
+  type Model,
+  type Runtime,
+  type StreamEvent as RuntimeStreamEvent,
+  type Usage,
+} from "@sweatpants/model-provider";
 import {
   setupInMemoryDurableStreams,
   type DurableStreamsSetup,

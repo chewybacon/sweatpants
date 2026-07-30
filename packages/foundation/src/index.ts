@@ -1,6 +1,7 @@
 export {
   CanonicalJsonError,
   assertJson,
+  parseJsonText,
   parseJsonObject,
   requireJsonObject,
   canonicalJson,

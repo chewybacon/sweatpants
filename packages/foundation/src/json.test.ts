@@ -4,6 +4,7 @@ import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
+  parseJsonText,
   parseJsonObject,
   requireJsonObject,
   sha256,
@@ -26,6 +27,13 @@ describe("foundation canonical JSON", () => {
 
     expect(() => assertJson({ value: Number.NaN })).toThrow(CanonicalJsonError);
     expect(() => canonicalJson(sparse)).toThrow(/sparse array slot/);
+  });
+
+  it("parses text into canonical Json instead of asserting JSON.parse output", () => {
+    expect(parseJsonText('{"value":-0}')).toEqual({ value: 0 });
+    expect(() => parseJsonText("1e400")).toThrow(/non-finite number/);
+    expect(() => parseJsonText('"\\ud800"')).toThrow(/lone high surrogate/);
+    expect(() => parseJsonText("not json")).toThrow(SyntaxError);
   });
 
   it("parses unknown keyed objects into fresh canonical JSON", () => {

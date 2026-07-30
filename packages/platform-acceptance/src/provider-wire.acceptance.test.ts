@@ -3,15 +3,14 @@
 import { describe, expect, it } from "vitest";
 import { run, type Operation } from "effection";
 import { startModelSimulator, type PendingModelRequest } from "@sweatpants/test-rig";
+import { createOpenAiResponsesModel, createPiAiRuntime } from "@sweatpants/model-provider-pi-ai";
 import {
-  createOpenAiResponsesModel,
-  createPiAiRuntime,
   type AssistantMessage,
   type Context,
   type Model,
   type StreamEvent,
   type StreamOptions,
-} from "@sweatpants/model-provider-pi-ai";
+} from "@sweatpants/model-provider";
 
 type ProviderRun = {
   events: StreamEvent[];

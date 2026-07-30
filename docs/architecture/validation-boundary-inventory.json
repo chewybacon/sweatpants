@@ -4482,45 +4482,45 @@
     {
       "id": "SHAPE-287",
       "file": "packages/foundation/src/json.ts",
-      "line": 100,
+      "line": 105,
       "symbol": "assertJson",
       "classification": "G",
       "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
       "evidence": [
-        "packages/foundation/src/json.ts:100"
+        "packages/foundation/src/json.ts:105"
       ]
     },
     {
       "id": "SHAPE-285",
       "file": "packages/foundation/src/json.ts",
-      "line": 163,
+      "line": 168,
       "symbol": "encode",
       "classification": "G",
       "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
       "evidence": [
-        "packages/foundation/src/json.ts:163"
+        "packages/foundation/src/json.ts:168"
       ]
     },
     {
       "id": "SHAPE-286",
       "file": "packages/foundation/src/json.ts",
-      "line": 180,
+      "line": 185,
       "symbol": "sortedEntries",
       "classification": "G",
       "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
       "evidence": [
-        "packages/foundation/src/json.ts:180"
+        "packages/foundation/src/json.ts:185"
       ]
     },
     {
       "id": "SHAPE-465",
       "file": "packages/foundation/src/json.ts",
-      "line": 89,
+      "line": 94,
       "symbol": "requireJsonObject",
       "classification": "R",
       "authority": "typed constructor or owning ingress for requireJsonObject",
       "evidence": [
-        "packages/foundation/src/json.ts:89"
+        "packages/foundation/src/json.ts:94"
       ]
     },
     {
@@ -5033,12 +5033,12 @@
     {
       "id": "SHAPE-341",
       "file": "packages/platform-acceptance/src/fixtures/acceptance-standard-agent.ts",
-      "line": 46,
+      "line": 42,
       "symbol": "text",
       "classification": "R",
       "authority": "typed constructor or owning ingress for text",
       "evidence": [
-        "packages/platform-acceptance/src/fixtures/acceptance-standard-agent.ts:46"
+        "packages/platform-acceptance/src/fixtures/acceptance-standard-agent.ts:42"
       ]
     },
     {
@@ -5165,12 +5165,12 @@
     {
       "id": "SHAPE-356",
       "file": "packages/test-rig/src/index.ts",
-      "line": 117,
+      "line": 116,
       "symbol": "createHttpBinding",
       "classification": "R",
       "authority": "typed constructor or owning ingress for createHttpBinding",
       "evidence": [
-        "packages/test-rig/src/index.ts:117"
+        "packages/test-rig/src/index.ts:116"
       ]
     },
     {

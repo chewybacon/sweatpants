@@ -8,12 +8,8 @@ import {
   type ChatModelSampleOutputV2,
 } from "@sweatpants/chat-core";
 import { createStandardA2AHost, serveAgent, standardA2A } from "@sweatpants/agent-host/server";
-import {
-  createPiAiModelProviderDriver,
-  type AssistantMessage,
-  type Context,
-  type Message,
-} from "@sweatpants/model-provider-pi-ai";
+import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
+import { type AssistantMessage, type Context, type Message } from "@sweatpants/model-provider";
 import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants/test-rig";
 
 export const ACCEPTANCE_AGENT_MODEL_ID = "a2a-agent-acceptance";

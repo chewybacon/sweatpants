@@ -12,7 +12,7 @@
  * decision for diagnostics.
  */
 import { createContext } from "effection";
-import type { Context as RuntimeContext, Message } from "./runtime/types.ts";
+import type { Context as RuntimeContext, Message } from "@sweatpants/model-provider";
 
 export interface HistoryPolicyDecision {
   /** What the policy did. */

@@ -20,6 +20,7 @@
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
+        "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/react-chat": "workspace:*",
         "@sweatpants/stream-bridge": "workspace:*",

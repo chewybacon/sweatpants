@@ -5,8 +5,8 @@ import {
   type AssistantMessage,
   type Model,
   type ModelProviderDriver,
-} from "@sweatpants/chat-core";
-import type { RuntimeStreamEvent } from "@sweatpants/chat-core";
+} from "@sweatpants/model-provider";
+import type { StreamEvent as RuntimeStreamEvent } from "@sweatpants/model-provider";
 
 type RuntimeContext = Parameters<ModelProviderDriver["stream"]>[0]["context"];
 

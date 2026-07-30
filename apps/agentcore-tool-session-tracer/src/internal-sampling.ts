@@ -16,12 +16,14 @@ import {
   createPiAiModelProviderDriver,
   modelSelectionKey,
   resolvePiAiModel,
-  type AssistantMessage as ModelAssistantMessage,
-  type Context as ModelContext,
-  type Message as ModelMessage,
   type ModelSelection,
-  type Tool as ModelTool,
 } from "../../../packages/model-provider-pi-ai/src/index.ts";
+import type {
+  AssistantMessage as ModelAssistantMessage,
+  Context as ModelContext,
+  Message as ModelMessage,
+  Tool as ModelTool,
+} from "@sweatpants/model-provider";
 
 export type AgentCoreToolSampleMode = "host" | "internal";
 

@@ -30,6 +30,7 @@
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/tool-runtime-agentcore": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",

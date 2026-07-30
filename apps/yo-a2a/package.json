@@ -17,6 +17,7 @@
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
+        "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "effection": "catalog:",
         "zod": "catalog:"

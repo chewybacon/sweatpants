@@ -38,7 +38,7 @@ import {
 } from "../response-streams/index.ts";
 import { MaxIterationsContext, PersonaResolverContext } from "../contexts.ts";
 import { createChatTurnCompletedFact, projectChatTurnFacts } from "@sweatpants/chat-core";
-import { ModelProviderApi, useModel, useStreamOptions } from "@sweatpants/chat-core";
+import { ModelProviderApi, useModel, useStreamOptions } from "@sweatpants/model-provider";
 import { ToolRuntimeApi, ToolRuntimePort } from "@sweatpants/tool-session/chat-runtime";
 import { ToolExposureApi, ToolInventoryApi, type ToolDefinition } from "@sweatpants/chat-core";
 import { HistoryPolicyContext } from "@sweatpants/chat-core";
@@ -73,7 +73,7 @@ import type {
   ProgramRuntimeChatEngineParams,
   ToolSchema,
 } from "./types.ts";
-import type { Runtime } from "@sweatpants/chat-core";
+import type { Runtime } from "@sweatpants/model-provider";
 import {
   interruptRecordsForThread,
   openInterruptsForThread,

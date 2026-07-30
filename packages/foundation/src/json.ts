@@ -77,6 +77,11 @@ export function sortStrings(
   return result;
 }
 
+/** Parses JSON text into a fresh canonical value, preserving the proof in `Json`. */
+export function parseJsonText(text: string, path = "$"): Json {
+  return assertJson(JSON.parse(text), path);
+}
+
 /** Parses unknown input into a fresh canonical keyed JSON object. */
 export function parseJsonObject(value: unknown, path = "$"): JsonObject {
   return requireJsonObject(assertJson(value, path), path);

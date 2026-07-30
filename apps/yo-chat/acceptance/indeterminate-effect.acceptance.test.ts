@@ -2,17 +2,16 @@ import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-session/c
 import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { describe, expect, it } from "vitest";
 import { action, resource, run, type Operation, type Stream } from "effection";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
 import {
   installModelProvider,
   ModelProviderModelContext,
-  ToolInventoryContext,
-  createToolInventory,
   type AssistantMessage,
   type Model,
   type ModelProviderDriver,
   type ModelProviderStreamRequest,
   type StreamEvent,
-} from "@sweatpants/chat-core";
+} from "@sweatpants/model-provider";
 import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
