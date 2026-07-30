@@ -1457,7 +1457,7 @@
       "replacement": "parseModelSelectionFields",
       "evidence": [
         "packages/model-provider-pi-ai/src/index.ts",
-        "packages/model-provider-pi-ai/src/__tests__/provider-boundary.test.ts"
+        "packages/model-provider-pi-ai/src/__tests__/model-selection.test.ts"
       ]
     },
     {

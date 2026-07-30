@@ -35,12 +35,9 @@
     "dependencies": {
         "@earendil-works/pi-ai": "^0.80.1",
         "@sweatpants/chat-core": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "zod": "catalog:"
+        "@sweatpants/foundation": "workspace:*"
     },
     "devDependencies": {
-        "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/tool-session": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "effection": "catalog:",
         "tsup": "catalog:",

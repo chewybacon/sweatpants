@@ -134,9 +134,11 @@ The chat program-driver engine now parses canonical JSON records and tool-call a
 
 Duplicate skill mappings remain a typed semantic failure. URL/origin and skill-advertisement authority remain in their existing semantic verifiers. No parser-return cast is used.
 
-### Model provider normalization
+### Model provider wire conformance
 
-The three package-local generic record predicates in `model-provider-pi-ai` were consolidated into the exact compatibility-mechanism owner `isProviderRecord` in `runtime/schema-normalization.ts`. Model selection, provider tool-argument normalization, and schema projection share that mechanism. Standard Schema remains the public user-schema contract.
+Provider behavior tests no longer mock `@earendil-works/pi-ai/compat`. The provider is exercised through `test-rig`'s real HTTP Responses simulator, so the actual pi-ai client, SSE decoder, request projection, tool-call chunking, structured-response unwrapping, provider errors, and malformed-argument behavior are covered together. The simulator characterization records an important vendor fact: pi-ai repairs truncated JSON arguments and turns unparseable argument text into `{}` before Sweatpants receives it. The raw-value preservation guarantee therefore starts at Sweatpants-owned decode points, not at this vendor boundary. Policy-only tests remain in the model-provider package; wire conformance lives in `platform-acceptance`.
+
+The provider now transports authored JSON Schema projections rather than re-deriving them. `createTool` computes and digests the portable projection once; inventory and provider types carry it as `JsonObject`. The provider-side schema-normalization implementation and duplicate sanitization walk were deleted. Runtime-supplied sampling schemas still use the single conversion at their actual authoring ingress.
 
 ## Validation performed
 
@@ -160,7 +162,9 @@ The three package-local generic record predicates in `model-provider-pi-ai` were
 | Tool Session tests | 109 passed, 7 todo |
 | AgentCore tests | 49 passed |
 | Execution Store Redis tests | 29 passed |
-| Model provider tests | 22 passed |
+| Model provider unit tests | 8 passed |
+| Model provider wire tests (test-rig simulator) | 10 passed |
+| Platform Acceptance tests | 94 passed |
 | Tool Runtime Local typecheck | passed |
 | CLI typecheck | passed |
 | A2A typecheck | passed |
@@ -171,6 +175,7 @@ The three package-local generic record predicates in `model-provider-pi-ai` were
 | Test Rig typecheck | passed |
 | React Chat typecheck | passed |
 | Platform Acceptance typecheck | passed |
+| Provider wire simulator typecheck | passed |
 | Durable Execution typecheck | passed |
 | Durable Chat Runtime typecheck | passed |
 | Workspace Runtime typecheck | passed |
