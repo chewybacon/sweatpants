@@ -142,13 +142,15 @@ Acceptance tests now have a repository-wide tooling gate: they may not replace m
 
 Provider behavior tests no longer mock `@earendil-works/pi-ai/compat`. The provider is exercised through `test-rig`'s real HTTP Responses simulator, so the actual pi-ai client, SSE decoder, request projection, tool-call chunking, structured-response unwrapping, provider errors, and malformed-argument behavior are covered together. The simulator characterization records an important vendor fact: pi-ai repairs truncated JSON arguments and turns unparseable argument text into `{}` before Sweatpants receives it. The raw-value preservation guarantee therefore starts at Sweatpants-owned decode points, not at this vendor boundary. Policy-only tests remain in the model-provider package; wire conformance lives in `platform-acceptance`.
 
-The provider now transports authored JSON Schema projections rather than re-deriving them. `createTool` computes and digests the portable projection once; inventory and provider types carry it as `JsonObject`. The provider-side schema-normalization implementation and duplicate sanitization walk were deleted. Runtime-supplied sampling schemas still use the single conversion at their actual authoring ingress. MCP `tools/list` and discovery manifests now follow the same rule: one shared projection reads parameter and elicitation schemas from the authored tool artifacts, rather than casting the tool to an ad-hoc legacy shape and re-running schema conversion twice.
+The provider now transports authored JSON Schema projections rather than re-deriving them. `createTool` computes and digests the portable projection once; inventory and provider types carry it as `JsonObject`. The provider-side schema-normalization implementation and duplicate sanitization walk were deleted. Runtime-supplied sampling schemas still use the single conversion at their actual authoring ingress. MCP `tools/list` and discovery manifests now follow the same rule: one shared projection reads parameter and elicitation schemas from the authored tool artifacts, rather than casting the tool to an ad-hoc legacy shape and re-running schema conversion twice. The local worker adapter also carries authored elicitation projections into the worker; the worker no longer inspects raw elicitation definitions or re-converts their response schemas. Hydra's standalone tool-authoring examples now compute their Ollama projection in `defineTool` and retain it with the validator instead of re-running `z.toJSONSchema` each time a registry is serialized.
+
+A repository-wide authored-schema projection gate now rejects `toToolParameterJsonSchema(tool.parameters)` and `z.toJSONSchema(tool.parameters)` outside recognised authoring owners. Conversion of call-time `.inputSchema` and `.schema` remains legal because those call sites are the actual authoring ingress.
 
 ## Validation performed
 
 | Scope | Result |
 | --- | --- |
-| Validation inventory/tooling tests | 25 passed |
+| Validation inventory/tooling tests | 28 passed |
 | Tool Runtime Local source tests | 39 passed |
 | Tool Runtime Local acceptance tests | 6 passed |
 | CLI tests | 14 passed |

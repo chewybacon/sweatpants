@@ -35,7 +35,8 @@
 
 import type { Operation } from "effection";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ElicitDefinition, ElicitsMap, ToolElicitResult } from "@sweatpants/agent-sdk";
+import type { ToolElicitResult } from "@sweatpants/agent-sdk";
+import type { JsonObject } from "@sweatpants/foundation";
 import type {
   Message,
   ExtendedMessage,
@@ -285,8 +286,8 @@ export interface WorkerToolRegistry {
  */
 export interface WorkerTool {
   name: string;
-  /** Normalized elicitation declarations from the canonical ToolDefinition. */
-  elicits?: ElicitsMap | Readonly<Record<string, ElicitDefinition>>;
+  /** Portable response projections computed once when the tool was authored. */
+  elicitSchemas: Readonly<Record<string, JsonObject>>;
   handler: (params: unknown, ctx: WorkerToolContext) => Operation<unknown>;
 }
 

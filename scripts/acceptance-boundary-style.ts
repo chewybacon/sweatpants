@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const escapeHatch = /boundary-simulator-escape-hatch:\s*(.{20,})/u;
 
 export interface AcceptanceBoundaryViolation {

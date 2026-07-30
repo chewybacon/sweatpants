@@ -14,6 +14,8 @@ import { isMainThread, threadId } from "node:worker_threads";
 const registry = createWorkerToolRegistry([
   {
     name: "worker_probe",
+    // This probe is intentionally hand-built and declares no elicitation contract.
+    elicitSchemas: {},
     handler: function* () {
       return {
         isMainThread,

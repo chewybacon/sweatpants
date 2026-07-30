@@ -25,13 +25,19 @@ interface ToolDef<TParams extends z.ZodType, TReturn> {
   execute: (args: z.infer<TParams>) => Operation<TReturn>;
 }
 
-function defineTool<TParams extends z.ZodType, TReturn>(
-  def: ToolDef<TParams, TReturn>
-): ToolDef<TParams, TReturn> {
-  return def;
+interface AuthoredTool<TParams extends z.ZodType, TReturn>
+  extends ToolDef<TParams, TReturn> {
+  /** Portable contract projection computed once alongside the validator. */
+  inputSchema: ReturnType<typeof z.toJSONSchema>;
 }
 
-type AnyTool = ToolDef<z.ZodType, unknown>;
+function defineTool<TParams extends z.ZodType, TReturn>(
+  def: ToolDef<TParams, TReturn>
+): AuthoredTool<TParams, TReturn> {
+  return { ...def, inputSchema: z.toJSONSchema(def.parameters) };
+}
+
+type AnyTool = AuthoredTool<z.ZodType, unknown>;
 
 interface OllamaTool {
   type: 'function';
@@ -53,7 +59,7 @@ function createToolRegistry(tools: AnyTool[]): ToolRegistry {
       function: {
         name: tool.name,
         description: tool.description,
-        parameters: z.toJSONSchema(tool.parameters),
+        parameters: tool.inputSchema,
       },
     })),
   };
