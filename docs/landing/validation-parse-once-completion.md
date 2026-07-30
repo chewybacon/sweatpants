@@ -2,9 +2,9 @@
 
 ## Status
 
-In progress. The policy/inventory foundation and four production trust-domain slices are implemented and tested. Repository-wide certification remains blocked on migration of the unresolved inventory entries listed below.
+In progress under the revised **Trust Topology and Contract Flow Completion** design. The v2 shape-owner inventory remains enforced as a diagnostic view, but unresolved owners are no longer treated as an item-by-item migration queue. Certification is now blocked on unresolved vertical trust flows, especially durable restoration authority and accidental-open carrier types.
 
-This memo intentionally distinguishes completed evidence from planned work. It is not a final `pnpm land` attestation.
+This memo distinguishes completed evidence from planned work. Individual slices have deterministic landing artifacts; it is not yet the final repository-wide completion attestation.
 
 ## Implemented in this change
 
@@ -26,12 +26,12 @@ Current inventory totals:
 | Historical validation records | 86 |
 | Manual shape owners | 340 |
 | `B` external boundary | 110 |
-| `R` same-domain revalidation | 164 |
+| `R` same-domain revalidation | 166 |
 | `S` typed semantic verification | 15 |
 | `G` generic mechanism | 6 |
-| `C` compatibility normalizer | 45 |
+| `C` compatibility normalizer | 43 |
 
-The counts are evidence indicators, not completion criteria. Every remaining `B` and `R` record still requires package-level review before final certification.
+The counts are evidence indicators, not completion criteria or an edit queue. Owners are reviewed when their vertical producer-to-consumer trust flow is migrated; deletion follows from establishing the upstream authority.
 
 ### Tool Runtime Local foreign sessions
 
@@ -62,13 +62,13 @@ Strict schemas own archive, manifest, builder, target, program, file, digest, bo
 
 ### Durable Chat requests and interrupt restoration
 
-`packages/durable-chat-runtime/src/handler/request-normalization.ts` now keeps raw-message normalization inside the established strict request schema trust domain. The typed normalizer no longer repeats array, record, tool-call, or function-field shape checks. The obsolete `normalizeChatRequestBody` same-domain forwarding API was deleted rather than retained as a compatibility alias. Provider-compatible string tool arguments are parsed through the owned canonical record schema.
+`packages/durable-chat-runtime/src/handler/request-normalization.ts` now keeps raw-message normalization inside the established strict request schema trust domain. The typed normalizer no longer repeats array, record, tool-call, or function-field shape checks. The obsolete `normalizeChatRequestBody` same-domain forwarding API was deleted rather than retained as a compatibility alias. Model-authored tool arguments now remain designed-open `Json` through provider, chat, worker, and replay carriers; JSON string decoding occurs at the encoding owner, while the authored Standard Schema narrows exactly once at `execute(args, ctx)`.
 
 `packages/durable-chat-runtime/src/interrupts/store.ts` now treats JSON restoration as a new trust boundary and strictly parses the complete persisted interrupt collection. Closed schemas prove identities, status, timestamps, optional execution references, canonical continuation/response-schema slots, metadata, and collection bounds before returning `OpenInterruptRecord[]`. Invalid persisted JSON or structure now fails closed instead of being cast or silently treated as absent.
 
 `packages/durable-chat-runtime/src/durable-handler/local-program-host.ts` now parses restored pinned program catalogs with a closed nested schema covering program and foreign-tool variants, pinned identities, durability discriminants, target keys, and digest syntax. The parser delegates catalog digest and key/target consistency to `verifyPinnedProgramCatalog`. Typed in-memory request paths call only the semantic verifier, eliminating same-domain structural reparsing. The obsolete `parseCatalog` API and parser-return cast were removed.
 
-`program-driver-tool-runtime.ts` now strictly parses durable continuation state and nested `ToolExecutionRef` values, while the deliberately tolerant scalar-to-object tool-input adapter returns one canonical object representation. `program-driver-schema.ts` retains Standard Schema as the authored registry contract but delegates the framework-owned chat program input structure to a strict private Zod schema. Catalog digest verification remains typed semantic logic after parsing.
+`program-driver-tool-runtime.ts` now strictly parses durable continuation state and nested `ToolExecutionRef` values. The former scalar-to-object tool-input adapter was deleted because wrapping non-object input as `{ input: value }` changed model-authored meaning before the authored validator. `program-driver-schema.ts` retains Standard Schema as the authored registry contract but delegates the framework-owned chat program input structure to a strict private Zod schema. Catalog digest verification remains typed semantic logic after parsing.
 
 ### Workspace Runtime protocol boundaries
 
@@ -192,7 +192,7 @@ A repository-wide authored-schema projection gate now rejects `toToolParameterJs
 | Model provider typecheck | passed |
 | `git diff --check` | passed |
 
-No final repository-wide `pnpm check`, clean build, or deterministic `pnpm land` result is claimed by this memo.
+Completed slices have passed repository checks and deterministic landing. Final completion still requires trust-flow v3 evidence and durable restoration review, so those slice artifacts are not presented as the final certification artifact.
 
 ## Preserved semantic authority
 
@@ -209,31 +209,33 @@ Foundation remains free of a production Zod dependency. Canonical JSON and Stand
 
 ## Remaining work before final completion
 
-The following package priorities from DR-041 still require completion review or broader migration:
+Work now proceeds by vertical trust flow rather than package/check count:
 
-1. Remaining A2A protocol/manifest/peer envelope trees and connector transport values.
-2. Remaining Durable Chat projection and provider-message compatibility owners.
-3. Remaining Durable Execution manifest-authoring constructor invariants and any transport-specific driver values.
-4. Remaining Journal Authority snapshot predicate decomposition and authenticated wire-envelope review.
-5. Remaining Tool Session worker/session-manager bridge and provider compatibility predicates.
-6. Remaining AgentCore worker/session transport values and provider-normalization residue.
-7. Remaining CLI bundler, evaluator-loader, AWS, and artifact ingress checks.
-8. Deletion or reclassification of every unresolved `R` owner.
-9. Entry-level positive and negative test evidence for all final `B` and `C` records.
-10. Final residue review of generic record predicates and parser-return assertions.
-11. Repository typecheck, formatting, exports, product surface, module graph, clean build, and deterministic landing.
+1. Evolve inventory evidence to trust-flow v3 while retaining v2 IDs and shape-owner drift coverage.
+2. Classify open carrier fields as designed or accidental; migrate the highest downstream-reconstruction trees first.
+3. Define writer, mutation, envelope/version, integrity, migration, and single restore authority for each durable store and Journal Authority flow.
+4. Continue carrying producer-known identity, failure, capability, provenance, and correlation facts rather than reconstructing them downstream.
+5. Move remaining external protocol behavior from hand-built clients/fakes to installed adapters exercised through simulators.
+6. Delete residual `R` owners as their upstream authority is established; do not translate them mechanically to schemas.
+7. Review remaining `G`/`C` residue and direct decode/parser-return assertions in the context of their trust flow.
+8. Run final focused, simulator, package, application, exports, product-surface, module-graph, clean-build, and deterministic landing gates.
 
 ## Certification criteria
 
 This work may be marked complete only when:
 
-- inventory drift is empty;
-- every inventory record reflects reviewed source rather than an initial classification;
-- all `R` records are deleted or tied to a distinct serialized trust transition;
-- all remaining `G` and `C` records have exact function-level rationale and fixtures;
-- parser errors remain bounded and redacted;
-- focused and repository-wide checks pass; and
-- a clean deterministic landing artifact is recorded here.
+- inventory and trust-flow drift are empty;
+- every external, authored, and durable flow names one owning authority;
+- every designed-open value names its final authored validator;
+- accidental-open carrier fields no longer force downstream reconstruction;
+- authored validators, projections, and digests are not re-derived downstream;
+- producer-known facts are carried explicitly rather than inferred or fabricated;
+- acceptance protocol behavior is simulator-backed or has a reviewed exact escape hatch;
+- durable restore authority is centralized per store/domain and replay consumers do not repeat payload parsing;
+- remaining manual shape owners are reviewed residue rather than unresolved migration placeholders;
+- diagnostics remain bounded and redacted;
+- all focused and repository-wide gates pass; and
+- one final deterministic landing artifact is recorded here.
 
 ## Evidence locations
 
