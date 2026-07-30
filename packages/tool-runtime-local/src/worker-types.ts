@@ -37,9 +37,8 @@ import type { Operation } from "effection";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ToolElicitResult } from "@sweatpants/agent-sdk";
 import type { JsonObject } from "@sweatpants/foundation";
+import type { ExtendedMessage } from "@sweatpants/tool-session/messages";
 import type {
-  Message,
-  ExtendedMessage,
   LogLevel,
   WireSampleResult,
   WireSampleResultBase,
@@ -562,9 +561,6 @@ export interface WorkerToolContext {
 // =============================================================================
 
 export type {
-  // Message types
-  Message,
-  ExtendedMessage,
   // Raw result types (wire format)
   WireSampleResult,
   WireSampleResultBase,

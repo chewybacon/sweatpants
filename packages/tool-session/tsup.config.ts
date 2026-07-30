@@ -10,6 +10,7 @@ export default defineConfig({
     "tool-parameters": "src/tool-parameters.ts",
     "chat-runtime": "src/chat-runtime.ts",
     "tool-inventory": "src/tool-inventory.ts",
+    messages: "src/messages.ts",
     "elicit-context/index": "src/elicit-context/index.ts",
   },
   tsconfig: "../ts-config/tsconfig.tsup.json",

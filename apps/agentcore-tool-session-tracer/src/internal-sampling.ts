@@ -1,9 +1,7 @@
 import { run } from "effection";
-import type { Message } from "@sweatpants/chat-core";
 import type { JsonObject } from "@sweatpants/foundation";
 import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
 import type {
-  ExtendedMessage,
   WireSampleResult,
   WireSampleResultBase,
   WireSampleResultWithParsed,
@@ -11,7 +9,7 @@ import type {
   SamplingToolCall,
   SamplingToolDefinition,
 } from "@sweatpants/tool-session/mcp";
-import { extendedMessageToProviderMessage } from "@sweatpants/durable-chat-runtime/tool-session/message-conversion";
+import { toModelMessages, type ExtendedMessage } from "@sweatpants/tool-session/messages";
 import {
   createPiAiModelProviderDriver,
   modelSelectionKey,
@@ -34,15 +32,13 @@ export interface AgentCoreToolSampleConfig {
 
 export interface InternalSampleRequest {
   inheritedModel?: ModelSelection | undefined;
-  messages: unknown[];
+  messages: ExtendedMessage[];
   systemPrompt?: string | undefined;
   maxTokens?: number | undefined;
   tools?: unknown[] | undefined;
   toolChoice?: unknown;
   schema?: JsonObject | undefined;
 }
-
-type ProviderAssistantToolCall = NonNullable<Message["tool_calls"]>[number];
 
 function nonEmptyEnv(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -93,39 +89,6 @@ function assertAgentCoreUsableModel(selection: ModelSelection): void {
       `AgentCore internal sampling cannot use app-local model ${modelSelectionKey(selection)}; configure AGENTCORE_TOOL_SAMPLE_MODE=host or set AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER/ID to an AgentCore-reachable model`,
     );
   }
-}
-
-function providerMessageToModelMessage(message: Message): ModelMessage {
-  if (message.role === "system") {
-    return { role: "system", content: message.content };
-  }
-
-  if (message.role === "user") {
-    return { role: "user", content: message.content };
-  }
-
-  if (message.role === "tool") {
-    return {
-      role: "toolResult",
-      toolCallId: message.tool_call_id ?? "",
-      toolName: message.replay?.toolName ?? "",
-      content: [{ type: "text", text: message.content }],
-      isError: message.isError === true,
-    };
-  }
-
-  return {
-    role: "assistant",
-    content: [
-      ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
-      ...(message.tool_calls ?? []).map((toolCall: ProviderAssistantToolCall) => ({
-        type: "toolCall" as const,
-        id: toolCall.id,
-        name: toolCall.function.name,
-        arguments: toolCall.function.arguments,
-      })),
-    ],
-  };
 }
 
 function assistantText(message: ModelAssistantMessage): string {
@@ -316,12 +279,6 @@ function rawResultFromAssistant(
         ? "maxTokens"
         : "endTurn",
   } satisfies WireSampleResultBase;
-}
-
-function toModelMessages(messages: unknown[]): ModelMessage[] {
-  return (messages as ExtendedMessage[])
-    .map(extendedMessageToProviderMessage)
-    .map(providerMessageToModelMessage);
 }
 
 export async function sampleInsideAgentCore(

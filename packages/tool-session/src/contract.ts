@@ -26,7 +26,8 @@
  * @packageDocumentation
  */
 import type { Operation, Stream } from "effection";
-import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { JsonObject } from "@sweatpants/foundation";
+import type { ExtendedMessage } from "./messages.ts";
 import type {
   ElicitsMap,
   LogLevel,
@@ -34,7 +35,6 @@ import type {
   SamplingToolChoice,
   SamplingToolDefinition,
   ToolContract,
-  ToolMessage,
   WireElicitResult,
   WireSampleResultBase,
   WireSampleResultWithParsed,
@@ -57,26 +57,6 @@ export type {
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
 } from "@sweatpants/agent-sdk";
-
-export interface Message {
-  role: "user" | "assistant" | "system";
-  content: string;
-}
-export interface ToolCallMessage {
-  role: "assistant";
-  content: string;
-  tool_calls: Array<{
-    id: string;
-    type: "function";
-    function: { name: string; arguments: Json };
-  }>;
-}
-export interface ToolResultMessage {
-  role: "tool";
-  content: string;
-  tool_call_id: string;
-}
-export type ExtendedMessage = ToolMessage | Message | ToolCallMessage | ToolResultMessage;
 
 // =============================================================================
 // SESSION STATUS

@@ -1969,6 +1969,9 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      '@sweatpants/model-provider':
+        specifier: workspace:*
+        version: link:../model-provider
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9

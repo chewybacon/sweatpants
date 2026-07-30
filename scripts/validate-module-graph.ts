@@ -57,6 +57,7 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/durable-effects",
     "@sweatpants/durable-execution",
     "@sweatpants/foundation",
+    "@sweatpants/model-provider",
   ],
   "@sweatpants/chat-core": [
     // Transitional DR-048 edge: core is the authored-tool contract owner

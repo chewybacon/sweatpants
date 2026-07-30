@@ -37,6 +37,7 @@ import { encodeElicitContext } from "../elicit-context/index.ts";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import { parseToolParameters, toToolParameterJsonSchema } from "../tool-parameters.ts";
+import type { Message, ExtendedMessage } from "../messages.ts";
 import type {
   McpToolContextWithElicits,
   McpToolLimits,
@@ -44,8 +45,6 @@ import type {
   ElicitId,
   ElicitRequest,
   ElicitsMap,
-  Message,
-  ExtendedMessage,
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,

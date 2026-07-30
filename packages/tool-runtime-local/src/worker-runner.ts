@@ -47,7 +47,12 @@ import type {
   WorkerSampleSchemaConfig,
   WorkerSampleSchemaConfigMessages,
 } from "./worker-types.js";
-import type { ExtendedMessage, ToolCallMessage, ToolResultMessage } from "@sweatpants/tool-session";
+import {
+  isMcpMessage,
+  isToolCallMessage,
+  isToolResultMessage,
+  type ExtendedMessage,
+} from "@sweatpants/tool-session/messages";
 import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
 import type {
   LogLevel,
@@ -69,27 +74,13 @@ import {
 // =============================================================================
 
 /**
- * Type guard for ToolCallMessage (assistant message with tool_calls).
- */
-function isToolCallMessage(msg: ExtendedMessage): msg is ToolCallMessage {
-  return "tool_calls" in msg && Array.isArray((msg as ToolCallMessage).tool_calls);
-}
-
-/**
- * Type guard for ToolResultMessage (tool result with tool_call_id).
- */
-function isToolResultMessage(msg: ExtendedMessage): msg is ToolResultMessage {
-  return "tool_call_id" in msg && (msg as ToolResultMessage).role === "tool";
-}
-
-/**
  * Convert framework Message/ExtendedMessage to core WorkerMessage.
  *
  * Handles all ExtendedMessage variants:
  * - Message (string content) → WorkerMessage with string content
  * - McpMessage (content blocks) → passthrough as WorkerMessage
- * - ToolCallMessage (OpenAI tool_calls) → WorkerMessage with tool_use content blocks
- * - ToolResultMessage (OpenAI tool result) → WorkerMessage with tool_result content block (role: 'user')
+ * - ToolCallMessage → WorkerMessage with tool_use content blocks
+ * - ToolResultMessage → WorkerMessage with tool_result content block (role: 'user')
  */
 function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
   // ToolCallMessage → assistant message with tool_use content blocks
@@ -102,12 +93,12 @@ function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
     }
 
     // Convert each tool call to a tool_use content block
-    for (const tc of msg.tool_calls) {
+    for (const call of msg.toolCalls) {
       contentBlocks.push({
         type: "tool_use" as const,
-        id: tc.id,
-        name: tc.function.name,
-        input: tc.function.arguments,
+        id: call.id,
+        name: call.name,
+        input: call.arguments,
       });
     }
 
@@ -122,24 +113,41 @@ function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
       content: [
         {
           type: "tool_result" as const,
-          toolUseId: msg.tool_call_id,
+          toolUseId: msg.toolCallId,
           content: [{ type: "text" as const, text: msg.content }],
+          isError: msg.isError,
         },
       ],
     };
   }
 
-  // Basic Message with string content
-  if (typeof msg.content === "string") {
+  if (isMcpMessage(msg)) {
+    const blocks = Array.isArray(msg.content) ? msg.content : [msg.content];
     return {
-      role: msg.role as "user" | "assistant",
-      content: msg.content,
+      role: msg.role,
+      content: blocks.map((block) => {
+        switch (block.type) {
+          case "text":
+          case "tool_use":
+            return block;
+          case "tool_result":
+            return {
+              ...block,
+              content: block.content.flatMap((content) =>
+                content.type === "text" ? [content] : [],
+              ),
+            };
+          default:
+            throw new Error(`Worker sampling does not support MCP ${block.type} content`);
+        }
+      }),
     };
   }
 
-  // McpMessage with content blocks - pass through
-  // The core transport supports the same content block structure
-  return msg as WorkerMessage;
+  if (msg.role === "system") {
+    throw new Error("Worker sample messages carry system text through systemPrompt");
+  }
+  return { role: msg.role, content: msg.content };
 }
 
 /** Converts a Standard Schema or explicit JSON Schema to bounded wire data. */
