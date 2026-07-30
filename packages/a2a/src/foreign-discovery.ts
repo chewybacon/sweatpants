@@ -1,4 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
+import { z } from "zod";
 import { createHmac } from "node:crypto";
 import { assertJson, canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
@@ -204,41 +205,36 @@ export function prepareForeignA2AInvocation(input: {
   return pin;
 }
 
+const pinTextSchema = z.string().min(1).max(4_096);
+const invocationPinShapeSchema = z
+  .object({
+    cardDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+    agentName: pinTextSchema,
+    skillId: pinTextSchema,
+    interface: z
+      .object({ url: pinTextSchema, protocolVersion: pinTextSchema })
+      .loose(),
+    extensionUris: z.array(pinTextSchema),
+    guarantee: z
+      .object({ level: pinTextSchema, source: pinTextSchema, negotiatedAt: pinTextSchema })
+      .loose(),
+    ambiguityPolicy: z.enum(["surface", "intervene", "retry_may_duplicate"]),
+    invocationId: pinTextSchema,
+    initialMessageId: pinTextSchema,
+    principalId: pinTextSchema,
+    requestExpiresAt: pinTextSchema,
+    tenantId: pinTextSchema.optional(),
+  })
+  .loose();
+
 export function verifyForeignA2AInvocationPin(
   pin: unknown,
 ): asserts pin is ForeignA2AInvocationPin {
-  if (
-    !record(pin) ||
-    !nonempty(pin["cardDigest"]) ||
-    !/^[0-9a-f]{64}$/.test(pin["cardDigest"]) ||
-    !nonempty(pin["agentName"]) ||
-    !nonempty(pin["skillId"]) ||
-    !record(pin["interface"]) ||
-    !nonempty(pin["interface"]["url"]) ||
-    !nonempty(pin["interface"]["protocolVersion"]) ||
-    !Array.isArray(pin["extensionUris"]) ||
-    !pin["extensionUris"].every(nonempty) ||
-    !record(pin["guarantee"]) ||
-    !nonempty(pin["guarantee"]["level"]) ||
-    !nonempty(pin["guarantee"]["source"]) ||
-    !nonempty(pin["guarantee"]["negotiatedAt"]) ||
-    !["surface", "intervene", "retry_may_duplicate"].includes(String(pin["ambiguityPolicy"])) ||
-    !nonempty(pin["invocationId"]) ||
-    !nonempty(pin["initialMessageId"]) ||
-    !nonempty(pin["principalId"]) ||
-    !nonempty(pin["requestExpiresAt"]) ||
-    (pin["tenantId"] !== undefined && !nonempty(pin["tenantId"]))
-  ) {
+  if (!invocationPinShapeSchema.safeParse(pin).success) {
     throw new CrankError("a2a_pin_invalid", "Foreign A2A invocation pin identity is invalid");
   }
   const candidate = pin as ForeignA2AInvocationPin;
-  if (
-    !candidate.cardDigest.match(/^[0-9a-f]{64}$/) ||
-    !candidate.invocationId ||
-    !candidate.initialMessageId ||
-    !candidate.principalId ||
-    !Number.isFinite(Date.parse(candidate.requestExpiresAt))
-  ) {
+  if (!Number.isFinite(Date.parse(candidate.requestExpiresAt))) {
     throw new CrankError("a2a_pin_invalid", "Foreign A2A invocation pin identity is invalid");
   }
   if (candidate.guarantee.level === "reconciled") {

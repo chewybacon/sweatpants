@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
   assertInventory,
   assertInventoryEvidence,
+  assertManualShapeOwnerCoverage,
   readInventory,
+  scanManualShapeOwners,
   scanUncheckedBoundaryCasts,
   scanValidationDeclarations,
 } from "../validation-boundary-inventory.ts";
@@ -22,7 +24,7 @@ describe("validation boundary inventory", () => {
       (declaration) => `${declaration.file}:${declaration.line}:${declaration.symbol}`,
     );
 
-    expect(inventory.format).toBe("sweatpants.validation-boundary-inventory.v1");
+    expect(inventory.format).toBe("sweatpants.validation-boundary-inventory.v2");
     expect(new Set(inventory.entries.map((entry) => entry.id)).size).toBe(inventory.entries.length);
     expect(
       new Set(
@@ -62,10 +64,34 @@ describe("validation boundary inventory", () => {
     expect(() => assertInventory({ format: "wrong", entries: [] })).toThrow();
     expect(() =>
       assertInventory({
-        format: "sweatpants.validation-boundary-inventory.v1",
+        format: "sweatpants.validation-boundary-inventory.v2",
         entries: [{ id: "VAL-1", file: "x", symbol: "validateX" }],
+        shapeOwners: [],
       }),
     ).toThrow();
+  });
+
+  it("covers every production manual shape-inspection owner", () => {
+    const inventory = readInventory();
+    expect(scanManualShapeOwners().length).toBeGreaterThan(0);
+    expect(() => assertManualShapeOwnerCoverage(inventory)).not.toThrow();
+    expect(() =>
+      assertManualShapeOwnerCoverage(inventory, [
+        { file: "packages/example/src/raw.ts", line: 1, symbol: "parseRaw", declarationKind: "function" },
+      ]),
+    ).toThrow(/unclassified/u);
+  });
+
+  it("requires exact, justified shape-owner classifications", () => {
+    const inventory = readInventory();
+    for (const owner of inventory.shapeOwners) {
+      expect(["B", "R", "S", "G", "C"]).toContain(owner.classification);
+      if (owner.classification === "G" || owner.classification === "C") {
+        expect(owner.rationale?.length).toBeGreaterThan(0);
+      } else {
+        expect(owner.authority?.length).toBeGreaterThan(0);
+      }
+    }
   });
 
   it("requires independent trust and seam labels", () => {

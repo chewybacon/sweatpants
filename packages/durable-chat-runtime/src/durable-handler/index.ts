@@ -25,7 +25,7 @@ export {
   createPinnedProgramCatalog,
   normalizeProgramTrace,
   runLocalProgramActivation,
-  parseCatalog,
+  verifyPinnedProgramCatalog,
 } from "./local-program-host.ts";
 export type {
   LocalProgramHost,

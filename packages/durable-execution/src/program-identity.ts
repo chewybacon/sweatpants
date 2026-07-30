@@ -15,66 +15,50 @@ import { canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation
 import { createPinnedDurableProgram, parseDurableManifest } from "./program-authoring-runtime.ts";
 import type { Json } from "@sweatpants/foundation";
 import { CrankError } from "./errors.ts";
+import { z } from "zod";
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
-const INPUT_KEYS = [
-  "format",
-  "generatorVersion",
-  "implementationArtifactDigest",
-  "manifest",
-  "resourcePackageDigests",
-] as const;
+const programArtifactIdentityInputSchema = z.strictObject({
+  format: z.literal(PROGRAM_ARTIFACT_IDENTITY_FORMAT),
+  generatorVersion: z.number().int().positive().safe(),
+  implementationArtifactDigest: z.string().regex(SHA256_RE),
+  manifest: z
+    .record(z.string(), z.json())
+    .refine((manifest) => !("digest" in manifest), "manifest must omit digest"),
+  resourcePackageDigests: z.array(z.string().regex(SHA256_RE)).max(16_384),
+});
 
 /** Validates and canonicalizes every declared program artifact identity input. */
 export function normalizeProgramArtifactIdentityInput(
   input: ProgramArtifactIdentityInputV1,
 ): ProgramArtifactIdentityInputV1 {
-  if (!isRecord(input) || !hasExactKeys(input, INPUT_KEYS)) {
+  const structural = programArtifactIdentityInputSchema.safeParse(input);
+  if (!structural.success) {
     invalidIdentity("identity input must use the closed v1 shape");
   }
-  if (input.format !== PROGRAM_ARTIFACT_IDENTITY_FORMAT) {
-    invalidIdentity("unsupported identity format");
-  }
-  if (!Number.isSafeInteger(input.generatorVersion) || input.generatorVersion <= 0) {
-    invalidIdentity("generatorVersion must be a positive safe integer");
-  }
-  requireDigest(input.implementationArtifactDigest, "implementationArtifactDigest");
-  if (!Array.isArray(input.resourcePackageDigests)) {
-    invalidIdentity("resourcePackageDigests must be an array");
-  }
-  const resources = [...input.resourcePackageDigests];
-  for (const digest of resources) {
-    requireDigest(digest, "resourcePackageDigests");
-  }
-  resources.sort();
+  const parsed = structural.data;
+  const resources = [...parsed.resourcePackageDigests].sort();
   for (let index = 1; index < resources.length; index += 1) {
     if (resources[index] === resources[index - 1]) {
       invalidIdentity("resourcePackageDigests must be duplicate-free");
     }
   }
 
-  if (!isRecord(input.manifest) || "digest" in input.manifest) {
-    invalidIdentity("manifest must omit digest");
-  }
-  // Ordinary durable-manifest parsing remains the authority for descriptors,
-  // effects, elicitations, and replay capabilities.
-  parseDurableManifest({
-    ...(input.manifest as Omit<DurableProgramManifest, "digest">),
+  // Durable-manifest parsing remains authoritative for nested descriptors,
+  // effects, elicitations, replay capabilities, and unknown-field policy.
+  const validatedManifest = parseDurableManifest({
+    ...parsed.manifest,
     digest: "0".repeat(64),
   });
+  const { digest: _validationDigest, ...manifest } = validatedManifest;
 
-  // SAFETY: parseDurableManifest above rejects any manifest this identity
-  // input could carry, and canonicalSnapshot re-serializes through assertJson,
-  // so the value is both shape-checked and JSON-representable.
-  return deepFreeze(
-    canonicalSnapshot({
-      format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,
-      generatorVersion: input.generatorVersion,
-      manifest: input.manifest,
-      implementationArtifactDigest: input.implementationArtifactDigest,
-      resourcePackageDigests: resources,
-    }).value as unknown as ProgramArtifactIdentityInputV1,
-  );
+  return deepFreeze({
+    format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+    generatorVersion: parsed.generatorVersion,
+    manifest,
+    implementationArtifactDigest: parsed.implementationArtifactDigest,
+    resourcePackageDigests: resources,
+  });
 }
 
 /** Computes the exact domain-separated program digest from normalized declared artifacts. */
@@ -232,29 +216,6 @@ export function createPinnedDurableProgramWithIdentity<I extends Json, O extends
     identityProvenance: identity.provenance,
     identityArtifact: identity,
   });
-}
-
-function requireDigest(value: unknown, field: string): asserts value is string {
-  if (typeof value !== "string" || !SHA256_RE.test(value)) {
-    invalidIdentity(`${field} must be lowercase SHA-256 hex`);
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  const actual = sortText(Object.keys(value));
-  const expected = sortText(keys);
-  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
-}
-
-function sortText(values: Iterable<string>): string[] {
-  const result = [...values];
-  // The copy keeps normalization nonmutating; ES2022 does not provide toSorted().
-  // oxlint-disable-next-line unicorn/no-array-sort
-  return result.sort();
 }
 
 function invalidIdentity(message: string): never {

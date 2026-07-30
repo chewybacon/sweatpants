@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { call, resource, type Operation, type Stream, type Subscription } from "effection";
+import { z } from "zod";
 import {
   BedrockAgentCoreClient,
   InvokeAgentRuntimeCommand,
@@ -17,6 +18,7 @@ export interface AwsSdkAgentCoreInvokerOptions {
 }
 
 type LogLevel = "silent" | "debug" | "info" | "warn" | "error";
+const sseDataEnvelopeSchema = z.object({ data: z.json() }).passthrough();
 
 const LOG_LEVEL_ORDER: Record<Exclude<LogLevel, "silent">, number> = {
   debug: 10,
@@ -127,9 +129,8 @@ export function parseAgentCoreSseResponses(raw: string): AgentCoreToolRuntimeRes
     } catch {
       throw new Error("AgentCore returned malformed JSON SSE data");
     }
-    if (value && typeof value === "object" && !Array.isArray(value) && "data" in value) {
-      value = (value as Record<string, unknown>)["data"];
-    }
+    const dataEnvelope = sseDataEnvelopeSchema.safeParse(value);
+    if (dataEnvelope.success) value = dataEnvelope.data.data;
     try {
       responses.push(parseAgentCoreToolRuntimeResponse(value));
     } catch {

@@ -9,6 +9,7 @@ import {
   type PortableSchemaDescriptor,
 } from "@sweatpants/foundation/schema";
 import type { NativeProgramIdentity as NativeIdentity } from "../program-driver/native-tools.ts";
+import { z } from "zod";
 
 export type ThinCatalogEntry =
   | { kind: "program"; target: string; program: NativeIdentity }
@@ -34,6 +35,36 @@ export type ChatProgramInput = ChatSampleRequest & {
 type ChatSampleRequest = ModelSampleRequest;
 
 const chatEngineSchemaEntries: SchemaBinding[] = [];
+const schemaText = z.string().min(1).max(4_096);
+const thinCatalogEntrySchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("program"),
+    target: schemaText,
+    program: z.strictObject({
+      id: schemaText,
+      version: schemaText,
+      digest: z.string().regex(/^[0-9a-f]{64}$/u),
+    }),
+  }),
+  z.strictObject({
+    kind: z.literal("foreign-tool"),
+    target: schemaText,
+    driver: z.enum(["tool-session", "chat-tool-runtime"]),
+    tool: schemaText,
+    durability: z.literal("ephemeral_handle"),
+  }),
+]);
+const chatProgramInputSchema = z.strictObject({
+  messages: z.array(z.json()).max(10_000),
+  systemPrompt: z.string().max(64 * 1024).optional(),
+  toolChoice: z.enum(["auto", "none", "required"]).optional(),
+  maxIterations: z.number().int().min(1).max(100),
+  catalog: z.strictObject({
+    version: z.literal(1),
+    digest: z.string().regex(/^[0-9a-f]{64}$/u),
+    entries: z.record(schemaText, thinCatalogEntrySchema),
+  }),
+});
 
 function chatEngineSchema(
   identity: string,
@@ -67,10 +98,6 @@ function chatEngineSchema(
   return descriptor;
 }
 
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
 export const modelSample = MODEL_SAMPLE_EFFECT;
 
 const chatRootInputDescriptor = chatEngineSchema(
@@ -98,32 +125,13 @@ const chatRootInputDescriptor = chatEngineSchema(
     additionalProperties: false,
   },
   (value) => {
-    if (!isJsonObject(value) || !Array.isArray(value["messages"])) {
-      return "chat program input requires messages";
-    }
+    const parsed = chatProgramInputSchema.safeParse(value);
+    if (!parsed.success) return "chat program input structure is invalid";
     if (
-      !Number.isSafeInteger(value["maxIterations"]) ||
-      (value["maxIterations"] as number) < 1 ||
-      (value["maxIterations"] as number) > 100
+      parsed.data.catalog.digest !==
+      canonicalSnapshot({ version: 1, entries: parsed.data.catalog.entries }).sha
     ) {
-      return "maxIterations must be an integer between 1 and 100";
-    }
-    if (
-      value["toolChoice"] !== undefined &&
-      !["auto", "none", "required"].includes(String(value["toolChoice"]))
-    ) {
-      return "toolChoice is invalid";
-    }
-    const catalog = value["catalog"];
-    if (!isJsonObject(catalog) || catalog["version"] !== 1 || !isJsonObject(catalog["entries"])) {
-      return "catalog must be a versioned entry map";
-    }
-    if (catalog["digest"] !== canonicalSnapshot({ version: 1, entries: catalog["entries"] }).sha) {
       return "catalog digest differs from entries";
-    }
-    const allowed = new Set(["messages", "systemPrompt", "toolChoice", "maxIterations", "catalog"]);
-    if (!Object.keys(value).every((key) => allowed.has(key))) {
-      return "chat program input has unexpected keys";
     }
     return undefined;
   },

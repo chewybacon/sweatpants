@@ -13,6 +13,7 @@ import type {
   StreamOptions,
 } from "./runtime/index.ts";
 import { createOllamaModel, createOpenAiResponsesModel, piAiRuntime } from "./runtime/index.ts";
+import { isProviderRecord } from "./runtime/schema-normalization.ts";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -64,16 +65,12 @@ export function modelSelectionKey(selection: ModelSelection): string {
   return `${selection.provider}/${selection.id}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function sanitizeIdentifier(value: string): string {
   return value.replace(/[\r\n\t]/g, " ").slice(0, 200);
 }
 
 function parseModelSelectionFields(value: unknown, label: string): ModelSelection {
-  if (!isRecord(value)) {
+  if (!isProviderRecord(value)) {
     throw new ModelSelectionError(`${label} must be an object with provider and id fields`);
   }
 

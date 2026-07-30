@@ -4,6 +4,32 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { durableEffectRuntimeSchemas } from "@sweatpants/durable-effects";
 import { assertEffectDefinition } from "@sweatpants/durable-effects/authoring";
 import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
+import { z } from "zod";
+
+const peerDigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
+const requirementManifestShapeSchema = z
+  .strictObject({
+    protocolVersion: z.literal(1),
+    skillId: z.string().min(1),
+    requirements: z.array(z.json()),
+    amendmentRequests: z.boolean(),
+    releaseDigest: peerDigestSchema,
+    manifestDigest: peerDigestSchema,
+  });
+const requirementShapeSchema = z
+  .strictObject({
+    contract: z.json(),
+    availability: z.enum([
+      "callee_local_only",
+      "caller_required",
+      "caller_optional",
+      "route_negotiable",
+    ]),
+    required: z.boolean(),
+    allowedRoutes: z.array(z.enum(["callee", "caller", "denied"])),
+    defaultConstraints: z.json().optional(),
+    defaultBudget: z.json().optional(),
+  });
 import type {
   PeerEffectContract,
   PeerEffectOffer,
@@ -39,27 +65,12 @@ export function definePeerEffectContract(
 }
 
 export function parsePeerRequirementManifest(value: unknown): PeerEffectRequirementManifest {
-  if (
-    !record(value) ||
-    !exactKeys(value, [
-      "protocolVersion",
-      "skillId",
-      "requirements",
-      "amendmentRequests",
-      "releaseDigest",
-      "manifestDigest",
-    ]) ||
-    value["protocolVersion"] !== 1 ||
-    !nonempty(value["skillId"]) ||
-    !Array.isArray(value["requirements"]) ||
-    typeof value["amendmentRequests"] !== "boolean" ||
-    !digest(value["releaseDigest"]) ||
-    !digest(value["manifestDigest"])
-  ) {
+  const manifest = requirementManifestShapeSchema.safeParse(value);
+  if (!manifest.success) {
     throw new CrankError("peer_manifest_invalid", "Invalid closed peer requirement manifest");
   }
   const names = new Set<string>();
-  const requirements = value["requirements"].map((requirement) => {
+  const requirements = manifest.data.requirements.map((requirement) => {
     const parsed = parseRequirement(requirement);
     if (names.has(parsed.contract.name)) {
       throw new CrankError(
@@ -72,13 +83,13 @@ export function parsePeerRequirementManifest(value: unknown): PeerEffectRequirem
   });
   const body = {
     protocolVersion: 1 as const,
-    skillId: value["skillId"],
+    skillId: manifest.data.skillId,
     requirements: [...requirements].sort(compareRequirements),
-    amendmentRequests: value["amendmentRequests"],
-    releaseDigest: value["releaseDigest"],
+    amendmentRequests: manifest.data.amendmentRequests,
+    releaseDigest: manifest.data.releaseDigest,
   };
   const computed = sha256(canonicalJson({ domain: MANIFEST_DOMAIN, manifest: body }));
-  if (computed !== value["manifestDigest"]) {
+  if (computed !== manifest.data.manifestDigest) {
     throw new CrankError("peer_manifest_invalid", "Peer requirement manifest digest mismatch");
   }
   return Object.freeze({ ...body, manifestDigest: computed });
@@ -292,32 +303,21 @@ function preflightCallerContract(
   }
 }
 function parseRequirement(value: unknown): PeerEffectRequirement {
-  if (
-    !record(value) ||
-    !onlyKeys(
-      value,
-      ["contract", "availability", "required", "allowedRoutes"],
-      ["defaultConstraints", "defaultBudget"],
-    ) ||
-    typeof value["required"] !== "boolean" ||
-    !["callee_local_only", "caller_required", "caller_optional", "route_negotiable"].includes(
-      String(value["availability"]),
-    ) ||
-    !Array.isArray(value["allowedRoutes"]) ||
-    !value["allowedRoutes"].every((route) => ["callee", "caller", "denied"].includes(String(route)))
-  ) {
+  const parsed = requirementShapeSchema.safeParse(value);
+  if (!parsed.success) {
     throw new CrankError("peer_manifest_invalid", "Invalid peer effect requirement");
   }
-  const contract = parseContract(value["contract"]);
+  const requirement = parsed.data;
+  const contract = parseContract(requirement.contract);
   return Object.freeze({
     contract,
-    availability: value["availability"] as PeerEffectRequirement["availability"],
-    required: value["required"],
-    allowedRoutes: [...new Set(value["allowedRoutes"] as PeerEffectRequirement["allowedRoutes"])],
-    ...(value["defaultConstraints"] !== undefined
-      ? { defaultConstraints: value["defaultConstraints"] }
+    availability: requirement.availability,
+    required: requirement.required,
+    allowedRoutes: [...new Set(requirement.allowedRoutes)],
+    ...(requirement.defaultConstraints !== undefined
+      ? { defaultConstraints: requirement.defaultConstraints }
       : {}),
-    ...(value["defaultBudget"] !== undefined ? { defaultBudget: value["defaultBudget"] } : {}),
+    ...(requirement.defaultBudget !== undefined ? { defaultBudget: requirement.defaultBudget } : {}),
   });
 }
 function parseContract(value: unknown): PeerEffectContract {
@@ -379,9 +379,6 @@ function nonempty(value: unknown): value is string {
 }
 function digest(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
-}
-function exactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
 }
 function onlyKeys(
   value: Record<string, Json>,

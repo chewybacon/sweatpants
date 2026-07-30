@@ -28,6 +28,7 @@ import {
   type WireElicitResultJson,
 } from "@sweatpants/durable-execution";
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { z } from "zod";
 import { FOREIGN_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/foreign";
 import {
   ExecutionDurableEffectRegistryContext,
@@ -53,6 +54,35 @@ export interface PinnedProgramCatalog {
   digest: string;
   entries: Readonly<Record<string, ProgramCatalogEntry>>;
 }
+
+const catalogTextSchema = z.string().min(1).max(4_096);
+const pinnedProgramSchema = z.strictObject({
+  id: catalogTextSchema,
+  version: catalogTextSchema,
+  digest: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+const programCatalogEntrySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("program"), target: catalogTextSchema, program: pinnedProgramSchema }),
+  z.strictObject({
+    kind: z.literal("foreign-tool"),
+    target: catalogTextSchema,
+    driver: catalogTextSchema,
+    tool: catalogTextSchema,
+    durability: z.enum([
+      "opaque",
+      "ephemeral_handle",
+      "resumable_handle",
+      "server_task",
+      "crank_native",
+    ]),
+  }),
+]);
+const programCatalogEntriesSchema = z.record(catalogTextSchema, programCatalogEntrySchema);
+const pinnedProgramCatalogSchema = z.strictObject({
+  version: z.literal(1),
+  digest: z.string().regex(/^[0-9a-f]{64}$/u),
+  entries: programCatalogEntriesSchema,
+});
 
 export interface NormalizedProgramOperationTrace {
   actionIndex: number;
@@ -194,7 +224,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
     ) {
       throw new CrankError("invalid_manifest", "Program pin and manifest differ");
     }
-    parseCatalog(request.catalog);
+    verifyPinnedProgramCatalog(request.catalog);
     assertCatalogDispatch(request.catalog, request.program);
     assertDurableEffectBindings(Object.values(request.manifest.effects), options.effects);
   }
@@ -393,7 +423,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
 export function createPinnedProgramCatalog(
   entries: Readonly<Record<string, ProgramCatalogEntry>>,
 ): PinnedProgramCatalog {
-  const canonicalEntries = canonicalSnapshot(entries).value as Record<string, ProgramCatalogEntry>;
+  const canonicalEntries = programCatalogEntriesSchema.parse(canonicalSnapshot(entries).value);
   return {
     version: 1,
     digest: canonicalSnapshot({ version: 1, entries: canonicalEntries }).sha,
@@ -401,8 +431,15 @@ export function createPinnedProgramCatalog(
   };
 }
 
-export function parseCatalog(catalog: PinnedProgramCatalog): void {
-  decodePinnedProgramCatalog(catalog);
+export function verifyPinnedProgramCatalog(catalog: PinnedProgramCatalog): void {
+  if (catalog.digest !== canonicalSnapshot({ version: 1, entries: catalog.entries }).sha) {
+    throw new CrankError("invalid_manifest", "Program catalog digest differs from entries");
+  }
+  for (const [target, entry] of Object.entries(catalog.entries)) {
+    if (!target || target !== entry.target) {
+      throw new CrankError("invalid_manifest", "Program catalog target differs from its key");
+    }
+  }
 }
 
 /**
@@ -411,32 +448,12 @@ export function parseCatalog(catalog: PinnedProgramCatalog): void {
  * authenticates the structural shape of every entry.
  */
 export function decodePinnedProgramCatalog(value: unknown): PinnedProgramCatalog {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new CrankError("invalid_manifest", "Program catalog is not an object");
-  }
-  const candidate = value as { version?: unknown; digest?: unknown; entries?: unknown };
-  if (
-    candidate.version !== 1 ||
-    typeof candidate.digest !== "string" ||
-    typeof candidate.entries !== "object" ||
-    candidate.entries === null ||
-    Array.isArray(candidate.entries)
-  ) {
+  const parsed = pinnedProgramCatalogSchema.safeParse(value);
+  if (!parsed.success) {
     throw new CrankError("invalid_manifest", "Program catalog shape is invalid");
   }
-  if (candidate.digest !== canonicalSnapshot({ version: 1, entries: candidate.entries }).sha) {
-    throw new CrankError("invalid_manifest", "Program catalog digest differs from entries");
-  }
-  // SAFETY: the shape guard and the digest comparison above both throw
-  // invalid_manifest, so a candidate reaching here matched the catalog shape
-  // and hashed to its own declared digest.
-  const catalog = candidate as unknown as PinnedProgramCatalog;
-  for (const [target, entry] of Object.entries(catalog.entries)) {
-    if (!target || target !== entry.target) {
-      throw new CrankError("invalid_manifest", "Program catalog target differs from its key");
-    }
-  }
-  return catalog;
+  verifyPinnedProgramCatalog(parsed.data);
+  return parsed.data;
 }
 
 function assertCatalogDispatch(catalog: PinnedProgramCatalog, program: PinnedProgram): void {

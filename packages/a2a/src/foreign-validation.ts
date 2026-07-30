@@ -1,5 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { z } from "zod";
 
 import type {
   ForeignA2AArtifact,
@@ -35,26 +36,85 @@ const STATES: Readonly<Record<string, ForeignA2ANormalizedState>> = Object.freez
   TASK_STATE_REJECTED: "rejected",
 });
 
+const identitySchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .refine((value) => !/[\u0000-\u001f]/u.test(value));
+const partSchema = z
+  .strictObject({
+    text: z.string().optional(),
+    raw: z.string().optional(),
+    url: z.string().optional(),
+    data: z.json().optional(),
+    metadata: z.json().optional(),
+    filename: z.string().optional(),
+    mediaType: z.string().optional(),
+  })
+  .refine(
+    (value) =>
+      ["text", "raw", "url", "data"].filter((key) => key in value && value[key as "text"] !== undefined)
+        .length === 1,
+  );
+const artifactSchema = z.strictObject({
+  artifactId: identitySchema,
+  parts: z.array(partSchema).min(1),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  metadata: z.json().optional(),
+  extensions: z.json().optional(),
+});
+const messageSchema = z.strictObject({
+  messageId: identitySchema,
+  role: z.enum(["ROLE_USER", "user", "ROLE_AGENT", "agent"]),
+  parts: z.array(partSchema).min(1),
+  taskId: identitySchema.optional(),
+  contextId: identitySchema.optional(),
+  metadata: z.json().optional(),
+  extensions: z.array(z.string().min(1)).optional(),
+  referenceTaskIds: z.array(identitySchema).max(256).optional(),
+});
+const taskSchema = z.strictObject({
+  id: identitySchema,
+  status: z.strictObject({
+    state: z.string(),
+    message: z.json().optional(),
+    timestamp: z.string().optional(),
+  }),
+  contextId: identitySchema.optional(),
+  artifacts: z.array(z.json()).optional(),
+  history: z.array(z.json()).optional(),
+  metadata: z.json().optional(),
+});
+
 export function parseForeignA2ASendResult(
   value: unknown,
   limits: Partial<ForeignA2AValidationLimits> = {},
 ): ForeignA2ASendResult {
   const bounded = boundedJson(value, limits);
-  if (!record(bounded)) {
+  const envelope = z
+    .union([
+      z.strictObject({ task: z.json() }),
+      z.strictObject({ message: z.json() }),
+      z.record(z.string(), z.json()),
+    ])
+    .safeParse(bounded);
+  if (!envelope.success) {
     throw protocol("SendMessage response must be an object");
   }
-  if (exactKeys(bounded, ["task"])) {
-    return { type: "task", task: parseForeignA2ATask(bounded["task"], limits) };
+  const result = envelope.data;
+  if ("task" in result && Object.keys(result).length === 1) {
+    return { type: "task", task: parseForeignA2ATask(result["task"], limits) };
   }
-  if (exactKeys(bounded, ["message"])) {
-    return { type: "message", message: parseForeignA2AMessage(bounded["message"], limits) };
+  if ("message" in result && Object.keys(result).length === 1) {
+    return { type: "message", message: parseForeignA2AMessage(result["message"], limits) };
   }
   // Some HTTP+JSON implementations return the Task or Message object directly.
-  if ("status" in bounded && "id" in bounded) {
-    return { type: "task", task: parseForeignA2ATask(bounded, limits) };
+  if ("status" in result && "id" in result) {
+    return { type: "task", task: parseForeignA2ATask(result, limits) };
   }
-  if ("messageId" in bounded && "role" in bounded) {
-    return { type: "message", message: parseForeignA2AMessage(bounded, limits) };
+  if ("messageId" in result && "role" in result) {
+    return { type: "message", message: parseForeignA2AMessage(result, limits) };
   }
   throw protocol("SendMessage response must contain exactly one task or message");
 }
@@ -65,55 +125,42 @@ export function parseForeignA2ATask(
 ): ForeignA2ATask {
   const limits = normalizedLimits(inputLimits);
   const bounded = boundedJson(value, limits);
-  if (
-    !record(bounded) ||
-    !onlyKeys(bounded, ["id", "status"], ["contextId", "artifacts", "history", "metadata"]) ||
-    !id(bounded["id"]) ||
-    !record(bounded["status"])
-  ) {
+  const parsed = taskSchema.safeParse(bounded);
+  if (!parsed.success) {
     throw protocol("Invalid closed A2A Task");
   }
-  const status = bounded["status"];
-  if (!onlyKeys(status, ["state"], ["message", "timestamp"])) {
-    throw protocol("Invalid closed A2A TaskStatus");
-  }
-  const state = STATES[String(status["state"] ?? "")];
+  const task = parsed.data;
+  const state = STATES[task.status.state];
   if (!state) {
     throw protocol("Unknown or unspecified A2A task state");
   }
-  if (bounded["contextId"] !== undefined && !id(bounded["contextId"])) {
-    throw protocol("Invalid A2A context identity");
-  }
-  const artifacts = bounded["artifacts"] ?? [];
-  if (!Array.isArray(artifacts) || artifacts.length > limits.maxArtifacts) {
+  const artifacts = task.artifacts ?? [];
+  if (artifacts.length > limits.maxArtifacts) {
     throw protocol("A2A artifact collection exceeds its bound");
   }
-  const history = bounded["history"];
-  if (
-    history !== undefined &&
-    (!Array.isArray(history) || history.length > limits.maxHistoryMessages)
-  ) {
+  const history = task.history;
+  if (history !== undefined && history.length > limits.maxHistoryMessages) {
     throw protocol("A2A task history exceeds its bound");
   }
-  const parsed: ForeignA2ATask = {
-    id: bounded["id"],
-    ...(typeof bounded["contextId"] === "string" ? { contextId: bounded["contextId"] } : {}),
+  const parsedTask: ForeignA2ATask = {
+    id: task.id,
+    ...(task.contextId !== undefined ? { contextId: task.contextId } : {}),
     status: {
       state,
-      ...(status["message"] !== undefined
-        ? { message: parseForeignA2AMessage(status["message"], limits) }
+      ...(task.status.message !== undefined
+        ? { message: parseForeignA2AMessage(task.status.message, limits) }
         : {}),
-      ...(typeof status["timestamp"] === "string"
-        ? { timestamp: validInstant(status["timestamp"], "task status timestamp") }
+      ...(task.status.timestamp !== undefined
+        ? { timestamp: validInstant(task.status.timestamp, "task status timestamp") }
         : {}),
     },
     artifacts: artifacts.map((artifact) => parseArtifact(artifact, limits)),
-    ...(Array.isArray(history)
+    ...(history !== undefined
       ? { history: history.map((message) => parseForeignA2AMessage(message, limits)) }
       : {}),
-    ...(bounded["metadata"] !== undefined ? { metadata: bounded["metadata"] } : {}),
+    ...(task.metadata !== undefined ? { metadata: task.metadata } : {}),
   };
-  return Object.freeze(parsed);
+  return Object.freeze(parsedTask);
 }
 
 export function parseForeignA2AMessage(
@@ -122,55 +169,23 @@ export function parseForeignA2AMessage(
 ): ForeignA2AMessage {
   const limits = normalizedLimits(inputLimits);
   const bounded = boundedJson(value, limits);
-  if (
-    !record(bounded) ||
-    !onlyKeys(
-      bounded,
-      ["messageId", "role", "parts"],
-      ["taskId", "contextId", "metadata", "extensions", "referenceTaskIds"],
-    ) ||
-    !id(bounded["messageId"]) ||
-    !Array.isArray(bounded["parts"]) ||
-    bounded["parts"].length === 0 ||
-    bounded["parts"].length > limits.maxParts
-  ) {
+  const parsed = messageSchema.safeParse(bounded);
+  if (!parsed.success || parsed.data.parts.length > limits.maxParts) {
     throw protocol("Invalid closed A2A Message");
   }
-  const role =
-    bounded["role"] === "ROLE_USER" || bounded["role"] === "user"
-      ? "user"
-      : bounded["role"] === "ROLE_AGENT" || bounded["role"] === "agent"
-        ? "agent"
-        : undefined;
-  if (!role) {
-    throw protocol("Invalid A2A message role");
-  }
-  if (bounded["taskId"] !== undefined && !id(bounded["taskId"])) {
-    throw protocol("Invalid A2A task identity");
-  }
-  if (bounded["contextId"] !== undefined && !id(bounded["contextId"])) {
-    throw protocol("Invalid A2A context identity");
-  }
-  const extensions = bounded["extensions"];
-  if (extensions !== undefined && (!Array.isArray(extensions) || !extensions.every(nonempty))) {
-    throw protocol("Invalid A2A message extensions");
-  }
-  const references = bounded["referenceTaskIds"];
-  if (
-    references !== undefined &&
-    (!Array.isArray(references) || references.length > 256 || !references.every(id))
-  ) {
-    throw protocol("Invalid A2A task references");
-  }
+  const message = parsed.data;
+  const role = message.role === "ROLE_USER" || message.role === "user" ? "user" : "agent";
   return Object.freeze({
-    messageId: bounded["messageId"],
+    messageId: message.messageId,
     role,
-    parts: bounded["parts"].map((part) => parsePart(part, limits)),
-    ...(typeof bounded["taskId"] === "string" ? { taskId: bounded["taskId"] } : {}),
-    ...(typeof bounded["contextId"] === "string" ? { contextId: bounded["contextId"] } : {}),
-    ...(bounded["metadata"] !== undefined ? { metadata: bounded["metadata"] } : {}),
-    ...(Array.isArray(extensions) ? { extensions: [...extensions] as string[] } : {}),
-    ...(Array.isArray(references) ? { referenceTaskIds: [...references] as string[] } : {}),
+    parts: message.parts.map((part) => parsePart(part, limits)),
+    ...(message.taskId !== undefined ? { taskId: message.taskId } : {}),
+    ...(message.contextId !== undefined ? { contextId: message.contextId } : {}),
+    ...(message.metadata !== undefined ? { metadata: message.metadata } : {}),
+    ...(message.extensions !== undefined ? { extensions: [...message.extensions] } : {}),
+    ...(message.referenceTaskIds !== undefined
+      ? { referenceTaskIds: [...message.referenceTaskIds] }
+      : {}),
   });
 }
 
@@ -259,65 +274,43 @@ export function assertConsistentForeignObservation(
 
 function parseArtifact(value: unknown, limits: ForeignA2AValidationLimits): ForeignA2AArtifact {
   const bounded = boundedJson(value, limits);
-  if (
-    !record(bounded) ||
-    !onlyKeys(
-      bounded,
-      ["artifactId", "parts"],
-      ["name", "description", "metadata", "extensions"],
-    ) ||
-    !id(bounded["artifactId"]) ||
-    !Array.isArray(bounded["parts"]) ||
-    bounded["parts"].length === 0 ||
-    bounded["parts"].length > limits.maxParts
-  ) {
+  const parsed = artifactSchema.safeParse(bounded);
+  if (!parsed.success || parsed.data.parts.length > limits.maxParts) {
     throw protocol("Invalid closed A2A Artifact");
   }
+  const artifact = parsed.data;
   return Object.freeze({
-    artifactId: bounded["artifactId"],
-    ...(typeof bounded["name"] === "string" ? { name: bounded["name"] } : {}),
-    ...(typeof bounded["description"] === "string" ? { description: bounded["description"] } : {}),
-    parts: bounded["parts"].map((part) => parsePart(part, limits)),
-    ...(bounded["metadata"] !== undefined ? { metadata: bounded["metadata"] } : {}),
+    artifactId: artifact.artifactId,
+    ...(artifact.name !== undefined ? { name: artifact.name } : {}),
+    ...(artifact.description !== undefined ? { description: artifact.description } : {}),
+    parts: artifact.parts.map((part) => parsePart(part, limits)),
+    ...(artifact.metadata !== undefined ? { metadata: artifact.metadata } : {}),
   });
 }
 function parsePart(value: unknown, limits: ForeignA2AValidationLimits): ForeignA2APart {
   const bounded = boundedJson(value, limits);
-  if (
-    !record(bounded) ||
-    !onlyKeys(bounded, [], ["text", "raw", "url", "data", "metadata", "filename", "mediaType"])
-  ) {
+  const parsed = partSchema.safeParse(bounded);
+  if (!parsed.success) {
     throw protocol("Invalid closed A2A Part");
   }
-  const content = ["text", "raw", "url", "data"].filter((key) => key in bounded);
-  if (content.length !== 1) {
-    throw protocol("A2A Part must contain exactly one content field");
-  }
-  if (bounded["text"] !== undefined) {
-    if (
-      typeof bounded["text"] !== "string" ||
-      new TextEncoder().encode(bounded["text"]).byteLength > limits.maxTextBytes
-    ) {
-      throw protocol("A2A text part exceeds its bound");
-    }
-  }
+  const part = parsed.data;
   if (
-    bounded["raw"] !== undefined &&
-    (typeof bounded["raw"] !== "string" || !base64(bounded["raw"]))
+    part.text !== undefined &&
+    new TextEncoder().encode(part.text).byteLength > limits.maxTextBytes
   ) {
+    throw protocol("A2A text part exceeds its bound");
+  }
+  if (part.raw !== undefined && !base64(part.raw)) {
     throw protocol("Invalid A2A raw part");
   }
-  if (bounded["url"] !== undefined && typeof bounded["url"] !== "string") {
-    throw protocol("Invalid A2A URL part");
-  }
   return Object.freeze({
-    ...(typeof bounded["text"] === "string" ? { text: bounded["text"] } : {}),
-    ...(typeof bounded["raw"] === "string" ? { raw: bounded["raw"] } : {}),
-    ...(typeof bounded["url"] === "string" ? { url: bounded["url"] } : {}),
-    ...(bounded["data"] !== undefined ? { data: bounded["data"] } : {}),
-    ...(typeof bounded["filename"] === "string" ? { filename: bounded["filename"] } : {}),
-    ...(typeof bounded["mediaType"] === "string" ? { mediaType: bounded["mediaType"] } : {}),
-    ...(bounded["metadata"] !== undefined ? { metadata: bounded["metadata"] } : {}),
+    ...(part.text !== undefined ? { text: part.text } : {}),
+    ...(part.raw !== undefined ? { raw: part.raw } : {}),
+    ...(part.url !== undefined ? { url: part.url } : {}),
+    ...(part.data !== undefined ? { data: part.data } : {}),
+    ...(part.filename !== undefined ? { filename: part.filename } : {}),
+    ...(part.mediaType !== undefined ? { mediaType: part.mediaType } : {}),
+    ...(part.metadata !== undefined ? { metadata: part.metadata } : {}),
   });
 }
 function boundedJson(value: unknown, input: Partial<ForeignA2AValidationLimits>): Json {
@@ -352,33 +345,6 @@ function validInstant(value: string, field: string): string {
 }
 function base64(value: string): boolean {
   return value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value);
-}
-function record(value: unknown): value is Record<string, Json> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-function id(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= 512 &&
-    !/[\u0000-\u001f]/.test(value)
-  );
-}
-function nonempty(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-function exactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
-}
-function onlyKeys(
-  value: Record<string, Json>,
-  required: readonly string[],
-  optional: readonly string[],
-): boolean {
-  const allowed = new Set([...required, ...optional]);
-  return (
-    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
-  );
 }
 function protocol(message: string): CrankError {
   return new CrankError("a2a_protocol_error", message);

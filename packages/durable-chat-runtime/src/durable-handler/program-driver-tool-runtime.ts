@@ -6,6 +6,7 @@ import {
   type DurableEffectRegistration,
 } from "@sweatpants/durable-effects";
 import { assertJson, type Json } from "@sweatpants/foundation";
+import { z } from "zod";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
@@ -22,6 +23,26 @@ import type {
 
 const DRIVER = "chat-tool-runtime";
 const DURABILITY: ForeignDurability = "ephemeral_handle";
+const continuationSchema = z.strictObject({
+  ref: z
+    .strictObject({
+      runtimeId: z.string().min(1).max(512),
+      executionId: z.string().min(1).max(512),
+      callId: z.string().min(1).max(512),
+      toolName: z.string().min(1).max(512),
+      sessionId: z.string().max(512).optional(),
+    })
+    .transform((value): ToolExecutionRef => ({
+      runtimeId: value.runtimeId,
+      executionId: value.executionId,
+      callId: value.callId,
+      toolName: value.toolName,
+      ...(value.sessionId !== undefined ? { sessionId: value.sessionId } : {}),
+    })),
+  tool: z.string().max(512),
+  elicitId: z.string().max(512),
+});
+const jsonObjectSchema = z.record(z.string(), z.json());
 
 type ToolRuntimeForeignOptions = {
   runtime: ToolRuntime;
@@ -242,53 +263,12 @@ function inputRequired(
 function parseContinuation(
   value: Json,
 ): { ref: ToolExecutionRef; tool: string; elicitId: string } | undefined {
-  if (!isRecord(value) || !hasExactKeys(value, ["ref", "tool", "elicitId"])) {
-    return undefined;
-  }
-  const ref = value["ref"];
-  if (
-    !isRecord(ref) ||
-    !hasOnlyKeys(ref, ["runtimeId", "executionId", "callId", "toolName"], ["sessionId"])
-  ) {
-    return undefined;
-  }
-  const runtimeId = ref["runtimeId"];
-  const executionId = ref["executionId"];
-  const callId = ref["callId"];
-  const toolName = ref["toolName"];
-  const sessionId = ref["sessionId"];
-  const tool = value["tool"];
-  const elicitId = value["elicitId"];
-  if (
-    typeof runtimeId !== "string" ||
-    typeof executionId !== "string" ||
-    typeof callId !== "string" ||
-    typeof toolName !== "string" ||
-    runtimeId.length === 0 ||
-    executionId.length === 0 ||
-    callId.length === 0 ||
-    toolName.length === 0 ||
-    (sessionId !== undefined && typeof sessionId !== "string") ||
-    typeof tool !== "string" ||
-    typeof elicitId !== "string"
-  ) {
-    return undefined;
-  }
-  return {
-    ref: {
-      runtimeId,
-      executionId,
-      callId,
-      toolName,
-      ...(sessionId !== undefined ? { sessionId } : {}),
-    },
-    tool,
-    elicitId,
-  };
+  return continuationSchema.safeParse(value).data;
 }
 
 function objectInput(value: Json): Record<string, unknown> {
-  return isRecord(value) ? value : { input: value };
+  const parsed = jsonObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : { input: value };
 }
 
 function effectMetadata(options: ToolRuntimeForeignOptions, context: DurableEffectContext) {
@@ -305,25 +285,4 @@ function failure(code: string, message: string): ForeignToolDisposition {
     type: "failed",
     error: { code, message, durability: DURABILITY, retryable: false },
   };
-}
-
-function isRecord(value: Json | undefined): value is Record<string, Json> {
-  return (
-    value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
-  );
-}
-
-function hasExactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
-}
-
-function hasOnlyKeys(
-  value: Record<string, Json>,
-  required: readonly string[],
-  optional: readonly string[],
-): boolean {
-  const allowed = new Set([...required, ...optional]);
-  return (
-    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
-  );
 }

@@ -1,4 +1,5 @@
 import { parse } from "acorn";
+import { z } from "zod";
 
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
@@ -26,28 +27,47 @@ const SHA256_RE = /^[0-9a-f]{64}$/u;
 const PUBLIC_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SEMVER_RE =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
-const MANIFEST_KEYS = [
-  "builder",
-  "collectionDigest",
-  "evaluatorAbi",
-  "files",
-  "format",
-  "programs",
-  "target",
-];
-const PROGRAM_KEYS = [
-  "compatibilityMajor",
-  "entrypoint",
-  "implementationArtifactDigest",
-  "manifestDigest",
-  "programId",
-  "publicKey",
-  "resourcePackageDigests",
-  "schemaCatalogDigest",
-  "version",
-];
-const FILE_KEYS = ["bytes", "digest", "kind", "path"];
 const ARCHIVE_FORMAT = "sweatpants.development-collection-archive.v1" as const;
+const boundedStringSchema = z.string().min(1).max(256).refine((value) => !hasControlCharacter(value));
+const digestSchema = z.string().regex(SHA256_RE);
+const collectionFileSchema = z.strictObject({
+  path: z.string().min(1).max(1024),
+  bytes: z.number().int().nonnegative().safe(),
+  digest: digestSchema,
+  kind: z.enum(["program", "schema-catalog", "resource-descriptor", "registry"]),
+});
+const collectionProgramSchema = z.strictObject({
+  publicKey: z.string().regex(PUBLIC_KEY_RE),
+  programId: boundedStringSchema,
+  version: z.string().regex(SEMVER_RE),
+  compatibilityMajor: z.number().int().nonnegative().safe(),
+  manifestDigest: digestSchema,
+  entrypoint: z.string().min(1).max(1024),
+  implementationArtifactDigest: digestSchema,
+  schemaCatalogDigest: digestSchema,
+  resourcePackageDigests: z.array(digestSchema).max(4096),
+});
+const developmentCollectionManifestSchema = z.strictObject({
+  format: z.literal(DEVELOPMENT_COLLECTION_FORMAT),
+  builder: z.strictObject({
+    name: z.literal("@sweatpants/cli"),
+    version: boundedStringSchema,
+  }),
+  collectionDigest: digestSchema,
+  evaluatorAbi: boundedStringSchema,
+  target: z.strictObject({
+    runtime: z.literal("node"),
+    module: z.literal("esm"),
+    platform: boundedStringSchema,
+  }),
+  programs: z.record(z.string().regex(PUBLIC_KEY_RE), collectionProgramSchema),
+  files: z.array(collectionFileSchema).max(16_384),
+});
+const archiveDocumentSchema = z.strictObject({
+  format: z.literal(ARCHIVE_FORMAT),
+  manifest: developmentCollectionManifestSchema,
+  files: z.record(z.string(), z.string().max(128 * 1024 * 1024)),
+});
 
 export interface ProgramBundleInput {
   readonly publicKey: string;
@@ -211,20 +231,12 @@ export function decodeDevelopmentCollectionArchive(
   } catch {
     fail("invalid_collection_manifest", "Collection archive is not valid JSON");
   }
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, ["files", "format", "manifest"]) ||
-    value["format"] !== ARCHIVE_FORMAT ||
-    !isRecord(value["files"])
-  ) {
+  const parsedArchive = archiveDocumentSchema.safeParse(value);
+  if (!parsedArchive.success) {
     fail("invalid_collection_manifest", "Collection archive must use the closed v1 shape");
   }
-  const archive = value as {
-    readonly files: Record<string, unknown>;
-    readonly format: typeof ARCHIVE_FORMAT;
-    readonly manifest: unknown;
-  };
-  const manifest = parseDevelopmentCollectionManifest(archive.manifest);
+  const archive = parsedArchive.data;
+  const manifest = verifyDevelopmentCollectionManifest(archive.manifest);
   const contents = new Map<string, { bytes: Uint8Array; kind: CollectionFileEntryV1["kind"] }>();
   const expectedPaths = new Set(manifest.files.map((file) => file.path));
   if (Object.keys(archive.files).length !== expectedPaths.size) {
@@ -253,66 +265,37 @@ export function decodeDevelopmentCollectionArchive(
 export function parseDevelopmentCollectionManifest(
   value: unknown,
 ): DevelopmentCollectionManifestV1 {
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, MANIFEST_KEYS) ||
-    value["format"] !== DEVELOPMENT_COLLECTION_FORMAT
-  ) {
+  const parsed = developmentCollectionManifestSchema.safeParse(value);
+  if (!parsed.success) {
     fail("invalid_collection_manifest", "Collection manifest must use the closed v1 shape");
   }
-  const rawBuilder = value["builder"];
-  const rawTarget = value["target"];
-  const rawPrograms = value["programs"];
-  const rawFiles = value["files"];
-  if (
-    !isRecord(rawBuilder) ||
-    !hasExactKeys(rawBuilder, ["name", "version"]) ||
-    rawBuilder["name"] !== "@sweatpants/cli"
-  ) {
-    fail("invalid_collection_manifest", "Collection builder identity is invalid");
-  }
-  requireBounded(rawBuilder["version"], "builder version");
-  requireDigest(value["collectionDigest"], "collection digest");
-  requireBounded(value["evaluatorAbi"], "evaluator ABI");
-  if (
-    !isRecord(rawTarget) ||
-    !hasExactKeys(rawTarget, ["module", "platform", "runtime"]) ||
-    rawTarget["runtime"] !== "node" ||
-    rawTarget["module"] !== "esm"
-  ) {
-    fail("invalid_collection_manifest", "Collection target is invalid");
-  }
-  requireBounded(rawTarget["platform"], "target platform");
-  if (!isRecord(rawPrograms) || Object.keys(rawPrograms).length === 0 || !Array.isArray(rawFiles)) {
-    fail("invalid_collection_manifest", "Collection programs and files are required");
+  return verifyDevelopmentCollectionManifest(parsed.data);
+}
+
+function verifyDevelopmentCollectionManifest(
+  value: z.infer<typeof developmentCollectionManifestSchema>,
+): DevelopmentCollectionManifestV1 {
+  const rawBuilder = value.builder;
+  const rawTarget = value.target;
+  const rawPrograms = value.programs;
+  const rawFiles = value.files;
+  if (Object.keys(rawPrograms).length === 0) {
+    fail("invalid_collection_manifest", "Collection programs are required");
   }
   const programs: Record<string, CollectionProgramEntryV1> = {};
   const entrypoints = new Set<string>();
   const pins = new Set<string>();
   for (const publicKey of sortValues(Object.keys(rawPrograms), compareText)) {
-    const entry = rawPrograms[publicKey];
-    if (
-      !isRecord(entry) ||
-      !hasExactKeys(entry, PROGRAM_KEYS) ||
-      entry["publicKey"] !== publicKey ||
-      !PUBLIC_KEY_RE.test(publicKey)
-    ) {
+    const entry = rawPrograms[publicKey]!;
+    if (entry.publicKey !== publicKey) {
       fail("invalid_collection_manifest", `Invalid program entry ${bounded(publicKey)}`);
     }
-    requireBounded(entry["programId"], "program ID");
-    const major = parseSemverMajor(entry["version"]);
+    const major = parseSemverMajor(entry.version);
     if (entry["compatibilityMajor"] !== major) {
       fail("invalid_collection_manifest", `Compatibility major differs for ${publicKey}`);
     }
-    requireDigest(entry["manifestDigest"], "manifest digest");
-    requireDigest(entry["implementationArtifactDigest"], "implementation artifact digest");
-    requireDigest(entry["schemaCatalogDigest"], "schema catalog digest");
-    const entrypoint = normalizeRelativePath(entry["entrypoint"]);
-    if (!Array.isArray(entry["resourcePackageDigests"])) {
-      fail("invalid_collection_manifest", `Invalid resource digests for ${publicKey}`);
-    }
-    const resourcePackageDigests = [...entry["resourcePackageDigests"]];
-    resourcePackageDigests.forEach((digest) => requireDigest(digest, "resource package digest"));
+    const entrypoint = normalizeRelativePath(entry.entrypoint);
+    const resourcePackageDigests = [...entry.resourcePackageDigests];
     if (!isSorted(resourcePackageDigests)) {
       fail("invalid_collection_manifest", `Resource digests are not sorted for ${publicKey}`);
     }
@@ -329,7 +312,7 @@ export function parseDevelopmentCollectionManifest(
     programs[publicKey] = deepFreeze({
       publicKey,
       programId: entry["programId"],
-      version: entry["version"] as string,
+      version: entry.version,
       compatibilityMajor: major,
       manifestDigest: entry["manifestDigest"],
       entrypoint,
@@ -338,7 +321,7 @@ export function parseDevelopmentCollectionManifest(
       resourcePackageDigests,
     });
   }
-  const files = rawFiles.map((file, index) => parseCollectionFile(file, index));
+  const files = rawFiles.map((file) => Object.freeze({ ...file, path: normalizeRelativePath(file.path) }));
   if (!isSorted(files.map((file) => file.path))) {
     fail("invalid_collection_manifest", "Collection files are not path-sorted");
   }
@@ -549,30 +532,6 @@ function literalString(value: unknown): string | undefined {
     : undefined;
 }
 
-function parseCollectionFile(value: unknown, index: number): CollectionFileEntryV1 {
-  if (!isRecord(value) || !hasExactKeys(value, FILE_KEYS)) {
-    fail("invalid_collection_manifest", `Invalid file entry ${index}`);
-  }
-  const path = normalizeRelativePath(value["path"]);
-  if (!Number.isSafeInteger(value["bytes"]) || (value["bytes"] as number) < 0) {
-    fail("invalid_collection_manifest", `Invalid file size for ${path}`);
-  }
-  requireDigest(value["digest"], "file digest");
-  if (
-    !new Set(["program", "schema-catalog", "resource-descriptor", "registry"]).has(
-      value["kind"] as string,
-    )
-  ) {
-    fail("invalid_collection_manifest", `Invalid file kind for ${path}`);
-  }
-  return Object.freeze({
-    path,
-    bytes: value["bytes"] as number,
-    digest: value["digest"],
-    kind: value["kind"] as CollectionFileEntryV1["kind"],
-  });
-}
-
 function addFile(
   files: Map<string, { bytes: Uint8Array; kind: CollectionFileEntryV1["kind"] }>,
   path: string,
@@ -613,12 +572,6 @@ function encodeUtf8(value: string): Uint8Array {
   return Uint8Array.from(Buffer.from(value, "utf8"));
 }
 
-function requireDigest(value: unknown, field: string): asserts value is string {
-  if (typeof value !== "string" || !SHA256_RE.test(value)) {
-    fail("invalid_collection_manifest", `${field} must be lowercase SHA-256`);
-  }
-}
-
 function requireBounded(value: unknown, field: string): asserts value is string {
   if (typeof value !== "string" || !value || value.length > 256 || hasControlCharacter(value)) {
     fail("invalid_collection_manifest", `${field} must be a bounded string`);
@@ -637,15 +590,6 @@ function isSorted(values: readonly string[]): boolean {
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const actual = sortValues(Object.keys(value), compareText);
-  const sortedExpected = sortValues(expected, compareText);
-  return (
-    actual.length === sortedExpected.length &&
-    actual.every((key, index) => key === sortedExpected[index])
-  );
 }
 
 function sortValues<T>(values: Iterable<T>, compare: (left: T, right: T) => number): T[] {

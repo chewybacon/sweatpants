@@ -1,6 +1,7 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
 import { call, useAbortSignal, type Operation } from "effection";
+import { z } from "zod";
 
 import {
   type AttachProgramRequest,
@@ -256,13 +257,14 @@ function* openAndBegin(
 }
 
 function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
-  if (!request.route || typeof request.route !== "object" || Array.isArray(request.route)) {
+  const route = z.record(z.string(), z.json()).safeParse(request.route);
+  if (!route.success) {
     throw new CrankError("placement_unavailable", "Missing AgentCore placement route");
   }
-  const placement = request.route["placement"] as unknown;
-  const development = request.route["development"] as unknown;
-  const deploymentRelease = request.route["release"] as unknown;
-  const journalId = request.route["journalId"];
+  const placement = route.data["placement"];
+  const development = route.data["development"];
+  const deploymentRelease = route.data["release"];
+  const journalId = route.data["journalId"];
   const result =
     placement !== undefined
       ? parseAgentCoreTaskPlacement(placement)
@@ -291,12 +293,13 @@ function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
     );
   }
   const normalizedResult = { ...result, release };
-  return development && typeof development === "object" && !Array.isArray(development)
-    ? ({
-        ...normalizedResult,
-        development: canonicalSnapshot(development).value,
-      } as AgentCoreTaskPlacement)
-    : normalizedResult;
+  const developmentObject = z.record(z.string(), z.json()).safeParse(development);
+  if (developmentObject.success) {
+    return Object.assign(normalizedResult, {
+      development: canonicalSnapshot(developmentObject.data).value,
+    });
+  }
+  return normalizedResult;
 }
 
 function* send(

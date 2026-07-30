@@ -1,5 +1,16 @@
 import type { Json } from "@sweatpants/foundation";
 import type { ProjectionFactEnvelope } from "@sweatpants/durable-execution";
+import { z } from "zod";
+
+const chatTurnHistoryEntrySchema = z
+  .object({
+    type: z.literal("chat_turn"),
+    executionId: z.string(),
+    turnId: z.string(),
+    events: z.array(z.json()),
+    outcome: z.json(),
+  })
+  .loose();
 
 export const CHAT_TURN_COMPLETED_FACT = "chat.turn.completed";
 
@@ -47,14 +58,5 @@ export function projectChatTurnFacts(
 }
 
 function isChatTurnHistoryEntry(value: Json): value is ChatTurnHistoryEntry {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    value["type"] === "chat_turn" &&
-    typeof value["executionId"] === "string" &&
-    typeof value["turnId"] === "string" &&
-    Array.isArray(value["events"]) &&
-    "outcome" in value
-  );
+  return chatTurnHistoryEntrySchema.safeParse(value).success;
 }

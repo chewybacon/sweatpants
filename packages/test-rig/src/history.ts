@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type NormalizedHistoryRecord =
   | { type: "user_text"; text: string }
   | { type: "assistant_text"; text: string }
@@ -19,25 +21,24 @@ interface WireItem extends Record<string, unknown> {
   arguments?: unknown;
   output?: unknown;
 }
+const wireItemSchema = z.object({}).loose();
+const jsonObjectSchema = z.record(z.string(), z.json());
+
 const records = (value: unknown): WireItem[] =>
-  Array.isArray(value)
-    ? value.filter((v): v is WireItem => !!v && typeof v === "object" && !Array.isArray(v))
-    : [];
+  (z.array(wireItemSchema).safeParse(value).data ?? []) as WireItem[];
 const textParts = (value: unknown, kind: string): string =>
   records(value)
     .filter((p) => p.type === kind)
     .map((p) => (typeof p.text === "string" ? p.text : ""))
     .join("");
 const args = (value: unknown): Record<string, unknown> => {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
+  const direct = jsonObjectSchema.safeParse(value);
+  if (direct.success) {
+    return direct.data;
   }
   if (typeof value === "string") {
     try {
-      const parsed: unknown = JSON.parse(value);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : {};
+      return jsonObjectSchema.safeParse(JSON.parse(value)).data ?? {};
     } catch {
       return {};
     }

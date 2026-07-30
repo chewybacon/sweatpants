@@ -1,5 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { call, sleep, type Operation } from "effection";
+import { z } from "zod";
 
 import {
   ForeignA2ATransportError,
@@ -460,15 +461,13 @@ function transitionFromTask(
   ) {
     throw new CrankError("a2a_binding_conflict", "Remote task binding changed");
   }
-  if (task.metadata && typeof task.metadata === "object" && !Array.isArray(task.metadata)) {
-    const invocation = task.metadata[DURABLE_INVOCATION_EXTENSION_URI];
-    if (
-      invocation &&
-      typeof invocation === "object" &&
-      !Array.isArray(invocation) &&
-      typeof invocation["invocationId"] === "string" &&
-      invocation["invocationId"] !== state.pin.invocationId
-    ) {
+  const metadata = z.record(z.string(), z.json()).safeParse(task.metadata);
+  if (metadata.success) {
+    const invocation = z
+      .object({ invocationId: z.string() })
+      .loose()
+      .safeParse(metadata.data[DURABLE_INVOCATION_EXTENSION_URI]);
+    if (invocation.success && invocation.data.invocationId !== state.pin.invocationId) {
       throw new CrankError(
         "a2a_binding_conflict",
         "Operator-supplied task belongs to another invocation",

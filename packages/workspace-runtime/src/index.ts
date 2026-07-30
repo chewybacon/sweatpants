@@ -14,6 +14,7 @@ import {
 
 import { useProgramExecution } from "@sweatpants/durable-execution";
 import { call, resource, useAbortSignal, useScope, type Operation, type Task } from "effection";
+import { z } from "zod";
 
 import {
   WorkspaceFiles,
@@ -110,6 +111,86 @@ export type WorkspaceResponse =
       readonly stderr: string;
       readonly workspaceVersion: string;
     };
+
+const boundedWorkspaceText = z.string().min(1).max(4_096);
+const workspaceDigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
+const workspaceFenceSchema = z.strictObject({
+  taskId: boundedWorkspaceText,
+  sandboxGeneration: boundedWorkspaceText,
+  activationEpoch: z.number().int().positive().safe(),
+});
+const workspaceRequestSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    protocolVersion: z.literal(1),
+    type: z.literal("inspect"),
+    fence: workspaceFenceSchema,
+    operationId: boundedWorkspaceText,
+  }),
+  z.strictObject({
+    protocolVersion: z.literal(1),
+    type: z.literal("read"),
+    fence: workspaceFenceSchema,
+    operationId: boundedWorkspaceText,
+    path: boundedWorkspaceText,
+    startLine: z.number().int().positive().safe().optional(),
+    endLine: z.number().int().positive().safe().optional(),
+  }),
+  z.strictObject({
+    protocolVersion: z.literal(1),
+    type: z.literal("list"),
+    fence: workspaceFenceSchema,
+    operationId: boundedWorkspaceText,
+    path: boundedWorkspaceText,
+  }),
+  z.strictObject({
+    protocolVersion: z.literal(1),
+    type: z.literal("write"),
+    fence: workspaceFenceSchema,
+    operationId: boundedWorkspaceText,
+    expectedWorkspaceRevision: workspaceDigestSchema,
+    path: boundedWorkspaceText,
+    contents: boundedWorkspaceText,
+  }),
+  z.strictObject({
+    protocolVersion: z.literal(1),
+    type: z.literal("run-script"),
+    fence: workspaceFenceSchema,
+    operationId: boundedWorkspaceText,
+    expectedWorkspaceRevision: workspaceDigestSchema,
+    script: boundedWorkspaceText,
+  }),
+]);
+const workspaceResponseSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("inspect-result"), workspaceVersion: workspaceDigestSchema }),
+  z.strictObject({
+    type: z.literal("read-result"),
+    path: boundedWorkspaceText,
+    content: boundedWorkspaceText,
+    startLine: z.number().int().positive().safe(),
+    endLine: z.number().int().positive().safe(),
+    workspaceVersion: workspaceDigestSchema,
+  }),
+  z.strictObject({
+    type: z.literal("list-result"),
+    path: boundedWorkspaceText,
+    entries: z.array(z.string()).max(MAX_LIST_ENTRIES),
+    workspaceVersion: workspaceDigestSchema,
+  }),
+  z.strictObject({
+    type: z.literal("write-result"),
+    path: boundedWorkspaceText,
+    bytes: z.number().int().safe(),
+    workspaceVersion: workspaceDigestSchema,
+  }),
+  z.strictObject({
+    type: z.literal("script-result"),
+    script: boundedWorkspaceText,
+    exitCode: z.number().int().safe(),
+    stdout: z.string().max(MAX_OUTPUT_BYTES),
+    stderr: z.string().max(MAX_OUTPUT_BYTES),
+    workspaceVersion: workspaceDigestSchema,
+  }),
+]);
 
 export interface WorkspaceConnector {
   request(request: WorkspaceRequest): Operation<WorkspaceResponse>;
@@ -320,7 +401,10 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
   };
 
   function* execute(request: WorkspaceRequest): Operation<WorkspaceResponse> {
-    assertWorkspaceRequestAtExecution(request);
+    // `WorkspaceService.execute` is itself a public structural boundary; its
+    // interface type cannot prevent arbitrary extension callers constructing
+    // an invalid object.
+    request = parseWorkspaceRequest(request);
     const execution = { fence: request.fence, operationId: request.operationId };
     switch (request.type) {
       case "inspect": {
@@ -768,139 +852,46 @@ export function createHttpWorkspaceConnector(options: {
 }
 
 export function parseWorkspaceRequest(value: unknown): WorkspaceRequest {
-  const input = record(value, "workspace request");
-  const type = input["type"];
-  const common = {
-    protocolVersion: input["protocolVersion"],
-    fence: parseFence(input["fence"]),
-    operationId: text(input["operationId"], "operation ID"),
-  };
-  if (common.protocolVersion !== 1) {
-    throw new CrankError("invalid_mcp_request", "unsupported workspace protocol version");
+  const result = workspaceRequestSchema.safeParse(value);
+  if (!result.success) {
+    throw new CrankError("invalid_mcp_request", "workspace request shape is invalid");
   }
-  if (type === "inspect") {
-    exactKeys(input, ["protocolVersion", "type", "fence", "operationId"]);
-    return { ...common, protocolVersion: 1, type };
+  const input = result.data;
+  if (input.type === "read") {
+    return {
+      protocolVersion: 1,
+      type: "read",
+      fence: input.fence,
+      operationId: input.operationId,
+      path: safeRelativePath(input.path),
+      ...(input.startLine !== undefined ? { startLine: input.startLine } : {}),
+      ...(input.endLine !== undefined ? { endLine: input.endLine } : {}),
+    };
   }
-  switch (type) {
-    case "read":
-      exactOptionalKeys(
-        input,
-        ["protocolVersion", "type", "fence", "operationId", "path"],
-        ["startLine", "endLine"],
-      );
-      return {
-        ...common,
-        protocolVersion: 1,
-        type,
-        path: safeRelativePath(input["path"]),
-        ...(input["startLine"] === undefined
-          ? {}
-          : { startLine: positiveInteger(input["startLine"], "start line") }),
-        ...(input["endLine"] === undefined
-          ? {}
-          : { endLine: positiveInteger(input["endLine"], "end line") }),
-      };
-    case "list":
-      exactKeys(input, ["protocolVersion", "type", "fence", "operationId", "path"]);
-      return { ...common, protocolVersion: 1, type, path: safeRelativePath(input["path"]) };
-    case "write":
-      exactKeys(input, [
-        "protocolVersion",
-        "type",
-        "fence",
-        "operationId",
-        "expectedWorkspaceRevision",
-        "path",
-        "contents",
-      ]);
-      return {
-        ...common,
-        protocolVersion: 1,
-        type,
-        expectedWorkspaceRevision: sha(
-          input["expectedWorkspaceRevision"],
-          "expected workspace revision",
-        ),
-        path: safeRelativePath(input["path"]),
-        contents: text(input["contents"], "workspace contents"),
-      };
-    case "run-script":
-      exactKeys(input, [
-        "protocolVersion",
-        "type",
-        "fence",
-        "operationId",
-        "expectedWorkspaceRevision",
-        "script",
-      ]);
-      return {
-        ...common,
-        protocolVersion: 1,
-        type,
-        expectedWorkspaceRevision: sha(
-          input["expectedWorkspaceRevision"],
-          "expected workspace revision",
-        ),
-        script: text(input["script"], "script"),
-      };
-    default:
-      throw new CrankError("invalid_mcp_request", "unknown workspace request type");
-  }
+  if (input.type === "list") return { ...input, path: safeRelativePath(input.path) };
+  if (input.type === "write") return { ...input, path: safeRelativePath(input.path) };
+  return input;
 }
 
 export function parseWorkspaceResponse(value: unknown): WorkspaceResponse {
-  const input = record(value, "workspace response");
-  const workspaceVersion = sha(input["workspaceVersion"], "workspace version");
-  switch (input["type"]) {
-    case "inspect-result":
-      return { type: "inspect-result", workspaceVersion };
-    case "read-result":
-      return {
-        type: "read-result",
-        path: safeRelativePath(input["path"]),
-        content: text(input["content"], "workspace content"),
-        startLine: positiveInteger(input["startLine"], "start line"),
-        endLine: positiveInteger(input["endLine"], "end line"),
-        workspaceVersion,
-      };
-    case "list-result":
-      if (
-        !Array.isArray(input["entries"]) ||
-        input["entries"].length > MAX_LIST_ENTRIES ||
-        Buffer.byteLength(JSON.stringify(input["entries"])) > MAX_OUTPUT_BYTES ||
-        input["entries"].some((entry) => typeof entry !== "string")
-      ) {
-        throw new CrankError(
-          "invalid_mcp_request",
-          "workspace entries must be a bounded string list",
-        );
-      }
-      return {
-        type: "list-result",
-        path: text(input["path"], "workspace path"),
-        entries: [...input["entries"]] as string[],
-        workspaceVersion,
-      };
-    case "write-result":
-      return {
-        type: "write-result",
-        path: safeRelativePath(input["path"]),
-        bytes: integer(input["bytes"], "written bytes"),
-        workspaceVersion,
-      };
-    case "script-result":
-      return {
-        type: "script-result",
-        script: text(input["script"], "script"),
-        exitCode: integer(input["exitCode"], "exit code"),
-        stdout: textValue(input["stdout"], "stdout"),
-        stderr: textValue(input["stderr"], "stderr"),
-        workspaceVersion,
-      };
-    default:
-      throw new CrankError("invalid_mcp_request", "unknown workspace response type");
+  const result = workspaceResponseSchema.safeParse(value);
+  if (!result.success) {
+    if (result.error.issues.some((issue) => issue.path[0] === "entries")) {
+      throw new CrankError("invalid_mcp_request", "workspace entries must be a bounded string list");
+    }
+    throw new CrankError("invalid_mcp_request", "workspace response shape is invalid");
   }
+  const input = result.data;
+  if (input.type === "list-result") {
+    if (Buffer.byteLength(JSON.stringify(input.entries)) > MAX_OUTPUT_BYTES) {
+      throw new CrankError("invalid_mcp_request", "workspace entries exceed the output bound");
+    }
+    return { ...input, entries: [...input.entries] };
+  }
+  if (input.type === "read-result" || input.type === "write-result") {
+    return { ...input, path: safeRelativePath(input.path) };
+  }
+  return input;
 }
 
 function normalizeScripts(
@@ -919,22 +910,16 @@ function normalizeScripts(
   return Object.freeze(output);
 }
 
-function assertWorkspaceRequestAtExecution(request: WorkspaceRequest): void {
-  parseWorkspaceRequest(request);
-}
-
 function assertWorkspaceFence(fence: WorkspaceFence): void {
   parseFence(fence);
 }
 
 function parseFence(value: unknown): WorkspaceFence {
-  const input = record(value, "workspace fence");
-  exactKeys(input, ["taskId", "sandboxGeneration", "activationEpoch"]);
-  return {
-    taskId: text(input["taskId"], "task ID"),
-    sandboxGeneration: text(input["sandboxGeneration"], "sandbox generation"),
-    activationEpoch: positiveInteger(input["activationEpoch"], "activation epoch"),
-  };
+  const parsed = workspaceFenceSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new CrankError("invalid_mcp_request", "workspace fence shape is invalid");
+  }
+  return parsed.data;
 }
 
 function assertFence(expected: WorkspaceFence | undefined, received: WorkspaceFence): void {
@@ -1140,68 +1125,11 @@ function errorResponse(status: number, code: string, message: string, details?: 
   );
 }
 
-function record(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new CrankError("invalid_mcp_request", `${label} must be an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function exactKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
-  const actual = Object.keys(value);
-  if (actual.length !== allowed.length || actual.some((key) => !allowed.includes(key))) {
-    throw new CrankError("invalid_mcp_request", "unknown or missing workspace message field");
-  }
-}
-
-function exactOptionalKeys(
-  value: Record<string, unknown>,
-  required: readonly string[],
-  optional: readonly string[],
-): void {
-  const actual = Object.keys(value);
-  if (
-    required.some((key) => !actual.includes(key)) ||
-    actual.some((key) => !required.includes(key) && !optional.includes(key))
-  ) {
-    throw new CrankError("invalid_mcp_request", "unknown or missing workspace message field");
-  }
-}
-
 function text(value: unknown, label: string): string {
   if (typeof value !== "string" || value.length < 1 || value.length > 4_096) {
     throw new CrankError("invalid_mcp_request", `${label} must be bounded text`);
   }
   return value;
-}
-
-function textValue(value: unknown, label: string): string {
-  if (typeof value !== "string" || Buffer.byteLength(value) > MAX_OUTPUT_BYTES) {
-    throw new CrankError("invalid_mcp_request", `${label} must be bounded text`);
-  }
-  return value;
-}
-
-function sha(value: unknown, label: string): string {
-  if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) {
-    throw new CrankError("invalid_mcp_request", `${label} must be lowercase SHA-256`);
-  }
-  return value;
-}
-
-function integer(value: unknown, label: string): number {
-  if (!Number.isSafeInteger(value)) {
-    throw new CrankError("invalid_mcp_request", `${label} must be a safe integer`);
-  }
-  return value as number;
-}
-
-function positiveInteger(value: unknown, label: string): number {
-  const number = integer(value, label);
-  if (number < 1) {
-    throw new CrankError("invalid_mcp_request", `${label} must be positive`);
-  }
-  return number;
 }
 
 function lineNumber(value: number, label: string): number {

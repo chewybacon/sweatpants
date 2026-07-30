@@ -1,13 +1,14 @@
 import { z } from "zod";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+/** Shared record inspection for the exact provider compatibility mechanisms. */
+export function isProviderRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isZodSchema(value: unknown): value is z.ZodType {
   return (
-    isRecord(value) &&
-    isRecord(value["~standard"]) &&
+    isProviderRecord(value) &&
+    isProviderRecord(value["~standard"]) &&
     value["~standard"]["version"] === 1 &&
     value["~standard"]["vendor"] === "zod" &&
     typeof value["~standard"]["validate"] === "function"
@@ -27,7 +28,7 @@ function stripNonJson(value: unknown): unknown {
     return value.map(stripNonJson).filter((entry) => entry !== undefined);
   }
 
-  if (isRecord(value)) {
+  if (isProviderRecord(value)) {
     const result: Record<string, unknown> = {};
     for (const [key, entry] of Object.entries(value)) {
       const normalized = stripNonJson(entry);
@@ -54,7 +55,7 @@ export function toProviderJsonSchema(schema: unknown): Record<string, unknown> {
     return stripNonJson(jsonSchema) as Record<string, unknown>;
   }
 
-  if (isRecord(schema)) {
+  if (isProviderRecord(schema)) {
     return stripNonJson(schema) as Record<string, unknown>;
   }
 

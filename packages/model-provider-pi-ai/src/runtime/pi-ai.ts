@@ -3,7 +3,7 @@ import {
   generateImages as piGenerateImages,
   streamSimple as piStreamSimple,
 } from "@earendil-works/pi-ai/compat";
-import { toProviderJsonSchema } from "./schema-normalization.ts";
+import { isProviderRecord, toProviderJsonSchema } from "./schema-normalization.ts";
 import type {
   AssistantImages as PiAssistantImages,
   AssistantMessage as PiAssistantMessage,
@@ -170,10 +170,6 @@ function fromPiContentBlock(block: unknown): ContentBlock {
   return { type: "text", text: "" };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function contentBlockHasProviderPayload(block: ContentBlock): boolean {
   if (block.type === "text" || block.type === "thinking") {
     return block.text.trim().length > 0;
@@ -283,13 +279,13 @@ function safeMetadata(metadata: Record<string, unknown>): Record<string, unknown
 }
 
 function normalizeToolArguments(value: unknown): Record<string, unknown> {
-  if (isRecord(value)) {
+  if (isProviderRecord(value)) {
     return value;
   }
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
-      return isRecord(parsed) ? parsed : {};
+      return isProviderRecord(parsed) ? parsed : {};
     } catch {
       return {};
     }

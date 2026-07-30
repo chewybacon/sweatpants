@@ -1,4 +1,5 @@
 import type { ConfiguredDurableTool } from "../config.ts";
+import { z } from "zod";
 
 import { reconstructCollectionProgram } from "./collection.ts";
 import { RemoteDevelopmentError, type DevelopmentCollectionManifestV1 } from "./types.ts";
@@ -43,16 +44,16 @@ export async function importDevelopmentProgramEntry(
   }
 }
 
+const durableToolShapeSchema = z
+  .object({
+    durability: z.literal("crank_native"),
+    program: z.custom<unknown>((value) => typeof value === "function"),
+    manifest: z.record(z.string(), z.unknown()),
+  })
+  .loose();
+
 function isDurableTool(value: unknown): value is ConfiguredDurableTool {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const tool = value as Partial<ConfiguredDurableTool>;
-  return (
-    tool.durability === "crank_native" &&
-    typeof tool.program === "function" &&
-    Boolean(tool.manifest)
-  );
+  return durableToolShapeSchema.safeParse(value).success;
 }
 
 function sortText(values: Iterable<string>): string[] {

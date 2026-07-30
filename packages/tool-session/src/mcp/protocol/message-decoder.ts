@@ -321,55 +321,47 @@ export function parseJsonRpcMessage(raw: string): ParsedJsonRpcMessage {
     return { type: "invalid", raw, error: "Invalid JSON" };
   }
 
-  if (!isRecord(parsed)) {
-    return { type: "invalid", raw: parsed, error: "Not an object" };
-  }
-  if (parsed["jsonrpc"] !== "2.0") {
-    return { type: "invalid", raw: parsed, error: "Not JSON-RPC 2.0" };
-  }
-
   const response = parseJsonRpcResponse(parsed);
   if (response) {
     return { type: "response", message: response };
   }
 
-  if ("id" in parsed && typeof parsed["method"] === "string") {
-    const id = parsed["id"];
-    if (!validJsonRpcId(id) || id === null || parsed["method"].length === 0) {
-      return { type: "invalid", raw: parsed, error: "Invalid request identity" };
-    }
-    if (parsed["method"] === "tools/call") {
-      const toolCall = parseToolCallRequest(parsed);
+  const request = jsonRpcRequestEnvelopeSchema.safeParse(parsed);
+  if (request.success) {
+    if (request.data.method === "tools/call") {
+      const toolCall = parseToolCallRequest(request.data);
       return toolCall
         ? { type: "request", message: toolCall }
         : { type: "invalid", raw: parsed, error: "Invalid tools/call request" };
     }
-    const message: JsonRpcRequest = {
-      jsonrpc: "2.0",
-      id,
-      method: parsed["method"],
-      ...(parsed["params"] !== undefined ? { params: parsed["params"] } : {}),
-    };
-    return { type: "request", message };
+    return { type: "request", message: request.data };
   }
 
-  if (!("id" in parsed) && typeof parsed["method"] === "string") {
-    const message: JsonRpcNotification = {
-      jsonrpc: "2.0",
-      method: parsed["method"],
-      ...(parsed["params"] !== undefined ? { params: parsed["params"] } : {}),
-    };
-    return { type: "notification", message };
-  }
-
-  return { type: "invalid", raw: parsed, error: "Unknown message type" };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  const notification = jsonRpcNotificationEnvelopeSchema.safeParse(parsed);
+  if (notification.success) return { type: "notification", message: notification.data };
+  return {
+    type: "invalid",
+    raw: parsed,
+    error: typeof parsed === "object" && parsed !== null ? "Unknown message type" : "Not an object",
+  };
 }
 
 const jsonRpcIdSchema = z.union([z.string().max(512), z.number().finite(), z.null()]);
+const jsonRpcRequestEnvelopeSchema = z
+  .object({
+    jsonrpc: z.literal("2.0"),
+    id: z.union([z.string().max(512), z.number().finite()]),
+    method: z.string().min(1).max(4_096),
+    params: z.json().optional(),
+  })
+  .strict();
+const jsonRpcNotificationEnvelopeSchema = z
+  .object({
+    jsonrpc: z.literal("2.0"),
+    method: z.string().min(1).max(4_096),
+    params: z.json().optional(),
+  })
+  .strict();
 const jsonRpcErrorSchema = z
   .object({
     code: z.number().int().finite(),
@@ -444,21 +436,6 @@ const samplingResultSchema = z
   })
   .strict();
 
-function validJsonRpcId(value: unknown): value is string | number | null {
-  return jsonRpcIdSchema.safeParse(value).success;
-}
-
-function onlyKeys(
-  value: Record<string, unknown>,
-  required: readonly string[],
-  optional: readonly string[] = [],
-): boolean {
-  const allowed = new Set([...required, ...optional]);
-  return (
-    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
-  );
-}
-
 function parseJsonRpcResponse(value: unknown): JsonRpcResponse | undefined {
   const error = jsonRpcErrorResponseSchema.safeParse(value);
   if (error.success) return error.data as JsonRpcResponse;
@@ -467,18 +444,14 @@ function parseJsonRpcResponse(value: unknown): JsonRpcResponse | undefined {
 }
 
 function parseToolCallRequest(
-  value: unknown,
+  value: z.infer<typeof jsonRpcRequestEnvelopeSchema>,
 ): JsonRpcRequest<"tools/call", McpToolCallParams> | undefined {
-  if (!isRecord(value) || value["jsonrpc"] !== "2.0" || value["method"] !== "tools/call") {
-    return undefined;
-  }
-  if (!validJsonRpcId(value["id"]) || value["id"] === null) return undefined;
-  const params = toolCallParamsSchema.safeParse(value["params"]);
+  if (value.method !== "tools/call") return undefined;
+  const params = toolCallParamsSchema.safeParse(value.params);
   if (!params.success) return undefined;
-  if (!onlyKeys(value, ["jsonrpc", "id", "method"], ["params"])) return undefined;
   return {
     jsonrpc: "2.0",
-    id: value["id"],
+    id: value.id,
     method: "tools/call",
     params: {
       name: params.data.name,

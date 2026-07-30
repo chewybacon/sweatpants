@@ -1,4 +1,5 @@
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { z } from "zod";
 import { createContext, type Operation } from "effection";
 import { createApi } from "effection/experimental";
 import type { EffectDefinition, OperationOutcome } from "./contract.ts";
@@ -193,10 +194,8 @@ export const DurableEffects = createApi("durable-effects:execute", {
 });
 
 function errorCode(error: unknown): string {
-  if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
-    return error.code;
-  }
-  return "effect_failed";
+  const parsed = z.object({ code: z.string() }).loose().safeParse(error);
+  return parsed.success ? parsed.data.code : "effect_failed";
 }
 
 function isOperation(value: unknown): value is Operation<unknown> {

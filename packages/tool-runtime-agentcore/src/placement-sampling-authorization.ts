@@ -6,6 +6,7 @@ import {
   type CapabilityKeyring,
 } from "@sweatpants/journal-authority";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { z } from "zod";
 
 import type {
   PlacementSamplingAuthorizationIssuer,
@@ -14,6 +15,30 @@ import type {
 
 const PURPOSE = "sweatpants.agentcore-model-sampling.v1";
 const PERMISSIONS = ["sample:attach", "sample:read", "sample:cancel"] as const;
+const samplingAuthorizationClaimsSchema = z.strictObject({
+  version: z.literal(1),
+  issuer: z.string().min(1).max(4_096),
+  keyId: z.string().min(1).max(4_096),
+  protocolVersion: z.literal(1),
+  identity: z.strictObject({
+    journalId: z.string().min(1).max(4_096),
+    journalIncarnation: z.string().min(1).max(4_096),
+    sessionId: z.string().min(1).max(4_096),
+    taskId: z.string().min(1).max(4_096),
+    pullId: z.string().min(1).max(4_096),
+  }),
+  attemptId: z.string().min(1).max(4_096),
+  releaseId: z.string().min(1).max(4_096),
+  requestDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+  effectContractDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+  classifications: z.array(z.json()).max(4_096),
+  permissions: z.tuple([
+    z.literal("sample:attach"),
+    z.literal("sample:read"),
+    z.literal("sample:cancel"),
+  ]),
+  expiresAt: z.string().min(1).max(128),
+});
 
 export interface PlacementSamplingAuthorizationClaims {
   readonly version: 1;
@@ -81,27 +106,11 @@ export function verifyPlacementSamplingAuthorization(options: {
   } catch {
     throw unauthorized();
   }
-  if (!isRecord(value)) {
+  const parsed = samplingAuthorizationClaimsSchema.safeParse(value);
+  if (!parsed.success) {
     throw unauthorized();
   }
-  const keys = [
-    "version",
-    "issuer",
-    "keyId",
-    "protocolVersion",
-    "identity",
-    "attemptId",
-    "releaseId",
-    "requestDigest",
-    "effectContractDigest",
-    "classifications",
-    "permissions",
-    "expiresAt",
-  ];
-  if (Object.keys(value).length !== keys.length || !keys.every((key) => key in value)) {
-    throw unauthorized();
-  }
-  const claims = value as unknown as PlacementSamplingAuthorizationClaims;
+  const claims = parsed.data;
   const now = options.now ?? Date.now;
   if (
     claims.version !== 1 ||
@@ -124,10 +133,6 @@ export function verifyPlacementSamplingAuthorization(options: {
     throw unauthorized();
   }
   return claims;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function unauthorized(): CrankError {

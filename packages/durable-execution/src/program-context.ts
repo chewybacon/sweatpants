@@ -25,8 +25,36 @@ import type {
 } from "./program-authoring.ts";
 import { assertEffectDefinition } from "@sweatpants/durable-effects/authoring";
 import { DEFAULT_MAX_INLINE_BYTES } from "./program-authoring-runtime.ts";
+import { z } from "zod";
 
 type EffectResolver = { audience: string; route?: string };
+
+const operationOutcomeSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("ok"), value: z.json() }),
+  z.strictObject({
+    status: z.literal("error"),
+    error: z.strictObject({
+      code: z.string(),
+      message: z.string(),
+      details: z.json().optional(),
+    }),
+  }),
+  z.strictObject({ status: z.literal("cancelled"), partial: z.json().optional() }),
+]);
+const durableChildSchema = z.strictObject({
+  id: z.string().min(1),
+  version: z.string().min(1),
+  digest: z.string().regex(/^[0-9a-f]{64}$/u),
+  input: z.json(),
+});
+const effectResolverSchema = z.strictObject({
+  audience: z.string(),
+  route: z.string().optional(),
+});
+const durableTaskHandleSchema = z.strictObject({
+  __durableTask: z.string().min(1),
+  owner: z.string().min(1),
+});
 
 /** Runtime bridge that suspends an Effection-native program at one durable proposal. */
 export type DurableProposalExecutor = (proposal: ProgramStepProposal) => Operation<ProgramResume>;
@@ -225,11 +253,7 @@ export function createDurableProgramContext(
       return unwrapOutcome<DurableTaskHandle>(outcome);
     },
     *join<T extends Json = Json>(handle: DurableTaskHandle): Operation<T> {
-      if (
-        !isRecord(handle) ||
-        typeof handle.__durableTask !== "string" ||
-        typeof handle.owner !== "string"
-      ) {
+      if (!durableTaskHandleSchema.safeParse(handle).success) {
         throw new CrankError("invalid_descriptor", "Invalid durable task handle");
       }
       const outcome = yield* propose({
@@ -299,22 +323,7 @@ function unwrapOutcome<T = Json>(input: unknown): T {
 }
 
 function isOperationOutcome(value: unknown): value is OperationOutcome {
-  if (!isRecord(value) || typeof value["status"] !== "string") {
-    return false;
-  }
-  if (value["status"] === "cancelled") {
-    return !("partial" in value) || value["partial"] !== undefined;
-  }
-  if (value["status"] === "ok") {
-    return "value" in value;
-  }
-  if (value["status"] !== "error") {
-    return false;
-  }
-  const error = value["error"];
-  return (
-    isRecord(error) && typeof error["code"] === "string" && typeof error["message"] === "string"
-  );
+  return operationOutcomeSchema.safeParse(value).success;
 }
 
 /** Structured cancellation signal raised inside a resumed durable program task. */
@@ -335,15 +344,11 @@ function missingForeignToolChild(): never {
 }
 
 function snapshotChild(child: DurableChildDescriptor): DurableChildDescriptor {
-  if (!child || typeof child !== "object") {
+  const parsed = durableChildSchema.safeParse(child);
+  if (!parsed.success) {
     throw new CrankError("invalid_descriptor", "Invalid child");
   }
-  return {
-    id: requireId(child.id, "child id"),
-    version: requireId(child.version, "child version"),
-    digest: requireDigest(child.digest, "child digest"),
-    input: canonicalSnapshot(child.input).value,
-  };
+  return { ...parsed.data, input: canonicalSnapshot(parsed.data.input).value };
 }
 
 function assertRetrySafety(safety: RetrySafety, path: string): void {
@@ -361,29 +366,12 @@ function assertRetrySafety(safety: RetrySafety, path: string): void {
 }
 
 function isEffectResolver(value: unknown): value is EffectResolver {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  if (!("audience" in value) || typeof value.audience !== "string") {
-    return false;
-  }
-  return !("route" in value) || value.route === undefined || typeof value.route === "string";
-}
-
-function isRecord(value: unknown): value is Record<string, Json> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+  return effectResolverSchema.safeParse(value).success;
 }
 
 function requireId(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
     invalidManifest(`${field} must be non-empty`);
-  }
-  return value;
-}
-
-function requireDigest(value: unknown, field: string): string {
-  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
-    invalidManifest(`${field} must be SHA-256 hex`);
   }
   return value;
 }

@@ -1914,13 +1914,8 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   }
 
   #restore(snapshot: DurableAuthoritySnapshot): void {
-    if (
-      snapshot.version !== 4 ||
-      !Array.isArray(snapshot.tasks) ||
-      !Array.isArray(snapshot.records)
-    ) {
-      throw new CrankError("invalid_journal", "Invalid durable authority snapshot");
-    }
+    // Serialized snapshots are fully parsed by parseDurableAuthoritySnapshot;
+    // in-memory snapshots come from exportSnapshot's trusted constructor.
     this.#tasks.clear();
     this.#records.clear();
     this.#runnable.clear();
@@ -3435,29 +3430,11 @@ function parseWireElicitEnvelope(
 }
 
 function snapshotDescriptor(descriptor: DurableOperationDescriptor): DurableOperationDescriptor {
-  const snapshot = canonicalSnapshot(descriptor).value;
-  if (
-    !snapshot ||
-    typeof snapshot !== "object" ||
-    !["effect", "record", "elicit", "wait", "invoke", "all", "race", "spawn", "join"].includes(
-      snapshot.kind,
-    )
-  ) {
-    throw new CrankError("invalid_descriptor");
-  }
-  return snapshot;
+  return canonicalSnapshot(descriptor).value;
 }
 
 function snapshotOutcome(outcome: OperationOutcome): OperationOutcome {
-  const snapshot = canonicalSnapshot(outcome).value;
-  if (
-    !snapshot ||
-    typeof snapshot !== "object" ||
-    !["ok", "error", "cancelled"].includes(snapshot.status)
-  ) {
-    throw new CrankError("schema_validation_failed");
-  }
-  return snapshot;
+  return canonicalSnapshot(outcome).value;
 }
 
 function pendingReason(descriptor: DurableOperationDescriptor): "elicit" | "wait" | "child" {

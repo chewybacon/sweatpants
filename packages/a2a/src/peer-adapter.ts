@@ -1,4 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
+import { z } from "zod";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { createPinnedDurableProgram } from "@sweatpants/durable-execution";
 import { assertJson, canonicalJson, sha256 } from "@sweatpants/foundation";
@@ -70,16 +71,18 @@ export function verifyPeerResultEcho(
   if (!task) {
     return;
   }
-  if (!task.metadata || typeof task.metadata !== "object" || Array.isArray(task.metadata)) {
+  const metadata = z.record(z.string(), z.json()).safeParse(task.metadata);
+  if (!metadata.success) {
     throw new CrankError("peer_grant_echo_mismatch", "Peer result omitted profile metadata");
   }
-  const profile = task.metadata[SWEATPANTS_PEER_PROFILE_URI];
+  const profile = z
+    .object({ grantSetDigest: z.string(), requirementManifestDigest: z.string() })
+    .loose()
+    .safeParse(metadata.data[SWEATPANTS_PEER_PROFILE_URI]);
   if (
-    !profile ||
-    typeof profile !== "object" ||
-    Array.isArray(profile) ||
-    profile["grantSetDigest"] !== pin.grantSet.digest ||
-    profile["requirementManifestDigest"] !== pin.requirementManifest.manifestDigest
+    !profile.success ||
+    profile.data.grantSetDigest !== pin.grantSet.digest ||
+    profile.data.requirementManifestDigest !== pin.requirementManifest.manifestDigest
   ) {
     throw new CrankError("peer_grant_echo_mismatch", "Peer result grant/manifest echo differs");
   }
