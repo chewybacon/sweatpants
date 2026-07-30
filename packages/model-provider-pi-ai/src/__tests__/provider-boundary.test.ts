@@ -668,6 +668,43 @@ describe("pi-ai provider boundary normalization", () => {
     });
   });
 
+  it("keeps streaming while a tool call is still accumulating", async () => {
+    const runtime = createPiAiRuntime();
+    // Providers stream tool calls incrementally: the partial snapshot carries an
+    // id and name that have not arrived yet. That is mid-flight, not a
+    // violation, so it must not abort the stream.
+    mockPiStream(
+      [
+        {
+          type: "toolcall_delta",
+          contentIndex: 0,
+          delta: '{"origin"',
+          partial: assistantMessageWith([
+            { type: "toolCall", id: "call_1", name: "", arguments: "" },
+          ]),
+        },
+      ],
+      assistantMessageWith([
+        { type: "toolCall", id: "call_1", name: "book_flight", arguments: { origin: "NYC" } },
+      ]),
+    );
+
+    const types = await run(function* (): Operation<string[]> {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [{ role: "user", content: "book it" }],
+      });
+      const seen: string[] = [];
+      let next = yield* subscription.next();
+      while (!next.done) {
+        seen.push((next.value as { type: string }).type);
+        next = yield* subscription.next();
+      }
+      return seen;
+    });
+
+    expect(types).toContain("toolcall_delta");
+  });
+
   it("refuses to invent identity for a tool call the provider left unidentified", async () => {
     const runtime = createPiAiRuntime();
     mockPiStream(

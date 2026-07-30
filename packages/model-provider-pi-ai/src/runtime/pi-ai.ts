@@ -119,7 +119,12 @@ function toPiContentBlock(block: ContentBlock): unknown {
   }
 }
 
-function fromPiContentBlock(block: unknown): ContentBlock {
+/**
+ * `settled` distinguishes a finished message from an in-flight `partial`.
+ * A settled tool call without identity is a protocol violation. A partial one
+ * is simply mid-accumulation, so it passes through as the provider sent it.
+ */
+function fromPiContentBlock(block: unknown, settled: boolean): ContentBlock {
   const candidate = block as { type?: unknown; [key: string]: unknown };
 
   if (candidate.type === "thinking") {
@@ -156,18 +161,20 @@ function fromPiContentBlock(block: unknown): ContentBlock {
   }
 
   if (candidate.type === "toolCall") {
-    // A tool call without identity cannot be executed or correlated. Inventing
-    // one here would push a fabricated id into journals, digests, and replay.
-    if (typeof candidate["id"] !== "string" || candidate["id"].length === 0) {
+    // A settled tool call without identity cannot be executed or correlated.
+    // Inventing one would push a fabricated id into journals, digests, and
+    // replay; throwing on a partial would abort a stream that is merely
+    // still arriving.
+    if (settled && (typeof candidate["id"] !== "string" || candidate["id"].length === 0)) {
       throw new Error("Provider returned a tool call without an id");
     }
-    if (typeof candidate["name"] !== "string" || candidate["name"].length === 0) {
-      throw new Error(`Provider returned tool call "${candidate["id"]}" without a name`);
+    if (settled && (typeof candidate["name"] !== "string" || candidate["name"].length === 0)) {
+      throw new Error(`Provider returned tool call "${String(candidate["id"])}" without a name`);
     }
     return {
       type: "toolCall",
-      id: candidate["id"],
-      name: candidate["name"],
+      id: typeof candidate["id"] === "string" ? candidate["id"] : "",
+      name: typeof candidate["name"] === "string" ? candidate["name"] : "",
       arguments: decodeToolArguments(candidate["arguments"]),
       ...(typeof candidate["thoughtSignature"] === "string"
         ? { thoughtSignature: candidate["thoughtSignature"] }
@@ -331,12 +338,12 @@ function toPiAssistantMessage(message: AssistantMessage): PiAssistantMessage {
   };
 }
 
-function fromPiAssistantMessage(message: PiAssistantMessage): AssistantMessage {
+function fromPiAssistantMessage(message: PiAssistantMessage, settled = true): AssistantMessage {
   const usage = fromPiUsage(message.usage);
   const errorMessage = safeErrorMessage(message.errorMessage);
   return {
     role: "assistant",
-    content: message.content.map(fromPiContentBlock),
+    content: message.content.map((block) => fromPiContentBlock(block, settled)),
     ...(usage ? { usage } : {}),
     stopReason: message.stopReason,
     ...(message.responseId ? { responseId: message.responseId } : {}),
@@ -588,7 +595,7 @@ function fromPiEvent(event: PiAssistantMessageEvent): StreamEvent {
         type: "toolcall_end",
         contentIndex: event.contentIndex,
         toolCall: fromPiToolCall(event.toolCall),
-        partial: fromPiAssistantMessage(event.partial),
+        partial: fromPiAssistantMessage(event.partial, false),
       };
     case "done":
       return {
@@ -600,7 +607,7 @@ function fromPiEvent(event: PiAssistantMessageEvent): StreamEvent {
       return {
         type: "error",
         reason: event.reason,
-        error: fromPiAssistantMessage(event.error),
+        error: fromPiAssistantMessage(event.error, false),
       };
     case "text_end":
     case "thinking_end":
@@ -608,7 +615,7 @@ function fromPiEvent(event: PiAssistantMessageEvent): StreamEvent {
         type: event.type,
         contentIndex: event.contentIndex,
         content: event.content,
-        partial: fromPiAssistantMessage(event.partial),
+        partial: fromPiAssistantMessage(event.partial, false),
       };
     case "text_delta":
     case "thinking_delta":
@@ -617,18 +624,18 @@ function fromPiEvent(event: PiAssistantMessageEvent): StreamEvent {
         type: event.type,
         contentIndex: event.contentIndex,
         delta: event.delta,
-        partial: fromPiAssistantMessage(event.partial),
+        partial: fromPiAssistantMessage(event.partial, false),
       };
     case "start":
       return {
         type: "start",
-        partial: fromPiAssistantMessage(event.partial),
+        partial: fromPiAssistantMessage(event.partial, false),
       };
     default:
       return {
         type: event.type,
         contentIndex: event.contentIndex,
-        partial: fromPiAssistantMessage(event.partial),
+        partial: fromPiAssistantMessage(event.partial, false),
       };
   }
 }
@@ -676,7 +683,9 @@ function fromPiAssistantImages(images: PiAssistantImages): AssistantImages {
   const usage = fromPiUsage(images.usage);
   const errorMessage = safeErrorMessage(images.errorMessage);
   return {
-    output: images.output.map(fromPiContentBlock) as AssistantImages["output"],
+    output: images.output.map((block) =>
+      fromPiContentBlock(block, true),
+    ) as AssistantImages["output"],
     ...(usage ? { usage } : {}),
     stopReason: images.stopReason,
     ...(images.responseId ? { responseId: images.responseId } : {}),
