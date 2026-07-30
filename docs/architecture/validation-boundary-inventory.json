@@ -4986,17 +4986,6 @@
       ]
     },
     {
-      "id": "SHAPE-335",
-      "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 250,
-      "symbol": "safeMetadata",
-      "classification": "C",
-      "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
-      "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:250"
-      ]
-    },
-    {
       "id": "SHAPE-447",
       "file": "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts",
       "line": 2,

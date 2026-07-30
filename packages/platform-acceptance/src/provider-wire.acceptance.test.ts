@@ -232,6 +232,11 @@ describe("pi-ai provider over the simulated Responses wire", () => {
 
       const result = await stream;
       expect(result.events.some((event) => event.type === "toolcall_delta")).toBe(true);
+      expect(result.message.source).toEqual({
+        api: "openai-responses",
+        provider: "openai",
+        model: "sim-model",
+      });
       expect(result.message.content).toContainEqual(
         expect.objectContaining({
           type: "toolCall",
