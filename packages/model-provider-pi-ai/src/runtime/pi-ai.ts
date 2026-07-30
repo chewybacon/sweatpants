@@ -3,7 +3,6 @@ import {
   generateImages as piGenerateImages,
   streamSimple as piStreamSimple,
 } from "@earendil-works/pi-ai/compat";
-import { assertJson, parseJsonText, type Json } from "@sweatpants/foundation";
 import type {
   AssistantImages as PiAssistantImages,
   AssistantMessage as PiAssistantMessage,
@@ -119,69 +118,36 @@ function toPiContentBlock(block: ContentBlock): unknown {
 }
 
 /**
- * `settled` distinguishes a finished message from an in-flight `partial`.
- * A settled tool call without identity is a protocol violation. A partial one
- * is simply mid-accumulation, so it passes through as the provider sent it.
+ * pi-ai owns wire decoding and supplies this discriminated union. We translate
+ * only the one field whose representation differs (`thinking` -> `text`).
+ * Tool arguments are already best-effort decoded objects in the pi-ai contract;
+ * their domain shape remains open until the authored Standard Schema executes.
  */
-function fromPiContentBlock(block: unknown, settled: boolean): ContentBlock {
-  const candidate = block as { type?: unknown; [key: string]: unknown };
-
-  if (candidate.type === "thinking") {
-    return {
-      type: "thinking",
-      text: typeof candidate["thinking"] === "string" ? candidate["thinking"] : "",
-      ...(typeof candidate["format"] === "string" ? { format: candidate["format"] } : {}),
-      ...(typeof candidate["thinkingSignature"] === "string"
-        ? { thinkingSignature: candidate["thinkingSignature"] }
-        : {}),
-      ...(typeof candidate["redacted"] === "boolean" ? { redacted: candidate["redacted"] } : {}),
-    };
+function fromPiContentBlock(
+  block: PiAssistantMessage["content"][number],
+  settled: boolean,
+): ContentBlock {
+  switch (block.type) {
+    case "thinking":
+      return {
+        type: "thinking",
+        text: block.thinking,
+        ...(block.thinkingSignature ? { thinkingSignature: block.thinkingSignature } : {}),
+        ...(block.redacted !== undefined ? { redacted: block.redacted } : {}),
+      };
+    case "text":
+      return block;
+    case "toolCall":
+      // A settled tool call without identity cannot be executed or correlated.
+      // Partial snapshots retain pi-ai's honest in-flight empty strings.
+      if (settled && block.id.length === 0) {
+        throw new Error("Provider returned a tool call without an id");
+      }
+      if (settled && block.name.length === 0) {
+        throw new Error(`Provider returned tool call "${block.id}" without a name`);
+      }
+      return block;
   }
-
-  if (candidate.type === "text") {
-    return {
-      type: "text",
-      text: typeof candidate["text"] === "string" ? candidate["text"] : "",
-      ...(typeof candidate["textSignature"] === "string"
-        ? { textSignature: candidate["textSignature"] }
-        : {}),
-    };
-  }
-
-  if (candidate.type === "image") {
-    return {
-      type: "image",
-      data: typeof candidate["data"] === "string" ? candidate["data"] : "",
-      mimeType:
-        typeof candidate["mimeType"] === "string"
-          ? candidate["mimeType"]
-          : "application/octet-stream",
-    };
-  }
-
-  if (candidate.type === "toolCall") {
-    // A settled tool call without identity cannot be executed or correlated.
-    // Inventing one would push a fabricated id into journals, digests, and
-    // replay; throwing on a partial would abort a stream that is merely
-    // still arriving.
-    if (settled && (typeof candidate["id"] !== "string" || candidate["id"].length === 0)) {
-      throw new Error("Provider returned a tool call without an id");
-    }
-    if (settled && (typeof candidate["name"] !== "string" || candidate["name"].length === 0)) {
-      throw new Error(`Provider returned tool call "${String(candidate["id"])}" without a name`);
-    }
-    return {
-      type: "toolCall",
-      id: typeof candidate["id"] === "string" ? candidate["id"] : "",
-      name: typeof candidate["name"] === "string" ? candidate["name"] : "",
-      arguments: parseProviderToolArguments(candidate["arguments"]),
-      ...(typeof candidate["thoughtSignature"] === "string"
-        ? { thoughtSignature: candidate["thoughtSignature"] }
-        : {}),
-    };
-  }
-
-  return { type: "text", text: "" };
 }
 
 function contentBlockHasProviderPayload(block: ContentBlock): boolean {
@@ -292,35 +258,8 @@ function safeMetadata(metadata: Record<string, unknown>): Record<string, unknown
   return result;
 }
 
-/**
- * Establishes the only invariant Sweatpants needs from provider arguments:
- * canonical JSON suitable for transport and persistence. The argument's domain
- * shape remains deliberately open until the authored Standard Schema executes.
- *
- * pi-ai normally supplies a best-effort object and may already have repaired or
- * replaced malformed wire text. The string arm remains for compatible provider
- * adapters/history values that preserve their JSON encoding; undecodable text
- * remains a JSON string so the authored schema can reject the real value.
- */
-function parseProviderToolArguments(value: unknown): Json {
-  if (typeof value === "string") {
-    try {
-      return parseJsonText(value, "$.toolCall.arguments");
-    } catch {
-      return assertJson(value, "$.toolCall.arguments");
-    }
-  }
-  return assertJson(value, "$.toolCall.arguments");
-}
-
 function fromPiToolCall(toolCall: PiToolCall): ToolCallBlock {
-  return {
-    type: "toolCall",
-    id: toolCall.id,
-    name: toolCall.name,
-    arguments: parseProviderToolArguments(toolCall.arguments),
-    ...(toolCall.thoughtSignature ? { thoughtSignature: toolCall.thoughtSignature } : {}),
-  };
+  return toolCall;
 }
 
 function toPiAssistantMessage(message: AssistantMessage): PiAssistantMessage {
@@ -686,9 +625,8 @@ function fromPiAssistantImages(images: PiAssistantImages): AssistantImages {
   const usage = fromPiUsage(images.usage);
   const errorMessage = safeErrorMessage(images.errorMessage);
   return {
-    output: images.output.map((block) =>
-      fromPiContentBlock(block, true),
-    ) as AssistantImages["output"],
+    // pi-ai image output is already structurally identical to the neutral contract.
+    output: images.output,
     ...(usage ? { usage } : {}),
     stopReason: images.stopReason,
     ...(images.responseId ? { responseId: images.responseId } : {}),
