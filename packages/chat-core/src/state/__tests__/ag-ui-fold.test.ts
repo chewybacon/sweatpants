@@ -33,6 +33,68 @@ describe("canonical AG-UI chat fold", () => {
     });
   });
 
+  it("keeps successful output that reads like an error out of the error state", () => {
+    const state = fold([
+      { type: "RUN_STARTED", ...correlation },
+      {
+        type: "TOOL_CALL_START",
+        toolCallId: "call-1",
+        toolCallName: "grep",
+        parentMessageId: "assistant-tools-1",
+      },
+      { type: "TOOL_CALL_END", toolCallId: "call-1" },
+      {
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool-1",
+        toolCallId: "call-1",
+        toolCallName: "grep",
+        // A grep, compiler, or log tool may legitimately return this text.
+        content: "Error: no matches found",
+      },
+      { type: "RUN_FINISHED", ...correlation, outcome: { type: "success" } },
+    ]);
+
+    const toolMessage = state.messages.find((message) => message.role === "tool");
+    expect(toolMessage).toMatchObject({ content: "Error: no matches found" });
+    expect(toolMessage?.isError).toBeUndefined();
+    const part = state.finalizedParts["assistant-tools-1"]?.find(
+      (candidate) => candidate.type === "tool-call",
+    );
+    expect(part).toMatchObject({ state: "complete", result: "Error: no matches found" });
+  });
+
+  it("marks a failure the producer reported, whatever the text says", () => {
+    const state = fold([
+      { type: "RUN_STARTED", ...correlation },
+      {
+        type: "TOOL_CALL_START",
+        toolCallId: "call-1",
+        toolCallName: "deploy",
+        parentMessageId: "assistant-tools-1",
+      },
+      { type: "TOOL_CALL_END", toolCallId: "call-1" },
+      {
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool-1",
+        toolCallId: "call-1",
+        toolCallName: "deploy",
+        // No "Error:" prefix; the bit is the authority.
+        content: "the cluster refused the rollout",
+        isError: true,
+      },
+      { type: "RUN_FINISHED", ...correlation, outcome: { type: "success" } },
+    ]);
+
+    expect(state.messages.find((message) => message.role === "tool")).toMatchObject({
+      content: "the cluster refused the rollout",
+      isError: true,
+    });
+    const part = state.finalizedParts["assistant-tools-1"]?.find(
+      (candidate) => candidate.type === "tool-call",
+    );
+    expect(part).toMatchObject({ state: "error", error: "the cluster refused the rollout" });
+  });
+
   it("assembles AG-UI tool calls and results directly", () => {
     const state = fold([
       { type: "RUN_STARTED", ...correlation },

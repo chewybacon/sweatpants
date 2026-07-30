@@ -37,7 +37,10 @@ export function* consumeAgUiEventStream(
   let runError: Error | null = null;
   let assistantText = "";
   const toolCalls = new Map<string, RunToolCall>();
-  const toolResults = new Map<string, { id: string; name: string; content: string }>();
+  const toolResults = new Map<
+    string,
+    { id: string; name: string; content: string; isError: boolean }
+  >();
 
   for (const rawFrame of yield* each(eventStream)) {
     const frame = rawFrame as { lsn: number; event: StreamEvent };
@@ -78,6 +81,7 @@ export function* consumeAgUiEventStream(
             id: event.toolCallId,
             name: event.toolCallName ?? toolCalls.get(event.toolCallId)?.name ?? "unknown",
             content: event.content,
+            isError: event.isError === true || event.error !== undefined,
           });
           break;
         case "RUN_FINISHED":
@@ -121,10 +125,7 @@ export function* consumeAgUiEventStream(
       name: call.name,
       arguments: call.arguments,
     })),
-    serverToolResults: currentToolResults.map((result) => ({
-      ...result,
-      isError: result.content.startsWith("Error:"),
-    })),
+    serverToolResults: currentToolResults,
     ...(state.replay ? { replay: state.replay } : {}),
   };
 

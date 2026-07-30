@@ -86,7 +86,7 @@ export function internalMessageToAgUiMessage(message: Message): AgUiMessage {
       role: "tool",
       content: message.content,
       toolCallId: message.tool_call_id ?? "",
-      ...(message.content.startsWith("Error:") ? { error: message.content } : {}),
+      ...(message.isError ? { error: message.content } : {}),
     };
   }
 
@@ -144,6 +144,7 @@ export function agUiMessageToInternalMessage(message: AgUiMessage): Message | nu
       role: "tool",
       content: message.content,
       tool_call_id: message.toolCallId,
+      ...(message.error !== undefined ? { isError: true } : {}),
     };
   }
 

@@ -48,7 +48,7 @@ function providerMessageToModelMessage(message: Message): ModelMessage {
       toolCallId: message.tool_call_id ?? "",
       toolName: message.replay?.toolName ?? "",
       content: [{ type: "text", text: message.content }],
-      isError: message.content.startsWith("Error:"),
+      isError: message.isError === true,
     };
   }
 

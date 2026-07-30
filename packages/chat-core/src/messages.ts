@@ -29,6 +29,12 @@ export interface Message {
   partial?: boolean;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  /**
+   * Whether a tool result represents failure. This is data, carried from the
+   * producer that knows. It is never inferred from the content text: a tool may
+   * legitimately return output that begins with "Error:".
+   */
+  isError?: boolean;
   activityType?: string;
   replay?: {
     toolName?: string;

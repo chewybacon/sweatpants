@@ -3646,12 +3646,12 @@
     {
       "id": "SHAPE-166",
       "file": "packages/chat-core/src/session/ag-ui-messages.ts",
-      "line": 172,
+      "line": 173,
       "symbol": "isAgUiMessageArray",
       "classification": "R",
       "authority": "typed constructor or owning ingress for isAgUiMessageArray",
       "evidence": [
-        "packages/chat-core/src/session/ag-ui-messages.ts:172"
+        "packages/chat-core/src/session/ag-ui-messages.ts:173"
       ]
     },
     {
@@ -4009,111 +4009,111 @@
     {
       "id": "SHAPE-212",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1194,
+      "line": 1198,
       "symbol": "foreignCallId",
       "classification": "B",
       "authority": "owning ingress/parser foreignCallId",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1194"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1198"
       ]
     },
     {
       "id": "SHAPE-213",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1204,
+      "line": 1208,
       "symbol": "foreignElicitId",
       "classification": "B",
       "authority": "owning ingress/parser foreignElicitId",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1204"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1208"
       ]
     },
     {
       "id": "SHAPE-214",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1214,
+      "line": 1218,
       "symbol": "modelSystemPromptText",
       "classification": "R",
       "authority": "typed constructor or owning ingress for modelSystemPromptText",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1214"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1218"
       ]
     },
     {
       "id": "SHAPE-215",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1224,
+      "line": 1228,
       "symbol": "toRuntimeMessage",
       "classification": "R",
       "authority": "typed constructor or owning ingress for toRuntimeMessage",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1224"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1228"
       ]
     },
     {
       "id": "SHAPE-216",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1287,
+      "line": 1291,
       "symbol": "parseRuntimeContentBlock",
       "classification": "B",
       "authority": "owning ingress/parser parseRuntimeContentBlock",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1287"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1291"
       ]
     },
     {
       "id": "SHAPE-217",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1341,
+      "line": 1345,
       "symbol": "toolCallArguments",
       "classification": "R",
       "authority": "typed constructor or owning ingress for toolCallArguments",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1341"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1345"
       ]
     },
     {
       "id": "SHAPE-452",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1505,
+      "line": 1509,
       "symbol": "jsonRecord",
       "classification": "R",
       "authority": "typed constructor or owning ingress for jsonRecord",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1505"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1509"
       ]
     },
     {
       "id": "SHAPE-220",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1516,
+      "line": 1520,
       "symbol": "schemaWithModelContext",
       "classification": "R",
       "authority": "typed constructor or owning ingress for schemaWithModelContext",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1516"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1520"
       ]
     },
     {
       "id": "SHAPE-221",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 247,
+      "line": 248,
       "symbol": "activateProgramDriverChatEngine",
       "classification": "R",
       "authority": "typed constructor or owning ingress for activateProgramDriverChatEngine",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:247"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:248"
       ]
     },
     {
       "id": "SHAPE-222",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 550,
+      "line": 551,
       "symbol": "isToolOwnedSampleRequest",
       "classification": "B",
       "authority": "owning ingress/parser isToolOwnedSampleRequest",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:550"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:551"
       ]
     },
     {
@@ -5439,45 +5439,45 @@
     {
       "id": "SHAPE-388",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 225,
+      "line": 221,
       "symbol": "schemaForElicitKey",
       "classification": "R",
       "authority": "typed constructor or owning ingress for schemaForElicitKey",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:225"
+        "packages/tool-runtime-local/src/worker-runner.ts:221"
       ]
     },
     {
       "id": "SHAPE-389",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 279,
+      "line": 275,
       "symbol": "sampleImpl",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sampleImpl",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:279"
+        "packages/tool-runtime-local/src/worker-runner.ts:275"
       ]
     },
     {
       "id": "SHAPE-390",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 385,
+      "line": 381,
       "symbol": "sampleTools",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sampleTools",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:385"
+        "packages/tool-runtime-local/src/worker-runner.ts:381"
       ]
     },
     {
       "id": "SHAPE-391",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 446,
+      "line": 442,
       "symbol": "sampleSchema",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sampleSchema",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:446"
+        "packages/tool-runtime-local/src/worker-runner.ts:442"
       ]
     },
     {
@@ -5580,25 +5580,25 @@
       ]
     },
     {
-      "id": "SHAPE-456",
+      "id": "SHAPE-459",
       "file": "packages/tool-session/src/mcp/bridge-runtime.ts",
-      "line": 465,
-      "symbol": "<callback@465>",
+      "line": 457,
+      "symbol": "<callback@457>",
       "classification": "R",
-      "authority": "typed constructor or owning ingress for <callback@465>",
+      "authority": "typed constructor or owning ingress for <callback@457>",
       "evidence": [
-        "packages/tool-session/src/mcp/bridge-runtime.ts:465"
+        "packages/tool-session/src/mcp/bridge-runtime.ts:457"
       ]
     },
     {
-      "id": "SHAPE-457",
+      "id": "SHAPE-460",
       "file": "packages/tool-session/src/mcp/bridge-runtime.ts",
-      "line": 781,
-      "symbol": "<callback@781>",
+      "line": 773,
+      "symbol": "<callback@773>",
       "classification": "R",
-      "authority": "typed constructor or owning ingress for <callback@781>",
+      "authority": "typed constructor or owning ingress for <callback@773>",
       "evidence": [
-        "packages/tool-session/src/mcp/bridge-runtime.ts:781"
+        "packages/tool-session/src/mcp/bridge-runtime.ts:773"
       ]
     },
     {
