@@ -41,22 +41,7 @@ import type {
   WireSampleResultWithToolCalls,
 } from "@sweatpants/agent-sdk";
 
-export type {
-  ElicitsMap,
-  LogLevel,
-  ModelPreferences,
-  SampleResultBase,
-  SampleResultWithParsed,
-  SampleResultWithToolCalls,
-  SamplingToolCall,
-  SamplingToolChoice,
-  SamplingToolDefinition,
-  WireElicitResult,
-  WireSampleResult,
-  WireSampleResultBase,
-  WireSampleResultWithParsed,
-  WireSampleResultWithToolCalls,
-} from "@sweatpants/agent-sdk";
+export type { ElicitsMap, LogLevel, WireElicitResult } from "@sweatpants/agent-sdk";
 
 // =============================================================================
 // SESSION STATUS

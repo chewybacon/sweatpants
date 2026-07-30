@@ -1,6 +1,5 @@
 import { resource, type Operation, type Stream, type Subscription } from "effection";
-import type { WireElicitResult } from "@sweatpants/tool-session";
-import type { WireSampleResult } from "@sweatpants/tool-session";
+import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
 import type {
   AgentCoreToolEvent,
   AgentCoreToolRuntimeResponse,

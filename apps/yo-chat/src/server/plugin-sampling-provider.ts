@@ -1,15 +1,16 @@
 import type { Operation } from "effection";
 import type { JsonObject } from "@sweatpants/foundation";
 import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
-import type { SamplingToolCall, SamplingToolDefinition } from "@sweatpants/tool-session/mcp";
-import { toModelMessages, type ExtendedMessage } from "@sweatpants/tool-session/messages";
 import type {
-  ToolSessionSamplingProvider,
+  SamplingToolCall,
+  SamplingToolDefinition,
   WireSampleResult,
   WireSampleResultBase,
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
-} from "@sweatpants/tool-session";
+} from "@sweatpants/agent-sdk";
+import { toModelMessages, type ExtendedMessage } from "@sweatpants/tool-session/messages";
+import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import { createPiAiModelProviderDriver, resolvePiAiModel } from "@sweatpants/model-provider-pi-ai";
 import {
   type AssistantMessage as ModelAssistantMessage,

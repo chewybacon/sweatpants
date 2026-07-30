@@ -49,14 +49,17 @@ import type {
   ToolSession,
   ToolSessionStatus,
   ToolSessionRegistry,
-  WireSampleResultBase,
-  WireSampleResultWithParsed,
-  WireSampleResultWithToolCalls,
   ToolSessionSamplingProvider,
 } from "@sweatpants/tool-session";
 // Note: concrete tool session registries should be created at server startup, not here.
-import type { ElicitsMap, WireElicitResult } from "@sweatpants/tool-session/mcp";
-import type { ToolDefinition } from "@sweatpants/agent-sdk";
+import type {
+  ElicitsMap,
+  ToolDefinition,
+  WireElicitResult,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
+} from "@sweatpants/agent-sdk";
 import type { ComponentEmissionPayload, PendingEmission } from "@sweatpants/chat-core";
 
 // =============================================================================

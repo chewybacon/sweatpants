@@ -5351,144 +5351,111 @@
     {
       "id": "SHAPE-383",
       "file": "packages/tool-runtime-local/src/foreign-tool-session.ts",
-      "line": 404,
+      "line": 398,
       "symbol": "decodeSampleResponse",
       "classification": "B",
       "authority": "owning ingress/parser decodeSampleResponse",
       "evidence": [
-        "packages/tool-runtime-local/src/foreign-tool-session.ts:404"
+        "packages/tool-runtime-local/src/foreign-tool-session.ts:398"
       ]
     },
     {
       "id": "SHAPE-387",
       "file": "packages/tool-runtime-local/src/foreign-tool-session.ts",
-      "line": 454,
+      "line": 448,
       "symbol": "stripUndefined",
       "classification": "B",
       "authority": "owning ingress/parser stripUndefined",
       "evidence": [
-        "packages/tool-runtime-local/src/foreign-tool-session.ts:454"
+        "packages/tool-runtime-local/src/foreign-tool-session.ts:448"
       ]
     },
     {
       "id": "SHAPE-389",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 270,
+      "line": 264,
       "symbol": "sampleImpl",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sampleImpl",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:270"
+        "packages/tool-runtime-local/src/worker-runner.ts:264"
       ]
     },
     {
       "id": "SHAPE-390",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 376,
+      "line": 371,
       "symbol": "sampleTools",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sampleTools",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:376"
+        "packages/tool-runtime-local/src/worker-runner.ts:371"
       ]
     },
     {
       "id": "SHAPE-391",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 437,
+      "line": 430,
       "symbol": "sampleSchema",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sampleSchema",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:437"
+        "packages/tool-runtime-local/src/worker-runner.ts:430"
       ]
     },
     {
       "id": "SHAPE-392",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 85,
+      "line": 79,
       "symbol": "toWorkerMessage",
       "classification": "R",
       "authority": "typed constructor or owning ingress for toWorkerMessage",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:85"
+        "packages/tool-runtime-local/src/worker-runner.ts:79"
       ]
     },
     {
       "id": "SHAPE-393",
       "file": "packages/tool-runtime-local/src/worker-session-api.ts",
-      "line": 134,
+      "line": 133,
       "symbol": "handleSampleRequest",
       "classification": "B",
       "authority": "owning ingress/parser handleSampleRequest",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-session-api.ts:134"
+        "packages/tool-runtime-local/src/worker-session-api.ts:133"
       ]
     },
     {
       "id": "SHAPE-394",
       "file": "packages/tool-runtime-local/src/worker-session-api.ts",
-      "line": 92,
+      "line": 91,
       "symbol": "handleElicitRequest",
       "classification": "B",
       "authority": "owning ingress/parser handleElicitRequest",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-session-api.ts:92"
-      ]
-    },
-    {
-      "id": "SHAPE-395",
-      "file": "packages/tool-runtime-local/src/worker-tool-adapter.ts",
-      "line": 220,
-      "symbol": "sampleOptions",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for sampleOptions",
-      "evidence": [
-        "packages/tool-runtime-local/src/worker-tool-adapter.ts:220"
-      ]
-    },
-    {
-      "id": "SHAPE-396",
-      "file": "packages/tool-runtime-local/src/worker-tool-adapter.ts",
-      "line": 229,
-      "symbol": "canonicalizeSampleResult",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for canonicalizeSampleResult",
-      "evidence": [
-        "packages/tool-runtime-local/src/worker-tool-adapter.ts:229"
-      ]
-    },
-    {
-      "id": "SHAPE-397",
-      "file": "packages/tool-runtime-local/src/worker-tool-adapter.ts",
-      "line": 282,
-      "symbol": "promptText",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for promptText",
-      "evidence": [
-        "packages/tool-runtime-local/src/worker-tool-adapter.ts:282"
+        "packages/tool-runtime-local/src/worker-session-api.ts:91"
       ]
     },
     {
       "id": "SHAPE-398",
       "file": "packages/tool-runtime-local/src/worker-tool-adapter.ts",
-      "line": 312,
+      "line": 192,
       "symbol": "isRecord",
       "classification": "B",
       "authority": "owning ingress/parser isRecord",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-tool-adapter.ts:312"
+        "packages/tool-runtime-local/src/worker-tool-adapter.ts:192"
       ]
     },
     {
       "id": "SHAPE-464",
       "file": "packages/tool-runtime-local/src/worker-tool-adapter.ts",
-      "line": 48,
+      "line": 35,
       "symbol": "createWorkerTool",
       "classification": "R",
       "authority": "typed constructor or owning ingress for createWorkerTool",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-tool-adapter.ts:48"
+        "packages/tool-runtime-local/src/worker-tool-adapter.ts:35"
       ]
     },
     {
@@ -5514,25 +5481,25 @@
       ]
     },
     {
-      "id": "SHAPE-466",
+      "id": "SHAPE-468",
       "file": "packages/tool-session/src/mcp/bridge-runtime.ts",
-      "line": 457,
-      "symbol": "<callback@457>",
+      "line": 455,
+      "symbol": "<callback@455>",
       "classification": "R",
-      "authority": "typed constructor or owning ingress for <callback@457>",
+      "authority": "typed constructor or owning ingress for <callback@455>",
       "evidence": [
-        "packages/tool-session/src/mcp/bridge-runtime.ts:457"
+        "packages/tool-session/src/mcp/bridge-runtime.ts:455"
       ]
     },
     {
-      "id": "SHAPE-467",
+      "id": "SHAPE-469",
       "file": "packages/tool-session/src/mcp/bridge-runtime.ts",
-      "line": 773,
-      "symbol": "<callback@773>",
+      "line": 769,
+      "symbol": "<callback@769>",
       "classification": "R",
-      "authority": "typed constructor or owning ingress for <callback@773>",
+      "authority": "typed constructor or owning ingress for <callback@769>",
       "evidence": [
-        "packages/tool-session/src/mcp/bridge-runtime.ts:773"
+        "packages/tool-session/src/mcp/bridge-runtime.ts:769"
       ]
     },
     {

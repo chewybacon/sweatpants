@@ -1,4 +1,5 @@
 export { createTool } from "./create.ts";
+export { SampleValidationError } from "./types.ts";
 export { createDurableTool } from "./durable-create.ts";
 export {
   defineDurableContextExtension,
@@ -60,6 +61,7 @@ export type {
   ToolElicitCtx,
   ToolGenericSampleCtx,
   ToolNamedSampleCtx,
+  ToolSamplingCtx,
   ToolElicitResult,
   WireElicitResult,
   ElicitDefinition,
@@ -76,6 +78,7 @@ export type {
   SamplesMap,
   NormalizedSamplesMap,
   SampleRequest,
+  SampleRequestOptions,
   NamedSampleResult,
   SampleResultBase,
   SampleResultWithParsed,
@@ -89,6 +92,7 @@ export type {
   ElicitExchange,
   SampleExchange,
   ToolMessage,
+  ToolSamplingMessage,
   ToolRole,
   ToolContentBlock,
   ToolTextContent,
@@ -103,8 +107,14 @@ export type {
   CreateToolBuilderWithParams,
   PerCallInterruptOptions,
   ToolSampleConfig,
+  SampleConfigPlainPrompt,
+  SampleConfigPlainMessages,
+  SampleConfigSchemaPrompt,
+  SampleConfigSchemaMessages,
+  SampleConfigToolsPrompt,
+  SampleConfigToolsMessages,
+  SampleToolsConfig,
   SampleSchemaConfig,
-  SampleSchemaConfigMessages,
   SamplingToolDefinition,
   SamplingToolCall,
   SamplingToolChoice,

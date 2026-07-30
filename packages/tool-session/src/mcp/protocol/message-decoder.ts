@@ -32,7 +32,7 @@ import type {
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
   SamplingToolCall,
-} from "../mcp-tool-types.ts";
+} from "@sweatpants/agent-sdk";
 
 // =============================================================================
 // DECODED TYPES

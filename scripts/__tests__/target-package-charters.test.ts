@@ -112,6 +112,45 @@ describe("target package charters", () => {
     ).toBe(false);
   });
 
+  it("keeps authored sampling contracts under Agent SDK ownership", () => {
+    const owned = [
+      "ToolSampleConfig",
+      "SampleToolsConfig",
+      "SampleSchemaConfig",
+      "SampleResultBase",
+      "SampleResultWithParsed",
+      "SampleResultWithToolCalls",
+      "SampleToolsResult",
+      "SampleSchemaResult",
+    ];
+    const declarations = new Map(owned.map((name) => [name, [] as string[]]));
+    const visit = (directory: string): void => {
+      for (const entry of readdirSync(directory)) {
+        const path = resolve(directory, entry);
+        if (statSync(path).isDirectory()) {
+          if (entry !== "dist" && entry !== "node_modules") visit(path);
+          continue;
+        }
+        if (!path.endsWith(".ts") || path.endsWith(".test.ts")) continue;
+        const source = readFileSync(path, "utf8");
+        for (const name of owned) {
+          if (new RegExp(`export (?:interface|type) ${name}\\b`).test(source)) {
+            declarations.get(name)?.push(path.replace(`${root}/`, ""));
+          }
+        }
+        expect(source, path).not.toMatch(/function toWorker(?:Sample|Tools|Schema)Config\b/);
+      }
+    };
+    visit(resolve(root, "packages"));
+    visit(resolve(root, "apps"));
+    for (const name of owned) {
+      expect(declarations.get(name), name).toEqual(["packages/agent-sdk/src/tool/types.ts"]);
+    }
+    expect(productionSource("tool-runtime-local")).not.toMatch(
+      /export (?:interface|type) WorkerSample(?:Config|Result)/,
+    );
+  });
+
   it("keeps authored service and repository ports Effection-native", () => {
     const contractFiles = [
       "packages/durable-execution/src/program-driver-contract.ts",
