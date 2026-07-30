@@ -28,7 +28,11 @@ const PUBLIC_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SEMVER_RE =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
 const ARCHIVE_FORMAT = "sweatpants.development-collection-archive.v1" as const;
-const boundedStringSchema = z.string().min(1).max(256).refine((value) => !hasControlCharacter(value));
+const boundedStringSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .refine((value) => !hasControlCharacter(value));
 const digestSchema = z.string().regex(SHA256_RE);
 const collectionFileSchema = z.strictObject({
   path: z.string().min(1).max(1024),
@@ -321,7 +325,9 @@ function verifyDevelopmentCollectionManifest(
       resourcePackageDigests,
     });
   }
-  const files = rawFiles.map((file) => Object.freeze({ ...file, path: normalizeRelativePath(file.path) }));
+  const files = rawFiles.map((file) =>
+    Object.freeze({ ...file, path: normalizeRelativePath(file.path) }),
+  );
   if (!isSorted(files.map((file) => file.path))) {
     fail("invalid_collection_manifest", "Collection files are not path-sorted");
   }

@@ -32,13 +32,15 @@ const continuationSchema = z.strictObject({
       toolName: z.string().min(1).max(512),
       sessionId: z.string().max(512).optional(),
     })
-    .transform((value): ToolExecutionRef => ({
-      runtimeId: value.runtimeId,
-      executionId: value.executionId,
-      callId: value.callId,
-      toolName: value.toolName,
-      ...(value.sessionId !== undefined ? { sessionId: value.sessionId } : {}),
-    })),
+    .transform(
+      (value): ToolExecutionRef => ({
+        runtimeId: value.runtimeId,
+        executionId: value.executionId,
+        callId: value.callId,
+        toolName: value.toolName,
+        ...(value.sessionId !== undefined ? { sessionId: value.sessionId } : {}),
+      }),
+    ),
   tool: z.string().max(512),
   elicitId: z.string().max(512),
 });

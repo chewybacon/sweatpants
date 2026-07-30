@@ -126,9 +126,26 @@ export class InMemoryDurableIdempotencyStore<T> implements DurableIdempotencySto
 export function parseDurableInvocationMeta(value: unknown): DurableInvocationMeta {
   const parsed = durableInvocationMetaSchema.safeParse(value);
   if (!parsed.success) {
-    throw new CrankError("invalid_mcp_request", "Invalid durable invocation metadata");
+    throw new CrankError("invalid_mcp_request", durableInvocationMetaFailure(parsed.error));
   }
   return parsed.data;
+}
+
+/** Callers depend on the specific diagnostic, so issues map back to named causes. */
+function durableInvocationMetaFailure(error: z.ZodError): string {
+  for (const issue of error.issues) {
+    const field = issue.path[0];
+    if (field === "format") {
+      return "Unsupported durable invocation metadata format";
+    }
+    if (field === "idempotencyKey" && issue.code === "custom") {
+      return "Idempotency key must be 1..256 UTF-8 bytes";
+    }
+    if (issue.code === "invalid_type" && issue.path.length === 0) {
+      return "Expected object";
+    }
+  }
+  return "Unknown or missing metadata field";
 }
 
 export function createMcpInventory(input: McpInventoryInput): McpInventoryGeneration {

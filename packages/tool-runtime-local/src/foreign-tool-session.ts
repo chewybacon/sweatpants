@@ -68,9 +68,7 @@ const sampleResponseSchema = z.union([
   z.strictObject({
     ...sampleBaseFields,
     parsed: z.json(),
-    parseError: z
-      .strictObject({ message: z.string(), rawText: z.string() })
-      .optional(),
+    parseError: z.strictObject({ message: z.string(), rawText: z.string() }).optional(),
   }),
   z.strictObject(sampleBaseFields),
 ]);

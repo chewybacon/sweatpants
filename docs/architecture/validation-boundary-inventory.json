@@ -2260,100 +2260,100 @@
     {
       "id": "SHAPE-021",
       "file": "packages/a2a/src/foreign-discovery.ts",
-      "line": 275,
+      "line": 273,
       "symbol": "deriveForeignA2AIdentity",
       "classification": "B",
       "authority": "owning ingress/parser deriveForeignA2AIdentity",
       "evidence": [
-        "packages/a2a/src/foreign-discovery.ts:275"
+        "packages/a2a/src/foreign-discovery.ts:273"
       ]
     },
     {
       "id": "SHAPE-022",
       "file": "packages/a2a/src/foreign-discovery.ts",
-      "line": 302,
+      "line": 300,
       "symbol": "selectInterface",
       "classification": "B",
       "authority": "owning ingress/parser selectInterface",
       "evidence": [
-        "packages/a2a/src/foreign-discovery.ts:302"
+        "packages/a2a/src/foreign-discovery.ts:300"
       ]
     },
     {
       "id": "SHAPE-023",
       "file": "packages/a2a/src/foreign-discovery.ts",
-      "line": 337,
+      "line": 335,
       "symbol": "selectSecurityRequirement",
       "classification": "B",
       "authority": "owning ingress/parser selectSecurityRequirement",
       "evidence": [
-        "packages/a2a/src/foreign-discovery.ts:337"
+        "packages/a2a/src/foreign-discovery.ts:335"
       ]
     },
     {
       "id": "SHAPE-024",
       "file": "packages/a2a/src/foreign-discovery.ts",
-      "line": 359,
+      "line": 357,
       "symbol": "extensionDeclarations",
       "classification": "B",
       "authority": "owning ingress/parser extensionDeclarations",
       "evidence": [
-        "packages/a2a/src/foreign-discovery.ts:359"
+        "packages/a2a/src/foreign-discovery.ts:357"
       ]
     },
     {
       "id": "SHAPE-025",
       "file": "packages/a2a/src/foreign-discovery.ts",
-      "line": 420,
+      "line": 418,
       "symbol": "parseDurableInvocationParams",
       "classification": "B",
       "authority": "owning ingress/parser parseDurableInvocationParams",
       "evidence": [
-        "packages/a2a/src/foreign-discovery.ts:420"
+        "packages/a2a/src/foreign-discovery.ts:418"
       ]
     },
     {
       "id": "SHAPE-026",
       "file": "packages/a2a/src/foreign-discovery.ts",
-      "line": 469,
+      "line": 467,
       "symbol": "requirePositive",
       "classification": "B",
       "authority": "owning ingress/parser requirePositive",
       "evidence": [
-        "packages/a2a/src/foreign-discovery.ts:469"
+        "packages/a2a/src/foreign-discovery.ts:467"
       ]
     },
     {
       "id": "SHAPE-027",
       "file": "packages/a2a/src/foreign-discovery.ts",
-      "line": 485,
+      "line": 483,
       "symbol": "record",
       "classification": "B",
       "authority": "owning ingress/parser record",
       "evidence": [
-        "packages/a2a/src/foreign-discovery.ts:485"
+        "packages/a2a/src/foreign-discovery.ts:483"
       ]
     },
     {
       "id": "SHAPE-028",
       "file": "packages/a2a/src/foreign-discovery.ts",
-      "line": 488,
+      "line": 486,
       "symbol": "nonempty",
       "classification": "B",
       "authority": "owning ingress/parser nonempty",
       "evidence": [
-        "packages/a2a/src/foreign-discovery.ts:488"
+        "packages/a2a/src/foreign-discovery.ts:486"
       ]
     },
     {
       "id": "SHAPE-029",
       "file": "packages/a2a/src/foreign-discovery.ts",
-      "line": 491,
+      "line": 489,
       "symbol": "exactKeys",
       "classification": "B",
       "authority": "owning ingress/parser exactKeys",
       "evidence": [
-        "packages/a2a/src/foreign-discovery.ts:491"
+        "packages/a2a/src/foreign-discovery.ts:489"
       ]
     },
     {
@@ -2370,23 +2370,23 @@
     {
       "id": "SHAPE-034",
       "file": "packages/a2a/src/foreign-validation.ts",
-      "line": 331,
+      "line": 332,
       "symbol": "normalizedLimits",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/a2a/src/foreign-validation.ts:331"
+        "packages/a2a/src/foreign-validation.ts:332"
       ]
     },
     {
       "id": "SHAPE-040",
       "file": "packages/a2a/src/foreign-validation.ts",
-      "line": 90,
+      "line": 91,
       "symbol": "parseForeignA2ASendResult",
       "classification": "B",
       "authority": "owning ingress/parser parseForeignA2ASendResult",
       "evidence": [
-        "packages/a2a/src/foreign-validation.ts:90"
+        "packages/a2a/src/foreign-validation.ts:91"
       ]
     },
     {
@@ -3888,89 +3888,89 @@
     {
       "id": "SHAPE-195",
       "file": "packages/cli/src/remote-development/collection.ts",
-      "line": 221,
+      "line": 225,
       "symbol": "decodeDevelopmentCollectionArchive",
       "classification": "B",
       "authority": "owning ingress/parser decodeDevelopmentCollectionArchive",
       "evidence": [
-        "packages/cli/src/remote-development/collection.ts:221"
+        "packages/cli/src/remote-development/collection.ts:225"
       ]
     },
     {
       "id": "SHAPE-197",
       "file": "packages/cli/src/remote-development/collection.ts",
-      "line": 379,
+      "line": 385,
       "symbol": "parseSemverMajor",
       "classification": "B",
       "authority": "owning ingress/parser parseSemverMajor",
       "evidence": [
-        "packages/cli/src/remote-development/collection.ts:379"
+        "packages/cli/src/remote-development/collection.ts:385"
       ]
     },
     {
       "id": "SHAPE-198",
       "file": "packages/cli/src/remote-development/collection.ts",
-      "line": 507,
+      "line": 513,
       "symbol": "walkSyntax",
       "classification": "R",
       "authority": "typed constructor or owning ingress for walkSyntax",
       "evidence": [
-        "packages/cli/src/remote-development/collection.ts:507"
+        "packages/cli/src/remote-development/collection.ts:513"
       ]
     },
     {
       "id": "SHAPE-199",
       "file": "packages/cli/src/remote-development/collection.ts",
-      "line": 525,
+      "line": 531,
       "symbol": "isSyntaxNode",
       "classification": "R",
       "authority": "typed constructor or owning ingress for isSyntaxNode",
       "evidence": [
-        "packages/cli/src/remote-development/collection.ts:525"
+        "packages/cli/src/remote-development/collection.ts:531"
       ]
     },
     {
       "id": "SHAPE-200",
       "file": "packages/cli/src/remote-development/collection.ts",
-      "line": 529,
+      "line": 535,
       "symbol": "literalString",
       "classification": "R",
       "authority": "typed constructor or owning ingress for literalString",
       "evidence": [
-        "packages/cli/src/remote-development/collection.ts:529"
+        "packages/cli/src/remote-development/collection.ts:535"
       ]
     },
     {
       "id": "SHAPE-202",
       "file": "packages/cli/src/remote-development/collection.ts",
-      "line": 548,
+      "line": 554,
       "symbol": "normalizeRelativePath",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/cli/src/remote-development/collection.ts:548"
+        "packages/cli/src/remote-development/collection.ts:554"
       ]
     },
     {
       "id": "SHAPE-204",
       "file": "packages/cli/src/remote-development/collection.ts",
-      "line": 575,
+      "line": 581,
       "symbol": "requireBounded",
       "classification": "R",
       "authority": "typed constructor or owning ingress for requireBounded",
       "evidence": [
-        "packages/cli/src/remote-development/collection.ts:575"
+        "packages/cli/src/remote-development/collection.ts:581"
       ]
     },
     {
       "id": "SHAPE-206",
       "file": "packages/cli/src/remote-development/collection.ts",
-      "line": 601,
+      "line": 607,
       "symbol": "isRecord",
       "classification": "B",
       "authority": "owning ingress/parser isRecord",
       "evidence": [
-        "packages/cli/src/remote-development/collection.ts:601"
+        "packages/cli/src/remote-development/collection.ts:607"
       ]
     },
     {
@@ -3998,133 +3998,122 @@
     {
       "id": "SHAPE-210",
       "file": "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts",
-      "line": 211,
+      "line": 215,
       "symbol": "verifyLocalProgramRequest",
       "classification": "S",
       "authority": "parsed input type accepted by verifyLocalProgramRequest",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:211"
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:215"
       ]
     },
     {
       "id": "SHAPE-212",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1194,
+      "line": 1195,
       "symbol": "foreignCallId",
       "classification": "B",
       "authority": "owning ingress/parser foreignCallId",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1194"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1195"
       ]
     },
     {
       "id": "SHAPE-213",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1204,
+      "line": 1205,
       "symbol": "foreignElicitId",
       "classification": "B",
       "authority": "owning ingress/parser foreignElicitId",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1204"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1205"
       ]
     },
     {
       "id": "SHAPE-214",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1214,
+      "line": 1215,
       "symbol": "modelSystemPromptText",
       "classification": "R",
       "authority": "typed constructor or owning ingress for modelSystemPromptText",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1214"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1215"
       ]
     },
     {
       "id": "SHAPE-215",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1224,
+      "line": 1225,
       "symbol": "toRuntimeMessage",
       "classification": "R",
       "authority": "typed constructor or owning ingress for toRuntimeMessage",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1224"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1225"
       ]
     },
     {
       "id": "SHAPE-216",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1287,
+      "line": 1288,
       "symbol": "parseRuntimeContentBlock",
       "classification": "B",
       "authority": "owning ingress/parser parseRuntimeContentBlock",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1287"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1288"
       ]
     },
     {
       "id": "SHAPE-217",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1336,
+      "line": 1337,
       "symbol": "toolCallArguments",
       "classification": "R",
       "authority": "typed constructor or owning ingress for toolCallArguments",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1336"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1337"
       ]
     },
     {
-      "id": "SHAPE-218",
+      "id": "SHAPE-452",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1348,
-      "symbol": "isUnknownRecord",
-      "classification": "B",
-      "authority": "owning ingress/parser isUnknownRecord",
-      "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1348"
-      ]
-    },
-    {
-      "id": "SHAPE-219",
-      "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1505,
+      "line": 1503,
       "symbol": "jsonRecord",
-      "classification": "B",
-      "authority": "owning ingress/parser jsonRecord",
+      "classification": "R",
+      "authority": "typed constructor or owning ingress for jsonRecord",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1505"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1503"
       ]
     },
     {
       "id": "SHAPE-220",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1515,
+      "line": 1514,
       "symbol": "schemaWithModelContext",
       "classification": "R",
       "authority": "typed constructor or owning ingress for schemaWithModelContext",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1515"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1514"
       ]
     },
     {
       "id": "SHAPE-221",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 247,
+      "line": 248,
       "symbol": "activateProgramDriverChatEngine",
       "classification": "R",
       "authority": "typed constructor or owning ingress for activateProgramDriverChatEngine",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:247"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:248"
       ]
     },
     {
       "id": "SHAPE-222",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 550,
+      "line": 551,
       "symbol": "isToolOwnedSampleRequest",
       "classification": "B",
       "authority": "owning ingress/parser isToolOwnedSampleRequest",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:550"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:551"
       ]
     },
     {
@@ -4194,102 +4183,91 @@
       ]
     },
     {
+      "id": "SHAPE-240",
+      "file": "packages/durable-chat-runtime/src/interrupts/registry.ts",
+      "line": 102,
+      "symbol": "verifyJsonSchemaSubset",
+      "classification": "S",
+      "authority": "parsed input type accepted by verifyJsonSchemaSubset",
+      "evidence": [
+        "packages/durable-chat-runtime/src/interrupts/registry.ts:102"
+      ]
+    },
+    {
       "id": "SHAPE-236",
       "file": "packages/durable-chat-runtime/src/interrupts/registry.ts",
-      "line": 157,
+      "line": 166,
       "symbol": "registerInterruptsFromRunFinished",
       "classification": "R",
       "authority": "typed constructor or owning ingress for registerInterruptsFromRunFinished",
       "evidence": [
-        "packages/durable-chat-runtime/src/interrupts/registry.ts:157"
+        "packages/durable-chat-runtime/src/interrupts/registry.ts:166"
       ]
     },
     {
       "id": "SHAPE-237",
       "file": "packages/durable-chat-runtime/src/interrupts/registry.ts",
-      "line": 53,
+      "line": 57,
       "symbol": "canonicalJson",
       "classification": "R",
       "authority": "typed constructor or owning ingress for canonicalJson",
       "evidence": [
-        "packages/durable-chat-runtime/src/interrupts/registry.ts:53"
+        "packages/durable-chat-runtime/src/interrupts/registry.ts:57"
       ]
     },
     {
       "id": "SHAPE-238",
       "file": "packages/durable-chat-runtime/src/interrupts/registry.ts",
-      "line": 71,
+      "line": 75,
       "symbol": "asRecord",
       "classification": "B",
       "authority": "owning ingress/parser asRecord",
       "evidence": [
-        "packages/durable-chat-runtime/src/interrupts/registry.ts:71"
+        "packages/durable-chat-runtime/src/interrupts/registry.ts:75"
       ]
     },
     {
       "id": "SHAPE-239",
       "file": "packages/durable-chat-runtime/src/interrupts/registry.ts",
-      "line": 77,
+      "line": 81,
       "symbol": "schemaTypeMatches",
       "classification": "R",
       "authority": "typed constructor or owning ingress for schemaTypeMatches",
       "evidence": [
-        "packages/durable-chat-runtime/src/interrupts/registry.ts:77"
-      ]
-    },
-    {
-      "id": "SHAPE-240",
-      "file": "packages/durable-chat-runtime/src/interrupts/registry.ts",
-      "line": 98,
-      "symbol": "verifyJsonSchemaSubset",
-      "classification": "S",
-      "authority": "parsed input type accepted by verifyJsonSchemaSubset",
-      "evidence": [
-        "packages/durable-chat-runtime/src/interrupts/registry.ts:98"
-      ]
-    },
-    {
-      "id": "SHAPE-242",
-      "file": "packages/durable-chat-runtime/src/projection.ts",
-      "line": 20,
-      "symbol": "isRecord",
-      "classification": "B",
-      "authority": "owning ingress/parser isRecord",
-      "evidence": [
-        "packages/durable-chat-runtime/src/projection.ts:20"
+        "packages/durable-chat-runtime/src/interrupts/registry.ts:81"
       ]
     },
     {
       "id": "SHAPE-243",
       "file": "packages/durable-chat-runtime/src/projection.ts",
-      "line": 30,
+      "line": 27,
       "symbol": "sanitizePublicMetadata",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sanitizePublicMetadata",
       "evidence": [
-        "packages/durable-chat-runtime/src/projection.ts:30"
+        "packages/durable-chat-runtime/src/projection.ts:27"
       ]
     },
     {
       "id": "SHAPE-244",
       "file": "packages/durable-chat-runtime/src/projection.ts",
-      "line": 42,
+      "line": 39,
       "symbol": "withPublicMetadata",
       "classification": "R",
       "authority": "typed constructor or owning ingress for withPublicMetadata",
       "evidence": [
-        "packages/durable-chat-runtime/src/projection.ts:42"
+        "packages/durable-chat-runtime/src/projection.ts:39"
       ]
     },
     {
       "id": "SHAPE-245",
       "file": "packages/durable-chat-runtime/src/projection.ts",
-      "line": 85,
+      "line": 82,
       "symbol": "recordToElicit",
       "classification": "B",
       "authority": "owning ingress/parser recordToElicit",
       "evidence": [
-        "packages/durable-chat-runtime/src/projection.ts:85"
+        "packages/durable-chat-runtime/src/projection.ts:82"
       ]
     },
     {
@@ -5096,17 +5074,6 @@
       ]
     },
     {
-      "id": "SHAPE-345",
-      "file": "packages/platform-acceptance/src/product/ndjson.ts",
-      "line": 24,
-      "symbol": "<callback@24>",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for <callback@24>",
-      "evidence": [
-        "packages/platform-acceptance/src/product/ndjson.ts:24"
-      ]
-    },
-    {
       "id": "SHAPE-346",
       "file": "packages/react-chat/acceptance/react-scenario.ts",
       "line": 75,
@@ -5142,23 +5109,12 @@
     {
       "id": "SHAPE-349",
       "file": "packages/react-chat/src/useChatSession.ts",
-      "line": 293,
+      "line": 304,
       "symbol": "useChatSession",
       "classification": "R",
       "authority": "typed constructor or owning ingress for useChatSession",
       "evidence": [
-        "packages/react-chat/src/useChatSession.ts:293"
-      ]
-    },
-    {
-      "id": "SHAPE-350",
-      "file": "packages/react-chat/src/useChatSession.ts",
-      "line": 324,
-      "symbol": "<callback@324>",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for <callback@324>",
-      "evidence": [
-        "packages/react-chat/src/useChatSession.ts:324"
+        "packages/react-chat/src/useChatSession.ts:304"
       ]
     },
     {
@@ -5186,23 +5142,23 @@
     {
       "id": "SHAPE-354",
       "file": "packages/test-rig/src/history.ts",
-      "line": 34,
+      "line": 37,
       "symbol": "args",
       "classification": "R",
       "authority": "typed constructor or owning ingress for args",
       "evidence": [
-        "packages/test-rig/src/history.ts:34"
+        "packages/test-rig/src/history.ts:37"
       ]
     },
     {
       "id": "SHAPE-355",
       "file": "packages/test-rig/src/history.ts",
-      "line": 50,
+      "line": 53,
       "symbol": "normalizeResponsesHistory",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/test-rig/src/history.ts:50"
+        "packages/test-rig/src/history.ts:53"
       ]
     },
     {
@@ -5318,89 +5274,89 @@
     {
       "id": "SHAPE-366",
       "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
-      "line": 160,
+      "line": 155,
       "symbol": "parseMessage",
       "classification": "B",
       "authority": "owning ingress/parser parseMessage",
       "evidence": [
-        "packages/tool-runtime-agentcore/src/durable-protocol.ts:160"
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:155"
       ]
     },
     {
       "id": "SHAPE-367",
       "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
-      "line": 302,
+      "line": 300,
       "symbol": "assertRuntimePayload",
       "classification": "S",
       "authority": "parsed input type accepted by assertRuntimePayload",
       "evidence": [
-        "packages/tool-runtime-agentcore/src/durable-protocol.ts:302"
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:300"
       ]
     },
     {
       "id": "SHAPE-368",
       "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
-      "line": 458,
+      "line": 456,
       "symbol": "record",
       "classification": "B",
       "authority": "owning ingress/parser record",
       "evidence": [
-        "packages/tool-runtime-agentcore/src/durable-protocol.ts:458"
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:456"
       ]
     },
     {
       "id": "SHAPE-369",
       "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
-      "line": 461,
+      "line": 459,
       "symbol": "replayPosition",
       "classification": "B",
       "authority": "owning ingress/parser replayPosition",
       "evidence": [
-        "packages/tool-runtime-agentcore/src/durable-protocol.ts:461"
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:459"
       ]
     },
     {
       "id": "SHAPE-370",
       "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
-      "line": 464,
+      "line": 462,
       "symbol": "integer",
       "classification": "B",
       "authority": "owning ingress/parser integer",
       "evidence": [
-        "packages/tool-runtime-agentcore/src/durable-protocol.ts:464"
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:462"
       ]
     },
     {
       "id": "SHAPE-371",
       "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
-      "line": 467,
+      "line": 465,
       "symbol": "nonempty",
       "classification": "B",
       "authority": "owning ingress/parser nonempty",
       "evidence": [
-        "packages/tool-runtime-agentcore/src/durable-protocol.ts:467"
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:465"
       ]
     },
     {
       "id": "SHAPE-372",
       "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
-      "line": 478,
+      "line": 476,
       "symbol": "digest",
       "classification": "B",
       "authority": "owning ingress/parser digest",
       "evidence": [
-        "packages/tool-runtime-agentcore/src/durable-protocol.ts:478"
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:476"
       ]
     },
     {
       "id": "SHAPE-373",
       "file": "packages/tool-runtime-agentcore/src/durable-protocol.ts",
-      "line": 481,
+      "line": 479,
       "symbol": "exactKeys",
       "classification": "B",
       "authority": "owning ingress/parser exactKeys",
       "evidence": [
-        "packages/tool-runtime-agentcore/src/durable-protocol.ts:481"
+        "packages/tool-runtime-agentcore/src/durable-protocol.ts:479"
       ]
     },
     {
@@ -5461,23 +5417,23 @@
     {
       "id": "SHAPE-383",
       "file": "packages/tool-runtime-local/src/foreign-tool-session.ts",
-      "line": 406,
+      "line": 404,
       "symbol": "decodeSampleResponse",
       "classification": "B",
       "authority": "owning ingress/parser decodeSampleResponse",
       "evidence": [
-        "packages/tool-runtime-local/src/foreign-tool-session.ts:406"
+        "packages/tool-runtime-local/src/foreign-tool-session.ts:404"
       ]
     },
     {
       "id": "SHAPE-387",
       "file": "packages/tool-runtime-local/src/foreign-tool-session.ts",
-      "line": 456,
+      "line": 454,
       "symbol": "stripUndefined",
       "classification": "B",
       "authority": "owning ingress/parser stripUndefined",
       "evidence": [
-        "packages/tool-runtime-local/src/foreign-tool-session.ts:456"
+        "packages/tool-runtime-local/src/foreign-tool-session.ts:454"
       ]
     },
     {
@@ -5659,12 +5615,12 @@
     {
       "id": "SHAPE-409",
       "file": "packages/tool-session/src/mcp/durable-invocation.ts",
-      "line": 210,
+      "line": 227,
       "symbol": "requireString",
       "classification": "R",
       "authority": "typed constructor or owning ingress for requireString",
       "evidence": [
-        "packages/tool-session/src/mcp/durable-invocation.ts:210"
+        "packages/tool-session/src/mcp/durable-invocation.ts:227"
       ]
     },
     {
@@ -5857,23 +5813,23 @@
     {
       "id": "SHAPE-440",
       "file": "packages/workspace-runtime/src/index.ts",
-      "line": 1128,
+      "line": 1131,
       "symbol": "text",
       "classification": "R",
       "authority": "typed constructor or owning ingress for text",
       "evidence": [
-        "packages/workspace-runtime/src/index.ts:1128"
+        "packages/workspace-runtime/src/index.ts:1131"
       ]
     },
     {
       "id": "SHAPE-444",
       "file": "packages/workspace-runtime/src/index.ts",
-      "line": 897,
+      "line": 900,
       "symbol": "normalizeScripts",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/workspace-runtime/src/index.ts:897"
+        "packages/workspace-runtime/src/index.ts:900"
       ]
     }
   ]

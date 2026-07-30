@@ -7,6 +7,7 @@ import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
 
 import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
 import { resource, type Operation, type Stream } from "effection";
+import { z } from "zod";
 import { encodeElicitContext } from "@sweatpants/tool-session/elicit-context";
 import {
   type DurableJournalAuthorityService,
@@ -1336,18 +1337,15 @@ function parseRuntimeContentBlock(value: Json): ContentBlock | undefined {
 function toolCallArguments(value: unknown): Record<string, unknown> {
   if (typeof value === "string") {
     try {
-      const parsed: unknown = JSON.parse(value);
-      return isUnknownRecord(parsed) ? parsed : {};
+      return unknownRecordSchema.safeParse(JSON.parse(value)).data ?? {};
     } catch {
       return {};
     }
   }
-  return isUnknownRecord(value) ? value : {};
+  return unknownRecordSchema.safeParse(value).data ?? {};
 }
 
-function isUnknownRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const unknownRecordSchema = z.record(z.string(), z.unknown());
 
 function snapshotAssistantContent(content: AssistantMessage["content"]): Json[] {
   return content.map((block) => {
@@ -1503,6 +1501,7 @@ function durableToolInput(call: ChatCall): Json {
 }
 
 function jsonRecord(value: Json | undefined): Record<string, Json> | undefined {
+  // Narrowing the already-parsed `Json` union is the compiler's job, not a parser's.
   return value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
     ? value
     : undefined;

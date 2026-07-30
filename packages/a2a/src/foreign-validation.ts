@@ -53,8 +53,9 @@ const partSchema = z
   })
   .refine(
     (value) =>
-      ["text", "raw", "url", "data"].filter((key) => key in value && value[key as "text"] !== undefined)
-        .length === 1,
+      ["text", "raw", "url", "data"].filter(
+        (key) => key in value && value[key as "text"] !== undefined,
+      ).length === 1,
   );
 const artifactSchema = z.strictObject({
   artifactId: identitySchema,

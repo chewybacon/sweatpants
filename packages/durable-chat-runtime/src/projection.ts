@@ -17,9 +17,6 @@ import type {
   ChatSessionStreamEvent as ChatStreamEvent,
 } from "@sweatpants/chat-core";
 import type { OpenInterruptRecord } from "./interrupts/index.ts";
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 // =============================================================================
 // PUBLIC METADATA SANITIZATION
@@ -97,7 +94,7 @@ export function recordToElicit(record: OpenInterruptRecord): ElicitRequestStream
         ? String(record.publicMetadata["sweatpants/key"])
         : record.interruptId,
     message: record.message ?? "Input required",
-    schema: record.responseSchema && isRecord(record.responseSchema) ? record.responseSchema : {},
+    schema: record.responseSchema ?? {},
   };
 }
 
@@ -109,9 +106,7 @@ export function publicInterruptsFromRecords(records: OpenInterruptRecord[]) {
       reason: record.reason,
       ...(record.message ? { message: record.message } : {}),
       ...(record.toolCallId ? { toolCallId: record.toolCallId } : {}),
-      ...(record.responseSchema && isRecord(record.responseSchema)
-        ? { responseSchema: record.responseSchema }
-        : {}),
+      ...(record.responseSchema ? { responseSchema: record.responseSchema } : {}),
       ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     };

@@ -16,9 +16,7 @@ const durableReferenceSchema = z
     id: nonemptySchema,
     byteLength: z.number().int().nonnegative().safe().optional(),
     version: z.string().min(1).max(256).optional(),
-    integrity: z
-      .strictObject({ algorithm: nonemptySchema, value: nonemptySchema })
-      .optional(),
+    integrity: z.strictObject({ algorithm: nonemptySchema, value: nonemptySchema }).optional(),
   })
   .transform((value) => ({
     id: value.id,

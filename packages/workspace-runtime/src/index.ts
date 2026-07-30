@@ -877,7 +877,10 @@ export function parseWorkspaceResponse(value: unknown): WorkspaceResponse {
   const result = workspaceResponseSchema.safeParse(value);
   if (!result.success) {
     if (result.error.issues.some((issue) => issue.path[0] === "entries")) {
-      throw new CrankError("invalid_mcp_request", "workspace entries must be a bounded string list");
+      throw new CrankError(
+        "invalid_mcp_request",
+        "workspace entries must be a bounded string list",
+      );
     }
     throw new CrankError("invalid_mcp_request", "workspace response shape is invalid");
   }

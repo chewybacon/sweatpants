@@ -8,6 +8,8 @@ export const MODEL_CONTEXT_SCHEMA_KEY = "x-elicit-context";
 export function getElicitContext<T extends Record<string, unknown> = Record<string, unknown>>(
   req: ElicitRequest,
 ): T {
-  const parsed = z.record(z.string(), z.json()).safeParse(req.schema.json[MODEL_CONTEXT_SCHEMA_KEY]);
+  const parsed = z
+    .record(z.string(), z.json())
+    .safeParse(req.schema.json[MODEL_CONTEXT_SCHEMA_KEY]);
   return (parsed.success ? parsed.data : {}) as T;
 }

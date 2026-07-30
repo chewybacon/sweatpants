@@ -195,24 +195,23 @@ function isManualShapeInspection(node: ts.Node): boolean {
     if (
       ts.isPropertyAccessExpression(node.expression) &&
       node.expression.expression.getText() === "Object" &&
-      ["keys", "entries", "values", "getPrototypeOf", "hasOwn"].includes(
-        node.expression.name.text,
-      )
-    ) return true;
+      ["keys", "entries", "values", "getPrototypeOf", "hasOwn"].includes(node.expression.name.text)
+    )
+      return true;
   }
   if (ts.isTypeOfExpression(node) && ts.isBinaryExpression(node.parent)) {
     const other = node.parent.left === node ? node.parent.right : node.parent.left;
-    if (
-      ts.isStringLiteral(other) &&
-      ["object", "string", "number", "boolean"].includes(other.text)
-    ) return true;
+    if (ts.isStringLiteral(other) && ["object", "string", "number", "boolean"].includes(other.text))
+      return true;
   }
   if (
     ts.isBinaryExpression(node) &&
     (node.operatorToken.kind === ts.SyntaxKind.InKeyword ||
       (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
-        (node.left.kind === ts.SyntaxKind.NullKeyword || node.right.kind === ts.SyntaxKind.NullKeyword)))
-  ) return true;
+        (node.left.kind === ts.SyntaxKind.NullKeyword ||
+          node.right.kind === ts.SyntaxKind.NullKeyword)))
+  )
+    return true;
   return false;
 }
 
@@ -229,9 +228,18 @@ function ownerOf(node: ts.Node, sourceFile: ts.SourceFile): { node: ts.Node; sym
       ts.isFunctionExpression(current)
     ) {
       const direct = nameOf(current);
-      const variable = ts.isVariableDeclaration(current.parent) ? nameOf(current.parent) : undefined;
+      const variable = ts.isVariableDeclaration(current.parent)
+        ? nameOf(current.parent)
+        : undefined;
       const property = ts.isPropertyAssignment(current.parent) ? nameOf(current.parent) : undefined;
-      return { node: current, symbol: direct ?? variable ?? property ?? `<callback@${sourceFile.getLineAndCharacterOfPosition(current.getStart(sourceFile)).line + 1}>` };
+      return {
+        node: current,
+        symbol:
+          direct ??
+          variable ??
+          property ??
+          `<callback@${sourceFile.getLineAndCharacterOfPosition(current.getStart(sourceFile)).line + 1}>`,
+      };
     }
     current = current.parent;
   }
@@ -239,7 +247,9 @@ function ownerOf(node: ts.Node, sourceFile: ts.SourceFile): { node: ts.Node; sym
 }
 
 /** Inventories shape-inspection owners, not individual expressions. */
-export function scanManualShapeOwners(files = sourceFiles(resolve(root, "packages"))): ScannedDeclaration[] {
+export function scanManualShapeOwners(
+  files = sourceFiles(resolve(root, "packages")),
+): ScannedDeclaration[] {
   const owners = new Map<string, ScannedDeclaration>();
   for (const file of files) {
     const sourceFile = ts.createSourceFile(
@@ -258,20 +268,33 @@ export function scanManualShapeOwners(files = sourceFiles(resolve(root, "package
         // remain in scope regardless of their function name.
         if (
           owner.symbol !== "<module>" &&
-          !/\b(?:unknown|Json(?:Value)?|Record\s*<\s*string\s*,\s*unknown\s*>|any)\b/u.test(ownerText) &&
-          !/(?:isRecord|parse|decode|normaliz|provider|payload|response|request|snapshot|checkpoint)/iu.test(owner.symbol)
-        ) return;
-        const line = sourceFile.getLineAndCharacterOfPosition(owner.node.getStart(sourceFile)).line + 1;
+          !/\b(?:unknown|Json(?:Value)?|Record\s*<\s*string\s*,\s*unknown\s*>|any)\b/u.test(
+            ownerText,
+          ) &&
+          !/(?:isRecord|parse|decode|normaliz|provider|payload|response|request|snapshot|checkpoint)/iu.test(
+            owner.symbol,
+          )
+        )
+          return;
+        const line =
+          sourceFile.getLineAndCharacterOfPosition(owner.node.getStart(sourceFile)).line + 1;
         const relative = file.startsWith(root) ? file.slice(root.length + 1) : file;
         const key = `${relative}:${line}:${owner.symbol}`;
-        owners.set(key, { file: relative, line, symbol: owner.symbol, declarationKind: "function" });
+        owners.set(key, {
+          file: relative,
+          line,
+          symbol: owner.symbol,
+          declarationKind: "function",
+        });
       }
       ts.forEachChild(node, visit);
     };
     visit(sourceFile);
   }
   return [...owners.values()].sort((left, right) =>
-    `${left.file}:${left.line}:${left.symbol}`.localeCompare(`${right.file}:${right.line}:${right.symbol}`),
+    `${left.file}:${left.line}:${left.symbol}`.localeCompare(
+      `${right.file}:${right.line}:${right.symbol}`,
+    ),
   );
 }
 
@@ -484,15 +507,21 @@ export function assertInventory(value: unknown): asserts value is ValidationBoun
       typeof owner["line"] !== "number" ||
       typeof owner["symbol"] !== "string" ||
       !["B", "R", "S", "G", "C"].includes(String(owner["classification"])) ||
-      !isStringArray(owner["evidence"]) || owner["evidence"].length === 0
-    ) throw new Error("Manual shape owner has invalid required fields");
-    if (ownerIds.has(owner["id"])) throw new Error(`Duplicate shape owner id ${String(owner["id"])}`);
+      !isStringArray(owner["evidence"]) ||
+      owner["evidence"].length === 0
+    )
+      throw new Error("Manual shape owner has invalid required fields");
+    if (ownerIds.has(owner["id"]))
+      throw new Error(`Duplicate shape owner id ${String(owner["id"])}`);
     ownerIds.add(owner["id"] as string);
     const locator = `${String(owner["file"])}:${String(owner["line"])}:${String(owner["symbol"])}`;
     if (ownerLocators.has(locator)) throw new Error(`Duplicate shape owner ${locator}`);
     ownerLocators.add(locator);
     const classification = owner["classification"];
-    if (["B", "R", "S"].includes(String(classification)) && typeof owner["authority"] !== "string") {
+    if (
+      ["B", "R", "S"].includes(String(classification)) &&
+      typeof owner["authority"] !== "string"
+    ) {
       throw new Error(`Shape owner ${String(owner["id"])} needs authority evidence`);
     }
     if (["G", "C"].includes(String(classification)) && typeof owner["rationale"] !== "string") {
