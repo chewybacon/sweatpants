@@ -4,6 +4,9 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 /** Portable, canonical JSON accepted at persistence and transport boundaries. */
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
+/** A JSON value known to be keyed, such as a JSON Schema document. */
+export type JsonObject = { [key: string]: Json };
+
 /** Structural validation failure with no durable-domain policy attached. */
 export class CanonicalJsonError extends TypeError {
   constructor(
@@ -72,6 +75,19 @@ export function sortStrings(
     result.splice(index, 0, value);
   }
   return result;
+}
+
+/**
+ * Parses unknown input into canonical JSON that is known to be keyed, such as a
+ * JSON Schema document. This is the single containment point for callers whose
+ * domain guarantees an object, so they need no downstream narrowing.
+ */
+export function assertJsonObject(value: unknown, path = "$"): JsonObject {
+  const json = assertJson(value, path);
+  if (json === null || typeof json !== "object" || Array.isArray(json)) {
+    throw invalid(path, "expected a keyed JSON object");
+  }
+  return json;
 }
 
 /**

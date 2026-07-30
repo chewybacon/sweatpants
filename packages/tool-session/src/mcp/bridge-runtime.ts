@@ -20,6 +20,7 @@
  * @packageDocumentation
  */
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { JsonObject } from "@sweatpants/foundation";
 import type { Json } from "@sweatpants/foundation";
 import {
   type Operation,
@@ -253,7 +254,7 @@ export interface BridgeSampleOptions {
   maxTokens?: number;
   tools?: SamplingToolDefinition[];
   toolChoice?: SamplingToolChoice;
-  schema?: Record<string, unknown>;
+  schema?: JsonObject;
 }
 
 /**

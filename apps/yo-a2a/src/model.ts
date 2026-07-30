@@ -107,12 +107,13 @@ function toProviderTool(value: Json): Tool {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Authored model tool inventory is invalid");
   }
+  const inputSchema = value["inputSchema"];
   return {
     name: providerToolName(String(value["name"])),
     description: String(value["description"] ?? value["name"]),
     parameters:
-      value["inputSchema"] && typeof value["inputSchema"] === "object"
-        ? (value["inputSchema"] as Record<string, unknown>)
+      inputSchema !== null && typeof inputSchema === "object" && !Array.isArray(inputSchema)
+        ? inputSchema
         : {},
   };
 }

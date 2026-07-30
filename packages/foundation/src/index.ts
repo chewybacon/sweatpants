@@ -1,6 +1,7 @@
 export {
   CanonicalJsonError,
   assertJson,
+  assertJsonObject,
   canonicalJson,
   canonicalSnapshot,
   compareUnicodeCodePoints,
@@ -9,6 +10,7 @@ export {
   sortStrings,
   stableOpaqueId,
   type Json,
+  type JsonObject,
 } from "./json.ts";
 export * from "./port.ts";
 

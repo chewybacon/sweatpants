@@ -363,6 +363,9 @@ importers:
       '@sweatpants/durable-chat-runtime':
         specifier: workspace:*
         version: link:../../packages/durable-chat-runtime
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../../packages/foundation
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../../packages/model-provider-pi-ai
@@ -1563,6 +1566,12 @@ importers:
         specifier: 'catalog:'
         version: 4.1.13
     devDependencies:
+      '@sweatpants/agent-sdk':
+        specifier: workspace:*
+        version: link:../agent-sdk
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../tool-session
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config

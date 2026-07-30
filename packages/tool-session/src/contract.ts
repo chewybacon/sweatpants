@@ -26,7 +26,7 @@
  * @packageDocumentation
  */
 import type { Operation, Stream } from "effection";
-import type { Json } from "@sweatpants/foundation";
+import type { Json, JsonObject } from "@sweatpants/foundation";
 import type {
   ElicitsMap,
   LogLevel,
@@ -165,8 +165,8 @@ export interface SampleRequestEvent extends ToolSessionEventBase {
   tools?: SamplingToolDefinition[];
   /** How the model should choose tools */
   toolChoice?: SamplingToolChoice;
-  /** JSON Schema for structured output (converted from Zod) */
-  schema?: Record<string, unknown>;
+  /** JSON Schema projection for structured output. */
+  schema?: JsonObject;
 }
 
 /**
@@ -476,8 +476,8 @@ export interface ToolSessionSamplingOptions {
   tools?: SamplingToolDefinition[];
   /** How the model should choose tools */
   toolChoice?: SamplingToolChoice;
-  /** JSON Schema for structured output */
-  schema?: Record<string, unknown>;
+  /** JSON Schema projection for structured output. */
+  schema?: JsonObject;
 }
 
 // =============================================================================

@@ -1,4 +1,5 @@
 import { createContext, type Operation } from "effection";
+import type { JsonObject } from "@sweatpants/foundation";
 
 // -----------------------------------------------------------------------------
 // Tool inventory contracts
@@ -7,7 +8,8 @@ import { createContext, type Operation } from "effection";
 export interface ToolDefinition {
   name: string;
   description: string;
-  parameters: Record<string, unknown>;
+  /** Portable JSON Schema projection, computed once at authoring. */
+  parameters: JsonObject;
   metadata?: Record<string, unknown>;
 }
 
@@ -34,8 +36,8 @@ export type ToolExposurePhase = "outer-chat" | "sample";
 export interface SamplingToolDefinitionLike {
   name: string;
   description?: string;
-  inputSchema?: Record<string, unknown>;
-  parameters?: Record<string, unknown>;
+  inputSchema?: JsonObject;
+  parameters?: JsonObject;
 }
 
 export interface ToolExposureRequest {

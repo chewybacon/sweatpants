@@ -1,11 +1,13 @@
 import { type Operation, type Stream } from "effection";
+import type { JsonObject } from "@sweatpants/foundation";
 import type { Json } from "@sweatpants/foundation";
 import { definePort } from "@sweatpants/foundation/port";
 
 export interface ToolDefinition {
   name: string;
   description: string;
-  parameters: Record<string, unknown>;
+  /** Portable JSON Schema projection, computed once at authoring. */
+  parameters: JsonObject;
   metadata?: Record<string, unknown>;
 }
 export interface ToolCapabilities {
@@ -93,7 +95,7 @@ export type ToolExecutionEvent =
       modelPreferences?: unknown;
       tools?: unknown[];
       toolChoice?: unknown;
-      schema?: Record<string, unknown>;
+      schema?: JsonObject;
     }
   | { type: "sample_response_queued"; lsn?: number; timestamp?: number }
   | { type: "result"; lsn?: number; timestamp?: number; result: unknown }

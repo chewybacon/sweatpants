@@ -1,5 +1,7 @@
 import type { Operation } from "effection";
 import type { Message } from "@sweatpants/chat-core";
+import type { JsonObject } from "@sweatpants/foundation";
+import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
 import type {
   ExtendedMessage,
   SamplingToolCall,
@@ -28,7 +30,7 @@ interface SamplingOptions {
   maxTokens?: number;
   tools?: SamplingToolDefinition[];
   toolChoice?: "auto" | "required" | "none";
-  schema?: Record<string, unknown>;
+  schema?: JsonObject;
 }
 
 type ProviderAssistantToolCall = NonNullable<Message["tool_calls"]>[number];
@@ -93,10 +95,8 @@ function samplingTools(tools: SamplingToolDefinition[] | undefined): ModelTool[]
   return tools?.map((tool) => ({
     name: tool.name,
     description: tool.description ?? "",
-    parameters:
-      typeof tool.inputSchema === "object" && tool.inputSchema !== null
-        ? (tool.inputSchema as Record<string, unknown>)
-        : { type: "object", properties: {}, required: [] },
+    // Sampling tools are authored at call time: this is their projection point.
+    parameters: toToolParameterJsonSchema(tool.inputSchema),
   }));
 }
 

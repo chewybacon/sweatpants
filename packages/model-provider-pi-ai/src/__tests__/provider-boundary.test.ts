@@ -1,6 +1,5 @@
 import { run, type Operation } from "effection";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import { createPiAiRuntime } from "../runtime/pi-ai.ts";
 import type { AssistantMessage, Context, Model } from "../runtime/types.ts";
 
@@ -67,18 +66,21 @@ beforeEach(() => {
 });
 
 describe("pi-ai provider boundary normalization", () => {
-  it("converts Zod tool schemas to clone-safe JSON Schema before calling pi-ai", async () => {
+  it("transports the authored tool projection without re-deriving it", async () => {
     const runtime = createPiAiRuntime();
+    // Callers hand the provider the projection authored upstream. The provider
+    // owns transport, not schema derivation.
     const context: Context = {
       messages: [{ role: "user", content: "Book a flight from NYC to LA" }],
       tools: [
         {
           name: "book_flight",
           description: "Book a flight",
-          parameters: z.object({
-            origin: z.string(),
-            destination: z.string(),
-          }) as unknown as Record<string, unknown>,
+          parameters: {
+            type: "object",
+            properties: { origin: { type: "string" }, destination: { type: "string" } },
+            required: ["origin", "destination"],
+          },
         },
       ],
     };
@@ -105,7 +107,7 @@ describe("pi-ai provider boundary normalization", () => {
     expect(() => structuredClone({ tools: piContext.tools })).not.toThrow();
   });
 
-  it("converts Zod response schemas to clone-safe __schema__ JSON Schema before calling pi-ai", async () => {
+  it("transports the authored response projection as the __schema__ tool", async () => {
     const runtime = createPiAiRuntime();
 
     await run(function* () {
@@ -118,7 +120,11 @@ describe("pi-ai provider boundary normalization", () => {
           responseFormat: {
             type: "json_schema",
             name: "booking_result",
-            schema: z.object({ confirmation: z.string() }) as unknown as Record<string, unknown>,
+            schema: {
+              type: "object",
+              properties: { confirmation: { type: "string" } },
+              required: ["confirmation"],
+            },
           },
         },
       );
