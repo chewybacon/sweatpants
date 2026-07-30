@@ -22,8 +22,13 @@ import type {
   ToolSessionEvent,
   ToolSessionOptions,
 } from "@sweatpants/tool-session";
-import type { SamplesMap, ToolDefinition } from "@sweatpants/agent-sdk";
-import type { WireElicitResult, WireSampleResult, ElicitsMap } from "@sweatpants/tool-session";
+import type {
+  ElicitsMap,
+  SamplesMap,
+  ToolDefinition,
+  WireElicitResult,
+  WireSampleResult,
+} from "@sweatpants/agent-sdk";
 import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import { createBridgeHost, type ElicitId, type ElicitResponse } from "@sweatpants/tool-session/mcp";
 import { createToolSessionEventLog, isTerminalToolSessionStatus } from "@sweatpants/tool-session";

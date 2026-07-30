@@ -28,26 +28,13 @@
 // =============================================================================
 
 export type {
-  // MCP-specific worker types
+  // Worker initialization
   McpWorkerInitData,
-  McpWorkerRequest,
-  McpWorkerResponse,
-  McpWorkerResult,
-  McpProgressRequest,
-  McpLogRequest,
-  McpSampleRequest,
-  McpElicitRequest,
-  McpHostProgress,
 
   // Tool registry for workers
   WorkerToolRegistry,
   WorkerTool,
   WorkerToolContext,
-
-  // Sample config types
-  WorkerSampleConfig,
-  WorkerSampleToolsConfig,
-  WorkerSampleSchemaConfig,
 } from "./worker-types.ts";
 
 // =============================================================================

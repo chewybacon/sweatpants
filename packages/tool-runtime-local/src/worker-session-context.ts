@@ -5,12 +5,8 @@
  */
 
 import { createContext, type Operation, type Queue } from "effection";
-import type { WireElicitResult } from "@sweatpants/tool-session";
-import type {
-  ToolSessionEvent,
-  ToolSessionStatus,
-  WireSampleResult,
-} from "@sweatpants/tool-session";
+import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
+import type { ToolSessionEvent, ToolSessionStatus } from "@sweatpants/tool-session";
 
 export interface WorkerSessionState {
   /** Pending elicit channels, keyed by elicitId */

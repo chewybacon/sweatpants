@@ -41,28 +41,15 @@ import type { Message, ExtendedMessage } from "../messages.ts";
 import type {
   McpToolContextWithElicits,
   McpToolLimits,
-  McpToolSampleConfig,
   ElicitId,
   ElicitRequest,
   ElicitsMap,
-  SampleResultBase,
-  SampleResultWithParsed,
-  SampleResultWithToolCalls,
-  SamplingToolDefinition,
-  SamplingToolChoice,
   WireElicitResult,
   ElicitExchange,
   LogLevel,
-  SampleToolsConfig,
-  SampleToolsConfigMessages,
-  SampleToolsResult,
-  SampleSchemaConfig,
-  SampleSchemaConfigMessages,
-  SampleSchemaResult,
 } from "./mcp-tool-types.ts";
 import {
   McpToolTokenError,
-  SampleValidationError,
   createRawSampleExchange,
   createStructuredSampleExchange,
 } from "./mcp-tool-types.ts";
@@ -73,7 +60,18 @@ import type {
   ToolMessage,
   ExtractElicitContext,
   ExtractElicitResponse,
+  ToolSampleConfig,
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SamplingToolDefinition,
+  SamplingToolChoice,
+  SampleToolsConfig,
+  SampleToolsResult,
+  SampleSchemaConfig,
+  SampleSchemaResult,
 } from "@sweatpants/agent-sdk";
+import { SampleValidationError } from "@sweatpants/agent-sdk";
 
 // =============================================================================
 // BUFFERED CHANNEL (Queue-based, never drops messages)
@@ -452,7 +450,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     // LLM backchannel
     // Using type assertion because the implementation handles all overload variants,
     // but TypeScript can't verify this without conditional types at the implementation level.
-    sample: ((config: McpToolSampleConfig) => {
+    sample: ((config: ToolSampleConfig<ExtendedMessage>) => {
       return {
         *[Symbol.iterator]() {
           let messages: ExtendedMessage[];
@@ -461,7 +459,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             const userMessage: Message = { role: "user", content: config.prompt };
             messages = [...state.messages, userMessage];
           } else if ("messages" in config && config.messages) {
-            messages = config.messages;
+            messages = [...config.messages];
           } else {
             throw new Error("sample() requires either prompt or messages");
           }
@@ -616,9 +614,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     }) as McpToolContextWithElicits<TElicits>["sample"],
 
     // Sample with guaranteed tool calls
-    sampleTools(
-      config: SampleToolsConfig | SampleToolsConfigMessages,
-    ): Operation<SampleToolsResult> {
+    sampleTools(config: SampleToolsConfig<ExtendedMessage>): Operation<SampleToolsResult> {
       const maxRetries = config.retries ?? 2;
       const toolChoice = config.toolChoice ?? "required";
 
@@ -662,7 +658,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   ];
                 }
               } else {
-                messages = config.messages;
+                messages = [...config.messages];
               }
             } else {
               throw new Error("sampleTools() requires either prompt or messages");
@@ -765,7 +761,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
     // Sample with guaranteed parsed schema
     sampleSchema<T>(
-      config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>,
+      config: SampleSchemaConfig<T, ExtendedMessage>,
     ): Operation<SampleSchemaResult<T>> {
       const maxRetries = config.retries ?? 2;
 
@@ -810,7 +806,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   ];
                 }
               } else {
-                messages = config.messages;
+                messages = [...config.messages];
               }
             } else {
               throw new Error("sampleSchema() requires either prompt or messages");

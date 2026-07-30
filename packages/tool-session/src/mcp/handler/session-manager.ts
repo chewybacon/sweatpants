@@ -16,8 +16,8 @@
 import { createContext, type Operation } from "effection";
 import { z } from "zod";
 import type { ToolSessionRegistry } from "../../contract.ts";
-import type { ToolDefinition } from "@sweatpants/agent-sdk";
-import type { ElicitsMap, WireElicitResult, WireSampleResultBase } from "../mcp-tool-types.ts";
+import type { ToolDefinition, WireElicitResult, WireSampleResultBase } from "@sweatpants/agent-sdk";
+import type { ElicitsMap } from "../mcp-tool-types.ts";
 import type {
   McpSessionState,
   PendingElicitation,

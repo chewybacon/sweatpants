@@ -1,11 +1,6 @@
 import type { Operation, Stream } from "effection";
-import type {
-  ToolSession,
-  ToolSessionStatus,
-  ToolSessionEvent,
-  WireSampleResult,
-} from "@sweatpants/tool-session";
-import type { WireElicitResult } from "@sweatpants/tool-session";
+import type { ToolSession, ToolSessionStatus, ToolSessionEvent } from "@sweatpants/tool-session";
+import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
 
 export const AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION =
   "sweatpants.agentcore.tool-session.v1" as const;

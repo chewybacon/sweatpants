@@ -24,9 +24,9 @@ Current inventory totals:
 | Record | Count |
 | --- | ---: |
 | Historical validation records | 86 |
-| Manual shape owners | 334 |
+| Manual shape owners | 331 |
 | `B` external boundary | 110 |
-| `R` same-domain revalidation | 162 |
+| `R` same-domain revalidation | 159 |
 | `S` typed semantic verification | 15 |
 | `G` generic mechanism | 6 |
 | `C` compatibility normalizer | 41 |
@@ -152,11 +152,15 @@ A repository-wide authored-schema projection gate now rejects `toToolParameterJs
 
 `@sweatpants/tool-session/messages` is now the sole owner of basic, MCP, tool-call, tool-result, and `ExtendedMessage` sampling history. The incompatible copies in the root contract and MCP tool types were deleted. A single sequence-aware `toModelMessages` adapter projects directly to `@sweatpants/model-provider`, resolving result names from preceding calls and rejecting orphan results instead of fabricating empty identity. The Durable Chat Runtime intermediate adapter, app-local provider-message adapters, synthetic sampling message IDs, duplicate guards, and OpenAI-shaped snake-case internal fields were removed. Worker IPC retains one real transport conversion using the canonical message union and explicit unsupported-content rejection.
 
+### Canonical authored sampling contract
+
+`@sweatpants/agent-sdk` now solely owns authored sample configuration, results, retry errors, tool definitions, and the generic `ToolSamplingCtx<TMessage>` surface. Tool Session and Tool Runtime Local specialize that contract with their stronger message carriers instead of redeclaring parallel MCP and Worker families. `SampleToolsResult` retains the helper's proven non-empty call tuple and literal `toolUse` stop reason; named sample requests retain typed options and authored output-schema evidence through `RuntimeTool` rather than reconstructing or casting it downstream. The spread-and-cast `toWorkerSampleConfig`, `toWorkerToolsConfig`, `toWorkerSchemaConfig`, and result canonicalizers were deleted. Agent SDK's `WorkerSampleRequest` and `WorkerSampleResponse` remain the only real serialized worker sampling DTOs; unused local MCP worker request/response copies were removed. A charter gate enforces one declaration owner and rejects return of the former forwarding adapters.
+
 ## Validation performed
 
 | Scope | Result |
 | --- | --- |
-| Validation inventory/tooling tests | 30 passed |
+| Validation inventory/tooling tests | 31 passed |
 | Tool Runtime Local source tests | 39 passed |
 | Tool Runtime Local acceptance tests | 6 passed |
 | CLI tests | 14 passed |
@@ -171,7 +175,7 @@ A repository-wide authored-schema projection gate now rejects `toToolParameterJs
 | Durable Chat Runtime tests | 204 passed, 4 skipped |
 | Workspace Runtime tests | 18 passed |
 | Journal Authority tests | 92 passed |
-| Tool Session tests | 112 passed, 7 todo |
+| Tool Session tests | 113 passed, 7 todo |
 | AgentCore tests | 49 passed |
 | Execution Store Redis tests | 29 passed |
 | Model provider contract tests | 2 passed |

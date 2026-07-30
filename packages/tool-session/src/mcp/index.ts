@@ -31,27 +31,6 @@ export * from "./durable-transport.ts";
 export type {
   // Execution limits
   McpToolLimits,
-  // Sample types
-  McpToolSampleConfig,
-  // Sample result types (for schema/tools)
-  SampleResultBase,
-  SampleResultWithParsed,
-  SampleResultWithToolCalls,
-  WireSampleResult,
-  WireSampleResultBase,
-  WireSampleResultWithParsed,
-  WireSampleResultWithToolCalls,
-  // Sample helper types (guaranteed results)
-  SampleToolsConfig,
-  SampleToolsConfigMessages,
-  SampleSchemaConfig,
-  SampleSchemaConfigMessages,
-  SampleToolsResult,
-  SampleSchemaResult,
-  // Sampling tool types
-  SamplingToolDefinition,
-  SamplingToolCall,
-  SamplingToolChoice,
   // Elicitation types
   ToolElicitResult,
   WireElicitResult,
@@ -61,7 +40,6 @@ export type {
   ElicitRequest,
   // Logging
   LogLevel,
-  ModelPreferences,
 } from "./mcp-tool-types.ts";
 
 // Errors from unified types file
@@ -71,7 +49,6 @@ export {
   ElicitationCancelledError,
   McpToolTokenError,
   McpDisconnectError,
-  SampleValidationError,
   // Sample exchange helpers
   SCHEMA_TOOL_NAME,
   createRawSampleExchange,

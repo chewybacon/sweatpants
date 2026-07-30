@@ -39,13 +39,8 @@ import {
   type WorkerResponse,
   type WorkerResult,
 } from "@sweatpants/agent-sdk/transport/worker";
-import type {
-  ToolSession,
-  ToolSessionStatus,
-  ToolSessionEvent,
-  WireSampleResult,
-} from "@sweatpants/tool-session";
-import type { WireElicitResult } from "@sweatpants/tool-session";
+import type { ToolSession, ToolSessionStatus, ToolSessionEvent } from "@sweatpants/tool-session";
+import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
 import { createToolSessionEventLog, isTerminalToolSessionStatus } from "@sweatpants/tool-session";
 import type { McpWorkerInitData } from "./worker-types.ts";
 import { WorkerSessionStateContext, type WorkerSessionState } from "./worker-session-context.ts";

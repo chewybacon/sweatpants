@@ -14,10 +14,9 @@ import type {
   WorkerSampleRequest,
   WorkerSampleResponse,
 } from "@sweatpants/agent-sdk/transport/worker";
-import type { WireElicitResult } from "@sweatpants/tool-session";
+import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
 import type { ExtendedMessage, ToolCallMessage } from "@sweatpants/tool-session/messages";
 import { MODEL_CONTEXT_SCHEMA_KEY } from "@sweatpants/tool-session/mcp";
-import type { WireSampleResult } from "@sweatpants/tool-session";
 import { WorkerSessionStateContext } from "./worker-session-context.ts";
 
 /**

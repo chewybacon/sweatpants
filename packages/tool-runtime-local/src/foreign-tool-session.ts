@@ -2,14 +2,8 @@ import { action, race, type Operation } from "effection";
 import { z } from "zod";
 
 import { isDurableToolSessionFacade } from "./durable-tool-session-facade.ts";
-import type { AnyToolContract } from "@sweatpants/agent-sdk";
-import type {
-  ToolSession,
-  ToolSessionEvent,
-  ToolSessionRegistry,
-  WireElicitResult,
-  WireSampleResult,
-} from "@sweatpants/tool-session";
+import type { AnyToolContract, WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
+import type { ToolSession, ToolSessionEvent, ToolSessionRegistry } from "@sweatpants/tool-session";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   type ForeignContinuation,

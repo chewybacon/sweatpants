@@ -30,23 +30,27 @@ import {
   type WorkerSampleResponse,
   type WorkerElicitResponse,
 } from "@sweatpants/agent-sdk/transport/worker";
-import type { ToolElicitResult } from "@sweatpants/agent-sdk";
+import {
+  SampleValidationError,
+  type LogLevel,
+  type SampleConfigSchemaMessages,
+  type SampleConfigSchemaPrompt,
+  type SampleConfigToolsMessages,
+  type SampleConfigToolsPrompt,
+  type SampleResultBase,
+  type SampleResultWithParsed,
+  type SampleResultWithToolCalls,
+  type SampleSchemaConfig,
+  type SampleSchemaResult,
+  type SampleToolsConfig,
+  type SampleToolsResult,
+  type SamplingToolDefinition,
+  type ToolElicitResult,
+  type ToolSampleConfig,
+} from "@sweatpants/agent-sdk";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { Operation } from "effection";
-import type {
-  WorkerTool,
-  WorkerToolRegistry,
-  WorkerToolContext,
-  WorkerSampleConfig,
-  WorkerSampleConfigSchemaPrompt,
-  WorkerSampleConfigSchemaMessages,
-  WorkerSampleConfigToolsPrompt,
-  WorkerSampleConfigToolsMessages,
-  WorkerSampleToolsConfig,
-  WorkerSampleToolsConfigMessages,
-  WorkerSampleSchemaConfig,
-  WorkerSampleSchemaConfigMessages,
-} from "./worker-types.js";
+import type { WorkerTool, WorkerToolRegistry, WorkerToolContext } from "./worker-types.js";
 import {
   isMcpMessage,
   isToolCallMessage,
@@ -54,19 +58,9 @@ import {
   type ExtendedMessage,
 } from "@sweatpants/tool-session/messages";
 import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
-import type {
-  LogLevel,
-  SampleResultBase,
-  SampleResultWithParsed,
-  SampleResultWithToolCalls,
-  SampleToolsResult,
-  SampleSchemaResult,
-  SamplingToolDefinition,
-} from "@sweatpants/tool-session/mcp";
 import {
   createRawSampleExchange,
   createStructuredSampleExchange,
-  SampleValidationError,
 } from "@sweatpants/tool-session/mcp";
 
 // =============================================================================
@@ -229,7 +223,7 @@ function createMcpWorkerContext(
   }
 
   // Helper to extract prompt text for exchange construction
-  function extractPromptText(config: WorkerSampleConfig): string {
+  function extractPromptText(config: ToolSampleConfig<ExtendedMessage>): string {
     if ("prompt" in config && config.prompt) {
       return config.prompt;
     }
@@ -243,7 +237,7 @@ function createMcpWorkerContext(
   }
 
   // Helper to build messages for core sample
-  function buildMessages(config: WorkerSampleConfig): WorkerMessage[] {
+  function buildMessages(config: ToolSampleConfig<ExtendedMessage>): WorkerMessage[] {
     if ("prompt" in config && config.prompt) {
       return [{ role: "user", content: config.prompt }];
     }
@@ -257,18 +251,18 @@ function createMcpWorkerContext(
   // signatures so schema/tools configs infer their result arm without casts.
   interface SampleTyped {
     <T>(
-      config: WorkerSampleConfigSchemaPrompt<T> | WorkerSampleConfigSchemaMessages<T>,
+      config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T, ExtendedMessage>,
     ): Operation<SampleResultWithParsed<T>>;
     (
-      config: WorkerSampleConfigToolsPrompt | WorkerSampleConfigToolsMessages,
+      config: SampleConfigToolsPrompt | SampleConfigToolsMessages<ExtendedMessage>,
     ): Operation<SampleResultWithToolCalls>;
     (
-      config: WorkerSampleConfig,
+      config: ToolSampleConfig<ExtendedMessage>,
     ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
   }
   const sampleTyped = sampleImpl as SampleTyped;
   function* sampleImpl(
-    config: WorkerSampleConfig,
+    config: ToolSampleConfig<ExtendedMessage>,
   ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls> {
     const messages = buildMessages(config);
     const promptText = extractPromptText(config);
@@ -371,11 +365,10 @@ function createMcpWorkerContext(
     },
 
     // Sample - delegates to sampleImpl (overloads are defined in the interface)
-    sample: ((config: WorkerSampleConfig) => sampleImpl(config)) as WorkerToolContext["sample"],
+    sample: ((config: ToolSampleConfig<ExtendedMessage>) =>
+      sampleImpl(config)) as WorkerToolContext["sample"],
 
-    *sampleTools(
-      config: WorkerSampleToolsConfig | WorkerSampleToolsConfigMessages,
-    ): Operation<SampleToolsResult> {
+    *sampleTools(config: SampleToolsConfig<ExtendedMessage>): Operation<SampleToolsResult> {
       const retries = config.retries ?? 2;
       let lastResult:
         | SampleResultBase
@@ -385,7 +378,7 @@ function createMcpWorkerContext(
 
       for (let attempt = 0; attempt <= retries; attempt++) {
         // Build sample config with tools
-        const sampleConfig: WorkerSampleConfigToolsPrompt | WorkerSampleConfigToolsMessages =
+        const sampleConfig: SampleConfigToolsPrompt | SampleConfigToolsMessages<ExtendedMessage> =
           "prompt" in config
             ? {
                 prompt: config.prompt,
@@ -435,7 +428,7 @@ function createMcpWorkerContext(
     },
 
     *sampleSchema<T>(
-      config: WorkerSampleSchemaConfig<T> | WorkerSampleSchemaConfigMessages<T>,
+      config: SampleSchemaConfig<T, ExtendedMessage>,
     ): Operation<SampleSchemaResult<T>> {
       const retries = config.retries ?? 2;
       let lastResult: SampleResultWithParsed<T> | undefined;
@@ -443,8 +436,8 @@ function createMcpWorkerContext(
       for (let attempt = 0; attempt <= retries; attempt++) {
         // Build sample config with schema
         const sampleConfig:
-          | WorkerSampleConfigSchemaPrompt<T>
-          | WorkerSampleConfigSchemaMessages<T> =
+          | SampleConfigSchemaPrompt<T>
+          | SampleConfigSchemaMessages<T, ExtendedMessage> =
           "prompt" in config
             ? {
                 prompt: config.prompt,

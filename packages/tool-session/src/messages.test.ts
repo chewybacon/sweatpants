@@ -1,7 +1,31 @@
 import { describe, expect, it } from "vitest";
+import type { ToolSampleConfig } from "@sweatpants/agent-sdk";
 import { toModelMessages, type ExtendedMessage } from "./messages.ts";
 
 describe("Tool Session model history projection", () => {
+  it("specializes the Agent SDK sampling contract to canonical session history", () => {
+    const config = {
+      messages: [
+        {
+          role: "assistant",
+          content: "Calling",
+          toolCalls: [{ id: "c1", name: "lookup", arguments: null }],
+        },
+        { role: "tool", content: "not found", toolCallId: "c1", isError: true },
+      ],
+    } satisfies ToolSampleConfig<ExtendedMessage>;
+
+    expect(config.messages).toHaveLength(2);
+
+    const invalid: ToolSampleConfig<ExtendedMessage> = {
+      messages: [
+        // @ts-expect-error Tool Session specialization rejects foreign message roles.
+        { role: "foreign", content: "x" },
+      ],
+    };
+    void invalid;
+  });
+
   it("preserves causal call identity, arguments, result, and failure", () => {
     const messages: ExtendedMessage[] = [
       { role: "user", content: "Book it" },

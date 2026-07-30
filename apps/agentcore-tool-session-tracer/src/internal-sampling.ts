@@ -8,7 +8,7 @@ import type {
   WireSampleResultWithToolCalls,
   SamplingToolCall,
   SamplingToolDefinition,
-} from "@sweatpants/tool-session/mcp";
+} from "@sweatpants/agent-sdk";
 import { toModelMessages, type ExtendedMessage } from "@sweatpants/tool-session/messages";
 import {
   createPiAiModelProviderDriver,

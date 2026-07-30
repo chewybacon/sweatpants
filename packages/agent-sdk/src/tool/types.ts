@@ -81,6 +81,11 @@ export interface ToolMessage {
   content: ToolContentBlock | ToolContentBlock[];
 }
 
+/** Authored sampling-history carrier independent of any session or provider package. */
+export type ToolSamplingMessage =
+  | ToolMessage
+  | { role: "system" | "user" | "assistant"; content: string };
+
 // -----------------------------------------------------------------------------
 // Elicit definitions (response-first)
 // -----------------------------------------------------------------------------
@@ -147,7 +152,7 @@ export type NormalizedElicitsMap<TElicits extends ElicitsMap = ElicitsMap> = {
 // Sample definitions
 // -----------------------------------------------------------------------------
 
-export interface SampleDefinition<TOutputSchema = undefined> {
+export interface SampleDefinition<TOutputSchema extends StandardSchemaV1 | undefined = undefined> {
   readonly description?: string;
   readonly output?: TOutputSchema;
   readonly annotations?: Readonly<Record<string, unknown>>;
@@ -215,11 +220,17 @@ export type WireElicitResult<TResponse = unknown> =
 // Sample request / result (tool-side)
 // -----------------------------------------------------------------------------
 
+export interface SampleRequestOptions {
+  readonly systemPrompt?: string;
+  readonly maxTokens?: number;
+  readonly modelPreferences?: ModelPreferences;
+}
+
 export interface SampleRequest {
   readonly prompt?: string;
-  readonly messages?: readonly unknown[];
+  readonly messages?: readonly ToolSamplingMessage[];
   readonly exchanges?: readonly (ElicitExchange<unknown> | SampleExchange)[];
-  readonly options?: Readonly<Record<string, unknown>>;
+  readonly options?: SampleRequestOptions;
 }
 
 export interface SampleResultBase {
@@ -253,11 +264,15 @@ export interface SampleResultWithToolCalls {
   readonly exchange: SampleExchange<undefined>;
 }
 
-export type NamedSampleResult<TParsed = unknown> = SampleResultBase & {
+export interface NamedSampleResult<TParsed = unknown> {
+  readonly text: string;
+  readonly model?: string;
+  readonly stopReason?: "endTurn" | "maxTokens" | "toolUse" | string;
+  readonly exchange: SampleExchange<unknown>;
   readonly content?: string;
-  readonly parsed?: TParsed;
+  readonly parsed?: TParsed | null;
   readonly raw?: unknown;
-};
+}
 
 export interface WireSampleResultBase {
   text: string;
@@ -327,27 +342,32 @@ interface SampleConfigPromptMode {
   messages?: never;
 }
 
-interface SampleConfigMessagesMode {
-  messages: readonly unknown[];
+interface SampleConfigMessagesMode<TMessage = unknown> {
+  messages: readonly TMessage[];
   prompt?: never;
 }
 
 export type SampleConfigPlainPrompt = SampleConfigPlain & SampleConfigPromptMode;
-export type SampleConfigPlainMessages = SampleConfigPlain & SampleConfigMessagesMode;
+export type SampleConfigPlainMessages<TMessage = unknown> = SampleConfigPlain &
+  SampleConfigMessagesMode<TMessage>;
 export type SampleConfigSchemaPrompt<T = unknown> = SampleConfigWithSchema<T> &
   SampleConfigPromptMode;
-export type SampleConfigSchemaMessages<T = unknown> = SampleConfigWithSchema<T> &
-  SampleConfigMessagesMode;
+export type SampleConfigSchemaMessages<
+  T = unknown,
+  TMessage = unknown,
+> = SampleConfigWithSchema<T> & SampleConfigMessagesMode<TMessage>;
 export type SampleConfigToolsPrompt = SampleConfigWithTools & SampleConfigPromptMode;
-export type SampleConfigToolsMessages = SampleConfigWithTools & SampleConfigMessagesMode;
+export type SampleConfigToolsMessages<TMessage = unknown> = SampleConfigWithTools &
+  SampleConfigMessagesMode<TMessage>;
 
-export type ToolSampleConfig =
+/** Authored sampling configuration, parameterized by the owning history carrier. */
+export type ToolSampleConfig<TMessage = unknown> =
   | SampleConfigPlainPrompt
-  | SampleConfigPlainMessages
+  | SampleConfigPlainMessages<TMessage>
   | SampleConfigSchemaPrompt
-  | SampleConfigSchemaMessages
+  | SampleConfigSchemaMessages<unknown, TMessage>
   | SampleConfigToolsPrompt
-  | SampleConfigToolsMessages;
+  | SampleConfigToolsMessages<TMessage>;
 
 export interface SampleToolsConfigBase extends SampleConfigBase {
   tools: SamplingToolDefinition[];
@@ -355,14 +375,15 @@ export interface SampleToolsConfigBase extends SampleConfigBase {
   retries?: number;
 }
 
-export type SampleToolsConfig = SampleToolsConfigBase & SampleConfigPromptMode;
-export type SampleToolsConfigMessages = SampleToolsConfigBase & SampleConfigMessagesMode;
+export type SampleToolsConfig<TMessage = unknown> = SampleToolsConfigBase &
+  (SampleConfigPromptMode | SampleConfigMessagesMode<TMessage>);
 
+/** Successful `sampleTools` result; the helper guarantees at least one call. */
 export interface SampleToolsResult {
   text: string;
   model?: string;
-  stopReason?: string;
-  toolCalls: SamplingToolCall[];
+  stopReason: "toolUse";
+  toolCalls: [SamplingToolCall, ...SamplingToolCall[]];
   exchange: SampleExchange<undefined>;
 }
 
@@ -371,8 +392,8 @@ export interface SampleSchemaConfigBase<T> extends SampleConfigBase {
   retries?: number;
 }
 
-export type SampleSchemaConfig<T> = SampleSchemaConfigBase<T> & SampleConfigPromptMode;
-export type SampleSchemaConfigMessages<T> = SampleSchemaConfigBase<T> & SampleConfigMessagesMode;
+export type SampleSchemaConfig<T, TMessage = unknown> = SampleSchemaConfigBase<T> &
+  (SampleConfigPromptMode | SampleConfigMessagesMode<TMessage>);
 
 export interface SampleSchemaResult<T> {
   text: string;
@@ -380,6 +401,40 @@ export interface SampleSchemaResult<T> {
   stopReason?: string;
   parsed: T;
   exchange: SampleExchange<T>;
+}
+
+/** Failure from a sampling helper after its authored retry policy is exhausted. */
+export class SampleValidationError extends Error {
+  constructor(
+    public readonly helperName: "sampleTools" | "sampleSchema",
+    public readonly attempts: number,
+    public readonly lastResult:
+      | SampleResultBase
+      | SampleResultWithParsed<unknown>
+      | SampleResultWithToolCalls,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SampleValidationError";
+  }
+}
+
+/** Canonical authored sampling surface specialized by a domain message carrier. */
+export interface ToolSamplingCtx<TMessage = unknown> {
+  sample(
+    config: SampleConfigPlainPrompt | SampleConfigPlainMessages<TMessage>,
+  ): Operation<SampleResultBase>;
+  sample<T>(
+    config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T, TMessage>,
+  ): Operation<SampleResultWithParsed<T>>;
+  sample(
+    config: SampleConfigToolsPrompt | SampleConfigToolsMessages<TMessage>,
+  ): Operation<SampleResultWithToolCalls>;
+  sample(
+    config: ToolSampleConfig<TMessage>,
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
+  sampleTools(config: SampleToolsConfig<TMessage>): Operation<SampleToolsResult>;
+  sampleSchema<T>(config: SampleSchemaConfig<T, TMessage>): Operation<SampleSchemaResult<T>>;
 }
 
 // -----------------------------------------------------------------------------
@@ -409,24 +464,10 @@ export interface ToolElicitCtx<TElicits extends ElicitsMap> {
   >;
 }
 
-export interface ToolGenericSampleCtx {
-  sample(config: SampleConfigPlainPrompt | SampleConfigPlainMessages): Operation<SampleResultBase>;
-  sample<T>(
-    config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>,
-  ): Operation<SampleResultWithParsed<T>>;
-  sample(
-    config: SampleConfigToolsPrompt | SampleConfigToolsMessages,
-  ): Operation<SampleResultWithToolCalls>;
-  sample(
-    config: ToolSampleConfig,
-  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
-  sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>;
-  sampleSchema<T>(
-    config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>,
-  ): Operation<SampleSchemaResult<T>>;
+export type ToolGenericSampleCtx = ToolSamplingCtx<ToolSamplingMessage> & {
   /** Generic request form used by named sample declarations. */
   sample(request: SampleRequest): Operation<NamedSampleResult>;
-}
+};
 
 type SampleParsed<TSamples extends SamplesMap, K extends keyof TSamples> =
   TSamples[K] extends SampleDefinition<infer TOutputSchema>
@@ -435,27 +476,14 @@ type SampleParsed<TSamples extends SamplesMap, K extends keyof TSamples> =
       : InferSchema<TOutputSchema>
     : unknown;
 
-export interface ToolNamedSampleCtx<TSamples extends SamplesMap> {
-  sample(config: SampleConfigPlainPrompt | SampleConfigPlainMessages): Operation<SampleResultBase>;
-  sample<T>(
-    config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>,
-  ): Operation<SampleResultWithParsed<T>>;
-  sample(
-    config: SampleConfigToolsPrompt | SampleConfigToolsMessages,
-  ): Operation<SampleResultWithToolCalls>;
-  sample(
-    config: ToolSampleConfig,
-  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
-  sample(request: SampleRequest): Operation<NamedSampleResult>;
-  sample<K extends keyof TSamples & string>(
-    key: K,
-    request: SampleRequest,
-  ): Operation<NamedSampleResult<SampleParsed<TSamples, K>>>;
-  sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>;
-  sampleSchema<T>(
-    config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>,
-  ): Operation<SampleSchemaResult<T>>;
-}
+export type ToolNamedSampleCtx<TSamples extends SamplesMap> =
+  ToolSamplingCtx<ToolSamplingMessage> & {
+    sample(request: SampleRequest): Operation<NamedSampleResult>;
+    sample<K extends keyof TSamples & string>(
+      key: K,
+      request: SampleRequest,
+    ): Operation<NamedSampleResult<SampleParsed<TSamples, K>>>;
+  };
 
 /** Detects the `any` type (used so RuntimeTool stays a universal sink). */
 type IsAny<T> = 0 extends 1 & T ? true : false;
@@ -530,8 +558,10 @@ export interface ToolDefinition<
   readonly extensions: readonly ToolExtensionMetadata[];
 }
 
-/** Wire-boundary erased tool type — deliberately `any`-parameterized. */
-export type RuntimeTool = ToolDefinition<string, any, any, any, any>;
+/** Wire-boundary erased tool with its authored sample-schema evidence retained. */
+export type RuntimeTool = ToolDefinition<string, any, any, any, any> & {
+  readonly samples: Readonly<Record<string, SampleDefinition<StandardSchemaV1 | undefined>>>;
+};
 
 export interface CreateToolBuilderBase<TName extends string> {
   description(desc: string): CreateToolBuilderWithDescription<TName>;

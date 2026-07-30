@@ -1,11 +1,6 @@
 import { resource, type Operation, type Stream, type Subscription } from "effection";
-import type {
-  ToolSession,
-  ToolSessionEvent,
-  ToolSessionStatus,
-  WireSampleResult,
-} from "@sweatpants/tool-session";
-import type { WireElicitResult } from "@sweatpants/tool-session";
+import type { ToolSession, ToolSessionEvent, ToolSessionStatus } from "@sweatpants/tool-session";
+import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
 import { statusForToolSessionEvent } from "@sweatpants/tool-session";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
