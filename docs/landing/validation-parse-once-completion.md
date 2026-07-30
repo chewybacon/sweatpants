@@ -134,17 +134,21 @@ The chat program-driver engine now parses canonical JSON records and tool-call a
 
 Duplicate skill mappings remain a typed semantic failure. URL/origin and skill-advertisement authority remain in their existing semantic verifiers. No parser-return cast is used.
 
+### Acceptance boundaries use simulators
+
+Acceptance tests now have a repository-wide tooling gate: they may not replace modules with `vi.mock`, use `createMockProvider`/fake external clients, or import package-private `__tests__` harnesses. A rare exception requires a substantive `boundary-simulator-escape-hatch:` rationale. The obsolete durable-chat reconnect demo—three tests built on a hand-written model provider—was deleted because the test-rig reconnect scenario already proves continuation after disconnect, offset replay, terminal completion, and exactly one real model request through the HTTP Responses simulator.
+
 ### Model provider wire conformance
 
 Provider behavior tests no longer mock `@earendil-works/pi-ai/compat`. The provider is exercised through `test-rig`'s real HTTP Responses simulator, so the actual pi-ai client, SSE decoder, request projection, tool-call chunking, structured-response unwrapping, provider errors, and malformed-argument behavior are covered together. The simulator characterization records an important vendor fact: pi-ai repairs truncated JSON arguments and turns unparseable argument text into `{}` before Sweatpants receives it. The raw-value preservation guarantee therefore starts at Sweatpants-owned decode points, not at this vendor boundary. Policy-only tests remain in the model-provider package; wire conformance lives in `platform-acceptance`.
 
-The provider now transports authored JSON Schema projections rather than re-deriving them. `createTool` computes and digests the portable projection once; inventory and provider types carry it as `JsonObject`. The provider-side schema-normalization implementation and duplicate sanitization walk were deleted. Runtime-supplied sampling schemas still use the single conversion at their actual authoring ingress.
+The provider now transports authored JSON Schema projections rather than re-deriving them. `createTool` computes and digests the portable projection once; inventory and provider types carry it as `JsonObject`. The provider-side schema-normalization implementation and duplicate sanitization walk were deleted. Runtime-supplied sampling schemas still use the single conversion at their actual authoring ingress. MCP `tools/list` and discovery manifests now follow the same rule: one shared projection reads parameter and elicitation schemas from the authored tool artifacts, rather than casting the tool to an ad-hoc legacy shape and re-running schema conversion twice.
 
 ## Validation performed
 
 | Scope | Result |
 | --- | --- |
-| Validation inventory/tooling tests | 21 passed |
+| Validation inventory/tooling tests | 25 passed |
 | Tool Runtime Local source tests | 39 passed |
 | Tool Runtime Local acceptance tests | 6 passed |
 | CLI tests | 14 passed |
@@ -156,7 +160,7 @@ The provider now transports authored JSON Schema projections rather than re-deri
 | Test Rig tests | 18 passed |
 | React Chat tests | 17 passed |
 | Durable Execution tests | 25 passed |
-| Durable Chat Runtime tests | 207 passed, 4 skipped |
+| Durable Chat Runtime tests | 204 passed, 4 skipped |
 | Workspace Runtime tests | 18 passed |
 | Journal Authority tests | 92 passed |
 | Tool Session tests | 109 passed, 7 todo |

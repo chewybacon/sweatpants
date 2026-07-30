@@ -5624,17 +5624,6 @@
       ]
     },
     {
-      "id": "SHAPE-410",
-      "file": "packages/tool-session/src/mcp/handler/mcp-handler.ts",
-      "line": 149,
-      "symbol": "serializeElicitsMap",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for serializeElicitsMap",
-      "evidence": [
-        "packages/tool-session/src/mcp/handler/mcp-handler.ts:149"
-      ]
-    },
-    {
       "id": "SHAPE-414",
       "file": "packages/tool-session/src/mcp/handler/request-parser.ts",
       "line": 217,

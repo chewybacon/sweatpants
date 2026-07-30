@@ -36,7 +36,7 @@
  * @packageDocumentation
  */
 import { createScope, type Operation } from "effection";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { assertJsonObject, type JsonObject } from "@sweatpants/foundation";
 import type {
   McpHandlerConfig,
   McpHttpHandler,
@@ -53,7 +53,6 @@ import { createSseEventStream, type SseStreamOptions } from "./get-handler.ts";
 import { createPrimeEvent, createSseHeaders } from "../protocol/sse-formatter.ts";
 import { JSON_RPC_ERROR_CODES } from "../protocol/types.ts";
 import { MCP_PROTOCOL_VERSION } from "../protocol-version.ts";
-import { toToolParameterJsonSchema } from "../../tool-parameters.ts";
 
 // =============================================================================
 // HANDLER OPTIONS
@@ -140,56 +139,73 @@ function createInitializeResponse(
   };
 }
 
-/**
- * Serialize an ElicitsMap to JSON Schema format for the _meta extension.
- *
- * Converts Standard Schema values in the elicits map to JSON Schema format:
- * { [key]: { response: JsonSchema, context?: JsonSchema } }
- */
-function serializeElicitsMap(
-  elicits:
-    | Record<
-        string,
-        {
-          response?: StandardSchemaV1;
-          context?: StandardSchemaV1;
+type ListedTool = McpHandlerConfig["tools"] extends Map<string, infer Tool> ? Tool : never;
+type McpElicitProjection = { response: JsonObject; context?: JsonObject };
+type McpToolProjection = {
+  name: string;
+  description: string;
+  inputSchema: JsonObject;
+  _meta?: {
+    "x-sweatpants": {
+      elicits?: Record<string, McpElicitProjection>;
+      requires?: { elicitation?: boolean; sampling?: boolean };
+    };
+  };
+};
+
+/** JSON Schema was authored and digested upstream; this only applies MCP's keyed constraint. */
+function portableSchemaObject(projection: unknown, label: string): JsonObject {
+  const { $id: _id, $schema: _schema, ...schema } = assertJsonObject(projection, label);
+  return schema;
+}
+
+function projectElicits(tool: ListedTool): Record<string, McpElicitProjection> | undefined {
+  const entries = Object.entries(tool.artifacts.elicits).map(([key, artifact]) => [
+    key,
+    {
+      response: portableSchemaObject(
+        artifact.response.inputProjection,
+        `tool ${tool.name} elicitation ${key} response`,
+      ),
+      ...(artifact.context
+        ? {
+            context: portableSchemaObject(
+              artifact.context.inputProjection,
+              `tool ${tool.name} elicitation ${key} context`,
+            ),
+          }
+        : {}),
+    },
+  ]);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+/** One projection shared by tools/list and the discovery manifest. */
+function projectMcpTool(name: string, tool: ListedTool): McpToolProjection {
+  const elicits = projectElicits(tool);
+  const requires = {
+    ...(tool.capabilities.elicitation ? { elicitation: true } : {}),
+    ...(tool.capabilities.sampling ? { sampling: true } : {}),
+  };
+  const hasRequires = Object.keys(requires).length > 0;
+  return {
+    name,
+    description: tool.description,
+    inputSchema: portableSchemaObject(
+      tool.artifacts.parameters.inputProjection,
+      `tool ${name} parameters`,
+    ),
+    ...(elicits || hasRequires
+      ? {
+          _meta: {
+            "x-sweatpants": {
+              ...(elicits ? { elicits } : {}),
+              ...(hasRequires ? { requires } : {}),
+            },
+          },
         }
-      >
-    | undefined,
-):
-  | Record<string, { response: Record<string, unknown>; context?: Record<string, unknown> }>
-  | undefined {
-  if (!elicits || Object.keys(elicits).length === 0) {
-    return undefined;
-  }
-
-  const result: Record<
-    string,
-    { response: Record<string, unknown>; context?: Record<string, unknown> }
-  > = {};
-
-  for (const [key, def] of Object.entries(elicits)) {
-    if (!def.response) {
-      continue;
-    }
-
-    try {
-      const responseSchema = toToolParameterJsonSchema(def.response);
-      const entry: { response: Record<string, unknown>; context?: Record<string, unknown> } = {
-        response: responseSchema,
-      };
-
-      if (def.context) {
-        entry.context = toToolParameterJsonSchema(def.context);
-      }
-
-      result[key] = entry;
-    } catch {
-      throw new Error(`Elicitation schema "${key}" has no supported JSON projection`);
-    }
-  }
-
-  return Object.keys(result).length > 0 ? result : undefined;
+      : {}),
+  };
 }
 
 /**
@@ -200,54 +216,9 @@ function serializeElicitsMap(
  */
 function createToolsListResponse(
   request: McpToolsListRequest,
-  tools: Map<string, unknown>,
+  tools: McpHandlerConfig["tools"],
 ): Record<string, unknown> {
-  const toolList = Array.from(tools.entries()).map(([name, tool]) => {
-    // Extract tool metadata - tools have name, description, parameters, elicits, and requires
-    const t = tool as {
-      description?: string;
-      parameters?: StandardSchemaV1;
-      elicits?: Record<string, { response?: StandardSchemaV1; context?: StandardSchemaV1 }>;
-      requires?: { elicitation?: boolean; sampling?: boolean };
-    };
-
-    // Convert the declared Standard Schema to its JSON Schema projection.
-    let inputSchema: Record<string, unknown>;
-    try {
-      inputSchema = t.parameters
-        ? toToolParameterJsonSchema(t.parameters)
-        : { type: "object", properties: {}, required: [] };
-    } catch {
-      throw new Error("Tool parameters have no supported schema projection");
-    }
-
-    // Build the base tool definition
-    const toolDef: Record<string, unknown> = {
-      name,
-      description: t.description ?? "",
-      inputSchema,
-    };
-
-    // Add x-sweatpants extension in _meta if tool has elicits or requires
-    const elicitsSchema = serializeElicitsMap(t.elicits);
-    if (elicitsSchema || t.requires) {
-      const xSweatpants: Record<string, unknown> = {};
-
-      if (elicitsSchema) {
-        xSweatpants["elicits"] = elicitsSchema;
-      }
-
-      if (t.requires) {
-        xSweatpants["requires"] = t.requires;
-      }
-
-      toolDef["_meta"] = {
-        "x-sweatpants": xSweatpants,
-      };
-    }
-
-    return toolDef;
-  });
+  const toolList = Array.from(tools.entries()).map(([name, tool]) => projectMcpTool(name, tool));
 
   return {
     jsonrpc: "2.0",
@@ -744,16 +715,10 @@ export interface McpManifest {
   tools: Array<{
     name: string;
     description: string;
-    inputSchema: Record<string, unknown>;
+    inputSchema: JsonObject;
     _meta?: {
       "x-sweatpants"?: {
-        elicits?: Record<
-          string,
-          {
-            response: Record<string, unknown>;
-            context?: Record<string, unknown>;
-          }
-        >;
+        elicits?: Record<string, McpElicitProjection>;
         requires?: {
           elicitation?: boolean;
           sampling?: boolean;
@@ -800,88 +765,14 @@ export interface GenerateMcpManifestOptions {
  * ```
  */
 export function generateMcpManifest(
-  tools: Map<string, unknown>,
+  tools: McpHandlerConfig["tools"],
   options: GenerateMcpManifestOptions = {},
 ): McpManifest {
   const { name = "mcp-server", version = "1.0.0", description, endpoint = "/mcp" } = options;
 
-  // Build tool list using the same logic as createToolsListResponse
-  const toolList = Array.from(tools.entries()).map(([toolName, tool]) => {
-    const t = tool as {
-      description?: string;
-      parameters?: StandardSchemaV1;
-      elicits?: Record<string, { response?: StandardSchemaV1; context?: StandardSchemaV1 }>;
-      requires?: { elicitation?: boolean; sampling?: boolean };
-    };
-
-    // Convert the declared Standard Schema to its JSON Schema projection.
-    let inputSchema: Record<string, unknown>;
-    try {
-      inputSchema = t.parameters
-        ? toToolParameterJsonSchema(t.parameters)
-        : { type: "object", properties: {}, required: [] };
-    } catch {
-      throw new Error("Tool parameters have no supported schema projection");
-    }
-
-    // Build the base tool definition
-    const toolDef: {
-      name: string;
-      description: string;
-      inputSchema: Record<string, unknown>;
-      _meta?: {
-        "x-sweatpants"?: {
-          elicits?: Record<
-            string,
-            {
-              response: Record<string, unknown>;
-              context?: Record<string, unknown>;
-            }
-          >;
-          requires?: {
-            elicitation?: boolean;
-            sampling?: boolean;
-          };
-        };
-      };
-    } = {
-      name: toolName,
-      description: t.description ?? "",
-      inputSchema,
-    };
-
-    // Add x-sweatpants extension in _meta if tool has elicits or requires
-    const elicitsSchema = serializeElicitsMap(t.elicits);
-    if (elicitsSchema || t.requires) {
-      const xSweatpants: {
-        elicits?: Record<
-          string,
-          {
-            response: Record<string, unknown>;
-            context?: Record<string, unknown>;
-          }
-        >;
-        requires?: {
-          elicitation?: boolean;
-          sampling?: boolean;
-        };
-      } = {};
-
-      if (elicitsSchema) {
-        xSweatpants.elicits = elicitsSchema;
-      }
-
-      if (t.requires) {
-        xSweatpants.requires = t.requires;
-      }
-
-      toolDef._meta = {
-        "x-sweatpants": xSweatpants,
-      };
-    }
-
-    return toolDef;
-  });
+  const toolList = Array.from(tools.entries()).map(([toolName, tool]) =>
+    projectMcpTool(toolName, tool),
+  );
 
   const manifest: McpManifest = {
     version: "1.0",

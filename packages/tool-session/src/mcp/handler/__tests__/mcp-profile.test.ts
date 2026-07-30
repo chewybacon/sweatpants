@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { createTool } from "@sweatpants/agent-sdk";
 import { MCP_PROTOCOL_VERSION } from "../../protocol-version.ts";
 import type { ToolSessionRegistry } from "../../../contract.ts";
 import { createMcpHandler, generateMcpManifest } from "../mcp-handler.ts";
@@ -77,18 +79,15 @@ describe("canonical MCP profile", () => {
     expect(body).toMatchObject({ id: "ping-1", error: { code: -32602 } });
   });
 
-  it("keeps existing x-sweatpants metadata consumable by CLI clients", () => {
-    const manifest = generateMcpManifest(
-      new Map([
-        [
-          "interactive",
-          {
-            description: "interactive tool",
-            requires: { elicitation: true },
-          },
-        ],
-      ]),
-    );
+  it("keeps authored x-sweatpants metadata consumable by CLI clients", () => {
+    const interactive = createTool("interactive")
+      .description("interactive tool")
+      .parameters(z.object({}))
+      .elicits({ approval: z.boolean() })
+      .execute(function* () {
+        return { ok: true };
+      });
+    const manifest = generateMcpManifest(new Map([["interactive", interactive]]));
     expect(manifest.tools[0]?._meta?.["x-sweatpants"]?.requires).toEqual({
       elicitation: true,
     });
