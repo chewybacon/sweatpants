@@ -3,7 +3,7 @@ import {
   generateImages as piGenerateImages,
   streamSimple as piStreamSimple,
 } from "@earendil-works/pi-ai/compat";
-import { assertJson, type Json } from "@sweatpants/foundation";
+import { assertJson, parseJsonText, type Json } from "@sweatpants/foundation";
 import type {
   AssistantImages as PiAssistantImages,
   AssistantMessage as PiAssistantMessage,
@@ -33,7 +33,7 @@ import type {
   ThinkingLevel,
   ToolCallBlock,
   Usage,
-} from "./types.ts";
+} from "@sweatpants/model-provider";
 
 const SCHEMA_TOOL_NAME = "__schema__";
 
@@ -305,7 +305,7 @@ function safeMetadata(metadata: Record<string, unknown>): Record<string, unknown
 function parseProviderToolArguments(value: unknown): Json {
   if (typeof value === "string") {
     try {
-      return assertJson(JSON.parse(value), "$.toolCall.arguments");
+      return parseJsonText(value, "$.toolCall.arguments");
     } catch {
       return assertJson(value, "$.toolCall.arguments");
     }

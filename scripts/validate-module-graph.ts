@@ -42,6 +42,7 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/foundation",
   ],
   "@sweatpants/history-store": ["@sweatpants/foundation"],
+  "@sweatpants/model-provider": ["@sweatpants/foundation"],
   "@sweatpants/agent-sdk": [
     "@sweatpants/durable-effects",
     "@sweatpants/durable-execution",
@@ -66,6 +67,7 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/durable-effects",
     "@sweatpants/durable-execution",
     "@sweatpants/history-store",
+    "@sweatpants/model-provider",
     "@sweatpants/foundation",
   ],
   "@sweatpants/durable-chat-runtime": [
@@ -78,6 +80,7 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/durable-execution",
     "@sweatpants/durable-streams",
     "@sweatpants/history-store",
+    "@sweatpants/model-provider",
   ],
   "@sweatpants/agent-host": [
     "@sweatpants/agent-sdk",

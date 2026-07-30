@@ -11,7 +11,7 @@ import type {
   Runtime,
   StreamEvent,
   StreamOptions,
-} from "./runtime/index.ts";
+} from "@sweatpants/model-provider";
 import { createOllamaModel, createOpenAiResponsesModel, piAiRuntime } from "./runtime/index.ts";
 import { isProviderRecord } from "./runtime/schema-normalization.ts";
 import {
@@ -19,7 +19,7 @@ import {
   ModelProviderModelContext,
   ModelProviderStreamOptionsContext,
   type ModelProviderDriver,
-} from "@sweatpants/chat-core";
+} from "@sweatpants/model-provider";
 
 export * from "./runtime/index.ts";
 

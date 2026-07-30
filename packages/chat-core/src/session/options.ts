@@ -11,7 +11,7 @@ import type { StreamEvent, StreamResult } from "./streaming.ts";
 import type { ConversationReplayState } from "./replay-types.ts";
 import type { ToolExecutionTrace } from "../trace-types.ts";
 import type { PluginReplayTraceSpec } from "../plugin-spec.ts";
-import type { StreamOptions } from "../runtime/types.ts";
+import type { StreamOptions } from "@sweatpants/model-provider";
 
 // =============================================================================
 // STREAM EVENT OBSERVATION

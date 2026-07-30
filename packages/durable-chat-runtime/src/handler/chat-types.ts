@@ -3,9 +3,9 @@ import type {
   ConversationReplayState,
   Message as ChatMessage,
   ChatSessionStreamEvent,
-  StreamOptions,
   ToolExecutionTrace,
 } from "@sweatpants/chat-core";
+import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ToolExecutionRef } from "@sweatpants/tool-session/chat-runtime";
 import type { ResumeEntry } from "./types.ts";
 

@@ -1,12 +1,6 @@
 import { createContext, type Operation, type Stream } from "effection";
 import { definePort } from "@sweatpants/foundation/port";
-import type {
-  Context,
-  Model,
-  StreamEvent,
-  StreamOptions,
-  AssistantMessage,
-} from "./runtime/types.ts";
+import type { Context, Model, StreamEvent, StreamOptions, AssistantMessage } from "./types.ts";
 
 export interface ModelProviderStreamRequest {
   model: Model;

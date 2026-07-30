@@ -16,16 +16,15 @@ import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
 import { createDevelopmentProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
 import {
   installModelProvider,
   ModelProviderModelContext,
-  ToolInventoryContext,
-  createToolInventory,
   type AssistantMessage,
   type Model,
   type ModelProviderDriver,
-  type RuntimeStreamEvent,
-} from "@sweatpants/chat-core";
+  type StreamEvent as RuntimeStreamEvent,
+} from "@sweatpants/model-provider";
 import { createToolInventoryEntry } from "@sweatpants/tool-session/chat-runtime";
 import {
   createToolExecutionRef,

@@ -8,9 +8,8 @@ import {
   createOpenAiResponsesModel,
   createPiAiModelProviderDriver,
   installPiAiModelProvider,
-  type Model,
-  type StreamOptions,
 } from "@sweatpants/model-provider-pi-ai";
+import { type Model, type StreamOptions } from "@sweatpants/model-provider";
 import { call, createScope, type Operation } from "effection";
 import { createChatRuntime, type ChatFetch, type ChatRuntime } from "./chat.ts";
 import {

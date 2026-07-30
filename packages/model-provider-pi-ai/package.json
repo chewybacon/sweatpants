@@ -34,8 +34,8 @@
     },
     "dependencies": {
         "@earendil-works/pi-ai": "^0.80.1",
-        "@sweatpants/chat-core": "workspace:*",
-        "@sweatpants/foundation": "workspace:*"
+        "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/model-provider": "workspace:*"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",

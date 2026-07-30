@@ -138,7 +138,9 @@ Duplicate skill mappings remain a typed semantic failure. URL/origin and skill-a
 
 Acceptance tests now have a repository-wide tooling gate: they may not replace modules with `vi.mock`, use `createMockProvider`/fake external clients, or import package-private `__tests__` harnesses. A rare exception requires a substantive `boundary-simulator-escape-hatch:` rationale. The obsolete durable-chat reconnect demo—three tests built on a hand-written model provider—was deleted because the test-rig reconnect scenario already proves continuation after disconnect, offset replay, terminal completion, and exactly one real model request through the HTTP Responses simulator.
 
-### Model provider wire conformance
+### Neutral model-provider contract and wire conformance
+
+Protocol-neutral model/runtime types and `ModelProviderPort` now live in `@sweatpants/model-provider`. Chat Core and the concrete pi-ai adapter are sibling consumers of that narrow package; the pi-ai adapter no longer depends on Chat Core. The two former 286-line runtime type copies and Chat Core's provider-port owner were deleted without re-export aliases. Module-graph and package-charter gates enforce that the neutral package depends only on Foundation/Effection and the concrete adapter cannot import Chat Core.
 
 Provider behavior tests no longer mock `@earendil-works/pi-ai/compat`. The provider is exercised through `test-rig`'s real HTTP Responses simulator, so the actual pi-ai client, SSE decoder, request projection, tool-call chunking, structured-response unwrapping, provider errors, and malformed-argument behavior are covered together. The simulator characterization records an important vendor fact: pi-ai repairs truncated JSON arguments and turns unparseable argument text into `{}` before Sweatpants receives it. The raw-value preservation guarantee therefore starts at Sweatpants-owned decode points, not at this vendor boundary. The provider adapter now establishes canonical `Json` with `assertJson` at its ingress instead of casting `unknown`; its egress transports already trusted `Json` without reparsing or cloning. Domain shape remains open until the authored Standard Schema executes. Policy-only tests remain in the model-provider package; wire conformance lives in `platform-acceptance`.
 
@@ -150,14 +152,14 @@ A repository-wide authored-schema projection gate now rejects `toToolParameterJs
 
 | Scope | Result |
 | --- | --- |
-| Validation inventory/tooling tests | 28 passed |
+| Validation inventory/tooling tests | 29 passed |
 | Tool Runtime Local source tests | 39 passed |
 | Tool Runtime Local acceptance tests | 6 passed |
 | CLI tests | 14 passed |
 | A2A tests | 48 passed, 1 live test skipped |
 | Agent Host tests | 38 passed |
-| Agent SDK tests | 149 passed |
-| Chat Core tests | 123 passed |
+| Agent SDK tests | 150 passed |
+| Chat Core tests | 124 passed |
 | Durable Effects tests | 3 passed |
 | Test Rig tests | 18 passed |
 | React Chat tests | 17 passed |
@@ -168,7 +170,8 @@ A repository-wide authored-schema projection gate now rejects `toToolParameterJs
 | Tool Session tests | 109 passed, 7 todo |
 | AgentCore tests | 49 passed |
 | Execution Store Redis tests | 29 passed |
-| Model provider unit tests | 8 passed |
+| Model provider contract tests | 2 passed |
+| Pi-ai provider unit tests | 8 passed |
 | Model provider wire tests (test-rig simulator) | 10 passed |
 | Platform Acceptance tests | 94 passed |
 | Tool Runtime Local typecheck | passed |
@@ -189,7 +192,8 @@ A repository-wide authored-schema projection gate now rejects `toToolParameterJs
 | Tool Session typecheck | passed |
 | AgentCore typecheck | passed |
 | Execution Store Redis typecheck | passed |
-| Model provider typecheck | passed |
+| Model provider contract typecheck | passed |
+| Pi-ai provider typecheck | passed |
 | `git diff --check` | passed |
 
 Completed slices have passed repository checks and deterministic landing. Final completion still requires trust-flow v3 evidence and durable restoration review, so those slice artifacts are not presented as the final certification artifact.

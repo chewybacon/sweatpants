@@ -15,14 +15,13 @@ import type {
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
 } from "@sweatpants/tool-session";
+import { createPiAiModelProviderDriver, resolvePiAiModel } from "@sweatpants/model-provider-pi-ai";
 import {
-  createPiAiModelProviderDriver,
-  resolvePiAiModel,
   type AssistantMessage as ModelAssistantMessage,
   type Context as ModelContext,
   type Message as ModelMessage,
   type Tool as ModelTool,
-} from "@sweatpants/model-provider-pi-ai";
+} from "@sweatpants/model-provider";
 import { env } from "@/env";
 
 interface SamplingOptions {

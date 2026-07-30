@@ -1,11 +1,10 @@
+import { createPiAiModelProviderDriver, resolvePiAiModel } from "@sweatpants/model-provider-pi-ai";
 import {
-  createPiAiModelProviderDriver,
-  resolvePiAiModel,
   type AssistantMessage,
   type Context,
   type Message,
   type Tool,
-} from "@sweatpants/model-provider-pi-ai";
+} from "@sweatpants/model-provider";
 import {
   createChatModelEffectRegistration,
   type ChatMessageV1,

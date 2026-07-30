@@ -1,6 +1,6 @@
 import type { Operation } from "effection";
 import type { JsonObject } from "@sweatpants/foundation";
-import type { Model, Runtime, StreamOptions } from "@sweatpants/chat-core";
+import type { Model, Runtime, StreamOptions } from "@sweatpants/model-provider";
 import type { ToolInventoryEntry } from "@sweatpants/chat-core";
 import type { ToolRuntime } from "@sweatpants/tool-session/chat-runtime";
 import type { HistoryPolicy } from "@sweatpants/chat-core";

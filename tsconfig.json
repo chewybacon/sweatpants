@@ -39,6 +39,9 @@
             "path": "./packages/agent-host"
         },
         {
+            "path": "./packages/model-provider"
+        },
+        {
             "path": "./packages/model-provider-pi-ai"
         },
         {

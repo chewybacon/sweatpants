@@ -255,6 +255,7 @@
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/history-store": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
+        "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "effection": "catalog:",
         "zod": "catalog:"

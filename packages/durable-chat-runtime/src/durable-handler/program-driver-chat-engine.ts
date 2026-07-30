@@ -47,8 +47,8 @@ import type {
   AssistantMessage,
   ContentBlock,
   Context as RuntimeContext,
-  RuntimeMessage,
-} from "@sweatpants/chat-core";
+  Message as RuntimeMessage,
+} from "@sweatpants/model-provider";
 import { runWithRenewedActivationLease } from "../host/activation-lease-coordinator.ts";
 import { useLogger } from "../logger/index.ts";
 import { applyHistoryPolicy } from "@sweatpants/chat-core";

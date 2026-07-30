@@ -5,16 +5,15 @@ import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import { createClient } from "redis";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
 import {
   installModelProvider,
   ModelProviderModelContext,
-  ToolInventoryContext,
-  createToolInventory,
   type AssistantMessage,
   type Model,
   type ModelProviderDriver,
   type StreamEvent,
-} from "@sweatpants/chat-core";
+} from "@sweatpants/model-provider";
 import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,

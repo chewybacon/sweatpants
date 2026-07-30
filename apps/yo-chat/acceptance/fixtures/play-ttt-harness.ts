@@ -1,17 +1,16 @@
 import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { resource, run, type Operation, type Stream } from "effection";
 import { createClient, type RedisClientType } from "redis";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
 import {
   installModelProvider,
   ModelProviderModelContext,
-  ToolInventoryContext,
-  createToolInventory,
   type AssistantMessage,
   type Model,
   type ModelProviderDriver,
   type ModelProviderStreamRequest,
   type StreamEvent,
-} from "@sweatpants/chat-core";
+} from "@sweatpants/model-provider";
 import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,

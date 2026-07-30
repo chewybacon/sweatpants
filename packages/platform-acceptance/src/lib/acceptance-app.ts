@@ -17,12 +17,12 @@ import type { ExtendedMessage } from "@sweatpants/tool-session/mcp";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
+import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
 import {
-  createPiAiModelProviderDriver,
   type AssistantMessage as ModelAssistantMessage,
   type Context as ModelContext,
   type Message as ModelMessage,
-} from "@sweatpants/model-provider-pi-ai";
+} from "@sweatpants/model-provider";
 import {
   createDurableToolRegistry,
   type ProgramDriver,

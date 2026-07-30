@@ -8,11 +8,13 @@ import type { Message } from "@sweatpants/chat-core";
 import {
   createPiAiModelProviderDriver,
   resolvePiAiModel,
+  type ModelSelection,
+} from "@sweatpants/model-provider-pi-ai";
+import {
   type AssistantMessage as ModelAssistantMessage,
   type Message as ModelMessage,
-  type ModelSelection,
   type StreamEvent as ModelStreamEvent,
-} from "@sweatpants/model-provider-pi-ai";
+} from "@sweatpants/model-provider";
 import { call, race, resource, run, type Operation, type Stream, type Task } from "effection";
 import type { RedisClientType } from "redis";
 import type { ThreadEvent, ThreadFrame, ThreadMessageInput } from "./threaded-chat-types";
