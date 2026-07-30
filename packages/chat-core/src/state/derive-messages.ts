@@ -273,7 +273,7 @@ export function deriveCompletedMessages<TComponent>(
             const toolResultMsg = state.messages.find(
               (m) => m.role === "tool" && m.tool_call_id === tc.id,
             );
-            const hasError = toolResultMsg?.content?.startsWith("Error:");
+            const hasError = toolResultMsg?.isError === true;
 
             const toolPart: ToolCallPart<TComponent> = {
               id: `${messageId}-tool-${tc.id}`,

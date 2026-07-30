@@ -432,14 +432,6 @@ interface BridgeExecutionState<TElicits extends ElicitsMap> {
  * Convert Zod schema to JSON Schema for MCP elicitation.
  * Uses Zod's built-in toJSONSchema() method.
  */
-function schemaToJsonSchema(schema: unknown): Record<string, unknown> {
-  return toToolParameterJsonSchema(schema);
-}
-
-function samplingSchemaToJsonSchema(schema: unknown): Record<string, unknown> {
-  return toToolParameterJsonSchema(schema);
-}
-
 // =============================================================================
 // CONTEXT IMPLEMENTATION
 // =============================================================================
@@ -490,7 +482,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             sampleOptions.tools = config.tools.map((tool) => {
               const def: SamplingToolDefinition = {
                 name: tool.name,
-                inputSchema: samplingSchemaToJsonSchema(tool.inputSchema),
+                inputSchema: toToolParameterJsonSchema(tool.inputSchema),
               };
               if (tool.description !== undefined) {
                 def.description = tool.description;
@@ -504,7 +496,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
           // Convert the Standard Schema to its portable JSON projection.
           if ("schema" in config && config.schema) {
-            sampleOptions.schema = schemaToJsonSchema(config.schema);
+            sampleOptions.schema = toToolParameterJsonSchema(config.schema);
           }
 
           // Create a signal for the response
@@ -690,7 +682,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             sampleOptions.tools = config.tools.map((tool) => {
               const def: SamplingToolDefinition = {
                 name: tool.name,
-                inputSchema: samplingSchemaToJsonSchema(tool.inputSchema),
+                inputSchema: toToolParameterJsonSchema(tool.inputSchema),
               };
               if (tool.description !== undefined) {
                 def.description = tool.description;
@@ -835,7 +827,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             }
 
             // Convert the Standard Schema to its portable JSON projection.
-            sampleOptions.schema = schemaToJsonSchema(config.schema);
+            sampleOptions.schema = toToolParameterJsonSchema(config.schema);
 
             // Create response signal and send sample event
             const responseSignal = createSignal<SampleResponse, void>();
@@ -988,7 +980,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           const contextData = context as ExtractElicitContext<TElicits[K]>;
 
           // Encode context into schema and message using x-elicit-context transport
-          const baseSchema = schemaToJsonSchema(responseSchema);
+          const baseSchema = toToolParameterJsonSchema(responseSchema);
           const { message: encodedMessage, schema: encodedSchema } = encodeElicitContext(
             message,
             contextData,

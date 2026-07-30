@@ -51,7 +51,8 @@ export interface StreamCompleteResult {
   type: "complete";
   text: string;
   toolCalls?: Array<{ id: string; name: string; arguments: unknown }>;
-  toolResults?: Array<{ id: string; name: string; content: string }>;
+  /** `isError` is producer-reported; never inferred from `content`. */
+  toolResults?: Array<{ id: string; name: string; content: string; isError: boolean }>;
   conversationState?: ConversationState;
   conversationId?: string;
 }
@@ -148,6 +149,12 @@ export interface AgUiToolCallResultStreamEvent {
   toolCallName?: string;
   content: string;
   role?: "tool";
+  /**
+   * Set by the producer that ran the tool. Consumers must never infer failure
+   * from the content text: a successful tool may return output beginning with
+   * "Error:".
+   */
+  isError?: boolean;
   error?: ToolParameterValidationErrorPayload;
 }
 export interface AgUiReasoningMessageContentStreamEvent {

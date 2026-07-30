@@ -147,7 +147,7 @@ describe("createChatTurnState", () => {
       {
         type: "complete",
         text: "done",
-        toolResults: [{ id: "call-1", name: "echo", content: "ok" }],
+        toolResults: [{ id: "call-1", name: "echo", content: "ok", isError: false }],
       },
       request.originalHistoryLength,
     );

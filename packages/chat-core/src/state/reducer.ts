@@ -72,7 +72,7 @@ function partsForMessages(messages: Message[]): Record<string, MessagePart[]> {
     }
     for (const call of message.tool_calls ?? []) {
       const result = resultsByCallId.get(call.id);
-      const error = result?.content.startsWith("Error:") ? result.content : undefined;
+      const error = result?.isError === true ? result.content : undefined;
       parts.push({
         id: `${message.id}:tool:${call.id}`,
         type: "tool-call",
@@ -484,15 +484,14 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
     case "TOOL_CALL_RESULT": {
       const toolName =
         event.toolCallName ?? state.toolCallDrafts[event.toolCallId]?.name ?? "unknown";
-      const isError = event.error !== undefined || event.content.startsWith("Error:");
+      // The producer said whether this failed. Text is never a control signal.
+      const isError = event.error !== undefined || event.isError === true;
       const toolMessage: Message = {
         id: event.messageId,
         role: "tool",
         tool_call_id: event.toolCallId,
-        content:
-          isError && !event.content.startsWith("Error:")
-            ? `Error: ${event.content}`
-            : event.content,
+        content: event.content,
+        ...(isError ? { isError: true } : {}),
         replay: { toolName },
       };
       const updatePart = (part: MessagePart): MessagePart =>
@@ -500,7 +499,7 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
           ? {
               ...part,
               state: isError ? "error" : "complete",
-              ...(isError ? { error: toolMessage.content } : { result: event.content }),
+              ...(isError ? { error: event.content } : { result: event.content }),
             }
           : part;
       const { [event.toolCallId]: _completed, ...pendingElicits } = state.pendingElicits;

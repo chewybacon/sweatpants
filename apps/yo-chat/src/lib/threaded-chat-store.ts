@@ -276,7 +276,7 @@ function buildModelProviderMessages(events: ThreadEvent[], systemPrompt: string)
       toolCallId: message.tool_call_id ?? "",
       toolName: message.replay?.toolName ?? "",
       content: [{ type: "text" as const, text: message.content }],
-      isError: message.content.startsWith("Error:"),
+      isError: message.isError === true,
     };
   });
 }

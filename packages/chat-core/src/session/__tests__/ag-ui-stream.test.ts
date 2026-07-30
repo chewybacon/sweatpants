@@ -72,7 +72,9 @@ describe("AG-UI stream driver", () => {
     if (result.type !== "complete") {
       throw new Error("expected complete result");
     }
-    expect(result.toolResults).toEqual([{ id: "new-call", name: "search", content: "new" }]);
+    expect(result.toolResults).toEqual([
+      { id: "new-call", name: "search", content: "new", isError: false },
+    ]);
   });
 
   it("rejects a clean EOF without a terminal event", async () => {

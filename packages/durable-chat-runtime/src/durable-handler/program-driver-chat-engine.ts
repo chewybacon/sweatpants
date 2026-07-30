@@ -136,6 +136,7 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
         callId: call.id,
         tool: call.target,
         result: outcome.result,
+        failed: outcome.failed,
       });
       messages.push({
         role: "tool",
@@ -953,6 +954,7 @@ function projectRecords(
         toolCallName: payload["tool"],
         content: JSON.stringify(payload["result"] ?? null),
         role: "tool",
+        ...(payload["failed"] === true ? { isError: true } : {}),
       });
     }
   }
@@ -974,6 +976,7 @@ function projectRecords(
         toolCallName: pending.tool,
         content: JSON.stringify({ status: "cancelled", ...(partial ? { partial } : {}) }),
         role: "tool",
+        isError: true,
       });
     }
   }
@@ -994,6 +997,7 @@ function projectRecords(
         toolCallName: pending.tool,
         content: JSON.stringify({ status: "error", error: errored.payload.outcome.error }),
         role: "tool",
+        isError: true,
       });
     }
   }

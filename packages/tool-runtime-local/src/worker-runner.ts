@@ -143,10 +143,6 @@ function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
 }
 
 /** Converts a Standard Schema or explicit JSON Schema to bounded wire data. */
-function toJsonSchemaRecord(schema: unknown): Record<string, unknown> {
-  return toToolParameterJsonSchema(schema);
-}
-
 /**
  * Convert tool definition to core format.
  * Handles both Zod schemas and raw JSON schemas.
@@ -161,7 +157,7 @@ function toWorkerToolDefinition(tool: SamplingToolDefinition): {
   return {
     name: tool.name,
     ...(tool.description !== undefined && { description: tool.description }),
-    inputSchema: toJsonSchemaRecord(tool.inputSchema),
+    inputSchema: toToolParameterJsonSchema(tool.inputSchema),
   };
 }
 
@@ -234,7 +230,7 @@ function createMcpWorkerContext(
       (entry as ElicitDefinition).response
         ? (entry as ElicitDefinition).response
         : entry;
-    return toJsonSchemaRecord(responseSchema);
+    return toToolParameterJsonSchema(responseSchema);
   }
 
   // Helper to extract prompt text for exchange construction
@@ -292,7 +288,7 @@ function createMcpWorkerContext(
 
     // Handle schema (convert Zod to JSON schema marker)
     if ("schema" in config && config.schema) {
-      coreOptions.schema = toJsonSchemaRecord(config.schema);
+      coreOptions.schema = toToolParameterJsonSchema(config.schema);
     }
 
     // Handle tools
