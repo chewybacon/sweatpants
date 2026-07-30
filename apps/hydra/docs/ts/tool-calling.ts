@@ -89,15 +89,21 @@ interface ToolDef<TParams extends z.ZodType, TReturn> {
   execute: (args: z.infer<TParams>) => Operation<TReturn>;
 }
 
+interface AuthoredTool<TParams extends z.ZodType, TReturn>
+  extends ToolDef<TParams, TReturn> {
+  /** Portable contract projection computed once alongside the validator. */
+  inputSchema: ReturnType<typeof z.toJSONSchema>;
+}
+
 function defineTool<TParams extends z.ZodType, TReturn>(
   def: ToolDef<TParams, TReturn>
-): ToolDef<TParams, TReturn> {
-  return def;
+): AuthoredTool<TParams, TReturn> {
+  return { ...def, inputSchema: z.toJSONSchema(def.parameters) };
 }
 
 // --- Tool Registry ---
 
-type AnyTool = ToolDef<z.ZodType, unknown>;
+type AnyTool = AuthoredTool<z.ZodType, unknown>;
 
 interface ToolRegistry {
   tools: Map<string, AnyTool>;
@@ -127,7 +133,7 @@ function createToolRegistry(tools: AnyTool[]): ToolRegistry {
         function: {
           name: tool.name,
           description: tool.description,
-          parameters: z.toJSONSchema(tool.parameters),
+          parameters: tool.inputSchema,
         },
       }));
     },

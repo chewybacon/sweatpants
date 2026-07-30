@@ -1,4 +1,5 @@
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
+import { assertJsonObject, type JsonObject } from "@sweatpants/foundation";
 import type {
   LogLevel,
   NamedSampleResult,
@@ -45,9 +46,21 @@ type CanonicalSampleResult =
  * logging, and cancellation. No WorkerToolContext is cast to ToolCtx.
  */
 export function createWorkerTool(tool: RuntimeTool): WorkerTool {
+  const elicitSchemas: Record<string, JsonObject> = {};
+  for (const [key, artifact] of Object.entries(tool.artifacts.elicits)) {
+    const {
+      $id: _id,
+      $schema: _schema,
+      ...schema
+    } = assertJsonObject(
+      artifact.response.inputProjection,
+      `tool ${tool.name} elicitation ${key} response`,
+    );
+    elicitSchemas[key] = schema;
+  }
   return {
     name: tool.name,
-    elicits: tool.elicits,
+    elicitSchemas,
     handler: function* (params: unknown, workerContext: WorkerToolContext) {
       const canonicalContext = createCanonicalWorkerContext(tool, workerContext);
       const invoke = yield* tool(canonicalContext);

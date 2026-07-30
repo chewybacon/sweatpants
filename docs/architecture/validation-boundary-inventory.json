@@ -5437,47 +5437,36 @@
       ]
     },
     {
-      "id": "SHAPE-388",
-      "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 221,
-      "symbol": "schemaForElicitKey",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for schemaForElicitKey",
-      "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:221"
-      ]
-    },
-    {
       "id": "SHAPE-389",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 275,
+      "line": 262,
       "symbol": "sampleImpl",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sampleImpl",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:275"
+        "packages/tool-runtime-local/src/worker-runner.ts:262"
       ]
     },
     {
       "id": "SHAPE-390",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 381,
+      "line": 368,
       "symbol": "sampleTools",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sampleTools",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:381"
+        "packages/tool-runtime-local/src/worker-runner.ts:368"
       ]
     },
     {
       "id": "SHAPE-391",
       "file": "packages/tool-runtime-local/src/worker-runner.ts",
-      "line": 442,
+      "line": 429,
       "symbol": "sampleSchema",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sampleSchema",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-runner.ts:442"
+        "packages/tool-runtime-local/src/worker-runner.ts:429"
       ]
     },
     {
@@ -5516,45 +5505,56 @@
     {
       "id": "SHAPE-395",
       "file": "packages/tool-runtime-local/src/worker-tool-adapter.ts",
-      "line": 207,
+      "line": 220,
       "symbol": "sampleOptions",
       "classification": "R",
       "authority": "typed constructor or owning ingress for sampleOptions",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-tool-adapter.ts:207"
+        "packages/tool-runtime-local/src/worker-tool-adapter.ts:220"
       ]
     },
     {
       "id": "SHAPE-396",
       "file": "packages/tool-runtime-local/src/worker-tool-adapter.ts",
-      "line": 216,
+      "line": 229,
       "symbol": "canonicalizeSampleResult",
       "classification": "R",
       "authority": "typed constructor or owning ingress for canonicalizeSampleResult",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-tool-adapter.ts:216"
+        "packages/tool-runtime-local/src/worker-tool-adapter.ts:229"
       ]
     },
     {
       "id": "SHAPE-397",
       "file": "packages/tool-runtime-local/src/worker-tool-adapter.ts",
-      "line": 269,
+      "line": 282,
       "symbol": "promptText",
       "classification": "R",
       "authority": "typed constructor or owning ingress for promptText",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-tool-adapter.ts:269"
+        "packages/tool-runtime-local/src/worker-tool-adapter.ts:282"
       ]
     },
     {
       "id": "SHAPE-398",
       "file": "packages/tool-runtime-local/src/worker-tool-adapter.ts",
-      "line": 299,
+      "line": 312,
       "symbol": "isRecord",
       "classification": "B",
       "authority": "owning ingress/parser isRecord",
       "evidence": [
-        "packages/tool-runtime-local/src/worker-tool-adapter.ts:299"
+        "packages/tool-runtime-local/src/worker-tool-adapter.ts:312"
+      ]
+    },
+    {
+      "id": "SHAPE-464",
+      "file": "packages/tool-runtime-local/src/worker-tool-adapter.ts",
+      "line": 48,
+      "symbol": "createWorkerTool",
+      "classification": "R",
+      "authority": "typed constructor or owning ingress for createWorkerTool",
+      "evidence": [
+        "packages/tool-runtime-local/src/worker-tool-adapter.ts:48"
       ]
     },
     {

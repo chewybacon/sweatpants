@@ -30,8 +30,8 @@ import {
   type WorkerSampleResponse,
   type WorkerElicitResponse,
 } from "@sweatpants/agent-sdk/transport/worker";
-import type { ElicitDefinition, ToolElicitResult } from "@sweatpants/agent-sdk";
-import type { Json } from "@sweatpants/foundation";
+import type { ToolElicitResult } from "@sweatpants/agent-sdk";
+import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import type {
   WorkerTool,
@@ -216,21 +216,8 @@ function createMcpWorkerContext(
 ): WorkerToolContext {
   let toolCallIdCounter = 0;
   const generateToolCallId = () => `${sessionId}:tc:${++toolCallIdCounter}`;
-  const elicitationSchemas = tool.elicits ?? {};
-
-  function schemaForElicitKey(key: string): Record<string, unknown> | undefined {
-    const entry = (elicitationSchemas as Record<string, unknown>)[key];
-    if (!entry) {
-      return undefined;
-    }
-    const responseSchema =
-      entry &&
-      typeof entry === "object" &&
-      "response" in entry &&
-      (entry as ElicitDefinition).response
-        ? (entry as ElicitDefinition).response
-        : entry;
-    return toToolParameterJsonSchema(responseSchema);
+  function schemaForElicitKey(key: string): JsonObject | undefined {
+    return tool.elicitSchemas[key];
   }
 
   // Helper to extract prompt text for exchange construction
