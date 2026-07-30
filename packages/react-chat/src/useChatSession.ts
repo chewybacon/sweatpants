@@ -13,6 +13,7 @@
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { run, each } from "effection";
+import { z } from "zod";
 import {
   createChatSession,
   initialChatState,
@@ -35,6 +36,16 @@ import type {
 import type { ToolExecutionTrace } from "@sweatpants/chat-core";
 import { useChatConfig } from "./ChatProvider.tsx";
 import { useElicitExecutor } from "./useElicitExecutor.ts";
+
+/**
+ * Authored `tools` entries are `unknown[]`; both function and object tool
+ * values carry a `name`. The parser only proves that carrier shape.
+ */
+const namedToolSchema = z.custom<{ name: unknown }>(
+  (value) =>
+    (typeof value === "function" || (typeof value === "object" && value !== null)) &&
+    "name" in (value as object),
+);
 
 // =============================================================================
 // LOCAL EMISSION STATE REDUCER
@@ -321,13 +332,11 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
       JSON.stringify({
         baseUrl: mergedOptions.baseUrl,
         conversationId: mergedOptions.conversationId ?? null,
-        toolNames: (mergedOptions.tools ?? []).map((tool) =>
+        toolNames: (mergedOptions.tools ?? []).map((tool) => {
           // Canonical tool values carry a `name`.
-          (typeof tool === "function" || (typeof tool === "object" && tool !== null)) &&
-          "name" in tool
-            ? String((tool as { name: unknown }).name)
-            : "unknown",
-        ),
+          const named = namedToolSchema.safeParse(tool);
+          return named.success ? String(named.data.name) : "unknown";
+        }),
         pluginNames: (options.plugins ?? []).map((plugin) => plugin.client.toolName),
         transformCount: mergedOptions.transforms?.length ?? 0,
       }),

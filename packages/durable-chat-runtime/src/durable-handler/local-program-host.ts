@@ -62,7 +62,11 @@ const pinnedProgramSchema = z.strictObject({
   digest: z.string().regex(/^[0-9a-f]{64}$/u),
 });
 const programCatalogEntrySchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("program"), target: catalogTextSchema, program: pinnedProgramSchema }),
+  z.strictObject({
+    kind: z.literal("program"),
+    target: catalogTextSchema,
+    program: pinnedProgramSchema,
+  }),
   z.strictObject({
     kind: z.literal("foreign-tool"),
     target: catalogTextSchema,

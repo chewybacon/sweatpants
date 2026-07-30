@@ -211,9 +211,7 @@ const invocationPinShapeSchema = z
     cardDigest: z.string().regex(/^[0-9a-f]{64}$/u),
     agentName: pinTextSchema,
     skillId: pinTextSchema,
-    interface: z
-      .object({ url: pinTextSchema, protocolVersion: pinTextSchema })
-      .loose(),
+    interface: z.object({ url: pinTextSchema, protocolVersion: pinTextSchema }).loose(),
     extensionUris: z.array(pinTextSchema),
     guarantee: z
       .object({ level: pinTextSchema, source: pinTextSchema, negotiatedAt: pinTextSchema })

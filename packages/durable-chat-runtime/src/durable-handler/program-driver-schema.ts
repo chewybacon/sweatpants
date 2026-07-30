@@ -56,7 +56,10 @@ const thinCatalogEntrySchema = z.discriminatedUnion("kind", [
 ]);
 const chatProgramInputSchema = z.strictObject({
   messages: z.array(z.json()).max(10_000),
-  systemPrompt: z.string().max(64 * 1024).optional(),
+  systemPrompt: z
+    .string()
+    .max(64 * 1024)
+    .optional(),
   toolChoice: z.enum(["auto", "none", "required"]).optional(),
   maxIterations: z.number().int().min(1).max(100),
   catalog: z.strictObject({

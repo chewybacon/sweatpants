@@ -24,9 +24,9 @@ Current inventory totals:
 | Record | Count |
 | --- | ---: |
 | Historical validation records | 86 |
-| Manual shape owners | 345 |
-| `B` external boundary | 113 |
-| `R` same-domain revalidation | 166 |
+| Manual shape owners | 340 |
+| `B` external boundary | 110 |
+| `R` same-domain revalidation | 164 |
 | `S` typed semantic verification | 15 |
 | `G` generic mechanism | 6 |
 | `C` compatibility normalizer | 45 |
@@ -120,6 +120,10 @@ Agent SDK worker out-of-band message recognition now uses bounded schemas. Chat 
 
 `durable-effects` adopts its own pinned Zod dependency and now proves the framework-owned `model.sample` input, output, and cancellation-partial structures with strict schemas behind the unchanged Standard Schema registry contract. Effect-error code extraction also parses instead of inspecting. `test-rig` history normalization parses wire records and tool arguments through bounded schemas while remaining a deliberately tolerant provider-history projection.
 
+### Durable Chat engine and client surfaces
+
+The chat program-driver engine now parses canonical JSON records and tool-call arguments through owned schemas instead of local record predicates, and the wire projection module shares one parsed record mechanism. `platform-acceptance` NDJSON event unwrapping and `react-chat` session-identity tool naming parse their loose inputs before projection; `react-chat` also promotes Zod to a production dependency so its runtime import is declared, satisfying the concrete Zod-ownership charter.
+
 ### A2A caller-authoritative discovery
 
 `packages/a2a/src/discovery.ts` now uses strict schemas for:
@@ -148,6 +152,7 @@ The three package-local generic record predicates in `model-provider-pi-ai` were
 | Chat Core tests | 123 passed |
 | Durable Effects tests | 3 passed |
 | Test Rig tests | 18 passed |
+| React Chat tests | 17 passed |
 | Durable Execution tests | 25 passed |
 | Durable Chat Runtime tests | 207 passed, 4 skipped |
 | Workspace Runtime tests | 18 passed |
@@ -164,6 +169,8 @@ The three package-local generic record predicates in `model-provider-pi-ai` were
 | Chat Core typecheck | passed |
 | Durable Effects typecheck | passed |
 | Test Rig typecheck | passed |
+| React Chat typecheck | passed |
+| Platform Acceptance typecheck | passed |
 | Durable Execution typecheck | passed |
 | Durable Chat Runtime typecheck | passed |
 | Workspace Runtime typecheck | passed |

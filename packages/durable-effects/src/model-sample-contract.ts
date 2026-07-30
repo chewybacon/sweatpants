@@ -114,7 +114,6 @@ function standardSchema(
   return { "~standard": { version: 1, vendor: "sweatpants", validate } };
 }
 
-
 export const MODEL_SAMPLE_INPUT_DESCRIPTOR = schema(
   "sweatpants.model-sample/input",
   "effect_input",

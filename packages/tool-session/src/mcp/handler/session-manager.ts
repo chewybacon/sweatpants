@@ -40,7 +40,10 @@ function sampleTextFromContent(content: unknown): string {
   if (array.success) {
     return array.data
       .map((block) => textContentBlockSchema.safeParse(block))
-      .filter((result): result is { success: true; data: { type: "text"; text: string } } => result.success)
+      .filter(
+        (result): result is { success: true; data: { type: "text"; text: string } } =>
+          result.success,
+      )
       .map((result) => result.data.text)
       .join("");
   }

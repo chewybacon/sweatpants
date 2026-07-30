@@ -9,12 +9,7 @@ import {
   type ReplayEntry,
   type ReplayOperationEntry,
 } from "@sweatpants/durable-execution";
-import {
-  canonicalJson,
-  canonicalSnapshot,
-  sha256,
-  type Json,
-} from "@sweatpants/foundation";
+import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
 
 import { AGENTCORE_DURABLE_PROTOCOL_VERSION } from "./durable-placement.ts";
@@ -197,10 +192,13 @@ function parseMessage(
     activationEpoch: envelope.activationEpoch,
     payload: envelope.payload,
   };
-  if (envelope.attachmentId !== undefined) canonicalEnvelope["attachmentId"] = envelope.attachmentId;
+  if (envelope.attachmentId !== undefined)
+    canonicalEnvelope["attachmentId"] = envelope.attachmentId;
   if (envelope.actionIndex !== undefined) canonicalEnvelope["actionIndex"] = envelope.actionIndex;
   parsePayload(envelope.type, canonicalEnvelope);
-  return canonicalSnapshot(canonicalEnvelope).value as unknown as HostProgramMessage | RuntimeProgramMessage;
+  return canonicalSnapshot(canonicalEnvelope).value as unknown as
+    | HostProgramMessage
+    | RuntimeProgramMessage;
 }
 
 function assertHostPayload(type: string, envelope: Record<string, Json>): void {

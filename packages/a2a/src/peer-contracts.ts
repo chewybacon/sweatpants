@@ -7,29 +7,27 @@ import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants
 import { z } from "zod";
 
 const peerDigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
-const requirementManifestShapeSchema = z
-  .strictObject({
-    protocolVersion: z.literal(1),
-    skillId: z.string().min(1),
-    requirements: z.array(z.json()),
-    amendmentRequests: z.boolean(),
-    releaseDigest: peerDigestSchema,
-    manifestDigest: peerDigestSchema,
-  });
-const requirementShapeSchema = z
-  .strictObject({
-    contract: z.json(),
-    availability: z.enum([
-      "callee_local_only",
-      "caller_required",
-      "caller_optional",
-      "route_negotiable",
-    ]),
-    required: z.boolean(),
-    allowedRoutes: z.array(z.enum(["callee", "caller", "denied"])),
-    defaultConstraints: z.json().optional(),
-    defaultBudget: z.json().optional(),
-  });
+const requirementManifestShapeSchema = z.strictObject({
+  protocolVersion: z.literal(1),
+  skillId: z.string().min(1),
+  requirements: z.array(z.json()),
+  amendmentRequests: z.boolean(),
+  releaseDigest: peerDigestSchema,
+  manifestDigest: peerDigestSchema,
+});
+const requirementShapeSchema = z.strictObject({
+  contract: z.json(),
+  availability: z.enum([
+    "callee_local_only",
+    "caller_required",
+    "caller_optional",
+    "route_negotiable",
+  ]),
+  required: z.boolean(),
+  allowedRoutes: z.array(z.enum(["callee", "caller", "denied"])),
+  defaultConstraints: z.json().optional(),
+  defaultBudget: z.json().optional(),
+});
 import type {
   PeerEffectContract,
   PeerEffectOffer,
@@ -317,7 +315,9 @@ function parseRequirement(value: unknown): PeerEffectRequirement {
     ...(requirement.defaultConstraints !== undefined
       ? { defaultConstraints: requirement.defaultConstraints }
       : {}),
-    ...(requirement.defaultBudget !== undefined ? { defaultBudget: requirement.defaultBudget } : {}),
+    ...(requirement.defaultBudget !== undefined
+      ? { defaultBudget: requirement.defaultBudget }
+      : {}),
   });
 }
 function parseContract(value: unknown): PeerEffectContract {

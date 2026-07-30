@@ -1,4 +1,8 @@
 import type { ResumeEntry } from "../handler/types.ts";
+import { z } from "zod";
+
+/** Interrupt response schemas are JSON Schema documents: always keyed objects. */
+const responseSchemaSchema = z.record(z.string(), z.unknown());
 
 export type InterruptStatus = "open" | "resolved" | "cancelled" | "expired";
 
@@ -15,7 +19,7 @@ export interface OpenInterruptRecord {
   runtimeId?: string;
   executionId?: string;
   continuationRef?: unknown;
-  responseSchema?: unknown;
+  responseSchema?: Record<string, unknown>;
   publicMetadata?: Record<string, unknown>;
   createdAt: string;
   expiresAt?: string;
@@ -95,12 +99,14 @@ function schemaTypeMatches(type: string, value: unknown): boolean {
   }
 }
 
-function verifyJsonSchemaSubset(schema: unknown, value: unknown): boolean {
-  const record = asRecord(schema);
-  if (!record) {
+function verifyJsonSchemaSubset(
+  schema: Record<string, unknown> | undefined,
+  value: unknown,
+): boolean {
+  if (!schema) {
     return true;
   }
-
+  const record = schema;
   const enumValues = Array.isArray(record["enum"]) ? record["enum"] : undefined;
   if (
     enumValues &&
@@ -144,7 +150,10 @@ function verifyJsonSchemaSubset(schema: unknown, value: unknown): boolean {
     for (const [property, propertySchema] of Object.entries(properties)) {
       if (
         property in objectValue &&
-        !verifyJsonSchemaSubset(propertySchema, objectValue[property])
+        !verifyJsonSchemaSubset(
+          responseSchemaSchema.safeParse(propertySchema).data,
+          objectValue[property],
+        )
       ) {
         return false;
       }
@@ -198,8 +207,8 @@ export function registerInterruptsFromRunFinished(event: unknown): void {
       ...(toolCallId ? { toolCallId } : {}),
       ...(toolName ? { toolName } : {}),
       ...(sessionId ? { sessionId, executionId: sessionId } : {}),
-      ...(candidate["responseSchema"] !== undefined
-        ? { responseSchema: candidate["responseSchema"] }
+      ...(responseSchemaSchema.safeParse(candidate["responseSchema"]).success
+        ? { responseSchema: candidate["responseSchema"] as Record<string, unknown> }
         : {}),
       ...(Object.keys(metadata).length > 0 ? { publicMetadata: metadata } : {}),
       ...(typeof candidate["expiresAt"] === "string" ? { expiresAt: candidate["expiresAt"] } : {}),

@@ -77,7 +77,12 @@ describe("validation boundary inventory", () => {
     expect(() => assertManualShapeOwnerCoverage(inventory)).not.toThrow();
     expect(() =>
       assertManualShapeOwnerCoverage(inventory, [
-        { file: "packages/example/src/raw.ts", line: 1, symbol: "parseRaw", declarationKind: "function" },
+        {
+          file: "packages/example/src/raw.ts",
+          line: 1,
+          symbol: "parseRaw",
+          declarationKind: "function",
+        },
       ]),
     ).toThrow(/unclassified/u);
   });

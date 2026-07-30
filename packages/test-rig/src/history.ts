@@ -22,23 +22,26 @@ interface WireItem extends Record<string, unknown> {
   output?: unknown;
 }
 const wireItemSchema = z.object({}).loose();
-const jsonObjectSchema = z.record(z.string(), z.json());
+const recordSchema = z.record(z.string(), z.unknown());
 
+/** Provider history is deliberately tolerant: unusable entries are skipped, not fatal. */
 const records = (value: unknown): WireItem[] =>
-  (z.array(wireItemSchema).safeParse(value).data ?? []) as WireItem[];
+  (z.array(z.unknown()).safeParse(value).data ?? []).filter(
+    (entry): entry is WireItem => wireItemSchema.safeParse(entry).success,
+  );
 const textParts = (value: unknown, kind: string): string =>
   records(value)
     .filter((p) => p.type === kind)
     .map((p) => (typeof p.text === "string" ? p.text : ""))
     .join("");
 const args = (value: unknown): Record<string, unknown> => {
-  const direct = jsonObjectSchema.safeParse(value);
+  const direct = recordSchema.safeParse(value);
   if (direct.success) {
     return direct.data;
   }
   if (typeof value === "string") {
     try {
-      return jsonObjectSchema.safeParse(JSON.parse(value)).data ?? {};
+      return recordSchema.safeParse(JSON.parse(value)).data ?? {};
     } catch {
       return {};
     }

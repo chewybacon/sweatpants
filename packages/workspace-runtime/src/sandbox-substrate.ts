@@ -1,10 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import {
-  canonicalJson,
-  canonicalSnapshot,
-  sha256,
-  sha256Bytes,
-} from "@sweatpants/foundation";
+import { canonicalJson, canonicalSnapshot, sha256, sha256Bytes } from "@sweatpants/foundation";
 import { type Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import { z } from "zod";
@@ -37,12 +32,7 @@ const sandboxCapabilitiesSchema = z.strictObject({
   warmAttachments: z.boolean(),
   memorySuspend: z.boolean(),
   localDisk: z.boolean(),
-  workspacePersistence: z.enum([
-    "none",
-    "sandbox_lease",
-    "provider_durable",
-    "checkpoint_restore",
-  ]),
+  workspacePersistence: z.enum(["none", "sandbox_lease", "provider_durable", "checkpoint_restore"]),
   checkpointRestore: z.boolean(),
   shell: z.boolean(),
   processExecution: z.boolean(),

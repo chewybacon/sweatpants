@@ -63,7 +63,8 @@
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
-        "effection": "catalog:"
+        "effection": "catalog:",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@effectionx/raf": "catalog:",
@@ -83,8 +84,7 @@
         "tailwind-merge": "catalog:",
         "tsup": "catalog:",
         "typescript": "catalog:",
-        "vitest": "catalog:",
-        "zod": "catalog:"
+        "vitest": "catalog:"
     },
     "peerDependencies": {
         "@effectionx/raf": "^0.1.1",

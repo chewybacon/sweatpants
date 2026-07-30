@@ -11,14 +11,17 @@ const interruptRecordSchema = z
     interruptedRunId: z.string().min(1).max(512),
     interruptId: z.string().min(1).max(512),
     reason: z.string().min(1).max(4_096),
-    message: z.string().max(64 * 1024).optional(),
+    message: z
+      .string()
+      .max(64 * 1024)
+      .optional(),
     toolCallId: z.string().max(512).optional(),
     toolName: z.string().max(512).optional(),
     sessionId: z.string().max(512).optional(),
     runtimeId: z.string().max(512).optional(),
     executionId: z.string().max(512).optional(),
     continuationRef: z.json().optional(),
-    responseSchema: z.json().optional(),
+    responseSchema: z.record(z.string(), z.json()).optional(),
     publicMetadata: z.record(z.string(), z.json()).optional(),
     createdAt: z.string().min(1).max(128),
     expiresAt: z.string().min(1).max(128).optional(),
@@ -26,27 +29,29 @@ const interruptRecordSchema = z
     resolvedByRunId: z.string().max(512).optional(),
     resolutionHash: z.string().max(4_096).optional(),
   })
-  .transform((value): OpenInterruptRecord => ({
-    threadId: value.threadId,
-    scopeId: value.scopeId,
-    interruptedRunId: value.interruptedRunId,
-    interruptId: value.interruptId,
-    reason: value.reason,
-    ...(value.message !== undefined ? { message: value.message } : {}),
-    ...(value.toolCallId !== undefined ? { toolCallId: value.toolCallId } : {}),
-    ...(value.toolName !== undefined ? { toolName: value.toolName } : {}),
-    ...(value.sessionId !== undefined ? { sessionId: value.sessionId } : {}),
-    ...(value.runtimeId !== undefined ? { runtimeId: value.runtimeId } : {}),
-    ...(value.executionId !== undefined ? { executionId: value.executionId } : {}),
-    ...(value.continuationRef !== undefined ? { continuationRef: value.continuationRef } : {}),
-    ...(value.responseSchema !== undefined ? { responseSchema: value.responseSchema } : {}),
-    ...(value.publicMetadata !== undefined ? { publicMetadata: value.publicMetadata } : {}),
-    createdAt: value.createdAt,
-    ...(value.expiresAt !== undefined ? { expiresAt: value.expiresAt } : {}),
-    status: value.status,
-    ...(value.resolvedByRunId !== undefined ? { resolvedByRunId: value.resolvedByRunId } : {}),
-    ...(value.resolutionHash !== undefined ? { resolutionHash: value.resolutionHash } : {}),
-  }));
+  .transform(
+    (value): OpenInterruptRecord => ({
+      threadId: value.threadId,
+      scopeId: value.scopeId,
+      interruptedRunId: value.interruptedRunId,
+      interruptId: value.interruptId,
+      reason: value.reason,
+      ...(value.message !== undefined ? { message: value.message } : {}),
+      ...(value.toolCallId !== undefined ? { toolCallId: value.toolCallId } : {}),
+      ...(value.toolName !== undefined ? { toolName: value.toolName } : {}),
+      ...(value.sessionId !== undefined ? { sessionId: value.sessionId } : {}),
+      ...(value.runtimeId !== undefined ? { runtimeId: value.runtimeId } : {}),
+      ...(value.executionId !== undefined ? { executionId: value.executionId } : {}),
+      ...(value.continuationRef !== undefined ? { continuationRef: value.continuationRef } : {}),
+      ...(value.responseSchema !== undefined ? { responseSchema: value.responseSchema } : {}),
+      ...(value.publicMetadata !== undefined ? { publicMetadata: value.publicMetadata } : {}),
+      createdAt: value.createdAt,
+      ...(value.expiresAt !== undefined ? { expiresAt: value.expiresAt } : {}),
+      status: value.status,
+      ...(value.resolvedByRunId !== undefined ? { resolvedByRunId: value.resolvedByRunId } : {}),
+      ...(value.resolutionHash !== undefined ? { resolutionHash: value.resolutionHash } : {}),
+    }),
+  );
 const interruptStateSchema = z.array(interruptRecordSchema).max(16_384);
 
 const THREAD_INTERRUPT_PREFIX = "__thread_interrupts__:";
