@@ -15,6 +15,10 @@
         "sandbox:request": "./scripts/request.sh",
         "sandbox:shell": "./scripts/shell.sh"
     },
+    "dependencies": {
+        "@sweatpants/workspace-runtime": "workspace:*",
+        "effection": "catalog:"
+    },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",

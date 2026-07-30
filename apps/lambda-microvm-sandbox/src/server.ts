@@ -9,7 +9,7 @@ import {
   parseWorkspaceRequest,
   useNodeHttpServer,
   type WorkspaceFence,
-} from "../../../packages/workspace-runtime/src/index.ts";
+} from "@sweatpants/workspace-runtime";
 
 const workspace = process.env["SWEATPANTS_WORKSPACE"] ?? "/workspace";
 const lifecyclePath = resolve(workspace, ".sweatpants", "lifecycle.jsonl");
