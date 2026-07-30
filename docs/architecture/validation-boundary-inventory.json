@@ -4988,35 +4988,36 @@
     {
       "id": "SHAPE-333",
       "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 127,
+      "line": 126,
       "symbol": "fromPiContentBlock",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:127"
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:126"
       ]
     },
     {
       "id": "SHAPE-335",
       "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 285,
+      "line": 284,
       "symbol": "safeMetadata",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:285"
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:284"
       ]
     },
     {
-      "id": "SHAPE-454",
+      "id": "SHAPE-466",
       "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 302,
-      "symbol": "decodeToolArguments",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for decodeToolArguments",
+      "line": 305,
+      "symbol": "parseProviderToolArguments",
+      "classification": "B",
+      "authority": "model-provider-pi-ai canonical JSON ingress for provider-authored tool arguments",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:302"
-      ]
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:305"
+      ],
+      "rationale": "pi-ai/provider output is normalized once to canonical Json while domain shape remains authored-schema authority"
     },
     {
       "id": "SHAPE-447",

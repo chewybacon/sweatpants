@@ -3,7 +3,7 @@ import {
   generateImages as piGenerateImages,
   streamSimple as piStreamSimple,
 } from "@earendil-works/pi-ai/compat";
-import type { Json } from "@sweatpants/foundation";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import type {
   AssistantImages as PiAssistantImages,
   AssistantMessage as PiAssistantMessage,
@@ -110,10 +110,9 @@ function toPiContentBlock(block: ContentBlock): unknown {
         ...(block.redacted !== undefined ? { redacted: block.redacted } : {}),
       };
     case "toolCall":
-      return {
-        ...block,
-        arguments: decodeToolArguments(block.arguments),
-      };
+      // This is framework egress: `arguments` is already trusted `Json` and is
+      // transported without parsing, cloning, or re-projection.
+      return block;
     default:
       return block;
   }
@@ -175,7 +174,7 @@ function fromPiContentBlock(block: unknown, settled: boolean): ContentBlock {
       type: "toolCall",
       id: typeof candidate["id"] === "string" ? candidate["id"] : "",
       name: typeof candidate["name"] === "string" ? candidate["name"] : "",
-      arguments: decodeToolArguments(candidate["arguments"]),
+      arguments: parseProviderToolArguments(candidate["arguments"]),
       ...(typeof candidate["thoughtSignature"] === "string"
         ? { thoughtSignature: candidate["thoughtSignature"] }
         : {}),
@@ -294,20 +293,24 @@ function safeMetadata(metadata: Record<string, unknown>): Record<string, unknown
 }
 
 /**
- * Provider wire convention: some providers send arguments as a JSON string.
- * Decoding that string is the provider's job. Everything else passes through
- * untouched — including text the model failed to make valid JSON, which the
- * authored parameter schema will reject with an accurate diagnostic.
+ * Establishes the only invariant Sweatpants needs from provider arguments:
+ * canonical JSON suitable for transport and persistence. The argument's domain
+ * shape remains deliberately open until the authored Standard Schema executes.
+ *
+ * pi-ai normally supplies a best-effort object and may already have repaired or
+ * replaced malformed wire text. The string arm remains for compatible provider
+ * adapters/history values that preserve their JSON encoding; undecodable text
+ * remains a JSON string so the authored schema can reject the real value.
  */
-function decodeToolArguments(value: unknown): Json {
+function parseProviderToolArguments(value: unknown): Json {
   if (typeof value === "string") {
     try {
-      return JSON.parse(value) as Json;
+      return assertJson(JSON.parse(value), "$.toolCall.arguments");
     } catch {
-      return value;
+      return assertJson(value, "$.toolCall.arguments");
     }
   }
-  return value as Json;
+  return assertJson(value, "$.toolCall.arguments");
 }
 
 function fromPiToolCall(toolCall: PiToolCall): ToolCallBlock {
@@ -315,7 +318,7 @@ function fromPiToolCall(toolCall: PiToolCall): ToolCallBlock {
     type: "toolCall",
     id: toolCall.id,
     name: toolCall.name,
-    arguments: decodeToolArguments(toolCall.arguments),
+    arguments: parseProviderToolArguments(toolCall.arguments),
     ...(toolCall.thoughtSignature ? { thoughtSignature: toolCall.thoughtSignature } : {}),
   };
 }
