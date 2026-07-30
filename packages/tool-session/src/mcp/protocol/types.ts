@@ -7,6 +7,7 @@
  * @see https://modelcontextprotocol.io/specification/2025-11-25
  * @packageDocumentation
  */
+import type { Json } from "@sweatpants/foundation";
 
 // =============================================================================
 // JSON-RPC BASE TYPES
@@ -154,7 +155,12 @@ export interface McpToolUseContent {
   type: "tool_use";
   id: string;
   name: string;
-  input: Record<string, unknown>;
+  /**
+   * Model-authored arguments, carried verbatim through replay. The receiving
+   * MCP server owns the judgment of whether they satisfy its tool's schema;
+   * reshaping them here would hide the model's actual output.
+   */
+  input: Json;
 }
 
 /**
@@ -360,7 +366,8 @@ export interface McpElicitationCompleteParams {
  */
 export interface McpToolCallParams {
   name: string;
-  arguments?: Record<string, unknown>;
+  /** JSON-RPC transported; the protocol fixes the envelope, not the argument shape. */
+  arguments?: Json;
 }
 
 /**

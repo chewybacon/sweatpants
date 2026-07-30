@@ -26,6 +26,7 @@
  * @packageDocumentation
  */
 import type { Operation, Stream } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import type {
   ElicitsMap,
   LogLevel,
@@ -67,7 +68,7 @@ export interface ToolCallMessage {
   tool_calls: Array<{
     id: string;
     type: "function";
-    function: { name: string; arguments: Record<string, unknown> };
+    function: { name: string; arguments: Json };
   }>;
 }
 export interface ToolResultMessage {

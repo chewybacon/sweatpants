@@ -12,6 +12,7 @@
  * dependencies.
  */
 import type { TokenUsage } from "./core-types.ts";
+import type { Json } from "@sweatpants/foundation";
 
 // =============================================================================
 // MESSAGE TYPES
@@ -47,7 +48,8 @@ export interface ToolCall {
   type: "function";
   function: {
     name: string;
-    arguments: Record<string, unknown>;
+    /** Open until the authored tool's parameter schema narrows it at `execute`. */
+    arguments: Json;
   };
 }
 

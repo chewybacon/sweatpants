@@ -1,4 +1,5 @@
 import { type Operation, type Stream } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import { definePort } from "@sweatpants/foundation/port";
 
 export interface ToolDefinition {
@@ -21,7 +22,7 @@ export interface ToolInventoryEntry {
 export interface ToolCall {
   id: string;
   type: "function";
-  function: { name: string; arguments: Record<string, unknown> };
+  function: { name: string; arguments: Json };
 }
 
 export interface ToolExecutionRef {

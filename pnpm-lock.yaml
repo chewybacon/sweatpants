@@ -1556,6 +1556,9 @@ importers:
       '@sweatpants/chat-core':
         specifier: workspace:*
         version: link:../chat-core
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       zod:
         specifier: 'catalog:'
         version: 4.1.13
@@ -1746,6 +1749,9 @@ importers:
       '@sweatpants/chat-core':
         specifier: workspace:*
         version: link:../chat-core
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../model-provider-pi-ai

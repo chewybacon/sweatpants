@@ -20,6 +20,7 @@
  * @packageDocumentation
  */
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { Json } from "@sweatpants/foundation";
 import {
   type Operation,
   type Channel,
@@ -234,7 +235,7 @@ interface BridgeProviderSampleResult {
   text: string;
   model?: string;
   stopReason?: "endTurn" | "maxTokens" | "toolUse" | string;
-  toolCalls?: { id: string; name: string; arguments: Record<string, unknown> }[];
+  toolCalls?: { id: string; name: string; arguments: Json }[];
 }
 
 /**

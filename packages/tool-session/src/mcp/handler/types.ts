@@ -16,6 +16,7 @@
  * @packageDocumentation
  */
 import type { Operation } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import type { ToolSessionRegistry, ToolSession } from "../../contract.ts";
 import type { ToolDefinition } from "@sweatpants/agent-sdk";
 import type { ElicitsMap } from "../mcp-tool-types.ts";
@@ -130,7 +131,8 @@ export interface McpToolsCallRequest {
   type: "tools_call";
   requestId: JsonRpcId;
   toolName: string;
-  arguments: Record<string, unknown>;
+  /** Model-authored arguments; the authored tool schema is the only judge of shape. */
+  arguments: Json;
   sessionId?: string | undefined;
 }
 

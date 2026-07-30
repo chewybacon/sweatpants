@@ -31,6 +31,7 @@ import {
   type WorkerElicitResponse,
 } from "@sweatpants/agent-sdk/transport/worker";
 import type { ElicitDefinition, ToolElicitResult } from "@sweatpants/agent-sdk";
+import type { Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import type {
   WorkerTool,
@@ -551,7 +552,7 @@ function createMcpWorkerContext(
             request,
             response: responseMsg,
             messages: [request, responseMsg] as [typeof request, typeof responseMsg],
-            withArguments(fn: (ctx: unknown) => Record<string, unknown>) {
+            withArguments(fn: (ctx: unknown) => Json) {
               const args = fn(context ?? {});
               const requestWithArgs = {
                 role: "assistant" as const,

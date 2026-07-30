@@ -64,7 +64,8 @@ export interface ToolUseContent {
   type: "tool_use";
   id: string;
   name: string;
-  input: Record<string, unknown>;
+  /** Model-authored arguments, carried verbatim; narrowed only at `execute`. */
+  input: Json;
 }
 
 export interface ToolResultContent {
@@ -172,7 +173,7 @@ export interface ElicitExchange<TContext> {
   request: ToolMessage & { role: "assistant" };
   response: ToolMessage & { role: "user" };
   messages: [ToolMessage, ToolMessage];
-  withArguments(fn: (context: TContext) => Record<string, unknown>): [ToolMessage, ToolMessage];
+  withArguments(fn: (context: TContext) => Json): [ToolMessage, ToolMessage];
 }
 
 /**
@@ -240,7 +241,8 @@ export interface SampleResultWithParsed<T> {
 export interface SamplingToolCall {
   id: string;
   name: string;
-  arguments: Record<string, unknown>;
+  /** Open until the authored tool's parameter schema narrows it at `execute`. */
+  arguments: Json;
 }
 
 export interface SampleResultWithToolCalls {

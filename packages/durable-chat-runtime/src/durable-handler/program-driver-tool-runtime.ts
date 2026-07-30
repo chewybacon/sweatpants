@@ -44,7 +44,6 @@ const continuationSchema = z.strictObject({
   tool: z.string().max(512),
   elicitId: z.string().max(512),
 });
-const jsonObjectSchema = z.record(z.string(), z.json());
 
 type ToolRuntimeForeignOptions = {
   runtime: ToolRuntime;
@@ -85,7 +84,7 @@ export function createToolRuntimeForeignEffectRegistrations(
           call: {
             id: request.route ?? `${context.taskId}:${context.pullId}`,
             type: "function",
-            function: { name: request.tool, arguments: objectInput(request.input) },
+            function: { name: request.tool, arguments: request.input },
           },
           signal: context.cancellation,
           metadata: effectMetadata(options, context),
@@ -266,11 +265,6 @@ function parseContinuation(
   value: Json,
 ): { ref: ToolExecutionRef; tool: string; elicitId: string } | undefined {
   return continuationSchema.safeParse(value).data;
-}
-
-function objectInput(value: Json): Record<string, unknown> {
-  const parsed = jsonObjectSchema.safeParse(value);
-  return parsed.success ? parsed.data : { input: value };
 }
 
 function effectMetadata(options: ToolRuntimeForeignOptions, context: DurableEffectContext) {

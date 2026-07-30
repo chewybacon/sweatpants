@@ -45,15 +45,19 @@ describe("validation boundary inventory", () => {
     ).toBe(true);
   });
 
-  it("rejects direct decode-to-domain casts while allowing unknown containment", () => {
+  it("rejects direct decode-to-domain casts while allowing unknown and Json containment", () => {
     const directory = mkdtempSync(join(tmpdir(), "validation-boundary-casts-"));
     const invalid = join(directory, "invalid.ts");
     const valid = join(directory, "valid.ts");
+    const jsonContained = join(directory, "json-contained.ts");
     try {
       writeFileSync(invalid, "const value = JSON.parse(text) as DomainType;\n");
       writeFileSync(valid, "const value: unknown = JSON.parse(text); parseDomain(value);\n");
+      // `Json` is what JSON.parse actually returns; it asserts no domain shape.
+      writeFileSync(jsonContained, "const value = JSON.parse(text) as Json;\n");
       expect(scanUncheckedBoundaryCasts([invalid])).toHaveLength(1);
       expect(scanUncheckedBoundaryCasts([valid])).toEqual([]);
+      expect(scanUncheckedBoundaryCasts([jsonContained])).toEqual([]);
       expect(scanUncheckedBoundaryCasts()).toEqual([]);
     } finally {
       rmSync(directory, { recursive: true, force: true });

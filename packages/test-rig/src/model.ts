@@ -1,4 +1,5 @@
 import { createFoundationSimulationServer } from "@simulacrum/foundation-simulator";
+import type { Json } from "@sweatpants/foundation";
 
 export interface OpenAiResponsesRequest {
   model?: unknown;
@@ -19,7 +20,7 @@ export type RequestExpectation =
 export interface SimulatedToolCall {
   id: string;
   name: string;
-  arguments: Record<string, unknown>;
+  arguments: Json;
 }
 export interface SimulatedProviderError {
   code: string;

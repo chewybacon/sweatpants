@@ -4,9 +4,7 @@ import type { ChatStateEvent } from "../state/events.ts";
 import { chatReducer, initialChatState } from "../state/reducer.ts";
 import type { ElicitRequestStreamEvent, StreamEvent, StreamResult } from "./streaming.ts";
 import type { StreamEventEntry } from "./options.ts";
-import { z } from "zod";
-
-const toolArgumentsSchema = z.record(z.string(), z.json());
+import type { Json } from "@sweatpants/foundation";
 
 interface RunToolCall {
   id: string;
@@ -14,9 +12,10 @@ interface RunToolCall {
   arguments: string;
 }
 
-function parseArguments(value: string): unknown {
+/** Undecodable text survives verbatim; only the authored schema may reject it. */
+function parseArguments(value: string): Json {
   try {
-    return JSON.parse(value) as unknown;
+    return JSON.parse(value) as Json;
   } catch {
     return value;
   }
@@ -120,7 +119,7 @@ export function* consumeAgUiEventStream(
     toolCalls: currentToolCalls.map((call) => ({
       id: call.id,
       name: call.name,
-      arguments: toolArgumentsSchema.safeParse(call.arguments).data ?? {},
+      arguments: call.arguments,
     })),
     serverToolResults: currentToolResults.map((result) => ({
       ...result,

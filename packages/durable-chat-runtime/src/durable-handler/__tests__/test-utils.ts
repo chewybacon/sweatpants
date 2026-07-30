@@ -17,6 +17,7 @@ import {
   type Stream,
 } from "effection";
 import { z } from "zod";
+import type { Json } from "@sweatpants/foundation";
 import { createTool, type ToolDefinition as CoreToolDefinition } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import type {
@@ -130,7 +131,7 @@ export interface MockProviderConfig {
   toolCalls?: Array<{
     id: string;
     name: string;
-    arguments: Record<string, unknown>;
+    arguments: Json;
   }>;
   /** Delay between tokens */
   tokenDelayMs?: number;

@@ -38,6 +38,7 @@
  * @packageDocumentation
  */
 import type { Operation } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
   ElicitDefinition,
@@ -432,7 +433,8 @@ export interface Message {
 export interface ToolCallMessageToolCall {
   id: string;
   type: "function";
-  function: { name: string; arguments: Record<string, unknown> };
+  /** Open until the authored tool's parameter schema narrows it at `execute`. */
+  function: { name: string; arguments: Json };
 }
 
 /**
@@ -550,8 +552,8 @@ export interface SamplingToolCall {
   /** Name of the tool being called */
   name: string;
 
-  /** Arguments to the tool (parsed from model output) */
-  arguments: Record<string, unknown>;
+  /** Model-authored arguments; only the authored tool schema may narrow them. */
+  arguments: Json;
 }
 
 /**
