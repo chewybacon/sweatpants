@@ -4988,34 +4988,34 @@
     {
       "id": "SHAPE-333",
       "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 122,
+      "line": 127,
       "symbol": "fromPiContentBlock",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:122"
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:127"
       ]
     },
     {
       "id": "SHAPE-335",
       "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 278,
+      "line": 285,
       "symbol": "safeMetadata",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:278"
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:285"
       ]
     },
     {
       "id": "SHAPE-454",
       "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 295,
+      "line": 302,
       "symbol": "decodeToolArguments",
       "classification": "R",
       "authority": "typed constructor or owning ingress for decodeToolArguments",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:295"
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:302"
       ]
     },
     {
