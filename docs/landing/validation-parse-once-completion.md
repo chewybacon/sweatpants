@@ -25,8 +25,8 @@ Current inventory totals:
 | --- | ---: |
 | Historical validation records | 86 |
 | Manual shape owners | 340 |
-| `B` external boundary | 110 |
-| `R` same-domain revalidation | 166 |
+| `B` external boundary | 111 |
+| `R` same-domain revalidation | 165 |
 | `S` typed semantic verification | 15 |
 | `G` generic mechanism | 6 |
 | `C` compatibility normalizer | 43 |
@@ -140,7 +140,7 @@ Acceptance tests now have a repository-wide tooling gate: they may not replace m
 
 ### Model provider wire conformance
 
-Provider behavior tests no longer mock `@earendil-works/pi-ai/compat`. The provider is exercised through `test-rig`'s real HTTP Responses simulator, so the actual pi-ai client, SSE decoder, request projection, tool-call chunking, structured-response unwrapping, provider errors, and malformed-argument behavior are covered together. The simulator characterization records an important vendor fact: pi-ai repairs truncated JSON arguments and turns unparseable argument text into `{}` before Sweatpants receives it. The raw-value preservation guarantee therefore starts at Sweatpants-owned decode points, not at this vendor boundary. Policy-only tests remain in the model-provider package; wire conformance lives in `platform-acceptance`.
+Provider behavior tests no longer mock `@earendil-works/pi-ai/compat`. The provider is exercised through `test-rig`'s real HTTP Responses simulator, so the actual pi-ai client, SSE decoder, request projection, tool-call chunking, structured-response unwrapping, provider errors, and malformed-argument behavior are covered together. The simulator characterization records an important vendor fact: pi-ai repairs truncated JSON arguments and turns unparseable argument text into `{}` before Sweatpants receives it. The raw-value preservation guarantee therefore starts at Sweatpants-owned decode points, not at this vendor boundary. The provider adapter now establishes canonical `Json` with `assertJson` at its ingress instead of casting `unknown`; its egress transports already trusted `Json` without reparsing or cloning. Domain shape remains open until the authored Standard Schema executes. Policy-only tests remain in the model-provider package; wire conformance lives in `platform-acceptance`.
 
 The provider now transports authored JSON Schema projections rather than re-deriving them. `createTool` computes and digests the portable projection once; inventory and provider types carry it as `JsonObject`. The provider-side schema-normalization implementation and duplicate sanitization walk were deleted. Runtime-supplied sampling schemas still use the single conversion at their actual authoring ingress. MCP `tools/list` and discovery manifests now follow the same rule: one shared projection reads parameter and elicitation schemas from the authored tool artifacts, rather than casting the tool to an ad-hoc legacy shape and re-running schema conversion twice. The local worker adapter also carries authored elicitation projections into the worker; the worker no longer inspects raw elicitation definitions or re-converts their response schemas. Hydra's standalone tool-authoring examples now compute their Ollama projection in `defineTool` and retain it with the validator instead of re-running `z.toJSONSchema` each time a registry is serialized.
 
