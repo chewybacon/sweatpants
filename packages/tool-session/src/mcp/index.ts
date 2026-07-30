@@ -52,12 +52,6 @@ export type {
   SamplingToolDefinition,
   SamplingToolCall,
   SamplingToolChoice,
-  // Message types
-  Message,
-  MessageRole,
-  ExtendedMessage,
-  ToolCallMessage,
-  ToolResultMessage,
   // Elicitation types
   ToolElicitResult,
   WireElicitResult,

@@ -1,13 +1,8 @@
 import type { Operation } from "effection";
-import type { Message } from "@sweatpants/chat-core";
 import type { JsonObject } from "@sweatpants/foundation";
 import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
-import type {
-  ExtendedMessage,
-  SamplingToolCall,
-  SamplingToolDefinition,
-} from "@sweatpants/tool-session/mcp";
-import { extendedMessageToProviderMessage } from "@sweatpants/durable-chat-runtime/tool-session/message-conversion";
+import type { SamplingToolCall, SamplingToolDefinition } from "@sweatpants/tool-session/mcp";
+import { toModelMessages, type ExtendedMessage } from "@sweatpants/tool-session/messages";
 import type {
   ToolSessionSamplingProvider,
   WireSampleResult,
@@ -30,41 +25,6 @@ interface SamplingOptions {
   tools?: SamplingToolDefinition[];
   toolChoice?: "auto" | "required" | "none";
   schema?: JsonObject;
-}
-
-type ProviderAssistantToolCall = NonNullable<Message["tool_calls"]>[number];
-
-function providerMessageToModelMessage(message: Message): ModelMessage {
-  if (message.role === "system") {
-    return { role: "system", content: message.content };
-  }
-
-  if (message.role === "user") {
-    return { role: "user", content: message.content };
-  }
-
-  if (message.role === "tool") {
-    return {
-      role: "toolResult",
-      toolCallId: message.tool_call_id ?? "",
-      toolName: message.replay?.toolName ?? "",
-      content: [{ type: "text", text: message.content }],
-      isError: message.isError === true,
-    };
-  }
-
-  return {
-    role: "assistant",
-    content: [
-      ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
-      ...(message.tool_calls ?? []).map((toolCall: ProviderAssistantToolCall) => ({
-        type: "toolCall" as const,
-        id: toolCall.id,
-        name: toolCall.function.name,
-        arguments: toolCall.function.arguments,
-      })),
-    ],
-  };
 }
 
 function assistantText(message: ModelAssistantMessage): string {
@@ -212,9 +172,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
       messages: ExtendedMessage[],
       options: SamplingOptions | undefined,
     ): Operation<WireSampleResult> {
-      const modelMessages = messages
-        .map(extendedMessageToProviderMessage)
-        .map(providerMessageToModelMessage);
+      const modelMessages = toModelMessages(messages);
 
       const assistant = yield* driver.sample({
         model,

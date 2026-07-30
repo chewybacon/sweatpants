@@ -24,9 +24,9 @@ Current inventory totals:
 | Record | Count |
 | --- | ---: |
 | Historical validation records | 86 |
-| Manual shape owners | 337 |
+| Manual shape owners | 334 |
 | `B` external boundary | 110 |
-| `R` same-domain revalidation | 165 |
+| `R` same-domain revalidation | 162 |
 | `S` typed semantic verification | 15 |
 | `G` generic mechanism | 6 |
 | `C` compatibility normalizer | 41 |
@@ -148,11 +148,15 @@ The provider now transports authored JSON Schema projections rather than re-deri
 
 A repository-wide authored-schema projection gate now rejects `toToolParameterJsonSchema(tool.parameters)` and `z.toJSONSchema(tool.parameters)` outside recognised authoring owners. Conversion of call-time `.inputSchema` and `.schema` remains legal because those call sites are the actual authoring ingress.
 
+### Canonical Tool Session sampling messages
+
+`@sweatpants/tool-session/messages` is now the sole owner of basic, MCP, tool-call, tool-result, and `ExtendedMessage` sampling history. The incompatible copies in the root contract and MCP tool types were deleted. A single sequence-aware `toModelMessages` adapter projects directly to `@sweatpants/model-provider`, resolving result names from preceding calls and rejecting orphan results instead of fabricating empty identity. The Durable Chat Runtime intermediate adapter, app-local provider-message adapters, synthetic sampling message IDs, duplicate guards, and OpenAI-shaped snake-case internal fields were removed. Worker IPC retains one real transport conversion using the canonical message union and explicit unsupported-content rejection.
+
 ## Validation performed
 
 | Scope | Result |
 | --- | --- |
-| Validation inventory/tooling tests | 29 passed |
+| Validation inventory/tooling tests | 30 passed |
 | Tool Runtime Local source tests | 39 passed |
 | Tool Runtime Local acceptance tests | 6 passed |
 | CLI tests | 14 passed |
@@ -167,7 +171,7 @@ A repository-wide authored-schema projection gate now rejects `toToolParameterJs
 | Durable Chat Runtime tests | 204 passed, 4 skipped |
 | Workspace Runtime tests | 18 passed |
 | Journal Authority tests | 92 passed |
-| Tool Session tests | 109 passed, 7 todo |
+| Tool Session tests | 112 passed, 7 todo |
 | AgentCore tests | 49 passed |
 | Execution Store Redis tests | 29 passed |
 | Model provider contract tests | 2 passed |

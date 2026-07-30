@@ -16,7 +16,6 @@ export default defineConfig({
     "program-driver/effects": "src/program-driver/effects.ts",
     "program-driver/native-tools": "src/program-driver/native-tools.ts",
     projection: "src/projection.ts",
-    "tool-session/message-conversion": "src/tool-session/message-conversion.ts",
     "durable-handler/index": "src/durable-handler/index.ts",
     contexts: "src/contexts.ts",
     "tool-inventory": "src/tool-inventory.ts",

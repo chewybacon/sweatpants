@@ -628,7 +628,9 @@ export class RuntimeSessionRegistry {
     }
 
     if (request.toolName === "sample_then_result") {
-      const sampleRequest = { messages: [{ role: "user", content: "Say deterministic hello" }] };
+      const sampleRequest = {
+        messages: [{ role: "user" as const, content: "Say deterministic hello" }],
+      };
       if (readAgentCoreToolSampleConfig().mode === "internal") {
         void this.runInternalSampleTool(session, sampleRequest);
         await this.waitForPauseOrTerminal(session);

@@ -12,16 +12,15 @@ import {
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
-import { createToolInventory, ToolInventoryContext, type Message } from "@sweatpants/chat-core";
-import type { ExtendedMessage } from "@sweatpants/tool-session/mcp";
+import { createToolInventory, ToolInventoryContext } from "@sweatpants/chat-core";
+import { toModelMessages } from "@sweatpants/tool-session/messages";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
-import {
-  type AssistantMessage as ModelAssistantMessage,
-  type Context as ModelContext,
-  type Message as ModelMessage,
+import type {
+  AssistantMessage as ModelAssistantMessage,
+  Context as ModelContext,
 } from "@sweatpants/model-provider";
 import {
   createDurableToolRegistry,
@@ -82,57 +81,6 @@ function resolveFixtureBootstrapUrl(filename: string): URL {
   return pathToFileURL(candidate);
 }
 
-function contentText(content: unknown): string {
-  return typeof content === "string" ? content : JSON.stringify(content ?? "");
-}
-
-function extendedToProviderMessage(message: ExtendedMessage, index: number): Message {
-  const id = `sample-${index}`;
-  if (message.role === "system") {
-    return { id, role: "system", content: contentText(message.content) };
-  }
-  if (message.role === "user") {
-    return { id, role: "user", content: contentText(message.content) };
-  }
-  if (message.role === "assistant") {
-    return { id, role: "assistant", content: contentText(message.content) };
-  }
-  const toolCallId =
-    "toolCallId" in message && typeof message.toolCallId === "string"
-      ? message.toolCallId
-      : "tool_call_id" in message && typeof message.tool_call_id === "string"
-        ? message.tool_call_id
-        : "";
-  return {
-    id,
-    role: "tool",
-    content: contentText(message.content),
-    tool_call_id: toolCallId,
-  };
-}
-
-function providerToModelMessage(message: Message): ModelMessage {
-  if (message.role === "system") {
-    return { role: "system", content: message.content };
-  }
-  if (message.role === "user") {
-    return { role: "user", content: message.content };
-  }
-  if (message.role === "tool") {
-    return {
-      role: "toolResult",
-      toolCallId: message.tool_call_id ?? "",
-      toolName: "",
-      content: [{ type: "text", text: message.content }],
-      isError: false,
-    };
-  }
-  return {
-    role: "assistant",
-    content: message.content ? [{ type: "text", text: message.content }] : [],
-  };
-}
-
 function assistantText(message: ModelAssistantMessage): string {
   return message.content
     .filter(
@@ -149,9 +97,7 @@ function createSamplingProvider(
   const driver = createPiAiModelProviderDriver();
   return {
     *sample(messages, options) {
-      const modelMessages = messages
-        .map((message, index) => extendedToProviderMessage(message, index))
-        .map(providerToModelMessage);
+      const modelMessages = toModelMessages(messages);
       const modelContext: ModelContext = {
         messages: modelMessages,
         ...(options?.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),

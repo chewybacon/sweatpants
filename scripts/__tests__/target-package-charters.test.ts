@@ -84,6 +84,34 @@ describe("target package charters", () => {
     );
   });
 
+  it("keeps Tool Session sampling messages under one canonical owner", () => {
+    const declarations: string[] = [];
+    const visit = (directory: string): void => {
+      for (const entry of readdirSync(directory)) {
+        const path = resolve(directory, entry);
+        if (statSync(path).isDirectory()) {
+          if (entry !== "dist" && entry !== "node_modules") visit(path);
+        } else if (path.endsWith(".ts") && !path.endsWith(".test.ts")) {
+          const source = readFileSync(path, "utf8");
+          if (/export type ExtendedMessage\b/.test(source)) {
+            declarations.push(path.replace(`${root}/`, ""));
+          }
+          expect(source, path).not.toMatch(
+            /function (?:providerMessageToModelMessage|extendedToProviderMessage)\b/,
+          );
+        }
+      }
+    };
+    visit(resolve(root, "packages"));
+    visit(resolve(root, "apps"));
+    expect(declarations).toEqual(["packages/tool-session/src/messages.ts"]);
+    expect(
+      existsSync(
+        resolve(root, "packages/durable-chat-runtime/src/tool-session/message-conversion.ts"),
+      ),
+    ).toBe(false);
+  });
+
   it("keeps authored service and repository ports Effection-native", () => {
     const contractFiles = [
       "packages/durable-execution/src/program-driver-contract.ts",

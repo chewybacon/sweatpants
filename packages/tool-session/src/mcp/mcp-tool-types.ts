@@ -52,7 +52,7 @@ import type {
   WireElicitResult as CoreWireElicitResult,
   ToolMessage,
 } from "@sweatpants/agent-sdk";
-import type { McpMessage } from "./protocol/types.js";
+import type { ExtendedMessage, Message } from "../messages.ts";
 
 // Re-export MCP types for convenience
 export type {
@@ -374,116 +374,6 @@ export interface ElicitRequest<
 }
 
 // =============================================================================
-// MESSAGE TYPES
-// =============================================================================
-
-/**
- * Role in a conversation.
- */
-export type MessageRole = "user" | "assistant" | "system";
-
-/**
- * A message in a conversation.
- */
-export interface Message {
-  role: MessageRole;
-  content: string;
-}
-
-// =============================================================================
-// EXTENDED MESSAGE TYPES (MCP)
-// =============================================================================
-
-/**
- * Extended message type supporting both basic messages and MCP content blocks.
- *
- * This type supports:
- * - Basic text messages (user/assistant/system with string content)
- * - MCP messages with content blocks (tool_use, tool_result, etc.)
- *
- * Use MCP content block format for tool interactions:
- * - Assistant tool calls: role 'assistant' with tool_use content blocks
- * - Tool results: role 'user' with tool_result content blocks
- *
- * @example Basic text message
- * ```typescript
- * const msg: ExtendedMessage = { role: 'user', content: 'Hello' }
- * ```
- *
- * @example MCP tool use
- * ```typescript
- * const msg: ExtendedMessage = {
- *   role: 'assistant',
- *   content: [{ type: 'tool_use', id: 'call_1', name: 'get_weather', input: { city: 'NYC' } }]
- * }
- * ```
- *
- * @example MCP tool result
- * ```typescript
- * const msg: ExtendedMessage = {
- *   role: 'user',
- *   content: [{ type: 'tool_result', toolUseId: 'call_1', content: [{ type: 'text', text: '72F' }] }]
- * }
- * ```
- */
-/**
- * A single tool call within a ToolCallMessage.
- * Vendor-neutral representation of a function-calling tool invocation.
- */
-export interface ToolCallMessageToolCall {
-  id: string;
-  type: "function";
-  /** Open until the authored tool's parameter schema narrows it at `execute`. */
-  function: { name: string; arguments: Json };
-}
-
-/**
- * An assistant message that includes tool calls (function-calling style).
- *
- * This is the OpenAI-compatible representation. Use this when tool authors
- * pass conversation history that includes tool calls. The framework converts
- * to/from MCP content blocks internally.
- *
- * @example
- * ```typescript
- * const msg: ToolCallMessage = {
- *   role: 'assistant',
- *   content: 'I will check the weather',
- *   tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'get_weather', arguments: { city: 'NYC' } } }]
- * }
- * ```
- */
-export interface ToolCallMessage {
-  role: "assistant";
-  content: string;
-  tool_calls: [ToolCallMessageToolCall, ...ToolCallMessageToolCall[]];
-}
-
-/**
- * A tool result message (function-calling style).
- *
- * This is the OpenAI-compatible representation. Use this when tool authors
- * pass conversation history that includes tool results. The framework converts
- * to/from MCP content blocks internally.
- *
- * @example
- * ```typescript
- * const msg: ToolResultMessage = {
- *   role: 'tool',
- *   content: 'The weather in NYC is 72F',
- *   tool_call_id: 'call_1'
- * }
- * ```
- */
-export interface ToolResultMessage {
-  role: "tool";
-  content: string;
-  tool_call_id: string;
-}
-
-export type ExtendedMessage = Message | McpMessage | ToolCallMessage | ToolResultMessage;
-
-// =============================================================================
 // SAMPLING TYPES
 // =============================================================================
 
@@ -647,7 +537,7 @@ interface SampleConfigPromptMode {
  * (e.g., from elicit exchanges) as conversation history.
  */
 interface SampleConfigMessagesMode {
-  /** Explicit messages array (not auto-tracked). Supports extended messages with tool_calls. */
+  /** Explicit messages array (not auto-tracked). Supports canonical tool-call history. */
   messages: ExtendedMessage[];
   prompt?: never;
 }

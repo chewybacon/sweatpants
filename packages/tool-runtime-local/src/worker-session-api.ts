@@ -14,7 +14,8 @@ import type {
   WorkerSampleRequest,
   WorkerSampleResponse,
 } from "@sweatpants/agent-sdk/transport/worker";
-import type { WireElicitResult, ExtendedMessage, ToolCallMessage } from "@sweatpants/tool-session";
+import type { WireElicitResult } from "@sweatpants/tool-session";
+import type { ExtendedMessage, ToolCallMessage } from "@sweatpants/tool-session/messages";
 import { MODEL_CONTEXT_SCHEMA_KEY } from "@sweatpants/tool-session/mcp";
 import type { WireSampleResult } from "@sweatpants/tool-session";
 import { WorkerSessionStateContext } from "./worker-session-context.ts";
@@ -43,15 +44,22 @@ function workerMessageToExtended(message: WorkerMessage): ExtendedMessage {
       .filter((b) => b.type === "text")
       .map((b) => b.text)
       .join("");
-    const toolCalls = toolUseBlocks.map((b) => ({
-      id: b.id,
-      type: "function" as const,
-      function: { name: b.name, arguments: b.input },
-    }));
+    const toolCalls: ToolCallMessage["toolCalls"] = [
+      {
+        id: toolUseBlocks[0]!.id,
+        name: toolUseBlocks[0]!.name,
+        arguments: toolUseBlocks[0]!.input,
+      },
+      ...toolUseBlocks.slice(1).map((block) => ({
+        id: block.id,
+        name: block.name,
+        arguments: block.input,
+      })),
+    ];
     return {
       role: "assistant",
       content: textContent,
-      tool_calls: toolCalls as [ToolCallMessage["tool_calls"][0], ...ToolCallMessage["tool_calls"]],
+      toolCalls,
     };
   }
 
@@ -63,7 +71,8 @@ function workerMessageToExtended(message: WorkerMessage): ExtendedMessage {
     return {
       role: "tool",
       content: resultText,
-      tool_call_id: firstResult.toolUseId,
+      toolCallId: firstResult.toolUseId,
+      isError: firstResult.isError === true,
     };
   }
 
