@@ -4480,47 +4480,47 @@
       ]
     },
     {
+      "id": "SHAPE-287",
+      "file": "packages/foundation/src/json.ts",
+      "line": 100,
+      "symbol": "assertJson",
+      "classification": "G",
+      "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
+      "evidence": [
+        "packages/foundation/src/json.ts:100"
+      ]
+    },
+    {
       "id": "SHAPE-285",
       "file": "packages/foundation/src/json.ts",
-      "line": 160,
+      "line": 163,
       "symbol": "encode",
       "classification": "G",
       "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
       "evidence": [
-        "packages/foundation/src/json.ts:160"
+        "packages/foundation/src/json.ts:163"
       ]
     },
     {
       "id": "SHAPE-286",
       "file": "packages/foundation/src/json.ts",
-      "line": 177,
+      "line": 180,
       "symbol": "sortedEntries",
       "classification": "G",
       "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
       "evidence": [
-        "packages/foundation/src/json.ts:177"
+        "packages/foundation/src/json.ts:180"
       ]
     },
     {
-      "id": "SHAPE-461",
+      "id": "SHAPE-465",
       "file": "packages/foundation/src/json.ts",
-      "line": 85,
-      "symbol": "assertJsonObject",
+      "line": 89,
+      "symbol": "requireJsonObject",
       "classification": "R",
-      "authority": "typed constructor or owning ingress for assertJsonObject",
+      "authority": "typed constructor or owning ingress for requireJsonObject",
       "evidence": [
-        "packages/foundation/src/json.ts:85"
-      ]
-    },
-    {
-      "id": "SHAPE-287",
-      "file": "packages/foundation/src/json.ts",
-      "line": 97,
-      "symbol": "assertJson",
-      "classification": "G",
-      "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
-      "evidence": [
-        "packages/foundation/src/json.ts:97"
+        "packages/foundation/src/json.ts:89"
       ]
     },
     {
