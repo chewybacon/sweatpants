@@ -54,6 +54,7 @@ export interface PortableSchemaDescriptor<Role extends string = string> {
   readonly role: Role;
   readonly version: string;
   readonly vendor: string;
+  /** A JSON Schema document; note `true`/`false` are legal schemas. */
   readonly inputProjection: Json;
   readonly outputProjection: Json;
   readonly fidelity: PortableSchemaFidelity;

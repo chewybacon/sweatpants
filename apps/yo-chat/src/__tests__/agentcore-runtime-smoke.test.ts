@@ -4,6 +4,7 @@ import { run } from "effection";
 import type * as AgentCoreModule from "@sweatpants/tool-runtime-agentcore";
 import { assertJson } from "@sweatpants/foundation";
 import { standardSchemaOf } from "@sweatpants/foundation/schema";
+import { createTool } from "@sweatpants/agent-sdk";
 
 const anyToolParameters = Object.assign(
   standardSchemaOf("agentcore-smoke", (value) => {
@@ -51,22 +52,21 @@ describe("yo-chat AgentCore runtime smoke", () => {
       default: "file:///tmp/tool-worker.js",
     }));
 
+    // An authored tool, so it carries the same schema artifacts production does.
+    const bookFlight = createTool("book_flight")
+      .description("Book a flight")
+      .parameters(anyToolParameters, {
+        inputProjection: { type: "object", additionalProperties: true },
+        outputProjection: { type: "object", additionalProperties: true },
+      })
+      .execute(function* () {
+        return { booked: true };
+      });
+
     vi.doMock("../server/tools", () => ({
       activeAgentCoreToolNames: () => ["book_flight"],
-      activePluginTools: [
-        {
-          name: "book_flight",
-          description: "Book a flight",
-          parameters: anyToolParameters,
-        },
-      ],
-      allTools: [
-        {
-          name: "book_flight",
-          description: "Book a flight",
-          parameters: anyToolParameters,
-        },
-      ],
+      activePluginTools: [bookFlight],
+      allTools: [bookFlight],
     }));
 
     vi.doMock("@sweatpants/tool-runtime-agentcore", async () => {

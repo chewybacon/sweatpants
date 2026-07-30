@@ -1,5 +1,5 @@
 import type { Operation, Stream } from "effection";
-import type { Json } from "@sweatpants/foundation";
+import type { Json, JsonObject } from "@sweatpants/foundation";
 
 export interface Runtime {
   stream(
@@ -69,7 +69,8 @@ export interface Context {
 export interface Tool {
   name: string;
   description: string;
-  parameters: Record<string, unknown>;
+  /** Portable JSON Schema projection, computed once at authoring. */
+  parameters: JsonObject;
 }
 
 export type Message = UserMessage | SystemMessage | AssistantMessage | ToolResultMessage;
@@ -242,7 +243,7 @@ export interface StreamOptions {
   /** User-facing thinking setting. `off` is normalized to no provider reasoning request. */
   thinking?: ThinkingSetting;
   thinkingBudgets?: ThinkingBudgets;
-  responseFormat?: { type: "json_schema"; name?: string; schema: Record<string, unknown> };
+  responseFormat?: { type: "json_schema"; name?: string; schema: JsonObject };
   providerOptions?: Record<string, unknown>;
   onPayload?: (payload: unknown) => void;
 }

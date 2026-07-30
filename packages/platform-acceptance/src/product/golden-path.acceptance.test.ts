@@ -26,6 +26,7 @@ import {
   type ModelProviderDriver,
   type RuntimeStreamEvent,
 } from "@sweatpants/chat-core";
+import { createToolInventoryEntry } from "@sweatpants/tool-session/chat-runtime";
 import {
   createToolExecutionRef,
   installToolRuntime,
@@ -264,15 +265,8 @@ describe("product facade golden path", () => {
       setup: function* () {
         yield* setupInMemoryDurableStreams<string>();
         yield* ToolInventoryContext.set(
-          createToolInventory([
-            {
-              definition: {
-                name: echo.name,
-                description: echo.description,
-                parameters: z.toJSONSchema(z.object({ input: z.string() })),
-              },
-            },
-          ]),
+          // The authored projection, not a second derivation of it.
+          createToolInventory([createToolInventoryEntry(echo)]),
         );
         yield* installToolRuntime(createLocalToolRuntime([echo as any]));
       },

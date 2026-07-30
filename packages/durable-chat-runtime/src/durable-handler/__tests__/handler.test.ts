@@ -202,19 +202,25 @@ describe("Durable Chat Handler", () => {
         await initialResponse.body?.cancel();
       });
 
-      yield* call(() => new Promise((resolve) => setTimeout(resolve, 250)));
-
-      const { request } = createChatRequest([], {
-        method: "GET",
-        conversationId,
-      });
-      const response = yield* call(() => handler(request));
-      const replay = yield* call(() => consumeDurableResponse(response));
-
-      const snapshots = getEventsByType(replay, "MESSAGES_SNAPSHOT") as Array<{
+      // The server keeps working after the client disconnects, so poll for the
+      // durable checkpoint instead of guessing how long that takes. A fixed
+      // sleep here fails under load for reasons unrelated to the behaviour.
+      let snapshots: Array<{
         type: "MESSAGES_SNAPSHOT";
         messages: Array<{ role: string; content?: string }>;
-      }>;
+      }> = [];
+      const deadline = Date.now() + 10_000;
+      do {
+        yield* call(() => new Promise((resolve) => setTimeout(resolve, 25)));
+        const { request } = createChatRequest([], {
+          method: "GET",
+          conversationId,
+        });
+        const response = yield* call(() => handler(request));
+        const replay = yield* call(() => consumeDurableResponse(response));
+        snapshots = getEventsByType(replay, "MESSAGES_SNAPSHOT") as typeof snapshots;
+      } while ((snapshots[0]?.messages.length ?? 0) < 2 && Date.now() < deadline);
+
       expect(snapshots[0]?.messages).toMatchObject([
         { role: "user", content: "Keep going" },
         { role: "assistant", content: "Disconnect and finish" },

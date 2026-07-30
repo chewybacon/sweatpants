@@ -1,6 +1,8 @@
 import { run } from "effection";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { createTool } from "@sweatpants/agent-sdk";
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
 import { createPiAiRuntime } from "../src/runtime/pi-ai.ts";
 import type { Context, Model } from "../src/runtime/types.ts";
 
@@ -56,16 +58,22 @@ beforeEach(() => {
 describe("@sweatpants/model-provider-pi-ai schema projection acceptance", () => {
   it("sends clone-safe tool JSON Schema with required fields preserved", async () => {
     const runtime = createPiAiRuntime();
+    // The production path: an authored tool is lowered to its portable
+    // projection once, at authoring, and the provider transports that.
+    const bookFlight = createTool("book_flight")
+      .description("Book a flight")
+      .parameters(z.object({ from: z.string(), destination: z.string() }))
+      .execute(function* () {
+        return { booked: true };
+      });
+    const entry = createToolInventoryEntry(bookFlight);
     const context: Context = {
       messages: [{ role: "user", content: "Book a flight from Boston to NYC" }],
       tools: [
         {
-          name: "book_flight",
-          description: "Book a flight",
-          parameters: z.object({
-            from: z.string(),
-            destination: z.string(),
-          }) as unknown as Record<string, unknown>,
+          name: entry.definition.name,
+          description: entry.definition.description ?? "",
+          parameters: entry.definition.parameters,
         },
       ],
     };

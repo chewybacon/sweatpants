@@ -1,4 +1,5 @@
 import type { Operation } from "effection";
+import type { JsonObject } from "@sweatpants/foundation";
 import type { Model, Runtime, StreamOptions } from "@sweatpants/chat-core";
 import type { ToolInventoryEntry } from "@sweatpants/chat-core";
 import type { ToolRuntime } from "@sweatpants/tool-session/chat-runtime";
@@ -30,7 +31,8 @@ export type {
 export interface ToolSchema {
   name: string;
   description: string;
-  parameters: Record<string, unknown>;
+  /** Portable JSON Schema projection, computed once at authoring. */
+  parameters: JsonObject;
 }
 
 export type { McpToolRegistry } from "@sweatpants/chat-core";

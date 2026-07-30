@@ -34,6 +34,7 @@ import {
   canonicalSnapshot,
   stableOpaqueId,
   type Json,
+  type JsonObject,
 } from "@sweatpants/foundation";
 import {
   TOOL_OWNED_SAMPLE_CLASSIFICATION,
@@ -1513,14 +1514,14 @@ function jsonRecord(value: Json | undefined): Record<string, Json> | undefined {
     : undefined;
 }
 
-function objectSchema(value: Json | undefined): Record<string, unknown> {
+function objectSchema(value: Json | undefined): JsonObject {
   return jsonRecord(value) ?? {};
 }
 
 function schemaWithModelContext(
   schema: Json | undefined,
   context: Record<string, Json> | undefined,
-): Record<string, unknown> {
+): JsonObject {
   const parsed = objectSchema(schema);
   if (!context) {
     return parsed;

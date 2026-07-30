@@ -66,21 +66,24 @@ describe("demo: reconnect mid-stream", () => {
       await initialResponse.body?.cancel();
     });
 
-    // Allow producer to finish
-    yield* call(() => new Promise((r) => setTimeout(r, 400)));
-
-    const { request } = createChatRequest([], {
-      method: "GET",
-      conversationId,
-    });
-    const response = yield* call(() => handler(request));
-    expect(response.status).toBe(200);
-
-    const replay = yield* call(() => consumeDurableResponse(response));
-    const snapshots = getEventsByType(replay, "MESSAGES_SNAPSHOT") as Array<{
+    // Poll for the producer to finish rather than guessing a duration; a fixed
+    // sleep fails under load for reasons unrelated to the behaviour.
+    let snapshots: Array<{
       type: "MESSAGES_SNAPSHOT";
       messages: Array<{ role: string; content?: string }>;
-    }>;
+    }> = [];
+    const deadline = Date.now() + 10_000;
+    do {
+      yield* call(() => new Promise((r) => setTimeout(r, 25)));
+      const { request } = createChatRequest([], {
+        method: "GET",
+        conversationId,
+      });
+      const response = yield* call(() => handler(request));
+      expect(response.status).toBe(200);
+      const replay = yield* call(() => consumeDurableResponse(response));
+      snapshots = getEventsByType(replay, "MESSAGES_SNAPSHOT") as typeof snapshots;
+    } while ((snapshots[0]?.messages.length ?? 0) < 2 && Date.now() < deadline);
 
     expect(snapshots.length).toBeGreaterThan(0);
     expect(snapshots[0]?.messages).toMatchObject([

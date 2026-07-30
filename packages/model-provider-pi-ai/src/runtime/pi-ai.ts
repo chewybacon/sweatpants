@@ -3,7 +3,6 @@ import {
   generateImages as piGenerateImages,
   streamSimple as piStreamSimple,
 } from "@earendil-works/pi-ai/compat";
-import { toProviderJsonSchema } from "./schema-normalization.ts";
 import type { Json } from "@sweatpants/foundation";
 import type {
   AssistantImages as PiAssistantImages,
@@ -448,10 +447,9 @@ function toPiContext(context: Context): PiContext {
     messages,
   };
   if (context.tools) {
-    piContext.tools = context.tools.map((tool) => ({
-      ...tool,
-      parameters: toProviderJsonSchema(tool.parameters),
-    })) as NonNullable<PiContext["tools"]>;
+    // Tool parameters arrive as the projection authored upstream. The provider
+    // transports it; re-deriving would answer a settled question a second time.
+    piContext.tools = context.tools as NonNullable<PiContext["tools"]>;
   }
   return piContext;
 }
@@ -526,7 +524,7 @@ function toPiContextWithResponseFormat(
   const schemaTool = {
     name: SCHEMA_TOOL_NAME,
     description: "Respond with structured data matching this schema.",
-    parameters: toProviderJsonSchema(options.responseFormat.schema),
+    parameters: options.responseFormat.schema,
   };
 
   return {

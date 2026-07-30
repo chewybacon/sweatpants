@@ -17,6 +17,8 @@ import {
   type Stream,
 } from "effection";
 import { z } from "zod";
+import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
 import type { Json } from "@sweatpants/foundation";
 import { createTool, type ToolDefinition as CoreToolDefinition } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
@@ -480,18 +482,17 @@ export function createMockTool(name: string, description: string = "A mock tool"
 // =============================================================================
 
 function toolEntry(tool: MockTool): ToolInventoryEntry {
-  const artifacts = (
-    tool as MockTool & {
-      artifacts?: { parameters?: { inputProjection?: Record<string, unknown> } };
-    }
-  ).artifacts;
+  // Authored tools carry their projection. Some legacy fixtures in this suite
+  // are hand-built objects that never went through `createTool`, so they are
+  // unauthored schemas and must be projected at this ingress instead.
+  if (tool.artifacts?.parameters?.inputProjection !== undefined) {
+    return createToolInventoryEntry(tool);
+  }
   return {
     definition: {
       name: tool.name,
       description: tool.description,
-      parameters:
-        artifacts?.parameters?.inputProjection ??
-        z.toJSONSchema(tool.parameters as unknown as z.ZodType),
+      parameters: toToolParameterJsonSchema(tool.parameters),
     },
   };
 }

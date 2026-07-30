@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
+import type { JsonObject } from "@sweatpants/foundation";
 import { z } from "zod";
 import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 
@@ -184,22 +185,22 @@ export function* parseRuntimeToolParameters<T = unknown>(
   });
 }
 
-export function toToolParameterJsonSchema(schema: unknown): Record<string, unknown> {
+export function toToolParameterJsonSchema(schema: unknown): JsonObject {
   if (isStandardSchema(schema)) {
     if (isZodSchema(schema)) {
       const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema);
-      return stripNonJson(jsonSchema) as Record<string, unknown>;
+      return stripNonJson(jsonSchema) as JsonObject;
     }
     // Test/integration adapters may carry an explicit projection beside their
     // process-local Standard Schema. It is data-only and safe to send.
     const projection = (schema as StandardSchemaV1 & { jsonSchema?: unknown })["jsonSchema"];
     if (isRecord(projection)) {
-      return stripNonJson(projection) as Record<string, unknown>;
+      return stripNonJson(projection) as JsonObject;
     }
     throw new TypeError("Standard Schema requires an explicit JSON Schema projection");
   }
   if (isRecord(schema)) {
-    return stripNonJson(schema) as Record<string, unknown>;
+    return stripNonJson(schema) as JsonObject;
   }
   // A missing projection must not silently advertise an unconstrained tool.
   throw new TypeError("Tool parameters require a Standard Schema or JSON Schema projection");

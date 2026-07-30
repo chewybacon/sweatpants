@@ -4009,111 +4009,111 @@
     {
       "id": "SHAPE-212",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1198,
+      "line": 1199,
       "symbol": "foreignCallId",
       "classification": "B",
       "authority": "owning ingress/parser foreignCallId",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1198"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1199"
       ]
     },
     {
       "id": "SHAPE-213",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1208,
+      "line": 1209,
       "symbol": "foreignElicitId",
       "classification": "B",
       "authority": "owning ingress/parser foreignElicitId",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1208"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1209"
       ]
     },
     {
       "id": "SHAPE-214",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1218,
+      "line": 1219,
       "symbol": "modelSystemPromptText",
       "classification": "R",
       "authority": "typed constructor or owning ingress for modelSystemPromptText",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1218"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1219"
       ]
     },
     {
       "id": "SHAPE-215",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1228,
+      "line": 1229,
       "symbol": "toRuntimeMessage",
       "classification": "R",
       "authority": "typed constructor or owning ingress for toRuntimeMessage",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1228"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1229"
       ]
     },
     {
       "id": "SHAPE-216",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1291,
+      "line": 1292,
       "symbol": "parseRuntimeContentBlock",
       "classification": "B",
       "authority": "owning ingress/parser parseRuntimeContentBlock",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1291"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1292"
       ]
     },
     {
       "id": "SHAPE-217",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1345,
+      "line": 1346,
       "symbol": "toolCallArguments",
       "classification": "R",
       "authority": "typed constructor or owning ingress for toolCallArguments",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1345"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1346"
       ]
     },
     {
       "id": "SHAPE-452",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1509,
+      "line": 1510,
       "symbol": "jsonRecord",
       "classification": "R",
       "authority": "typed constructor or owning ingress for jsonRecord",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1509"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1510"
       ]
     },
     {
       "id": "SHAPE-220",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1520,
+      "line": 1521,
       "symbol": "schemaWithModelContext",
       "classification": "R",
       "authority": "typed constructor or owning ingress for schemaWithModelContext",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1520"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1521"
       ]
     },
     {
       "id": "SHAPE-221",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 248,
+      "line": 249,
       "symbol": "activateProgramDriverChatEngine",
       "classification": "R",
       "authority": "typed constructor or owning ingress for activateProgramDriverChatEngine",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:248"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:249"
       ]
     },
     {
       "id": "SHAPE-222",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 551,
+      "line": 552,
       "symbol": "isToolOwnedSampleRequest",
       "classification": "B",
       "authority": "owning ingress/parser isToolOwnedSampleRequest",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:551"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:552"
       ]
     },
     {
@@ -4482,34 +4482,45 @@
     {
       "id": "SHAPE-285",
       "file": "packages/foundation/src/json.ts",
-      "line": 144,
+      "line": 160,
       "symbol": "encode",
       "classification": "G",
       "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
       "evidence": [
-        "packages/foundation/src/json.ts:144"
+        "packages/foundation/src/json.ts:160"
       ]
     },
     {
       "id": "SHAPE-286",
       "file": "packages/foundation/src/json.ts",
-      "line": 161,
+      "line": 177,
       "symbol": "sortedEntries",
       "classification": "G",
       "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
       "evidence": [
-        "packages/foundation/src/json.ts:161"
+        "packages/foundation/src/json.ts:177"
+      ]
+    },
+    {
+      "id": "SHAPE-461",
+      "file": "packages/foundation/src/json.ts",
+      "line": 85,
+      "symbol": "assertJsonObject",
+      "classification": "R",
+      "authority": "typed constructor or owning ingress for assertJsonObject",
+      "evidence": [
+        "packages/foundation/src/json.ts:85"
       ]
     },
     {
       "id": "SHAPE-287",
       "file": "packages/foundation/src/json.ts",
-      "line": 81,
+      "line": 97,
       "symbol": "assertJson",
       "classification": "G",
       "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
       "evidence": [
-        "packages/foundation/src/json.ts:81"
+        "packages/foundation/src/json.ts:97"
       ]
     },
     {
@@ -4537,23 +4548,23 @@
     {
       "id": "SHAPE-290",
       "file": "packages/foundation/src/schema.ts",
-      "line": 133,
+      "line": 134,
       "symbol": "parsePortableSchemaDescriptor",
       "classification": "G",
       "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
       "evidence": [
-        "packages/foundation/src/schema.ts:133"
+        "packages/foundation/src/schema.ts:134"
       ]
     },
     {
       "id": "SHAPE-291",
       "file": "packages/foundation/src/schema.ts",
-      "line": 184,
+      "line": 185,
       "symbol": "isRecord",
       "classification": "G",
       "rationale": "Schema-vendor-neutral canonical JSON or Standard Schema mechanism owned by Foundation.",
       "evidence": [
-        "packages/foundation/src/schema.ts:184"
+        "packages/foundation/src/schema.ts:185"
       ]
     },
     {
@@ -4977,56 +4988,45 @@
     {
       "id": "SHAPE-333",
       "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 123,
+      "line": 122,
       "symbol": "fromPiContentBlock",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:123"
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:122"
       ]
     },
     {
       "id": "SHAPE-335",
       "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 279,
+      "line": 278,
       "symbol": "safeMetadata",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:279"
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:278"
       ]
     },
     {
       "id": "SHAPE-454",
       "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 296,
+      "line": 295,
       "symbol": "decodeToolArguments",
       "classification": "R",
       "authority": "typed constructor or owning ingress for decodeToolArguments",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:296"
-      ]
-    },
-    {
-      "id": "SHAPE-337",
-      "file": "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts",
-      "line": 18,
-      "symbol": "stripNonJson",
-      "classification": "C",
-      "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
-      "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts:18"
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:295"
       ]
     },
     {
       "id": "SHAPE-447",
       "file": "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts",
-      "line": 4,
+      "line": 2,
       "symbol": "isProviderRecord",
       "classification": "C",
       "rationale": "Named bounded provider compatibility normalization producing canonical output.",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts:4"
+        "packages/model-provider-pi-ai/src/runtime/schema-normalization.ts:2"
       ]
     },
     {
@@ -5580,25 +5580,25 @@
       ]
     },
     {
-      "id": "SHAPE-459",
+      "id": "SHAPE-462",
       "file": "packages/tool-session/src/mcp/bridge-runtime.ts",
-      "line": 457,
-      "symbol": "<callback@457>",
+      "line": 458,
+      "symbol": "<callback@458>",
       "classification": "R",
-      "authority": "typed constructor or owning ingress for <callback@457>",
+      "authority": "typed constructor or owning ingress for <callback@458>",
       "evidence": [
-        "packages/tool-session/src/mcp/bridge-runtime.ts:457"
+        "packages/tool-session/src/mcp/bridge-runtime.ts:458"
       ]
     },
     {
-      "id": "SHAPE-460",
+      "id": "SHAPE-463",
       "file": "packages/tool-session/src/mcp/bridge-runtime.ts",
-      "line": 773,
-      "symbol": "<callback@773>",
+      "line": 774,
+      "symbol": "<callback@774>",
       "classification": "R",
-      "authority": "typed constructor or owning ingress for <callback@773>",
+      "authority": "typed constructor or owning ingress for <callback@774>",
       "evidence": [
-        "packages/tool-session/src/mcp/bridge-runtime.ts:773"
+        "packages/tool-session/src/mcp/bridge-runtime.ts:774"
       ]
     },
     {
@@ -5714,78 +5714,78 @@
     {
       "id": "SHAPE-428",
       "file": "packages/tool-session/src/tool-parameters.ts",
-      "line": 129,
+      "line": 130,
       "symbol": "getToolParameterValidationErrorPayload",
       "classification": "B",
       "authority": "owning ingress/parser getToolParameterValidationErrorPayload",
       "evidence": [
-        "packages/tool-session/src/tool-parameters.ts:129"
+        "packages/tool-session/src/tool-parameters.ts:130"
       ]
     },
     {
       "id": "SHAPE-429",
       "file": "packages/tool-session/src/tool-parameters.ts",
-      "line": 187,
+      "line": 188,
       "symbol": "toToolParameterJsonSchema",
       "classification": "R",
       "authority": "typed constructor or owning ingress for toToolParameterJsonSchema",
       "evidence": [
-        "packages/tool-session/src/tool-parameters.ts:187"
+        "packages/tool-session/src/tool-parameters.ts:188"
       ]
     },
     {
       "id": "SHAPE-430",
       "file": "packages/tool-session/src/tool-parameters.ts",
-      "line": 29,
+      "line": 30,
       "symbol": "isRecord",
       "classification": "B",
       "authority": "owning ingress/parser isRecord",
       "evidence": [
-        "packages/tool-session/src/tool-parameters.ts:29"
+        "packages/tool-session/src/tool-parameters.ts:30"
       ]
     },
     {
       "id": "SHAPE-431",
       "file": "packages/tool-session/src/tool-parameters.ts",
-      "line": 34,
+      "line": 35,
       "symbol": "isStandardSchema",
       "classification": "R",
       "authority": "typed constructor or owning ingress for isStandardSchema",
       "evidence": [
-        "packages/tool-session/src/tool-parameters.ts:34"
+        "packages/tool-session/src/tool-parameters.ts:35"
       ]
     },
     {
       "id": "SHAPE-432",
       "file": "packages/tool-session/src/tool-parameters.ts",
-      "line": 44,
+      "line": 45,
       "symbol": "stripNonJson",
       "classification": "R",
       "authority": "typed constructor or owning ingress for stripNonJson",
       "evidence": [
-        "packages/tool-session/src/tool-parameters.ts:44"
+        "packages/tool-session/src/tool-parameters.ts:45"
       ]
     },
     {
       "id": "SHAPE-433",
       "file": "packages/tool-session/src/tool-parameters.ts",
-      "line": 63,
+      "line": 64,
       "symbol": "issuePath",
       "classification": "R",
       "authority": "typed constructor or owning ingress for issuePath",
       "evidence": [
-        "packages/tool-session/src/tool-parameters.ts:63"
+        "packages/tool-session/src/tool-parameters.ts:64"
       ]
     },
     {
       "id": "SHAPE-434",
       "file": "packages/tool-session/src/tool-parameters.ts",
-      "line": 70,
+      "line": 71,
       "symbol": "normalizeValidationIssues",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/tool-session/src/tool-parameters.ts:70"
+        "packages/tool-session/src/tool-parameters.ts:71"
       ]
     },
     {

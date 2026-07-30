@@ -39,6 +39,8 @@
         "zod": "catalog:"
     },
     "devDependencies": {
+        "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/tool-session": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "effection": "catalog:",
         "tsup": "catalog:",
