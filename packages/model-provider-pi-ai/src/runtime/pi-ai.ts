@@ -247,31 +247,26 @@ function safeErrorMessage(message: string | undefined): string | undefined {
     .slice(0, 2000);
 }
 
-function safeMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(metadata)) {
-    if (key === "raw" || key === "diagnostics" || key === "stack" || key === "details") {
-      continue;
-    }
-    result[key] = typeof value === "string" ? safeErrorMessage(value) : value;
-  }
-  return result;
-}
-
 function fromPiToolCall(toolCall: PiToolCall): ToolCallBlock {
   return toolCall;
 }
 
-function toPiAssistantMessage(message: AssistantMessage): PiAssistantMessage {
+function toPiAssistantMessage(message: AssistantMessage, selectedModel: Model): PiAssistantMessage {
   const errorMessage = safeErrorMessage(message.errorMessage);
+  const source = message.source ?? {
+    api: selectedModel.api,
+    provider: selectedModel.provider,
+    model: selectedModel.id,
+  };
   return {
     role: "assistant",
     content: message.content
       .filter((block) => block.type !== "image")
       .map(toPiContentBlock) as PiAssistantMessage["content"],
-    api: String(message.metadata?.["api"] ?? ""),
-    provider: String(message.metadata?.["provider"] ?? ""),
-    model: String(message.metadata?.["model"] ?? ""),
+    api: source.api,
+    provider: source.provider,
+    model: source.model,
+    ...(source.responseModel ? { responseModel: source.responseModel } : {}),
     ...(message.responseId ? { responseId: message.responseId } : {}),
     usage: toPiUsage(message.usage),
     stopReason: (message.stopReason ?? "stop") as PiAssistantMessage["stopReason"],
@@ -291,12 +286,12 @@ function fromPiAssistantMessage(message: PiAssistantMessage, settled = true): As
     ...(message.responseId ? { responseId: message.responseId } : {}),
     ...(errorMessage ? { errorMessage } : {}),
     timestamp: message.timestamp,
-    metadata: safeMetadata({
+    source: {
       api: message.api,
       provider: message.provider,
       model: message.model,
       ...(message.responseModel ? { responseModel: message.responseModel } : {}),
-    }),
+    },
   };
 }
 
@@ -333,7 +328,7 @@ function fromPiAssistantMessageForOptions(
   return options?.responseFormat ? unwrapSchemaResponseMessage(assistant) : assistant;
 }
 
-function toPiContext(context: Context): PiContext {
+function toPiContext(context: Context, selectedModel: Model): PiContext {
   const messages: PiContext["messages"] = [];
   const systemMessages = context.messages
     .filter((message) => message.role === "system")
@@ -361,7 +356,7 @@ function toPiContext(context: Context): PiContext {
 
     if (message.role === "assistant") {
       if (message.content.some(contentBlockHasProviderPayload)) {
-        messages.push(toPiAssistantMessage(message));
+        messages.push(toPiAssistantMessage(message, selectedModel));
       }
       continue;
     }
@@ -463,9 +458,10 @@ function assertResponseFormatToolPolicy(
 
 function toPiContextWithResponseFormat(
   context: Context,
+  model: Model,
   options: StreamOptions | undefined,
 ): PiContext {
-  const piContext = toPiContext(context);
+  const piContext = toPiContext(context, model);
   if (!options?.responseFormat) {
     return piContext;
   }
@@ -649,7 +645,7 @@ export function createPiAiRuntime(): Runtime {
         const combined = combineAbortSignals(scopeSignal, options?.signal);
         const stream = piStreamSimple(
           toPiModel(model),
-          toPiContextWithResponseFormat(context, options),
+          toPiContextWithResponseFormat(context, model, options),
           toPiStreamOptions(model, options, combined.controller.signal),
         );
         const iterator = stream[Symbol.asyncIterator]();

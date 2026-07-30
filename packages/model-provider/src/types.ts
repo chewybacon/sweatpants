@@ -90,9 +90,18 @@ export interface SystemMessage {
   timestamp?: number;
 }
 
+export interface ModelResponseSource {
+  api: string;
+  provider: string;
+  model: string;
+  responseModel?: string;
+}
+
 export interface AssistantMessage {
   role: "assistant";
   content: ContentBlock[];
+  /** Producer-owned model provenance; never reconstructed from loose metadata. */
+  source?: ModelResponseSource;
   usage?: Usage;
   stopReason?: StopReason;
   responseId?: string;
