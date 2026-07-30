@@ -4986,38 +4986,15 @@
       ]
     },
     {
-      "id": "SHAPE-333",
-      "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 126,
-      "symbol": "fromPiContentBlock",
-      "classification": "C",
-      "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
-      "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:126"
-      ]
-    },
-    {
       "id": "SHAPE-335",
       "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 284,
+      "line": 250,
       "symbol": "safeMetadata",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:284"
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:250"
       ]
-    },
-    {
-      "id": "SHAPE-466",
-      "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
-      "line": 305,
-      "symbol": "parseProviderToolArguments",
-      "classification": "B",
-      "authority": "model-provider-pi-ai canonical JSON ingress for provider-authored tool arguments",
-      "evidence": [
-        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:305"
-      ],
-      "rationale": "pi-ai/provider output is normalized once to canonical Json while domain shape remains authored-schema authority"
     },
     {
       "id": "SHAPE-447",
