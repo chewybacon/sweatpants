@@ -1,0 +1,31 @@
+{
+    "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+    "entry": [
+        "src/index.{ts,tsx,js,jsx}",
+        "src/main.{ts,tsx,js,jsx}",
+        "src/server.{ts,tsx,js,jsx}",
+        "scripts/*.{ts,mts,mjs}"
+    ],
+    "workspaces": {
+        "patterns": ["packages/*", "apps/*"]
+    },
+    "duplicates": {
+        "ignore": ["apps/hydra/docs/ts/**"]
+    },
+    "health": {
+        "ignore": ["apps/hydra/docs/ts/**"]
+    },
+    "ignoreDependencies": ["effect"],
+    "ignoreUnresolvedImports": ["./server/server.js", "**/server/server.js"],
+    "overrides": [
+        {
+            "files": ["apps/hydra/docs/ts/**"],
+            "rules": {
+                "unused-files": "off",
+                "unused-exports": "off",
+                "unused-types": "off",
+                "unlisted-dependencies": "off"
+            }
+        }
+    ]
+}
