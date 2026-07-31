@@ -137,7 +137,6 @@ export {
   passthroughTransform,
   loggingTransform,
   BaseUrlContext,
-  StreamerContext,
   // AG-UI projection
   buildAgUiCheckpoint,
   buildAgUiCustomState,
@@ -163,7 +162,6 @@ export {
 } from "./session/index.ts";
 export type {
   ChatSession,
-  ClientToolSessionOptions,
   StreamChatOptions,
   ElicitResponseData,
   DurableHistoryReplay,
@@ -180,13 +178,11 @@ export type {
   ChatTransportReceipt,
   ChatTurnFailure,
   ChatTurnSettlement,
-  ChatRequestFailure,
   ChatRequestPlan,
   RequestLifecycle,
   StreamEvent as ChatSessionStreamEvent,
   StreamEventEntry,
   ChatFetch,
-  Streamer,
   MessageRenderer,
   ChatEventTransform,
   SessionOptions,

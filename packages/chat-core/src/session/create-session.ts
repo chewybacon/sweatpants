@@ -13,18 +13,18 @@ import {
 import type { ChatState } from "../state/chat-state.ts";
 import { initialChatState } from "../state/chat-state.ts";
 import type { ChatStateEvent } from "../state/events.ts";
-import { BaseUrlContext, StreamerContext } from "./contexts.ts";
+import { BaseUrlContext } from "./contexts.ts";
 import { readDurableHistory } from "./durable-history.ts";
 import {
   createInitialSessionProjectionState,
-  sessionPublicState,
   transitionSession,
-  type ChatRequestFailure,
   type ChatRequestPlan,
   type SessionInput,
   type SessionOutput,
   type SessionProjectionState,
 } from "./machine.ts";
+import { publicChatState } from "./projection.ts";
+import type { ChatTurnFailure } from "./settlement.ts";
 import type { ChatCommand, SessionOptions, ChatEventTransform } from "./options.ts";
 import { ChatSessionRuntimeApi } from "./runtime-api.ts";
 import { useBufferedChannel, useTransformPipeline } from "./transforms.ts";
@@ -61,7 +61,7 @@ interface InputEnvelope {
   readonly resolve: () => void;
 }
 
-function failureFromUnknown(error: unknown): ChatRequestFailure {
+function failureFromUnknown(error: unknown): ChatTurnFailure {
   if (error instanceof Error) {
     return { message: error.message, cause: error };
   }
@@ -71,14 +71,12 @@ function failureFromUnknown(error: unknown): ChatRequestFailure {
   };
 }
 
-export interface ClientToolSessionOptions extends SessionOptions {}
-
 export interface ChatSession {
   state: Stream<ChatState, void>;
   dispatch: (command: ChatCommand) => void;
 }
 
-export function createChatSession(options: ClientToolSessionOptions = {}): Operation<ChatSession> {
+export function createChatSession(options: SessionOptions = {}): Operation<ChatSession> {
   return resource(function* (provide) {
     const scope = yield* useScope();
     const commands = yield* useBufferedChannel<ChatCommand>();
@@ -88,10 +86,6 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
     if (options.baseUrl) {
       yield* BaseUrlContext.set(options.baseUrl);
     }
-    if (options.streamer) {
-      yield* StreamerContext.set(options.streamer);
-    }
-
     stateSignal.send(initialChatState);
     // The public constructor does not expose the transformed-event channel, so
     // drain it while the machine publishes the authored ChatState separately.
@@ -119,7 +113,7 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
 export function* runChatSession(
   commands: Channel<ChatCommand, void>,
   events: Channel<ChatStateEvent, void>,
-  options: ClientToolSessionOptions = {},
+  options: SessionOptions = {},
   publishState?: (state: ChatState) => void,
 ): Operation<void> {
   const inputs = yield* useBufferedChannel<InputEnvelope>();
@@ -209,7 +203,7 @@ export function* runChatSession(
       });
   }
 
-  function notifyFailure(failure: ChatRequestFailure): void {
+  function notifyFailure(failure: ChatTurnFailure): void {
     try {
       options.onRequestError?.(
         new Error(
@@ -252,7 +246,7 @@ export function* runChatSession(
       try {
         const transition = transitionSession(state, envelope.input);
         state = transition.state;
-        publishState?.(sessionPublicState(state));
+        publishState?.(publicChatState(state.view));
         for (const output of transition.outputs) {
           yield* interpret(output);
         }

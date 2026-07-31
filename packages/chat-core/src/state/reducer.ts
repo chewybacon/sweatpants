@@ -1,5 +1,7 @@
 import type { ChatStateInternal, ElicitTrackingState } from "./chat-state.ts";
-import { createInitialChatStateInternal, initialChatStateInternal } from "./chat-state.ts";
+import { createInitialChatStateInternal } from "./chat-state.ts";
+
+const initialStreaming = createInitialChatStateInternal().streaming;
 import type { ChatStateEvent } from "./events.ts";
 import type { Message } from "../messages.ts";
 import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from "../types/chat-message.ts";
@@ -291,7 +293,7 @@ export function reduceChatState(
         ...state,
         activeRun: { threadId: event.threadId, runId: event.runId },
         isStreaming: true,
-        streaming: initialChatStateInternal.streaming,
+        streaming: initialStreaming,
         messageDrafts: {},
         toolCallDrafts: {},
         error: null,
@@ -382,8 +384,7 @@ export function reduceChatState(
           draft.role === "assistant" && state.streaming.parts.length > 0
             ? { ...state.finalizedParts, [draft.id]: [...state.streaming.parts] }
             : state.finalizedParts,
-        streaming:
-          draft.role === "assistant" ? initialChatStateInternal.streaming : state.streaming,
+        streaming: draft.role === "assistant" ? initialStreaming : state.streaming,
         messageDrafts,
       };
     }
@@ -546,7 +547,7 @@ export function reduceChatState(
         ...state,
         isStreaming: false,
         activeRun: null,
-        streaming: initialChatStateInternal.streaming,
+        streaming: initialStreaming,
       };
       return event.outcome?.type === "interrupt"
         ? addInterrupts(next, event.outcome.interrupts, observedAt)
@@ -640,7 +641,7 @@ export function reduceChatState(
         ...(event.message ? { messages: upsertMessage(state.messages, event.message) } : {}),
         isStreaming: false,
         activeRun: null,
-        streaming: initialChatStateInternal.streaming,
+        streaming: initialStreaming,
       };
 
     case "LOCAL_ERROR":

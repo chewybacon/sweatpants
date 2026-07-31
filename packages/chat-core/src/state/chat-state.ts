@@ -64,7 +64,7 @@ export function createInitialChatStateInternal(): ChatStateInternal {
   };
 }
 
-export const initialChatStateInternal = createInitialChatStateInternal();
+const initialChatStateInternal = createInitialChatStateInternal();
 
 /** Public initial view; reducer bookkeeping is intentionally not part of it. */
 const {

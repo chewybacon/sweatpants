@@ -4,11 +4,10 @@
  * Session configuration types.
  */
 
-import type { Operation, Channel } from "effection";
+import type { Channel, Operation } from "effection";
 import type { ChatStateEvent } from "../state/events.ts";
-import type { Message } from "../messages.ts";
 import type { StreamEvent } from "./streaming.ts";
-import type { ChatTransportReceipt, ChatTurnSettlement } from "./settlement.ts";
+import type { ChatTurnSettlement } from "./settlement.ts";
 import type { ConversationReplayState } from "./replay-types.ts";
 import type { ToolExecutionTrace } from "../trace-types.ts";
 import type { PluginReplayTraceSpec } from "../plugin-spec.ts";
@@ -60,22 +59,6 @@ export interface ElicitResponseData {
   /** Browser render trace for replaying plugin UI after refresh. */
   trace?: ToolExecutionTrace;
 }
-
-// =============================================================================
-// STREAMER
-// =============================================================================
-
-/**
- * A streamer is an Operation that performs a streaming chat request.
- *
- * This abstraction allows the transport to be replaced without moving
- * semantic settlement out of the Chat Core projection.
- */
-export type Streamer = (
-  messages: Message[],
-  events: Channel<ChatStateEvent, void>,
-  options: Omit<StreamChatOptions, "streamer">,
-) => Operation<ChatTransportReceipt>;
 
 // =============================================================================
 // MESSAGE RENDERER
@@ -211,11 +194,6 @@ export interface SessionOptions {
    * Renderer for completed messages.
    */
   renderer?: MessageRenderer;
-
-  /**
-   * Custom streamer for dependency injection (primarily for testing).
-   */
-  streamer?: Streamer;
 
   /**
    * Whether to preserve partial responses when the user aborts.

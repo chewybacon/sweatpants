@@ -24,7 +24,3 @@ export type LocalChatAction =
 
 /** The only inputs accepted by the chat state fold. */
 export type ChatStateEvent = StreamEvent | LocalChatAction;
-
-export function isLocalChatAction(event: ChatStateEvent): event is LocalChatAction {
-  return event.type.startsWith("LOCAL_");
-}

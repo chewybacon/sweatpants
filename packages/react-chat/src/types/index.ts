@@ -37,7 +37,6 @@ export type {
   ElicitRequestStreamEvent,
   ChatSessionStreamEvent,
   StreamEventEntry,
-  Streamer,
   MessageRenderer,
   ChatEventTransform,
   SessionOptions,

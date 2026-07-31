@@ -20,7 +20,6 @@ import {
   initialChatState,
   type ChatCommand,
   type ChatSession,
-  type ClientToolSessionOptions,
   type ElicitTrackingState,
   type LocalEmissionAction as FrameworkLocalEmissionAction,
   type ReasoningPart,
@@ -322,7 +321,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
 
   // Merge default transforms with user-provided transforms
   // Use baseUrl from options if provided, otherwise from context
-  const mergedOptions: ClientToolSessionOptions = {
+  const mergedOptions: SessionOptions = {
     ...options,
     baseUrl: options.baseUrl ?? config.baseUrl,
     transforms: options.transforms ?? defaultTransforms,
