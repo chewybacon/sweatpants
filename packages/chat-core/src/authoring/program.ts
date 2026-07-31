@@ -42,23 +42,18 @@ import {
   type ResourceView,
 } from "@sweatpants/agent-sdk";
 import {
+  AUTHORED_MODEL_SAMPLE_INPUT_DESCRIPTOR,
+  AUTHORED_MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
   CHAT_CONTRACT_SCHEMA_ENTRIES,
-  CHAT_MODEL_SAMPLE_INPUT_DESCRIPTOR,
-  CHAT_MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
   CHAT_TURN_INPUT_DESCRIPTOR,
   CHAT_TURN_RESULT_DESCRIPTOR,
-  CHAT_TURN_RESULT_FORMAT,
-  normalizeChatMessage,
-  normalizeChatTurnResult,
-  normalizeModelSampleInput,
-  normalizeModelSampleOutput,
-  type ChatContentPartV1,
-  type ChatContextPolicyV1,
-  type ChatMessageV1,
-  type ChatModelSampleInputV2,
-  type ChatModelSampleOutputV2,
-  type ChatTurnInputV1,
-  type ChatTurnResultV1,
+  type AuthoredChatContentPart,
+  type AuthoredChatContextPolicy,
+  type AuthoredChatMessage,
+  type AuthoredChatModelSampleRequest,
+  type AuthoredChatModelSampleResult,
+  type AuthoredChatTurnInput,
+  type AuthoredChatTurnResult,
 } from "./contracts.ts";
 import { chatPayloadClassifications, latestContextWindow } from "./context.ts";
 
@@ -67,7 +62,7 @@ export const GENERIC_CHAT_ENGINE = Object.freeze({
   version: "1",
   digest: sha256("sweatpants.authored-chat-engine.v1"),
 });
-export const CHAT_PROGRAM_IDENTITY_DOMAIN = "sweatpants.authored-chat-program.v1\n";
+export const CHAT_PROGRAM_IDENTITY_DOMAIN = "sweatpants.authored-chat-program\n";
 
 export interface ChatResourceMountDeclaration {
   readonly package: ResourcePackage;
@@ -78,20 +73,20 @@ export interface ChatSystemPrompt {
   readonly classification: DataClassification;
 }
 export interface ChatModelToolDeclaration {
-  readonly kind: "sweatpants.chat-model-tool.v1";
+  readonly kind: "sweatpants.chat-model-tool";
   readonly binding: AgentProgramInput;
   /** Conservative classification ceiling applied independently of tool output bytes. */
   readonly resultClassification: DataClassification;
 }
-export interface ClassifiedToolResultV1 {
-  readonly format: "sweatpants.classified-tool-result.v1";
+export interface ClassifiedToolResult {
+  readonly kind: "sweatpants.classified-tool-result";
   readonly value: Json;
   readonly provenance: {
     readonly classifications: readonly DataClassification[];
     readonly sourceDigests: readonly string[];
   };
 }
-export interface ChatSamplingPolicyV1 {
+export interface AuthoredChatSamplingPolicy {
   readonly maxTokens?: number;
   readonly toolChoice?: "auto" | "none" | "required";
   readonly requirements?: readonly string[];
@@ -109,14 +104,14 @@ export interface DefineChatProgramOptions {
       { readonly response: PortableSchemaDescriptor; readonly context?: PortableSchemaDescriptor }
     >
   >;
-  readonly contextPolicy?: ChatContextPolicyV1;
+  readonly contextPolicy?: AuthoredChatContextPolicy;
   readonly maxIterations?: number;
   /** Runtime validators for low-level effect/elicitation descriptors not authored through core helpers. */
   readonly schemaCatalog?: readonly SchemaBinding[];
-  readonly sampling?: ChatSamplingPolicyV1;
+  readonly sampling?: AuthoredChatSamplingPolicy;
 }
-export type ChatProgramDefinition = DurableTool<ChatTurnInputV1 & Json, ChatTurnResultV1 & Json> & {
-  readonly kind: "sweatpants.chat-program.v1";
+export type ChatProgramDefinition = DurableTool<AuthoredChatTurnInput, AuthoredChatTurnResult> & {
+  readonly kind: "sweatpants.chat-program";
   readonly schemaCatalog: readonly SchemaBinding[];
   readonly resourcePackages: readonly ResourcePackage[];
   readonly resourceView: ResourceView;
@@ -125,17 +120,17 @@ export type ChatProgramDefinition = DurableTool<ChatTurnInputV1 & Json, ChatTurn
   readonly childPrograms: Readonly<Record<string, AgentProgramBinding>>;
   readonly toolResultClassifications: Readonly<Record<string, DataClassification>>;
   readonly configuration: Json;
-  readonly contextPolicy: ChatContextPolicyV1;
+  readonly contextPolicy: AuthoredChatContextPolicy;
 };
 
 export const CHAT_MODEL_SAMPLE_EFFECT: EffectDefinition<
-  ChatModelSampleInputV2 & Json,
-  ChatModelSampleOutputV2 & Json
+  AuthoredChatModelSampleRequest,
+  AuthoredChatModelSampleResult
 > = Object.freeze({
-  name: "model.sample",
-  version: "2",
-  inputSchema: CHAT_MODEL_SAMPLE_INPUT_DESCRIPTOR,
-  outputSchema: CHAT_MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
+  name: "chat.model.sample",
+  version: "1",
+  inputSchema: AUTHORED_MODEL_SAMPLE_INPUT_DESCRIPTOR,
+  outputSchema: AUTHORED_MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
   retrySafety: { mode: "repeatable" as const },
 });
 
@@ -159,7 +154,7 @@ export function modelTool(
   options: { readonly resultClassification: DataClassification },
 ): ChatModelToolDeclaration {
   return Object.freeze({
-    kind: "sweatpants.chat-model-tool.v1",
+    kind: "sweatpants.chat-model-tool",
     binding,
     resultClassification: requireClassification(options.resultClassification),
   });
@@ -172,7 +167,7 @@ export function classifiedToolResult(
     readonly classifications: readonly DataClassification[];
     readonly sourceDigests?: readonly string[];
   },
-): ClassifiedToolResultV1 {
+): ClassifiedToolResult {
   const classifications = sortedValues(
     new Set(provenance.classifications.map(requireClassification)),
     compareClassifications,
@@ -184,7 +179,7 @@ export function classifiedToolResult(
     invalid("classified tool result contains an invalid source digest");
   }
   return Object.freeze({
-    format: "sweatpants.classified-tool-result.v1",
+    kind: "sweatpants.classified-tool-result",
     value: canonicalSnapshot(value).value,
     provenance: Object.freeze({
       classifications: Object.freeze(classifications),
@@ -232,7 +227,6 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
   if (
     latestContextWindow({
       id: contextPolicy.id,
-      version: contextPolicy.version,
       maxMessages: contextPolicy.maxMessages,
       maxReferencedTasks: contextPolicy.maxReferencedTasks,
       maxCanonicalBytes: contextPolicy.maxCanonicalBytes,
@@ -352,7 +346,7 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
     sampling,
   });
   const manifestWithoutDigest: Omit<
-    DurableProgramManifest<ChatTurnInputV1 & Json, ChatTurnResultV1 & Json>,
+    DurableProgramManifest<AuthoredChatTurnInput, AuthoredChatTurnResult>,
     "digest"
   > = {
     programId: programName,
@@ -374,11 +368,11 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
     resourcePackageDigests: resourcePackages.map((resource) => resource.manifest.digest),
   });
   const program = createGeneratedPinnedDurableProgram<
-    ChatTurnInputV1 & Json,
-    ChatTurnResultV1 & Json
+    AuthoredChatTurnInput,
+    AuthoredChatTurnResult
   >(artifact, function* (input, context) {
-    const accepted: ChatTurnInputV1 = input;
-    const messages: ChatMessageV1[] = [];
+    const accepted: AuthoredChatTurnInput = input;
+    const messages: AuthoredChatMessage[] = [];
     const seen = new Set<string>();
     for (const summary of accepted.context.referencedTasks) {
       appendMessage(messages, seen, summary.summary);
@@ -387,7 +381,7 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
       appendMessage(messages, seen, message);
     }
     appendMessage(messages, seen, accepted.message);
-    const promptPart: ChatContentPartV1 = {
+    const promptPart: AuthoredChatContentPart = {
       value: `${systemPrompt.text}\n\nAvailable guidance (load explicitly with resources.read):\n${canonicalJson(assertJson(index))}`,
       provenance: { classifications: [systemPrompt.classification], sourceDigests: [] },
     };
@@ -395,23 +389,22 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
       const classifications = chatPayloadClassifications({ systemPrompt: promptPart, messages });
       const sampled = yield* context.effect(
         CHAT_MODEL_SAMPLE_EFFECT,
-        normalizeModelSampleInput({
+        {
           messages,
           systemPrompt: promptPart,
           tools: toolInventory,
           classifications,
           sampling,
-        }),
+        },
         { audience: "model-runtime" },
       );
-      const assistant = normalizeChatMessage(sampled.message);
+      const assistant = sampled.message;
       messages.push(assistant);
       if (sampled.calls.length === 0) {
-        return normalizeChatTurnResult({
-          format: CHAT_TURN_RESULT_FORMAT,
+        return {
           message: assistant,
           artifacts: sampled.artifacts,
-        }) as ChatTurnResultV1 & Json;
+        };
       }
       for (const call of sampled.calls) {
         const binding = childPrograms[call.target];
@@ -443,7 +436,7 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
   ]);
   return Object.freeze({
     ...program,
-    kind: "sweatpants.chat-program.v1" as const,
+    kind: "sweatpants.chat-program" as const,
     schemaCatalog: Object.freeze(schemaCatalog),
     resourcePackages: Object.freeze(resourcePackages),
     resourceView,
@@ -460,9 +453,9 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
 export function createChatModelEffectRegistration(options: {
   readonly allowedClassifications: readonly DataClassification[];
   readonly sample: (
-    request: ChatModelSampleInputV2,
+    request: AuthoredChatModelSampleRequest,
     context: DurableEffectContext,
-  ) => Operation<ChatModelSampleOutputV2>;
+  ) => Operation<AuthoredChatModelSampleResult>;
 }): DurableEffectRegistration {
   const allowed = new Set(options.allowedClassifications);
   const inputSchema = CHAT_CONTRACT_SCHEMA_ENTRIES.find(
@@ -477,7 +470,7 @@ export function createChatModelEffectRegistration(options: {
     function* (
       request,
       context,
-    ): Operation<DurableEffectDisposition<ChatModelSampleOutputV2 & Json>> {
+    ): Operation<DurableEffectDisposition<AuthoredChatModelSampleResult>> {
       if (request.classifications.some((classification) => !allowed.has(classification))) {
         throw new CrankError(
           "model_egress_forbidden",
@@ -485,19 +478,19 @@ export function createChatModelEffectRegistration(options: {
         );
       }
       const value = yield* options.sample(request, context);
-      return { status: "ok", value: normalizeModelSampleOutput(value) };
+      return { status: "ok", value };
     },
     { input: inputSchema.schema, output: outputSchema.schema },
   );
 }
 
 function normalizeModelToolDeclaration(input: ChatModelToolDeclaration): ChatModelToolDeclaration {
-  if (!input || typeof input !== "object" || input.kind !== "sweatpants.chat-model-tool.v1") {
+  if (!input || typeof input !== "object" || input.kind !== "sweatpants.chat-model-tool") {
     invalid("chat model tools must be declared with modelTool()");
   }
   exactKeys(input, ["kind", "binding", "resultClassification"]);
   return Object.freeze({
-    kind: "sweatpants.chat-model-tool.v1",
+    kind: "sweatpants.chat-model-tool",
     binding: input.binding,
     resultClassification: requireClassification(input.resultClassification),
   });
@@ -552,7 +545,7 @@ function normalizeSystemPrompt(value: ChatSystemPrompt): ChatSystemPrompt {
     classification: value.classification,
   });
 }
-function normalizeSampling(value: ChatSamplingPolicyV1): Json {
+function normalizeSampling(value: AuthoredChatSamplingPolicy): Json {
   exactKeys(value, ["maxTokens", "toolChoice", "requirements"]);
   if (
     value.maxTokens !== undefined &&
@@ -644,17 +637,17 @@ function toolResultMessage(
   callId: string,
   target: string,
   result: Json,
-  provenance: ChatContentPartV1["provenance"],
-): ChatMessageV1 {
-  return normalizeChatMessage({
+  provenance: AuthoredChatContentPart["provenance"],
+): AuthoredChatMessage {
+  return {
     id: `tool:${callId}`,
     role: "tool",
     parts: [{ value: { callId, target, result }, provenance }],
-  });
+  };
 }
 
 /** Resource-reader output is trusted only because the exact generated reader schema validated it. */
-function resourceResultProvenance(result: Json): ChatContentPartV1["provenance"] {
+function resourceResultProvenance(result: Json): AuthoredChatContentPart["provenance"] {
   if (!result || typeof result !== "object" || Array.isArray(result)) {
     throw new CrankError("invalid_chat_program", "Validated resource reader omitted provenance");
   }
@@ -678,7 +671,7 @@ function resourceResultProvenance(result: Json): ChatContentPartV1["provenance"]
 function declaredToolResultProvenance(
   declared: DataClassification,
   result: Json,
-): ChatContentPartV1["provenance"] {
+): AuthoredChatContentPart["provenance"] {
   const reported = parseClassifiedToolResult(result);
   const classifications = [declared, ...(reported?.classifications ?? [])];
   const ceiling = classifications.reduce((highest, candidate) =>
@@ -690,12 +683,14 @@ function declaredToolResultProvenance(
   };
 }
 
-function parseClassifiedToolResult(result: Json): ChatContentPartV1["provenance"] | undefined {
+function parseClassifiedToolResult(
+  result: Json,
+): AuthoredChatContentPart["provenance"] | undefined {
   if (
     !result ||
     typeof result !== "object" ||
     Array.isArray(result) ||
-    result["format"] !== "sweatpants.classified-tool-result.v1" ||
+    result["kind"] !== "sweatpants.classified-tool-result" ||
     !result["provenance"] ||
     typeof result["provenance"] !== "object" ||
     Array.isArray(result["provenance"])
@@ -723,11 +718,14 @@ function parseClassifiedToolResult(result: Json): ChatContentPartV1["provenance"
     sourceDigests: sortedValues(new Set(sourceDigests), (left, right) => left.localeCompare(right)),
   };
 }
-function appendMessage(messages: ChatMessageV1[], seen: Set<string>, value: ChatMessageV1): void {
-  const message = normalizeChatMessage(value);
-  if (!seen.has(message.id)) {
-    seen.add(message.id);
-    messages.push(message);
+function appendMessage(
+  messages: AuthoredChatMessage[],
+  seen: Set<string>,
+  value: AuthoredChatMessage,
+): void {
+  if (!seen.has(value.id)) {
+    seen.add(value.id);
+    messages.push(value);
   }
 }
 function pin(tool: DurableTool) {

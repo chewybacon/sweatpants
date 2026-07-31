@@ -3,18 +3,14 @@ import { sortedResourceValues } from "@sweatpants/agent-sdk";
 import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import { DEFAULT_MAX_INLINE_BYTES } from "@sweatpants/durable-execution";
 import {
-  CHAT_CONTEXT_POLICY_FORMAT,
-  CHAT_TURN_INPUT_FORMAT,
-  normalizeChatMessage,
-  normalizeChatTurnInput,
-  type ChatContextPolicyV1,
-  type ChatContextViewV1,
-  type ChatMessageV1,
-  type ChatTurnInputV1,
-  type ReferencedTaskSummaryV1,
+  type AuthoredChatContextPolicy,
+  type AuthoredChatContextView,
+  type AuthoredChatMessage,
+  type AuthoredChatTurnInput,
+  type AuthoredReferencedTaskSummary,
 } from "./contracts.ts";
 
-export const CHAT_CONTEXT_POLICY_DOMAIN = `${CHAT_CONTEXT_POLICY_FORMAT}\n`;
+export const AUTHORED_CHAT_CONTEXT_POLICY_DOMAIN = "sweatpants.chat-context-policy\n";
 export const DEFAULT_CHAT_CONTEXT_LIMITS = Object.freeze({
   maxMessages: 64,
   maxReferencedTasks: 32,
@@ -35,28 +31,25 @@ export const CHAT_INPUT_ENVELOPE_RESERVE_BYTES = 64 * 1024;
 export interface ChatContextSelectionInput {
   readonly frontier: string;
   readonly referenceTaskIds?: readonly string[];
-  readonly referencedTasks?: readonly ReferencedTaskSummaryV1[];
-  readonly latestSummary?: ChatMessageV1;
-  readonly messages?: readonly ChatMessageV1[];
+  readonly referencedTasks?: readonly AuthoredReferencedTaskSummary[];
+  readonly latestSummary?: AuthoredChatMessage;
+  readonly messages?: readonly AuthoredChatMessage[];
 }
 
 export function latestContextWindow(
-  input: Partial<Omit<ChatContextPolicyV1, "format" | "digest">> = {},
-): ChatContextPolicyV1 {
-  const allowed = new Set([
-    "id",
-    "version",
-    "maxMessages",
-    "maxReferencedTasks",
-    "maxCanonicalBytes",
-  ]);
+  input: {
+    readonly id?: string;
+    readonly maxMessages?: number;
+    readonly maxReferencedTasks?: number;
+    readonly maxCanonicalBytes?: number;
+  } = {},
+): AuthoredChatContextPolicy {
+  const allowed = new Set(["id", "maxMessages", "maxReferencedTasks", "maxCanonicalBytes"]);
   if (Object.keys(input).some((key) => !allowed.has(key))) {
     invalidPolicy("context policy uses an unknown field");
   }
   const projection = {
-    format: CHAT_CONTEXT_POLICY_FORMAT,
     id: input.id ?? "latest-explicit-first",
-    version: input.version ?? "1",
     maxMessages: input.maxMessages ?? DEFAULT_CHAT_CONTEXT_LIMITS.maxMessages,
     maxReferencedTasks: input.maxReferencedTasks ?? DEFAULT_CHAT_CONTEXT_LIMITS.maxReferencedTasks,
     maxCanonicalBytes: input.maxCanonicalBytes ?? DEFAULT_CHAT_CONTEXT_LIMITS.maxCanonicalBytes,
@@ -71,21 +64,20 @@ export function latestContextWindow(
   }
   if (
     !projection.id ||
-    !projection.version ||
     projection.maxCanonicalBytes > DEFAULT_MAX_INLINE_BYTES - CHAT_INPUT_ENVELOPE_RESERVE_BYTES
   ) {
     invalidPolicy("context policy exceeds the journal input envelope");
   }
   return deepFreeze({
     ...projection,
-    digest: sha256(CHAT_CONTEXT_POLICY_DOMAIN + canonicalJson(projection)),
+    digest: sha256(AUTHORED_CHAT_CONTEXT_POLICY_DOMAIN + canonicalJson(projection)),
   });
 }
 
 export function selectChatContext(
-  policy: ChatContextPolicyV1,
+  policy: AuthoredChatContextPolicy,
   input: ChatContextSelectionInput,
-): ChatContextViewV1 {
+): AuthoredChatContextView {
   verifyChatContextPolicy(policy);
   if (
     typeof input.frontier !== "string" ||
@@ -105,22 +97,20 @@ export function selectChatContext(
       referenceTaskIds.push(raw);
     }
   }
-  const summaries = new Map(
-    (input.referencedTasks ?? []).map((item) => [item.taskId, normalizeSummary(item)]),
-  );
-  const selectedReferences: ReferencedTaskSummaryV1[] = [];
-  const selectedMessages: ChatMessageV1[] = [];
+  const summaries = new Map((input.referencedTasks ?? []).map((item) => [item.taskId, item]));
+  const selectedReferences: AuthoredReferencedTaskSummary[] = [];
+  const selectedMessages: AuthoredChatMessage[] = [];
   let omittedReferencedTasks = 0;
   let omittedMessages = 0;
 
-  const fits = (nextRefs: ReferencedTaskSummaryV1[], nextMessages: ChatMessageV1[]) => {
+  const fits = (nextRefs: AuthoredReferencedTaskSummary[], nextMessages: AuthoredChatMessage[]) => {
     const candidate = baseView(policy, input.frontier, referenceTaskIds, nextRefs, nextMessages, {
       // Reserve the maximum decimal width so final omission counts cannot
       // push an accepted context over its canonical byte budget.
       omittedMessages: Number.MAX_SAFE_INTEGER,
       omittedReferencedTasks: Number.MAX_SAFE_INTEGER,
     });
-    return byteLength(candidate as unknown as Json) <= policy.maxCanonicalBytes;
+    return byteLength(candidate) <= policy.maxCanonicalBytes;
   };
   for (const id of referenceTaskIds) {
     const summary = summaries.get(id);
@@ -138,8 +128,8 @@ export function selectChatContext(
     selectedReferences.push(summary);
   }
 
-  const normalizedMessages = (input.messages ?? []).map(normalizeChatMessage);
-  const latestSummary = input.latestSummary ? normalizeChatMessage(input.latestSummary) : undefined;
+  const normalizedMessages = [...(input.messages ?? [])];
+  const latestSummary = input.latestSummary;
   if (latestSummary && normalizedMessages.every((message) => message.id !== latestSummary.id)) {
     if (policy.maxMessages > 0 && fits(selectedReferences, [latestSummary])) {
       selectedMessages.push(latestSummary);
@@ -179,15 +169,15 @@ export function selectChatContext(
 }
 
 export function acceptChatTurn(
-  policy: ChatContextPolicyV1,
-  messageValue: ChatMessageV1,
+  policy: AuthoredChatContextPolicy,
+  messageValue: AuthoredChatMessage,
   selection: ChatContextSelectionInput,
   maxInlineBytes = DEFAULT_MAX_INLINE_BYTES,
-): ChatTurnInputV1 {
-  const message = normalizeChatMessage(messageValue);
+): AuthoredChatTurnInput {
+  const message = messageValue;
   const context = selectChatContext(policy, selection);
-  const accepted = normalizeChatTurnInput({ format: CHAT_TURN_INPUT_FORMAT, message, context });
-  if (byteLength(accepted as unknown as Json) > maxInlineBytes) {
+  const accepted: AuthoredChatTurnInput = { message, context };
+  if (byteLength(accepted) > maxInlineBytes) {
     throw new CrankError(
       "chat_context_too_large",
       "Accepted chat turn exceeds the journal inline-input bound",
@@ -198,7 +188,7 @@ export function acceptChatTurn(
 
 export function chatPayloadClassifications(input: {
   readonly systemPrompt: { readonly provenance: { readonly classifications: readonly string[] } };
-  readonly messages: readonly ChatMessageV1[];
+  readonly messages: readonly AuthoredChatMessage[];
 }): Array<"public" | "internal" | "confidential" | "restricted"> {
   const values = new Set<string>(input.systemPrompt.provenance.classifications);
   for (const message of input.messages) {
@@ -218,13 +208,13 @@ export function chatPayloadClassifications(input: {
 }
 
 function baseView(
-  policy: ChatContextPolicyV1,
+  policy: AuthoredChatContextPolicy,
   frontier: string,
   referenceTaskIds: string[],
-  referencedTasks: ReferencedTaskSummaryV1[],
-  messages: ChatMessageV1[],
-  truncation: ChatContextViewV1["truncation"],
-): ChatContextViewV1 {
+  referencedTasks: AuthoredReferencedTaskSummary[],
+  messages: AuthoredChatMessage[],
+  truncation: AuthoredChatContextView["truncation"],
+): AuthoredChatContextView {
   return canonicalSnapshot({
     policyDigest: policy.digest,
     frontier,
@@ -232,28 +222,16 @@ function baseView(
     referencedTasks,
     messages,
     truncation,
-  } as unknown as Json).value as unknown as ChatContextViewV1;
+  }).value;
 }
-function normalizeSummary(value: ReferencedTaskSummaryV1): ReferencedTaskSummaryV1 {
-  if (
-    !value ||
-    typeof value.taskId !== "string" ||
-    value.taskId.length === 0 ||
-    value.taskId.length > 512
-  ) {
-    invalidPolicy("invalid referenced task summary");
-  }
-  return deepFreeze({ taskId: value.taskId, summary: normalizeChatMessage(value.summary) });
-}
-function verifyChatContextPolicy(policy: ChatContextPolicyV1): void {
+function verifyChatContextPolicy(policy: AuthoredChatContextPolicy): void {
   const rebuilt = latestContextWindow({
     id: policy.id,
-    version: policy.version,
     maxMessages: policy.maxMessages,
     maxReferencedTasks: policy.maxReferencedTasks,
     maxCanonicalBytes: policy.maxCanonicalBytes,
   });
-  if (rebuilt.digest !== policy.digest || policy.format !== CHAT_CONTEXT_POLICY_FORMAT) {
+  if (rebuilt.digest !== policy.digest) {
     invalidPolicy("context policy digest mismatch");
   }
 }

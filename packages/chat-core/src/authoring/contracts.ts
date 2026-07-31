@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, type Json, type JsonObject } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   standardSchemaOf,
@@ -8,96 +8,84 @@ import {
 } from "@sweatpants/foundation/schema";
 import { sortedResourceValues, type DataClassification } from "@sweatpants/agent-sdk";
 
-export const CHAT_TURN_INPUT_FORMAT = "sweatpants.chat-turn-input.v1" as const;
-export const CHAT_TURN_RESULT_FORMAT = "sweatpants.chat-turn-result.v1" as const;
-export const CHAT_CONTEXT_POLICY_FORMAT = "sweatpants.chat-context-policy.v1" as const;
-
-export interface ChatContentPartV1 {
+export type AuthoredChatContentPart = {
   value: Json;
   provenance: {
     classifications: DataClassification[];
     sourceDigests: string[];
   };
-}
-export interface ChatMessageV1 {
+} & JsonObject;
+export type AuthoredChatMessage = {
   id: string;
   role: "user" | "assistant" | "system" | "tool";
-  parts: ChatContentPartV1[];
-}
-export interface ReferencedTaskSummaryV1 {
+  parts: AuthoredChatContentPart[];
+} & JsonObject;
+export type AuthoredReferencedTaskSummary = {
   taskId: string;
-  summary: ChatMessageV1;
-}
-export interface ChatContextViewV1 {
+  summary: AuthoredChatMessage;
+} & JsonObject;
+export type AuthoredChatContextView = {
   policyDigest: string;
   frontier: string;
   referenceTaskIds: string[];
-  referencedTasks: ReferencedTaskSummaryV1[];
-  messages: ChatMessageV1[];
+  referencedTasks: AuthoredReferencedTaskSummary[];
+  messages: AuthoredChatMessage[];
   truncation: { omittedMessages: number; omittedReferencedTasks: number };
-}
-export interface ChatTurnInputV1 {
-  format: typeof CHAT_TURN_INPUT_FORMAT;
-  message: ChatMessageV1;
-  context: ChatContextViewV1;
-}
-export interface ChatArtifactV1 {
+} & JsonObject;
+export type AuthoredChatTurnInput = {
+  message: AuthoredChatMessage;
+  context: AuthoredChatContextView;
+} & JsonObject;
+export type AuthoredChatArtifact = {
   id: string;
   name?: string;
   description?: string;
-  parts: ChatContentPartV1[];
-}
-export interface ChatTurnResultV1 {
-  format: typeof CHAT_TURN_RESULT_FORMAT;
-  message: ChatMessageV1;
-  artifacts: ChatArtifactV1[];
-}
-export interface ChatContextPolicyV1 {
-  format: typeof CHAT_CONTEXT_POLICY_FORMAT;
+  parts: AuthoredChatContentPart[];
+} & JsonObject;
+export type AuthoredChatTurnResult = {
+  message: AuthoredChatMessage;
+  artifacts: AuthoredChatArtifact[];
+} & JsonObject;
+export type AuthoredChatContextPolicy = {
   id: string;
-  version: string;
   maxMessages: number;
   maxReferencedTasks: number;
   maxCanonicalBytes: number;
   digest: string;
-}
-export interface ChatModelToolCallV1 {
+} & JsonObject;
+export type AuthoredChatModelToolCall = {
   id: string;
   target: string;
   input: Json;
-}
-export interface ChatModelSampleInputV2 {
-  messages: ChatMessageV1[];
-  systemPrompt: ChatContentPartV1;
+} & JsonObject;
+export type AuthoredChatModelSampleRequest = {
+  messages: AuthoredChatMessage[];
+  systemPrompt: AuthoredChatContentPart;
   tools: Json[];
   classifications: DataClassification[];
   sampling: Json;
-}
-export interface ChatModelSampleOutputV2 {
-  message: ChatMessageV1;
-  calls: ChatModelToolCallV1[];
-  artifacts: ChatArtifactV1[];
-}
+} & JsonObject;
+export type AuthoredChatModelSampleResult = {
+  message: AuthoredChatMessage;
+  calls: AuthoredChatModelToolCall[];
+  artifacts: AuthoredChatArtifact[];
+} & JsonObject;
 
 const inputDescriptor = descriptor("sweatpants.chat-turn/input", "program_input", {
   type: "object",
-  required: ["format", "message", "context"],
-  properties: { format: { const: CHAT_TURN_INPUT_FORMAT }, message: true, context: true },
+  required: ["message", "context"],
+  properties: { message: true, context: true },
   additionalProperties: false,
 });
 const resultDescriptor = descriptor("sweatpants.chat-turn/result", "program_output", {
   type: "object",
-  required: ["format", "message", "artifacts"],
-  properties: {
-    format: { const: CHAT_TURN_RESULT_FORMAT },
-    message: true,
-    artifacts: { type: "array" },
-  },
+  required: ["message", "artifacts"],
+  properties: { message: true, artifacts: { type: "array" } },
   additionalProperties: false,
 });
 export const CHAT_TURN_INPUT_DESCRIPTOR = inputDescriptor;
 export const CHAT_TURN_RESULT_DESCRIPTOR = resultDescriptor;
-const modelSampleInputDescriptor = descriptor(
+const authoredModelSampleInputDescriptor = descriptor(
   "sweatpants.chat-model-sample/input",
   "effect_input",
   {
@@ -106,7 +94,7 @@ const modelSampleInputDescriptor = descriptor(
     additionalProperties: false,
   },
 );
-const modelSampleOutputDescriptor = descriptor(
+const authoredModelSampleOutputDescriptor = descriptor(
   "sweatpants.chat-model-sample/output",
   "effect_output",
   {
@@ -115,39 +103,32 @@ const modelSampleOutputDescriptor = descriptor(
     additionalProperties: false,
   },
 );
-export const CHAT_MODEL_SAMPLE_INPUT_DESCRIPTOR = modelSampleInputDescriptor;
-export const CHAT_MODEL_SAMPLE_OUTPUT_DESCRIPTOR = modelSampleOutputDescriptor;
+export const AUTHORED_MODEL_SAMPLE_INPUT_DESCRIPTOR = authoredModelSampleInputDescriptor;
+export const AUTHORED_MODEL_SAMPLE_OUTPUT_DESCRIPTOR = authoredModelSampleOutputDescriptor;
 
 export const CHAT_CONTRACT_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze([
-  entry(inputDescriptor, (value) => normalizeChatTurnInput(value) as unknown as Json),
-  entry(resultDescriptor, (value) => normalizeChatTurnResult(value) as unknown as Json),
-  entry(modelSampleInputDescriptor, (value) => normalizeModelSampleInput(value) as unknown as Json),
-  entry(
-    modelSampleOutputDescriptor,
-    (value) => normalizeModelSampleOutput(value) as unknown as Json,
-  ),
+  entry(inputDescriptor, (value) => parseAuthoredChatTurnInput(value)),
+  entry(resultDescriptor, (value) => parseAuthoredChatTurnResult(value)),
+  entry(authoredModelSampleInputDescriptor, (value) => parseAuthoredChatModelSampleRequest(value)),
+  entry(authoredModelSampleOutputDescriptor, (value) => parseAuthoredChatModelSampleResult(value)),
 ]);
 
-export function normalizeChatTurnInput(value: unknown): ChatTurnInputV1 {
-  const input = exactRecord(value, ["format", "message", "context"], "chat turn input");
-  if (input["format"] !== CHAT_TURN_INPUT_FORMAT) {
-    invalid("unsupported chat input format");
-  }
+export function parseAuthoredChatTurnInput(value: unknown): AuthoredChatTurnInput {
+  const input = exactRecord(value, ["message", "context"], "chat turn input");
   return snapshot({
-    format: CHAT_TURN_INPUT_FORMAT,
-    message: normalizeChatMessage(input["message"]),
-    context: normalizeContext(input["context"]),
+    message: parseAuthoredChatMessage(input["message"]),
+    context: parseAuthoredChatContext(input["context"]),
   });
 }
 
-export function normalizeChatTurnResult(value: unknown): ChatTurnResultV1 {
-  const result = exactRecord(value, ["format", "message", "artifacts"], "chat turn result");
-  if (result["format"] !== CHAT_TURN_RESULT_FORMAT || !Array.isArray(result["artifacts"])) {
+export function parseAuthoredChatTurnResult(value: unknown): AuthoredChatTurnResult {
+  const result = exactRecord(value, ["message", "artifacts"], "chat turn result");
+  if (!Array.isArray(result["artifacts"])) {
     invalid("invalid chat result");
   }
   const ids = new Set<string>();
   const artifacts = result["artifacts"].map((artifact) => {
-    const parsed = normalizeArtifact(artifact);
+    const parsed = parseAuthoredChatArtifact(artifact);
     if (ids.has(parsed.id)) {
       invalid("duplicate artifact ID");
     }
@@ -155,13 +136,12 @@ export function normalizeChatTurnResult(value: unknown): ChatTurnResultV1 {
     return parsed;
   });
   return snapshot({
-    format: CHAT_TURN_RESULT_FORMAT,
-    message: normalizeChatMessage(result["message"]),
+    message: parseAuthoredChatMessage(result["message"]),
     artifacts,
   });
 }
 
-export function normalizeChatMessage(value: unknown): ChatMessageV1 {
+export function parseAuthoredChatMessage(value: unknown): AuthoredChatMessage {
   const message = exactRecord(value, ["id", "role", "parts"], "chat message");
   const role = message["role"];
   if (
@@ -172,16 +152,16 @@ export function normalizeChatMessage(value: unknown): ChatMessageV1 {
   }
   return snapshot({
     id: opaqueId(message["id"], "message ID"),
-    role: role as ChatMessageV1["role"],
-    parts: message["parts"].map(normalizePart),
+    role: role as AuthoredChatMessage["role"],
+    parts: message["parts"].map(parseAuthoredPart),
   });
 }
 
-export function normalizeContentPart(value: unknown): ChatContentPartV1 {
-  return normalizePart(value);
+export function parseAuthoredContentPart(value: unknown): AuthoredChatContentPart {
+  return parseAuthoredPart(value);
 }
 
-function normalizeContext(value: unknown): ChatContextViewV1 {
+function parseAuthoredChatContext(value: unknown): AuthoredChatContextView {
   const context = exactRecord(
     value,
     ["policyDigest", "frontier", "referenceTaskIds", "referencedTasks", "messages", "truncation"],
@@ -216,10 +196,10 @@ function normalizeContext(value: unknown): ChatContextViewV1 {
       const task = exactRecord(item, ["taskId", "summary"], "referenced task");
       return {
         taskId: opaqueId(task["taskId"], "task ID"),
-        summary: normalizeChatMessage(task["summary"]),
+        summary: parseAuthoredChatMessage(task["summary"]),
       };
     }),
-    messages: context["messages"].map(normalizeChatMessage),
+    messages: context["messages"].map(parseAuthoredChatMessage),
     truncation: {
       omittedMessages: nonnegative(truncation["omittedMessages"], "omitted messages"),
       omittedReferencedTasks: nonnegative(truncation["omittedReferencedTasks"], "omitted tasks"),
@@ -227,7 +207,7 @@ function normalizeContext(value: unknown): ChatContextViewV1 {
   });
 }
 
-function normalizeArtifact(value: unknown): ChatArtifactV1 {
+function parseAuthoredChatArtifact(value: unknown): AuthoredChatArtifact {
   const artifact = optionalRecord(value, ["id", "parts"], ["name", "description"], "artifact");
   if (!Array.isArray(artifact["parts"])) {
     invalid("artifact parts must be an array");
@@ -240,11 +220,11 @@ function normalizeArtifact(value: unknown): ChatArtifactV1 {
     ...(artifact["description"] !== undefined
       ? { description: boundedText(artifact["description"], 4096, "artifact description") }
       : {}),
-    parts: artifact["parts"].map(normalizePart),
+    parts: artifact["parts"].map(parseAuthoredPart),
   });
 }
 
-function normalizePart(value: unknown): ChatContentPartV1 {
+function parseAuthoredPart(value: unknown): AuthoredChatContentPart {
   const part = exactRecord(value, ["value", "provenance"], "content part");
   const provenance = exactRecord(
     part["provenance"],
@@ -283,7 +263,9 @@ function normalizePart(value: unknown): ChatContentPartV1 {
   });
 }
 
-export function normalizeModelSampleInput(value: unknown): ChatModelSampleInputV2 & Json {
+export function parseAuthoredChatModelSampleRequest(
+  value: unknown,
+): AuthoredChatModelSampleRequest {
   const input = exactRecord(
     value,
     ["messages", "systemPrompt", "tools", "classifications", "sampling"],
@@ -296,17 +278,16 @@ export function normalizeModelSampleInput(value: unknown): ChatModelSampleInputV
   ) {
     invalid("invalid model sample input");
   }
-  const normalized: ChatModelSampleInputV2 = {
-    messages: input["messages"].map(normalizeChatMessage),
-    systemPrompt: normalizeContentPart(input["systemPrompt"]),
+  return snapshot({
+    messages: input["messages"].map(parseAuthoredChatMessage),
+    systemPrompt: parseAuthoredContentPart(input["systemPrompt"]),
     tools: input["tools"].map((tool) => canonicalSnapshot(tool as Json).value),
     classifications: input["classifications"].map(classification),
     sampling: canonicalSnapshot(input["sampling"] as Json).value,
-  };
-  return snapshot(Object.assign(normalized, assertJson(normalized)));
+  });
 }
 
-export function normalizeModelSampleOutput(value: unknown): ChatModelSampleOutputV2 & Json {
+export function parseAuthoredChatModelSampleResult(value: unknown): AuthoredChatModelSampleResult {
   const output = exactRecord(value, ["message", "calls", "artifacts"], "model sample output");
   if (!Array.isArray(output["calls"]) || !Array.isArray(output["artifacts"])) {
     invalid("invalid model sample output");
@@ -325,12 +306,11 @@ export function normalizeModelSampleOutput(value: unknown): ChatModelSampleOutpu
       input: canonicalSnapshot(call["input"] as Json).value,
     };
   });
-  const normalized: ChatModelSampleOutputV2 = {
-    message: normalizeChatMessage(output["message"]),
+  return snapshot({
+    message: parseAuthoredChatMessage(output["message"]),
     calls,
-    artifacts: output["artifacts"].map(normalizeArtifact),
-  };
-  return snapshot(Object.assign(normalized, assertJson(normalized)));
+    artifacts: output["artifacts"].map(parseAuthoredChatArtifact),
+  });
 }
 
 function descriptor(
@@ -350,13 +330,13 @@ function descriptor(
 }
 function entry(
   descriptorValue: PortableSchemaDescriptor,
-  normalize: (value: unknown) => Json,
+  parse: (value: unknown) => Json,
 ): SchemaBinding {
   return {
     descriptor: descriptorValue,
     schema: standardSchemaOf("sweatpants", (value) => {
       try {
-        return { value: normalize(value) };
+        return { value: parse(value) };
       } catch (error) {
         return { issues: [{ message: error instanceof Error ? error.message : "invalid value" }] };
       }

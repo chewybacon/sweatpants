@@ -13,13 +13,11 @@ import {
 } from "@sweatpants/a2a";
 import {
   CHAT_CONTRACT_SCHEMA_ENTRIES,
-  CHAT_TURN_RESULT_FORMAT,
   createChatModelEffectRegistration,
   defineChatProgram,
   latestContextWindow,
-  normalizeChatTurnResult,
-  type ChatModelSampleInputV2,
-  type ChatModelSampleOutputV2,
+  type AuthoredChatModelSampleRequest,
+  type AuthoredChatModelSampleResult,
   type ChatProgramDefinition,
 } from "@sweatpants/chat-core";
 import { startAgentHarness } from "../testing.ts";
@@ -39,7 +37,10 @@ import {
 
 function fixture(
   hostOptions: CreateStandardA2AHostOptions = {},
-  modelOutput?: (sample: number, request: ChatModelSampleInputV2) => ChatModelSampleOutputV2,
+  modelOutput?: (
+    sample: number,
+    request: AuthoredChatModelSampleRequest,
+  ) => AuthoredChatModelSampleResult,
   historyProjection: "task-only" | "accepted-context" = "accepted-context",
 ) {
   let samples = 0;
@@ -68,7 +69,7 @@ function fixture(
   });
   const model = createChatModelEffectRegistration({
     allowedClassifications: ["public"],
-    *sample(request, effect): Operation<ChatModelSampleOutputV2> {
+    *sample(request, effect): Operation<AuthoredChatModelSampleResult> {
       samples += 1;
       const trace = yield* StandardA2ATraceContext.get();
       if (trace) {
@@ -149,19 +150,18 @@ function interruptionFixture() {
       "Provide the continuation answer",
       ANY_JSON_SCHEMA_DESCRIPTOR,
     );
-    return normalizeChatTurnResult({
-      format: CHAT_TURN_RESULT_FORMAT,
+    return {
       message: {
         id: "continued-answer",
         role: "assistant",
         parts: [{ value: answer, provenance: { classifications: [], sourceDigests: [] } }],
       },
       artifacts: [],
-    }) as unknown as Json;
+    };
   });
   const conversation = Object.freeze({
     ...durable,
-    kind: "sweatpants.chat-program.v1" as const,
+    kind: "sweatpants.chat-program" as const,
     schemaCatalog: CHAT_CONTRACT_SCHEMA_ENTRIES,
     childPrograms: Object.freeze({}),
     contextPolicy: latestContextWindow(),

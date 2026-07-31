@@ -427,7 +427,7 @@ describe("LocalProgramHost", () => {
       drivers: createProgramDriverRegistry([["program", createLocalProgramDriver(programs)]]),
       modelSamplingService,
       effectOutcomeAcknowledger: function* ({ effect, outcomeDigest }) {
-        expect(effect).toEqual({ name: "model.sample", version: "3" });
+        expect(effect).toEqual({ name: "model.sample", version: "1" });
         expect(outcomeDigest).toMatch(/^[0-9a-f]{64}$/);
         observed.push("acknowledged");
       },

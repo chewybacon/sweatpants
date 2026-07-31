@@ -68,7 +68,6 @@ describe("caller-authoritative A2A multi-process certification", () => {
         outcome: {
           status: "ok",
           value: {
-            format: "sweatpants.chat-turn-result.v1",
             message: {
               id: "final",
               role: "assistant",

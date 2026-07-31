@@ -26,7 +26,7 @@ import { canonicalJson, sha256, type Json } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   createChatModelEffectRegistration,
-  type ChatModelSampleOutputV2,
+  type AuthoredChatModelSampleResult,
 } from "@sweatpants/chat-core";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
@@ -121,10 +121,10 @@ const modelRegistration = createChatModelEffectRegistration({
   *sample(_request, context) {
     const existing = effectState.model[context.pullId];
     if (existing !== undefined) {
-      return existing as unknown as ChatModelSampleOutputV2;
+      return existing as unknown as AuthoredChatModelSampleResult;
     }
     effectState.modelExecutions += 1;
-    const value: ChatModelSampleOutputV2 =
+    const value: AuthoredChatModelSampleResult =
       effectState.modelExecutions === 1
         ? {
             message: assistantMessage("guidance", "Loading review guidance."),

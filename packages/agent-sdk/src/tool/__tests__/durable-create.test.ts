@@ -234,7 +234,7 @@ describe("createDurableTool fluent builder", () => {
       descriptor: {
         kind: "effect",
         name: "model.sample",
-        version: "3",
+        version: "1",
         input: {
           invocation: {
             context: { messages: [{ role: "user", content: "Choose a value" }] },

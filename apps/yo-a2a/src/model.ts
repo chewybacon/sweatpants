@@ -7,9 +7,9 @@ import {
 } from "@sweatpants/model-provider";
 import {
   createChatModelEffectRegistration,
-  type ChatMessageV1,
-  type ChatModelSampleInputV2,
-  type ChatModelSampleOutputV2,
+  type AuthoredChatMessage,
+  type AuthoredChatModelSampleRequest,
+  type AuthoredChatModelSampleResult,
 } from "@sweatpants/chat-core";
 import { canonicalJson, type Json } from "@sweatpants/foundation";
 
@@ -55,14 +55,14 @@ export const realModelRegistration = createChatModelEffectRegistration({
 
 export const selectedModel = Object.freeze(selection);
 
-function modelContext(request: ChatModelSampleInputV2): Context {
+function modelContext(request: AuthoredChatModelSampleRequest): Context {
   return {
     systemPrompt: String(request.systemPrompt.value),
     messages: request.messages.flatMap(toProviderMessages),
     tools: request.tools.map(toProviderTool),
   };
 }
-function toProviderMessages(message: ChatMessageV1): PortableModelContextMessage[] {
+function toProviderMessages(message: AuthoredChatMessage): PortableModelContextMessage[] {
   const text = message.parts.map((part) => valueText(part.value)).join("\n");
   if (message.role === "user") {
     return [{ role: "user", content: text }];
@@ -119,7 +119,7 @@ function toProviderTool(value: Json): PortableModelTool {
     parameters: inputSchema,
   };
 }
-function modelOutput(assistant: AssistantMessage, pullId: string): ChatModelSampleOutputV2 {
+function modelOutput(assistant: AssistantMessage, pullId: string): AuthoredChatModelSampleResult {
   const text = assistant.content
     .filter((block) => block.type === "text")
     .map((block) => block.text)
