@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { StreamEvent } from "../handler/types.ts";
+import type { StreamEvent } from "../../handler/types.ts";
 import {
   ConversationCheckpointError,
   decodeConversationCheckpoint,
   encodeConversationCheckpoint,
-} from "./conversation-checkpoint.ts";
+} from "../conversation-checkpoint.ts";
 
 const events: StreamEvent[] = [
   {

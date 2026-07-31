@@ -768,6 +768,15 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                         ...(clientConversationId ? { conversationId: durableConversationId } : {}),
                         checkpointStore: bufferStore,
                         responseTokenBuffer: responseTokenWriter,
+                        onCheckpointError: (error) => {
+                          log.error(
+                            {
+                              conversationId: durableConversationId,
+                              error: error instanceof Error ? error.message : String(error),
+                            },
+                            "conversation checkpoint persistence failed",
+                          );
+                        },
                       }),
                   });
                   log.debug({ sessionId }, "new session path: session acquired");
