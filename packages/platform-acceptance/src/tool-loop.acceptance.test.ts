@@ -306,7 +306,9 @@ async function runIterationLimitScenario(binding: Binding): Promise<void> {
   );
 }
 
-describe.each<Binding>(["in-process", "http"])("tool loop through the %s binding", (binding) => {
+describe("tool loop semantics", () => {
+  const binding: Binding = "in-process";
+
   it("correlates two tool calls from one response", async () => {
     await runTwoCallScenario(binding);
   });
@@ -333,5 +335,12 @@ describe.each<Binding>(["in-process", "http"])("tool loop through the %s binding
   });
   it("enforces the maximum tool iteration limit", async () => {
     await runIterationLimitScenario(binding);
+  });
+});
+
+describe("tool loop HTTP parity", () => {
+  // binding-conformance: mixed routing crosses the complete HTTP shell once.
+  it("routes ordinary and durable calls from one response", async () => {
+    await runMixedRoutingScenario("http");
   });
 });

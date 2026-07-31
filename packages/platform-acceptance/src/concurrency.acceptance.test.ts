@@ -54,15 +54,13 @@ async function runConcurrentIsolation(binding: Binding, failA: boolean): Promise
   );
 }
 
-describe.each<Binding>(["in-process", "http"])(
-  "concurrent conversation isolation through the %s binding",
-  (binding) => {
-    it("keeps interleaved streams isolated", async () => {
-      await runConcurrentIsolation(binding, false);
-    });
+describe("HTTP concurrent conversation isolation", () => {
+  // binding-conformance: isolation is strongest across independent HTTP streams.
+  it("keeps interleaved streams isolated", async () => {
+    await runConcurrentIsolation("http", false);
+  });
 
-    it("keeps B healthy when A fails", async () => {
-      await runConcurrentIsolation(binding, true);
-    });
-  },
-);
+  it("keeps B healthy when A fails", async () => {
+    await runConcurrentIsolation("http", true);
+  });
+});

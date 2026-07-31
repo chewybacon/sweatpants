@@ -118,8 +118,8 @@ async function runHistoryScenario(binding: Binding): Promise<void> {
   );
 }
 
-describe.each<Binding>(["in-process", "http"])("history through the %s binding", (binding) => {
+describe("history semantics", () => {
   it("preserves outer tool history and excludes nested sample text", async () => {
-    await runHistoryScenario(binding);
+    await runHistoryScenario("in-process");
   }, 30_000);
 });

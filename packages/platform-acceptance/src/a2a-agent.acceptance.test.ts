@@ -138,15 +138,12 @@ async function invokeStandardAgent(binding: Binding, posture: AgentPosture): Pro
   );
 }
 
-describe.each<Binding>(["in-process", "http"])(
-  "standard A2A agent through the %s test-rig binding",
-  (binding) => {
-    it.each<AgentPosture>(["assembled-handle", "remote-http"])(
-      "discovers, causally controls, and completes the agent in the %s posture",
-      async (posture) => {
-        await invokeStandardAgent(binding, posture);
-      },
-      30_000,
-    );
-  },
-);
+describe("standard A2A agent posture matrix", () => {
+  it("discovers and completes an assembled handle in-process", async () => {
+    await invokeStandardAgent("in-process", "assembled-handle");
+  }, 30_000);
+
+  it("discovers and completes a remote agent over HTTP", async () => {
+    await invokeStandardAgent("http", "remote-http");
+  }, 30_000);
+});

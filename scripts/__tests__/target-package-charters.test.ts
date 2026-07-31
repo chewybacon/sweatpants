@@ -270,6 +270,9 @@ describe("target package charters", () => {
     expect(durableTests).not.toMatch(
       /createMockProvider|setupMockModelProvider|createMockTool|agUiEventSchemas/,
     );
+    expect(sourceTree(resolve(root, "packages/platform-acceptance/src"))).not.toMatch(
+      /describe\.each<Binding>\(\["in-process", "http"\]\)/,
+    );
     expect(readFileSync(resolve(root, "packages/test-rig/src/ag-ui.ts"), "utf8")).toMatch(
       /function createAgUiProbe/,
     );

@@ -172,22 +172,26 @@ async function runElicitOutcomeScenario(
   );
 }
 
-describe.each<Binding>(["in-process", "http"])(
-  "interactive tool through the %s binding",
-  (binding) => {
-    it("controls tool call, two elicitations, nested sample, and final response", async () => {
-      await runInteractiveToolScenario(binding);
-    }, 30_000);
+describe("interactive tool semantics", () => {
+  const binding: Binding = "in-process";
 
-    it.each(["decline", "cancel"] as const)(
-      "delivers a structured %s outcome and completes the outer turn",
-      async (action) => {
-        await runElicitOutcomeScenario(binding, action);
-      },
-    );
+  it("controls tool call, two elicitations, nested sample, and final response", async () => {
+    await runInteractiveToolScenario(binding);
+  }, 30_000);
 
-    it("rejects a duplicate elicitation response without resuming twice", async () => {
-      await runDuplicateElicitScenario(binding);
-    });
-  },
-);
+  it.each(["decline", "cancel"] as const)(
+    "delivers a structured %s outcome and completes the outer turn",
+    async (action) => {
+      await runElicitOutcomeScenario(binding, action);
+    },
+  );
+
+  it("rejects a duplicate elicitation response without resuming twice", async () => {
+    await runDuplicateElicitScenario(binding);
+  });
+
+  // binding-conformance: one complete interactive flow crosses the HTTP shell.
+  it("completes the full interactive flow over HTTP", async () => {
+    await runInteractiveToolScenario("http");
+  }, 30_000);
+});
