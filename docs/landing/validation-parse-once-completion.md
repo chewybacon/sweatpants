@@ -174,7 +174,7 @@ The unused `OllamaChatRequest`, `OllamaChatChunk`, and `ClientToolSchema` residu
 
 Test Rig now passively observes the same application response body consumed by Chat Core and React; it does not replace the AG-UI producer. A transform taps emitted NDJSON/SSE bytes without cloning the stream, validates the pinned AG-UI event vocabulary, tracks run/message/tool lifecycle, rejects obsolete public events, and exposes causal barriers to scenario scripts. React hook acceptance drives the real HTTP Responses simulator through pi-ai, Durable Chat, worker-backed tools, AG-UI, Chat Core, and `useChat`, then validates the emitted protocol and hook-visible result together across in-process and HTTP bindings. The scenario also proves activity separation and that private system prompts do not enter public events.
 
-With that path authoritative, 22 mock-backed, synthetic-event, implementation-state, duplicate HTTP smoke, and upstream Effection suites were deleted (over 7,000 lines). Chat Core no longer directly tests reducer/class state arrangements; retained tests cover public functional contracts such as authoring, policy, replay bounds, projection facts, identity, and codecs. Durable Chat retains authority/fencing/store/parser tests while model/tool/AG-UI/session behavior is covered through Test Rig and Platform Acceptance. A charter gate prevents mock providers, local AG-UI schema mirrors, and the removed internal-state suites from returning. The package-test coverage baseline was deliberately reset from 1,249 collected tests to 1,133 after the deletion; the lower count is intentional consolidation, not missing imports.
+With that path authoritative, 29 mock-backed, synthetic-event, implementation-state, duplicate stream/HTTP smoke, simple export/helper, and upstream Effection suites were deleted (nearly 9,000 lines). Chat Core no longer directly tests reducer/class state arrangements; retained tests cover public functional contracts such as authoring, policy, replay bounds, projection facts, and a compact codec boundary. React Chat now relies on rendering and simulator-to-hook acceptance rather than mock plugin executors. Durable Chat retains authority/fencing/store/parser tests while model/tool/AG-UI/session/HTTP behavior is covered through Test Rig, React, and Platform Acceptance. A charter gate prevents mock providers, local AG-UI schema mirrors, and the removed internal-state suites from returning. The package-test coverage baseline was deliberately lowered after each deletion; it now records 1,057 collected package tests (1,033 passed, 17 skipped). The lower count is intentional consolidation, not missing imports.
 
 ## Validation performed
 
@@ -188,12 +188,12 @@ With that path authoritative, 22 mock-backed, synthetic-event, implementation-st
 | A2A tests | 48 passed, 1 live test skipped |
 | Agent Host tests | 38 passed |
 | Agent SDK tests | 155 passed |
-| Chat Core tests | 64 passed |
+| Chat Core tests | 39 passed |
 | Durable Effects tests | 3 passed |
 | Test Rig tests | 20 passed |
-| React Chat tests | 17 passed |
+| React Chat tests | 8 passed |
 | Durable Execution tests | 25 passed |
-| Durable Chat Runtime tests | 106 passed |
+| Durable Chat Runtime tests | 64 passed |
 | Workspace Runtime tests | 18 passed |
 | Journal Authority tests | 92 passed |
 | Tool Session tests | 113 passed, 7 todo |

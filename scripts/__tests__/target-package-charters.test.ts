@@ -250,12 +250,18 @@ describe("target package charters", () => {
       "packages/chat-core/src/smoke.test.ts",
       "packages/chat-core/src/session/__tests__/ag-ui-stream.test.ts",
       "packages/chat-core/src/session/__tests__/history-sync.test.ts",
+      "packages/chat-core/src/session/__tests__/message-identity.test.ts",
       "packages/chat-core/src/session/__tests__/turn-state.test.ts",
       "packages/chat-core/src/state/__tests__/ag-ui-fold.test.ts",
       "packages/chat-core/src/state/__tests__/ag-ui-fold-scenarios.test.ts",
       "packages/durable-chat-runtime/src/durable-handler/__tests__/ag-ui-conformance.test.ts",
       "packages/durable-chat-runtime/src/durable-handler/__tests__/history-policy-integration.test.ts",
+      "packages/durable-chat-runtime/src/handler/__tests__/pull-stream-handler.test.ts",
+      "packages/durable-chat-runtime/src/response-streams/__tests__/durable-streams.test.ts",
+      "packages/durable-chat-runtime/src/response-streams/__tests__/effection-webstream-bridge.test.ts",
       "packages/durable-chat-runtime/src/response-streams/__tests__/hello-chat-scenario.test.ts",
+      "packages/react-chat/src/__tests__/mcp-plugin-executor.test.ts",
+      "packages/react-chat/src/__tests__/plugin-handle-api.test.ts",
     ];
     for (const file of removedInternalSuites) {
       expect(existsSync(resolve(root, file)), file).toBe(false);
