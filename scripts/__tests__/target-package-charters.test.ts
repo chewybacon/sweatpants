@@ -53,7 +53,7 @@ describe("target package charters", () => {
 
   it("keeps Tool Runtime neutral and under one contract owner", () => {
     expectNoMatches(productionSource("tool-runtime"), [
-      /from ["']@sweatpants\/(?:chat-core|tool-session|durable-chat-runtime|model-provider)/,
+      /from ["']@sweatpants\/(?:chat-core|tool-session|durable-chat-runtime)/,
       /from ["'](?:node:http|redis|react)["']/,
     ]);
 
@@ -62,6 +62,7 @@ describe("target package charters", () => {
         "PortableToolDefinition",
         "ToolInventoryEntry",
         "ToolRuntime",
+        "ToolCall",
         "ElicitExchangeCompletion",
         "SampleExchangeCompletion",
       ].map((name) => [name, [] as string[]]),
@@ -101,6 +102,7 @@ describe("target package charters", () => {
       "packages/tool-runtime/src/contract.ts",
     ]);
     expect(declarations.get("ToolRuntime")).toEqual(["packages/tool-runtime/src/contract.ts"]);
+    expect(declarations.get("ToolCall")).toEqual(["packages/model-provider/src/types.ts"]);
     expect(declarations.get("ElicitExchangeCompletion")).toEqual([
       "packages/agent-sdk/src/tool/types.ts",
     ]);
@@ -116,6 +118,7 @@ describe("target package charters", () => {
       /from ["']@sweatpants\/(?:agent-host|journal-authority|execution-store-redis)/,
       /@sweatpants\/tool-session\/mcp\/handler/,
       /from ["'](?:node:http|redis)["']/,
+      /\b(?:OllamaChatRequest|OllamaChatChunk|ClientToolSchema)\b/,
     ]);
   });
 

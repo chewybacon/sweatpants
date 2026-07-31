@@ -22,12 +22,8 @@ import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-paramet
 import type { Json } from "@sweatpants/foundation";
 import { createTool, type ToolDefinition as CoreToolDefinition } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
-import type {
-  ChatEvent,
-  ChatResult,
-  Message,
-  ToolCall as ProviderToolCall,
-} from "@sweatpants/chat-core";
+import type { ChatEvent, ChatResult, Message } from "@sweatpants/chat-core";
+import type { ToolCall as ProviderToolCall } from "@sweatpants/model-provider";
 import {
   ToolInventoryContext,
   createToolInventory,
@@ -303,9 +299,7 @@ function assistantFromProviderResult(result: ChatResult): AssistantMessage {
       ...(result.thinking ? [{ type: "thinking" as const, text: result.thinking }] : []),
       ...(result.toolCalls ?? []).map((toolCall) => ({
         type: "toolCall" as const,
-        id: toolCall.id,
-        name: toolCall.function.name,
-        arguments: toolCall.function.arguments,
+        toolCall,
       })),
     ],
     usage: usageFromProviderUsage(result.usage),
@@ -343,11 +337,7 @@ function providerMessagesFromRuntimeContext(context: Parameters<Runtime["stream"
           (block): block is Extract<(typeof message.content)[number], { type: "toolCall" }> =>
             block.type === "toolCall",
         )
-        .map((block) => ({
-          id: block.id,
-          type: "function",
-          function: { name: block.name, arguments: block.arguments },
-        }));
+        .map((block) => block.toolCall);
       messages.push({
         id: `assistant:${messages.length}`,
         role: "assistant",
@@ -424,12 +414,7 @@ export function createMockModelProviderDriver(provider: MockProvider): ModelProv
               pending.push({
                 type: "toolcall_end",
                 contentIndex: contentIndex++,
-                toolCall: {
-                  type: "toolCall",
-                  id: toolCall.id,
-                  name: toolCall.function.name,
-                  arguments: toolCall.function.arguments,
-                },
+                toolCall,
                 partial,
               });
             }

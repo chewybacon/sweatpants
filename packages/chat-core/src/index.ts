@@ -11,15 +11,7 @@
  */
 
 // Core message types
-export type {
-  Message,
-  ToolCall,
-  ChatEvent,
-  ChatResult,
-  ClientToolSchema,
-  OllamaChatRequest,
-  OllamaChatChunk,
-} from "./messages.ts";
+export type { Message, ChatEvent, ChatResult } from "./messages.ts";
 
 // Shared primitives
 export type {

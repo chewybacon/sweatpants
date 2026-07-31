@@ -45,9 +45,9 @@ function assistantToolCalls(message: ModelAssistantMessage): SamplingToolCall[] 
         block.type === "toolCall",
     )
     .map((block) => ({
-      id: block.id,
-      name: block.name,
-      arguments: block.arguments,
+      id: block.toolCall.id,
+      name: block.toolCall.function.name,
+      arguments: block.toolCall.function.arguments,
     }));
 }
 

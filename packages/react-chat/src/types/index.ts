@@ -8,7 +8,6 @@ export type {
   ToolCallInfo,
   ServerToolResult,
   Message,
-  ToolCall,
   TextPart,
   ReasoningPart,
   ToolCallPart,

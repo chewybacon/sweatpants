@@ -138,17 +138,22 @@ export interface ThinkingBlock {
   redacted?: boolean;
 }
 
-export interface ToolCallBlock {
-  type: "toolCall";
+/** Settled, decoded OpenAI-compatible function call produced by a model. */
+export interface ToolCall {
   id: string;
-  name: string;
-  /**
-   * Model-authored arguments stay open until the authored tool's parameter
-   * schema narrows them at `execute`. No hop in between may reshape them.
-   */
-  arguments: Json;
+  type: "function";
+  function: {
+    name: string;
+    /** Remains open until the authored tool schema narrows it at `execute`. */
+    arguments: Json;
+  };
   /** Opaque provider replay signature associated with this tool call. */
   thoughtSignature?: string;
+}
+
+export interface ToolCallBlock {
+  type: "toolCall";
+  toolCall: ToolCall;
 }
 
 export interface ImageBlock {
@@ -215,7 +220,7 @@ export type StreamEvent =
   | {
       type: "toolcall_end";
       contentIndex: number;
-      toolCall: ToolCallBlock;
+      toolCall: ToolCall;
       partial: AssistantMessage;
       metadata?: EventMetadata;
     }

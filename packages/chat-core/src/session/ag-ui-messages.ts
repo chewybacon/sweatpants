@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import type { Message, ToolCall } from "../messages.ts";
+import type { ToolCall } from "@sweatpants/model-provider";
+import type { Message } from "../messages.ts";
 import type { Json } from "@sweatpants/foundation";
 import type { PluginReplayActivityContent } from "./plugin-replay.ts";
 

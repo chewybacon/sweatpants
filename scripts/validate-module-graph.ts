@@ -48,7 +48,11 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/durable-execution",
     "@sweatpants/foundation",
   ],
-  "@sweatpants/tool-runtime": ["@sweatpants/agent-sdk", "@sweatpants/foundation"],
+  "@sweatpants/tool-runtime": [
+    "@sweatpants/agent-sdk",
+    "@sweatpants/foundation",
+    "@sweatpants/model-provider",
+  ],
   "@sweatpants/tool-session": [
     "@sweatpants/agent-sdk",
     "@sweatpants/durable-effects",

@@ -68,9 +68,14 @@ describe.skipIf(!externalSubstrateEnabled)(
                   content: [
                     {
                       type: "toolCall",
-                      id: "call-http-book-flight",
-                      name: bookFlightTool.name,
-                      arguments: { from: "NYC", destination: "LAX" },
+                      toolCall: {
+                        id: "call-http-book-flight",
+                        type: "function",
+                        function: {
+                          name: bookFlightTool.name,
+                          arguments: { from: "NYC", destination: "LAX" },
+                        },
+                      },
                     },
                   ],
                   stopReason: "toolUse",

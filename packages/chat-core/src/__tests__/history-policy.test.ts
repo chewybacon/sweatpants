@@ -11,7 +11,15 @@ function assistantText(text: string): Message {
 }
 
 function assistantCall(id: string, name = "echo"): Message {
-  return { role: "assistant", content: [{ type: "toolCall", id, name, arguments: {} }] };
+  return {
+    role: "assistant",
+    content: [
+      {
+        type: "toolCall",
+        toolCall: { id, type: "function", function: { name, arguments: {} } },
+      },
+    ],
+  };
 }
 
 function toolResult(id: string): Message {
@@ -93,7 +101,7 @@ describe("createMessageBudgetHistoryPolicy", () => {
     ]);
     const callIds = result.messages.flatMap((message) =>
       message.role === "assistant"
-        ? message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : []))
+        ? message.content.flatMap((block) => (block.type === "toolCall" ? [block.toolCall.id] : []))
         : message.role === "toolResult"
           ? [message.toolCallId]
           : [],

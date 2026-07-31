@@ -650,15 +650,15 @@ function* sampleModel(
         }
       }
       for (const block of next.value.content) {
-        if (block.type === "toolCall" && !calls.some((call) => call.id === block.id)) {
+        if (block.type === "toolCall" && !calls.some((call) => call.id === block.toolCall.id)) {
           calls.push({
-            id: block.id,
+            id: block.toolCall.id,
             target: foreignSamplingRequest
-              ? block.name
-              : resolveOuterToolTarget(block.name, params.toolSchemas),
-            input: assertJson(block.arguments),
-            ...(block.thoughtSignature !== undefined
-              ? { thoughtSignature: block.thoughtSignature }
+              ? block.toolCall.function.name
+              : resolveOuterToolTarget(block.toolCall.function.name, params.toolSchemas),
+            input: block.toolCall.function.arguments,
+            ...(block.toolCall.thoughtSignature !== undefined
+              ? { thoughtSignature: block.toolCall.thoughtSignature }
               : {}),
           });
         }
@@ -709,9 +709,9 @@ function* sampleModel(
         calls.push({
           id: block.id,
           target: foreignSamplingRequest
-            ? block.name
-            : resolveOuterToolTarget(block.name, params.toolSchemas),
-          input: assertJson(block.arguments),
+            ? block.function.name
+            : resolveOuterToolTarget(block.function.name, params.toolSchemas),
+          input: block.function.arguments,
           ...(block.thoughtSignature !== undefined
             ? { thoughtSignature: block.thoughtSignature }
             : {}),
@@ -1263,12 +1263,19 @@ function toRuntimeMessage(value: Json): RuntimeMessage {
           const fn = jsonRecord(call["function"]);
           return {
             type: "toolCall" as const,
-            id: String(call["id"] ?? "tool"),
-            name: String(call["target"] ?? call["name"] ?? fn?.["name"] ?? "tool"),
-            arguments: toolCallArguments(call["input"] ?? call["arguments"] ?? fn?.["arguments"]),
-            ...(typeof call["thoughtSignature"] === "string"
-              ? { thoughtSignature: call["thoughtSignature"] }
-              : {}),
+            toolCall: {
+              id: String(call["id"] ?? "tool"),
+              type: "function" as const,
+              function: {
+                name: String(call["target"] ?? call["name"] ?? fn?.["name"] ?? "tool"),
+                arguments: toolCallArguments(
+                  call["input"] ?? call["arguments"] ?? fn?.["arguments"],
+                ),
+              },
+              ...(typeof call["thoughtSignature"] === "string"
+                ? { thoughtSignature: call["thoughtSignature"] }
+                : {}),
+            },
           };
         }),
       ],
@@ -1317,18 +1324,26 @@ function parseRuntimeContentBlock(value: Json): ContentBlock | undefined {
             ...(typeof block["redacted"] === "boolean" ? { redacted: block["redacted"] } : {}),
           }
         : undefined;
-    case "toolCall":
-      return typeof block["id"] === "string" && typeof block["name"] === "string"
+    case "toolCall": {
+      const call = jsonRecord(block["toolCall"]);
+      const fn = call ? jsonRecord(call["function"]) : undefined;
+      return call && fn && typeof call["id"] === "string" && typeof fn["name"] === "string"
         ? {
             type: "toolCall",
-            id: block["id"],
-            name: block["name"],
-            arguments: toolCallArguments(block["arguments"]),
-            ...(typeof block["thoughtSignature"] === "string"
-              ? { thoughtSignature: block["thoughtSignature"] }
-              : {}),
+            toolCall: {
+              id: call["id"],
+              type: "function",
+              function: {
+                name: fn["name"],
+                arguments: toolCallArguments(fn["arguments"]),
+              },
+              ...(typeof call["thoughtSignature"] === "string"
+                ? { thoughtSignature: call["thoughtSignature"] }
+                : {}),
+            },
           }
         : undefined;
+    }
     case "image":
       return typeof block["data"] === "string" && typeof block["mimeType"] === "string"
         ? { type: "image", data: block["data"], mimeType: block["mimeType"] }
@@ -1376,12 +1391,7 @@ function snapshotAssistantContent(content: AssistantMessage["content"]): Json[] 
       case "toolCall":
         return assertJson({
           type: "toolCall",
-          id: block.id,
-          name: block.name,
-          arguments: block.arguments,
-          ...(block.thoughtSignature !== undefined
-            ? { thoughtSignature: block.thoughtSignature }
-            : {}),
+          toolCall: block.toolCall,
         });
       case "image":
         return assertJson({ type: "image", data: block.data, mimeType: block.mimeType });

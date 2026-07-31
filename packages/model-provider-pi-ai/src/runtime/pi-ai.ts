@@ -30,7 +30,7 @@ import type {
   StreamEvent,
   StreamOptions,
   ThinkingLevel,
-  ToolCallBlock,
+  ToolCall,
   Usage,
 } from "@sweatpants/model-provider";
 
@@ -111,7 +111,15 @@ function toPiContentBlock(block: ContentBlock): unknown {
     case "toolCall":
       // This is framework egress: `arguments` is already trusted `Json` and is
       // transported without parsing, cloning, or re-projection.
-      return block;
+      return {
+        type: "toolCall",
+        id: block.toolCall.id,
+        name: block.toolCall.function.name,
+        arguments: block.toolCall.function.arguments,
+        ...(block.toolCall.thoughtSignature
+          ? { thoughtSignature: block.toolCall.thoughtSignature }
+          : {}),
+      };
     default:
       return block;
   }
@@ -119,9 +127,9 @@ function toPiContentBlock(block: ContentBlock): unknown {
 
 /**
  * pi-ai owns wire decoding and supplies this discriminated union. We translate
- * only the one field whose representation differs (`thinking` -> `text`).
- * Tool arguments are already best-effort decoded objects in the pi-ai contract;
- * their domain shape remains open until the authored Standard Schema executes.
+ * thinking text and wrap settled flat pi-ai calls in Model Provider's decoded
+ * OpenAI-compatible call carrier. Arguments pass through as pi-ai's best-effort
+ * decoded JSON and remain open until the authored Standard Schema executes.
  */
 function fromPiContentBlock(
   block: PiAssistantMessage["content"][number],
@@ -146,7 +154,10 @@ function fromPiContentBlock(
       if (settled && block.name.length === 0) {
         throw new Error(`Provider returned tool call "${block.id}" without a name`);
       }
-      return block;
+      return {
+        type: "toolCall",
+        toolCall: fromPiToolCall(block),
+      };
   }
 }
 
@@ -158,7 +169,7 @@ function contentBlockHasProviderPayload(block: ContentBlock): boolean {
     return block.data.length > 0;
   }
   if (block.type === "toolCall") {
-    return block.name.trim().length > 0;
+    return block.toolCall.function.name.trim().length > 0;
   }
   return false;
 }
@@ -197,7 +208,7 @@ function normalizeProviderMessages(messages: Message[]): Message[] {
     if (message.role === "assistant") {
       for (const block of message.content) {
         if (block.type === "toolCall" && contentBlockHasProviderPayload(block)) {
-          callIds.add(block.id);
+          callIds.add(block.toolCall.id);
         }
       }
     }
@@ -220,7 +231,7 @@ function normalizeProviderMessages(messages: Message[]): Message[] {
       continue;
     }
     const content = message.content.filter(
-      (block) => block.type !== "toolCall" || resultIds.has(block.id),
+      (block) => block.type !== "toolCall" || resultIds.has(block.toolCall.id),
     );
     if (content.length === message.content.length) {
       normalized.push(message);
@@ -247,8 +258,13 @@ function safeErrorMessage(message: string | undefined): string | undefined {
     .slice(0, 2000);
 }
 
-function fromPiToolCall(toolCall: PiToolCall): ToolCallBlock {
-  return toolCall;
+function fromPiToolCall(toolCall: PiToolCall): ToolCall {
+  return {
+    id: toolCall.id,
+    type: "function",
+    function: { name: toolCall.name, arguments: toolCall.arguments },
+    ...(toolCall.thoughtSignature ? { thoughtSignature: toolCall.thoughtSignature } : {}),
+  };
 }
 
 function toPiAssistantMessage(message: AssistantMessage, selectedModel: Model): PiAssistantMessage {
@@ -300,9 +316,9 @@ function unwrapSchemaResponseMessage(message: AssistantMessage): AssistantMessag
   const content: ContentBlock[] = [];
 
   for (const block of message.content) {
-    if (block.type === "toolCall" && block.name === SCHEMA_TOOL_NAME) {
+    if (block.type === "toolCall" && block.toolCall.function.name === SCHEMA_TOOL_NAME) {
       consumedSchemaTool = true;
-      content.push({ type: "text", text: JSON.stringify(block.arguments) });
+      content.push({ type: "text", text: JSON.stringify(block.toolCall.function.arguments) });
       continue;
     }
     content.push(block);

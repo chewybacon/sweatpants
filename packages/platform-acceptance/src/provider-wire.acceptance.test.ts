@@ -140,7 +140,14 @@ describe("pi-ai provider over the simulated Responses wire", () => {
           {
             role: "assistant",
             content: [
-              { type: "toolCall", id: "call-complete", name: "book_flight", arguments: {} },
+              {
+                type: "toolCall",
+                toolCall: {
+                  id: "call-complete",
+                  type: "function",
+                  function: { name: "book_flight", arguments: {} },
+                },
+              },
             ],
           },
           {
@@ -178,7 +185,16 @@ describe("pi-ai provider over the simulated Responses wire", () => {
           { role: "user", content: "Book it" },
           {
             role: "assistant",
-            content: [{ type: "toolCall", id: "call-1", name: "book", arguments: {} }],
+            content: [
+              {
+                type: "toolCall",
+                toolCall: {
+                  id: "call-1",
+                  type: "function",
+                  function: { name: "book", arguments: {} },
+                },
+              },
+            ],
           },
           {
             role: "toolResult",
@@ -240,8 +256,13 @@ describe("pi-ai provider over the simulated Responses wire", () => {
       expect(result.message.content).toContainEqual(
         expect.objectContaining({
           type: "toolCall",
-          name: "book_flight",
-          arguments: { origin: "NYC", destination: "LA" },
+          toolCall: expect.objectContaining({
+            type: "function",
+            function: {
+              name: "book_flight",
+              arguments: { origin: "NYC", destination: "LA" },
+            },
+          }),
         }),
       );
     } finally {
@@ -266,7 +287,11 @@ describe("pi-ai provider over the simulated Responses wire", () => {
 
         const result = await stream;
         expect(result.message.content).toContainEqual(
-          expect.objectContaining({ arguments: expected }),
+          expect.objectContaining({
+            toolCall: expect.objectContaining({
+              function: expect.objectContaining({ arguments: expected }),
+            }),
+          }),
         );
       } finally {
         await simulator.close();

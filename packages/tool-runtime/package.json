@@ -29,6 +29,7 @@
     "dependencies": {
         "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/model-provider": "workspace:*",
         "effection": "catalog:"
     },
     "devDependencies": {

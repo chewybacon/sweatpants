@@ -3657,12 +3657,12 @@
     {
       "id": "SHAPE-166",
       "file": "packages/chat-core/src/session/ag-ui-messages.ts",
-      "line": 173,
+      "line": 174,
       "symbol": "isAgUiMessageArray",
       "classification": "R",
       "authority": "typed constructor or owning ingress for isAgUiMessageArray",
       "evidence": [
-        "packages/chat-core/src/session/ag-ui-messages.ts:173"
+        "packages/chat-core/src/session/ag-ui-messages.ts:174"
       ]
     },
     {
@@ -4064,45 +4064,45 @@
     {
       "id": "SHAPE-216",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1292,
+      "line": 1299,
       "symbol": "parseRuntimeContentBlock",
       "classification": "B",
       "authority": "owning ingress/parser parseRuntimeContentBlock",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1292"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1299"
       ]
     },
     {
       "id": "SHAPE-217",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1346,
+      "line": 1361,
       "symbol": "toolCallArguments",
       "classification": "R",
       "authority": "typed constructor or owning ingress for toolCallArguments",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1346"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1361"
       ]
     },
     {
       "id": "SHAPE-452",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1510,
+      "line": 1520,
       "symbol": "jsonRecord",
       "classification": "R",
       "authority": "typed constructor or owning ingress for jsonRecord",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1510"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1520"
       ]
     },
     {
       "id": "SHAPE-220",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1521,
+      "line": 1531,
       "symbol": "schemaWithModelContext",
       "classification": "R",
       "authority": "typed constructor or owning ingress for schemaWithModelContext",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1521"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1531"
       ]
     },
     {

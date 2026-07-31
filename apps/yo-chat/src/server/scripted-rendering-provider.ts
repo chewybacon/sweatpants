@@ -123,14 +123,13 @@ export function createScriptedRenderingModelProvider(): ModelProviderDriver {
       const toolResult = latestToolResultText(request.context);
       if (prompt.includes("deterministic pick card") && !toolResult) {
         const toolCall = {
-          type: "toolCall" as const,
           id: "scripted-pick-card-call",
-          name: "pick_card",
-          arguments: { count: 3 },
+          type: "function" as const,
+          function: { name: "pick_card", arguments: { count: 3 } },
         };
         const final: AssistantMessage = {
           role: "assistant",
-          content: [toolCall],
+          content: [{ type: "toolCall", toolCall }],
           usage: { input: 1, output: 1, total: 2 },
           stopReason: "toolUse",
         };

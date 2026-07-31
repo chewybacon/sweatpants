@@ -1,5 +1,6 @@
 import { parseRuntimeToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
+import type { ToolCall } from "@sweatpants/model-provider";
 import { action, resource, spawn, type Operation, type Stream } from "effection";
 import {
   installToolRuntime,
@@ -7,7 +8,6 @@ import {
   createStrategyToolRuntime,
   createToolExecutionRef,
   type ElicitToolRequest,
-  type ToolCall,
   type ToolExecution,
   type ToolExecutionContext,
   type ToolExecutionEvent,
