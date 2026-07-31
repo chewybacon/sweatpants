@@ -24,7 +24,6 @@
  * - hydrate-responses.ts: checkpoint/buffer replay read responses
  */
 import { call, resource, type Operation } from "effection";
-import { z } from "zod";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
   useSessionRegistryStore,
@@ -58,6 +57,7 @@ import { useOptionalProgramDriverNativeTools } from "../program-driver/native-to
 import { buildAgUiCustomState } from "@sweatpants/chat-core";
 import { activitySnapshotsForMessages, toProviderHistorySnapshot } from "@sweatpants/chat-core";
 import {
+  decodeConversationCheckpoint,
   readLatestConversationCheckpoint,
   recordConversationSession,
   resolveLatestConversationSession,
@@ -366,9 +366,17 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   !resolvedConversationSessionId &&
                   storedConversationCheckpoint
                 ) {
-                  const checkpointEvents = parseStoredCheckpointEvents(
-                    storedConversationCheckpoint,
-                  );
+                  let checkpointEvents: StreamEvent[];
+                  try {
+                    checkpointEvents = decodeConversationCheckpoint(storedConversationCheckpoint);
+                  } catch (error) {
+                    throw new CrankError(
+                      "invalid_chat_request",
+                      "Stored conversation checkpoint is malformed",
+                      undefined,
+                      { cause: error },
+                    );
+                  }
                   return yield* createStoredConversationCheckpointResponse({
                     ctx,
                     conversationId: requestedConversationId!,
@@ -839,17 +847,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       },
     },
   );
-}
-
-const storedCheckpointEventsSchema = z.array(z.record(z.string(), z.json())).max(100_000);
-
-function parseStoredCheckpointEvents(raw: string): StreamEvent[] {
-  try {
-    const value: unknown = JSON.parse(raw);
-    return storedCheckpointEventsSchema.parse(value) as unknown as StreamEvent[];
-  } catch {
-    throw new CrankError("invalid_chat_request", "Stored conversation checkpoint is malformed");
-  }
 }
 
 function* readBoundedChatRequest(request: Request): Operation<unknown> {
