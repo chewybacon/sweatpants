@@ -32,6 +32,7 @@ export type {
   StreamingPartsState,
   ChatState,
   ChatTransportReceipt,
+  ChatTurnFailure,
   ChatTurnSettlement,
   ElicitRequestStreamEvent,
   ChatSessionStreamEvent,

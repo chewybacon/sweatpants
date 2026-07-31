@@ -13,6 +13,11 @@ export interface ChatTransportReceipt {
  * tool/result DTOs. The projection retains those facts for the next request;
  * callers only need to know whether they may continue or answer an interrupt.
  */
+export interface ChatTurnFailure {
+  readonly message: string;
+  readonly code?: string;
+}
+
 export type ChatTurnSettlement =
   | {
       readonly outcome: "complete";
@@ -20,4 +25,8 @@ export type ChatTurnSettlement =
   | {
       readonly outcome: "interrupt";
       readonly pendingElicitations: readonly ElicitRequestStreamEvent[];
+    }
+  | {
+      readonly outcome: "failed";
+      readonly failure: ChatTurnFailure;
     };
