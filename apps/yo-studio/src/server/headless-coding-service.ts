@@ -2,9 +2,9 @@ import type { Operation } from "effection";
 import {
   acceptChatTurn,
   createChatModelEffectRegistration,
-  type ChatMessageV1,
-  type ChatModelSampleInputV2,
-  type ChatModelSampleOutputV2,
+  type AuthoredChatMessage,
+  type AuthoredChatModelSampleRequest,
+  type AuthoredChatModelSampleResult,
 } from "@sweatpants/chat-core";
 import {
   createProgramDriverJournalStore,
@@ -44,7 +44,7 @@ export interface CodingTaskResult {
 }
 
 export interface CodingModelSampleProvider {
-  sample(request: ChatModelSampleInputV2): Operation<ChatModelSampleOutputV2>;
+  sample(request: AuthoredChatModelSampleRequest): Operation<AuthoredChatModelSampleResult>;
 }
 
 export interface HeadlessCodingService {
@@ -123,7 +123,7 @@ export function createHeadlessCodingService(options: {
 
   return {
     *start(request) {
-      const message: ChatMessageV1 = {
+      const message: AuthoredChatMessage = {
         id: "task-message",
         role: "user",
         parts: [
@@ -197,8 +197,8 @@ export function createScriptedCodingModelSampleProvider(): CodingModelSampleProv
 
 function sampleResult(
   text: string,
-  calls: ChatModelSampleOutputV2["calls"],
-): ChatModelSampleOutputV2 {
+  calls: AuthoredChatModelSampleResult["calls"],
+): AuthoredChatModelSampleResult {
   return {
     message: {
       id: `scripted-${calls.length > 0 ? calls[0]!.id : "complete"}`,

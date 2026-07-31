@@ -20,14 +20,14 @@ import {
   latestContextWindow,
   modelReadable,
   modelTool,
-  normalizeChatTurnInput,
+  parseAuthoredChatTurnInput,
   selectChatContext,
-  type ChatMessageV1,
-  type ChatModelSampleOutputV2,
+  type AuthoredChatMessage,
+  type AuthoredChatModelSampleResult,
 } from "@sweatpants/chat-core";
 
 const emptyProvenance = { classifications: [], sourceDigests: [] };
-function message(id: string, role: ChatMessageV1["role"], text: string): ChatMessageV1 {
+function message(id: string, role: AuthoredChatMessage["role"], text: string): AuthoredChatMessage {
   return { id, role, parts: [{ value: text, provenance: emptyProvenance }] };
 }
 const resources = defineResourcePackage({
@@ -102,8 +102,8 @@ function chat(
 describe("durable chat authoring", () => {
   it("owns the authored chat sampling contract independently of provider invocation", () => {
     expect(CHAT_MODEL_SAMPLE_EFFECT).toMatchObject({
-      name: "model.sample",
-      version: "2",
+      name: "chat.model.sample",
+      version: "1",
       retrySafety: { mode: "repeatable" },
     });
   });
@@ -138,15 +138,15 @@ describe("durable chat authoring", () => {
     ).toBe(policy.digest);
   });
 
-  it("normalizes references once and rejects malformed closed input", () => {
+  it("parses the accepted turn and rejects unknown fields", () => {
     const policy = latestContextWindow();
     const accepted = acceptChatTurn(policy, message("current", "user", "hello"), {
       frontier: "f",
       referenceTaskIds: ["a", "a"],
     });
     expect(accepted.context.referenceTaskIds).toEqual(["a"]);
-    expect(normalizeChatTurnInput(accepted)).toEqual(accepted);
-    expect(() => normalizeChatTurnInput({ ...accepted, transport: "a2a" })).toThrowError(
+    expect(parseAuthoredChatTurnInput(accepted)).toEqual(accepted);
+    expect(() => parseAuthoredChatTurnInput({ ...accepted, transport: "a2a" })).toThrowError(
       expect.objectContaining({ code: "invalid_chat_program" }),
     );
   });
@@ -156,7 +156,7 @@ describe("durable chat authoring", () => {
     const input = acceptChatTurn(program.contextPolicy, message("current", "user", "Review this"), {
       frontier: "f",
     });
-    const output: ChatModelSampleOutputV2 = {
+    const output: AuthoredChatModelSampleResult = {
       message: message("answer", "assistant", "Looks good"),
       calls: [],
       artifacts: [],
@@ -168,13 +168,12 @@ describe("durable chat authoring", () => {
     if (first?.type !== "operation" || first.descriptor.kind !== "effect") {
       throw new Error("expected effect");
     }
-    expect(first.descriptor.name).toBe("model.sample");
-    expect(first.descriptor.version).toBe("2");
+    expect(first.descriptor.name).toBe("chat.model.sample");
+    expect(first.descriptor.version).toBe("1");
     expect((first.descriptor.input as Record<string, Json>)["classifications"]).toEqual([
       "internal",
     ]);
     expect(driven.result).toEqual({
-      format: "sweatpants.chat-turn-result.v1",
       message: output.message,
       artifacts: [],
     });
@@ -188,7 +187,7 @@ describe("durable chat authoring", () => {
       message("current", "user", "Load the review guidance"),
       { frontier: "f" },
     );
-    const readerCall: ChatModelSampleOutputV2 = {
+    const readerCall: AuthoredChatModelSampleResult = {
       message: message("assistant-call", "assistant", "Loading guidance"),
       calls: [{ id: "read-1", target: "resources.read", input: { uri: guidance.entryUri } }],
       artifacts: [],
@@ -369,11 +368,16 @@ describe("durable chat authoring", () => {
     expect(providerCalls).toBe(0);
   });
 
-  it("validates provider output again at the model-effect handler boundary", async () => {
+  it("carries the typed provider result to durable schema authority without revalidation", async () => {
+    const output: AuthoredChatModelSampleResult = {
+      message: message("answer", "assistant", "ok"),
+      calls: [],
+      artifacts: [],
+    };
     const registration = createChatModelEffectRegistration({
       allowedClassifications: ["public"],
       *sample() {
-        return { invalid: true } as never;
+        return output;
       },
     });
     await expect(
@@ -399,12 +403,12 @@ describe("durable chat authoring", () => {
           },
         ),
       ),
-    ).rejects.toMatchObject({ code: "invalid_chat_program" });
+    ).resolves.toEqual({ status: "ok", value: output });
   });
 
   it("matches the independently frozen chat-program digest vector", () => {
     expect(chat().manifest.digest).toBe(
-      "320f97c1509cf303fa6fb44178f674c7c8a4f25e056fac6edfd45ab870608b7f",
+      "66761506664605b667263775570eab7a09df170fe88f9e517058f9a0e9921fca",
     );
   });
 

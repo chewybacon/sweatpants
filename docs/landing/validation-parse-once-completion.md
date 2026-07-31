@@ -24,12 +24,12 @@ Current inventory totals:
 | Record | Count |
 | --- | ---: |
 | Historical validation records | 87 |
-| Manual shape owners | 320 |
+| Manual shape owners | 318 |
 | `B` external boundary | 105 |
-| `R` same-domain revalidation | 152 |
+| `R` same-domain revalidation | 151 |
 | `S` typed semantic verification | 15 |
 | `G` generic mechanism | 6 |
-| `C` compatibility normalizer | 42 |
+| `C` compatibility normalizer | 41 |
 
 The counts are evidence indicators, not completion criteria or an edit queue. Owners are reviewed when their vertical producer-to-consumer trust flow is migrated; deletion follows from establishing the upstream authority.
 
@@ -176,7 +176,7 @@ The unused `OllamaChatRequest`, `OllamaChatChunk`, and `ClientToolSchema` residu
 
 ### Durable model-sampling seam
 
-`@sweatpants/model-sampling` now owns the versioned `model.sample@3` durable command, output, cancellation partial, retained validator catalog, scoped `ModelSamplingApi`, remote delivery API, and structured-result settlement. Generic Durable Effects retains only placement evidence and generic post-resolution acknowledgement; Journal Authority no longer imports or branches on model-specific contracts. The old model-sampling files and exports were deleted from `@sweatpants/durable-effects` without forwarding aliases.
+`@sweatpants/model-sampling` now owns the current `model.sample@1` durable command, output, cancellation partial, retained validator catalog, scoped `ModelSamplingApi`, remote delivery API, and structured-result settlement. Authored Chat owns a distinct current `chat.model.sample@1` contract. Pre-release Chat contracts no longer carry V1/V2 type suffixes or embedded chat format markers; the descriptor and effect identity are the compatibility authority. Generic Durable Effects retains only placement evidence and generic post-resolution acknowledgement; Journal Authority no longer imports or branches on model-specific contracts. The old model-sampling files and exports were deleted from `@sweatpants/durable-effects` without forwarding aliases.
 
 Model Provider owns the JSON-safe portable invocation, settled context messages, tool definitions, tool calls, and assistant response projection. A model-sample command wraps those provider-owned semantics with only durable tool binding, response mode, placement classifications, and opaque model preferences. Provider-produced tool arguments remain open `Json` through the portable assistant response, durable journal, chat-root loop, catalog route, and tool runtime, and are narrowed only by the authored tool parameter schema immediately before execution. Structured responses are decoded to `Json` once by model-sampling settlement before journaling; the authored Standard Schema remains the sole domain validator at the sample helper.
 

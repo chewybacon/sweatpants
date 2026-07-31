@@ -2884,34 +2884,34 @@
     {
       "id": "SHAPE-091",
       "file": "packages/agent-host/src/server/standard-a2a-host.ts",
-      "line": 2066,
+      "line": 2069,
       "symbol": "normalizeRetention",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/agent-host/src/server/standard-a2a-host.ts:2066"
+        "packages/agent-host/src/server/standard-a2a-host.ts:2069"
       ]
     },
     {
       "id": "SHAPE-092",
       "file": "packages/agent-host/src/server/standard-a2a-host.ts",
-      "line": 2089,
+      "line": 2092,
       "symbol": "normalizeLimits",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/agent-host/src/server/standard-a2a-host.ts:2089"
+        "packages/agent-host/src/server/standard-a2a-host.ts:2092"
       ]
     },
     {
       "id": "SHAPE-093",
       "file": "packages/agent-host/src/server/standard-a2a-host.ts",
-      "line": 2137,
+      "line": 2140,
       "symbol": "payloadTaskId",
       "classification": "B",
       "authority": "owning ingress/parser payloadTaskId",
       "evidence": [
-        "packages/agent-host/src/server/standard-a2a-host.ts:2137"
+        "packages/agent-host/src/server/standard-a2a-host.ts:2140"
       ]
     },
     {
@@ -3421,54 +3421,43 @@
       ]
     },
     {
-      "id": "SHAPE-140",
-      "file": "packages/chat-core/src/authoring/context.ts",
-      "line": 237,
-      "symbol": "normalizeSummary",
-      "classification": "C",
-      "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
-      "evidence": [
-        "packages/chat-core/src/authoring/context.ts:237"
-      ]
-    },
-    {
       "id": "SHAPE-141",
       "file": "packages/chat-core/src/authoring/context.ts",
-      "line": 43,
+      "line": 39,
       "symbol": "latestContextWindow",
       "classification": "R",
       "authority": "typed constructor or owning ingress for latestContextWindow",
       "evidence": [
-        "packages/chat-core/src/authoring/context.ts:43"
-      ]
-    },
-    {
-      "id": "SHAPE-142",
-      "file": "packages/chat-core/src/authoring/context.ts",
-      "line": 85,
-      "symbol": "selectChatContext",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for selectChatContext",
-      "evidence": [
-        "packages/chat-core/src/authoring/context.ts:85"
+        "packages/chat-core/src/authoring/context.ts:39"
       ]
     },
     {
       "id": "SHAPE-143",
       "file": "packages/chat-core/src/authoring/contracts.ts",
-      "line": 143,
-      "symbol": "normalizeChatTurnResult",
+      "line": 124,
+      "symbol": "parseAuthoredChatTurnResult",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/chat-core/src/authoring/contracts.ts:143"
+        "packages/chat-core/src/authoring/contracts.ts:124"
       ]
     },
     {
       "id": "SHAPE-144",
       "file": "packages/chat-core/src/authoring/contracts.ts",
+      "line": 144,
+      "symbol": "parseAuthoredChatMessage",
+      "classification": "C",
+      "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
+      "evidence": [
+        "packages/chat-core/src/authoring/contracts.ts:144"
+      ]
+    },
+    {
+      "id": "SHAPE-145",
+      "file": "packages/chat-core/src/authoring/contracts.ts",
       "line": 164,
-      "symbol": "normalizeChatMessage",
+      "symbol": "parseAuthoredChatContext",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
@@ -3476,45 +3465,34 @@
       ]
     },
     {
-      "id": "SHAPE-145",
-      "file": "packages/chat-core/src/authoring/contracts.ts",
-      "line": 184,
-      "symbol": "normalizeContext",
-      "classification": "C",
-      "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
-      "evidence": [
-        "packages/chat-core/src/authoring/contracts.ts:184"
-      ]
-    },
-    {
       "id": "SHAPE-146",
       "file": "packages/chat-core/src/authoring/contracts.ts",
-      "line": 230,
-      "symbol": "normalizeArtifact",
+      "line": 210,
+      "symbol": "parseAuthoredChatArtifact",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/chat-core/src/authoring/contracts.ts:230"
+        "packages/chat-core/src/authoring/contracts.ts:210"
       ]
     },
     {
       "id": "SHAPE-147",
       "file": "packages/chat-core/src/authoring/contracts.ts",
-      "line": 247,
-      "symbol": "normalizePart",
+      "line": 227,
+      "symbol": "parseAuthoredPart",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/chat-core/src/authoring/contracts.ts:247"
+        "packages/chat-core/src/authoring/contracts.ts:227"
       ]
     },
     {
       "id": "SHAPE-475",
       "file": "packages/chat-core/src/authoring/contracts.ts",
-      "line": 286,
-      "symbol": "normalizeModelSampleInput",
+      "line": 266,
+      "symbol": "parseAuthoredChatModelSampleRequest",
       "evidence": [
-        "packages/chat-core/src/authoring/contracts.ts:286"
+        "packages/chat-core/src/authoring/contracts.ts:266"
       ],
       "classification": "B",
       "authority": "owning parser for the authored chat model-sample input"
@@ -3522,155 +3500,155 @@
     {
       "id": "SHAPE-148",
       "file": "packages/chat-core/src/authoring/contracts.ts",
-      "line": 309,
-      "symbol": "normalizeModelSampleOutput",
+      "line": 290,
+      "symbol": "parseAuthoredChatModelSampleResult",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/chat-core/src/authoring/contracts.ts:309"
+        "packages/chat-core/src/authoring/contracts.ts:290"
       ]
     },
     {
       "id": "SHAPE-149",
       "file": "packages/chat-core/src/authoring/contracts.ts",
-      "line": 366,
+      "line": 346,
       "symbol": "exactRecord",
       "classification": "B",
       "authority": "owning ingress/parser exactRecord",
       "evidence": [
-        "packages/chat-core/src/authoring/contracts.ts:366"
+        "packages/chat-core/src/authoring/contracts.ts:346"
       ]
     },
     {
       "id": "SHAPE-150",
       "file": "packages/chat-core/src/authoring/contracts.ts",
-      "line": 382,
+      "line": 362,
       "symbol": "optionalRecord",
       "classification": "B",
       "authority": "owning ingress/parser optionalRecord",
       "evidence": [
-        "packages/chat-core/src/authoring/contracts.ts:382"
+        "packages/chat-core/src/authoring/contracts.ts:362"
       ]
     },
     {
       "id": "SHAPE-151",
       "file": "packages/chat-core/src/authoring/contracts.ts",
-      "line": 410,
+      "line": 390,
       "symbol": "boundedText",
       "classification": "R",
       "authority": "typed constructor or owning ingress for boundedText",
       "evidence": [
-        "packages/chat-core/src/authoring/contracts.ts:410"
+        "packages/chat-core/src/authoring/contracts.ts:390"
       ]
     },
     {
       "id": "SHAPE-152",
       "file": "packages/chat-core/src/authoring/contracts.ts",
-      "line": 420,
+      "line": 400,
       "symbol": "digest",
       "classification": "R",
       "authority": "typed constructor or owning ingress for digest",
       "evidence": [
-        "packages/chat-core/src/authoring/contracts.ts:420"
+        "packages/chat-core/src/authoring/contracts.ts:400"
       ]
     },
     {
       "id": "SHAPE-153",
       "file": "packages/chat-core/src/authoring/program.ts",
-      "line": 213,
+      "line": 208,
       "symbol": "defineChatProgram",
       "classification": "R",
       "authority": "typed constructor or owning ingress for defineChatProgram",
       "evidence": [
-        "packages/chat-core/src/authoring/program.ts:213"
+        "packages/chat-core/src/authoring/program.ts:208"
       ]
     },
     {
       "id": "SHAPE-156",
       "file": "packages/chat-core/src/authoring/program.ts",
-      "line": 494,
+      "line": 487,
       "symbol": "normalizeModelToolDeclaration",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/chat-core/src/authoring/program.ts:494"
+        "packages/chat-core/src/authoring/program.ts:487"
       ]
     },
     {
       "id": "SHAPE-157",
       "file": "packages/chat-core/src/authoring/program.ts",
-      "line": 597,
+      "line": 590,
       "symbol": "buildToolInventory",
       "classification": "R",
       "authority": "typed constructor or owning ingress for buildToolInventory",
       "evidence": [
-        "packages/chat-core/src/authoring/program.ts:597"
+        "packages/chat-core/src/authoring/program.ts:590"
       ]
     },
     {
       "id": "SHAPE-158",
       "file": "packages/chat-core/src/authoring/program.ts",
-      "line": 657,
+      "line": 650,
       "symbol": "resourceResultProvenance",
       "classification": "R",
       "authority": "typed constructor or owning ingress for resourceResultProvenance",
       "evidence": [
-        "packages/chat-core/src/authoring/program.ts:657"
+        "packages/chat-core/src/authoring/program.ts:650"
       ]
     },
     {
       "id": "SHAPE-159",
       "file": "packages/chat-core/src/authoring/program.ts",
-      "line": 693,
+      "line": 686,
       "symbol": "parseClassifiedToolResult",
       "classification": "B",
       "authority": "owning ingress/parser parseClassifiedToolResult",
       "evidence": [
-        "packages/chat-core/src/authoring/program.ts:693"
+        "packages/chat-core/src/authoring/program.ts:686"
       ]
     },
     {
       "id": "SHAPE-160",
       "file": "packages/chat-core/src/authoring/program.ts",
-      "line": 740,
+      "line": 738,
       "symbol": "requireOperationSchemaCoverage",
       "classification": "R",
       "authority": "typed constructor or owning ingress for requireOperationSchemaCoverage",
       "evidence": [
-        "packages/chat-core/src/authoring/program.ts:740"
+        "packages/chat-core/src/authoring/program.ts:738"
       ]
     },
     {
       "id": "SHAPE-161",
       "file": "packages/chat-core/src/authoring/program.ts",
-      "line": 788,
+      "line": 786,
       "symbol": "exactKeys",
       "classification": "R",
       "authority": "typed constructor or owning ingress for exactKeys",
       "evidence": [
-        "packages/chat-core/src/authoring/program.ts:788"
+        "packages/chat-core/src/authoring/program.ts:786"
       ]
     },
     {
       "id": "SHAPE-162",
       "file": "packages/chat-core/src/authoring/program.ts",
-      "line": 798,
+      "line": 796,
       "symbol": "stableId",
       "classification": "R",
       "authority": "typed constructor or owning ingress for stableId",
       "evidence": [
-        "packages/chat-core/src/authoring/program.ts:798"
+        "packages/chat-core/src/authoring/program.ts:796"
       ]
     },
     {
       "id": "SHAPE-163",
       "file": "packages/chat-core/src/authoring/program.ts",
-      "line": 804,
+      "line": 802,
       "symbol": "boundedText",
       "classification": "R",
       "authority": "typed constructor or owning ingress for boundedText",
       "evidence": [
-        "packages/chat-core/src/authoring/program.ts:804"
+        "packages/chat-core/src/authoring/program.ts:802"
       ]
     },
     {

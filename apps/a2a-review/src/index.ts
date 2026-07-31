@@ -19,8 +19,8 @@ import {
   defineChatProgram,
   modelReadable,
   modelTool,
-  type ChatMessageV1,
-  type ChatTurnInputV1,
+  type AuthoredChatMessage,
+  type AuthoredChatTurnInput,
 } from "@sweatpants/chat-core";
 import { remoteExecutor, serveAgent } from "@sweatpants/agent-host/server";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
@@ -342,8 +342,8 @@ export const REFERENCE_REVIEWER_CHAT = defineChatProgram({
 export function createReviewChatInput(
   input: ReviewInput,
   frontier = "reference-review/accepted-frontier",
-): ChatTurnInputV1 {
-  const message: ChatMessageV1 = {
+): AuthoredChatTurnInput {
+  const message: AuthoredChatMessage = {
     id: "reference-review/current-design",
     role: "user",
     parts: [

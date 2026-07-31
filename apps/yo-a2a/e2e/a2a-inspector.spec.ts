@@ -36,7 +36,7 @@ test.describe.serial("yo-a2a through the pinned Inspector", () => {
     expect(parked.tasks[0]!.state).toBe("input_required");
     const interruptedTaskId = parked.tasks[0]!.taskId;
     expectTargets(parked, {
-      "model.sample": 2,
+      "chat.model.sample": 2,
       "resources.read": 1,
       pick_card: 1,
       "yo-a2a.cards.draw": 1,

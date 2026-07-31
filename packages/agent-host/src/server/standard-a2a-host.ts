@@ -59,14 +59,14 @@ import {
 import type { AgentDefinition, AgentProgramBinding } from "@sweatpants/agent-sdk";
 import {
   acceptChatTurn,
-  normalizeChatMessage,
-  normalizeChatTurnInput,
-  normalizeChatTurnResult,
-  type ChatMessageV1,
+  parseAuthoredChatMessage,
+  parseAuthoredChatTurnInput,
+  parseAuthoredChatTurnResult,
+  type AuthoredChatMessage,
   type ChatProgramDefinition,
-  type ChatTurnInputV1,
-  type ChatTurnResultV1,
-  type ReferencedTaskSummaryV1,
+  type AuthoredChatTurnInput,
+  type AuthoredChatTurnResult,
+  type AuthoredReferencedTaskSummary,
 } from "@sweatpants/chat-core";
 import {
   createProgramDriverJournalStore,
@@ -434,7 +434,7 @@ function bindStandardHost(
 ): BoundStandardA2AHost {
   const conversation = requireConversation(binding.definition);
   const authored = conversation.program as ChatProgramDefinition;
-  if (authored.kind !== "sweatpants.chat-program.v1" || !authored.contextPolicy) {
+  if (authored.kind !== "sweatpants.chat-program" || !authored.contextPolicy) {
     throw hostError(
       "standard_profile_incompatible",
       "Standard serving requires an authored chat conversation program",
@@ -1033,7 +1033,7 @@ interface RuntimeInput {
   readonly journal: ProgramDriverJournal;
   readonly sessionId: string;
   readonly taskId: string;
-  readonly input: ChatTurnInputV1;
+  readonly input: AuthoredChatTurnInput;
   readonly conversation: AgentProgramBinding;
   readonly drivers: ReturnType<typeof createProgramDriverRegistry>;
   readonly effects: ReturnType<typeof createDurableEffectRegistry>;
@@ -1104,9 +1104,9 @@ function allPrograms(root: AgentProgramBinding): AgentProgramBinding[] {
 
 function acceptTurn(
   program: ChatProgramDefinition,
-  message: ChatMessageV1,
+  message: AuthoredChatMessage,
   selection: Parameters<typeof acceptChatTurn>[2],
-): ChatTurnInputV1 {
+): AuthoredChatTurnInput {
   try {
     return acceptChatTurn(program.contextPolicy, message, selection);
   } catch (error) {
@@ -1120,8 +1120,8 @@ function acceptTurn(
 function wireToChatMessage(
   message: ForeignA2AMessage,
   classification: "public" | "internal" | "confidential" | "restricted",
-): ChatMessageV1 {
-  return normalizeChatMessage({
+): AuthoredChatMessage {
+  return parseAuthoredChatMessage({
     id: message.messageId,
     role: "user",
     parts: message.parts.map((part) => ({
@@ -1154,7 +1154,7 @@ function canonicalIncomingMessageDigest(message: ForeignA2AMessage): string {
 }
 
 function chatToWireMessage(
-  message: ChatMessageV1,
+  message: AuthoredChatMessage,
   taskId: string | undefined,
   contextId: string,
 ): ForeignA2AMessage {
@@ -1188,9 +1188,9 @@ type RootOpening = ReturnType<typeof rootOpenings>[number];
  * Decode a journal TaskOpened input as a validated chat turn. Journal records
  * cross a persistence boundary, so shape is re-verified rather than cast.
  */
-function openedTurnInput(opened: RootOpening): ChatTurnInputV1 {
+function openedTurnInput(opened: RootOpening): AuthoredChatTurnInput {
   try {
-    return normalizeChatTurnInput(opened.input);
+    return parseAuthoredChatTurnInput(opened.input);
   } catch (error) {
     throw hostError(
       "request_invalid",
@@ -1198,7 +1198,10 @@ function openedTurnInput(opened: RootOpening): ChatTurnInputV1 {
     );
   }
 }
-function taskInput(records: readonly DurableSemanticRecord[], taskId: string): ChatTurnInputV1 {
+function taskInput(
+  records: readonly DurableSemanticRecord[],
+  taskId: string,
+): AuthoredChatTurnInput {
   const opened = rootOpenings(records).find((candidate) => candidate.taskId === taskId);
   if (!opened) {
     throw hostError("task_not_found", "Task is unavailable");
@@ -1229,8 +1232,8 @@ function assertIdempotentMessage(
   }
 }
 
-function contextMessages(records: readonly DurableSemanticRecord[]): ChatMessageV1[] {
-  const result: ChatMessageV1[] = [];
+function contextMessages(records: readonly DurableSemanticRecord[]): AuthoredChatMessage[] {
+  const result: AuthoredChatMessage[] = [];
   for (const opened of rootOpenings(records)) {
     const input = openedTurnInput(opened);
     if (input.message) {
@@ -1247,7 +1250,7 @@ function contextMessages(records: readonly DurableSemanticRecord[]): ChatMessage
 function referencedSummary(
   records: readonly DurableSemanticRecord[],
   taskId: string,
-): ReferencedTaskSummaryV1 {
+): AuthoredReferencedTaskSummary {
   const input = taskInput(records, taskId);
   const result = completedResult(taskClose(records, taskId));
   return { taskId, summary: result?.message ?? input.message };
@@ -1263,12 +1266,12 @@ function taskClose(records: readonly DurableSemanticRecord[], taskId: string) {
 }
 function completedResult(
   payload: DurableSemanticRecord["payload"] | undefined,
-): ChatTurnResultV1 | undefined {
+): AuthoredChatTurnResult | undefined {
   if (payload?.type !== "TaskClosed" || payload.outcome.status !== "ok") {
     return undefined;
   }
   try {
-    return normalizeChatTurnResult(payload.outcome.value);
+    return parseAuthoredChatTurnResult(payload.outcome.value);
   } catch {
     return undefined;
   }

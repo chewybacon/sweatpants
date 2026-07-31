@@ -14,7 +14,7 @@ import {
 import {
   createChatModelEffectRegistration,
   defineChatProgram,
-  type ChatModelSampleOutputV2,
+  type AuthoredChatModelSampleResult,
 } from "@sweatpants/chat-core";
 import {
   assertRemoteReferenceUsable,
@@ -93,7 +93,7 @@ const peerProfile = sweatpantsPeer({
     },
   },
   bindings: { chat: "chat" },
-  effects: { "model.sample": { route: "caller" } },
+  effects: { "chat.model.sample": { route: "caller" } },
 });
 const publicUrlPolicy = { resolve: async () => ["93.184.216.34"] };
 function jsonClient(body: Json, extensions: string): A2AHttpClient {
@@ -108,7 +108,7 @@ function jsonClient(body: Json, extensions: string): A2AHttpClient {
 
 const modelHandler = createChatModelEffectRegistration({
   allowedClassifications: ["public"],
-  *sample(): Generator<never, ChatModelSampleOutputV2, never> {
+  *sample(): Generator<never, AuthoredChatModelSampleResult, never> {
     return {
       message: {
         id: "answer",
@@ -308,7 +308,7 @@ describe("agent serving facade", () => {
         calleeIdentity: "facade-agent",
         effectRegistry: createDurableEffectRegistry([modelHandler]),
         routes: {
-          "model.sample": {
+          "chat.model.sample": {
             contractDigest: requirement.requirements[0]!.contract.contractDigest,
             route: "caller",
             delegation: { mode: "none" },
@@ -384,7 +384,7 @@ describe("agent serving facade", () => {
     const before = definition.manifest.identity.digest;
     const served = serveAgent(definition, peerProfile);
     expect(served.selfCheck().ok).toBe(true);
-    expect(served.requirements["chat"]?.requirements[0]?.contract.name).toBe("model.sample");
+    expect(served.requirements["chat"]?.requirements[0]?.contract.name).toBe("chat.model.sample");
     expect(definition.manifest.identity.digest).toBe(before);
     expect(JSON.stringify(definition.manifest)).not.toContain("grant");
   });

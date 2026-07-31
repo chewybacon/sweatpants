@@ -1,7 +1,7 @@
 import {
   createChatModelEffectRegistration,
-  type ChatMessageV1,
-  type ChatModelSampleOutputV2,
+  type AuthoredChatMessage,
+  type AuthoredChatModelSampleResult,
 } from "@sweatpants/chat-core";
 import type { Json } from "@sweatpants/foundation";
 import { cardGuidance } from "./agent.ts";
@@ -61,24 +61,24 @@ export const scriptedModelRegistration = createChatModelEffectRegistration({
   },
 });
 
-function call(pullId: string, target: string, input: Json): ChatModelSampleOutputV2 {
+function call(pullId: string, target: string, input: Json): AuthoredChatModelSampleResult {
   return {
     message: assistant(`call-${pullId}`, `Calling ${target}`),
     calls: [{ id: `tool-${pullId}`, target, input }],
     artifacts: [],
   };
 }
-function answer(pullId: string, text: string): ChatModelSampleOutputV2 {
+function answer(pullId: string, text: string): AuthoredChatModelSampleResult {
   return { message: assistant(`answer-${pullId}`, text), calls: [], artifacts: [] };
 }
-function assistant(id: string, value: string): ChatMessageV1 {
+function assistant(id: string, value: string): AuthoredChatMessage {
   return {
     id,
     role: "assistant",
     parts: [{ value, provenance: { classifications: [], sourceDigests: [] } }],
   };
 }
-function toolTarget(message: ChatMessageV1): string | undefined {
+function toolTarget(message: AuthoredChatMessage): string | undefined {
   const value = message.parts[0]?.value;
   return value &&
     typeof value === "object" &&
@@ -87,7 +87,7 @@ function toolTarget(message: ChatMessageV1): string | undefined {
     ? value["target"]
     : undefined;
 }
-function toolResult(message: ChatMessageV1): string {
+function toolResult(message: AuthoredChatMessage): string {
   const value = message.parts[0]?.value;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return String(value);

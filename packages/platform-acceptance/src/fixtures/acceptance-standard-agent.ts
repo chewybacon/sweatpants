@@ -4,8 +4,8 @@ import {
   createChatModelEffectRegistration,
   defineChatProgram,
   latestContextWindow,
-  type ChatModelSampleInputV2,
-  type ChatModelSampleOutputV2,
+  type AuthoredChatModelSampleRequest,
+  type AuthoredChatModelSampleResult,
 } from "@sweatpants/chat-core";
 import { createStandardA2AHost, serveAgent, standardA2A } from "@sweatpants/agent-host/server";
 import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
@@ -47,7 +47,7 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value ?? "");
 }
 
-function toModelMessages(request: ChatModelSampleInputV2): PortableModelContextMessage[] {
+function toModelMessages(request: AuthoredChatModelSampleRequest): PortableModelContextMessage[] {
   return request.messages.map((message) => {
     const content = message.parts.map((part) => text(part.value)).join("");
     if (message.role === "system") {
@@ -76,7 +76,7 @@ export function createAcceptanceStandardAgent(
   const driver = createPiAiModelProviderDriver();
   const model = createChatModelEffectRegistration({
     allowedClassifications: ["public"],
-    *sample(request): Operation<ChatModelSampleOutputV2> {
+    *sample(request): Operation<AuthoredChatModelSampleResult> {
       const modelContext: Context = {
         messages: toModelMessages(request),
         systemPrompt: text(request.systemPrompt.value),

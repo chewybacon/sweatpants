@@ -63,7 +63,7 @@ function descriptor(identity: string, role: EffectSchemaRole, projection: Json) 
   return createPortableSchemaDescriptor({
     identity,
     role,
-    version: "3",
+    version: "1",
     vendor: "sweatpants",
     inputProjection: projection,
     outputProjection: projection,
@@ -264,7 +264,7 @@ const definition: EffectDefinition<
   ModelSampleCancellationPartial
 > = {
   name: "model.sample",
-  version: "3",
+  version: "1",
   inputSchema: MODEL_SAMPLE_INPUT_DESCRIPTOR,
   outputSchema: MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
   cancellation: { partialSchema: MODEL_SAMPLE_PARTIAL_DESCRIPTOR },

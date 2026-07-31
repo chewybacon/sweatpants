@@ -16,7 +16,7 @@ describe("yo-studio authored deployment", () => {
       provider: "coding",
       ownership: "host",
     });
-    expect(studioDeployment.programs.code.kind).toBe("sweatpants.chat-program.v1");
+    expect(studioDeployment.programs.code.kind).toBe("sweatpants.chat-program");
     expect(studioDeployment.programs.code.manifest.digest).toMatch(digest);
     expect(Object.keys(studioDeployment.capabilities)).toEqual([
       "workspace_inspect",

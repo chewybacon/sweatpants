@@ -25,7 +25,7 @@ import { canonicalJson, sha256, type Json } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   createChatModelEffectRegistration,
-  type ChatModelSampleOutputV2,
+  type AuthoredChatModelSampleResult,
 } from "@sweatpants/chat-core";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
@@ -106,10 +106,10 @@ describe("authored chat reviewer composed through caller-authoritative A2A", () 
       *sample(_request, effect) {
         const recorded = modelOutcomes.get(effect.pullId);
         if (recorded !== undefined) {
-          return recorded as unknown as ChatModelSampleOutputV2;
+          return recorded as unknown as AuthoredChatModelSampleResult;
         }
         modelExecutions += 1;
-        const value: ChatModelSampleOutputV2 =
+        const value: AuthoredChatModelSampleResult =
           modelExecutions === 1
             ? {
                 message: assistantMessage("guidance", "Loading review guidance."),
@@ -266,7 +266,6 @@ describe("authored chat reviewer composed through caller-authoritative A2A", () 
                 expect(result).toEqual({
                   state: "completed",
                   value: {
-                    format: "sweatpants.chat-turn-result.v1",
                     message: assistantMessage("final", {
                       review: { verdict: "pass", summary: "The authority split is coherent." },
                     }),
