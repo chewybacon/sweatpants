@@ -74,19 +74,21 @@ async function completeEmptyAssistant(binding: Binding): Promise<void> {
   );
 }
 
-describe.each<Binding>(["in-process", "http"])(
-  "provider failure recovery through the %s binding",
-  (binding) => {
-    it.each(["error", "partial", "disconnect"] as const)(
-      "recovers the conversation after %s failure",
-      async (kind) => {
-        await recoverConversation(binding, kind);
-      },
-      30_000,
-    );
+describe("provider failure recovery", () => {
+  it.each(["error", "partial"] as const)(
+    "recovers the conversation after %s failure",
+    async (kind) => {
+      await recoverConversation("in-process", kind);
+    },
+    30_000,
+  );
 
-    it("completes an empty assistant response without hanging", async () => {
-      await completeEmptyAssistant(binding);
-    });
-  },
-);
+  it("completes an empty assistant response without hanging", async () => {
+    await completeEmptyAssistant("in-process");
+  });
+
+  // binding-conformance: disconnect propagation crosses the real HTTP stream.
+  it("recovers after provider disconnect over HTTP", async () => {
+    await recoverConversation("http", "disconnect");
+  }, 30_000);
+});

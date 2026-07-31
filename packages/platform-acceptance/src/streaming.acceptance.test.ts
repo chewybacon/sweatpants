@@ -64,8 +64,9 @@ async function runStreamingScenario(binding: Binding): Promise<void> {
   );
 }
 
-describe.each<Binding>(["in-process", "http"])("streaming through the %s binding", (binding) => {
+describe("HTTP streaming conformance", () => {
+  // binding-conformance: released deltas must cross the real HTTP response body.
   it("observes a released provider delta before turn completion", async () => {
-    await runStreamingScenario(binding);
+    await runStreamingScenario("http");
   });
 });

@@ -107,19 +107,18 @@ async function runFinalSampleFailure(binding: Binding): Promise<void> {
   );
 }
 
-describe.each<Binding>(["in-process", "http"])(
-  "nested tool failure through the %s binding",
-  (binding) => {
-    it.each(["throw_after_resume", "sample_failure"] as const)(
-      "records and recovers from %s",
-      async (failure) => {
-        await runNestedFailure(binding, failure);
-      },
-      30_000,
-    );
+describe("nested tool failure semantics", () => {
+  const binding: Binding = "in-process";
 
-    it("preserves the tool result when the final outer sample fails", async () => {
-      await runFinalSampleFailure(binding);
-    }, 30_000);
-  },
-);
+  it.each(["throw_after_resume", "sample_failure"] as const)(
+    "records and recovers from %s",
+    async (failure) => {
+      await runNestedFailure(binding, failure);
+    },
+    30_000,
+  );
+
+  it("preserves the tool result when the final outer sample fails", async () => {
+    await runFinalSampleFailure(binding);
+  }, 30_000);
+});

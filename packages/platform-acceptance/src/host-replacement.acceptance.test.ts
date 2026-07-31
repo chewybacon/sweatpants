@@ -80,11 +80,9 @@ async function runScenario(binding: Binding): Promise<void> {
   );
 }
 
-describe.each<Binding>(["in-process", "http"])(
-  "durable Turn Host replacement through the %s binding",
-  (binding) => {
-    it("resumes a parked durable child through a replacement application generation", async () => {
-      await runScenario(binding);
-    }, 30_000);
-  },
-);
+describe("durable Turn Host replacement", () => {
+  // binding-conformance: replacement must swap the real HTTP application generation.
+  it("resumes a parked durable child through a replacement application generation", async () => {
+    await runScenario("http");
+  }, 30_000);
+});

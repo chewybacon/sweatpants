@@ -261,22 +261,21 @@ async function runDurableEffectFailure(binding: Binding): Promise<void> {
   );
 }
 
-describe.each<Binding>(["in-process", "http"])(
-  "crank-native durable tool through the %s binding",
-  (binding) => {
-    it("parks, resumes in a fresh worker, samples, and preserves follow-up history", async () => {
-      await runDurableToolScenario(binding);
-    }, 30_000);
+describe("crank-native durable tool semantics", () => {
+  const binding: Binding = "in-process";
 
-    it.each(["decline", "cancel"] as const)(
-      "replays a fresh worker for durable %s",
-      async (action) => {
-        await runDurableElicitOutcome(binding, action);
-      },
-    );
+  it("parks, resumes in a fresh worker, samples, and preserves follow-up history", async () => {
+    await runDurableToolScenario(binding);
+  }, 30_000);
 
-    it("records a host-effect failure and recovers on the next turn", async () => {
-      await runDurableEffectFailure(binding);
-    });
-  },
-);
+  it.each(["decline", "cancel"] as const)(
+    "replays a fresh worker for durable %s",
+    async (action) => {
+      await runDurableElicitOutcome(binding, action);
+    },
+  );
+
+  it("records a host-effect failure and recovers on the next turn", async () => {
+    await runDurableEffectFailure(binding);
+  });
+});

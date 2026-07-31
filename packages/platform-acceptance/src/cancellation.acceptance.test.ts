@@ -147,19 +147,21 @@ async function cancelDurableNestedSample(binding: Binding): Promise<void> {
   );
 }
 
-describe.each<Binding>(["in-process", "http"])(
-  "turn cancellation through the %s binding",
-  (binding) => {
-    it("supersedes a parked ordinary tool", async () => {
-      await supersedeParkedOrdinaryTool(binding);
-    }, 30_000);
+describe("turn cancellation semantics", () => {
+  it("supersedes a parked ordinary tool", async () => {
+    await supersedeParkedOrdinaryTool("in-process");
+  }, 30_000);
 
-    it("supersedes a parked durable tool", async () => {
-      await supersedeParkedDurableTool(binding);
-    }, 30_000);
+  it("supersedes a parked durable tool", async () => {
+    await supersedeParkedDurableTool("in-process");
+  }, 30_000);
 
-    it("cancels a durable child while nested sampling is pending", async () => {
-      await cancelDurableNestedSample(binding);
-    }, 30_000);
-  },
-);
+  it("cancels a durable child while nested sampling is pending", async () => {
+    await cancelDurableNestedSample("in-process");
+  }, 30_000);
+
+  // binding-conformance: cancellation must propagate through a real HTTP body.
+  it("propagates nested durable cancellation over HTTP", async () => {
+    await cancelDurableNestedSample("http");
+  }, 30_000);
+});

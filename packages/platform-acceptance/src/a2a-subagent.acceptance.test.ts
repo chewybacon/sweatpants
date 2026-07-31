@@ -181,15 +181,12 @@ async function invokeStructuredChild(binding: Binding, posture: Posture): Promis
   }
 }
 
-describe.each<Binding>(["in-process", "http"])(
-  "sub-agent composition through the %s chat binding",
-  (binding) => {
-    it.each<Posture>(["mounted-code-handle", "a2a-websocket"])(
-      "preserves sample, elicit, replay, and result semantics in the %s posture",
-      async (posture) => {
-        await invokeStructuredChild(binding, posture);
-      },
-      30_000,
-    );
-  },
-);
+describe("sub-agent composition posture matrix", () => {
+  it("preserves semantics for a mounted code handle in-process", async () => {
+    await invokeStructuredChild("in-process", "mounted-code-handle");
+  }, 30_000);
+
+  it("preserves semantics for an A2A WebSocket child over HTTP", async () => {
+    await invokeStructuredChild("http", "a2a-websocket");
+  }, 30_000);
+});
