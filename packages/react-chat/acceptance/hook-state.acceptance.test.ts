@@ -27,8 +27,11 @@ async function runHookProjection(binding: Binding): Promise<void> {
       barrierTimeoutMs: 20_000,
     },
     function* (s) {
+      const aguiStart = s.agui.mark();
+      const privateSystemPrompt = "__REACT_PRIVATE_SYSTEM_PROMPT__";
       const ui = yield* mountReactChat(s, {
         plugins: [reactBookingPlugin],
+        systemPrompt: privateSystemPrompt,
         initialToolChoice: "required",
         pipeline: "markdown",
       });
@@ -63,6 +66,7 @@ async function runHookProjection(binding: Binding): Promise<void> {
       expect(completedEmission.id).toBe(emission.id);
 
       const final = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      const finalRun = s.agui.mark();
       const serialized = JSON.stringify(final.body.input);
       expect(serialized).toContain("react-booking-call-1");
       expect(serialized).toContain(REACT_BOOKING_RESULT_MARKER);
@@ -80,6 +84,25 @@ async function runHookProjection(binding: Binding): Promise<void> {
       expect(snapshot.error).toBeNull();
       expect(snapshot.session.state.pendingElicits).toEqual({});
       expect(ui.events().some((entry) => entry.event.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
+      yield* s.agui.event("RUN_FINISHED", { after: finalRun });
+      s.agui.assertConformant({ after: aguiStart });
+      const emitted = s.agui.events(aguiStart);
+      expect(JSON.stringify(emitted)).not.toContain(privateSystemPrompt);
+      expect(emitted.some((event) => event.type === "ACTIVITY_SNAPSHOT")).toBe(true);
+      expect(
+        emitted
+          .filter((event) => event.type === "MESSAGES_SNAPSHOT")
+          .some((event) =>
+            Array.isArray(event["messages"])
+              ? event["messages"].some(
+                  (message) =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    (message as { role?: unknown }).role === "system",
+                )
+              : false,
+          ),
+      ).toBe(false);
     },
   );
 }
@@ -103,6 +126,7 @@ async function runRemountProjection(binding: Binding): Promise<void> {
         initialToolChoice: "required" as const,
         pipeline: "markdown" as const,
       };
+      const aguiStart = s.agui.mark();
       const firstUi = yield* mountReactChat(s, options);
       yield* firstUi.send("Book before React remount");
       const outer = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
@@ -137,6 +161,7 @@ async function runRemountProjection(binding: Binding): Promise<void> {
       yield* resumedEmission.respond({ flightId: "FL-REACT-2" });
 
       const final = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      const finalRun = s.agui.mark();
       expect(JSON.stringify(final.body.input)).toContain("FL-REACT-2");
       yield* final.respond.text("Remounted React session completed.");
       const message = yield* resumedUi.message({
@@ -148,6 +173,8 @@ async function runRemountProjection(binding: Binding): Promise<void> {
       expect(settled.session.toolEmissions.flatMap((tracking) => tracking.emissions)).toHaveLength(
         1,
       );
+      yield* s.agui.event("RUN_FINISHED", { after: finalRun });
+      s.agui.assertConformant({ after: aguiStart });
     },
   );
 }

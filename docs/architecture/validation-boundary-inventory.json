@@ -5063,6 +5063,17 @@
       ]
     },
     {
+      "id": "SHAPE-473",
+      "file": "packages/test-rig/src/ag-ui.ts",
+      "line": 172,
+      "symbol": "eventFromJson",
+      "classification": "B",
+      "authority": "Test Rig owns passive parsing and conformance validation of AG-UI emitted by the real application response stream.",
+      "evidence": [
+        "packages/test-rig/src/ag-ui.ts:172"
+      ]
+    },
+    {
       "id": "SHAPE-352",
       "file": "packages/test-rig/src/chat.ts",
       "line": 197,
@@ -5098,12 +5109,12 @@
     {
       "id": "SHAPE-356",
       "file": "packages/test-rig/src/index.ts",
-      "line": 116,
+      "line": 118,
       "symbol": "createHttpBinding",
       "classification": "R",
       "authority": "typed constructor or owning ingress for createHttpBinding",
       "evidence": [
-        "packages/test-rig/src/index.ts:116"
+        "packages/test-rig/src/index.ts:118"
       ]
     },
     {

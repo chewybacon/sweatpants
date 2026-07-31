@@ -1,13 +1,13 @@
 {
     "test:packages": {
-        "passed": 1221,
-        "skipped": 21,
-        "total": 1249
+        "passed": 1109,
+        "skipped": 17,
+        "total": 1133
     },
     "test:tooling": {
-        "passed": 14,
+        "passed": 33,
         "skipped": 0,
-        "total": 14
+        "total": 33
     },
     "test:@sweatpants/a2a-review-reference": {
         "passed": 9,

@@ -24,6 +24,25 @@ function productionSource(packageName: string): string {
     .join("\n");
 }
 
+function sourceTree(directory: string): string {
+  const files: string[] = [];
+  const visit = (current: string): void => {
+    for (const entry of readdirSync(current)) {
+      const path = resolve(current, entry);
+      if (statSync(path).isDirectory()) {
+        if (entry !== "dist" && entry !== "node_modules") visit(path);
+      } else if (path.endsWith(".ts") || path.endsWith(".tsx")) {
+        files.push(path);
+      }
+    }
+  };
+  visit(directory);
+  return files
+    .sort()
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
+}
+
 function expectNoMatches(source: string, patterns: readonly RegExp[]): void {
   for (const pattern of patterns) expect(source).not.toMatch(pattern);
 }
@@ -224,6 +243,36 @@ describe("target package charters", () => {
     expect(productionSource("tool-runtime-local")).not.toMatch(
       /export (?:interface|type) WorkerSample(?:Config|Result)/,
     );
+  });
+
+  it("keeps chat state behavior outside-in and AG-UI conformance simulator-backed", () => {
+    const removedInternalSuites = [
+      "packages/chat-core/src/smoke.test.ts",
+      "packages/chat-core/src/session/__tests__/ag-ui-stream.test.ts",
+      "packages/chat-core/src/session/__tests__/history-sync.test.ts",
+      "packages/chat-core/src/session/__tests__/turn-state.test.ts",
+      "packages/chat-core/src/state/__tests__/ag-ui-fold.test.ts",
+      "packages/chat-core/src/state/__tests__/ag-ui-fold-scenarios.test.ts",
+      "packages/durable-chat-runtime/src/durable-handler/__tests__/ag-ui-conformance.test.ts",
+      "packages/durable-chat-runtime/src/durable-handler/__tests__/history-policy-integration.test.ts",
+      "packages/durable-chat-runtime/src/response-streams/__tests__/hello-chat-scenario.test.ts",
+    ];
+    for (const file of removedInternalSuites) {
+      expect(existsSync(resolve(root, file)), file).toBe(false);
+    }
+    const durableTests = sourceTree(resolve(root, "packages/durable-chat-runtime/src"));
+    expect(durableTests).not.toMatch(
+      /createMockProvider|setupMockModelProvider|createMockTool|agUiEventSchemas/,
+    );
+    expect(readFileSync(resolve(root, "packages/test-rig/src/ag-ui.ts"), "utf8")).toMatch(
+      /function createAgUiProbe/,
+    );
+    expect(
+      readFileSync(
+        resolve(root, "packages/react-chat/acceptance/hook-state.acceptance.test.ts"),
+        "utf8",
+      ),
+    ).toMatch(/s\.agui\.assertConformant/);
   });
 
   it("keeps authored service and repository ports Effection-native", () => {

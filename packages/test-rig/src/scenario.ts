@@ -1,4 +1,5 @@
 import { call, run, type Operation } from "effection";
+import type { AgUiEvent } from "./ag-ui.ts";
 import type {
   ChatFetch,
   ConversationHandle,
@@ -136,6 +137,13 @@ export interface ScriptStreamTurn {
 }
 
 export interface ScenarioContext {
+  /** Passive observation of AG-UI emitted by the real application. */
+  readonly agui: {
+    mark(): number;
+    events(after?: number): readonly AgUiEvent[];
+    event(type: string, options?: { after?: number }): Operation<AgUiEvent>;
+    assertConformant(options?: { after?: number; lifecycle?: boolean }): void;
+  };
   /** Open (or reuse) a conversation. */
   conversation(options?: ConversationOptions): ScriptConversation;
   readonly model: {
@@ -297,6 +305,12 @@ export function scenario<T>(
   script: (s: ScenarioContext) => Operation<T>,
 ): Promise<T> {
   const context: ScenarioContext = {
+    agui: {
+      mark: () => rig.agui.mark(),
+      events: (after) => rig.agui.events(after),
+      event: (type, options) => op(() => rig.agui.expectEvent(type, options)),
+      assertConformant: (options) => rig.agui.assertConformant(options),
+    },
     conversation: (options) => toScriptConversation(rig.chat.conversation(options)),
     model: {
       *request(expectation) {
