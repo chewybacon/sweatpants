@@ -212,9 +212,14 @@ export function createChatTurnState(initialConversationId?: string): ChatTurnSta
           (message) => message.role === "tool" && message.tool_call_id === toolResult.id,
         );
         if (!exists) {
-          appendToolMessage(history, transcriptState, toolResult.id, toolResult.content, {
-            toolName: toolResult.name,
-          });
+          appendToolMessage(
+            history,
+            transcriptState,
+            toolResult.id,
+            toolResult.name,
+            toolResult.content,
+            toolResult.isError,
+          );
         }
       }
 
@@ -259,7 +264,9 @@ export function createChatTurnState(initialConversationId?: string): ChatTurnSta
           history,
           transcriptState,
           toolCall.id,
+          toolCall.name,
           "Tool execution was cancelled by user sending a new message.",
+          true,
         );
       }
       pendingToolCalls = [];

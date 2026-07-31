@@ -130,6 +130,12 @@ export function syncMessagesFromIndex(
     if (apiMsg.tool_call_id) {
       msg.tool_call_id = apiMsg.tool_call_id;
     }
+    if (apiMsg.name) {
+      msg.name = apiMsg.name;
+    }
+    if (apiMsg.isError !== undefined) {
+      msg.isError = apiMsg.isError;
+    }
 
     history.push(msg);
   }

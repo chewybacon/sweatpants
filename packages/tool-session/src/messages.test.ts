@@ -17,7 +17,7 @@ describe("Tool Session model history projection", () => {
             },
           ],
         },
-        { role: "tool", content: "not found", toolCallId: "c1", isError: true },
+        { role: "tool", content: "not found", tool_call_id: "c1", isError: true },
       ],
     } satisfies ToolSampleConfig<ExtendedMessage>;
 
@@ -49,7 +49,7 @@ describe("Tool Session model history projection", () => {
       {
         role: "tool",
         content: "the provider declined",
-        toolCallId: "call-1",
+        tool_call_id: "call-1",
         isError: true,
       },
     ];
@@ -71,10 +71,10 @@ describe("Tool Session model history projection", () => {
         ],
       },
       {
-        role: "toolResult",
-        toolCallId: "call-1",
-        toolName: "book_flight",
-        content: [{ type: "text", text: "the provider declined" }],
+        role: "tool",
+        tool_call_id: "call-1",
+        name: "book_flight",
+        content: "the provider declined",
         isError: true,
       },
     ]);
@@ -116,9 +116,9 @@ describe("Tool Session model history projection", () => {
         ],
       },
       {
-        role: "toolResult",
-        toolCallId: "call-2",
-        toolName: "weather",
+        role: "tool",
+        tool_call_id: "call-2",
+        name: "weather",
         content: [{ type: "text", text: "sunny" }],
         isError: false,
       },
@@ -131,7 +131,7 @@ describe("Tool Session model history projection", () => {
         {
           role: "tool",
           content: "orphan",
-          toolCallId: "missing",
+          tool_call_id: "missing",
           isError: false,
         },
       ]),

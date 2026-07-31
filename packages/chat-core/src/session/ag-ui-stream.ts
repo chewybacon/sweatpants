@@ -76,14 +76,19 @@ export function* consumeAgUiEventStream(
           }
           break;
         }
-        case "TOOL_CALL_RESULT":
+        case "TOOL_CALL_RESULT": {
+          const name = event.toolCallName ?? toolCalls.get(event.toolCallId)?.name;
+          if (!name) {
+            throw new Error(`Tool result "${event.toolCallId}" has no settled tool name`);
+          }
           toolResults.set(event.toolCallId, {
             id: event.toolCallId,
-            name: event.toolCallName ?? toolCalls.get(event.toolCallId)?.name ?? "unknown",
+            name,
             content: event.content,
             isError: event.isError === true || event.error !== undefined,
           });
           break;
+        }
         case "RUN_FINISHED":
           terminalSeen = true;
           break;

@@ -16,22 +16,22 @@ export interface ToolCallMessage {
   toolCalls: [ToolCall, ...ToolCall[]];
 }
 
-export interface ToolResultMessage {
+export interface PendingSessionToolResult {
   role: "tool";
   content: string;
-  toolCallId: string;
+  tool_call_id: string;
   /** Producer-owned when available; otherwise resolved from preceding calls. */
-  toolName?: string;
+  name?: string;
   isError: boolean;
 }
 
-export type ExtendedMessage = Message | McpMessage | ToolCallMessage | ToolResultMessage;
+export type ExtendedMessage = Message | McpMessage | ToolCallMessage | PendingSessionToolResult;
 
 export function isToolCallMessage(message: ExtendedMessage): message is ToolCallMessage {
   return "toolCalls" in message;
 }
 
-export function isToolResultMessage(message: ExtendedMessage): message is ToolResultMessage {
+export function isToolResultMessage(message: ExtendedMessage): message is PendingSessionToolResult {
   return message.role === "tool";
 }
 
@@ -62,25 +62,25 @@ function modelContentFromBlocks(blocks: readonly McpContentBlock[]): ModelConten
 }
 
 function resolveToolName(
-  result: { toolCallId: string; toolName?: string },
+  result: { tool_call_id: string; name?: string },
   toolNames: ReadonlyMap<string, string>,
 ): string {
-  const name = result.toolName ?? toolNames.get(result.toolCallId);
+  const name = result.name ?? toolNames.get(result.tool_call_id);
   if (!name) {
-    throw new Error(`Tool result "${result.toolCallId}" has no preceding tool call identity`);
+    throw new Error(`Tool result "${result.tool_call_id}" has no preceding tool call identity`);
   }
   return name;
 }
 
 function modelResult(
-  result: { toolCallId: string; toolName?: string; content: string; isError: boolean },
+  result: { tool_call_id: string; name?: string; content: string; isError: boolean },
   toolNames: ReadonlyMap<string, string>,
 ): ModelMessage {
   return {
-    role: "toolResult",
-    toolCallId: result.toolCallId,
-    toolName: resolveToolName(result, toolNames),
-    content: [{ type: "text", text: result.content }],
+    role: "tool",
+    tool_call_id: result.tool_call_id,
+    name: resolveToolName(result, toolNames),
+    content: result.content,
     isError: result.isError,
   };
 }
@@ -90,9 +90,9 @@ function mcpResult(
   toolNames: ReadonlyMap<string, string>,
 ): ModelMessage {
   return {
-    role: "toolResult",
-    toolCallId: result.toolUseId,
-    toolName: resolveToolName({ toolCallId: result.toolUseId }, toolNames),
+    role: "tool",
+    tool_call_id: result.toolUseId,
+    name: resolveToolName({ tool_call_id: result.toolUseId }, toolNames),
     content: modelContentFromBlocks(result.content),
     isError: result.isError === true,
   };

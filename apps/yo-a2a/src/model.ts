@@ -75,18 +75,13 @@ function toProviderMessages(message: ChatMessageV1): Message[] {
   }
   const tool = message.parts[0]?.value;
   if (!tool || typeof tool !== "object" || Array.isArray(tool)) {
-    return [
-      {
-        role: "toolResult",
-        toolCallId: message.id,
-        toolName: "unknown",
-        content: [{ type: "text", text }],
-        isError: false,
-      },
-    ];
+    throw new Error(`Tool history message "${message.id}" has no correlation payload`);
   }
-  const callId = String(tool["callId"] ?? message.id);
-  const target = String(tool["target"] ?? "unknown");
+  const callId = tool["callId"];
+  const target = tool["target"];
+  if (typeof callId !== "string" || typeof target !== "string") {
+    throw new Error(`Tool history message "${message.id}" has incomplete call identity`);
+  }
   return [
     {
       role: "assistant",
@@ -103,10 +98,10 @@ function toProviderMessages(message: ChatMessageV1): Message[] {
       stopReason: "toolUse",
     },
     {
-      role: "toolResult",
-      toolCallId: callId,
-      toolName: providerToolName(target),
-      content: [{ type: "text", text: valueText(tool["result"] as Json) }],
+      role: "tool",
+      tool_call_id: callId,
+      name: providerToolName(target),
+      content: valueText(tool["result"] as Json),
       isError: false,
     },
   ];

@@ -63,6 +63,7 @@ describe("target package charters", () => {
         "ToolInventoryEntry",
         "ToolRuntime",
         "ToolCall",
+        "ToolResultMessage",
         "ElicitExchangeCompletion",
         "SampleExchangeCompletion",
       ].map((name) => [name, [] as string[]]),
@@ -103,12 +104,22 @@ describe("target package charters", () => {
     ]);
     expect(declarations.get("ToolRuntime")).toEqual(["packages/tool-runtime/src/contract.ts"]);
     expect(declarations.get("ToolCall")).toEqual(["packages/model-provider/src/types.ts"]);
+    expect(declarations.get("ToolResultMessage")).toEqual(["packages/model-provider/src/types.ts"]);
     expect(declarations.get("ElicitExchangeCompletion")).toEqual([
       "packages/agent-sdk/src/tool/types.ts",
     ]);
     expect(declarations.get("SampleExchangeCompletion")).toEqual([
       "packages/agent-sdk/src/tool/types.ts",
     ]);
+    for (const packageName of readdirSync(resolve(root, "packages"))) {
+      if (packageName === "model-provider-pi-ai") continue;
+      const sourceRoot = resolve(root, "packages", packageName, "src");
+      if (existsSync(sourceRoot)) {
+        expect(productionSource(packageName), packageName).not.toMatch(
+          /role:\s*["']toolResult["']/,
+        );
+      }
+    }
     expect(existsSync(resolve(root, "packages/tool-session/src/chat-runtime.ts"))).toBe(false);
     expect(existsSync(resolve(root, "packages/tool-session/src/tool-inventory.ts"))).toBe(false);
   });
@@ -119,6 +130,7 @@ describe("target package charters", () => {
       /@sweatpants\/tool-session\/mcp\/handler/,
       /from ["'](?:node:http|redis)["']/,
       /\b(?:OllamaChatRequest|OllamaChatChunk|ClientToolSchema)\b/,
+      /message\.replay\??\.toolName|replay:\s*\{\s*toolName/,
     ]);
   });
 

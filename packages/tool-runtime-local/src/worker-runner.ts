@@ -104,7 +104,7 @@ function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
       content: [
         {
           type: "tool_result" as const,
-          toolUseId: msg.toolCallId,
+          toolUseId: msg.tool_call_id,
           content: [{ type: "text" as const, text: msg.content }],
           isError: msg.isError,
         },

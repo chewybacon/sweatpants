@@ -160,7 +160,7 @@ function scriptedMessage(
   request: ModelProviderStreamRequest,
   workspaceRevision: string,
 ): AssistantMessage {
-  const toolResults = request.context.messages.filter((message) => message.role === "toolResult");
+  const toolResults = request.context.messages.filter((message) => message.role === "tool");
   if (toolResults.length === 0) {
     return {
       role: "assistant",

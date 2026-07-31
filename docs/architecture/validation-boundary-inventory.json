@@ -3657,12 +3657,12 @@
     {
       "id": "SHAPE-166",
       "file": "packages/chat-core/src/session/ag-ui-messages.ts",
-      "line": 174,
+      "line": 202,
       "symbol": "isAgUiMessageArray",
       "classification": "R",
       "authority": "typed constructor or owning ingress for isAgUiMessageArray",
       "evidence": [
-        "packages/chat-core/src/session/ag-ui-messages.ts:174"
+        "packages/chat-core/src/session/ag-ui-messages.ts:202"
       ]
     },
     {
@@ -3806,17 +3806,6 @@
       "authority": "typed constructor or owning ingress for addInterrupts",
       "evidence": [
         "packages/chat-core/src/state/reducer.ts:213"
-      ]
-    },
-    {
-      "id": "SHAPE-182",
-      "file": "packages/chat-core/src/state/reducer.ts",
-      "line": 276,
-      "symbol": "chatReducer",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for chatReducer",
-      "evidence": [
-        "packages/chat-core/src/state/reducer.ts:276"
       ]
     },
     {
@@ -4064,45 +4053,45 @@
     {
       "id": "SHAPE-216",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1299,
+      "line": 1315,
       "symbol": "parseRuntimeContentBlock",
       "classification": "B",
       "authority": "owning ingress/parser parseRuntimeContentBlock",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1299"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1315"
       ]
     },
     {
       "id": "SHAPE-217",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1361,
+      "line": 1377,
       "symbol": "toolCallArguments",
       "classification": "R",
       "authority": "typed constructor or owning ingress for toolCallArguments",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1361"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1377"
       ]
     },
     {
       "id": "SHAPE-452",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1520,
+      "line": 1539,
       "symbol": "jsonRecord",
       "classification": "R",
       "authority": "typed constructor or owning ingress for jsonRecord",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1520"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1539"
       ]
     },
     {
       "id": "SHAPE-220",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1531,
+      "line": 1550,
       "symbol": "schemaWithModelContext",
       "classification": "R",
       "authority": "typed constructor or owning ingress for schemaWithModelContext",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1531"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1550"
       ]
     },
     {
@@ -4130,12 +4119,12 @@
     {
       "id": "SHAPE-453",
       "file": "packages/durable-chat-runtime/src/handler/request-normalization.ts",
-      "line": 133,
-      "symbol": "<callback@133>",
+      "line": 139,
+      "symbol": "<callback@139>",
       "classification": "R",
-      "authority": "typed constructor or owning ingress for <callback@133>",
+      "authority": "typed constructor or owning ingress for <callback@139>",
       "evidence": [
-        "packages/durable-chat-runtime/src/handler/request-normalization.ts:133"
+        "packages/durable-chat-runtime/src/handler/request-normalization.ts:139"
       ]
     },
     {
@@ -4163,12 +4152,12 @@
     {
       "id": "SHAPE-233",
       "file": "packages/durable-chat-runtime/src/handler/request-normalization.ts",
-      "line": 340,
+      "line": 368,
       "symbol": "mapResolvedResumePayload",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/durable-chat-runtime/src/handler/request-normalization.ts:340"
+        "packages/durable-chat-runtime/src/handler/request-normalization.ts:368"
       ]
     },
     {
@@ -4268,17 +4257,6 @@
       "authority": "typed constructor or owning ingress for withPublicMetadata",
       "evidence": [
         "packages/durable-chat-runtime/src/projection.ts:39"
-      ]
-    },
-    {
-      "id": "SHAPE-245",
-      "file": "packages/durable-chat-runtime/src/projection.ts",
-      "line": 82,
-      "symbol": "recordToElicit",
-      "classification": "B",
-      "authority": "owning ingress/parser recordToElicit",
-      "evidence": [
-        "packages/durable-chat-runtime/src/projection.ts:82"
       ]
     },
     {
@@ -4984,6 +4962,17 @@
       "evidence": [
         "packages/model-provider-pi-ai/src/index.ts:93"
       ]
+    },
+    {
+      "id": "SHAPE-472",
+      "file": "packages/model-provider-pi-ai/src/runtime/pi-ai.ts",
+      "line": 177,
+      "symbol": "providerMessageHasPayload",
+      "classification": "C",
+      "evidence": [
+        "packages/model-provider-pi-ai/src/runtime/pi-ai.ts:177"
+      ],
+      "rationale": "Concrete provider compatibility policy distinguishes text from block content while dropping wire-empty history."
     },
     {
       "id": "SHAPE-447",

@@ -24,6 +24,8 @@ export interface Message {
   partial?: boolean;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  /** Producer-owned settled tool target for `role: "tool"`. */
+  name?: string;
   /**
    * Whether a tool result represents failure. This is data, carried from the
    * producer that knows. It is never inferred from the content text: a tool may
@@ -32,7 +34,6 @@ export interface Message {
   isError?: boolean;
   activityType?: string;
   replay?: {
-    toolName?: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     trace?: any[];
   };

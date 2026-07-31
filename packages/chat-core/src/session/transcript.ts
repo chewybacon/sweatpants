@@ -122,7 +122,9 @@ export function appendToolMessage(
   history: Message[],
   state: TranscriptState,
   toolCallId: string,
+  toolName: string,
   content: string,
+  isError: boolean,
   replay?: Message["replay"],
 ): Message {
   state.currentTurnKey = toolCallId;
@@ -130,7 +132,9 @@ export function appendToolMessage(
     id: messageIdForTool(toolCallId),
     role: "tool",
     tool_call_id: toolCallId,
+    name: toolName,
     content,
+    isError,
     ...(replay ? { replay } : {}),
   };
   history.push(message);

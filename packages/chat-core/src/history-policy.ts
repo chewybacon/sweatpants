@@ -87,15 +87,15 @@ function toolCallIdsOf(message: Message): string[] {
       block.type === "toolCall" ? [block.toolCall.id] : [],
     );
   }
-  if (message.role === "toolResult") {
-    return [message.toolCallId];
+  if (message.role === "tool") {
+    return [message.tool_call_id];
   }
   return [];
 }
 
 /**
  * Group non-system messages into turns. A turn starts at each user message;
- * assistant/toolResult messages belong to the preceding user turn so a
+ * assistant/tool messages belong to the preceding user turn so a
  * completed call/result pair can never be split across a retention boundary.
  */
 function groupIntoTurns(messages: Message[]): Turn[] {

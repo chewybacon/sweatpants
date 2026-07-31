@@ -71,7 +71,7 @@ function latestUserText(context: RuntimeContext): string {
 
 function latestToolResultText(context: RuntimeContext): string | undefined {
   for (const message of [...context.messages].reverse()) {
-    if (message.role === "toolResult") {
+    if (message.role === "tool") {
       return textFromContent(message.content);
     }
   }

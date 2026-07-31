@@ -323,13 +323,14 @@ function providerMessagesFromRuntimeContext(context: Parameters<Runtime["stream"
         role: "user",
         content: textFromRuntimeContent(message.content),
       });
-    } else if (message.role === "toolResult") {
+    } else if (message.role === "tool") {
       messages.push({
-        id: `tool:${message.toolCallId}`,
+        id: `tool:${message.tool_call_id}`,
         role: "tool",
         content: textFromRuntimeContent(message.content),
-        tool_call_id: message.toolCallId,
-        replay: { toolName: message.toolName },
+        tool_call_id: message.tool_call_id,
+        name: message.name,
+        isError: message.isError,
       });
     } else {
       const toolCalls: ProviderToolCall[] = message.content

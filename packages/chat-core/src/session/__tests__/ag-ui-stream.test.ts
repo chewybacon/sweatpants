@@ -55,7 +55,15 @@ describe("AG-UI stream driver", () => {
       { type: "RUN_STARTED", ...correlation },
       {
         type: "MESSAGES_SNAPSHOT",
-        messages: [{ id: "old-tool", role: "tool", toolCallId: "old-call", content: "old" }],
+        messages: [
+          {
+            id: "old-tool",
+            role: "tool",
+            toolCallId: "old-call",
+            name: "search",
+            content: "old",
+          },
+        ],
       },
       { type: "TOOL_CALL_START", toolCallId: "new-call", toolCallName: "search" },
       { type: "TOOL_CALL_END", toolCallId: "new-call" },
