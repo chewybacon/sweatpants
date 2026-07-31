@@ -2,8 +2,8 @@ import { createPiAiModelProviderDriver, resolvePiAiModel } from "@sweatpants/mod
 import {
   type AssistantMessage,
   type Context,
-  type Message,
-  type Tool,
+  type PortableModelContextMessage,
+  type PortableModelTool,
 } from "@sweatpants/model-provider";
 import {
   createChatModelEffectRegistration,
@@ -62,7 +62,7 @@ function modelContext(request: ChatModelSampleInputV2): Context {
     tools: request.tools.map(toProviderTool),
   };
 }
-function toProviderMessages(message: ChatMessageV1): Message[] {
+function toProviderMessages(message: ChatMessageV1): PortableModelContextMessage[] {
   const text = message.parts.map((part) => valueText(part.value)).join("\n");
   if (message.role === "user") {
     return [{ role: "user", content: text }];
@@ -95,7 +95,6 @@ function toProviderMessages(message: ChatMessageV1): Message[] {
           },
         },
       ],
-      stopReason: "toolUse",
     },
     {
       role: "tool",
@@ -106,18 +105,18 @@ function toProviderMessages(message: ChatMessageV1): Message[] {
     },
   ];
 }
-function toProviderTool(value: Json): Tool {
+function toProviderTool(value: Json): PortableModelTool {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Authored model tool inventory is invalid");
   }
   const inputSchema = value["inputSchema"];
+  if (inputSchema === null || typeof inputSchema !== "object" || Array.isArray(inputSchema)) {
+    throw new Error("Authored model tool schema projection is invalid");
+  }
   return {
     name: providerToolName(String(value["name"])),
-    description: String(value["description"] ?? value["name"]),
-    parameters:
-      inputSchema !== null && typeof inputSchema === "object" && !Array.isArray(inputSchema)
-        ? inputSchema
-        : {},
+    ...(typeof value["description"] === "string" ? { description: value["description"] } : {}),
+    parameters: inputSchema,
   };
 }
 function modelOutput(assistant: AssistantMessage, pullId: string): ChatModelSampleOutputV2 {

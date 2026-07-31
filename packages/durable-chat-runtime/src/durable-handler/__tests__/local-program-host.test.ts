@@ -5,8 +5,8 @@ import { createDurableTool } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createModelSamplingEffectRegistration,
-  createModelSamplingRouter,
-} from "@sweatpants/durable-effects/model-sample";
+  type ModelSamplingService,
+} from "@sweatpants/model-sampling";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
 import { sha256 } from "@sweatpants/foundation";
@@ -397,20 +397,24 @@ describe("LocalProgramHost", () => {
       });
     const programs = createDurableToolRegistry([sampledProgram]);
     const observed: string[] = [];
-    const router = createModelSamplingRouter({
-      policy: (placement) => {
+    const modelSamplingService: ModelSamplingService = {
+      *sample(_request, context) {
         observed.push(
-          `route:${String((placement.route as Record<string, unknown>)["driverKind"])}`,
+          `route:${String((context.placement.route as Record<string, unknown>)["driverKind"])}`,
         );
-        return { ownership: "host" };
+        observed.push("provider");
+        return {
+          status: "ok",
+          value: {
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "sampled" }],
+            },
+            output: { type: "message" },
+          },
+        };
       },
-      host: {
-        *sample() {
-          observed.push("provider");
-          return { status: "ok", value: { text: "sampled", calls: [], content: [] } };
-        },
-      },
-    });
+    };
     const host = createLocalProgramHost({
       journalStore: createProgramDriverJournalStore({
         keyring: createCapabilityKeyring("local-host-sample-test", [
@@ -421,8 +425,9 @@ describe("LocalProgramHost", () => {
       programs,
       effects: createDurableEffectRegistry([createModelSamplingEffectRegistration()]),
       drivers: createProgramDriverRegistry([["program", createLocalProgramDriver(programs)]]),
-      modelSamplingRouter: router,
-      modelSamplingOutcomeAcknowledger: function* ({ outcomeDigest }) {
+      modelSamplingService,
+      effectOutcomeAcknowledger: function* ({ effect, outcomeDigest }) {
+        expect(effect).toEqual({ name: "model.sample", version: "3" });
         expect(outcomeDigest).toMatch(/^[0-9a-f]{64}$/);
         observed.push("acknowledged");
       },

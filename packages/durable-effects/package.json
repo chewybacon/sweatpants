@@ -53,16 +53,27 @@
             },
             "default": "./src/runtime.ts"
         },
-        "./model-sample": {
+        "./placement": {
             "development": {
-                "import": "./src/model-sample.ts",
-                "types": "./src/model-sample.ts"
+                "import": "./src/placement.ts",
+                "types": "./src/placement.ts"
             },
             "import": {
-                "types": "./dist/model-sample.d.ts",
-                "default": "./dist/model-sample.js"
+                "types": "./dist/placement.d.ts",
+                "default": "./dist/placement.js"
             },
-            "default": "./src/model-sample.ts"
+            "default": "./src/placement.ts"
+        },
+        "./outcome-acknowledgement": {
+            "development": {
+                "import": "./src/outcome-acknowledgement.ts",
+                "types": "./src/outcome-acknowledgement.ts"
+            },
+            "import": {
+                "types": "./dist/outcome-acknowledgement.d.ts",
+                "default": "./dist/outcome-acknowledgement.js"
+            },
+            "default": "./src/outcome-acknowledgement.ts"
         }
     },
     "scripts": {

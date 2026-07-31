@@ -19,7 +19,7 @@ import {
 import type {
   AssistantMessage as ModelAssistantMessage,
   Context as ModelContext,
-  Message as ModelMessage,
+  PortableModelContextMessage,
   Tool as ModelTool,
 } from "@sweatpants/model-provider";
 
@@ -117,8 +117,8 @@ function assistantToolCalls(message: ModelAssistantMessage): SamplingToolCall[] 
 function samplingTools(tools: unknown[] | undefined): ModelTool[] | undefined {
   return (tools as SamplingToolDefinition[] | undefined)?.map((tool) => ({
     name: tool.name,
-    description: tool.description ?? "",
-    // Sampling tools are authored at call time: this is their projection point.
+    ...(tool.description !== undefined ? { description: tool.description } : {}),
+    // This is the external sampling request's authored projection point.
     parameters: toToolParameterJsonSchema(tool.inputSchema),
   }));
 }
@@ -207,7 +207,10 @@ function isSchemaToolCall(toolCall: SamplingToolCall): boolean {
   return toolCall.name === "__schema__" || toolCall.name === "schema__";
 }
 
-function modelContext(messages: ModelMessage[], request: InternalSampleRequest): ModelContext {
+function modelContext(
+  messages: PortableModelContextMessage[],
+  request: InternalSampleRequest,
+): ModelContext {
   const context: ModelContext = {
     messages,
     ...(request.systemPrompt ? { systemPrompt: request.systemPrompt } : {}),

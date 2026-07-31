@@ -1,5 +1,5 @@
-import type { ModelSampleRequest } from "@sweatpants/durable-effects";
-import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
+import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
+import type { PortableModelContextMessage, PortableModelTool } from "@sweatpants/model-provider";
 import { defineDurableProgramManifest } from "@sweatpants/durable-execution";
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
@@ -11,32 +11,37 @@ import {
 import type { NativeProgramIdentity as NativeIdentity } from "../program-driver/native-tools.ts";
 import { z } from "zod";
 
-export type ThinCatalogEntry =
-  | { kind: "program"; target: string; program: NativeIdentity }
-  | {
-      kind: "foreign-tool";
-      target: string;
-      driver: "tool-session" | "chat-tool-runtime";
-      tool: string;
-      durability: "ephemeral_handle";
-    };
+export type ChatToolCatalogEntry = {
+  model: PortableModelTool;
+  execution:
+    | { kind: "program"; target: string; program: NativeIdentity }
+    | {
+        kind: "foreign-tool";
+        target: string;
+        driver: "tool-session" | "chat-tool-runtime";
+        tool: string;
+        durability: "ephemeral_handle";
+      };
+};
 
-export type ThinProgramCatalog = {
+/** Atomic model exposure plus execution target artifact accepted by chat-root. */
+export type ChatToolCatalog = {
   version: 1;
   digest: string;
-  entries: Record<string, ThinCatalogEntry>;
+  entries: Record<string, ChatToolCatalogEntry>;
 };
 
-export type ChatProgramInput = ChatSampleRequest & {
+export type ChatProgramInput = {
+  messages: PortableModelContextMessage[];
+  systemPrompt?: string;
+  toolChoice?: "auto" | "none" | "required";
   maxIterations: number;
-  catalog: ThinProgramCatalog;
-};
-
-type ChatSampleRequest = ModelSampleRequest;
+  catalog: ChatToolCatalog;
+} & Json;
 
 const chatEngineSchemaEntries: SchemaBinding[] = [];
 const schemaText = z.string().min(1).max(4_096);
-const thinCatalogEntrySchema = z.discriminatedUnion("kind", [
+const catalogExecutionSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("program"),
     target: schemaText,
@@ -54,6 +59,17 @@ const thinCatalogEntrySchema = z.discriminatedUnion("kind", [
     durability: z.literal("ephemeral_handle"),
   }),
 ]);
+const chatToolCatalogEntrySchema = z.strictObject({
+  model: z.strictObject({
+    name: schemaText,
+    description: z
+      .string()
+      .max(64 * 1024)
+      .optional(),
+    parameters: z.record(z.string(), z.json()),
+  }),
+  execution: catalogExecutionSchema,
+});
 const chatProgramInputSchema = z.strictObject({
   messages: z.array(z.json()).max(10_000),
   systemPrompt: z
@@ -65,7 +81,7 @@ const chatProgramInputSchema = z.strictObject({
   catalog: z.strictObject({
     version: z.literal(1),
     digest: z.string().regex(/^[0-9a-f]{64}$/u),
-    entries: z.record(schemaText, thinCatalogEntrySchema),
+    entries: z.record(schemaText, chatToolCatalogEntrySchema),
   }),
 });
 
@@ -120,7 +136,52 @@ const chatRootInputDescriptor = chatEngineSchema(
         properties: {
           version: { const: 1 },
           digest: { type: "string", pattern: "^[0-9a-f]{64}$" },
-          entries: { type: "object", additionalProperties: true },
+          entries: {
+            type: "object",
+            additionalProperties: {
+              type: "object",
+              required: ["model", "execution"],
+              properties: {
+                model: {
+                  type: "object",
+                  required: ["name", "parameters"],
+                  properties: {
+                    name: { type: "string" },
+                    description: { type: "string" },
+                    parameters: { type: "object", additionalProperties: true },
+                  },
+                  additionalProperties: false,
+                },
+                execution: {
+                  oneOf: [
+                    {
+                      type: "object",
+                      required: ["kind", "target", "program"],
+                      properties: {
+                        kind: { const: "program" },
+                        target: { type: "string" },
+                        program: { type: "object" },
+                      },
+                      additionalProperties: false,
+                    },
+                    {
+                      type: "object",
+                      required: ["kind", "target", "driver", "tool", "durability"],
+                      properties: {
+                        kind: { const: "foreign-tool" },
+                        target: { type: "string" },
+                        driver: { enum: ["tool-session", "chat-tool-runtime"] },
+                        tool: { type: "string" },
+                        durability: { const: "ephemeral_handle" },
+                      },
+                      additionalProperties: false,
+                    },
+                  ],
+                },
+              },
+              additionalProperties: false,
+            },
+          },
         },
         additionalProperties: false,
       },
@@ -149,8 +210,8 @@ const chatRootOutputDescriptor = chatEngineSchema(
 
 export const manifest = defineDurableProgramManifest<ChatProgramInput, string>({
   programId: "sweatpants.chat-root",
-  version: "1.2.0",
-  digest: "cd46d11a63f7e556a52b9fc467253bf8b557aa35ac923b8700d2dae557064985",
+  version: "1.3.0",
+  digest: "369baa36085e1eca147422c1e88325de0a7440dd1ced4dc1d1183c89d7475cd0",
   inputSchema: chatRootInputDescriptor,
   outputSchema: chatRootOutputDescriptor,
   elicits: {},

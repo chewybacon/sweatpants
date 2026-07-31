@@ -17,9 +17,9 @@ import {
   type ProgramRuntimeDriver,
 } from "@sweatpants/durable-execution";
 import {
-  ModelSamplingOutcomeAcknowledgerContext,
+  DurableEffectOutcomeAcknowledgerContext,
   ProgramPlacementContext,
-} from "@sweatpants/durable-effects/model-sample";
+} from "@sweatpants/durable-effects";
 import type {
   CancellationFrontier,
   DurableCancellationState,
@@ -135,11 +135,15 @@ function* executeDurableEffectAuthorization(
     audience: authorization.resolver.audience,
     outcome,
   });
-  if (resolution.status !== "rejected" && authorization.descriptor.name === "model.sample") {
-    const acknowledge = yield* ModelSamplingOutcomeAcknowledgerContext.get();
+  if (resolution.status !== "rejected") {
+    const acknowledge = yield* DurableEffectOutcomeAcknowledgerContext.get();
     if (acknowledge) {
       try {
         yield* acknowledge({
+          effect: {
+            name: authorization.descriptor.name,
+            version: authorization.descriptor.version,
+          },
           sessionId: authorization.sessionId,
           taskId: authorization.taskId,
           pullId: authorization.pullId,

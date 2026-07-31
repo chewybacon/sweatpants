@@ -1,10 +1,11 @@
-import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
+import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createDurableProgramContext } from "@sweatpants/durable-execution";
 import { type ProgramResume, type ProgramStepProposal } from "@sweatpants/durable-execution";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
+import { assertJson } from "@sweatpants/foundation";
 
 import { defineAgent, parseAgentManifest } from "../../agent/index.ts";
 import { createDurableTool } from "../durable-create.ts";
@@ -200,10 +201,22 @@ describe("createDurableTool fluent builder", () => {
 
     const proposals: ProgramStepProposal[] = [];
     const outcomes: ProgramResume[] = [
-      { status: "ok", value: { text: "bad", calls: [], content: [], parsed: { value: "bad" } } },
       {
         status: "ok",
-        value: { text: '{"value": 7}', calls: [], content: [], parsed: { value: 7 } },
+        value: {
+          message: { role: "assistant", content: [{ type: "text", text: "bad" }] },
+          output: { type: "json", value: { value: "bad" } },
+        },
+      },
+      {
+        status: "ok",
+        value: {
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: '{"value": 7}' }],
+          },
+          output: { type: "json", value: { value: 7 } },
+        },
       },
     ];
     const result = await run(function* () {
@@ -221,10 +234,13 @@ describe("createDurableTool fluent builder", () => {
       descriptor: {
         kind: "effect",
         name: "model.sample",
-        version: "2",
+        version: "3",
         input: {
-          messages: [{ role: "user", content: "Choose a value" }],
-          schema: { type: "object" },
+          invocation: {
+            context: { messages: [{ role: "user", content: "Choose a value" }] },
+          },
+          tools: { type: "none" },
+          response: { type: "json", schema: { type: "object" } },
         },
       },
     });
@@ -266,12 +282,13 @@ describe("createDurableTool fluent builder", () => {
       .parameters(z.object({}))
       .samples()
       .execute(function* (_input, context) {
-        return yield* context.sampleSchema({
+        const result = yield* context.sampleSchema({
           prompt: "x",
           messages: [] as never,
           schema: z.object({ value: z.number() }),
           retries: 11,
         } as never);
+        return assertJson(result.parsed);
       });
     const context = createDurableProgramContext(() =>
       (function* (): Operation<ProgramResume> {

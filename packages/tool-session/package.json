@@ -107,6 +107,7 @@
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/model-provider": "workspace:*",
+        "@sweatpants/model-sampling": "workspace:*",
         "effection": "catalog:",
         "zod": "catalog:"
     },

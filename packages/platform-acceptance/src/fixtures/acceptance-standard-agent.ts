@@ -9,7 +9,11 @@ import {
 } from "@sweatpants/chat-core";
 import { createStandardA2AHost, serveAgent, standardA2A } from "@sweatpants/agent-host/server";
 import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
-import { type AssistantMessage, type Context, type Message } from "@sweatpants/model-provider";
+import type {
+  AssistantMessage,
+  Context,
+  PortableModelContextMessage,
+} from "@sweatpants/model-provider";
 import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants/test-rig";
 
 export const ACCEPTANCE_AGENT_MODEL_ID = "a2a-agent-acceptance";
@@ -43,7 +47,7 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value ?? "");
 }
 
-function toModelMessages(request: ChatModelSampleInputV2): Message[] {
+function toModelMessages(request: ChatModelSampleInputV2): PortableModelContextMessage[] {
   return request.messages.map((message) => {
     const content = message.parts.map((part) => text(part.value)).join("");
     if (message.role === "system") {

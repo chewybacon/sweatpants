@@ -92,10 +92,11 @@ describe("yo-studio play_ttt capability", () => {
             outcome = {
               status: "ok" as const,
               value: {
-                text: '{"position":8}',
-                calls: [],
-                content: [],
-                parsed: { position: 8 },
+                message: {
+                  role: "assistant",
+                  content: [{ type: "text", text: '{"position":8}' }],
+                },
+                output: { type: "json", value: { position: 8 } },
               },
             };
           } else if (step.descriptor.kind === "elicit") {

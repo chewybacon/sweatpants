@@ -209,7 +209,19 @@ describe("reference authored consultation application", () => {
       const second = yield* driver.step(attachment, {
         type: "resume",
         actionIndex: first.actionIndex,
-        outcome: { status: "ok", value: { question: "Why this authority model?" } },
+        outcome: {
+          status: "ok",
+          value: {
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: '{"question":"Why this authority model?"}' }],
+            },
+            output: {
+              type: "json",
+              value: { question: "Why this authority model?" },
+            },
+          },
+        },
         receipt: receipt(first.actionIndex),
         replayed: false,
       });

@@ -1,18 +1,20 @@
 import { type DurableEffectRegistry, type OperationOutcome } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
-import type { Operation } from "effection";
+import { type Operation } from "effection";
 import { withJournalAuthority, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import { ProgramRouteResolverContext } from "@sweatpants/durable-execution";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
-  ModelSamplingRouterContext,
-  ModelSamplingOutcomeAcknowledgerContext,
-  ProgramDeliveryWriterContext,
-  type ModelSamplingRouter,
-  type ModelSamplingOutcomeAcknowledger,
+  runWithModelSamplingService,
+  runWithProgramDeliveryWriter,
+  type ModelSamplingService,
   type ProgramDeliveryWriter,
-} from "@sweatpants/durable-effects/model-sample";
+} from "@sweatpants/model-sampling";
+import {
+  DurableEffectOutcomeAcknowledgerContext,
+  type DurableEffectOutcomeAcknowledger,
+} from "@sweatpants/durable-effects";
 import {
   DurableEffectRegistryContext,
   assertDurableEffectBindings,
@@ -120,8 +122,8 @@ export interface LocalProgramHostOptions {
   effects: DurableEffectRegistry;
   drivers: ProgramDriverRegistry;
   routeResolver?: (program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>;
-  modelSamplingRouter?: ModelSamplingRouter;
-  modelSamplingOutcomeAcknowledger?: ModelSamplingOutcomeAcknowledger;
+  modelSamplingService?: ModelSamplingService;
+  effectOutcomeAcknowledger?: DurableEffectOutcomeAcknowledger;
   deliveryWriter?: ProgramDeliveryWriter;
 }
 
@@ -167,33 +169,34 @@ export interface LocalProgramActivationScope {
   effects: DurableEffectRegistry;
   drivers: ProgramDriverRegistry;
   routeResolver?: (program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>;
-  modelSamplingRouter?: ModelSamplingRouter;
-  modelSamplingOutcomeAcknowledger?: ModelSamplingOutcomeAcknowledger;
+  modelSamplingService?: ModelSamplingService;
+  effectOutcomeAcknowledger?: DurableEffectOutcomeAcknowledger;
   deliveryWriter?: ProgramDeliveryWriter;
 }
 
 /** Installs the protocol-neutral authority scope shared by LocalProgramHost and applications. */
-export function runLocalProgramActivation<T>(
+export function* runLocalProgramActivation<T>(
   scope: LocalProgramActivationScope,
   operation: () => Operation<T>,
 ): Operation<T> {
-  return ProgramDriverRegistryContext.with(scope.drivers, function* () {
-    return yield* withJournalAuthority(scope.authority, function* () {
-      return yield* DurableEffectRegistryContext.with(scope.effects, function* () {
-        return yield* ExecutionDurableEffectRegistryContext.with(scope.effects, function* () {
-          return yield* ProgramRouteResolverContext.with(scope.routeResolver, function* () {
-            return yield* ModelSamplingRouterContext.with(scope.modelSamplingRouter, function* () {
-              return yield* ModelSamplingOutcomeAcknowledgerContext.with(
-                scope.modelSamplingOutcomeAcknowledger,
-                function* () {
-                  return yield* ProgramDeliveryWriterContext.with(scope.deliveryWriter, operation);
-                },
+  const runConfigured = function* (): Operation<T> {
+    return yield* ProgramDriverRegistryContext.with(scope.drivers, function* () {
+      return yield* withJournalAuthority(scope.authority, function* () {
+        return yield* DurableEffectRegistryContext.with(scope.effects, function* () {
+          return yield* ExecutionDurableEffectRegistryContext.with(scope.effects, function* () {
+            return yield* ProgramRouteResolverContext.with(scope.routeResolver, function* () {
+              return yield* DurableEffectOutcomeAcknowledgerContext.with(
+                scope.effectOutcomeAcknowledger,
+                operation,
               );
             });
           });
         });
       });
     });
+  };
+  return yield* runWithModelSamplingService(scope.modelSamplingService, function* () {
+    return yield* runWithProgramDeliveryWriter(scope.deliveryWriter, runConfigured);
   });
 }
 
@@ -254,11 +257,11 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
             ? yield* options.routeResolver(child, parentRoute)
             : parentRoute;
         },
-        ...(options.modelSamplingRouter
-          ? { modelSamplingRouter: options.modelSamplingRouter }
+        ...(options.modelSamplingService
+          ? { modelSamplingService: options.modelSamplingService }
           : {}),
-        ...(options.modelSamplingOutcomeAcknowledger
-          ? { modelSamplingOutcomeAcknowledger: options.modelSamplingOutcomeAcknowledger }
+        ...(options.effectOutcomeAcknowledger
+          ? { effectOutcomeAcknowledger: options.effectOutcomeAcknowledger }
           : {}),
         ...(options.deliveryWriter ? { deliveryWriter: options.deliveryWriter } : {}),
       },

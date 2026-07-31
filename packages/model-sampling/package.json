@@ -1,0 +1,76 @@
+{
+    "name": "@sweatpants/model-sampling",
+    "version": "0.1.0",
+    "description": "Durable model-sampling contract, semantic API, and placement delivery",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "default": "./src/index.ts"
+        },
+        "./contract": {
+            "development": {
+                "import": "./src/contract.ts",
+                "types": "./src/contract.ts"
+            },
+            "import": {
+                "types": "./dist/contract.d.ts",
+                "default": "./dist/contract.js"
+            },
+            "default": "./src/contract.ts"
+        },
+        "./api": {
+            "development": {
+                "import": "./src/api.ts",
+                "types": "./src/api.ts"
+            },
+            "import": {
+                "types": "./dist/api.d.ts",
+                "default": "./dist/api.js"
+            },
+            "default": "./src/api.ts"
+        },
+        "./delivery": {
+            "development": {
+                "import": "./src/delivery.ts",
+                "types": "./src/delivery.ts"
+            },
+            "import": {
+                "types": "./dist/delivery.d.ts",
+                "default": "./dist/delivery.js"
+            },
+            "default": "./src/delivery.ts"
+        }
+    },
+    "scripts": {
+        "build": "tsup",
+        "check": "tsc -b",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@standard-schema/spec": "catalog:",
+        "@sweatpants/durable-effects": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/model-provider": "workspace:*",
+        "effection": "catalog:",
+        "zod": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    }
+}

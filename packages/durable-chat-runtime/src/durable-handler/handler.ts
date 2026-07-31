@@ -37,7 +37,7 @@ import {
 } from "../response-streams/index.ts";
 import { MaxIterationsContext, PersonaResolverContext } from "../contexts.ts";
 import { createChatTurnCompletedFact, projectChatTurnFacts } from "@sweatpants/chat-core";
-import { ModelProviderApi, useModel, useStreamOptions } from "@sweatpants/model-provider";
+import { useModel, useStreamOptions } from "@sweatpants/model-provider";
 import {
   ToolInventoryApi,
   ToolRuntimeApi,
@@ -78,7 +78,6 @@ import type {
   ProgramRuntimeChatEngineParams,
   ToolSchema,
 } from "./types.ts";
-import type { Runtime } from "@sweatpants/model-provider";
 import {
   interruptRecordsForThread,
   openInterruptsForThread,
@@ -137,33 +136,6 @@ function definitionToToolSchema(definition: PortableToolDefinition): ToolSchema 
     name: definition.name,
     description: definition.description,
     parameters: definition.parameters,
-  };
-}
-
-/**
- * Adapts the model provider serving this Turn to the runtime the engine wants.
- *
- * See `docs/adr/004-turn-scope-and-scope-crossing.md`: the provider is selected
- * per request, but the Turn it serves finishes inside a Host-owned writer task
- * that is deliberately not a child of the request scope. Until a Turn scope
- * exists, the seam must be pinned rather than resolved where the writer runs.
- */
-function createRuntimeFromModelProvider(): Runtime {
-  return {
-    stream(model, context, options) {
-      return resource(function* (provide) {
-        const stream = yield* ModelProviderApi.operations.stream({
-          model,
-          context,
-          ...(options ? { options } : {}),
-        });
-        const subscription = yield* stream;
-        yield* provide(subscription);
-      });
-    },
-    *generateImages() {
-      throw new Error("Model provider runtime adapter does not support image generation");
-    },
   };
 }
 
@@ -385,7 +357,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   });
                 }
 
-                const runtime = createRuntimeFromModelProvider();
                 const model = yield* useModel();
                 const contextStreamOptions = yield* useStreamOptions();
                 const streamOptions =
@@ -640,7 +611,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     messages: body.messages,
                     ...(systemPrompt !== undefined && { systemPrompt }),
                     toolSchemas,
-                    runtime,
                     model,
                     ...(streamOptions ? { streamOptions } : {}),
                     ...(plan.initialToolChoice

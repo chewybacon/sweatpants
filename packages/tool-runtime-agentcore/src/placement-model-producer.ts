@@ -1,6 +1,6 @@
-import type { ModelSampleRequest } from "@sweatpants/durable-effects";
+import type { ModelSampleRequest } from "@sweatpants/model-sampling";
 import type { Operation } from "effection";
-import { type ModelSampleDisposition } from "@sweatpants/durable-effects/model-sample";
+import { type ModelSampleDisposition } from "@sweatpants/model-sampling";
 import { type Json } from "@sweatpants/foundation";
 
 import type {

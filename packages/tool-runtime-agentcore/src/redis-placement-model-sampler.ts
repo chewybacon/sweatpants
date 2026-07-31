@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { RedisClientType } from "redis";
 import type { TokenBuffer, TokenBufferStore } from "@sweatpants/durable-streams";
 import { StaleTokenWriterError } from "@sweatpants/durable-streams";
-import { type ModelSampleDisposition } from "@sweatpants/durable-effects/model-sample";
+import { type ModelSampleDisposition } from "@sweatpants/model-sampling";
 import {
   canonicalJson,
   canonicalSnapshot,

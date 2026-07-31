@@ -1,14 +1,15 @@
-import type { ModelSampleRequest } from "@sweatpants/durable-effects";
-import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
+import type { ModelSampleRequest } from "@sweatpants/model-sampling";
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/model-sampling";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
+  ProgramDeliveryApi,
   type ModelSampleDisposition,
   type ModelSamplingExecutionContext,
   type ModelSamplingService,
   type ProgramDeliveryEnvelope,
-} from "@sweatpants/durable-effects/model-sample";
+} from "@sweatpants/model-sampling";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 
 export const AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION = 1 as const;
@@ -248,7 +249,7 @@ export function createPlacementModelSamplingService(options: {
           attachment,
           afterLsn,
         });
-        if (page.events.length > 0 && context.delivery) {
+        if (page.events.length > 0 && (yield* ProgramDeliveryApi.operations.installed())) {
           const envelopes: ProgramDeliveryEnvelope[] = page.events.map((remote) => ({
             version: 1,
             sessionId: identity.sessionId,
@@ -263,7 +264,7 @@ export function createPlacementModelSamplingService(options: {
             },
             event: remote.event,
           }));
-          yield* context.delivery.append(envelopes);
+          yield* ProgramDeliveryApi.operations.append(envelopes);
         }
         afterLsn = Math.max(afterLsn, page.lsn);
         if (page.state === "orphaned") {

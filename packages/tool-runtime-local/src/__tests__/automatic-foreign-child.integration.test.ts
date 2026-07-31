@@ -180,7 +180,13 @@ describe("automatic foreign adapter child orchestration", () => {
         foreignToolAdapter.modelSampleRegistration(function* () {
           const round = durableSamples;
           durableSamples += 1;
-          return { text: `suggestion-${round}`, calls: [], content: [] };
+          return {
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: `suggestion-${round}` }],
+            },
+            output: { type: "message" },
+          };
         }),
       ]);
       yield* authority.openTask({

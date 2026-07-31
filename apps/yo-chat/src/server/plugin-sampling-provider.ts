@@ -1,9 +1,7 @@
 import type { Operation } from "effection";
 import type { JsonObject } from "@sweatpants/foundation";
-import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
 import type {
   SamplingToolCall,
-  SamplingToolDefinition,
   SampleExchangeCompletion,
   SampleExchangeCompletionBase,
   ParsedSampleExchangeCompletion,
@@ -15,15 +13,15 @@ import { createPiAiModelProviderDriver, resolvePiAiModel } from "@sweatpants/mod
 import {
   type AssistantMessage as ModelAssistantMessage,
   type Context as ModelContext,
-  type Message as ModelMessage,
-  type Tool as ModelTool,
+  type PortableModelContextMessage,
+  type PortableModelTool,
 } from "@sweatpants/model-provider";
 import { env } from "@/env";
 
 interface SamplingOptions {
   systemPrompt?: string;
   maxTokens?: number;
-  tools?: SamplingToolDefinition[];
+  tools?: PortableModelTool[];
   toolChoice?: "auto" | "required" | "none";
   schema?: JsonObject;
 }
@@ -49,15 +47,6 @@ function assistantToolCalls(message: ModelAssistantMessage): SamplingToolCall[] 
       name: block.toolCall.function.name,
       arguments: block.toolCall.function.arguments,
     }));
-}
-
-function samplingTools(tools: SamplingToolDefinition[] | undefined): ModelTool[] | undefined {
-  return tools?.map((tool) => ({
-    name: tool.name,
-    description: tool.description ?? "",
-    // Sampling tools are authored at call time: this is their projection point.
-    parameters: toToolParameterJsonSchema(tool.inputSchema),
-  }));
 }
 
 function stripThinkingBlocks(text: string): string {
@@ -145,7 +134,7 @@ function isSchemaToolCall(toolCall: SamplingToolCall): boolean {
 }
 
 function modelContext(
-  messages: ModelMessage[],
+  messages: PortableModelContextMessage[],
   options: SamplingOptions | undefined,
 ): ModelContext {
   const context: ModelContext = {
@@ -153,9 +142,8 @@ function modelContext(
     ...(options?.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
   };
 
-  const tools = samplingTools(options?.tools);
-  if (tools) {
-    context.tools = tools;
+  if (options?.tools) {
+    context.tools = options.tools;
   }
 
   return context;

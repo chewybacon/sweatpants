@@ -1,5 +1,9 @@
-import type { ModelSampleRequest } from "@sweatpants/durable-effects";
-import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
+import type { ModelSampleRequest } from "@sweatpants/model-sampling";
+import {
+  MODEL_SAMPLE_EFFECT,
+  runWithProgramDeliveryWriter,
+  type ModelSampleResult,
+} from "@sweatpants/model-sampling";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
@@ -27,9 +31,18 @@ const identity = {
   pullId: "pull-1",
 };
 const request: ModelSampleRequest = {
-  messages: [{ role: "user", content: "hello" }],
+  invocation: { context: { messages: [{ role: "user", content: "hello" }] } },
+  tools: { type: "none" },
+  response: { type: "message" },
   classifications: ["private"],
 };
+
+function sampled(text: string): ModelSampleResult {
+  return {
+    message: { role: "assistant", content: [{ type: "text", text }] },
+    output: { type: "message" },
+  };
+}
 const requestDigest = canonicalSnapshot(request).sha;
 const contractDigest = effectContractDigest(MODEL_SAMPLE_EFFECT);
 
@@ -94,7 +107,7 @@ describe("in-memory placement model sampler", () => {
           *sample(_request, context) {
             yield* context.emit({ event: { type: "delta", value: "a" } });
             yield* context.emit({ event: { type: "delta", value: "b" } });
-            return { status: "ok", value: { text: "ab", calls: [], content: [] } };
+            return { status: "ok", value: sampled("ab") };
           },
         },
         identity,
@@ -104,7 +117,10 @@ describe("in-memory placement model sampler", () => {
         leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
         cancellation: new AbortController().signal,
       });
-      expect(disposition).toMatchObject({ status: "ok", value: { text: "ab" } });
+      expect(disposition).toMatchObject({
+        status: "ok",
+        value: { message: { content: [{ text: "ab" }] } },
+      });
       expect(yield* sampler.read({ version: 1, attachment: attached, afterLsn: 0 })).toMatchObject({
         lsn: 2,
         state: "completed",
@@ -145,7 +161,7 @@ describe("in-memory placement model sampler", () => {
       },
       *waitForChange() {},
       *disposition() {
-        return { status: "ok", value: { text: "done", calls: [], content: [] } };
+        return { status: "ok", value: sampled("done") };
       },
       *cancel() {},
       *acknowledge({ outcomeDigest }) {
@@ -166,35 +182,42 @@ describe("in-memory placement model sampler", () => {
       },
     });
     await run(function* () {
-      const disposition = yield* service.sample(request, {
-        placement: {
-          journal: { id: identity.journalId, incarnation: identity.journalIncarnation },
-          program: { id: "p", version: "1", digest: "a".repeat(64) },
-          route: { driverKind: "agentcore" },
-          driverKind: "agentcore",
-        },
-        sessionId: identity.sessionId,
-        taskId: identity.taskId,
-        pullId: identity.pullId,
-        attemptId: "a",
-        effectContractDigest: contractDigest,
-        cancellation: new AbortController().signal,
-        delivery: {
+      return yield* runWithProgramDeliveryWriter(
+        {
           *append(events) {
             relayed.push(...events);
             return events.length;
           },
         },
-      });
-      expect(disposition).toMatchObject({ status: "ok", value: { text: "done" } });
-      expect(relayed).toHaveLength(1);
-      expect(relayed[0]).toMatchObject({
-        origin: { streamId: "remote-stream", lsn: 2, producerEpoch: 3 },
-      });
-      const digest = canonicalSnapshot(disposition).sha;
-      yield* service.acknowledge(identity, digest);
-      expect(acknowledged).toBe(digest);
-      expect(attachCount).toBe(1);
+        function* () {
+          const disposition = yield* service.sample(request, {
+            placement: {
+              journal: { id: identity.journalId, incarnation: identity.journalIncarnation },
+              program: { id: "p", version: "1", digest: "a".repeat(64) },
+              route: { driverKind: "agentcore" },
+              driverKind: "agentcore",
+            },
+            sessionId: identity.sessionId,
+            taskId: identity.taskId,
+            pullId: identity.pullId,
+            attemptId: "a",
+            effectContractDigest: contractDigest,
+            cancellation: new AbortController().signal,
+          });
+          expect(disposition).toMatchObject({
+            status: "ok",
+            value: { message: { content: [{ text: "done" }] } },
+          });
+          expect(relayed).toHaveLength(1);
+          expect(relayed[0]).toMatchObject({
+            origin: { streamId: "remote-stream", lsn: 2, producerEpoch: 3 },
+          });
+          const digest = canonicalSnapshot(disposition).sha;
+          yield* service.acknowledge(identity, digest);
+          expect(acknowledged).toBe(digest);
+          expect(attachCount).toBe(1);
+        },
+      );
     });
   });
 
@@ -222,7 +245,7 @@ describe("in-memory placement model sampler", () => {
       expect(page.events.map((event) => event.lsn)).toEqual([1, 2]);
       const disposition = {
         status: "ok" as const,
-        value: { text: "hi", calls: [], content: [] },
+        value: sampled("hi"),
       };
       yield* sampler.publishDisposition(identity, fence, disposition);
       const terminal = yield* sampler.read({ version: 1, attachment: first, afterLsn: 2 });
@@ -271,7 +294,7 @@ describe("in-memory placement model sampler", () => {
       expect(stale).toBe("stale_token_writer");
       const disposition = {
         status: "ok" as const,
-        value: { text: "new", calls: [], content: [] },
+        value: sampled("new"),
       };
       yield* sampler.publishDisposition(identity, newer, disposition);
       let acknowledgeConflict = "";

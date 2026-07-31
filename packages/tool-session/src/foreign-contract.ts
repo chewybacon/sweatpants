@@ -11,7 +11,7 @@ import type {
   ForeignToolDisposition,
 } from "@sweatpants/durable-execution";
 import type { EffectDefinition } from "@sweatpants/durable-effects";
-import { MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
+import { MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
 import { z } from "zod";
 
 /** Pinned identity of the built-in foreign-tool adapter program. */

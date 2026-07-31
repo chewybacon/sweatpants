@@ -9,14 +9,10 @@ import {
 } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor, SchemaBinding } from "@sweatpants/foundation/schema";
 import {
-  MODEL_SAMPLE_EFFECT,
-  MODEL_SAMPLE_SCHEMA_ENTRIES,
   createDurableEffectRegistration,
   type DurableEffectContext,
   type DurableEffectDisposition,
   type DurableEffectRegistration,
-  type ModelSampleRequest,
-  type ModelSampleResult,
 } from "@sweatpants/durable-effects";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
@@ -47,12 +43,14 @@ import {
 } from "@sweatpants/agent-sdk";
 import {
   CHAT_CONTRACT_SCHEMA_ENTRIES,
+  CHAT_MODEL_SAMPLE_INPUT_DESCRIPTOR,
+  CHAT_MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
   CHAT_TURN_INPUT_DESCRIPTOR,
   CHAT_TURN_RESULT_DESCRIPTOR,
   CHAT_TURN_RESULT_FORMAT,
   normalizeChatMessage,
   normalizeChatTurnResult,
-  normalizeContentPart,
+  normalizeModelSampleInput,
   normalizeModelSampleOutput,
   type ChatContentPartV1,
   type ChatContextPolicyV1,
@@ -130,7 +128,16 @@ export type ChatProgramDefinition = DurableTool<ChatTurnInputV1 & Json, ChatTurn
   readonly contextPolicy: ChatContextPolicyV1;
 };
 
-export const CHAT_MODEL_SAMPLE_EFFECT = MODEL_SAMPLE_EFFECT;
+export const CHAT_MODEL_SAMPLE_EFFECT: EffectDefinition<
+  ChatModelSampleInputV2 & Json,
+  ChatModelSampleOutputV2 & Json
+> = Object.freeze({
+  name: "model.sample",
+  version: "2",
+  inputSchema: CHAT_MODEL_SAMPLE_INPUT_DESCRIPTOR,
+  outputSchema: CHAT_MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
+  retrySafety: { mode: "repeatable" as const },
+});
 
 export function programPrivate(resourcePackage: ResourcePackage): ChatResourceMountDeclaration {
   return Object.freeze({
@@ -308,7 +315,6 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
   const elicitations = normalizeElicitations({});
   requireOperationSchemaCoverage(effects, elicitations, [
     ...CHAT_CONTRACT_SCHEMA_ENTRIES,
-    ...MODEL_SAMPLE_SCHEMA_ENTRIES,
     ...effectSchemas,
   ]);
   const toolInventory = buildToolInventory(toolBindings, readers, resourceView.mounts.length > 0);
@@ -387,18 +393,16 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
     };
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const classifications = chatPayloadClassifications({ systemPrompt: promptPart, messages });
-      const sampled = decodeAuthoredModelResult(
-        yield* context.effect(
-          CHAT_MODEL_SAMPLE_EFFECT,
-          encodeAuthoredModelRequest({
-            messages,
-            systemPrompt: promptPart,
-            tools: toolInventory,
-            classifications,
-            sampling,
-          }),
-          { audience: "model-runtime" },
-        ),
+      const sampled = yield* context.effect(
+        CHAT_MODEL_SAMPLE_EFFECT,
+        normalizeModelSampleInput({
+          messages,
+          systemPrompt: promptPart,
+          tools: toolInventory,
+          classifications,
+          sampling,
+        }),
+        { audience: "model-runtime" },
       );
       const assistant = normalizeChatMessage(sampled.message);
       messages.push(assistant);
@@ -434,7 +438,6 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
   });
   const schemaCatalog = aggregateSchemas([
     ...CHAT_CONTRACT_SCHEMA_ENTRIES,
-    ...MODEL_SAMPLE_SCHEMA_ENTRIES,
     ...effectSchemas,
     ...Object.values(childPrograms).flatMap((binding) => binding.schemas),
   ]);
@@ -462,87 +465,30 @@ export function createChatModelEffectRegistration(options: {
   ) => Operation<ChatModelSampleOutputV2>;
 }): DurableEffectRegistration {
   const allowed = new Set(options.allowedClassifications);
-  const inputSchema = MODEL_SAMPLE_SCHEMA_ENTRIES.find(
+  const inputSchema = CHAT_CONTRACT_SCHEMA_ENTRIES.find(
     (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.inputSchema.digest,
   )!;
-  const outputSchema = MODEL_SAMPLE_SCHEMA_ENTRIES.find(
+  const outputSchema = CHAT_CONTRACT_SCHEMA_ENTRIES.find(
     (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.outputSchema.digest,
   )!;
   return createDurableEffectRegistration(
     CHAT_MODEL_SAMPLE_EFFECT,
     CHAT_MODEL_SAMPLE_EFFECT.retrySafety,
-    function* (request, context): Operation<DurableEffectDisposition<ModelSampleResult>> {
-      const authored = decodeAuthoredModelRequest(request);
-      if (authored.classifications.some((classification) => !allowed.has(classification))) {
+    function* (
+      request,
+      context,
+    ): Operation<DurableEffectDisposition<ChatModelSampleOutputV2 & Json>> {
+      if (request.classifications.some((classification) => !allowed.has(classification))) {
         throw new CrankError(
           "model_egress_forbidden",
           "Selected model route does not authorize the payload classification",
         );
       }
-      const value = yield* options.sample(authored, context);
-      return { status: "ok", value: encodeAuthoredModelResult(value) };
+      const value = yield* options.sample(request, context);
+      return { status: "ok", value: normalizeModelSampleOutput(value) };
     },
     { input: inputSchema.schema, output: outputSchema.schema },
   );
-}
-
-function encodeAuthoredModelRequest(value: ChatModelSampleInputV2): ModelSampleRequest {
-  return assertJson({
-    messages: value.messages,
-    systemPrompt: value.systemPrompt,
-    tools: value.tools,
-    classifications: value.classifications,
-    sampling: value.sampling,
-  }) as ModelSampleRequest;
-}
-
-function decodeAuthoredModelRequest(value: ModelSampleRequest): ChatModelSampleInputV2 {
-  if (
-    !Array.isArray(value.classifications) ||
-    value.systemPrompt === undefined ||
-    value.sampling === undefined
-  ) {
-    throw new CrankError("invalid_manifest", "Authored model sampling metadata is missing");
-  }
-  // The request crossed the durable effect boundary as Json; re-verify each
-  // authored contract shape instead of trusting the wire.
-  return {
-    messages: value.messages.map((message) => normalizeChatMessage(message)),
-    systemPrompt: normalizeContentPart(value.systemPrompt),
-    tools: value.tools ?? [],
-    classifications: value.classifications as DataClassification[],
-    sampling: value.sampling,
-  };
-}
-
-function encodeAuthoredModelResult(value: ChatModelSampleOutputV2): ModelSampleResult {
-  const normalized = normalizeModelSampleOutput(value);
-  return assertJson({
-    text: normalized.message.parts
-      .map((part) => (typeof part.value === "string" ? part.value : ""))
-      .join(""),
-    calls: normalized.calls,
-    content: [normalized.message, ...normalized.artifacts],
-  }) as ModelSampleResult;
-}
-
-function decodeAuthoredModelResult(value: ModelSampleResult): ChatModelSampleOutputV2 {
-  // Direct authored form: { message, calls, artifacts }. Detect by shape and
-  // let normalizeModelSampleOutput perform the actual validation.
-  const record = value as Record<string, unknown>;
-  if (record["message"] && Array.isArray(record["calls"]) && Array.isArray(record["artifacts"])) {
-    return normalizeModelSampleOutput({
-      message: record["message"],
-      calls: record["calls"],
-      artifacts: record["artifacts"],
-    });
-  }
-  const [message, ...artifacts] = value.content;
-  return normalizeModelSampleOutput({
-    message,
-    calls: value.calls,
-    artifacts,
-  });
 }
 
 function normalizeModelToolDeclaration(input: ChatModelToolDeclaration): ChatModelToolDeclaration {

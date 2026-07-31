@@ -1,6 +1,6 @@
 import type {
-  ContentBlock as ModelContentBlock,
-  Message as ModelMessage,
+  PortableModelInputBlock,
+  PortableModelContextMessage,
   ToolCall,
 } from "@sweatpants/model-provider";
 import type { McpContentBlock, McpMessage, McpToolResultContent } from "./mcp/protocol/types.ts";
@@ -46,15 +46,15 @@ function textFromBlocks(blocks: readonly McpContentBlock[]): string {
     .join("");
 }
 
-function modelContentFromBlocks(blocks: readonly McpContentBlock[]): ModelContentBlock[] {
-  const content: ModelContentBlock[] = [];
+function modelContentFromBlocks(blocks: readonly McpContentBlock[]): PortableModelInputBlock[] {
+  const content: PortableModelInputBlock[] = [];
   for (const block of blocks) {
     switch (block.type) {
       case "text":
-        content.push(block);
+        content.push({ type: "text", text: block.text });
         break;
       case "image":
-        content.push(block);
+        content.push({ type: "image", data: block.data, mimeType: block.mimeType });
         break;
     }
   }
@@ -75,7 +75,7 @@ function resolveToolName(
 function modelResult(
   result: { tool_call_id: string; name?: string; content: string; isError: boolean },
   toolNames: ReadonlyMap<string, string>,
-): ModelMessage {
+): PortableModelContextMessage {
   return {
     role: "tool",
     tool_call_id: result.tool_call_id,
@@ -88,7 +88,7 @@ function modelResult(
 function mcpResult(
   result: McpToolResultContent,
   toolNames: ReadonlyMap<string, string>,
-): ModelMessage {
+): PortableModelContextMessage {
   return {
     role: "tool",
     tool_call_id: result.toolUseId,
@@ -103,9 +103,11 @@ function mcpResult(
  * Call/result identity is resolved over the complete causal sequence; no Chat
  * Core message, synthetic message id, or empty tool name is introduced.
  */
-export function toModelMessages(messages: readonly ExtendedMessage[]): ModelMessage[] {
+export function toModelMessages(
+  messages: readonly ExtendedMessage[],
+): PortableModelContextMessage[] {
   const toolNames = new Map<string, string>();
-  const output: ModelMessage[] = [];
+  const output: PortableModelContextMessage[] = [];
 
   for (const message of messages) {
     if (isToolCallMessage(message)) {
@@ -116,7 +118,20 @@ export function toModelMessages(messages: readonly ExtendedMessage[]): ModelMess
         role: "assistant",
         content: [
           ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
-          ...message.toolCalls.map((toolCall) => ({ type: "toolCall" as const, toolCall })),
+          ...message.toolCalls.map((toolCall) => ({
+            type: "toolCall" as const,
+            toolCall: {
+              id: toolCall.id,
+              type: "function" as const,
+              function: {
+                name: toolCall.function.name,
+                arguments: toolCall.function.arguments,
+              },
+              ...(toolCall.thoughtSignature !== undefined
+                ? { thoughtSignature: toolCall.thoughtSignature }
+                : {}),
+            },
+          })),
         ],
       });
       continue;

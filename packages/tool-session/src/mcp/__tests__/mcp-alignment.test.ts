@@ -61,8 +61,8 @@ describe("__schema__ meta-tool encoding", () => {
       messages: [{ role: "user", content: "Pick a strategy" }],
       schema: { type: "object", properties: { choice: { type: "string" } } },
       tools: [
-        { name: "offensive", inputSchema: { type: "object" } },
-        { name: "defensive", inputSchema: { type: "object" } },
+        { name: "offensive", parameters: { type: "object" } },
+        { name: "defensive", parameters: { type: "object" } },
       ],
     };
 
@@ -97,7 +97,7 @@ describe("__schema__ meta-tool encoding", () => {
       timestamp: Date.now(),
       sampleId: "sample_1",
       messages: [{ role: "user", content: "Pick" }],
-      tools: [{ name: "pick", inputSchema: { type: "object" } }],
+      tools: [{ name: "pick", parameters: { type: "object" } }],
       toolChoice: "auto",
     };
 

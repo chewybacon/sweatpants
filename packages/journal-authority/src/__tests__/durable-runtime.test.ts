@@ -1,8 +1,4 @@
 import {
-  MODEL_SAMPLE_EFFECT,
-  createModelSamplingEffectRegistration,
-} from "@sweatpants/durable-effects/model-sample";
-import {
   ExecutionDurableEffectRegistryContext,
   ProgramDriverRegistryContext,
   createProgramDriverRegistry,
@@ -261,16 +257,6 @@ function createAuthority(sessionId = "session-1", now: () => number = () => 1_00
 }
 
 describe("crank-native durable runtime", () => {
-  it("uses one repeatable model.sample contract", () => {
-    expect(MODEL_SAMPLE_EFFECT).toMatchObject({
-      name: "model.sample",
-      version: "2",
-      retrySafety: { mode: "repeatable" },
-    });
-    const registry = createDurableEffectRegistry([createModelSamplingEffectRegistration()]);
-    expect([...registry.keys()]).toEqual(["model.sample@2"]);
-  });
-
   it("rejects noncanonical and oversized terminal values before driver transport", async () => {
     const terminalManifest: DurableProgramManifest = {
       ...manifest,

@@ -6,7 +6,6 @@ import {
   type ProgramStepProposal,
 } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
-import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
 import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
   DURABLE_DRIVER_FIXTURE_TOOLS,
@@ -101,8 +100,12 @@ function chat(
 }
 
 describe("durable chat authoring", () => {
-  it("uses the one canonical model sampling contract without a bridge contract", () => {
-    expect(CHAT_MODEL_SAMPLE_EFFECT).toBe(MODEL_SAMPLE_EFFECT);
+  it("owns the authored chat sampling contract independently of provider invocation", () => {
+    expect(CHAT_MODEL_SAMPLE_EFFECT).toMatchObject({
+      name: "model.sample",
+      version: "2",
+      retrySafety: { mode: "repeatable" },
+    });
   });
   it("selects one bounded explicit-first context snapshot", () => {
     const policy = latestContextWindow({
@@ -401,7 +404,7 @@ describe("durable chat authoring", () => {
 
   it("matches the independently frozen chat-program digest vector", () => {
     expect(chat().manifest.digest).toBe(
-      "b66230c7aab573660649f86cfa9351e12d8485da943bd16f3afb147b7f0daf07",
+      "320f97c1509cf303fa6fb44178f674c7c8a4f25e056fac6edfd45ab870608b7f",
     );
   });
 

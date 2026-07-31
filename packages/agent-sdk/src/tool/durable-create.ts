@@ -1,5 +1,11 @@
-import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/durable-effects";
-import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/durable-effects";
+import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/model-sampling";
+import {
+  MODEL_SAMPLE_EFFECT,
+  MODEL_SAMPLE_SCHEMA_ENTRIES,
+  assistantText,
+  assistantToolCalls,
+} from "@sweatpants/model-sampling";
+import type { PortableModelContextMessage, PortableModelTool } from "@sweatpants/model-provider";
 import { type EffectDefinition } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
@@ -9,7 +15,7 @@ import { z } from "zod";
 import { canonicalJson, sha256, sortStrings } from "@sweatpants/foundation";
 import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
-import { type Json } from "@sweatpants/foundation";
+import { type Json, type JsonObject } from "@sweatpants/foundation";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
@@ -41,6 +47,10 @@ import type {
   NormalizedElicitsMap,
   ToolExtensionMetadata,
   SchemaProjectionOptions,
+  SampleExchangeCompletion,
+  SampleExchangeCompletionBase,
+  ParsedSampleExchangeCompletion,
+  ToolCallSampleExchangeCompletion,
 } from "./types.ts";
 
 type JsonCompatible<T> = [T] extends [null | boolean | number | string | undefined]
@@ -79,25 +89,24 @@ type SamplingTool = {
 };
 type SamplingRequestBase = {
   readonly prompt?: string;
-  readonly messages?: readonly Json[];
-  readonly systemPrompt?: Json;
+  readonly messages?: readonly PortableModelContextMessage[];
+  readonly systemPrompt?: string;
   readonly maxTokens?: number;
   readonly modelPreferences?: Json;
   readonly classifications?: readonly Json[];
-  readonly sampling?: Json;
   readonly retries?: number;
 };
 type DurableSamplingContext = {
-  sample(request: SamplingRequestBase): Operation<ModelSampleResult>;
+  sample(request: SamplingRequestBase): Operation<SampleExchangeCompletionBase>;
   sampleTools(
     request: SamplingRequestBase & {
       readonly tools: readonly SamplingTool[];
-      readonly toolChoice?: Json;
+      readonly toolChoice?: "auto" | "none" | "required";
     },
-  ): Operation<ModelSampleResult>;
+  ): Operation<ToolCallSampleExchangeCompletion>;
   sampleSchema<T>(
     request: SamplingRequestBase & { readonly schema: StandardSchemaV1<unknown, T> },
-  ): Operation<ModelSampleResult & { parsed: T }>;
+  ): Operation<ParsedSampleExchangeCompletion<T> & { parsed: T }>;
 };
 
 type ElicitRequestFor<E> =
@@ -601,7 +610,7 @@ function contextForDeclarations(
           sampleTools(
             request: SamplingRequestBase & {
               tools: readonly SamplingTool[];
-              toolChoice?: Json;
+              toolChoice?: "auto" | "none" | "required";
             },
           ) {
             return sampleModel(context, {
@@ -609,7 +618,7 @@ function contextForDeclarations(
               tools: request.tools.map((tool) => ({
                 name: tool.name,
                 ...(tool.description ? { description: tool.description } : {}),
-                inputSchema: portableSamplingSchema(tool.inputSchema),
+                parameters: portableSamplingSchema(tool.inputSchema),
               })),
             });
           },
@@ -647,24 +656,86 @@ function contextForDeclarations(
 
 function* sampleModel(
   context: DurableProgramContext,
-  request: SamplingRequestBase & { tools?: Json[]; toolChoice?: Json; schema?: Json },
-): Operation<ModelSampleResult> {
-  const { retries: _retries, prompt, messages, ...options } = request;
+  request: SamplingRequestBase & {
+    tools?: PortableModelTool[];
+    toolChoice?: "auto" | "none" | "required";
+    schema?: JsonObject;
+  },
+): Operation<SampleExchangeCompletion> {
+  const {
+    retries: _retries,
+    prompt,
+    messages,
+    tools,
+    schema,
+    systemPrompt,
+    maxTokens,
+    modelPreferences,
+    classifications,
+    toolChoice,
+  } = request;
   assertSamplingRequest(prompt, messages, request.retries);
-  const canonicalRequest = {
-    messages: prompt === undefined ? [...messages!] : [{ role: "user", content: prompt }],
-    ...options,
-    ...(options.classifications ? { classifications: [...options.classifications] } : {}),
-  } as ModelSampleRequest;
-  return yield* context.effect(MODEL_SAMPLE_EFFECT, canonicalRequest, {
+  const contextMessages: PortableModelContextMessage[] =
+    prompt === undefined ? [...messages!] : [{ role: "user", content: prompt }];
+  const canonicalRequest: ModelSampleRequest = {
+    invocation: {
+      context: {
+        messages: contextMessages,
+        ...(systemPrompt !== undefined ? { systemPrompt } : {}),
+      },
+      ...(maxTokens !== undefined || toolChoice !== undefined
+        ? {
+            options: {
+              ...(maxTokens !== undefined ? { maxTokens } : {}),
+              ...(toolChoice !== undefined ? { toolChoice } : {}),
+            },
+          }
+        : {}),
+    },
+    tools: tools ? { type: "embedded", tools } : { type: "none" },
+    response: schema ? { type: "json", schema } : { type: "message" },
+    ...(modelPreferences !== undefined ? { modelPreferences } : {}),
+    ...(classifications ? { classifications: [...classifications] } : {}),
+  };
+  const result = yield* context.effect(MODEL_SAMPLE_EFFECT, canonicalRequest, {
     audience: "model-runtime",
   });
+  return projectModelSampleCompletion(result);
+}
+
+function projectModelSampleCompletion(result: ModelSampleResult): SampleExchangeCompletion {
+  const base = {
+    text: assistantText(result.message),
+    ...(result.message.source?.responseModel !== undefined
+      ? { model: result.message.source.responseModel }
+      : result.message.source?.model !== undefined
+        ? { model: result.message.source.model }
+        : {}),
+    ...(result.message.stopReason !== undefined ? { stopReason: result.message.stopReason } : {}),
+  };
+  if (result.output.type === "json") {
+    return { ...base, parsed: result.output.value };
+  }
+  if (result.output.type === "json-invalid") {
+    return { ...base, parsed: null, parseError: result.output.error };
+  }
+  const calls = assistantToolCalls(result.message);
+  return calls.length > 0
+    ? {
+        ...base,
+        toolCalls: calls.map((call) => ({
+          id: call.id,
+          name: call.function.name,
+          arguments: call.function.arguments,
+        })),
+      }
+    : base;
 }
 
 function* sampleStructured<T>(
   context: DurableProgramContext,
   request: SamplingRequestBase & { schema: StandardSchemaV1<unknown, T> },
-): Operation<ModelSampleResult & { parsed: T }> {
+): Operation<ParsedSampleExchangeCompletion<T> & { parsed: T }> {
   const { schema, retries = 0, ...base } = request;
   assertSamplingRequest(base.prompt, base.messages, retries);
   let lastMessage = "model sample did not satisfy schema";
@@ -673,7 +744,7 @@ function* sampleStructured<T>(
       ...base,
       schema: portableSamplingSchema(schema),
     });
-    const candidate = result.parsed ?? parseSampleText(result.text);
+    const candidate = "parsed" in result ? result.parsed : result.text;
     let validated: StandardSchemaV1.Result<T>;
     try {
       validated = yield* validateStandardSchema(schema, candidate);
@@ -682,7 +753,12 @@ function* sampleStructured<T>(
       continue;
     }
     if (validated.issues === undefined) {
-      return Object.assign({}, result, { parsed: validated.value });
+      return {
+        text: result.text,
+        ...(result.model !== undefined ? { model: result.model } : {}),
+        ...(result.stopReason !== undefined ? { stopReason: result.stopReason } : {}),
+        parsed: validated.value,
+      };
     }
     lastMessage = safeSchemaIssues(validated.issues)
       .slice(0, 4)
@@ -699,7 +775,7 @@ function* sampleStructured<T>(
 
 function assertSamplingRequest(
   prompt: string | undefined,
-  messages: readonly Json[] | undefined,
+  messages: readonly PortableModelContextMessage[] | undefined,
   retries = 0,
 ): void {
   if ((prompt === undefined) === (messages === undefined)) {
@@ -712,7 +788,7 @@ function assertSamplingRequest(
 
 function portableSamplingSchema(
   schema: StandardSchemaV1 | Readonly<Record<string, unknown>>,
-): Json {
+): JsonObject {
   if (isStandardSchemaValue(schema)) {
     if (schema["~standard"].vendor !== "zod") {
       throw new CrankError(
@@ -721,7 +797,7 @@ function portableSamplingSchema(
       );
     }
     try {
-      return z.toJSONSchema(schema as z.ZodType) as Json;
+      return z.toJSONSchema(schema as z.ZodType) as JsonObject;
     } catch {
       throw new CrankError(
         "schema_projection_unavailable",
@@ -729,7 +805,7 @@ function portableSamplingSchema(
       );
     }
   }
-  return schema as Json;
+  return schema as JsonObject;
 }
 
 function isStandardSchemaValue(value: unknown): value is StandardSchemaV1 {
@@ -738,14 +814,6 @@ function isStandardSchemaValue(value: unknown): value is StandardSchemaV1 {
     "~standard"
   ];
   return Boolean(standard && standard.version === 1 && typeof standard.validate === "function");
-}
-
-function parseSampleText(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
 }
 
 function normalizeElicits(

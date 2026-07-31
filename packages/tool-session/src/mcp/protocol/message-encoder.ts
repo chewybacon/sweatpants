@@ -185,7 +185,7 @@ export function encodeSamplingRequest(
   let mcpTools: McpToolDefinition[] | undefined = event.tools?.map((tool) => ({
     name: tool.name,
     ...(tool.description !== undefined && { description: tool.description }),
-    inputSchema: tool.inputSchema as Record<string, unknown>,
+    inputSchema: tool.parameters,
   }));
 
   // Build MCP tool choice

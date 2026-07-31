@@ -201,7 +201,13 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
         foreignToolAdapter.modelSampleRegistration(function* () {
           const round = outerModelSamples;
           outerModelSamples += 1;
-          return { text: `suggestion-${round}`, calls: [], content: [] };
+          return {
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: `suggestion-${round}` }],
+            },
+            output: { type: "message" },
+          };
         }),
       ]);
       yield* authority.openTask({

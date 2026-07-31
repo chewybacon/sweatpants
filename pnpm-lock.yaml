@@ -241,6 +241,9 @@ importers:
       '@sweatpants/journal-authority':
         specifier: workspace:*
         version: link:../../packages/journal-authority
+      '@sweatpants/model-sampling':
+        specifier: workspace:*
+        version: link:../../packages/model-sampling
       '@sweatpants/tool-session':
         specifier: workspace:*
         version: link:../../packages/tool-session
@@ -296,6 +299,9 @@ importers:
       '@sweatpants/journal-authority':
         specifier: workspace:*
         version: link:../../packages/journal-authority
+      '@sweatpants/model-sampling':
+        specifier: workspace:*
+        version: link:../../packages/model-sampling
       '@sweatpants/tool-runtime-agentcore':
         specifier: workspace:*
         version: link:../../packages/tool-runtime-agentcore
@@ -717,6 +723,9 @@ importers:
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../../packages/model-provider-pi-ai
+      '@sweatpants/model-sampling':
+        specifier: workspace:*
+        version: link:../../packages/model-sampling
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
@@ -1191,6 +1200,12 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      '@sweatpants/model-provider':
+        specifier: workspace:*
+        version: link:../model-provider
+      '@sweatpants/model-sampling':
+        specifier: workspace:*
+        version: link:../model-sampling
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -1347,6 +1362,9 @@ importers:
       '@sweatpants/model-provider':
         specifier: workspace:*
         version: link:../model-provider
+      '@sweatpants/model-sampling':
+        specifier: workspace:*
+        version: link:../model-sampling
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../tool-runtime
@@ -1634,6 +1652,40 @@ importers:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
+  packages/model-sampling:
+    dependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
+      '@sweatpants/durable-effects':
+        specifier: workspace:*
+        version: link:../durable-effects
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
+      '@sweatpants/model-provider':
+        specifier: workspace:*
+        version: link:../model-provider
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/platform-acceptance:
     dependencies:
       '@sweatpants/a2a':
@@ -1911,6 +1963,9 @@ importers:
       '@sweatpants/model-provider':
         specifier: workspace:*
         version: link:../model-provider
+      '@sweatpants/model-sampling':
+        specifier: workspace:*
+        version: link:../model-sampling
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../tool-runtime
@@ -2033,6 +2088,9 @@ importers:
       '@sweatpants/model-provider':
         specifier: workspace:*
         version: link:../model-provider
+      '@sweatpants/model-sampling':
+        specifier: workspace:*
+        version: link:../model-sampling
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9

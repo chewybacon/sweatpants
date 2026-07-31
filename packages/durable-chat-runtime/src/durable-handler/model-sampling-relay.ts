@@ -1,9 +1,6 @@
 import type { Operation } from "effection";
 import type { TokenBuffer, TokenBufferWriter } from "@sweatpants/durable-streams";
-import type {
-  ProgramDeliveryEnvelope,
-  ProgramDeliveryWriter,
-} from "@sweatpants/durable-effects/model-sample";
+import type { ProgramDeliveryEnvelope, ProgramDeliveryWriter } from "@sweatpants/model-sampling";
 
 /** Adapts the current root TokenBuffer fence to the narrow sampling delivery capability. */
 export function createProgramDeliveryWriter(
