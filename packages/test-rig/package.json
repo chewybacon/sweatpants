@@ -18,6 +18,16 @@
                 "default": "./dist/index.js"
             }
         },
+        "./ag-ui": {
+            "development": {
+                "import": "./src/ag-ui.ts",
+                "types": "./src/ag-ui.ts"
+            },
+            "import": {
+                "types": "./dist/ag-ui.d.ts",
+                "default": "./dist/ag-ui.js"
+            }
+        },
         "./model": {
             "development": {
                 "import": "./src/model.ts",

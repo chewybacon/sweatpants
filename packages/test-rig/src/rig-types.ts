@@ -1,3 +1,4 @@
+import type { AgUiProbe } from "./ag-ui.ts";
 import type { ChatFetch, ChatHandle } from "./chat.ts";
 import type { ModelHandle } from "./model.ts";
 import type { StreamTransportHandle } from "./transport.ts";
@@ -23,6 +24,7 @@ export interface ScenarioLifecycleControls {
  */
 export interface TestRig {
   readonly model: ModelHandle;
+  readonly agui: AgUiProbe;
   readonly chat: ChatHandle;
   readonly streams: StreamTransportHandle;
   readonly fetch: ChatFetch;

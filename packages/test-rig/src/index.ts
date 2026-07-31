@@ -1,9 +1,11 @@
+export * from "./ag-ui.ts";
 export * from "./model.ts";
 export * from "./history.ts";
 export * from "./chat.ts";
 export * from "./transport.ts";
 export * from "./scenario.ts";
 
+import { createAgUiProbe } from "./ag-ui.ts";
 import {
   createOpenAiResponsesModel,
   createPiAiModelProviderDriver,
@@ -199,6 +201,8 @@ export async function withTestRig<T>(
     return root;
   };
 
+  const agui = createAgUiProbe(poison);
+
   const bounded = async <Value>(
     label: string,
     promise: PromiseLike<Value>,
@@ -275,10 +279,21 @@ export async function withTestRig<T>(
 
     await createApplicationGeneration();
 
+    const observedFetch: ChatFetch = async (input, init) => {
+      const response = await binding!.fetch(input, init);
+      const raw =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const pathname = new URL(raw, "http://localhost").pathname;
+      const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+      return method.toUpperCase() === "POST" && pathname.endsWith("/chat")
+        ? agui.observe(response)
+        : response;
+    };
+
     chatRuntime = createChatRuntime({
       // Resolve the binding at request time so a causal scenario can replace a
       // Host while retaining its model simulator and durable substrate.
-      fetch: (input, init) => binding!.fetch(input, init),
+      fetch: observedFetch,
       barrierTimeoutMs,
       onPoison: poison,
       getRootFailure: () => root,
@@ -314,6 +329,7 @@ export async function withTestRig<T>(
       let verification: unknown;
       if (strict) {
         try {
+          await bounded("AG-UI observation", agui.settle(), cancellationTimeoutMs);
           simulator!.verify();
           chatRuntime!.verify();
         } catch (error) {
@@ -337,6 +353,7 @@ export async function withTestRig<T>(
           cleanupErrors.push(new Error(`${label}: ${cause.message}`, { cause }));
         }
       }
+      agui.close(root);
       state = "closed";
       if (verification) {
         if (verification instanceof Error && cleanupErrors.length > 0) {
@@ -411,6 +428,12 @@ export async function withTestRig<T>(
         }
         return modelHandle;
       },
+      get agui() {
+        if (root) {
+          throw root;
+        }
+        return agui;
+      },
       get chat() {
         if (root) {
           throw root;
@@ -421,13 +444,13 @@ export async function withTestRig<T>(
         if (root) {
           throw root;
         }
-        return createStreamTransportHandle(binding!.fetch, barrierTimeoutMs);
+        return createStreamTransportHandle(observedFetch, barrierTimeoutMs);
       },
       get fetch() {
         if (root) {
           throw root;
         }
-        return binding!.fetch;
+        return observedFetch;
       },
       get lifecycle() {
         if (root) {
