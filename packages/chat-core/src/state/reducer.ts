@@ -227,7 +227,10 @@ function addInterrupts(
     const toolName =
       typeof metadata["sweatpants/toolName"] === "string"
         ? metadata["sweatpants/toolName"]
-        : (state.toolCallDrafts[callId]?.name ?? "unknown");
+        : state.toolCallDrafts[callId]?.name;
+    if (!toolName) {
+      throw new Error(`Interrupt "${interrupt.id}" has no settled tool name`);
+    }
     const key =
       typeof metadata["sweatpants/key"] === "string" ? metadata["sweatpants/key"] : interrupt.id;
     const existing = pending[callId];
@@ -482,17 +485,19 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
     }
 
     case "TOOL_CALL_RESULT": {
-      const toolName =
-        event.toolCallName ?? state.toolCallDrafts[event.toolCallId]?.name ?? "unknown";
+      const toolName = event.toolCallName ?? state.toolCallDrafts[event.toolCallId]?.name;
+      if (!toolName) {
+        throw new Error(`Tool result "${event.toolCallId}" has no settled tool name`);
+      }
       // The producer said whether this failed. Text is never a control signal.
       const isError = event.error !== undefined || event.isError === true;
       const toolMessage: Message = {
         id: event.messageId,
         role: "tool",
         tool_call_id: event.toolCallId,
+        name: toolName,
         content: event.content,
-        ...(isError ? { isError: true } : {}),
-        replay: { toolName },
+        isError,
       };
       const updatePart = (part: MessagePart): MessagePart =>
         part.type === "tool-call" && part.callId === event.toolCallId

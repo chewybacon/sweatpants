@@ -142,7 +142,7 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
       messages.push({
         role: "tool",
         tool_call_id: call.id,
-        tool_name: call.target,
+        name: call.target,
         content: outcome.result,
         ...(outcome.failed ? { is_error: true } : {}),
       });
@@ -1261,13 +1261,21 @@ function toRuntimeMessage(value: Json): RuntimeMessage {
         ...(content ? [{ type: "text" as const, text: content }] : []),
         ...toolCalls.map((call) => {
           const fn = jsonRecord(call["function"]);
+          const id = call["id"];
+          const name = call["target"] ?? call["name"] ?? fn?.["name"];
+          if (typeof id !== "string" || typeof name !== "string") {
+            throw new CrankError(
+              "invalid_chat_request",
+              "Settled assistant tool call requires id and function name",
+            );
+          }
           return {
             type: "toolCall" as const,
             toolCall: {
-              id: String(call["id"] ?? "tool"),
+              id,
               type: "function" as const,
               function: {
-                name: String(call["target"] ?? call["name"] ?? fn?.["name"] ?? "tool"),
+                name,
                 arguments: toolCallArguments(
                   call["input"] ?? call["arguments"] ?? fn?.["arguments"],
                 ),
@@ -1282,11 +1290,19 @@ function toRuntimeMessage(value: Json): RuntimeMessage {
     };
   }
   if (role === "tool") {
+    const toolCallId = message["tool_call_id"];
+    const toolName = message["name"] ?? message["tool_name"];
+    if (typeof toolCallId !== "string" || typeof toolName !== "string") {
+      throw new CrankError(
+        "invalid_chat_request",
+        "Settled tool history requires tool_call_id and name",
+      );
+    }
     return {
-      role: "toolResult",
-      toolCallId: String(message["tool_call_id"] ?? "tool"),
-      toolName: String(message["tool_name"] ?? "tool"),
-      content: [{ type: "text", text: content }],
+      role: "tool",
+      tool_call_id: toolCallId,
+      name: toolName,
+      content,
       isError: message["is_error"] === true,
     };
   }
@@ -1359,6 +1375,9 @@ function parseRuntimeContentBlock(value: Json): ContentBlock | undefined {
  * hop's only job — shape stays the authored tool's decision at `execute`.
  */
 function toolCallArguments(value: Json | undefined): Json {
+  if (value === undefined) {
+    throw new CrankError("invalid_chat_request", "Settled tool call requires arguments");
+  }
   if (typeof value === "string") {
     try {
       return JSON.parse(value) as Json;
@@ -1366,7 +1385,7 @@ function toolCallArguments(value: Json | undefined): Json {
       return value;
     }
   }
-  return value ?? null;
+  return value;
 }
 
 function snapshotAssistantContent(content: AssistantMessage["content"]): Json[] {

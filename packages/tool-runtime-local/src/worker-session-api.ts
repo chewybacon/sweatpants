@@ -73,7 +73,7 @@ function workerMessageToExtended(message: WorkerMessage): ExtendedMessage {
     return {
       role: "tool",
       content: resultText,
-      toolCallId: firstResult.toolUseId,
+      tool_call_id: firstResult.toolUseId,
       isError: firstResult.isError === true,
     };
   }

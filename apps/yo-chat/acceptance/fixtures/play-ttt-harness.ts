@@ -190,7 +190,7 @@ function sampleMessage(request: ModelProviderStreamRequest, sequence: number): A
       stopReason: "stop",
     };
   }
-  const hasToolResult = request.context.messages.some((message) => message.role === "toolResult");
+  const hasToolResult = request.context.messages.some((message) => message.role === "tool");
   if (!hasToolResult) {
     return {
       role: "assistant",

@@ -24,12 +24,12 @@ Current inventory totals:
 | Record | Count |
 | --- | ---: |
 | Historical validation records | 86 |
-| Manual shape owners | 326 |
-| `B` external boundary | 107 |
-| `R` same-domain revalidation | 157 |
+| Manual shape owners | 325 |
+| `B` external boundary | 106 |
+| `R` same-domain revalidation | 156 |
 | `S` typed semantic verification | 15 |
 | `G` generic mechanism | 6 |
-| `C` compatibility normalizer | 41 |
+| `C` compatibility normalizer | 42 |
 
 The counts are evidence indicators, not completion criteria or an edit queue. Owners are reviewed when their vertical producer-to-consumer trust flow is migrated; deletion follows from establishing the upstream authority.
 
@@ -166,7 +166,9 @@ The misleading `WireElicitResult` and `WireSampleResult*` names were replaced by
 
 `@sweatpants/model-provider` now owns the sole settled `ToolCall`: an OpenAI-compatible decoded function-call shape whose arguments remain `Json`. The concrete pi-ai adapter performs the one real conversion from pi-ai's flat settled block, while partial stream events remain incomplete and separate. Chat Core, Tool Runtime, and Tool Session deleted their competing declarations and carry the provider-established call through history and execution without argument reconstruction. Model-provider content blocks wrap the settled call, and `toolcall_end` transports the settled call directly, preserving opaque thought signatures and provider-owned identity.
 
-The unused `OllamaChatRequest`, `OllamaChatChunk`, and `ClientToolSchema` residue was deleted from Chat Core and its public exports. Direct-Ollama Hydra documentation retains its own app-local protocol DTOs; installed Ollama behavior remains owned by the concrete pi-ai adapter. A package-charter gate enforces one `ToolCall` declaration and prevents provider-specific request/chunk DTOs from returning to Chat Core.
+The paired settled result now follows the same seam. Model Provider solely owns OpenAI-compatible `ToolResultMessage` with `role: "tool"`, `tool_call_id`, required producer-known `name`, content, and explicit `isError`. Tool Session names its pre-correlation carrier `PendingSessionToolResult`; sequence-aware completion produces the settled Model Provider message. Chat Core carries tool name and failure directly instead of hiding identity in `replay.toolName`, and AG-UI/history projections reject orphan results rather than fabricating empty or `unknown` identity. Only the concrete pi-ai adapter translates to pi-ai's `role: "toolResult"`/camel-case vocabulary.
+
+The unused `OllamaChatRequest`, `OllamaChatChunk`, and `ClientToolSchema` residue was deleted from Chat Core and its public exports. Direct-Ollama Hydra documentation retains its own app-local protocol DTOs; installed Ollama behavior remains owned by the concrete pi-ai adapter. A package-charter gate enforces sole `ToolCall` and `ToolResultMessage` declarations and prevents provider-specific request/chunk DTOs from returning to Chat Core.
 
 ## Validation performed
 
@@ -191,7 +193,7 @@ The unused `OllamaChatRequest`, `OllamaChatChunk`, and `ClientToolSchema` residu
 | Tool Session tests | 113 passed, 7 todo |
 | AgentCore tests | 49 passed |
 | Execution Store Redis tests | 29 passed |
-| Model provider contract tests | 4 passed |
+| Model provider contract tests | 5 passed |
 | Pi-ai provider unit tests | 8 passed |
 | Model provider wire tests (test-rig simulator) | 10 passed |
 | Platform Acceptance tests | 94 passed |

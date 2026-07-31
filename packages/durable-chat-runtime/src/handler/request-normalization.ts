@@ -84,13 +84,19 @@ function normalizeIncomingMessages(
     }
 
     if (role === "tool") {
-      const toolCallId =
-        typeof message["tool_call_id"] === "string"
-          ? message["tool_call_id"]
-          : typeof message["toolCallId"] === "string"
-            ? message["toolCallId"]
-            : "";
-      normalized.push({ id, role: "tool" as const, content, tool_call_id: toolCallId });
+      const toolCallId = message["tool_call_id"] ?? message["toolCallId"];
+      const toolName = message["name"] ?? message["replay"]?.toolName;
+      if (!toolCallId || !toolName || message["isError"] === undefined) {
+        throw new Error("Parsed tool message is missing settled result facts");
+      }
+      normalized.push({
+        id,
+        role: "tool" as const,
+        content,
+        tool_call_id: toolCallId,
+        name: toolName,
+        isError: message["isError"],
+      });
       continue;
     }
 
@@ -153,6 +159,8 @@ const rawMessageSchema = z
     toolCalls: z.array(rawToolCallSchema).max(128).optional(),
     tool_call_id: z.string().max(512).optional(),
     toolCallId: z.string().max(512).optional(),
+    name: z.string().max(512).optional(),
+    isError: z.boolean().optional(),
     activityType: z.string().max(512).optional(),
     replay: z
       .object({
@@ -175,6 +183,26 @@ const rawMessageSchema = z
         code: "custom",
         path: ["tool_call_id"],
         message: "tool messages require a non-empty tool call id",
+      });
+    }
+    if (
+      message.role === "tool" &&
+      !(
+        (typeof message.name === "string" && message.name.length > 0) ||
+        (typeof message.replay?.toolName === "string" && message.replay.toolName.length > 0)
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["name"],
+        message: "tool messages require a settled tool name",
+      });
+    }
+    if (message.role === "tool" && message.isError === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["isError"],
+        message: "tool messages require explicit failure state",
       });
     }
     if (

@@ -80,14 +80,14 @@ export function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
 // =============================================================================
 
 export function recordToElicit(record: OpenInterruptRecord): ElicitRequestStreamEvent | null {
-  if (!record.toolCallId) {
+  if (!record.toolCallId || !record.toolName) {
     return null;
   }
   return {
     type: "elicit_request",
     sessionId: record.toolCallId,
     callId: record.toolCallId,
-    toolName: record.toolName ?? "unknown",
+    toolName: record.toolName,
     elicitId: record.interruptId,
     key:
       typeof record.publicMetadata?.["sweatpants/key"] === "string"

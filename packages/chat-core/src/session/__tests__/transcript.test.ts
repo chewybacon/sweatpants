@@ -28,7 +28,14 @@ describe("transcript writer", () => {
 
     appendUserMessage(history, state, "Draw 3 cards");
     appendAssistantToolCallMessage(history, state, [toolCall("call_1")], "");
-    appendToolMessage(history, state, "call_1", "The user selected the 5 of Hearts.");
+    appendToolMessage(
+      history,
+      state,
+      "call_1",
+      "pick_card",
+      "The user selected the 5 of Hearts.",
+      false,
+    );
     appendAssistantFinalMessage(history, state, "You picked the 5 of Hearts.");
 
     expect(history.map((message) => message.id)).toEqual([
@@ -62,7 +69,14 @@ describe("transcript writer", () => {
 
     appendUserMessage(normalized, state, "Draw 3 cards");
     appendAssistantToolCallMessage(normalized, state, [toolCall("call_1")], "");
-    appendToolMessage(normalized, state, "call_1", "The user selected the 5 of Hearts.");
+    appendToolMessage(
+      normalized,
+      state,
+      "call_1",
+      "pick_card",
+      "The user selected the 5 of Hearts.",
+      false,
+    );
     appendAssistantFinalMessage(normalized, state, "You picked the 5 of Hearts.");
 
     expect(normalized.map((message) => message.id)).toEqual([

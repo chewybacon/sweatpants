@@ -61,13 +61,22 @@ describe("durable AG-UI replay", () => {
 
   it("keeps replay-enriched duplicate tool messages", () => {
     const messages: Message[] = [
-      { id: "plain", role: "tool", tool_call_id: "call", content: "plain" },
+      {
+        id: "plain",
+        role: "tool",
+        tool_call_id: "call",
+        name: "search",
+        content: "plain",
+        isError: false,
+      },
       {
         id: "replay",
         role: "tool",
         tool_call_id: "call",
+        name: "search",
         content: "rich",
-        replay: { toolName: "search" },
+        isError: false,
+        replay: { trace: [] },
       },
     ];
     expect(deduplicateMessages(messages)).toEqual([messages[1]]);
@@ -79,10 +88,19 @@ describe("durable AG-UI replay", () => {
         id: "rich",
         role: "tool",
         tool_call_id: "call",
+        name: "search",
         content: "rich",
-        replay: { toolName: "search" },
+        isError: false,
+        replay: { trace: [] },
       },
-      { id: "plain", role: "tool", tool_call_id: "call", content: "plain" },
+      {
+        id: "plain",
+        role: "tool",
+        tool_call_id: "call",
+        name: "search",
+        content: "plain",
+        isError: false,
+      },
     ];
     expect(deduplicateMessages(messages)).toEqual([messages[0]]);
   });

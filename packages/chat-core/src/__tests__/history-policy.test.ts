@@ -24,9 +24,9 @@ function assistantCall(id: string, name = "echo"): Message {
 
 function toolResult(id: string): Message {
   return {
-    role: "toolResult",
-    toolCallId: id,
-    toolName: "echo",
+    role: "tool",
+    tool_call_id: id,
+    name: "echo",
     content: [{ type: "text", text: "ok" }],
     isError: false,
   };
@@ -74,7 +74,7 @@ describe("createMessageBudgetHistoryPolicy", () => {
       action: "drop_turn",
       toolCallIds: ["call-1", "call-1"],
     });
-    expect(result.decisions[0]!.roles).toEqual(["user", "assistant", "toolResult", "assistant"]);
+    expect(result.decisions[0]!.roles).toEqual(["user", "assistant", "tool", "assistant"]);
   });
 
   it("never splits a completed call/result pair across the retention boundary", () => {
@@ -96,14 +96,14 @@ describe("createMessageBudgetHistoryPolicy", () => {
     expect(result.messages.map((message) => message.role)).toEqual([
       "user",
       "assistant",
-      "toolResult",
+      "tool",
       "assistant",
     ]);
     const callIds = result.messages.flatMap((message) =>
       message.role === "assistant"
         ? message.content.flatMap((block) => (block.type === "toolCall" ? [block.toolCall.id] : []))
-        : message.role === "toolResult"
-          ? [message.toolCallId]
+        : message.role === "tool"
+          ? [message.tool_call_id]
           : [],
     );
     // Every remaining call has its result and vice versa.
@@ -125,7 +125,7 @@ describe("createMessageBudgetHistoryPolicy", () => {
     expect(result.messages.map((message) => message.role)).toEqual([
       "user",
       "assistant",
-      "toolResult",
+      "tool",
       "assistant",
     ]);
     expect(result.decisions).toHaveLength(1);

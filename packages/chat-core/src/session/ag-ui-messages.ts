@@ -23,7 +23,14 @@ export type AgUiMessage =
   | { id: string; role: "system"; content: string }
   | { id: string; role: "user"; content: string }
   | { id: string; role: "assistant"; content?: string; toolCalls?: AgUiToolCall[] }
-  | { id: string; role: "tool"; content: string; toolCallId: string; error?: string }
+  | {
+      id: string;
+      role: "tool";
+      content: string;
+      toolCallId: string;
+      name?: string;
+      error?: string;
+    }
   | {
       id: string;
       role: "activity";
@@ -82,11 +89,15 @@ export function internalMessageToAgUiMessage(message: Message): AgUiMessage {
   const id = message.id;
 
   if (message.role === "tool") {
+    if (!message.tool_call_id) {
+      throw new Error(`Tool message "${id}" has no settled tool_call_id`);
+    }
     return {
       id,
       role: "tool",
       content: message.content,
-      toolCallId: message.tool_call_id ?? "",
+      toolCallId: message.tool_call_id,
+      ...(message.name ? { name: message.name } : {}),
       ...(message.isError ? { error: message.content } : {}),
     };
   }
@@ -129,7 +140,10 @@ export function internalMessagesToAgUiMessages(messages: Message[]): AgUiMessage
   return messages.map(internalMessageToAgUiMessage);
 }
 
-export function agUiMessageToInternalMessage(message: AgUiMessage): Message | null {
+export function agUiMessageToInternalMessage(
+  message: AgUiMessage,
+  toolNames: ReadonlyMap<string, string> = new Map(),
+): Message | null {
   if (message.role === "activity") {
     return {
       id: message.id,
@@ -140,12 +154,17 @@ export function agUiMessageToInternalMessage(message: AgUiMessage): Message | nu
   }
 
   if (message.role === "tool") {
+    const name = message.name ?? toolNames.get(message.toolCallId);
+    if (!name) {
+      throw new Error(`AG-UI tool result "${message.toolCallId}" has no preceding call name`);
+    }
     return {
       id: message.id,
       role: "tool",
       content: message.content,
       tool_call_id: message.toolCallId,
-      ...(message.error !== undefined ? { isError: true } : {}),
+      name,
+      isError: message.error !== undefined,
     };
   }
 
@@ -166,9 +185,18 @@ export function agUiMessageToInternalMessage(message: AgUiMessage): Message | nu
 }
 
 export function agUiMessagesToInternalMessages(messages: AgUiMessage[]): Message[] {
-  return messages
-    .map(agUiMessageToInternalMessage)
-    .filter((message): message is Message => message !== null);
+  const toolNames = new Map<string, string>();
+  const output: Message[] = [];
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      for (const call of message.toolCalls ?? []) {
+        toolNames.set(call.id, call.function.name);
+      }
+    }
+    const internal = agUiMessageToInternalMessage(message, toolNames);
+    if (internal) output.push(internal);
+  }
+  return output;
 }
 
 export function isAgUiMessageArray(value: unknown): value is AgUiMessage[] {

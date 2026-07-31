@@ -110,11 +110,13 @@ export interface AssistantMessage {
   metadata?: Record<string, unknown>;
 }
 
+/** Settled OpenAI-compatible tool result correlated to a settled ToolCall. */
 export interface ToolResultMessage {
-  role: "toolResult";
-  toolCallId: string;
-  toolName: string;
-  content: ContentBlock[];
+  role: "tool";
+  tool_call_id: string;
+  /** Explicit producer-known call target; never reconstructed from result text. */
+  name: string;
+  content: string | ContentBlock[];
   isError: boolean;
   timestamp?: number;
 }

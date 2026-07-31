@@ -270,15 +270,24 @@ function buildModelProviderMessages(events: ThreadEvent[], systemPrompt: string)
     if (message.role === "assistant") {
       return {
         role: "assistant",
-        content: message.content ? [{ type: "text" as const, text: message.content }] : [],
+        content: [
+          ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
+          ...(message.tool_calls ?? []).map((toolCall) => ({
+            type: "toolCall" as const,
+            toolCall,
+          })),
+        ],
       };
     }
+    if (!message.tool_call_id || !message.name || message.isError === undefined) {
+      throw new Error(`Thread tool result "${message.id}" has incomplete settled identity`);
+    }
     return {
-      role: "toolResult",
-      toolCallId: message.tool_call_id ?? "",
-      toolName: message.replay?.toolName ?? "",
-      content: [{ type: "text" as const, text: message.content }],
-      isError: message.isError === true,
+      role: "tool",
+      tool_call_id: message.tool_call_id,
+      name: message.name,
+      content: message.content,
+      isError: message.isError,
     };
   });
 }

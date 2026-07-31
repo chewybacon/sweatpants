@@ -56,7 +56,7 @@ describe("canonical AG-UI chat fold", () => {
 
     const toolMessage = state.messages.find((message) => message.role === "tool");
     expect(toolMessage).toMatchObject({ content: "Error: no matches found" });
-    expect(toolMessage?.isError).toBeUndefined();
+    expect(toolMessage?.isError).toBe(false);
     const part = state.finalizedParts["assistant-tools-1"]?.find(
       (candidate) => candidate.type === "tool-call",
     );

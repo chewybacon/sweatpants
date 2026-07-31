@@ -72,8 +72,20 @@ describe("AG-UI fold scenarios", () => {
 
   it("suppresses duplicate results for the same tool call", () => {
     const state = fold([
-      { type: "TOOL_CALL_RESULT", messageId: "tool-old", toolCallId: "call-1", content: "old" },
-      { type: "TOOL_CALL_RESULT", messageId: "tool-new", toolCallId: "call-1", content: "new" },
+      {
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool-old",
+        toolCallId: "call-1",
+        toolCallName: "search",
+        content: "old",
+      },
+      {
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool-new",
+        toolCallId: "call-1",
+        toolCallName: "search",
+        content: "new",
+      },
     ]);
     expect(state.messages.filter((message) => message.role === "tool")).toEqual([
       expect.objectContaining({ id: "tool-new", content: "new" }),

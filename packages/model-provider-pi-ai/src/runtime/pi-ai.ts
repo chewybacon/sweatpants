@@ -178,8 +178,10 @@ function providerMessageHasPayload(message: Message): boolean {
   if (message.role === "assistant") {
     return message.content.some(contentBlockHasProviderPayload);
   }
-  if (message.role === "toolResult") {
-    return message.content.some(contentBlockHasProviderPayload);
+  if (message.role === "tool") {
+    return typeof message.content === "string"
+      ? message.content.trim().length > 0
+      : message.content.some(contentBlockHasProviderPayload);
   }
   return true;
 }
@@ -212,15 +214,15 @@ function normalizeProviderMessages(messages: Message[]): Message[] {
         }
       }
     }
-    if (message.role === "toolResult") {
-      resultIds.add(message.toolCallId);
+    if (message.role === "tool") {
+      resultIds.add(message.tool_call_id);
     }
   }
 
   const normalized: Message[] = [];
   for (const message of filtered) {
-    if (message.role === "toolResult") {
-      if (!callIds.has(message.toolCallId)) {
+    if (message.role === "tool") {
+      if (!callIds.has(message.tool_call_id)) {
         continue; // orphan result: no referencable call
       }
       normalized.push(message);
@@ -377,13 +379,15 @@ function toPiContext(context: Context, selectedModel: Model): PiContext {
       continue;
     }
 
-    const toolResultContent = message.content
-      .filter(
-        (block) =>
-          (block.type === "text" || block.type === "image") &&
-          contentBlockHasProviderPayload(block),
-      )
-      .map(toPiContentBlock) as Array<
+    const toolResultContent = (
+      typeof message.content === "string"
+        ? [{ type: "text" as const, text: message.content }]
+        : message.content.filter(
+            (block) =>
+              (block.type === "text" || block.type === "image") &&
+              contentBlockHasProviderPayload(block),
+          )
+    ).map(toPiContentBlock) as Array<
       { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
     >;
 
@@ -393,8 +397,8 @@ function toPiContext(context: Context, selectedModel: Model): PiContext {
 
     messages.push({
       role: "toolResult",
-      toolCallId: message.toolCallId,
-      toolName: message.toolName,
+      toolCallId: message.tool_call_id,
+      toolName: message.name,
       content: toolResultContent,
       isError: message.isError,
       timestamp: message.timestamp ?? Date.now(),
