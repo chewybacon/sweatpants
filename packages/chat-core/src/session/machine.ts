@@ -41,7 +41,8 @@ export interface SessionProjectionState {
   readonly replayState?: ConversationReplayState;
   readonly conversationId?: string;
   readonly pendingElicitResponses: readonly ElicitResponseData[];
-  readonly sentElicitResponseIds: readonly string[];
+  readonly sentElicitResponseIds: ReadonlySet<string>;
+  readonly sentElicitCallIds: ReadonlyMap<string, string>;
   readonly activeRequestId?: string;
 }
 
@@ -57,7 +58,7 @@ export interface ChatRequestPlan {
   readonly pluginAbort?: StreamChatOptions["pluginAbort"];
 }
 
-export interface ChatRequestFailure extends ChatTurnFailure {}
+export type ChatRequestFailure = ChatTurnFailure;
 
 export type SessionInput =
   | {
@@ -70,9 +71,8 @@ export type SessionInput =
   | {
       readonly type: "command";
       readonly command: ChatCommand;
-      readonly hadActiveRequest: boolean;
-      readonly abortMessageId: string;
-      readonly requestId: string;
+      readonly abortMessageId?: string;
+      readonly requestId?: string;
       readonly preservePartialOnAbort: boolean;
       readonly abortSuffix: string;
       readonly observedAt: number;
@@ -116,7 +116,8 @@ export function createInitialSessionProjectionState(
     run: { phase: "idle" },
     openCalls: [],
     pendingElicitResponses: [],
-    sentElicitResponseIds: [],
+    sentElicitResponseIds: new Set(),
+    sentElicitCallIds: new Map(),
     ...(conversationId ? { conversationId } : {}),
   };
 }
@@ -265,7 +266,13 @@ function retainVisiblePartial(state: SessionProjectionState): SessionProjectionS
   ) {
     return state;
   }
-  return { ...state, history: appendAssistant(state.history, partial).history };
+  const appended = appendAssistant(state.history, partial);
+  return {
+    ...state,
+    history: appended.history.map((message) =>
+      message.id === appended.message.id ? { ...message, partial: true } : message,
+    ),
+  };
 }
 
 function applyViewEvent(
@@ -328,6 +335,20 @@ function startRequestOutputs(
   };
 }
 
+function requireRequestId(input: Extract<SessionInput, { type: "command" }>): string {
+  if (!input.requestId) {
+    throw new Error(`Command "${input.command.type}" requires a request identity`);
+  }
+  return input.requestId;
+}
+
+function requireAbortMessageId(input: Extract<SessionInput, { type: "command" }>): string {
+  if (!input.abortMessageId) {
+    throw new Error("Abort command requires a message identity");
+  }
+  return input.abortMessageId;
+}
+
 function transitionCommand(
   state: SessionProjectionState,
   input: Extract<SessionInput, { type: "command" }>,
@@ -336,7 +357,8 @@ function transitionCommand(
   switch (command.type) {
     case "send": {
       let next = state;
-      const partial = input.hadActiveRequest ? command.partialContent?.trim() : undefined;
+      const partial =
+        state.activeRequestId !== undefined ? command.partialContent?.trim() : undefined;
       if (partial) {
         const appended = appendAssistant(next.history, command.partialContent!);
         next = applyLocalAction(
@@ -347,10 +369,12 @@ function transitionCommand(
       }
 
       next = { ...next, history: appendCancelledToolResults(next.history, next.openCalls) };
-      let sentIds = next.sentElicitResponseIds;
+      const sentIds = new Set(next.sentElicitResponseIds);
+      const sentCalls = new Map(next.sentElicitCallIds);
       for (const elicit of pendingElicitations(publicChatState(next.view))) {
-        if (sentIds.includes(elicit.elicitId)) continue;
-        sentIds = [...sentIds, elicit.elicitId];
+        if (sentIds.has(elicit.elicitId)) continue;
+        sentIds.add(elicit.elicitId);
+        sentCalls.set(elicit.elicitId, elicit.callId);
         next = applyLocalAction(
           next,
           {
@@ -365,21 +389,27 @@ function transitionCommand(
 
       const user = appendUser(next.history, command.content);
       next = applyLocalAction(
-        { ...next, history: user.history, openCalls: [], sentElicitResponseIds: sentIds },
+        {
+          ...next,
+          history: user.history,
+          openCalls: [],
+          sentElicitResponseIds: sentIds,
+          sentElicitCallIds: sentCalls,
+        },
         { type: "LOCAL_USER_MESSAGE", message: user.message },
         input.observedAt,
       );
-      return startRequestOutputs(next, input.requestId);
+      return startRequestOutputs(next, requireRequestId(input));
     }
 
     case "continue":
-      return startRequestOutputs(state, input.requestId);
+      return startRequestOutputs(state, requireRequestId(input));
 
     case "abort": {
       let next = state;
       if (input.preservePartialOnAbort && command.partialContent?.trim()) {
         const message: Message = {
-          id: input.abortMessageId,
+          id: requireAbortMessageId(input),
           role: "assistant",
           content: command.partialContent + input.abortSuffix,
           partial: true,
@@ -392,7 +422,7 @@ function transitionCommand(
       } else {
         next = applyLocalAction(next, { type: "LOCAL_ABORT" }, input.observedAt);
       }
-      return startRequestOutputs(next, input.requestId, "cancellation", {
+      return startRequestOutputs(next, requireRequestId(input), "cancellation", {
         reason: "cancelled_by_user",
       });
     }
@@ -407,7 +437,7 @@ function transitionCommand(
       };
 
     case "elicit_response": {
-      if (state.sentElicitResponseIds.includes(command.elicitId)) {
+      if (state.sentElicitResponseIds.has(command.elicitId)) {
         return { state, outputs: [] };
       }
       const response: ElicitResponseData = {
@@ -423,7 +453,8 @@ function transitionCommand(
         {
           ...state,
           pendingElicitResponses: [...state.pendingElicitResponses, response],
-          sentElicitResponseIds: [...state.sentElicitResponseIds, command.elicitId],
+          sentElicitResponseIds: new Set(state.sentElicitResponseIds).add(command.elicitId),
+          sentElicitCallIds: new Map(state.sentElicitCallIds).set(command.elicitId, command.callId),
         },
         {
           type: "LOCAL_ELICIT_RESPONSE",
@@ -435,7 +466,7 @@ function transitionCommand(
       );
       return command.autoContinue === false
         ? { state: next, outputs: [] }
-        : startRequestOutputs(next, input.requestId);
+        : startRequestOutputs(next, requireRequestId(input));
     }
   }
 }
@@ -457,13 +488,7 @@ function transitionStreamEvent(
       runId: event.runId,
       producedMessage: false,
     };
-  } else if (
-    folded.addedMessage &&
-    run.phase === "streaming" &&
-    (event.type === "TEXT_MESSAGE_END" ||
-      event.type === "TOOL_CALL_END" ||
-      event.type === "TOOL_CALL_RESULT")
-  ) {
+  } else if (folded.addedMessage && run.phase === "streaming") {
     run = { ...run, producedMessage: true };
   }
 
@@ -474,15 +499,34 @@ function transitionStreamEvent(
     openCalls = openCalls.filter((call) => call.callId !== event.toolCallId);
   }
 
+  let sentElicitResponseIds: ReadonlySet<string> = next.sentElicitResponseIds;
+  let sentElicitCallIds: ReadonlyMap<string, string> = next.sentElicitCallIds;
+  if (event.type === "TOOL_CALL_RESULT") {
+    const responseIds = new Set(sentElicitResponseIds);
+    const callIds = new Map(sentElicitCallIds);
+    for (const [elicitId, callId] of callIds) {
+      if (callId === event.toolCallId) {
+        callIds.delete(elicitId);
+        responseIds.delete(elicitId);
+      }
+    }
+    sentElicitResponseIds = responseIds;
+    sentElicitCallIds = callIds;
+  }
+
   next = {
     ...next,
     run,
     openCalls,
+    sentElicitResponseIds,
+    sentElicitCallIds,
     ...(next.view.replay ? { replayState: next.view.replay } : {}),
   };
 
   if (event.type === "RUN_FINISHED") {
     if (event.outcome?.type === "interrupt") {
+      // A parked turn is authoritative only when the producer emits the
+      // interrupt outcome. Pending view state alone may be a replay snapshot.
       const settlement: ChatTurnSettlement = {
         outcome: "interrupt",
         pendingElicitations: pendingElicitations(publicChatState(next.view)),
@@ -508,6 +552,8 @@ function transitionStreamEvent(
     return {
       state: {
         ...next,
+        // A successful run closes all unresolved calls; an interrupt retains
+        // them so the next user command can emit explicit cancellation facts.
         openCalls: [],
         run: {
           phase: "terminal",
@@ -570,7 +616,15 @@ function settleTransport(
           { type: "turn-settled", settlement },
         ]
       : [{ type: "turn-settled", settlement }];
-  const { activeRequestId: _activeRequestId, ...settled } = next;
+  const completed =
+    settlement.outcome === "complete"
+      ? {
+          ...next,
+          sentElicitResponseIds: new Set<string>(),
+          sentElicitCallIds: new Map<string, string>(),
+        }
+      : next;
+  const { activeRequestId: _activeRequestId, ...settled } = completed;
   return { state: { ...settled, run: { phase: "idle" } }, outputs };
 }
 

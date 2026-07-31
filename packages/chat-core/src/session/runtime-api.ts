@@ -1,3 +1,5 @@
+// Effection currently exposes scoped API middleware through its experimental
+// entrypoint; keep this dependency isolated to the runtime interpreter seam.
 import { createApi } from "effection/experimental";
 import type { Channel, Operation } from "effection";
 import type { ChatStateEvent } from "../state/events.ts";

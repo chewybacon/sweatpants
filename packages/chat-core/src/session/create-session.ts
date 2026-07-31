@@ -59,12 +59,15 @@ function createBufferedStateSignal<T>() {
 interface InputEnvelope {
   readonly input: SessionInput;
   readonly resolve: () => void;
-  readonly reject: (error: unknown) => void;
 }
 
 function failureFromUnknown(error: unknown): ChatRequestFailure {
+  if (error instanceof Error) {
+    return { message: error.message, cause: error };
+  }
   return {
-    message: error instanceof Error ? error.message : "Unknown chat request failure",
+    message: "Unknown chat request failure",
+    ...(error !== undefined ? { cause: error } : {}),
   };
 }
 
@@ -127,12 +130,11 @@ export function* runChatSession(
 
   function* dispatchInput(input: SessionInput): Operation<void> {
     let resolve!: () => void;
-    let reject!: (error: unknown) => void;
-    const processed = new Promise<void>((resolvePromise, rejectPromise) => {
+    const processed = new Promise<void>((resolvePromise) => {
       resolve = resolvePromise;
-      reject = rejectPromise;
     });
-    yield* inputs.send({ input, resolve, reject });
+    void processed.catch(() => undefined);
+    yield* inputs.send({ input, resolve });
     yield* call(() => processed);
   }
 
@@ -209,7 +211,12 @@ export function* runChatSession(
 
   function notifyFailure(failure: ChatRequestFailure): void {
     try {
-      options.onRequestError?.(new Error(failure.message));
+      options.onRequestError?.(
+        new Error(
+          failure.message,
+          failure.cause === undefined ? undefined : { cause: failure.cause },
+        ),
+      );
     } catch {
       // Observation callbacks do not participate in session authority.
     }
@@ -251,7 +258,8 @@ export function* runChatSession(
         }
         envelope.resolve();
       } catch (error) {
-        envelope.reject(error);
+        notifyFailure(failureFromUnknown(error));
+        envelope.resolve();
       }
       yield* each.next();
     }
@@ -285,12 +293,15 @@ export function* runChatSession(
   }
 
   for (const command of yield* each(commands)) {
+    const requestId =
+      command.type === "reset" ? undefined : yield* ChatSessionRuntimeApi.operations.createId();
+    const abortMessageId =
+      command.type === "abort" ? yield* ChatSessionRuntimeApi.operations.createId() : undefined;
     yield* dispatchInput({
       type: "command",
       command,
-      hadActiveRequest: currentRequest.owned !== null,
-      abortMessageId: yield* ChatSessionRuntimeApi.operations.createId(),
-      requestId: yield* ChatSessionRuntimeApi.operations.createId(),
+      ...(requestId ? { requestId } : {}),
+      ...(abortMessageId ? { abortMessageId } : {}),
       preservePartialOnAbort: options.preservePartialOnAbort ?? true,
       abortSuffix: options.abortSuffix ?? "",
       observedAt: yield* ChatSessionRuntimeApi.operations.now(),
