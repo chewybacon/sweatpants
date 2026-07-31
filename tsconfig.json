@@ -42,6 +42,9 @@
             "path": "./packages/model-provider"
         },
         {
+            "path": "./packages/model-sampling"
+        },
+        {
             "path": "./packages/model-provider-pi-ai"
         },
         {

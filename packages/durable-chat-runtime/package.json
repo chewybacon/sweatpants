@@ -245,6 +245,7 @@
         "@sweatpants/history-store": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/model-provider": "workspace:*",
+        "@sweatpants/model-sampling": "workspace:*",
         "@sweatpants/tool-runtime": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "effection": "catalog:",

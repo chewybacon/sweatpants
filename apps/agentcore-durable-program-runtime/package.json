@@ -25,6 +25,7 @@
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
+        "@sweatpants/model-sampling": "workspace:*",
         "@sweatpants/tool-runtime-agentcore": "workspace:*",
         "effection": "catalog:",
         "ws": "catalog:"

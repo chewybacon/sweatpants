@@ -28,12 +28,12 @@
 import type { Operation, Stream } from "effection";
 import type { JsonObject } from "@sweatpants/foundation";
 import type { ExtendedMessage } from "./messages.ts";
+import type { PortableModelTool } from "@sweatpants/model-provider";
 import type {
   ElicitsMap,
   LogLevel,
   ModelPreferences,
   SamplingToolChoice,
-  SamplingToolDefinition,
   ToolContract,
   ElicitExchangeCompletion,
   SampleExchangeCompletionBase,
@@ -124,8 +124,8 @@ export interface SampleRequestEvent extends ToolSessionEventBase {
   maxTokens?: number;
   /** Model preferences for the client */
   modelPreferences?: ModelPreferences;
-  /** Tool definitions for tool calling */
-  tools?: SamplingToolDefinition[];
+  /** Retained portable tool definitions for tool calling. */
+  tools?: PortableModelTool[];
   /** How the model should choose tools */
   toolChoice?: SamplingToolChoice;
   /** JSON Schema projection for structured output. */
@@ -437,8 +437,8 @@ export interface ToolSessionSamplingOptions {
   systemPrompt?: string;
   /** Maximum tokens to generate */
   maxTokens?: number;
-  /** Tool definitions for tool calling */
-  tools?: SamplingToolDefinition[];
+  /** Retained portable tool definitions for tool calling. */
+  tools?: PortableModelTool[];
   /** How the model should choose tools */
   toolChoice?: SamplingToolChoice;
   /** JSON Schema projection for structured output. */

@@ -21,7 +21,7 @@
  */
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { JsonObject } from "@sweatpants/foundation";
-import type { Json } from "@sweatpants/foundation";
+import type { PortableModelTool } from "@sweatpants/model-provider";
 import {
   type Operation,
   type Channel,
@@ -57,7 +57,6 @@ import type {
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
-  SamplingToolDefinition,
   SamplingToolChoice,
   SampleToolsConfig,
   SampleToolsResult,
@@ -66,6 +65,7 @@ import type {
 } from "@sweatpants/agent-sdk";
 import {
   SampleValidationError,
+  type SampleExchangeCompletion,
   completeElicitExchange,
   createRawSampleExchange,
   createStructuredSampleExchange,
@@ -228,12 +228,7 @@ export interface ElicitResponse<TResponse = unknown> {
  * Provider sample payload before exchange construction.
  * Distinct from the exported SampleExchangeCompletion union (which includes parsed/toolCalls variants).
  */
-interface BridgeProviderSampleResult {
-  text: string;
-  model?: string;
-  stopReason?: "endTurn" | "maxTokens" | "toolUse" | string;
-  toolCalls?: { id: string; name: string; arguments: Json }[];
-}
+type BridgeProviderSampleResult = SampleExchangeCompletion;
 
 /**
  * Sample response from external handler.
@@ -248,7 +243,7 @@ export interface SampleResponse {
 export interface BridgeSampleOptions {
   systemPrompt?: string;
   maxTokens?: number;
-  tools?: SamplingToolDefinition[];
+  tools?: PortableModelTool[];
   toolChoice?: SamplingToolChoice;
   schema?: JsonObject;
 }
@@ -475,11 +470,10 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
           // Pass through tools if provided
           if ("tools" in config && config.tools) {
-            // Convert Zod schemas in tool definitions to JSON Schema
             sampleOptions.tools = config.tools.map((tool) => {
-              const def: SamplingToolDefinition = {
+              const def: PortableModelTool = {
                 name: tool.name,
-                inputSchema: toToolParameterJsonSchema(tool.inputSchema),
+                parameters: toToolParameterJsonSchema(tool.inputSchema),
               };
               if (tool.description !== undefined) {
                 def.description = tool.description;
@@ -673,11 +667,11 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               sampleOptions.maxTokens = config.maxTokens;
             }
 
-            // Convert tools
+            // Carry the authored portable projection.
             sampleOptions.tools = config.tools.map((tool) => {
-              const def: SamplingToolDefinition = {
+              const def: PortableModelTool = {
                 name: tool.name,
-                inputSchema: toToolParameterJsonSchema(tool.inputSchema),
+                parameters: toToolParameterJsonSchema(tool.inputSchema),
               };
               if (tool.description !== undefined) {
                 def.description = tool.description;
@@ -728,7 +722,11 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             addTokens(state.tokenTracker, estimatedTokens);
 
             // Validate: must have tool calls
-            if (result.stopReason === "toolUse" && isNonEmpty(result.toolCalls)) {
+            if (
+              result.stopReason === "toolUse" &&
+              "toolCalls" in result &&
+              isNonEmpty(result.toolCalls)
+            ) {
               // Update tool-local messages if using prompt mode
               if ("prompt" in config && config.prompt) {
                 state.messages.push(

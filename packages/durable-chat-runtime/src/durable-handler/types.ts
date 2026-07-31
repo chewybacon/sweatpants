@@ -1,6 +1,6 @@
 import type { Operation } from "effection";
 import type { JsonObject } from "@sweatpants/foundation";
-import type { Model, Runtime, StreamOptions } from "@sweatpants/model-provider";
+import type { Model, StreamOptions } from "@sweatpants/model-provider";
 import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
 import type { ToolRuntime } from "@sweatpants/tool-runtime";
 import type { HistoryPolicy } from "@sweatpants/chat-core";
@@ -41,7 +41,6 @@ export interface ProgramRuntimeChatEngineParams {
   messages: ChatMessage[];
   systemPrompt?: string;
   toolSchemas: ToolSchema[];
-  runtime: Runtime;
   model: Model;
   streamOptions?: StreamOptions;
   initialToolChoice?: StreamOptions["toolChoice"];

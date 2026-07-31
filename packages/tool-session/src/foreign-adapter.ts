@@ -1,4 +1,4 @@
-import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
+import { MODEL_SAMPLE_EFFECT, assistantText, assistantToolCalls } from "@sweatpants/model-sampling";
 import type { Operation } from "effection";
 
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
@@ -15,9 +15,10 @@ import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
 } from "./foreign-contract.ts";
-import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/durable-effects";
+import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/model-sampling";
+import type { SampleExchangeCompletion } from "@sweatpants/agent-sdk";
 import { CrankError } from "@sweatpants/durable-execution";
-import type { Json } from "@sweatpants/foundation";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
 import type { ForeignToolRequest } from "@sweatpants/durable-execution";
 
@@ -84,12 +85,14 @@ const adapterTool = createPinnedDurableProgram(
       while (disposition.type === "input_required") {
         const response =
           disposition.request.kind === "sample"
-            ? yield* context.effect(
-                MODEL_SAMPLE_EFFECT,
-                classifyToolOwnedSample(disposition.request.payload),
-                {
-                  audience: "model-runtime",
-                },
+            ? projectSampleCompletion(
+                yield* context.effect(
+                  MODEL_SAMPLE_EFFECT,
+                  classifyToolOwnedSample(disposition.request.payload),
+                  {
+                    audience: "model-runtime",
+                  },
+                ),
               )
             : yield* context.elicit<Json>(
                 "foreign_input",
@@ -111,7 +114,7 @@ const adapterTool = createPinnedDurableProgram(
           FOREIGN_TOOL_CONTINUE_EFFECT,
           {
             continuation: disposition.continuation,
-            response: { kind: disposition.request.kind, value: response },
+            response: { kind: disposition.request.kind, value: assertJson(response) },
           },
           {
             audience,
@@ -142,6 +145,35 @@ const adapterTool = createPinnedDurableProgram(
     }
   },
 );
+
+function projectSampleCompletion(result: ModelSampleResult): SampleExchangeCompletion {
+  const base = {
+    text: assistantText(result.message),
+    ...(result.message.source?.responseModel !== undefined
+      ? { model: result.message.source.responseModel }
+      : result.message.source?.model !== undefined
+        ? { model: result.message.source.model }
+        : {}),
+    ...(result.message.stopReason !== undefined ? { stopReason: result.message.stopReason } : {}),
+  };
+  if (result.output.type === "json") {
+    return { ...base, parsed: result.output.value };
+  }
+  if (result.output.type === "json-invalid") {
+    return { ...base, parsed: null, parseError: result.output.error };
+  }
+  const calls = assistantToolCalls(result.message);
+  return calls.length > 0
+    ? {
+        ...base,
+        toolCalls: calls.map((call) => ({
+          id: call.id,
+          name: call.function.name,
+          arguments: call.function.arguments,
+        })),
+      }
+    : base;
+}
 
 /** Durable adapter tool plus helper registration for lifted model sampling. */
 export type ForeignToolAdapter = typeof adapterTool & {

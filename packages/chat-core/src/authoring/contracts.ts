@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   standardSchemaOf,
@@ -97,10 +97,35 @@ const resultDescriptor = descriptor("sweatpants.chat-turn/result", "program_outp
 });
 export const CHAT_TURN_INPUT_DESCRIPTOR = inputDescriptor;
 export const CHAT_TURN_RESULT_DESCRIPTOR = resultDescriptor;
+const modelSampleInputDescriptor = descriptor(
+  "sweatpants.chat-model-sample/input",
+  "effect_input",
+  {
+    type: "object",
+    required: ["messages", "systemPrompt", "tools", "classifications", "sampling"],
+    additionalProperties: false,
+  },
+);
+const modelSampleOutputDescriptor = descriptor(
+  "sweatpants.chat-model-sample/output",
+  "effect_output",
+  {
+    type: "object",
+    required: ["message", "calls", "artifacts"],
+    additionalProperties: false,
+  },
+);
+export const CHAT_MODEL_SAMPLE_INPUT_DESCRIPTOR = modelSampleInputDescriptor;
+export const CHAT_MODEL_SAMPLE_OUTPUT_DESCRIPTOR = modelSampleOutputDescriptor;
 
 export const CHAT_CONTRACT_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze([
   entry(inputDescriptor, (value) => normalizeChatTurnInput(value) as unknown as Json),
   entry(resultDescriptor, (value) => normalizeChatTurnResult(value) as unknown as Json),
+  entry(modelSampleInputDescriptor, (value) => normalizeModelSampleInput(value) as unknown as Json),
+  entry(
+    modelSampleOutputDescriptor,
+    (value) => normalizeModelSampleOutput(value) as unknown as Json,
+  ),
 ]);
 
 export function normalizeChatTurnInput(value: unknown): ChatTurnInputV1 {
@@ -258,7 +283,30 @@ function normalizePart(value: unknown): ChatContentPartV1 {
   });
 }
 
-export function normalizeModelSampleOutput(value: unknown): ChatModelSampleOutputV2 {
+export function normalizeModelSampleInput(value: unknown): ChatModelSampleInputV2 & Json {
+  const input = exactRecord(
+    value,
+    ["messages", "systemPrompt", "tools", "classifications", "sampling"],
+    "model sample input",
+  );
+  if (
+    !Array.isArray(input["messages"]) ||
+    !Array.isArray(input["tools"]) ||
+    !Array.isArray(input["classifications"])
+  ) {
+    invalid("invalid model sample input");
+  }
+  const normalized: ChatModelSampleInputV2 = {
+    messages: input["messages"].map(normalizeChatMessage),
+    systemPrompt: normalizeContentPart(input["systemPrompt"]),
+    tools: input["tools"].map((tool) => canonicalSnapshot(tool as Json).value),
+    classifications: input["classifications"].map(classification),
+    sampling: canonicalSnapshot(input["sampling"] as Json).value,
+  };
+  return snapshot(Object.assign(normalized, assertJson(normalized)));
+}
+
+export function normalizeModelSampleOutput(value: unknown): ChatModelSampleOutputV2 & Json {
   const output = exactRecord(value, ["message", "calls", "artifacts"], "model sample output");
   if (!Array.isArray(output["calls"]) || !Array.isArray(output["artifacts"])) {
     invalid("invalid model sample output");
@@ -277,11 +325,12 @@ export function normalizeModelSampleOutput(value: unknown): ChatModelSampleOutpu
       input: canonicalSnapshot(call["input"] as Json).value,
     };
   });
-  return snapshot({
+  const normalized: ChatModelSampleOutputV2 = {
     message: normalizeChatMessage(output["message"]),
     calls,
     artifacts: output["artifacts"].map(normalizeArtifact),
-  });
+  };
+  return snapshot(Object.assign(normalized, assertJson(normalized)));
 }
 
 function descriptor(

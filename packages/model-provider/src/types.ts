@@ -1,5 +1,6 @@
 import type { Operation, Stream } from "effection";
 import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { PortableModelContextMessage, PortableModelTool } from "./portable.ts";
 
 export interface Runtime {
   stream(
@@ -62,19 +63,11 @@ export type OutputModality = "text" | "image";
 
 export interface Context {
   systemPrompt?: string;
-  messages: Message[];
-  tools?: Tool[];
+  messages: PortableModelContextMessage[];
+  tools?: PortableModelTool[];
 }
 
-export interface Tool {
-  name: string;
-  description: string;
-  /**
-   * The portable JSON Schema projection computed once when the tool was
-   * authored. Providers transport it; nobody re-derives it.
-   */
-  parameters: JsonObject;
-}
+export type Tool = PortableModelTool;
 
 export type Message = UserMessage | SystemMessage | AssistantMessage | ToolResultMessage;
 

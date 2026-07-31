@@ -9,6 +9,7 @@ import {
   type SampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
 import type { ToolSession, ToolSessionEvent, ToolSessionRegistry } from "@sweatpants/tool-session";
+import { toModelMessages } from "@sweatpants/tool-session/messages";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   type ForeignContinuation,
@@ -320,15 +321,31 @@ function eventDisposition(
         request: {
           kind: "sample",
           payload: foreignJson({
-            messages: event.messages,
-            ...(event.systemPrompt !== undefined ? { systemPrompt: event.systemPrompt } : {}),
-            ...(event.maxTokens !== undefined ? { maxTokens: event.maxTokens } : {}),
+            invocation: {
+              context: {
+                messages: toModelMessages(event.messages),
+                ...(event.systemPrompt !== undefined ? { systemPrompt: event.systemPrompt } : {}),
+              },
+              ...(event.maxTokens !== undefined || event.toolChoice !== undefined
+                ? {
+                    options: {
+                      ...(event.maxTokens !== undefined ? { maxTokens: event.maxTokens } : {}),
+                      ...(event.toolChoice !== undefined ? { toolChoice: event.toolChoice } : {}),
+                    },
+                  }
+                : {}),
+            },
+            tools:
+              event.tools !== undefined
+                ? { type: "embedded", tools: event.tools }
+                : { type: "none" },
+            response:
+              event.schema !== undefined
+                ? { type: "json", schema: event.schema }
+                : { type: "message" },
             ...(event.modelPreferences !== undefined
               ? { modelPreferences: event.modelPreferences }
               : {}),
-            ...(event.tools !== undefined ? { tools: event.tools } : {}),
-            ...(event.toolChoice !== undefined ? { toolChoice: event.toolChoice } : {}),
-            ...(event.schema !== undefined ? { schema: event.schema } : {}),
           }),
         },
         continuation: createContinuation(

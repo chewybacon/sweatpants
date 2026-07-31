@@ -12,7 +12,7 @@ import {
 } from "@sweatpants/model-provider-pi-ai";
 import {
   type AssistantMessage as ModelAssistantMessage,
-  type Message as ModelMessage,
+  type PortableModelContextMessage,
   type StreamEvent as ModelStreamEvent,
 } from "@sweatpants/model-provider";
 import { call, race, resource, run, type Operation, type Stream, type Task } from "effection";
@@ -259,7 +259,10 @@ function createThreadStore(bufferStore: TokenBufferStore<ThreadEvent>): ThreadSt
   };
 }
 
-function buildModelProviderMessages(events: ThreadEvent[], systemPrompt: string): ModelMessage[] {
+function buildModelProviderMessages(
+  events: ThreadEvent[],
+  systemPrompt: string,
+): PortableModelContextMessage[] {
   return buildMessages(events, systemPrompt).map((message) => {
     if (message.role === "system") {
       return { role: "system", content: message.content };
@@ -274,7 +277,17 @@ function buildModelProviderMessages(events: ThreadEvent[], systemPrompt: string)
           ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
           ...(message.tool_calls ?? []).map((toolCall) => ({
             type: "toolCall" as const,
-            toolCall,
+            toolCall: {
+              id: toolCall.id,
+              type: "function" as const,
+              function: {
+                name: toolCall.function.name,
+                arguments: toolCall.function.arguments,
+              },
+              ...(toolCall.thoughtSignature !== undefined
+                ? { thoughtSignature: toolCall.thoughtSignature }
+                : {}),
+            },
           })),
         ],
       };

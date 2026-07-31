@@ -1,4 +1,4 @@
-import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/model-sampling";
 import { type EffectDefinition } from "@sweatpants/durable-effects";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -96,36 +96,69 @@ function* reviewerGenerator(
   const questionSample = yield* context.effect(
     MODEL_SAMPLE_EFFECT,
     {
-      messages: [
-        {
-          role: "system",
-          content: `${input.instructions}\n\nReturn one narrow factual question for the design author as {question, rationale?}.`,
+      invocation: {
+        context: {
+          messages: [
+            {
+              role: "system",
+              content: `${input.instructions}\n\nReturn one narrow factual question for the design author as {question, rationale?}.`,
+            },
+            { role: "user", content: `Rubric:\n${input.rubric}\n\nDesign:\n${input.design}` },
+          ],
         },
-        { role: "user", content: `Rubric:\n${input.rubric}\n\nDesign:\n${input.design}` },
-      ],
+      },
+      tools: { type: "none" },
+      response: {
+        type: "json",
+        name: "review_question",
+        schema: {
+          type: "object",
+          required: ["question"],
+          properties: {
+            question: { type: "string" },
+            rationale: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      },
     },
     { audience: "caller:model" },
   );
-  const question = extractQuestion(questionSample);
+  if (questionSample.output.type !== "json") {
+    throw new Error("review question sample did not produce JSON");
+  }
+  const question = extractQuestion(questionSample.output.value);
   const answer = yield* context.effect(askParentEffect, question, {
     audience: "caller:reference-review",
   });
   const review = yield* context.effect(
     MODEL_SAMPLE_EFFECT,
     {
-      messages: [
-        {
-          role: "system",
-          content: `${input.instructions}\n\nReturn an independent review. Use only the supplied design and narrow recorded answer.`,
+      invocation: {
+        context: {
+          messages: [
+            {
+              role: "system",
+              content: `${input.instructions}\n\nReturn an independent review. Use only the supplied design and narrow recorded answer.`,
+            },
+            { role: "user", content: `Rubric:\n${input.rubric}\n\nDesign:\n${input.design}` },
+            {
+              role: "assistant",
+              content: [{ type: "text", text: `Question: ${question.question}` }],
+            },
+            {
+              role: "user",
+              content: `Recorded answer: ${canonicalSnapshot(answer).canonical}`,
+            },
+          ],
         },
-        { role: "user", content: `Rubric:\n${input.rubric}\n\nDesign:\n${input.design}` },
-        { role: "assistant", content: `Question: ${question.question}` },
-        { role: "tool", name: "ask_parent", content: canonicalSnapshot(answer).canonical },
-      ],
+      },
+      tools: { type: "none" },
+      response: { type: "message" },
     },
     { audience: "caller:model" },
   );
-  return { review };
+  return { review: review.message };
 }
 
 function extractQuestion(value: Json): AskParentInput {

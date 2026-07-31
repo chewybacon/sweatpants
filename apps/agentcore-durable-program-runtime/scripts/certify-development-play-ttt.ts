@@ -1,4 +1,4 @@
-import { MODEL_SAMPLE_EFFECT } from "@sweatpants/durable-effects";
+import { MODEL_SAMPLE_EFFECT, type ModelSampleResult } from "@sweatpants/model-sampling";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -123,15 +123,17 @@ async function main(): Promise<void> {
       MODEL_SAMPLE_EFFECT.retrySafety,
       function* (request) {
         modelSamples += 1;
-        return {
-          status: "ok" as const,
-          value: {
-            text: "first legal cell",
-            calls: [],
-            content: [],
-            parsed: { cell: firstEmptyPosition(modelMessages(request)) },
+        const value: ModelSampleResult = {
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "first legal cell" }],
+          },
+          output: {
+            type: "json",
+            value: { cell: firstEmptyPosition(request.invocation.context.messages) },
           },
         };
+        return { status: "ok" as const, value };
       },
     ),
   ]);
@@ -256,17 +258,6 @@ async function main(): Promise<void> {
     "utf8",
   );
   console.log(JSON.stringify(evidence));
-}
-
-function modelMessages(request: Json): Json[] {
-  if (!request || typeof request !== "object" || Array.isArray(request)) {
-    throw new Error("Model sample request must be an object");
-  }
-  const messages = request["messages"];
-  if (!Array.isArray(messages)) {
-    throw new Error("Model sample request messages are missing");
-  }
-  return messages;
 }
 
 function firstEmptyPosition(messages: Json[]): number {

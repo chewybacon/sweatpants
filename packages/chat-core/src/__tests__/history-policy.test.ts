@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { applyHistoryPolicy, createMessageBudgetHistoryPolicy } from "@sweatpants/chat-core";
-import type { Message } from "@sweatpants/model-provider";
+import type { PortableModelContextMessage } from "@sweatpants/model-provider";
 
-function user(content: string): Message {
+function user(content: string): PortableModelContextMessage {
   return { role: "user", content };
 }
 
-function assistantText(text: string): Message {
+function assistantText(text: string): PortableModelContextMessage {
   return { role: "assistant", content: [{ type: "text", text }] };
 }
 
-function assistantCall(id: string, name = "echo"): Message {
+function assistantCall(id: string, name = "echo"): PortableModelContextMessage {
   return {
     role: "assistant",
     content: [
@@ -22,7 +22,7 @@ function assistantCall(id: string, name = "echo"): Message {
   };
 }
 
-function toolResult(id: string): Message {
+function toolResult(id: string): PortableModelContextMessage {
   return {
     role: "tool",
     tool_call_id: id,
@@ -56,7 +56,7 @@ describe("createMessageBudgetHistoryPolicy", () => {
 
   it("drops whole oldest turns and records one decision per turn", () => {
     const policy = createMessageBudgetHistoryPolicy({ maxMessages: 4 });
-    const messages: Message[] = [
+    const messages: PortableModelContextMessage[] = [
       user("turn one"),
       assistantCall("call-1"),
       toolResult("call-1"),
@@ -79,7 +79,7 @@ describe("createMessageBudgetHistoryPolicy", () => {
 
   it("never splits a completed call/result pair across the retention boundary", () => {
     const policy = createMessageBudgetHistoryPolicy({ maxMessages: 5 });
-    const messages: Message[] = [
+    const messages: PortableModelContextMessage[] = [
       user("turn one"),
       assistantText("done one"),
       user("turn two"),
@@ -112,7 +112,7 @@ describe("createMessageBudgetHistoryPolicy", () => {
 
   it("always retains the newest turn even when it alone exceeds the budget", () => {
     const policy = createMessageBudgetHistoryPolicy({ maxMessages: 2 });
-    const messages: Message[] = [
+    const messages: PortableModelContextMessage[] = [
       user("old"),
       assistantText("old answer"),
       user("new"),
@@ -133,8 +133,8 @@ describe("createMessageBudgetHistoryPolicy", () => {
 
   it("preserves system messages outside the budget", () => {
     const policy = createMessageBudgetHistoryPolicy({ maxMessages: 2 });
-    const system: Message = { role: "system", content: "you are helpful" };
-    const messages: Message[] = [
+    const system: PortableModelContextMessage = { role: "system", content: "you are helpful" };
+    const messages: PortableModelContextMessage[] = [
       system,
       user("old"),
       assistantText("old answer"),
@@ -149,7 +149,7 @@ describe("createMessageBudgetHistoryPolicy", () => {
 
   it("does not mutate the input messages", () => {
     const policy = createMessageBudgetHistoryPolicy({ maxMessages: 1 });
-    const messages: Message[] = [user("one"), assistantText("a"), user("two")];
+    const messages: PortableModelContextMessage[] = [user("one"), assistantText("a"), user("two")];
     const snapshot = structuredClone(messages);
     policy.apply({ messages });
     expect(messages).toEqual(snapshot);

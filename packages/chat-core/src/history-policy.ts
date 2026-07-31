@@ -12,7 +12,10 @@
  * decision for diagnostics.
  */
 import { createContext } from "effection";
-import type { Context as RuntimeContext, Message } from "@sweatpants/model-provider";
+import type {
+  Context as RuntimeContext,
+  PortableModelContextMessage,
+} from "@sweatpants/model-provider";
 
 export interface HistoryPolicyDecision {
   /** What the policy did. */
@@ -20,18 +23,18 @@ export interface HistoryPolicyDecision {
   /** Human-readable reason, e.g. "message budget exceeded". */
   reason: string;
   /** Roles of the removed messages, in order. */
-  roles: Message["role"][];
+  roles: PortableModelContextMessage["role"][];
   /** Tool call ids removed with this decision (calls and their results). */
   toolCallIds: string[];
 }
 
 export interface HistoryPolicyInput {
-  messages: Message[];
+  messages: PortableModelContextMessage[];
   systemPrompt?: string;
 }
 
 export interface HistoryPolicyResult {
-  messages: Message[];
+  messages: PortableModelContextMessage[];
   decisions: HistoryPolicyDecision[];
 }
 
@@ -77,11 +80,11 @@ export function applyHistoryPolicy(
 // =============================================================================
 
 interface Turn {
-  messages: Message[];
+  messages: PortableModelContextMessage[];
   toolCallIds: string[];
 }
 
-function toolCallIdsOf(message: Message): string[] {
+function toolCallIdsOf(message: PortableModelContextMessage): string[] {
   if (message.role === "assistant") {
     return message.content.flatMap((block) =>
       block.type === "toolCall" ? [block.toolCall.id] : [],
@@ -98,7 +101,7 @@ function toolCallIdsOf(message: Message): string[] {
  * assistant/tool messages belong to the preceding user turn so a
  * completed call/result pair can never be split across a retention boundary.
  */
-function groupIntoTurns(messages: Message[]): Turn[] {
+function groupIntoTurns(messages: PortableModelContextMessage[]): Turn[] {
   const turns: Turn[] = [];
   let current: Turn | null = null;
   for (const message of messages) {

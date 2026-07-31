@@ -20,6 +20,7 @@
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
+        "@sweatpants/model-sampling": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "effection": "catalog:",
         "ws": "catalog:"

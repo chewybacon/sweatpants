@@ -1,9 +1,9 @@
-import type {
-  ModelSampleCall,
-  ModelSampleRequest,
-  ModelSampleResult,
-} from "@sweatpants/durable-effects";
 import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
+import {
+  assistantText,
+  assistantToolCalls,
+  createModelSamplingEffectRegistration,
+} from "@sweatpants/model-sampling";
 
 import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
 import { resource, type Operation, type Stream } from "effection";
@@ -13,10 +13,6 @@ import {
   type DurableSemanticRecord,
 } from "@sweatpants/journal-authority";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
-import {
-  createModelSamplingEffectRegistration,
-  createModelSamplingRouter,
-} from "@sweatpants/durable-effects/model-sample";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import {
   assertReplayedCanonicalValue,
@@ -36,22 +32,10 @@ import {
   type Json,
   type JsonObject,
 } from "@sweatpants/foundation";
-import {
-  TOOL_OWNED_SAMPLE_CLASSIFICATION,
-  foreignToolAdapter,
-  foreignToolAdapterChild,
-} from "@sweatpants/tool-session/foreign";
+import { foreignToolAdapter, foreignToolAdapterChild } from "@sweatpants/tool-session/foreign";
 
 import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
-import type {
-  AssistantMessage,
-  ContentBlock,
-  Context as RuntimeContext,
-  Message as RuntimeMessage,
-} from "@sweatpants/model-provider";
 import { runWithRenewedActivationLease } from "../host/activation-lease-coordinator.ts";
-import { useLogger } from "../logger/index.ts";
-import { applyHistoryPolicy } from "@sweatpants/chat-core";
 import { buildPluginReplayActivity } from "@sweatpants/chat-core";
 import type { ChatSessionStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import {
@@ -63,10 +47,16 @@ import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-
 import { runLocalProgramActivation } from "./local-program-host.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ElicitResponse, ProgramRuntimeChatEngineParams } from "./types.ts";
+import { projectChatHistory } from "./model-sampling/history.ts";
+import { createHostModelSamplingService } from "./model-sampling/service.ts";
+import { runWithTurnEventWriter } from "./model-sampling/turn-event-api.ts";
 
-type ChatCall = ModelSampleCall;
-type ChatSampleRequest = ModelSampleRequest;
-type ChatSampleResult = ModelSampleResult;
+type ChatCall = {
+  id: string;
+  target: string;
+  input: Json;
+  thoughtSignature?: string;
+};
 
 type ProgramDriverChatEngineParams = ProgramRuntimeChatEngineParams & {
   journalStore: ProgramDriverJournalStore;
@@ -81,47 +71,55 @@ import {
   manifest,
   modelSample,
   type ChatProgramInput,
-  type ThinCatalogEntry,
-  type ThinProgramCatalog,
+  type ChatToolCatalog,
+  type ChatToolCatalogEntry,
 } from "./program-driver-schema.ts";
 
 const rootTool = createPinnedDurableProgram(manifest, function* (input, context) {
   const messages = [...input.messages];
-  const hasPriorAssistantOrTool = messages.some((message) => {
-    const value = jsonRecord(message);
-    return (
-      value?.["role"] === "assistant" ||
-      value?.["role"] === "tool" ||
-      value?.["role"] === "toolResult"
-    );
-  });
+  const hasPriorAssistantOrTool = messages.some(
+    (message) => message.role === "assistant" || message.role === "tool",
+  );
   const completedCallIds = new Set<string>();
   for (let iteration = 0; iteration < input.maxIterations; iteration += 1) {
     const sampled = yield* context.effect(
       modelSample,
       {
-        messages,
-        ...(input.systemPrompt !== undefined ? { systemPrompt: input.systemPrompt } : {}),
-        ...(iteration === 0 && !hasPriorAssistantOrTool && input.toolChoice !== undefined
-          ? { toolChoice: input.toolChoice }
-          : {}),
+        invocation: {
+          context: {
+            messages,
+            ...(input.systemPrompt !== undefined ? { systemPrompt: input.systemPrompt } : {}),
+          },
+          ...(iteration === 0 && !hasPriorAssistantOrTool && input.toolChoice !== undefined
+            ? { options: { toolChoice: input.toolChoice } }
+            : {}),
+        },
+        tools: { type: "catalog", digest: input.catalog.digest },
+        response: { type: "message" },
+        classifications: [],
       },
       { audience: "model-runtime" },
     );
-    const calls = sampled.calls.filter((call) => !completedCallIds.has(call.id));
+    const text = assistantText(sampled.message);
+    const calls: ChatCall[] = assistantToolCalls(sampled.message)
+      .filter((call) => !completedCallIds.has(call.id))
+      .map((call) => ({
+        id: call.id,
+        target: resolveOuterToolTarget(
+          call.function.name,
+          Object.keys(input.catalog.entries).map((name) => ({ name })),
+        ),
+        input: call.function.arguments,
+        ...(call.thoughtSignature !== undefined ? { thoughtSignature: call.thoughtSignature } : {}),
+      }));
     if (calls.length === 0) {
-      yield* context.emit("assistant_text", { text: sampled.text });
-      return sampled.text;
+      yield* context.emit("assistant_text", { text });
+      return text;
     }
     for (const call of calls) {
       completedCallIds.add(call.id);
     }
-    messages.push({
-      role: "assistant",
-      content: sampled.text,
-      tool_calls: calls,
-      runtime_content: sampled.content,
-    });
+    messages.push({ role: "assistant", content: sampled.message.content });
     for (const call of calls) {
       yield* context.emit("tool_started", {
         callId: call.id,
@@ -132,7 +130,7 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
       if (!catalogEntry) {
         throw new CrankError("foreign_tool_not_found", `Tool not found: ${call.target}`);
       }
-      const outcome = yield* invokeCatalogTool(context, catalogEntry, call);
+      const outcome = yield* invokeCatalogTool(context, catalogEntry.execution, call);
       yield* context.emit("tool_completed", {
         callId: call.id,
         tool: call.target,
@@ -143,8 +141,8 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
         role: "tool",
         tool_call_id: call.id,
         name: call.target,
-        content: outcome.result,
-        ...(outcome.failed ? { is_error: true } : {}),
+        content: JSON.stringify(outcome.result),
+        isError: outcome.failed,
       });
     }
   }
@@ -192,7 +190,7 @@ const RECOVERABLE_FOREIGN_FAILURES: ReadonlySet<string> = new Set([
  */
 function* invokeCatalogTool(
   context: DurableProgramContext,
-  entry: ThinCatalogEntry,
+  entry: ChatToolCatalogEntry["execution"],
   call: CatalogToolCall,
 ): Operation<{ result: Json; failed: boolean }> {
   try {
@@ -234,7 +232,10 @@ export function createProgramDriverChatEngine(
     let cursor = 0;
     yield* provide({
       *next(): Operation<IteratorResult<StreamEvent, void>> {
-        events ??= yield* activateProgramDriverChatEngine(params);
+        events ??= yield* runWithTurnEventWriter(
+          params.liveEvent ? { emit: params.liveEvent } : undefined,
+          () => activateProgramDriverChatEngine(params),
+        );
         const event = events[cursor];
         if (!event) {
           return { done: true, value: undefined };
@@ -249,7 +250,6 @@ export function createProgramDriverChatEngine(
 function* activateProgramDriverChatEngine(
   params: ProgramDriverChatEngineParams,
 ): Operation<StreamEvent[]> {
-  const liveEvent = params.liveEvent;
   const journal = yield* params.journalStore.open(params.conversationId);
   const scopedForeignEffects = params.foreignEffects;
   const recovery = yield* journal.recoveryState(params.conversationId);
@@ -263,9 +263,9 @@ function* activateProgramDriverChatEngine(
   let before = yield* journal.readJournal(params.conversationId, taskId);
   const foreignDriver = scopedForeignEffects ? "tool-session" : "chat-tool-runtime";
   const requestedInput: ChatProgramInput = {
-    messages: params.messages.map((message) => assertJson(message)),
+    messages: projectChatHistory(params.messages),
     maxIterations: params.maxIterations,
-    catalog: createThinCatalog(params, foreignDriver),
+    catalog: createChatToolCatalog(params, foreignDriver),
     ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
     ...(params.initialToolChoice !== undefined ? { toolChoice: params.initialToolChoice } : {}),
   };
@@ -344,9 +344,12 @@ function* activateProgramDriverChatEngine(
   ]);
   let streamedTerminal = false;
   const boundForeignDriver = Object.values(input.catalog.entries).find(
-    (entry): entry is Extract<ThinCatalogEntry, { kind: "foreign-tool" }> =>
-      entry.kind === "foreign-tool",
-  )?.driver;
+    (
+      entry,
+    ): entry is ChatToolCatalogEntry & {
+      execution: Extract<ChatToolCatalogEntry["execution"], { kind: "foreign-tool" }>;
+    } => entry.execution.kind === "foreign-tool",
+  )?.execution.driver;
   const foreignEffects =
     boundForeignDriver === "tool-session"
       ? requireScopedForeignEffects(scopedForeignEffects)
@@ -358,63 +361,13 @@ function* activateProgramDriverChatEngine(
             runId: params.agUiRun.runId,
           })
         : [];
-  const modelSamplingRouter = createModelSamplingRouter({
-    policy: () => ({ ownership: "host" }),
-    host: {
-      *sample(request, context) {
-        let partialText = "";
-        let streamStarted = false;
-        const messageId = `assistant:stream:${taskId}:${context.pullId}`;
-        try {
-          // Runtime task identity is authoritative provenance for crank-native
-          // child sampling: only the root chat task may stream model deltas to
-          // the outer client. Foreign ToolSession samples retain their explicit
-          // classification because they cross a separate adapter boundary.
-          const streamToOuterClient =
-            context.taskId === taskId && !isToolOwnedSampleRequest(request);
-          const value = yield* sampleModel(
-            params,
-            request,
-            context.cancellation,
-            context.pullId,
-            streamToOuterClient
-              ? function* (text, delta) {
-                  partialText = text.slice(-32_768);
-                  if (!liveEvent) {
-                    return;
-                  }
-                  if (!streamStarted) {
-                    streamStarted = true;
-                    yield* liveEvent({
-                      type: "TEXT_MESSAGE_START",
-                      messageId,
-                      role: "assistant",
-                    });
-                  }
-                  yield* liveEvent({ type: "TEXT_MESSAGE_CONTENT", messageId, delta });
-                }
-              : undefined,
-          );
-          if (streamStarted && liveEvent) {
-            yield* liveEvent({ type: "TEXT_MESSAGE_END", messageId });
-            if (value.calls.length === 0) {
-              streamedTerminal = true;
-            }
-          }
-          return { status: "ok" as const, value };
-        } catch (error) {
-          if (context.cancellation.aborted) {
-            return {
-              status: "cancelled" as const,
-              partial: { text: partialText, interrupted: true as const },
-            };
-          }
-          if (error instanceof CrankError) {
-            throw error;
-          }
-          throw new CrankError("model_runtime_failed", "Provider error");
-        }
-      },
+  const modelSamplingService = createHostModelSamplingService({
+    model: params.model,
+    ...(params.streamOptions ? { streamOptions: params.streamOptions } : {}),
+    catalog: input.catalog,
+    ...(params.historyPolicy ? { historyPolicy: params.historyPolicy } : {}),
+    onTerminalStreamed() {
+      streamedTerminal = true;
     },
   });
   const effects = createDurableEffectRegistry(
@@ -430,7 +383,7 @@ function* activateProgramDriverChatEngine(
       authority: journal.authority,
       drivers,
       effects,
-      modelSamplingRouter,
+      modelSamplingService,
       routeResolver: function* (program, parentRoute) {
         const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
           (candidate) =>
@@ -542,201 +495,6 @@ function* activateProgramDriverChatEngine(
   }
 
   return events;
-}
-
-/**
- * Tool-owned nested samples carry an explicit provenance classification set by
- * the foreign-tool adapter. They must never stream into the outer chat or
- * default to the outer chat toolset.
- */
-function isToolOwnedSampleRequest(request: ChatSampleRequest): boolean {
-  return (
-    Array.isArray(request.classifications) &&
-    request.classifications.includes(TOOL_OWNED_SAMPLE_CLASSIFICATION)
-  );
-}
-
-function isForeignSamplingRequest(request: ChatSampleRequest): boolean {
-  return (
-    isToolOwnedSampleRequest(request) ||
-    request.maxTokens !== undefined ||
-    request.modelPreferences !== undefined ||
-    request.tools !== undefined ||
-    request.schema !== undefined
-  );
-}
-
-function* sampleModel(
-  params: ProgramRuntimeChatEngineParams,
-  request: ChatSampleRequest,
-  cancellation: AbortSignal,
-  pullId: string,
-  onText?: (text: string, delta: string) => Operation<void>,
-): Operation<ChatSampleResult> {
-  const foreignSamplingRequest = isForeignSamplingRequest(request);
-  const samplingLog = yield* useLogger("handler:durable:model-sample");
-  samplingLog.debug(
-    {
-      pullId,
-      toolChoice: request.toolChoice,
-      toolNames: params.toolSchemas.map((tool) => tool.name),
-      foreignSamplingRequest,
-    },
-    "sampling model with projected tool authority",
-  );
-  const projectedContext: RuntimeContext = {
-    ...(request.systemPrompt !== undefined
-      ? { systemPrompt: modelSystemPromptText(request.systemPrompt) }
-      : {}),
-    messages: request.messages.map(toRuntimeMessage),
-    ...(request.tools !== undefined
-      ? { tools: sampleTools(request.tools) }
-      : foreignSamplingRequest
-        ? {}
-        : {
-            tools: params.toolSchemas.map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters,
-            })),
-          }),
-  };
-  // F5: explicit opt-in history policy runs before provider adaptation. Only
-  // outer-chat requests are subject to retention policy; tool-owned foreign
-  // samples carry tool-curated context that the host must not rewrite.
-  const historyPolicy = foreignSamplingRequest ? undefined : params.historyPolicy;
-  const { context: runtimeContext, decisions } = applyHistoryPolicy(
-    historyPolicy,
-    projectedContext,
-  );
-  if (decisions.length > 0) {
-    const log = yield* useLogger("handler:durable:history-policy");
-    log.debug(
-      { policy: historyPolicy?.name, pullId, decisions },
-      "history policy compacted provider context",
-    );
-  }
-  const stream = params.runtime.stream(params.model, runtimeContext, {
-    ...params.streamOptions,
-    signal: cancellation,
-    sessionId: pullId,
-    ...(request.toolChoice === "auto" ||
-    request.toolChoice === "none" ||
-    request.toolChoice === "required"
-      ? { toolChoice: request.toolChoice }
-      : {}),
-    ...(request.maxTokens !== undefined ? { maxTokens: request.maxTokens } : {}),
-    ...(jsonRecord(request.schema)
-      ? {
-          responseFormat: {
-            type: "json_schema" as const,
-            name: "foreign_sample",
-            schema: objectSchema(request.schema),
-          },
-        }
-      : {}),
-  });
-  const subscription = yield* stream;
-  let text = "";
-  const calls: ChatCall[] = [];
-  while (true) {
-    const next = yield* subscription.next();
-    if (next.done) {
-      if (!text) {
-        for (const block of next.value.content) {
-          if (block.type === "text") {
-            text += block.text;
-          }
-        }
-      }
-      for (const block of next.value.content) {
-        if (block.type === "toolCall" && !calls.some((call) => call.id === block.toolCall.id)) {
-          calls.push({
-            id: block.toolCall.id,
-            target: foreignSamplingRequest
-              ? block.toolCall.function.name
-              : resolveOuterToolTarget(block.toolCall.function.name, params.toolSchemas),
-            input: block.toolCall.function.arguments,
-            ...(block.toolCall.thoughtSignature !== undefined
-              ? { thoughtSignature: block.toolCall.thoughtSignature }
-              : {}),
-          });
-        }
-      }
-      const base: ChatSampleResult = {
-        text,
-        calls,
-        content: snapshotAssistantContent(next.value.content),
-        model: params.model.id,
-        stopReason: calls.length > 0 ? "toolUse" : "endTurn",
-      };
-      if (request.schema !== undefined) {
-        const schemaCall = calls[0];
-        if (schemaCall) {
-          return { ...base, parsed: schemaCall.input };
-        }
-        try {
-          return { ...base, parsed: assertJson(JSON.parse(text)) };
-        } catch {
-          return {
-            ...base,
-            parsed: null,
-            parseError: { message: "Failed to parse structured sample", rawText: text },
-          };
-        }
-      }
-      if (request.tools !== undefined && calls.length > 0) {
-        return {
-          ...base,
-          toolCalls: calls.map((call) => ({
-            id: call.id,
-            name: call.target,
-            arguments: call.input,
-          })),
-        };
-      }
-      return base;
-    }
-    if (next.value.type === "text_delta") {
-      text += next.value.delta;
-      if (onText) {
-        yield* onText(text, next.value.delta);
-      }
-    }
-    if (next.value.type === "toolcall_end") {
-      const block = next.value.toolCall;
-      if (!calls.some((call) => call.id === block.id)) {
-        calls.push({
-          id: block.id,
-          target: foreignSamplingRequest
-            ? block.function.name
-            : resolveOuterToolTarget(block.function.name, params.toolSchemas),
-          input: block.function.arguments,
-          ...(block.thoughtSignature !== undefined
-            ? { thoughtSignature: block.thoughtSignature }
-            : {}),
-        });
-      }
-    }
-    if (next.value.type === "error") {
-      const providerMessage = safeProviderErrorMessage(next.value.error.errorMessage);
-      throw new CrankError(
-        "model_runtime_failed",
-        providerMessage ? `Model runtime failed: ${providerMessage}` : "Model runtime failed",
-      );
-    }
-  }
-}
-
-function safeProviderErrorMessage(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  return value
-    .replaceAll(/[\u0000-\u001f\u007f]/g, " ")
-    .replaceAll(/(bearer|token|api[-_ ]?key)\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
-    .trim()
-    .slice(0, 512);
 }
 
 function* cancelPendingElicits(
@@ -1216,208 +974,6 @@ function foreignElicitId(
   return typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : undefined;
 }
 
-function modelSystemPromptText(value: Json): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  const part = jsonRecord(value);
-  return typeof part?.["value"] === "string"
-    ? part["value"]
-    : JSON.stringify(part?.["value"] ?? value);
-}
-
-function toRuntimeMessage(value: Json): RuntimeMessage {
-  const message = jsonRecord(value) ?? {};
-  const role = message["role"];
-  const parts = Array.isArray(message["parts"]) ? message["parts"] : undefined;
-  const partContent = parts
-    ?.map((partValue) => {
-      const part = jsonRecord(partValue);
-      const content = part?.["value"];
-      return typeof content === "string" ? content : JSON.stringify(content ?? null);
-    })
-    .join("");
-  const content =
-    partContent ??
-    (typeof message["content"] === "string"
-      ? message["content"]
-      : JSON.stringify(message["content"] ?? null));
-  if (role === "assistant") {
-    const runtimeContent = Array.isArray(message["runtime_content"])
-      ? message["runtime_content"].flatMap((block) => {
-          const parsed = parseRuntimeContentBlock(block);
-          return parsed ? [parsed] : [];
-        })
-      : undefined;
-    const toolCalls = Array.isArray(message["tool_calls"])
-      ? message["tool_calls"].flatMap((callValue) => {
-          const call = jsonRecord(callValue);
-          return call ? [call] : [];
-        })
-      : [];
-    return {
-      role: "assistant",
-      content: runtimeContent ?? [
-        ...(content ? [{ type: "text" as const, text: content }] : []),
-        ...toolCalls.map((call) => {
-          const fn = jsonRecord(call["function"]);
-          const id = call["id"];
-          const name = call["target"] ?? call["name"] ?? fn?.["name"];
-          if (typeof id !== "string" || typeof name !== "string") {
-            throw new CrankError(
-              "invalid_chat_request",
-              "Settled assistant tool call requires id and function name",
-            );
-          }
-          return {
-            type: "toolCall" as const,
-            toolCall: {
-              id,
-              type: "function" as const,
-              function: {
-                name,
-                arguments: toolCallArguments(
-                  call["input"] ?? call["arguments"] ?? fn?.["arguments"],
-                ),
-              },
-              ...(typeof call["thoughtSignature"] === "string"
-                ? { thoughtSignature: call["thoughtSignature"] }
-                : {}),
-            },
-          };
-        }),
-      ],
-    };
-  }
-  if (role === "tool") {
-    const toolCallId = message["tool_call_id"];
-    const toolName = message["name"] ?? message["tool_name"];
-    if (typeof toolCallId !== "string" || typeof toolName !== "string") {
-      throw new CrankError(
-        "invalid_chat_request",
-        "Settled tool history requires tool_call_id and name",
-      );
-    }
-    return {
-      role: "tool",
-      tool_call_id: toolCallId,
-      name: toolName,
-      content,
-      isError: message["is_error"] === true,
-    };
-  }
-  if (role === "system") {
-    return { role: "system", content };
-  }
-  return { role: "user", content };
-}
-
-function parseRuntimeContentBlock(value: Json): ContentBlock | undefined {
-  const block = jsonRecord(value);
-  if (!block) {
-    return undefined;
-  }
-  switch (block["type"]) {
-    case "text":
-      return typeof block["text"] === "string"
-        ? {
-            type: "text",
-            text: block["text"],
-            ...(typeof block["textSignature"] === "string"
-              ? { textSignature: block["textSignature"] }
-              : {}),
-          }
-        : undefined;
-    case "thinking":
-      return typeof block["text"] === "string"
-        ? {
-            type: "thinking",
-            text: block["text"],
-            ...(typeof block["format"] === "string" ? { format: block["format"] } : {}),
-            ...(typeof block["thinkingSignature"] === "string"
-              ? { thinkingSignature: block["thinkingSignature"] }
-              : {}),
-            ...(typeof block["redacted"] === "boolean" ? { redacted: block["redacted"] } : {}),
-          }
-        : undefined;
-    case "toolCall": {
-      const call = jsonRecord(block["toolCall"]);
-      const fn = call ? jsonRecord(call["function"]) : undefined;
-      return call && fn && typeof call["id"] === "string" && typeof fn["name"] === "string"
-        ? {
-            type: "toolCall",
-            toolCall: {
-              id: call["id"],
-              type: "function",
-              function: {
-                name: fn["name"],
-                arguments: toolCallArguments(fn["arguments"]),
-              },
-              ...(typeof call["thoughtSignature"] === "string"
-                ? { thoughtSignature: call["thoughtSignature"] }
-                : {}),
-            },
-          }
-        : undefined;
-    }
-    case "image":
-      return typeof block["data"] === "string" && typeof block["mimeType"] === "string"
-        ? { type: "image", data: block["data"], mimeType: block["mimeType"] }
-        : undefined;
-    default:
-      return undefined;
-  }
-}
-
-/**
- * Journal-stored assistant messages carry model arguments verbatim. Some
- * providers stored them as a JSON string, so decoding that string is this
- * hop's only job — shape stays the authored tool's decision at `execute`.
- */
-function toolCallArguments(value: Json | undefined): Json {
-  if (value === undefined) {
-    throw new CrankError("invalid_chat_request", "Settled tool call requires arguments");
-  }
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value) as Json;
-    } catch {
-      return value;
-    }
-  }
-  return value;
-}
-
-function snapshotAssistantContent(content: AssistantMessage["content"]): Json[] {
-  return content.map((block) => {
-    switch (block.type) {
-      case "text":
-        return assertJson({
-          type: "text",
-          text: block.text,
-          ...(block.textSignature !== undefined ? { textSignature: block.textSignature } : {}),
-        });
-      case "thinking":
-        return assertJson({
-          type: "thinking",
-          text: block.text,
-          ...(block.format !== undefined ? { format: block.format } : {}),
-          ...(block.thinkingSignature !== undefined
-            ? { thinkingSignature: block.thinkingSignature }
-            : {}),
-          ...(block.redacted !== undefined ? { redacted: block.redacted } : {}),
-        });
-      case "toolCall":
-        return assertJson({
-          type: "toolCall",
-          toolCall: block.toolCall,
-        });
-      case "image":
-        return assertJson({ type: "image", data: block.data, mimeType: block.mimeType });
-    }
-  });
-}
-
 let activationOwnerCounter = 0;
 
 /** Fences only deployments whose native bindings declare fenced activation. */
@@ -1467,24 +1023,6 @@ function resolveOuterToolTarget(requested: string, tools: ReadonlyArray<{ name: 
   return requested;
 }
 
-function sampleTools(tools: Json[]) {
-  return tools.map((value) => {
-    const tool = jsonRecord(value);
-    if (!tool || typeof tool["name"] !== "string" || tool["name"].length === 0) {
-      throw new CrankError("schema_validation_failed", "Sampling tool is invalid");
-    }
-    const parameters = jsonRecord(tool["inputSchema"]) ?? jsonRecord(tool["parameters"]);
-    if (!parameters) {
-      throw new CrankError("schema_validation_failed", "Sampling tool schema is invalid");
-    }
-    return {
-      name: tool["name"],
-      description: typeof tool["description"] === "string" ? tool["description"] : "",
-      parameters,
-    };
-  });
-}
-
 function requireScopedForeignEffects(
   registrations: readonly [DurableEffectRegistration, DurableEffectRegistration] | undefined,
 ) {
@@ -1504,25 +1042,32 @@ function requireToolRuntime(params: ProgramRuntimeChatEngineParams) {
   return params.toolRuntime;
 }
 
-function createThinCatalog(
+function createChatToolCatalog(
   params: ProgramDriverChatEngineParams,
   foreignDriver: "tool-session" | "chat-tool-runtime",
-): ThinProgramCatalog {
+): ChatToolCatalog {
   const nativePrograms = nativeProgramIdentities(params.nativeTools);
-  const entries: Record<string, ThinCatalogEntry> = {};
+  const entries: Record<string, ChatToolCatalogEntry> = {};
   for (const tool of [...params.toolSchemas].sort((left, right) =>
     left.name.localeCompare(right.name),
   )) {
     const program = nativePrograms[tool.name];
-    entries[tool.name] = program
-      ? { kind: "program", target: tool.name, program }
-      : {
-          kind: "foreign-tool",
-          target: tool.name,
-          driver: foreignDriver,
-          tool: tool.name,
-          durability: "ephemeral_handle",
-        };
+    entries[tool.name] = {
+      model: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      },
+      execution: program
+        ? { kind: "program", target: tool.name, program }
+        : {
+            kind: "foreign-tool",
+            target: tool.name,
+            driver: foreignDriver,
+            tool: tool.name,
+            durability: "ephemeral_handle",
+          },
+    };
   }
   return {
     version: 1,
