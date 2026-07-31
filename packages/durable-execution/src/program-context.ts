@@ -14,7 +14,7 @@ import type {
   DurableChildDescriptor,
   DurableTaskHandle,
   ForeignToolRequest,
-  WireElicitResultJson,
+  ProgramElicitResult,
 } from "./program-contract.ts";
 import type {
   DurableProgramContext,
@@ -166,7 +166,7 @@ export function createDurableProgramContext(
       message: string,
       response: PortableSchemaDescriptor,
       context?: Json,
-    ): Operation<WireElicitResultJson<T>> {
+    ): Operation<ProgramElicitResult<T>> {
       const descriptor = parsePortableSchemaDescriptor(response);
       const outcome = yield* propose({
         type: "operation",
@@ -178,7 +178,7 @@ export function createDurableProgramContext(
           ...(context !== undefined ? { context: canonicalSnapshot(context).value } : {}),
         },
       });
-      return unwrapOutcome<WireElicitResultJson<T>>(outcome);
+      return unwrapOutcome<ProgramElicitResult<T>>(outcome);
     },
     *emit(eventType: string, payload: Json): Operation<void> {
       yield* propose({

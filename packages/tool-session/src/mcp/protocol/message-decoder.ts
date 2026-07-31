@@ -27,10 +27,10 @@ import type {
 } from "./types.ts";
 import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } from "./types.ts";
 import type {
-  WireElicitResult,
-  WireSampleResultBase,
-  WireSampleResultWithParsed,
-  WireSampleResultWithToolCalls,
+  ElicitExchangeCompletion,
+  SampleExchangeCompletionBase,
+  ParsedSampleExchangeCompletion,
+  ToolCallSampleExchangeCompletion,
   SamplingToolCall,
 } from "@sweatpants/agent-sdk";
 
@@ -45,15 +45,15 @@ import type {
  * The exchange is added by the runtime layer (for example bridge-runtime).
  */
 export type DecodedSampleResult =
-  | WireSampleResultBase
-  | WireSampleResultWithParsed<unknown>
-  | WireSampleResultWithToolCalls;
+  | SampleExchangeCompletionBase
+  | ParsedSampleExchangeCompletion<unknown>
+  | ToolCallSampleExchangeCompletion;
 
 /**
  * Result of decoding an MCP message.
  */
 export type DecodedMessage =
-  | { type: "elicitation_response"; elicitId: string; result: WireElicitResult<unknown> }
+  | { type: "elicitation_response"; elicitId: string; result: ElicitExchangeCompletion<unknown> }
   | { type: "sampling_response"; sampleId: string; result: DecodedSampleResult }
   | { type: "tool_call"; name: string; args: Json; requestId: string | number }
   | { type: "error"; code: number; message: string; data?: unknown }
@@ -64,7 +64,7 @@ export type DecodedMessage =
 // =============================================================================
 
 /**
- * Decode an MCP elicitation response into a WireElicitResult.
+ * Decode an MCP elicitation response into a ElicitExchangeCompletion.
  *
  * The wire result carries no exchange: exchange construction happens only in
  * the layer that holds the originating call's context (bridge / worker).
@@ -88,7 +88,7 @@ export function decodeElicitationResponse(
 
   const mcpResult = response.result;
 
-  let elicitResult: WireElicitResult<unknown>;
+  let elicitResult: ElicitExchangeCompletion<unknown>;
 
   switch (mcpResult.action) {
     case "accept":
@@ -171,7 +171,7 @@ export function decodeSamplingResponse(
   // Check if this is a tool use response
   if (mcpResult.stopReason === "toolUse") {
     const toolCalls = extractToolCallsFromContent(mcpResult.content);
-    const result: WireSampleResultWithToolCalls = {
+    const result: ToolCallSampleExchangeCompletion = {
       text,
       model: mcpResult.model,
       stopReason: "toolUse",
@@ -185,7 +185,7 @@ export function decodeSamplingResponse(
   }
 
   // Return base result (structured output parsing happens at runtime layer)
-  const result: WireSampleResultBase = {
+  const result: SampleExchangeCompletionBase = {
     text,
     model: mcpResult.model,
     ...(mcpResult.stopReason !== undefined && { stopReason: mcpResult.stopReason }),

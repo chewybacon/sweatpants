@@ -38,17 +38,14 @@ import type {
   ToolDefinition,
   RuntimeTool,
   ToolElicitResult,
+  ElicitExchangeCompletion,
   ElicitsMap,
+  LogLevel,
   SampleResultBase,
   SamplesMap,
-  ToolMessage,
 } from "@sweatpants/agent-sdk";
-import type {
-  WireElicitResult,
-  ClientElicitConfig,
-  LogLevel,
-  ElicitExchange,
-} from "./mcp-tool-types.ts";
+import { completeElicitExchange } from "@sweatpants/agent-sdk";
+import type { ClientElicitConfig } from "./mcp-tool-types.ts";
 import { McpCapabilityError as MCPCapabilityError } from "./mcp-tool-types.ts";
 
 interface MockSampleConfig<T = unknown> {
@@ -80,10 +77,10 @@ export interface MockMCPClientConfig {
    * Consumed in order as ctx.elicit() is called.
    *
    * Can be either:
-   * - WireElicitResult (simple: { action, content }) - exchange will be constructed
+   * - ElicitExchangeCompletion (simple: { action, content }) - exchange will be constructed
    * - ToolElicitResult (full: { action, content, exchange }) - used as-is
    */
-  elicitResponses?: (WireElicitResult<any> | ToolElicitResult<any, any>)[];
+  elicitResponses?: (ElicitExchangeCompletion<any> | ToolElicitResult<any, any>)[];
 
   /**
    * Pre-programmed sampling responses.
@@ -175,6 +172,7 @@ export function createMockMCPClient(config: MockMCPClientConfig = {}): MockMCPCl
   const sampleCalls: MockSampleConfig<any>[] = [];
   const logCalls: Array<{ level: LogLevel; message: string }> = [];
   const notifyCalls: Array<{ message: string; progress?: number }> = [];
+  let elicitSequence = 0;
 
   function createContext(): MockMCPClientContext {
     return {
@@ -193,54 +191,16 @@ export function createMockMCPClient(config: MockMCPClientConfig = {}): MockMCPCl
               throw new Error("Mock MCP client: No more elicit responses configured");
             }
 
-            // If response already has exchange, return as-is
-            if ("exchange" in response) {
-              return response as ToolElicitResult<unknown, T>;
-            }
+            if ("exchange" in response) return response;
 
-            // For decline/cancel, no exchange needed
-            if (response.action !== "accept") {
-              return response as ToolElicitResult<unknown, T>;
-            }
-
-            // Construct a mock exchange for accept responses using MCP format
-            const toolCallId = `mock_elicit_${Date.now()}`;
-            const request: ToolMessage & { role: "assistant" } = {
-              role: "assistant",
-              content: [
-                {
-                  type: "tool_use",
-                  id: toolCallId,
-                  name: "elicit",
-                  // Keep input empty; echo data in tool_result for history
-                  input: {},
-                },
-              ],
-            };
-            const toolResponse: ToolMessage & { role: "user" } = {
-              role: "user",
-              content: [
-                {
-                  type: "tool_result",
-                  toolUseId: toolCallId,
-                  content: [{ type: "text", text: JSON.stringify(response.content) }],
-                },
-              ],
-            };
-
-            const exchange: ElicitExchange<unknown> = {
-              context: {},
-              request,
-              response: toolResponse,
-              messages: [request, toolResponse],
-              withArguments: () => [request, toolResponse],
-            };
-
-            return {
-              action: "accept",
-              content: response.content as T,
-              exchange,
-            };
+            return yield* completeElicitExchange({
+              key: "elicit",
+              message: elicitConfig.message,
+              context: undefined,
+              exchangeId: `mock_elicit_${++elicitSequence}`,
+              responseSchema: elicitConfig.schema,
+              completion: response,
+            });
           },
         };
       },

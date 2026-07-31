@@ -85,8 +85,8 @@ describe("yo-chat AgentCore runtime smoke", () => {
     });
 
     const { setupYoChatPluginsAndRuntime } = await import("../server/tool-runtime");
-    const { ToolInventoryApi } = await import("@sweatpants/chat-core");
-    const { ToolRuntimeApi } = await import("@sweatpants/tool-session/chat-runtime");
+    const { ToolInventoryApi } = await import("@sweatpants/tool-runtime");
+    const { ToolRuntimeApi } = await import("@sweatpants/tool-runtime");
     const { ProgramDriverForeignEffectsContext } =
       await import("@sweatpants/durable-chat-runtime/durable-handler");
 

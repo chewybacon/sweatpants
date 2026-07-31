@@ -1,7 +1,7 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { resource, run, type Operation, type Stream } from "effection";
 import { createClient, type RedisClientType } from "redis";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -253,7 +253,7 @@ export async function post(
                   callId: "call-http-play-ttt",
                   toolName: playTttTool.name,
                   elicitId: resume.interruptId,
-                  result: { action: "accept", content: { position: resume.position } },
+                  completion: { action: "accept", content: { position: resume.position } },
                 },
               ],
             }
@@ -345,7 +345,7 @@ function buildChatRequest(
                 callId: "call-http-play-ttt",
                 toolName: playTttTool.name,
                 elicitId: resume.interruptId,
-                result: { action: "accept", content: { position: resume.position } },
+                completion: { action: "accept", content: { position: resume.position } },
               },
             ],
           }

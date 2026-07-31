@@ -1,10 +1,10 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { describe, expect, it } from "vitest";
 import { run, resource, type Operation } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import { ToolRuntimeApi } from "@sweatpants/tool-session/chat-runtime";
-import { createToolInventory } from "@sweatpants/chat-core";
+import { ToolRuntimeApi } from "@sweatpants/tool-runtime";
+import { createToolInventory } from "@sweatpants/tool-runtime";
 import { type ToolSessionRegistry, type ToolSession } from "@sweatpants/tool-session";
 import {
   FakeAgentCoreRemoteToolRuntimeClient,
@@ -281,7 +281,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
         input: {
           type: "elicit_response",
           elicitId: initial.request.elicitId,
-          result: { action: "accept", content: { confirmed: true } },
+          completion: { action: "accept", content: { confirmed: true } },
         },
       });
 
@@ -421,7 +421,11 @@ describe("AgentCore ToolRuntimeDriver", () => {
             callId: "call-remote",
             toolName: "other_tool",
           },
-          input: { type: "elicit_response", elicitId: "elicit", result: { action: "accept" } },
+          input: {
+            type: "elicit_response",
+            elicitId: "elicit",
+            completion: { action: "accept", content: null },
+          },
         });
         throw new Error("expected wrong tool");
       } catch (error) {

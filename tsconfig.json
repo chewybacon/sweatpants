@@ -54,6 +54,9 @@
             "path": "./packages/tool-session"
         },
         {
+            "path": "./packages/tool-runtime"
+        },
+        {
             "path": "./packages/tool-runtime-agentcore"
         },
         {

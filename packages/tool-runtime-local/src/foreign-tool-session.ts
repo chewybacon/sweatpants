@@ -2,7 +2,12 @@ import { action, race, type Operation } from "effection";
 import { z } from "zod";
 
 import { isDurableToolSessionFacade } from "./durable-tool-session-facade.ts";
-import type { AnyToolContract, WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
+import {
+  parseElicitExchangeCompletion,
+  type AnyToolContract,
+  type ElicitExchangeCompletion,
+  type SampleExchangeCompletion,
+} from "@sweatpants/agent-sdk";
 import type { ToolSession, ToolSessionEvent, ToolSessionRegistry } from "@sweatpants/tool-session";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
@@ -65,12 +70,6 @@ const sampleResponseSchema = z.union([
     parseError: z.strictObject({ message: z.string(), rawText: z.string() }).optional(),
   }),
   z.strictObject(sampleBaseFields),
-]);
-
-const elicitResponseSchema = z.discriminatedUnion("action", [
-  z.strictObject({ action: z.literal("accept"), content: z.json() }),
-  z.strictObject({ action: z.literal("decline"), reason: z.string().optional() }),
-  z.strictObject({ action: z.literal("cancel"), reason: z.string().optional() }),
 ]);
 
 /** Scoped ToolSession registry and immutable authored-tool inventory used by the adapter. */
@@ -395,7 +394,7 @@ function decodeContinuation(value: ForeignContinuation): ToolSessionContinuation
   return continuationStateSchema.safeParse(value.state).data;
 }
 
-function decodeSampleResponse(value: Json): WireSampleResult | undefined {
+function decodeSampleResponse(value: Json): SampleExchangeCompletion | undefined {
   const result = sampleResponseSchema.safeParse(value);
   if (!result.success) return undefined;
   const response = result.data;
@@ -415,15 +414,12 @@ function decodeSampleResponse(value: Json): WireSampleResult | undefined {
   return base;
 }
 
-function decodeElicitResponse(value: Json): WireElicitResult<unknown> | undefined {
-  const result = elicitResponseSchema.safeParse(value);
-  if (!result.success) return undefined;
-  const response = result.data;
-  if (response.action === "accept") return response;
-  return {
-    action: response.action,
-    ...(response.reason !== undefined ? { reason: response.reason } : {}),
-  };
+function decodeElicitResponse(value: Json): ElicitExchangeCompletion<Json> | undefined {
+  try {
+    return parseElicitExchangeCompletion(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function failure(

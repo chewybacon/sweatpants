@@ -48,11 +48,8 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/durable-execution",
     "@sweatpants/foundation",
   ],
+  "@sweatpants/tool-runtime": ["@sweatpants/agent-sdk", "@sweatpants/foundation"],
   "@sweatpants/tool-session": [
-    // Transitional DR-041/REQ-041 edge: core is the authored-tool contract
-    // owner until the same stage renames it to agent-sdk. No framework edge is
-    // permitted.
-    "@sweatpants/agent-sdk",
     "@sweatpants/agent-sdk",
     "@sweatpants/durable-effects",
     "@sweatpants/durable-execution",
@@ -60,15 +57,12 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/model-provider",
   ],
   "@sweatpants/chat-core": [
-    // Transitional DR-048 edge: core is the authored-tool contract owner
-    // until the same stage renames it to agent-sdk. No framework edge is
-    // permitted.
-    "@sweatpants/agent-sdk",
     "@sweatpants/agent-sdk",
     "@sweatpants/durable-effects",
     "@sweatpants/durable-execution",
     "@sweatpants/history-store",
     "@sweatpants/model-provider",
+    "@sweatpants/tool-runtime",
     "@sweatpants/foundation",
   ],
   "@sweatpants/durable-chat-runtime": [
@@ -82,6 +76,7 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/durable-streams",
     "@sweatpants/history-store",
     "@sweatpants/model-provider",
+    "@sweatpants/tool-runtime",
   ],
   "@sweatpants/agent-host": [
     "@sweatpants/agent-sdk",

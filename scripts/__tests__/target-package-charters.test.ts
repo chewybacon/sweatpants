@@ -51,6 +51,66 @@ describe("target package charters", () => {
     expect(productionSource("model-provider-pi-ai")).not.toMatch(/from ["']@sweatpants\/chat-core/);
   });
 
+  it("keeps Tool Runtime neutral and under one contract owner", () => {
+    expectNoMatches(productionSource("tool-runtime"), [
+      /from ["']@sweatpants\/(?:chat-core|tool-session|durable-chat-runtime|model-provider)/,
+      /from ["'](?:node:http|redis|react)["']/,
+    ]);
+
+    const declarations = new Map(
+      [
+        "PortableToolDefinition",
+        "ToolInventoryEntry",
+        "ToolRuntime",
+        "ElicitExchangeCompletion",
+        "SampleExchangeCompletion",
+      ].map((name) => [name, [] as string[]]),
+    );
+    for (const packageName of readdirSync(resolve(root, "packages"))) {
+      const sourceRoot = resolve(root, "packages", packageName, "src");
+      if (!existsSync(sourceRoot)) continue;
+      const visit = (directory: string): void => {
+        for (const entry of readdirSync(directory)) {
+          const path = resolve(directory, entry);
+          if (statSync(path).isDirectory()) {
+            if (entry !== "dist" && entry !== "node_modules") visit(path);
+            continue;
+          }
+          if (!path.endsWith(".ts") || path.endsWith(".test.ts")) continue;
+          const source = readFileSync(path, "utf8");
+          for (const name of declarations.keys()) {
+            if (new RegExp(`export (?:interface|type) ${name}\\b`).test(source)) {
+              declarations.get(name)?.push(path.replace(`${root}/`, ""));
+            }
+          }
+          expect(source, path).not.toMatch(/\bWire(?:Elicit|Sample)[A-Za-z]*\b/);
+          expect(source, path).not.toMatch(
+            /@sweatpants\/tool-session\/(?:chat-runtime|tool-inventory)/,
+          );
+          expect(source, path).not.toMatch(/input\.result as ElicitExchangeCompletion/);
+          expect(source, path).not.toMatch(/response\.content as T\b/);
+        }
+      };
+      visit(sourceRoot);
+    }
+
+    expect(declarations.get("PortableToolDefinition")).toEqual([
+      "packages/tool-runtime/src/contract.ts",
+    ]);
+    expect(declarations.get("ToolInventoryEntry")).toEqual([
+      "packages/tool-runtime/src/contract.ts",
+    ]);
+    expect(declarations.get("ToolRuntime")).toEqual(["packages/tool-runtime/src/contract.ts"]);
+    expect(declarations.get("ElicitExchangeCompletion")).toEqual([
+      "packages/agent-sdk/src/tool/types.ts",
+    ]);
+    expect(declarations.get("SampleExchangeCompletion")).toEqual([
+      "packages/agent-sdk/src/tool/types.ts",
+    ]);
+    expect(existsSync(resolve(root, "packages/tool-session/src/chat-runtime.ts"))).toBe(false);
+    expect(existsSync(resolve(root, "packages/tool-session/src/tool-inventory.ts"))).toBe(false);
+  });
+
   it("keeps Chat Core free of hosting, authority persistence, Redis, and MCP handlers", () => {
     expectNoMatches(productionSource("chat-core"), [
       /from ["']@sweatpants\/(?:agent-host|journal-authority|execution-store-redis)/,

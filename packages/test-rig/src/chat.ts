@@ -302,7 +302,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         let answered = false;
         const answer = async (
           result:
-            | { action: "accept"; content?: unknown }
+            | { action: "accept"; content: unknown }
             | { action: "decline" }
             | { action: "cancel" },
         ): Promise<void> => {
@@ -319,7 +319,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
             callId: elicit.callId,
             ...(elicit.toolName ? { toolName: elicit.toolName } : {}),
             elicitId: elicit.elicitId,
-            result,
+            completion: result,
             autoContinue: true,
           };
           session.dispatch(command);

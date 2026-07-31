@@ -1,4 +1,11 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import {
+  ToolInventoryApi,
+  ToolInventoryContext,
+  ToolInventoryError,
+  createToolInventory,
+  createToolInventoryEntry,
+  type ToolInventoryEntry,
+} from "@sweatpants/tool-runtime";
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
 import { z } from "zod";
@@ -7,12 +14,7 @@ import {
   ToolExposureApi,
   ToolExposureError,
   ToolExposurePolicyContext,
-  ToolInventoryApi,
-  ToolInventoryContext,
-  ToolInventoryError,
-  createToolInventory,
   defaultToolExposurePolicy,
-  type ToolInventoryEntry,
 } from "@sweatpants/chat-core";
 import {
   ToolRuntimeApi,
@@ -22,7 +24,7 @@ import {
   installToolRuntime,
   type ToolExecutionStrategy,
   type ToolRuntime,
-} from "@sweatpants/tool-session/chat-runtime";
+} from "@sweatpants/tool-runtime";
 
 const echoEntry: ToolInventoryEntry = {
   definition: {
@@ -246,7 +248,7 @@ describe("tool inventory runtime completion contracts", () => {
       try {
         yield* ToolRuntimeApi.operations.resume({
           ref: { runtimeId: "other", executionId: "exec", callId: "call-1", toolName: "echo" },
-          input: { type: "elicit_response", result: { action: "accept" } },
+          input: { type: "elicit_response", completion: { action: "accept", content: null } },
         });
         throw new Error("expected wrong runtime");
       } catch (error) {

@@ -1,3 +1,4 @@
+import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
 import type {
   ConversationReplayState,
@@ -6,7 +7,7 @@ import type {
   ToolExecutionTrace,
 } from "@sweatpants/chat-core";
 import type { StreamOptions } from "@sweatpants/model-provider";
-import type { ToolExecutionRef } from "@sweatpants/tool-session/chat-runtime";
+import type { ToolExecutionRef } from "@sweatpants/tool-runtime";
 import type { ResumeEntry } from "./types.ts";
 
 export interface ChatHandlerSetupContext {
@@ -22,10 +23,7 @@ export interface ElicitResponse {
   toolName?: string;
   ref?: ToolExecutionRef;
   elicitId: string;
-  result: {
-    action: "accept" | "decline" | "cancel";
-    content?: unknown;
-  };
+  completion: ElicitExchangeCompletion<unknown>;
   trace?: ToolExecutionTrace;
 }
 

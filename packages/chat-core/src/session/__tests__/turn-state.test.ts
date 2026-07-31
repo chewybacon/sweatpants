@@ -88,7 +88,7 @@ describe("createChatTurnState", () => {
       sessionId: "call-1",
       callId: "call-1",
       elicitId: "elicit-1",
-      result: { action: "accept", content: { seat: "3A" } },
+      completion: { action: "accept", content: { seat: "3A" } },
     });
     expect(first).not.toBeNull();
 
@@ -96,7 +96,7 @@ describe("createChatTurnState", () => {
       sessionId: "call-1",
       callId: "call-1",
       elicitId: "elicit-1",
-      result: { action: "accept", content: { seat: "4B" } },
+      completion: { action: "accept", content: { seat: "4B" } },
     });
     expect(second).toBeNull();
 
@@ -111,7 +111,7 @@ describe("createChatTurnState", () => {
       sessionId: "call-1",
       callId: "call-1",
       elicitId: "elicit-1",
-      result: { action: "accept", content: { seat: "3A" } },
+      completion: { action: "accept", content: { seat: "3A" } },
     });
 
     const first = turn.beginTurnRequest();
@@ -196,7 +196,7 @@ describe("createChatTurnState", () => {
       sessionId: "call-1",
       callId: "call-1",
       elicitId: "elicit-1",
-      result: { action: "cancel" },
+      completion: { action: "cancel" },
     });
 
     expect(turn.reset()).toEqual([{ type: "LOCAL_RESET" }]);
@@ -209,7 +209,7 @@ describe("createChatTurnState", () => {
         sessionId: "call-1",
         callId: "call-1",
         elicitId: "elicit-1",
-        result: { action: "cancel" },
+        completion: { action: "cancel" },
       }),
     ).not.toBeNull();
   });

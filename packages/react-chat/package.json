@@ -62,6 +62,7 @@
         "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
+        "@sweatpants/tool-runtime": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "effection": "catalog:",
         "zod": "catalog:"

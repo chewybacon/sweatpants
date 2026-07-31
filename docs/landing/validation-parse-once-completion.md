@@ -24,9 +24,9 @@ Current inventory totals:
 | Record | Count |
 | --- | ---: |
 | Historical validation records | 86 |
-| Manual shape owners | 331 |
-| `B` external boundary | 110 |
-| `R` same-domain revalidation | 159 |
+| Manual shape owners | 326 |
+| `B` external boundary | 107 |
+| `R` same-domain revalidation | 157 |
 | `S` typed semantic verification | 15 |
 | `G` generic mechanism | 6 |
 | `C` compatibility normalizer | 41 |
@@ -156,17 +156,24 @@ A repository-wide authored-schema projection gate now rejects `toToolParameterJs
 
 `@sweatpants/agent-sdk` now solely owns authored sample configuration, results, retry errors, tool definitions, and the generic `ToolSamplingCtx<TMessage>` surface. Tool Session and Tool Runtime Local specialize that contract with their stronger message carriers instead of redeclaring parallel MCP and Worker families. `SampleToolsResult` retains the helper's proven non-empty call tuple and literal `toolUse` stop reason; named sample requests retain typed options and authored output-schema evidence through `RuntimeTool` rather than reconstructing or casting it downstream. The spread-and-cast `toWorkerSampleConfig`, `toWorkerToolsConfig`, `toWorkerSchemaConfig`, and result canonicalizers were deleted. Agent SDK's `WorkerSampleRequest` and `WorkerSampleResponse` remain the only real serialized worker sampling DTOs; unused local MCP worker request/response copies were removed. A charter gate enforces one declaration owner and rejects return of the former forwarding adapters.
 
+### Neutral Tool Runtime and exchange completion authority
+
+`@sweatpants/tool-runtime` now owns the protocol-neutral execution port, strategy composition, execution references, continuation envelopes, portable inventory definitions, inventory context, and authored-contract projection. The former `@sweatpants/tool-session/chat-runtime` and `tool-inventory` facades and Chat Core's duplicate `ToolDefinition`, `ToolCapabilities`, and `ToolInventoryEntry` families were deleted. Chat Core retains only chat-specific exposure policy; Tool Runtime Local and AgentCore are sibling implementations of the neutral port.
+
+The misleading `WireElicitResult` and `WireSampleResult*` names were replaced by `ElicitExchangeCompletion` and `SampleExchangeCompletion*`: transport-safe response facts that settle a pending exchange but do not pretend to contain local history. Real Worker envelopes now carry a `completion` field instead of flattening and reconstructing action/content/result fields. Agent SDK's `completeElicitExchange` is the single authority that runs the authored Standard Schema, retains defaults/transforms, preserves producer-owned correlation and context, and constructs `ElicitExchange`; Tool Session bridge and worker execution both call it. `completeSampleExchange` and the sample exchange constructors are likewise Agent SDK-owned. Continuation carriers now carry typed completions rather than `unknown`, deleting casts in both runtime drivers. Worker-side `content as T`, `Date.now()` elicitation identity, fabricated empty context, duplicate exchange construction, and empty sample-response fallback were removed.
+
 ## Validation performed
 
 | Scope | Result |
 | --- | --- |
-| Validation inventory/tooling tests | 31 passed |
-| Tool Runtime Local source tests | 39 passed |
+| Validation inventory/tooling tests | 32 passed |
+| Tool Runtime contract tests | 3 passed |
+| Tool Runtime Local source tests | 40 passed |
 | Tool Runtime Local acceptance tests | 6 passed |
 | CLI tests | 14 passed |
 | A2A tests | 48 passed, 1 live test skipped |
 | Agent Host tests | 38 passed |
-| Agent SDK tests | 150 passed |
+| Agent SDK tests | 155 passed |
 | Chat Core tests | 124 passed |
 | Durable Effects tests | 3 passed |
 | Test Rig tests | 18 passed |

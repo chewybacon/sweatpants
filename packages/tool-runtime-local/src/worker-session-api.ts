@@ -14,7 +14,7 @@ import type {
   WorkerSampleRequest,
   WorkerSampleResponse,
 } from "@sweatpants/agent-sdk/transport/worker";
-import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
+import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { ExtendedMessage, ToolCallMessage } from "@sweatpants/tool-session/messages";
 import { MODEL_CONTEXT_SCHEMA_KEY } from "@sweatpants/tool-session/mcp";
 import { WorkerSessionStateContext } from "./worker-session-context.ts";
@@ -92,7 +92,7 @@ export const WorkerSessionApi = createApi("worker-session", {
     const state = yield* WorkerSessionStateContext.expect();
     const elicitId = request.id;
 
-    const queue = createQueue<WireElicitResult<unknown>, void>();
+    const queue = createQueue<ElicitExchangeCompletion<unknown>, void>();
     state.pendingElicitChannels.set(elicitId, queue);
 
     const schemaWithContext = request.context
@@ -113,28 +113,22 @@ export const WorkerSessionApi = createApi("worker-session", {
     state.pendingElicitChannels.delete(elicitId);
 
     if (result.done) {
-      return { id: elicitId, type: "elicit", action: "cancel" };
+      return {
+        id: elicitId,
+        type: "elicit",
+        completion: { action: "cancel", reason: "worker elicitation channel closed" },
+      };
     }
 
-    const rawResult = result.value;
     state.setStatus("running");
-
-    return {
-      id: elicitId,
-      type: "elicit",
-      action: rawResult.action,
-      ...(rawResult.action === "accept" && { content: rawResult.content }),
-      ...((rawResult.action === "decline" || rawResult.action === "cancel") &&
-        "reason" in rawResult &&
-        rawResult.reason !== undefined && { reason: rawResult.reason }),
-    };
+    return { id: elicitId, type: "elicit", completion: result.value };
   },
 
   *handleSampleRequest(request: WorkerSampleRequest): Operation<WorkerSampleResponse> {
     const state = yield* WorkerSessionStateContext.expect();
     const sampleId = request.id;
 
-    const queue = createQueue<WireSampleResult, void>();
+    const queue = createQueue<SampleExchangeCompletion, void>();
     state.pendingSampleChannels.set(sampleId, queue);
 
     const messages: ExtendedMessage[] = request.messages.map(workerMessageToExtended);
@@ -156,39 +150,18 @@ export const WorkerSessionApi = createApi("worker-session", {
     state.pendingSampleChannels.delete(sampleId);
 
     if (result.done) {
-      return {
-        id: sampleId,
-        type: "sample",
-        status: "accepted",
-        text: "",
-      };
+      throw new Error(`Sample response channel closed before completion for ${sampleId}`);
     }
 
-    const rawResult = result.value;
     state.setStatus("running");
-
-    const workerResponse: WorkerSampleResponse = {
-      id: sampleId,
-      type: "sample",
-      status: "accepted",
-      text: rawResult.text,
-      ...(rawResult.model !== undefined && { model: rawResult.model }),
-      ...(rawResult.stopReason !== undefined && { stopReason: rawResult.stopReason }),
-      ...("parsed" in rawResult && rawResult.parsed !== undefined && { parsed: rawResult.parsed }),
-      ...("parseError" in rawResult &&
-        rawResult.parseError !== undefined && { parseError: rawResult.parseError }),
-      ...("toolCalls" in rawResult &&
-        rawResult.toolCalls !== undefined && { toolCalls: rawResult.toolCalls }),
-    };
-
-    return workerResponse;
+    return { id: sampleId, type: "sample", completion: result.value };
   },
 
   // ==========================================
   // Response side (host → worker)
   // ==========================================
 
-  *respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void> {
+  *respondToElicit(elicitId: string, response: ElicitExchangeCompletion<unknown>): Operation<void> {
     const state = yield* WorkerSessionStateContext.expect();
     const queue = state.pendingElicitChannels.get(elicitId);
     if (!queue) {
@@ -199,7 +172,7 @@ export const WorkerSessionApi = createApi("worker-session", {
     state.pendingElicitChannels.delete(elicitId);
   },
 
-  *respondToSample(sampleId: string, response: WireSampleResult): Operation<void> {
+  *respondToSample(sampleId: string, response: SampleExchangeCompletion): Operation<void> {
     const state = yield* WorkerSessionStateContext.expect();
     const queue = state.pendingSampleChannels.get(sampleId);
     if (!queue) {

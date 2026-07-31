@@ -16,7 +16,7 @@ import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
 import { createDevelopmentProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -25,12 +25,12 @@ import {
   type ModelProviderDriver,
   type StreamEvent as RuntimeStreamEvent,
 } from "@sweatpants/model-provider";
-import { createToolInventoryEntry } from "@sweatpants/tool-session/chat-runtime";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import {
   createToolExecutionRef,
   installToolRuntime,
   type ToolRuntime,
-} from "@sweatpants/tool-session/chat-runtime";
+} from "@sweatpants/tool-runtime";
 import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { eventsOfType, readDurableEvents } from "./ndjson.ts";

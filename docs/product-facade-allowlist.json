@@ -14,7 +14,7 @@
     "@sweatpants/react-chat",
     "@sweatpants/react-chat/browser-rendering",
     "@sweatpants/react-chat/pipeline",
-    "@sweatpants/tool-session/chat-runtime",
+    "@sweatpants/tool-runtime",
     "@sweatpants/tool-session/mcp",
     "@sweatpants/tool-session/tool-parameters",
     "@sweatpants/workspace-lambda-microvm",

@@ -12,7 +12,7 @@ import type {
   ForeignToolRequest,
   GeneratedProgramArtifactIdentityV1,
   ProgramIdentityProvenanceV1,
-  WireElicitResultJson,
+  ProgramElicitResult,
 } from "./program-contract.ts";
 
 export type ProgramResume = OperationOutcome | undefined;
@@ -51,7 +51,7 @@ export interface DurableProgramContext {
     message: string,
     response: PortableSchemaDescriptor,
     context?: Json,
-  ): Operation<WireElicitResultJson<T>>;
+  ): Operation<ProgramElicitResult<T>>;
   emit(eventType: string, payload: Json): Operation<void>;
   clock: {
     waitUntil(instant: string, key?: string): Operation<void>;

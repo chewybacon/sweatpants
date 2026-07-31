@@ -1,6 +1,6 @@
 import type { Operation, Stream } from "effection";
 import type { ToolSession, ToolSessionStatus, ToolSessionEvent } from "@sweatpants/tool-session";
-import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
+import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
 
 export const AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION =
   "sweatpants.agentcore.tool-session.v1" as const;
@@ -92,13 +92,13 @@ export interface StartToolSessionRequest extends AgentCoreToolRuntimeRequestBase
 export interface RespondToElicitRequest extends AgentCoreToolRuntimeRequestBase {
   op: "respond_to_elicit";
   elicitId: string;
-  response: WireElicitResult<unknown>;
+  response: ElicitExchangeCompletion<unknown>;
 }
 
 export interface RespondToSampleRequest extends AgentCoreToolRuntimeRequestBase {
   op: "respond_to_sample";
   sampleId: string;
-  response: WireSampleResult;
+  response: SampleExchangeCompletion;
 }
 
 export interface CancelToolSessionRequest extends AgentCoreToolRuntimeRequestBase {

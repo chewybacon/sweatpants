@@ -16,6 +16,19 @@ const namedSampleTool = createTool("worker_adapter_named_sample")
     return result.parsed;
   });
 
+const elicitingTool = createTool("worker_adapter_elicit")
+  .description("Worker elicitation fixture")
+  .parameters(z.object({}))
+  .elicits({
+    confirm: {
+      response: z.object({ answer: z.string().trim(), confirmed: z.boolean().default(true) }),
+    },
+  })
+  .execute(function* (_params, ctx) {
+    const result = yield* ctx.elicit("confirm", { message: "Confirm this" });
+    return result.action === "accept" ? result.content : result;
+  });
+
 const canonicalTool = createTool("worker_adapter_echo")
   .description("Worker adapter fixture")
   .parameters(z.object({ message: z.string() }))
@@ -70,6 +83,29 @@ describe("createWorkerTool", () => {
 
     expect(sampledConfig).toMatchObject({ prompt: "classify this", schema: namedOutput });
     expect(result).toEqual({ answer: "typed" });
+  });
+
+  it("validates worker elicitation completions through the authored response schema", async () => {
+    let requestedSchema: unknown;
+    const context = {
+      signal: new AbortController().signal,
+      *elicit(_key: string, options: { schema: unknown }) {
+        requestedSchema = options.schema;
+        return {
+          exchangeId: "worker:req:1",
+          action: "accept" as const,
+          content: { answer: "  yes  " },
+        };
+      },
+    } as unknown as WorkerToolContext;
+    const workerTool = createWorkerTool(elicitingTool);
+
+    const result = await run(function* () {
+      return yield* workerTool.handler({}, context);
+    });
+
+    expect(requestedSchema).toMatchObject({ type: "object" });
+    expect(result).toEqual({ answer: "yes", confirmed: true });
   });
 
   it("retains canonical parameter validation", async () => {

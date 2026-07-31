@@ -212,10 +212,11 @@ const elicitResponseSchema = z
     callId: z.string().min(1).max(512),
     toolName: z.string().max(512).optional(),
     elicitId: z.string().min(1).max(512),
-    result: z
+    completion: z
       .object({
         action: z.enum(["accept", "decline", "cancel"]),
         content: jsonValueSchema.optional(),
+        reason: z.string().max(2048).optional(),
       })
       .strict(),
     ref: z
@@ -336,7 +337,7 @@ export function parseChatRequestBody(value: unknown): ChatRequestBody {
   }
 }
 
-function mapResolvedResumePayload(payload: unknown): ElicitResponse["result"] {
+function mapResolvedResumePayload(payload: unknown): ElicitResponse["completion"] {
   if (isRecord(payload) && payload["action"] === "accept") {
     return { action: "accept", content: payload["content"] };
   }
@@ -365,7 +366,7 @@ export function mapResumeEntriesToElicitResponses(
     if (!record?.toolCallId) {
       continue;
     }
-    const result =
+    const completion =
       entry.status === "cancelled"
         ? { action: "cancel" as const }
         : mapResolvedResumePayload(entry.payload);
@@ -373,16 +374,20 @@ export function mapResumeEntriesToElicitResponses(
     const response: ElicitResponse = {
       sessionId,
       callId: record.toolCallId,
-      ...(record.toolName ? { toolName: record.toolName } : {}),
+      ...(record.toolName
+        ? {
+            toolName: record.toolName,
+            ref: {
+              runtimeId: record.runtimeId ?? runtimeId,
+              executionId: record.executionId ?? sessionId,
+              sessionId,
+              callId: record.toolCallId,
+              toolName: record.toolName,
+            },
+          }
+        : {}),
       elicitId: entry.interruptId,
-      result,
-      ref: {
-        runtimeId: record.runtimeId ?? runtimeId,
-        executionId: record.executionId ?? sessionId,
-        sessionId,
-        callId: record.toolCallId,
-        toolName: record.toolName ?? "",
-      },
+      completion,
     };
     const trace = normalizeClientReplayTrace(traces[entry.interruptId]);
     if (trace) {

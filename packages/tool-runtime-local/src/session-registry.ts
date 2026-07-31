@@ -21,9 +21,12 @@ import type {
   ToolSessionEntry,
   ToolSessionOptions,
   ToolSessionStatus,
-  ElicitsMap,
 } from "@sweatpants/tool-session";
-import { isExecutableToolContract, type ToolContract } from "@sweatpants/agent-sdk";
+import {
+  isExecutableToolContract,
+  type ElicitsMap,
+  type ToolContract,
+} from "@sweatpants/agent-sdk";
 import { installToolSessionStore, ToolSessionStorePort } from "./session-store-port.ts";
 import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import { createToolSession } from "./tool-session.ts";

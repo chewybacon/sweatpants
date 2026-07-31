@@ -25,7 +25,7 @@ import {
   type PinnedProgram,
   type ProgramRoute,
   type ProgramRunResult,
-  type WireElicitResultJson,
+  type ProgramElicitResult,
 } from "@sweatpants/durable-execution";
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
@@ -150,7 +150,7 @@ export interface LocalProgramHost {
     sessionId: string;
     taskId: string;
     pullId: string;
-    response: WireElicitResultJson;
+    response: ProgramElicitResult;
   }): Operation<ProgramRunResult>;
   cancel(sessionId: string, taskId: string, reason?: string): Operation<void>;
   trace(sessionId: string): Operation<NormalizedProgramTrace>;

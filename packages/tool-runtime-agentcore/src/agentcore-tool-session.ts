@@ -1,6 +1,6 @@
 import { resource, type Operation, type Stream, type Subscription } from "effection";
 import type { ToolSession, ToolSessionEvent, ToolSessionStatus } from "@sweatpants/tool-session";
-import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
+import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
 import { statusForToolSessionEvent } from "@sweatpants/tool-session";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
@@ -312,7 +312,10 @@ export function createAgentCoreToolSession(
       });
     },
 
-    *respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void> {
+    *respondToElicit(
+      elicitId: string,
+      response: ElicitExchangeCompletion<unknown>,
+    ): Operation<void> {
       const handle = yield* getHandle();
       if (
         handle.pendingRequest &&
@@ -333,7 +336,7 @@ export function createAgentCoreToolSession(
       yield* ingestStream(stream);
     },
 
-    *respondToSample(sampleId: string, response: WireSampleResult): Operation<void> {
+    *respondToSample(sampleId: string, response: SampleExchangeCompletion): Operation<void> {
       const handle = yield* getHandle();
       if (
         handle.pendingRequest &&

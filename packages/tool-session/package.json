@@ -83,28 +83,6 @@
             },
             "default": "./src/tool-parameters.ts"
         },
-        "./chat-runtime": {
-            "development": {
-                "import": "./src/chat-runtime.ts",
-                "types": "./src/chat-runtime.ts"
-            },
-            "import": {
-                "types": "./dist/chat-runtime.d.ts",
-                "default": "./dist/chat-runtime.js"
-            },
-            "default": "./src/chat-runtime.ts"
-        },
-        "./tool-inventory": {
-            "development": {
-                "import": "./src/tool-inventory.ts",
-                "types": "./src/tool-inventory.ts"
-            },
-            "import": {
-                "types": "./dist/tool-inventory.d.ts",
-                "default": "./dist/tool-inventory.js"
-            },
-            "default": "./src/tool-inventory.ts"
-        },
         "./messages": {
             "development": {
                 "import": "./src/messages.ts",

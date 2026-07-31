@@ -1,11 +1,11 @@
-import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-session/chat-runtime";
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-runtime";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 // @vitest-environment node
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import { createClient } from "redis";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -251,7 +251,7 @@ async function post(
                   callId: "call-http-book-flight",
                   toolName: bookFlightTool.name,
                   elicitId: resume.interruptId,
-                  result: resume.result,
+                  completion: resume.result,
                 },
               ],
             }

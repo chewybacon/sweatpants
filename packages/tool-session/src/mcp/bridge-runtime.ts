@@ -43,21 +43,14 @@ import type {
   McpToolLimits,
   ElicitId,
   ElicitRequest,
-  ElicitsMap,
-  WireElicitResult,
-  ElicitExchange,
-  LogLevel,
 } from "./mcp-tool-types.ts";
-import {
-  McpToolTokenError,
-  createRawSampleExchange,
-  createStructuredSampleExchange,
-} from "./mcp-tool-types.ts";
+import { McpToolTokenError } from "./mcp-tool-types.ts";
 import type {
+  ElicitsMap,
+  LogLevel,
   SamplesMap,
   ToolDefinition,
   ToolElicitResult,
-  ToolMessage,
   ExtractElicitContext,
   ExtractElicitResponse,
   ToolSampleConfig,
@@ -71,7 +64,13 @@ import type {
   SampleSchemaConfig,
   SampleSchemaResult,
 } from "@sweatpants/agent-sdk";
-import { SampleValidationError } from "@sweatpants/agent-sdk";
+import {
+  SampleValidationError,
+  completeElicitExchange,
+  createRawSampleExchange,
+  createStructuredSampleExchange,
+  type ElicitExchangeCompletion,
+} from "@sweatpants/agent-sdk";
 
 // =============================================================================
 // BUFFERED CHANNEL (Queue-based, never drops messages)
@@ -208,7 +207,7 @@ function createBufferedChannel<T>(): Channel<T, void> {
 /**
  * Elicitation response from the client.
  *
- * Uses WireElicitResult (without exchange) because the transport layer
+ * Uses ElicitExchangeCompletion (without exchange) because the transport layer
  * only sends the action and content. The bridge-runtime constructs
  * the full ToolElicitResult with exchange internally.
  */
@@ -221,13 +220,13 @@ export interface ElicitResponse<TResponse = unknown> {
   /** Matches the request id */
   id: ElicitId;
 
-  /** The user's response (without exchange - exchange is constructed by bridge) */
-  result: WireElicitResult<TResponse>;
+  /** Facts that complete the pending exchange; the bridge constructs local history. */
+  completion: ElicitExchangeCompletion<TResponse>;
 }
 
 /**
  * Provider sample payload before exchange construction.
- * Distinct from the exported WireSampleResult union (which includes parsed/toolCalls variants).
+ * Distinct from the exported SampleExchangeCompletion union (which includes parsed/toolCalls variants).
  */
 interface BridgeProviderSampleResult {
   text: string;
@@ -240,7 +239,7 @@ interface BridgeProviderSampleResult {
  * Sample response from external handler.
  */
 export interface SampleResponse {
-  result: BridgeProviderSampleResult;
+  completion: BridgeProviderSampleResult;
 }
 
 /**
@@ -518,7 +517,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           if (next.done) {
             throw new Error("Sample signal closed without response");
           }
-          const result = next.value.result;
+          const result = next.value.completion;
 
           // If using auto-tracked mode, update tool-local messages
           if ("prompt" in config && config.prompt) {
@@ -703,7 +702,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             if (next.done) {
               throw new Error("Sample signal closed without response");
             }
-            const result = next.value.result;
+            const result = next.value.completion;
 
             // Extract prompt text for exchange
             const promptText =
@@ -841,7 +840,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             if (next.done) {
               throw new Error("Sample signal closed without response");
             }
-            const result = next.value.result;
+            const result = next.value.completion;
 
             // Track token usage
             const estimatedTokens = estimateTokensFromConversation({
@@ -1023,84 +1022,14 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             );
           }
 
-          // If accepted, validate content through the Standard Schema
-          // interface. Defaults/transforms run once here and parsed output
-          // becomes the tool-visible value.
-          if (response.result.action === "accept") {
-            const parseResult = yield* validateStandardSchema(
-              responseSchema,
-              response.result.content,
-            );
-            if (parseResult.issues !== undefined) {
-              throw new Error(
-                `Elicit response validation failed for key "${key}": ${safeSchemaIssues(
-                  parseResult.issues,
-                )
-                  .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
-                  .join("; ")}`,
-              );
-            }
-
-            // Construct the exchange for the accept result using MCP format
-            const toolCallId = `elicit_${id.callId}_${id.seq}`;
-            // SAFETY: responseSchema is the exact declaration for K; its
-            // Standard Schema output is the tool-visible response type.
-            const parsedContent = parseResult.value as ExtractElicitResponse<TElicits[K]>;
-
-            // Build request message (assistant with tool_use content)
-            const requestMessage: ToolMessage & { role: "assistant" } = {
-              role: "assistant",
-              content: [
-                { type: "text", text: message },
-                {
-                  type: "tool_use",
-                  id: toolCallId,
-                  name: key,
-                  input: {}, // Safe default - empty input
-                },
-              ],
-            };
-
-            // Build response message (user with tool_result content)
-            const responseMessage: ToolMessage & { role: "user" } = {
-              role: "user",
-              content: [
-                {
-                  type: "tool_result",
-                  toolUseId: toolCallId,
-                  content: [{ type: "text", text: JSON.stringify(parsedContent) }],
-                },
-              ],
-            };
-
-            // Create the exchange object
-            const exchange: ElicitExchange<ExtractElicitContext<TElicits[K]>> = {
-              context: contextData,
-              request: requestMessage,
-              response: responseMessage,
-              messages: [requestMessage, responseMessage],
-              withArguments(fn) {
-                const args = fn(contextData);
-                const requestWithArgs: ToolMessage & { role: "assistant" } = {
-                  role: "assistant",
-                  content: [
-                    { type: "text", text: message },
-                    {
-                      type: "tool_use",
-                      id: toolCallId,
-                      name: key,
-                      input: args,
-                    },
-                  ],
-                };
-                return [requestWithArgs, responseMessage];
-              },
-            };
-
-            return { action: "accept" as const, content: parsedContent, exchange };
-          }
-
-          return response.result;
+          return yield* completeElicitExchange({
+            key,
+            message,
+            context: contextData,
+            exchangeId: `elicit_${id.callId}_${id.seq}`,
+            responseSchema,
+            completion: response.completion,
+          });
         },
       };
     },
@@ -1145,7 +1074,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
  *       // Render UI for elicitation
  *       const userResponse = yield* showUI(event.request)
  *       // Send response via the signal included in the event
- *       event.responseSignal.send({ id: event.request.id, result: userResponse })
+ *       event.responseSignal.send({ id: event.request.id, completion: userResponse })
  *     }
  *     yield* each.next()
  *   }
@@ -1245,13 +1174,13 @@ export function createBridgeHost<
  * Handler map for elicitation requests.
  * Each key maps to a generator that handles that elicitation.
  *
- * Handlers return WireElicitResult (without exchange) - the bridge-runtime
+ * Handlers return ElicitExchangeCompletion (without exchange) - the bridge-runtime
  * constructs the exchange internally when the result is accepted.
  */
 export type BridgeElicitHandlers<TElicits extends ElicitsMap> = {
   [K in keyof TElicits]: (
     request: ElicitRequest<K & string, any>,
-  ) => Operation<WireElicitResult<any>>;
+  ) => Operation<ElicitExchangeCompletion<any>>;
 };
 
 /**
@@ -1342,7 +1271,7 @@ export function runBridgeTool<
               const result = yield* handler(
                 event.request as ElicitRequest<keyof TElicits & string, StandardSchemaV1>,
               );
-              event.responseSignal.send({ id: event.request.id, result });
+              event.responseSignal.send({ id: event.request.id, completion: result });
               break;
             }
             case "log":
@@ -1359,7 +1288,7 @@ export function runBridgeTool<
                 event.messages,
                 event.options,
               );
-              event.responseSignal.send({ result: sampleResult });
+              event.responseSignal.send({ completion: sampleResult });
               break;
             }
           }

@@ -55,10 +55,10 @@ import type {
 import type {
   ElicitsMap,
   ToolDefinition,
-  WireElicitResult,
-  WireSampleResultBase,
-  WireSampleResultWithParsed,
-  WireSampleResultWithToolCalls,
+  ElicitExchangeCompletion,
+  SampleExchangeCompletionBase,
+  ParsedSampleExchangeCompletion,
+  ToolCallSampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
 import type { ComponentEmissionPayload, PendingEmission } from "@sweatpants/chat-core";
 
@@ -162,7 +162,7 @@ export interface PluginSession {
    * @param elicitId - The elicit ID from the elicit_request event
    * @param result - The user's response
    */
-  respondToElicit(elicitId: string, result: WireElicitResult<unknown>): Operation<void>;
+  respondToElicit(elicitId: string, result: ElicitExchangeCompletion<unknown>): Operation<void>;
 
   /**
    * Abort the session.
@@ -345,9 +345,9 @@ export function createPluginSessionManager(
                   }
 
                   const result:
-                    | WireSampleResultBase
-                    | WireSampleResultWithParsed<unknown>
-                    | WireSampleResultWithToolCalls = yield* samplingProvider.sample(
+                    | SampleExchangeCompletionBase
+                    | ParsedSampleExchangeCompletion<unknown>
+                    | ToolCallSampleExchangeCompletion = yield* samplingProvider.sample(
                     sampleEvent.messages,
                     {
                       ...(sampleEvent.systemPrompt
@@ -416,7 +416,10 @@ export function createPluginSessionManager(
           }
         },
 
-        *respondToElicit(elicitId: string, result: WireElicitResult<unknown>): Operation<void> {
+        *respondToElicit(
+          elicitId: string,
+          result: ElicitExchangeCompletion<unknown>,
+        ): Operation<void> {
           yield* toolSession.respondToElicit(elicitId, result);
         },
 

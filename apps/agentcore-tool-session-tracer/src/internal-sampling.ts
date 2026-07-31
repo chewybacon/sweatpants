@@ -2,10 +2,10 @@ import { run } from "effection";
 import type { JsonObject } from "@sweatpants/foundation";
 import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
 import type {
-  WireSampleResult,
-  WireSampleResultBase,
-  WireSampleResultWithParsed,
-  WireSampleResultWithToolCalls,
+  SampleExchangeCompletion,
+  SampleExchangeCompletionBase,
+  ParsedSampleExchangeCompletion,
+  ToolCallSampleExchangeCompletion,
   SamplingToolCall,
   SamplingToolDefinition,
 } from "@sweatpants/agent-sdk";
@@ -224,7 +224,7 @@ function rawResultFromAssistant(
   assistant: ModelAssistantMessage,
   model: ModelSelection,
   request: InternalSampleRequest,
-): WireSampleResult {
+): SampleExchangeCompletion {
   const text = assistantText(assistant);
   const toolCalls = assistantToolCalls(assistant);
   const modelName = modelSelectionKey(model);
@@ -238,7 +238,7 @@ function rawResultFromAssistant(
         model: modelName,
         stopReason: "endTurn",
         parsed,
-      } satisfies WireSampleResultWithParsed<unknown>;
+      } satisfies ParsedSampleExchangeCompletion<unknown>;
     }
 
     try {
@@ -247,7 +247,7 @@ function rawResultFromAssistant(
         model: modelName,
         stopReason: "endTurn",
         parsed: parseStructuredSampleText(text),
-      } satisfies WireSampleResultWithParsed<unknown>;
+      } satisfies ParsedSampleExchangeCompletion<unknown>;
     } catch (error) {
       return {
         text,
@@ -258,7 +258,7 @@ function rawResultFromAssistant(
           message: error instanceof Error ? error.message : "Failed to parse JSON",
           rawText: text,
         },
-      } satisfies WireSampleResultWithParsed<unknown>;
+      } satisfies ParsedSampleExchangeCompletion<unknown>;
     }
   }
 
@@ -268,7 +268,7 @@ function rawResultFromAssistant(
       model: modelName,
       stopReason: "toolUse",
       toolCalls,
-    } satisfies WireSampleResultWithToolCalls;
+    } satisfies ToolCallSampleExchangeCompletion;
   }
 
   return {
@@ -278,12 +278,12 @@ function rawResultFromAssistant(
       assistant.stopReason === "maxTokens" || assistant.stopReason === "length"
         ? "maxTokens"
         : "endTurn",
-  } satisfies WireSampleResultBase;
+  } satisfies SampleExchangeCompletionBase;
 }
 
 export async function sampleInsideAgentCore(
   request: InternalSampleRequest,
-): Promise<WireSampleResult> {
+): Promise<SampleExchangeCompletion> {
   const config = readAgentCoreToolSampleConfig();
   if (config.mode !== "internal") {
     throw new Error(

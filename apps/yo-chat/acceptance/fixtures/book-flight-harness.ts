@@ -1,8 +1,8 @@
-import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-session/chat-runtime";
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-runtime";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { resource, run, type Operation, type Stream } from "effection";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -248,7 +248,7 @@ function buildChatRequest(
                 callId: resume.callId,
                 toolName: bookFlightTool.name,
                 elicitId: resume.interruptId,
-                result: resume.result,
+                completion: resume.result,
               },
             ],
           }

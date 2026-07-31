@@ -44,7 +44,7 @@ import type {
   ErrorEvent,
   CancelledEvent,
 } from "../../contract.ts";
-import type { LogLevel as ToolLogLevel } from "../mcp-tool-types.ts";
+import { SCHEMA_TOOL_NAME, type LogLevel as ToolLogLevel } from "@sweatpants/agent-sdk";
 
 // =============================================================================
 // LOG LEVEL MAPPING
@@ -150,8 +150,6 @@ export function encodeElicitationRequest(
  * Reserved tool name for structured output.
  * Clients can intercept this and use native provider implementations.
  */
-export const SCHEMA_TOOL_NAME = "__schema__";
-
 /**
  * Encode a sample request event as an MCP sampling/createMessage request.
  *

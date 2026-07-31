@@ -4,10 +4,10 @@ import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-paramet
 import type {
   SamplingToolCall,
   SamplingToolDefinition,
-  WireSampleResult,
-  WireSampleResultBase,
-  WireSampleResultWithParsed,
-  WireSampleResultWithToolCalls,
+  SampleExchangeCompletion,
+  SampleExchangeCompletionBase,
+  ParsedSampleExchangeCompletion,
+  ToolCallSampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
 import { toModelMessages, type ExtendedMessage } from "@sweatpants/tool-session/messages";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
@@ -172,7 +172,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
     *sample(
       messages: ExtendedMessage[],
       options: SamplingOptions | undefined,
-    ): Operation<WireSampleResult> {
+    ): Operation<SampleExchangeCompletion> {
       const modelMessages = toModelMessages(messages);
 
       const assistant = yield* driver.sample({
@@ -204,7 +204,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
             model: model.id,
             stopReason: "endTurn",
             parsed,
-          } satisfies WireSampleResultWithParsed<unknown>;
+          } satisfies ParsedSampleExchangeCompletion<unknown>;
         }
 
         try {
@@ -213,7 +213,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
             model: model.id,
             stopReason: "endTurn",
             parsed: parseStructuredSampleText(text),
-          } satisfies WireSampleResultWithParsed<unknown>;
+          } satisfies ParsedSampleExchangeCompletion<unknown>;
         } catch (error) {
           return {
             text,
@@ -224,7 +224,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
               message: error instanceof Error ? error.message : "Failed to parse JSON",
               rawText: text,
             },
-          } satisfies WireSampleResultWithParsed<unknown>;
+          } satisfies ParsedSampleExchangeCompletion<unknown>;
         }
       }
 
@@ -234,14 +234,14 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
           model: model.id,
           stopReason: "toolUse",
           toolCalls,
-        } satisfies WireSampleResultWithToolCalls;
+        } satisfies ToolCallSampleExchangeCompletion;
       }
 
       return {
         text,
         model: model.id,
         stopReason: assistant.stopReason === "maxTokens" ? "maxTokens" : "endTurn",
-      } satisfies WireSampleResultBase;
+      } satisfies SampleExchangeCompletionBase;
     },
   };
 }

@@ -32,6 +32,7 @@
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/model-provider": "workspace:*",
+        "@sweatpants/tool-runtime": "workspace:*",
         "effection": "catalog:",
         "zod": "catalog:"
     },

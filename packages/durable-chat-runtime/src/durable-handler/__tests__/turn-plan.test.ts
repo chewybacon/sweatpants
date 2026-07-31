@@ -52,7 +52,7 @@ describe("planTurn", () => {
         sessionId: "call-1",
         callId: "call-1",
         elicitId: "interrupt-1",
-        result: { action: "accept" as const, content: { seat: "3A" } },
+        completion: { action: "accept" as const, content: { seat: "3A" } },
       },
     ];
     const plan = planTurn({
@@ -115,7 +115,7 @@ describe("planTurn", () => {
         sessionId: "call-1",
         callId: "call-1",
         elicitId: "interrupt-1",
-        result: { action: "cancel" as const },
+        completion: { action: "cancel" as const },
       },
     ];
     const withResponses = planTurn({

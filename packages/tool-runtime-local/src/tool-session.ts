@@ -26,8 +26,8 @@ import type {
   ElicitsMap,
   SamplesMap,
   ToolDefinition,
-  WireElicitResult,
-  WireSampleResult,
+  ElicitExchangeCompletion,
+  SampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
 import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import { createBridgeHost, type ElicitId, type ElicitResponse } from "@sweatpants/tool-session/mcp";
@@ -50,7 +50,7 @@ interface PendingElicit {
  * Pending sample - stores the signal for responding.
  */
 interface LocalSampleResponse {
-  result: WireSampleResult;
+  completion: SampleExchangeCompletion;
 }
 
 interface PendingSample {
@@ -205,7 +205,10 @@ export function createToolSession<
         return log.events(afterLSN);
       },
 
-      *respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void> {
+      *respondToElicit(
+        elicitId: string,
+        response: ElicitExchangeCompletion<unknown>,
+      ): Operation<void> {
         const pending = pendingElicit;
         if (!pending) {
           return;
@@ -217,10 +220,10 @@ export function createToolSession<
         // Send response via the bridge's signal - this unblocks the tool execution
         pendingElicit = null;
         log.setStatus("running");
-        pending.signal.send({ id: pending.elicitRequestId, result: response });
+        pending.signal.send({ id: pending.elicitRequestId, completion: response });
       },
 
-      *respondToSample(sampleId: string, response: WireSampleResult): Operation<void> {
+      *respondToSample(sampleId: string, response: SampleExchangeCompletion): Operation<void> {
         const pending = pendingSample;
         if (!pending) {
           return;
@@ -232,7 +235,7 @@ export function createToolSession<
         // Send response via the bridge's signal
         pendingSample = null;
         log.setStatus("running");
-        pending.signal.send({ result: response });
+        pending.signal.send({ completion: response });
       },
 
       *emitWakeUp(): Operation<void> {

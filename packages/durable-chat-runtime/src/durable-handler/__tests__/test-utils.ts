@@ -17,7 +17,7 @@ import {
   type Stream,
 } from "effection";
 import { z } from "zod";
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
 import type { Json } from "@sweatpants/foundation";
 import { createTool, type ToolDefinition as CoreToolDefinition } from "@sweatpants/agent-sdk";
@@ -32,12 +32,12 @@ import {
   ToolInventoryContext,
   createToolInventory,
   type ToolInventoryEntry,
-} from "../../tool-inventory.ts";
+} from "@sweatpants/tool-runtime";
 import {
   installToolRuntime,
   createToolExecutionRef,
   type ToolRuntime,
-} from "@sweatpants/tool-session/chat-runtime";
+} from "@sweatpants/tool-runtime";
 import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import {
   installModelProvider,

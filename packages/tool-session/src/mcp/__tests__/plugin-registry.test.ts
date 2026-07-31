@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { createPluginRegistry, createPluginRegistryFrom } from "../plugin-registry.ts";
 import type { PluginClientRegistration } from "../plugin.ts";
-import type { ElicitsMap } from "../mcp-tool-types.ts";
+import type { ElicitsMap } from "@sweatpants/agent-sdk";
 
 // Mock plugins for testing
 function createMockPlugin(toolName: string): PluginClientRegistration<ElicitsMap> {

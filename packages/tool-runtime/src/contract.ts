@@ -1,26 +1,29 @@
-import { type Operation, type Stream } from "effection";
-import type { JsonObject } from "@sweatpants/foundation";
-import type { Json } from "@sweatpants/foundation";
+import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
+import type { Json, JsonObject } from "@sweatpants/foundation";
 import { definePort } from "@sweatpants/foundation/port";
+import type { Operation, Stream } from "effection";
 
-export interface ToolDefinition {
+/** Portable, execution-neutral projection of an authored tool definition. */
+export interface PortableToolDefinition {
   name: string;
   description: string;
-  /** Portable JSON Schema projection, computed once at authoring. */
   parameters: JsonObject;
   metadata?: Record<string, unknown>;
 }
+
 export interface ToolCapabilities {
   inline?: boolean;
   client?: boolean;
   elicits?: boolean;
   samples?: boolean;
 }
+
 export interface ToolInventoryEntry {
-  definition: ToolDefinition;
+  definition: PortableToolDefinition;
   capabilities?: ToolCapabilities;
   metadata?: Record<string, unknown>;
 }
+
 export interface ToolCall {
   id: string;
   type: "function";
@@ -46,7 +49,7 @@ export interface ToolExecuteRequest {
 export interface ToolContinuationInput {
   type: "elicit_response";
   elicitId?: string;
-  result: unknown;
+  completion: ElicitExchangeCompletion<unknown>;
 }
 
 export interface ToolResumeRequest {
@@ -67,8 +70,8 @@ export interface ElicitToolRequest {
   elicitId: string;
   key: string;
   message: string;
-  schema: Record<string, unknown>;
-  context?: Record<string, unknown>;
+  schema: JsonObject;
+  context?: JsonObject;
 }
 
 export type ToolExecutionEvent =
@@ -81,8 +84,8 @@ export type ToolExecutionEvent =
       elicitId: string;
       key: string;
       message: string;
-      schema: Record<string, unknown>;
-      context?: Record<string, unknown>;
+      schema: JsonObject;
+      context?: JsonObject;
     }
   | {
       type: "sample_request";
@@ -127,14 +130,14 @@ export interface PendingToolExecution {
   updatedAt: number;
 }
 
-export type ToolContinuationPayload = {
+export interface ToolContinuationPayload {
   type: "elicit_response";
   callId: string;
   toolName: string;
   ref?: ToolExecutionRef;
   elicitId: string;
-  result: unknown;
-};
+  completion: ElicitExchangeCompletion<unknown>;
+}
 
 export interface ToolRuntime {
   runtimeId(): Operation<string>;
@@ -192,7 +195,6 @@ function unavailable(): never {
   );
 }
 
-/** Optional Host seam: callers probe `isInstalled()` before resolving it. */
 export const ToolRuntimePort = definePort<ToolRuntime>("tool-runtime", {
   *runtimeId(): Operation<string> {
     return unavailable();

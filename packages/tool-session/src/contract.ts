@@ -35,13 +35,11 @@ import type {
   SamplingToolChoice,
   SamplingToolDefinition,
   ToolContract,
-  WireElicitResult,
-  WireSampleResultBase,
-  WireSampleResultWithParsed,
-  WireSampleResultWithToolCalls,
+  ElicitExchangeCompletion,
+  SampleExchangeCompletionBase,
+  ParsedSampleExchangeCompletion,
+  ToolCallSampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
-
-export type { ElicitsMap, LogLevel, WireElicitResult } from "@sweatpants/agent-sdk";
 
 // =============================================================================
 // SESSION STATUS
@@ -105,9 +103,9 @@ export interface ElicitRequestEvent extends ToolSessionEventBase {
   /** Message to display to user */
   message: string;
   /** JSON Schema for the expected response */
-  schema: Record<string, unknown>;
+  schema: JsonObject;
   /** Context data for the UI to render (e.g., flight options, seat map) */
-  context?: Record<string, unknown>;
+  context?: JsonObject;
 }
 
 /**
@@ -228,7 +226,7 @@ export interface ToolSession<TResult = unknown> {
    * @param elicitId - The ID from the ElicitRequestEvent
    * @param response - The user's response
    */
-  respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void>;
+  respondToElicit(elicitId: string, response: ElicitExchangeCompletion<unknown>): Operation<void>;
 
   /**
    * Respond to a sampling request.
@@ -239,9 +237,9 @@ export interface ToolSession<TResult = unknown> {
   respondToSample(
     sampleId: string,
     response:
-      | WireSampleResultBase
-      | WireSampleResultWithParsed<unknown>
-      | WireSampleResultWithToolCalls,
+      | SampleExchangeCompletionBase
+      | ParsedSampleExchangeCompletion<unknown>
+      | ToolCallSampleExchangeCompletion,
   ): Operation<void>;
 
   /**
@@ -425,7 +423,9 @@ export interface ToolSessionSamplingProvider {
     messages: ExtendedMessage[],
     options?: ToolSessionSamplingOptions,
   ): Operation<
-    WireSampleResultBase | WireSampleResultWithParsed<unknown> | WireSampleResultWithToolCalls
+    | SampleExchangeCompletionBase
+    | ParsedSampleExchangeCompletion<unknown>
+    | ToolCallSampleExchangeCompletion
   >;
 }
 

@@ -13,9 +13,8 @@ import {
   type ToolExecutionEvent,
   type ToolExecutionStrategy,
   type ToolRuntime,
-} from "@sweatpants/tool-session/chat-runtime";
+} from "@sweatpants/tool-runtime";
 import type {
-  WireElicitResult,
   ToolSession as McpToolSession,
   ToolSessionEvent as McpToolSessionEvent,
   ToolSessionRegistry,
@@ -96,25 +95,22 @@ function sessionEventToExecution(
         kind: "awaiting_elicit",
         ref,
         request: {
-          elicitId: String(event.elicitId),
-          key: String((event as { key?: unknown }).key ?? ""),
-          message: String((event as { message?: unknown }).message ?? ""),
-          schema:
-            (event as { schema?: unknown }).schema &&
-            typeof (event as { schema?: unknown }).schema === "object"
-              ? (event as { schema: Record<string, unknown> }).schema
-              : { type: "object", properties: {}, required: [] },
+          elicitId: event.elicitId,
+          key: event.key,
+          message: event.message,
+          schema: event.schema,
+          ...(event.context !== undefined ? { context: event.context } : {}),
         } satisfies ElicitToolRequest,
       };
     case "result":
-      return { kind: "completed", ref, result: (event as { result: unknown }).result };
+      return { kind: "completed", ref, result: event.result };
     case "error":
       return {
         kind: "failed",
         ref,
         error: {
-          code: "TOOL_ERROR",
-          message: String((event as { message?: unknown }).message ?? "AgentCore tool failed"),
+          code: event.name,
+          message: event.message,
         },
       };
     case "cancelled":
@@ -123,9 +119,7 @@ function sessionEventToExecution(
         ref,
         error: {
           code: "TOOL_CANCELLED",
-          message: String(
-            (event as { reason?: unknown }).reason ?? "AgentCore tool execution was cancelled",
-          ),
+          message: event.reason ?? "AgentCore tool execution was cancelled",
         },
       };
     default:
@@ -302,7 +296,7 @@ export function createAgentCoreToolExecutionStrategy(
         if (!input.elicitId) {
           throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
         }
-        yield* session.respondToElicit(input.elicitId, input.result as WireElicitResult<unknown>);
+        yield* session.respondToElicit(input.elicitId, input.completion);
       }
       if (ctx.signal) {
         yield* spawn(function* () {

@@ -1,11 +1,11 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { createChatHandler } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createProgramDriverJournalStore,
   type ChatHandlerSetupContext,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import { MaxIterationsContext } from "@sweatpants/durable-chat-runtime/contexts";
 import type { ToolDefinition } from "@sweatpants/agent-sdk";
 import {

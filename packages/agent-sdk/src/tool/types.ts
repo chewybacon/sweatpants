@@ -211,7 +211,7 @@ export type ToolElicitResult<TContext, TResponse> =
 /**
  * Transport payload for elicit responses (no exchange).
  */
-export type WireElicitResult<TResponse = unknown> =
+export type ElicitExchangeCompletion<TResponse = unknown> =
   | { action: "accept"; content: TResponse }
   | { action: "decline"; reason?: string }
   | { action: "cancel"; reason?: string };
@@ -274,25 +274,25 @@ export interface NamedSampleResult<TParsed = unknown> {
   readonly raw?: unknown;
 }
 
-export interface WireSampleResultBase {
+export interface SampleExchangeCompletionBase {
   text: string;
   model?: string;
   stopReason?: "endTurn" | "maxTokens" | "toolUse" | string;
 }
 
-export interface WireSampleResultWithParsed<T> extends WireSampleResultBase {
+export interface ParsedSampleExchangeCompletion<T> extends SampleExchangeCompletionBase {
   parsed: T | null;
   parseError?: { message: string; rawText: string };
 }
 
-export interface WireSampleResultWithToolCalls extends WireSampleResultBase {
+export interface ToolCallSampleExchangeCompletion extends SampleExchangeCompletionBase {
   toolCalls: SamplingToolCall[];
 }
 
-export type WireSampleResult =
-  | WireSampleResultBase
-  | WireSampleResultWithParsed<unknown>
-  | WireSampleResultWithToolCalls;
+export type SampleExchangeCompletion =
+  | SampleExchangeCompletionBase
+  | ParsedSampleExchangeCompletion<unknown>
+  | ToolCallSampleExchangeCompletion;
 
 // -----------------------------------------------------------------------------
 // Sample config types (for ToolCtx overloads)
@@ -560,6 +560,7 @@ export interface ToolDefinition<
 
 /** Wire-boundary erased tool with its authored sample-schema evidence retained. */
 export type RuntimeTool = ToolDefinition<string, any, any, any, any> & {
+  readonly elicits: Readonly<Record<string, NormalizedElicitDefinition<unknown, unknown, unknown>>>;
   readonly samples: Readonly<Record<string, SampleDefinition<StandardSchemaV1 | undefined>>>;
 };
 

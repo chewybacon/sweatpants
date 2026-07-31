@@ -1,6 +1,6 @@
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import type { ToolRuntime } from "@sweatpants/tool-session/chat-runtime";
+import type { ToolRuntime } from "@sweatpants/tool-runtime";
 import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
 import { installLocalToolRuntime, type LocalToolRuntimeDriverOptions } from "./driver.ts";
 import { createToolSessionForeignEffectRegistrations } from "./foreign-tool-session.ts";

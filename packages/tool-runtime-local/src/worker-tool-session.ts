@@ -40,7 +40,7 @@ import {
   type WorkerResult,
 } from "@sweatpants/agent-sdk/transport/worker";
 import type { ToolSession, ToolSessionStatus, ToolSessionEvent } from "@sweatpants/tool-session";
-import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
+import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
 import { createToolSessionEventLog, isTerminalToolSessionStatus } from "@sweatpants/tool-session";
 import type { McpWorkerInitData } from "./worker-types.ts";
 import { WorkerSessionStateContext, type WorkerSessionState } from "./worker-session-context.ts";
@@ -85,8 +85,8 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
     let cancellationRequested = false;
     let cancellationReason: string | undefined;
 
-    const pendingSamples = new Map<string, Queue<WireSampleResult, void>>();
-    const pendingElicits = new Map<string, Queue<WireElicitResult<unknown>, void>>();
+    const pendingSamples = new Map<string, Queue<SampleExchangeCompletion, void>>();
+    const pendingElicits = new Map<string, Queue<ElicitExchangeCompletion<unknown>, void>>();
 
     function closePendingResponses(): void {
       for (const queue of pendingElicits.values()) {
@@ -199,13 +199,16 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
         return log.events(afterLSN);
       },
 
-      *respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void> {
+      *respondToElicit(
+        elicitId: string,
+        response: ElicitExchangeCompletion<unknown>,
+      ): Operation<void> {
         yield* WorkerSessionStateContext.with(sessionState, function* () {
           yield* WorkerSessionApi.operations.respondToElicit(elicitId, response);
         });
       },
 
-      *respondToSample(sampleId: string, response: WireSampleResult): Operation<void> {
+      *respondToSample(sampleId: string, response: SampleExchangeCompletion): Operation<void> {
         yield* WorkerSessionStateContext.with(sessionState, function* () {
           yield* WorkerSessionApi.operations.respondToSample(sampleId, response);
         });

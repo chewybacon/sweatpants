@@ -40,17 +40,12 @@
 import type { Operation } from "effection";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
-  ElicitDefinition,
-  ElicitsMap as BaseElicitsMap,
+  ElicitsMap,
+  LogLevel,
   ExtractElicitResponse,
   ExtractElicitContext,
-  ExtractElicitResponseSchema,
-  ExtractElicitContextSchema,
-  SampleExchange,
   ToolSamplingCtx,
-  ToolElicitResult as CoreToolElicitResult,
-  WireElicitResult as CoreWireElicitResult,
-  ToolMessage,
+  ToolElicitResult,
 } from "@sweatpants/agent-sdk";
 import type { ExtendedMessage, Message } from "../messages.ts";
 
@@ -97,25 +92,6 @@ export type {
  * }
  * ```
  */
-
-/**
- * Result of an elicitation request.
- *
- * MCP elicitation has three response actions:
- * - `accept`: User submitted data (content and exchange available)
- * - `decline`: User explicitly declined (clicked "No", "Reject", etc.)
- * - `cancel`: User dismissed without choosing (closed dialog, pressed Escape)
- *
- * @template TContext - The type of context passed to elicit()
- * @template TResponse - The type of the user's response
- */
-export type ToolElicitResult<TContext, TResponse> = CoreToolElicitResult<TContext, TResponse>;
-
-/**
- * Wire elicit result without exchange.
- * Used by plugin handlers and transport layers.
- */
-export type WireElicitResult<TResponse = unknown> = CoreWireElicitResult<TResponse>;
 
 /**
  * Handler-layer configuration for an unkeyed elicitation request.
@@ -177,100 +153,9 @@ export interface ClientElicitConfig<T> {
  * ```
  */
 
-/**
- * Reserved tool name for structured output.
- * Clients can intercept this and use native provider implementations.
- */
-export const SCHEMA_TOOL_NAME = "__schema__";
-
-/**
- * Create a SampleExchange for raw sampling (no schema).
- *
- * @param promptText - The user's prompt text
- * @param responseText - The assistant's response text
- */
-export function createRawSampleExchange(
-  promptText: string,
-  responseText: string,
-): SampleExchange<undefined> {
-  const request: ToolMessage & { role: "user" } = {
-    role: "user",
-    content: [{ type: "text", text: promptText }],
-  };
-  const response: ToolMessage & { role: "assistant" } = {
-    role: "assistant",
-    content: [{ type: "text", text: responseText }],
-  };
-  return {
-    request,
-    response,
-    messages: [request, response],
-    parsed: undefined,
-  };
-}
-
-/**
- * Create a SampleExchange for structured output (with schema).
- * Uses the __schema__ meta-tool pattern with 3 messages.
- *
- * @param promptText - The user's prompt text
- * @param parsed - The parsed/validated data
- * @param toolCallId - Unique ID for the tool call
- */
-export function createStructuredSampleExchange<T>(
-  promptText: string,
-  parsed: T,
-  toolCallId: string,
-): SampleExchange<T> {
-  const request: ToolMessage & { role: "user" } = {
-    role: "user",
-    content: [{ type: "text", text: promptText }],
-  };
-
-  // Assistant responds with __schema__ tool_use
-  // Input is intentionally blank; parsed data is echoed in tool_result
-  const toolUse: ToolMessage & { role: "assistant" } = {
-    role: "assistant",
-    content: [
-      {
-        type: "tool_use",
-        id: toolCallId,
-        name: SCHEMA_TOOL_NAME,
-        input: {},
-      },
-    ],
-  };
-
-  // Construct tool_result with the parsed data echoed back
-  // This keeps MCP compliance while "virtually" moving input to the result
-  // Parsed data also stays on the exchange for consumers
-  const toolResult: ToolMessage & { role: "user" } = {
-    role: "user",
-    content: [
-      {
-        type: "tool_result",
-        toolUseId: toolCallId,
-        content: [{ type: "text", text: JSON.stringify(parsed) }],
-      },
-    ],
-  };
-
-  return {
-    request,
-    response: toolUse,
-    messages: [request, toolUse, toolResult],
-    parsed,
-  };
-}
-
 // =============================================================================
 // ELICITATION SURFACE (finite, typed keys for bridgeable tools)
 // =============================================================================
-
-/**
- * Re-export ElicitDefinition from elicit-context package.
- */
-export type { ElicitDefinition };
 
 /**
  * A map of elicitation keys to their definitions (response + optional context schemas).
@@ -298,16 +183,6 @@ export type { ElicitDefinition };
  *   })
  * ```
  */
-export type ElicitsMap = BaseElicitsMap;
-
-// Re-export type helpers from elicit-context package
-export type {
-  ExtractElicitResponse,
-  ExtractElicitContext,
-  ExtractElicitResponseSchema,
-  ExtractElicitContextSchema,
-};
-
 /**
  * Structured elicitation ID for correlation and logging.
  * Simple key in API, structured id under the hood.
@@ -376,11 +251,6 @@ export interface ElicitRequest<
 // =============================================================================
 // LOGGING TYPES
 // =============================================================================
-
-/**
- * Log levels for MCP logging.
- */
-export type LogLevel = "debug" | "info" | "warning" | "error";
 
 // =============================================================================
 // EXECUTION LIMITS
@@ -628,5 +498,3 @@ export class McpDisconnectError extends Error {
     this.name = "McpDisconnectError";
   }
 }
-
-export type { ElicitExchange, SampleExchange } from "@sweatpants/agent-sdk";
