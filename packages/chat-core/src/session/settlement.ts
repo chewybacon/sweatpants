@@ -16,6 +16,8 @@ export interface ChatTransportReceipt {
 export interface ChatTurnFailure {
   readonly message: string;
   readonly code?: string;
+  /** Original failure object retained for imperative observers. */
+  readonly cause?: unknown;
 }
 
 export type ChatTurnSettlement =
