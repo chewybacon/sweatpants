@@ -1,7 +1,8 @@
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
+import type { TokenBufferStore } from "@sweatpants/durable-streams";
 import type { StreamEvent } from "../../handler/types.ts";
-import { createSerializedEventStream } from "../event-stream.ts";
+import { createEmptyChatEngine, createSerializedEventStream } from "../event-stream.ts";
 
 function oneEventStream(event: StreamEvent, onNext: () => void): Stream<StreamEvent, void> {
   return resource(function* (provide) {
@@ -32,5 +33,37 @@ describe("serialized Turn event stream", () => {
       expect(yield* subscription.next()).toEqual({ done: false, value: event });
       expect(advances).toBe(1);
     });
+  });
+
+  it("does not fail a completed stream when checkpoint persistence fails", async () => {
+    let observed: unknown;
+    const failingStore: TokenBufferStore<string> = {
+      *create() {
+        throw new Error("planned checkpoint store failure");
+      },
+      *get() {
+        return null;
+      },
+      *delete() {},
+    };
+
+    await run(function* () {
+      const stream = createSerializedEventStream(
+        createEmptyChatEngine(),
+        [{ type: "MESSAGES_SNAPSHOT", messages: [] }],
+        {
+          conversationId: "conversation-1",
+          checkpointStore: failingStore,
+          onCheckpointError: (error) => {
+            observed = error;
+          },
+        },
+      );
+      const subscription = yield* stream;
+      expect((yield* subscription.next()).done).toBe(false);
+      expect(yield* subscription.next()).toEqual({ done: true, value: undefined });
+    });
+
+    expect(observed).toBeInstanceOf(Error);
   });
 });

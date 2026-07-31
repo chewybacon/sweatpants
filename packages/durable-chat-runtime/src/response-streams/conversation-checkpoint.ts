@@ -3,7 +3,6 @@ import type {
   AgUiMessage,
   AgUiToolCall,
   ChatSessionStreamEvent as StreamEvent,
-  ConversationReplayState,
   ToolExecutionTrace,
 } from "@sweatpants/chat-core";
 import type {
@@ -13,9 +12,20 @@ import type {
 
 const MAX_CHECKPOINT_EVENTS = 100_000;
 const MAX_CHECKPOINT_BYTES = 8 * 1024 * 1024;
+const MAX_SNAPSHOT_MESSAGES = 256;
+const MAX_TOOL_CALLS = 128;
+const MAX_TOOLS = 256;
+const MAX_CONTEXT_ENTRIES = 256;
+const MAX_RESUME_ENTRIES = 256;
+const MAX_INTERRUPTS = 64;
+const MAX_REPLAY_TOOL_TRACES = 256;
+const MAX_PENDING_CLIENT_ACTIONS = 256;
 const MAX_ID_LENGTH = 1_024;
-const MAX_TEXT_LENGTH = 64 * 1_024;
+// No smaller per-field cap is justified by the live protocol yet. The total
+// checkpoint byte bound remains the authoritative short-term size policy.
+const MAX_TEXT_LENGTH = MAX_CHECKPOINT_BYTES;
 const MAX_TRACE_ENTRIES = 128;
+const checkpointEncoder = new TextEncoder();
 
 const idSchema = z.string().min(1).max(MAX_ID_LENGTH);
 const textSchema = z.string().max(MAX_TEXT_LENGTH);
@@ -48,7 +58,7 @@ const assistantMessageSchema = z
     id: idSchema,
     role: z.literal("assistant"),
     content: textSchema.optional(),
-    toolCalls: z.array(toolCallSchema).max(MAX_CHECKPOINT_EVENTS).optional(),
+    toolCalls: z.array(toolCallSchema).max(MAX_TOOL_CALLS).optional(),
   })
   .strict()
   .transform(
@@ -93,7 +103,7 @@ const reasoningMessageSchema = z
   .strict()
   .transform((value): Extract<AgUiMessage, { role: "reasoning" }> => value);
 
-const agUiMessageSchema: z.ZodType<AgUiMessage> = z.union([
+const agUiMessageSchema = z.discriminatedUnion("role", [
   developerMessageSchema,
   systemMessageSchema,
   userMessageSchema,
@@ -114,7 +124,7 @@ const runStartedEventSchema = z.object({
       runId: idSchema,
       parentRunId: idSchema.optional(),
       state: z.json(),
-      messages: z.array(agUiMessageSchema).max(MAX_CHECKPOINT_EVENTS),
+      messages: z.array(agUiMessageSchema).max(MAX_SNAPSHOT_MESSAGES),
       tools: z
         .array(
           z
@@ -125,10 +135,10 @@ const runStartedEventSchema = z.object({
             })
             .strict(),
         )
-        .max(MAX_CHECKPOINT_EVENTS),
+        .max(MAX_TOOLS),
       context: z
         .array(z.object({ description: textSchema, value: textSchema }).strict())
-        .max(MAX_CHECKPOINT_EVENTS),
+        .max(MAX_CONTEXT_ENTRIES),
       forwardedProps: z.json(),
       resume: z
         .array(
@@ -140,38 +150,35 @@ const runStartedEventSchema = z.object({
             })
             .strict(),
         )
-        .max(MAX_CHECKPOINT_EVENTS)
+        .max(MAX_RESUME_ENTRIES)
         .optional(),
     })
     .strict()
     .optional(),
 });
-type RunStartedEvent = Extract<StreamEvent, { type: "RUN_STARTED" }>;
-const runStartedSchema: z.ZodType<RunStartedEvent> = runStartedEventSchema
-  .strict()
-  .transform((value) => ({
-    type: "RUN_STARTED" as const,
-    threadId: value.threadId,
-    runId: value.runId,
-    ...(value.parentRunId !== undefined ? { parentRunId: value.parentRunId } : {}),
-    ...(value.input !== undefined
-      ? {
-          input: {
-            threadId: value.input.threadId,
-            runId: value.input.runId,
-            ...(value.input.parentRunId !== undefined
-              ? { parentRunId: value.input.parentRunId }
-              : {}),
-            state: value.input.state,
-            messages: value.input.messages,
-            tools: value.input.tools,
-            context: value.input.context,
-            forwardedProps: value.input.forwardedProps,
-            ...(value.input.resume !== undefined ? { resume: value.input.resume } : {}),
-          },
-        }
-      : {}),
-  }));
+const runStartedSchema = runStartedEventSchema.strict().transform((value) => ({
+  type: "RUN_STARTED" as const,
+  threadId: value.threadId,
+  runId: value.runId,
+  ...(value.parentRunId !== undefined ? { parentRunId: value.parentRunId } : {}),
+  ...(value.input !== undefined
+    ? {
+        input: {
+          threadId: value.input.threadId,
+          runId: value.input.runId,
+          ...(value.input.parentRunId !== undefined
+            ? { parentRunId: value.input.parentRunId }
+            : {}),
+          state: value.input.state,
+          messages: value.input.messages,
+          tools: value.input.tools,
+          context: value.input.context,
+          forwardedProps: value.input.forwardedProps,
+          ...(value.input.resume !== undefined ? { resume: value.input.resume } : {}),
+        },
+      }
+    : {}),
+}));
 
 const interruptSchema = z
   .object({
@@ -192,7 +199,7 @@ type RunFinishedInterrupt = Extract<
 const interruptOutcomeSchema = z
   .object({
     type: z.literal("interrupt"),
-    interrupts: z.array(interruptSchema).max(MAX_CHECKPOINT_EVENTS),
+    interrupts: z.array(interruptSchema).max(MAX_INTERRUPTS),
   })
   .strict()
   .transform(
@@ -211,11 +218,11 @@ const interruptOutcomeSchema = z
       })),
     }),
   );
-const runFinishedOutcomeSchema = z.union([
+const runFinishedOutcomeSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("success") }).strict(),
   interruptOutcomeSchema,
 ]);
-const runFinishedSchema: z.ZodType<RunFinishedEvent> = z
+const runFinishedSchema = z
   .object({
     type: z.literal("RUN_FINISHED"),
     threadId: idSchema,
@@ -232,7 +239,7 @@ const runFinishedSchema: z.ZodType<RunFinishedEvent> = z
     ...(value.outcome !== undefined ? { outcome: value.outcome } : {}),
   }));
 
-const runErrorSchema: z.ZodType<Extract<StreamEvent, { type: "RUN_ERROR" }>> = z
+const runErrorSchema = z
   .object({ type: z.literal("RUN_ERROR"), message: textSchema, code: idSchema.optional() })
   .strict()
   .transform((value) => ({
@@ -241,10 +248,10 @@ const runErrorSchema: z.ZodType<Extract<StreamEvent, { type: "RUN_ERROR" }>> = z
     ...(value.code !== undefined ? { code: value.code } : {}),
   }));
 
-const messagesSnapshotSchema: z.ZodType<Extract<StreamEvent, { type: "MESSAGES_SNAPSHOT" }>> = z
+const messagesSnapshotSchema = z
   .object({
     type: z.literal("MESSAGES_SNAPSHOT"),
-    messages: z.array(agUiMessageSchema).max(MAX_CHECKPOINT_EVENTS),
+    messages: z.array(agUiMessageSchema).max(MAX_SNAPSHOT_MESSAGES),
   })
   .strict();
 
@@ -270,7 +277,7 @@ const replayEmissionSchema = z
     ...(value.response !== undefined ? { response: value.response } : {}),
     timestamp: value.timestamp,
   }));
-const replayTraceSchema: z.ZodType<ToolExecutionTrace> = z
+const replayTraceSchema = z
   .object({
     version: z.literal(1),
     emissions: z.array(replayEmissionSchema).max(MAX_TRACE_ENTRIES),
@@ -278,16 +285,15 @@ const replayTraceSchema: z.ZodType<ToolExecutionTrace> = z
     completedAt: z.number().finite(),
   })
   .strict();
-const replayStateSchema: z.ZodType<ConversationReplayState> = z
+const replayStateSchema = z
   .object({
     toolTraces: z
       .array(z.object({ callId: idSchema, toolName: idSchema, trace: replayTraceSchema }).strict())
-      .max(MAX_CHECKPOINT_EVENTS),
+      .max(MAX_REPLAY_TOOL_TRACES),
   })
   .strict();
 
-type StateSnapshotEvent = Extract<StreamEvent, { type: "STATE_SNAPSHOT" }>;
-const stateSnapshotSchema: z.ZodType<StateSnapshotEvent> = z
+const stateSnapshotSchema = z
   .object({
     type: z.literal("STATE_SNAPSHOT"),
     snapshot: z
@@ -308,7 +314,7 @@ const stateSnapshotSchema: z.ZodType<StateSnapshotEvent> = z
               })
               .strict(),
           )
-          .max(MAX_CHECKPOINT_EVENTS)
+          .max(MAX_PENDING_CLIENT_ACTIONS)
           .optional(),
       })
       .strict()
@@ -321,20 +327,20 @@ const stateSnapshotSchema: z.ZodType<StateSnapshotEvent> = z
   })
   .strict();
 
-const textStartSchema: z.ZodType<Extract<StreamEvent, { type: "TEXT_MESSAGE_START" }>> = z
+const textStartSchema = z
   .object({
     type: z.literal("TEXT_MESSAGE_START"),
     messageId: idSchema,
     role: z.enum(["assistant", "user", "system", "developer"]),
   })
   .strict();
-const textContentSchema: z.ZodType<Extract<StreamEvent, { type: "TEXT_MESSAGE_CONTENT" }>> = z
+const textContentSchema = z
   .object({ type: z.literal("TEXT_MESSAGE_CONTENT"), messageId: idSchema, delta: textSchema })
   .strict();
-const textEndSchema: z.ZodType<Extract<StreamEvent, { type: "TEXT_MESSAGE_END" }>> = z
+const textEndSchema = z
   .object({ type: z.literal("TEXT_MESSAGE_END"), messageId: idSchema })
   .strict();
-const toolCallStartSchema: z.ZodType<Extract<StreamEvent, { type: "TOOL_CALL_START" }>> = z
+const toolCallStartSchema = z
   .object({
     type: z.literal("TOOL_CALL_START"),
     toolCallId: idSchema,
@@ -348,10 +354,10 @@ const toolCallStartSchema: z.ZodType<Extract<StreamEvent, { type: "TOOL_CALL_STA
     toolCallName: value.toolCallName,
     ...(value.parentMessageId !== undefined ? { parentMessageId: value.parentMessageId } : {}),
   }));
-const toolCallArgsSchema: z.ZodType<Extract<StreamEvent, { type: "TOOL_CALL_ARGS" }>> = z
+const toolCallArgsSchema = z
   .object({ type: z.literal("TOOL_CALL_ARGS"), toolCallId: idSchema, delta: textSchema })
   .strict();
-const toolCallEndSchema: z.ZodType<Extract<StreamEvent, { type: "TOOL_CALL_END" }>> = z
+const toolCallEndSchema = z
   .object({ type: z.literal("TOOL_CALL_END"), toolCallId: idSchema })
   .strict();
 
@@ -382,8 +388,7 @@ const validationErrorSchema: z.ZodType<ToolParameterValidationErrorPayload> = z
     issues: z.array(validationIssueSchema).max(256),
   })
   .strict();
-type ToolResultEvent = Extract<StreamEvent, { type: "TOOL_CALL_RESULT" }>;
-const toolResultSchema: z.ZodType<ToolResultEvent> = z
+const toolResultSchema = z
   .object({
     type: z.literal("TOOL_CALL_RESULT"),
     messageId: idSchema,
@@ -407,13 +412,14 @@ const toolResultSchema: z.ZodType<ToolResultEvent> = z
   }));
 
 type ActivityEvent = Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>;
-const activitySchema: z.ZodType<ActivityEvent> = z
+const activityMessageIdSchema = z.templateLiteral([
+  z.literal("sweatpants:plugin-replay:"),
+  z.string().max(MAX_ID_LENGTH),
+]);
+const activitySchema = z
   .object({
     type: z.literal("ACTIVITY_SNAPSHOT"),
-    messageId: z
-      .string()
-      .regex(/^sweatpants:plugin-replay:/)
-      .max(MAX_ID_LENGTH),
+    messageId: activityMessageIdSchema,
     activityType: z.literal("sweatpants:plugin-replay"),
     replace: z.literal(true),
     content: z
@@ -429,13 +435,13 @@ const activitySchema: z.ZodType<ActivityEvent> = z
   .transform(
     (value): ActivityEvent => ({
       type: "ACTIVITY_SNAPSHOT",
-      messageId: value.messageId as ActivityEvent["messageId"],
+      messageId: value.messageId,
       activityType: "sweatpants:plugin-replay",
       replace: true,
       content: value.content,
     }),
   );
-const reasoningSchema: z.ZodType<Extract<StreamEvent, { type: "REASONING_MESSAGE_CONTENT" }>> = z
+const reasoningSchema = z
   .object({
     type: z.literal("REASONING_MESSAGE_CONTENT"),
     messageId: idSchema,
@@ -443,7 +449,7 @@ const reasoningSchema: z.ZodType<Extract<StreamEvent, { type: "REASONING_MESSAGE
   })
   .strict();
 
-const streamEventSchema: z.ZodType<StreamEvent> = z.union([
+const streamEventSchema = z.discriminatedUnion("type", [
   runStartedSchema,
   runFinishedSchema,
   runErrorSchema,
@@ -475,7 +481,10 @@ export class ConversationCheckpointError extends Error {
 }
 
 function assertCheckpointSize(encoded: string): void {
-  if (new TextEncoder().encode(encoded).byteLength > MAX_CHECKPOINT_BYTES) {
+  if (encoded.length <= MAX_CHECKPOINT_BYTES / 4) {
+    return;
+  }
+  if (checkpointEncoder.encode(encoded).byteLength > MAX_CHECKPOINT_BYTES) {
     throw new ConversationCheckpointError("Conversation checkpoint exceeds the size limit");
   }
 }
@@ -496,7 +505,10 @@ export function encodeConversationCheckpoint(events: readonly StreamEvent[]): st
 
 export function decodeConversationCheckpoint(raw: string): StreamEvent[] {
   try {
-    if (new TextEncoder().encode(raw).byteLength > MAX_CHECKPOINT_BYTES) {
+    if (
+      raw.length > MAX_CHECKPOINT_BYTES / 4 &&
+      checkpointEncoder.encode(raw).byteLength > MAX_CHECKPOINT_BYTES
+    ) {
       throw new ConversationCheckpointError("Conversation checkpoint exceeds the size limit");
     }
     const value: unknown = JSON.parse(raw);

@@ -42,18 +42,26 @@ export function* recordConversationCheckpoint(
   checkpointToken: string,
 ): Operation<void> {
   const checkpointId = getConversationCheckpointId(conversationId);
-  const existing = yield* bufferStore.get(checkpointId);
-  if (existing) {
+  let buffer = yield* bufferStore.get(checkpointId);
+
+  // Checkpoints are an append-only version log. A new version is appended
+  // atomically, so a failed write cannot delete the last valid restore point.
+  // A completed pre-versioned buffer is disposable because bare-array
+  // checkpoints are intentionally unsupported before production compatibility.
+  if (buffer && (yield* buffer.isComplete() || (yield* buffer.getError()) !== null)) {
     yield* bufferStore.delete(checkpointId);
+    buffer = null;
+  }
+  if (!buffer) {
+    buffer = yield* bufferStore.create(checkpointId);
   }
 
-  const buffer = yield* bufferStore.create(checkpointId);
+  const { lsn } = yield* buffer.read(0);
   const writer = yield* buffer.claimWriter({
     ownerId: `conversation-checkpoint:${conversationId}`,
-    activationEpoch: 1,
+    activationEpoch: lsn + 1,
   });
   yield* writer.append([checkpointToken]);
-  yield* writer.complete();
 }
 
 export function* readLatestConversationCheckpoint(

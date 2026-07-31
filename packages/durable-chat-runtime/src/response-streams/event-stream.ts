@@ -41,6 +41,7 @@ export function createSerializedEventStream(
     conversationId?: string;
     checkpointStore?: TokenBufferStore<string>;
     responseTokenBuffer?: TokenBufferWriter<StreamEvent>;
+    onCheckpointError?: (error: unknown) => void;
   },
 ): Stream<StreamEvent, void> {
   return resource(function* (provide) {
@@ -54,15 +55,23 @@ export function createSerializedEventStream(
         return;
       }
       checkpointPersisted = true;
-      const checkpointEvents = yield* buildCheckpointSnapshotEventsFromFrames(emittedFrames);
-      if (checkpointEvents.length === 0) {
-        return;
+      try {
+        const checkpointEvents = yield* buildCheckpointSnapshotEventsFromFrames(emittedFrames);
+        if (checkpointEvents.length === 0) {
+          return;
+        }
+        yield* recordConversationCheckpoint(
+          options.checkpointStore,
+          options.conversationId,
+          encodeConversationCheckpoint(checkpointEvents),
+        );
+      } catch (error) {
+        try {
+          options.onCheckpointError?.(error);
+        } catch {
+          // Checkpoint observability cannot fail the completed chat turn.
+        }
       }
-      yield* recordConversationCheckpoint(
-        options.checkpointStore,
-        options.conversationId,
-        encodeConversationCheckpoint(checkpointEvents),
-      );
     }
 
     function* persistInterruptStateIfNeeded(rawEvent: StreamEvent): Operation<void> {
