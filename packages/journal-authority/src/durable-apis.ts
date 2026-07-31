@@ -136,26 +136,34 @@ function* executeDurableEffectAuthorization(
     outcome,
   });
   if (resolution.status !== "rejected") {
-    const acknowledge = yield* DurableEffectOutcomeAcknowledgerContext.get();
-    if (acknowledge) {
-      try {
-        yield* acknowledge({
-          effect: {
-            name: authorization.descriptor.name,
-            version: authorization.descriptor.version,
-          },
-          sessionId: authorization.sessionId,
-          taskId: authorization.taskId,
-          pullId: authorization.pullId,
-          attemptId: authorization.attemptId,
-          outcomeDigest: canonicalSnapshot(outcome).sha,
-        });
-      } catch {
-        // Journal acceptance is authoritative; cleanup remains retryable.
-      }
-    }
+    yield* acknowledgeDurableEffect(authorization, outcome);
   }
   return resolution;
+}
+
+function* acknowledgeDurableEffect(
+  authorization: DurableEffectAuthorization,
+  outcome: OperationOutcome,
+): Operation<void> {
+  const acknowledge = yield* DurableEffectOutcomeAcknowledgerContext.get();
+  if (!acknowledge) {
+    return;
+  }
+  try {
+    yield* acknowledge({
+      effect: {
+        name: authorization.descriptor.name,
+        version: authorization.descriptor.version,
+      },
+      sessionId: authorization.sessionId,
+      taskId: authorization.taskId,
+      pullId: authorization.pullId,
+      attemptId: authorization.attemptId,
+      outcomeDigest: canonicalSnapshot(outcome).sha,
+    });
+  } catch {
+    // Journal acceptance is authoritative; cleanup remains retryable.
+  }
 }
 
 /** Structured runtime API that drives programs and their child topology to a durable boundary. */
@@ -566,6 +574,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           const journal = authority.journalIdentity();
           const effectResolver = step.descriptor.resolver;
           let resolution: ResolveOperationResult;
+          let executionOutcome: OperationOutcome | undefined;
           if (route.placement === "execution") {
             const authorized = yield* ProgramPeer.operations.step(attachment, {
               type: "authorize",
@@ -575,6 +584,12 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
               resolutionCapability: reservation.resolutionCapability,
               descriptor: authorizationDescriptor,
               effectContractDigest: authorizationDigest,
+              placement: {
+                journal,
+                program: request.attach.program,
+                route: request.attach.route,
+                driverKind: driverKind(request.attach.route),
+              },
             });
             if (
               authorized.type !== "operation" ||
@@ -586,6 +601,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
                 "Execution effect implementation did not settle",
               );
             }
+            executionOutcome = authorized.authorizedOutcome;
             resolution = yield* JournalAuthority.operations.resolve({
               capability: reservation.resolutionCapability,
               audience: effectResolver.audience,
@@ -615,6 +631,21 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           }
           if (resolution.status === "rejected") {
             throw new CrankError(resolution.code);
+          }
+          if (executionOutcome !== undefined) {
+            yield* acknowledgeDurableEffect(
+              {
+                sessionId: request.attach.sessionId,
+                taskId: request.attach.taskId,
+                pullId: reservation.pullId,
+                attemptId: reservation.attemptId,
+                descriptor: authorizationDescriptor,
+                effectContractDigest: authorizationDigest,
+                resolutionCapability: reservation.resolutionCapability,
+                resolver: effectResolver,
+              },
+              executionOutcome,
+            );
           }
           const replayed = yield* authority.reserve({
             sessionId: request.attach.sessionId,

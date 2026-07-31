@@ -23,24 +23,26 @@ function safeProviderErrorMessage(value: string | undefined): string | undefined
 export function createHostModelSamplingService(options: {
   model: Model;
   streamOptions?: StreamOptions;
-  catalog: ChatToolCatalog;
+  catalog?: ChatToolCatalog;
   historyPolicy?: HistoryPolicy;
+  /** Execution-owned samples must use a relay, not the Host Turn event writer. */
+  emitLiveEvents?: boolean;
   onTerminalStreamed?: () => void;
 }): ModelSamplingService {
   return {
-    *sample(request, context) {
+    *sample(request, attempt) {
       const plan = planModelInvocation({
         request,
-        execution: context,
+        attempt,
         model: options.model,
         ...(options.streamOptions ? { streamOptions: options.streamOptions } : {}),
-        catalog: options.catalog,
+        ...(options.catalog ? { catalog: options.catalog } : {}),
         ...(options.historyPolicy ? { historyPolicy: options.historyPolicy } : {}),
       });
       const log = yield* useLogger("handler:durable:model-sample");
       log.debug(
         {
-          pullId: context.pullId,
+          pullId: attempt.pullId,
           caller: plan.caller.type,
           decisions: plan.decisions,
         },
@@ -48,7 +50,9 @@ export function createHostModelSamplingService(options: {
       );
 
       const deliverOuter =
-        plan.delivery.type === "outer-assistant" && (yield* TurnEventApi.operations.installed());
+        options.emitLiveEvents !== false &&
+        plan.delivery.type === "outer-assistant" &&
+        (yield* TurnEventApi.operations.installed());
       let partialText = "";
       let streamStarted = false;
       try {
@@ -96,7 +100,7 @@ export function createHostModelSamplingService(options: {
           }
         }
       } catch (error) {
-        if (context.cancellation.aborted) {
+        if (attempt.cancellation.aborted) {
           return {
             status: "cancelled",
             partial: { text: partialText, interrupted: true },

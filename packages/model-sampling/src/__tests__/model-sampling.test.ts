@@ -7,6 +7,7 @@ import {
   runWithModelSamplingService,
   settleModelSample,
   type ModelSampleRequest,
+  defaultModelSamplePlacementPolicy,
 } from "../index.ts";
 
 function validator(digest: string) {
@@ -66,6 +67,42 @@ describe("durable model sampling", () => {
         { role: "assistant", content: [{ type: "text", text: '{"value":7}' }] },
       ),
     ).toMatchObject({ output: { type: "json", value: { value: 7 } } });
+  });
+
+  it("keeps outer delivery on the Host and permits trusted private execution", () => {
+    expect(
+      defaultModelSamplePlacementPolicy.decide({
+        caller: "chat-root",
+        hostAvailable: true,
+        executionAvailable: true,
+        executionTrusted: true,
+        requiresOuterDelivery: true,
+        classifications: [],
+      }),
+    ).toMatchObject({ executor: "host" });
+    expect(
+      defaultModelSamplePlacementPolicy.decide({
+        caller: "nested-program",
+        hostAvailable: true,
+        executionAvailable: true,
+        executionTrusted: true,
+        requiresOuterDelivery: false,
+        classifications: ["private"],
+      }),
+    ).toMatchObject({ executor: "execution" });
+  });
+
+  it("fails closed when neither authorized executor is available", () => {
+    expect(
+      defaultModelSamplePlacementPolicy.decide({
+        caller: "nested-program",
+        hostAvailable: false,
+        executionAvailable: true,
+        executionTrusted: false,
+        requiresOuterDelivery: false,
+        classifications: ["restricted"],
+      }),
+    ).toMatchObject({ executor: "reject", code: "model_sampling_placement_unavailable" });
   });
 
   it("supports scoped semantic middleware around the installed service", async () => {

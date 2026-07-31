@@ -6,7 +6,7 @@ import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   ProgramDeliveryApi,
   type ModelSampleDisposition,
-  type ModelSamplingExecutionContext,
+  type ModelSampleAttempt,
   type ModelSamplingService,
   type ProgramDeliveryEnvelope,
 } from "@sweatpants/model-sampling";
@@ -152,12 +152,12 @@ export interface PlacementSamplingAuthorizationIssuer {
 
 export interface PlacementModelSamplingService extends ModelSamplingService {
   acknowledge(
-    context: Pick<ModelSamplingExecutionContext, "sessionId" | "taskId" | "pullId">,
+    context: Pick<ModelSampleAttempt, "sessionId" | "taskId" | "pullId">,
     outcomeDigest: string,
   ): Operation<void>;
 }
 
-function identityFor(context: ModelSamplingExecutionContext): RemoteSampleIdentity {
+function identityFor(context: ModelSampleAttempt): RemoteSampleIdentity {
   return {
     journalId: context.placement.journal.id,
     journalIncarnation: context.placement.journal.incarnation,
@@ -185,7 +185,7 @@ function sampleKey(identity: RemoteSampleIdentity): string {
 export function createPlacementModelSamplingService(options: {
   readonly sampler: PlacementModelSampler;
   readonly authorization: PlacementSamplingAuthorizationIssuer;
-  readonly releaseId: (context: ModelSamplingExecutionContext) => string;
+  readonly releaseId: (context: ModelSampleAttempt) => string;
   readonly resumeAfter?: (
     identity: RemoteSampleIdentity,
     attachment: RemoteSampleAttachment,
@@ -194,7 +194,7 @@ export function createPlacementModelSamplingService(options: {
   const attachments = new Map<string, RemoteSampleAttachment>();
 
   return Object.freeze({
-    *sample(request: ModelSampleRequest, context: ModelSamplingExecutionContext) {
+    *sample(request: ModelSampleRequest, context: ModelSampleAttempt) {
       const identity = identityFor(context);
       const releaseId = options.releaseId(context);
       if (!releaseId) {
@@ -295,7 +295,7 @@ export function createPlacementModelSamplingService(options: {
     },
 
     *acknowledge(
-      context: Pick<ModelSamplingExecutionContext, "sessionId" | "taskId" | "pullId">,
+      context: Pick<ModelSampleAttempt, "sessionId" | "taskId" | "pullId">,
       outcomeDigest: string,
     ) {
       const identity: RemoteSampleIdentity = {

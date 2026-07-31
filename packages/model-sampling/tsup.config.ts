@@ -6,6 +6,7 @@ export default defineConfig({
     contract: "src/contract.ts",
     api: "src/api.ts",
     delivery: "src/delivery.ts",
+    placement: "src/placement.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

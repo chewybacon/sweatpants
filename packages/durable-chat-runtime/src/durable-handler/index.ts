@@ -45,6 +45,7 @@ export {
   projectProgramDeliveryEnvelope,
 } from "./model-sampling-relay.ts";
 export { ProgramDriverForeignEffectsContext } from "../program-driver/effects.ts";
+export { createHostModelSamplingService } from "./model-sampling/service.ts";
 export {
   ProgramDriverNativeToolsContext,
   nativeProgramIdentities,

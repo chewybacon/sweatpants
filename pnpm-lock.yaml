@@ -1721,12 +1721,18 @@ importers:
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../model-provider-pi-ai
+      '@sweatpants/model-sampling':
+        specifier: workspace:*
+        version: link:../model-sampling
       '@sweatpants/test-rig':
         specifier: workspace:*
         version: link:../test-rig
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../tool-runtime
+      '@sweatpants/tool-runtime-agentcore':
+        specifier: workspace:*
+        version: link:../tool-runtime-agentcore
       '@sweatpants/tool-runtime-local':
         specifier: workspace:*
         version: link:../tool-runtime-local
