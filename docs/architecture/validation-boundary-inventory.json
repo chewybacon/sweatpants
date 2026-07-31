@@ -3666,17 +3666,6 @@
       ]
     },
     {
-      "id": "SHAPE-169",
-      "file": "packages/chat-core/src/session/ag-ui-stream.ts",
-      "line": 29,
-      "symbol": "consumeAgUiEventStream",
-      "classification": "R",
-      "authority": "typed constructor or owning ingress for consumeAgUiEventStream",
-      "evidence": [
-        "packages/chat-core/src/session/ag-ui-stream.ts:29"
-      ]
-    },
-    {
       "id": "SHAPE-170",
       "file": "packages/chat-core/src/session/api-transport.ts",
       "line": 27,
@@ -3800,12 +3789,12 @@
     {
       "id": "SHAPE-181",
       "file": "packages/chat-core/src/state/reducer.ts",
-      "line": 213,
+      "line": 212,
       "symbol": "addInterrupts",
       "classification": "R",
       "authority": "typed constructor or owning ingress for addInterrupts",
       "evidence": [
-        "packages/chat-core/src/state/reducer.ts:213"
+        "packages/chat-core/src/state/reducer.ts:212"
       ]
     },
     {

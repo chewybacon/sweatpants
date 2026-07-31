@@ -12,7 +12,7 @@ import {
 } from "effection";
 import { streamChatOnce } from "./stream-chat.ts";
 import { useBufferedChannel, useTransformPipeline } from "./transforms.ts";
-import { chatReducer, initialChatState } from "../state/reducer.ts";
+import { initialChatState } from "../state/chat-state.ts";
 import type { ChatState } from "../state/chat-state.ts";
 import { StreamerContext, BaseUrlContext } from "./contexts.ts";
 import type { ChatStateEvent } from "../state/events.ts";
@@ -23,8 +23,8 @@ import type {
   Streamer,
   ChatEventTransform,
 } from "./options.ts";
-import type { StreamResult } from "./streaming.ts";
-import { createChatTurnState } from "./turn-state.ts";
+import type { ChatTransportReceipt, ChatTurnSettlement } from "./settlement.ts";
+import { createChatSessionProjection } from "./projection.ts";
 import { readDurableHistory } from "./durable-history.ts";
 
 const defaultStreamer: Streamer = streamChatOnce;
@@ -77,18 +77,12 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
       yield* StreamerContext.set(options.streamer);
     }
 
-    yield* spawn(() => runChatSession(commands, events, options));
-
-    yield* spawn(function* () {
-      let currentState = initialChatState;
-      stateSignal.send(currentState);
-
-      for (const event of yield* each(events)) {
-        currentState = chatReducer(currentState, event);
-        stateSignal.send(currentState);
-        yield* each.next();
-      }
-    });
+    stateSignal.send(initialChatState);
+    yield* spawn(() =>
+      runChatSession(commands, events, options, (state) => {
+        stateSignal.send(state);
+      }),
+    );
 
     yield* provide({
       state: yield* stateSignal.subscribe(),
@@ -116,14 +110,16 @@ export function* runChatSession(
   commands: Channel<ChatCommand, void>,
   events: Channel<ChatStateEvent, void>,
   options: ClientToolSessionOptions = {},
+  publishState?: (state: ChatState) => void,
 ): Operation<void> {
-  const turn = createChatTurnState(options.conversationId);
+  const turn = createChatSessionProjection(options.conversationId);
   const currentRequest: {
     owned: { token: symbol; halt: () => Operation<void> } | null;
   } = { owned: null };
 
   function* sendEvent(event: ChatStateEvent): Operation<void> {
     turn.fold(event);
+    publishState?.(turn.state);
     yield* events.send(event);
   }
 
@@ -158,7 +154,7 @@ export function* runChatSession(
 
   function* startRequest(
     requestOptions: Pick<StreamChatOptions, "pluginAbort"> = {},
-  ): Operation<StreamResult> {
+  ): Operation<ChatTurnSettlement> {
     let terminalForwarded = false;
     let terminalForwardedResolve: (() => void) | null = null;
 
@@ -179,27 +175,28 @@ export function* runChatSession(
       terminalForwardedResolve?.();
       terminalForwardedResolve = null;
     });
-    const mirrorEventState: ChatEventTransform = function* (input, output) {
+    const projectEventState: ChatEventTransform = function* (input, output) {
       for (const event of yield* each(input)) {
         turn.fold(event);
+        publishState?.(turn.state);
         yield* output.send(event);
         yield* each.next();
       }
     };
 
     const streamEvents = yield* useTransformPipeline(events, [
-      mirrorEventState,
       ...(options.transforms ?? []),
+      projectEventState,
       terminalAcknowledger,
     ]);
 
     const contextStreamer = yield* StreamerContext.get();
     const streamer = contextStreamer ?? options.streamer ?? defaultStreamer;
     const request = turn.beginTurnRequest();
-    let result: StreamResult;
+    let receipt: ChatTransportReceipt;
 
     try {
-      result = yield* streamer([...turn.history], streamEvents, {
+      receipt = yield* streamer([...turn.history], streamEvents, {
         ...options,
         ...(request.conversationId ? { conversationId: request.conversationId } : {}),
         ...(request.elicitResponses.length > 0 ? { elicitResponses: request.elicitResponses } : {}),
@@ -211,16 +208,11 @@ export function* runChatSession(
       if (terminalForwarded) {
         yield* call(waitForTerminalForwarded);
       }
-      turn.commitFailure(request.originalHistoryLength);
+      turn.fail();
       throw error;
     }
 
-    turn.recordConversationId(result);
-    if (result.type === "complete") {
-      turn.commitComplete(result, request.originalHistoryLength);
-    } else {
-      turn.commitElicit(result, request.originalHistoryLength);
-    }
+    turn.recordConversationId(receipt);
 
     // Closing drains every queued event through transforms. Check the terminal
     // invariant only after the drain so custom streamers cannot deadlock us by
@@ -230,7 +222,7 @@ export function* runChatSession(
       throw new Error("Streamer returned without a terminal AG-UI event");
     }
     yield* call(waitForTerminalForwarded);
-    return result;
+    return turn.settle();
   }
 
   function* haltCurrentRequest(): Operation<void> {
@@ -250,11 +242,11 @@ export function* runChatSession(
     // session resource halts any in-flight request (structured teardown) and
     // spawned work inherits session contexts (BaseUrlContext/StreamerContext).
     const token = Symbol(lifecycle);
-    const task = yield* spawn(function* (): Operation<StreamResult | undefined> {
+    const task = yield* spawn(function* (): Operation<ChatTurnSettlement | undefined> {
       try {
-        const result = yield* startRequest(requestOptions);
-        options.onTurnSettled?.(result);
-        return result;
+        const settlement = yield* startRequest(requestOptions);
+        options.onTurnSettled?.(settlement);
+        return settlement;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
         yield* sendEvent({ type: "LOCAL_ERROR", message });

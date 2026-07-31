@@ -2,7 +2,7 @@ import type { Channel, Operation, Task } from "effection";
 import { each, spawn } from "effection";
 import type { MessagePart } from "../types/chat-message.ts";
 import type { ChatStateEvent } from "../state/events.ts";
-import { chatReducer, initialChatState } from "../state/reducer.ts";
+import { createChatStateProjection } from "./projection.ts";
 import type { ChatEventTransform } from "./options.ts";
 import { useBufferedChannel } from "./transforms.ts";
 
@@ -59,7 +59,7 @@ export function* renderReplayMessageParts(
   const input = yield* useBufferedChannel<ChatStateEvent>();
   const output = yield* useBufferedChannel<ChatStateEvent>();
   const runTransforms = composeTransforms(transforms);
-  let state = initialChatState;
+  const projection = createChatStateProjection();
 
   const transformTask = yield* spawn(function* () {
     yield* runTransforms(input, output);
@@ -67,7 +67,7 @@ export function* renderReplayMessageParts(
   });
   const collectTask = yield* spawn(function* () {
     for (const event of yield* each(output)) {
-      state = chatReducer(state, event);
+      projection.fold(event);
       yield* each.next();
     }
   });
@@ -82,5 +82,5 @@ export function* renderReplayMessageParts(
   yield* transformTask;
   yield* collectTask;
 
-  return state.finalizedParts[messageId];
+  return projection.state.finalizedParts[messageId];
 }

@@ -7,7 +7,8 @@
 import type { Operation, Channel } from "effection";
 import type { ChatStateEvent } from "../state/events.ts";
 import type { Message } from "../messages.ts";
-import type { StreamEvent, StreamResult } from "./streaming.ts";
+import type { StreamEvent } from "./streaming.ts";
+import type { ChatTransportReceipt, ChatTurnSettlement } from "./settlement.ts";
 import type { ConversationReplayState } from "./replay-types.ts";
 import type { ToolExecutionTrace } from "../trace-types.ts";
 import type { PluginReplayTraceSpec } from "../plugin-spec.ts";
@@ -67,14 +68,14 @@ export interface ElicitResponseData {
 /**
  * A streamer is an Operation that performs a streaming chat request.
  *
- * This abstraction allows us to swap out the real fetch-based streamer
- * for a test streamer that we can control step-by-step.
+ * This abstraction allows the transport to be replaced without moving
+ * semantic settlement out of the Chat Core projection.
  */
 export type Streamer = (
   messages: Message[],
   events: Channel<ChatStateEvent, void>,
   options: Omit<StreamChatOptions, "streamer">,
-) => Operation<StreamResult>;
+) => Operation<ChatTransportReceipt>;
 
 // =============================================================================
 // MESSAGE RENDERER
@@ -260,7 +261,7 @@ export interface SessionOptions {
    * into the persistent client-session history. Primarily supports semantic
    * test drivers that must not race the next turn against history projection.
    */
-  onTurnSettled?: (result: StreamResult) => void;
+  onTurnSettled?: (settlement: ChatTurnSettlement) => void;
 
   /**
    * Called after a request task terminates with an error, after stream cleanup.

@@ -1,5 +1,5 @@
-import type { ChatState, ElicitTrackingState } from "./chat-state.ts";
-import { initialChatState } from "./chat-state.ts";
+import type { ChatStateInternal, ElicitTrackingState } from "./chat-state.ts";
+import { initialChatStateInternal } from "./chat-state.ts";
 import type { ChatStateEvent } from "./events.ts";
 import type { Message } from "../messages.ts";
 import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from "../types/chat-message.ts";
@@ -9,7 +9,6 @@ import { activitySnapshotToPluginReplayTrace } from "../session/plugin-replay.ts
 import type { Json } from "@sweatpants/foundation";
 
 export type { ChatStateEvent, LocalChatAction } from "./events.ts";
-export { initialChatState };
 
 function upsertMessage(messages: Message[], message: Message): Message[] {
   return messages.some((candidate) => candidate.id === message.id)
@@ -94,11 +93,11 @@ function partsForMessages(messages: Message[]): Record<string, MessagePart[]> {
 }
 
 function appendContentPart(
-  state: ChatState,
+  state: ChatStateInternal,
   kind: "text" | "reasoning",
   messageId: string,
   delta: string,
-): ChatState {
+): ChatStateInternal {
   const active = state.streaming.parts.find(
     (part): part is TextPart | ReasoningPart =>
       part.id === state.streaming.activePartId &&
@@ -211,7 +210,7 @@ function attachPendingElicits(
 }
 
 function addInterrupts(
-  state: ChatState,
+  state: ChatStateInternal,
   interrupts: Array<{
     id: string;
     message?: string;
@@ -219,7 +218,7 @@ function addInterrupts(
     responseSchema?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   }>,
-): ChatState {
+): ChatStateInternal {
   const pending = { ...state.pendingElicits };
   for (const interrupt of interrupts) {
     const callId = interrupt.toolCallId ?? interrupt.id;
@@ -276,14 +275,18 @@ function addInterrupts(
 }
 
 /** Fold one canonical AG-UI event or explicit local-only action into ChatState. */
-export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState {
+export function reduceChatState(
+  state: ChatStateInternal,
+  event: ChatStateEvent,
+): ChatStateInternal {
+  const internalState = state;
   switch (event.type) {
     case "RUN_STARTED":
       return {
         ...state,
         activeRun: { threadId: event.threadId, runId: event.runId },
         isStreaming: true,
-        streaming: initialChatState.streaming,
+        streaming: initialChatStateInternal.streaming,
         messageDrafts: {},
         toolCallDrafts: {},
         error: null,
@@ -333,13 +336,13 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       return {
         ...state,
         messageDrafts: {
-          ...state.messageDrafts,
+          ...internalState.messageDrafts,
           [event.messageId]: { id: event.messageId, role: event.role, content: "" },
         },
       };
 
     case "TEXT_MESSAGE_CONTENT": {
-      const draft = state.messageDrafts[event.messageId] ?? {
+      const draft = internalState.messageDrafts[event.messageId] ?? {
         id: event.messageId,
         role: "assistant" as const,
         content: "",
@@ -347,7 +350,7 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       const next = {
         ...state,
         messageDrafts: {
-          ...state.messageDrafts,
+          ...internalState.messageDrafts,
           [event.messageId]: { ...draft, content: draft.content + event.delta },
         },
       };
@@ -360,11 +363,11 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       return appendContentPart(state, "reasoning", event.messageId, event.delta);
 
     case "TEXT_MESSAGE_END": {
-      const draft = state.messageDrafts[event.messageId];
+      const draft = internalState.messageDrafts[event.messageId];
       if (!draft) {
         return state;
       }
-      const { [event.messageId]: _ended, ...messageDrafts } = state.messageDrafts;
+      const { [event.messageId]: _ended, ...messageDrafts } = internalState.messageDrafts;
       const message: Message = { id: draft.id, role: draft.role, content: draft.content };
       return {
         ...state,
@@ -373,7 +376,8 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
           draft.role === "assistant" && state.streaming.parts.length > 0
             ? { ...state.finalizedParts, [draft.id]: [...state.streaming.parts] }
             : state.finalizedParts,
-        streaming: draft.role === "assistant" ? initialChatState.streaming : state.streaming,
+        streaming:
+          draft.role === "assistant" ? initialChatStateInternal.streaming : state.streaming,
         messageDrafts,
       };
     }
@@ -399,7 +403,7 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       };
       return {
         ...state,
-        toolCallDrafts: { ...state.toolCallDrafts, [event.toolCallId]: draft },
+        toolCallDrafts: { ...internalState.toolCallDrafts, [event.toolCallId]: draft },
         streaming: {
           parts: [...state.streaming.parts, toolPart],
           activePartId: toolPart.id,
@@ -409,7 +413,7 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
     }
 
     case "TOOL_CALL_ARGS": {
-      const draft = state.toolCallDrafts[event.toolCallId];
+      const draft = internalState.toolCallDrafts[event.toolCallId];
       if (!draft) {
         return state;
       }
@@ -421,7 +425,7 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
           : part;
       return {
         ...state,
-        toolCallDrafts: { ...state.toolCallDrafts, [event.toolCallId]: nextDraft },
+        toolCallDrafts: { ...internalState.toolCallDrafts, [event.toolCallId]: nextDraft },
         streaming: { ...state.streaming, parts: state.streaming.parts.map(updatePart) },
         finalizedParts: Object.fromEntries(
           Object.entries(state.finalizedParts).map(([id, parts]) => [id, parts.map(updatePart)]),
@@ -430,12 +434,12 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
     }
 
     case "TOOL_CALL_END": {
-      const draft = state.toolCallDrafts[event.toolCallId];
+      const draft = internalState.toolCallDrafts[event.toolCallId];
       if (!draft) {
         return state;
       }
       const toolCallDrafts = {
-        ...state.toolCallDrafts,
+        ...internalState.toolCallDrafts,
         [event.toolCallId]: { ...draft, ended: true },
       };
       const siblings = Object.values(toolCallDrafts).filter(
@@ -485,7 +489,7 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
     }
 
     case "TOOL_CALL_RESULT": {
-      const toolName = event.toolCallName ?? state.toolCallDrafts[event.toolCallId]?.name;
+      const toolName = event.toolCallName ?? internalState.toolCallDrafts[event.toolCallId]?.name;
       if (!toolName) {
         throw new Error(`Tool result "${event.toolCallId}" has no settled tool name`);
       }
@@ -536,7 +540,7 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
         ...state,
         isStreaming: false,
         activeRun: null,
-        streaming: initialChatState.streaming,
+        streaming: initialChatStateInternal.streaming,
       };
       return event.outcome?.type === "interrupt"
         ? addInterrupts(next, event.outcome.interrupts)
@@ -630,13 +634,13 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
         ...(event.message ? { messages: upsertMessage(state.messages, event.message) } : {}),
         isStreaming: false,
         activeRun: null,
-        streaming: initialChatState.streaming,
+        streaming: initialChatStateInternal.streaming,
       };
 
     case "LOCAL_ERROR":
       return { ...state, error: event.message, isStreaming: false };
 
     case "LOCAL_RESET":
-      return initialChatState;
+      return initialChatStateInternal;
   }
 }

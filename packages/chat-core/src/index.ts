@@ -90,7 +90,6 @@ export type { PluginReplayTraceSpec } from "./plugin-spec.ts";
 
 // Chat state (reducer, timeline, derive)
 export {
-  chatReducer,
   initialChatState,
   groupTimelineByToolCall,
   deriveMessages,
@@ -174,13 +173,11 @@ export type {
   AgUiCheckpoint,
   AgUiCustomState,
   AgUiRunMetadata,
-  ConversationState,
   ConversationReplayToolTrace,
   ConversationReplayState,
-  StreamResult,
-  StreamCompleteResult,
-  StreamElicitResult,
   ElicitRequestStreamEvent,
+  ChatTransportReceipt,
+  ChatTurnSettlement,
   StreamEvent as ChatSessionStreamEvent,
   StreamEventEntry,
   ChatFetch,
