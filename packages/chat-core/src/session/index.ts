@@ -8,9 +8,9 @@
 // Session runtime
 export { createChatSession, runChatSession } from "./create-session.ts";
 export { ChatSessionRuntimeApi } from "./runtime-api.ts";
-export type { ChatRequestFailure, ChatRequestPlan, RequestLifecycle } from "./machine.ts";
+export type { ChatRequestPlan, RequestLifecycle } from "./machine.ts";
 
-export type { ChatSession, ClientToolSessionOptions } from "./create-session.ts";
+export type { ChatSession } from "./create-session.ts";
 
 // Streaming
 export { streamChatOnce } from "./stream-chat.ts";
@@ -36,7 +36,7 @@ export type {
 export { useTransformPipeline, passthroughTransform, loggingTransform } from "./transforms.ts";
 
 // Contexts
-export { BaseUrlContext, StreamerContext } from "./contexts.ts";
+export { BaseUrlContext } from "./contexts.ts";
 
 // AG-UI checkpoint/projection/messages
 export {
@@ -92,7 +92,6 @@ export type { ChatTransportReceipt, ChatTurnFailure, ChatTurnSettlement } from "
 export type {
   StreamEventEntry,
   ChatFetch,
-  Streamer,
   MessageRenderer,
   ChatEventTransform,
   SessionOptions,

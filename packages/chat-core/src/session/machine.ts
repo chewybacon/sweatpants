@@ -58,8 +58,6 @@ export interface ChatRequestPlan {
   readonly pluginAbort?: StreamChatOptions["pluginAbort"];
 }
 
-export type ChatRequestFailure = ChatTurnFailure;
-
 export type SessionInput =
   | {
       readonly type: "hydrate";
@@ -92,14 +90,14 @@ export type SessionInput =
   | {
       readonly type: "transport-failed";
       readonly requestId: string;
-      readonly failure: ChatRequestFailure;
+      readonly failure: ChatTurnFailure;
       readonly observedAt: number;
     };
 
 export type SessionOutput =
   | { readonly type: "cancel-request" }
   | { readonly type: "start-request"; readonly plan: ChatRequestPlan }
-  | { readonly type: "request-failed"; readonly failure: ChatRequestFailure }
+  | { readonly type: "request-failed"; readonly failure: ChatTurnFailure }
   | { readonly type: "turn-settled"; readonly settlement: ChatTurnSettlement };
 
 export interface SessionTransition {
@@ -120,10 +118,6 @@ export function createInitialSessionProjectionState(
     sentElicitCallIds: new Map(),
     ...(conversationId ? { conversationId } : {}),
   };
-}
-
-export function sessionPublicState(state: SessionProjectionState): ChatState {
-  return publicChatState(state.view);
 }
 
 function pendingElicitations(state: ChatState): ElicitRequestStreamEvent[] {
@@ -567,7 +561,7 @@ function transitionStreamEvent(
   }
 
   if (event.type === "RUN_ERROR") {
-    const failure: ChatRequestFailure = {
+    const failure: ChatTurnFailure = {
       message: event.message,
       ...(event.code ? { code: event.code } : {}),
     };
@@ -601,8 +595,8 @@ function settleTransport(
   if (next.run.phase === "terminal") {
     settlement = next.run.settlement;
   } else {
-    const failure: ChatRequestFailure = {
-      message: "Streamer returned without a terminal AG-UI event",
+    const failure: ChatTurnFailure = {
+      message: "Transport returned without a terminal AG-UI event",
       code: "missing_terminal_event",
     };
     next = retainVisiblePartial(next);
@@ -630,7 +624,7 @@ function settleTransport(
 
 function failTransport(
   state: SessionProjectionState,
-  failure: ChatRequestFailure,
+  failure: ChatTurnFailure,
   observedAt: number,
 ): SessionTransition {
   let next = retainVisiblePartial(state);
