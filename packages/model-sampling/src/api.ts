@@ -8,7 +8,9 @@ import type {
   ModelSampleResult,
 } from "./contract.ts";
 
-export interface ModelSamplingExecutionContext {
+export interface ModelSampleAttempt {
+  /** Durable routing outcome that selected the current service. */
+  readonly executor?: "host" | "execution" | "client";
   readonly placement: ProgramPlacementContextValue;
   readonly sessionId: string;
   readonly taskId: string;
@@ -26,8 +28,13 @@ export type ModelSampleDisposition = DurableEffectDisposition<
 export interface ModelSamplingService {
   sample(
     request: ModelSampleRequest,
-    context: ModelSamplingExecutionContext,
+    attempt: ModelSampleAttempt,
   ): Operation<ModelSampleDisposition>;
+  /** Optional remote-placement cleanup after durable outcome acceptance. */
+  acknowledge?(
+    attempt: Pick<ModelSampleAttempt, "sessionId" | "taskId" | "pullId">,
+    outcomeDigest: string,
+  ): Operation<void>;
 }
 
 export class ModelSamplingUnavailable extends Error {
@@ -44,6 +51,12 @@ const ModelSamplingServiceContext = createContext<ModelSamplingService | undefin
   undefined,
 );
 
+/** Composition-only execution service inherited by the durable execution scope. */
+export const ExecutionModelSamplingServiceContext = createContext<ModelSamplingService | undefined>(
+  "model-sampling:execution-service",
+  undefined,
+);
+
 /**
  * Semantic model-sampling API. It has a real scoped implementation rather than
  * a second external driver seam; middleware can surround the complete durable
@@ -52,11 +65,11 @@ const ModelSamplingServiceContext = createContext<ModelSamplingService | undefin
 export const ModelSamplingApi = createApi("model-sampling", {
   *sample(
     request: ModelSampleRequest,
-    context: ModelSamplingExecutionContext,
+    attempt: ModelSampleAttempt,
   ): Operation<ModelSampleDisposition> {
     const service = yield* ModelSamplingServiceContext.get();
     if (!service) throw new ModelSamplingUnavailable();
-    return yield* service.sample(request, context);
+    return yield* service.sample(request, attempt);
   },
 });
 

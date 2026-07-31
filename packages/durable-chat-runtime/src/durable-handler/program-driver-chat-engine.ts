@@ -1,8 +1,13 @@
-import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
+import {
+  type DurableEffectOutcomeAcknowledgement,
+  type DurableEffectRegistration,
+} from "@sweatpants/durable-effects";
 import {
   assistantText,
   assistantToolCalls,
   createModelSamplingEffectRegistration,
+  ExecutionModelSamplingServiceContext,
+  MODEL_SAMPLE_EFFECT,
 } from "@sweatpants/model-sampling";
 
 import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
@@ -94,7 +99,10 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
             ? { options: { toolChoice: input.toolChoice } }
             : {}),
         },
-        tools: { type: "catalog", digest: input.catalog.digest },
+        tools: {
+          type: "embedded",
+          tools: Object.values(input.catalog.entries).map((entry) => entry.model),
+        },
         response: { type: "message" },
         classifications: [],
       },
@@ -332,16 +340,7 @@ function* activateProgramDriverChatEngine(
     foreignToolAdapter as unknown as DurableTool,
     ...[...(params.nativeTools?.bindings.values() ?? [])].map((binding) => binding.tool),
   ]);
-  const drivers = createProgramDriverRegistry([
-    [
-      "program",
-      createLocalProgramDriver(tools, {
-        foreignToolChild: foreignToolAdapterChild,
-        ...(params.nativeTools?.setup ? { setup: params.nativeTools.setup } : {}),
-      }),
-    ],
-    ...(params.nativeTools?.drivers ?? []),
-  ]);
+  const executionModelSamplingService = yield* ExecutionModelSamplingServiceContext.get();
   let streamedTerminal = false;
   const boundForeignDriver = Object.values(input.catalog.entries).find(
     (
@@ -372,18 +371,53 @@ function* activateProgramDriverChatEngine(
   });
   const effects = createDurableEffectRegistry(
     [
-      createModelSamplingEffectRegistration(),
+      createModelSamplingEffectRegistration(modelSamplingService),
       ...foreignEffects,
       ...(params.nativeTools?.effects ?? []),
     ],
     Object.values(manifest.effects),
   );
+  const executionEffects = executionModelSamplingService
+    ? createDurableEffectRegistry(
+        [createModelSamplingEffectRegistration(executionModelSamplingService, "execution")],
+        Object.values(manifest.effects),
+      )
+    : undefined;
+  const effectOutcomeAcknowledger = executionModelSamplingService?.acknowledge
+    ? function* (acknowledgement: DurableEffectOutcomeAcknowledgement): Operation<void> {
+        if (
+          acknowledgement.effect.name === MODEL_SAMPLE_EFFECT.name &&
+          executionModelSamplingService.acknowledge
+        ) {
+          yield* executionModelSamplingService.acknowledge(
+            {
+              sessionId: acknowledgement.sessionId,
+              taskId: acknowledgement.taskId,
+              pullId: acknowledgement.pullId,
+            },
+            acknowledgement.outcomeDigest,
+          );
+        }
+      }
+    : undefined;
+  const drivers = createProgramDriverRegistry([
+    [
+      "program",
+      createLocalProgramDriver(tools, {
+        foreignToolChild: foreignToolAdapterChild,
+        ...(params.nativeTools?.setup ? { setup: params.nativeTools.setup } : {}),
+        ...(executionEffects ? { executionEffects } : {}),
+      }),
+    ],
+    ...(params.nativeTools?.drivers ?? []),
+  ]);
   const outcome = yield* runLocalProgramActivation(
     {
       authority: journal.authority,
       drivers,
       effects,
       modelSamplingService,
+      ...(effectOutcomeAcknowledger ? { effectOutcomeAcknowledger } : {}),
       routeResolver: function* (program, parentRoute) {
         const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
           (candidate) =>

@@ -52,6 +52,17 @@
                 "default": "./dist/delivery.js"
             },
             "default": "./src/delivery.ts"
+        },
+        "./placement": {
+            "development": {
+                "import": "./src/placement.ts",
+                "types": "./src/placement.ts"
+            },
+            "import": {
+                "types": "./dist/placement.d.ts",
+                "default": "./dist/placement.js"
+            },
+            "default": "./src/placement.ts"
         }
     },
     "scripts": {

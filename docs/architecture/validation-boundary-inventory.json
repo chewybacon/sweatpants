@@ -3993,58 +3993,58 @@
       ]
     },
     {
+      "id": "SHAPE-213",
+      "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
+      "line": 1001,
+      "symbol": "foreignElicitId",
+      "classification": "B",
+      "authority": "owning ingress/parser foreignElicitId",
+      "evidence": [
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1001"
+      ]
+    },
+    {
       "id": "SHAPE-452",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1084,
+      "line": 1118,
       "symbol": "jsonRecord",
       "classification": "R",
       "authority": "typed constructor or owning ingress for jsonRecord",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1084"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1118"
       ]
     },
     {
       "id": "SHAPE-220",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1095,
+      "line": 1129,
       "symbol": "schemaWithModelContext",
       "classification": "R",
       "authority": "typed constructor or owning ingress for schemaWithModelContext",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1095"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1129"
       ]
     },
     {
       "id": "SHAPE-221",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 250,
+      "line": 258,
       "symbol": "activateProgramDriverChatEngine",
       "classification": "R",
       "authority": "typed constructor or owning ingress for activateProgramDriverChatEngine",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:250"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:258"
       ]
     },
     {
       "id": "SHAPE-212",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 957,
+      "line": 991,
       "symbol": "foreignCallId",
       "classification": "B",
       "authority": "owning ingress/parser foreignCallId",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:957"
-      ]
-    },
-    {
-      "id": "SHAPE-213",
-      "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 967,
-      "symbol": "foreignElicitId",
-      "classification": "B",
-      "authority": "owning ingress/parser foreignElicitId",
-      "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:967"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:991"
       ]
     },
     {

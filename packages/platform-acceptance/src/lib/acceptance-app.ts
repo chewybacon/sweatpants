@@ -1,10 +1,15 @@
 import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
+import type { DurableEffectRegistry } from "@sweatpants/durable-effects";
 import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Operation } from "effection";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
+import {
+  createDurableEffectRegistry,
+  DurableEffectRouting,
+} from "@sweatpants/durable-effects/runtime";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createProgramDriverJournalStore,
@@ -12,6 +17,12 @@ import {
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
+import { createSimulatedRemoteModelSamplingService } from "./model-placement-simulator.ts";
+import {
+  createModelSamplingEffectRegistration,
+  ExecutionModelSamplingServiceContext,
+  ModelSamplingApi,
+} from "@sweatpants/model-sampling";
 import { createToolInventory, ToolInventoryContext } from "@sweatpants/tool-runtime";
 import { toModelMessages } from "@sweatpants/tool-session/messages";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
@@ -123,6 +134,8 @@ export interface DurableWorkerMetrics {
 
 export interface AcceptanceApplicationInspection {
   journalStore: ProgramDriverJournalStore;
+  modelSamplingExecutors: string[];
+  modelSamplingProtocol: string[];
   durableWorker: DurableWorkerMetrics;
   get toolSessionRegistry(): ToolSessionRegistry | undefined;
   get toolSessionIds(): readonly string[];
@@ -137,7 +150,12 @@ export interface AcceptanceApplicationOptions {
   journalStore?: ProgramDriverJournalStore;
   durableDriverKind?: string;
   durableRoute?: ProgramRoute;
-  createDurableDriver?(registry: DurableToolRegistry): ProgramDriver;
+  createDurableDriver?(
+    registry: DurableToolRegistry,
+    executionEffects?: DurableEffectRegistry,
+  ): ProgramDriver;
+  modelSamplingOwnership?: "host" | "execution";
+  modelSamplingTargets?: "root" | "all";
 }
 
 export function createAcceptanceApplication(
@@ -151,6 +169,8 @@ export function createAcceptanceApplication(
     createToolInventoryEntry(acceptanceDurableTool),
   ]);
   const samplingProvider = createSamplingProvider(context);
+  const modelSamplingExecutors: string[] = [];
+  const modelSamplingProtocol: string[] = [];
   const durableWorker: DurableWorkerMetrics = {
     activeAttachments: 0,
     attachmentCount: 0,
@@ -172,6 +192,8 @@ export function createAcceptanceApplication(
     });
   inspect?.({
     journalStore,
+    modelSamplingExecutors,
+    modelSamplingProtocol,
     durableWorker,
     get toolSessionRegistry() {
       return toolSessionRegistry;
@@ -193,6 +215,54 @@ export function createAcceptanceApplication(
       );
       yield* ToolInventoryContext.set(inventory);
       yield* durableOptionsProvider.install();
+      let executionEffects: DurableEffectRegistry | undefined;
+      yield* ModelSamplingApi.around({
+        *sample([request, attempt], next) {
+          modelSamplingExecutors.push(attempt.executor ?? "host");
+          return yield* next(request, attempt);
+        },
+      });
+      if (options.modelSamplingOwnership === "execution") {
+        const executionSampling = createSimulatedRemoteModelSamplingService({
+          model: context.model.model,
+          streamOptions: context.model.streamOptions,
+          onEvent: (event) => modelSamplingProtocol.push(event),
+        });
+        const executionService = {
+          *sample(
+            request: Parameters<NonNullable<typeof executionSampling.sample>>[0],
+            attempt: Parameters<NonNullable<typeof executionSampling.sample>>[1],
+          ) {
+            return yield* executionSampling.sample(request, attempt);
+          },
+          ...(executionSampling.acknowledge
+            ? {
+                *acknowledge(
+                  attempt: Parameters<NonNullable<typeof executionSampling.acknowledge>>[0],
+                  outcomeDigest: string,
+                ) {
+                  return yield* executionSampling.acknowledge!(attempt, outcomeDigest);
+                },
+              }
+            : {}),
+        };
+        yield* ExecutionModelSamplingServiceContext.set(executionService);
+        executionEffects = createDurableEffectRegistry([
+          createModelSamplingEffectRegistration(executionSampling, "execution"),
+        ]);
+        yield* DurableEffectRouting.around({
+          *route([request], next) {
+            if (
+              request.definition.name === "model.sample" &&
+              (request.program.id === "sweatpants.chat-root" ||
+                options.modelSamplingTargets === "all")
+            ) {
+              return { placement: "execution" };
+            }
+            return yield* next(request);
+          },
+        });
+      }
 
       toolSessionStore = createInMemoryToolSessionStoreWithDebug();
       // Observation is scoped middleware installed above the registry, so the
@@ -218,7 +288,7 @@ export function createAcceptanceApplication(
 
       const durableRegistry = createDurableToolRegistry([acceptanceDurableTool]);
       const concreteDurableDriver = options.createDurableDriver
-        ? options.createDurableDriver(durableRegistry)
+        ? options.createDurableDriver(durableRegistry, executionEffects)
         : createLocalWorkerDurableProgramDriver({
             workerUrl: resolveFixtureBootstrapUrl("acceptance-durable-worker-bootstrap.mjs"),
             name: "framework-acceptance-durable",

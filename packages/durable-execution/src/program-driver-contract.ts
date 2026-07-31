@@ -8,6 +8,7 @@
 
 import type { Operation } from "effection";
 import type { Json, SerializedApplicationError } from "@sweatpants/foundation";
+import type { ProgramPlacementContextValue } from "@sweatpants/durable-effects";
 import type {
   DurableOperationDescriptor,
   DurableProgramManifest,
@@ -81,6 +82,8 @@ export type ProgramCommand =
       resolutionCapability: string;
       descriptor?: EffectDescriptor | RecordedOperationDescriptor;
       effectContractDigest?: string;
+      /** Authority-established evidence forwarded into execution placement. */
+      placement?: ProgramPlacementContextValue;
     }
   | { type: "ack_emission"; actionIndex: number; offset: string }
   | { type: "cancel"; reason?: string };

@@ -10,7 +10,7 @@ import type {
 import type {
   ModelResponseMode,
   ModelSampleRequest,
-  ModelSamplingExecutionContext,
+  ModelSampleAttempt,
 } from "@sweatpants/model-sampling";
 import { manifest, type ChatToolCatalog } from "../program-driver-schema.ts";
 
@@ -19,7 +19,7 @@ export type ModelCallerEvidence =
   | {
       type: "nested-program";
       taskId: string;
-      program: ModelSamplingExecutionContext["placement"]["program"];
+      program: ModelSampleAttempt["placement"]["program"];
     };
 
 export type ModelInvocationDecision =
@@ -34,18 +34,18 @@ export interface ModelInvocationPlan {
   readonly decisions: readonly ModelInvocationDecision[];
 }
 
-function callerEvidence(context: ModelSamplingExecutionContext): ModelCallerEvidence {
-  const program = context.placement.program;
+function callerEvidence(attempt: ModelSampleAttempt): ModelCallerEvidence {
+  const program = attempt.placement.program;
   return program.id === manifest.programId &&
     program.version === manifest.version &&
     program.digest === manifest.digest
-    ? { type: "chat-root", taskId: context.taskId }
-    : { type: "nested-program", taskId: context.taskId, program };
+    ? { type: "chat-root", taskId: attempt.taskId }
+    : { type: "nested-program", taskId: attempt.taskId, program };
 }
 
 function resolveTools(
   request: ModelSampleRequest,
-  catalog: ChatToolCatalog,
+  catalog: ChatToolCatalog | undefined,
 ): { tools?: Tool[]; decision?: ModelInvocationDecision } {
   switch (request.tools.type) {
     case "none":
@@ -59,7 +59,7 @@ function resolveTools(
         })),
       };
     case "catalog":
-      if (request.tools.digest !== catalog.digest) {
+      if (!catalog || request.tools.digest !== catalog.digest) {
         throw new CrankError(
           "catalog_mismatch",
           "Model sampling catalog differs from the accepted chat catalog",
@@ -81,13 +81,13 @@ function resolveTools(
 /** Pure deterministic planning from parsed command and authority evidence. */
 export function planModelInvocation(input: {
   request: ModelSampleRequest;
-  execution: ModelSamplingExecutionContext;
+  attempt: ModelSampleAttempt;
   model: Model;
   streamOptions?: StreamOptions;
-  catalog: ChatToolCatalog;
+  catalog?: ChatToolCatalog;
   historyPolicy?: HistoryPolicy;
 }): ModelInvocationPlan {
-  const caller = callerEvidence(input.execution);
+  const caller = callerEvidence(input.attempt);
   const resolvedTools = resolveTools(input.request, input.catalog);
   const providerContext: Context = {
     messages: input.request.invocation.context.messages,
@@ -115,8 +115,8 @@ export function planModelInvocation(input: {
   const options: StreamOptions = {
     ...input.streamOptions,
     ...input.request.invocation.options,
-    signal: input.execution.cancellation,
-    sessionId: input.execution.pullId,
+    signal: input.attempt.cancellation,
+    sessionId: input.attempt.pullId,
     ...responseFormat,
   };
   const decisions: ModelInvocationDecision[] = [
@@ -143,7 +143,7 @@ export function planModelInvocation(input: {
       caller.type === "chat-root"
         ? {
             type: "outer-assistant",
-            messageId: `assistant:stream:${input.execution.taskId}:${input.execution.pullId}`,
+            messageId: `assistant:stream:${input.attempt.taskId}:${input.attempt.pullId}`,
           }
         : { type: "none" },
     decisions,

@@ -58,7 +58,7 @@ describe("headless durable coding vertical", () => {
           : [],
       ),
     );
-    expect(descriptors).toContainEqual(expect.objectContaining({ name: "model.sample" }));
+    expect(descriptors).toContainEqual(expect.objectContaining({ name: "chat.model.sample" }));
     expect(descriptors).toContainEqual(
       expect.objectContaining({ kind: "record", key: "workspace-write" }),
     );

@@ -20,6 +20,7 @@ import {
 import { canonicalSnapshot, stableOpaqueId, type Json } from "@sweatpants/foundation";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import type { DurableEffectRegistry } from "@sweatpants/durable-effects/authoring";
+import { ProgramPlacementContext } from "@sweatpants/durable-effects";
 import { verifyProgramIdentityProvenance } from "./program-identity.ts";
 import type {
   DurableProgramContext,
@@ -316,14 +317,19 @@ function* authorizePending(
           "Execution effect contract is unavailable",
         );
       }
-      const disposition = yield* registration.handler(descriptor.input, {
-        sessionId: state.request.sessionId,
-        taskId: state.request.taskId,
-        pullId: command.pullId,
-        attemptId: command.attemptId,
-        cancellation,
-        resolver: descriptor.resolver,
-      });
+      const execute = function* () {
+        return yield* registration.handler(descriptor.input, {
+          sessionId: state.request.sessionId,
+          taskId: state.request.taskId,
+          pullId: command.pullId,
+          attemptId: command.attemptId,
+          cancellation,
+          resolver: descriptor.resolver,
+        });
+      };
+      const disposition = command.placement
+        ? yield* ProgramPlacementContext.with(command.placement, execute)
+        : yield* execute();
       outcome =
         disposition.status === "ok"
           ? {
