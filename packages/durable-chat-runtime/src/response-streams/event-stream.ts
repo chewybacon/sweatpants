@@ -17,6 +17,7 @@ import {
 } from "../interrupts/index.ts";
 import { recordThreadInterruptState } from "../interrupts/index.ts";
 import { buildCheckpointSnapshotEventsFromFrames, toStrictPublicEvent } from "../projection.ts";
+import { encodeConversationCheckpoint } from "./conversation-checkpoint.ts";
 
 export type TurnEventSink = (event: StreamEvent) => Operation<void>;
 export type ChatEngineSource =
@@ -60,7 +61,7 @@ export function createSerializedEventStream(
       yield* recordConversationCheckpoint(
         options.checkpointStore,
         options.conversationId,
-        JSON.stringify(checkpointEvents),
+        encodeConversationCheckpoint(checkpointEvents),
       );
     }
 
