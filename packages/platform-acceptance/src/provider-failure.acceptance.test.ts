@@ -70,6 +70,15 @@ async function completeEmptyAssistant(binding: Binding): Promise<void> {
       const transcript = yield* turn.settled();
       expect(transcript.outcome).toBe("success");
       expect(transcript.text).toBe("");
+
+      const recoveryTurn = yield* conversation.send("RECOVERY_AFTER_EMPTY_ASSISTANT_V1");
+      const recoveryRequest = yield* s.model.request((next) => {
+        const input = JSON.stringify(next.body.input);
+        expect(input).toContain("EMPTY_ASSISTANT_V1");
+        expect(input).toContain("RECOVERY_AFTER_EMPTY_ASSISTANT_V1");
+      });
+      yield* recoveryRequest.respond.text("RECOVERED_AFTER_EMPTY_ASSISTANT_V1");
+      expect((yield* recoveryTurn.settled()).text).toBe("RECOVERED_AFTER_EMPTY_ASSISTANT_V1");
     },
   );
 }

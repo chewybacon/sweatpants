@@ -1,7 +1,6 @@
 import type { ChatState, ChatStateInternal } from "../state/chat-state.ts";
 import type { ChatStateEvent } from "../state/events.ts";
 import type { Message } from "../messages.ts";
-import { assertMessageHasId } from "./message-identity.ts";
 import type { ElicitResponseData } from "./options.ts";
 import type { ConversationReplayState, ElicitRequestStreamEvent } from "./streaming.ts";
 import type { ChatTransportReceipt, ChatTurnSettlement } from "./settlement.ts";
@@ -118,37 +117,6 @@ function openElicitsFromState(state: ChatState): OpenElicit[] {
   }));
 }
 
-function currentMessages(state: ChatState, historyStart: number): Message[] {
-  return state.messages.slice(historyStart).map((message) => ({
-    ...message,
-    id: assertMessageHasId(message, "ChatSessionProjection.currentMessages"),
-  }));
-}
-
-function causalMessages(messages: Message[]): Message[] {
-  if (!messages.some((message) => message.role === "tool")) {
-    return messages;
-  }
-
-  const firstToolCall = messages.findIndex(
-    (message) => message.role === "assistant" && (message.tool_calls?.length ?? 0) > 0,
-  );
-  const deferred: Message[] = [];
-  const ordered: Message[] = [];
-  for (const [index, message] of messages.entries()) {
-    const terminalAssistant =
-      message.role === "assistant" &&
-      (message.tool_calls?.length ?? 0) === 0 &&
-      (firstToolCall < 0 || index > firstToolCall);
-    if (terminalAssistant) {
-      deferred.push(message);
-    } else {
-      ordered.push(message);
-    }
-  }
-  return [...ordered, ...deferred];
-}
-
 function pendingToolCalls(messages: Message[]): Array<{ id: string; name: string }> {
   const completed = new Set(
     messages
@@ -163,13 +131,32 @@ function pendingToolCalls(messages: Message[]): Array<{ id: string; name: string
     .map((call) => ({ id: call.id, name: call.function.name }));
 }
 
-function upsertHistoryMessage(history: Message[], message: Message): void {
-  const index = history.findIndex((candidate) => candidate.id === message.id);
-  if (index < 0) {
-    history.push(message);
-  } else {
-    history[index] = message;
+function upsertHistoryMessage(history: Message[], message: Message): boolean {
+  const existingIndex = history.findIndex((candidate) => candidate.id === message.id);
+  if (existingIndex >= 0) {
+    const existing = history[existingIndex]!;
+    history[existingIndex] = existing.replay && !message.replay ? existing : message;
+    return false;
   }
+
+  if (message.role === "tool" && message.tool_call_id) {
+    const hostIndex = history.findIndex(
+      (candidate) =>
+        candidate.role === "assistant" &&
+        candidate.tool_calls?.some((call) => call.id === message.tool_call_id),
+    );
+    if (hostIndex >= 0) {
+      let resultIndex = hostIndex + 1;
+      while (history[resultIndex]?.role === "tool") {
+        resultIndex += 1;
+      }
+      history.splice(resultIndex, 0, message);
+      return true;
+    }
+  }
+
+  history.push(message);
+  return true;
 }
 
 export function createChatSessionProjection(initialConversationId?: string): ChatSessionProjection {
@@ -182,33 +169,40 @@ export function createChatSessionProjection(initialConversationId?: string): Cha
   let openElicits: OpenElicit[] = [];
   let replayState: ConversationReplayState | undefined;
   let conversationId = initialConversationId;
-  let activeHistoryStart: number | undefined;
+  let requestActive = false;
+  const activeMessageIds = new Set<string>();
 
-  function materializeCurrentTurn(preservePartial: boolean): Message[] {
-    const start = activeHistoryStart ?? history.length;
-    const messages = causalMessages(currentMessages(stateProjection.state, start));
+  function synchronizeHistory(messages: Message[]): void {
     for (const message of messages) {
-      upsertHistoryMessage(history, message);
-    }
-    resetTranscriptState(transcriptState, history);
-
-    if (preservePartial) {
-      const visiblePartial = stateProjection.state.streaming.parts
-        .filter((part) => part.type === "text")
-        .map((part) => part.content)
-        .join("");
-      if (
-        visiblePartial &&
-        !history.some(
-          (message) => message.role === "assistant" && message.content === visiblePartial,
-        )
-      ) {
-        const partial = appendAssistantFinalMessage(history, transcriptState, visiblePartial);
-        partial.partial = true;
+      const added = upsertHistoryMessage(history, message);
+      if (requestActive && added) {
+        activeMessageIds.add(message.id);
       }
     }
+    resetTranscriptState(transcriptState, history);
+  }
 
-    return messages;
+  function activeMessages(): Message[] {
+    return history.filter((message) => activeMessageIds.has(message.id));
+  }
+
+  function finishRequestTracking(): void {
+    requestActive = false;
+    activeMessageIds.clear();
+  }
+
+  function retainVisiblePartial(): void {
+    const visiblePartial = stateProjection.state.streaming.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.content)
+      .join("");
+    if (
+      visiblePartial &&
+      !history.some((message) => message.role === "assistant" && message.content === visiblePartial)
+    ) {
+      const partial = appendAssistantFinalMessage(history, transcriptState, visiblePartial);
+      partial.partial = true;
+    }
   }
 
   function settlePendingCalls(messages: Message[]): void {
@@ -226,9 +220,14 @@ export function createChatSessionProjection(initialConversationId?: string): Cha
     },
 
     fold(event) {
+      const previousMessages = stateProjection.state.messages;
       stateProjection.fold(event);
-      if (stateProjection.state.replay) {
-        replayState = stateProjection.state.replay;
+      const state = stateProjection.state;
+      if (state.messages !== previousMessages) {
+        synchronizeHistory(state.messages);
+      }
+      if (state.replay) {
+        replayState = state.replay;
       }
       if (event.type === "RUN_FINISHED" && event.outcome?.type === "interrupt") {
         openElicits = event.outcome.interrupts
@@ -251,13 +250,13 @@ export function createChatSessionProjection(initialConversationId?: string): Cha
     },
 
     loadDurableHistory(messages, durableReplayState) {
-      history.push(...messages);
-      resetTranscriptState(transcriptState, history);
+      synchronizeHistory(messages);
       replayState = durableReplayState;
     },
 
     beginTurnRequest() {
-      activeHistoryStart = history.length;
+      requestActive = true;
+      activeMessageIds.clear();
       return {
         conversationId,
         elicitResponses: pendingElicitResponses.splice(0),
@@ -272,10 +271,10 @@ export function createChatSessionProjection(initialConversationId?: string): Cha
     },
 
     settle() {
-      const messages = materializeCurrentTurn(false);
+      const messages = activeMessages();
       const pending = pendingElicitations(stateProjection.state);
       settlePendingCalls(messages);
-      activeHistoryStart = undefined;
+      finishRequestTracking();
 
       if (pending.length > 0) {
         return { outcome: "interrupt", pendingElicitations: pending };
@@ -290,12 +289,14 @@ export function createChatSessionProjection(initialConversationId?: string): Cha
     },
 
     fail() {
-      const messages = materializeCurrentTurn(true);
+      const messages = activeMessages();
+      retainVisiblePartial();
       settlePendingCalls(messages);
-      activeHistoryStart = undefined;
+      finishRequestTracking();
     },
 
     send(content, partialContent) {
+      finishRequestTracking();
       const events: ChatStateEvent[] = [];
       const trimmedPartial = partialContent?.trim();
       if (trimmedPartial) {
@@ -343,6 +344,7 @@ export function createChatSessionProjection(initialConversationId?: string): Cha
     },
 
     abort(partialContent, { preservePartial, suffix }) {
+      finishRequestTracking();
       if (preservePartial && partialContent?.trim()) {
         const partialMessage: Message = {
           id: crypto.randomUUID(),
@@ -362,7 +364,7 @@ export function createChatSessionProjection(initialConversationId?: string): Cha
       pendingCalls = [];
       openElicits = [];
       sentElicitResponseIds.clear();
-      activeHistoryStart = undefined;
+      finishRequestTracking();
       transcriptState.currentTurnKey = "u1";
       resetTranscriptState(transcriptState, history);
       stateProjection.reset();

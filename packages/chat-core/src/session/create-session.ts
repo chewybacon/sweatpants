@@ -203,26 +203,29 @@ export function* runChatSession(
         ...(request.replayState ? { replayState: request.replayState } : {}),
         ...requestOptions,
       });
-    } catch (error) {
+      turn.recordConversationId(receipt);
+
+      // Closing drains every queued event through transforms. Check the terminal
+      // invariant only after the drain so custom streamers cannot deadlock us by
+      // returning without RUN_FINISHED/RUN_ERROR.
       yield* streamEvents.close();
+      if (!terminalForwarded) {
+        throw new Error("Streamer returned without a terminal AG-UI event");
+      }
+      yield* call(waitForTerminalForwarded);
+      return turn.settle();
+    } catch (error) {
+      try {
+        yield* streamEvents.close();
+      } catch {
+        // Preserve the first transport/projection failure.
+      }
       if (terminalForwarded) {
         yield* call(waitForTerminalForwarded);
       }
       turn.fail();
       throw error;
     }
-
-    turn.recordConversationId(receipt);
-
-    // Closing drains every queued event through transforms. Check the terminal
-    // invariant only after the drain so custom streamers cannot deadlock us by
-    // returning without RUN_FINISHED/RUN_ERROR.
-    yield* streamEvents.close();
-    if (!terminalForwarded) {
-      throw new Error("Streamer returned without a terminal AG-UI event");
-    }
-    yield* call(waitForTerminalForwarded);
-    return turn.settle();
   }
 
   function* haltCurrentRequest(): Operation<void> {
