@@ -144,13 +144,20 @@ describe("target package charters", () => {
   });
 
   it("keeps Chat Core free of hosting, authority persistence, Redis, and MCP handlers", () => {
-    expectNoMatches(productionSource("chat-core"), [
+    const source = productionSource("chat-core");
+    expectNoMatches(source, [
       /from ["']@sweatpants\/(?:agent-host|journal-authority|execution-store-redis)/,
       /@sweatpants\/tool-session\/mcp\/handler/,
       /from ["'](?:node:http|redis)["']/,
       /\b(?:OllamaChatRequest|OllamaChatChunk|ClientToolSchema)\b/,
       /message\.replay\??\.toolName|replay:\s*\{\s*toolName/,
+      /\b(?:ConversationState|StreamResult|StreamCompleteResult|StreamElicitResult)\b/,
+      /state\.messages\.slice\(history/,
     ]);
+    expect(source.match(/reduceChatState\(/g)).toHaveLength(2);
+    for (const file of ["ag-ui-stream.ts", "turn-manager.ts", "turn-state.ts"]) {
+      expect(existsSync(resolve(root, "packages/chat-core/src/session", file))).toBe(false);
+    }
   });
 
   it("keeps Durable Execution free of persistence, hosting, and chat projection", () => {
