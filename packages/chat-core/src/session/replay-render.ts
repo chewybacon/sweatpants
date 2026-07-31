@@ -67,7 +67,7 @@ export function* renderReplayMessageParts(
   });
   const collectTask = yield* spawn(function* () {
     for (const event of yield* each(output)) {
-      projection.fold(event);
+      projection.fold(event, Date.now());
       yield* each.next();
     }
   });

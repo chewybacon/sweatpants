@@ -49,18 +49,22 @@ export interface ChatStateInternal extends ChatState {
   toolCallDrafts: Record<string, ToolCallDraft>;
 }
 
-export const initialChatStateInternal: ChatStateInternal = {
-  messages: [],
-  finalizedParts: {},
-  isStreaming: false,
-  streaming: { parts: [], activePartId: null, activePartType: null },
-  error: null,
-  pendingElicits: {},
-  toolEmissions: {},
-  activeRun: null,
-  messageDrafts: {},
-  toolCallDrafts: {},
-};
+export function createInitialChatStateInternal(): ChatStateInternal {
+  return {
+    messages: [],
+    finalizedParts: {},
+    isStreaming: false,
+    streaming: { parts: [], activePartId: null, activePartType: null },
+    error: null,
+    pendingElicits: {},
+    toolEmissions: {},
+    activeRun: null,
+    messageDrafts: {},
+    toolCallDrafts: {},
+  };
+}
+
+export const initialChatStateInternal = createInitialChatStateInternal();
 
 /** Public initial view; reducer bookkeeping is intentionally not part of it. */
 const {

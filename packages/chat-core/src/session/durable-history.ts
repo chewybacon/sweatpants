@@ -76,14 +76,15 @@ export function* replayFramesToConversation(
   const projection = createChatStateProjection();
 
   for (const frame of frames) {
+    const receivedAt = Date.now();
     onStreamEvent?.({
       lsn: frame.lsn,
       event: frame.event,
       phase: "replay",
-      receivedAt: Date.now(),
+      receivedAt,
     });
     events.push(frame.event);
-    projection.fold(frame.event);
+    projection.fold(frame.event, receivedAt);
 
     if (frame.event.type !== "ACTIVITY_SNAPSHOT") {
       continue;
@@ -125,7 +126,7 @@ export function* replayFramesToConversation(
     };
     const action: ChatStateEvent = { type: "LOCAL_REPLAY_EMISSIONS", tracking };
     events.push(action);
-    projection.fold(action);
+    projection.fold(action, Date.now());
   }
 
   let state = projection.state;
@@ -147,7 +148,7 @@ export function* replayFramesToConversation(
         parts: [...rendered, ...toolParts],
       };
       events.push(action);
-      projection.fold(action);
+      projection.fold(action, Date.now());
       state = projection.state;
     }
   }

@@ -17,7 +17,6 @@ export function* consumeChatEventStream(
 ): Operation<ChatTransportReceipt> {
   let runStarted = false;
   let terminalSeen = false;
-  let runError: Error | null = null;
 
   for (const rawFrame of yield* each(eventStream)) {
     const frame = rawFrame as { lsn: number; event: StreamEvent };
@@ -27,13 +26,11 @@ export function* consumeChatEventStream(
     if (event.type === "RUN_STARTED") {
       runStarted = true;
       terminalSeen = false;
-      runError = null;
     } else if (runStarted && !terminalSeen) {
       if (event.type === "RUN_FINISHED") {
         terminalSeen = true;
       } else if (event.type === "RUN_ERROR") {
         terminalSeen = true;
-        runError = new Error(event.message);
       }
     }
 
@@ -47,9 +44,5 @@ export function* consumeChatEventStream(
   if (!terminalSeen) {
     throw new Error("AG-UI stream ended before RUN_FINISHED or RUN_ERROR");
   }
-  if (runError) {
-    throw runError;
-  }
-
   return {};
 }

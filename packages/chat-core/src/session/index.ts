@@ -7,6 +7,8 @@
 
 // Session runtime
 export { createChatSession, runChatSession } from "./create-session.ts";
+export { ChatSessionRuntimeApi } from "./runtime-api.ts";
+export type { ChatRequestFailure, ChatRequestPlan, RequestLifecycle } from "./machine.ts";
 
 export type { ChatSession, ClientToolSessionOptions } from "./create-session.ts";
 
@@ -84,7 +86,7 @@ export type {
   ElicitRequestStreamEvent,
   StreamEvent,
 } from "./streaming.ts";
-export type { ChatTransportReceipt, ChatTurnSettlement } from "./settlement.ts";
+export type { ChatTransportReceipt, ChatTurnFailure, ChatTurnSettlement } from "./settlement.ts";
 
 // Options and configuration
 export type {

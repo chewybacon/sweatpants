@@ -1,5 +1,5 @@
 import type { ChatStateInternal, ElicitTrackingState } from "./chat-state.ts";
-import { initialChatStateInternal } from "./chat-state.ts";
+import { createInitialChatStateInternal, initialChatStateInternal } from "./chat-state.ts";
 import type { ChatStateEvent } from "./events.ts";
 import type { Message } from "../messages.ts";
 import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from "../types/chat-message.ts";
@@ -138,20 +138,23 @@ function appendContentPart(
 }
 
 function pendingElicitsFromActions(
-  actions: Array<{
-    toolCallId: string;
-    toolName: string;
-    kind: "elicit";
-    sessionId: string;
-    elicitId: string;
-    key: string;
-    message: string;
-    schema: Record<string, unknown>;
-  }> = [],
-  current: Record<string, ElicitTrackingState> = {},
+  actions:
+    | Array<{
+        toolCallId: string;
+        toolName: string;
+        kind: "elicit";
+        sessionId: string;
+        elicitId: string;
+        key: string;
+        message: string;
+        schema: Record<string, unknown>;
+      }>
+    | undefined,
+  current: Record<string, ElicitTrackingState>,
+  observedAt: number,
 ): Record<string, ElicitTrackingState> {
   const pending: Record<string, ElicitTrackingState> = {};
-  for (const action of actions) {
+  for (const action of actions ?? []) {
     const prior = current[action.toolCallId]?.elicitations.find(
       (elicit) => elicit.elicitId === action.elicitId,
     );
@@ -166,7 +169,7 @@ function pendingElicitsFromActions(
       schema: action.schema,
       context: action.schema["x-elicit-context"],
       status: prior?.status ?? ("pending" as const),
-      timestamp: prior?.timestamp ?? Date.now(),
+      timestamp: prior?.timestamp ?? observedAt,
       ...(prior?.response !== undefined ? { response: prior.response } : {}),
     };
     pending[action.toolCallId] = tracking
@@ -176,7 +179,7 @@ function pendingElicitsFromActions(
           toolName: action.toolName,
           elicitations: [elicit],
           status: "awaiting_elicit",
-          startedAt: current[action.toolCallId]?.startedAt ?? Date.now(),
+          startedAt: current[action.toolCallId]?.startedAt ?? observedAt,
         };
   }
   return pending;
@@ -218,6 +221,7 @@ function addInterrupts(
     responseSchema?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   }>,
+  observedAt: number,
 ): ChatStateInternal {
   const pending = { ...state.pendingElicits };
   for (const interrupt of interrupts) {
@@ -240,7 +244,7 @@ function addInterrupts(
       callId,
       toolName,
       status: "awaiting_elicit",
-      startedAt: existing?.startedAt ?? Date.now(),
+      startedAt: existing?.startedAt ?? observedAt,
       elicitations: [
         ...(existing?.elicitations ?? []),
         {
@@ -253,7 +257,7 @@ function addInterrupts(
           schema: interrupt.responseSchema ?? {},
           context: interrupt.responseSchema?.["x-elicit-context"],
           status: "pending",
-          timestamp: Date.now(),
+          timestamp: observedAt,
         },
       ],
     };
@@ -278,6 +282,7 @@ function addInterrupts(
 export function reduceChatState(
   state: ChatStateInternal,
   event: ChatStateEvent,
+  observedAt: number,
 ): ChatStateInternal {
   const internalState = state;
   switch (event.type) {
@@ -314,6 +319,7 @@ export function reduceChatState(
       const pendingElicits = pendingElicitsFromActions(
         event.snapshot.pendingClientActions,
         state.pendingElicits,
+        observedAt,
       );
       return {
         ...state,
@@ -543,7 +549,7 @@ export function reduceChatState(
         streaming: initialChatStateInternal.streaming,
       };
       return event.outcome?.type === "interrupt"
-        ? addInterrupts(next, event.outcome.interrupts)
+        ? addInterrupts(next, event.outcome.interrupts, observedAt)
         : next;
     }
 
@@ -641,6 +647,6 @@ export function reduceChatState(
       return { ...state, error: event.message, isStreaming: false };
 
     case "LOCAL_RESET":
-      return initialChatStateInternal;
+      return createInitialChatStateInternal();
   }
 }

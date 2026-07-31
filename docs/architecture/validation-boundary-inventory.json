@@ -3789,12 +3789,12 @@
     {
       "id": "SHAPE-181",
       "file": "packages/chat-core/src/state/reducer.ts",
-      "line": 212,
+      "line": 215,
       "symbol": "addInterrupts",
       "classification": "R",
       "authority": "typed constructor or owning ingress for addInterrupts",
       "evidence": [
-        "packages/chat-core/src/state/reducer.ts:212"
+        "packages/chat-core/src/state/reducer.ts:215"
       ]
     },
     {

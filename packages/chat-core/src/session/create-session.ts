@@ -1,33 +1,33 @@
 import {
-  spawn,
-  each,
-  createSignal,
-  resource,
-  useScope,
   call,
-  type Operation,
+  createSignal,
+  each,
+  resource,
+  spawn,
+  useScope,
   type Channel,
+  type Operation,
   type Stream,
   type Subscription,
 } from "effection";
-import { streamChatOnce } from "./stream-chat.ts";
-import { useBufferedChannel, useTransformPipeline } from "./transforms.ts";
-import { initialChatState } from "../state/chat-state.ts";
 import type { ChatState } from "../state/chat-state.ts";
-import { StreamerContext, BaseUrlContext } from "./contexts.ts";
+import { initialChatState } from "../state/chat-state.ts";
 import type { ChatStateEvent } from "../state/events.ts";
-import type {
-  ChatCommand,
-  SessionOptions,
-  StreamChatOptions,
-  Streamer,
-  ChatEventTransform,
-} from "./options.ts";
-import type { ChatTransportReceipt, ChatTurnSettlement } from "./settlement.ts";
-import { createChatSessionProjection } from "./projection.ts";
+import { BaseUrlContext, StreamerContext } from "./contexts.ts";
 import { readDurableHistory } from "./durable-history.ts";
-
-const defaultStreamer: Streamer = streamChatOnce;
+import {
+  createInitialSessionProjectionState,
+  sessionPublicState,
+  transitionSession,
+  type ChatRequestFailure,
+  type ChatRequestPlan,
+  type SessionInput,
+  type SessionOutput,
+  type SessionProjectionState,
+} from "./machine.ts";
+import type { ChatCommand, SessionOptions, ChatEventTransform } from "./options.ts";
+import { ChatSessionRuntimeApi } from "./runtime-api.ts";
+import { useBufferedChannel, useTransformPipeline } from "./transforms.ts";
 
 function createBufferedStateSignal<T>() {
   const values: T[] = [];
@@ -56,6 +56,18 @@ function createBufferedStateSignal<T>() {
   };
 }
 
+interface InputEnvelope {
+  readonly input: SessionInput;
+  readonly resolve: () => void;
+  readonly reject: (error: unknown) => void;
+}
+
+function failureFromUnknown(error: unknown): ChatRequestFailure {
+  return {
+    message: error instanceof Error ? error.message : "Unknown chat request failure",
+  };
+}
+
 export interface ClientToolSessionOptions extends SessionOptions {}
 
 export interface ChatSession {
@@ -78,6 +90,13 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
     }
 
     stateSignal.send(initialChatState);
+    // The public constructor does not expose the transformed-event channel, so
+    // drain it while the machine publishes the authored ChatState separately.
+    yield* spawn(function* () {
+      for (const _event of yield* each(events)) {
+        yield* each.next();
+      }
+    });
     yield* spawn(() =>
       runChatSession(commands, events, options, (state) => {
         stateSignal.send(state);
@@ -86,24 +105,12 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
 
     yield* provide({
       state: yield* stateSignal.subscribe(),
-      dispatch: (cmd) =>
+      dispatch: (command) =>
         scope.run(function* () {
-          yield* commands.send(cmd);
+          yield* commands.send(command);
         }),
     });
   });
-}
-
-function createRunTerminalAcknowledger(onForwarded: () => void): ChatEventTransform {
-  return function* (input, output) {
-    for (const event of yield* each(input)) {
-      yield* output.send(event);
-      if (event.type === "RUN_FINISHED" || event.type === "RUN_ERROR") {
-        onForwarded();
-      }
-      yield* each.next();
-    }
-  };
 }
 
 export function* runChatSession(
@@ -112,22 +119,143 @@ export function* runChatSession(
   options: ClientToolSessionOptions = {},
   publishState?: (state: ChatState) => void,
 ): Operation<void> {
-  const turn = createChatSessionProjection(options.conversationId);
+  const inputs = yield* useBufferedChannel<InputEnvelope>();
+  let state: SessionProjectionState = createInitialSessionProjectionState(options.conversationId);
   const currentRequest: {
     owned: { token: symbol; halt: () => Operation<void> } | null;
   } = { owned: null };
 
-  function* sendEvent(event: ChatStateEvent): Operation<void> {
-    turn.fold(event);
-    publishState?.(turn.state);
-    yield* events.send(event);
+  function* dispatchInput(input: SessionInput): Operation<void> {
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    const processed = new Promise<void>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    yield* inputs.send({ input, resolve, reject });
+    yield* call(() => processed);
   }
 
-  function* sendEvents(stateEvents: ChatStateEvent[]): Operation<void> {
-    for (const event of stateEvents) {
-      yield* sendEvent(event);
+  function* haltCurrentRequest(): Operation<void> {
+    const owned = currentRequest.owned;
+    if (!owned) return;
+    currentRequest.owned = null;
+    yield* owned.halt();
+  }
+
+  function dispatchEventTransform(requestId: string): ChatEventTransform {
+    return function* (input, output) {
+      for (const event of yield* each(input)) {
+        const observedAt = yield* ChatSessionRuntimeApi.operations.now();
+        yield* dispatchInput({ type: "stream-event", requestId, event, observedAt });
+        yield* output.send(event);
+        yield* each.next();
+      }
+    };
+  }
+
+  function* launchRequest(plan: ChatRequestPlan): Operation<void> {
+    const token = Symbol(plan.lifecycle);
+    const task = yield* spawn(function* () {
+      const streamEvents = yield* useTransformPipeline(events, [
+        ...(options.transforms ?? []),
+        dispatchEventTransform(plan.requestId),
+      ]);
+      try {
+        const receipt = yield* ChatSessionRuntimeApi.operations.runRequest(
+          plan,
+          streamEvents,
+          options,
+        );
+        yield* streamEvents.close();
+        yield* dispatchInput({
+          type: "transport-drained",
+          requestId: plan.requestId,
+          receipt,
+          observedAt: yield* ChatSessionRuntimeApi.operations.now(),
+        });
+      } catch (error) {
+        try {
+          yield* streamEvents.close();
+        } catch {
+          // Preserve the first transport or projection failure.
+        }
+        yield* dispatchInput({
+          type: "transport-failed",
+          requestId: plan.requestId,
+          failure: failureFromUnknown(error),
+          observedAt: yield* ChatSessionRuntimeApi.operations.now(),
+        });
+      } finally {
+        if (currentRequest.owned?.token === token) {
+          currentRequest.owned = null;
+        }
+      }
+    });
+    currentRequest.owned = { token, halt: () => task.halt() };
+    void Promise.resolve(task)
+      .catch(() => undefined)
+      .finally(() => {
+        try {
+          options.onRequestFinished?.();
+          if (plan.lifecycle === "cancellation") {
+            options.onCancellationSettled?.();
+          }
+        } catch {
+          // Lifecycle callbacks cannot escape the structured task boundary.
+        }
+      });
+  }
+
+  function notifyFailure(failure: ChatRequestFailure): void {
+    try {
+      options.onRequestError?.(new Error(failure.message));
+    } catch {
+      // Observation callbacks do not participate in session authority.
     }
   }
+
+  function notifySettlement(output: Extract<SessionOutput, { type: "turn-settled" }>): void {
+    try {
+      options.onTurnSettled?.(output.settlement);
+    } catch {
+      // Observation callbacks do not participate in session authority.
+    }
+  }
+
+  function* interpret(output: SessionOutput): Operation<void> {
+    switch (output.type) {
+      case "cancel-request":
+        yield* haltCurrentRequest();
+        return;
+      case "start-request":
+        yield* launchRequest(output.plan);
+        return;
+      case "request-failed":
+        notifyFailure(output.failure);
+        return;
+      case "turn-settled":
+        notifySettlement(output);
+        return;
+    }
+  }
+
+  yield* spawn(function* () {
+    for (const envelope of yield* each(inputs)) {
+      try {
+        const transition = transitionSession(state, envelope.input);
+        state = transition.state;
+        publishState?.(sessionPublicState(state));
+        for (const output of transition.outputs) {
+          yield* interpret(output);
+        }
+        envelope.resolve();
+      } catch (error) {
+        envelope.reject(error);
+      }
+      yield* each.next();
+    }
+  });
 
   if (options.conversationId) {
     const contextBaseUrl = yield* BaseUrlContext.get();
@@ -147,211 +275,26 @@ export function* runChatSession(
       ...(options.onStreamEvent ? { onStreamEvent: options.onStreamEvent } : {}),
       ...(options.fetch ? { fetch: options.fetch } : {}),
     });
-
-    turn.loadDurableHistory(durableHistory.history, durableHistory.replayState);
-    yield* sendEvents(durableHistory.events);
-  }
-
-  function* startRequest(
-    requestOptions: Pick<StreamChatOptions, "pluginAbort"> = {},
-  ): Operation<ChatTurnSettlement> {
-    let terminalForwarded = false;
-    let terminalForwardedResolve: (() => void) | null = null;
-
-    function waitForTerminalForwarded(): Promise<void> {
-      if (terminalForwarded) {
-        return Promise.resolve();
-      }
-      return new Promise<void>((resolve) => {
-        terminalForwardedResolve = resolve;
-      });
-    }
-
-    const terminalAcknowledger = createRunTerminalAcknowledger(() => {
-      if (terminalForwarded) {
-        return;
-      }
-      terminalForwarded = true;
-      terminalForwardedResolve?.();
-      terminalForwardedResolve = null;
+    yield* dispatchInput({
+      type: "hydrate",
+      history: durableHistory.history,
+      events: durableHistory.events,
+      ...(durableHistory.replayState ? { replayState: durableHistory.replayState } : {}),
+      observedAt: yield* ChatSessionRuntimeApi.operations.now(),
     });
-    const projectEventState: ChatEventTransform = function* (input, output) {
-      for (const event of yield* each(input)) {
-        turn.fold(event);
-        publishState?.(turn.state);
-        yield* output.send(event);
-        yield* each.next();
-      }
-    };
-
-    const streamEvents = yield* useTransformPipeline(events, [
-      ...(options.transforms ?? []),
-      projectEventState,
-      terminalAcknowledger,
-    ]);
-
-    const contextStreamer = yield* StreamerContext.get();
-    const streamer = contextStreamer ?? options.streamer ?? defaultStreamer;
-    const request = turn.beginTurnRequest();
-    let receipt: ChatTransportReceipt;
-
-    try {
-      receipt = yield* streamer([...turn.history], streamEvents, {
-        ...options,
-        ...(request.conversationId ? { conversationId: request.conversationId } : {}),
-        ...(request.elicitResponses.length > 0 ? { elicitResponses: request.elicitResponses } : {}),
-        ...(request.replayState ? { replayState: request.replayState } : {}),
-        ...requestOptions,
-      });
-      turn.recordConversationId(receipt);
-
-      // Closing drains every queued event through transforms. Check the terminal
-      // invariant only after the drain so custom streamers cannot deadlock us by
-      // returning without RUN_FINISHED/RUN_ERROR.
-      yield* streamEvents.close();
-      if (!terminalForwarded) {
-        throw new Error("Streamer returned without a terminal AG-UI event");
-      }
-      yield* call(waitForTerminalForwarded);
-      return turn.settle();
-    } catch (error) {
-      try {
-        yield* streamEvents.close();
-      } catch {
-        // Preserve the first transport/projection failure.
-      }
-      if (terminalForwarded) {
-        yield* call(waitForTerminalForwarded);
-      }
-      turn.fail();
-      throw error;
-    }
   }
 
-  function* haltCurrentRequest(): Operation<void> {
-    const owned = currentRequest.owned;
-    if (!owned) {
-      return;
-    }
-    currentRequest.owned = null;
-    yield* owned.halt();
-  }
-
-  function* launchRequest(
-    requestOptions: Pick<StreamChatOptions, "pluginAbort"> = {},
-    lifecycle: "request" | "cancellation" = "request",
-  ): Operation<void> {
-    // The request runs as a child task of this session so that destroying the
-    // session resource halts any in-flight request (structured teardown) and
-    // spawned work inherits session contexts (BaseUrlContext/StreamerContext).
-    const token = Symbol(lifecycle);
-    const task = yield* spawn(function* (): Operation<ChatTurnSettlement | undefined> {
-      try {
-        const settlement = yield* startRequest(requestOptions);
-        options.onTurnSettled?.(settlement);
-        return settlement;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        yield* sendEvent({ type: "LOCAL_ERROR", message });
-        options.onRequestError?.(error);
-        return undefined;
-      } finally {
-        if (currentRequest.owned?.token === token) {
-          currentRequest.owned = null;
-        }
-      }
+  for (const command of yield* each(commands)) {
+    yield* dispatchInput({
+      type: "command",
+      command,
+      hadActiveRequest: currentRequest.owned !== null,
+      abortMessageId: yield* ChatSessionRuntimeApi.operations.createId(),
+      requestId: yield* ChatSessionRuntimeApi.operations.createId(),
+      preservePartialOnAbort: options.preservePartialOnAbort ?? true,
+      abortSuffix: options.abortSuffix ?? "",
+      observedAt: yield* ChatSessionRuntimeApi.operations.now(),
     });
-    currentRequest.owned = { token, halt: () => task.halt() };
-    // Lifecycle callbacks observe task settlement (success, failure, or halt)
-    // without ever throwing back into the session command loop.
-    void Promise.resolve(task)
-      .catch(() => undefined)
-      .finally(() => {
-        try {
-          options.onRequestFinished?.();
-          if (lifecycle === "cancellation") {
-            options.onCancellationSettled?.();
-          }
-        } catch {
-          // Lifecycle callbacks must not surface as unhandled rejections.
-        }
-      });
-  }
-
-  for (const cmd of yield* each(commands)) {
-    switch (cmd.type) {
-      case "send": {
-        // An interrupted partial is only meaningful when a request was actually
-        // in flight; otherwise there is nothing being superseded.
-        const supersededPartial = currentRequest.owned ? cmd.partialContent : undefined;
-        if (currentRequest.owned) {
-          yield* haltCurrentRequest();
-        }
-        yield* sendEvents(turn.send(cmd.content, supersededPartial));
-        yield* launchRequest();
-        break;
-      }
-
-      case "continue": {
-        if (currentRequest.owned) {
-          yield* haltCurrentRequest();
-        }
-        yield* launchRequest();
-        break;
-      }
-
-      case "abort": {
-        // Request pipelines share one session event channel and must not run
-        // concurrently. Halt/join the client reader first; durable server work
-        // survives disconnect and is cancelled by the following plugin-abort
-        // request. The dedicated cancellation callback cannot be satisfied by
-        // this old request's generic monitor.
-        if (currentRequest.owned) {
-          yield* haltCurrentRequest();
-        }
-
-        yield* sendEvents(
-          turn.abort(cmd.partialContent, {
-            preservePartial: options.preservePartialOnAbort ?? true,
-            suffix: options.abortSuffix ?? "",
-          }),
-        );
-
-        // Program Runtime cancellation targets the active durable root for the
-        // conversation; no fabricated ToolSession identifier crosses the wire.
-        yield* launchRequest({ pluginAbort: { reason: "cancelled_by_user" } }, "cancellation");
-        break;
-      }
-
-      case "reset": {
-        if (currentRequest.owned) {
-          yield* haltCurrentRequest();
-        }
-        yield* sendEvents(turn.reset());
-        break;
-      }
-
-      case "elicit_response": {
-        const stateEvents = turn.elicitResponse({
-          sessionId: cmd.sessionId,
-          callId: cmd.callId,
-          ...(cmd.toolName ? { toolName: cmd.toolName } : {}),
-          ...(cmd.ref ? { ref: cmd.ref } : {}),
-          elicitId: cmd.elicitId,
-          completion: cmd.completion,
-          ...(cmd.trace ? { trace: cmd.trace } : {}),
-        });
-        if (!stateEvents) {
-          break;
-        }
-        yield* sendEvents(stateEvents);
-        if (cmd.autoContinue !== false) {
-          yield* commands.send({ type: "continue" });
-        }
-        break;
-      }
-    }
-
     yield* each.next();
   }
 }

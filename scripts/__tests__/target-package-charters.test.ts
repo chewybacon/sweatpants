@@ -153,6 +153,7 @@ describe("target package charters", () => {
       /message\.replay\??\.toolName|replay:\s*\{\s*toolName/,
       /\b(?:ConversationState|StreamResult|StreamCompleteResult|StreamElicitResult)\b/,
       /state\.messages\.slice\(history/,
+      /\b(?:requestActive|activeMessageIds|finishRequestTracking)\b/,
     ]);
     expect(source.match(/reduceChatState\(/g)).toHaveLength(2);
     for (const file of ["ag-ui-stream.ts", "turn-manager.ts", "turn-state.ts"]) {
