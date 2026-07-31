@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { Message, ToolCall } from "@sweatpants/chat-core";
+import type { Message } from "@sweatpants/chat-core";
+import type { ToolCall } from "@sweatpants/model-provider";
 import {
   appendAssistantFinalMessage,
   appendAssistantToolCallMessage,

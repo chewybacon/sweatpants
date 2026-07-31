@@ -1856,6 +1856,9 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      '@sweatpants/model-provider':
+        specifier: workspace:*
+        version: link:../model-provider
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -1905,6 +1908,9 @@ importers:
       '@sweatpants/journal-authority':
         specifier: workspace:*
         version: link:../journal-authority
+      '@sweatpants/model-provider':
+        specifier: workspace:*
+        version: link:../model-provider
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../tool-runtime
@@ -1972,6 +1978,9 @@ importers:
       '@sweatpants/journal-authority':
         specifier: workspace:*
         version: link:../journal-authority
+      '@sweatpants/model-provider':
+        specifier: workspace:*
+        version: link:../model-provider
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../tool-runtime

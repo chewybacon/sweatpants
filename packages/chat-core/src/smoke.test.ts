@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Message, ToolCall, Frame, HistoryPolicy } from "@sweatpants/chat-core";
+import type { Frame, HistoryPolicy, Message } from "@sweatpants/chat-core";
+import type { ToolCall } from "@sweatpants/model-provider";
 import { parseNDJSON } from "@sweatpants/chat-core";
 
 describe("@sweatpants/chat-core smoke", () => {
@@ -8,7 +9,7 @@ describe("@sweatpants/chat-core smoke", () => {
     expect(msg.content).toBe("hello");
   });
 
-  it("exports ToolCall type", () => {
+  it("carries the Model Provider ToolCall type", () => {
     const call: ToolCall = {
       id: "call-1",
       type: "function",

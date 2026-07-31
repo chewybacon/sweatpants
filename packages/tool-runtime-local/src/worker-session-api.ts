@@ -46,13 +46,16 @@ function workerMessageToExtended(message: WorkerMessage): ExtendedMessage {
     const toolCalls: ToolCallMessage["toolCalls"] = [
       {
         id: toolUseBlocks[0]!.id,
-        name: toolUseBlocks[0]!.name,
-        arguments: toolUseBlocks[0]!.input,
+        type: "function",
+        function: {
+          name: toolUseBlocks[0]!.name,
+          arguments: toolUseBlocks[0]!.input,
+        },
       },
       ...toolUseBlocks.slice(1).map((block) => ({
         id: block.id,
-        name: block.name,
-        arguments: block.input,
+        type: "function" as const,
+        function: { name: block.name, arguments: block.input },
       })),
     ];
     return {

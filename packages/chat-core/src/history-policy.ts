@@ -83,7 +83,9 @@ interface Turn {
 
 function toolCallIdsOf(message: Message): string[] {
   if (message.role === "assistant") {
-    return message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : []));
+    return message.content.flatMap((block) =>
+      block.type === "toolCall" ? [block.toolCall.id] : [],
+    );
   }
   if (message.role === "toolResult") {
     return [message.toolCallId];

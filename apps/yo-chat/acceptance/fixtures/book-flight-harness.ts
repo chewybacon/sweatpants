@@ -191,9 +191,14 @@ function bookFlightCall(id: string): AssistantMessage {
     content: [
       {
         type: "toolCall",
-        id,
-        name: bookFlightTool.name,
-        arguments: { from: "NYC", destination: "LAX" },
+        toolCall: {
+          id,
+          type: "function",
+          function: {
+            name: bookFlightTool.name,
+            arguments: { from: "NYC", destination: "LAX" },
+          },
+        },
       },
     ],
     stopReason: "toolUse",

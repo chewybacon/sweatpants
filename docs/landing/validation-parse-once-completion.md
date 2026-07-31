@@ -162,6 +162,12 @@ A repository-wide authored-schema projection gate now rejects `toToolParameterJs
 
 The misleading `WireElicitResult` and `WireSampleResult*` names were replaced by `ElicitExchangeCompletion` and `SampleExchangeCompletion*`: transport-safe response facts that settle a pending exchange but do not pretend to contain local history. Real Worker envelopes now carry a `completion` field instead of flattening and reconstructing action/content/result fields. Agent SDK's `completeElicitExchange` is the single authority that runs the authored Standard Schema, retains defaults/transforms, preserves producer-owned correlation and context, and constructs `ElicitExchange`; Tool Session bridge and worker execution both call it. `completeSampleExchange` and the sample exchange constructors are likewise Agent SDK-owned. Continuation carriers now carry typed completions rather than `unknown`, deleting casts in both runtime drivers. Worker-side `content as T`, `Date.now()` elicitation identity, fabricated empty context, duplicate exchange construction, and empty sample-response fallback were removed.
 
+### Settled model function-call authority
+
+`@sweatpants/model-provider` now owns the sole settled `ToolCall`: an OpenAI-compatible decoded function-call shape whose arguments remain `Json`. The concrete pi-ai adapter performs the one real conversion from pi-ai's flat settled block, while partial stream events remain incomplete and separate. Chat Core, Tool Runtime, and Tool Session deleted their competing declarations and carry the provider-established call through history and execution without argument reconstruction. Model-provider content blocks wrap the settled call, and `toolcall_end` transports the settled call directly, preserving opaque thought signatures and provider-owned identity.
+
+The unused `OllamaChatRequest`, `OllamaChatChunk`, and `ClientToolSchema` residue was deleted from Chat Core and its public exports. Direct-Ollama Hydra documentation retains its own app-local protocol DTOs; installed Ollama behavior remains owned by the concrete pi-ai adapter. A package-charter gate enforces one `ToolCall` declaration and prevents provider-specific request/chunk DTOs from returning to Chat Core.
+
 ## Validation performed
 
 | Scope | Result |
@@ -185,7 +191,7 @@ The misleading `WireElicitResult` and `WireSampleResult*` names were replaced by
 | Tool Session tests | 113 passed, 7 todo |
 | AgentCore tests | 49 passed |
 | Execution Store Redis tests | 29 passed |
-| Model provider contract tests | 2 passed |
+| Model provider contract tests | 4 passed |
 | Pi-ai provider unit tests | 8 passed |
 | Model provider wire tests (test-rig simulator) | 10 passed |
 | Platform Acceptance tests | 94 passed |

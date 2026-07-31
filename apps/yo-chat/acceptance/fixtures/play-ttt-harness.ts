@@ -169,9 +169,14 @@ function sampleMessage(request: ModelProviderStreamRequest, sequence: number): A
       content: [
         {
           type: "toolCall",
-          id: `strategy-${sequence}`,
-          name: "play_offensive",
-          arguments: { reasoning: "Use the first available position" },
+          toolCall: {
+            id: `strategy-${sequence}`,
+            type: "function",
+            function: {
+              name: "play_offensive",
+              arguments: { reasoning: "Use the first available position" },
+            },
+          },
         },
       ],
       stopReason: "toolUse",
@@ -192,9 +197,11 @@ function sampleMessage(request: ModelProviderStreamRequest, sequence: number): A
       content: [
         {
           type: "toolCall",
-          id: "call-http-play-ttt",
-          name: playTttTool.name,
-          arguments: {},
+          toolCall: {
+            id: "call-http-play-ttt",
+            type: "function",
+            function: { name: playTttTool.name, arguments: {} },
+          },
         },
       ],
       stopReason: "toolUse",

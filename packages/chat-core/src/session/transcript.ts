@@ -1,4 +1,5 @@
-import type { Message, ToolCall } from "../messages.ts";
+import type { ToolCall } from "@sweatpants/model-provider";
+import type { Message } from "../messages.ts";
 import {
   deriveTurnKeyFromToolCalls,
   messageIdForAssistantFinal,

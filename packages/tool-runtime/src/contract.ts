@@ -1,5 +1,6 @@
 import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
-import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { JsonObject } from "@sweatpants/foundation";
+import type { ToolCall } from "@sweatpants/model-provider";
 import { definePort } from "@sweatpants/foundation/port";
 import type { Operation, Stream } from "effection";
 
@@ -22,12 +23,6 @@ export interface ToolInventoryEntry {
   definition: PortableToolDefinition;
   capabilities?: ToolCapabilities;
   metadata?: Record<string, unknown>;
-}
-
-export interface ToolCall {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: Json };
 }
 
 export interface ToolExecutionRef {

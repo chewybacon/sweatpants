@@ -165,7 +165,14 @@ function scriptedMessage(
     return {
       role: "assistant",
       content: [
-        { type: "toolCall", id: "studio-inspect", name: "workspace_inspect", arguments: {} },
+        {
+          type: "toolCall",
+          toolCall: {
+            id: "studio-inspect",
+            type: "function",
+            function: { name: "workspace_inspect", arguments: {} },
+          },
+        },
       ],
       stopReason: "toolUse",
     };
@@ -176,12 +183,17 @@ function scriptedMessage(
       content: [
         {
           type: "toolCall",
-          id: "studio-write",
-          name: "workspace_write",
-          arguments: {
-            path: "demo.txt",
-            contents: "hello from durable yo-studio\n",
-            expectedWorkspaceRevision: workspaceRevision,
+          toolCall: {
+            id: "studio-write",
+            type: "function",
+            function: {
+              name: "workspace_write",
+              arguments: {
+                path: "demo.txt",
+                contents: "hello from durable yo-studio\n",
+                expectedWorkspaceRevision: workspaceRevision,
+              },
+            },
           },
         },
       ],
@@ -194,9 +206,14 @@ function scriptedMessage(
       content: [
         {
           type: "toolCall",
-          id: "studio-test",
-          name: "workspace_test",
-          arguments: { script: "test", expectedWorkspaceRevision: workspaceRevision },
+          toolCall: {
+            id: "studio-test",
+            type: "function",
+            function: {
+              name: "workspace_test",
+              arguments: { script: "test", expectedWorkspaceRevision: workspaceRevision },
+            },
+          },
         },
       ],
       stopReason: "toolUse",

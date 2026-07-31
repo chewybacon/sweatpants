@@ -9,7 +9,13 @@ describe("Tool Session model history projection", () => {
         {
           role: "assistant",
           content: "Calling",
-          toolCalls: [{ id: "c1", name: "lookup", arguments: null }],
+          toolCalls: [
+            {
+              id: "c1",
+              type: "function",
+              function: { name: "lookup", arguments: null },
+            },
+          ],
         },
         { role: "tool", content: "not found", toolCallId: "c1", isError: true },
       ],
@@ -32,7 +38,13 @@ describe("Tool Session model history projection", () => {
       {
         role: "assistant",
         content: "Calling",
-        toolCalls: [{ id: "call-1", name: "book_flight", arguments: { destination: "NYC" } }],
+        toolCalls: [
+          {
+            id: "call-1",
+            type: "function",
+            function: { name: "book_flight", arguments: { destination: "NYC" } },
+          },
+        ],
       },
       {
         role: "tool",
@@ -50,9 +62,11 @@ describe("Tool Session model history projection", () => {
           { type: "text", text: "Calling" },
           {
             type: "toolCall",
-            id: "call-1",
-            name: "book_flight",
-            arguments: { destination: "NYC" },
+            toolCall: {
+              id: "call-1",
+              type: "function",
+              function: { name: "book_flight", arguments: { destination: "NYC" } },
+            },
           },
         ],
       },
@@ -91,7 +105,14 @@ describe("Tool Session model history projection", () => {
       {
         role: "assistant",
         content: [
-          { type: "toolCall", id: "call-2", name: "weather", arguments: { city: "Paris" } },
+          {
+            type: "toolCall",
+            toolCall: {
+              id: "call-2",
+              type: "function",
+              function: { name: "weather", arguments: { city: "Paris" } },
+            },
+          },
         ],
       },
       {

@@ -1,20 +1,13 @@
-import type { Json } from "@sweatpants/foundation";
 import type {
   ContentBlock as ModelContentBlock,
   Message as ModelMessage,
+  ToolCall,
 } from "@sweatpants/model-provider";
 import type { McpContentBlock, McpMessage, McpToolResultContent } from "./mcp/protocol/types.ts";
 
 export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
-}
-
-export interface ToolCall {
-  id: string;
-  name: string;
-  /** Open until the authored tool's parameter schema narrows it at `execute`. */
-  arguments: Json;
 }
 
 export interface ToolCallMessage {
@@ -117,13 +110,13 @@ export function toModelMessages(messages: readonly ExtendedMessage[]): ModelMess
   for (const message of messages) {
     if (isToolCallMessage(message)) {
       for (const call of message.toolCalls) {
-        toolNames.set(call.id, call.name);
+        toolNames.set(call.id, call.function.name);
       }
       output.push({
         role: "assistant",
         content: [
           ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
-          ...message.toolCalls.map((call) => ({ type: "toolCall" as const, ...call })),
+          ...message.toolCalls.map((toolCall) => ({ type: "toolCall" as const, toolCall })),
         ],
       });
       continue;
@@ -164,9 +157,11 @@ export function toModelMessages(messages: readonly ExtendedMessage[]): ModelMess
           ...modelContentFromBlocks(blocks),
           ...toolUses.map((call) => ({
             type: "toolCall" as const,
-            id: call.id,
-            name: call.name,
-            arguments: call.input,
+            toolCall: {
+              id: call.id,
+              type: "function" as const,
+              function: { name: call.name, arguments: call.input },
+            },
           })),
         ],
       });

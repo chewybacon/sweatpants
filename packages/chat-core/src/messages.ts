@@ -1,18 +1,13 @@
 /**
  * lib/chat/messages.ts
  *
- * Core chat message types — Message, ToolCall, ChatEvent, ChatResult.
+ * Core chat message, event, and settled result types.
  *
- * This file is the canonical owner of the universal message contract that all
- * chat providers and consumers share. It has zero imports from session/state/
- * streaming modules, which breaks the historic `types.ts` cycle hub.
- *
- * Provider-specific request/response shapes (Ollama, client-tool schema) are
- * also defined here because they are pure data types with no behavioural
- * dependencies.
+ * Settled decoded tool calls are owned by `@sweatpants/model-provider`; Chat
+ * Core carries that producer-established representation unchanged.
  */
+import type { ToolCall } from "@sweatpants/model-provider";
 import type { TokenUsage } from "./core-types.ts";
-import type { Json } from "@sweatpants/foundation";
 
 // =============================================================================
 // MESSAGE TYPES
@@ -43,22 +38,6 @@ export interface Message {
   };
 }
 
-/**
- * Tool call structure — canonical nested (OpenAI-compatible) format.
- *
- * Used by Message.tool_calls, ChatEvent, ChatResult, and the durable engine.
- * All providers normalise into this shape before it enters the framework.
- */
-export interface ToolCall {
-  id: string;
-  type: "function";
-  function: {
-    name: string;
-    /** Open until the authored tool's parameter schema narrows it at `execute`. */
-    arguments: Json;
-  };
-}
-
 // =============================================================================
 // PROVIDER EVENT TYPES
 // =============================================================================
@@ -79,67 +58,4 @@ export interface ChatResult {
   thinking?: string;
   toolCalls?: ToolCall[];
   usage: TokenUsage;
-}
-
-// =============================================================================
-// CLIENT TOOL SCHEMA
-// =============================================================================
-
-/**
- * Schema for a client-side tool, sent to the server so it can be
- * included in the LLM request. The server doesn't execute these -
- * it passes them to the LLM and hands back to the client for execution.
- */
-export interface ClientToolSchema {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>; // JSON Schema
-}
-
-// =============================================================================
-// OLLAMA REQUEST/RESPONSE TYPES
-// =============================================================================
-
-/**
- * Ollama chat request format.
- */
-export interface OllamaChatRequest {
-  model: string;
-  messages: Message[];
-  stream?: boolean;
-  tools?: Array<{
-    type: "function";
-    function: {
-      name: string;
-      description: string;
-      parameters: Record<string, unknown>;
-    };
-  }>;
-  /** Tool choice: 'auto' (default), 'none', 'required', or specific tool name */
-  tool_choice?: "auto" | "none" | "required" | string;
-  /** Format for structured output: 'json' or a JSON schema object */
-  format?: "json" | Record<string, unknown>;
-}
-
-/**
- * Ollama chat response chunk.
- */
-export interface OllamaChatChunk {
-  model: string;
-  created_at: string;
-  message: {
-    role: string;
-    content: string;
-    thinking?: string; // DeepSeek-R1 style
-    tool_calls?: ToolCall[];
-  };
-  done: boolean;
-  done_reason?: string;
-  total_duration?: number;
-  load_duration?: number;
-  prompt_eval_count?: number;
-  prompt_eval_duration?: number;
-  eval_count?: number;
-  eval_duration?: number;
-  error?: string;
 }

@@ -80,9 +80,14 @@ describe("an indeterminate unsafe effect reaches the model", () => {
             content: [
               {
                 type: "toolCall",
-                id: "call-indeterminate",
-                name: bookFlightTool.name,
-                arguments: { from: "NYC", destination: "LAX" },
+                toolCall: {
+                  id: "call-indeterminate",
+                  type: "function",
+                  function: {
+                    name: bookFlightTool.name,
+                    arguments: { from: "NYC", destination: "LAX" },
+                  },
+                },
               },
             ],
             stopReason: "toolUse",

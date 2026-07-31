@@ -24,6 +24,7 @@ import {
   type Model,
   type ModelProviderDriver,
   type StreamEvent as RuntimeStreamEvent,
+  type ToolCall,
 } from "@sweatpants/model-provider";
 import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import {
@@ -60,12 +61,7 @@ function createScriptedModelProvider(options: {
           | {
               type: "toolcall_end";
               contentIndex: number;
-              toolCall: {
-                type: "toolCall";
-                id: string;
-                name: string;
-                arguments: Record<string, string>;
-              };
+              toolCall: ToolCall;
               partial: AssistantMessage;
             }
         > = [];
@@ -85,10 +81,12 @@ function createScriptedModelProvider(options: {
             type: "toolcall_end",
             contentIndex: 1,
             toolCall: {
-              type: "toolCall",
               id: options.toolCall.id,
-              name: options.toolCall.name,
-              arguments: options.toolCall.arguments,
+              type: "function",
+              function: {
+                name: options.toolCall.name,
+                arguments: options.toolCall.arguments,
+              },
             },
             partial: {
               role: "assistant",
@@ -96,9 +94,14 @@ function createScriptedModelProvider(options: {
                 { type: "text", text: options.text },
                 {
                   type: "toolCall",
-                  id: options.toolCall.id,
-                  name: options.toolCall.name,
-                  arguments: options.toolCall.arguments,
+                  toolCall: {
+                    id: options.toolCall.id,
+                    type: "function",
+                    function: {
+                      name: options.toolCall.name,
+                      arguments: options.toolCall.arguments,
+                    },
+                  },
                 },
               ],
             },
@@ -114,9 +117,14 @@ function createScriptedModelProvider(options: {
               ? [
                   {
                     type: "toolCall" as const,
-                    id: options.toolCall.id,
-                    name: options.toolCall.name,
-                    arguments: options.toolCall.arguments,
+                    toolCall: {
+                      id: options.toolCall.id,
+                      type: "function" as const,
+                      function: {
+                        name: options.toolCall.name,
+                        arguments: options.toolCall.arguments,
+                      },
+                    },
                   },
                 ]
               : []),

@@ -11,7 +11,7 @@ import {
   type ChatModelSampleInputV2,
   type ChatModelSampleOutputV2,
 } from "@sweatpants/chat-core";
-import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
+import { canonicalJson, type Json } from "@sweatpants/foundation";
 
 const selection = {
   provider: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
@@ -90,7 +90,16 @@ function toProviderMessages(message: ChatMessageV1): Message[] {
   return [
     {
       role: "assistant",
-      content: [{ type: "toolCall", id: callId, name: providerToolName(target), arguments: {} }],
+      content: [
+        {
+          type: "toolCall",
+          toolCall: {
+            id: callId,
+            type: "function",
+            function: { name: providerToolName(target), arguments: {} },
+          },
+        },
+      ],
       stopReason: "toolUse",
     },
     {
@@ -124,9 +133,9 @@ function modelOutput(assistant: AssistantMessage, pullId: string): ChatModelSamp
   const calls = assistant.content
     .filter((block) => block.type === "toolCall")
     .map((block) => ({
-      id: block.id,
-      target: authoredToolName(block.name),
-      input: assertJson(block.arguments),
+      id: block.toolCall.id,
+      target: authoredToolName(block.toolCall.function.name),
+      input: block.toolCall.function.arguments,
     }));
   return {
     message: {

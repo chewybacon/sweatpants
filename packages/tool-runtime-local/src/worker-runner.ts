@@ -88,8 +88,8 @@ function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
       contentBlocks.push({
         type: "tool_use" as const,
         id: call.id,
-        name: call.name,
-        input: call.arguments,
+        name: call.function.name,
+        input: call.function.arguments,
       });
     }
 
