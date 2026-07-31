@@ -395,7 +395,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
                 const error = pendingRunError;
                 pendingRunError = undefined;
                 failTurn(error);
-              } else if (result.type === "complete") {
+              } else if (result.outcome === "complete") {
                 settleTurn();
               } else if (stateRef.current) {
                 // Publish elicit barriers only after createChatSession has

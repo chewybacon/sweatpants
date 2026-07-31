@@ -18,9 +18,9 @@ import { BaseUrlContext } from "./contexts.ts";
 import type { ChatStateEvent } from "../state/events.ts";
 import type { Message } from "../messages.ts";
 import type { StreamChatOptions } from "./options.ts";
-import type { StreamResult } from "./streaming.ts";
+import type { ChatTransportReceipt } from "./settlement.ts";
 import { executeChatFetch } from "./api-transport.ts";
-import { consumeAgUiEventStream } from "./ag-ui-stream.ts";
+import { consumeChatEventStream } from "./transport.ts";
 
 export type { StreamChatOptions } from "./options.ts";
 
@@ -31,13 +31,13 @@ export type { StreamChatOptions } from "./options.ts";
  * @param messages - The conversation history to send
  * @param events - Channel to emit canonical AG-UI events to
  * @param options - Optional configuration for the chat
- * @returns StreamResult - complete or waiting for elicitation
+ * @returns transport facts after the canonical event stream drains
  */
 export function* streamChatOnce(
   messages: Message[],
   events: Channel<ChatStateEvent, void>,
   options: StreamChatOptions = {},
-): Operation<StreamResult> {
+): Operation<ChatTransportReceipt> {
   // Get abort signal scoped to this operation
   const signal = yield* useAbortSignal();
 
@@ -54,6 +54,6 @@ export function* streamChatOnce(
   // We parse as unknown and extract the inner event
   const eventStream = parseNDJSON<unknown>(response.body!, { signal });
 
-  const result = yield* consumeAgUiEventStream(eventStream, events, options.onStreamEvent);
-  return conversationId ? { ...result, conversationId } : result;
+  const receipt = yield* consumeChatEventStream(eventStream, events, options.onStreamEvent);
+  return conversationId ? { ...receipt, conversationId } : receipt;
 }

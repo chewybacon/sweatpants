@@ -38,31 +38,6 @@ export interface AgUiCustomState {
     schema: Record<string, unknown>;
   }>;
 }
-export interface ConversationState {
-  messages: Message[];
-  assistantContent: string;
-  toolCalls: ToolCallInfo[];
-  serverToolResults: ServerToolResult[];
-  replay?: ConversationReplayState;
-}
-
-export type StreamResult = StreamCompleteResult | StreamElicitResult;
-export interface StreamCompleteResult {
-  type: "complete";
-  text: string;
-  toolCalls?: Array<{ id: string; name: string; arguments: unknown }>;
-  /** `isError` is producer-reported; never inferred from `content`. */
-  toolResults?: Array<{ id: string; name: string; content: string; isError: boolean }>;
-  conversationState?: ConversationState;
-  conversationId?: string;
-}
-export interface StreamElicitResult {
-  type: "elicit";
-  pendingElicitations: ElicitRequestStreamEvent[];
-  conversationState: ConversationState;
-  conversationId?: string;
-}
-
 export interface AgUiRunStartedStreamEvent {
   type: "RUN_STARTED";
   threadId: string;

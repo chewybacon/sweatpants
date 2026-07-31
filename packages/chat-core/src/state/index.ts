@@ -21,7 +21,6 @@ export type {
 export type { LocalEmissionAction } from "./interactions.ts";
 export type { ChatStateEvent, LocalChatAction } from "./events.ts";
 export { initialChatState } from "./chat-state.ts";
-export { chatReducer } from "./reducer.ts";
 export type { ComponentExtractor } from "./derive-messages.ts";
 export {
   deriveMessages,

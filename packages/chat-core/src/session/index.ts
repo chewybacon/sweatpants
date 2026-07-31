@@ -74,20 +74,17 @@ export {
   assertMessageHasId,
 } from "./message-identity.ts";
 
-// Streaming types
+// Canonical stream and settlement types
 export type {
   AgUiCheckpoint,
   AgUiCustomState,
   AgUiRunMetadata,
-  ConversationState,
   ConversationReplayToolTrace,
   ConversationReplayState,
-  StreamResult,
-  StreamCompleteResult,
-  StreamElicitResult,
   ElicitRequestStreamEvent,
   StreamEvent,
 } from "./streaming.ts";
+export type { ChatTransportReceipt, ChatTurnSettlement } from "./settlement.ts";
 
 // Options and configuration
 export type {

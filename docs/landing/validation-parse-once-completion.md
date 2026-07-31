@@ -24,9 +24,9 @@ Current inventory totals:
 | Record | Count |
 | --- | ---: |
 | Historical validation records | 86 |
-| Manual shape owners | 326 |
+| Manual shape owners | 325 |
 | `B` external boundary | 107 |
-| `R` same-domain revalidation | 156 |
+| `R` same-domain revalidation | 155 |
 | `S` typed semantic verification | 15 |
 | `G` generic mechanism | 6 |
 | `C` compatibility normalizer | 42 |
@@ -175,6 +175,12 @@ The unused `OllamaChatRequest`, `OllamaChatChunk`, and `ClientToolSchema` residu
 Test Rig now passively observes the same application response body consumed by Chat Core and React; it does not replace the AG-UI producer. A transform taps emitted NDJSON/SSE bytes without cloning the stream, validates the pinned AG-UI event vocabulary, tracks run/message/tool lifecycle, rejects obsolete public events, and exposes causal barriers to scenario scripts. React hook acceptance drives the real HTTP Responses simulator through pi-ai, Durable Chat, worker-backed tools, AG-UI, Chat Core, and `useChat`, then validates the emitted protocol and hook-visible result together across in-process and HTTP bindings. The scenario also proves activity separation and that private system prompts do not enter public events.
 
 With that path authoritative, 29 mock-backed, synthetic-event, implementation-state, duplicate stream/HTTP smoke, simple export/helper, and upstream Effection suites were deleted (nearly 9,000 lines). Platform Acceptance also stopped running every semantic scenario through both bindings: semantics now run in-process, while HTTP is reserved for reconnect, streaming, connection isolation, generation replacement, cancellation propagation, and one complex parity flow. Pairwise A2A posture coverage replaced Cartesian binding coverage, removing 36 duplicate acceptance cases. Chat Core no longer directly tests reducer/class state arrangements; retained tests cover public functional contracts such as authoring, policy, replay bounds, projection facts, and a compact codec boundary. React Chat now relies on rendering and simulator-to-hook acceptance rather than mock plugin executors. Durable Chat retains authority/fencing/store/parser tests while model/tool/AG-UI/session/HTTP behavior is covered through Test Rig, React, and Platform Acceptance. A charter gate prevents mock providers, local AG-UI schema mirrors, and the removed internal-state suites from returning. The package-test coverage baseline was deliberately lowered after each deletion; it now records 1,021 collected package tests (997 passed, 17 skipped). The lower count is intentional consolidation, not missing imports.
+
+### Canonical Chat Core session projection
+
+Chat Core now has one production projection authority for canonical AG-UI events, public `ChatState`, retained provider history, pending elicitations, and turn settlement. The response transport only forwards events and returns a narrow `ChatTransportReceipt`; it no longer reconstructs `ConversationState`, tool calls, tool results, or assistant text. Session orchestration folds transformed events into the projection once and publishes the resulting state directly, removing the previous transport fold, mirror fold, public subscriber fold, and `StreamResult`-to-history repair path.
+
+`StreamResult`, `ConversationState`, `turn-manager.ts`, `turn-state.ts`, and `ag-ui-stream.ts` were deleted. `session/projection.ts`, `session/settlement.ts`, and `session/transport.ts` now own the corresponding responsibilities. Durable replay and rendered-history paths consume the same state projection, while reducer draft bookkeeping is no longer part of the public `ChatState` type. React, Test Rig, and Durable Chat Runtime carry only the canonical event, transport receipt, and semantic settlement contracts; no package dependency edge changed.
 
 ## Validation performed
 

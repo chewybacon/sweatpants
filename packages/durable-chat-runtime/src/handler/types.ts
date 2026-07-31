@@ -9,6 +9,5 @@ export interface ResumeEntry {
 
 export type {
   ChatSessionStreamEvent as StreamEvent,
-  ConversationState,
   ElicitRequestStreamEvent,
 } from "@sweatpants/chat-core";

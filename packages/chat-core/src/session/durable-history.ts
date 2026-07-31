@@ -1,7 +1,7 @@
 import type { Operation } from "effection";
 import { call } from "effection";
 import type { ChatStateEvent } from "../state/events.ts";
-import { chatReducer, initialChatState } from "../state/reducer.ts";
+import { createChatStateProjection } from "./projection.ts";
 import type { HydratedToolExecutionTrace, ToolExecutionTrace } from "../trace-types.ts";
 import type { Message } from "../messages.ts";
 import type { ChatEventTransform, ChatFetch, StreamEventEntry } from "./options.ts";
@@ -73,7 +73,7 @@ export function* replayFramesToConversation(
   onStreamEvent?: (entry: StreamEventEntry) => void,
 ): Operation<DurableHistoryReplay> {
   const events: ChatStateEvent[] = [];
-  let state = initialChatState;
+  const projection = createChatStateProjection();
 
   for (const frame of frames) {
     onStreamEvent?.({
@@ -83,7 +83,7 @@ export function* replayFramesToConversation(
       receivedAt: Date.now(),
     });
     events.push(frame.event);
-    state = chatReducer(state, frame.event);
+    projection.fold(frame.event);
 
     if (frame.event.type !== "ACTIVITY_SNAPSHOT") {
       continue;
@@ -125,9 +125,10 @@ export function* replayFramesToConversation(
     };
     const action: ChatStateEvent = { type: "LOCAL_REPLAY_EMISSIONS", tracking };
     events.push(action);
-    state = chatReducer(state, action);
+    projection.fold(action);
   }
 
+  let state = projection.state;
   if (transforms?.length) {
     for (const message of state.messages) {
       if (message.role !== "assistant" || !message.content) {
@@ -146,7 +147,8 @@ export function* replayFramesToConversation(
         parts: [...rendered, ...toolParts],
       };
       events.push(action);
-      state = chatReducer(state, action);
+      projection.fold(action);
+      state = projection.state;
     }
   }
 

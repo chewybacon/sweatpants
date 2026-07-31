@@ -30,13 +30,7 @@ interface ToolCallDraft {
   ended: boolean;
 }
 
-/**
- * Client projection of the canonical AG-UI event log.
- *
- * `messageDrafts` and `toolCallDrafts` are fold bookkeeping. They are public in
- * the structural type so the reducer remains a pure serializable function; UI
- * consumers should use `messages`, `streaming`, and the derivation helpers.
- */
+/** Client projection of the canonical AG-UI event log. */
 export interface ChatState {
   messages: Message[];
   finalizedParts: Record<string, MessagePart[]>;
@@ -47,11 +41,15 @@ export interface ChatState {
   toolEmissions: Record<string, ToolEmissionTrackingState>;
   replay?: ConversationReplayState;
   activeRun: { threadId: string; runId: string } | null;
-  readonly messageDrafts: Readonly<Record<string, MessageDraft>>;
-  readonly toolCallDrafts: Readonly<Record<string, ToolCallDraft>>;
 }
 
-export const initialChatState: ChatState = {
+/** Reducer-only bookkeeping; consumers receive only the semantic ChatState view. */
+export interface ChatStateInternal extends ChatState {
+  messageDrafts: Record<string, MessageDraft>;
+  toolCallDrafts: Record<string, ToolCallDraft>;
+}
+
+export const initialChatStateInternal: ChatStateInternal = {
   messages: [],
   finalizedParts: {},
   isStreaming: false,
@@ -63,3 +61,11 @@ export const initialChatState: ChatState = {
   messageDrafts: {},
   toolCallDrafts: {},
 };
+
+/** Public initial view; reducer bookkeeping is intentionally not part of it. */
+const {
+  messageDrafts: _initialMessageDrafts,
+  toolCallDrafts: _initialToolCallDrafts,
+  ...initialChatStateView
+} = initialChatStateInternal;
+export const initialChatState: ChatState = initialChatStateView;
