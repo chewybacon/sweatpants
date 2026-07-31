@@ -127,7 +127,7 @@ export type ForeignToolRequest = {
   route?: string;
 };
 export type ForeignContinuation = { driver: string; state: Json };
-export type WireElicitResultJson<T extends Json = Json> =
+export type ProgramElicitResult<T extends Json = Json> =
   | { action: "accept"; content: T }
   | { action: "decline"; reason?: string }
   | { action: "cancel"; reason?: string };

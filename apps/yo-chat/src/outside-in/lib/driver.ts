@@ -18,7 +18,7 @@ import { createTranscriptCollector, normalizeStreamEvent, type Transcript } from
 
 /** A reply to a single elicit request. `null` means "stop, do not answer". */
 export type ElicitReply =
-  | { action: "accept"; content?: unknown }
+  | { action: "accept"; content: unknown }
   | { action: "decline" }
   | { action: "cancel" }
   | null;
@@ -243,7 +243,7 @@ export async function runChatFlow(
               callId: pending.callId,
               toolName: pending.toolName,
               elicitId: pending.elicitId,
-              result: reply,
+              completion: reply,
               autoContinue: true,
             });
             yield* sleep(pollMs);

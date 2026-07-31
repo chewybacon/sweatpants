@@ -16,8 +16,12 @@
 import { createContext, type Operation } from "effection";
 import { z } from "zod";
 import type { ToolSessionRegistry } from "../../contract.ts";
-import type { ToolDefinition, WireElicitResult, WireSampleResultBase } from "@sweatpants/agent-sdk";
-import type { ElicitsMap } from "../mcp-tool-types.ts";
+import type {
+  ElicitsMap,
+  ToolDefinition,
+  ElicitExchangeCompletion,
+  SampleExchangeCompletionBase,
+} from "@sweatpants/agent-sdk";
 import type {
   McpSessionState,
   PendingElicitation,
@@ -304,7 +308,7 @@ export class McpSessionManager {
     // Build the wire result. This pass-through layer does not own the
     // originating elicit context, so exchange construction happens where the
     // elicit originated (bridge/worker runtime), not here.
-    let elicitResult: WireElicitResult<unknown>;
+    let elicitResult: ElicitExchangeCompletion<unknown>;
     switch (action) {
       case "accept":
         elicitResult = {
@@ -354,7 +358,7 @@ export class McpSessionManager {
     // Parse the provider content compatibility union once before projection.
     const textContent = sampleTextFromContent(content);
 
-    const sampleResult: WireSampleResultBase = {
+    const sampleResult: SampleExchangeCompletionBase = {
       text: textContent,
       model,
       ...(stopReason !== undefined ? { stopReason } : {}),

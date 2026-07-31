@@ -32,12 +32,14 @@ import {
 } from "@sweatpants/agent-sdk/transport/worker";
 import {
   SampleValidationError,
+  completeSampleExchange,
   type LogLevel,
   type SampleConfigSchemaMessages,
   type SampleConfigSchemaPrompt,
   type SampleConfigToolsMessages,
   type SampleConfigToolsPrompt,
   type SampleResultBase,
+  type ParsedSampleExchangeCompletion,
   type SampleResultWithParsed,
   type SampleResultWithToolCalls,
   type SampleSchemaConfig,
@@ -45,10 +47,9 @@ import {
   type SampleToolsConfig,
   type SampleToolsResult,
   type SamplingToolDefinition,
-  type ToolElicitResult,
   type ToolSampleConfig,
 } from "@sweatpants/agent-sdk";
-import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { JsonObject } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import type { WorkerTool, WorkerToolRegistry, WorkerToolContext } from "./worker-types.js";
 import {
@@ -58,10 +59,6 @@ import {
   type ExtendedMessage,
 } from "@sweatpants/tool-session/messages";
 import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
-import {
-  createRawSampleExchange,
-  createStructuredSampleExchange,
-} from "@sweatpants/tool-session/mcp";
 
 // =============================================================================
 // TYPE CONVERSION HELPERS
@@ -154,7 +151,7 @@ function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
 function toWorkerToolDefinition(tool: SamplingToolDefinition): {
   name: string;
   description?: string;
-  inputSchema: Record<string, unknown>;
+  inputSchema: JsonObject;
 } {
   return {
     name: tool.name,
@@ -192,7 +189,7 @@ export async function runWorker(registry: WorkerToolRegistry): Promise<void> {
     }
 
     // Create MCP tool context that wraps core context
-    const ctx = createMcpWorkerContext(coreCtx, sessionId, tool);
+    const ctx = createMcpWorkerContext(coreCtx, sessionId);
 
     // Execute the tool
     return yield* tool.handler(params, ctx) as Operation<unknown>;
@@ -214,13 +211,9 @@ export async function runWorker(registry: WorkerToolRegistry): Promise<void> {
 function createMcpWorkerContext(
   coreCtx: CoreWorkerToolContext,
   sessionId: string,
-  tool: WorkerTool,
 ): WorkerToolContext {
   let toolCallIdCounter = 0;
   const generateToolCallId = () => `${sessionId}:tc:${++toolCallIdCounter}`;
-  function schemaForElicitKey(key: string): JsonObject | undefined {
-    return tool.elicitSchemas[key];
-  }
 
   // Helper to extract prompt text for exchange construction
   function extractPromptText(config: ToolSampleConfig<ExtendedMessage>): string {
@@ -290,55 +283,19 @@ function createMcpWorkerContext(
 
     // Call core sample
     const response: WorkerSampleResponse = yield* coreCtx.sample(coreOptions);
+    const completion = response.completion;
 
-    // Build result based on what was requested
     if ("schema" in config && config.schema) {
-      // Schema sample - parse and build structured exchange
-      const parsed = response.parsed ?? null;
-      const parseError = response.parseError;
-
-      const exchange =
-        parsed !== null
-          ? createStructuredSampleExchange(promptText, parsed, generateToolCallId())
-          : createRawSampleExchange(promptText, response.text);
-
-      const result: SampleResultWithParsed<unknown> = {
-        text: response.text,
-        ...(response.model !== undefined && { model: response.model }),
-        ...(response.stopReason !== undefined && { stopReason: response.stopReason }),
-        parsed,
-        ...(parseError !== undefined && { parseError }),
-        exchange,
-      };
-      return result;
+      const schemaCompletion: ParsedSampleExchangeCompletion<unknown> =
+        "parsed" in completion ? completion : { ...completion, parsed: null };
+      return completeSampleExchange({
+        promptText,
+        completion: schemaCompletion,
+        ...(schemaCompletion.parsed !== null ? { exchangeId: generateToolCallId() } : {}),
+      });
     }
 
-    if ("tools" in config && config.tools && response.toolCalls) {
-      // Tools sample
-      const exchange = createRawSampleExchange(promptText, response.text);
-      const result: SampleResultWithToolCalls = {
-        text: response.text,
-        ...(response.model !== undefined && { model: response.model }),
-        ...(response.stopReason !== undefined && { stopReason: response.stopReason }),
-        exchange,
-        toolCalls: response.toolCalls.map((tc) => ({
-          id: tc.id,
-          name: tc.name,
-          arguments: tc.arguments,
-        })),
-      };
-      return result;
-    }
-
-    // Plain sample
-    const exchange = createRawSampleExchange(promptText, response.text);
-    const result: SampleResultBase = {
-      text: response.text,
-      ...(response.model !== undefined && { model: response.model }),
-      ...(response.stopReason !== undefined && { stopReason: response.stopReason }),
-      exchange,
-    };
-    return result;
+    return completeSampleExchange({ promptText, completion });
   }
 
   // The context object
@@ -484,88 +441,9 @@ function createMcpWorkerContext(
       );
     },
 
-    *elicit<T>(
-      key: string,
-      options: {
-        message: string;
-        schema?: Record<string, unknown>;
-        context?: Record<string, unknown>;
-      },
-    ): Operation<ToolElicitResult<unknown, T>> {
-      const { message, schema, context } = options;
-      const responseSchema = schema ?? schemaForElicitKey(key) ?? { type: "object" };
-
-      const response: WorkerElicitResponse = yield* coreCtx.elicit(key, {
-        message,
-        schema: responseSchema,
-        ...(context !== undefined && { context }),
-      });
-
-      // Construct exchange on accept only (truthful ToolElicitResult arms)
-      if (response.action === "accept") {
-        const content = response.content as T;
-        const toolUseId = `elicit_${sessionId}_${key}_${Date.now()}`;
-
-        const request = {
-          role: "assistant" as const,
-          content: [
-            {
-              type: "tool_use" as const,
-              id: toolUseId,
-              name: key,
-              input: {},
-            },
-          ],
-        };
-        const responseMsg = {
-          role: "user" as const,
-          content: [
-            {
-              type: "tool_result" as const,
-              toolUseId,
-              content: [{ type: "text" as const, text: JSON.stringify(content) }],
-            },
-          ],
-        };
-
-        return {
-          action: "accept",
-          content,
-          exchange: {
-            context: (context ?? {}) as unknown,
-            request,
-            response: responseMsg,
-            messages: [request, responseMsg] as [typeof request, typeof responseMsg],
-            withArguments(fn: (ctx: unknown) => Json) {
-              const args = fn(context ?? {});
-              const requestWithArgs = {
-                role: "assistant" as const,
-                content: [
-                  {
-                    type: "tool_use" as const,
-                    id: toolUseId,
-                    name: key,
-                    input: args,
-                  },
-                ],
-              };
-              return [requestWithArgs, responseMsg] as [typeof requestWithArgs, typeof responseMsg];
-            },
-          },
-        };
-      }
-
-      if (response.action === "decline") {
-        return {
-          action: "decline",
-          ...(response.reason !== undefined && { reason: response.reason }),
-        };
-      }
-
-      return {
-        action: "cancel",
-        ...(response.reason !== undefined && { reason: response.reason }),
-      };
+    *elicit(key, options) {
+      const response: WorkerElicitResponse = yield* coreCtx.elicit(key, options);
+      return { ...response.completion, exchangeId: response.id };
     },
   };
 

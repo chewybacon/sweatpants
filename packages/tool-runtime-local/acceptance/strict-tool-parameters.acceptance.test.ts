@@ -1,4 +1,4 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { run } from "effection";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";

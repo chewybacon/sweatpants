@@ -9,7 +9,7 @@ import type {
   ExtractElicitContext,
   ExtractElicitResponse,
   ToolElicitResult,
-  WireElicitResult,
+  ElicitExchangeCompletion,
   ToolCtx,
 } from "../types.ts";
 import { z } from "zod";
@@ -37,9 +37,11 @@ void 0 as unknown as _acceptHasExchange;
 void 0 as unknown as _declineNoContent;
 void 0 as unknown as _declineNoExchange;
 
-type WireAccept = Extract<WireElicitResult<{ ok: boolean }>, { action: "accept" }>;
-type _wireNoExchange = Expect<Equal<"exchange" extends keyof WireAccept ? true : false, false>>;
-void 0 as unknown as _wireNoExchange;
+type CompletionAccept = Extract<ElicitExchangeCompletion<{ ok: boolean }>, { action: "accept" }>;
+type _completionNoExchange = Expect<
+  Equal<"exchange" extends keyof CompletionAccept ? true : false, false>
+>;
+void 0 as unknown as _completionNoExchange;
 
 // Builder inference + RuntimeTool assignability
 const tool = createTool("probe")

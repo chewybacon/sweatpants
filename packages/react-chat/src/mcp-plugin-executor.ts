@@ -22,7 +22,8 @@
  */
 import type { Operation, Channel } from "effection";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ElicitRequest, WireElicitResult } from "@sweatpants/tool-session/mcp";
+import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
+import type { ElicitRequest } from "@sweatpants/tool-session/mcp";
 import type {
   ExtractResponse,
   PluginClientContext,
@@ -167,7 +168,7 @@ export function* executeElicitHandler<
   // Use `any` for schema type to avoid Zod v3/v4 incompatibility issues
   request: ElicitRequest<K, StandardSchemaV1>,
   ctx: PluginClientContext<ElicitRequest<K, StandardSchemaV1>>,
-): Operation<WireElicitResult<unknown>> {
+): Operation<ElicitExchangeCompletion<unknown>> {
   const handler = plugin.handlers[key];
 
   if (!handler) {
@@ -195,7 +196,7 @@ export function* executeElicitHandlerFromRequest<TNormalized extends Record<stri
   plugin: PluginClientRegistration<TNormalized>,
   request: ElicitRequest<string, StandardSchemaV1>,
   ctx: PluginClientContext,
-): Operation<WireElicitResult<unknown>> {
+): Operation<ElicitExchangeCompletion<unknown>> {
   const key = request.key as keyof TNormalized & string;
 
   if (!(key in plugin.handlers)) {
@@ -209,7 +210,7 @@ export function* executeElicitHandlerFromRequest<TNormalized extends Record<stri
   const handler = plugin.handlers[key] as (
     req: ElicitRequest<string, StandardSchemaV1>,
     hctx: PluginClientContext,
-  ) => Operation<WireElicitResult<unknown>>;
+  ) => Operation<ElicitExchangeCompletion<unknown>>;
   return yield* handler(request, ctx);
 }
 

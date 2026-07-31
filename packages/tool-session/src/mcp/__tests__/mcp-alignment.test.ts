@@ -9,11 +9,11 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  encodeSamplingRequest,
-  encodeElicitationRequest,
   SCHEMA_TOOL_NAME,
-} from "../protocol/message-encoder.ts";
-import { createRawSampleExchange, createStructuredSampleExchange } from "../mcp-tool-types.ts";
+  createRawSampleExchange,
+  createStructuredSampleExchange,
+} from "@sweatpants/agent-sdk";
+import { encodeSamplingRequest, encodeElicitationRequest } from "../protocol/message-encoder.ts";
 import type { SampleRequestEvent, ElicitRequestEvent } from "../../contract.ts";
 
 // =============================================================================

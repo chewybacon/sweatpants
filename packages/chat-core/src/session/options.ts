@@ -11,7 +11,9 @@ import type { StreamEvent, StreamResult } from "./streaming.ts";
 import type { ConversationReplayState } from "./replay-types.ts";
 import type { ToolExecutionTrace } from "../trace-types.ts";
 import type { PluginReplayTraceSpec } from "../plugin-spec.ts";
+import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { StreamOptions } from "@sweatpants/model-provider";
+import type { ToolExecutionRef } from "@sweatpants/tool-runtime";
 
 // =============================================================================
 // STREAM EVENT OBSERVATION
@@ -49,20 +51,11 @@ export interface ElicitResponseData {
   /** Canonical tool name for continuation validation */
   toolName?: string;
   /** Optional runtime execution ref echoed from durable pending state */
-  ref?: {
-    runtimeId: string;
-    executionId: string;
-    callId: string;
-    toolName: string;
-    sessionId?: string;
-  };
+  ref?: ToolExecutionRef;
   /** Specific elicit request ID */
   elicitId: string;
-  /** The user's response */
-  result: {
-    action: "accept" | "decline" | "cancel";
-    content?: unknown;
-  };
+  /** Transport-safe facts that complete the pending elicitation exchange. */
+  completion: ElicitExchangeCompletion<unknown>;
   /** Browser render trace for replaying plugin UI after refresh. */
   trace?: ToolExecutionTrace;
 }
@@ -355,11 +348,8 @@ export type ChatCommand =
       ref?: ElicitResponseData["ref"];
       /** Specific elicit request ID */
       elicitId: string;
-      /** The user's response */
-      result: {
-        action: "accept" | "decline" | "cancel";
-        content?: unknown;
-      };
+      /** Transport-safe facts that complete the pending elicitation exchange. */
+      completion: ElicitExchangeCompletion<unknown>;
       /** Browser render trace for replaying plugin UI after refresh. */
       trace?: ToolExecutionTrace;
       /**

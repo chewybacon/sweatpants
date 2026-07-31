@@ -343,7 +343,7 @@ export function* runChatSession(
           ...(cmd.toolName ? { toolName: cmd.toolName } : {}),
           ...(cmd.ref ? { ref: cmd.ref } : {}),
           elicitId: cmd.elicitId,
-          result: cmd.result,
+          completion: cmd.completion,
           ...(cmd.trace ? { trace: cmd.trace } : {}),
         });
         if (!stateEvents) {

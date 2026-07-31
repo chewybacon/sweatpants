@@ -12,6 +12,7 @@
  * 4. Handler emissions are forwarded as ephemeral browser actions
  * 5. When handler completes, sends `elicit_response` automatically
  */
+import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import { useEffect, useRef } from "react";
 import type { ComponentType } from "react";
 import { run, createSignal } from "effection";
@@ -46,7 +47,7 @@ export interface UseElicitExecutorOptions {
   /** Send elicit response back to server */
   respondToElicit: (
     elicit: { sessionId: string; callId: string; elicitId: string; toolName?: string },
-    result: { action: "accept" | "decline" | "cancel"; content?: unknown },
+    result: ElicitExchangeCompletion<unknown>,
     trace?: ToolExecutionTrace,
   ) => void;
 }

@@ -791,7 +791,7 @@ function* resolveElicitResponses(
       taskId: pending.taskId,
       pullId: pending.pullId,
       audience: `user:${pending.key}`,
-      outcome: { status: "ok", value: assertJson(response.result) },
+      outcome: { status: "ok", value: assertJson(response.completion) },
     });
     if (result.status === "accepted" || result.status === "duplicate") {
       accepted += 1;

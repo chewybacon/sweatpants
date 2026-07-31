@@ -1,35 +1,6 @@
 import { createContext, type Operation } from "effection";
 import type { JsonObject } from "@sweatpants/foundation";
-
-// -----------------------------------------------------------------------------
-// Tool inventory contracts
-// -----------------------------------------------------------------------------
-
-export interface ToolDefinition {
-  name: string;
-  description: string;
-  /** Portable JSON Schema projection, computed once at authoring. */
-  parameters: JsonObject;
-  metadata?: Record<string, unknown>;
-}
-
-export interface ToolCapabilities {
-  inline?: boolean;
-  client?: boolean;
-  elicits?: boolean;
-  samples?: boolean;
-}
-
-export interface ToolInventoryEntry {
-  definition: ToolDefinition;
-  capabilities?: ToolCapabilities;
-  metadata?: Record<string, unknown>;
-}
-
-export interface ToolInventory {
-  list(): Operation<ToolInventoryEntry[]>;
-  resolve(name: string): Operation<ToolInventoryEntry | null>;
-}
+import type { PortableToolDefinition, ToolInventoryEntry } from "@sweatpants/tool-runtime";
 
 export type ToolExposurePhase = "outer-chat" | "sample";
 
@@ -52,17 +23,7 @@ export interface ToolExposureRequest {
 }
 
 export interface ToolExposurePolicy {
-  filter(request: ToolExposureRequest): Operation<ToolDefinition[]>;
-}
-
-export class ToolInventoryError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ToolInventoryError";
-  }
+  filter(request: ToolExposureRequest): Operation<PortableToolDefinition[]>;
 }
 
 export class ToolExposureError extends Error {
@@ -75,41 +36,7 @@ export class ToolExposureError extends Error {
   }
 }
 
-export const ToolInventoryContext = createContext<ToolInventory>("ToolInventory");
-export const ToolExposurePolicyContext = createContext<ToolExposurePolicy>("ToolExposurePolicy");
-
-export function createToolInventory(entries: ToolInventoryEntry[]): ToolInventory {
-  const ordered = [...entries];
-  const byName = new Map<string, ToolInventoryEntry>();
-
-  for (const entry of ordered) {
-    const name = entry.definition.name;
-    if (!name || typeof name !== "string") {
-      throw new ToolInventoryError(
-        "TOOL_NAME_INVALID",
-        "Tool inventory entry requires a canonical definition.name",
-      );
-    }
-    if (byName.has(name)) {
-      throw new ToolInventoryError(
-        "TOOL_NAME_DUPLICATE",
-        `Duplicate tool name in inventory: ${name}`,
-      );
-    }
-    byName.set(name, entry);
-  }
-
-  return {
-    *list(): Operation<ToolInventoryEntry[]> {
-      return ordered;
-    },
-    *resolve(name: string): Operation<ToolInventoryEntry | null> {
-      return byName.get(name) ?? null;
-    },
-  };
-}
-
-function stripDefinition(definition: ToolDefinition): ToolDefinition {
+function stripDefinition(definition: PortableToolDefinition): PortableToolDefinition {
   return {
     name: definition.name,
     description: definition.description,
@@ -118,7 +45,7 @@ function stripDefinition(definition: ToolDefinition): ToolDefinition {
   };
 }
 
-function sampleDefinition(tool: SamplingToolDefinitionLike): ToolDefinition {
+function sampleDefinition(tool: SamplingToolDefinitionLike): PortableToolDefinition {
   return {
     name: tool.name,
     description: tool.description ?? "",
@@ -127,8 +54,10 @@ function sampleDefinition(tool: SamplingToolDefinitionLike): ToolDefinition {
   };
 }
 
+export const ToolExposurePolicyContext = createContext<ToolExposurePolicy>("ToolExposurePolicy");
+
 export const defaultToolExposurePolicy: ToolExposurePolicy = {
-  *filter(request: ToolExposureRequest): Operation<ToolDefinition[]> {
+  *filter(request: ToolExposureRequest): Operation<PortableToolDefinition[]> {
     if (request.phase === "sample") {
       return (request.sampleTools ?? []).map(sampleDefinition);
     }
@@ -156,36 +85,8 @@ export const defaultToolExposurePolicy: ToolExposurePolicy = {
   },
 };
 
-export const ToolInventoryApi = {
-  *list(): Operation<ToolInventoryEntry[]> {
-    const inventory = yield* ToolInventoryContext.get();
-    if (!inventory) {
-      throw new ToolInventoryError(
-        "TOOL_INVENTORY_NOT_CONFIGURED",
-        "Tool inventory not configured. Install a ToolInventory in scope.",
-      );
-    }
-    return yield* inventory.list();
-  },
-
-  *resolve(name: string): Operation<ToolInventoryEntry> {
-    const inventory = yield* ToolInventoryContext.get();
-    if (!inventory) {
-      throw new ToolInventoryError(
-        "TOOL_INVENTORY_NOT_CONFIGURED",
-        "Tool inventory not configured. Install a ToolInventory in scope.",
-      );
-    }
-    const entry = yield* inventory.resolve(name);
-    if (!entry) {
-      throw new ToolInventoryError("TOOL_NOT_FOUND", `Tool not found: ${name}`);
-    }
-    return entry;
-  },
-};
-
 export const ToolExposureApi = {
-  *definitions(request: ToolExposureRequest): Operation<ToolDefinition[]> {
+  *definitions(request: ToolExposureRequest): Operation<PortableToolDefinition[]> {
     const policy = (yield* ToolExposurePolicyContext.get()) ?? defaultToolExposurePolicy;
     return yield* policy.filter(request);
   },

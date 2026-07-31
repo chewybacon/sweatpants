@@ -20,7 +20,7 @@ import {
   type DurableProgramContext,
   type DurableProgramManifest,
   type DurableTool,
-  type WireElicitResultJson,
+  type ProgramElicitResult,
 } from "@sweatpants/durable-execution";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { type SchemaBinding, type PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
@@ -125,7 +125,7 @@ export type DurableProgramContextFor<
   elicit<K extends keyof TElicits & string>(
     key: K,
     request: ElicitRequestFor<TElicits[K]>,
-  ): Operation<WireElicitResultJson<JsonOutput<ExtractElicitResponse<TElicits[K]>>>>;
+  ): Operation<ProgramElicitResult<JsonOutput<ExtractElicitResponse<TElicits[K]>>>>;
 } & (TSamples extends true ? DurableSamplingContext : {}) &
   DurableExtensionContext<TExtensions>;
 

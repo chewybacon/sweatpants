@@ -49,7 +49,7 @@ export interface ElicitResponseCommand {
   toolName?: string;
   ref?: ElicitResponseData["ref"];
   elicitId: string;
-  result: ElicitResponseData["result"];
+  completion: ElicitResponseData["completion"];
   trace?: ElicitResponseData["trace"];
 }
 
@@ -325,7 +325,7 @@ export function createChatTurnState(initialConversationId?: string): ChatTurnSta
         ...(command.toolName ? { toolName: command.toolName } : {}),
         ...(command.ref ? { ref: command.ref } : {}),
         elicitId: command.elicitId,
-        result: command.result,
+        completion: command.completion,
         ...(command.trace ? { trace: command.trace } : {}),
       });
 
@@ -334,7 +334,7 @@ export function createChatTurnState(initialConversationId?: string): ChatTurnSta
           type: "LOCAL_ELICIT_RESPONSE",
           callId: command.callId,
           elicitId: command.elicitId,
-          response: command.result,
+          response: command.completion,
         },
       ];
     },

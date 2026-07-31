@@ -34,7 +34,8 @@
  */
 
 import type { Operation } from "effection";
-import type { Json } from "@sweatpants/foundation";
+import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "../../tool/types.ts";
 import { z } from "zod";
 
 const progressMessageSchema = z.object({ type: z.literal("progress") }).loose();
@@ -70,7 +71,7 @@ export interface WorkerSampleRequest extends WorkerRequestBase {
   /** How the model should choose tools */
   toolChoice?: WorkerToolChoice;
   /** JSON Schema for structured output */
-  schema?: Record<string, unknown>;
+  schema?: JsonObject;
 }
 
 /**
@@ -83,9 +84,9 @@ export interface WorkerElicitRequest extends WorkerRequestBase {
   /** Message to display to user */
   message: string;
   /** JSON Schema for expected response */
-  schema: Record<string, unknown>;
+  schema: JsonObject;
   /** Context data for the UI to render (e.g., flight options, seat map) */
-  context?: Record<string, unknown>;
+  context?: JsonObject;
 }
 
 /**
@@ -106,19 +107,8 @@ export interface WorkerResponseBase {
  */
 export interface WorkerSampleResponse extends WorkerResponseBase {
   type: "sample";
-  status: "accepted";
-  /** The LLM's response text */
-  text: string;
-  /** Model that generated the response */
-  model?: string;
-  /** Why generation stopped */
-  stopReason?: string;
-  /** Parsed structured output (if schema was provided) */
-  parsed?: unknown;
-  /** Parse error details (if parsing failed) */
-  parseError?: { message: string; rawText: string };
-  /** Tool calls (if tools were provided) */
-  toolCalls?: WorkerToolCall[];
+  /** Transport-safe facts that complete the pending sample exchange. */
+  completion: SampleExchangeCompletion;
 }
 
 /**
@@ -126,11 +116,8 @@ export interface WorkerSampleResponse extends WorkerResponseBase {
  */
 export interface WorkerElicitResponse extends WorkerResponseBase {
   type: "elicit";
-  action: "accept" | "decline" | "cancel";
-  /** User's response content (only if accept) */
-  content?: unknown;
-  /** Optional reason on decline/cancel */
-  reason?: string;
+  /** Transport-safe facts that complete the pending elicitation exchange. */
+  completion: ElicitExchangeCompletion<unknown>;
 }
 
 /**
@@ -306,25 +293,13 @@ export interface WorkerToolDefinition {
   /** Tool description */
   description?: string;
   /** JSON Schema for tool input */
-  inputSchema: Record<string, unknown>;
+  inputSchema: JsonObject;
 }
 
 /**
  * How the model should choose tools.
  */
 export type WorkerToolChoice = "auto" | "none" | "required" | { type: "tool"; name: string };
-
-/**
- * A tool call made by the model.
- */
-export interface WorkerToolCall {
-  /** Unique ID for this tool call */
-  id: string;
-  /** Tool name */
-  name: string;
-  /** Model-authored arguments; narrowed only by the authored schema at `execute`. */
-  arguments: Json;
-}
 
 // =============================================================================
 // WORKER CONTEXT INTERFACE
@@ -345,14 +320,14 @@ export interface WorkerToolContext {
   /**
    * Request user input via elicitation.
    */
-  elicit<T = unknown>(
+  elicit(
     key: string,
     options: {
       message: string;
-      schema: Record<string, unknown>;
-      context?: Record<string, unknown>;
+      schema: JsonObject;
+      context?: JsonObject;
     },
-  ): Operation<WorkerElicitResponse & { content?: T }>;
+  ): Operation<WorkerElicitResponse>;
 
   /**
    * Send a progress notification (fire-and-forget).

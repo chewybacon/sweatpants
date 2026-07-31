@@ -1,4 +1,4 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
 import { existsSync } from "node:fs";
@@ -6,8 +6,8 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import { ToolRuntimeApi } from "@sweatpants/tool-session/chat-runtime";
-import { createToolInventory } from "@sweatpants/chat-core";
+import { ToolRuntimeApi } from "@sweatpants/tool-runtime";
+import { createToolInventory } from "@sweatpants/tool-runtime";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createInMemoryToolSessionStore,

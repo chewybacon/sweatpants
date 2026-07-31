@@ -1,17 +1,14 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import type { AnyToolContract, RuntimeTool } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   PluginSessionManagerContext,
   PluginSessionRegistryContext,
 } from "@sweatpants/durable-chat-runtime/contexts";
 import { projectAvailableToolContracts } from "@sweatpants/durable-chat-runtime/tool-inventory";
-import {
-  createStrategyToolRuntime,
-  installToolRuntime,
-} from "@sweatpants/tool-session/chat-runtime";
+import { createStrategyToolRuntime, installToolRuntime } from "@sweatpants/tool-runtime";
 import {
   ProgramDriverForeignEffectsContext,
   ProgramDriverNativeToolsContext,

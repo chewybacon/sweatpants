@@ -23,6 +23,7 @@
         "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/test-rig": "workspace:*",
+        "@sweatpants/tool-runtime": "workspace:*",
         "@sweatpants/tool-runtime-local": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "effection": "catalog:",

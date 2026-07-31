@@ -52,12 +52,13 @@ export type ComponentTypeLike<TProps = any> =
   | { displayName?: string; name?: string };
 import type {
   ElicitDefinition,
+  ElicitExchangeCompletion,
   ElicitsMap,
   NormalizedElicitsMap,
   ToolExecutionKind,
   ToolSchemaArtifacts,
 } from "@sweatpants/agent-sdk";
-import type { ElicitRequest, WireElicitResult } from "./mcp-tool-types.ts";
+import type { ElicitRequest } from "./mcp-tool-types.ts";
 
 export interface RenderableProps<TResponse> {
   onRespond: (value: TResponse) => void;
@@ -134,7 +135,7 @@ export type NormalizedElicitResponseInput<D> = D extends {
 export type ElicitHandler<TKey extends string, TDef> = (
   req: ElicitRequest<TKey, any>,
   ctx: PluginClientContext<ElicitRequest<TKey, any>>,
-) => Operation<WireElicitResult<NormalizedElicitResponseInput<TDef>>>;
+) => Operation<ElicitExchangeCompletion<NormalizedElicitResponseInput<TDef>>>;
 
 /**
  * Exhaustive handler map: every key declared by the contract's elicitation
@@ -320,7 +321,7 @@ export interface PluginHandleInput {
 export interface PluginClientRegistrationInput {
   toolName: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handlers: Record<string, (req: any, ctx: any) => Operation<WireElicitResult<unknown>>>;
+  handlers: Record<string, (req: any, ctx: any) => Operation<ElicitExchangeCompletion<unknown>>>;
   schemas: Record<string, ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>>;
   artifacts?: ToolSchemaArtifacts["elicits"];
   replayTrace?: PluginReplayTraceHook;

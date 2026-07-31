@@ -1,3 +1,4 @@
+import { parseElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { type ForeignDurability, type ForeignToolDisposition } from "@sweatpants/durable-execution";
@@ -12,14 +13,14 @@ import {
   FOREIGN_TOOL_START_EFFECT,
 } from "@sweatpants/tool-session/foreign";
 
-import type { ToolInventoryEntry } from "@sweatpants/chat-core";
+import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { getToolParameterValidationErrorPayload } from "@sweatpants/tool-session/tool-parameters";
 import type {
   ToolExecution,
   ToolExecutionEvent,
   ToolExecutionRef,
   ToolRuntime,
-} from "@sweatpants/tool-session/chat-runtime";
+} from "@sweatpants/tool-runtime";
 
 const DRIVER = "chat-tool-runtime";
 const DURABILITY: ForeignDurability = "ephemeral_handle";
@@ -124,13 +125,22 @@ export function createToolRuntimeForeignEffectRegistrations(
       if (request.response.kind !== "elicit") {
         return failure("foreign_response_kind_mismatch", "Foreign response kind is invalid");
       }
+      let completion;
+      try {
+        completion = parseElicitExchangeCompletion(request.response.value);
+      } catch {
+        return failure(
+          "foreign_elicit_response_invalid",
+          "Foreign elicitation response is invalid",
+        );
+      }
       try {
         const execution = yield* options.runtime.resume({
           ref: parsed.ref,
           input: {
             type: "elicit_response",
             elicitId: parsed.elicitId,
-            result: request.response.value,
+            completion,
           },
           signal: context.cancellation,
           metadata: effectMetadata(options, context),

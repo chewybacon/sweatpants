@@ -2,26 +2,6 @@ import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { DurableTool } from "@sweatpants/durable-execution";
 import type { DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 
-export {
-  ToolExposureApi,
-  ToolExposurePolicyContext,
-  ToolInventoryApi,
-  ToolInventoryContext,
-  ToolInventoryError,
-  ToolExposureError,
-  createToolInventory,
-  defaultToolExposurePolicy,
-} from "@sweatpants/chat-core";
-export type {
-  SamplingToolDefinitionLike,
-  ToolCapabilities,
-  ToolDefinition,
-  ToolExposurePhase,
-  ToolExposurePolicy,
-  ToolInventory,
-  ToolInventoryEntry,
-} from "@sweatpants/chat-core";
-
 /** Deployment-scoped exact placement readiness used before model exposure. */
 export interface ToolPlacementReadiness {
   /** Ordinary public names with an installed executable runtime. */

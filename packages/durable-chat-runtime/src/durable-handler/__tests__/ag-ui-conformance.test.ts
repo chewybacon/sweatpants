@@ -8,7 +8,7 @@ import {
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import { createToolExecutionRef, type ToolRuntime } from "@sweatpants/tool-session/chat-runtime";
+import { createToolExecutionRef, type ToolRuntime } from "@sweatpants/tool-runtime";
 import { createProgramDriverJournalStore } from "../program-driver-journal.ts";
 import type { Message } from "@sweatpants/chat-core";
 import type { ChatHandlerSetup } from "../types.ts";
@@ -454,7 +454,7 @@ describe("strict AG-UI public conformance", () => {
               callId: ref.callId,
               toolName: ref.toolName,
               elicitId: interruptId,
-              result: { action: "accept", content: { approved: true } },
+              completion: { action: "accept", content: { approved: true } },
               trace: {
                 version: 1,
                 startedAt: 1,
@@ -855,7 +855,7 @@ describe("strict AG-UI public conformance", () => {
                 callId: "call-1",
                 elicitId: "interrupt-1",
                 toolName: "book_flight",
-                result: { action: "accept", content: { ok: true } },
+                completion: { action: "accept", content: { ok: true } },
               },
             ],
           }),

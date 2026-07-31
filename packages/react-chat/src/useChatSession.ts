@@ -12,6 +12,7 @@
  * 3. Exposing dispatch methods (send, abort, reset)
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import { run, each } from "effection";
 import { z } from "zod";
 import {
@@ -507,7 +508,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   const respondToElicit = useCallback(
     (
       elicit: { sessionId: string; callId: string; elicitId: string; toolName?: string },
-      result: { action: "accept" | "decline" | "cancel"; content?: unknown },
+      result: ElicitExchangeCompletion<unknown>,
       trace?: ToolExecutionTrace,
     ) => {
       // Dispatch an elicit_response command to the session
@@ -517,7 +518,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
         callId: elicit.callId,
         elicitId: elicit.elicitId,
         ...(elicit.toolName ? { toolName: elicit.toolName } : {}),
-        result,
+        completion: result,
         ...(trace ? { trace } : {}),
       });
     },

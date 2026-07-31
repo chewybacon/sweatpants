@@ -34,7 +34,7 @@
  */
 
 import type { Operation } from "effection";
-import type { LogLevel, ToolElicitResult, ToolSamplingCtx } from "@sweatpants/agent-sdk";
+import type { ElicitExchangeCompletion, LogLevel, ToolSamplingCtx } from "@sweatpants/agent-sdk";
 import type { JsonObject } from "@sweatpants/foundation";
 import type { ExtendedMessage } from "@sweatpants/tool-session/messages";
 
@@ -103,6 +103,10 @@ export interface WorkerTool {
  *
  * Notifications use the canonical tool-context `notify` operation.
  */
+export type WorkerElicitCompletion = ElicitExchangeCompletion<unknown> & {
+  readonly exchangeId: string;
+};
+
 export interface WorkerToolContext extends ToolSamplingCtx<ExtendedMessage> {
   /** Scope-owned cancellation signal inherited from the worker invocation. */
   readonly signal: AbortSignal;
@@ -127,12 +131,12 @@ export interface WorkerToolContext extends ToolSamplingCtx<ExtendedMessage> {
    * Request user input.
    * Suspends until response is received via transport.
    */
-  elicit<T>(
+  elicit(
     key: string,
     options: {
       message: string;
-      schema?: Record<string, unknown>;
-      context?: Record<string, unknown>;
+      schema: JsonObject;
+      context?: JsonObject;
     },
-  ): Operation<ToolElicitResult<unknown, T>>;
+  ): Operation<WorkerElicitCompletion>;
 }

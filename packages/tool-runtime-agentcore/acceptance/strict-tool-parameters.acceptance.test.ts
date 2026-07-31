@@ -1,4 +1,4 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { run, resource, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";

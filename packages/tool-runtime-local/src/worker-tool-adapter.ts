@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { RuntimeTool } from "@sweatpants/agent-sdk";
-import { requireJsonObject, type JsonObject } from "@sweatpants/foundation";
+import { completeElicitExchange, type RuntimeTool } from "@sweatpants/agent-sdk";
+import { parseJsonObject, requireJsonObject, type JsonObject } from "@sweatpants/foundation";
 import type {
   LogLevel,
   NamedSampleResult,
@@ -49,7 +49,7 @@ export function createWorkerTool(tool: RuntimeTool): WorkerTool {
     name: tool.name,
     elicitSchemas,
     handler: function* (params: unknown, workerContext: WorkerToolContext) {
-      const canonicalContext = createCanonicalWorkerContext(tool, workerContext);
+      const canonicalContext = createCanonicalWorkerContext(tool, workerContext, elicitSchemas);
       const invoke = yield* tool(canonicalContext);
       return yield* invoke(params);
     },
@@ -59,6 +59,7 @@ export function createWorkerTool(tool: RuntimeTool): WorkerTool {
 function createCanonicalWorkerContext(
   tool: RuntimeTool,
   worker: WorkerToolContext,
+  elicitSchemas: Readonly<Record<string, JsonObject>>,
 ): CanonicalRuntimeContext {
   const messages: ToolMessage[] = [];
 
@@ -138,13 +139,29 @@ function createCanonicalWorkerContext(
       return result;
     },
     *elicit(key, request) {
-      const result = yield* worker.elicit(key, {
-        message: request.message,
-        ...("context" in request && isRecord(request.context) ? { context: request.context } : {}),
-      });
-      if (result.action === "accept") {
-        messages.push(...result.exchange.messages);
+      const definition = tool.elicits[key];
+      const schema = elicitSchemas[key];
+      if (!definition || !schema) {
+        throw new Error(`Elicitation "${key}" is not declared by tool "${tool.name}"`);
       }
+      const contextData =
+        "context" in request
+          ? parseJsonObject(request.context, `tool ${tool.name} elicitation ${key} context`)
+          : undefined;
+      const response = yield* worker.elicit(key, {
+        message: request.message,
+        schema,
+        ...(contextData !== undefined ? { context: contextData } : {}),
+      });
+      const result = yield* completeElicitExchange({
+        key,
+        message: request.message,
+        context: contextData,
+        exchangeId: response.exchangeId,
+        responseSchema: definition.response,
+        completion: response,
+      });
+      if (result.action === "accept") messages.push(...result.exchange.messages);
       return result;
     },
   };
@@ -187,8 +204,4 @@ function sampleRequestToConfig(
     throw new Error("sample request requires prompt, messages, or exchanges");
   }
   return output ? { messages, ...options, schema: output } : { messages, ...options };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

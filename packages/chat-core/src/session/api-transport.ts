@@ -33,10 +33,10 @@ function deriveEnabledTools(options: StreamChatOptions): boolean | string[] | un
 }
 
 function resumeEntryForElicitResponse(response: ElicitResponseData) {
-  if (response.result.action === "cancel") {
+  if (response.completion.action === "cancel") {
     return { interruptId: response.elicitId, status: "cancelled" as const };
   }
-  if (response.result.action === "decline") {
+  if (response.completion.action === "decline") {
     return {
       interruptId: response.elicitId,
       status: "resolved" as const,
@@ -46,7 +46,7 @@ function resumeEntryForElicitResponse(response: ElicitResponseData) {
   return {
     interruptId: response.elicitId,
     status: "resolved" as const,
-    payload: { action: "accept" as const, content: response.result.content },
+    payload: { action: "accept" as const, content: response.completion.content },
   };
 }
 

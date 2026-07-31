@@ -31,15 +31,10 @@ export * from "./durable-transport.ts";
 export type {
   // Execution limits
   McpToolLimits,
-  // Elicitation types
-  ToolElicitResult,
-  WireElicitResult,
+  // MCP elicitation types
   ClientElicitConfig,
-  ElicitsMap,
   ElicitId,
   ElicitRequest,
-  // Logging
-  LogLevel,
 } from "./mcp-tool-types.ts";
 
 // Errors from unified types file
@@ -49,10 +44,6 @@ export {
   ElicitationCancelledError,
   McpToolTokenError,
   McpDisconnectError,
-  // Sample exchange helpers
-  SCHEMA_TOOL_NAME,
-  createRawSampleExchange,
-  createStructuredSampleExchange,
 } from "./mcp-tool-types.ts";
 
 // Mock runtime helpers for adapter tests.

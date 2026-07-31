@@ -1,5 +1,4 @@
 import { resource, type Operation, type Stream, type Subscription } from "effection";
-import type { WireElicitResult, WireSampleResult } from "@sweatpants/agent-sdk";
 import type {
   AgentCoreToolEvent,
   AgentCoreToolRuntimeResponse,
@@ -223,7 +222,7 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
       session.acceptedCommands.set(request.commandId, commandFingerprint(request));
       session.pending = undefined;
       session.status = "completed";
-      const response = request.response as WireElicitResult<unknown>;
+      const response = request.response;
       const result = response.action === "accept" ? response.content : { action: response.action };
       return streamFromResponses([
         eventResponse(session, { type: "result", result }),
@@ -269,7 +268,7 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
       session.acceptedCommands.set(request.commandId, commandFingerprint(request));
       session.pending = undefined;
       session.status = "completed";
-      const response = request.response as WireSampleResult;
+      const response = request.response;
       return streamFromResponses([
         eventResponse(session, { type: "result", result: { text: response.text } }),
         statusResponse(session),

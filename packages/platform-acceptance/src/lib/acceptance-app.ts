@@ -1,4 +1,4 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -12,7 +12,7 @@ import {
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
-import { createToolInventory, ToolInventoryContext } from "@sweatpants/chat-core";
+import { createToolInventory, ToolInventoryContext } from "@sweatpants/tool-runtime";
 import { toModelMessages } from "@sweatpants/tool-session/messages";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";

@@ -8,8 +8,6 @@ export default defineConfig({
     foreign: "src/foreign.ts",
     "mcp/index": "src/mcp/index.ts",
     "tool-parameters": "src/tool-parameters.ts",
-    "chat-runtime": "src/chat-runtime.ts",
-    "tool-inventory": "src/tool-inventory.ts",
     messages: "src/messages.ts",
     "elicit-context/index": "src/elicit-context/index.ts",
   },

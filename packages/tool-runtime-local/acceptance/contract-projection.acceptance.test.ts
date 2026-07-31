@@ -1,4 +1,4 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 /**
  * F4: portable tool artifact projection.
  *

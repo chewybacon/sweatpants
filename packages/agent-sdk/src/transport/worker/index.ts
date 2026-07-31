@@ -45,7 +45,7 @@
  *     messages: [{ role: "user", content: "Hello" }]
  *   });
  *
- *   return { greeting: response.text };
+ *   return { greeting: response.completion.text };
  * });
  * ```
  *
@@ -82,7 +82,6 @@ export type {
   WorkerModelPreferences,
   WorkerToolDefinition,
   WorkerToolChoice,
-  WorkerToolCall,
   // Context type
   WorkerToolContext,
 } from "./types.ts";

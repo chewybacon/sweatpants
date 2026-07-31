@@ -119,8 +119,7 @@ describe("Worker Transport Type Guards", () => {
       const response: WorkerSampleResponse = {
         id: "req-1",
         type: "sample",
-        status: "accepted",
-        text: "Hello back!",
+        completion: { text: "Hello back!" },
       };
       expect(isOutOfBandMessage(response)).toBe(false);
     });

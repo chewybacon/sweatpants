@@ -944,10 +944,10 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
     if (outcome.status === "ok") {
       if (pull.descriptor.kind === "elicit") {
-        // One WireElicitResult algebra: accepted content is validated against
-        // the declared content schema; decline/cancel keep only bounded safe
+        // One durable-program elicitation result algebra: accepted content is
+        // validated against the declared content schema; decline/cancel keep only bounded safe
         // fields and never run the content validator.
-        const envelope = parseWireElicitEnvelope(outcome.value);
+        const envelope = parseProgramElicitResult(outcome.value);
         if (!envelope) {
           return { status: "rejected", code: "schema_validation_failed" };
         }
@@ -3398,7 +3398,7 @@ function installedOrRecordedDescriptor(
   return descriptor;
 }
 
-function parseWireElicitEnvelope(
+function parseProgramElicitResult(
   value: Json,
 ):
   | { action: "accept"; content: Json }

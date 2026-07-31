@@ -1,8 +1,8 @@
-import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-session/chat-runtime";
-import { createToolInventoryEntry } from "@sweatpants/tool-session/tool-inventory";
+import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-runtime";
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { describe, expect, it } from "vitest";
 import { action, resource, run, type Operation, type Stream } from "effection";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/chat-core";
+import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   installModelProvider,
   ModelProviderModelContext,

@@ -158,14 +158,14 @@ function errorEvent(name: string, error: unknown): RuntimeEvent {
   };
 }
 
-function toBridgeElicitResult(response: RawElicitResponse): ElicitResponse["result"] {
+function toBridgeElicitCompletion(response: RawElicitResponse): ElicitResponse["completion"] {
   if (response.action === "accept") {
     return { action: "accept", content: response.content };
   }
   return { action: response.action };
 }
 
-function toBridgeSampleResult(response: RawSampleResponse): SampleResponse["result"] {
+function toBridgeSampleCompletion(response: RawSampleResponse): SampleResponse["completion"] {
   const result: Record<string, unknown> = { text: response.text };
   if (response.model !== undefined) {
     result["model"] = response.model;
@@ -182,7 +182,7 @@ function toBridgeSampleResult(response: RawSampleResponse): SampleResponse["resu
   if (response.toolCalls !== undefined) {
     result["toolCalls"] = response.toolCalls;
   }
-  return result as unknown as SampleResponse["result"];
+  return result as unknown as SampleResponse["completion"];
 }
 
 export interface RuntimeSessionContext {
@@ -760,7 +760,7 @@ export class RuntimeSessionRegistry {
               if (isTerminalStatus(session.status)) {
                 return;
               }
-              event.responseSignal.send({ result: toBridgeSampleResult(response) });
+              event.responseSignal.send({ completion: toBridgeSampleCompletion(response) });
             },
             (error: unknown) => this.failSession(session, "InternalSamplingError", error),
           );
@@ -1026,7 +1026,7 @@ export class RuntimeSessionRegistry {
     pending.deferred?.resolve(request.response);
     pending.bridge?.signal.send({
       id: pending.bridge.requestId,
-      result: toBridgeElicitResult(request.response),
+      completion: toBridgeElicitCompletion(request.response),
     });
     await this.waitForPauseOrTerminal(session);
     return this.drain(request.toolSessionId, pending.eventSeq ?? 0, context);
@@ -1058,7 +1058,7 @@ export class RuntimeSessionRegistry {
     session.pending = undefined;
     session.status = "running";
     pending.deferred?.resolve(request.response);
-    pending.bridge?.signal.send({ result: toBridgeSampleResult(request.response) });
+    pending.bridge?.signal.send({ completion: toBridgeSampleCompletion(request.response) });
     await this.waitForPauseOrTerminal(session);
     return this.drain(request.toolSessionId, pending.eventSeq ?? 0, context);
   }

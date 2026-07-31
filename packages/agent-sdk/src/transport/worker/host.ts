@@ -36,6 +36,7 @@
  * @packageDocumentation
  */
 
+import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "../../tool/types.ts";
 import { resource, spawn, type Operation } from "effection";
 import { useWorker, type WorkerResource } from "@effectionx/worker";
 import type {
@@ -44,6 +45,8 @@ import type {
   WorkerResult,
   WorkerInitData,
   WorkerProgressMessage,
+  WorkerElicitResponse,
+  WorkerSampleResponse,
 } from "./types.ts";
 
 // Re-define ForEachContext locally since TypeScript has trouble resolving it
@@ -262,45 +265,9 @@ export function generateRequestId(prefix = "req"): string {
  */
 export function createSampleResponse(
   id: string,
-  options: {
-    text: string;
-    model?: string;
-    stopReason?: string;
-    parsed?: unknown;
-    parseError?: { message: string; rawText: string };
-    toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
-  },
-): WorkerResponse {
-  const response: WorkerResponse = {
-    id,
-    type: "sample",
-    status: "accepted",
-    text: options.text,
-  };
-
-  // Only add optional properties if they are defined (for exactOptionalPropertyTypes)
-  if (options.model !== undefined) {
-    (response as { model?: string }).model = options.model;
-  }
-  if (options.stopReason !== undefined) {
-    (response as { stopReason?: string }).stopReason = options.stopReason;
-  }
-  if (options.parsed !== undefined) {
-    (response as { parsed?: unknown }).parsed = options.parsed;
-  }
-  if (options.parseError !== undefined) {
-    (response as { parseError?: { message: string; rawText: string } }).parseError =
-      options.parseError;
-  }
-  if (options.toolCalls !== undefined) {
-    (
-      response as {
-        toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
-      }
-    ).toolCalls = options.toolCalls;
-  }
-
-  return response;
+  completion: SampleExchangeCompletion,
+): WorkerSampleResponse {
+  return { id, type: "sample", completion };
 }
 
 /**
@@ -308,24 +275,7 @@ export function createSampleResponse(
  */
 export function createElicitResponse(
   id: string,
-  options: {
-    action: "accept" | "decline" | "cancel";
-    content?: unknown;
-    reason?: string;
-  },
-): WorkerResponse {
-  if (options.action === "accept") {
-    return {
-      id,
-      type: "elicit",
-      action: "accept",
-      content: options.content,
-    };
-  }
-  return {
-    id,
-    type: "elicit",
-    action: options.action,
-    ...(options.reason !== undefined && { reason: options.reason }),
-  };
+  completion: ElicitExchangeCompletion<unknown>,
+): WorkerElicitResponse {
+  return { id, type: "elicit", completion };
 }

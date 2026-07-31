@@ -20,6 +20,7 @@
  */
 
 import { workerMain } from "@effectionx/worker";
+import type { JsonObject } from "@sweatpants/foundation";
 import { useAbortSignal, type Operation, type Subscription } from "effection";
 import type {
   WorkerRequest,
@@ -134,14 +135,14 @@ export async function runToolWorker<T = unknown>(handler: ToolWorkerHandler<T>):
           return yield* sendRequestToHost<WorkerSampleRequest, WorkerSampleResponse>(request);
         },
 
-        *elicit<TContent>(
+        *elicit(
           key: string,
           options: {
             message: string;
-            schema: Record<string, unknown>;
-            context?: Record<string, unknown>;
+            schema: JsonObject;
+            context?: JsonObject;
           },
-        ): Operation<WorkerElicitResponse & { content?: TContent }> {
+        ): Operation<WorkerElicitResponse> {
           const id = generateRequestId();
           const request: WorkerElicitRequest = {
             id,
@@ -152,9 +153,7 @@ export async function runToolWorker<T = unknown>(handler: ToolWorkerHandler<T>):
             ...(options.context !== undefined && { context: options.context }),
           };
 
-          return yield* sendRequestToHost<WorkerElicitRequest, WorkerElicitResponse>(
-            request,
-          ) as Operation<WorkerElicitResponse & { content?: TContent }>;
+          return yield* sendRequestToHost<WorkerElicitRequest, WorkerElicitResponse>(request);
         },
 
         // Progress is now sent FROM host TO worker, so this becomes a no-op log

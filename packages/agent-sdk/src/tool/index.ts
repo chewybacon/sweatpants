@@ -1,5 +1,15 @@
 export { createTool } from "./create.ts";
 export { SampleValidationError } from "./types.ts";
+export {
+  SCHEMA_TOOL_NAME,
+  completeElicitExchange,
+  completeSampleExchange,
+  createRawSampleExchange,
+  createStructuredSampleExchange,
+  parseElicitExchangeCompletion,
+  type CompleteElicitExchangeOptions,
+  type CompleteSampleExchangeOptions,
+} from "./exchange.ts";
 export { createDurableTool } from "./durable-create.ts";
 export {
   defineDurableContextExtension,
@@ -63,7 +73,7 @@ export type {
   ToolNamedSampleCtx,
   ToolSamplingCtx,
   ToolElicitResult,
-  WireElicitResult,
+  ElicitExchangeCompletion,
   ElicitDefinition,
   ElicitEntry,
   ElicitsMap,
@@ -85,10 +95,10 @@ export type {
   SampleResultWithToolCalls,
   SampleToolsResult,
   SampleSchemaResult,
-  WireSampleResult,
-  WireSampleResultBase,
-  WireSampleResultWithParsed,
-  WireSampleResultWithToolCalls,
+  SampleExchangeCompletion,
+  SampleExchangeCompletionBase,
+  ParsedSampleExchangeCompletion,
+  ToolCallSampleExchangeCompletion,
   ElicitExchange,
   SampleExchange,
   ToolMessage,

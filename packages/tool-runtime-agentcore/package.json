@@ -72,6 +72,7 @@
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
+        "@sweatpants/tool-runtime": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "redis": "^4.7.0",
         "ws": "catalog:",

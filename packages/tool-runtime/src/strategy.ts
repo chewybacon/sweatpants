@@ -8,29 +8,7 @@ import {
   type ToolExecutionStrategy,
   type ToolResumeRequest,
   type ToolRuntime,
-} from "./chat-runtime-contract.ts";
-export {
-  ToolRuntimeApi,
-  ToolRuntimeError,
-  ToolRuntimePort,
-  installToolRuntime,
-} from "./chat-runtime-contract.ts";
-export type {
-  ElicitToolRequest,
-  PendingToolExecution,
-  PendingToolRequest,
-  ToolContinuationInput,
-  ToolContinuationPayload,
-  ToolExecuteRequest,
-  ToolExecution,
-  ToolExecutionContext,
-  ToolExecutionError,
-  ToolExecutionEvent,
-  ToolExecutionRef,
-  ToolExecutionStrategy,
-  ToolResumeRequest,
-  ToolRuntime,
-} from "./chat-runtime-contract.ts";
+} from "./contract.ts";
 
 export interface StrategyToolRuntimeOptions {
   id?: string;
@@ -118,9 +96,7 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
 
     *resume(request: ToolResumeRequest): Operation<ToolExecution> {
       for (const strategy of strategies) {
-        if (!strategy.resume) {
-          continue;
-        }
+        if (!strategy.resume) continue;
         try {
           return yield* strategy.resume(request.ref, request.input, {
             runtimeId,
@@ -129,9 +105,7 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
             ...(request.metadata ? { metadata: request.metadata } : {}),
           });
         } catch (error) {
-          if (error instanceof ToolRuntimeError && error.code === "EXECUTION_NOT_FOUND") {
-            continue;
-          }
+          if (error instanceof ToolRuntimeError && error.code === "EXECUTION_NOT_FOUND") continue;
           throw error;
         }
       }
@@ -143,16 +117,12 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
 
     *abort(ref: ToolExecutionRef, reason?: string): Operation<void> {
       for (const strategy of strategies) {
-        if (!strategy.abort) {
-          continue;
-        }
+        if (!strategy.abort) continue;
         try {
           yield* strategy.abort(ref, reason, { runtimeId });
           return;
         } catch (error) {
-          if (error instanceof ToolRuntimeError && error.code === "EXECUTION_NOT_FOUND") {
-            continue;
-          }
+          if (error instanceof ToolRuntimeError && error.code === "EXECUTION_NOT_FOUND") continue;
           throw error;
         }
       }
