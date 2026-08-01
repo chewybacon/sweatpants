@@ -454,7 +454,7 @@ export function verifyPinnedProgramCatalog(catalog: PinnedProgramCatalog): void 
  * catalog. The digest covers the canonical entries, so verifying it also
  * authenticates the structural shape of every entry.
  */
-export function decodePinnedProgramCatalog(value: unknown): PinnedProgramCatalog {
+function decodePinnedProgramCatalog(value: unknown): PinnedProgramCatalog {
   const parsed = pinnedProgramCatalogSchema.safeParse(value);
   if (!parsed.success) {
     throw new CrankError("invalid_manifest", "Program catalog shape is invalid");

@@ -159,7 +159,7 @@ export function createHeadlessCodingService(options: {
 }
 
 /** Deterministic demo model; production injects the deployment's model service. */
-export function createScriptedCodingModelSampleProvider(): CodingModelSampleProvider {
+function createScriptedCodingModelSampleProvider(): CodingModelSampleProvider {
   return {
     *sample(request) {
       const transcript = JSON.stringify(request.messages);

@@ -14,7 +14,6 @@ import {
   textResource,
 } from "@sweatpants/agent-sdk";
 import {
-  CHAT_MODEL_SAMPLE_EFFECT,
   acceptChatTurn,
   defineChatProgram,
   modelReadable,
@@ -37,8 +36,6 @@ import { defineReviewerProgram, type ReviewInput } from "./reviewer-program.ts";
 import { REFERENCE_REVIEWER_ARTIFACT_DIGEST } from "./reviewer-artifact.generated.ts";
 
 export { REFERENCE_REVIEWER_ARTIFACT_DIGEST } from "./reviewer-artifact.generated.ts";
-export { CHAT_MODEL_SAMPLE_EFFECT };
-
 export type AskParentInput = { question: string; rationale?: string };
 export type AskParentOutput =
   | { status: "answered"; answer: string; source?: string }

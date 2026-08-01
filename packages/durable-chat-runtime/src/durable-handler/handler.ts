@@ -111,8 +111,6 @@ import {
 } from "../index.ts";
 import { assertJson } from "@sweatpants/foundation";
 
-export { assertPendingResumeConsistency } from "../projection.ts";
-
 const MAX_CHAT_REQUEST_BYTES = 2 * 1024 * 1024;
 
 // =============================================================================

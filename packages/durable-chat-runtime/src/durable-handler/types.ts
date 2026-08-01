@@ -24,7 +24,6 @@ export type {
   DurableStreamEvent,
   DurableStreamParams,
   ElicitResponse,
-  ModelSelection,
   PluginAbortRequest,
 } from "../handler/chat-types.ts";
 
