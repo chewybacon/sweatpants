@@ -78,6 +78,12 @@
         "typescript/no-unsafe-type-assertion": "off",
         "typescript/no-floating-promises": "off",
         "typescript/no-unnecessary-type-assertion": "warn",
+        "typescript/no-unnecessary-condition": [
+            "warn",
+            {
+                "allowConstantLoopConditions": true
+            }
+        ],
         "typescript/no-unnecessary-type-arguments": "warn",
         "typescript/no-base-to-string": "warn",
         "typescript/no-redundant-type-constituents": "warn",

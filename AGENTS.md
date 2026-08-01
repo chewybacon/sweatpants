@@ -239,6 +239,22 @@ If calling it twice yields two independent stateful things, it is `create*`. If
 calling it twice is meaningless, it is `define*`. If its effect is bounded by a
 scope, it is `install*`.
 
+### Generator and resilience rules
+
+- Never use a bare `yield*` as an operand of another expression. Parenthesize it
+  first: `(yield* operation())`. `yield*` binds more loosely than operators, so
+  `yield* operation() || fallback` does not have the `await`-like precedence a
+  reader may expect and can silently skip the right-hand branch.
+- Every production `catch` that intentionally makes a failure non-fatal MUST
+  have a test-harness observation path. Wire the error to a scenario probe,
+  failure list, metric, or teardown assertion; resilience without re-armed
+  tests is silent contract drift.
+- When enabling or satisfying a lint rule, prefer rule options first, then a
+  targeted suppression with a reason, over rewriting correct code into a
+  semantically equivalent but less readable form. If a rule fights an
+  established repository idiom, configure the rule; do not launder the idiom
+  into syntax that merely escapes inspection.
+
 ## Landing the Plane (Session Completion)
 
 Before ending a coding session:

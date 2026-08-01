@@ -466,6 +466,11 @@ const streamEventSchema = z.discriminatedUnion("type", [
   reasoningSchema,
 ]);
 
+type AssertAssignable<A extends B, B> = A;
+// Intentional compile-time codec drift tripwire; fallow must not remove it.
+// fallow-ignore-next-line unused-type
+export type _DecodeDrift = AssertAssignable<z.output<typeof streamEventSchema>, StreamEvent>;
+
 const storedConversationCheckpointSchema = z
   .object({
     version: z.literal(1),
