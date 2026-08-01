@@ -239,6 +239,9 @@ function createSharedBuffer<T>(id: string, state: SharedBufferState<T>): TokenBu
         lsn: state.tokens.length,
       };
     },
+    *readLatest(): Operation<{ token: T | undefined; lsn: number }> {
+      return { token: state.tokens[state.tokens.length - 1], lsn: state.tokens.length };
+    },
 
     *isComplete(): Operation<boolean> {
       return state.completed;

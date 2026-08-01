@@ -1,3 +1,3 @@
 /** Generated from src/index.ts, src/reviewer-program.ts. Run pnpm generate:artifact after source changes. */
 export const REFERENCE_REVIEWER_ARTIFACT_DIGEST =
-  "2c3c7d8d43c951f70c8167c6cf68d0dde3b0579d5b157791e29ec59b7b71dc5c";
+  "7ab74c839d50922452c37c8b00c387db701f9798c5a0aeda4d44c05972f2ae3e";

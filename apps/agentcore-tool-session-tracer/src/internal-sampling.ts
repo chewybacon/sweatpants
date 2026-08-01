@@ -96,7 +96,6 @@ function assertAgentCoreUsableModel(selection: ModelSelection): void {
   }
 }
 
-
 function isSchemaToolCall(toolCall: ModelSampleToolCall): boolean {
   return toolCall.name === "__schema__" || toolCall.name === "schema__";
 }

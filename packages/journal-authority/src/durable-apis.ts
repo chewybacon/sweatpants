@@ -141,6 +141,37 @@ function* executeDurableEffectAuthorization(
   return resolution;
 }
 
+function* resumeResolvedOperation(
+  authority: DurableJournalAuthorityService,
+  attachment: ProgramAttachment,
+  request: ProgramRunRequest,
+  step: Extract<ProgramStep, { type: "operation" }>,
+  pullIndex: number,
+  programCapability: string,
+  replayError: string,
+): Operation<{ step: ProgramStep; pullIndex: number }> {
+  const replayed = yield* authority.reserve({
+    sessionId: request.attach.sessionId,
+    turnId: turnIdFor(request.attach.taskId),
+    taskId: request.attach.taskId,
+    actionIndex: step.actionIndex,
+    pullIndex,
+    descriptor: step.descriptor,
+    programCapability,
+  });
+  if (replayed.status !== "resolved") {
+    throw new CrankError("runtime_error", replayError);
+  }
+  const nextStep = yield* ProgramPeer.operations.step(attachment, {
+    type: "resume",
+    actionIndex: step.actionIndex,
+    outcome: replayed.outcome,
+    receipt: replayed.receipt,
+    replayed: false,
+  });
+  return { step: nextStep, pullIndex: pullIndex + 1 };
+}
+
 function* acknowledgeDurableEffect(
   authorization: DurableEffectAuthorization,
   outcome: OperationOutcome,
@@ -277,14 +308,16 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           }
         }
         if (step.type === "completed") {
-          if (isCancellationInProgress(cancellation) && cancellation.type !== "unwinding") {
-            cancellation = yield* authority.beginCancellationUnwind(
-              request.attach.sessionId,
-              request.attach.taskId,
-              frontierProof ? { proof: frontierProof, step } : undefined,
-            );
-            frontierProof = undefined;
-          }
+          const unwound = yield* unwindCancellationIfNeeded(
+            authority,
+            request.attach.sessionId,
+            request.attach.taskId,
+            cancellation,
+            frontierProof,
+            step,
+          );
+          cancellation = unwound.cancellation;
+          frontierProof = unwound.frontierProof;
           const proof = frontierProof;
           yield* JournalAuthority.operations.complete({
             sessionId: request.attach.sessionId,
@@ -301,17 +334,17 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
         if (step.type === "failed") {
           const cancelled =
             step.error.code === "program_cancelled" || isCancellationInProgress(cancellation);
-          if (
-            cancelled &&
-            isCancellationInProgress(cancellation) &&
-            cancellation.type !== "unwinding"
-          ) {
-            cancellation = yield* authority.beginCancellationUnwind(
+          if (cancelled) {
+            const unwound = yield* unwindCancellationIfNeeded(
+              authority,
               request.attach.sessionId,
               request.attach.taskId,
-              frontierProof ? { proof: frontierProof, step } : undefined,
+              cancellation,
+              frontierProof,
+              step,
             );
-            frontierProof = undefined;
+            cancellation = unwound.cancellation;
+            frontierProof = unwound.frontierProof;
           }
           const proof = frontierProof;
           try {
@@ -522,26 +555,17 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           if (resolution.status === "rejected") {
             throw new CrankError(resolution.code);
           }
-          const replayed = yield* authority.reserve({
-            sessionId: request.attach.sessionId,
-            turnId: turnIdFor(request.attach.taskId),
-            taskId: request.attach.taskId,
-            actionIndex: step.actionIndex,
+          const resumed = yield* resumeResolvedOperation(
+            authority,
+            attachment,
+            request,
+            step,
             pullIndex,
-            descriptor: step.descriptor,
             programCapability,
-          });
-          if (replayed.status !== "resolved") {
-            throw new CrankError("runtime_error", "Resolved recording was not replayable");
-          }
-          pullIndex += 1;
-          step = yield* ProgramPeer.operations.step(attachment, {
-            type: "resume",
-            actionIndex: step.actionIndex,
-            outcome: replayed.outcome,
-            receipt: replayed.receipt,
-            replayed: false,
-          });
+            "Resolved recording was not replayable",
+          );
+          step = resumed.step;
+          pullIndex = resumed.pullIndex;
           continue;
         }
         if (
@@ -573,6 +597,16 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           }
           const journal = authority.journalIdentity();
           const effectResolver = step.descriptor.resolver;
+          const authorization: DurableEffectAuthorization = {
+            sessionId: request.attach.sessionId,
+            taskId: request.attach.taskId,
+            pullId: reservation.pullId,
+            attemptId: reservation.attemptId,
+            descriptor: authorizationDescriptor,
+            effectContractDigest: authorizationDigest,
+            resolutionCapability: reservation.resolutionCapability,
+            resolver: effectResolver,
+          };
           let resolution: ResolveOperationResult;
           let executionOutcome: OperationOutcome | undefined;
           if (route.placement === "execution") {
@@ -616,16 +650,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
                 driverKind: driverKind(request.attach.route),
               },
               function* () {
-                return yield* executeDurableEffectAuthorization({
-                  sessionId: request.attach.sessionId,
-                  taskId: request.attach.taskId,
-                  pullId: reservation.pullId,
-                  attemptId: reservation.attemptId,
-                  descriptor: authorizationDescriptor,
-                  effectContractDigest: authorizationDigest,
-                  resolutionCapability: reservation.resolutionCapability,
-                  resolver: effectResolver,
-                });
+                return yield* executeDurableEffectAuthorization(authorization);
               },
             );
           }
@@ -633,40 +658,19 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
             throw new CrankError(resolution.code);
           }
           if (executionOutcome !== undefined) {
-            yield* acknowledgeDurableEffect(
-              {
-                sessionId: request.attach.sessionId,
-                taskId: request.attach.taskId,
-                pullId: reservation.pullId,
-                attemptId: reservation.attemptId,
-                descriptor: authorizationDescriptor,
-                effectContractDigest: authorizationDigest,
-                resolutionCapability: reservation.resolutionCapability,
-                resolver: effectResolver,
-              },
-              executionOutcome,
-            );
+            yield* acknowledgeDurableEffect(authorization, executionOutcome);
           }
-          const replayed = yield* authority.reserve({
-            sessionId: request.attach.sessionId,
-            turnId: turnIdFor(request.attach.taskId),
-            taskId: request.attach.taskId,
-            actionIndex: step.actionIndex,
+          const resumed = yield* resumeResolvedOperation(
+            authority,
+            attachment,
+            request,
+            step,
             pullIndex,
-            descriptor: step.descriptor,
             programCapability,
-          });
-          if (replayed.status !== "resolved") {
-            throw new CrankError("runtime_error", "Resolved effect was not replayable");
-          }
-          pullIndex += 1;
-          step = yield* ProgramPeer.operations.step(attachment, {
-            type: "resume",
-            actionIndex: step.actionIndex,
-            outcome: replayed.outcome,
-            receipt: replayed.receipt,
-            replayed: false,
-          });
+            "Resolved effect was not replayable",
+          );
+          step = resumed.step;
+          pullIndex = resumed.pullIndex;
           continue;
         }
         shutdownReason = "parked";
@@ -751,6 +755,30 @@ function isCancellationInProgress(
     state.type === "cancelling_children" ||
     state.type === "unwinding"
   );
+}
+
+function* unwindCancellationIfNeeded(
+  authority: DurableJournalAuthorityService,
+  sessionId: string,
+  taskId: string,
+  cancellation: DurableCancellationState,
+  frontierProof: RestoredFrontierProof | undefined,
+  step: ProgramStep,
+): Operation<{
+  cancellation: DurableCancellationState;
+  frontierProof: RestoredFrontierProof | undefined;
+}> {
+  if (isCancellationInProgress(cancellation) && cancellation.type !== "unwinding") {
+    return {
+      cancellation: yield* authority.beginCancellationUnwind(
+        sessionId,
+        taskId,
+        frontierProof ? { proof: frontierProof, step } : undefined,
+      ),
+      frontierProof: undefined,
+    };
+  }
+  return { cancellation, frontierProof };
 }
 
 function shouldInjectBeforeStep(step: ProgramStep, frontier: CancellationFrontier): boolean {

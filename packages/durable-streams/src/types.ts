@@ -36,6 +36,8 @@ export interface TokenBuffer<T> {
     activationEpoch: number;
   }): Operation<TokenBufferWriter<T>>;
   read(afterLSN?: number): Operation<{ tokens: T[]; lsn: number }>;
+  /** O(1)-materialization tail read for index/pointer buffers. */
+  readLatest?(): Operation<{ token: T | undefined; lsn: number }>;
   isComplete(): Operation<boolean>;
   getError(): Operation<Error | null>;
   waitForChange(afterLSN: number): Operation<void>;

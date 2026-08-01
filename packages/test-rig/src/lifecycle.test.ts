@@ -83,6 +83,25 @@ describe("withTestRig lifecycle", () => {
     ).rejects.toThrow(/barrier_timeout|scenario_timeout|RUN_ERROR|unused/);
   });
 
+  it("fails teardown when the application observed a checkpoint error", async () => {
+    await expect(
+      withTestRig(
+        {
+          ...baseOptions,
+          createApplication: () => ({
+            ...idleApplication(),
+            scenario: {
+              async checkpointErrors() {
+                return [new Error("checkpoint drift")];
+              },
+            },
+          }),
+        },
+        async () => "ok",
+      ),
+    ).rejects.toThrow(/Checkpoint persistence failed during scenario/);
+  });
+
   it("closes cleanly when the body succeeds with no interactions", async () => {
     const result = await withTestRig(
       { ...baseOptions, createApplication: idleApplication },

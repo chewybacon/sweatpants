@@ -24,7 +24,7 @@ Current inventory totals:
 | Record | Count |
 | --- | ---: |
 | Historical validation records | 87 |
-| Manual shape owners | 318 |
+| Manual shape owners | 319 |
 | `B` external boundary | 105 |
 | `R` same-domain revalidation | 151 |
 | `S` typed semantic verification | 15 |
@@ -68,7 +68,7 @@ Strict schemas own archive, manifest, builder, target, program, file, digest, bo
 
 `packages/durable-chat-runtime/src/response-streams/conversation-checkpoint.ts` is now the sole versioned conversation-checkpoint codec. It owns the closed persisted AG-UI event envelope, nested message/tool/interrupt/replay structures, distinct collection bounds, total byte bounds, encode/decode symmetry, and malformed/version rejection. The event stream writes through `encodeConversationCheckpoint`; the durable handler restores only through `decodeConversationCheckpoint` and maps codec failure to the existing `CrankError` boundary. The former weak `z.record(z.string(), z.json())` array and `as unknown as StreamEvent[]` restore path were deleted.
 
-Checkpoint persistence is explicitly short-term best effort: encode, replay, storage, and replacement failures are observable but cannot fail an already-completed chat turn. Checkpoints are now append-only versions, so the last valid restore point survives a failed update. The current 8 MiB total bound remains a protective operational limit; no message truncation or history-windowing is silently introduced. Long-term full-history segmentation versus whole-turn checkpoint compaction remains a separate product decision.
+Checkpoint persistence is explicitly short-term best effort: encode, replay, storage, and replacement failures are observable but cannot fail an already-completed chat turn. Checkpoints now write immutable version artifacts, publish a complete pointer, and compact the previous pointer/artifact only after publication; the last valid restore point survives failed replacement. Pointer slots use O(1) tail reads where the durable buffer provides them, while full checkpoint snapshots are never accumulated in one version log. The current 8 MiB total bound remains a protective operational limit; no message truncation or history-windowing is silently introduced. Test Rig treats any observed checkpoint error as a teardown failure. Long-term full-history segmentation versus whole-turn checkpoint compaction remains a separate product decision.
 
 `packages/durable-chat-runtime/src/durable-handler/local-program-host.ts` now parses restored pinned program catalogs with a closed nested schema covering program and foreign-tool variants, pinned identities, durability discriminants, target keys, and digest syntax. The parser delegates catalog digest and key/target consistency to `verifyPinnedProgramCatalog`. Typed in-memory request paths call only the semantic verifier, eliminating same-domain structural reparsing. The obsolete `parseCatalog` API and parser-return cast were removed.
 
@@ -122,7 +122,7 @@ Agent SDK worker out-of-band message recognition now uses bounded schemas. Chat 
 
 ### Durable Effects contracts and test rig history
 
-`durable-effects` adopts its own pinned Zod dependency and now proves the framework-owned `model.sample` input, output, and cancellation-partial structures with strict schemas behind the unchanged Standard Schema registry contract. Effect-error code extraction also parses instead of inspecting. `test-rig` history normalization parses wire records and tool arguments through bounded schemas while remaining a deliberately tolerant provider-history projection.
+`model-sampling` owns the framework-owned `model.sample` input, output, and cancellation-partial structures with strict schemas behind the durable Standard Schema registry contract. Effect-error code extraction also parses instead of inspecting. `test-rig` history normalization parses wire records and tool arguments through bounded schemas while remaining a deliberately tolerant provider-history projection.
 
 ### Durable Chat engine and client surfaces
 
@@ -186,7 +186,7 @@ Durable Chat now computes a pure `ModelInvocationPlan` from the parsed command, 
 
 Test Rig now passively observes the same application response body consumed by Chat Core and React; it does not replace the AG-UI producer. A transform taps emitted NDJSON/SSE bytes without cloning the stream, validates the pinned AG-UI event vocabulary, tracks run/message/tool lifecycle, rejects obsolete public events, and exposes causal barriers to scenario scripts. React hook acceptance drives the real HTTP Responses simulator through pi-ai, Durable Chat, worker-backed tools, AG-UI, Chat Core, and `useChat`, then validates the emitted protocol and hook-visible result together across in-process and HTTP bindings. The scenario also proves activity separation and that private system prompts do not enter public events.
 
-With that path authoritative, 29 mock-backed, synthetic-event, implementation-state, duplicate stream/HTTP smoke, simple export/helper, and upstream Effection suites were deleted (nearly 9,000 lines). Platform Acceptance also stopped running every semantic scenario through both bindings: semantics now run in-process, while HTTP is reserved for reconnect, streaming, connection isolation, generation replacement, cancellation propagation, and one complex parity flow. Pairwise A2A posture coverage replaced Cartesian binding coverage, removing 36 duplicate acceptance cases. Chat Core no longer directly tests reducer/class state arrangements; retained tests cover public functional contracts such as authoring, policy, replay bounds, projection facts, and a compact codec boundary. React Chat now relies on rendering and simulator-to-hook acceptance rather than mock plugin executors. Durable Chat retains authority/fencing/store/parser tests while model/tool/AG-UI/session/HTTP behavior is covered through Test Rig, React, and Platform Acceptance. A charter gate prevents mock providers, local AG-UI schema mirrors, and the removed internal-state suites from returning. The package-test coverage baseline was deliberately lowered after each deletion; it now records 1,039 collected package tests (1,015 passed, 17 skipped). The lower count is intentional consolidation, not missing imports.
+With that path authoritative, 29 mock-backed, synthetic-event, implementation-state, duplicate stream/HTTP smoke, simple export/helper, and upstream Effection suites were deleted (nearly 9,000 lines). Platform Acceptance also stopped running every semantic scenario through both bindings: semantics now run in-process, while HTTP is reserved for reconnect, streaming, connection isolation, generation replacement, cancellation propagation, and one complex parity flow. Pairwise A2A posture coverage replaced Cartesian binding coverage, removing 36 duplicate acceptance cases. Chat Core no longer directly tests reducer/class state arrangements; retained tests cover public functional contracts such as authoring, policy, replay bounds, projection facts, and a compact codec boundary. React Chat now relies on rendering and simulator-to-hook acceptance rather than mock plugin executors. Durable Chat retains authority/fencing/store/parser tests while model/tool/AG-UI/session/HTTP behavior is covered through Test Rig, React, and Platform Acceptance. A charter gate prevents mock providers, local AG-UI schema mirrors, and the removed internal-state suites from returning. The package-test coverage baseline was deliberately lowered after each deletion; it now records 1,043 collected package tests (1,019 passed, 17 skipped). The lower count is intentional consolidation, not missing imports.
 
 ### Canonical Chat Core session projection
 
@@ -213,10 +213,10 @@ The projection is now an immutable Elm-style machine: `SessionProjectionState + 
 | Chat Core tests | 39 passed |
 | Durable Effects tests | 3 passed |
 | Model Sampling tests | 6 passed |
-| Test Rig tests | 20 passed |
+| Test Rig tests | 21 passed |
 | React Chat tests | 8 passed |
 | Durable Execution tests | 25 passed |
-| Durable Chat Runtime tests | 73 passed |
+| Durable Chat Runtime tests | 75 passed |
 | Workspace Runtime tests | 18 passed |
 | Journal Authority tests | 92 passed |
 | Tool Session tests | 113 passed, 7 todo |
@@ -225,7 +225,7 @@ The projection is now an immutable Elm-style machine: `SessionProjectionState + 
 | Model provider contract tests | 5 passed |
 | Pi-ai provider unit tests | 8 passed |
 | Model provider wire tests (test-rig simulator) | 10 passed |
-| Platform Acceptance tests | 62 passed |
+| Platform Acceptance tests | 63 passed |
 | Tool Runtime Local typecheck | passed |
 | CLI typecheck | passed |
 | A2A typecheck | passed |

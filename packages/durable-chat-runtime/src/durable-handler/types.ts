@@ -91,4 +91,6 @@ export interface DurableChatHandlerConfig {
   executionStore?: ExecutionStore;
   /** Session History persistence; shared for Host replacement. */
   historyStore?: HistoryStore<Json>;
+  /** Non-fatal persistence observation; test harnesses may fail on any callback. */
+  onCheckpointError?: (error: unknown) => void;
 }

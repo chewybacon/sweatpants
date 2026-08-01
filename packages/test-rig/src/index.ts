@@ -34,6 +34,8 @@ export interface TestApplicationScenario {
   readHistory?(sessionId: string, cursor?: string): Promise<unknown>;
   checkpointEvidence?(executionId: string): Promise<unknown | null>;
   storageMetrics?(): Promise<unknown>;
+  /** Checkpoint persistence errors are non-fatal in production but fatal in tests. */
+  checkpointErrors?(): Promise<readonly unknown[]>;
 }
 
 export interface TestApplication {
@@ -332,6 +334,14 @@ export async function withTestRig<T>(
           await bounded("AG-UI observation", agui.settle(), cancellationTimeoutMs);
           simulator!.verify();
           chatRuntime!.verify();
+          const checkpointErrors = await application?.scenario?.checkpointErrors?.();
+          if (checkpointErrors && checkpointErrors.length > 0) {
+            throw new Error(
+              `Checkpoint persistence failed during scenario: ${checkpointErrors
+                .map((error) => (error instanceof Error ? error.message : String(error)))
+                .join("; ")}`,
+            );
+          }
         } catch (error) {
           verification = error;
         }

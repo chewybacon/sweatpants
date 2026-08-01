@@ -11,11 +11,15 @@ import type { ChatToolCatalog } from "../program-driver-schema.ts";
 import { planModelInvocation } from "./plan.ts";
 import { TurnEventApi } from "./turn-event-api.ts";
 
-function safeProviderErrorMessage(value: string | undefined): string | undefined {
+const MAX_PARTIAL_TEXT_LENGTH = 32_768;
+
+export function safeProviderErrorMessage(value: string | undefined): string | undefined {
   if (!value) return undefined;
   return value
     .replaceAll(/[\u0000-\u001f\u007f]/g, " ")
-    .replaceAll(/(bearer|token|api[-_ ]?key)\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
+    .replaceAll(/(bearer|basic)\s+[^\s,;]+/gi, "$1 [redacted]")
+    .replaceAll(/(token|api[-_ ]?key)\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
+    .replaceAll(/\bsk-[A-Za-z0-9][^\s,;]*/g, "[redacted]")
     .trim()
     .slice(0, 512);
 }
@@ -74,7 +78,12 @@ export function createHostModelSamplingService(options: {
             return { status: "ok", value: result };
           }
           if (next.value.type === "text_delta") {
-            partialText = `${partialText}${next.value.delta}`.slice(-32_768);
+            if (partialText.length < MAX_PARTIAL_TEXT_LENGTH) {
+              partialText += next.value.delta.slice(
+                0,
+                MAX_PARTIAL_TEXT_LENGTH - partialText.length,
+              );
+            }
             if (plan.delivery.type === "outer-assistant" && deliverOuter) {
               if (!streamStarted) {
                 streamStarted = true;
