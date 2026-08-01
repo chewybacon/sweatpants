@@ -32,6 +32,7 @@
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
+        "@sweatpants/model-sampling": "workspace:*",
         "@sweatpants/tool-runtime-agentcore": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "bedrock-agentcore": "^0.2.0",

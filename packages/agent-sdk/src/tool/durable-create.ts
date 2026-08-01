@@ -1,9 +1,7 @@
-import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/model-sampling";
+import type { ModelSampleRequest } from "@sweatpants/model-sampling";
 import {
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
-  assistantText,
-  assistantToolCalls,
 } from "@sweatpants/model-sampling";
 import type { PortableModelContextMessage, PortableModelTool } from "@sweatpants/model-provider";
 import { type EffectDefinition } from "@sweatpants/durable-effects";
@@ -33,6 +31,7 @@ import { type SchemaBinding, type PortableSchemaDescriptor } from "@sweatpants/f
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import { effectCatalogEntries } from "./durable-effect.ts";
+import { projectModelSampleCompletion } from "./exchange.ts";
 import {
   assertDurableExtensionDeclarations,
   type DurableExtensionContext,
@@ -701,35 +700,6 @@ function* sampleModel(
     audience: "model-runtime",
   });
   return projectModelSampleCompletion(result);
-}
-
-function projectModelSampleCompletion(result: ModelSampleResult): SampleExchangeCompletion {
-  const base = {
-    text: assistantText(result.message),
-    ...(result.message.source?.responseModel !== undefined
-      ? { model: result.message.source.responseModel }
-      : result.message.source?.model !== undefined
-        ? { model: result.message.source.model }
-        : {}),
-    ...(result.message.stopReason !== undefined ? { stopReason: result.message.stopReason } : {}),
-  };
-  if (result.output.type === "json") {
-    return { ...base, parsed: result.output.value };
-  }
-  if (result.output.type === "json-invalid") {
-    return { ...base, parsed: null, parseError: result.output.error };
-  }
-  const calls = assistantToolCalls(result.message);
-  return calls.length > 0
-    ? {
-        ...base,
-        toolCalls: calls.map((call) => ({
-          id: call.id,
-          name: call.function.name,
-          arguments: call.function.arguments,
-        })),
-      }
-    : base;
 }
 
 function* sampleStructured<T>(

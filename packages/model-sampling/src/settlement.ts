@@ -3,17 +3,11 @@ import {
   toPortableAssistantMessage,
   type AssistantMessage,
   type PortableAssistantMessage,
-  type PortableToolCall,
 } from "@sweatpants/model-provider";
 import type { ModelResponseMode, ModelSampleOutput, ModelSampleResult } from "./contract.ts";
+import { assistantText, assistantToolCalls } from "./provider.ts";
 
-export function assistantText(message: PortableAssistantMessage): string {
-  return message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
-}
-
-export function assistantToolCalls(message: PortableAssistantMessage): PortableToolCall[] {
-  return message.content.flatMap((block) => (block.type === "toolCall" ? [block.toolCall] : []));
-}
+export { assistantText, assistantToolCalls } from "./provider.ts";
 
 function settleJson(message: PortableAssistantMessage): ModelSampleOutput {
   const call = assistantToolCalls(message)[0];

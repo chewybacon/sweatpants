@@ -378,6 +378,9 @@ importers:
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../../packages/model-provider-pi-ai
+      '@sweatpants/model-sampling':
+        specifier: workspace:*
+        version: link:../../packages/model-sampling
       '@sweatpants/tool-runtime-agentcore':
         specifier: workspace:*
         version: link:../../packages/tool-runtime-agentcore

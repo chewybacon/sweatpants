@@ -63,6 +63,17 @@
                 "default": "./dist/placement.js"
             },
             "default": "./src/placement.ts"
+        },
+        "./provider": {
+            "development": {
+                "import": "./src/provider.ts",
+                "types": "./src/provider.ts"
+            },
+            "import": {
+                "types": "./dist/provider.d.ts",
+                "default": "./dist/provider.js"
+            },
+            "default": "./src/provider.ts"
         }
     },
     "scripts": {
