@@ -19,6 +19,7 @@ import {
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 import { createSimulatedRemoteModelSamplingService } from "./model-placement-simulator.ts";
 import {
+  assistantText,
   createModelSamplingEffectRegistration,
   ExecutionModelSamplingServiceContext,
   ModelSamplingApi,
@@ -29,10 +30,7 @@ import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/re
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
-import type {
-  AssistantMessage as ModelAssistantMessage,
-  Context as ModelContext,
-} from "@sweatpants/model-provider";
+import type { Context as ModelContext } from "@sweatpants/model-provider";
 import {
   createDurableToolRegistry,
   type ProgramDriver,
@@ -90,16 +88,6 @@ function resolveFixtureBootstrapUrl(filename: string): URL {
     throw new Error(`Failed to resolve ${filename}`);
   }
   return pathToFileURL(candidate);
-}
-
-function assistantText(message: ModelAssistantMessage): string {
-  return message.content
-    .filter(
-      (block): block is Extract<ModelAssistantMessage["content"][number], { type: "text" }> =>
-        block.type === "text",
-    )
-    .map((block) => block.text)
-    .join("");
 }
 
 function createSamplingProvider(

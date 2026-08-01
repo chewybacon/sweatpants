@@ -1,5 +1,10 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Json } from "@sweatpants/foundation";
+import {
+  assistantText,
+  assistantToolCalls,
+  type ModelSampleResult,
+} from "@sweatpants/model-sampling";
 import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import type { Operation } from "effection";
 import { z } from "zod";
@@ -39,6 +44,38 @@ export function parseElicitExchangeCompletion(value: unknown): ElicitExchangeCom
 }
 
 export const SCHEMA_TOOL_NAME = "__schema__";
+
+/** Converts the durable provider result into the transport-safe sample completion facts. */
+export function projectModelSampleCompletion(result: ModelSampleResult): SampleExchangeCompletion {
+  const base = {
+    text: assistantText(result.message),
+    ...(result.message.source?.responseModel !== undefined
+      ? { model: result.message.source.responseModel }
+      : result.message.source?.model !== undefined
+        ? { model: result.message.source.model }
+        : {}),
+    ...(result.message.stopReason !== undefined
+      ? { stopReason: result.message.stopReason }
+      : {}),
+  };
+  if (result.output.type === "json") {
+    return { ...base, parsed: result.output.value };
+  }
+  if (result.output.type === "json-invalid") {
+    return { ...base, parsed: null, parseError: result.output.error };
+  }
+  const calls = assistantToolCalls(result.message);
+  return calls.length > 0
+    ? {
+        ...base,
+        toolCalls: calls.map((call) => ({
+          id: call.id,
+          name: call.function.name,
+          arguments: call.function.arguments,
+        })),
+      }
+    : base;
+}
 
 export function createRawSampleExchange(
   promptText: string,

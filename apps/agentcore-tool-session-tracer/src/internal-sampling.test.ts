@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseRuntimeRequest, PROTOCOL_VERSION } from "./protocol.ts";
+import { parseStructuredSampleText } from "@sweatpants/model-sampling";
 import {
-  parseStructuredSampleText,
   readAgentCoreToolSampleConfig,
   sampleInsideAgentCore,
   selectInternalSampleModel,

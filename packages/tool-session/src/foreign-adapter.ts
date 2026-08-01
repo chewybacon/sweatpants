@@ -1,4 +1,4 @@
-import { MODEL_SAMPLE_EFFECT, assistantText, assistantToolCalls } from "@sweatpants/model-sampling";
+import { MODEL_SAMPLE_EFFECT } from "@sweatpants/model-sampling";
 import type { Operation } from "effection";
 
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
@@ -16,7 +16,7 @@ import {
   FOREIGN_TOOL_START_EFFECT,
 } from "./foreign-contract.ts";
 import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/model-sampling";
-import type { SampleExchangeCompletion } from "@sweatpants/agent-sdk";
+import { projectModelSampleCompletion } from "@sweatpants/agent-sdk";
 import { CrankError } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
@@ -85,7 +85,7 @@ const adapterTool = createPinnedDurableProgram(
       while (disposition.type === "input_required") {
         const response =
           disposition.request.kind === "sample"
-            ? projectSampleCompletion(
+            ? projectModelSampleCompletion(
                 yield* context.effect(
                   MODEL_SAMPLE_EFFECT,
                   classifyToolOwnedSample(disposition.request.payload),
@@ -145,35 +145,6 @@ const adapterTool = createPinnedDurableProgram(
     }
   },
 );
-
-function projectSampleCompletion(result: ModelSampleResult): SampleExchangeCompletion {
-  const base = {
-    text: assistantText(result.message),
-    ...(result.message.source?.responseModel !== undefined
-      ? { model: result.message.source.responseModel }
-      : result.message.source?.model !== undefined
-        ? { model: result.message.source.model }
-        : {}),
-    ...(result.message.stopReason !== undefined ? { stopReason: result.message.stopReason } : {}),
-  };
-  if (result.output.type === "json") {
-    return { ...base, parsed: result.output.value };
-  }
-  if (result.output.type === "json-invalid") {
-    return { ...base, parsed: null, parseError: result.output.error };
-  }
-  const calls = assistantToolCalls(result.message);
-  return calls.length > 0
-    ? {
-        ...base,
-        toolCalls: calls.map((call) => ({
-          id: call.id,
-          name: call.function.name,
-          arguments: call.function.arguments,
-        })),
-      }
-    : base;
-}
 
 /** Durable adapter tool plus helper registration for lifted model sampling. */
 export type ForeignToolAdapter = typeof adapterTool & {

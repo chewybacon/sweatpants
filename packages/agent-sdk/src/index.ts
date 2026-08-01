@@ -57,6 +57,7 @@ export {
   createRawSampleExchange,
   createStructuredSampleExchange,
   parseElicitExchangeCompletion,
+  projectModelSampleCompletion,
   defineDurableContextExtension,
   assertDurableExtensionDeclarations,
   defineEffect,

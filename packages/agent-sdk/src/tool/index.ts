@@ -7,6 +7,7 @@ export {
   createRawSampleExchange,
   createStructuredSampleExchange,
   parseElicitExchangeCompletion,
+  projectModelSampleCompletion,
   type CompleteElicitExchangeOptions,
   type CompleteSampleExchangeOptions,
 } from "./exchange.ts";
