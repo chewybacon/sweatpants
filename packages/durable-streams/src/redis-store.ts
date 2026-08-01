@@ -269,6 +269,17 @@ function createRedisBuffer<T>(
       return yield* claimWriter(request.ownerId, request.activationEpoch);
     },
 
+    *readLatest() {
+      const key = streamKey(id);
+      const entries = yield* call(() => client.xRevRange(key, "+", "-", { COUNT: 1 }));
+      const length = yield* call(() => client.xLen(key));
+      const entry = entries[0];
+      return {
+        token: entry ? parseEntry({ id: entry.id, message: entry.message }) : undefined,
+        lsn: Number(length),
+      };
+    },
+
     *read(afterLSN = 0) {
       const key = streamKey(id);
       const entries = yield* call(() => client.xRange(key, "-", "+"));

@@ -96,6 +96,9 @@ export function createInMemoryBuffer<T>(id: string): TokenBuffer<T> {
         lsn: tokens.length,
       };
     },
+    *readLatest(): Operation<{ token: T | undefined; lsn: number }> {
+      return { token: tokens[tokens.length - 1], lsn: tokens.length };
+    },
     *isComplete(): Operation<boolean> {
       return completed;
     },

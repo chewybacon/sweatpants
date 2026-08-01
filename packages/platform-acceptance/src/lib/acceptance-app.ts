@@ -124,6 +124,7 @@ export interface AcceptanceApplicationInspection {
   journalStore: ProgramDriverJournalStore;
   modelSamplingExecutors: string[];
   modelSamplingProtocol: string[];
+  checkpointErrors: unknown[];
   durableWorker: DurableWorkerMetrics;
   get toolSessionRegistry(): ToolSessionRegistry | undefined;
   get toolSessionIds(): readonly string[];
@@ -159,6 +160,7 @@ export function createAcceptanceApplication(
   const samplingProvider = createSamplingProvider(context);
   const modelSamplingExecutors: string[] = [];
   const modelSamplingProtocol: string[] = [];
+  const checkpointErrors: unknown[] = [];
   const durableWorker: DurableWorkerMetrics = {
     activeAttachments: 0,
     attachmentCount: 0,
@@ -182,6 +184,7 @@ export function createAcceptanceApplication(
     journalStore,
     modelSamplingExecutors,
     modelSamplingProtocol,
+    checkpointErrors,
     durableWorker,
     get toolSessionRegistry() {
       return toolSessionRegistry;
@@ -196,7 +199,7 @@ export function createAcceptanceApplication(
     },
   });
 
-  return createChatApplication({
+  const application = createChatApplication({
     setup: function* (): Operation<void> {
       yield* setupInMemoryDurableStreams<string>(
         options.retainResponseStreams ? { retentionPolicy: { mode: "retain_forever" } } : {},
@@ -332,6 +335,17 @@ export function createAcceptanceApplication(
         yield* context.model.install();
       },
       maxToolIterations: options.maxToolIterations ?? 4,
+      onCheckpointError(error) {
+        checkpointErrors.push(error);
+      },
     }),
   });
+  return {
+    ...application,
+    scenario: {
+      async checkpointErrors() {
+        return checkpointErrors;
+      },
+    },
+  };
 }

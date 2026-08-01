@@ -737,6 +737,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                         checkpointStore: bufferStore,
                         responseTokenBuffer: responseTokenWriter,
                         onCheckpointError: (error) => {
+                          config.onCheckpointError?.(error);
                           log.error(
                             {
                               conversationId: durableConversationId,

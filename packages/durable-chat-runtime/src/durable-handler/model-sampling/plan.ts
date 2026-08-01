@@ -112,6 +112,10 @@ export function planModelInvocation(input: {
           },
         }
       : {};
+  // Host defaults are intentionally lower precedence than the parsed program
+  // invocation. The durable command owns its sampling semantics; live
+  // cancellation/session identity and the response-mode projection remain
+  // authority-controlled by the host plan below.
   const options: StreamOptions = {
     ...input.streamOptions,
     ...input.request.invocation.options,

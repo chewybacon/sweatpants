@@ -23,9 +23,7 @@ export type ModelSampleToolCall = {
   arguments: Json;
 } & JsonObject;
 
-export function assistantText(
-  message: AssistantMessage | PortableAssistantMessage,
-): string {
+export function assistantText(message: AssistantMessage | PortableAssistantMessage): string {
   return message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
 }
 

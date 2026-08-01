@@ -84,6 +84,29 @@ async function completeEmptyAssistant(binding: Binding): Promise<void> {
 }
 
 describe("provider failure recovery", () => {
+  it("retains the head of an oversized failed partial", async () => {
+    await withTestScenario(
+      {
+        binding: "in-process",
+        modelId: ACCEPTANCE_MODEL_ID,
+        createApplication: createAcceptanceApplication,
+        scenarioTimeoutMs: 30_000,
+      },
+      function* (s) {
+        const conversation = s.conversation();
+        const turn = yield* conversation.send("HEAD_PARTIAL_TRUNCATION_V1");
+        const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+        const head = "H".repeat(32_768);
+        const stream = yield* request.respond.textStream([head, "TAIL_PARTIAL_SENTINEL"]);
+        yield* stream.releaseNext();
+        yield* stream.fail({ code: "partial_failed", message: "planned partial failure" });
+        yield* turn.failure();
+        const text = conversation.transcript().text;
+        expect(text.startsWith(head)).toBe(true);
+        expect(text).not.toContain("TAIL_PARTIAL_SENTINEL");
+      },
+    );
+  });
   it.each(["error", "partial"] as const)(
     "recovers the conversation after %s failure",
     async (kind) => {

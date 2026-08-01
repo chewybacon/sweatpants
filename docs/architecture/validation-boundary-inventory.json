@@ -3971,14 +3971,14 @@
       ]
     },
     {
-      "id": "SHAPE-209",
+      "id": "SHAPE-477",
       "file": "packages/durable-chat-runtime/src/durable-handler/handler.ts",
-      "line": 263,
-      "symbol": "<callback@263>",
+      "line": 261,
+      "symbol": "<callback@261>",
       "classification": "R",
-      "authority": "typed constructor or owning ingress for <callback@291>",
+      "authority": "typed constructor or owning ingress for <callback@261>",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/handler.ts:263"
+        "packages/durable-chat-runtime/src/durable-handler/handler.ts:261"
       ]
     },
     {
@@ -4188,6 +4188,17 @@
       "authority": "typed constructor or owning ingress for withPublicMetadata",
       "evidence": [
         "packages/durable-chat-runtime/src/projection.ts:39"
+      ]
+    },
+    {
+      "id": "SHAPE-476",
+      "file": "packages/durable-chat-runtime/src/response-streams/conversation-index.ts",
+      "line": 46,
+      "symbol": "parseCheckpointPointer",
+      "classification": "B",
+      "authority": "versioned checkpoint pointer parser at durable restore ingress",
+      "evidence": [
+        "packages/durable-chat-runtime/src/response-streams/conversation-index.ts:46"
       ]
     },
     {
@@ -5040,12 +5051,12 @@
     {
       "id": "SHAPE-356",
       "file": "packages/test-rig/src/index.ts",
-      "line": 118,
+      "line": 120,
       "symbol": "createHttpBinding",
       "classification": "R",
       "authority": "typed constructor or owning ingress for createHttpBinding",
       "evidence": [
-        "packages/test-rig/src/index.ts:118"
+        "packages/test-rig/src/index.ts:120"
       ]
     },
     {

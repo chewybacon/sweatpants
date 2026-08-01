@@ -1,15 +1,116 @@
 import type { Operation } from "effection";
-import type { TokenBufferStore } from "@sweatpants/durable-streams";
+import type { TokenBuffer, TokenBufferStore } from "@sweatpants/durable-streams";
 
 const CONVERSATION_INDEX_PREFIX = "__conversation_index__:";
 const CONVERSATION_CHECKPOINT_PREFIX = "__conversation_checkpoint__:";
+const CONVERSATION_CHECKPOINT_VERSION_PREFIX = "__conversation_checkpoint_version__:";
+const CHECKPOINT_POINTER_KIND = "sweatpants.conversation-checkpoint-pointer";
+
+interface CheckpointPointer {
+  readonly kind: typeof CHECKPOINT_POINTER_KIND;
+  readonly sequence: number;
+  readonly versionId: string;
+}
+
+interface CheckpointSlot {
+  readonly id: string;
+  readonly buffer: TokenBuffer<string>;
+  readonly pointer: CheckpointPointer;
+}
 
 export function getConversationIndexId(conversationId: string): string {
   return `${CONVERSATION_INDEX_PREFIX}${conversationId}`;
 }
 
+/** The primary of two crash-safe pointer slots. */
 export function getConversationCheckpointId(conversationId: string): string {
   return `${CONVERSATION_CHECKPOINT_PREFIX}${conversationId}`;
+}
+
+/** The secondary pointer slot used while replacing the primary slot. */
+export function getConversationCheckpointAlternateId(conversationId: string): string {
+  return `${getConversationCheckpointId(conversationId)}:alternate`;
+}
+
+function checkpointPointerIds(conversationId: string): readonly string[] {
+  return [
+    getConversationCheckpointId(conversationId),
+    getConversationCheckpointAlternateId(conversationId),
+  ];
+}
+
+function checkpointVersionId(conversationId: string): string {
+  return `${CONVERSATION_CHECKPOINT_VERSION_PREFIX}${conversationId}:${crypto.randomUUID()}`;
+}
+
+function parseCheckpointPointer(value: string | undefined): CheckpointPointer | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const candidate = parsed as Record<string, unknown>;
+    if (
+      candidate["kind"] !== CHECKPOINT_POINTER_KIND ||
+      !Number.isSafeInteger(candidate["sequence"]) ||
+      Number(candidate["sequence"]) < 1 ||
+      typeof candidate["versionId"] !== "string" ||
+      !candidate["versionId"].startsWith(CONVERSATION_CHECKPOINT_VERSION_PREFIX)
+    ) {
+      return null;
+    }
+    return {
+      kind: CHECKPOINT_POINTER_KIND,
+      sequence: Number(candidate["sequence"]),
+      versionId: candidate["versionId"],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function* latestToken(buffer: TokenBuffer<string>): Operation<string | undefined> {
+  if (buffer.readLatest) {
+    return (yield* buffer.readLatest()).token;
+  }
+  const { tokens } = yield* buffer.read(0);
+  return tokens[tokens.length - 1];
+}
+
+function* readCheckpointSlot(
+  bufferStore: TokenBufferStore<string>,
+  id: string,
+): Operation<CheckpointSlot | null> {
+  const buffer = yield* bufferStore.get(id);
+  if (!buffer) {
+    return null;
+  }
+
+  const complete = yield* buffer.isComplete();
+  const errored = (yield* buffer.getError()) !== null;
+  if (!complete || errored) {
+    return null;
+  }
+
+  const pointer = parseCheckpointPointer(yield* latestToken(buffer));
+  return pointer ? { id, buffer, pointer } : null;
+}
+
+function* readCheckpointSlots(
+  bufferStore: TokenBufferStore<string>,
+  conversationId: string,
+): Operation<CheckpointSlot[]> {
+  const slots: CheckpointSlot[] = [];
+  for (const id of checkpointPointerIds(conversationId)) {
+    const slot = yield* readCheckpointSlot(bufferStore, id);
+    if (slot) {
+      slots.push(slot);
+    }
+  }
+  return slots.sort((left, right) => right.pointer.sequence - left.pointer.sequence);
 }
 
 export function* recordConversationSession(
@@ -36,47 +137,109 @@ export function* recordConversationSession(
   yield* writer.append([sessionId]);
 }
 
+/**
+ * Persists an immutable checkpoint artifact before publishing its pointer.
+ * Two pointer slots make replacement crash-safe: the old complete pointer is
+ * retained until the new artifact and pointer are complete. Old artifacts and
+ * pointers are compacted only after that publication point.
+ */
 export function* recordConversationCheckpoint(
   bufferStore: TokenBufferStore<string>,
   conversationId: string,
   checkpointToken: string,
 ): Operation<void> {
-  const checkpointId = getConversationCheckpointId(conversationId);
-  let buffer = yield* bufferStore.get(checkpointId);
+  const slots = yield* readCheckpointSlots(bufferStore, conversationId);
+  const latest = slots[0];
+  const pointerIds = checkpointPointerIds(conversationId);
+  const targetId = latest ? pointerIds.find((id) => id !== latest.id)! : pointerIds[0]!;
+  const targetBuffer = yield* bufferStore.get(targetId);
 
-  // Checkpoints are an append-only version log. A new version is appended
-  // atomically, so a failed write cannot delete the last valid restore point.
-  // A completed pre-versioned buffer is disposable because bare-array
-  // checkpoints are intentionally unsupported before production compatibility.
-  if (buffer && (yield* buffer.isComplete() || (yield* buffer.getError()) !== null)) {
-    yield* bufferStore.delete(checkpointId);
-    buffer = null;
-  }
-  if (!buffer) {
-    buffer = yield* bufferStore.create(checkpointId);
+  if (targetBuffer) {
+    const complete = yield* targetBuffer.isComplete();
+    const errored = (yield* targetBuffer.getError()) !== null;
+    if (complete || errored) {
+      yield* bufferStore.delete(targetId);
+    } else {
+      throw new Error(`Checkpoint pointer slot ${targetId} is still active`);
+    }
   }
 
-  const { lsn } = yield* buffer.read(0);
-  const writer = yield* buffer.claimWriter({
-    ownerId: `conversation-checkpoint:${conversationId}`,
-    activationEpoch: lsn + 1,
-  });
-  yield* writer.append([checkpointToken]);
+  const sequence = (latest?.pointer.sequence ?? 0) + 1;
+  const versionId = checkpointVersionId(conversationId);
+  let versionBuffer: TokenBuffer<string> | undefined;
+  try {
+    versionBuffer = yield* bufferStore.create(versionId);
+    const versionWriter = yield* versionBuffer.claimWriter({
+      ownerId: `conversation-checkpoint-version:${conversationId}`,
+      activationEpoch: 1,
+    });
+    yield* versionWriter.append([checkpointToken]);
+    yield* versionWriter.complete();
+  } catch (error) {
+    try {
+      yield* bufferStore.delete(versionId);
+    } catch {
+      // The unreferenced artifact is safe to reap later.
+    }
+    throw error;
+  }
+
+  const pointer: CheckpointPointer = {
+    kind: CHECKPOINT_POINTER_KIND,
+    sequence,
+    versionId,
+  };
+  try {
+    const pointerBuffer = yield* bufferStore.create(targetId);
+    const pointerWriter = yield* pointerBuffer.claimWriter({
+      ownerId: `conversation-checkpoint-pointer:${conversationId}`,
+      activationEpoch: 1,
+    });
+    yield* pointerWriter.append([JSON.stringify(pointer)]);
+    yield* pointerWriter.complete();
+  } catch (error) {
+    try {
+      yield* bufferStore.delete(targetId);
+      yield* bufferStore.delete(versionId);
+    } catch {
+      // The previous pointer remains authoritative.
+    }
+    throw error;
+  }
+
+  // Compact only after the new pointer is complete. Cleanup is deliberately
+  // best effort: a failed delete cannot invalidate the newest restore point.
+  for (const old of slots) {
+    try {
+      yield* bufferStore.delete(old.pointer.versionId);
+      yield* bufferStore.delete(old.id);
+    } catch {
+      // Reconciliation on the next successful update can retry cleanup.
+    }
+  }
 }
 
 export function* readLatestConversationCheckpoint(
   bufferStore: TokenBufferStore<string>,
   conversationId: string,
 ): Operation<string | null> {
-  const checkpointId = getConversationCheckpointId(conversationId);
-  const buffer = yield* bufferStore.get(checkpointId);
-
-  if (!buffer) {
-    return null;
+  const slots = yield* readCheckpointSlots(bufferStore, conversationId);
+  for (const slot of slots) {
+    const version = yield* bufferStore.get(slot.pointer.versionId);
+    if (!version) {
+      continue;
+    }
+    const complete = yield* version.isComplete();
+    const errored = (yield* version.getError()) !== null;
+    if (!complete || errored) {
+      continue;
+    }
+    const token = yield* latestToken(version);
+    if (token !== undefined) {
+      return token;
+    }
   }
-
-  const { tokens } = yield* buffer.read(0);
-  return tokens[tokens.length - 1] ?? null;
+  return null;
 }
 
 export function* resolveLatestConversationSession(
