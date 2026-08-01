@@ -323,6 +323,8 @@ export async function withTestRig<T>(
 
     const [bodyScope, destroyBodyScope] = createScope();
     let closed = false;
+    // Close owns strict observation plus bounded cleanup so teardown failures remain test-visible.
+    // fallow-ignore-next-line complexity
     const close = async (strict: boolean) => {
       if (closed) {
         return;

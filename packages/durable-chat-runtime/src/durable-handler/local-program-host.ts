@@ -28,7 +28,11 @@ import {
   type ProgramRoute,
   type ProgramRunResult,
   type ProgramElicitResult,
+  type NormalizedProgramOperationTrace,
+  type NormalizedProgramTaskTrace,
+  type NormalizedProgramTrace,
 } from "@sweatpants/durable-execution";
+export type { NormalizedProgramOperationTrace, NormalizedProgramTaskTrace, NormalizedProgramTrace };
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
 import { FOREIGN_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/foreign";
@@ -89,32 +93,6 @@ const pinnedProgramCatalogSchema = z.strictObject({
   digest: z.string().regex(/^[0-9a-f]{64}$/u),
   entries: programCatalogEntriesSchema,
 });
-
-export interface NormalizedProgramOperationTrace {
-  actionIndex: number;
-  pullId: string;
-  descriptor: Json;
-  outcome?: OperationOutcome;
-}
-
-export interface NormalizedProgramTaskTrace {
-  taskId: string;
-  turnId: string;
-  parentTaskId?: string;
-  parentPullId?: string;
-  program: PinnedProgram;
-  acceptedInput: Json;
-  catalogDigest?: string;
-  operations: NormalizedProgramOperationTrace[];
-  semanticEmissions: Json[];
-  cancellations: Json[];
-  terminal?: OperationOutcome;
-}
-
-export interface NormalizedProgramTrace {
-  version: 1;
-  tasks: NormalizedProgramTaskTrace[];
-}
 
 export interface LocalProgramHostOptions {
   journalStore: ProgramDriverJournalStore;

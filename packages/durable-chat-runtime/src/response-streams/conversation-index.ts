@@ -43,30 +43,36 @@ function checkpointVersionId(conversationId: string): string {
   return `${CONVERSATION_CHECKPOINT_VERSION_PREFIX}${conversationId}:${crypto.randomUUID()}`;
 }
 
+type CheckpointPointerCandidate = {
+  readonly kind: typeof CHECKPOINT_POINTER_KIND;
+  readonly sequence: number;
+  readonly versionId: string;
+};
+
+function isCheckpointPointerCandidate(value: unknown): value is CheckpointPointerCandidate {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate["kind"] === CHECKPOINT_POINTER_KIND &&
+    Number.isSafeInteger(candidate["sequence"]) &&
+    Number(candidate["sequence"]) >= 1 &&
+    typeof candidate["versionId"] === "string" &&
+    candidate["versionId"].startsWith(CONVERSATION_CHECKPOINT_VERSION_PREFIX)
+  );
+}
+
 function parseCheckpointPointer(value: string | undefined): CheckpointPointer | null {
   if (!value) {
     return null;
   }
   try {
-    const parsed: unknown = JSON.parse(value);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    const candidate: unknown = JSON.parse(value);
+    if (!isCheckpointPointerCandidate(candidate)) {
       return null;
     }
-    const candidate = parsed as Record<string, unknown>;
-    if (
-      candidate["kind"] !== CHECKPOINT_POINTER_KIND ||
-      !Number.isSafeInteger(candidate["sequence"]) ||
-      Number(candidate["sequence"]) < 1 ||
-      typeof candidate["versionId"] !== "string" ||
-      !candidate["versionId"].startsWith(CONVERSATION_CHECKPOINT_VERSION_PREFIX)
-    ) {
-      return null;
-    }
-    return {
-      kind: CHECKPOINT_POINTER_KIND,
-      sequence: Number(candidate["sequence"]),
-      versionId: candidate["versionId"],
-    };
+    return candidate;
   } catch {
     return null;
   }
@@ -143,6 +149,8 @@ export function* recordConversationSession(
  * retained until the new artifact and pointer are complete. Old artifacts and
  * pointers are compacted only after that publication point.
  */
+// Crash-safe checkpoint replacement intentionally keeps publication and rollback atomic.
+// fallow-ignore-next-line complexity
 export function* recordConversationCheckpoint(
   bufferStore: TokenBufferStore<string>,
   conversationId: string,

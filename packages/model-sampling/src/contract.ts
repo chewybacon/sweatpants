@@ -93,22 +93,22 @@ const portableToolCallSchema = z.strictObject({
   thoughtSignature: textSchema.optional(),
 });
 
-const inputBlockSchema = z.discriminatedUnion("type", [
-  z.strictObject({
-    type: z.literal("text"),
-    text: textSchema,
-    textSignature: textSchema.optional(),
-  }),
-  z.strictObject({ type: z.literal("image"), data: textSchema, mimeType: idSchema }),
-]);
+const textBlockSchema = z.strictObject({
+  type: z.literal("text"),
+  text: textSchema,
+  textSignature: textSchema.optional(),
+});
+const imageBlockSchema = z.strictObject({
+  type: z.literal("image"),
+  data: textSchema,
+  mimeType: idSchema,
+});
+
+const inputBlockSchema = z.discriminatedUnion("type", [textBlockSchema, imageBlockSchema]);
 
 const assistantBlockSchema = z.discriminatedUnion("type", [
-  z.strictObject({
-    type: z.literal("text"),
-    text: textSchema,
-    textSignature: textSchema.optional(),
-  }),
-  z.strictObject({ type: z.literal("image"), data: textSchema, mimeType: idSchema }),
+  textBlockSchema,
+  imageBlockSchema,
   z.strictObject({
     type: z.literal("thinking"),
     text: textSchema,

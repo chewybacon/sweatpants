@@ -65,6 +65,8 @@ export function parseStructuredSampleText(text: string): unknown {
     value.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "").trim();
   const extractFencedJson = (value: string): string | undefined =>
     /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(value)?.[1]?.trim();
+  // Balanced JSON recovery intentionally tracks string, escape, and nesting state.
+  // fallow-ignore-next-line complexity
   const extractBalancedJson = (value: string): string | undefined => {
     const start = value.search(/[[{]/);
     if (start < 0) return undefined;

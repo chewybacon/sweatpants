@@ -13,6 +13,8 @@ import type {
 export function projectChatHistory(
   messages: readonly ChatMessage[],
 ): PortableModelContextMessage[] {
+  // Settled role projection must enumerate every supported role without a fallback.
+  // fallow-ignore-next-line complexity
   return messages.flatMap((message): PortableModelContextMessage[] => {
     switch (message.role) {
       case "activity":
