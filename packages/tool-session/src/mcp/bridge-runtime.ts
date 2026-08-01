@@ -58,6 +58,7 @@ import type {
   SampleResultWithParsed,
   SampleResultWithToolCalls,
   SamplingToolChoice,
+  SamplingToolDefinition,
   SampleToolsConfig,
   SampleToolsResult,
   SampleSchemaConfig,
@@ -246,6 +247,34 @@ export interface BridgeSampleOptions {
   tools?: PortableModelTool[];
   toolChoice?: SamplingToolChoice;
   schema?: JsonObject;
+}
+
+function createBridgeSampleOptions(
+  config: { readonly systemPrompt?: string; readonly maxTokens?: number },
+  fallbackSystemPrompt: string | undefined,
+  tools?: readonly SamplingToolDefinition[],
+): BridgeSampleOptions {
+  const options: BridgeSampleOptions = {};
+  const effectiveSystemPrompt = config.systemPrompt ?? fallbackSystemPrompt;
+  if (effectiveSystemPrompt !== undefined) {
+    options.systemPrompt = effectiveSystemPrompt;
+  }
+  if (config.maxTokens !== undefined) {
+    options.maxTokens = config.maxTokens;
+  }
+  if (tools !== undefined) {
+    options.tools = tools.map((tool) => {
+      const definition: PortableModelTool = {
+        name: tool.name,
+        parameters: toToolParameterJsonSchema(tool.inputSchema),
+      };
+      if (tool.description !== undefined) {
+        definition.description = tool.description;
+      }
+      return definition;
+    });
+  }
+  return options;
 }
 
 /**
@@ -458,29 +487,12 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             throw new Error("sample() requires either prompt or messages");
           }
 
-          // Build sample options including new fields
-          const sampleOptions: BridgeSampleOptions = {};
-          const effectiveSystemPrompt = config.systemPrompt ?? state.systemPrompt;
-          if (effectiveSystemPrompt !== undefined) {
-            sampleOptions.systemPrompt = effectiveSystemPrompt;
-          }
-          if (config.maxTokens !== undefined) {
-            sampleOptions.maxTokens = config.maxTokens;
-          }
-
-          // Pass through tools if provided
-          if ("tools" in config && config.tools) {
-            sampleOptions.tools = config.tools.map((tool) => {
-              const def: PortableModelTool = {
-                name: tool.name,
-                parameters: toToolParameterJsonSchema(tool.inputSchema),
-              };
-              if (tool.description !== undefined) {
-                def.description = tool.description;
-              }
-              return def;
-            });
-          }
+          // Build sample options including new fields.
+          const sampleOptions = createBridgeSampleOptions(
+            config,
+            state.systemPrompt,
+            "tools" in config ? config.tools : undefined,
+          );
           if ("toolChoice" in config && config.toolChoice) {
             sampleOptions.toolChoice = config.toolChoice;
           }
@@ -657,27 +669,12 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               throw new Error("sampleTools() requires either prompt or messages");
             }
 
-            // Build sample options
-            const sampleOptions: BridgeSampleOptions = {};
-            const effectiveSystemPrompt = config.systemPrompt ?? state.systemPrompt;
-            if (effectiveSystemPrompt !== undefined) {
-              sampleOptions.systemPrompt = effectiveSystemPrompt;
-            }
-            if (config.maxTokens !== undefined) {
-              sampleOptions.maxTokens = config.maxTokens;
-            }
-
             // Carry the authored portable projection.
-            sampleOptions.tools = config.tools.map((tool) => {
-              const def: PortableModelTool = {
-                name: tool.name,
-                parameters: toToolParameterJsonSchema(tool.inputSchema),
-              };
-              if (tool.description !== undefined) {
-                def.description = tool.description;
-              }
-              return def;
-            });
+            const sampleOptions = createBridgeSampleOptions(
+              config,
+              state.systemPrompt,
+              config.tools,
+            );
             sampleOptions.toolChoice = toolChoice;
 
             // Create response signal and send sample event
@@ -809,17 +806,8 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               throw new Error("sampleSchema() requires either prompt or messages");
             }
 
-            // Build sample options
-            const sampleOptions: BridgeSampleOptions = {};
-            const effectiveSystemPrompt = config.systemPrompt ?? state.systemPrompt;
-            if (effectiveSystemPrompt !== undefined) {
-              sampleOptions.systemPrompt = effectiveSystemPrompt;
-            }
-            if (config.maxTokens !== undefined) {
-              sampleOptions.maxTokens = config.maxTokens;
-            }
-
             // Convert the Standard Schema to its portable JSON projection.
+            const sampleOptions = createBridgeSampleOptions(config, state.systemPrompt);
             sampleOptions.schema = toToolParameterJsonSchema(config.schema);
 
             // Create response signal and send sample event

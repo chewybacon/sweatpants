@@ -80,6 +80,8 @@ import {
   type ChatToolCatalogEntry,
 } from "./program-driver-schema.ts";
 
+// Root tool owns the deterministic sample/tool loop and its durable continuation semantics.
+// fallow-ignore-next-line complexity
 const rootTool = createPinnedDurableProgram(manifest, function* (input, context) {
   const messages = [...input.messages];
   const hasPriorAssistantOrTool = messages.some(

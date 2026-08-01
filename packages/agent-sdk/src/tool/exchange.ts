@@ -54,9 +54,7 @@ export function projectModelSampleCompletion(result: ModelSampleResult): SampleE
       : result.message.source?.model !== undefined
         ? { model: result.message.source.model }
         : {}),
-    ...(result.message.stopReason !== undefined
-      ? { stopReason: result.message.stopReason }
-      : {}),
+    ...(result.message.stopReason !== undefined ? { stopReason: result.message.stopReason } : {}),
   };
   if (result.output.type === "json") {
     return { ...base, parsed: result.output.value };

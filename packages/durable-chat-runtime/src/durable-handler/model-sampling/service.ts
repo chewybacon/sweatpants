@@ -34,6 +34,8 @@ export function createHostModelSamplingService(options: {
   onTerminalStreamed?: () => void;
 }): ModelSamplingService {
   return {
+    // Provider streaming intentionally keeps plan, delivery, settlement, and cancellation in one pump.
+    // fallow-ignore-next-line complexity
     *sample(request, attempt) {
       const plan = planModelInvocation({
         request,

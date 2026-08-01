@@ -1989,7 +1989,7 @@
       "structuralAuthority": "standard-schema",
       "disposition": "standard-schema-callback",
       "evidence": [
-        "packages/agent-sdk/src/tool/durable-create.ts:813",
+        "packages/agent-sdk/src/tool/durable-create.ts:791",
         "packages/tool-session/src/tool-parameters.test.ts"
       ]
     },
@@ -3324,54 +3324,54 @@
     {
       "id": "SHAPE-131",
       "file": "packages/agent-sdk/src/tool/durable-create.ts",
-      "line": 389,
+      "line": 385,
       "symbol": "execute",
       "classification": "R",
       "authority": "typed constructor or owning ingress for execute",
       "evidence": [
-        "packages/agent-sdk/src/tool/durable-create.ts:389"
+        "packages/agent-sdk/src/tool/durable-create.ts:385"
       ]
     },
     {
       "id": "SHAPE-132",
       "file": "packages/agent-sdk/src/tool/durable-create.ts",
-      "line": 559,
+      "line": 555,
       "symbol": "contextForDeclarations",
       "classification": "R",
       "authority": "typed constructor or owning ingress for contextForDeclarations",
       "evidence": [
-        "packages/agent-sdk/src/tool/durable-create.ts:559"
+        "packages/agent-sdk/src/tool/durable-create.ts:555"
       ]
     },
     {
       "id": "SHAPE-133",
       "file": "packages/agent-sdk/src/tool/durable-create.ts",
-      "line": 584,
+      "line": 580,
       "symbol": "effect",
       "classification": "R",
       "authority": "typed constructor or owning ingress for effect",
       "evidence": [
-        "packages/agent-sdk/src/tool/durable-create.ts:584"
+        "packages/agent-sdk/src/tool/durable-create.ts:580"
       ]
     },
     {
       "id": "SHAPE-134",
       "file": "packages/agent-sdk/src/tool/durable-create.ts",
-      "line": 630,
+      "line": 626,
       "symbol": "elicit",
       "classification": "R",
       "authority": "typed constructor or owning ingress for elicit",
       "evidence": [
-        "packages/agent-sdk/src/tool/durable-create.ts:630"
+        "packages/agent-sdk/src/tool/durable-create.ts:626"
       ]
     },
     {
       "id": "SHAPE-474",
       "file": "packages/agent-sdk/src/tool/durable-create.ts",
-      "line": 735,
+      "line": 713,
       "symbol": "sampleStructured",
       "evidence": [
-        "packages/agent-sdk/src/tool/durable-create.ts:735"
+        "packages/agent-sdk/src/tool/durable-create.ts:713"
       ],
       "classification": "B",
       "authority": "authored Standard Schema consumer for structured model output"
@@ -3379,45 +3379,45 @@
     {
       "id": "SHAPE-135",
       "file": "packages/agent-sdk/src/tool/durable-create.ts",
-      "line": 811,
+      "line": 789,
       "symbol": "isStandardSchemaValue",
       "classification": "R",
       "authority": "typed constructor or owning ingress for isStandardSchemaValue",
       "evidence": [
-        "packages/agent-sdk/src/tool/durable-create.ts:811"
+        "packages/agent-sdk/src/tool/durable-create.ts:789"
       ]
     },
     {
       "id": "SHAPE-136",
       "file": "packages/agent-sdk/src/tool/durable-create.ts",
-      "line": 819,
+      "line": 797,
       "symbol": "normalizeElicits",
       "classification": "C",
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
-        "packages/agent-sdk/src/tool/durable-create.ts:819"
+        "packages/agent-sdk/src/tool/durable-create.ts:797"
       ]
     },
     {
       "id": "SHAPE-137",
       "file": "packages/agent-sdk/src/tool/durable-create.ts",
-      "line": 834,
+      "line": 812,
       "symbol": "isElicitDefinition",
       "classification": "R",
       "authority": "typed constructor or owning ingress for isElicitDefinition",
       "evidence": [
-        "packages/agent-sdk/src/tool/durable-create.ts:834"
+        "packages/agent-sdk/src/tool/durable-create.ts:812"
       ]
     },
     {
       "id": "SHAPE-470",
       "file": "packages/agent-sdk/src/tool/exchange.ts",
-      "line": 121,
+      "line": 156,
       "symbol": "completeSampleExchange",
       "classification": "R",
       "authority": "Agent SDK owns typed exchange completion enrichment and constructs the stronger result with local history exactly once.",
       "evidence": [
-        "packages/agent-sdk/src/tool/exchange.ts:121"
+        "packages/agent-sdk/src/tool/exchange.ts:156"
       ]
     },
     {
@@ -3984,67 +3984,67 @@
     {
       "id": "SHAPE-210",
       "file": "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts",
-      "line": 218,
+      "line": 196,
       "symbol": "verifyLocalProgramRequest",
       "classification": "S",
       "authority": "parsed input type accepted by verifyLocalProgramRequest",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:218"
+        "packages/durable-chat-runtime/src/durable-handler/local-program-host.ts:196"
       ]
     },
     {
       "id": "SHAPE-213",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1001,
+      "line": 1003,
       "symbol": "foreignElicitId",
       "classification": "B",
       "authority": "owning ingress/parser foreignElicitId",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1001"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1003"
       ]
     },
     {
       "id": "SHAPE-452",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1118,
+      "line": 1120,
       "symbol": "jsonRecord",
       "classification": "R",
       "authority": "typed constructor or owning ingress for jsonRecord",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1118"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1120"
       ]
     },
     {
       "id": "SHAPE-220",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 1129,
+      "line": 1131,
       "symbol": "schemaWithModelContext",
       "classification": "R",
       "authority": "typed constructor or owning ingress for schemaWithModelContext",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1129"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:1131"
       ]
     },
     {
       "id": "SHAPE-221",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 258,
+      "line": 260,
       "symbol": "activateProgramDriverChatEngine",
       "classification": "R",
       "authority": "typed constructor or owning ingress for activateProgramDriverChatEngine",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:258"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:260"
       ]
     },
     {
       "id": "SHAPE-212",
       "file": "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts",
-      "line": 991,
+      "line": 993,
       "symbol": "foreignCallId",
       "classification": "B",
       "authority": "owning ingress/parser foreignCallId",
       "evidence": [
-        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:991"
+        "packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:993"
       ]
     },
     {
@@ -4188,17 +4188,6 @@
       "authority": "typed constructor or owning ingress for withPublicMetadata",
       "evidence": [
         "packages/durable-chat-runtime/src/projection.ts:39"
-      ]
-    },
-    {
-      "id": "SHAPE-476",
-      "file": "packages/durable-chat-runtime/src/response-streams/conversation-index.ts",
-      "line": 46,
-      "symbol": "parseCheckpointPointer",
-      "classification": "B",
-      "authority": "versioned checkpoint pointer parser at durable restore ingress",
-      "evidence": [
-        "packages/durable-chat-runtime/src/response-streams/conversation-index.ts:46"
       ]
     },
     {
@@ -5381,23 +5370,23 @@
     {
       "id": "SHAPE-468",
       "file": "packages/tool-session/src/mcp/bridge-runtime.ts",
-      "line": 449,
-      "symbol": "<callback@449>",
+      "line": 478,
+      "symbol": "<callback@478>",
       "classification": "R",
       "authority": "typed constructor or owning ingress for <callback@454>",
       "evidence": [
-        "packages/tool-session/src/mcp/bridge-runtime.ts:449"
+        "packages/tool-session/src/mcp/bridge-runtime.ts:478"
       ]
     },
     {
       "id": "SHAPE-469",
       "file": "packages/tool-session/src/mcp/bridge-runtime.ts",
-      "line": 766,
-      "symbol": "<callback@766>",
+      "line": 763,
+      "symbol": "<callback@763>",
       "classification": "R",
       "authority": "typed constructor or owning ingress for <callback@768>",
       "evidence": [
-        "packages/tool-session/src/mcp/bridge-runtime.ts:766"
+        "packages/tool-session/src/mcp/bridge-runtime.ts:763"
       ]
     },
     {
@@ -5607,6 +5596,17 @@
       "rationale": "Named compatibility seam converts bounded loose provider or historical input to a canonical representation.",
       "evidence": [
         "packages/workspace-runtime/src/index.ts:900"
+      ]
+    },
+    {
+      "id": "SHAPE-478",
+      "file": "packages/durable-chat-runtime/src/response-streams/conversation-index.ts",
+      "line": 52,
+      "symbol": "isCheckpointPointerCandidate",
+      "classification": "B",
+      "authority": "versioned checkpoint pointer validator at durable restore ingress",
+      "evidence": [
+        "packages/durable-chat-runtime/src/response-streams/conversation-index.ts:52"
       ]
     }
   ]

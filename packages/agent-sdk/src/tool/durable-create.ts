@@ -1,8 +1,5 @@
 import type { ModelSampleRequest } from "@sweatpants/model-sampling";
-import {
-  MODEL_SAMPLE_EFFECT,
-  MODEL_SAMPLE_SCHEMA_ENTRIES,
-} from "@sweatpants/model-sampling";
+import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
 import type { PortableModelContextMessage, PortableModelTool } from "@sweatpants/model-provider";
 import { type EffectDefinition } from "@sweatpants/durable-effects";
 
@@ -653,16 +650,16 @@ function contextForDeclarations(
   return adapted as DurableProgramContext;
 }
 
-function* sampleModel(
-  context: DurableProgramContext,
+// Canonical request construction preserves authored sampling options at the effect boundary.
+// fallow-ignore-next-line complexity
+function createCanonicalModelSampleRequest(
   request: SamplingRequestBase & {
     tools?: PortableModelTool[];
     toolChoice?: "auto" | "none" | "required";
     schema?: JsonObject;
   },
-): Operation<SampleExchangeCompletion> {
+): ModelSampleRequest {
   const {
-    retries: _retries,
     prompt,
     messages,
     tools,
@@ -676,7 +673,7 @@ function* sampleModel(
   assertSamplingRequest(prompt, messages, request.retries);
   const contextMessages: PortableModelContextMessage[] =
     prompt === undefined ? [...messages!] : [{ role: "user", content: prompt }];
-  const canonicalRequest: ModelSampleRequest = {
+  return {
     invocation: {
       context: {
         messages: contextMessages,
@@ -696,6 +693,17 @@ function* sampleModel(
     ...(modelPreferences !== undefined ? { modelPreferences } : {}),
     ...(classifications ? { classifications: [...classifications] } : {}),
   };
+}
+
+function* sampleModel(
+  context: DurableProgramContext,
+  request: SamplingRequestBase & {
+    tools?: PortableModelTool[];
+    toolChoice?: "auto" | "none" | "required";
+    schema?: JsonObject;
+  },
+): Operation<SampleExchangeCompletion> {
+  const canonicalRequest = createCanonicalModelSampleRequest(request);
   const result = yield* context.effect(MODEL_SAMPLE_EFFECT, canonicalRequest, {
     audience: "model-runtime",
   });
