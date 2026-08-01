@@ -24,6 +24,7 @@ import {
 import { canonicalJson, sha256, type Json } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
+  CHAT_MODEL_SAMPLE_EFFECT,
   createChatModelEffectRegistration,
   type AuthoredChatModelSampleResult,
 } from "@sweatpants/chat-core";
@@ -36,7 +37,6 @@ import {
 import { createInProcessA2AConnector } from "@sweatpants/a2a/testing";
 import {
   ASK_PARENT_EFFECT,
-  CHAT_MODEL_SAMPLE_EFFECT,
   REFERENCE_ASK_PARENT_TOOL,
   REFERENCE_REVIEWER_CHAT,
   REFERENCE_REVIEWER_GUIDANCE,
