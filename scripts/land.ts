@@ -213,7 +213,7 @@ async function main(): Promise<void> {
   if (updateCoverageBaseline) {
     await writeFile(
       coverageBaselinePath,
-      `${JSON.stringify({ ...coverageBaseline, ...observedCoverage }, undefined, 2)}\n`,
+      `${JSON.stringify({ ...coverageBaseline, ...observedCoverage }, undefined, 4)}\n`,
     );
     console.log(`Updated coverage baseline: scripts/test-coverage-baseline.json`);
   }

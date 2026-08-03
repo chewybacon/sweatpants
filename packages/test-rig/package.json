@@ -78,7 +78,7 @@
     },
     "dependencies": {
         "@simulacrum/foundation-simulator": "0.8.0",
-        "@sweatpants/chat-core": "workspace:*",
+        "@sweatpants/chat-client": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",

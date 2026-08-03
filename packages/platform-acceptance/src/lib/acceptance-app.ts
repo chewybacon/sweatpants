@@ -335,6 +335,7 @@ export function createAcceptanceApplication(
         yield* context.model.install();
       },
       maxToolIterations: options.maxToolIterations ?? 4,
+      defaultEnabledTools: true,
       onCheckpointError(error) {
         checkpointErrors.push(error);
       },

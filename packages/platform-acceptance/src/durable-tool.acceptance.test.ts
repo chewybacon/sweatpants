@@ -53,8 +53,6 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation({
-        tools: [acceptanceDurableTool],
-        enabledTools: true,
         initialToolChoice: "required",
       });
       const turn = yield* conversation.send("Run the durable selection tool for trains.");
@@ -186,7 +184,7 @@ async function runDurableElicitOutcome(
       },
     },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceDurableTool] });
+      const conversation = s.conversation();
       const turn = yield* conversation.send(`DURABLE_${action.toUpperCase()}_V1`);
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
@@ -230,7 +228,7 @@ async function runDurableEffectFailure(binding: Binding): Promise<void> {
   await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceDurableTool] });
+      const conversation = s.conversation();
       const turn = yield* conversation.send("DURABLE_EFFECT_FAILURE_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([

@@ -287,6 +287,7 @@ describe("product facade golden path", () => {
           yield* ModelProviderModelContext.set(mockModel());
         },
         maxToolIterations: 2,
+        defaultEnabledTools: true,
       }),
     });
 
@@ -297,7 +298,6 @@ describe("product facade golden path", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: [{ id: "user:1", role: "user", content: "Please echo hello-facade" }],
-            enabledTools: true,
           }),
         }),
       );

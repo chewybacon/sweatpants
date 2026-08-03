@@ -7,8 +7,6 @@ import {
   ACCEPTANCE_TOOL_NAME,
   DURABLE_SAMPLE_PROMPT_MARKER,
   NESTED_SAMPLE_PROMPT_MARKER,
-  acceptanceBookingTool,
-  acceptanceDurableTool,
   createAcceptanceApplication,
   type AcceptanceApplicationInspection,
 } from "./lib/acceptance-app.ts";
@@ -29,7 +27,7 @@ async function supersedeParkedOrdinaryTool(binding: Binding): Promise<void> {
       },
     },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceBookingTool] });
+      const conversation = s.conversation();
       const oldTurn = yield* conversation.send("SUPERSEDE_ORDINARY_OLD_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
@@ -77,7 +75,7 @@ async function supersedeParkedDurableTool(binding: Binding): Promise<void> {
       createApplication: createAcceptanceApplication,
     },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceDurableTool] });
+      const conversation = s.conversation();
       const oldTurn = yield* conversation.send("SUPERSEDE_DURABLE_OLD_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
@@ -117,7 +115,7 @@ async function cancelDurableNestedSample(binding: Binding): Promise<void> {
       createApplication: createAcceptanceApplication,
     },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceDurableTool] });
+      const conversation = s.conversation();
       const turn = yield* conversation.send("CANCEL_DURABLE_SAMPLE_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([

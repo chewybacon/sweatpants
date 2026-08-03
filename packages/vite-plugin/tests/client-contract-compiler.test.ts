@@ -1,11 +1,13 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { build } from "vite";
 import { describe, expect, it } from "vitest";
 import {
   analyzeClientContractSource,
   ClientContractCompilerError,
   generateClientContractModule,
+  clientContractPlugin,
 } from "../src/client-contract-compiler.ts";
 
 describe("client contract compiler", () => {
@@ -85,6 +87,33 @@ describe("client contract compiler", () => {
     expect(generated).toContain("createDurableTool");
     expect(generated).not.toContain("DURABLE_SERVER_EFFECT_SENTINEL");
     expect(generated).not.toContain("serverEffect");
+  });
+
+  it("excludes ordinary and durable server implementations from a real client bundle", async () => {
+    const fixture = resolve(dirname(fileURLToPath(import.meta.url)), "fixtures/client-contract");
+    const result = await build({
+      configFile: false,
+      logLevel: "silent",
+      plugins: [clientContractPlugin()],
+      build: {
+        write: false,
+        minify: false,
+        rollupOptions: { input: resolve(fixture, "entry.ts") },
+      },
+    });
+    const outputs = (Array.isArray(result) ? result : [result]).flatMap((entry) =>
+      "output" in entry ? entry.output : [],
+    );
+    const clientBundle = outputs
+      .map((output) => ("code" in output ? output.code : String(output.source)))
+      .join("\n");
+
+    expect(clientBundle).toContain("ORDINARY_CONTRACT_MARKER");
+    expect(clientBundle).toContain("DURABLE_CONTRACT_MARKER");
+    expect(clientBundle).toContain("DEFAULT_CONTRACT_MARKER");
+    expect(clientBundle).not.toContain("ORDINARY_SERVER_IMPLEMENTATION_MUST_NOT_SHIP");
+    expect(clientBundle).not.toContain("DURABLE_EFFECT_IMPLEMENTATION_MUST_NOT_SHIP");
+    expect(clientBundle).not.toContain("DURABLE_EXECUTE_IMPLEMENTATION_MUST_NOT_SHIP");
   });
 
   it("fails closed for side-effect imports", () => {

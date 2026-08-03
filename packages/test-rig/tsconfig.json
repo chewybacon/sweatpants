@@ -7,7 +7,7 @@
     "include": ["src/**/*.ts"],
     "references": [
         {
-            "path": "../chat-core"
+            "path": "../chat-client"
         },
         {
             "path": "../tool-session"

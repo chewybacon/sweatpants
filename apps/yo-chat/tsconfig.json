@@ -11,6 +11,9 @@
     "exclude": ["dist", "node_modules"],
     "references": [
         {
+            "path": "../../packages/chat-client/tsconfig.json"
+        },
+        {
             "path": "../../packages/agent-host/tsconfig.lib.json"
         },
         {

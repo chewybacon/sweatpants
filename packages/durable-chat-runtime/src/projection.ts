@@ -12,7 +12,10 @@ import type { StreamEvent } from "./handler/types.ts";
 import {
   agUiMessagesToInternalMessages,
   buildAgUiCustomState,
-  replayFramesToConversation,
+  createChatProjection,
+  foldChatStreamEvent,
+  materializeChatMessages,
+  projectChatMessagesToWire,
   toProviderHistorySnapshot,
   type ChatSessionStreamEvent as ChatStreamEvent,
   type DurableFrame,
@@ -246,14 +249,34 @@ function activitySnapshotsFromFrames(
   return [...latest.values()];
 }
 
+function providerHistoryFromFrames(frames: readonly DurableFrame[]) {
+  let projection = createChatProjection();
+  for (const frame of frames) {
+    if (
+      frame.event.type !== EventType.ACTIVITY_SNAPSHOT &&
+      frame.event.type !== EventType.ACTIVITY_DELTA
+    ) {
+      projection = foldChatStreamEvent(projection, frame.event);
+    }
+  }
+  return projectChatMessagesToWire(materializeChatMessages(projection, { allowPending: true })).map(
+    (message) => {
+      if (message.role !== "tool") {
+        return message;
+      }
+      const { name: _name, isError: _isError, ...official } = message;
+      return official;
+    },
+  );
+}
+
 export function* buildCheckpointSnapshotEventsFromFrames(
   frames: DurableFrame[],
 ): Operation<StreamEvent[]> {
-  const replay = yield* replayFramesToConversation(frames);
   return [
     {
       type: EventType.MESSAGES_SNAPSHOT,
-      messages: toProviderHistorySnapshot(replay.history),
+      messages: [...providerHistoryFromFrames(frames)],
     },
     ...activitySnapshotsFromFrames(frames),
   ];
@@ -272,11 +295,10 @@ export function* completedConversationHydrateEvents(params: {
   elicits: ElicitRequestStreamEvent[];
 }): Operation<StreamEvent[]> {
   const { frames, conversationId, runId, openInterrupts, elicits } = params;
-  const replay = yield* replayFramesToConversation(frames);
   return [
     {
       type: EventType.MESSAGES_SNAPSHOT,
-      messages: toProviderHistorySnapshot(replay.history),
+      messages: [...providerHistoryFromFrames(frames)],
     },
     ...activitySnapshotsFromFrames(frames),
     {

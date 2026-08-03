@@ -1,7 +1,7 @@
 {
     "name": "@sweatpants/vite-plugin",
     "version": "0.1.0",
-    "description": "Vite integration for Sweatpants tool discovery and generated registries",
+    "description": "Vite integration for client tool contracts, tool discovery, and generated registries",
     "license": "MIT",
     "files": [
         "dist",
@@ -39,6 +39,7 @@
     },
     "devDependencies": {
         "@babel/preset-typescript": "^7.24.0",
+        "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@types/babel__core": "^7.20.5",
         "@types/node": "catalog:",

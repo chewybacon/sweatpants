@@ -2,6 +2,7 @@ import react from "@vitejs/plugin-react";
 import { createScope } from "effection";
 import { nodeRequestToWebRequest, sendWebResponse } from "@sweatpants/stream-bridge";
 import { createLambdaMicrovmWorkspaceManager } from "@sweatpants/workspace-lambda-microvm";
+import { clientContractPlugin } from "@sweatpants/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
@@ -104,7 +105,7 @@ function requiredEnvironment(name: string): string {
 }
 
 export default defineConfig({
-  plugins: [tsconfigPaths(), react(), studioApi()],
+  plugins: [clientContractPlugin(), tsconfigPaths(), react(), studioApi()],
   define: {
     __YO_STUDIO_WORKSPACE_PLACEMENT__: JSON.stringify(
       process.env["YO_STUDIO_WORKSPACE_PLACEMENT"] ?? "local",

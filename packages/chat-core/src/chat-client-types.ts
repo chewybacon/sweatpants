@@ -172,7 +172,7 @@ export interface ChatSendRequest {
   readonly runId: string;
   readonly parentRunId?: string;
   readonly messageId?: string;
-  readonly messages: readonly ChatWireMessage[];
+  readonly messages: readonly ChatRequestMessage[];
   readonly state: Json;
   readonly context: readonly { readonly description: string; readonly value: string }[];
   readonly forwardedProps: Json;
@@ -310,6 +310,10 @@ export type JsonPatchOperation = {
 };
 
 export type ChatWireMessage = Message;
+type ToolWireMessage = Extract<Message, { role: "tool" }>;
+export type ChatRequestMessage =
+  | Exclude<Message, ToolWireMessage>
+  | (ToolWireMessage & { readonly name: string; readonly isError: boolean });
 
 /** The transport and projection contract is the official AG-UI event union. */
 export type ChatStreamEvent = AGUIEvent;

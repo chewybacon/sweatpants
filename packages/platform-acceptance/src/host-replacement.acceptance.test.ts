@@ -9,7 +9,6 @@ import {
   ACCEPTANCE_DURABLE_TOOL_NAME,
   ACCEPTANCE_MODEL_ID,
   DURABLE_SAMPLE_RESPONSE_MARKER,
-  acceptanceDurableTool,
   createAcceptanceApplication,
 } from "./lib/acceptance-app.ts";
 
@@ -49,8 +48,6 @@ async function runScenario(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation({
-        tools: [acceptanceDurableTool],
-        enabledTools: true,
         initialToolChoice: "required",
       });
       const turn = yield* conversation.send("HOST_REPLACEMENT_DURABLE_TURN_V1");

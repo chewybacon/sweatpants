@@ -171,7 +171,11 @@ function ownedIdentity(options: OwnedUseChatOptions): string {
     busy: options.busy,
     pipeline:
       typeof options.pipeline === "string" ? options.pipeline : options.pipeline?.processors,
-    plugins: options.plugins?.map((plugin) => plugin.client.toolName),
+    plugins: options.plugins?.map((plugin) => ({
+      toolName: plugin.client.toolName,
+      ownerInterfaceDigest: plugin.client.ownerInterfaceDigest,
+      bindingIds: [...plugin.client.bindings.keys()],
+    })),
   });
 }
 

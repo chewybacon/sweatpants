@@ -25,13 +25,12 @@ describe("headless transport ingress", () => {
     const events = await run(function* () {
       const subscription = yield* parseChatResponseStream(body, new AbortController().signal);
       const values: unknown[] = [];
-      for (;;) {
-        const next = yield* subscription.next();
-        if (next.done) {
-          return values;
-        }
+      let next = yield* subscription.next();
+      while (!next.done) {
         values.push(next.value);
+        next = yield* subscription.next();
       }
+      return values;
     });
     expect(events.map((event) => (event as { type: string }).type)).toEqual([
       "RUN_STARTED",

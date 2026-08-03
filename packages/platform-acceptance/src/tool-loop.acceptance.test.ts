@@ -8,8 +8,6 @@ import {
   DURABLE_SAMPLE_PROMPT_MARKER,
   DURABLE_TOOL_RESULT_MARKER,
   IMMEDIATE_RESULT_MARKER,
-  acceptanceDurableTool,
-  acceptanceImmediateTool,
   createAcceptanceApplication,
 } from "./lib/acceptance-app.ts";
 
@@ -29,8 +27,6 @@ async function runTwoCallScenario(binding: Binding): Promise<void> {
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation({
-        tools: [acceptanceImmediateTool],
-        enabledTools: true,
         initialToolChoice: "required",
       });
       const turn = yield* conversation.send("MULTI_TOOL_V1");
@@ -66,9 +62,7 @@ async function runMixedRoutingScenario(binding: Binding): Promise<void> {
   await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
-      const conversation = s.conversation({
-        tools: [acceptanceImmediateTool, acceptanceDurableTool],
-      });
+      const conversation = s.conversation({});
       const turn = yield* conversation.send("MIXED_ROUTING_V1");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* request.respond.toolCalls([
@@ -110,7 +104,7 @@ async function runTextThenToolScenario(binding: Binding): Promise<void> {
   await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceImmediateTool] });
+      const conversation = s.conversation();
       const turn = yield* conversation.send("TEXT_THEN_TOOL_V1");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* request.respond.textAndToolCalls("TOOL_PREFACE_V1", [
@@ -136,7 +130,7 @@ async function runChunkedArgumentsScenario(binding: Binding): Promise<void> {
   await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceImmediateTool] });
+      const conversation = s.conversation();
       const turn = yield* conversation.send("CHUNKED_ARGUMENTS_V1");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* request.respond.toolCalls(
@@ -161,7 +155,7 @@ async function runMixedSuccessFailure(binding: Binding): Promise<void> {
   await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceImmediateTool] });
+      const conversation = s.conversation();
       const turn = yield* conversation.send("MIXED_SUCCESS_FAILURE_V1");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* request.respond.toolCalls([
@@ -200,7 +194,7 @@ async function runTerminalToolFailure(
   await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceImmediateTool] });
+      const conversation = s.conversation();
       const turn = yield* conversation.send(`TOOL_FAILURE_${failure.toUpperCase()}_V1`);
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       if (failure === "malformed") {
@@ -243,7 +237,7 @@ async function runSequentialToolScenario(binding: Binding): Promise<void> {
   await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceImmediateTool] });
+      const conversation = s.conversation();
       const turn = yield* conversation.send("SEQUENTIAL_TOOL_LOOP_V1");
       const first = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* first.respond.toolCalls([
@@ -283,7 +277,7 @@ async function runIterationLimitScenario(binding: Binding): Promise<void> {
       },
     },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceImmediateTool] });
+      const conversation = s.conversation();
       const turn = yield* conversation.send("MAX_ITERATIONS_V1");
       const first = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* first.respond.toolCalls([

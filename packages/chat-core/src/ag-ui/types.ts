@@ -2,7 +2,9 @@ import type { AGUIEvent, MessagesSnapshotEvent, RunStartedEvent } from "@ag-ui/c
 import type { Json } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { ToolCallInfo, ServerToolResult } from "../core-types.ts";
-import type { TreePlacement } from "../recursive-tree.ts";
+import type { PublicActivityPlacement } from "../chat-client-types.ts";
+
+type TreePlacement = Omit<PublicActivityPlacement, "presentation">;
 
 /** Producer facts retained by internal checkpoint and execution contracts. */
 export type AgUiRunMetadata = Pick<RunStartedEvent, "threadId" | "runId" | "parentRunId">;
@@ -58,3 +60,8 @@ export interface ElicitRequestStreamEvent {
 
 /** Standard protocol events are the official AG-UI union, without handwritten duplicates. */
 export type StreamEvent = AGUIEvent;
+
+export interface DurableFrame {
+  readonly lsn: number;
+  readonly event: StreamEvent;
+}

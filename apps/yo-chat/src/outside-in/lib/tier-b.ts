@@ -16,17 +16,14 @@ import type { ChatBinding } from "./chat-fetch.ts";
  */
 export async function createTierBBinding(): Promise<ChatBinding> {
   const server = await ensureSharedServer();
-  // Capture the REAL fetch now. The driver installs the binding's `fetch` as the
-  // global via `withChatFetch`, so calling `globalThis.fetch` here would recurse
-  // into this same binding. Tier B always talks to the server over real HTTP.
+  // Capture the real fetch once; Tier B always talks to the server over HTTP.
   const realFetch: typeof globalThis.fetch = globalThis.fetch.bind(globalThis);
   return {
     tier: "tier-b",
     fetch: (input, init) => {
       let url =
         typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      // Resolve relative URLs (e.g. /api/chat?conversationId=... from
-      // readDurableHistory) against the server URL.
+      // Resolve relative Chat Client transport URLs against the server URL.
       if (url.startsWith("/")) {
         url = `${server.url.replace(/\/$/, "")}${url}`;
       }

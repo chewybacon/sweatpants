@@ -13,7 +13,6 @@ import {
   NESTED_SAMPLE_PROMPT_MARKER,
   NESTED_SAMPLE_RESPONSE_MARKER,
   OUTER_TERMINAL_TEXT,
-  acceptanceBookingTool,
 } from "./lib/acceptance-app.ts";
 
 type Binding = TestRigOptions["binding"];
@@ -28,8 +27,6 @@ async function runHistoryScenario(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conv = s.conversation({
-        tools: [acceptanceBookingTool],
-        enabledTools: true,
         initialToolChoice: "required",
       });
       // ── Turn 1: booking with two elicitations and one nested sample ──

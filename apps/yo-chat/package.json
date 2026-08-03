@@ -32,6 +32,7 @@
         "@radix-ui/react-slot": "^1.2.4",
         "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/chat-client": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",

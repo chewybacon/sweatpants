@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   ChatTransportPort,
   createChatClient,
+  type ChatSendRequest,
   type ChatStreamEvent,
   type ChatTransportContract,
 } from "./index.ts";
@@ -73,6 +74,66 @@ describe("headless ChatClient", () => {
     client.setMessages([]);
     expect(client.getSnapshot().messages).toHaveLength(0);
     expect(client.getServerSnapshot().messages).toEqual(authoritative.messages);
+    await client.close();
+  });
+
+  it("carries settled tool history into the next provider request", async () => {
+    const requests: ChatSendRequest[] = [];
+    const driver: ChatTransportContract = {
+      *sendMessages(request) {
+        requests.push(request);
+        return streamOf(
+          requests.length === 1
+            ? [
+                { type: EventType.RUN_STARTED, threadId: "history", runId: "run-1" },
+                {
+                  type: EventType.TOOL_CALL_START,
+                  toolCallId: "call-1",
+                  toolCallName: "lookup",
+                  parentMessageId: "assistant-1",
+                },
+                { type: EventType.TOOL_CALL_ARGS, toolCallId: "call-1", delta: '{"id":1}' },
+                { type: EventType.TOOL_CALL_END, toolCallId: "call-1" },
+                {
+                  type: EventType.TOOL_CALL_RESULT,
+                  messageId: "tool-1",
+                  toolCallId: "call-1",
+                  content: '{"value":"found"}',
+                  role: "tool",
+                },
+                { type: EventType.RUN_FINISHED, threadId: "history", runId: "run-1" },
+              ]
+            : [
+                { type: EventType.RUN_STARTED, threadId: "history", runId: "run-2" },
+                { type: EventType.RUN_FINISHED, threadId: "history", runId: "run-2" },
+              ],
+        );
+      },
+      *reconnectToStream() {
+        return null;
+      },
+      *disconnect() {
+        return;
+      },
+    };
+    const client = createChatClient({
+      conversationId: "history",
+      transport: { driver },
+    });
+    await client.initialized;
+    await client.sendMessage({ text: "lookup" });
+    await client.sendMessage({ text: "again" });
+
+    expect(requests[1]?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "tool",
+          toolCallId: "call-1",
+          name: "lookup",
+          isError: false,
+        }),
+      ]),
+    );
     await client.close();
   });
 

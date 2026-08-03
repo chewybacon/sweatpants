@@ -693,6 +693,9 @@ importers:
       '@sweatpants/agent-sdk':
         specifier: workspace:*
         version: link:../../packages/agent-sdk
+      '@sweatpants/chat-client':
+        specifier: workspace:*
+        version: link:../../packages/chat-client
       '@sweatpants/chat-core':
         specifier: workspace:*
         version: link:../../packages/chat-core
@@ -1008,6 +1011,9 @@ importers:
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../../packages/tool-runtime
+      '@sweatpants/vite-plugin':
+        specifier: workspace:*
+        version: link:../../packages/vite-plugin
       '@sweatpants/workspace-lambda-microvm':
         specifier: workspace:*
         version: link:../../packages/workspace-lambda-microvm
@@ -1896,9 +1902,9 @@ importers:
       '@simulacrum/foundation-simulator':
         specifier: 0.8.0
         version: 0.8.0(ajv@8.20.0)(picomatch@4.0.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      '@sweatpants/chat-core':
+      '@sweatpants/chat-client':
         specifier: workspace:*
-        version: link:../chat-core
+        version: link:../chat-client
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
@@ -2175,6 +2181,9 @@ importers:
       '@babel/preset-typescript':
         specifier: ^7.24.0
         version: 7.28.5(@babel/core@7.28.6)
+      '@sweatpants/agent-sdk':
+        specifier: workspace:*
+        version: link:../agent-sdk
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config

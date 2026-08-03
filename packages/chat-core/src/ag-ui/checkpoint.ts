@@ -1,7 +1,6 @@
 import type { ToolCall } from "@sweatpants/model-provider";
-import type { AgUiCheckpoint, AgUiCustomState } from "./streaming.ts";
+import type { AgUiCheckpoint, AgUiCustomState, ElicitRequestStreamEvent } from "./types.ts";
 import type { ServerToolResult } from "../core-types.ts";
-import type { ElicitRequestStreamEvent } from "./streaming.ts";
 
 export interface BuildAgUiCheckpointOptions {
   threadId: string;

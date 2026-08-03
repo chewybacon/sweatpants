@@ -4,7 +4,6 @@ import {
   ACCEPTANCE_MODEL_ID,
   ACCEPTANCE_TOOL_NAME,
   NESTED_SAMPLE_PROMPT_MARKER,
-  acceptanceBookingTool,
   createAcceptanceApplication,
 } from "./lib/acceptance-app.ts";
 
@@ -15,8 +14,8 @@ async function runNestedFailure(binding: Binding, failure: NestedFailure): Promi
   await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
+      const conversation = s.conversation();
       const callId = `nested-failure-${failure}`;
-      const conversation = s.conversation({ tools: [acceptanceBookingTool] });
       const turn = yield* conversation.send(`NESTED_FAILURE_${failure.toUpperCase()}_V1`);
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
@@ -66,8 +65,8 @@ async function runFinalSampleFailure(binding: Binding): Promise<void> {
   await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
+      const conversation = s.conversation();
       const callId = "final-sample-failure-call";
-      const conversation = s.conversation({ tools: [acceptanceBookingTool] });
       const turn = yield* conversation.send("FINAL_SAMPLE_FAILURE_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
