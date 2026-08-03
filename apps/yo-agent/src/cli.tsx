@@ -26,7 +26,7 @@ await main(function* () {
     devServer.fetch(input instanceof Request ? input : new Request(input, init));
   const interaction = new TerminalInteractionRuntime({ plugins: [askUserPlugin] });
   const client = createChatClient({
-    conversationId: `yo-agent-${crypto.randomUUID()}`,
+    threadId: `yo-agent-${crypto.randomUUID()}`,
     transport: {
       http: {
         api: `${IN_PROCESS_BASE_URL}/api/chat`,

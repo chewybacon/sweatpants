@@ -1,7 +1,10 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
+import {
+  createToolInventory,
+  createToolInventoryEntry,
+  installToolInventory,
+} from "@sweatpants/tool-runtime";
 import { resource, run, type Operation, type Stream } from "effection";
 import { createClient, type RedisClientType } from "redis";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -142,7 +145,7 @@ function createApplication(
     handler,
     setup: function* () {
       yield* setupDurableStreams({ bufferStore, registryStore });
-      yield* ToolInventoryContext.set(createToolInventory([createToolInventoryEntry(playTttTool)]));
+      yield* installToolInventory(createToolInventory([createToolInventoryEntry(playTttTool)]));
       yield* ProgramDriverNativeToolsContext.set({
         bindings: new Map([
           [
@@ -244,7 +247,6 @@ export async function post(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages,
-        enabledTools: true,
         ...(resume
           ? {
               resume: [
@@ -336,7 +338,6 @@ function buildChatRequest(
     ...(signal ? { signal } : {}),
     body: JSON.stringify({
       messages,
-      enabledTools: true,
       ...(resume
         ? {
             resume: [

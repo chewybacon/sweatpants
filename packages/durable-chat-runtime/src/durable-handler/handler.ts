@@ -196,7 +196,7 @@ function* restoreThreadInterruptStateIfNeeded(
  * @returns Fetch handler function
  */
 export function createDurableChatHandler(config: DurableChatHandlerConfig) {
-  const { setup, maxToolIterations = 10, defaultEnabledTools } = config;
+  const { setup, maxToolIterations = 10 } = config;
   const executionStore = config.executionStore ?? createMemoryExecutionStore();
   const historyStore = config.historyStore ?? createMemoryHistoryStore();
 
@@ -417,6 +417,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
                 // Build tool schemas
                 const enabledToolNames = new Set<string>();
+                let exposeCompleteInventory = false;
                 let systemPrompt: string | undefined;
 
                 // Handle persona mode vs manual mode
@@ -442,19 +443,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     }
                   }
                 } else {
-                  // Manual mode. The fallback is server composition policy,
-                  // never a client-plugin-derived inventory.
-                  const requestedEnabledTools = body.enabledTools ?? defaultEnabledTools;
-                  if (requestedEnabledTools === true) {
-                    for (const name of inventoryNameList) {
-                      enabledToolNames.add(name);
-                    }
-                  } else if (Array.isArray(requestedEnabledTools)) {
-                    for (const name of requestedEnabledTools) {
-                      if (inventoryNames.has(name)) {
-                        enabledToolNames.add(name);
-                      }
-                    }
+                  // Manual mode presents the complete inventory installed by the
+                  // Host. Client plugins and wire metadata never select inventory.
+                  exposeCompleteInventory = true;
+                  for (const name of inventoryNameList) {
+                    enabledToolNames.add(name);
                   }
 
                   if (body.systemPrompt) {
@@ -480,11 +473,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   phase: "outer-chat",
                   entries: inventoryEntries,
                   request: body,
-                  enabledTools:
-                    body.enabledTools === true ||
-                    (body.enabledTools === undefined && defaultEnabledTools === true)
-                      ? true
-                      : Array.from(enabledToolNames),
+                  // This is a Host-selected presentation set. Authorization still
+                  // comes from `entries`, the scoped executable inventory.
+                  enabledTools: exposeCompleteInventory ? true : Array.from(enabledToolNames),
                   metadata: { sessionId, conversationId: requestedConversationId },
                 });
 

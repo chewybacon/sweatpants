@@ -1,8 +1,12 @@
-import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-runtime";
-import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
+import {
+  createToolInventory,
+  createToolInventoryEntry,
+  installToolInventory,
+  installToolRuntime,
+  type ToolRuntime,
+} from "@sweatpants/tool-runtime";
 import { resource, run, type Operation, type Stream } from "effection";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -135,7 +139,7 @@ export async function createBookFlightSubstrate(options: {
         setup: function* () {
           yield* setupDurableStreams({ bufferStore, registryStore });
           const registry = yield* createToolSessionRegistry(toolSessionStore, {});
-          yield* ToolInventoryContext.set(
+          yield* installToolInventory(
             createToolInventory([createToolInventoryEntry(bookFlightTool)]),
           );
           yield* installToolRuntime(fallbackRuntime);
@@ -241,7 +245,6 @@ function buildChatRequest(
     ...(signal ? { signal } : {}),
     body: JSON.stringify({
       messages,
-      enabledTools: true,
       ...(resume
         ? {
             resume: [

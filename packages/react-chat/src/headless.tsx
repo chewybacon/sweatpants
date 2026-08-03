@@ -18,6 +18,8 @@ import {
   type ChatMessage,
   type ChatPart,
   type ChatTransportOptions,
+  type ChatFetch,
+  type ChatQueueOption,
   type PipelinePreset,
   type ChatClientMiddleware,
   type ChatEventMiddleware,
@@ -25,6 +27,7 @@ import {
   ChatSchedulerPort,
 } from "@sweatpants/chat-client";
 import type { PipelineConfig } from "@sweatpants/chat-client/pipeline";
+import type { Json } from "@sweatpants/foundation";
 import type { ClientPlugin } from "@sweatpants/tool-session/mcp";
 import type { ReactElicitCapabilities } from "./plugin.ts";
 import { ReactInteractionRuntime } from "./react-interaction.ts";
@@ -89,7 +92,15 @@ export function createChatClient(options: CreateReactChatClientOptions): ReactCh
     });
   }
   const transport: ChatTransportOptions | undefined =
-    headlessOptions.transport ?? (api ? { http: { api } } : undefined);
+    headlessOptions.transport ??
+    (api !== undefined || headlessOptions.fetcher !== undefined
+      ? {
+          http: {
+            ...(api !== undefined ? { api } : {}),
+            ...(headlessOptions.fetcher !== undefined ? { fetch: headlessOptions.fetcher } : {}),
+          },
+        }
+      : undefined);
   const interaction = new ReactInteractionRuntime(plugins === undefined ? {} : { plugins });
   const clientOptions = {
     ...headlessOptions,
@@ -108,7 +119,17 @@ export function createChatRuntime(options: HeadlessChatRuntimeOptions = {}): Rea
     createClient: (clientOptions) => {
       const { api, pipeline, plugins, ...headlessOptions } = clientOptions;
       const transport: ChatTransportOptions | undefined =
-        headlessOptions.transport ?? (api ? { http: { api } } : undefined);
+        headlessOptions.transport ??
+        (api !== undefined || headlessOptions.fetcher !== undefined
+          ? {
+              http: {
+                ...(api !== undefined ? { api } : {}),
+                ...(headlessOptions.fetcher !== undefined
+                  ? { fetch: headlessOptions.fetcher }
+                  : {}),
+              },
+            }
+          : undefined);
       return runtime.createClient({
         ...headlessOptions,
         ...(transport !== undefined ? { transport } : {}),
@@ -128,8 +149,10 @@ export type UseChatOptions =
   | {
       readonly client?: never;
       readonly runtime?: ReactChatRuntime;
-      readonly conversationId: string;
+      readonly threadId: string;
       readonly api?: string;
+      readonly fetcher?: ChatFetch;
+      readonly connection?: HeadlessChatClientOptions<ReactRenderPart>["connection"];
       readonly transport?: ChatTransportOptions;
       readonly middleware?: readonly ChatClientMiddleware[];
       readonly eventMiddleware?: readonly ChatEventMiddleware[];
@@ -138,7 +161,10 @@ export type UseChatOptions =
       readonly plugins?: readonly ClientPlugin<ReactElicitCapabilities>[];
       readonly pipeline?: PipelinePreset | PipelineConfig;
       readonly scheduler?: ReactSchedulerDriver;
-      readonly busy?: "queue" | "drop" | "interrupt";
+      readonly queue?: ChatQueueOption;
+      readonly state?: Json;
+      readonly context?: HeadlessChatClientOptions<ReactRenderPart>["context"];
+      readonly forwardedProps?: Json;
     };
 
 export interface UseChatResult {
@@ -147,18 +173,242 @@ export interface UseChatResult {
   readonly connectionStatus: ChatSnapshot<ReactChatMessage>["connectionStatus"];
   readonly renderStatus: ChatSnapshot<ReactChatMessage>["renderStatus"];
   readonly error: Error | null;
-  readonly queuedMessages: ChatSnapshot<ReactChatMessage>["queuedMessages"];
+  readonly runId: ChatSnapshot<ReactChatMessage>["runId"];
+  readonly queue: ChatSnapshot<ReactChatMessage>["queue"];
   readonly client: ReactChatClient;
   readonly sendMessage: ReactChatClient["sendMessage"];
   readonly regenerate: ReactChatClient["regenerate"];
   readonly stop: ReactChatClient["stop"];
   readonly reconnect: ReactChatClient["reconnect"];
+  readonly cancelQueued: ReactChatClient["cancelQueued"];
   readonly setMessages: ReactChatClient["setMessages"];
   readonly clearError: ReactChatClient["clearError"];
 }
 
-type OwnedUseChatOptions = Extract<UseChatOptions, { readonly conversationId: string }>;
+type OwnedUseChatOptions = Extract<UseChatOptions, { readonly threadId: string }>;
 type ExternalUseChatOptions = Extract<UseChatOptions, { readonly client: ReactChatClient }>;
+
+interface PendingCommand {
+  run(client: ReactChatClient): void;
+  reject(error: unknown): void;
+}
+
+interface PendingOwnedChat {
+  readonly client: ReactChatClient;
+  start(): void;
+  close(): Promise<void>;
+}
+
+function createPendingOwnedChat(options: OwnedUseChatOptions): PendingOwnedChat {
+  const clientId = crypto.randomUUID();
+  const pendingSnapshot: ChatSnapshot<ReactChatMessage> = Object.freeze({
+    messages: Object.freeze([]) as readonly ReactChatMessage[],
+    status: "ready",
+    connectionStatus: "disconnected",
+    renderStatus: "loading",
+    error: null,
+    runId: null,
+    queue: Object.freeze([]),
+  });
+  const listeners = new Set<() => void>();
+  const pendingCommands: PendingCommand[] = [];
+  const pendingMessageUpdates: Array<(client: ReactChatClient) => void> = [];
+  let resolveInitialized!: () => void;
+  let rejectInitialized!: (error: unknown) => void;
+  const initialized = new Promise<void>((resolve, reject) => {
+    resolveInitialized = resolve;
+    rejectInitialized = reject;
+  });
+  void initialized.catch(() => undefined);
+  let actual: ReactChatClient | null = null;
+  let actualUnsubscribe: (() => void) | undefined;
+  let runtimeToClose: ReactChatRuntime | null = null;
+  let started = false;
+  let closed = false;
+
+  const notify = (): void => {
+    for (const listener of [...listeners]) {
+      listener();
+    }
+  };
+
+  const rejectPending = (error: unknown): void => {
+    for (const command of pendingCommands.splice(0)) {
+      command.reject(error);
+    }
+    pendingMessageUpdates.splice(0);
+  };
+
+  const flushPending = (client: ReactChatClient): void => {
+    for (const update of pendingMessageUpdates.splice(0)) {
+      update(client);
+    }
+    for (const command of pendingCommands.splice(0)) {
+      command.run(client);
+    }
+  };
+
+  const attach = (client: ReactChatClient): void => {
+    actual = client;
+    actualUnsubscribe = client.subscribe(notify);
+    client.initialized.then(
+      () => {
+        if (closed) {
+          return;
+        }
+        resolveInitialized();
+        flushPending(client);
+        notify();
+      },
+      (error) => {
+        rejectInitialized(error);
+        rejectPending(error);
+        notify();
+      },
+    );
+  };
+
+  const invoke = <T,>(operation: (client: ReactChatClient) => Promise<T>): Promise<T> => {
+    if (actual) {
+      return operation(actual);
+    }
+    if (closed) {
+      return Promise.reject(new Error("Owned React chat client is closed"));
+    }
+    return new Promise<T>((resolve, reject) => {
+      pendingCommands.push({
+        run(client) {
+          try {
+            void operation(client).then(resolve, reject);
+          } catch (error) {
+            reject(error);
+          }
+        },
+        reject,
+      });
+    });
+  };
+
+  const transport: ReactChatClient["transport"] = {
+    getSnapshot: () => actual?.transport.getSnapshot() ?? { status: "disconnected", error: null },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    reconnect: () => invoke((client) => client.transport.reconnect()),
+    disconnect: (reason) => invoke((client) => client.transport.disconnect(reason)),
+  };
+
+  const closeClient = async (): Promise<void> => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    const error = new Error("Owned React chat client is closed");
+    rejectInitialized(error);
+    rejectPending(error);
+    actualUnsubscribe?.();
+    actualUnsubscribe = undefined;
+    try {
+      await actual?.close();
+    } finally {
+      await runtimeToClose?.close();
+      runtimeToClose = null;
+    }
+  };
+
+  const client = {
+    id: clientId,
+    threadId: options.threadId,
+    initialized,
+    transport,
+    getSnapshot: () => actual?.getSnapshot() ?? pendingSnapshot,
+    getServerSnapshot: () => actual?.getServerSnapshot() ?? pendingSnapshot,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    sendMessage: (
+      input: Parameters<ReactChatClient["sendMessage"]>[0],
+      sendOptions?: Parameters<ReactChatClient["sendMessage"]>[1],
+    ) => invoke((owned) => owned.sendMessage(input, sendOptions)),
+    regenerate: (regenerateOptions?: Parameters<ReactChatClient["regenerate"]>[0]) =>
+      invoke((owned) => owned.regenerate(regenerateOptions)),
+    stop: () => invoke((owned) => owned.stop()),
+    reconnect: () => invoke((owned) => owned.reconnect()),
+    cancelQueued: (id: string) => invoke((owned) => owned.cancelQueued(id)),
+    setMessages(update: Parameters<ReactChatClient["setMessages"]>[0]): void {
+      if (actual) {
+        actual.setMessages(update);
+        return;
+      }
+      if (closed) {
+        throw new Error("Owned React chat client is closed");
+      }
+      pendingMessageUpdates.push((owned) => owned.setMessages(update));
+    },
+    clearError(): void {
+      if (actual) {
+        actual.clearError();
+        return;
+      }
+      if (closed) {
+        throw new Error("Owned React chat client is closed");
+      }
+      pendingMessageUpdates.push((owned) => owned.clearError());
+    },
+    close: closeClient,
+  } satisfies ReactChatClient;
+
+  return {
+    client,
+    start(): void {
+      if (started || closed) {
+        return;
+      }
+      started = true;
+      const runtime = options.runtime ?? createChatRuntime();
+      runtimeToClose = options.runtime === undefined ? runtime : null;
+      try {
+        const createdOptions: CreateReactChatClientOptions = {
+          threadId: options.threadId,
+          clientId,
+          runtime,
+          ...(options.api !== undefined ? { api: options.api } : {}),
+          ...(options.fetcher !== undefined ? { fetcher: options.fetcher } : {}),
+          ...(options.connection !== undefined ? { connection: options.connection } : {}),
+          ...(options.transport !== undefined ? { transport: options.transport } : {}),
+          ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
+          ...(options.eventMiddleware !== undefined
+            ? { eventMiddleware: options.eventMiddleware }
+            : {}),
+          ...(options.setup !== undefined ? { setup: options.setup } : {}),
+          initialize:
+            options.initialize ??
+            (function* (control): Operation<void> {
+              yield* call(() => control.reconnect());
+            } satisfies NonNullable<HeadlessChatClientOptions<ReactRenderPart>["initialize"]>),
+          ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
+          ...(options.pipeline !== undefined ? { pipeline: options.pipeline } : {}),
+          ...(options.scheduler !== undefined ? { scheduler: options.scheduler } : {}),
+          ...(options.queue !== undefined ? { queue: options.queue } : {}),
+          ...(options.state !== undefined ? { state: options.state } : {}),
+          ...(options.context !== undefined ? { context: options.context } : {}),
+          ...(options.forwardedProps !== undefined
+            ? { forwardedProps: options.forwardedProps }
+            : {}),
+        };
+        attach(createChatClient(createdOptions));
+      } catch (error) {
+        rejectInitialized(error);
+        rejectPending(error);
+        void runtimeToClose?.close();
+        runtimeToClose = null;
+      }
+    },
+    close: closeClient,
+  };
+}
 
 function isExternalOptions(options: UseChatOptions): options is ExternalUseChatOptions {
   return "client" in options;
@@ -166,9 +416,12 @@ function isExternalOptions(options: UseChatOptions): options is ExternalUseChatO
 
 function ownedIdentity(options: OwnedUseChatOptions): string {
   return JSON.stringify({
-    conversationId: options.conversationId,
+    threadId: options.threadId,
     api: options.api,
-    busy: options.busy,
+    state: options.state,
+    context: options.context,
+    forwardedProps: options.forwardedProps,
+    queue: options.queue,
     pipeline:
       typeof options.pipeline === "string" ? options.pipeline : options.pipeline?.processors,
     plugins: options.plugins?.map((plugin) => ({
@@ -183,59 +436,39 @@ function ownedIdentity(options: OwnedUseChatOptions): string {
 export function useHeadlessChat(options: UseChatOptions): UseChatResult {
   const external = isExternalOptions(options);
   const identity = external ? "external" : ownedIdentity(options);
+  const externalClient = external ? options.client : null;
   const owned = useMemo(() => {
-    if (isExternalOptions(options)) {
-      return { client: options.client, runtime: null as ReactChatRuntime | null };
+    if (externalClient) {
+      return { client: externalClient, resource: null as PendingOwnedChat | null };
     }
-    const ownedOptions: OwnedUseChatOptions = options;
-    const ownedRuntime = ownedOptions.runtime ?? createChatRuntime();
-    const createdOptions: CreateReactChatClientOptions = {
-      conversationId: ownedOptions.conversationId,
-      ...(ownedOptions.runtime !== undefined ? { runtime: ownedOptions.runtime } : {}),
-      ...(ownedOptions.api !== undefined ? { api: ownedOptions.api } : {}),
-      ...(ownedOptions.transport !== undefined ? { transport: ownedOptions.transport } : {}),
-      ...(ownedOptions.middleware !== undefined ? { middleware: ownedOptions.middleware } : {}),
-      ...(ownedOptions.eventMiddleware !== undefined
-        ? { eventMiddleware: ownedOptions.eventMiddleware }
-        : {}),
-      ...(ownedOptions.setup !== undefined ? { setup: ownedOptions.setup } : {}),
-      initialize:
-        ownedOptions.initialize ??
-        (function* (control): Operation<void> {
-          yield* call(() => control.reconnect());
-        } satisfies NonNullable<HeadlessChatClientOptions<ReactRenderPart>["initialize"]>),
-      ...(ownedOptions.pipeline !== undefined ? { pipeline: ownedOptions.pipeline } : {}),
-      ...(ownedOptions.scheduler !== undefined ? { scheduler: ownedOptions.scheduler } : {}),
-      ...(ownedOptions.busy !== undefined ? { busy: ownedOptions.busy } : {}),
-      ...(ownedOptions.plugins !== undefined ? { plugins: ownedOptions.plugins } : {}),
-    };
-    return {
-      client: createChatClient({ ...createdOptions, runtime: ownedRuntime }),
-      runtime: ownedOptions.runtime === undefined ? ownedRuntime : null,
-    };
-    // The identity is intentionally the only dependency: option objects are
-    // configuration values, not an invitation to recreate an active client.
+    const resource = createPendingOwnedChat(options as OwnedUseChatOptions);
+    return { client: resource.client, resource };
+    // The identity is intentionally the only configuration dependency. The
+    // pending resource has no scope or network side effects during render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [identity]);
+  }, [identity, externalClient]);
 
   const client = owned.client;
+  const ownedResourceRef = useRef<PendingOwnedChat | null>(owned.resource);
+  ownedResourceRef.current = owned.resource;
   const ownershipGeneration = useRef(0);
   useEffect(() => {
-    if (external) {
+    const resource = owned.resource;
+    if (!resource) {
       return;
     }
     const generation = ++ownershipGeneration.current;
+    resource.start();
     return () => {
       queueMicrotask(() => {
         // eslint-disable-next-line react-hooks/exhaustive-deps -- The live generation intentionally detects a remount before deferred teardown.
-        if (ownershipGeneration.current !== generation) {
+        if (ownershipGeneration.current !== generation && ownedResourceRef.current === resource) {
           return;
         }
-        void client.close();
-        void owned.runtime?.close();
+        void resource.close();
       });
     };
-  }, [client, external, owned.runtime]);
+  }, [owned.resource]);
 
   const snapshot = useSyncExternalStore(
     client.subscribe.bind(client),
@@ -249,6 +482,7 @@ export function useHeadlessChat(options: UseChatOptions): UseChatResult {
     regenerate: client.regenerate.bind(client),
     stop: client.stop.bind(client),
     reconnect: client.reconnect.bind(client),
+    cancelQueued: client.cancelQueued.bind(client),
     setMessages: client.setMessages.bind(client),
     clearError: client.clearError.bind(client),
   };

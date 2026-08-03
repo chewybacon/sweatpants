@@ -20,6 +20,11 @@ export class ToolInventoryError extends Error {
 
 export const ToolInventoryContext = createContext<ToolInventory>("ToolInventory");
 
+/** Installs the Host-owned executable inventory for the current Effection scope. */
+export function* installToolInventory(inventory: ToolInventory): Operation<void> {
+  yield* ToolInventoryContext.set(inventory);
+}
+
 export function createToolInventory(entries: ToolInventoryEntry[]): ToolInventory {
   const ordered = [...entries];
   const byName = new Map<string, ToolInventoryEntry>();

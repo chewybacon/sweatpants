@@ -291,7 +291,6 @@ const chatRequestBodySchema = z
     effort: z.string().max(512).optional(),
     streamOptions: streamOptionsSchema.optional(),
     initialToolChoice: z.enum(["auto", "none", "required"]).optional(),
-    enabledTools: z.union([z.boolean(), z.array(z.string().max(512)).max(256)]).optional(),
     model: z
       .object({ provider: z.string().min(1).max(512), id: z.string().min(1).max(512) })
       .strict()

@@ -127,7 +127,7 @@ function DurableChat({ conversationId }: { conversationId: string }) {
   const [task, setTask] = useState("Inspect the workspace and report its current version");
   const { messages, status, sendMessage, stop, error, renderStatus } = useChat({
     api: "/api/chat",
-    conversationId,
+    threadId: conversationId,
     pipeline: "markdown",
     plugins: [playTttPlugin],
   });

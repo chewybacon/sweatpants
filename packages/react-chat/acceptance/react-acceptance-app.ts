@@ -9,7 +9,7 @@ import {
   createProgramDriverJournalStore,
   programDriverSchemaRegistry,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
-import { createToolInventory, ToolInventoryContext } from "@sweatpants/tool-runtime";
+import { createToolInventory, installToolInventory } from "@sweatpants/tool-runtime";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
@@ -56,7 +56,7 @@ export function createReactAcceptanceApplication(
       yield* setupInMemoryDurableStreams<string>({
         retentionPolicy: { mode: "retain_forever" },
       });
-      yield* ToolInventoryContext.set(inventory);
+      yield* installToolInventory(inventory);
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStoreWithDebug(), {
         worker: { workerUrl: workerBootstrapUrl(), isDev: false },
       });
@@ -74,7 +74,6 @@ export function createReactAcceptanceApplication(
       });
     },
     handler: createChatHandler({
-      defaultEnabledTools: true,
       programDriverJournalStore: journalStore,
       setup: function* (): Operation<void> {
         yield* context.model.install();

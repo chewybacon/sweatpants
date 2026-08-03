@@ -116,10 +116,24 @@ export interface ElicitPart<TLocalPart extends ChatLocalPart = never> {
 export type ChatStatus = "ready" | "submitted" | "streaming" | "error";
 export type ChatConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 export type ChatRenderStatus = "loading" | "ready" | "error";
+export type ChatBusyPolicy = "queue" | "drop" | "interrupt";
+export type ChatQueueOverflowPolicy = "reject" | "drop-oldest";
+
+export interface ChatQueueOptions {
+  /** Action taken when a send arrives while a request is active. */
+  readonly whenBusy?: ChatBusyPolicy;
+  /** Maximum number of queued messages. Omit for an unbounded queue. */
+  readonly maxSize?: number;
+  /** `reject` rejects the incoming send; `drop-oldest` rejects the displaced send. */
+  readonly onOverflow?: ChatQueueOverflowPolicy;
+}
+
+export type ChatQueueOption = ChatBusyPolicy | ChatQueueOptions;
 
 export interface QueuedUserMessage {
   readonly id: string;
   readonly input: UserMessageInput;
+  readonly createdAt: number;
 }
 
 export interface ChatSnapshot<TMessage extends ChatMessage<ChatLocalPart> = ChatMessage> {
@@ -128,7 +142,8 @@ export interface ChatSnapshot<TMessage extends ChatMessage<ChatLocalPart> = Chat
   readonly connectionStatus: ChatConnectionStatus;
   readonly renderStatus: ChatRenderStatus;
   readonly error: Error | null;
-  readonly queuedMessages: readonly QueuedUserMessage[];
+  readonly runId: string | null;
+  readonly queue: readonly QueuedUserMessage[];
 }
 
 export type UserInputPart =
@@ -168,7 +183,7 @@ export interface ResumeEntry {
 export interface ChatSendRequest {
   readonly trigger: ChatSendTrigger;
   readonly clientId: string;
-  readonly conversationId: string;
+  readonly threadId: string;
   readonly runId: string;
   readonly parentRunId?: string;
   readonly messageId?: string;
@@ -182,7 +197,7 @@ export interface ChatSendRequest {
 
 export interface ChatReconnectRequest {
   readonly clientId: string;
-  readonly conversationId: string;
+  readonly threadId: string;
   readonly cursor?: number;
 }
 

@@ -113,7 +113,7 @@ function Message({ message }: { message: ChatMessage }) {
 
 function PlayTttDemo() {
   const { messages, status, renderStatus, sendMessage, stop, setMessages, error } = useChat({
-    conversationId: "play-ttt-chat",
+    threadId: "play-ttt-chat",
     pipeline: "markdown",
     plugins: [playTttPlugin],
     // Force the first turn into the tool; later turns stay free-form so

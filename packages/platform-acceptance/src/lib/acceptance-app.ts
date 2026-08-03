@@ -24,7 +24,7 @@ import {
   ExecutionModelSamplingServiceContext,
   ModelSamplingApi,
 } from "@sweatpants/model-sampling";
-import { createToolInventory, ToolInventoryContext } from "@sweatpants/tool-runtime";
+import { createToolInventory, installToolInventory } from "@sweatpants/tool-runtime";
 import { toModelMessages } from "@sweatpants/tool-session/messages";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
@@ -204,7 +204,7 @@ export function createAcceptanceApplication(
       yield* setupInMemoryDurableStreams<string>(
         options.retainResponseStreams ? { retentionPolicy: { mode: "retain_forever" } } : {},
       );
-      yield* ToolInventoryContext.set(inventory);
+      yield* installToolInventory(inventory);
       yield* durableOptionsProvider.install();
       let executionEffects: DurableEffectRegistry | undefined;
       yield* ModelSamplingApi.around({
@@ -335,7 +335,6 @@ export function createAcceptanceApplication(
         yield* context.model.install();
       },
       maxToolIterations: options.maxToolIterations ?? 4,
-      defaultEnabledTools: true,
       onCheckpointError(error) {
         checkpointErrors.push(error);
       },

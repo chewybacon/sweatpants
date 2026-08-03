@@ -4,6 +4,7 @@ export type ChatClientErrorCode =
   | "chat_client_configuration_sealed"
   | "chat_driver_duplicate"
   | "chat_transport_unavailable"
+  | "chat_transport_failed"
   | "chat_transport_truncated"
   | "chat_event_invalid"
   | "chat_activity_invalid"
@@ -12,7 +13,10 @@ export type ChatClientErrorCode =
   | "chat_activity_parent_missing"
   | "chat_pipeline_failed"
   | "chat_regenerate_nested_unsupported"
-  | "chat_busy_dropped";
+  | "chat_busy_dropped"
+  | "chat_queue_invalid"
+  | "chat_queue_full"
+  | "chat_queue_dropped";
 
 export class ChatClientError extends Error {
   readonly code: ChatClientErrorCode | (string & {});

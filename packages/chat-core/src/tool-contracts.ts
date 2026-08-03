@@ -16,6 +16,7 @@ export interface ToolExposureRequest {
   entries?: ToolInventoryEntry[];
   request?: unknown;
   persona?: unknown;
+  /** Host-selected presentation subset; executable authorization comes from `entries`. */
   enabledTools?: true | string[];
   sampleTools?: SamplingToolDefinitionLike[];
   metadata?: Record<string, unknown>;

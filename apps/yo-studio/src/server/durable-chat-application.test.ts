@@ -37,7 +37,6 @@ describe("yo-studio durable chat HTTP projection", () => {
           body: JSON.stringify({
             conversationId: "yo-studio-test",
             messages: [{ id: "user-1", role: "user", content: "Create demo.txt and test it" }],
-            enabledTools: true,
           }),
         }),
       );
@@ -85,7 +84,6 @@ describe("yo-studio durable chat HTTP projection", () => {
           body: JSON.stringify({
             conversationId: "shared-workspace-conversation",
             messages: [{ id: "user-1", role: "user", content: "Create demo.txt and test it" }],
-            enabledTools: true,
           }),
         }),
       );

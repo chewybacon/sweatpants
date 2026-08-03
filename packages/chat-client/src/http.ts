@@ -21,10 +21,13 @@ export interface HttpTransportOptions {
   >;
 }
 
-function joinUrl(api: string, conversationId?: string, cursor?: number, clientId?: string): string {
+function joinUrl(api: string, threadId?: string, cursor?: number, clientId?: string): string {
   const url = new URL(api, "http://sweatpants.invalid");
-  if (conversationId !== undefined) {
-    url.searchParams.set("conversationId", conversationId);
+  if (threadId !== undefined) {
+    // The durable handler's query name remains conversationId; the public
+    // client identity is threadId and the POST body carries both protocol
+    // aliases while the server migration is still in place.
+    url.searchParams.set("conversationId", threadId);
   }
   if (clientId !== undefined) {
     url.searchParams.set("clientId", clientId);
@@ -58,7 +61,7 @@ function responseError(response: Response): Operation<never> {
     } catch {
       // The status is still a useful coded client failure.
     }
-    throw new ChatClientError("chat_event_invalid", detail);
+    throw new ChatClientError("chat_transport_failed", detail);
   })();
 }
 
@@ -211,7 +214,7 @@ function responseStream(
   onCursor?: (cursor: number) => void,
 ): Stream<ChatStreamEvent, void> {
   if (!response.body) {
-    throw new ChatClientError("chat_event_invalid", "Chat API response has no body");
+    throw new ChatClientError("chat_transport_failed", "Chat API response has no body");
   }
   return parseChatResponseStream(
     response.body,
@@ -244,7 +247,13 @@ function fetchInit(options: HttpTransportOptions, signal: AbortSignal, body?: st
 export function createHttpTransport(options: HttpTransportOptions = {}): ChatTransportContract {
   const api = options.api ?? "/api/chat";
   const chatFetch = options.fetch ?? globalThis.fetch;
-  let cursor: number | undefined;
+  const cursors = new Map<string, number>();
+  const recordCursor = (threadId: string, cursor: number): void => {
+    const previous = cursors.get(threadId);
+    if (previous === undefined || cursor > previous) {
+      cursors.set(threadId, cursor);
+    }
+  };
   if (!chatFetch) {
     throw new ChatClientError("chat_transport_unavailable", "No fetch implementation is available");
   }
@@ -257,8 +266,8 @@ export function createHttpTransport(options: HttpTransportOptions = {}): ChatTra
       const body = JSON.stringify({
         trigger: request.trigger,
         clientId: request.clientId,
-        threadId: request.conversationId,
-        conversationId: request.conversationId,
+        threadId: request.threadId,
+        conversationId: request.threadId,
         runId: request.runId,
         messages: request.messages,
         state: request.state,
@@ -278,7 +287,7 @@ export function createHttpTransport(options: HttpTransportOptions = {}): ChatTra
         return yield* responseError(response);
       }
       return responseStream(response, signal, (nextCursor) => {
-        cursor = nextCursor;
+        recordCursor(request.threadId, nextCursor);
       });
     },
 
@@ -286,7 +295,12 @@ export function createHttpTransport(options: HttpTransportOptions = {}): ChatTra
       request: ChatReconnectRequest,
       signal: AbortSignal,
     ): Operation<Stream<ChatStreamEvent, void> | null> {
-      const url = joinUrl(api, request.conversationId, request.cursor ?? cursor, request.clientId);
+      const url = joinUrl(
+        api,
+        request.threadId,
+        request.cursor ?? cursors.get(request.threadId),
+        request.clientId,
+      );
       const headers = requestHeaders(options);
       headers.delete("Content-Type");
       const response = yield* call(() =>
@@ -305,7 +319,7 @@ export function createHttpTransport(options: HttpTransportOptions = {}): ChatTra
         return yield* responseError(response);
       }
       return responseStream(response, signal, (nextCursor) => {
-        cursor = nextCursor;
+        recordCursor(request.threadId, nextCursor);
       });
     },
 

@@ -62,22 +62,22 @@ const clientsByScenario = new WeakMap<object, Map<string, ReactChatClient>>();
 
 function getClient(scenario: ScenarioContext, options: UseChatOptions): ReactChatClient {
   if ("client" in options && options.client) return options.client;
-  const conversationId = options.conversationId;
+  const threadId = options.threadId;
   let clients = clientsByScenario.get(scenario as object);
   if (!clients) {
     clients = new Map();
     clientsByScenario.set(scenario as object, clients);
   }
-  const existing = clients.get(conversationId);
+  const existing = clients.get(threadId);
   if (existing) return existing;
   const created = createChatClient({
-    conversationId,
+    threadId,
     transport: { http: { fetch: scenario.transport.fetch } },
     ...(options.pipeline !== undefined ? { pipeline: options.pipeline } : {}),
     ...(options.scheduler !== undefined ? { scheduler: options.scheduler } : {}),
     ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
   });
-  clients.set(conversationId, created);
+  clients.set(threadId, created);
   return created;
 }
 
@@ -130,7 +130,7 @@ function findElicit(
 export function mountReactChat(
   scenario: ScenarioContext,
   options: Exclude<UseChatOptions, { readonly client: ReactChatClient }> & {
-    readonly conversationId: string;
+    readonly threadId: string;
   },
   timeoutMs = 10_000,
 ): Operation<ReactChatHandle> {

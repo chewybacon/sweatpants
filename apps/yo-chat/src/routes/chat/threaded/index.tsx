@@ -202,7 +202,7 @@ function ThreadPanel({
       ? { api: "/api/chat?scripted=rendering" }
       : {}),
     plugins: [pickCardPlugin],
-    conversationId: threadId,
+    threadId,
   });
   const busy = status === "submitted" || status === "streaming";
   const renderReady = renderStatus === "ready";

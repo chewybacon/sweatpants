@@ -1,8 +1,12 @@
-import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-runtime";
-import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
+import {
+  createToolInventory,
+  createToolInventoryEntry,
+  installToolInventory,
+  installToolRuntime,
+  type ToolRuntime,
+} from "@sweatpants/tool-runtime";
 import { describe, expect, it } from "vitest";
 import { action, resource, run, type Operation, type Stream } from "effection";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -159,7 +163,7 @@ describe("an indeterminate unsafe effect reaches the model", () => {
         }),
         setup: function* () {
           yield* setupDurableStreams({ bufferStore, registryStore });
-          yield* ToolInventoryContext.set(
+          yield* installToolInventory(
             createToolInventory([createToolInventoryEntry(bookFlightTool)]),
           );
           yield* installToolRuntime(fallback);
@@ -224,7 +228,6 @@ function chatRequest(): Request {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       messages: [{ id: "u1", role: "user", content: "Book NYC to LAX" }],
-      enabledTools: true,
     }),
   });
 }

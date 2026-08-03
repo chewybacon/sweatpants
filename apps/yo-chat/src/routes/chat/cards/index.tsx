@@ -109,7 +109,7 @@ function Message({ message }: { message: ChatMessage }) {
 
 function CardsChatDemo() {
   const { messages, status, renderStatus, sendMessage, stop, setMessages, error } = useChat({
-    conversationId: "cards-chat",
+    threadId: "cards-chat",
     pipeline: "markdown",
     // Only the pick-card plugin - focused demo
     plugins: [pickCardPlugin],

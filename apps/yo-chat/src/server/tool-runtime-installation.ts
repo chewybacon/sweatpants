@@ -1,8 +1,11 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
+import {
+  createToolInventory,
+  createToolInventoryEntry,
+  installToolInventory,
+} from "@sweatpants/tool-runtime";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import type { AnyToolContract, RuntimeTool } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   PluginSessionManagerContext,
   PluginSessionRegistryContext,
@@ -151,7 +154,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   });
   yield* PluginSessionRegistryContext.set(options.registry);
   yield* PluginSessionManagerContext.set(options.pluginManager);
-  yield* ToolInventoryContext.set(
+  yield* installToolInventory(
     createToolInventory(availableContracts.map((tool) => createToolInventoryEntry(tool))),
   );
   if (options.mode === "local") {

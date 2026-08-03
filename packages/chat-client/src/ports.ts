@@ -54,6 +54,7 @@ export interface ChatClientCommandContract {
   stop(): Operation<void>;
   regenerate(options?: RegenerateOptions): Operation<void>;
   reconnect(): Operation<void>;
+  cancelQueued(id: string): Operation<void>;
   setMessages(update: unknown): Operation<void>;
   clearError(): Operation<void>;
   close(): Operation<void>;
@@ -64,6 +65,7 @@ interface ChatCommandImplementation {
   stop(): Operation<void>;
   regenerate(options?: RegenerateOptions): Operation<void>;
   reconnect(): Operation<void>;
+  cancelQueued(id: string): Operation<void>;
   setMessages(update: unknown): Operation<void>;
   clearError(): Operation<void>;
   close(): Operation<void>;
@@ -106,6 +108,9 @@ export const ChatClientApi = createApi<ChatClientCommandContract>("sweatpants:ch
   },
   *reconnect() {
     return yield* (yield* ChatCommandContext.expect()).reconnect();
+  },
+  *cancelQueued(id: string) {
+    return yield* (yield* ChatCommandContext.expect()).cancelQueued(id);
   },
   *setMessages(update: unknown) {
     return yield* (yield* ChatCommandContext.expect()).setMessages(update);

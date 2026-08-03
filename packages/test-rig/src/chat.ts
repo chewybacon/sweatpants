@@ -14,6 +14,38 @@ import {
 
 export type ChatFetch = FrameworkChatFetch;
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: unknown): void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let settled = false;
+  let resolvePromise!: (value: T) => void;
+  let rejectPromise!: (error: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  void promise.catch(() => undefined);
+  return {
+    promise,
+    resolve(value) {
+      if (!settled) {
+        settled = true;
+        resolvePromise(value);
+      }
+    },
+    reject(error) {
+      if (!settled) {
+        settled = true;
+        rejectPromise(error);
+      }
+    },
+  };
+}
+
 export interface ConversationOptions {
   conversationId?: string;
   systemPrompt?: string;
@@ -67,38 +99,6 @@ export interface ConversationHandle {
 
 export interface ChatHandle {
   conversation(options?: ConversationOptions): ConversationHandle;
-}
-
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve(value: T): void;
-  reject(error: unknown): void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let settled = false;
-  let resolvePromise!: (value: T) => void;
-  let rejectPromise!: (error: unknown) => void;
-  const promise = new Promise<T>((resolve, reject) => {
-    resolvePromise = resolve;
-    rejectPromise = reject;
-  });
-  void promise.catch(() => undefined);
-  return {
-    promise,
-    resolve(value) {
-      if (!settled) {
-        settled = true;
-        resolvePromise(value);
-      }
-    },
-    reject(error) {
-      if (!settled) {
-        settled = true;
-        rejectPromise(error);
-      }
-    },
-  };
 }
 
 function matchesDelta(
@@ -375,13 +375,9 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
       };
 
       const client: ChatClient = createChatClient({
-        conversationId,
-        transport: {
-          http: {
-            api: options.baseUrl ?? "/api/chat",
-            fetch: requestOptionsFetch(options.fetch, conversationId, conversationOptions),
-          },
-        },
+        threadId: conversationId,
+        api: options.baseUrl ?? "/api/chat",
+        fetcher: requestOptionsFetch(options.fetch, conversationId, conversationOptions),
         eventMiddleware: [eventMiddleware],
         interaction,
       });

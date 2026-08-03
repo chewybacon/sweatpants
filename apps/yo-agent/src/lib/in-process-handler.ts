@@ -5,9 +5,9 @@ import {
   type ChatHandlerSetupContext,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
-  ToolInventoryContext,
   createToolInventory,
   createToolInventoryEntry,
+  installToolInventory,
 } from "@sweatpants/tool-runtime";
 import { MaxIterationsContext } from "@sweatpants/durable-chat-runtime/contexts";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
@@ -54,7 +54,7 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
   };
 
   const setupTools = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
-    yield* ToolInventoryContext.set(
+    yield* installToolInventory(
       createToolInventory(tools.map((tool) => createToolInventoryEntry(tool))),
     );
     yield* installLocalToolRuntime({

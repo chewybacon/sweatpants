@@ -1,11 +1,15 @@
-import { installToolRuntime, type ToolRuntime } from "@sweatpants/tool-runtime";
-import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
+import {
+  createToolInventory,
+  createToolInventoryEntry,
+  installToolInventory,
+  installToolRuntime,
+  type ToolRuntime,
+} from "@sweatpants/tool-runtime";
 // @vitest-environment node
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import { createClient } from "redis";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -144,7 +148,7 @@ describe.skipIf(!externalSubstrateEnabled)(
               return;
             }
             const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-            yield* ToolInventoryContext.set(
+            yield* installToolInventory(
               createToolInventory([createToolInventoryEntry(bookFlightTool)]),
             );
             yield* installToolRuntime(runtime);
@@ -244,7 +248,6 @@ async function post(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages,
-        enabledTools: true,
         ...(resume
           ? {
               resume: [

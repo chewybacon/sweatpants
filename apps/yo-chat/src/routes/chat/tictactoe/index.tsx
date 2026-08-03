@@ -114,7 +114,7 @@ function Message({ message }: { message: ChatMessage }) {
 
 function TicTacToeDemo() {
   const { messages, status, renderStatus, sendMessage, stop, setMessages, error } = useChat({
-    conversationId: "tictactoe-chat",
+    threadId: "tictactoe-chat",
     pipeline: "markdown",
     // Browser interaction is supplied by the plugin.
     // Client plugin registration is local; server tool composition is independent.

@@ -136,7 +136,7 @@ function BasicChatSession({
     // No tools - clean baseline chat
     // No plugins
     plugins: [],
-    conversationId,
+    threadId: conversationId,
   });
   const busy = status === "submitted" || status === "streaming";
   const renderReady = renderStatus === "ready";
