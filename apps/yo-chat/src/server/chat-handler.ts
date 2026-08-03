@@ -41,6 +41,7 @@ export function createYoChatHandler(): ReturnType<typeof createChatHandler> {
   return createChatHandler({
     setup: setupYoChatModelProvider,
     maxToolIterations: 10,
+    defaultEnabledTools: true,
     programDriverJournalStore: journalStore,
     executionStore,
   });

@@ -1,18 +1,17 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { createChatHandler } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createProgramDriverJournalStore,
   type ChatHandlerSetupContext,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
-import { MaxIterationsContext } from "@sweatpants/durable-chat-runtime/contexts";
-import type { ToolDefinition } from "@sweatpants/agent-sdk";
 import {
-  installPiAiModelProvider,
-  resolvePiAiModel,
-  type ModelSelection,
-} from "@sweatpants/model-provider-pi-ai";
+  ToolInventoryContext,
+  createToolInventory,
+  createToolInventoryEntry,
+} from "@sweatpants/tool-runtime";
+import { MaxIterationsContext } from "@sweatpants/durable-chat-runtime/contexts";
+import type { RuntimeTool } from "@sweatpants/agent-sdk";
+import { installPiAiModelProvider, resolvePiAiModel } from "@sweatpants/model-provider-pi-ai";
 import {
   setupInMemoryDurableStreams,
   type DurableStreamsOwner,
@@ -20,10 +19,9 @@ import {
 import { installLocalToolRuntime } from "@sweatpants/tool-runtime-local";
 import type { Operation } from "effection";
 
-export type AgentTool = ToolDefinition<string, unknown, unknown, any, any>;
+export type AgentTool = RuntimeTool;
 
 export interface InProcessHandlerConfig {
-  model: ModelSelection;
   tools: AgentTool[];
   toolsModuleUrl: string | URL;
   maxIterations?: number;
@@ -31,7 +29,7 @@ export interface InProcessHandlerConfig {
 }
 
 export function createInProcessHandler(config: InProcessHandlerConfig) {
-  const { model: modelSelection, tools, toolsModuleUrl, maxIterations = 10, owner } = config;
+  const { tools, toolsModuleUrl, maxIterations = 10, owner } = config;
 
   const toolWorkerBootstrapUrl = new URL(
     "../../src/lib/tool-worker-bootstrap.mjs",
@@ -45,7 +43,14 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
   };
 
   const setupProvider = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
-    yield* installPiAiModelProvider({ model: resolvePiAiModel(modelSelection) });
+    const provider = process.env["DEFAULT_CHAT_MODEL_PROVIDER"];
+    const id = process.env["DEFAULT_CHAT_MODEL_ID"];
+    if (!provider || !id) {
+      throw new Error(
+        "Configure DEFAULT_CHAT_MODEL_PROVIDER and DEFAULT_CHAT_MODEL_ID before starting yo-agent",
+      );
+    }
+    yield* installPiAiModelProvider({ model: resolvePiAiModel({ provider, id }) });
   };
 
   const setupTools = function* (_ctx: ChatHandlerSetupContext): Operation<void> {

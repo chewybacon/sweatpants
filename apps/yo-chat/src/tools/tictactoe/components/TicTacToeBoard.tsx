@@ -4,14 +4,14 @@
  * Interactive board for the tictactoe plugin.
  * Displays the game state and handles cell clicks.
  */
-import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
+import type { ReactRenderableProps } from "@sweatpants/react-chat";
 import type { Board, LastMove } from "../types";
 
 // =============================================================================
 // TYPES
 // =============================================================================
 
-interface TicTacToeBoardProps extends RenderableProps<{ position: number }> {
+interface TicTacToeBoardProps extends ReactRenderableProps<{ position: number }> {
   board: Board;
   lastMove?: LastMove;
   winningLine?: number[];

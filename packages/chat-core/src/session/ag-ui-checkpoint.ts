@@ -1,5 +1,5 @@
 import type { ToolCall } from "@sweatpants/model-provider";
-import type { AgUiCheckpoint, AgUiCustomState, ConversationReplayState } from "./streaming.ts";
+import type { AgUiCheckpoint, AgUiCustomState } from "./streaming.ts";
 import type { ServerToolResult } from "../core-types.ts";
 import type { ElicitRequestStreamEvent } from "./streaming.ts";
 
@@ -11,20 +11,11 @@ export interface BuildAgUiCheckpointOptions {
   assistantContent: string;
   toolCalls: ToolCall[];
   serverToolResults: ServerToolResult[];
-  replay?: ConversationReplayState;
 }
 
 export function buildAgUiCheckpoint(options: BuildAgUiCheckpointOptions): AgUiCheckpoint {
-  const {
-    threadId,
-    runId,
-    parentRunId,
-    messages,
-    assistantContent,
-    toolCalls,
-    serverToolResults,
-    replay,
-  } = options;
+  const { threadId, runId, parentRunId, messages, assistantContent, toolCalls, serverToolResults } =
+    options;
 
   return {
     run: {
@@ -43,13 +34,11 @@ export function buildAgUiCheckpoint(options: BuildAgUiCheckpointOptions): AgUiCh
         arguments: toolCall.function.arguments,
       })),
       serverToolResults,
-      ...(replay ? { replay } : {}),
     },
   };
 }
 
 export function buildAgUiCustomState(options: {
-  replay?: ConversationReplayState;
   elicits?: ElicitRequestStreamEvent[];
 }): AgUiCustomState {
   const pendingClientActions = (options.elicits ?? []).map((elicit) => ({
@@ -60,11 +49,13 @@ export function buildAgUiCustomState(options: {
     elicitId: elicit.elicitId,
     key: elicit.key,
     message: elicit.message,
-    schema: elicit.schema,
+    ...(elicit.schema ? { schema: elicit.schema } : {}),
+    ...(elicit.bindingId ? { bindingId: elicit.bindingId } : {}),
+    ...(elicit.context !== undefined ? { context: elicit.context } : {}),
+    ...(elicit.responseContract ? { responseContract: elicit.responseContract } : {}),
+    ...(elicit.contextContract ? { contextContract: elicit.contextContract } : {}),
+    ...(elicit.placement ? { placement: elicit.placement } : {}),
   }));
 
-  return {
-    ...(options.replay ? { replay: options.replay } : {}),
-    ...(pendingClientActions.length > 0 ? { pendingClientActions } : {}),
-  };
+  return pendingClientActions.length > 0 ? { pendingClientActions } : {};
 }

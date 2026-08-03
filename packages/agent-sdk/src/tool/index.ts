@@ -48,7 +48,11 @@ export {
   type ToolParameterValidationErrorPayload,
   type ToolParameterValidationIssue,
 } from "./validation.ts";
-export { isExecutableToolContract, projectToolContract } from "./contract.ts";
+export {
+  computeToolInterfaceDigest,
+  isExecutableToolContract,
+  projectToolContract,
+} from "./contract.ts";
 export type {
   AnyToolContract,
   ToolContract,
@@ -81,6 +85,7 @@ export type {
   ExtractElicitResponse,
   ExtractElicitResponseInput,
   ExtractElicitContext,
+  ExtractElicitContextInput,
   ExtractElicitResponseSchema,
   ExtractElicitContextSchema,
   NormalizedElicitDefinition,

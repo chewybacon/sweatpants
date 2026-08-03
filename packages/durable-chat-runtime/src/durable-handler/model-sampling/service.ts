@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { CrankError } from "@sweatpants/durable-execution";
 import { ModelProviderApi, type Model, type StreamOptions } from "@sweatpants/model-provider";
 import {
@@ -70,7 +71,7 @@ export function createHostModelSamplingService(options: {
             const result = settleModelSample(plan.response, next.value);
             if (streamStarted && plan.delivery.type === "outer-assistant") {
               yield* TurnEventApi.operations.emit({
-                type: "TEXT_MESSAGE_END",
+                type: EventType.TEXT_MESSAGE_END,
                 messageId: plan.delivery.messageId,
               });
               if (assistantToolCalls(result.message).length === 0) {
@@ -90,13 +91,13 @@ export function createHostModelSamplingService(options: {
               if (!streamStarted) {
                 streamStarted = true;
                 yield* TurnEventApi.operations.emit({
-                  type: "TEXT_MESSAGE_START",
+                  type: EventType.TEXT_MESSAGE_START,
                   messageId: plan.delivery.messageId,
                   role: "assistant",
                 });
               }
               yield* TurnEventApi.operations.emit({
-                type: "TEXT_MESSAGE_CONTENT",
+                type: EventType.TEXT_MESSAGE_CONTENT,
                 messageId: plan.delivery.messageId,
                 delta: next.value.delta,
               });

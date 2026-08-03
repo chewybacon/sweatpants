@@ -1,48 +1,23 @@
-/**
- * Sidebar Component
- *
- * Shows context information, tool status, and errors.
- */
-import React from "react";
 import { Box, Text } from "ink";
-import type { AgentMode } from "./App.tsx";
 
 interface SidebarProps {
-  mode: AgentMode;
-  error: string | null;
+  readonly error: string | null;
 }
 
-export function Sidebar({ mode, error }: SidebarProps) {
+export function Sidebar({ error }: SidebarProps) {
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold color="gray">
-        Context
+        Local tools
       </Text>
-      <Box marginTop={1} flexDirection="column">
-        <Text color="gray" dimColor>
-          Mode:{" "}
-        </Text>
-        <Text color={mode === "plan" ? "cyan" : "magenta"}>{mode.toUpperCase()}</Text>
-      </Box>
-
-      <Box marginTop={1} flexDirection="column">
-        <Text color="gray" dimColor>
-          Tools:
-        </Text>
-        {mode === "plan" ? (
-          <Box flexDirection="column" marginLeft={1}>
-            <Text color="gray">• read_file</Text>
-            <Text color="gray">• glob</Text>
-            <Text color="gray">• grep</Text>
-            <Text color="gray">• git_status</Text>
-          </Box>
-        ) : (
-          <Box marginLeft={1}>
-            <Text color="gray" dimColor>
-              (HAL 9000 mode)
-            </Text>
-          </Box>
-        )}
+      <Box marginTop={1} marginLeft={1} flexDirection="column">
+        <Text color="gray">• read_file</Text>
+        <Text color="gray">• glob</Text>
+        <Text color="gray">• grep</Text>
+        <Text color="gray">• git_status</Text>
+        <Text color="gray">• git_diff</Text>
+        <Text color="gray">• git_log</Text>
+        <Text color="gray">• ask_user</Text>
       </Box>
 
       {error && (
@@ -59,9 +34,6 @@ export function Sidebar({ mode, error }: SidebarProps) {
       <Box marginTop={1} flexDirection="column" flexGrow={1} justifyContent="flex-end">
         <Text color="gray" dimColor>
           ─────────
-        </Text>
-        <Text color="gray" dimColor>
-          ESC: mode
         </Text>
         <Text color="gray" dimColor>
           ^C: exit

@@ -1,7 +1,7 @@
-import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
+import type { ReactRenderableProps } from "@sweatpants/react-chat";
 import { useState } from "react";
 
-export interface QuestionPromptProps extends RenderableProps<{ answer: string }> {
+export interface QuestionPromptProps extends ReactRenderableProps<{ answer: string }> {
   question: string;
 }
 

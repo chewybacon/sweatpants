@@ -1,43 +1,11 @@
+import { MessageSchema, type Message, type ToolCall } from "@ag-ui/core";
 import { z } from "zod";
 
-import type { ToolCall } from "@sweatpants/model-provider";
-import type { Message } from "../messages.ts";
+import type { ToolCall as InternalToolCall } from "@sweatpants/model-provider";
 import type { Json } from "@sweatpants/foundation";
-import type { PluginReplayActivityContent } from "./plugin-replay.ts";
+import type { Message as InternalMessage } from "../messages.ts";
 
 const jsonObjectSchema = z.record(z.string(), z.json());
-
-export interface AgUiFunctionCall {
-  name: string;
-  arguments: string;
-}
-
-export interface AgUiToolCall {
-  id: string;
-  type: "function";
-  function: AgUiFunctionCall;
-}
-
-export type AgUiMessage =
-  | { id: string; role: "developer"; content: string }
-  | { id: string; role: "system"; content: string }
-  | { id: string; role: "user"; content: string }
-  | { id: string; role: "assistant"; content?: string; toolCalls?: AgUiToolCall[] }
-  | {
-      id: string;
-      role: "tool";
-      content: string;
-      toolCallId: string;
-      name?: string;
-      error?: string;
-    }
-  | {
-      id: string;
-      role: "activity";
-      activityType: string;
-      content: PluginReplayActivityContent | Record<string, unknown>;
-    }
-  | { id: string; role: "reasoning"; content: string };
 
 function serializeArguments(args: Json): string {
   // `Json` cannot contain cycles or unserializable values, so this cannot throw.
@@ -60,7 +28,7 @@ function parseArguments(args: string): Json {
   }
 }
 
-function toolCallToAgUi(toolCall: ToolCall): AgUiToolCall {
+function toolCallToAgUi(toolCall: InternalToolCall): ToolCall {
   return {
     id: toolCall.id,
     type: "function",
@@ -71,7 +39,7 @@ function toolCallToAgUi(toolCall: ToolCall): AgUiToolCall {
   };
 }
 
-function toolCallFromAgUi(toolCall: AgUiToolCall): ToolCall {
+function toolCallFromAgUi(toolCall: ToolCall): InternalToolCall {
   return {
     id: toolCall.id,
     type: "function",
@@ -82,7 +50,7 @@ function toolCallFromAgUi(toolCall: AgUiToolCall): ToolCall {
   };
 }
 
-export function internalMessageToAgUiMessage(message: Message): AgUiMessage {
+export function internalMessageToAgUiMessage(message: InternalMessage): Message {
   if (!message.id) {
     throw new Error("AG-UI projection requires a message id");
   }
@@ -97,7 +65,6 @@ export function internalMessageToAgUiMessage(message: Message): AgUiMessage {
       role: "tool",
       content: message.content,
       toolCallId: message.tool_call_id,
-      ...(message.name ? { name: message.name } : {}),
       ...(message.isError ? { error: message.content } : {}),
     };
   }
@@ -127,7 +94,18 @@ export function internalMessageToAgUiMessage(message: Message): AgUiMessage {
   };
 }
 
-function parseActivityContent(content: string): Record<string, unknown> {
+function messageContentText(content: Message["content"] | undefined): string {
+  if (content === undefined || typeof content === "string") {
+    return content ?? "";
+  }
+  return content
+    .map((part: { readonly type: string; readonly text?: string }) =>
+      part.type === "text" ? (part.text ?? "") : "",
+    )
+    .join("");
+}
+
+function parseActivityContent(content: string): Record<string, Json> {
   try {
     const parsed = jsonObjectSchema.safeParse(JSON.parse(content));
     return parsed.success ? parsed.data : { value: content };
@@ -136,14 +114,14 @@ function parseActivityContent(content: string): Record<string, unknown> {
   }
 }
 
-export function internalMessagesToAgUiMessages(messages: Message[]): AgUiMessage[] {
+export function internalMessagesToAgUiMessages(messages: InternalMessage[]): Message[] {
   return messages.map(internalMessageToAgUiMessage);
 }
 
 export function agUiMessageToInternalMessage(
-  message: AgUiMessage,
+  message: Message,
   toolNames: ReadonlyMap<string, string> = new Map(),
-): Message | null {
+): InternalMessage | null {
   if (message.role === "activity") {
     return {
       id: message.id,
@@ -154,9 +132,12 @@ export function agUiMessageToInternalMessage(
   }
 
   if (message.role === "tool") {
-    const name = message.name ?? toolNames.get(message.toolCallId);
+    const name = toolNames.get(message.toolCallId);
     if (!name) {
-      throw new Error(`AG-UI tool result "${message.toolCallId}" has no preceding call name`);
+      // An isolated tool result can occur at a checkpoint boundary before its
+      // assistant call snapshot. Do not fabricate a tool identity; activity
+      // projection remains the authoritative public execution representation.
+      return null;
     }
     return {
       id: message.id,
@@ -177,28 +158,40 @@ export function agUiMessageToInternalMessage(
     };
   }
 
+  if (message.role === "reasoning") {
+    return {
+      id: message.id,
+      role: "assistant",
+      content: message.content,
+    };
+  }
+
   return {
     id: message.id,
-    role: message.role,
-    content: message.content,
+    role: message.role === "developer" ? "system" : message.role,
+    content: messageContentText(message.content),
   };
 }
 
-export function agUiMessagesToInternalMessages(messages: AgUiMessage[]): Message[] {
+export function agUiMessagesToInternalMessages(messages: Message[]): InternalMessage[] {
   const toolNames = new Map<string, string>();
-  const output: Message[] = [];
   for (const message of messages) {
     if (message.role === "assistant") {
       for (const call of message.toolCalls ?? []) {
         toolNames.set(call.id, call.function.name);
       }
     }
+  }
+  const output: InternalMessage[] = [];
+  for (const message of messages) {
     const internal = agUiMessageToInternalMessage(message, toolNames);
-    if (internal) output.push(internal);
+    if (internal) {
+      output.push(internal);
+    }
   }
   return output;
 }
 
-export function isAgUiMessageArray(value: unknown): value is AgUiMessage[] {
-  return Array.isArray(value);
+export function isAgUiMessageArray(value: unknown): value is Message[] {
+  return Array.isArray(value) && value.every((entry) => MessageSchema.safeParse(entry).success);
 }

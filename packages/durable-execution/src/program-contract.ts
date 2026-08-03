@@ -56,7 +56,11 @@ export interface DurableProgramManifest<I extends Json = Json, O extends Json = 
   outputSchema: PortableSchemaDescriptor;
   elicits: Record<
     string,
-    { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }
+    {
+      response: PortableSchemaDescriptor;
+      context?: PortableSchemaDescriptor;
+      contextContract?: PortableSchemaDescriptor;
+    }
   >;
   effects: Record<string, EffectDefinition<Json, Json, Json>>;
   capabilities: { durableEmissions: boolean; structuredChildren: boolean; replay: "strict" };
@@ -76,6 +80,7 @@ export interface DurableElicitDescriptor {
   key: string;
   message: string;
   response: PortableSchemaDescriptor;
+  contextContract?: PortableSchemaDescriptor;
   context?: Json;
 }
 export interface WaitDescriptor {
@@ -133,7 +138,16 @@ export type ProgramElicitResult<T extends Json = Json> =
   | { action: "cancel"; reason?: string };
 export type ForeignInputRequest =
   | { kind: "sample"; payload: Json }
-  | { kind: "elicit"; key: string; message: string; responseSchema: JsonSchema; context?: Json };
+  | {
+      kind: "elicit";
+      key: string;
+      message: string;
+      responseSchema: JsonSchema;
+      context?: Json;
+      ownerInterfaceDigest?: string;
+      responseContract?: Json;
+      contextContract?: Json;
+    };
 export type ForeignToolDisposition =
   | { type: "input_required"; request: ForeignInputRequest; continuation: ForeignContinuation }
   | { type: "completed"; result: Json }

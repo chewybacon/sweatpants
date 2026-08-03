@@ -1,4 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { bookFlightPlugin } from "../src/tools/book-flight/plugin";
+
+const pickFlightBinding = [...bookFlightPlugin.client.bindings.values()].find(
+  (binding) => binding.key === "pickFlight",
+)!;
 
 const flights = [
   {
@@ -25,10 +30,24 @@ function ndjson(events: unknown[]): string {
   return events.map((event, index) => JSON.stringify({ lsn: index + 1, event })).join("\n") + "\n";
 }
 
+function activity(messageId: string, node: Record<string, unknown>): Record<string, unknown> {
+  return {
+    type: "ACTIVITY_SNAPSHOT",
+    messageId,
+    activityType: "sweatpants:public-execution",
+    replace: true,
+    content: { version: 1, node },
+  };
+}
+
 test("canonical AG-UI interrupt renders plugin UI without LLM/provider involvement", async ({
   page,
 }) => {
   const seenRequests: unknown[] = [];
+  const messageRecord = "activity:message:book-flight-1";
+  const toolRecord = "activity:tool:book-flight-1";
+  const nestedMessageRecord = "activity:message:nested-flight-guidance-1";
+  const elicitRecord = "activity:elicit:pick-flight-1";
 
   await page.route("**/api/chat", async (route) => {
     const request = route.request();
@@ -39,7 +58,6 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
     const postData = request.postData();
     const parsed = postData ? JSON.parse(postData) : {};
     seenRequests.push(parsed);
-
     const hasResume = Array.isArray(parsed.resume) && parsed.resume.length > 0;
 
     await route.fulfill({
@@ -49,23 +67,28 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
         hasResume
           ? [
               {
-                type: "ACTIVITY_SNAPSHOT",
-                messageId: "sweatpants:plugin-replay:call-book-flight-1",
-                activityType: "sweatpants:plugin-replay",
-                replace: true,
-                content: {
-                  version: 1,
-                  toolCallId: "call-book-flight-1",
-                  toolName: "book_flight",
-                  trace:
-                    parsed.forwardedProps.sweatpants.clientReplayTraces["elicit-pick-flight-1"],
-                },
+                type: "ACTIVITY_DELTA",
+                messageId: elicitRecord,
+                activityType: "sweatpants:public-execution",
+                patch: [{ op: "replace", path: "/node/state", value: "responded" }],
+              },
+              {
+                type: "ACTIVITY_DELTA",
+                messageId: toolRecord,
+                activityType: "sweatpants:public-execution",
+                patch: [
+                  { op: "replace", path: "/node/state", value: "output-available" },
+                  {
+                    op: "add",
+                    path: "/node/publicData/output",
+                    value: { success: true, message: "Selected FL001" },
+                  },
+                ],
               },
               {
                 type: "TOOL_CALL_RESULT",
                 messageId: "tool:call-book-flight-1",
                 toolCallId: "call-book-flight-1",
-                toolCallName: "book_flight",
                 content: JSON.stringify({ success: true, message: "Selected FL001" }),
                 role: "tool",
               },
@@ -77,26 +100,97 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
               },
             ]
           : [
-              {
-                type: "RUN_STARTED",
-                threadId: "thread-1",
-                runId: "run-1",
-              },
+              { type: "RUN_STARTED", threadId: "thread-1", runId: "run-1" },
               {
                 type: "TOOL_CALL_START",
                 toolCallId: "call-book-flight-1",
                 toolCallName: "book_flight",
-                parentMessageId: "assistant:tools:call-book-flight-1",
+                parentMessageId: "message:book-flight-1",
               },
               {
                 type: "TOOL_CALL_ARGS",
                 toolCallId: "call-book-flight-1",
                 delta: JSON.stringify({ from: "NYC", destination: "LAX" }),
               },
+              { type: "TOOL_CALL_END", toolCallId: "call-book-flight-1" },
+              activity(messageRecord, {
+                nodeId: "message:book-flight-1",
+                parentNodeId: null,
+                sequence: 0,
+                kind: "message",
+                state: "streaming",
+                presentation: "public",
+                publicData: {
+                  kind: "message",
+                  messageId: "message:book-flight-1",
+                  role: "assistant",
+                },
+              }),
+              activity(toolRecord, {
+                nodeId: "execution:call-book-flight-1",
+                parentNodeId: "message:book-flight-1",
+                sequence: 0,
+                kind: "tool-call",
+                state: "input-available",
+                presentation: "public",
+                publicData: {
+                  kind: "tool-call",
+                  callId: "call-book-flight-1",
+                  name: "book_flight",
+                  rawInput: JSON.stringify({ from: "NYC", destination: "LAX" }),
+                  input: { from: "NYC", destination: "LAX" },
+                },
+              }),
               {
-                type: "TOOL_CALL_END",
-                toolCallId: "call-book-flight-1",
+                type: "TEXT_MESSAGE_START",
+                messageId: "message:nested-flight-guidance-1",
+                role: "assistant",
               },
+              {
+                type: "TEXT_MESSAGE_CONTENT",
+                messageId: "message:nested-flight-guidance-1",
+                delta: "Nested flight guidance.",
+              },
+              {
+                type: "TEXT_MESSAGE_END",
+                messageId: "message:nested-flight-guidance-1",
+              },
+              activity(nestedMessageRecord, {
+                nodeId: "message:nested-flight-guidance-1",
+                parentNodeId: "execution:call-book-flight-1",
+                sequence: 1,
+                kind: "message",
+                state: "done",
+                presentation: "public",
+                publicData: {
+                  kind: "message",
+                  messageId: "message:nested-flight-guidance-1",
+                  role: "assistant",
+                },
+              }),
+              activity(elicitRecord, {
+                nodeId: "elicit:elicit-pick-flight-1",
+                parentNodeId: "execution:call-book-flight-1",
+                sequence: 0,
+                kind: "elicit",
+                state: "pending",
+                presentation: "public",
+                publicData: {
+                  kind: "elicit",
+                  elicitId: "elicit-pick-flight-1",
+                  bindingId: pickFlightBinding.bindingId,
+                  key: "pickFlight",
+                  message: "Select a flight from NYC to LAX",
+                  context: { flights },
+                  responseContract: pickFlightBinding.responseContract,
+                  ...(pickFlightBinding.contextContract
+                    ? { contextContract: pickFlightBinding.contextContract }
+                    : {}),
+                  toolName: "book_flight",
+                  callId: "call-book-flight-1",
+                  producerSequence: 0,
+                },
+              }),
               {
                 type: "RUN_FINISHED",
                 threadId: "thread-1",
@@ -109,19 +203,10 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
                       reason: "input_required",
                       message: "Select a flight from NYC to LAX",
                       toolCallId: "call-book-flight-1",
-                      responseSchema: {
-                        type: "object",
-                        properties: {
-                          flightId: { type: "string" },
-                        },
-                        required: ["flightId"],
-                        "x-elicit-context": { flights },
-                      },
+                      responseSchema: pickFlightBinding.responseContract.inputProjection,
                       metadata: {
-                        "sweatpants/sessionId": "session-book-flight-1",
                         "sweatpants/toolName": "book_flight",
                         "sweatpants/key": "pickFlight",
-                        "sweatpants/componentMode": "plugin-render",
                       },
                     },
                   ],
@@ -140,15 +225,14 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
   await page.getByRole("button", { name: "Send" }).click();
 
   await expect.poll(() => seenRequests.length, { timeout: 5000 }).toBe(1);
-  expect(seenRequests[0]).toMatchObject({
-    enabledPlugins: ["book_flight"],
-  });
+  expect(seenRequests[0]).not.toHaveProperty("enabledPlugins");
 
   const firstFlight = page.locator("button").filter({ hasText: /\$299/ }).first();
   await expect(
     firstFlight,
     "the browser-side plugin runtime should render FlightList for the canonical AG-UI interrupt",
   ).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText("Nested flight guidance.")).toBeVisible();
 
   await firstFlight.click();
 
@@ -164,23 +248,8 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
         },
       },
     ],
-    forwardedProps: {
-      sweatpants: {
-        clientReplayTraces: {
-          "elicit-pick-flight-1": {
-            emissions: [
-              {
-                componentKey: "FlightList",
-                response: { flightId: "FL001" },
-                emissionId: "elicit-pick-flight-1-em-1",
-                sourceInterruptId: "elicit-pick-flight-1",
-              },
-            ],
-          },
-        },
-      },
-    },
   });
+  expect(seenRequests[1]).not.toHaveProperty("forwardedProps");
 
-  await expect(page.getByText(/Selected: SkyHigh Airways SH 142/)).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText(/Selected FL001/)).toBeVisible({ timeout: 5000 });
 });

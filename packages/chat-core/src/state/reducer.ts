@@ -1,16 +1,66 @@
-import type { ChatStateInternal, ElicitTrackingState } from "./chat-state.ts";
-import { createInitialChatStateInternal } from "./chat-state.ts";
+import { EventType } from "@ag-ui/core";
+import {
+  createInitialChatStateInternal,
+  type ChatStateInternal,
+  type ElicitTrackingState,
+} from "./chat-state.ts";
 
 const initialStreaming = createInitialChatStateInternal().streaming;
 import type { ChatStateEvent } from "./events.ts";
 import type { Message } from "../messages.ts";
-import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from "../types/chat-message.ts";
-import { getRenderedFromFrame } from "../types/chat-message.ts";
+import {
+  getRenderedFromFrame,
+  type MessagePart,
+  type ReasoningPart,
+  type TextPart,
+  type ToolCallPart,
+} from "../types/chat-message.ts";
+import { decodePublicActivity } from "../chat-client-codec.ts";
 import { agUiMessagesToInternalMessages } from "../session/ag-ui-messages.ts";
-import { activitySnapshotToPluginReplayTrace } from "../session/plugin-replay.ts";
 import type { Json } from "@sweatpants/foundation";
+import {
+  parsePortableSchemaDescriptor,
+  type PortableSchemaDescriptor,
+} from "@sweatpants/foundation/schema";
+import type { TreePlacement } from "../recursive-tree.ts";
 
 export type { ChatStateEvent, LocalChatAction } from "./events.ts";
+
+function interruptFacts(metadata: unknown): Record<string, unknown> | undefined {
+  if (metadata === null || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return undefined;
+  }
+  const facts = (metadata as Record<string, unknown>)["sweatpants/elicitation"];
+  return facts !== null && typeof facts === "object" && !Array.isArray(facts)
+    ? (facts as Record<string, unknown>)
+    : undefined;
+}
+
+function descriptorFact(value: unknown): PortableSchemaDescriptor | undefined {
+  try {
+    return parsePortableSchemaDescriptor(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function placementFact(value: unknown): TreePlacement | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const placement = value as Record<string, unknown>;
+  return typeof placement["nodeId"] === "string" &&
+    (placement["parentNodeId"] === null || typeof placement["parentNodeId"] === "string") &&
+    typeof placement["sequence"] === "number" &&
+    Number.isSafeInteger(placement["sequence"]) &&
+    placement["sequence"] >= 0
+    ? {
+        nodeId: placement["nodeId"],
+        parentNodeId: placement["parentNodeId"],
+        sequence: placement["sequence"],
+      }
+    : undefined;
+}
 
 function upsertMessage(messages: Message[], message: Message): Message[] {
   return messages.some((candidate) => candidate.id === message.id)
@@ -29,11 +79,7 @@ function upsertToolResult(messages: Message[], message: Message): Message[] {
     return [...messages, message];
   }
   return messages.map((candidate, candidateIndex) =>
-    candidateIndex === index
-      ? candidate.replay && !message.replay
-        ? candidate
-        : message
-      : candidate,
+    candidateIndex === index ? message : candidate,
   );
 }
 
@@ -83,8 +129,6 @@ function partsForMessages(messages: Message[]): Record<string, MessagePart[]> {
         state: result ? (error ? "error" : "complete") : "running",
         ...(result && !error ? { result: result.content } : {}),
         ...(error ? { error } : {}),
-        emissions: [],
-        pluginElicits: [],
       });
     }
     if (parts.length > 0) {
@@ -149,7 +193,12 @@ function pendingElicitsFromActions(
         elicitId: string;
         key: string;
         message: string;
-        schema: Record<string, unknown>;
+        schema?: Record<string, unknown>;
+        bindingId?: string;
+        context?: Json;
+        responseContract?: PortableSchemaDescriptor;
+        contextContract?: PortableSchemaDescriptor;
+        placement?: TreePlacement;
       }>
     | undefined,
   current: Record<string, ElicitTrackingState>,
@@ -168,8 +217,12 @@ function pendingElicitsFromActions(
       toolName: action.toolName,
       key: action.key,
       message: action.message,
-      schema: action.schema,
-      context: action.schema["x-elicit-context"],
+      ...(action.schema ? { schema: action.schema } : {}),
+      ...(action.bindingId ? { bindingId: action.bindingId } : {}),
+      ...(action.responseContract ? { responseContract: action.responseContract } : {}),
+      ...(action.contextContract ? { contextContract: action.contextContract } : {}),
+      ...(action.placement ? { placement: action.placement, seq: action.placement.sequence } : {}),
+      ...(action.context !== undefined ? { context: action.context } : {}),
       status: prior?.status ?? ("pending" as const),
       timestamp: prior?.timestamp ?? observedAt,
       ...(prior?.response !== undefined ? { response: prior.response } : {}),
@@ -187,33 +240,6 @@ function pendingElicitsFromActions(
   return pending;
 }
 
-function attachPendingElicits(
-  part: MessagePart,
-  pending: Record<string, ElicitTrackingState>,
-): MessagePart {
-  if (part.type !== "tool-call") {
-    return part;
-  }
-  const tracking = pending[part.callId];
-  if (!tracking) {
-    return part;
-  }
-  return {
-    ...part,
-    pluginElicits: tracking.elicitations.map((elicit) => ({
-      id: elicit.elicitId,
-      key: elicit.key,
-      message: elicit.message,
-      context: elicit.context,
-      status: elicit.status === "pending" ? "pending" : "responded",
-      ...(elicit.response !== undefined ? { response: elicit.response } : {}),
-      sessionId: elicit.sessionId,
-      callId: elicit.callId,
-      toolName: elicit.toolName,
-    })),
-  };
-}
-
 function addInterrupts(
   state: ChatStateInternal,
   interrupts: Array<{
@@ -221,6 +247,11 @@ function addInterrupts(
     message?: string;
     toolCallId?: string;
     responseSchema?: Record<string, unknown>;
+    bindingId?: string;
+    context?: Json;
+    responseContract?: PortableSchemaDescriptor;
+    contextContract?: PortableSchemaDescriptor;
+    placement?: TreePlacement;
     metadata?: Record<string, unknown>;
   }>,
   observedAt: number,
@@ -257,27 +288,20 @@ function addInterrupts(
           key,
           message: interrupt.message ?? "Input required",
           schema: interrupt.responseSchema ?? {},
-          context: interrupt.responseSchema?.["x-elicit-context"],
+          ...(interrupt.bindingId ? { bindingId: interrupt.bindingId } : {}),
+          ...(interrupt.responseContract ? { responseContract: interrupt.responseContract } : {}),
+          ...(interrupt.contextContract ? { contextContract: interrupt.contextContract } : {}),
+          ...(interrupt.placement
+            ? { placement: interrupt.placement, seq: interrupt.placement.sequence }
+            : {}),
+          ...(interrupt.context !== undefined ? { context: interrupt.context } : {}),
           status: "pending",
           timestamp: observedAt,
         },
       ],
     };
   }
-  return {
-    ...state,
-    pendingElicits: pending,
-    streaming: {
-      ...state.streaming,
-      parts: state.streaming.parts.map((part) => attachPendingElicits(part, pending)),
-    },
-    finalizedParts: Object.fromEntries(
-      Object.entries(state.finalizedParts).map(([id, parts]) => [
-        id,
-        parts.map((part) => attachPendingElicits(part, pending)),
-      ]),
-    ),
-  };
+  return { ...state, pendingElicits: pending };
 }
 
 /** Fold one canonical AG-UI event or explicit local-only action into ChatState. */
@@ -288,18 +312,18 @@ export function reduceChatState(
 ): ChatStateInternal {
   const internalState = state;
   switch (event.type) {
-    case "RUN_STARTED":
+    case EventType.RUN_STARTED:
       return {
         ...state,
         activeRun: { threadId: event.threadId, runId: event.runId },
-        isStreaming: true,
+        active: true,
         streaming: initialStreaming,
         messageDrafts: {},
         toolCallDrafts: {},
         error: null,
       };
 
-    case "MESSAGES_SNAPSHOT": {
+    case EventType.MESSAGES_SNAPSHOT: {
       const messages = agUiMessagesToInternalMessages(event.messages).filter(
         (message) => message.role !== "activity",
       );
@@ -317,30 +341,69 @@ export function reduceChatState(
       return { ...state, messages, finalizedParts: projectedParts };
     }
 
-    case "STATE_SNAPSHOT": {
+    case EventType.ACTIVITY_SNAPSHOT: {
+      if (event.activityType !== "sweatpants:public-execution") {
+        return state;
+      }
+      const activity = decodePublicActivity(event.content);
+      const data = activity.node.publicData;
+      if (data?.kind !== "elicit") {
+        return state;
+      }
+      const current = state.pendingElicits[data.callId];
+      const elicit = {
+        elicitId: data.elicitId,
+        sessionId: data.elicitId,
+        callId: data.callId,
+        toolName: data.toolName,
+        key: data.key,
+        message: data.message,
+        bindingId: data.bindingId,
+        responseContract: data.responseContract,
+        ...(data.contextContract !== undefined ? { contextContract: data.contextContract } : {}),
+        ...(data.context !== undefined ? { context: data.context } : {}),
+        placement: {
+          nodeId: activity.node.nodeId,
+          parentNodeId: activity.node.parentNodeId,
+          sequence: activity.node.sequence,
+        },
+        seq: data.producerSequence,
+        status:
+          activity.node.state === "responded"
+            ? ("responded" as const)
+            : activity.node.state === "cancelled"
+              ? ("cancelled" as const)
+              : ("pending" as const),
+        timestamp: observedAt,
+      };
+      return {
+        ...state,
+        pendingElicits: {
+          ...state.pendingElicits,
+          [data.callId]: {
+            callId: data.callId,
+            toolName: data.toolName,
+            elicitations: [
+              ...(current?.elicitations.filter((item) => item.elicitId !== data.elicitId) ?? []),
+              elicit,
+            ],
+            status: "awaiting_elicit",
+            startedAt: current?.startedAt ?? observedAt,
+          },
+        },
+      };
+    }
+
+    case EventType.STATE_SNAPSHOT: {
       const pendingElicits = pendingElicitsFromActions(
         event.snapshot.pendingClientActions,
         state.pendingElicits,
         observedAt,
       );
-      return {
-        ...state,
-        pendingElicits,
-        streaming: {
-          ...state.streaming,
-          parts: state.streaming.parts.map((part) => attachPendingElicits(part, pendingElicits)),
-        },
-        finalizedParts: Object.fromEntries(
-          Object.entries(state.finalizedParts).map(([id, parts]) => [
-            id,
-            parts.map((part) => attachPendingElicits(part, pendingElicits)),
-          ]),
-        ),
-        ...(event.snapshot.replay ? { replay: event.snapshot.replay } : {}),
-      };
+      return { ...state, pendingElicits };
     }
 
-    case "TEXT_MESSAGE_START":
+    case EventType.TEXT_MESSAGE_START:
       return {
         ...state,
         messageDrafts: {
@@ -349,7 +412,7 @@ export function reduceChatState(
         },
       };
 
-    case "TEXT_MESSAGE_CONTENT": {
+    case EventType.TEXT_MESSAGE_CONTENT: {
       const draft = internalState.messageDrafts[event.messageId] ?? {
         id: event.messageId,
         role: "assistant" as const,
@@ -367,10 +430,10 @@ export function reduceChatState(
         : next;
     }
 
-    case "REASONING_MESSAGE_CONTENT":
+    case EventType.REASONING_MESSAGE_CONTENT:
       return appendContentPart(state, "reasoning", event.messageId, event.delta);
 
-    case "TEXT_MESSAGE_END": {
+    case EventType.TEXT_MESSAGE_END: {
       const draft = internalState.messageDrafts[event.messageId];
       if (!draft) {
         return state;
@@ -389,7 +452,7 @@ export function reduceChatState(
       };
     }
 
-    case "TOOL_CALL_START": {
+    case EventType.TOOL_CALL_START: {
       const parentMessageId = event.parentMessageId ?? `assistant:tools:${event.toolCallId}`;
       const draft = {
         id: event.toolCallId,
@@ -405,8 +468,6 @@ export function reduceChatState(
         name: event.toolCallName,
         arguments: {},
         state: "running",
-        emissions: [],
-        pluginElicits: [],
       };
       return {
         ...state,
@@ -419,7 +480,7 @@ export function reduceChatState(
       };
     }
 
-    case "TOOL_CALL_ARGS": {
+    case EventType.TOOL_CALL_ARGS: {
       const draft = internalState.toolCallDrafts[event.toolCallId];
       if (!draft) {
         return state;
@@ -440,7 +501,7 @@ export function reduceChatState(
       };
     }
 
-    case "TOOL_CALL_END": {
+    case EventType.TOOL_CALL_END: {
       const draft = internalState.toolCallDrafts[event.toolCallId];
       if (!draft) {
         return state;
@@ -495,28 +556,32 @@ export function reduceChatState(
       };
     }
 
-    case "TOOL_CALL_RESULT": {
-      const toolName = event.toolCallName ?? internalState.toolCallDrafts[event.toolCallId]?.name;
+    case EventType.TOOL_CALL_RESULT: {
+      const toolName =
+        internalState.toolCallDrafts[event.toolCallId]?.name ??
+        state.messages
+          .find((message) => message.role === "assistant")
+          ?.tool_calls?.find((call) => call.id === event.toolCallId)?.function.name;
       if (!toolName) {
-        throw new Error(`Tool result "${event.toolCallId}" has no settled tool name`);
+        // A checkpoint may begin at a settled result without replaying the
+        // preceding call event. Preserve the provider snapshot and let the
+        // activity projection carry the public execution result.
+        return state;
       }
-      // The producer said whether this failed. Text is never a control signal.
-      const isError = event.error !== undefined || event.isError === true;
+      // AG-UI TOOL_CALL_RESULT carries successful output. Explicit tool
+      // failures are represented by the official ToolMessage.error field in
+      // MESSAGES_SNAPSHOT, never inferred from output text.
       const toolMessage: Message = {
         id: event.messageId,
         role: "tool",
         tool_call_id: event.toolCallId,
         name: toolName,
         content: event.content,
-        isError,
+        isError: false,
       };
       const updatePart = (part: MessagePart): MessagePart =>
         part.type === "tool-call" && part.callId === event.toolCallId
-          ? {
-              ...part,
-              state: isError ? "error" : "complete",
-              ...(isError ? { error: event.content } : { result: event.content }),
-            }
+          ? { ...part, state: "complete", result: event.content }
           : part;
       const { [event.toolCallId]: _completed, ...pendingElicits } = state.pendingElicits;
       return {
@@ -530,32 +595,45 @@ export function reduceChatState(
       };
     }
 
-    case "ACTIVITY_SNAPSHOT": {
-      const trace = activitySnapshotToPluginReplayTrace(event);
-      if (!trace) {
-        return state;
-      }
-      const traces = new Map(
-        (state.replay?.toolTraces ?? []).map((entry) => [entry.callId, entry]),
-      );
-      traces.set(trace.callId, trace);
-      return { ...state, replay: { toolTraces: [...traces.values()] } };
-    }
-
-    case "RUN_FINISHED": {
+    case EventType.RUN_FINISHED: {
       const next = {
         ...state,
-        isStreaming: false,
+        active: false,
         activeRun: null,
         streaming: initialStreaming,
       };
       return event.outcome?.type === "interrupt"
-        ? addInterrupts(next, event.outcome.interrupts, observedAt)
+        ? addInterrupts(
+            next,
+            event.outcome.interrupts.map((interrupt) => {
+              const facts = interruptFacts(interrupt.metadata);
+              const responseContract = descriptorFact(facts?.["responseContract"]);
+              const contextContract = descriptorFact(facts?.["contextContract"]);
+              const placement = placementFact(facts?.["placement"]);
+              return {
+                id: interrupt.id,
+                ...(interrupt.message !== undefined ? { message: interrupt.message } : {}),
+                ...(interrupt.toolCallId !== undefined ? { toolCallId: interrupt.toolCallId } : {}),
+                ...(interrupt.responseSchema !== undefined
+                  ? { responseSchema: interrupt.responseSchema }
+                  : {}),
+                ...(typeof facts?.["bindingId"] === "string"
+                  ? { bindingId: facts["bindingId"] }
+                  : {}),
+                ...(facts?.["context"] !== undefined ? { context: facts["context"] as Json } : {}),
+                ...(responseContract !== undefined ? { responseContract } : {}),
+                ...(contextContract !== undefined ? { contextContract } : {}),
+                ...(placement !== undefined ? { placement } : {}),
+                ...(interrupt.metadata !== undefined ? { metadata: interrupt.metadata } : {}),
+              };
+            }),
+            observedAt,
+          )
         : next;
     }
 
-    case "RUN_ERROR":
-      return { ...state, error: event.message, isStreaming: false, activeRun: null };
+    case EventType.RUN_ERROR:
+      return { ...state, error: event.message, active: false, activeRun: null };
 
     case "LOCAL_USER_MESSAGE":
     case "LOCAL_ASSISTANT_MESSAGE":
@@ -587,48 +665,6 @@ export function reduceChatState(
       };
     }
 
-    case "LOCAL_ELICIT_RESPONSE": {
-      const tracking = state.pendingElicits[event.callId];
-      if (!tracking) {
-        return state;
-      }
-      const updatePart = (part: MessagePart): MessagePart =>
-        part.type === "tool-call" && part.callId === event.callId
-          ? {
-              ...part,
-              pluginElicits: part.pluginElicits.map((elicit) =>
-                elicit.id === event.elicitId
-                  ? { ...elicit, status: "responded", response: event.response }
-                  : elicit,
-              ),
-            }
-          : part;
-      return {
-        ...state,
-        pendingElicits: {
-          ...state.pendingElicits,
-          [event.callId]: {
-            ...tracking,
-            elicitations: tracking.elicitations.map((elicit) =>
-              elicit.elicitId === event.elicitId
-                ? { ...elicit, status: "responded", response: event.response }
-                : elicit,
-            ),
-          },
-        },
-        streaming: { ...state.streaming, parts: state.streaming.parts.map(updatePart) },
-        finalizedParts: Object.fromEntries(
-          Object.entries(state.finalizedParts).map(([id, parts]) => [id, parts.map(updatePart)]),
-        ),
-      };
-    }
-
-    case "LOCAL_REPLAY_EMISSIONS":
-      return {
-        ...state,
-        toolEmissions: { ...state.toolEmissions, [event.tracking.callId]: event.tracking },
-      };
-
     case "LOCAL_FINALIZED_PARTS":
       return {
         ...state,
@@ -639,15 +675,17 @@ export function reduceChatState(
       return {
         ...state,
         ...(event.message ? { messages: upsertMessage(state.messages, event.message) } : {}),
-        isStreaming: false,
+        active: false,
         activeRun: null,
         streaming: initialStreaming,
       };
 
     case "LOCAL_ERROR":
-      return { ...state, error: event.message, isStreaming: false };
+      return { ...state, error: event.message, active: false };
 
     case "LOCAL_RESET":
       return createInitialChatStateInternal();
+    default:
+      return state;
   }
 }

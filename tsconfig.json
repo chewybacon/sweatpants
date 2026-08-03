@@ -48,6 +48,9 @@
             "path": "./packages/model-provider-pi-ai"
         },
         {
+            "path": "./packages/chat-client"
+        },
+        {
             "path": "./packages/react-chat"
         },
         {

@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import {
@@ -42,7 +43,7 @@ async function runStreamingScenario(binding: Binding): Promise<void> {
       expect(transcript.text).toBe("hello world");
       expect(
         transcript.events
-          .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
+          .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
           .map((event) => event.delta),
       ).toEqual(["hello", " world"]);
       expect(order).toEqual(["release", "delta", "finish", "complete"]);

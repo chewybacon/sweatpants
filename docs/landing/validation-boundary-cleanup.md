@@ -2,12 +2,13 @@
 
 ## Status
 
-Pending deterministic recertification after review fixes.
+Retired. This was migration evidence for the validation-boundary repackaging; the temporary inventory
+and scanner were removed after the owning parsers and permanent package tests landed.
 
 ## Final evidence
 
-- Inventory: `docs/architecture/validation-boundary-inventory.json`
-- Inventory/tooling test: `pnpm test:tooling`
+- Historical inventory and scanner: retired after migration completion
+- Permanent tooling tests: `pnpm test:tooling`
 - Typecheck: `pnpm check`
 - Formatting: `pnpm format:check`
 - Package exports: `pnpm validate:exports`
@@ -22,15 +23,9 @@ superseded until a new clean-tree `pnpm land` run is recorded here.
 
 ## Residue policy
 
-The production declaration scanner reports only:
-
-- `validateStandardSchema`; and
-- Standard Schema V1 `~standard.validate` callback implementations.
-
-The committed inventory contains an entry for each of those callbacks and for
-every pre-cleanup named `validate*` symbol. Removed symbols have a `delete`
-disposition and a named replacement; no forwarding validator aliases were
-retained.
+During migration, the production declaration scanner reported only `validateStandardSchema` and
+Standard Schema V1 `~standard.validate` callbacks. The inventory served as a temporary deletion ledger;
+it is not a permanent source-coordinate gate. No forwarding validator aliases were retained.
 
 ## Runtime policy implemented
 

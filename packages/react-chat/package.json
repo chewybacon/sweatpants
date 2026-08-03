@@ -22,31 +22,6 @@
                 "types": "./dist/index.d.ts",
                 "default": "./dist/index.cjs"
             }
-        },
-        "./pipeline": {
-            "development": {
-                "import": "./src/pipeline/index.ts",
-                "types": "./src/pipeline/index.ts"
-            },
-            "import": {
-                "types": "./dist/pipeline/index.d.ts",
-                "default": "./dist/pipeline.js"
-            },
-            "require": {
-                "types": "./dist/pipeline/index.d.ts",
-                "default": "./dist/pipeline.cjs"
-            }
-        },
-        "./browser-rendering": {
-            "development": {
-                "import": "./src/browser-rendering/index.ts",
-                "types": "./src/browser-rendering/index.ts"
-            },
-            "import": {
-                "types": "./dist/browser-rendering/index.d.ts",
-                "default": "./dist/browser-rendering/index.js"
-            },
-            "default": "./src/browser-rendering/index.ts"
         }
     },
     "scripts": {
@@ -58,43 +33,34 @@
         "build:types": "tsc -b tsconfig.json --force"
     },
     "dependencies": {
-        "@standard-schema/spec": "catalog:",
-        "@sweatpants/agent-host": "workspace:*",
-        "@sweatpants/chat-core": "workspace:*",
-        "@sweatpants/durable-chat-runtime": "workspace:*",
-        "@sweatpants/tool-runtime": "workspace:*",
+        "@sweatpants/chat-client": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
-        "effection": "catalog:",
-        "zod": "catalog:"
+        "effection": "catalog:"
     },
     "devDependencies": {
+        "@ag-ui/core": "0.0.57",
         "@effectionx/raf": "catalog:",
+        "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/chat-core": "workspace:*",
+        "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/test-rig": "workspace:*",
+        "@sweatpants/tool-runtime": "workspace:*",
         "@sweatpants/tool-runtime-local": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@testing-library/react": "catalog:",
         "@types/react": "catalog:",
         "effection": "catalog:",
-        "katex": "^0.16.27",
-        "marked": "^17.0.1",
-        "mermaid": "^11.12.2",
         "react": "catalog:",
-        "shiki": "^3.20.0",
-        "tailwind-merge": "catalog:",
         "tsup": "catalog:",
         "typescript": "catalog:",
-        "vitest": "catalog:"
+        "vitest": "catalog:",
+        "zod": "catalog:"
     },
     "peerDependencies": {
-        "@effectionx/raf": "^0.1.1",
         "effection": ">=4.1.0-alpha.9 <5.0.0",
-        "katex": "^0.16.27",
-        "marked": "^17.0.1",
-        "mermaid": "^11.12.2",
-        "react": "^19.0.0",
-        "shiki": "^3.20.0",
-        "tailwind-merge": "^2.5.2"
+        "react": "^19.0.0"
     }
 }

@@ -1,26 +1,18 @@
-import type { Operation } from "effection";
-import { call } from "effection";
+import { call, type Operation } from "effection";
 import type { ChatStateEvent } from "../state/events.ts";
 import { createChatStateProjection } from "./projection.ts";
-import type { HydratedToolExecutionTrace, ToolExecutionTrace } from "../trace-types.ts";
 import type { Message } from "../messages.ts";
 import type { ChatEventTransform, ChatFetch, StreamEventEntry } from "./options.ts";
-import type { ConversationReplayState, StreamEvent } from "./streaming.ts";
-import { activitySnapshotToPluginReplayTrace } from "./plugin-replay.ts";
+import type { StreamEvent } from "./streaming.ts";
 import { renderReplayMessageParts } from "./replay-render.ts";
 
 export interface DurableFrame {
   lsn: number;
   event: StreamEvent;
 }
-type ReplayableTool = {
-  name: string;
-  replayTrace?: (trace: ToolExecutionTrace) => Operation<HydratedToolExecutionTrace>;
-};
 interface ReadDurableHistoryOptions {
   baseUrl: string;
   conversationId: string;
-  tools?: unknown[];
   transforms?: ChatEventTransform[];
   onStreamEvent?: (entry: StreamEventEntry) => void;
   fetch?: ChatFetch;
@@ -28,11 +20,6 @@ interface ReadDurableHistoryOptions {
 export interface DurableHistoryReplay {
   events: ChatStateEvent[];
   history: Message[];
-  replayState?: ConversationReplayState;
-}
-
-function replayableTool(value: unknown): value is ReplayableTool {
-  return !!value && (typeof value === "object" || typeof value === "function") && "name" in value;
 }
 
 export function deduplicateMessages(messages: Message[]): Message[] {
@@ -44,7 +31,7 @@ export function deduplicateMessages(messages: Message[]): Message[] {
         ? `tool:${message.tool_call_id}`
         : message.role === "assistant" && message.tool_calls?.length
           ? `assistant-tools:${message.tool_calls
-              .map((call) => call.id)
+              .map((toolCall) => toolCall.id)
               .sort()
               .join(",")}`
           : message.id
@@ -58,17 +45,13 @@ export function deduplicateMessages(messages: Message[]): Message[] {
       result.push(message);
       continue;
     }
-    const existing = result[existingIndex]!;
-    if (message.role === "tool" && message.replay && !existing.replay) {
-      result[existingIndex] = message;
-    }
+    void result[existingIndex];
   }
   return result;
 }
 
 export function* replayFramesToConversation(
   frames: DurableFrame[],
-  tools?: unknown[],
   transforms?: ChatEventTransform[],
   onStreamEvent?: (entry: StreamEventEntry) => void,
 ): Operation<DurableHistoryReplay> {
@@ -85,48 +68,6 @@ export function* replayFramesToConversation(
     });
     events.push(frame.event);
     projection.fold(frame.event, receivedAt);
-
-    if (frame.event.type !== "ACTIVITY_SNAPSHOT") {
-      continue;
-    }
-    const replay = activitySnapshotToPluginReplayTrace(frame.event);
-    if (!replay) {
-      continue;
-    }
-    const tool = tools?.find(
-      (candidate): candidate is ReplayableTool =>
-        replayableTool(candidate) && candidate.name === replay.toolName,
-    );
-    if (!tool?.replayTrace) {
-      continue;
-    }
-    const hydrated = yield* tool.replayTrace(replay.trace);
-    const tracking = {
-      callId: replay.callId,
-      toolName: replay.toolName,
-      status: "complete" as const,
-      startedAt: hydrated.startedAt,
-      completedAt: hydrated.completedAt,
-      emissions: hydrated.emissions
-        .filter((entry) => entry._component)
-        .map((entry) => ({
-          id: entry.emissionId ?? `${replay.callId}-replay-${entry.order + 1}`,
-          callId: replay.callId,
-          toolName: replay.toolName,
-          type: "__component__",
-          payload: {
-            componentKey: entry.componentKey,
-            props: entry.props,
-            ...(entry._component ? { _component: entry._component } : {}),
-          },
-          status: "complete" as const,
-          timestamp: entry.timestamp,
-          ...(entry.response !== undefined ? { response: entry.response } : {}),
-        })),
-    };
-    const action: ChatStateEvent = { type: "LOCAL_REPLAY_EMISSIONS", tracking };
-    events.push(action);
-    projection.fold(action, Date.now());
   }
 
   let state = projection.state;
@@ -156,7 +97,6 @@ export function* replayFramesToConversation(
   return {
     events,
     history: deduplicateMessages(state.messages),
-    ...(state.replay ? { replayState: state.replay } : {}),
   };
 }
 
@@ -187,10 +127,5 @@ export function* readDurableHistory(
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as DurableFrame);
-  return yield* replayFramesToConversation(
-    frames,
-    options.tools,
-    options.transforms,
-    options.onStreamEvent,
-  );
+  return yield* replayFramesToConversation(frames, options.transforms, options.onStreamEvent);
 }

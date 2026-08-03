@@ -9,7 +9,7 @@
  * - Current board state shown at the bottom
  * - Interactive only when waiting for user input
  */
-import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
+import type { ReactRenderableProps } from "@sweatpants/react-chat";
 import type { Board, Player } from "../../tictactoe/types";
 import { GameMoveCard } from "./GameMoveCard";
 
@@ -32,10 +32,10 @@ export interface GameMove {
   /** Model's strategy (only for model moves) */
   strategy?: "offensive" | "defensive";
   /** Strategy reasoning */
-  reasoning?: string;
+  reasoning?: string | undefined;
 }
 
-export interface GameChatViewProps extends RenderableProps<{ position: number }> {
+export interface GameChatViewProps extends ReactRenderableProps<{ position: number }> {
   /** History of all moves so far */
   moveHistory: GameMove[];
   /** Current board state */

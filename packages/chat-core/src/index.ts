@@ -13,6 +13,99 @@
 // Core message types
 export type { Message, ChatEvent, ChatResult } from "./messages.ts";
 
+// Headless client protocol and nested message model. These names are aliased
+// here because the pre-release legacy message authoring types remain internal
+// to the old session implementation while the new client package owns the
+// public aliases.
+export type {
+  ChatMessage as ClientChatMessage,
+  ChatPart as ClientChatPart,
+  ChatLocalPart,
+  TextPart as ClientTextPart,
+  ReasoningPart as ClientReasoningPart,
+  ToolCallPart as ClientToolCallPart,
+  NestedMessagePart as ClientNestedMessagePart,
+  ActivityPart as ClientActivityPart,
+  ElicitPart as ClientElicitPart,
+  ChatStatus,
+  ChatConnectionStatus,
+  ChatRenderStatus,
+  ChatSnapshot as ClientChatSnapshot,
+  QueuedUserMessage,
+  UserInputPart,
+  UserMessageInput,
+  SendMessageOptions,
+  RegenerateOptions,
+  ChatSendTrigger,
+  ResumeEntry,
+  ChatSendRequest,
+  ChatReconnectRequest,
+  ChatWireMessage,
+  ChatTransportContract,
+  ChatTransportSnapshot,
+  ChatTransportControl,
+  PublicActivityPlacement,
+  PublicMessageActivityNode,
+  PublicToolActivityNode,
+  PublicGenericActivityNode,
+  PublicElicitActivityNode,
+  ClientElicitFact,
+  PublicActivityNode,
+  PublicActivityData,
+  SweatpantsPublicActivity,
+  ActivitySnapshotEvent,
+  ActivityDeltaEvent,
+  JsonPatchOperation,
+  RunStartedEvent,
+  RunFinishedEvent,
+  RunErrorEvent,
+  MessagesSnapshotEvent,
+  StateSnapshotEvent,
+  StateDeltaEvent,
+  TextMessageStartEvent,
+  TextMessageContentEvent,
+  TextMessageEndEvent,
+  ReasoningMessageStartEvent,
+  ReasoningMessageContentEvent,
+  ReasoningMessageEndEvent,
+  ToolCallStartEvent,
+  ToolCallArgsEvent,
+  ToolCallEndEvent,
+  ToolCallResultEvent,
+  RawEvent,
+  CustomEvent,
+  ChatStreamEvent,
+  FramePipeline,
+  FramePipelineFactory,
+} from "./chat-client-types.ts";
+export {
+  ChatProtocolError,
+  decodeChatStreamEvent,
+  encodeChatStreamEvent,
+  decodePublicActivity,
+  validateActivityPatch,
+  decodeActivitySnapshotEvent,
+  decodeActivityDeltaEvent,
+} from "./chat-client-codec.ts";
+export type { ChatProtocolErrorCode } from "./chat-client-codec.ts";
+export {
+  ChatProjectionError,
+  createChatProjection,
+  foldChatStreamEvent,
+  transitionChatProjection,
+  appendChatWireMessage,
+  materializeChatMessages,
+  updateTextPartFrame,
+  findElicitNode,
+  findTextParts,
+} from "./chat-client-projection.ts";
+export type {
+  ChatProjectionErrorCode,
+  ChatProjectionState,
+  ChatProjectionAction,
+  ChatProjectionTransition,
+} from "./chat-client-projection.ts";
+
 // Shared primitives
 export type {
   Capabilities,
@@ -55,29 +148,6 @@ export * from "./personas/index.ts";
 // Registry interface
 export type { McpToolRegistry } from "./registry-types.ts";
 
-// Trace types (tool execution emissions)
-export type {
-  ComponentTypeLike,
-  ComponentEmissionPayload,
-  EmissionTraceEntry,
-  HydratedEmissionTraceEntry,
-  HydratedToolExecutionTrace,
-  ToolExecutionTrace,
-} from "./trace-types.ts";
-
-// Emission runtime primitives
-export {
-  createRuntime,
-  createComponentHandler,
-  getComponentKey,
-  COMPONENT_EMISSION_TYPE,
-  type Emission,
-  type PendingEmission,
-  type EmissionHandler,
-  type RuntimeConfig,
-  type RuntimePrimitive,
-} from "./emissions.ts";
-
 // Tool validation error types
 export {
   TOOL_PARAMETER_VALIDATION_FAILED,
@@ -85,36 +155,15 @@ export {
   type ToolParameterValidationErrorPayload,
 } from "@sweatpants/agent-sdk/tool";
 
-// Minimal plugin spec for session options
-export type { PluginReplayTraceSpec } from "./plugin-spec.ts";
-
 // Chat state (reducer, timeline, derive)
-export {
-  initialChatState,
-  groupTimelineByToolCall,
-  deriveMessages,
-  deriveCompletedMessages,
-  deriveStreamingMessage,
-} from "./state/index.ts";
+export { initialChatState, deriveMessages, deriveCompletedMessages } from "./state/index.ts";
 export type {
   ChatState,
   ChatStateEvent,
   LocalChatAction,
-  LocalEmissionAction,
   StreamingPartsState,
-  ToolEmissionState,
-  ToolEmissionTrackingState,
   ElicitState,
   ElicitTrackingState,
-  TimelineUserMessage,
-  TimelineAssistantText,
-  TimelineThinking,
-  TimelineToolCall,
-  TimelineStep,
-  TimelineItem,
-  TimelineToolCallGroup,
-  GroupedTimelineItem,
-  ComponentExtractor,
 } from "./state/index.ts";
 
 // Chat session (create, stream, replay, transforms)
@@ -126,13 +175,6 @@ export {
   readDurableHistory,
   replayFramesToConversation,
   deduplicateMessages,
-  PLUGIN_REPLAY_ACTIVITY_TYPE,
-  PLUGIN_REPLAY_LIMITS,
-  normalizeClientReplayTrace,
-  mergePluginReplayTrace,
-  buildPluginReplayActivity,
-  activityMessageToPluginReplayTrace,
-  activitySnapshotToPluginReplayTrace,
   useTransformPipeline,
   passthroughTransform,
   loggingTransform,
@@ -140,10 +182,8 @@ export {
   // AG-UI projection
   buildAgUiCheckpoint,
   buildAgUiCustomState,
-  replayActivitySnapshots,
   providerHistoryMessages,
   toProviderHistorySnapshot,
-  activitySnapshotsForMessages,
   // AG-UI messages
   internalMessageToAgUiMessage,
   internalMessagesToAgUiMessages,
@@ -166,14 +206,9 @@ export type {
   ElicitResponseData,
   DurableHistoryReplay,
   DurableFrame,
-  PluginReplayTraceSource,
-  PluginReplayActivityContent,
-  PluginReplayActivitySnapshotEvent,
   AgUiCheckpoint,
   AgUiCustomState,
   AgUiRunMetadata,
-  ConversationReplayToolTrace,
-  ConversationReplayState,
   ElicitRequestStreamEvent,
   ChatTransportReceipt,
   ChatTurnFailure,
@@ -188,9 +223,6 @@ export type {
   SessionOptions,
   ChatCommand,
   BuildAgUiCheckpointOptions,
-  AgUiFunctionCall,
-  AgUiToolCall,
-  AgUiMessage,
 } from "./session/index.ts";
 
 // Durable chat authoring

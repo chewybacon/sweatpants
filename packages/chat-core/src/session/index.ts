@@ -17,20 +17,6 @@ export { streamChatOnce } from "./stream-chat.ts";
 export type { StreamChatOptions, ElicitResponseData } from "./options.ts";
 export { readDurableHistory, replayFramesToConversation } from "./durable-history.ts";
 export type { DurableHistoryReplay } from "./durable-history.ts";
-export {
-  PLUGIN_REPLAY_ACTIVITY_TYPE,
-  PLUGIN_REPLAY_LIMITS,
-  normalizeClientReplayTrace,
-  mergePluginReplayTrace,
-  buildPluginReplayActivity,
-  activityMessageToPluginReplayTrace,
-  activitySnapshotToPluginReplayTrace,
-} from "./plugin-replay.ts";
-export type {
-  PluginReplayTraceSource,
-  PluginReplayActivityContent,
-  PluginReplayActivitySnapshotEvent,
-} from "./plugin-replay.ts";
 
 // Transforms
 export { useTransformPipeline, passthroughTransform, loggingTransform } from "./transforms.ts";
@@ -44,21 +30,13 @@ export {
   buildAgUiCustomState,
   type BuildAgUiCheckpointOptions,
 } from "./ag-ui-checkpoint.ts";
-export {
-  replayActivitySnapshots,
-  providerHistoryMessages,
-  toProviderHistorySnapshot,
-  activitySnapshotsForMessages,
-} from "./ag-ui-projection.ts";
+export { providerHistoryMessages, toProviderHistorySnapshot } from "./ag-ui-projection.ts";
 export {
   internalMessageToAgUiMessage,
   internalMessagesToAgUiMessages,
   agUiMessageToInternalMessage,
   agUiMessagesToInternalMessages,
   isAgUiMessageArray,
-  type AgUiFunctionCall,
-  type AgUiToolCall,
-  type AgUiMessage,
 } from "./ag-ui-messages.ts";
 
 // Durable history
@@ -81,8 +59,6 @@ export type {
   AgUiCheckpoint,
   AgUiCustomState,
   AgUiRunMetadata,
-  ConversationReplayToolTrace,
-  ConversationReplayState,
   ElicitRequestStreamEvent,
   StreamEvent,
 } from "./streaming.ts";

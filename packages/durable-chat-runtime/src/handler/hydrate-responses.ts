@@ -5,6 +5,7 @@
  * a stored checkpoint or from the buffered response stream, without turning
  * the chat engine.
  */
+import { EventType } from "@ag-ui/core";
 import type { Operation, Subscription } from "effection";
 import type { SessionHandle, SessionRegistry } from "../response-streams/index.ts";
 import type { StreamEvent } from "./types.ts";
@@ -42,13 +43,13 @@ function storedCheckpointHydrateEvents(
   return [
     ...checkpointEvents,
     {
-      type: "STATE_SNAPSHOT",
+      type: EventType.STATE_SNAPSHOT,
       snapshot: buildAgUiCustomState({ elicits }),
     },
     ...(openInterrupts.length > 0
       ? [
           {
-            type: "RUN_FINISHED" as const,
+            type: EventType.RUN_FINISHED as const,
             threadId: conversationId,
             runId: openInterrupts[0]?.interruptedRunId ?? conversationId,
             outcome: {
@@ -140,12 +141,11 @@ export function* createConversationHydrateResponse(params: {
 
     syntheticEvents = [
       ...(boundary.messages ? [boundary.messages] : []),
-      ...boundary.activities,
       ...(boundary.state
         ? [boundary.state]
         : [
             {
-              type: "STATE_SNAPSHOT" as const,
+              type: EventType.STATE_SNAPSHOT as const,
               snapshot: buildAgUiCustomState({ elicits }),
             },
           ]),

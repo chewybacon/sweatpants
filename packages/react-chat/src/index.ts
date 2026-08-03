@@ -1,121 +1,34 @@
-/**
- * @sweatpants/react-chat
- *
- * Streaming chat rendering with progressive enhancement.
- *
- * ## Recommended API (Pipeline-based)
- *
- * ```typescript
- * import { useChat } from '@sweatpants/react-chat'
- *
- * function Chat() {
- *   // Use a preset for common setups
- *   const { messages, send, isStreaming } = useChat({
- *     pipeline: 'full'  // markdown + shiki + mermaid + math
- *   })
- *   // ...
- * }
- * ```
- *
- * ## Pipeline Presets
- *
- * - `'markdown'` - Basic markdown parsing
- * - `'shiki'` - Markdown + syntax highlighting
- * - `'mermaid'` - Markdown + diagram rendering
- * - `'math'` - Markdown + KaTeX math rendering
- * - `'full'` - All processors (markdown + shiki + mermaid + math)
- *
- * ## Custom Processors
- *
- * ```typescript
- * import { markdown, shiki } from '@sweatpants/react-chat/pipeline'
- *
- * useChat({
- *   pipeline: { processors: [markdown, shiki] }
- * })
- * ```
- */
+/** @sweatpants/react-chat — the thin React facade over @sweatpants/chat-client. */
+import type { ReactChatMessage, ReactChatPart } from "./headless.tsx";
 
-// --- Primary API ---
 export * from "./useChat.ts";
-export * from "./useChatSession.ts";
-export * from "./ChatProvider.tsx";
-export * from "./browser-rendering/index.ts";
-
-// --- Pipeline System ---
+export * from "./plugin.ts";
 export {
-  // Types
-  type Annotation,
-  type Block,
-  type BlockType,
-  type BlockStatus,
-  type RenderPass,
-  type Frame,
-  type TraceEntry,
-  type TraceAction,
-  type Processor,
-  type ProcessFn,
-  type ProcessorPreset,
-  type PipelineConfig,
-  type PipelineResult,
-  type ResolvedProcessors,
-  // Frame utilities
-  generateFrameId,
-  generateBlockId,
-  resetIdCounters,
-  emptyFrame,
-  updateFrame,
-  createBlock,
-  createTextBlock,
-  createCodeBlock,
-  updateBlock,
-  appendToBlock,
-  completeBlock,
-  setBlockRendered,
-  addBlock,
-  updateBlockAt,
-  updateBlockById,
-  updateActiveBlock,
-  getActiveBlock,
-  getLastBlock,
-  setActiveBlock,
-  clearActiveBlock,
-  addTrace,
-  createTrace,
-  hasBlocks,
-  hasStreamingBlocks,
-  getBlocksByType,
-  getCodeBlocks,
-  getTextBlocks,
-  findBlockById,
-  getBlocksNeedingRender,
-  renderFrameToRendered,
-  renderFrameToRaw,
-  // Processors
-  markdown,
-  shiki,
-  mermaid,
-  preloadShiki,
-  isShikiReady,
-  preloadMermaid,
-  isMermaidReady,
-  // Resolver
-  resolveProcessors,
-  preloadProcessors,
-  areProcessorsReady,
-  loadProcessors,
-  ProcessorResolutionError,
-  // Runner
-  type Pipeline,
-  createPipeline,
-  composeProcessFns,
-  createPipelineTransform,
-  runPipeline,
-  runPipelineStreaming,
-} from "./pipeline/index.ts";
+  createChatClient,
+  createChatRuntime,
+  type CreateReactChatClientOptions,
+  type ReactChatClient,
+  type ReactChatRuntime,
+  type ReactChatMessage,
+  type ReactChatPart,
+  type ReactRenderPart,
+  type ReactSchedulerDriver,
+} from "./headless.tsx";
+/** Framework-specialized public aliases use the native React local-part type. */
+export type ChatMessage = ReactChatMessage;
+export type MessagePart = ReactChatPart;
+export type ChatPart = ReactChatPart;
+export type TextPart = Extract<ReactChatPart, { type: "text" }>;
+export type ReasoningPart = Extract<ReactChatPart, { type: "reasoning" }>;
+export type ToolCallPart = Extract<ReactChatPart, { type: "tool-call" }>;
+export type ChatToolCall = ToolCallPart;
 
-// --- Types ---
-export * from "./types.ts";
-
-// --- Additional Hooks ---
-export * from "./usePersonas.ts";
+export type {
+  ChatSnapshot,
+  ChatStatus,
+  ChatConnectionStatus,
+  ChatRenderStatus,
+  UserMessageInput,
+  SendMessageOptions,
+  RegenerateOptions,
+} from "@sweatpants/chat-client";

@@ -60,30 +60,39 @@ export {
 // PLUGIN SYSTEM (bridgeable tools -> framework-native plugins)
 // =============================================================================
 
-export { makePlugin } from "./plugin.ts";
+export {
+  CLIENT_ELICIT_BINDING_DOMAIN,
+  computeClientElicitBindingId,
+  createPluginBuilder,
+  createPluginRegistry,
+  createPluginRegistryFrom,
+  makePlugin,
+} from "./plugin.ts";
+export {
+  executeClientElicitHandler,
+  createClientElicitDispatcher,
+  ClientElicitDiagnostic,
+} from "./client-dispatcher.ts";
 export type {
-  McpPlugin,
+  ClientDispatcherOptions,
+  ClientDiagnosticCode,
+  ClientElicitDispatcher,
+} from "./client-dispatcher.ts";
+export type {
+  ClientElicitBinding,
+  ClientElicitBindingIdentityInput,
+  ClientElicitRequest as RawClientElicit,
+  ClientPlugin,
+  ClientPluginRegistration,
+  ElicitHandler,
+  ElicitHandlerInput,
+  ElicitHandlerMetadata,
+  ElicitHandlers,
   PluginBuilder,
   PluginBuilderWithHandlers,
-  PluginServerRegistration,
-  PluginClientRegistration,
-  PluginClientRegistrationInput,
-  PluginClientContext,
-  ElicitHandler,
-  ElicitHandlers,
-  InferElicits,
-  InferPluginTool,
-  AnyMcpPlugin,
-  PluginHandleInput,
-  // Re-export renderable types for plugin authors
-  RenderableProps,
-  UserProps,
-  ExtractResponse,
+  PluginRegistry,
+  PluginToolContract,
 } from "./plugin.ts";
-
-// Plugin registry
-export { createPluginRegistry, createPluginRegistryFrom } from "./plugin-registry.ts";
-export type { PluginRegistry } from "./plugin-registry.ts";
 
 // =============================================================================
 // BRIDGE RUNTIME (in-app tool execution with UI elicitation)
@@ -210,12 +219,6 @@ export type {
   PendingRequest,
   ParsedJsonRpcMessage,
 } from "./protocol/index.ts";
-
-// =============================================================================
-// ELICIT CONTEXT SCHEMA EXTENSION
-// =============================================================================
-
-export { getElicitContext, MODEL_CONTEXT_SCHEMA_KEY } from "./model-context.ts";
 
 // =============================================================================
 // MCP HTTP HANDLER (Streamable HTTP transport)

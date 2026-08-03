@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import {
@@ -222,7 +223,7 @@ async function runTerminalToolFailure(
       }
       yield* turn.failure();
       expect(
-        conversation.transcript().events.filter((event) => event.type === "RUN_ERROR"),
+        conversation.transcript().events.filter((event) => event.type === EventType.RUN_ERROR),
       ).toHaveLength(1);
 
       const recovery = yield* conversation.send(`RECOVER_TOOL_FAILURE_${failure.toUpperCase()}_V1`);

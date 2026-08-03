@@ -75,7 +75,9 @@ function validatePackage(pkgDir: string): ValidationFailure[] {
 }
 
 const packageDirs = readdirSync(packagesRoot, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
+  .filter(
+    (entry) => entry.isDirectory() && existsSync(join(packagesRoot, entry.name, "package.json")),
+  )
   .map((entry) => join(packagesRoot, entry.name));
 
 const failures = packageDirs.flatMap(validatePackage);

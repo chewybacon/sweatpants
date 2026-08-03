@@ -123,28 +123,44 @@ export type ExtractElicitResponse<E> =
 export type ExtractElicitResponseInput<E> =
   E extends ElicitDefinition<infer R, any> ? InferSchemaInput<R> : InferSchemaInput<E>;
 
-export type ExtractElicitContext<E> = E extends { readonly context: infer C }
-  ? InferSchema<C>
-  : undefined;
+type ExtractElicitContextSchemaValue<E> = E extends { readonly context?: infer C }
+  ? Exclude<C, undefined>
+  : never;
+
+/** Validated (Standard Schema output) value supplied to a client handler. */
+export type ExtractElicitContext<E> = [ExtractElicitContextSchemaValue<E>] extends [never]
+  ? undefined
+  : ExtractElicitContextSchemaValue<E> extends StandardSchemaV1
+    ? InferSchema<ExtractElicitContextSchemaValue<E>>
+    : undefined;
+
+/** Authored (Standard Schema input) value supplied by a tool producer. */
+export type ExtractElicitContextInput<E> = [ExtractElicitContextSchemaValue<E>] extends [never]
+  ? undefined
+  : ExtractElicitContextSchemaValue<E> extends StandardSchemaV1
+    ? InferSchemaInput<ExtractElicitContextSchemaValue<E>>
+    : undefined;
 
 export type ExtractElicitResponseSchema<E> = E extends ElicitDefinition<infer R, any> ? R : E;
 
-export type ExtractElicitContextSchema<E> = E extends { readonly context: infer C } ? C : undefined;
+export type ExtractElicitContextSchema<E> = ExtractElicitContextSchemaValue<E>;
 
 export type NormalizedElicitDefinition<
   TResponse = unknown,
   TContext = unknown,
   TResponseInput = TResponse,
+  TContextInput = TContext,
 > = ElicitDefinition<
   StandardSchemaV1<TResponseInput, TResponse>,
-  StandardSchemaV1<unknown, TContext> | undefined
+  StandardSchemaV1<TContextInput, TContext> | undefined
 >;
 
 export type NormalizedElicitsMap<TElicits extends ElicitsMap = ElicitsMap> = {
   readonly [K in keyof TElicits]: NormalizedElicitDefinition<
     ExtractElicitResponse<TElicits[K]>,
     ExtractElicitContext<TElicits[K]>,
-    ExtractElicitResponseInput<TElicits[K]>
+    ExtractElicitResponseInput<TElicits[K]>,
+    ExtractElicitContextInput<TElicits[K]>
   >;
 };
 
@@ -451,16 +467,20 @@ export interface BaseToolCtx {
 }
 
 type ElicitRequestFor<E> =
-  ExtractElicitContext<E> extends undefined
+  ExtractElicitContextInput<E> extends undefined
     ? { message: string; interrupt?: PerCallInterruptOptions }
-    : { message: string; context: ExtractElicitContext<E>; interrupt?: PerCallInterruptOptions };
+    : {
+        message: string;
+        context: ExtractElicitContextInput<E>;
+        interrupt?: PerCallInterruptOptions;
+      };
 
 export interface ToolElicitCtx<TElicits extends ElicitsMap> {
   elicit<K extends keyof TElicits & string>(
     key: K,
     request: ElicitRequestFor<TElicits[K]>,
   ): Operation<
-    ToolElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>
+    ToolElicitResult<ExtractElicitContextInput<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>
   >;
 }
 
@@ -556,6 +576,8 @@ export interface ToolDefinition<
   readonly capabilities: { readonly elicitation: boolean; readonly sampling: boolean };
   readonly annotations: Readonly<Record<string, unknown>>;
   readonly extensions: readonly ToolExtensionMetadata[];
+  /** Optional execution-neutral identity used by client elicitation bindings. */
+  readonly interfaceDigest?: string;
 }
 
 /** Wire-boundary erased tool with its authored sample-schema evidence retained. */

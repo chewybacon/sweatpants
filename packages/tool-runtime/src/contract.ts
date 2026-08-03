@@ -1,5 +1,6 @@
 import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
-import type { JsonObject } from "@sweatpants/foundation";
+import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { ToolCall } from "@sweatpants/model-provider";
 import { definePort } from "@sweatpants/foundation/port";
 import type { Operation, Stream } from "effection";
@@ -23,6 +24,16 @@ export interface ToolInventoryEntry {
   definition: PortableToolDefinition;
   capabilities?: ToolCapabilities;
   metadata?: Record<string, unknown>;
+  interfaceDigest?: string;
+  elicits?: Readonly<
+    Record<
+      string,
+      {
+        responseContract: PortableSchemaDescriptor;
+        contextContract?: PortableSchemaDescriptor;
+      }
+    >
+  >;
 }
 
 export interface ToolExecutionRef {
@@ -66,7 +77,13 @@ export interface ElicitToolRequest {
   key: string;
   message: string;
   schema: JsonObject;
-  context?: JsonObject;
+  context?: Json;
+  bindingId?: string;
+  responseContract?: PortableSchemaDescriptor;
+  contextContract?: PortableSchemaDescriptor;
+  placement?: { nodeId: string; parentNodeId: string | null; sequence: number };
+  ownerInterfaceDigest?: string;
+  clientMetadata?: Json;
 }
 
 export type ToolExecutionEvent =
@@ -80,7 +97,13 @@ export type ToolExecutionEvent =
       key: string;
       message: string;
       schema: JsonObject;
-      context?: JsonObject;
+      context?: Json;
+      bindingId?: string;
+      responseContract?: PortableSchemaDescriptor;
+      contextContract?: PortableSchemaDescriptor;
+      placement?: { nodeId: string; parentNodeId: string | null; sequence: number };
+      ownerInterfaceDigest?: string;
+      clientMetadata?: Json;
     }
   | {
       type: "sample_request";

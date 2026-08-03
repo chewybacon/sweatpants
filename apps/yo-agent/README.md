@@ -1,90 +1,54 @@
 # yo-agent
 
-A CLI-based agentic AI application built on the framework. An MVP OpenCode clone TUI.
+An in-process terminal proof of concept for the Sweatpants chat stack.
 
-## Status
+Yo Agent runs the host, model provider, durable streams, local tool runtime, headless Chat Client, and
+Ink UI in one Node process. It uses no network server: Chat Client's HTTP transport receives an injected
+`fetch` that calls the handler directly.
 
-**In Development** - Basic TUI structure complete, framework integration in progress.
+Ink uses React's reconciler, but this application deliberately does not use `@sweatpants/react-chat` or
+a DOM. It demonstrates that the framework-neutral client projection and terminal-specific frame
+processors can support another frontend.
 
 ## Running
 
 ```bash
 cd apps/yo-agent
-pnpm install
 pnpm dev
 ```
 
-**Requires an interactive terminal (TTY).**
-
-## Modes
-
-| Mode    | Key           | Description                                    |
-| ------- | ------------- | ---------------------------------------------- |
-| `plan`  | Default       | Read-only tools for research and analysis      |
-| `build` | ESC to toggle | Currently mocks responses with HAL 9000 quotes |
-
-## Key Bindings
-
-| Key    | Action                          |
-| ------ | ------------------------------- |
-| ESC    | Toggle between plan/build modes |
-| Enter  | Send message                    |
-| Ctrl+C | Exit                            |
+An interactive terminal and a configured model-provider credential are required. Model selection uses
+`DEFAULT_CHAT_MODEL_PROVIDER` and `DEFAULT_CHAT_MODEL_ID`; provider-specific resolution remains behind
+`@sweatpants/model-provider-pi-ai`.
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         yo-agent TUI                             │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                    Ink/React UI                            │  │
-│  │  - StatusBar (mode indicator)                             │  │
-│  │  - MessageList (chat history)                             │  │
-│  │  - TextInput (fixed at bottom)                            │  │
-│  └─────────────────────────┬─────────────────────────────────┘  │
-│                            │                                     │
-│                            │ (in-process, no HTTP)               │
-│                            │                                     │
-│  ┌─────────────────────────▼─────────────────────────────────┐  │
-│  │                   Framework Backend                        │  │
-│  │  - createInProcessHandler()                               │  │
-│  │  - Same handler as yo-chat server                         │  │
-│  │  - Isomorphic tools with .context('agent')                │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+```text
+Ink UI
+  → thin useSyncExternalStore adapter
+  → @sweatpants/chat-client (direct, unpaced presentation fallback)
+  → injected in-process fetch transport
+  → createChatHandler
+  → in-memory durable streams
+  → local model and worker-backed tools
 ```
 
-## File Structure
+Tool modules are loaded through Vite and hot-reload in the in-process handler. Terminal Markdown and
+code processors are supplied as Chat Client pipeline configuration; the UI renders frames already
+present on recursive message parts. The app-local terminal interaction runtime binds the `ask_user`
+tool to terminal text input without importing React Chat.
 
-```
-src/
-├── cli.tsx                 # Entry point
-├── components/
-│   ├── App.tsx            # Root component, mode state
-│   ├── StatusBar.tsx      # Mode indicator, keybindings
-│   ├── Chat.tsx           # Main chat interface
-│   └── MessageList.tsx    # Message display
-├── hooks/
-│   └── useAgentChat.ts    # Chat hook (HAL mock for now)
-└── lib/
-    └── in-process-handler.ts  # Framework adapter
-```
+## Key bindings
 
-## Roadmap
+| Key        | Action                                              |
+| ---------- | --------------------------------------------------- |
+| Enter      | Send a message or answer the active terminal prompt |
+| `/decline` | Decline the active prompt                           |
+| `/cancel`  | Cancel the active prompt                            |
+| Ctrl+C     | Exit                                                |
 
-- [x] Basic TUI with Ink
-- [x] Mode switching (plan/build)
-- [x] Message display
-- [x] Text input
-- [x] HAL 9000 mock responses (build mode)
-- [ ] Integrate framework with in-process handler
-- [ ] Plan mode tools (read_file, glob, grep, git)
-- [ ] Session persistence with @effectionx/jsonl-store
-- [ ] Streaming responses
-- [ ] Tool approval prompts
+## Scope
 
-## See Also
-
-- [Framework Documentation](../../packages/agent-host/docs/README.md)
-- [Core Tools Guide](../../packages/agent-sdk/README.md)
-- [yo-chat Reference App](../yo-chat/README.md)
+This proof of concept covers text, reasoning, tool activity, nested messages, and one deliberately
+narrow typed terminal elicitation binding. It does not attempt to generate terminal forms from arbitrary
+portable schemas.

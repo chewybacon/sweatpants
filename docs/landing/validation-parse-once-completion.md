@@ -2,15 +2,17 @@
 
 ## Status
 
-In progress under the revised **Trust Topology and Contract Flow Completion** design. The v2 shape-owner inventory remains enforced as a diagnostic view, but unresolved owners are no longer treated as an item-by-item migration queue. Certification is now blocked on unresolved vertical trust flows, especially durable restoration authority and accidental-open carrier types.
+Completed migration memo for the revised **Trust Topology and Contract Flow Completion** design. The v2
+shape-owner inventory was a temporary diagnostic and migration queue; it was retired after the owning
+parsers and permanent package tests landed.
 
 This memo distinguishes completed evidence from planned work. Individual slices have deterministic landing artifacts; it is not yet the final repository-wide completion attestation.
 
 ## Implemented in this change
 
-### Inventory v2 and enforcement
+### Historical inventory v2 migration evidence
 
-- Evolved `docs/architecture/validation-boundary-inventory.json` to `sweatpants.validation-boundary-inventory.v2`.
+- Evolved the temporary validation-boundary inventory to its v2 migration format before retiring it.
 - Retained the 86 historical `VAL-*` validation-boundary records.
 - Added stable `SHAPE-*` records for production owners that inspect unknown, JSON, decoded, persisted, provider, or extension values.
 - Added the `B`, `R`, `S`, `G`, and `C` classification vocabulary.
@@ -118,7 +120,7 @@ CLI bundler schema-catalog extraction, evaluator-loaded durable-tool recognition
 
 ### Agent SDK and Chat Core boundaries
 
-Agent SDK worker out-of-band message recognition now uses bounded schemas. Chat Core adopts its own pinned Zod dependency and parses AG-UI tool-call arguments, activity content, reducer arguments, stream tool-call arguments, and projected chat-turn history facts through canonical JSON-object schemas. `plugin-replay` remains the designated compatibility normalizer.
+Agent SDK worker out-of-band message recognition now uses bounded schemas. Chat Core adopts its own pinned Zod dependency and parses AG-UI tool-call arguments, activity content, reducer arguments, stream tool-call arguments, and projected chat-turn history facts through canonical JSON-object schemas. The former plugin-replay compatibility normalizer was removed with the pre-release client contract rebuild.
 
 ### Durable Effects contracts and test rig history
 
@@ -172,7 +174,7 @@ The misleading `WireElicitResult` and `WireSampleResult*` names were replaced by
 
 The paired settled result now follows the same seam. Model Provider solely owns OpenAI-compatible `ToolResultMessage` with `role: "tool"`, `tool_call_id`, required producer-known `name`, content, and explicit `isError`. Tool Session names its pre-correlation carrier `PendingSessionToolResult`; sequence-aware completion produces the settled Model Provider message. Chat Core carries tool name and failure directly instead of hiding identity in `replay.toolName`, and AG-UI/history projections reject orphan results rather than fabricating empty or `unknown` identity. Only the concrete pi-ai adapter translates to pi-ai's `role: "toolResult"`/camel-case vocabulary.
 
-The unused `OllamaChatRequest`, `OllamaChatChunk`, and `ClientToolSchema` residue was deleted from Chat Core and its public exports. Direct-Ollama Hydra documentation retains its own app-local protocol DTOs; installed Ollama behavior remains owned by the concrete pi-ai adapter. A package-charter gate enforces sole `ToolCall` and `ToolResultMessage` declarations and prevents provider-specific request/chunk DTOs from returning to Chat Core.
+The unused `OllamaChatRequest`, `OllamaChatChunk`, and `ClientToolSchema` residue was deleted from Chat Core and its public exports. The old direct-Ollama Hydra examples and their app-local protocol DTOs were also removed; installed Ollama behavior remains owned by the concrete pi-ai adapter. A package-charter gate enforces sole `ToolCall` and `ToolResultMessage` declarations and prevents provider-specific request/chunk DTOs from returning to Chat Core.
 
 ### Durable model-sampling seam
 
@@ -296,7 +298,5 @@ This work may be marked complete only when:
 ## Evidence locations
 
 - Design: enclosing workspace `.pi/specs/validation-parse-once-completion-design.md`
-- Inventory: `docs/architecture/validation-boundary-inventory.json`
-- Tooling: `scripts/validation-boundary-inventory.ts`
-- Tooling tests: `scripts/__tests__/validation-boundary-inventory.test.ts`
-- Prior validation cleanup evidence: `docs/landing/validation-boundary-cleanup.md`
+- Prior migration evidence: `docs/landing/validation-boundary-cleanup.md`
+- Permanent boundary behavior: package-owned parser, codec, restore, and acceptance tests

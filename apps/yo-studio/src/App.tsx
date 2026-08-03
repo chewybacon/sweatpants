@@ -1,5 +1,10 @@
-import { Fragment, useMemo, useState } from "react";
-import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
+import { useMemo, useState } from "react";
+import {
+  useChat,
+  type ChatMessage,
+  type ChatPart,
+  type ChatToolCall,
+} from "@sweatpants/react-chat";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
@@ -47,96 +52,93 @@ function ToolCallGroup({ part }: { part: ChatToolCall }) {
   const item: ChatToolCallItem = {
     key: part.id,
     name: part.name,
-    status: part.state,
-    target: compactTarget(part.arguments),
-    ...(part.result !== undefined
+    status:
+      part.state === "output-error"
+        ? "error"
+        : part.state === "output-available"
+          ? "complete"
+          : "running",
+    target: compactTarget(part.rawInput ?? part.input),
+    ...(part.output !== undefined
       ? {
           resultDetail: (
             <CodeBlock
-              code={JSON.stringify(part.result, null, 2)}
+              code={JSON.stringify(part.output, null, 2)}
               language="json"
               maxHeight="40vh"
             />
           ),
         }
       : {}),
-    ...(part.error ? { errorMessage: part.error } : {}),
+    ...(part.errorText ? { errorMessage: part.errorText } : {}),
   };
   return (
-    <Fragment>
+    <>
       <ChatToolCalls calls={[item]} />
-      {part.emissions.map((emission) => {
-        const Component = emission.component;
-        if (!Component) {
-          return null;
-        }
-        return (
-          <Component
-            key={emission.id}
-            {...emission.props}
-            onRespond={emission.onRespond}
-            disabled={emission.status !== "pending"}
-            response={emission.response}
-          />
-        );
-      })}
-    </Fragment>
+      {part.parts.map((child) => (
+        <Part key={child.id} part={child} />
+      ))}
+    </>
   );
+}
+
+function Part({ part, role = "assistant" }: { part: ChatPart; role?: ChatMessage["role"] }) {
+  switch (part.type) {
+    case "text":
+      return (
+        <ChatMessageBubble variant={role === "user" ? "filled" : "ghost"}>
+          <span className="chat-html-content" dangerouslySetInnerHTML={{ __html: part.rendered }} />
+        </ChatMessageBubble>
+      );
+    case "reasoning":
+      return (
+        <ChatMessageBubble variant="ghost">
+          <Collapsible trigger="Reasoning" defaultIsOpen={false}>
+            <span
+              className="chat-html-content"
+              dangerouslySetInnerHTML={{ __html: part.rendered }}
+            />
+          </Collapsible>
+        </ChatMessageBubble>
+      );
+    case "tool-call":
+      return <ToolCallGroup part={part} />;
+    case "message":
+      return <Message message={part.message} />;
+    case "activity":
+    case "elicit":
+      return part.parts.map((child) => <Part key={child.id} part={child} />);
+    case "render":
+      return <>{part.node}</>;
+  }
 }
 
 function Message({ message }: { message: ChatMessage }) {
   return (
     <AstryxChatMessage sender={message.role}>
-      {message.parts.map((part) => {
-        switch (part.type) {
-          case "text":
-            return (
-              <ChatMessageBubble
-                key={part.id}
-                variant={message.role === "user" ? "filled" : "ghost"}
-              >
-                <span
-                  className="chat-html-content"
-                  dangerouslySetInnerHTML={{ __html: part.rendered }}
-                />
-              </ChatMessageBubble>
-            );
-          case "reasoning":
-            return (
-              <ChatMessageBubble key={part.id} variant="ghost">
-                <Collapsible trigger="Reasoning" defaultIsOpen={false}>
-                  <span
-                    className="chat-html-content"
-                    dangerouslySetInnerHTML={{ __html: part.rendered }}
-                  />
-                </Collapsible>
-              </ChatMessageBubble>
-            );
-          case "tool-call":
-            return <ToolCallGroup key={part.id} part={part} />;
-          case "tool-result":
-            return null;
-        }
-      })}
+      {message.parts.map((part) => (
+        <Part key={part.id} part={part} role={message.role} />
+      ))}
     </AstryxChatMessage>
   );
 }
 
 function DurableChat({ conversationId }: { conversationId: string }) {
   const [task, setTask] = useState("Inspect the workspace and report its current version");
-  const { messages, isStreaming, send, abort, error, pipelineReady } = useChat({
-    baseUrl: "/api/chat",
+  const { messages, status, sendMessage, stop, error, renderStatus } = useChat({
+    api: "/api/chat",
     conversationId,
-    enabledTools: true,
     pipeline: "markdown",
     plugins: [playTttPlugin],
   });
+  const busy = status === "submitted" || status === "streaming";
+  const renderReady = renderStatus === "ready";
 
   function submit(value: string) {
-    if (value.trim().length === 0 || isStreaming) {
+    if (value.trim().length === 0 || busy) {
       return;
     }
-    send(value.trim());
+    sendMessage({ text: value.trim() });
     setTask("");
   }
 
@@ -156,8 +158,8 @@ function DurableChat({ conversationId }: { conversationId: string }) {
                 </Text>
               </VStack>
               <Badge
-                variant={pipelineReady ? "success" : "neutral"}
-                label={pipelineReady ? "Handler ready" : "Loading"}
+                variant={renderReady ? "success" : "neutral"}
+                label={renderReady ? "Handler ready" : "Loading"}
               />
             </HStack>
           </LayoutHeader>
@@ -165,7 +167,7 @@ function DurableChat({ conversationId }: { conversationId: string }) {
         content={
           <LayoutContent padding={4}>
             <ChatMessageList
-              isStreaming={isStreaming}
+              isStreaming={busy}
               emptyState={
                 <EmptyState
                   isCompact
@@ -186,11 +188,11 @@ function DurableChat({ conversationId }: { conversationId: string }) {
               value={task}
               onChange={setTask}
               onSubmit={submit}
-              isStopShown={isStreaming}
-              onStop={abort}
-              isDisabled={!pipelineReady}
+              isStopShown={busy}
+              onStop={stop}
+              isDisabled={!renderReady}
               placeholder="Send a task to the journal-native coding harness…"
-              {...(error ? { status: { type: "error" as const, message: error } } : {})}
+              {...(error ? { status: { type: "error" as const, message: error.message } } : {})}
             />
           </LayoutFooter>
         }

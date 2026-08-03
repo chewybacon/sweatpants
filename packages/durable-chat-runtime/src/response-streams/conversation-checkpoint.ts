@@ -1,14 +1,8 @@
-import { z } from "zod";
-import type {
-  AgUiMessage,
-  AgUiToolCall,
-  ChatSessionStreamEvent as StreamEvent,
-  ToolExecutionTrace,
+import { EventSchemas, EventType, MessageSchema, type AGUIEvent } from "@ag-ui/core";
+import {
+  decodeChatStreamEvent,
+  type ChatSessionStreamEvent as StreamEvent,
 } from "@sweatpants/chat-core";
-import type {
-  ToolParameterValidationErrorPayload,
-  ToolParameterValidationIssue,
-} from "@sweatpants/agent-sdk/tool";
 
 const MAX_CHECKPOINT_EVENTS = 100_000;
 const MAX_CHECKPOINT_BYTES = 8 * 1024 * 1024;
@@ -18,465 +12,185 @@ const MAX_TOOLS = 256;
 const MAX_CONTEXT_ENTRIES = 256;
 const MAX_RESUME_ENTRIES = 256;
 const MAX_INTERRUPTS = 64;
-const MAX_REPLAY_TOOL_TRACES = 256;
-const MAX_PENDING_CLIENT_ACTIONS = 256;
 const MAX_ID_LENGTH = 1_024;
-// No smaller per-field cap is justified by the live protocol yet. The total
-// checkpoint byte bound remains the authoritative short-term size policy.
-const MAX_TEXT_LENGTH = MAX_CHECKPOINT_BYTES;
-const MAX_TRACE_ENTRIES = 128;
 const checkpointEncoder = new TextEncoder();
 
-const idSchema = z.string().min(1).max(MAX_ID_LENGTH);
-const textSchema = z.string().max(MAX_TEXT_LENGTH);
-const jsonObjectSchema = z.record(z.string().max(MAX_ID_LENGTH), z.json());
+type JsonRecord = Record<string, unknown>;
 
-const functionCallSchema = z.object({ name: idSchema, arguments: textSchema }).strict();
+function checkpointError(message: string, cause?: unknown): ConversationCheckpointError {
+  return new ConversationCheckpointError(message, {
+    cause: cause instanceof Error ? cause : undefined,
+  });
+}
 
-const toolCallSchema: z.ZodType<AgUiToolCall> = z
-  .object({
-    id: idSchema,
-    type: z.literal("function"),
-    function: functionCallSchema,
-  })
-  .strict();
+function record(value: unknown, path: string): JsonRecord {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw checkpointError(`${path} must be an object`);
+  }
+  return value as JsonRecord;
+}
 
-const developerMessageSchema = z
-  .object({ id: idSchema, role: z.literal("developer"), content: textSchema })
-  .strict()
-  .transform((value): Extract<AgUiMessage, { role: "developer" }> => value);
-const systemMessageSchema = z
-  .object({ id: idSchema, role: z.literal("system"), content: textSchema })
-  .strict()
-  .transform((value): Extract<AgUiMessage, { role: "system" }> => value);
-const userMessageSchema = z
-  .object({ id: idSchema, role: z.literal("user"), content: textSchema })
-  .strict()
-  .transform((value): Extract<AgUiMessage, { role: "user" }> => value);
-const assistantMessageSchema = z
-  .object({
-    id: idSchema,
-    role: z.literal("assistant"),
-    content: textSchema.optional(),
-    toolCalls: z.array(toolCallSchema).max(MAX_TOOL_CALLS).optional(),
-  })
-  .strict()
-  .transform(
-    (value): Extract<AgUiMessage, { role: "assistant" }> => ({
-      id: value.id,
-      role: "assistant",
-      ...(value.content !== undefined ? { content: value.content } : {}),
-      ...(value.toolCalls !== undefined ? { toolCalls: value.toolCalls } : {}),
-    }),
-  );
-const toolMessageSchema = z
-  .object({
-    id: idSchema,
-    role: z.literal("tool"),
-    content: textSchema,
-    toolCallId: idSchema,
-    name: idSchema.optional(),
-    error: textSchema.optional(),
-  })
-  .strict()
-  .transform(
-    (value): Extract<AgUiMessage, { role: "tool" }> => ({
-      id: value.id,
-      role: "tool",
-      content: value.content,
-      toolCallId: value.toolCallId,
-      ...(value.name !== undefined ? { name: value.name } : {}),
-      ...(value.error !== undefined ? { error: value.error } : {}),
-    }),
-  );
-const activityMessageSchema = z
-  .object({
-    id: idSchema,
-    role: z.literal("activity"),
-    activityType: idSchema,
-    content: jsonObjectSchema,
-  })
-  .strict()
-  .transform((value): Extract<AgUiMessage, { role: "activity" }> => value);
-const reasoningMessageSchema = z
-  .object({ id: idSchema, role: z.literal("reasoning"), content: textSchema })
-  .strict()
-  .transform((value): Extract<AgUiMessage, { role: "reasoning" }> => value);
+function boundedString(value: unknown, path: string): void {
+  if (typeof value !== "string" || value.length === 0 || value.length > MAX_ID_LENGTH) {
+    throw checkpointError(`${path} must be a bounded non-empty string`);
+  }
+}
 
-const agUiMessageSchema = z.discriminatedUnion("role", [
-  developerMessageSchema,
-  systemMessageSchema,
-  userMessageSchema,
-  assistantMessageSchema,
-  toolMessageSchema,
-  activityMessageSchema,
-  reasoningMessageSchema,
+const baseEventKeys = new Set(["type", "timestamp", "rawEvent"]);
+const eventKeys: ReadonlyMap<EventType, ReadonlySet<string>> = new Map([
+  [EventType.TEXT_MESSAGE_START, new Set(["messageId", "role", "name"])],
+  [EventType.TEXT_MESSAGE_CONTENT, new Set(["messageId", "delta"])],
+  [EventType.TEXT_MESSAGE_END, new Set(["messageId"])],
+  [EventType.TEXT_MESSAGE_CHUNK, new Set(["messageId", "delta", "role"])],
+  [EventType.TOOL_CALL_START, new Set(["toolCallId", "toolCallName", "parentMessageId"])],
+  [EventType.TOOL_CALL_ARGS, new Set(["toolCallId", "delta"])],
+  [EventType.TOOL_CALL_END, new Set(["toolCallId"])],
+  [EventType.TOOL_CALL_CHUNK, new Set(["toolCallId", "toolCallName", "parentMessageId", "delta"])],
+  [EventType.TOOL_CALL_RESULT, new Set(["messageId", "toolCallId", "content", "role"])],
+  [EventType.STATE_SNAPSHOT, new Set(["snapshot"])],
+  [EventType.STATE_DELTA, new Set(["delta"])],
+  [EventType.MESSAGES_SNAPSHOT, new Set(["messages"])],
+  [EventType.ACTIVITY_SNAPSHOT, new Set(["messageId", "activityType", "content", "replace"])],
+  [EventType.ACTIVITY_DELTA, new Set(["messageId", "activityType", "patch"])],
+  [EventType.RAW, new Set(["event", "source"])],
+  [EventType.CUSTOM, new Set(["name", "value"])],
+  [EventType.RUN_STARTED, new Set(["threadId", "runId", "parentRunId", "input"])],
+  [EventType.RUN_FINISHED, new Set(["threadId", "runId", "result", "outcome"])],
+  [EventType.RUN_ERROR, new Set(["message", "code"])],
+  [EventType.STEP_STARTED, new Set(["stepName"])],
+  [EventType.STEP_FINISHED, new Set(["stepName"])],
+  [EventType.REASONING_START, new Set([])],
+  [EventType.REASONING_MESSAGE_START, new Set(["messageId", "role", "name"])],
+  [EventType.REASONING_MESSAGE_CONTENT, new Set(["messageId", "delta"])],
+  [EventType.REASONING_MESSAGE_END, new Set(["messageId"])],
+  [EventType.REASONING_MESSAGE_CHUNK, new Set(["messageId", "delta"])],
+  [EventType.REASONING_END, new Set([])],
+  [EventType.REASONING_ENCRYPTED_VALUE, new Set(["subtype", "entityId", "encryptedValue"])],
 ]);
 
-const runStartedEventSchema = z.object({
-  type: z.literal("RUN_STARTED"),
-  threadId: idSchema,
-  runId: idSchema,
-  parentRunId: idSchema.optional(),
-  input: z
-    .object({
-      threadId: idSchema,
-      runId: idSchema,
-      parentRunId: idSchema.optional(),
-      state: z.json(),
-      messages: z.array(agUiMessageSchema).max(MAX_SNAPSHOT_MESSAGES),
-      tools: z
-        .array(
-          z
-            .object({
-              name: idSchema,
-              description: textSchema,
-              parameters: z.json(),
-            })
-            .strict(),
-        )
-        .max(MAX_TOOLS),
-      context: z
-        .array(z.object({ description: textSchema, value: textSchema }).strict())
-        .max(MAX_CONTEXT_ENTRIES),
-      forwardedProps: z.json(),
-      resume: z
-        .array(
-          z
-            .object({
-              interruptId: idSchema,
-              status: z.enum(["resolved", "cancelled"]),
-              payload: z.json().optional(),
-            })
-            .strict(),
-        )
-        .max(MAX_RESUME_ENTRIES)
-        .optional(),
-    })
-    .strict()
-    .optional(),
-});
-const runStartedSchema = runStartedEventSchema.strict().transform((value) => ({
-  type: "RUN_STARTED" as const,
-  threadId: value.threadId,
-  runId: value.runId,
-  ...(value.parentRunId !== undefined ? { parentRunId: value.parentRunId } : {}),
-  ...(value.input !== undefined
-    ? {
-        input: {
-          threadId: value.input.threadId,
-          runId: value.input.runId,
-          ...(value.input.parentRunId !== undefined
-            ? { parentRunId: value.input.parentRunId }
-            : {}),
-          state: value.input.state,
-          messages: value.input.messages,
-          tools: value.input.tools,
-          context: value.input.context,
-          forwardedProps: value.input.forwardedProps,
-          ...(value.input.resume !== undefined ? { resume: value.input.resume } : {}),
-        },
+function assertKnownEventKeys(input: JsonRecord): void {
+  const type = input["type"];
+  if (typeof type !== "string") {
+    throw checkpointError("event.type must be a string");
+  }
+  const allowed = eventKeys.get(type as EventType);
+  if (!allowed) {
+    throw checkpointError(`event type ${type} is not persisted by this checkpoint codec`);
+  }
+  for (const key of Object.keys(input)) {
+    if (!baseEventKeys.has(key) && !allowed.has(key)) {
+      throw checkpointError(`event field ${key} is not part of the official AG-UI event`);
+    }
+  }
+}
+
+function assertMessageKeys(input: JsonRecord): void {
+  const role = input["role"];
+  const keysByRole: Record<string, readonly string[]> = {
+    developer: ["id", "role", "content", "name", "encryptedValue"],
+    system: ["id", "role", "content", "name", "encryptedValue"],
+    user: ["id", "role", "content", "name", "encryptedValue"],
+    assistant: ["id", "role", "content", "name", "encryptedValue", "toolCalls"],
+    tool: ["id", "role", "content", "toolCallId", "error", "encryptedValue"],
+    activity: ["id", "role", "activityType", "content"],
+    reasoning: ["id", "role", "content", "encryptedValue"],
+  };
+  const allowed = keysByRole[typeof role === "string" ? role : ""];
+  if (!allowed) {
+    throw checkpointError("message.role is not an official AG-UI role");
+  }
+  for (const key of Object.keys(input)) {
+    if (!allowed.includes(key)) {
+      throw checkpointError(`message field ${key} is not part of the official AG-UI message`);
+    }
+  }
+  boundedString(input["id"], "message.id");
+
+  if (role === "assistant" && Array.isArray(input["toolCalls"])) {
+    if (input["toolCalls"].length > MAX_TOOL_CALLS) {
+      throw checkpointError("message.toolCalls exceeds the checkpoint limit");
+    }
+    for (const call of input["toolCalls"]) {
+      const toolCall = record(call, "message.toolCalls[]");
+      for (const key of Object.keys(toolCall)) {
+        if (!["id", "type", "function", "encryptedValue"].includes(key)) {
+          throw checkpointError(`tool call field ${key} is not official AG-UI`);
+        }
       }
-    : {}),
-}));
+    }
+  }
+}
 
-const interruptSchema = z
-  .object({
-    id: idSchema,
-    reason: idSchema,
-    message: textSchema.optional(),
-    toolCallId: idSchema.optional(),
-    responseSchema: jsonObjectSchema.optional(),
-    expiresAt: textSchema.optional(),
-    metadata: jsonObjectSchema.optional(),
-  })
-  .strict();
-type RunFinishedEvent = Extract<StreamEvent, { type: "RUN_FINISHED" }>;
-type RunFinishedInterrupt = Extract<
-  NonNullable<RunFinishedEvent["outcome"]>,
-  { type: "interrupt" }
->;
-const interruptOutcomeSchema = z
-  .object({
-    type: z.literal("interrupt"),
-    interrupts: z.array(interruptSchema).max(MAX_INTERRUPTS),
-  })
-  .strict()
-  .transform(
-    (value): RunFinishedInterrupt => ({
-      type: "interrupt",
-      interrupts: value.interrupts.map((interrupt) => ({
-        id: interrupt.id,
-        reason: interrupt.reason,
-        ...(interrupt.message !== undefined ? { message: interrupt.message } : {}),
-        ...(interrupt.toolCallId !== undefined ? { toolCallId: interrupt.toolCallId } : {}),
-        ...(interrupt.responseSchema !== undefined
-          ? { responseSchema: interrupt.responseSchema }
-          : {}),
-        ...(interrupt.expiresAt !== undefined ? { expiresAt: interrupt.expiresAt } : {}),
-        ...(interrupt.metadata !== undefined ? { metadata: interrupt.metadata } : {}),
-      })),
-    }),
-  );
-const runFinishedOutcomeSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("success") }).strict(),
-  interruptOutcomeSchema,
-]);
-const runFinishedSchema = z
-  .object({
-    type: z.literal("RUN_FINISHED"),
-    threadId: idSchema,
-    runId: idSchema,
-    result: z.json().optional(),
-    outcome: runFinishedOutcomeSchema.optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    type: "RUN_FINISHED" as const,
-    threadId: value.threadId,
-    runId: value.runId,
-    ...(value.result !== undefined ? { result: value.result } : {}),
-    ...(value.outcome !== undefined ? { outcome: value.outcome } : {}),
-  }));
+function assertMessageSnapshot(value: unknown): void {
+  if (!Array.isArray(value) || value.length > MAX_SNAPSHOT_MESSAGES) {
+    throw checkpointError("MESSAGES_SNAPSHOT.messages exceeds the checkpoint limit");
+  }
+  for (const entry of value) {
+    const input = record(entry, "MESSAGES_SNAPSHOT.messages[]");
+    assertMessageKeys(input);
+    const parsed = MessageSchema.safeParse(entry);
+    if (!parsed.success) {
+      throw checkpointError(
+        "MESSAGES_SNAPSHOT contains an invalid official AG-UI message",
+        parsed.error,
+      );
+    }
+  }
+}
 
-const runErrorSchema = z
-  .object({ type: z.literal("RUN_ERROR"), message: textSchema, code: idSchema.optional() })
-  .strict()
-  .transform((value) => ({
-    type: "RUN_ERROR" as const,
-    message: value.message,
-    ...(value.code !== undefined ? { code: value.code } : {}),
-  }));
+function assertBoundedRunInput(value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  const input = record(value, "RUN_STARTED.input");
+  if (Array.isArray(input["messages"])) {
+    if (input["messages"].length > MAX_SNAPSHOT_MESSAGES) {
+      throw checkpointError("RUN_STARTED.input.messages exceeds the checkpoint limit");
+    }
+    assertMessageSnapshot(input["messages"]);
+  }
+  if (Array.isArray(input["tools"]) && input["tools"].length > MAX_TOOLS) {
+    throw checkpointError("RUN_STARTED.input.tools exceeds the checkpoint limit");
+  }
+  if (Array.isArray(input["context"]) && input["context"].length > MAX_CONTEXT_ENTRIES) {
+    throw checkpointError("RUN_STARTED.input.context exceeds the checkpoint limit");
+  }
+  if (Array.isArray(input["resume"]) && input["resume"].length > MAX_RESUME_ENTRIES) {
+    throw checkpointError("RUN_STARTED.input.resume exceeds the checkpoint limit");
+  }
+}
 
-const messagesSnapshotSchema = z
-  .object({
-    type: z.literal("MESSAGES_SNAPSHOT"),
-    messages: z.array(agUiMessageSchema).max(MAX_SNAPSHOT_MESSAGES),
-  })
-  .strict();
+function assertBoundedOutcome(value: unknown): void {
+  const outcome = record(value, "RUN_FINISHED.outcome");
+  if (outcome["type"] === "interrupt") {
+    if (!Array.isArray(outcome["interrupts"]) || outcome["interrupts"].length > MAX_INTERRUPTS) {
+      throw checkpointError("RUN_FINISHED.outcome.interrupts exceeds the checkpoint limit");
+    }
+  }
+}
 
-const replayEmissionSchema = z
-  .object({
-    order: z.number().int().nonnegative(),
-    emissionId: idSchema,
-    sourceInterruptId: idSchema.optional(),
-    componentKey: idSchema,
-    props: jsonObjectSchema,
-    response: z.json().optional(),
-    timestamp: z.number().finite(),
-  })
-  .strict()
-  .transform((value): ToolExecutionTrace["emissions"][number] => ({
-    order: value.order,
-    emissionId: value.emissionId,
-    ...(value.sourceInterruptId !== undefined
-      ? { sourceInterruptId: value.sourceInterruptId }
-      : {}),
-    componentKey: value.componentKey,
-    props: value.props,
-    ...(value.response !== undefined ? { response: value.response } : {}),
-    timestamp: value.timestamp,
-  }));
-const replayTraceSchema = z
-  .object({
-    version: z.literal(1),
-    emissions: z.array(replayEmissionSchema).max(MAX_TRACE_ENTRIES),
-    startedAt: z.number().finite(),
-    completedAt: z.number().finite(),
-  })
-  .strict();
-const replayStateSchema = z
-  .object({
-    toolTraces: z
-      .array(z.object({ callId: idSchema, toolName: idSchema, trace: replayTraceSchema }).strict())
-      .max(MAX_REPLAY_TOOL_TRACES),
-  })
-  .strict();
+function validateCheckpointEvent(value: unknown): StreamEvent {
+  const input = record(value, "event");
+  assertKnownEventKeys(input);
+  const parsed = EventSchemas.safeParse(input);
+  if (!parsed.success) {
+    throw checkpointError("event is not a valid official AG-UI event", parsed.error);
+  }
+  if (input["type"] === EventType.MESSAGES_SNAPSHOT) {
+    assertMessageSnapshot(input["messages"]);
+  } else if (input["type"] === EventType.RUN_STARTED) {
+    assertBoundedRunInput(input["input"]);
+  } else if (input["type"] === EventType.RUN_FINISHED && input["outcome"] !== undefined) {
+    assertBoundedOutcome(input["outcome"]);
+  }
+  return decodeChatStreamEvent(input);
+}
 
-const stateSnapshotSchema = z
-  .object({
-    type: z.literal("STATE_SNAPSHOT"),
-    snapshot: z
-      .object({
-        replay: replayStateSchema.optional(),
-        pendingClientActions: z
-          .array(
-            z
-              .object({
-                toolCallId: idSchema,
-                toolName: idSchema,
-                kind: z.literal("elicit"),
-                sessionId: idSchema,
-                elicitId: idSchema,
-                key: idSchema,
-                message: textSchema,
-                schema: jsonObjectSchema,
-              })
-              .strict(),
-          )
-          .max(MAX_PENDING_CLIENT_ACTIONS)
-          .optional(),
-      })
-      .strict()
-      .transform((value) => ({
-        ...(value.replay !== undefined ? { replay: value.replay } : {}),
-        ...(value.pendingClientActions !== undefined
-          ? { pendingClientActions: value.pendingClientActions }
-          : {}),
-      })),
-  })
-  .strict();
-
-const textStartSchema = z
-  .object({
-    type: z.literal("TEXT_MESSAGE_START"),
-    messageId: idSchema,
-    role: z.enum(["assistant", "user", "system", "developer"]),
-  })
-  .strict();
-const textContentSchema = z
-  .object({ type: z.literal("TEXT_MESSAGE_CONTENT"), messageId: idSchema, delta: textSchema })
-  .strict();
-const textEndSchema = z
-  .object({ type: z.literal("TEXT_MESSAGE_END"), messageId: idSchema })
-  .strict();
-const toolCallStartSchema = z
-  .object({
-    type: z.literal("TOOL_CALL_START"),
-    toolCallId: idSchema,
-    toolCallName: idSchema,
-    parentMessageId: idSchema.optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    type: "TOOL_CALL_START" as const,
-    toolCallId: value.toolCallId,
-    toolCallName: value.toolCallName,
-    ...(value.parentMessageId !== undefined ? { parentMessageId: value.parentMessageId } : {}),
-  }));
-const toolCallArgsSchema = z
-  .object({ type: z.literal("TOOL_CALL_ARGS"), toolCallId: idSchema, delta: textSchema })
-  .strict();
-const toolCallEndSchema = z
-  .object({ type: z.literal("TOOL_CALL_END"), toolCallId: idSchema })
-  .strict();
-
-const validationIssueSchema = z
-  .object({
-    path: z.array(z.union([z.string().max(MAX_ID_LENGTH), z.number().int()])).max(256),
-    message: textSchema,
-    code: idSchema.optional(),
-    expected: z.json().optional(),
-    received: z.json().optional(),
-  })
-  .strict()
-  .transform(
-    (value): ToolParameterValidationIssue => ({
-      path: value.path,
-      message: value.message,
-      ...(value.code !== undefined ? { code: value.code } : {}),
-      ...(value.expected !== undefined ? { expected: value.expected } : {}),
-      ...(value.received !== undefined ? { received: value.received } : {}),
-    }),
-  );
-const validationErrorSchema: z.ZodType<ToolParameterValidationErrorPayload> = z
-  .object({
-    code: z.literal("TOOL_PARAMETER_VALIDATION_FAILED"),
-    toolName: idSchema,
-    callId: idSchema,
-    message: textSchema,
-    issues: z.array(validationIssueSchema).max(256),
-  })
-  .strict();
-const toolResultSchema = z
-  .object({
-    type: z.literal("TOOL_CALL_RESULT"),
-    messageId: idSchema,
-    toolCallId: idSchema,
-    toolCallName: idSchema.optional(),
-    content: textSchema,
-    role: z.literal("tool").optional(),
-    isError: z.boolean().optional(),
-    error: validationErrorSchema.optional(),
-  })
-  .strict()
-  .transform((value) => ({
-    type: "TOOL_CALL_RESULT" as const,
-    messageId: value.messageId,
-    toolCallId: value.toolCallId,
-    ...(value.toolCallName !== undefined ? { toolCallName: value.toolCallName } : {}),
-    content: value.content,
-    ...(value.role !== undefined ? { role: value.role } : {}),
-    ...(value.isError !== undefined ? { isError: value.isError } : {}),
-    ...(value.error !== undefined ? { error: value.error } : {}),
-  }));
-
-type ActivityEvent = Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>;
-const activityMessageIdSchema = z.templateLiteral([
-  z.literal("sweatpants:plugin-replay:"),
-  z.string().max(MAX_ID_LENGTH),
-]);
-const activitySchema = z
-  .object({
-    type: z.literal("ACTIVITY_SNAPSHOT"),
-    messageId: activityMessageIdSchema,
-    activityType: z.literal("sweatpants:plugin-replay"),
-    replace: z.literal(true),
-    content: z
-      .object({
-        version: z.literal(1),
-        toolCallId: idSchema,
-        toolName: idSchema,
-        trace: replayTraceSchema,
-      })
-      .strict(),
-  })
-  .strict()
-  .transform(
-    (value): ActivityEvent => ({
-      type: "ACTIVITY_SNAPSHOT",
-      messageId: value.messageId,
-      activityType: "sweatpants:plugin-replay",
-      replace: true,
-      content: value.content,
-    }),
-  );
-const reasoningSchema = z
-  .object({
-    type: z.literal("REASONING_MESSAGE_CONTENT"),
-    messageId: idSchema,
-    delta: textSchema,
-  })
-  .strict();
-
-const streamEventSchema = z.discriminatedUnion("type", [
-  runStartedSchema,
-  runFinishedSchema,
-  runErrorSchema,
-  messagesSnapshotSchema,
-  stateSnapshotSchema,
-  textStartSchema,
-  textContentSchema,
-  textEndSchema,
-  toolCallStartSchema,
-  toolCallArgsSchema,
-  toolCallEndSchema,
-  toolResultSchema,
-  activitySchema,
-  reasoningSchema,
-]);
-
-type AssertAssignable<A extends B, B> = A;
-// Intentional compile-time codec drift tripwire; fallow must not remove it.
-// fallow-ignore-next-line unused-type
-export type _DecodeDrift = AssertAssignable<z.output<typeof streamEventSchema>, StreamEvent>;
-
-const storedConversationCheckpointSchema = z
-  .object({
-    version: z.literal(1),
-    events: z.array(streamEventSchema).max(MAX_CHECKPOINT_EVENTS),
-  })
-  .strict();
+function assertCheckpointSize(encoded: string): void {
+  if (checkpointEncoder.encode(encoded).byteLength > MAX_CHECKPOINT_BYTES) {
+    throw checkpointError("Conversation checkpoint exceeds the size limit");
+  }
+}
 
 export class ConversationCheckpointError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -485,43 +199,47 @@ export class ConversationCheckpointError extends Error {
   }
 }
 
-function assertCheckpointSize(encoded: string): void {
-  if (encoded.length <= MAX_CHECKPOINT_BYTES / 4) {
-    return;
-  }
-  if (checkpointEncoder.encode(encoded).byteLength > MAX_CHECKPOINT_BYTES) {
-    throw new ConversationCheckpointError("Conversation checkpoint exceeds the size limit");
-  }
-}
+/** Compile-time drift tripwire: checkpoint events are the official AG-UI union. */
+export type _DecodeDrift = AGUIEvent extends StreamEvent ? true : never;
 
 export function encodeConversationCheckpoint(events: readonly StreamEvent[]): string {
   try {
-    const artifact = storedConversationCheckpointSchema.parse({ version: 1, events });
-    const encoded = JSON.stringify(artifact);
+    if (events.length > MAX_CHECKPOINT_EVENTS) {
+      throw checkpointError("Conversation checkpoint contains too many events");
+    }
+    const validated = events.map((event) => validateCheckpointEvent(event));
+    const encoded = JSON.stringify({ version: 1, events: JSON.parse(JSON.stringify(validated)) });
     assertCheckpointSize(encoded);
     return encoded;
   } catch (error) {
-    if (error instanceof ConversationCheckpointError) throw error;
-    throw new ConversationCheckpointError("Conversation checkpoint cannot be encoded", {
-      cause: error,
-    });
+    if (error instanceof ConversationCheckpointError) {
+      throw error;
+    }
+    throw checkpointError("Conversation checkpoint cannot be encoded", error);
   }
 }
 
 export function decodeConversationCheckpoint(raw: string): StreamEvent[] {
   try {
-    if (
-      raw.length > MAX_CHECKPOINT_BYTES / 4 &&
-      checkpointEncoder.encode(raw).byteLength > MAX_CHECKPOINT_BYTES
-    ) {
-      throw new ConversationCheckpointError("Conversation checkpoint exceeds the size limit");
+    assertCheckpointSize(raw);
+    const envelope = record(JSON.parse(raw), "checkpoint");
+    for (const key of Object.keys(envelope)) {
+      if (key !== "version" && key !== "events") {
+        throw checkpointError(`Conversation checkpoint field ${key} is not supported`);
+      }
     }
-    const value: unknown = JSON.parse(raw);
-    return storedConversationCheckpointSchema.parse(value).events;
+    if (envelope["version"] !== 1) {
+      throw checkpointError("Conversation checkpoint version is unsupported");
+    }
+    const events = envelope["events"];
+    if (!Array.isArray(events) || events.length > MAX_CHECKPOINT_EVENTS) {
+      throw checkpointError("Conversation checkpoint events are invalid");
+    }
+    return events.map(validateCheckpointEvent);
   } catch (error) {
-    if (error instanceof ConversationCheckpointError) throw error;
-    throw new ConversationCheckpointError("Conversation checkpoint is malformed", {
-      cause: error,
-    });
+    if (error instanceof ConversationCheckpointError) {
+      throw error;
+    }
+    throw checkpointError("Conversation checkpoint is malformed", error);
   }
 }

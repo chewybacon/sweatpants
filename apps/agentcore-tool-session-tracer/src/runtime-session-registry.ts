@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { assertJson } from "@sweatpants/foundation";
 import { SpanStatusCode, type Span } from "@opentelemetry/api";
 import { each, run, sleep as effectionSleep, spawn, type Signal } from "effection";
 import {
@@ -115,21 +116,6 @@ function statusResponse(session: RuntimeToolSession): RuntimeResponse {
     status: session.status,
     ...(pendingRequest !== undefined ? { pendingRequest } : {}),
     lastRuntimeEventSeq: session.nextSeq - 1,
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function decodeBridgeElicitContext(
-  message: string,
-  schema: Record<string, unknown>,
-): { message: string; context?: Record<string, unknown> | undefined } {
-  const schemaContext = schema["x-elicit-context"];
-  return {
-    message,
-    ...(isRecord(schemaContext) ? { context: schemaContext } : {}),
   };
 }
 
@@ -717,7 +703,7 @@ export class RuntimeSessionRegistry {
         // remote elicitation has a stable, unique id within the tool session.
         const elicitId = `${session.toolSessionId}:req:${session.nextSeq}`;
         const schema = event.request.schema.json as Record<string, unknown>;
-        const decoded = decodeBridgeElicitContext(event.request.message, schema);
+
         session.status = "awaiting_elicit";
         session.pending = {
           type: "elicit",
@@ -729,9 +715,11 @@ export class RuntimeSessionRegistry {
           type: "elicit_request",
           elicitId,
           key: event.request.key,
-          message: decoded.message,
+          message: event.request.message,
           schema,
-          ...(decoded.context !== undefined ? { context: decoded.context } : {}),
+          ...(event.request.context !== undefined
+            ? { context: assertJson(event.request.context) }
+            : {}),
         });
         return;
       }

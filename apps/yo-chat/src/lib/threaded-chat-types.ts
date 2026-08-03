@@ -37,7 +37,7 @@ export interface ThreadViewMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  isStreaming: boolean;
+  busy: boolean;
 }
 
 function compact(text: string): string {
@@ -80,7 +80,7 @@ export function deriveThreadMessages(events: ThreadEvent[]): ThreadViewMessage[]
         id: event.id,
         role: "user",
         content: event.content,
-        isStreaming: false,
+        busy: false,
       });
       continue;
     }
@@ -94,13 +94,13 @@ export function deriveThreadMessages(events: ThreadEvent[]): ThreadViewMessage[]
           id: messageId,
           role: "assistant",
           content: event.content,
-          isStreaming: true,
+          busy: true,
         });
       } else {
         const existing = messages[existingIndex];
         if (existing) {
           existing.content += event.content;
-          existing.isStreaming = true;
+          existing.busy = true;
         }
       }
       continue;
@@ -115,13 +115,13 @@ export function deriveThreadMessages(events: ThreadEvent[]): ThreadViewMessage[]
           id: messageId,
           role: "assistant",
           content: event.content,
-          isStreaming: false,
+          busy: false,
         });
       } else {
         const existing = messages[existingIndex];
         if (existing) {
           existing.content = event.content;
-          existing.isStreaming = false;
+          existing.busy = false;
         }
       }
     }

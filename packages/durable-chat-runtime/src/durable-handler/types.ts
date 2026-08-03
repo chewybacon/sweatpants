@@ -86,6 +86,8 @@ export type ProgramRuntimeChatEngine = import("effection").Stream<StreamEvent, v
 export interface DurableChatHandlerConfig {
   setup?: ChatHandlerSetup;
   maxToolIterations?: number;
+  /** Server-composition-owned default inventory exposure; never derived from client plugins. */
+  defaultEnabledTools?: boolean | readonly string[];
   programDriverJournalStore: ProgramDriverJournalStore;
   /** Bounded terminal/publication authority persistence; shared for Host replacement. */
   executionStore?: ExecutionStore;

@@ -1,6 +1,7 @@
-import {
-  type DurableEffectOutcomeAcknowledgement,
-  type DurableEffectRegistration,
+import { EventType } from "@ag-ui/core";
+import type {
+  DurableEffectOutcomeAcknowledgement,
+  DurableEffectRegistration,
 } from "@sweatpants/durable-effects";
 import {
   assistantText,
@@ -10,39 +11,47 @@ import {
   MODEL_SAMPLE_EFFECT,
 } from "@sweatpants/model-sampling";
 
-import { CrankError, PullApplicationError } from "@sweatpants/durable-execution";
 import { resource, type Operation, type Stream } from "effection";
-import { encodeElicitContext } from "@sweatpants/tool-session/elicit-context";
-import {
-  type DurableJournalAuthorityService,
-  type DurableSemanticRecord,
+import type {
+  DurableJournalAuthorityService,
+  DurableSemanticRecord,
 } from "@sweatpants/journal-authority";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import {
+  CrankError,
+  PullApplicationError,
+  ProgramRuntime,
   assertReplayedCanonicalValue,
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createLocalProgramDriver,
+  createProgramDriverRegistry,
   stableProgramAttachmentId,
   type DurableProgramContext,
-  type DurableTool,
   type ProgramRunResult,
 } from "@sweatpants/durable-execution";
 import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
+  sha256,
   stableOpaqueId,
   type Json,
   type JsonObject,
 } from "@sweatpants/foundation";
 import { foreignToolAdapter, foreignToolAdapterChild } from "@sweatpants/tool-session/foreign";
+import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
+import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
+import { computeClientElicitBindingId } from "@sweatpants/tool-session/mcp";
 
-import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import { runWithRenewedActivationLease } from "../host/activation-lease-coordinator.ts";
-import { buildPluginReplayActivity } from "@sweatpants/chat-core";
-import type { ChatSessionStreamEvent as StreamEvent } from "@sweatpants/chat-core";
+import type {
+  ChatSessionStreamEvent as StreamEvent,
+  ActivityDeltaEvent,
+  ActivitySnapshotEvent,
+  PublicActivityNode,
+  PublicGenericActivityNode,
+} from "@sweatpants/chat-core";
 import {
   nativeProgramIdentities,
   requiresFencedActivation,
@@ -55,6 +64,21 @@ import type { ElicitResponse, ProgramRuntimeChatEngineParams } from "./types.ts"
 import { projectChatHistory } from "./model-sampling/history.ts";
 import { createHostModelSamplingService } from "./model-sampling/service.ts";
 import { runWithTurnEventWriter } from "./model-sampling/turn-event-api.ts";
+
+type TreePlacement = {
+  readonly nodeId: string;
+  readonly parentNodeId: string | null;
+  readonly sequence: number;
+};
+
+type RecursiveExecutionNode = {
+  readonly type: "execution";
+  readonly placement: TreePlacement;
+  readonly executionId: string;
+  readonly presentation: "public" | "opaque";
+  readonly status: "running" | "complete" | "error" | "cancelled";
+  readonly children: readonly never[];
+};
 
 type ChatCall = {
   id: string;
@@ -206,8 +230,8 @@ function* invokeCatalogTool(
   try {
     const result =
       entry.kind === "program"
-        ? yield* context.invoke<Json>({ ...entry.program, input: durableToolInput(call) })
-        : yield* context.foreignTool<Json>({
+        ? yield* context.invoke({ ...entry.program, input: durableToolInput(call) })
+        : yield* context.foreignTool({
             driver: entry.driver,
             tool: entry.tool,
             input: call.input,
@@ -281,7 +305,9 @@ function* activateProgramDriverChatEngine(
   };
   // Replay of the accepted canonical input never reruns schema code (DR-023).
   const replacementQueued =
-    active !== undefined && canonicalJson(active.input) !== canonicalJson(requestedInput);
+    active !== undefined &&
+    (params.elicitResponses?.length ?? 0) === 0 &&
+    canonicalJson(active.input) !== canonicalJson(requestedInput);
   const input = active
     ? assertReplayedCanonicalValue<ChatProgramInput>(active.input)
     : requestedInput;
@@ -322,15 +348,15 @@ function* activateProgramDriverChatEngine(
     before = yield* journal.readJournal(params.conversationId, taskId);
   }
 
-  if (active && params.pluginAbort) {
-    yield* journal.requestCancellation(
-      params.conversationId,
-      active.taskId,
-      params.pluginAbort.reason,
-    );
+  if (active && (params.pluginAbort || replacementQueued)) {
+    const reason = params.pluginAbort?.reason ?? "active turn superseded by a new message";
+    yield* journal.requestCancellation(params.conversationId, active.taskId, reason);
     yield* cancelPendingElicits(journal, before, params.conversationId);
   }
-  const accepted = params.pluginAbort ? 0 : yield* resolveElicitResponses(params, journal, before);
+  const accepted =
+    params.pluginAbort || replacementQueued
+      ? 0
+      : yield* resolveElicitResponses(params, journal, before);
   if (accepted > 0 && params.onResumeAccepted) {
     yield* params.onResumeAccepted();
   }
@@ -338,8 +364,8 @@ function* activateProgramDriverChatEngine(
   // SAFETY: registry storage erases manifest type witnesses; both tools are
   // restored from their exact pinned schemas before driver execution.
   const tools = createDurableToolRegistry([
-    rootTool as unknown as DurableTool,
-    foreignToolAdapter as unknown as DurableTool,
+    rootTool,
+    foreignToolAdapter,
     ...[...(params.nativeTools?.bindings.values() ?? [])].map((binding) => binding.tool),
   ]);
   const executionModelSamplingService = yield* ExecutionModelSamplingServiceContext.get();
@@ -447,30 +473,20 @@ function* activateProgramDriverChatEngine(
     },
   );
   const after = yield* journal.readJournal(params.conversationId, taskId);
-  const events: StreamEvent[] = (params.elicitResponses ?? []).flatMap((response) => {
-    if (!response.trace || !response.toolName) {
-      return [];
-    }
-    const activity = buildPluginReplayActivity({
-      toolCallId: response.callId,
-      toolName: response.toolName,
-      trace: response.trace,
-    });
-    return activity ? [activity] : [];
-  });
+  const events: StreamEvent[] = [];
   const projected = projectRecords(after.slice(before.length), after);
   events.push(
     ...(streamedTerminal
       ? projected.filter(
           (event) =>
-            event.type !== "TEXT_MESSAGE_START" &&
-            event.type !== "TEXT_MESSAGE_CONTENT" &&
-            event.type !== "TEXT_MESSAGE_END",
+            event.type !== EventType.TEXT_MESSAGE_START &&
+            event.type !== EventType.TEXT_MESSAGE_CONTENT &&
+            event.type !== EventType.TEXT_MESSAGE_END,
         )
       : projected),
   );
   if (outcome.state === "completed") {
-    events.push({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
+    events.push({ type: EventType.RUN_FINISHED, ...params.agUiRun, outcome: { type: "success" } });
     yield* params.publishTerminal({
       outcome: outcome.value,
       disposition: "completed",
@@ -481,12 +497,14 @@ function* activateProgramDriverChatEngine(
     if (pending) {
       const pendingCallId = pendingToolCallId(after, pending);
       if (pendingCallId) {
-        events.push({ type: "TOOL_CALL_END", toolCallId: pendingCallId });
+        events.push({ type: EventType.TOOL_CALL_END, toolCallId: pendingCallId });
       }
-      events.push(projectInterrupt(after, pending, params));
+      const interrupt = projectInterrupt(after, pending, params);
+      events.push(...publicActivityElicitSnapshots(after, pending, interrupt));
+      events.push(interrupt);
     } else {
       events.push({
-        type: "RUN_ERROR",
+        type: EventType.RUN_ERROR,
         code: "PROGRAM_PARKED",
         message: "Program parked without a public input request",
       });
@@ -508,7 +526,7 @@ function* activateProgramDriverChatEngine(
       }
     } else {
       events.push({
-        type: "RUN_ERROR",
+        type: EventType.RUN_ERROR,
         code: "PROGRAM_CANCELLED",
         message: params.pluginAbort?.reason ?? "Program was cancelled",
       });
@@ -522,7 +540,11 @@ function* activateProgramDriverChatEngine(
       });
     }
   } else {
-    events.push({ type: "RUN_ERROR", code: outcome.error.code, message: outcome.error.message });
+    events.push({
+      type: EventType.RUN_ERROR,
+      code: outcome.error.code,
+      message: outcome.error.message,
+    });
     yield* params.publishTerminal({
       outcome: assertJson(outcome.error),
       disposition: "failed",
@@ -569,8 +591,64 @@ function* cancelPendingElicits(
   }
 }
 
+function nativeElicitResponseSchema(
+  params: ProgramDriverChatEngineParams,
+  records: DurableSemanticRecord[],
+  pending: PendingElicit,
+) {
+  const opened = records.find(
+    (record) => record.payload.type === "TaskOpened" && record.payload.taskId === pending.taskId,
+  );
+  const openedPayload = opened?.payload;
+  if (!openedPayload || openedPayload.type !== "TaskOpened") {
+    return undefined;
+  }
+  const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
+    (candidate) => candidate.tool.manifest.digest === openedPayload.programDigest,
+  );
+  return binding?.tool.elicits[pending.descriptor.key]?.response;
+}
+
+/**
+ * Native durable programs carry only portable descriptor evidence through the
+ * journal. The installed authored contract remains the host command-lane
+ * validation authority, so transformed response output is produced here
+ * before the value is accepted by the durable program.
+ */
+function* normalizeNativeElicitCompletion(
+  params: ProgramDriverChatEngineParams,
+  records: DurableSemanticRecord[],
+  pending: PendingElicit,
+  completion: ElicitResponse["completion"],
+): Operation<ElicitResponse["completion"]> {
+  if (completion.action !== "accept") {
+    return completion;
+  }
+  const schema = nativeElicitResponseSchema(params, records, pending);
+  if (!schema) {
+    return completion;
+  }
+  const parsed = yield* validateStandardSchema(schema, completion.content);
+  if (parsed.issues !== undefined) {
+    throw new CrankError(
+      "elicit_response_invalid",
+      `Elicitation response validation failed for key "${pending.descriptor.key}"`,
+    );
+  }
+  try {
+    return { action: "accept", content: assertJson(parsed.value) };
+  } catch (error) {
+    throw new CrankError(
+      "elicit_response_invalid",
+      `Elicitation response for key "${pending.descriptor.key}" is not JSON-serializable`,
+      undefined,
+      { cause: error },
+    );
+  }
+}
+
 function* resolveElicitResponses(
-  params: ProgramRuntimeChatEngineParams,
+  params: ProgramDriverChatEngineParams,
   journal: ProgramDriverJournal,
   records: DurableSemanticRecord[],
 ): Operation<number> {
@@ -580,12 +658,18 @@ function* resolveElicitResponses(
     if (!pending) {
       continue;
     }
+    const completion = yield* normalizeNativeElicitCompletion(
+      params,
+      records,
+      pending,
+      response.completion,
+    );
     const result = yield* journal.resolvePending({
       sessionId: params.conversationId,
       taskId: pending.taskId,
       pullId: pending.pullId,
-      audience: `user:${pending.key}`,
-      outcome: { status: "ok", value: assertJson(response.completion) },
+      audience: `user:${pending.descriptor.key}`,
+      outcome: { status: "ok", value: assertJson(completion) },
     });
     if (result.status === "accepted" || result.status === "duplicate") {
       accepted += 1;
@@ -594,7 +678,10 @@ function* resolveElicitResponses(
   return accepted;
 }
 
-function findPendingResponse(records: DurableSemanticRecord[], response: ElicitResponse) {
+function findPendingResponse(
+  records: DurableSemanticRecord[],
+  response: ElicitResponse,
+): PendingElicit | undefined {
   const resolved = new Set(
     records.flatMap((record) =>
       record.payload.type === "PullResolved" ? [record.payload.pullId] : [],
@@ -613,15 +700,12 @@ function findPendingResponse(records: DurableSemanticRecord[], response: ElicitR
       ...payload,
       descriptor: payload.descriptor,
     });
+    const effectiveCallId = correlation.callId ?? payload.pullId;
     if (
-      correlation.callId === response.callId &&
+      effectiveCallId === response.callId &&
       (correlation.elicitId === response.elicitId || payload.pullId === response.elicitId)
     ) {
-      return {
-        taskId: payload.taskId,
-        pullId: payload.pullId,
-        key: payload.descriptor.key,
-      };
+      return { ...payload, descriptor: payload.descriptor };
     }
   }
   return undefined;
@@ -654,6 +738,277 @@ function pendingElicit(
   return { ...found.payload, descriptor: found.payload.descriptor };
 }
 
+function publicActivitySnapshot(
+  messageId: string,
+  node: PublicActivityNode,
+): ActivitySnapshotEvent {
+  return {
+    type: EventType.ACTIVITY_SNAPSHOT,
+    messageId,
+    activityType: "sweatpants:public-execution",
+    replace: true,
+    content: { version: 1, node: node as unknown as Json },
+  };
+}
+
+function publicElicitActivityDelta(
+  nodeId: string,
+  state: "responded" | "cancelled",
+): ActivityDeltaEvent {
+  return {
+    type: EventType.ACTIVITY_DELTA,
+    messageId: nodeId,
+    activityType: "sweatpants:public-execution",
+    patch: [{ op: "replace", path: "/node/state", value: state }],
+  };
+}
+
+function executionState(
+  status: RecursiveExecutionNode["status"],
+): PublicGenericActivityNode["state"] {
+  return status === "complete"
+    ? "complete"
+    : status === "error"
+      ? "error"
+      : status === "cancelled"
+        ? "cancelled"
+        : "running";
+}
+
+function opaqueExecutionActivity(node: RecursiveExecutionNode): ActivitySnapshotEvent {
+  return publicActivitySnapshot(node.placement.nodeId, {
+    nodeId: node.placement.nodeId,
+    parentNodeId: node.placement.parentNodeId,
+    sequence: node.placement.sequence,
+    kind: "activity",
+    state: executionState(node.status),
+    presentation: "opaque",
+    publicData: { kind: "activity", activityType: "opaque-execution" },
+  });
+}
+
+function publicActivityToolStartSnapshots(
+  allRecords: DurableSemanticRecord[],
+  record: DurableSemanticRecord,
+  payload: Record<string, Json>,
+): ActivitySnapshotEvent[] {
+  const callId = String(payload["callId"]);
+  const toolName = String(payload["tool"]);
+  const parentNodeId = parentExecutionNodeId(allRecords, record);
+  const messageId = `message:${record.payload.type === "DurableEmission" ? record.payload.taskId : "unknown"}:${callId}`;
+  const executionId = `execution:${callId}`;
+  return [
+    publicActivitySnapshot(messageId, {
+      nodeId: messageId,
+      parentNodeId,
+      sequence: record.payload.type === "DurableEmission" ? record.payload.emissionIndex : 0,
+      kind: "message",
+      state: "streaming",
+      presentation: "public",
+      publicData: { kind: "message", messageId, role: "assistant" },
+    }),
+    publicActivitySnapshot(executionId, {
+      nodeId: executionId,
+      parentNodeId: messageId,
+      sequence: 0,
+      kind: "tool-call",
+      state: "input-available",
+      presentation: "public",
+      publicData: {
+        kind: "tool-call",
+        callId,
+        name: toolName,
+        input: payload["input"] ?? null,
+        rawInput: JSON.stringify(payload["input"] ?? null),
+      },
+    }),
+  ];
+}
+
+function publicActivityElicitSnapshots(
+  records: DurableSemanticRecord[],
+  pending: PendingElicit,
+  interrupt: Extract<StreamEvent, { type: EventType.RUN_FINISHED }>,
+): ActivitySnapshotEvent[] {
+  if (interrupt.outcome?.type !== "interrupt") {
+    return [];
+  }
+  const value = interrupt.outcome.interrupts[0];
+  const metadata = value?.metadata ?? {};
+  const facts = jsonRecord(metadata["sweatpants/elicitation"]);
+  const bindingId = typeof facts?.["bindingId"] === "string" ? facts["bindingId"] : undefined;
+  const responseContract = portableDescriptorFromJson(facts?.["responseContract"]);
+  const contextContract = portableDescriptorFromJson(facts?.["contextContract"]);
+  const placement = placementFromJson(facts?.["placement"]);
+  if (!value || !bindingId || !responseContract || !placement) {
+    return [];
+  }
+  const snapshots: ActivitySnapshotEvent[] = [];
+  if (placement.parentNodeId?.startsWith("execution-opaque")) {
+    const opaqueNodes = opaqueAncestryForTask(records, pending.taskId, placement.sequence);
+    const first = opaqueNodes[0];
+    if (!first) {
+      throw new CrankError(
+        "client_activity_parent_missing",
+        "Unable to derive opaque execution ancestry",
+      );
+    }
+    if (first.placement.parentNodeId === null) {
+      const rootMessageId = `${first.placement.nodeId}:root`;
+      snapshots.push(
+        publicActivitySnapshot(rootMessageId, {
+          nodeId: rootMessageId,
+          parentNodeId: null,
+          sequence: placement.sequence,
+          kind: "message",
+          state: "streaming",
+          presentation: "public",
+          publicData: { kind: "message", messageId: rootMessageId, role: "assistant" },
+        }),
+      );
+      const rootToolId = `private-tool:${first.placement.nodeId}`;
+      snapshots.push(
+        publicActivitySnapshot(rootToolId, {
+          nodeId: rootToolId,
+          parentNodeId: rootMessageId,
+          sequence: 0,
+          kind: "tool-call",
+          state: "input-available",
+          presentation: "public",
+          publicData: {
+            kind: "tool-call",
+            callId: first.placement.nodeId,
+            name: "private-execution",
+            input: null,
+          },
+        }),
+      );
+      snapshots.push(
+        opaqueExecutionActivity({
+          ...first,
+          placement: { ...first.placement, parentNodeId: rootToolId, sequence: 0 },
+        }),
+      );
+      for (const node of opaqueNodes.slice(1)) {
+        snapshots.push(opaqueExecutionActivity(node));
+      }
+    } else {
+      snapshots.push(...opaqueNodes.map(opaqueExecutionActivity));
+    }
+  }
+  const key =
+    typeof metadata["sweatpants/key"] === "string"
+      ? metadata["sweatpants/key"]
+      : pending.descriptor.key;
+  const toolName =
+    typeof metadata["sweatpants/toolName"] === "string" ? metadata["sweatpants/toolName"] : key;
+  const callId =
+    value.toolCallId ?? (typeof metadata["callId"] === "string" ? metadata["callId"] : value.id);
+  const nodeId = placement.nodeId;
+  snapshots.push(
+    publicActivitySnapshot(nodeId, {
+      nodeId,
+      parentNodeId: placement.parentNodeId,
+      sequence: placement.sequence,
+      kind: "elicit",
+      state: "pending",
+      presentation: "public",
+      publicData: {
+        kind: "elicit",
+        elicitId: value.id,
+        bindingId,
+        key,
+        message: value.message ?? "Input required",
+        ...(facts?.["context"] !== undefined ? { context: facts["context"] } : {}),
+        responseContract,
+        ...(contextContract !== undefined ? { contextContract } : {}),
+        toolName,
+        callId,
+        producerSequence: placement.sequence,
+      },
+    }),
+  );
+  return snapshots;
+}
+
+function parentExecutionNodeId(
+  records: DurableSemanticRecord[],
+  record: DurableSemanticRecord,
+): string | null {
+  if (record.payload.type !== "DurableEmission") {
+    return null;
+  }
+  return parentExecutionNodeIdForTask(records, record.payload.taskId);
+}
+
+function parentExecutionNodeIdForTask(
+  records: DurableSemanticRecord[],
+  taskId: string,
+): string | null {
+  const opened = records.find(
+    (candidate) => candidate.payload.type === "TaskOpened" && candidate.payload.taskId === taskId,
+  );
+  const openedPayload = opened?.payload;
+  if (!openedPayload || openedPayload.type !== "TaskOpened" || !openedPayload.parentPullId) {
+    return null;
+  }
+  const parentPullIndex = records.findIndex(
+    (candidate) =>
+      candidate.payload.type === "PullRequested" &&
+      candidate.payload.pullId === openedPayload.parentPullId,
+  );
+  for (let index = parentPullIndex - 1; index >= 0; index -= 1) {
+    const candidate = records[index]?.payload;
+    if (
+      candidate?.type !== "DurableEmission" ||
+      candidate.taskId !== openedPayload.parentTaskId ||
+      candidate.descriptor.eventType !== "tool_started"
+    ) {
+      continue;
+    }
+    const payload = jsonRecord(candidate.descriptor.payload);
+    if (typeof payload?.["callId"] === "string") {
+      return `execution:${payload["callId"]}`;
+    }
+  }
+  return null;
+}
+
+function opaqueAncestryForTask(
+  records: DurableSemanticRecord[],
+  taskId: string,
+  leafSequence: number,
+  leafTaskId = taskId,
+): RecursiveExecutionNode[] {
+  const opened = records.find(
+    (candidate) => candidate.payload.type === "TaskOpened" && candidate.payload.taskId === taskId,
+  );
+  const openedPayload = opened?.payload;
+  const publicParent = parentExecutionNodeIdForTask(records, taskId);
+  const parentNodes =
+    publicParent ||
+    !openedPayload ||
+    openedPayload.type !== "TaskOpened" ||
+    !openedPayload.parentTaskId
+      ? []
+      : opaqueAncestryForTask(records, openedPayload.parentTaskId, 0, leafTaskId);
+  const parentNodeId = publicParent ?? parentNodes.at(-1)?.placement.nodeId ?? null;
+  const nodeId = stableOpaqueId("execution-opaque", taskId);
+  const node: RecursiveExecutionNode = {
+    type: "execution",
+    placement: {
+      nodeId,
+      parentNodeId,
+      sequence: taskId === leafTaskId ? leafSequence : 0,
+    },
+    executionId: nodeId,
+    presentation: "opaque",
+    status: "running",
+    children: [],
+  };
+  return [...parentNodes, node];
+}
+
 function projectRecords(
   records: DurableSemanticRecord[],
   allRecords: DurableSemanticRecord[],
@@ -667,6 +1022,14 @@ function projectRecords(
           ? jsonRecord(recordEntry.payload.outcome.partial)
           : undefined;
       const request = pullRequest(allRecords, recordEntry.payload.pullId);
+      if (request?.descriptor.kind === "elicit") {
+        events.push(
+          publicElicitActivityDelta(
+            `elicit:${recordEntry.payload.pullId}`,
+            recordEntry.payload.outcome.status === "cancelled" ? "cancelled" : "responded",
+          ),
+        );
+      }
       if (
         partial?.["interrupted"] === true &&
         typeof partial["text"] === "string" &&
@@ -675,13 +1038,13 @@ function projectRecords(
       ) {
         const messageId = `assistant:interrupted:${recordEntry.payload.taskId}:${recordEntry.payload.pullId}`;
         events.push(
-          { type: "TEXT_MESSAGE_START", messageId, role: "assistant" },
+          { type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" },
           {
-            type: "TEXT_MESSAGE_CONTENT",
+            type: EventType.TEXT_MESSAGE_CONTENT,
             messageId,
             delta: `${partial["text"]}\n\n[interrupted]`,
           },
-          { type: "TEXT_MESSAGE_END", messageId },
+          { type: EventType.TEXT_MESSAGE_END, messageId },
         );
       }
       continue;
@@ -697,9 +1060,9 @@ function projectRecords(
     if (descriptor.eventType === "assistant_text" && typeof payload["text"] === "string") {
       const messageId = `assistant:${recordEntry.payload.taskId}:${recordEntry.payload.emissionIndex}`;
       events.push(
-        { type: "TEXT_MESSAGE_START", messageId, role: "assistant" },
-        { type: "TEXT_MESSAGE_CONTENT", messageId, delta: payload["text"] },
-        { type: "TEXT_MESSAGE_END", messageId },
+        { type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" },
+        { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: payload["text"] },
+        { type: EventType.TEXT_MESSAGE_END, messageId },
       );
     }
     if (
@@ -710,16 +1073,17 @@ function projectRecords(
       activeToolCalls.add(payload["callId"]);
       events.push(
         {
-          type: "TOOL_CALL_START",
+          type: EventType.TOOL_CALL_START,
           toolCallId: payload["callId"],
           toolCallName: payload["tool"],
-          parentMessageId: `assistant:tools:${payload["callId"]}`,
+          parentMessageId: `message:${recordEntry.payload.taskId}:${payload["callId"]}`,
         },
         {
-          type: "TOOL_CALL_ARGS",
+          type: EventType.TOOL_CALL_ARGS,
           toolCallId: payload["callId"],
           delta: JSON.stringify(payload["input"] ?? null),
         },
+        ...publicActivityToolStartSnapshots(allRecords, recordEntry, payload),
       );
     }
     if (
@@ -730,27 +1094,39 @@ function projectRecords(
       const activeInThisRun = activeToolCalls.delete(payload["callId"]);
       const startedPreviously = previousToolStart(allRecords, payload["callId"]);
       if (activeInThisRun) {
-        events.push({ type: "TOOL_CALL_END", toolCallId: payload["callId"] });
+        events.push({ type: EventType.TOOL_CALL_END, toolCallId: payload["callId"] });
       } else if (!startedPreviously) {
         events.push(
           {
-            type: "TOOL_CALL_START",
+            type: EventType.TOOL_CALL_START,
             toolCallId: payload["callId"],
             toolCallName: payload["tool"],
-            parentMessageId: `assistant:tools:${payload["callId"]}`,
+            parentMessageId: `message:${recordEntry.payload.taskId}:${payload["callId"]}`,
           },
-          { type: "TOOL_CALL_END", toolCallId: payload["callId"] },
+          { type: EventType.TOOL_CALL_END, toolCallId: payload["callId"] },
         );
       }
       events.push({
-        type: "TOOL_CALL_RESULT",
+        type: EventType.TOOL_CALL_RESULT,
         messageId: `tool:${payload["callId"]}`,
         toolCallId: payload["callId"],
-        toolCallName: payload["tool"],
         content: JSON.stringify(payload["result"] ?? null),
         role: "tool",
-        ...(payload["failed"] === true ? { isError: true } : {}),
       });
+      if (payload["failed"] === true) {
+        events.push({
+          type: EventType.MESSAGES_SNAPSHOT,
+          messages: [
+            {
+              id: `tool:${payload["callId"]}`,
+              role: "tool",
+              toolCallId: payload["callId"],
+              content: JSON.stringify(payload["result"] ?? null),
+              error: "Tool execution failed",
+            },
+          ],
+        });
+      }
     }
   }
 
@@ -762,20 +1138,30 @@ function projectRecords(
     for (const pending of unfinishedToolCalls(allRecords)) {
       const partial = cancellationPartialForCall(allRecords, pending.callId);
       if (activeToolCalls.delete(pending.callId)) {
-        events.push({ type: "TOOL_CALL_END", toolCallId: pending.callId });
+        events.push({ type: EventType.TOOL_CALL_END, toolCallId: pending.callId });
       }
       events.push({
-        type: "TOOL_CALL_RESULT",
+        type: EventType.TOOL_CALL_RESULT,
         messageId: `tool:${pending.callId}:cancelled`,
         toolCallId: pending.callId,
-        toolCallName: pending.tool,
         content: JSON.stringify({ status: "cancelled", ...(partial ? { partial } : {}) }),
         role: "tool",
-        isError: true,
+      });
+      events.push({
+        type: EventType.MESSAGES_SNAPSHOT,
+        messages: [
+          {
+            id: `tool:${pending.callId}:cancelled`,
+            role: "tool",
+            toolCallId: pending.callId,
+            content: JSON.stringify({ status: "cancelled", ...(partial ? { partial } : {}) }),
+            error: "Tool execution cancelled",
+          },
+        ],
       });
     }
   }
-  const errored = [...records]
+  const errored = Array.from(records)
     .reverse()
     .find(
       (record) => record.payload.type === "TaskClosed" && record.payload.outcome.status === "error",
@@ -783,16 +1169,26 @@ function projectRecords(
   if (errored?.payload.type === "TaskClosed" && errored.payload.outcome.status === "error") {
     for (const pending of unfinishedToolCalls(allRecords)) {
       if (activeToolCalls.delete(pending.callId)) {
-        events.push({ type: "TOOL_CALL_END", toolCallId: pending.callId });
+        events.push({ type: EventType.TOOL_CALL_END, toolCallId: pending.callId });
       }
       events.push({
-        type: "TOOL_CALL_RESULT",
+        type: EventType.TOOL_CALL_RESULT,
         messageId: `tool:${pending.callId}:error`,
         toolCallId: pending.callId,
-        toolCallName: pending.tool,
         content: JSON.stringify({ status: "error", error: errored.payload.outcome.error }),
         role: "tool",
-        isError: true,
+      });
+      events.push({
+        type: EventType.MESSAGES_SNAPSHOT,
+        messages: [
+          {
+            id: `tool:${pending.callId}:error`,
+            role: "tool",
+            toolCallId: pending.callId,
+            content: JSON.stringify({ status: "error", error: errored.payload.outcome.error }),
+            error: "Tool execution failed",
+          },
+        ],
       });
     }
   }
@@ -873,18 +1269,15 @@ function previousToolStart(
   return undefined;
 }
 
-function pendingToolCallId(
-  records: DurableSemanticRecord[],
-  pending: PendingElicit,
-): string | undefined {
-  return pendingCorrelation(records, pending).callId;
+function pendingToolCallId(records: DurableSemanticRecord[], pending: PendingElicit): string {
+  return pendingCorrelation(records, pending).callId ?? pending.pullId;
 }
 
 function projectInterrupt(
   records: DurableSemanticRecord[],
   pending: NonNullable<ReturnType<typeof pendingElicit>>,
-  params: ProgramRuntimeChatEngineParams,
-): StreamEvent {
+  params: ProgramDriverChatEngineParams,
+): Extract<StreamEvent, { type: EventType.RUN_FINISHED }> {
   const context = jsonRecord(pending.descriptor.context);
   const nested = jsonRecord(context?.["context"]);
   const correlation = pendingCorrelation(records, pending);
@@ -895,22 +1288,31 @@ function projectInterrupt(
     : pending.descriptor.response.inputProjection;
   const encoded = isForeign
     ? {
-        // Preserve the established foreign ToolSession projection contract;
-        // native durable definitions below use the canonical x-elicit seam.
         message: pending.descriptor.message,
-        schema: schemaWithModelContext(responseProjection, authoredContext),
+        schema: objectSchema(responseProjection),
       }
-    : authoredContext
-      ? encodeElicitContext(
-          pending.descriptor.message,
-          authoredContext,
-          objectSchema(responseProjection),
-        )
-      : { message: pending.descriptor.message, schema: objectSchema(responseProjection) };
+    : { message: pending.descriptor.message, schema: objectSchema(responseProjection) };
+  const responseContract =
+    portableDescriptorFromJson(context?.["responseContract"]) ?? pending.descriptor.response;
+  const contextContract =
+    portableDescriptorFromJson(context?.["contextContract"]) ?? pending.descriptor.contextContract;
+  const ownerInterfaceDigest =
+    typeof context?.["ownerInterfaceDigest"] === "string"
+      ? context["ownerInterfaceDigest"]
+      : ownerInterfaceDigestForPending(records, pending, params);
+  const bindingId = computeClientElicitBindingId({
+    ownerInterfaceDigest,
+    key:
+      typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : pending.descriptor.key,
+    response: responseContract,
+    context: contextContract ?? null,
+    clientMetadata: context?.["clientMetadata"] ?? null,
+  });
+  const placement = placementForPending(records, pending, correlation);
   const publicKey =
     typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : pending.descriptor.key;
   return {
-    type: "RUN_FINISHED",
+    type: EventType.RUN_FINISHED,
     ...params.agUiRun,
     outcome: {
       type: "interrupt",
@@ -920,16 +1322,93 @@ function projectInterrupt(
           reason: "input_required",
           message: encoded.message,
           responseSchema: encoded.schema,
-          ...(correlation.callId ? { toolCallId: correlation.callId } : {}),
+          toolCallId: correlation.callId ?? pending.pullId,
           metadata: {
             "sweatpants/key": publicKey,
             ...(correlation.toolName ? { "sweatpants/toolName": correlation.toolName } : {}),
-            ...(correlation.callId ? { callId: correlation.callId } : {}),
+            callId: correlation.callId ?? pending.pullId,
             ...(correlation.elicitId ? { elicitId: correlation.elicitId } : {}),
+            "sweatpants/elicitation": {
+              bindingId,
+              ...(authoredContext !== undefined ? { context: authoredContext } : {}),
+              responseContract,
+              ...(contextContract ? { contextContract } : {}),
+              placement,
+            },
           },
         },
       ],
     },
+  };
+}
+
+function ownerInterfaceDigestForPending(
+  records: DurableSemanticRecord[],
+  pending: PendingElicit,
+  params: ProgramDriverChatEngineParams,
+): string {
+  const opened = records.find(
+    (record) => record.payload.type === "TaskOpened" && record.payload.taskId === pending.taskId,
+  );
+  if (opened?.payload.type === "TaskOpened") {
+    const programDigest = opened.payload.programDigest;
+    const native = [...(params.nativeTools?.bindings.values() ?? [])].find(
+      (binding) => binding.tool.manifest.digest === programDigest,
+    );
+    const interfaceDigest = (native?.tool as { interfaceDigest?: string } | undefined)
+      ?.interfaceDigest;
+    if (interfaceDigest) {
+      return interfaceDigest;
+    }
+  }
+  const context = jsonRecord(pending.descriptor.context);
+  const foreignToolName =
+    typeof context?.["foreignTool"] === "string"
+      ? context["foreignTool"]
+      : typeof context?.["toolName"] === "string"
+        ? context["toolName"]
+        : undefined;
+  const inventoryEntry = foreignToolName
+    ? params.toolInventoryEntries?.find((entry) => entry.definition.name === foreignToolName)
+    : undefined;
+  if (inventoryEntry?.interfaceDigest) {
+    return inventoryEntry.interfaceDigest;
+  }
+  const toolName =
+    foreignToolName ??
+    (opened?.payload.type === "TaskOpened" ? opened.payload.programId : pending.descriptor.key);
+  return sha256(
+    `sweatpants.tool-interface\\n${canonicalJson({
+      name: toolName,
+      response: pending.descriptor.response,
+      context: pending.descriptor.contextContract ?? null,
+    })}`,
+  );
+}
+
+function placementForPending(
+  records: DurableSemanticRecord[],
+  pending: PendingElicit,
+  correlation: { callId?: string },
+): { nodeId: string; parentNodeId: string | null; sequence: number } {
+  const callId = correlation.callId;
+  const publicExecution = callId
+    ? records.some(
+        (record) =>
+          record.payload.type === "DurableEmission" &&
+          record.payload.descriptor.eventType === "tool_started" &&
+          jsonRecord(record.payload.descriptor.payload)?.["callId"] === callId,
+      )
+    : false;
+  const parentNodeId =
+    callId && publicExecution
+      ? `execution:${callId}`
+      : stableOpaqueId("execution-opaque", pending.taskId);
+  const sequence = pending.pullIndex;
+  return {
+    nodeId: `elicit:${pending.pullId}`,
+    parentNodeId,
+    sequence: Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : 0,
   };
 }
 
@@ -1084,9 +1563,10 @@ function createChatToolCatalog(
 ): ChatToolCatalog {
   const nativePrograms = nativeProgramIdentities(params.nativeTools);
   const entries: Record<string, ChatToolCatalogEntry> = {};
-  for (const tool of [...params.toolSchemas].sort((left, right) =>
+  const sortedTools = [...params.toolSchemas].sort((left, right) =>
     left.name.localeCompare(right.name),
-  )) {
+  );
+  for (const tool of sortedTools) {
     const program = nativePrograms[tool.name];
     entries[tool.name] = {
       model: {
@@ -1128,20 +1608,30 @@ function objectSchema(value: Json | undefined): JsonObject {
   return jsonRecord(value) ?? {};
 }
 
-function schemaWithModelContext(
-  schema: Json | undefined,
-  context: Record<string, Json> | undefined,
-): JsonObject {
-  const parsed = objectSchema(schema);
-  if (!context) {
-    return parsed;
+function placementFromJson(value: Json | undefined): TreePlacement | undefined {
+  const input = jsonRecord(value);
+  if (!input) {
+    return undefined;
   }
-  const modelContext = Object.fromEntries(
-    Object.entries(context).filter(
-      ([key]) => key !== "callId" && key !== "elicitId" && key !== "toolName",
-    ),
-  );
-  return Object.keys(modelContext).length > 0
-    ? { ...parsed, "x-elicit-context": modelContext }
-    : parsed;
+  const nodeId = input["nodeId"];
+  const parentNodeId = input["parentNodeId"];
+  const sequence = input["sequence"];
+  return typeof nodeId === "string" &&
+    (parentNodeId === null || typeof parentNodeId === "string") &&
+    typeof sequence === "number" &&
+    Number.isSafeInteger(sequence) &&
+    sequence >= 0
+    ? { nodeId, parentNodeId, sequence }
+    : undefined;
+}
+
+function portableDescriptorFromJson(value: Json | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+  try {
+    return parsePortableSchemaDescriptor(value);
+  } catch {
+    return undefined;
+  }
 }

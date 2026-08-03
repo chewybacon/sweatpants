@@ -9,7 +9,6 @@
  * This model:
  * - Handles mode switching (reasoning → text → tool → text)
  * - Allows each content part to have its own rendered Frame
- * - Keeps tool emissions nested within their tool-call parts
  * - Aligns with Vercel AI SDK v6's parts model
  *
  * @example
@@ -34,6 +33,7 @@
  */
 
 import type { Frame } from "../frame.ts";
+import type { RecursiveExecutionNode, TreePlacement } from "../recursive-tree.ts";
 
 // =============================================================================
 // PART ID GENERATION
@@ -56,64 +56,6 @@ export function resetPartIdCounter(): void {
 }
 
 // =============================================================================
-// EMISSION TYPES
-// =============================================================================
-
-/**
- * A tool emission - an interactive UI component rendered by a tool via ctx.render().
- *
- * When a tool calls `yield* ctx.render(Component, props)`, it creates an emission
- * that the UI should render inline. The user interacts with it, and the tool
- * receives the response to continue execution.
- *
- * @typeParam TComponent - The UI framework's component type (e.g., React.ComponentType)
- */
-export interface ChatEmission<TComponent = unknown> {
-  /** Unique emission ID */
-  id: string;
-  /** Current status */
-  status: "pending" | "complete";
-  /** The component to render */
-  component: TComponent;
-  /** Props to pass to the component (excluding framework-specific props like onRespond) */
-  props: Record<string, unknown>;
-  /** Response value once user completes interaction */
-  response?: unknown;
-  /** Callback to complete the emission - only present when pending */
-  onRespond?: (value: unknown) => void;
-}
-
-/**
- * A plugin elicitation - an interactive UI request from an MCP plugin tool via ctx.elicit().
- *
- * When an MCP plugin tool calls `yield* ctx.elicit('key', context)`, it creates an
- * elicitation that the UI should render inline. The user interacts with it, and
- * the tool resumes with the response.
- *
- * Unlike emissions which have a direct component reference, elicitations use a
- * key-based lookup pattern (toolName + key → Component).
- */
-export interface PluginElicit {
-  /** Unique elicitation ID */
-  id: string;
-  /** Elicitation key (e.g., 'pickFlight', 'pickSeat') - used for component lookup */
-  key: string;
-  /** Human-readable message/prompt for the elicitation */
-  message: string;
-  /** Context data passed to the component (extracted from x-elicit-context) */
-  context?: unknown;
-  /** Current status */
-  status: "pending" | "responded";
-  /** Response value once user completes interaction */
-  response?: unknown;
-  /** Session ID for the plugin tool execution */
-  sessionId: string;
-  /** Tool call ID this elicitation belongs to */
-  callId: string;
-  /** Tool name for component lookup */
-  toolName: string;
-}
-
 // =============================================================================
 // MESSAGE PART TYPES
 // =============================================================================
@@ -160,13 +102,9 @@ export interface ReasoningPart extends BaseMessagePart {
 /**
  * A tool call part.
  *
- * Represents a tool invocation by the model. Tool emissions (interactive
- * components from ctx.render()) and plugin elicitations (from ctx.elicit())
- * are nested within this part.
- *
- * @typeParam TComponent - The UI framework's component type
+ * Represents a tool invocation by the model and its host-owned execution anchor.
  */
-export interface ToolCallPart<TComponent = unknown> extends BaseMessagePart {
+export interface ToolCallPart extends BaseMessagePart {
   type: "tool-call";
   /** Tool call ID (from the model) */
   callId: string;
@@ -180,10 +118,9 @@ export interface ToolCallPart<TComponent = unknown> extends BaseMessagePart {
   result?: unknown;
   /** Error message (when error) */
   error?: string;
-  /** Interactive emissions from this tool (e.g., ctx.render() components) */
-  emissions: ChatEmission<TComponent>[];
-  /** Plugin elicitations from this tool (MCP plugin tools via ctx.elicit()) */
-  pluginElicits: PluginElicit[];
+  /** Recursive execution anchor owned by the host projection. */
+  execution?: RecursiveExecutionNode<unknown>;
+  placement?: TreePlacement;
 }
 
 /**
@@ -201,13 +138,8 @@ export interface ToolResultPart extends BaseMessagePart {
 /**
  * Union of all message part types.
  *
- * @typeParam TComponent - The UI framework's component type
  */
-export type MessagePart<TComponent = unknown> =
-  | TextPart
-  | ReasoningPart
-  | ToolCallPart<TComponent>
-  | ToolResultPart;
+export type MessagePart = TextPart | ReasoningPart | ToolCallPart | ToolResultPart;
 
 /**
  * Content part types that go through the pipeline.
@@ -234,7 +166,6 @@ export function isContentPart(part: MessagePart): part is ContentPart {
  * - Text followed by tool calls
  * - Tool results followed by more text
  *
- * @typeParam TComponent - The UI framework's component type
  *
  * @example
  * ```tsx
@@ -249,19 +180,21 @@ export function isContentPart(part: MessagePart): part is ContentPart {
  * }
  * ```
  */
-export interface ChatMessage<TComponent = unknown> {
+export interface ChatMessage {
   /** Unique message ID */
   id: string;
   /** Message role */
   role: "user" | "assistant" | "system";
   /** Ordered list of message parts */
-  parts: MessagePart<TComponent>[];
+  parts: MessagePart[];
   /** Whether this message is currently streaming */
-  isStreaming: boolean;
+  active: boolean;
   /** Timestamp when created */
   createdAt?: Date;
   /** Extensible metadata */
   metadata?: Record<string, unknown>;
+  /** Exact causal placement in the recursive public tree. */
+  placement?: TreePlacement;
 }
 
 // =============================================================================
@@ -273,13 +206,12 @@ export interface ChatMessage<TComponent = unknown> {
  *
  * This is always an assistant message with parts being built up.
  *
- * @typeParam TComponent - The UI framework's component type
  */
-export interface StreamingMessage<TComponent = unknown> {
+export interface ActiveMessageProjection {
   /** Role is always 'assistant' for streaming messages */
   role: "assistant";
   /** Parts accumulated so far (last one may be actively streaming) */
-  parts: MessagePart<TComponent>[];
+  parts: MessagePart[];
   /** ID of the currently streaming part (if any) */
   activePartId: string | null;
 }
@@ -336,11 +268,7 @@ export function createReasoningPart(content: string = "", frame?: Frame): Reason
 /**
  * Create a new tool call part.
  */
-export function createToolCallPart<TComponent = unknown>(
-  callId: string,
-  name: string,
-  args: unknown,
-): ToolCallPart<TComponent> {
+export function createToolCallPart(callId: string, name: string, args: unknown): ToolCallPart {
   return {
     id: generatePartId(),
     type: "tool-call",
@@ -348,8 +276,6 @@ export function createToolCallPart<TComponent = unknown>(
     name,
     arguments: args,
     state: "pending",
-    emissions: [],
-    pluginElicits: [],
   };
 }
 
@@ -388,10 +314,6 @@ export function getMessageReasoningContent(message: ChatMessage): string {
 /**
  * Get all tool calls from a message.
  */
-export function getMessageToolCalls<TComponent = unknown>(
-  message: ChatMessage<TComponent>,
-): ToolCallPart<TComponent>[] {
-  return message.parts.filter(
-    (part): part is ToolCallPart<TComponent> => part.type === "tool-call",
-  );
+export function getMessageToolCalls(message: ChatMessage): ToolCallPart[] {
+  return message.parts.filter((part): part is ToolCallPart => part.type === "tool-call");
 }

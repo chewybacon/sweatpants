@@ -6,7 +6,12 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
+import {
+  useChat,
+  type ChatMessage,
+  type ChatPart,
+  type ChatToolCall,
+} from "@sweatpants/react-chat";
 import { bookFlightPlugin } from "@/tools/book-flight/plugin";
 
 export const Route = createFileRoute("/chat/flight/")({
@@ -14,7 +19,7 @@ export const Route = createFileRoute("/chat/flight/")({
 });
 
 /**
- * Renders a tool call part with its inline emissions.
+ * Renders a tool call part with its prepared recursive children.
  */
 function formatToolResult(result: unknown): string {
   if (typeof result === "string") {
@@ -31,51 +36,98 @@ function formatToolResult(result: unknown): string {
 }
 
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
-  const hasEmissions = toolCall.emissions.length > 0;
-  const resultText = toolCall.state === "complete" ? formatToolResult(toolCall.result) : "";
+  const hasRenderedChildren = toolCall.parts.length > 0;
+  const resultText = toolCall.state === "output-available" ? formatToolResult(toolCall.output) : "";
 
   return (
     <div className="my-2">
-      {toolCall.emissions.map((emission) => {
-        const Component = emission.component;
-        if (!Component) {
-          return null;
-        }
+      {toolCall.parts.map((part) => (
+        <Part key={part.id} part={part} />
+      ))}
 
-        return (
-          <Component
-            key={emission.id}
-            {...emission.props}
-            onRespond={emission.onRespond}
-            disabled={emission.status !== "pending"}
-            response={emission.response}
-          />
-        );
-      })}
+      {!hasRenderedChildren &&
+        (toolCall.state === "input-streaming" || toolCall.state === "input-available") && (
+          <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
+        )}
 
-      {!hasEmissions && (toolCall.state === "running" || toolCall.state === "pending") && (
-        <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
-      )}
-
-      {toolCall.state === "complete" && resultText && (
+      {toolCall.state === "output-available" && resultText && (
         <div className="mt-3 rounded border border-emerald-700/50 bg-emerald-950/20 p-3 text-sm text-emerald-100">
           {resultText}
         </div>
       )}
 
-      {toolCall.state === "error" && toolCall.error && (
-        <div className="text-xs text-red-400">Error: {toolCall.error}</div>
+      {toolCall.state === "output-error" && toolCall.errorText && (
+        <div className="text-xs text-red-400">Error: {toolCall.errorText}</div>
       )}
     </div>
   );
 }
 
-/**
- * Renders a single message with its parts.
- */
+function Part({ part }: { part: ChatPart }) {
+  switch (part.type) {
+    case "text":
+      return (
+        <div
+          className="prose prose-invert prose-sm max-w-none leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: part.rendered }}
+        />
+      );
+    case "reasoning":
+      return (
+        <details className="mb-3 text-xs">
+          <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
+            Thinking...
+          </summary>
+          <div
+            className="mt-2 p-2 bg-slate-900/50 rounded text-slate-400 italic"
+            dangerouslySetInnerHTML={{ __html: part.rendered }}
+          />
+        </details>
+      );
+    case "tool-call":
+      return <ToolCallBlock toolCall={part} />;
+    case "message":
+      return (
+        <div className="ml-4 border-l border-slate-700 pl-3">
+          <Message message={part.message} />
+        </div>
+      );
+    case "activity":
+      return (
+        <div className="my-2 rounded border border-slate-700/50 p-2">
+          <div className="mb-1 text-xs text-slate-500">
+            {part.activityType} · {part.state}
+          </div>
+          {part.parts.map((child) => (
+            <Part key={child.id} part={child} />
+          ))}
+        </div>
+      );
+    case "elicit":
+      return (
+        <div className="my-2">
+          {part.parts.map((child) => (
+            <Part key={child.id} part={child} />
+          ))}
+          {part.parts.length === 0 && (
+            <div className="text-xs text-amber-400">
+              {part.message} ({part.state})
+            </div>
+          )}
+        </div>
+      );
+    case "render":
+      return <>{part.node}</>;
+  }
+}
+
+/** Renders a message and every recursive part kind. */
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const busy = message.parts.some(
+    (part) => (part.type === "text" || part.type === "reasoning") && part.state === "streaming",
+  );
 
   return (
     <div className={`mb-8 ${isUser ? "text-right" : ""}`}>
@@ -86,9 +138,7 @@ function Message({ message }: { message: ChatMessage }) {
           }`}
         >
           {isUser ? "You" : isSystem ? "System" : "Assistant"}
-          {message.isStreaming && (
-            <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>
-          )}
+          {busy && <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>}
         </div>
 
         <div
@@ -98,41 +148,11 @@ function Message({ message }: { message: ChatMessage }) {
               : "bg-slate-800/50 text-slate-200"
           }`}
         >
-          {message.parts.map((part) => {
-            if (part.type === "reasoning") {
-              return (
-                <details key={part.id} className="mb-3 text-xs">
-                  <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
-                    Thinking...
-                  </summary>
-                  <div
-                    className="mt-2 p-2 bg-slate-900/50 rounded text-slate-400 italic"
-                    dangerouslySetInnerHTML={{ __html: part.rendered }}
-                  />
-                </details>
-              );
-            }
+          {message.parts.map((part) => (
+            <Part key={part.id} part={part} />
+          ))}
 
-            if (part.type === "tool-call") {
-              return <ToolCallBlock key={part.id} toolCall={part} />;
-            }
-
-            if (part.type === "text") {
-              return (
-                <div
-                  key={part.id}
-                  className="prose prose-invert prose-sm max-w-none leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: part.rendered }}
-                />
-              );
-            }
-
-            return null;
-          })}
-
-          {message.isStreaming && (
-            <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-          )}
+          {busy && <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />}
         </div>
       </div>
     </div>
@@ -140,29 +160,30 @@ function Message({ message }: { message: ChatMessage }) {
 }
 
 function FlightChatDemo() {
-  const { messages, streamingMessage, isStreaming, pipelineReady, send, abort, reset, error } =
-    useChat({
-      pipeline: "markdown",
-      // Browser interaction is supplied by the plugin.
-      tools: [],
-      // Only bookFlight plugin handle. enabledPlugins is derived automatically
-      // from the plugin's tool name.
-      plugins: [bookFlightPlugin],
-    });
+  const { messages, status, renderStatus, sendMessage, stop, setMessages, error } = useChat({
+    conversationId: "flight-chat",
+    pipeline: "markdown",
+    // Browser interaction is supplied by the plugin.
+    // Client plugin registration is local; server tool composition is independent.
+    plugins: [bookFlightPlugin],
+  });
+  const busy = status === "submitted" || status === "streaming";
+  const renderReady = renderStatus === "ready";
+  const clear = () => setMessages([]);
 
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingMessage?.parts.length]);
+  }, [messages, messages.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) {
+    if (!input.trim() || busy) {
       return;
     }
-    send(input.trim());
+    sendMessage({ text: input.trim() });
     setInput("");
   };
 
@@ -176,7 +197,7 @@ function FlightChatDemo() {
             <p className="text-slate-400 text-sm">Multi-step booking flow with MCP plugin</p>
           </div>
           <div className="text-xs">
-            {pipelineReady ? (
+            {renderReady ? (
               <span className="text-emerald-500">Pipeline ready</span>
             ) : (
               <span className="text-amber-500 animate-pulse">Loading pipeline...</span>
@@ -186,7 +207,7 @@ function FlightChatDemo() {
 
         {/* Messages */}
         <div className="bg-slate-900 rounded-xl p-6 min-h-[60vh] max-h-[70vh] overflow-y-auto mb-6 shadow-inner border border-slate-800">
-          {messages.length === 0 && !isStreaming && (
+          {messages.length === 0 && !busy && (
             <div className="text-slate-600 text-center py-20 flex flex-col items-center gap-4">
               <div className="text-4xl opacity-20">~</div>
               <p>Book a flight to your destination!</p>
@@ -211,15 +232,9 @@ function FlightChatDemo() {
             <Message key={msg.id} message={msg} />
           ))}
 
-          {streamingMessage && streamingMessage.parts.length > 0 && (
-            <div className="text-xs text-slate-600 mt-2">
-              Streaming: {streamingMessage.parts.length} parts
-            </div>
-          )}
-
           {error && (
             <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 my-4">
-              <strong>Error:</strong> {error}
+              <strong>Error:</strong> {error.message}
             </div>
           )}
 
@@ -232,16 +247,16 @@ function FlightChatDemo() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isStreaming ? "Waiting for response..." : "Type a message..."}
-            disabled={isStreaming}
+            placeholder={busy ? "Waiting for response..." : "Type a message..."}
+            disabled={busy}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
 
           <div className="absolute right-2 top-2 bottom-2 flex gap-2">
-            {isStreaming ? (
+            {busy ? (
               <button
                 type="button"
-                onClick={abort}
+                onClick={stop}
                 className="h-full px-6 bg-red-900/20 hover:bg-red-900/40 text-red-500 rounded-lg font-medium transition-colors border border-red-900/30"
               >
                 Stop
@@ -260,8 +275,8 @@ function FlightChatDemo() {
 
         <div className="mt-4 flex justify-between text-xs text-slate-600 px-2">
           <button
-            onClick={reset}
-            disabled={isStreaming || messages.length === 0}
+            onClick={clear}
+            disabled={busy || messages.length === 0}
             className="hover:text-slate-400 disabled:opacity-50 transition-colors"
           >
             Clear History

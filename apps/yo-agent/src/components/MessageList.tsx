@@ -1,49 +1,111 @@
-/**
- * Message List Component
- *
- * Displays the chat message history with newest messages at the bottom.
- * Uses Scrollable component for auto-scroll-to-bottom behavior.
- *
- * Uses FrameRenderer for assistant messages to display rendered markdown/code.
- */
-import React from "react";
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
-import { FrameRenderer, type Frame } from "../pipeline/index.ts";
+import type { ChatMessage, ChatPart } from "@sweatpants/chat-client";
+import type { TerminalPromptPart } from "../terminal/interaction.ts";
+import { FrameRenderer } from "../pipeline/index.ts";
 import { Scrollable } from "./Scrollable.tsx";
 
-export interface Message {
-  id: string;
-  role: "user" | "assistant" | "system" | "tool";
-  content: string;
-  toolName?: string;
-  /** Rendered frame for assistant messages */
-  frame?: Frame;
-}
-
 interface MessageListProps {
-  messages: Message[];
-  isStreaming?: boolean;
-  /** Available height in lines (from parent) */
-  height?: number;
-  /** Current frame for the streaming assistant message */
-  currentFrame?: Frame | null;
+  readonly messages: readonly ChatMessage<TerminalPromptPart>[];
+  readonly busy?: boolean;
+  readonly height?: number;
 }
 
-export function MessageList({
-  messages,
-  isStreaming = false,
-  height = 20,
-  currentFrame,
-}: MessageListProps) {
-  if (messages.length === 0 && !isStreaming) {
+function printable(value: unknown): string | null {
+  if (value === undefined) {
+    return null;
+  }
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+function PartView({ part }: { readonly part: ChatPart<TerminalPromptPart> }) {
+  switch (part.type) {
+    case "text":
+    case "reasoning":
+      return part.frame.blocks.length > 0 ? (
+        <FrameRenderer frame={part.frame} />
+      ) : (
+        <Text wrap="wrap">{part.text}</Text>
+      );
+    case "tool-call": {
+      const output = printable(part.output);
+      return (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="yellow">
+            [Tool: {part.name}] {part.state}
+          </Text>
+          {part.errorText && <Text color="red">{part.errorText}</Text>}
+          {output && <Text color="gray">{output}</Text>}
+          <PartList parts={part.parts} />
+        </Box>
+      );
+    }
+    case "message":
+      return (
+        <Box marginLeft={2}>
+          <MessageView message={part.message} />
+        </Box>
+      );
+    case "activity":
+      return (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="gray">
+            [{part.activityType}] {part.state}
+          </Text>
+          <PartList parts={part.parts} />
+        </Box>
+      );
+    case "elicit":
+      return (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color={part.state === "pending" ? "yellow" : "gray"}>
+            [Input requested] {part.message} ({part.state})
+          </Text>
+          <PartList parts={part.parts} />
+        </Box>
+      );
+    case "terminal-prompt":
+      return (
+        <Text color={part.state === "pending" ? "yellow" : "green"}>
+          {part.state === "pending" ? ">" : "✓"} {part.message}
+          {part.response ? ` — ${part.response}` : ""}
+        </Text>
+      );
+  }
+}
+
+function PartList({ parts }: { readonly parts: readonly ChatPart<TerminalPromptPart>[] }) {
+  return (
+    <Box flexDirection="column">
+      {parts.map((part) => (
+        <PartView key={part.id} part={part} />
+      ))}
+    </Box>
+  );
+}
+
+function MessageView({ message }: { readonly message: ChatMessage<TerminalPromptPart> }) {
+  const label =
+    message.role === "user" ? "You" : message.role === "assistant" ? "Assistant" : "System";
+  const color = message.role === "user" ? "green" : message.role === "assistant" ? "cyan" : "gray";
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text color={color} bold>
+        {label}:
+      </Text>
+      <Box marginLeft={2} flexDirection="column">
+        <PartList parts={message.parts} />
+      </Box>
+    </Box>
+  );
+}
+
+export function MessageList({ messages, busy = false, height = 20 }: MessageListProps) {
+  if (messages.length === 0 && !busy) {
     return (
       <Box flexDirection="column" justifyContent="flex-end" flexGrow={1} padding={1}>
         <Text color="gray" dimColor>
-          Welcome to yo-agent!
-        </Text>
-        <Text color="gray" dimColor>
-          Press ESC to toggle plan/build modes.
+          Welcome to yo-agent. Host, model, tools, transport, and UI are running in this process.
         </Text>
       </Box>
     );
@@ -51,105 +113,16 @@ export function MessageList({
 
   return (
     <Box flexDirection="column" flexGrow={1} padding={1}>
-      <Scrollable
-        height={height - 2} // Account for padding
-        scrollToBottom={true}
-        flexGrow={1}
-        scrollbarThumbColor="cyan"
-      >
-        {messages.map((message, index) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            // Pass frame to the last assistant message if it's streaming
-            frame={
-              isStreaming && message.role === "assistant" && index === messages.length - 1
-                ? currentFrame
-                : undefined
-            }
-          />
+      <Scrollable height={height - 2} scrollToBottom={true} flexGrow={1} scrollbarThumbColor="cyan">
+        {messages.map((message) => (
+          <MessageView key={message.id} message={message} />
         ))}
-        {isStreaming && (
-          <Box>
-            <Text color="cyan">
-              <Spinner type="dots" /> Thinking...
-            </Text>
-          </Box>
+        {busy && (
+          <Text color="cyan">
+            <Spinner type="dots" /> Thinking...
+          </Text>
         )}
       </Scrollable>
     </Box>
   );
-}
-
-interface MessageBubbleProps {
-  message: Message;
-  /** Frame for rendered content (for streaming assistant messages) */
-  frame?: Frame | null | undefined;
-}
-
-function MessageBubble({ message, frame }: MessageBubbleProps) {
-  const { role, content, toolName } = message;
-
-  switch (role) {
-    case "user":
-      return (
-        <Box marginBottom={1}>
-          <Text color="green" bold>
-            You:{" "}
-          </Text>
-          <Text wrap="wrap">{content}</Text>
-        </Box>
-      );
-
-    case "assistant":
-      // Use frame from props (streaming) or message (completed)
-      const activeFrame = frame || message.frame;
-
-      // If we have a frame, use FrameRenderer for rich output
-      if (activeFrame && activeFrame.blocks.length > 0) {
-        return (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color="cyan" bold>
-              Assistant:
-            </Text>
-            <Box marginLeft={2}>
-              <FrameRenderer frame={activeFrame} />
-            </Box>
-          </Box>
-        );
-      }
-      // Fallback to plain text
-      return (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text color="cyan" bold>
-            Assistant:
-          </Text>
-          <Box marginLeft={2}>
-            <Text wrap="wrap">{content}</Text>
-          </Box>
-        </Box>
-      );
-
-    case "tool":
-      return (
-        <Box marginBottom={1}>
-          <Text color="yellow" dimColor>
-            [Tool: {toolName}] {content.slice(0, 80)}
-            {content.length > 80 ? "..." : ""}
-          </Text>
-        </Box>
-      );
-
-    case "system":
-      return (
-        <Box marginBottom={1}>
-          <Text color="gray" dimColor>
-            System: {content}
-          </Text>
-        </Box>
-      );
-
-    default:
-      return null;
-  }
 }

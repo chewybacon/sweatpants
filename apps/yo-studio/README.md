@@ -310,7 +310,8 @@ cancellation, but it does not claim default-deny network enforcement.
 - `src/server/durable-chat-application.ts` — `createDurableChatHandler` composed
   with ProgramRuntime-native workspace children and attachment-scope ordinary providers.
 
-The primary UI calls `useChat({ baseUrl: "/api/chat" })`. The handler owns the
+The primary UI calls `useChat({ api: "/api/chat", conversationId, plugins })` and recursively renders
+text, reasoning, tool, nested-message, activity, elicitation, and prepared local parts. The handler owns the
 conversation, model loop, journal, native child programs, and workspace providers.
 The deployment selects the `pi-ai` model provider (`github-copilot/gpt-5.5` by
 default) and explicitly assigns journal-native `model.sample` ownership to the

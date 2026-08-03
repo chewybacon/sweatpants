@@ -1,4 +1,9 @@
 import type { ResumeEntry } from "../handler/types.ts";
+import { assertJson, type Json } from "@sweatpants/foundation";
+import {
+  parsePortableSchemaDescriptor,
+  type PortableSchemaDescriptor,
+} from "@sweatpants/foundation/schema";
 import { z } from "zod";
 
 /** Interrupt response schemas are JSON Schema documents: always keyed objects. */
@@ -20,6 +25,11 @@ export interface OpenInterruptRecord {
   executionId?: string;
   continuationRef?: unknown;
   responseSchema?: Record<string, unknown>;
+  bindingId?: string;
+  context?: Json;
+  responseContract?: PortableSchemaDescriptor;
+  contextContract?: PortableSchemaDescriptor;
+  placement?: { nodeId: string; parentNodeId: string | null; sequence: number };
   publicMetadata?: Record<string, unknown>;
   createdAt: string;
   expiresAt?: string;
@@ -76,6 +86,44 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function jsonValue(value: unknown): Json | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  try {
+    return assertJson(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function portableDescriptor(value: unknown): PortableSchemaDescriptor | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  try {
+    return parsePortableSchemaDescriptor(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function isPlacement(value: unknown): value is {
+  nodeId: string;
+  parentNodeId: string | null;
+  sequence: number;
+} {
+  const record = asRecord(value);
+  return (
+    record !== null &&
+    typeof record["nodeId"] === "string" &&
+    (record["parentNodeId"] === null || typeof record["parentNodeId"] === "string") &&
+    typeof record["sequence"] === "number" &&
+    Number.isSafeInteger(record["sequence"]) &&
+    record["sequence"] >= 0
+  );
 }
 
 function schemaTypeMatches(type: string, value: unknown): boolean {
@@ -187,6 +235,7 @@ export function registerInterruptsFromRunFinished(event: unknown): void {
       continue;
     }
     const metadata = asRecord(candidate["metadata"]) ?? {};
+    const elicitationFacts = asRecord(metadata["sweatpants/elicitation"]) ?? {};
     const toolCallId =
       typeof candidate["toolCallId"] === "string" ? candidate["toolCallId"] : undefined;
     const sessionId =
@@ -197,6 +246,13 @@ export function registerInterruptsFromRunFinished(event: unknown): void {
       typeof metadata["sweatpants/toolName"] === "string"
         ? metadata["sweatpants/toolName"]
         : undefined;
+    const context = jsonValue(candidate["context"] ?? elicitationFacts["context"]);
+    const responseContract = portableDescriptor(
+      candidate["responseContract"] ?? elicitationFacts["responseContract"],
+    );
+    const contextContract = portableDescriptor(
+      candidate["contextContract"] ?? elicitationFacts["contextContract"],
+    );
     const record: OpenInterruptRecord = {
       threadId,
       scopeId,
@@ -210,6 +266,19 @@ export function registerInterruptsFromRunFinished(event: unknown): void {
       ...(responseSchemaSchema.safeParse(candidate["responseSchema"]).success
         ? { responseSchema: candidate["responseSchema"] as Record<string, unknown> }
         : {}),
+      ...(typeof candidate["bindingId"] === "string"
+        ? { bindingId: candidate["bindingId"] }
+        : typeof elicitationFacts["bindingId"] === "string"
+          ? { bindingId: elicitationFacts["bindingId"] }
+          : {}),
+      ...(context !== undefined ? { context } : {}),
+      ...(responseContract ? { responseContract } : {}),
+      ...(contextContract ? { contextContract } : {}),
+      ...(isPlacement(candidate["placement"])
+        ? { placement: candidate["placement"] }
+        : isPlacement(elicitationFacts["placement"])
+          ? { placement: elicitationFacts["placement"] }
+          : {}),
       ...(Object.keys(metadata).length > 0 ? { publicMetadata: metadata } : {}),
       ...(typeof candidate["expiresAt"] === "string" ? { expiresAt: candidate["expiresAt"] } : {}),
       createdAt: new Date().toISOString(),

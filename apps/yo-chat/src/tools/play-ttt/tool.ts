@@ -13,7 +13,17 @@ import {
 } from "../tictactoe/types.ts";
 
 const CellSchema = z.union([z.literal("X"), z.literal("O"), z.null()]);
-const BoardSchema = z.array(CellSchema).length(9);
+const BoardSchema = z.tuple([
+  CellSchema,
+  CellSchema,
+  CellSchema,
+  CellSchema,
+  CellSchema,
+  CellSchema,
+  CellSchema,
+  CellSchema,
+  CellSchema,
+]);
 const LastMoveSchema = z.object({
   position: z.number().int().min(0).max(8),
   player: z.enum(["X", "O"]),

@@ -26,7 +26,8 @@
  * @packageDocumentation
  */
 import type { Operation, Stream } from "effection";
-import type { JsonObject } from "@sweatpants/foundation";
+import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { ExtendedMessage } from "./messages.ts";
 import type { PortableModelTool } from "@sweatpants/model-provider";
 import type {
@@ -105,7 +106,14 @@ export interface ElicitRequestEvent extends ToolSessionEventBase {
   /** JSON Schema for the expected response */
   schema: JsonObject;
   /** Context data for the UI to render (e.g., flight options, seat map) */
-  context?: JsonObject;
+  context?: Json;
+  bindingId?: string;
+  responseContract?: PortableSchemaDescriptor;
+  contextContract?: PortableSchemaDescriptor;
+  placement?: { nodeId: string; parentNodeId: string | null; sequence: number };
+  /** Optional producer-known identity for exact client binding lookup. */
+  ownerInterfaceDigest?: string;
+  clientMetadata?: Json;
 }
 
 /**

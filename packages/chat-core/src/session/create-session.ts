@@ -262,17 +262,9 @@ export function* runChatSession(
   if (options.conversationId) {
     const contextBaseUrl = yield* BaseUrlContext.get();
     const baseUrl = options.baseUrl ?? contextBaseUrl ?? "/api/chat";
-    const replayTools = [
-      ...(options.tools ?? []),
-      ...(options.plugins ?? []).map((plugin) => ({
-        name: plugin.client.toolName,
-        ...(plugin.client.replayTrace ? { replayTrace: plugin.client.replayTrace } : {}),
-      })),
-    ];
     const durableHistory = yield* readDurableHistory({
       baseUrl,
       conversationId: options.conversationId,
-      ...(replayTools.length > 0 ? { tools: replayTools } : {}),
       ...((options.transforms?.length ?? 0) > 0 ? { transforms: options.transforms } : {}),
       ...(options.onStreamEvent ? { onStreamEvent: options.onStreamEvent } : {}),
       ...(options.fetch ? { fetch: options.fetch } : {}),
@@ -281,7 +273,7 @@ export function* runChatSession(
       type: "hydrate",
       history: durableHistory.history,
       events: durableHistory.events,
-      ...(durableHistory.replayState ? { replayState: durableHistory.replayState } : {}),
+
       observedAt: yield* ChatSessionRuntimeApi.operations.now(),
     });
   }

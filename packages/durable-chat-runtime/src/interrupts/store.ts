@@ -1,5 +1,10 @@
 import type { Operation } from "effection";
 import type { TokenBufferStore } from "@sweatpants/durable-streams";
+import { assertJson } from "@sweatpants/foundation";
+import {
+  parsePortableSchemaDescriptor,
+  type PortableSchemaDescriptor,
+} from "@sweatpants/foundation/schema";
 import { z } from "zod";
 
 import type { OpenInterruptRecord } from "./registry.ts";
@@ -22,6 +27,17 @@ const interruptRecordSchema = z
     executionId: z.string().max(512).optional(),
     continuationRef: z.json().optional(),
     responseSchema: z.record(z.string(), z.json()).optional(),
+    bindingId: z.string().max(512).optional(),
+    context: z.json().optional(),
+    responseContract: z.json().optional(),
+    contextContract: z.json().optional(),
+    placement: z
+      .strictObject({
+        nodeId: z.string().max(512),
+        parentNodeId: z.string().max(512).nullable(),
+        sequence: z.number().int().nonnegative(),
+      })
+      .optional(),
     publicMetadata: z.record(z.string(), z.json()).optional(),
     createdAt: z.string().min(1).max(128),
     expiresAt: z.string().min(1).max(128).optional(),
@@ -29,8 +45,11 @@ const interruptRecordSchema = z
     resolvedByRunId: z.string().max(512).optional(),
     resolutionHash: z.string().max(4_096).optional(),
   })
-  .transform(
-    (value): OpenInterruptRecord => ({
+  .transform((value): OpenInterruptRecord => {
+    const context = value.context === undefined ? undefined : assertJson(value.context);
+    const responseContract = optionalPortableDescriptor(value.responseContract);
+    const contextContract = optionalPortableDescriptor(value.contextContract);
+    return {
       threadId: value.threadId,
       scopeId: value.scopeId,
       interruptedRunId: value.interruptedRunId,
@@ -44,14 +63,30 @@ const interruptRecordSchema = z
       ...(value.executionId !== undefined ? { executionId: value.executionId } : {}),
       ...(value.continuationRef !== undefined ? { continuationRef: value.continuationRef } : {}),
       ...(value.responseSchema !== undefined ? { responseSchema: value.responseSchema } : {}),
+      ...(value.bindingId !== undefined ? { bindingId: value.bindingId } : {}),
+      ...(context !== undefined ? { context } : {}),
+      ...(responseContract ? { responseContract } : {}),
+      ...(contextContract ? { contextContract } : {}),
+      ...(value.placement !== undefined ? { placement: value.placement } : {}),
       ...(value.publicMetadata !== undefined ? { publicMetadata: value.publicMetadata } : {}),
       createdAt: value.createdAt,
       ...(value.expiresAt !== undefined ? { expiresAt: value.expiresAt } : {}),
       status: value.status,
       ...(value.resolvedByRunId !== undefined ? { resolvedByRunId: value.resolvedByRunId } : {}),
       ...(value.resolutionHash !== undefined ? { resolutionHash: value.resolutionHash } : {}),
-    }),
-  );
+    };
+  });
+function optionalPortableDescriptor(value: unknown): PortableSchemaDescriptor | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  try {
+    return parsePortableSchemaDescriptor(value);
+  } catch {
+    return undefined;
+  }
+}
+
 const interruptStateSchema = z.array(interruptRecordSchema).max(16_384);
 
 const THREAD_INTERRUPT_PREFIX = "__thread_interrupts__:";

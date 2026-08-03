@@ -20,7 +20,7 @@
  */
 
 import { workerMain } from "@effectionx/worker";
-import type { JsonObject } from "@sweatpants/foundation";
+import type { Json, JsonObject } from "@sweatpants/foundation";
 import { useAbortSignal, type Operation, type Subscription } from "effection";
 import type {
   WorkerRequest,
@@ -140,7 +140,7 @@ export async function runToolWorker<T = unknown>(handler: ToolWorkerHandler<T>):
           options: {
             message: string;
             schema: JsonObject;
-            context?: JsonObject;
+            context?: Json;
           },
         ): Operation<WorkerElicitResponse> {
           const id = generateRequestId();

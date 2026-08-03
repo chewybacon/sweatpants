@@ -1,5 +1,5 @@
-import type { Channel, Operation, Stream } from "effection";
-import { each } from "effection";
+import { EventType } from "@ag-ui/core";
+import { each, type Channel, type Operation, type Stream } from "effection";
 import type { ChatStateEvent } from "../state/events.ts";
 import type { StreamEvent } from "./streaming.ts";
 import type { StreamEventEntry } from "./options.ts";
@@ -23,13 +23,13 @@ export function* consumeChatEventStream(
     const event = frame.event;
     onStreamEvent?.({ lsn: frame.lsn, event, phase: "live", receivedAt: Date.now() });
 
-    if (event.type === "RUN_STARTED") {
+    if (event.type === EventType.RUN_STARTED) {
       runStarted = true;
       terminalSeen = false;
     } else if (runStarted && !terminalSeen) {
-      if (event.type === "RUN_FINISHED") {
+      if (event.type === EventType.RUN_FINISHED) {
         terminalSeen = true;
-      } else if (event.type === "RUN_ERROR") {
+      } else if (event.type === EventType.RUN_ERROR) {
         terminalSeen = true;
       }
     }

@@ -3,8 +3,6 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
-    pipeline: "src/pipeline/index.ts",
-    "browser-rendering/index": "src/browser-rendering/index.ts",
   },
   tsconfig: "../ts-config/tsconfig.tsup.json",
   format: ["cjs", "esm"],

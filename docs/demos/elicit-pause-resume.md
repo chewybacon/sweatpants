@@ -17,7 +17,8 @@
 
 ```ts
 import { createTool } from "@sweatpants/agent-sdk";
-import { makePlugin, getElicitContext } from "@sweatpants/chat-core";
+import { makePlugin } from "@sweatpants/react-chat";
+import { FlightPicker } from "./FlightPicker";
 
 // Tool authoring with elicit
 export const bookFlight = createTool("book_flight")
@@ -31,11 +32,13 @@ export const bookFlight = createTool("book_flight")
 
 // UI binding
 export const bookFlightPlugin = makePlugin(bookFlight).onElicit({
-  pickFlight: function* (req, ctx) {
-    const context = getElicitContext(req);
-    // render picker, return accept/decline
+  pickFlight: function* (input, ctx) {
+    const flight = yield* ctx.render(FlightPicker, {
+      message: input.message,
+    });
+    return { action: "accept" as const, content: flight };
   },
-});
+}).build();
 ```
 
 ## Automated gate

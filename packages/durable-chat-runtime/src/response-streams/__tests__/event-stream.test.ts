@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import type { TokenBufferStore } from "@sweatpants/durable-streams";
@@ -22,7 +23,7 @@ function oneEventStream(event: StreamEvent, onNext: () => void): Stream<StreamEv
 
 describe("serialized Turn event stream", () => {
   it("does not advance the engine until its consumer pulls", async () => {
-    const event: StreamEvent = { type: "RUN_ERROR", message: "test" };
+    const event: StreamEvent = { type: EventType.RUN_ERROR, message: "test" };
     let advances = 0;
 
     await run(function* () {
@@ -50,7 +51,7 @@ describe("serialized Turn event stream", () => {
     await run(function* () {
       const stream = createSerializedEventStream(
         createEmptyChatEngine(),
-        [{ type: "MESSAGES_SNAPSHOT", messages: [] }],
+        [{ type: EventType.MESSAGES_SNAPSHOT, messages: [] }],
         {
           conversationId: "conversation-1",
           checkpointStore: failingStore,

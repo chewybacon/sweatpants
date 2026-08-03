@@ -6,6 +6,7 @@
  * RUN_FINISHED markers, and persists conversation checkpoints and interrupt
  * state as frames are consumed.
  */
+import { EventType } from "@ag-ui/core";
 import { resource, type Operation, type Stream } from "effection";
 import type { TokenBufferStore, TokenBufferWriter } from "@sweatpants/durable-streams";
 import type { StreamEvent } from "../handler/types.ts";
@@ -76,7 +77,7 @@ export function createSerializedEventStream(
 
     function* persistInterruptStateIfNeeded(rawEvent: StreamEvent): Operation<void> {
       if (
-        rawEvent.type !== "RUN_FINISHED" ||
+        rawEvent.type !== EventType.RUN_FINISHED ||
         !options?.conversationId ||
         !options.checkpointStore
       ) {

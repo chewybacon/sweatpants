@@ -28,11 +28,12 @@ pnpm add @sweatpants/react-chat @sweatpants/agent-host @sweatpants/agent-sdk
 ### React chat client
 
 ```tsx
-import { useChat, ChatProvider } from "@sweatpants/react-chat";
+import { useChat } from "@sweatpants/react-chat";
 
 function Chat() {
-    const { messages, send, isStreaming } = useChat({
-        baseUrl: "/api/chat",
+    const { messages, sendMessage, status } = useChat({
+        conversationId: "demo",
+        api: "/api/chat",
     });
 
     return (
@@ -41,17 +42,17 @@ function Chat() {
                 <div key={msg.id}>{/* render message parts */}</div>
             ))}
             <input
-                disabled={isStreaming}
+                disabled={status === "submitted" || status === "streaming"}
                 onKeyDown={(e) => {
-                    if (e.key === "Enter") send(e.currentTarget.value);
+                    if (e.key === "Enter") {
+                        void sendMessage({ text: e.currentTarget.value });
+                    }
                 }}
             />
         </div>
     );
 }
 ```
-
-`useChatSession` is available from the same package when you need buffers/reconnect controls.
 
 ### Server wiring
 
@@ -75,8 +76,6 @@ export function createApp() {
     });
 }
 ```
-
-`createDurableChatHandler` is an alias of `createChatHandler`.
 
 ### Tool authoring
 
@@ -113,16 +112,20 @@ export const bookFlight = createTool("book_flight")
 ### Plugin UI binding
 
 ```ts
-import { makePlugin, getElicitContext } from "@sweatpants/chat-core";
+import { makePlugin } from "@sweatpants/react-chat";
 import { bookFlight } from "./book-flight";
+import { ConfirmFlight } from "./ConfirmFlight";
 
-export const bookFlightPlugin = makePlugin(bookFlight).onElicit({
-    confirm: function* (req, ctx) {
-        const context = getElicitContext(req);
-        // render confirm UI via ctx.render(...); return accept/decline
-        return { action: "accept" as const, content: { confirmed: true } };
-    },
-});
+export const bookFlightPlugin = makePlugin(bookFlight)
+    .onElicit({
+        confirm: function* (input, ctx) {
+            const confirmed = yield* ctx.render(ConfirmFlight, {
+                message: input.message,
+            });
+            return { action: "accept" as const, content: { confirmed } };
+        },
+    })
+    .build();
 ```
 
 ## Differentiator demos

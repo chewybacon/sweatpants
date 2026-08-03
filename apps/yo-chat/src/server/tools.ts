@@ -4,37 +4,26 @@ import {
   MaxIterationsContext,
   McpToolRegistryContext,
   PersonaResolverContext,
-  PluginRegistryContext,
 } from "@sweatpants/durable-chat-runtime/contexts";
-import { createPluginRegistryFrom } from "@sweatpants/tool-session/mcp";
 import type { McpToolRegistry } from "@sweatpants/chat-core";
 import { workerTools } from "./worker-tools";
-import { bookFlightPlugin, bookFlightTool } from "../tools/book-flight";
-import { askQuestion, askQuestionPlugin } from "../tools/general/ask_question";
-import { pickCard, pickCardPlugin } from "../tools/pick-card";
-import { playTttPlugin, playTttTool } from "../tools/play-ttt";
-import { tictactoePlugin, tictactoeTool } from "../tools/tictactoe";
+import { bookFlightTool } from "../tools/book-flight/tool";
+import { askQuestion } from "../tools/general/ask-question/tool";
+import { pickCard } from "../tools/pick-card/durable";
+import { playTttTool } from "../tools/play-ttt/tool";
+import { tictactoeTool } from "../tools/tictactoe/tool";
 
 /** Complete tool inventory in stable (alphabetical) order. */
 export const allTools = [...workerTools, pickCard, playTttTool].sort((a, b) =>
   a.name.localeCompare(b.name),
 );
 
-const pluginToolModules = [
-  { tool: askQuestion, plugin: askQuestionPlugin },
-  { tool: bookFlightTool, plugin: bookFlightPlugin },
-  { tool: pickCard, plugin: pickCardPlugin },
-  { tool: playTttTool, plugin: playTttPlugin },
-  { tool: tictactoeTool, plugin: tictactoePlugin },
-] as const;
-
-export const mcpPluginTools = pluginToolModules
-  .map(({ tool }) => tool)
-  .filter((tool) => tool.execution === "ordinary");
+/** Server-composition-owned ordinary interactive tools. */
+export const mcpPluginTools = [askQuestion, bookFlightTool, tictactoeTool] as const;
 
 type NamedTool = { name: string };
 
-function createToolRegistry(mcpTools: NamedTool[]): McpToolRegistry {
+function createToolRegistry(mcpTools: readonly NamedTool[]): McpToolRegistry {
   const map = new Map<string, unknown>();
   for (const tool of mcpTools) {
     map.set(tool.name, tool);
@@ -55,20 +44,14 @@ export function activeAgentCoreToolNames(pickCardProgramReady = false): string[]
   ];
 }
 
-const pluginClients = pluginToolModules.map(({ plugin }) => plugin.client);
-export const pluginRegistry = createPluginRegistryFrom(pluginClients);
+export const mcpToolRegistry = createToolRegistry(mcpPluginTools);
 
-export const activePluginTools = mcpPluginTools;
-export const mcpToolRegistry = createToolRegistry(activePluginTools);
-
-console.info("[yo-chat] active MCP plugin tools", {
-  availablePluginToolNames: mcpPluginTools.map((tool) => tool.name),
-  activePluginToolNames: activePluginTools.map((tool) => tool.name),
+console.info("[yo-chat] active server tools", {
+  availableToolNames: mcpPluginTools.map((tool) => tool.name),
 });
 
 export function* setupYoChatBaseContexts(): Operation<void> {
   yield* PersonaResolverContext.set(resolvePersona);
   yield* MaxIterationsContext.set(10);
-  yield* PluginRegistryContext.set(pluginRegistry);
   yield* McpToolRegistryContext.set(mcpToolRegistry);
 }

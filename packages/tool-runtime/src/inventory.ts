@@ -91,6 +91,16 @@ export function createToolInventoryEntry(
   const { $id: _id, $schema: _schema, ...parameters } = projection;
   return {
     definition: { name: tool.name, description: tool.description, parameters },
+    ...(tool.interfaceDigest ? { interfaceDigest: tool.interfaceDigest } : {}),
+    elicits: Object.fromEntries(
+      Object.entries(tool.artifacts.elicits).map(([key, artifact]) => [
+        key,
+        {
+          responseContract: artifact.response,
+          ...(artifact.context ? { contextContract: artifact.context } : {}),
+        },
+      ]),
+    ),
     capabilities: {
       elicits: Boolean(tool.capabilities?.elicitation),
       samples: Boolean(tool.capabilities?.sampling),

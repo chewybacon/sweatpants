@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { withTestScenario } from "@sweatpants/test-rig";
 import { ACCEPTANCE_MODEL_ID, createAcceptanceApplication } from "./lib/acceptance-app.ts";
@@ -35,10 +36,10 @@ describe("HTTP response-stream reconnect", () => {
         const resumed = yield* s.streams.reconnect(checkpoint);
         const frames = yield* resumed.complete();
         const deltas = frames
-          .filter((frame) => frame.event.type === "TEXT_MESSAGE_CONTENT")
+          .filter((frame) => frame.event.type === EventType.TEXT_MESSAGE_CONTENT)
           .map((frame) => frame.event["delta"]);
         expect(deltas).toEqual(["RECONNECT_SECOND_V1"]);
-        expect(frames.at(-1)?.event.type).toBe("RUN_FINISHED");
+        expect(frames.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
         expect(s.model.requests()).toHaveLength(1);
       },
     );

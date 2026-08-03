@@ -166,6 +166,7 @@ export function createDurableProgramContext(
       message: string,
       response: PortableSchemaDescriptor,
       context?: Json,
+      contextContract?: PortableSchemaDescriptor,
     ): Operation<ProgramElicitResult<T>> {
       const descriptor = parsePortableSchemaDescriptor(response);
       const outcome = yield* propose({
@@ -175,6 +176,12 @@ export function createDurableProgramContext(
           key: requireId(key, "elicit key"),
           message: typeof message === "string" ? message : String(message),
           response: canonicalSnapshot(descriptor).value,
+          ...(contextContract
+            ? {
+                contextContract: canonicalSnapshot(parsePortableSchemaDescriptor(contextContract))
+                  .value,
+              }
+            : {}),
           ...(context !== undefined ? { context: canonicalSnapshot(context).value } : {}),
         },
       });

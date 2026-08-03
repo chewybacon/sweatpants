@@ -3,6 +3,7 @@ import type { Operation } from "effection";
 import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 
 import { buildToolSchemaArtifacts } from "./artifacts.ts";
+import { computeToolInterfaceDigest } from "./contract.ts";
 import { isStandardSchema } from "../schema/zod-adapter.ts";
 import type {
   CreateToolBuilderBase,
@@ -272,6 +273,19 @@ function finalizeCoreUnifiedTool(options: {
     },
     extensions: {
       value: Object.freeze([...options.extensions]),
+      enumerable: true,
+      writable: false,
+      configurable: true,
+    },
+    interfaceDigest: {
+      value: computeToolInterfaceDigest({
+        name: options.name,
+        parameters: artifacts.parameters,
+        ...(artifacts.output ? { output: artifacts.output } : {}),
+        elicits: artifacts.elicits,
+        annotations: options.annotations,
+        extensions: options.extensions,
+      }),
       enumerable: true,
       writable: false,
       configurable: true,

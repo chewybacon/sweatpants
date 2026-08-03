@@ -1,8 +1,9 @@
+import { EventType, type AGUIEvent } from "@ag-ui/core";
 import type { ChatFetch } from "./chat.ts";
 
 export interface StreamFrame {
   lsn: number;
-  event: { type: string; [key: string]: unknown };
+  event: AGUIEvent;
 }
 
 export interface StreamCheckpoint {
@@ -191,7 +192,7 @@ export function createStreamTransportHandle(
       async expectEvent(type, assertion) {
         while (true) {
           const frame = await boundedFrame();
-          if (frame.event.type === type) {
+          if (String(frame.event.type) === type) {
             assertion?.(frame.event);
             return frame;
           }
@@ -211,7 +212,10 @@ export function createStreamTransportHandle(
       async complete() {
         while (true) {
           const frame = await boundedFrame();
-          if (frame.event.type === "RUN_FINISHED" || frame.event.type === "RUN_ERROR") {
+          if (
+            frame.event.type === EventType.RUN_FINISHED ||
+            frame.event.type === EventType.RUN_ERROR
+          ) {
             return Object.freeze([...consumed]);
           }
         }

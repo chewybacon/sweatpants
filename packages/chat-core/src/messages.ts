@@ -33,10 +33,6 @@ export interface Message {
    */
   isError?: boolean;
   activityType?: string;
-  replay?: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    trace?: any[];
-  };
 }
 
 // =============================================================================

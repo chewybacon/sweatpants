@@ -1,7 +1,7 @@
-import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
+import type { ReactRenderableProps } from "@sweatpants/react-chat";
 import type { Card } from "../cards";
 
-export interface CardPickerProps extends RenderableProps<{ picked: Card }> {
+export interface CardPickerProps extends ReactRenderableProps<{ picked: Card }> {
   cards: Card[];
   prompt: string;
 }

@@ -1,5 +1,6 @@
 import { run, spawn, sleep, each } from "effection";
 import type { Operation } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
@@ -497,7 +498,7 @@ async function main() {
         workerUrl,
       });
 
-      let capturedContext: Record<string, unknown> | undefined;
+      let capturedContext: Json | undefined;
 
       yield* collectEvents(session, events, function* (event) {
         if (event.type === "elicit_request") {
@@ -538,7 +539,7 @@ async function main() {
         workerUrl,
       });
 
-      let capturedContext: Record<string, unknown> | undefined;
+      let capturedContext: Json | undefined;
 
       yield* collectEvents(session, events, function* (event) {
         if (event.type === "elicit_request") {

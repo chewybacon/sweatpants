@@ -24,6 +24,7 @@
         "server:dev": "tsx express-server.ts"
     },
     "dependencies": {
+        "@ag-ui/core": "0.0.57",
         "@effectionx/context-api": "catalog:",
         "@radix-ui/react-avatar": "^1.1.11",
         "@radix-ui/react-collapsible": "^1.1.12",
@@ -71,9 +72,7 @@
         "nitro": "latest",
         "react": "catalog:",
         "react-dom": "catalog:",
-        "react-markdown": "^10.1.0",
         "redis": "^4.7.1",
-        "remark-gfm": "^4.0.1",
         "shiki": "^3.20.0",
         "srvx": "catalog:",
         "tailwind-merge": "^3.4.0",
@@ -92,7 +91,6 @@
         "@testing-library/react": "catalog:",
         "@types/compression": "catalog:",
         "@types/express": "catalog:",
-        "@types/marked": "^6.0.0",
         "@types/morgan": "catalog:",
         "@types/node": "catalog:",
         "@types/react": "catalog:",

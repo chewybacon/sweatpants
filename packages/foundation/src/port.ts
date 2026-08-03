@@ -51,6 +51,8 @@ export interface Port<T extends object> {
    * the default `max`, always surround them regardless of installation order.
    */
   installDriver(driver: T): Operation<void>;
+  /** Seal required configuration for the current scope after controller startup. */
+  seal(): Operation<void>;
 }
 
 export function definePort<T extends object>(name: string, declaration: T): Port<T> {
@@ -73,6 +75,7 @@ export function definePort<T extends object>(name: string, declaration: T): Port
   // scope can be rejected. Ancestors hold a different scope value, which is how
   // legitimate child-scope shadowing stays allowed.
   const owner = createContext<Scope | undefined>(`${name}:owner`, undefined);
+  const sealed = createContext<Scope | undefined>(`${name}:sealed`, undefined);
   const presence = createApi(`${name}:installed`, {
     *installed(): Operation<boolean> {
       return false;
@@ -96,6 +99,11 @@ export function definePort<T extends object>(name: string, declaration: T): Port
     },
     *installDriver(driver: T): Operation<void> {
       const scope = yield* useScope();
+      if ((yield* sealed.get()) !== undefined) {
+        const error = new Error(`Port "${name}" configuration is sealed`);
+        Object.assign(error, { code: "port_configuration_sealed" });
+        throw error;
+      }
       if ((yield* owner.get()) === scope) {
         throw new Error(
           `Port "${name}" already has a driver installed in this scope. ` +
@@ -125,6 +133,10 @@ export function definePort<T extends object>(name: string, declaration: T): Port
         },
         { at: "min" },
       );
+    },
+    *seal(): Operation<void> {
+      const scope = yield* useScope();
+      yield* sealed.set(scope);
     },
   };
 }

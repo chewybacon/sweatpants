@@ -599,13 +599,16 @@ function assertA2AOperationDescriptor(value: Json | undefined): void {
       }
       break;
     case "elicit":
-      if (!onlyKeys(value, ["kind", "key", "message", "response"], ["context"])) {
+      if (
+        !onlyKeys(value, ["kind", "key", "message", "response"], ["context", "contextContract"])
+      ) {
         fail();
       }
       if (
         !identifier(value["key"]) ||
         typeof value["message"] !== "string" ||
-        !record(value["response"])
+        !record(value["response"]) ||
+        (value["contextContract"] !== undefined && !record(value["contextContract"]))
       ) {
         fail();
       }

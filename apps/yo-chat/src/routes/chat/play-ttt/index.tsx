@@ -10,6 +10,7 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
+import { renderNestedParts } from "@/components/ChatPartTree";
 import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
 import { playTttPlugin } from "@/tools/play-ttt/plugin";
 
@@ -18,36 +19,25 @@ export const Route = createFileRoute("/chat/play-ttt/")({
 });
 
 /**
- * Renders a tool call part with its inline emissions.
+ * Renders a tool call part with its prepared recursive children.
  */
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
-  const hasEmissions = toolCall.emissions.length > 0;
+  const prepared = renderNestedParts(toolCall.parts);
+  const hasRenderedChildren = prepared.length > 0;
 
   return (
     <div className="my-2">
-      {toolCall.emissions.map((emission) => {
-        const Component = emission.component;
-        if (!Component) {
-          return null;
-        }
+      {prepared.map((child, index) => (
+        <span key={`${toolCall.callId}:child:${index}`}>{child}</span>
+      ))}
 
-        return (
-          <Component
-            key={emission.id}
-            {...emission.props}
-            onRespond={emission.onRespond}
-            disabled={emission.status !== "pending"}
-            response={emission.response}
-          />
-        );
-      })}
+      {!hasRenderedChildren &&
+        (toolCall.state === "input-streaming" || toolCall.state === "input-available") && (
+          <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
+        )}
 
-      {!hasEmissions && (toolCall.state === "running" || toolCall.state === "pending") && (
-        <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
-      )}
-
-      {toolCall.state === "error" && toolCall.error && (
-        <div className="text-xs text-red-400">Error: {toolCall.error}</div>
+      {toolCall.state === "output-error" && toolCall.errorText && (
+        <div className="text-xs text-red-400">Error: {toolCall.errorText}</div>
       )}
     </div>
   );
@@ -59,6 +49,9 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const busy = message.parts.some(
+    (part) => (part.type === "text" || part.type === "reasoning") && part.state === "streaming",
+  );
 
   return (
     <div className={`mb-6 ${isUser ? "text-right" : ""}`}>
@@ -69,9 +62,7 @@ function Message({ message }: { message: ChatMessage }) {
           }`}
         >
           {isUser ? "You" : isSystem ? "System" : "Model"}
-          {message.isStreaming && (
-            <span className="ml-2 text-emerald-500 animate-pulse">thinking...</span>
-          )}
+          {busy && <span className="ml-2 text-emerald-500 animate-pulse">thinking...</span>}
         </div>
 
         <div
@@ -113,9 +104,7 @@ function Message({ message }: { message: ChatMessage }) {
             return null;
           })}
 
-          {message.isStreaming && (
-            <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-          )}
+          {busy && <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />}
         </div>
       </div>
     </div>
@@ -123,26 +112,16 @@ function Message({ message }: { message: ChatMessage }) {
 }
 
 function PlayTttDemo() {
-  const { messages, streamingMessage, isStreaming, pipelineReady, send, abort, reset, error } =
-    useChat({
-      pipeline: "markdown",
-      tools: [],
-      plugins: [playTttPlugin],
-      // Force the first turn into the tool; later turns stay free-form so
-      // follow-ups answer from history instead of re-launching a game.
-      initialToolChoice: "required",
-      systemPrompt: `You are the Agentic Tic-Tac-Toe demo controller.
-
-When the user wants to start or play tic-tac-toe, call the play_ttt tool immediately. Do not answer in prose instead of calling it for a new game request.
-
-The play_ttt tool handles the entire game automatically:
-- Randomly assigns X or O to each player
-- Takes turns until someone wins or draws
-- Uses AI reasoning to pick strategic moves
-- Lets the user click cells for their moves
-
-After a game has completed, answer follow-up questions from the conversation history. Do NOT call play_ttt again unless the user explicitly asks to play another game.`,
-    });
+  const { messages, status, renderStatus, sendMessage, stop, setMessages, error } = useChat({
+    conversationId: "play-ttt-chat",
+    pipeline: "markdown",
+    plugins: [playTttPlugin],
+    // Force the first turn into the tool; later turns stay free-form so
+    // follow-ups answer from history instead of re-launching a game.
+  });
+  const busy = status === "submitted" || status === "streaming";
+  const renderReady = renderStatus === "ready";
+  const clear = () => setMessages([]);
 
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -150,14 +129,14 @@ After a game has completed, answer follow-up questions from the conversation his
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingMessage?.parts.length]);
+  }, [messages, messages.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) {
+    if (!input.trim() || busy) {
       return;
     }
-    send(input.trim());
+    sendMessage({ text: input.trim() });
     setInput("");
   };
 
@@ -174,7 +153,7 @@ After a game has completed, answer follow-up questions from the conversation his
             </p>
           </div>
           <div className="text-xs">
-            {pipelineReady ? (
+            {renderReady ? (
               <span className="text-emerald-500">Pipeline ready</span>
             ) : (
               <span className="text-amber-500 animate-pulse">Loading pipeline...</span>
@@ -184,15 +163,15 @@ After a game has completed, answer follow-up questions from the conversation his
 
         {/* Messages */}
         <div className="bg-slate-900 rounded-xl p-6 min-h-[50vh] max-h-[60vh] overflow-y-auto mb-6 border border-slate-800">
-          {messages.length === 0 && !isStreaming && (
+          {messages.length === 0 && !busy && (
             <div className="text-slate-600 text-center py-16">
               <div className="text-4xl mb-4">X | O</div>
               <p className="mb-4">Play a complete game in one tool call!</p>
               <button
                 onClick={() =>
-                  send(
-                    "Start a tic-tac-toe game by calling the play_ttt tool now. Do not respond with prose.",
-                  )
+                  sendMessage({
+                    text: "Start a tic-tac-toe game by calling the play_ttt tool now. Do not respond with prose.",
+                  })
                 }
                 className="px-4 py-2 bg-cyan-900/30 hover:bg-cyan-900/50 border border-cyan-800 rounded-lg transition-colors"
               >
@@ -207,7 +186,7 @@ After a game has completed, answer follow-up questions from the conversation his
 
           {error && (
             <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 my-4">
-              <strong>Error:</strong> {error}
+              <strong>Error:</strong> {error?.message}
             </div>
           )}
 
@@ -221,19 +200,17 @@ After a game has completed, answer follow-up questions from the conversation his
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={
-              isStreaming
-                ? "Game in progress..."
-                : "Type a message... (try: Let's play tic-tac-toe!)"
+              busy ? "Game in progress..." : "Type a message... (try: Let's play tic-tac-toe!)"
             }
-            disabled={isStreaming}
+            disabled={busy}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
 
           <div className="absolute right-2 top-2 bottom-2 flex gap-2">
-            {isStreaming ? (
+            {busy ? (
               <button
                 type="button"
-                onClick={abort}
+                onClick={stop}
                 className="h-full px-6 bg-red-900/20 hover:bg-red-900/40 text-red-500 rounded-lg font-medium transition-colors border border-red-900/30"
               >
                 Stop
@@ -252,8 +229,8 @@ After a game has completed, answer follow-up questions from the conversation his
 
         <div className="mt-4 flex justify-between text-xs text-slate-600 px-2">
           <button
-            onClick={reset}
-            disabled={isStreaming || messages.length === 0}
+            onClick={clear}
+            disabled={busy || messages.length === 0}
             className="hover:text-slate-400 disabled:opacity-50 transition-colors"
           >
             New Game

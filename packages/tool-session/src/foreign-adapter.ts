@@ -104,6 +104,15 @@ const adapterTool = createPinnedDurableProgram(
                   foreignKey: disposition.request.key,
                   ...(request.route !== undefined ? { foreignRoute: request.route } : {}),
                   responseSchema: disposition.request.responseSchema,
+                  ...(disposition.request.ownerInterfaceDigest
+                    ? { ownerInterfaceDigest: disposition.request.ownerInterfaceDigest }
+                    : {}),
+                  ...(disposition.request.responseContract
+                    ? { responseContract: disposition.request.responseContract }
+                    : {}),
+                  ...(disposition.request.contextContract
+                    ? { contextContract: disposition.request.contextContract }
+                    : {}),
                   ...(disposition.request.context !== undefined
                     ? { context: disposition.request.context }
                     : {}),

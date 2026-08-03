@@ -1,14 +1,8 @@
 import type { Message } from "../messages.ts";
 import type { MessagePart } from "../types/chat-message.ts";
-import type { ConversationReplayState } from "../session/replay-types.ts";
-import type {
-  ElicitState,
-  ElicitTrackingState,
-  ToolEmissionState,
-  ToolEmissionTrackingState,
-} from "./interactions.ts";
+import type { ElicitState, ElicitTrackingState } from "./interactions.ts";
 
-export type { ElicitState, ElicitTrackingState, ToolEmissionState, ToolEmissionTrackingState };
+export type { ElicitState, ElicitTrackingState };
 
 export interface StreamingPartsState {
   parts: MessagePart[];
@@ -34,12 +28,10 @@ interface ToolCallDraft {
 export interface ChatState {
   messages: Message[];
   finalizedParts: Record<string, MessagePart[]>;
-  isStreaming: boolean;
+  active: boolean;
   streaming: StreamingPartsState;
   error: string | null;
   pendingElicits: Record<string, ElicitTrackingState>;
-  toolEmissions: Record<string, ToolEmissionTrackingState>;
-  replay?: ConversationReplayState;
   activeRun: { threadId: string; runId: string } | null;
 }
 
@@ -53,11 +45,10 @@ export function createInitialChatStateInternal(): ChatStateInternal {
   return {
     messages: [],
     finalizedParts: {},
-    isStreaming: false,
+    active: false,
     streaming: { parts: [], activePartId: null, activePartType: null },
     error: null,
     pendingElicits: {},
-    toolEmissions: {},
     activeRun: null,
     messageDrafts: {},
     toolCallDrafts: {},
