@@ -1,5 +1,6 @@
 import { createContext, type Operation } from "effection";
 import type { DurableEffectRegistration } from "@sweatpants/chat-core";
+import type { ToolContract } from "@sweatpants/agent-sdk";
 import type { DurableTool, ProgramDriver, ProgramRoute } from "@sweatpants/durable-execution";
 
 export type NativeProgramIdentity = { id: string; version: string; digest: string };
@@ -7,7 +8,7 @@ export type NativeProgramIdentity = { id: string; version: string; digest: strin
 /** One public model-tool name routed to a crank-native child program. */
 export interface ProgramDriverNativeToolBinding {
   readonly publicName: string;
-  readonly tool: DurableTool<any, any>;
+  readonly tool: DurableTool<any, any> & ToolContract;
   readonly route: ProgramRoute;
   /**
    * Explicit activation-safety capability of the driver behind `route`.

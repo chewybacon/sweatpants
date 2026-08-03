@@ -22,9 +22,10 @@ Three lanes classify every workspace package:
 
 | Package / path | Notes |
 |---|---|
-| `@sweatpants/react-chat` | UI hooks / chat client (`useChat`, `useChatSession`, `ChatProvider`) |
-| `@sweatpants/react-chat/pipeline` | Rendering pipelines when required |
-| `destination domain packages` **product entries** | Dual-nature (see below). Product import paths: `/server`, `/chat`, `/chat/browser-rendering`, `/chat/mcp-tools`, `/chat/durable-streams`; `/chat` owns `defineChatProgram`, while `/server` owns explicit agent serving profiles and connectivity |
+| `@sweatpants/chat-client` | Headless `ChatClient`, optional `ChatRuntime`, transport Ports, reconnect, middleware, and frame pipeline |
+| `@sweatpants/chat-client/pipeline` | Framework-neutral Sweatpants frame pipeline |
+| `@sweatpants/react-chat` | Thin React client facade (`createChatClient`, `createChatRuntime`, `useChat`, `makePlugin`) |
+| `destination domain packages` **product entries** | Dual-nature (see below). Product import paths: `/server`, `/chat`, `/chat/mcp-tools`, `/chat/durable-streams`; `/chat` owns `defineChatProgram`, while `/server` owns explicit agent serving profiles and connectivity |
 | `@sweatpants/agent-sdk` **authoring surface** | `createTool`, content-addressed resources/guidance, `defineAgent`, advertised capabilities, and portable manifest types (`.` / `/tool` / `/tools`) |
 | `@sweatpants/cli` | Tooling (codegen), not runtime core |
 
@@ -59,8 +60,9 @@ Three lanes classify every workspace package:
 - **Product entries** (import these):
   - `@sweatpants/agent-host/server` — `createChatApplication`, `createChatHandler` / `createDurableChatHandler`, `serveAgent`, `createStandardA2AHost`, explicit profiles, and posture-specific connections
   - `@sweatpants/agent-host/server/testing` — real-transport agent harness utilities for tests/development only
-  - `@sweatpants/chat-core` — `defineChatProgram`, bounded protocol-neutral turn contracts, resource mount policy, `makePlugin`, plugin helpers, and chat types
-  - `@sweatpants/react-chat/browser-rendering` — plugin UI `RenderableProps` and rendering helpers
+  - `@sweatpants/chat-core` — framework-neutral message/event/frame types, codecs, immutable folds, and internal placement normalization
+  - `@sweatpants/chat-client` — headless client/runtime/transport Ports, reconnect, middleware, and pipeline orchestration
+  - `@sweatpants/react-chat` — thin React `useChat`, client/runtime facades, framework-native `makePlugin`, and prepared native render parts
   - `@sweatpants/tool-session/mcp` — plugin registry helpers for MCP tool authoring
   - `@sweatpants/durable-chat-runtime/response-streams` — in-memory durable stream setup for product apps
 - **Internals** (canonical, not experimental by default): implementation modules outside package export maps and the facade allowlist. Product apps must not deep-import package source paths.
@@ -71,19 +73,19 @@ Three lanes classify every workspace package:
 
 | Symbol | Allowlisted path |
 |---|---|
-| `useChat` | `@sweatpants/react-chat` |
-| `useChatSession` | `@sweatpants/react-chat` |
-| `ChatProvider` | `@sweatpants/react-chat` |
+| `ChatClient` / `ChatRuntime` | `@sweatpants/chat-client` |
+| `createChatClient` / `createChatRuntime` / `useChat` | `@sweatpants/react-chat` |
+| `makePlugin` | `@sweatpants/react-chat` (framework-native) |
 | `createChatApplication` | `@sweatpants/agent-host/server` |
 | `createChatHandler` / `createDurableChatHandler` | `@sweatpants/agent-host/server` |
 | `createTool` | `@sweatpants/agent-sdk` |
-| `makePlugin` | `@sweatpants/chat-core` |
+| `makePlugin` | `@sweatpants/react-chat` (framework-native) |
 | `defineAgent` / `advertiseCapability` | `@sweatpants/agent-sdk` |
 | `defineChatProgram` / `latestContextWindow` | `@sweatpants/chat-core` |
 | `serveAgent` / `remoteExecutor` / `standardA2A` / `sweatpantsPeer` / `createStandardA2AHost` | `@sweatpants/agent-host/server` |
 | `startAgentHarness` | `@sweatpants/agent-host/server/testing` |
 
-Durable reconnect/resume behavior is documented via product session hooks (`useChat` / `useChatSession`) and the durable handler protocol (session/conversation id + offset/LSN).
+Durable reconnect/resume behavior is documented via `ChatClient`/`useChat` and the durable handler protocol (conversation id + cursor/LSN).
 
 ### Machine-readable allowlist
 
@@ -122,10 +124,10 @@ Happy-path samples SHOULD prefer local/in-memory defaults (no Redis or AgentCore
 
 | Conceptual target | Concrete path (today) | Job |
 |---|---|---|
-| `@sweatpants/react` | `@sweatpants/react-chat` | UI hooks / chat client |
+| `@sweatpants/client` | `@sweatpants/chat-client` | Headless client/runtime, transport, and pipeline |
+| `@sweatpants/react` | `@sweatpants/react-chat` | React external-store/native interaction adapter |
 | `@sweatpants/server` | `@sweatpants/agent-host/server` | Durable handler + app wiring |
 | `@sweatpants/tools` | `@sweatpants/agent-sdk` (`createTool`) | Tool authoring |
-| `@sweatpants/chat` | `@sweatpants/chat-core` | Session helpers, plugins, advanced chat |
 
 Physical package renames are optional. Docs and facade maps are the Phase 4 exit path.
 
@@ -156,7 +158,7 @@ Scan of `apps/yo-chat` source (excluding `node_modules` / `dist`) for `@sweatpan
 | `@sweatpants/chat-core` | Product entry | high | plugins, elicit helpers |
 | `@sweatpants/agent-host/server` | Product entry | high | app + handler |
 | `@sweatpants/tool-session/mcp` | Product entry | medium | plugin registry |
-| `@sweatpants/react-chat/browser-rendering` | Product entry | medium | tool UI components |
+| `@sweatpants/react-chat` | Product entry | medium | chat hooks, native plugin UI components, and recursive message rendering |
 | `@sweatpants/durable-chat-runtime/response-streams` | Product entry | low | durable setup |
 | `@sweatpants/react-chat` | Product | medium | chat routes |
 | `@sweatpants/agent-sdk` | Product tool surface | medium | `createTool` |

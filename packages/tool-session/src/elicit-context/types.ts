@@ -9,8 +9,3 @@ export interface EncodedElicitContext {
   message: string;
   schema: JsonSchema;
 }
-
-export interface DecodedElicitContext<TContext = Record<string, unknown>> {
-  message: string;
-  context: TContext;
-}

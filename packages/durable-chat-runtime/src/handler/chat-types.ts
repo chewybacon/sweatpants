@@ -1,11 +1,6 @@
 import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import type {
-  ConversationReplayState,
-  Message as ChatMessage,
-  ChatSessionStreamEvent,
-  ToolExecutionTrace,
-} from "@sweatpants/chat-core";
+import type { Message as ChatMessage, ChatSessionStreamEvent } from "@sweatpants/chat-core";
 import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ToolExecutionRef } from "@sweatpants/tool-runtime";
 import type { ResumeEntry } from "./types.ts";
@@ -24,7 +19,6 @@ export interface ElicitResponse {
   ref?: ToolExecutionRef;
   elicitId: string;
   completion: ElicitExchangeCompletion<unknown>;
-  trace?: ToolExecutionTrace;
 }
 
 export interface PluginAbortRequest {
@@ -38,6 +32,9 @@ export interface ModelSelection {
 }
 
 export interface ChatRequestBody {
+  trigger?: "submit-message" | "regenerate-message" | "cancel-run";
+  clientId?: string;
+  messageId?: string;
   conversationId?: string;
   threadId?: string;
   runId?: string;
@@ -56,10 +53,8 @@ export interface ChatRequestBody {
   streamOptions?: StreamOptions;
   initialToolChoice?: StreamOptions["toolChoice"];
   enabledTools?: boolean | string[];
-  enabledPlugins?: string[];
   model?: ModelSelection;
   elicitResponses?: ElicitResponse[];
-  replayState?: ConversationReplayState;
   pluginAbort?: PluginAbortRequest;
 }
 

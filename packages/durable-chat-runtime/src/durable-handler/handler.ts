@@ -23,6 +23,7 @@
  * - session-event-stream.ts: engine -> Host-owned buffer with persistence
  * - hydrate-responses.ts: checkpoint/buffer replay read responses
  */
+import { EventType } from "@ag-ui/core";
 import { call, resource, type Operation } from "effection";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
@@ -55,7 +56,7 @@ import { manifest as chatProgramManifest } from "./program-driver-schema.ts";
 import { useOptionalProgramDriverForeignEffects } from "../program-driver/effects.ts";
 import { useOptionalProgramDriverNativeTools } from "../program-driver/native-tools.ts";
 import { buildAgUiCustomState } from "@sweatpants/chat-core";
-import { activitySnapshotsForMessages, toProviderHistorySnapshot } from "@sweatpants/chat-core";
+import { toProviderHistorySnapshot } from "@sweatpants/chat-core";
 import {
   decodeConversationCheckpoint,
   readLatestConversationCheckpoint,
@@ -142,13 +143,13 @@ function recoveredPublicationEvents(recovery: RecoveredTurnPublication): ChatEng
   const event: StreamEvent =
     capsule.disposition === "completed"
       ? {
-          type: "RUN_FINISHED",
+          type: EventType.RUN_FINISHED,
           threadId: capsule.sessionId,
           runId: capsule.turnId,
           outcome: { type: "success" },
         }
       : {
-          type: "RUN_ERROR",
+          type: EventType.RUN_ERROR,
           code: `PROGRAM_${capsule.disposition.toUpperCase()}`,
           message: `Program ${capsule.disposition}`,
         };
@@ -195,7 +196,7 @@ function* restoreThreadInterruptStateIfNeeded(
  * @returns Fetch handler function
  */
 export function createDurableChatHandler(config: DurableChatHandlerConfig) {
-  const { setup, maxToolIterations = 10 } = config;
+  const { setup, maxToolIterations = 10, defaultEnabledTools } = config;
   const executionStore = config.executionStore ?? createMemoryExecutionStore();
   const historyStore = config.historyStore ?? createMemoryHistoryStore();
 
@@ -441,13 +442,15 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     }
                   }
                 } else {
-                  // Manual mode
-                  if (body.enabledTools === true) {
+                  // Manual mode. The fallback is server composition policy,
+                  // never a client-plugin-derived inventory.
+                  const requestedEnabledTools = body.enabledTools ?? defaultEnabledTools;
+                  if (requestedEnabledTools === true) {
                     for (const name of inventoryNameList) {
                       enabledToolNames.add(name);
                     }
-                  } else if (Array.isArray(body.enabledTools)) {
-                    for (const name of body.enabledTools) {
+                  } else if (Array.isArray(requestedEnabledTools)) {
+                    for (const name of requestedEnabledTools) {
                       if (inventoryNames.has(name)) {
                         enabledToolNames.add(name);
                       }
@@ -471,21 +474,22 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   yield* recordThreadSystemPrompt(bufferStore, agUiThreadId, systemPrompt);
                 }
 
-                // Build model-facing tool schemas through inventory + exposure policy.
-                // `enabledPlugins` names match inventory `definition.name` directly because
-                // both use the same final tool name from the single generated registry.
+                // Build model-facing tool schemas through server inventory + exposure policy.
+                // Client plugin registration never participates in executable selection.
                 const exposedDefinitions = yield* ToolExposureApi.definitions({
                   phase: "outer-chat",
                   entries: inventoryEntries,
                   request: body,
-                  enabledTools: body.enabledTools === true ? true : Array.from(enabledToolNames),
-                  enabledPlugins: body.enabledPlugins ?? [],
+                  enabledTools:
+                    body.enabledTools === true ||
+                    (body.enabledTools === undefined && defaultEnabledTools === true)
+                      ? true
+                      : Array.from(enabledToolNames),
                   metadata: { sessionId, conversationId: requestedConversationId },
                 });
 
                 log.debug(
                   {
-                    enabledPlugins: body.enabledPlugins ?? [],
                     exposedToolNames: exposedDefinitions.map((definition) => definition.name),
                   },
                   "tool exposure resolved",
@@ -582,7 +586,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                       outcome: supersededOutcome,
                       events: [
                         {
-                          type: "RUN_ERROR",
+                          type: EventType.RUN_ERROR,
                           code: supersededOutcome.code,
                           message: supersededOutcome.message,
                         },
@@ -681,23 +685,22 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   log.debug({ sessionId }, "new session path: chat engine created");
 
                   // Wrap engine to serialize events
-                  const initialReplayState = liveMode === "sse" ? undefined : body.replayState;
                   const initialEvents: StreamEvent[] = resumePreflightError
                     ? [
                         {
-                          type: "RUN_ERROR",
+                          type: EventType.RUN_ERROR,
                           message: resumePreflightError.message,
                           code: resumePreflightError.code,
                         },
                       ]
                     : [
                         {
-                          type: "RUN_STARTED",
+                          type: EventType.RUN_STARTED,
                           ...agUiRun,
                           input: {
                             ...agUiRun,
                             state: body.state ?? {},
-                            messages: toProviderHistorySnapshot(body.messages, initialReplayState),
+                            messages: toProviderHistorySnapshot(body.messages),
                             tools: toolSchemas.map((tool) => ({
                               name: tool.name,
                               description: tool.description,
@@ -711,17 +714,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                         ...(body.messages.length > 0
                           ? [
                               {
-                                type: "MESSAGES_SNAPSHOT" as const,
-                                messages: toProviderHistorySnapshot(
-                                  body.messages,
-                                  initialReplayState,
-                                ),
+                                type: EventType.MESSAGES_SNAPSHOT as const,
+                                messages: toProviderHistorySnapshot(body.messages),
                               },
-                              ...activitySnapshotsForMessages(body.messages, initialReplayState),
                             ]
                           : []),
                         {
-                          type: "STATE_SNAPSHOT",
+                          type: EventType.STATE_SNAPSHOT,
                           snapshot: buildAgUiCustomState({}),
                         },
                       ];
@@ -812,7 +811,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         const errorEvent = {
           lsn: 0,
           event: {
-            type: "RUN_ERROR",
+            type: EventType.RUN_ERROR,
             message: error.message,
             code: error instanceof CrankError ? error.code : "internal_error",
           },

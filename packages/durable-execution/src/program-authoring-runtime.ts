@@ -52,7 +52,13 @@ const durableManifestShapeSchema = z
     outputSchema: descriptorSchema,
     elicits: z.record(
       z.string().min(1).max(512),
-      z.object({ response: descriptorSchema, context: descriptorSchema.optional() }).strict(),
+      z
+        .object({
+          response: descriptorSchema,
+          context: descriptorSchema.optional(),
+          contextContract: descriptorSchema.optional(),
+        })
+        .strict(),
     ),
     effects: z.record(z.string().min(1).max(512), z.record(z.string(), jsonValueSchema)),
     capabilities: z

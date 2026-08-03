@@ -125,7 +125,6 @@ export function appendToolMessage(
   toolName: string,
   content: string,
   isError: boolean,
-  replay?: Message["replay"],
 ): Message {
   state.currentTurnKey = toolCallId;
   const message: Message = {
@@ -135,7 +134,6 @@ export function appendToolMessage(
     name: toolName,
     content,
     isError,
-    ...(replay ? { replay } : {}),
   };
   history.push(message);
   return message;

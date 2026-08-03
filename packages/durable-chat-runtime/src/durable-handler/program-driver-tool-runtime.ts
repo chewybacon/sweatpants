@@ -90,7 +90,7 @@ export function createToolRuntimeForeignEffectRegistrations(
           signal: context.cancellation,
           metadata: effectMetadata(options, context),
         });
-        return yield* disposition(execution, request.tool, options.runtime);
+        return yield* disposition(execution, request.tool, options.runtime, entry);
       } catch (error) {
         if (context.cancellation.aborted) {
           return failure("foreign_tool_cancelled", "Foreign tool was cancelled");
@@ -145,7 +145,10 @@ export function createToolRuntimeForeignEffectRegistrations(
           signal: context.cancellation,
           metadata: effectMetadata(options, context),
         });
-        return yield* disposition(execution, parsed.tool, options.runtime);
+        const entry = options.entries.find(
+          (candidate) => candidate.definition.name === parsed.tool,
+        );
+        return yield* disposition(execution, parsed.tool, options.runtime, entry);
       } catch {
         return context.cancellation.aborted
           ? failure("foreign_tool_cancelled", "Foreign tool was cancelled")
@@ -169,6 +172,7 @@ function* disposition(
   execution: ToolExecution,
   tool: string,
   runtime: ToolRuntime,
+  entry?: ToolInventoryEntry,
 ): Operation<ForeignToolDisposition> {
   switch (execution.kind) {
     case "completed":
@@ -180,7 +184,7 @@ function* disposition(
     case "failed":
       return failure(execution.error.code ?? "foreign_tool_failed", execution.error.message);
     case "awaiting_elicit":
-      return inputRequired(execution.ref, tool, execution.request);
+      return inputRequired(execution.ref, tool, execution.request, entry);
     case "running": {
       const events = yield* execution.events;
       while (true) {
@@ -188,7 +192,7 @@ function* disposition(
         if (next.done) {
           return failure("foreign_session_ended", "Foreign tool ended without a result");
         }
-        const mapped = mapEvent(next.value, execution.ref, tool);
+        const mapped = mapEvent(next.value, execution.ref, tool, entry);
         if (mapped?.type === "failed" && mapped.error.code === "foreign_sampling_driver_required") {
           try {
             yield* runtime.abort(execution.ref, "sampling continuation requires journal lifting");
@@ -209,6 +213,7 @@ function mapEvent(
   event: ToolExecutionEvent,
   ref: ToolExecutionRef,
   tool: string,
+  entry?: ToolInventoryEntry,
 ): ForeignToolDisposition | undefined {
   switch (event.type) {
     case "progress":
@@ -226,7 +231,7 @@ function mapEvent(
     case "cancelled":
       return failure("foreign_tool_cancelled", event.reason ?? "Foreign tool was cancelled");
     case "elicit_request":
-      return inputRequired(ref, tool, event);
+      return inputRequired(ref, tool, event, entry);
     case "sample_request":
       return failure(
         "foreign_sampling_driver_required",
@@ -243,8 +248,9 @@ function inputRequired(
     key: string;
     message: string;
     schema: Record<string, unknown>;
-    context?: Record<string, unknown>;
+    context?: Json;
   },
+  entry?: ToolInventoryEntry,
 ): ForeignToolDisposition {
   try {
     return {
@@ -258,8 +264,17 @@ function inputRequired(
           callId: ref.callId,
           elicitId: request.elicitId,
           toolName: tool,
-          ...request.context,
+          ...(request.context !== undefined ? { context: request.context } : {}),
         }),
+        ...(entry?.interfaceDigest ? { ownerInterfaceDigest: entry.interfaceDigest } : {}),
+        ...(entry?.elicits?.[request.key]
+          ? {
+              responseContract: assertJson(entry.elicits[request.key]!.responseContract),
+              ...(entry.elicits[request.key]!.contextContract
+                ? { contextContract: assertJson(entry.elicits[request.key]!.contextContract) }
+                : {}),
+            }
+          : {}),
       },
       continuation: {
         driver: DRIVER,

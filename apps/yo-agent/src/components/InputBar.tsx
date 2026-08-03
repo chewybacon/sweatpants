@@ -1,38 +1,33 @@
-/**
- * Input Bar Component
- *
- * Fixed at the bottom, handles user input.
- */
-import React, { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Box, Text } from "ink";
 import TextInput from "ink-text-input";
 import Spinner from "ink-spinner";
-import type { AgentMode } from "./App.tsx";
 
 interface InputBarProps {
-  mode: AgentMode;
-  onSubmit: (value: string) => void;
-  disabled?: boolean;
+  readonly onSubmit: (value: string) => void;
+  readonly disabled?: boolean;
+  readonly placeholder?: string;
 }
 
-export function InputBar({ mode, onSubmit, disabled = false }: InputBarProps) {
+export function InputBar({
+  onSubmit,
+  disabled = false,
+  placeholder = "Ask about the codebase...",
+}: InputBarProps) {
   const [value, setValue] = useState("");
-
   const handleSubmit = useCallback(
     (input: string) => {
-      if (input.trim() && !disabled) {
-        onSubmit(input.trim());
+      const text = input.trim();
+      if (text && !disabled) {
+        onSubmit(text);
         setValue("");
       }
     },
-    [onSubmit, disabled],
+    [disabled, onSubmit],
   );
 
-  const borderColor = mode === "plan" ? "cyan" : "magenta";
-  const placeholder = mode === "plan" ? "Ask about the codebase..." : "Talk to HAL...";
-
   return (
-    <Box borderStyle="round" borderColor={borderColor} paddingX={1}>
+    <Box borderStyle="round" borderColor="cyan" paddingX={1}>
       {disabled ? (
         <Text color="cyan">
           <Spinner type="dots" />{" "}

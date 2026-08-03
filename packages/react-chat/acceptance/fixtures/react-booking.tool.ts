@@ -10,7 +10,25 @@ export const reactBookingTool = createTool(REACT_BOOKING_TOOL_NAME)
   .elicits({
     chooseFlight: {
       context: z.object({ flights: z.array(z.string()) }),
-      response: z.object({ flightId: z.string() }),
+      response: z
+        .object({ flightId: z.string(), confirmed: z.boolean() })
+        .transform((value) => ({ ...value, normalized: true as const })),
+      responseProjections: {
+        inputProjection: {
+          type: "object",
+          properties: { flightId: { type: "string" }, confirmed: { type: "boolean" } },
+          required: ["flightId", "confirmed"],
+        },
+        outputProjection: {
+          type: "object",
+          properties: {
+            flightId: { type: "string" },
+            confirmed: { type: "boolean" },
+            normalized: { const: true },
+          },
+          required: ["flightId", "confirmed", "normalized"],
+        },
+      },
     },
   })
   .execute(function* (params, ctx) {
@@ -24,6 +42,8 @@ export const reactBookingTool = createTool(REACT_BOOKING_TOOL_NAME)
     return {
       marker: REACT_BOOKING_RESULT_MARKER,
       selected: selected.content.flightId,
+      confirmed: selected.content.confirmed,
+      normalized: selected.content.normalized,
       route: params.route,
     };
   });

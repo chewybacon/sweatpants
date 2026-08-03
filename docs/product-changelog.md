@@ -73,10 +73,10 @@ Freeze the Phase 1 product facade allowlist and document the ≤4 conceptual pac
 ### Allowlisted paths (initial)
 
 - `@sweatpants/react-chat`
-- `@sweatpants/react-chat/pipeline`
+- `@sweatpants/chat-client/pipeline`
 - `@sweatpants/agent-host/server`
 - `@sweatpants/chat-core`
-- `@sweatpants/react-chat/browser-rendering`
+- `@sweatpants/react-chat` (including framework-native plugin rendering)
 - `@sweatpants/tool-session/mcp`
 - `@sweatpants/durable-chat-runtime/response-streams`
 - `@sweatpants/agent-sdk` (and `/tool`, `/tools`)

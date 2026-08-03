@@ -131,6 +131,7 @@ export function createToolSessionForeignEffectRegistrations(
           0,
           request.durability,
           context.cancellation,
+          tool,
         );
       } catch {
         return failure(
@@ -197,11 +198,21 @@ export function createToolSessionForeignEffectRegistrations(
         yield* options.registry.release(session.id);
         return responseFailure;
       }
+      const tool = options.tools.get(session.toolName);
+      if (!tool) {
+        yield* options.registry.release(session.id);
+        return failure(
+          continuation.durability,
+          "foreign_tool_not_found",
+          `Foreign tool not found: ${session.toolName}`,
+        );
+      }
       const disposition = yield* nextDispositionWithCancellation(
         session,
         continuation.afterLsn,
         continuation.durability,
         context.cancellation,
+        tool,
       );
       if (disposition.type !== "input_required") {
         yield* options.registry.release(session.id);
@@ -218,9 +229,10 @@ function* nextDispositionWithCancellation(
   afterLsn: number,
   durability: ForeignDurability,
   signal: AbortSignal,
+  tool: AnyToolContract,
 ): Operation<ForeignToolDisposition> {
   return yield* race([
-    nextDisposition(session, afterLsn, durability),
+    nextDisposition(session, afterLsn, durability, tool),
     (function* () {
       if (!signal.aborted) {
         yield* action<void>((resolve) => {
@@ -287,6 +299,7 @@ function* nextDisposition(
   session: ToolSession,
   afterLsn: number,
   durability: ForeignDurability,
+  tool: AnyToolContract,
 ): Operation<ForeignToolDisposition> {
   const events = yield* session.events(afterLsn);
   while (true) {
@@ -298,7 +311,7 @@ function* nextDisposition(
         `ToolSession ${session.id} ended without a terminal event`,
       );
     }
-    const disposition = eventDisposition(session, next.value, durability);
+    const disposition = eventDisposition(session, next.value, durability, tool);
     if (disposition) {
       return disposition;
     }
@@ -309,6 +322,7 @@ function eventDisposition(
   session: ToolSession,
   event: ToolSessionEvent,
   durability: ForeignDurability,
+  tool: AnyToolContract,
 ): ForeignToolDisposition | undefined {
   switch (event.type) {
     case "progress":
@@ -364,6 +378,15 @@ function eventDisposition(
           key: event.key,
           message: event.message,
           responseSchema: foreignJson(event.schema),
+          ...(tool.interfaceDigest ? { ownerInterfaceDigest: tool.interfaceDigest } : {}),
+          ...(tool.artifacts.elicits[event.key]
+            ? {
+                responseContract: foreignJson(tool.artifacts.elicits[event.key]!.response),
+                ...(tool.artifacts.elicits[event.key]!.context
+                  ? { contextContract: foreignJson(tool.artifacts.elicits[event.key]!.context) }
+                  : {}),
+              }
+            : {}),
           ...(event.context !== undefined ? { context: foreignJson(event.context) } : {}),
         },
         continuation: createContinuation(

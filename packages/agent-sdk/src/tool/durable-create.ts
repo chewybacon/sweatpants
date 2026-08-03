@@ -34,11 +34,11 @@ import {
   type DurableExtensionContext,
   type DurableExtensionMap,
 } from "./durable-context-extension.ts";
-import type { ToolSchemaArtifacts } from "./contract.ts";
+import { computeToolInterfaceDigest, type ToolSchemaArtifacts } from "./contract.ts";
 import type {
   ElicitDefinition,
   ElicitsMap,
-  ExtractElicitContext,
+  ExtractElicitContextInput,
   ExtractElicitResponse,
   NormalizedElicitsMap,
   ToolExtensionMetadata,
@@ -106,9 +106,9 @@ type DurableSamplingContext = {
 };
 
 type ElicitRequestFor<E> =
-  ExtractElicitContext<E> extends undefined
+  ExtractElicitContextInput<E> extends undefined
     ? { message: string }
-    : { message: string; context: ExtractElicitContext<E> };
+    : { message: string; context: ExtractElicitContextInput<E> };
 
 /** Typed durable program context bound to declared effects and elicitations. */
 export type DurableProgramContextFor<
@@ -156,6 +156,7 @@ export type DurableToolDefinition<
   readonly capabilities: { readonly elicitation: boolean; readonly sampling: boolean };
   readonly annotations: Readonly<Record<string, unknown>>;
   readonly extensions: readonly ToolExtensionMetadata[];
+  readonly interfaceDigest?: string;
   readonly manifest: DurableProgramManifest<I, O>;
   readonly program: DurableTool<I, O>["program"];
 };
@@ -421,11 +422,19 @@ function builder(state: BuilderState): unknown {
 
       const manifestElicits: Record<
         string,
-        { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }
+        {
+          response: PortableSchemaDescriptor;
+          context?: PortableSchemaDescriptor;
+          contextContract?: PortableSchemaDescriptor;
+        }
       > = {};
       const elicitArtifacts: Record<
         string,
-        { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }
+        {
+          response: PortableSchemaDescriptor;
+          context?: PortableSchemaDescriptor;
+          contextContract?: PortableSchemaDescriptor;
+        }
       > = {};
       for (const [key, definition] of Object.entries(normalizedElicits)) {
         const response = toPortableSchema(definition.response, {
@@ -445,7 +454,7 @@ function builder(state: BuilderState): unknown {
         }
         const declaration = {
           response: response.descriptor,
-          ...(context ? { context: context.descriptor } : {}),
+          ...(context ? { context: context.descriptor, contextContract: context.descriptor } : {}),
         };
         manifestElicits[key] = declaration;
         elicitArtifacts[key] = declaration;
@@ -531,6 +540,14 @@ function builder(state: BuilderState): unknown {
         elicits: Object.freeze(elicitArtifacts),
         catalog: Object.freeze(catalog),
       });
+      const interfaceDigest = computeToolInterfaceDigest({
+        name: state.name,
+        parameters: artifacts.parameters,
+        ...(artifacts.output ? { output: artifacts.output } : {}),
+        elicits: artifacts.elicits,
+        annotations: {},
+        extensions: [],
+      });
       return Object.freeze({
         ...tool,
         execution: "crank_native" as const,
@@ -547,6 +564,7 @@ function builder(state: BuilderState): unknown {
         }),
         annotations: Object.freeze({}),
         extensions: Object.freeze([]),
+        interfaceDigest,
       });
     },
   };
@@ -556,7 +574,11 @@ function contextForDeclarations(
   context: DurableProgramContext,
   elicits: Record<
     string,
-    { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }
+    {
+      response: PortableSchemaDescriptor;
+      context?: PortableSchemaDescriptor;
+      contextContract?: PortableSchemaDescriptor;
+    }
   >,
   sampling: boolean,
   extensions: DurableExtensionMap,
@@ -642,6 +664,7 @@ function contextForDeclarations(
         requestOrMessage.message,
         declaration.response,
         requestOrMessage.context,
+        declaration.contextContract ?? declaration.context,
       );
     },
   });

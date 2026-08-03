@@ -1,18 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { MessageCirclePlus, PanelLeftOpen, RefreshCcw, Terminal } from "lucide-react";
-import {
-  useChat,
-  type ChatMessage,
-  type ChatToolCall,
-  type StreamEventEntry,
-} from "@sweatpants/react-chat";
+import { MessageCirclePlus, PanelLeftOpen, RefreshCcw } from "lucide-react";
+import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pickCardPlugin } from "@/tools/pick-card";
+import { renderNestedParts } from "@/components/ChatPartTree";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { ThreadSummary } from "@/lib/threaded-chat-types";
-import { StreamInspector } from "@/components/StreamInspector";
 
 export const Route = createFileRoute("/chat/threaded/")({
   component: ThreadedChatDemo,
@@ -30,7 +25,7 @@ function shortThreadId(threadId: string): string {
 
 function summarizeThread(
   threadId: string,
-  messages: ChatMessage[],
+  messages: readonly ChatMessage[],
 ): Pick<ThreadSummary, "title" | "lastMessagePreview" | "messageCount"> {
   const visibleMessages = messages.filter(
     (message) => message.role === "user" || message.role === "assistant",
@@ -51,11 +46,11 @@ function getMessagePlainText(message: ChatMessage): string {
   return message.parts
     .map((part) => {
       if (part.type === "text" || part.type === "reasoning") {
-        return part.content;
+        return part.text;
       }
       if (part.type === "tool-call") {
-        if (typeof part.result === "string") {
-          return part.result;
+        if (typeof part.output === "string") {
+          return part.output;
         }
         return "";
       }
@@ -99,7 +94,8 @@ async function updateThread(
 }
 
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
-  const hasEmissions = toolCall.emissions.length > 0;
+  const prepared = renderNestedParts(toolCall.parts);
+  const hasRenderedChildren = prepared.length > 0;
 
   return (
     <div
@@ -111,29 +107,17 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
         Tool · {toolCall.name}
       </div>
 
-      {toolCall.emissions.map((emission) => {
-        const Component = emission.component;
-        if (!Component) {
-          return null;
-        }
+      {prepared.map((child, index) => (
+        <span key={`${toolCall.callId}:child:${index}`}>{child}</span>
+      ))}
 
-        return (
-          <Component
-            key={emission.id}
-            {...emission.props}
-            onRespond={emission.onRespond}
-            disabled={emission.status !== "pending"}
-            response={emission.response}
-          />
-        );
-      })}
+      {!hasRenderedChildren &&
+        (toolCall.state === "input-streaming" || toolCall.state === "input-available") && (
+          <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
+        )}
 
-      {!hasEmissions && (toolCall.state === "running" || toolCall.state === "pending") && (
-        <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
-      )}
-
-      {toolCall.state === "error" && toolCall.error && (
-        <div className="text-xs text-red-300">Error: {toolCall.error}</div>
+      {toolCall.state === "output-error" && toolCall.errorText && (
+        <div className="text-xs text-red-300">Error: {toolCall.errorText}</div>
       )}
     </div>
   );
@@ -142,6 +126,9 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const busy = message.parts.some(
+    (part) => (part.type === "text" || part.type === "reasoning") && part.state === "streaming",
+  );
 
   return (
     <div
@@ -155,7 +142,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           className={`mb-2 text-[11px] uppercase tracking-[0.28em] ${isUser ? "text-slate-800/70" : "text-sky-300/70"}`}
         >
           {isUser ? "You" : isSystem ? "System" : "Assistant"}
-          {message.isStreaming ? " - streaming" : ""}
+          {busy ? " - streaming" : ""}
         </div>
 
         {message.parts.map((part) => {
@@ -198,43 +185,31 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 function ThreadPanel({
   threadId,
   onMetadata,
-  onStreamEvent,
-  onStreamingChange,
-  onInspectorToggle,
-  inspectorOpen,
 }: {
   threadId: string;
   onMetadata: (
     threadId: string,
     summary: Pick<ThreadSummary, "title" | "lastMessagePreview" | "messageCount">,
   ) => void;
-  onStreamEvent: (entry: StreamEventEntry) => void;
-  onStreamingChange: (streaming: boolean) => void;
-  onInspectorToggle: () => void;
-  inspectorOpen: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { messages, isStreaming, pipelineReady, send, abort, error, session } = useChat({
+  const { messages, status, renderStatus, sendMessage, stop, error } = useChat({
     pipeline: "full",
     ...(typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("scriptedRendering") === "1"
-      ? { baseUrl: "/api/chat?scripted=rendering" }
+      ? { api: "/api/chat?scripted=rendering" }
       : {}),
-    tools: [],
     plugins: [pickCardPlugin],
     conversationId: threadId,
-    onStreamEvent,
   });
+  const busy = status === "submitted" || status === "streaming";
+  const renderReady = renderStatus === "ready";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  useEffect(() => {
-    onStreamingChange(isStreaming);
-  }, [isStreaming, onStreamingChange]);
 
   useEffect(() => {
     onMetadata(threadId, summarizeThread(threadId, messages));
@@ -244,13 +219,13 @@ function ThreadPanel({
     (event: React.FormEvent) => {
       event.preventDefault();
       const content = draft.trim();
-      if (!content || isStreaming) {
+      if (!content || busy) {
         return;
       }
-      send(content);
+      sendMessage({ text: content });
       setDraft("");
     },
-    [draft, isStreaming, send],
+    [draft, busy, sendMessage],
   );
 
   return (
@@ -262,20 +237,11 @@ function ThreadPanel({
               Durable Threads
             </div>
             <div className="font-serif text-xl text-slate-100">
-              {pipelineReady ? "Thread ready" : "Loading thread"}
+              {renderReady ? "Thread ready" : "Loading thread"}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onInspectorToggle}
-            className={cn("rounded-lg", inspectorOpen && "bg-sky-500/15 text-sky-300")}
-            title="Toggle stream inspector"
-          >
-            <Terminal className="size-4" />
-          </Button>
           <div className="rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1 text-xs text-sky-200">
             {threadId}
           </div>
@@ -306,7 +272,7 @@ function ThreadPanel({
       <div className="border-t border-slate-800/80 bg-slate-950/90 px-4 py-4 md:px-6">
         {error && (
           <div className="mb-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {error}
+            {error?.message}
           </div>
         )}
 
@@ -315,13 +281,13 @@ function ThreadPanel({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="Ask this thread to draw a card..."
-            disabled={isStreaming}
+            disabled={busy}
             className="h-14 rounded-2xl border-slate-700 bg-slate-900/90 px-5 text-base"
           />
-          {isStreaming ? (
+          {busy ? (
             <Button
               type="button"
-              onClick={abort}
+              onClick={stop}
               className="h-14 rounded-2xl bg-red-500 px-6 text-white hover:bg-red-400"
             >
               Stop
@@ -349,23 +315,6 @@ function ThreadedChatDemo() {
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [sessionMountKey, setSessionMountKey] = useState(0);
-
-  // Stream inspector state — lifted here so StreamInspector renders as a sibling of <main>
-  const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorEntries, setInspectorEntries] = useState<StreamEventEntry[]>([]);
-  const [inspectorIsStreaming, setInspectorIsStreaming] = useState(false);
-  const handleStreamEvent = useCallback((entry: StreamEventEntry) => {
-    setInspectorEntries((prev) => [...prev, entry]);
-  }, []);
-  const handleClearInspector = useCallback(() => {
-    setInspectorEntries([]);
-  }, []);
-  const handleInspectorToggle = useCallback(() => {
-    setInspectorOpen((prev) => !prev);
-  }, []);
-  const handleStreamingChange = useCallback((streaming: boolean) => {
-    setInspectorIsStreaming(streaming);
-  }, []);
 
   const persistSelection = useCallback((threadId: string | null) => {
     if (typeof window === "undefined") {
@@ -431,7 +380,6 @@ function ThreadedChatDemo() {
       setSelectedThreadId(threadId);
       persistSelection(threadId);
       setSessionMountKey((current) => current + 1);
-      setInspectorEntries([]);
     },
     [persistSelection],
   );
@@ -567,10 +515,6 @@ function ThreadedChatDemo() {
               key={`${selectedThreadId}-${sessionMountKey}`}
               threadId={selectedThreadId}
               onMetadata={handleMetadata}
-              onStreamEvent={handleStreamEvent}
-              onStreamingChange={handleStreamingChange}
-              onInspectorToggle={handleInspectorToggle}
-              inspectorOpen={inspectorOpen}
             />
           )}
 
@@ -580,15 +524,6 @@ function ThreadedChatDemo() {
             </div>
           )}
         </main>
-
-        {inspectorOpen && (
-          <StreamInspector
-            entries={inspectorEntries}
-            isStreaming={inspectorIsStreaming}
-            onClear={handleClearInspector}
-            onClose={handleInspectorToggle}
-          />
-        )}
       </div>
     </div>
   );

@@ -252,11 +252,15 @@
         "zod": "catalog:"
     },
     "devDependencies": {
+        "@ag-ui/core": "0.0.57",
         "@sweatpants/stream-bridge": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",
         "tsup": "catalog:",
         "typescript": "catalog:",
         "vitest": "catalog:"
+    },
+    "peerDependencies": {
+        "@ag-ui/core": "0.0.57"
     }
 }

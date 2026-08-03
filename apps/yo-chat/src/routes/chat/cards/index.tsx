@@ -6,6 +6,7 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
+import { renderNestedParts } from "@/components/ChatPartTree";
 import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
 import { pickCardPlugin } from "@/tools/pick-card";
 
@@ -14,36 +15,25 @@ export const Route = createFileRoute("/chat/cards/")({
 });
 
 /**
- * Renders a tool call part with its inline emissions.
+ * Renders a tool call part with its prepared recursive children.
  */
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
-  const hasEmissions = toolCall.emissions.length > 0;
+  const prepared = renderNestedParts(toolCall.parts);
+  const hasRenderedChildren = prepared.length > 0;
 
   return (
     <div className="my-2">
-      {toolCall.emissions.map((emission) => {
-        const Component = emission.component;
-        if (!Component) {
-          return null;
-        }
+      {prepared.map((child, index) => (
+        <span key={`${toolCall.callId}:child:${index}`}>{child}</span>
+      ))}
 
-        return (
-          <Component
-            key={emission.id}
-            {...emission.props}
-            onRespond={emission.onRespond}
-            disabled={emission.status !== "pending"}
-            response={emission.response}
-          />
-        );
-      })}
+      {!hasRenderedChildren &&
+        (toolCall.state === "input-streaming" || toolCall.state === "input-available") && (
+          <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
+        )}
 
-      {!hasEmissions && (toolCall.state === "running" || toolCall.state === "pending") && (
-        <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
-      )}
-
-      {toolCall.state === "error" && toolCall.error && (
-        <div className="text-xs text-red-400">Error: {toolCall.error}</div>
+      {toolCall.state === "output-error" && toolCall.errorText && (
+        <div className="text-xs text-red-400">Error: {toolCall.errorText}</div>
       )}
     </div>
   );
@@ -55,6 +45,9 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const busy = message.parts.some(
+    (part) => (part.type === "text" || part.type === "reasoning") && part.state === "streaming",
+  );
 
   return (
     <div className={`mb-8 ${isUser ? "text-right" : ""}`}>
@@ -65,9 +58,7 @@ function Message({ message }: { message: ChatMessage }) {
           }`}
         >
           {isUser ? "You" : isSystem ? "System" : "Assistant"}
-          {message.isStreaming && (
-            <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>
-          )}
+          {busy && <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>}
         </div>
 
         <div
@@ -109,9 +100,7 @@ function Message({ message }: { message: ChatMessage }) {
             return null;
           })}
 
-          {message.isStreaming && (
-            <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-          )}
+          {busy && <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />}
         </div>
       </div>
     </div>
@@ -119,28 +108,29 @@ function Message({ message }: { message: ChatMessage }) {
 }
 
 function CardsChatDemo() {
-  const { messages, streamingMessage, isStreaming, pipelineReady, send, abort, reset, error } =
-    useChat({
-      pipeline: "markdown",
-      // Only the pick-card plugin - focused demo
-      tools: [],
-      plugins: [pickCardPlugin],
-      initialToolChoice: "required",
-    });
+  const { messages, status, renderStatus, sendMessage, stop, setMessages, error } = useChat({
+    conversationId: "cards-chat",
+    pipeline: "markdown",
+    // Only the pick-card plugin - focused demo
+    plugins: [pickCardPlugin],
+  });
+  const busy = status === "submitted" || status === "streaming";
+  const renderReady = renderStatus === "ready";
+  const clear = () => setMessages([]);
 
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingMessage?.parts.length]);
+  }, [messages, messages.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) {
+    if (!input.trim() || busy) {
       return;
     }
-    send(input.trim());
+    sendMessage({ text: input.trim() });
     setInput("");
   };
 
@@ -154,7 +144,7 @@ function CardsChatDemo() {
             <p className="text-slate-400 text-sm">Multi-turn tool calling with the pickCard tool</p>
           </div>
           <div className="text-xs">
-            {pipelineReady ? (
+            {renderReady ? (
               <span className="text-emerald-500">Pipeline ready</span>
             ) : (
               <span className="text-amber-500 animate-pulse">Loading pipeline...</span>
@@ -164,7 +154,7 @@ function CardsChatDemo() {
 
         {/* Messages */}
         <div className="bg-slate-900 rounded-xl p-6 min-h-[60vh] max-h-[70vh] overflow-y-auto mb-6 shadow-inner border border-slate-800">
-          {messages.length === 0 && !isStreaming && (
+          {messages.length === 0 && !busy && (
             <div className="text-slate-600 text-center py-20 flex flex-col items-center gap-4">
               <div className="text-4xl opacity-20">~</div>
               <p>Ask me to pick a card for you!</p>
@@ -189,15 +179,9 @@ function CardsChatDemo() {
             <Message key={msg.id} message={msg} />
           ))}
 
-          {streamingMessage && streamingMessage.parts.length > 0 && (
-            <div className="text-xs text-slate-600 mt-2">
-              Streaming: {streamingMessage.parts.length} parts
-            </div>
-          )}
-
           {error && (
             <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 my-4">
-              <strong>Error:</strong> {error}
+              <strong>Error:</strong> {error?.message}
             </div>
           )}
 
@@ -210,16 +194,16 @@ function CardsChatDemo() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isStreaming ? "Waiting for response..." : "Type a message..."}
-            disabled={isStreaming}
+            placeholder={busy ? "Waiting for response..." : "Type a message..."}
+            disabled={busy}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
 
           <div className="absolute right-2 top-2 bottom-2 flex gap-2">
-            {isStreaming ? (
+            {busy ? (
               <button
                 type="button"
-                onClick={abort}
+                onClick={stop}
                 className="h-full px-6 bg-red-900/20 hover:bg-red-900/40 text-red-500 rounded-lg font-medium transition-colors border border-red-900/30"
               >
                 Stop
@@ -238,8 +222,8 @@ function CardsChatDemo() {
 
         <div className="mt-4 flex justify-between text-xs text-slate-600 px-2">
           <button
-            onClick={reset}
-            disabled={isStreaming || messages.length === 0}
+            onClick={clear}
+            disabled={busy || messages.length === 0}
             className="hover:text-slate-400 disabled:opacity-50 transition-colors"
           >
             Clear History

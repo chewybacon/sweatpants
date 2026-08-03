@@ -65,7 +65,6 @@ describe("yo-chat AgentCore runtime smoke", () => {
 
     vi.doMock("../server/tools", () => ({
       activeAgentCoreToolNames: () => ["book_flight"],
-      activePluginTools: [bookFlight],
       allTools: [bookFlight],
     }));
 

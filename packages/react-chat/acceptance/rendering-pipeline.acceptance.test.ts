@@ -7,7 +7,7 @@ import {
   preloadProcessors,
   runPipelineStreaming,
   shiki,
-} from "../src/pipeline/index.ts";
+} from "@sweatpants/chat-client/pipeline";
 import type { Frame } from "@sweatpants/chat-core";
 
 const markdownFixture = `# Rendering fixture

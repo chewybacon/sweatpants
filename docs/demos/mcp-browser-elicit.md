@@ -18,8 +18,8 @@ Optional: decline/cancel paths also return structured terminal results.
 
 ```ts
 import { createTool } from "@sweatpants/agent-sdk";
-import { makePlugin } from "@sweatpants/chat-core";
-import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
+import { makePlugin } from "@sweatpants/react-chat";
+import { CardPicker } from "./CardPicker";
 
 export const pickCard = createTool("pick_card")
   .description("Draw cards and let the user pick one")
@@ -30,11 +30,14 @@ export const pickCard = createTool("pick_card")
     // return coherent result
   });
 
-export const pickCardPlugin = makePlugin(pickCard).onElicit({
-  pickCard: function* (req, ctx) {
-    // browser UI via ctx.render(...)
-  },
-});
+export const pickCardPlugin = makePlugin(pickCard)
+  .onElicit({
+    pickCard: function* (input, ctx) {
+      const picked = yield* ctx.render(CardPicker, { message: input.message });
+      return { action: "accept" as const, content: picked };
+    },
+  })
+  .build();
 ```
 
 ## Automated gate

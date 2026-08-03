@@ -1,328 +1,302 @@
 /**
- * Plugin Builder
+ * Framework-neutral client elicitation contracts.
  *
- * Derives a framework-native plugin from any execution-neutral `ToolContract`
- * (ordinary `createTool` definitions or crank-native `createDurableTool`
- * definitions). The plugin owns typed browser elicitation handlers only;
- * execution placement stays with deployment composition.
- *
- * ## Usage
- *
- * @example Derive a plugin from a tool contract
- * ```typescript
- * const bookFlight = createTool('book_flight')
- *   .description('Book a flight')
- *   .parameters(z.object({ destination: z.string() }))
- *   .elicits({
- *     pickFlight: z.object({ flightId: z.string() }),
- *     confirm: z.object({ ok: z.boolean() }),
- *   })
- *   .execute(function* (params, ctx) { ... })
- *
- * export const bookFlightPlugin = makePlugin(bookFlight)
- *   .onElicit({
- *     pickFlight: function* (req, ctx) {
- *       const { flightId } = yield* ctx.render(FlightPicker, { ... })
- *       return { action: 'accept', content: { flightId } }
- *     },
- *     confirm: function* (req, ctx) {
- *       const { ok } = yield* ctx.render(Confirm, { message: req.message })
- *       return { action: ok ? 'accept' : 'decline', content: { ok } }
- *     },
- *   })
- *   .build()
- * ```
- *
- * @example Register on client; route execution in server composition
- * ```typescript
- * // Client
- * useChat({ plugins: [bookFlightPlugin] })
- *
- * // Server composition routes by plugin.server.execution:
- * //  - "ordinary"      → ToolSession / worker runtime
- * //  - "crank_native"  → durable ProgramDriver placement
- * ```
- *
- * @packageDocumentation
+ * This module owns only the client interaction contract. It does not register
+ * executable tools, expose server inventory, or persist frontend state.
+ * Frontend packages specialize the capability type and expose their own
+ * `makePlugin` facade.
  */
 import type { Operation } from "effection";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-export type ComponentTypeLike<TProps = any> =
-  | ((props: TProps) => unknown)
-  | { displayName?: string; name?: string };
-import type {
-  ElicitDefinition,
-  ElicitExchangeCompletion,
-  ElicitsMap,
-  NormalizedElicitsMap,
-  ToolExecutionKind,
-  ToolSchemaArtifacts,
+import { assertJson, canonicalJson, sha256, type Json } from "@sweatpants/foundation";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
+import {
+  computeToolInterfaceDigest,
+  type ElicitDefinition,
+  type ElicitsMap,
+  type ExtractElicitContext,
+  type ExtractElicitResponseInput,
+  type ToolContract,
+  type ToolElicitSchemaArtifact,
+  type ToolExecutionKind,
+  type ElicitExchangeCompletion,
 } from "@sweatpants/agent-sdk";
-import type { ElicitRequest } from "./mcp-tool-types.ts";
 
-export interface RenderableProps<TResponse> {
-  onRespond: (value: TResponse) => void;
-  disabled?: boolean;
-  response?: TResponse;
-}
-export type ExtractResponse<TProps> = TProps extends RenderableProps<infer R> ? R : void;
-export type UserProps<TProps> = Omit<TProps, keyof RenderableProps<unknown>>;
+/** Domain separation required for client binding identity. */
+export const CLIENT_ELICIT_BINDING_DOMAIN = "sweatpants.client-elicit-binding\n";
 
-// =============================================================================
-// CLIENT CONTEXT (what onElicit handlers receive)
-// =============================================================================
-
-/**
- * Context available to onElicit handlers.
- */
-export interface PluginClientContext<TElicitRequest = ElicitRequest<string, any>> {
-  /** Tool call ID */
-  callId: string;
-
-  /** Abort signal for cancellation */
-  signal: AbortSignal;
-
-  /** The current elicitation request */
-  elicitRequest: TElicitRequest;
-
-  /**
-   * Render a React component and wait for user response.
-   */
-  render<TProps, TResponse = ExtractResponse<TProps>>(
-    Component: ComponentTypeLike<TProps>,
-    props: UserProps<TProps>,
-  ): Operation<TResponse>;
-
-  /** Report progress to the UI. */
-  reportProgress?(message: string): Operation<void>;
+/** Correlation facts supplied to an authored handler as immutable data. */
+export interface ElicitHandlerMetadata<TKey extends string = string> {
+  readonly id: {
+    readonly toolName: string;
+    readonly key: TKey;
+    readonly callId: string;
+    readonly seq: number;
+  };
 }
 
-// =============================================================================
-// CONTRACT SHAPE ACCEPTED BY makePlugin
-// =============================================================================
-
-/**
- * Minimal execution-neutral contract surface consumed by `makePlugin`. Both
- * ordinary `ToolDefinition` and durable `DurableToolDefinition` satisfy it.
- * No callable execution surface is required.
- */
-export interface PluginToolContract {
-  readonly execution: ToolExecutionKind;
-  readonly name: string;
-  readonly description: string;
-  readonly elicits: NormalizedElicitsMap<any>;
-  readonly artifacts: ToolSchemaArtifacts;
+/** Strongly typed input constructed after client-boundary validation. */
+export interface ElicitHandlerInput<TDefinition> {
+  readonly message: string;
+  readonly context: ExtractElicitContext<TDefinition>;
 }
 
-/** Pre-validation (Standard Schema input) content type of one normalized elicit. */
-export type NormalizedElicitResponseInput<D> = D extends {
-  readonly response: StandardSchemaV1<infer I, any>;
-}
-  ? I
-  : unknown;
-
-// =============================================================================
-// ELICIT HANDLER TYPES
-// =============================================================================
-
 /**
- * Handler function for a single elicitation key.
- *
- * Handler-produced accepted content is typed as the declared content schema's
- * Standard Schema **input** type; the tool/program receives the validated
- * **output** type after command-lane validation.
+ * Canonical handler shape. The capability type is supplied by a frontend
+ * package; the shared core does not constrain native handles or props.
  */
-export type ElicitHandler<TKey extends string, TDef> = (
-  req: ElicitRequest<TKey, any>,
-  ctx: PluginClientContext<ElicitRequest<TKey, any>>,
-) => Operation<ElicitExchangeCompletion<NormalizedElicitResponseInput<TDef>>>;
+export type ElicitHandler<TKey extends string, TDefinition, TCapabilities> = (
+  input: ElicitHandlerInput<TDefinition>,
+  capabilities: TCapabilities,
+  metadata: ElicitHandlerMetadata<TKey>,
+) => Operation<ElicitExchangeCompletion<ExtractElicitResponseInput<TDefinition>>>;
 
-/**
- * Exhaustive handler map: every key declared by the contract's elicitation
- * surface must have exactly one handler.
- */
-export type ElicitHandlers<TNormalized> = {
-  [K in keyof TNormalized & string]: ElicitHandler<K, TNormalized[K]>;
+export type ElicitHandlers<TNormalized, TCapabilities> = {
+  [K in keyof TNormalized & string]: ElicitHandler<K, TNormalized[K], TCapabilities>;
 };
 
-// =============================================================================
-// PLUGIN TYPES
-// =============================================================================
-
-/**
- * Execution-discriminated server-side registration.
- *
- * Registration never implies ordinary ToolSession execution: application
- * composition reads `execution` and routes the contract explicitly. Durable
- * contracts MUST NOT be installed into ordinary execution registries.
- */
-export interface PluginServerRegistration<
-  TContract extends PluginToolContract = PluginToolContract,
-> {
-  /** Tool name (for lookup) */
-  toolName: string;
-  /** Execution kind copied from the contract. */
-  execution: ToolExecutionKind;
-  /** The execution-neutral public contract this plugin serves. */
-  contract: TContract;
+/** Exact interface facts committed by a client binding digest. */
+export interface ClientElicitBindingIdentityInput {
+  readonly ownerInterfaceDigest: string;
+  readonly key: string;
+  readonly response: PortableSchemaDescriptor;
+  readonly context: PortableSchemaDescriptor | null;
+  readonly clientMetadata: Json;
 }
 
-/** Hydration hook restoring live components onto a replayed execution trace. */
-export type PluginReplayTraceHook = (trace: any) => Operation<any>;
-
-/**
- * Client-side registration for a plugin (execution-neutral: tool name,
- * elicitation handlers, and public schema metadata only).
- */
-export interface PluginClientRegistration<TNormalized = NormalizedElicitsMap<ElicitsMap>> {
-  /** Tool name (for matching incoming elicitation requests) */
-  toolName: string;
-
-  /** Elicitation handlers (exhaustive map) */
-  handlers: ElicitHandlers<TNormalized>;
-
-  /** Normalized elicitation declarations (runtime Standard Schemas). */
-  schemas: TNormalized;
-
-  /** Portable elicit schema artifacts (descriptors only). */
-  artifacts?: ToolSchemaArtifacts["elicits"];
-
-  /** Optional replay hydration hook (explicit registration metadata). */
-  replayTrace?: PluginReplayTraceHook;
+/** Compute the lowercase hexadecimal binding digest defined by REQ-038. */
+export function computeClientElicitBindingId(input: ClientElicitBindingIdentityInput): string {
+  const canonical = canonicalJson({
+    ownerInterfaceDigest: input.ownerInterfaceDigest,
+    key: input.key,
+    response: input.response,
+    context: input.context,
+    clientMetadata: assertJson(input.clientMetadata),
+  });
+  return sha256(`${CLIENT_ELICIT_BINDING_DOMAIN}${canonical}`);
 }
 
-/**
- * A complete plugin derived from one execution-neutral tool contract.
- */
-export interface McpPlugin<TContract extends PluginToolContract = PluginToolContract> {
-  /** Execution-discriminated server-side registration. */
-  server: PluginServerRegistration<TContract>;
-
-  /** Client-side registration */
-  client: PluginClientRegistration<TContract["elicits"]>;
-
-  /** Original contract (for advanced use cases) */
-  tool: TContract;
+/** Runtime binding installed in a client-only registry. */
+export interface ClientElicitBinding<TDefinition = unknown, TCapabilities = unknown> {
+  readonly bindingId: string;
+  readonly ownerInterfaceDigest: string;
+  readonly toolName: string;
+  readonly key: string;
+  readonly responseContract: PortableSchemaDescriptor;
+  readonly contextContract?: PortableSchemaDescriptor;
+  readonly responseSchema: StandardSchemaV1;
+  readonly contextSchema?: StandardSchemaV1;
+  readonly artifacts: ToolElicitSchemaArtifact;
+  readonly clientMetadata: Json;
+  readonly handler: ElicitHandler<string, TDefinition, TCapabilities>;
 }
 
-// =============================================================================
-// PLUGIN BUILDER
-// =============================================================================
+/** The only registration shape consumed by the client dispatcher. */
+export interface ClientPluginRegistration<TCapabilities = unknown> {
+  readonly toolName: string;
+  readonly ownerInterfaceDigest: string;
+  readonly bindings: ReadonlyMap<string, ClientElicitBinding<unknown, TCapabilities>>;
+}
 
-/**
- * Builder for creating a plugin from a tool contract.
- */
-export interface PluginBuilder<TContract extends PluginToolContract> {
-  /**
-   * Define exhaustive handlers for all elicitation keys declared by the
-   * contract. Missing, extra, or wrongly typed handlers are compile errors.
-   */
-  onElicit(handlers: ElicitHandlers<TContract["elicits"]>): PluginBuilderWithHandlers<TContract>;
+/** Framework-facing plugin object. It intentionally has no server registration. */
+export interface ClientPlugin<TCapabilities = unknown> {
+  readonly client: ClientPluginRegistration<TCapabilities>;
+}
+
+export type PluginToolContract<TElicits extends ElicitsMap = ElicitsMap> = ToolContract<
+  string,
+  any,
+  any,
+  TElicits,
+  any
+> & {
+  readonly execution: ToolExecutionKind;
+};
+
+export interface PluginBuilder<TContract extends PluginToolContract, TCapabilities> {
+  onElicit(
+    handlers: ElicitHandlers<TContract["elicits"], TCapabilities>,
+  ): PluginBuilderWithHandlers<TCapabilities>;
+}
+
+export interface PluginBuilderWithHandlers<TCapabilities> {
+  build(): ClientPlugin<TCapabilities>;
 }
 
 /**
- * Builder after handlers are defined - ready to build.
+ * Build the framework-neutral portion of a client plugin. Frontend packages
+ * call this with their complete capability context and re-export a facade.
  */
-export interface PluginBuilderWithHandlers<TContract extends PluginToolContract> {
-  /** Attach an explicit replay hydration hook to the client registration. */
-  onReplay(hook: PluginReplayTraceHook): PluginBuilderWithHandlers<TContract>;
-
-  /**
-   * Build the final plugin.
-   */
-  build(): McpPlugin<TContract>;
-}
-
-// =============================================================================
-// BUILDER IMPLEMENTATION
-// =============================================================================
-
-/**
- * Create a plugin from any execution-neutral tool contract.
- *
- * The contract must declare its elicitation surface with `.elicits({...})`.
- * The returned builder requires exhaustive handlers for every declared key.
- * Building a plugin never installs the tool into an execution registry.
- */
-export function makePlugin<TContract extends PluginToolContract>(
+export function createPluginBuilder<TCapabilities, TContract extends PluginToolContract>(
   tool: TContract,
-): PluginBuilder<TContract> {
+): PluginBuilder<TContract, TCapabilities> {
   return {
     onElicit(handlers) {
-      let replayTrace: PluginReplayTraceHook | undefined;
-      const withHandlers: PluginBuilderWithHandlers<TContract> = {
-        onReplay(hook) {
-          replayTrace = hook;
-          return withHandlers;
-        },
-        build(): McpPlugin<TContract> {
-          return {
-            tool,
-
-            server: {
+      return {
+        build(): ClientPlugin<TCapabilities> {
+          const ownerInterfaceDigest =
+            tool.interfaceDigest ??
+            computeToolInterfaceDigest({
+              name: tool.name,
+              parameters: tool.artifacts.parameters,
+              ...(tool.artifacts.output ? { output: tool.artifacts.output } : {}),
+              elicits: tool.artifacts.elicits,
+              annotations: tool.annotations,
+              extensions: tool.extensions,
+            });
+          const bindings = new Map<string, ClientElicitBinding<unknown, TCapabilities>>();
+          for (const key of Object.keys(tool.elicits)) {
+            const definition = tool.elicits[key] as ElicitDefinition;
+            const artifact = tool.artifacts.elicits[key];
+            if (!artifact) {
+              throw new Error(
+                `Tool "${tool.name}" has no schema artifact for elicitation "${key}"`,
+              );
+            }
+            const handler = handlers[key as keyof typeof handlers] as ElicitHandler<
+              string,
+              unknown,
+              TCapabilities
+            >;
+            if (typeof handler !== "function") {
+              throw new Error(`Tool "${tool.name}" has no handler for elicitation "${key}"`);
+            }
+            const clientMetadata = assertJson(definition.metadata ?? null);
+            const bindingId = computeClientElicitBindingId({
+              ownerInterfaceDigest,
+              key,
+              response: artifact.response,
+              context: artifact.context ?? null,
+              clientMetadata,
+            });
+            const binding: ClientElicitBinding<unknown, TCapabilities> = {
+              bindingId,
+              ownerInterfaceDigest,
               toolName: tool.name,
-              execution: tool.execution,
-              contract: tool,
-            },
-
-            client: {
+              key,
+              responseContract: artifact.response,
+              ...(artifact.context ? { contextContract: artifact.context } : {}),
+              responseSchema: definition.response,
+              ...(definition.context ? { contextSchema: definition.context } : {}),
+              artifacts: artifact,
+              clientMetadata,
+              handler,
+            };
+            bindings.set(bindingId, Object.freeze(binding));
+          }
+          return Object.freeze({
+            client: Object.freeze({
               toolName: tool.name,
-              handlers,
-              schemas: tool.elicits as TContract["elicits"],
-              artifacts: tool.artifacts.elicits,
-              ...(replayTrace ? { replayTrace } : {}),
-            },
-          };
+              ownerInterfaceDigest,
+              bindings,
+            }),
+          });
         },
       };
-      return withHandlers;
     },
   };
 }
 
-// =============================================================================
-// TYPE HELPERS
-// =============================================================================
-
-/**
- * Extract the normalized elicits map from a plugin.
- */
-export type InferElicits<T> = T extends McpPlugin<infer C> ? C["elicits"] : never;
-
-/**
- * Extract the contract type from a plugin.
- */
-export type InferPluginTool<T> = T extends McpPlugin<infer C> ? C : never;
-
-/**
- * Any plugin (for arrays/registries).
- */
-export type AnyMcpPlugin = McpPlugin<PluginToolContract>;
-
-/**
- * Structural type for accepting full plugin handles in arrays.
- *
- * `useChat` receives concrete plugin objects and derives client-side
- * elicitation handlers plus the server-side `enabledPlugins` list from them.
- * Heterogeneous plugins with different elicit maps all satisfy this shape.
- */
-export interface PluginHandleInput {
-  /** The tool contract */
-  tool: unknown;
-  /** Execution-discriminated server registration */
-  server: { toolName: string; execution: ToolExecutionKind; contract: unknown };
-  /** Client-side registration (handlers + tool name) */
-  client: PluginClientRegistrationInput;
+/** Generic facade for non-framework callers and tests. */
+export function makePlugin<TContract extends PluginToolContract, TCapabilities = unknown>(
+  tool: TContract,
+): PluginBuilder<TContract, TCapabilities> {
+  return createPluginBuilder<TCapabilities, TContract>(tool);
 }
 
-/**
- * Structural type for accepting plugin client registrations in arrays.
- */
-export interface PluginClientRegistrationInput {
-  toolName: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handlers: Record<string, (req: any, ctx: any) => Operation<ElicitExchangeCompletion<unknown>>>;
-  schemas: Record<string, ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>>;
-  artifacts?: ToolSchemaArtifacts["elicits"];
-  replayTrace?: PluginReplayTraceHook;
+/** Registry keyed by exact binding identity, never by tool name and key alone. */
+export interface PluginRegistry<TCapabilities = unknown> {
+  register(plugin: ClientPluginRegistration<TCapabilities>): void;
+  get(bindingId: string): ClientElicitBinding<unknown, TCapabilities> | undefined;
+  has(bindingId: string): boolean;
+  bindings(): readonly ClientElicitBinding<unknown, TCapabilities>[];
+  toolNames(): string[];
+  readonly size: number;
+  onUpdate(listener: () => void): () => void;
+}
+
+/** Create an exact-binding client registry. */
+export function createPluginRegistry<TCapabilities = unknown>(): PluginRegistry<TCapabilities> {
+  const bindings = new Map<string, ClientElicitBinding<unknown, TCapabilities>>();
+  const listeners = new Set<() => void>();
+  return {
+    register(plugin) {
+      for (const [bindingId, binding] of plugin.bindings) {
+        const previous = bindings.get(bindingId);
+        if (previous && previous !== binding) {
+          throw new Error(`Client binding "${bindingId}" is already registered`);
+        }
+        bindings.set(bindingId, binding);
+      }
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+    get(bindingId) {
+      return bindings.get(bindingId);
+    },
+    has(bindingId) {
+      return bindings.has(bindingId);
+    },
+    bindings() {
+      return [...bindings.values()];
+    },
+    toolNames() {
+      return [...new Set([...bindings.values()].map((binding) => binding.toolName))];
+    },
+    get size() {
+      return bindings.size;
+    },
+    onUpdate(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+export function createPluginRegistryFrom<TCapabilities = unknown>(
+  plugins: readonly ClientPluginRegistration<TCapabilities>[],
+): PluginRegistry<TCapabilities> {
+  const registry = createPluginRegistry<TCapabilities>();
+  for (const plugin of plugins) {
+    registry.register(plugin);
+  }
+  return registry;
+}
+
+/** Transport-neutral raw request consumed by the dispatcher. */
+export interface RawClientElicit {
+  readonly elicitId: string;
+  readonly bindingId: string;
+  readonly toolName: string;
+  readonly key: string;
+  readonly message: string;
+  readonly callId: string;
+  readonly seq: number;
+  readonly context?: Json;
+  readonly responseContract: PortableSchemaDescriptor;
+  readonly contextContract?: PortableSchemaDescriptor;
+  readonly placement: {
+    readonly nodeId: string;
+    readonly parentNodeId: string | null;
+    readonly sequence: number;
+  };
+}
+
+export type ClientElicitRequest = RawClientElicit;
+
+/** Type predicate used by adapters before handing a request to the dispatcher. */
+export function hasDeclaredContext(request: RawClientElicit): boolean {
+  return request.contextContract !== undefined;
+}
+
+/** Convert a raw request to the authored handler input after validation. */
+export function createResolvedHandlerInput<TDefinition>(
+  request: Pick<RawClientElicit, "message" | "context">,
+  context: ExtractElicitContext<TDefinition>,
+): ElicitHandlerInput<TDefinition> {
+  return {
+    message: request.message,
+    context,
+  };
 }

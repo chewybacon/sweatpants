@@ -11,10 +11,21 @@
  */
 import type { Plugin } from "vite";
 import { toolDiscoveryPlugin } from "./tool-discovery.ts";
+import { clientContractPlugin } from "./client-contract-compiler.ts";
 import type { ToolDiscoveryOptions } from "./types.ts";
 
 export type { ToolDiscoveryOptions };
-export { toolDiscoveryPlugin };
+export { toolDiscoveryPlugin, clientContractPlugin };
+export {
+  analyzeClientContractSource,
+  generateClientContractModule,
+  ClientContractCompilerError,
+  CLIENT_CONTRACT_QUERY,
+} from "./client-contract-compiler.ts";
+export type {
+  ClientContractAnalysis,
+  ClientContractDiagnosticCode,
+} from "./client-contract-compiler.ts";
 export { nodeWorkerPlugin } from "./node-worker-plugin.ts";
 
 // Test utilities - exported for testing discovery logic without file I/O
@@ -66,6 +77,7 @@ export function frameworkPlugin(options: FrameworkOptions = {}): Plugin[] {
   if (options.tools !== false) {
     plugins.push(toolDiscoveryPlugin(options.tools));
   }
+  plugins.push(clientContractPlugin());
 
   return plugins;
 }

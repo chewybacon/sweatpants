@@ -17,7 +17,6 @@ export interface ToolExposureRequest {
   request?: unknown;
   persona?: unknown;
   enabledTools?: true | string[];
-  enabledPlugins?: string[];
   sampleTools?: SamplingToolDefinitionLike[];
   metadata?: Record<string, unknown>;
 }
@@ -68,17 +67,6 @@ export const defaultToolExposurePolicy: ToolExposurePolicy = {
     if (request.enabledTools !== true && Array.isArray(request.enabledTools)) {
       const enabled = new Set(request.enabledTools);
       selected = selected.filter((entry) => enabled.has(entry.definition.name));
-    }
-
-    if (request.enabledPlugins && request.enabledPlugins.length > 0) {
-      const enabled = new Set(request.enabledPlugins);
-      const existing = new Set(selected.map((entry) => entry.definition.name));
-      selected = [
-        ...selected,
-        ...entries.filter(
-          (entry) => enabled.has(entry.definition.name) && !existing.has(entry.definition.name),
-        ),
-      ];
     }
 
     return selected.map((entry) => stripDefinition(entry.definition));

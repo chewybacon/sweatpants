@@ -20,8 +20,8 @@ Conversation identity is stored in `localStorage` for this demo route.
 import { useChat } from "@sweatpants/react-chat";
 
 // useChat reconnects via conversation id + durable handler protocol
-const { messages, send, isStreaming } = useChat({
-  baseUrl: "/api/chat",
+const { messages, sendMessage, status } = useChat({
+  api: "/api/chat",
   conversationId,
 });
 ```

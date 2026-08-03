@@ -22,7 +22,19 @@ import {
 // =============================================================================
 
 const CellSchema = z.union([z.literal("X"), z.literal("O"), z.null()]);
-const BoardSchema = z.array(CellSchema).length(9).describe("Board state: 9 cells");
+const BoardSchema = z
+  .tuple([
+    CellSchema,
+    CellSchema,
+    CellSchema,
+    CellSchema,
+    CellSchema,
+    CellSchema,
+    CellSchema,
+    CellSchema,
+    CellSchema,
+  ])
+  .describe("Board state: 9 cells");
 
 const LastMoveSchema = z.object({
   position: z.number().min(0).max(8),

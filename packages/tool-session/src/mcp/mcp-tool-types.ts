@@ -43,7 +43,7 @@ import type {
   ElicitsMap,
   LogLevel,
   ExtractElicitResponse,
-  ExtractElicitContext,
+  ExtractElicitContextInput,
   ToolSamplingCtx,
   ToolElicitResult,
 } from "@sweatpants/agent-sdk";
@@ -197,11 +197,8 @@ export interface ElicitId {
 /**
  * Request object passed to elicitation handlers.
  *
- * Context data (e.g., flights, seatMap) is transported via the `x-elicit-context`
- * extension in the schema and as a boundary-encoded section in the message.
- * Use `getElicitContext(req)` to extract it.
- *
- * Use the sibling `getElicitContext` helper to read this extension.
+ * Context data is carried directly by the internal client elicitation request;
+ * protocol adapters may encode it at their external wire boundary.
  */
 export interface ElicitRequest<
   TKey extends string = string,
@@ -225,16 +222,12 @@ export interface ElicitRequest<
   /**
    * Message to display to the user.
    *
-   * May contain a boundary-encoded context section at the end.
-   * Use `getElicitContext(req)` to extract context and get clean message.
+   * Message authored by the producer; context is carried separately.
    */
   message: string;
 
   /**
-   * Schema in both forms.
-   *
-   * The `json` schema may contain `x-elicit-context` extension with context data.
-   * Use `getElicitContext(req)` to extract it.
+   * Authored response schema in Standard Schema and portable JSON forms.
    */
   schema: {
     standard: TSchema;
@@ -426,9 +419,11 @@ export interface McpToolContextWithElicits<
    */
   elicit<K extends keyof TElicits & string>(
     key: K,
-    options: { message: string } & ExtractElicitContext<TElicits[K]>,
+    options: ExtractElicitContextInput<TElicits[K]> extends undefined
+      ? { message: string }
+      : { message: string; context: ExtractElicitContextInput<TElicits[K]> },
   ): Operation<
-    ToolElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>
+    ToolElicitResult<ExtractElicitContextInput<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>
   >;
 
   // ---------------------------------------------------------------------------

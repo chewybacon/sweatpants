@@ -12,7 +12,6 @@
  */
 import { call, run, sleep, spawn, each, type Operation } from "effection";
 import { createChatSession, type ChatState, type ElicitState } from "@sweatpants/chat-core";
-import type { PluginHandleInput } from "@sweatpants/tool-session/mcp";
 import { withChatFetch, type ChatBinding, type ChatFetch } from "./chat-fetch.ts";
 import { createTranscriptCollector, normalizeStreamEvent, type Transcript } from "./transcript.ts";
 
@@ -46,7 +45,7 @@ export interface RunChatFlowOptions {
    * and returns it in the X-Conversation-Id response header.
    */
   conversationId?: string;
-  plugins?: PluginHandleInput[];
+  plugins?: unknown[];
   tools?: unknown[];
   enabledTools?: string[] | boolean;
   systemPrompt?: string;
@@ -152,7 +151,6 @@ export async function runChatFlow(
       // needs the same conversationId on every chat POST.
       const session = yield* createChatSession({
         baseUrl: binding.baseUrl,
-        ...(options.plugins ? { plugins: options.plugins } : {}),
         ...(options.tools ? { tools: options.tools } : {}),
         ...(options.enabledTools !== undefined ? { enabledTools: options.enabledTools } : {}),
         ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
@@ -201,7 +199,7 @@ export async function runChatFlow(
         const turn = nextTurn.value;
         const respond = turn.respondToElicit ?? (() => ({ action: "decline" }));
         session.dispatch({ type: "send", content: turn.message });
-        // Give the send a beat to flip isStreaming before we poll for settle.
+        // Give the send a beat to flip busy before we poll for settle.
         yield* sleep(pollMs);
 
         let quietSince: number | null = null;
@@ -250,7 +248,7 @@ export async function runChatFlow(
             continue;
           }
 
-          if (!state.isStreaming) {
+          if (!state.active) {
             const now = Date.now();
             if (quietSince === null) {
               quietSince = now;

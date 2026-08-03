@@ -2641,10 +2641,12 @@ function isManifestSnapshot(value: unknown): boolean {
     Object.values(value["elicits"]).every(
       (declaration) =>
         isJsonRecord(declaration) &&
-        hasOnlyKeys(declaration, ["response"], ["context"]) &&
+        hasOnlyKeys(declaration, ["response"], ["context", "contextContract"]) &&
         isSchemaDescriptorSnapshot(declaration["response"]) &&
         (declaration["context"] === undefined ||
-          isSchemaDescriptorSnapshot(declaration["context"])),
+          isSchemaDescriptorSnapshot(declaration["context"])) &&
+        (declaration["contextContract"] === undefined ||
+          isSchemaDescriptorSnapshot(declaration["contextContract"])),
     ) &&
     isJsonRecord(effects) &&
     Object.entries(effects).every(
@@ -2799,10 +2801,16 @@ function isDescriptorSnapshot(value: unknown): boolean {
       );
     case "elicit":
       return (
-        hasOnlyKeys(value, ["kind", "key", "message", "response"], ["context"]) &&
+        hasOnlyKeys(
+          value,
+          ["kind", "key", "message", "response"],
+          ["context", "contextContract"],
+        ) &&
         typeof value["key"] === "string" &&
         typeof value["message"] === "string" &&
-        isSchemaDescriptorSnapshot(value["response"])
+        isSchemaDescriptorSnapshot(value["response"]) &&
+        (value["contextContract"] === undefined ||
+          isSchemaDescriptorSnapshot(value["contextContract"]))
       );
     case "wait": {
       const hasAbsolute =

@@ -33,7 +33,6 @@ import {
   call,
   useAbortSignal,
 } from "effection";
-import { encodeElicitContext } from "../elicit-context/index.ts";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import { parseToolParameters, toToolParameterJsonSchema } from "../tool-parameters.ts";
@@ -51,7 +50,7 @@ import type {
   SamplesMap,
   ToolDefinition,
   ToolElicitResult,
-  ExtractElicitContext,
+  ExtractElicitContextInput,
   ExtractElicitResponse,
   ToolSampleConfig,
   SampleResultBase,
@@ -930,9 +929,11 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     // User backchannel - KEYED elicitation
     elicit<K extends keyof TElicits & string>(
       key: K,
-      options: { message: string; context?: ExtractElicitContext<TElicits[K]> },
+      options: ExtractElicitContextInput<TElicits[K]> extends undefined
+        ? { message: string }
+        : { message: string; context: ExtractElicitContextInput<TElicits[K]> },
     ): Operation<
-      ToolElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>
+      ToolElicitResult<ExtractElicitContextInput<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>
     > {
       return {
         *[Symbol.iterator]() {
@@ -957,16 +958,10 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           };
 
           // Canonical dialect: { message, context? }
-          const { message, context } = options;
-          const contextData = context as ExtractElicitContext<TElicits[K]>;
+          const { message } = options;
+          const contextData = "context" in options ? options.context : undefined;
 
-          // Encode context into schema and message using x-elicit-context transport
           const baseSchema = toToolParameterJsonSchema(responseSchema);
-          const { message: encodedMessage, schema: encodedSchema } = encodeElicitContext(
-            message,
-            contextData,
-            baseSchema,
-          );
 
           // Build the request
           const request: ElicitRequest<K, any> = {
@@ -975,11 +970,12 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             toolName: state.toolName,
             callId: state.callId,
             seq,
-            message: encodedMessage,
+            message,
             schema: {
               standard: responseSchema,
-              json: encodedSchema,
+              json: baseSchema,
             },
+            ...(contextData !== undefined ? { context: contextData } : {}),
           };
 
           // Create a signal for the response
@@ -1008,10 +1004,13 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             );
           }
 
-          return yield* completeElicitExchange({
+          return yield* completeElicitExchange<
+            ExtractElicitContextInput<TElicits[K]>,
+            ExtractElicitResponse<TElicits[K]>
+          >({
             key,
             message,
-            context: contextData,
+            context: contextData as ExtractElicitContextInput<TElicits[K]>,
             exchangeId: `elicit_${id.callId}_${id.seq}`,
             responseSchema,
             completion: response.completion,

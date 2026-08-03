@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import type {
   ElicitsMap,
   NormalizedElicitsMap,
@@ -49,10 +50,36 @@ export interface ToolContract<
   readonly capabilities: { readonly elicitation: boolean; readonly sampling: boolean };
   readonly annotations: Readonly<Record<string, unknown>>;
   readonly extensions: readonly ToolExtensionMetadata[];
+  /** Execution-neutral identity; omitted only for legacy external projections. */
+  readonly interfaceDigest?: string;
 }
 
 /** Erased contract type for registries and heterogeneous collections. */
 export type AnyToolContract = ToolContract<string, any, any, any, any>;
+
+/**
+ * Computes the execution-neutral owner identity used by client elicitation
+ * bindings. Only interface facts participate; executable, deployment, and
+ * release artifacts are deliberately absent.
+ */
+export function computeToolInterfaceDigest(input: {
+  readonly name: string;
+  readonly parameters: ToolSchemaArtifacts["parameters"];
+  readonly output?: ToolSchemaArtifacts["output"];
+  readonly elicits: ToolSchemaArtifacts["elicits"];
+  readonly annotations?: Readonly<Record<string, unknown>>;
+  readonly extensions?: readonly ToolExtensionMetadata[];
+}): string {
+  const value = {
+    name: input.name,
+    parameters: input.parameters,
+    ...(input.output ? { output: input.output } : {}),
+    elicits: input.elicits,
+    annotations: input.annotations ?? {},
+    extensions: input.extensions ?? [],
+  };
+  return sha256(`sweatpants.tool-interface\\n${canonicalJson(value)}`);
+}
 
 /**
  * True when a contract value carries an executable ordinary factory (i.e. it
@@ -104,5 +131,6 @@ export function projectToolContract<
     capabilities: tool.capabilities,
     annotations: tool.annotations,
     extensions: tool.extensions,
+    ...(tool.interfaceDigest ? { interfaceDigest: tool.interfaceDigest } : {}),
   }) as ToolContract<TName, TParams, TResult, TElicits, TSamples>;
 }

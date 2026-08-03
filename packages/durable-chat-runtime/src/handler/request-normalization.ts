@@ -7,7 +7,6 @@
  */
 import { z } from "zod";
 import { CrankError } from "@sweatpants/durable-execution";
-import { normalizeClientReplayTrace } from "@sweatpants/chat-core";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
 import type { Json } from "@sweatpants/foundation";
@@ -15,18 +14,6 @@ import type { OpenInterruptRecord } from "../interrupts/index.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function forwardedClientReplayTraces(forwardedProps: unknown): Record<string, unknown> {
-  if (!isRecord(forwardedProps)) {
-    return {};
-  }
-  const sweatpants = forwardedProps["sweatpants"];
-  if (!isRecord(sweatpants)) {
-    return {};
-  }
-  const traces = sweatpants["clientReplayTraces"];
-  return isRecord(traces) ? traces : {};
 }
 
 /**
@@ -49,6 +36,12 @@ function normalizeIncomingMessages(
   messages: readonly z.infer<typeof rawMessageSchema>[],
 ): ChatRequestBody["messages"] {
   const normalized: ChatRequestBody["messages"] = [];
+  const toolNames = new Map<string, string>();
+  for (const message of messages) {
+    for (const toolCall of message.tool_calls ?? message.toolCalls ?? []) {
+      toolNames.set(toolCall.id, toolCall.function.name);
+    }
+  }
 
   for (let index = 0; index < messages.length; index++) {
     const message = messages[index]!;
@@ -85,8 +78,9 @@ function normalizeIncomingMessages(
 
     if (role === "tool") {
       const toolCallId = message["tool_call_id"] ?? message["toolCallId"];
-      const toolName = message["name"] ?? message["replay"]?.toolName;
-      if (!toolCallId || !toolName || message["isError"] === undefined) {
+      const toolName = message["name"] ?? (toolCallId ? toolNames.get(toolCallId) : undefined);
+      const isError = message["isError"] ?? message["error"] !== undefined;
+      if (!toolCallId || !toolName) {
         throw new Error("Parsed tool message is missing settled result facts");
       }
       normalized.push({
@@ -95,7 +89,7 @@ function normalizeIncomingMessages(
         content,
         tool_call_id: toolCallId,
         name: toolName,
-        isError: message["isError"],
+        isError,
       });
       continue;
     }
@@ -161,14 +155,8 @@ const rawMessageSchema = z
     toolCallId: z.string().max(512).optional(),
     name: z.string().max(512).optional(),
     isError: z.boolean().optional(),
+    error: z.string().max(16_384).optional(),
     activityType: z.string().max(512).optional(),
-    replay: z
-      .object({
-        toolName: z.string().max(512).optional(),
-        trace: z.array(jsonValueSchema).max(256).optional(),
-      })
-      .strict()
-      .optional(),
   })
   .strict()
   .superRefine((message, context) => {
@@ -185,13 +173,7 @@ const rawMessageSchema = z
         message: "tool messages require a non-empty tool call id",
       });
     }
-    if (
-      message.role === "tool" &&
-      !(
-        (typeof message.name === "string" && message.name.length > 0) ||
-        (typeof message.replay?.toolName === "string" && message.replay.toolName.length > 0)
-      )
-    ) {
+    if (message.role === "tool" && !(typeof message.name === "string" && message.name.length > 0)) {
       context.addIssue({
         code: "custom",
         path: ["name"],
@@ -223,17 +205,6 @@ const resumeEntrySchema = z
     payload: jsonValueSchema.optional(),
   })
   .strict();
-const traceEmissionSchema = z
-  .object({
-    order: z.number().int().nonnegative().safe(),
-    emissionId: z.string().min(1).max(512),
-    sourceInterruptId: z.string().max(512).optional(),
-    componentKey: z.string().min(1).max(512),
-    props: z.record(z.string(), jsonValueSchema),
-    response: jsonValueSchema.optional(),
-    timestamp: z.number().finite(),
-  })
-  .strict();
 const elicitResponseSchema = z
   .object({
     sessionId: z.string().min(1).max(512),
@@ -254,15 +225,6 @@ const elicitResponseSchema = z
         callId: z.string().min(1).max(512),
         toolName: z.string().max(512),
         sessionId: z.string().max(512).optional(),
-      })
-      .strict()
-      .optional(),
-    trace: z
-      .object({
-        version: z.literal(1),
-        emissions: z.array(traceEmissionSchema).max(256),
-        startedAt: z.number().finite(),
-        completedAt: z.number().finite(),
       })
       .strict()
       .optional(),
@@ -301,6 +263,9 @@ const streamOptionsSchema = z
   .strict();
 const chatRequestBodySchema = z
   .object({
+    trigger: z.enum(["submit-message", "regenerate-message", "cancel-run"]).optional(),
+    clientId: z.string().max(512).optional(),
+    messageId: z.string().max(512).optional(),
     conversationId: z.string().max(512).optional(),
     threadId: z.string().max(512).optional(),
     runId: z.string().max(512).optional(),
@@ -327,13 +292,11 @@ const chatRequestBodySchema = z
     streamOptions: streamOptionsSchema.optional(),
     initialToolChoice: z.enum(["auto", "none", "required"]).optional(),
     enabledTools: z.union([z.boolean(), z.array(z.string().max(512)).max(256)]).optional(),
-    enabledPlugins: z.array(z.string().max(512)).max(256).optional(),
     model: z
       .object({ provider: z.string().min(1).max(512), id: z.string().min(1).max(512) })
       .strict()
       .optional(),
     elicitResponses: z.array(elicitResponseSchema).max(256).optional(),
-    replayState: jsonValueSchema.optional(),
     pluginAbort: z
       .object({
         sessionId: z.string().max(512).optional(),
@@ -385,7 +348,6 @@ export function mapResumeEntriesToElicitResponses(
     return [];
   }
 
-  const traces = forwardedClientReplayTraces(body.forwardedProps);
   const recordsByInterruptId = new Map(records.map((record) => [record.interruptId, record]));
   const mapped: ElicitResponse[] = [];
 
@@ -417,10 +379,6 @@ export function mapResumeEntriesToElicitResponses(
       elicitId: entry.interruptId,
       completion,
     };
-    const trace = normalizeClientReplayTrace(traces[entry.interruptId]);
-    if (trace) {
-      response.trace = trace;
-    }
     mapped.push(response);
   }
 

@@ -12,6 +12,7 @@ import { grepSearch } from "./grep-search.ts";
 import { gitStatus } from "./git-status.ts";
 import { gitLog } from "./git-log.ts";
 import { gitDiff } from "./git-diff.ts";
+import { askUser } from "./ask-user.ts";
 
 export const tools = [
   // File system (read-only)
@@ -23,4 +24,7 @@ export const tools = [
   gitStatus,
   gitLog,
   gitDiff,
+
+  // Terminal interaction
+  askUser,
 ];

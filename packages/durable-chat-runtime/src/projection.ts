@@ -6,15 +6,17 @@
  * snapshot boundary extraction, checkpoint snapshot construction, and the
  * pending-resume consistency invariant.
  */
+import { EventType } from "@ag-ui/core";
 import { resource, type Operation, type Stream } from "effection";
 import type { StreamEvent } from "./handler/types.ts";
-import { buildAgUiCustomState } from "@sweatpants/chat-core";
-import { activitySnapshotsForMessages, toProviderHistorySnapshot } from "@sweatpants/chat-core";
-import { agUiMessagesToInternalMessages } from "@sweatpants/chat-core";
-import { replayFramesToConversation, type DurableFrame } from "@sweatpants/chat-core";
-import type {
-  ElicitRequestStreamEvent,
-  ChatSessionStreamEvent as ChatStreamEvent,
+import {
+  agUiMessagesToInternalMessages,
+  buildAgUiCustomState,
+  replayFramesToConversation,
+  toProviderHistorySnapshot,
+  type ChatSessionStreamEvent as ChatStreamEvent,
+  type DurableFrame,
+  type ElicitRequestStreamEvent,
 } from "@sweatpants/chat-core";
 import type { OpenInterruptRecord } from "./interrupts/index.ts";
 
@@ -36,10 +38,15 @@ export function sanitizePublicMetadata(
   return sanitized;
 }
 
-function withPublicMetadata<T extends { metadata?: Record<string, unknown> }>(
+function withPublicMetadata<T extends object>(
   value: T,
 ): Omit<T, "metadata"> & { metadata?: Record<string, unknown> } {
-  const { metadata: rawMetadata, ...rest } = value;
+  const candidate = "metadata" in value ? value.metadata : undefined;
+  const rawMetadata =
+    candidate !== null && typeof candidate === "object" && !Array.isArray(candidate)
+      ? (candidate as Record<string, unknown>)
+      : undefined;
+  const { metadata: _ignored, ...rest } = value as T & { metadata?: unknown };
   const metadata = sanitizePublicMetadata(rawMetadata);
   return {
     ...rest,
@@ -48,15 +55,15 @@ function withPublicMetadata<T extends { metadata?: Record<string, unknown> }>(
 }
 
 type RunFinishedInterrupt = Extract<
-  NonNullable<Extract<ChatStreamEvent, { type: "RUN_FINISHED" }>["outcome"]>,
+  NonNullable<Extract<ChatStreamEvent, { type: EventType.RUN_FINISHED }>["outcome"]>,
   { type: "interrupt" }
 >["interrupts"][number];
 
 /** Project an internal stream event to its public wire form, or null to drop it. */
 export function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
   switch (event.type) {
-    case "RUN_FINISHED": {
-      const runFinished = event as Extract<StreamEvent, { type: "RUN_FINISHED" }>;
+    case EventType.RUN_FINISHED: {
+      const runFinished = event;
       if (runFinished.outcome?.type !== "interrupt") {
         return runFinished;
       }
@@ -94,7 +101,12 @@ export function recordToElicit(record: OpenInterruptRecord): ElicitRequestStream
         ? String(record.publicMetadata["sweatpants/key"])
         : record.interruptId,
     message: record.message ?? "Input required",
-    schema: record.responseSchema ?? {},
+    ...(record.responseSchema ? { schema: record.responseSchema } : {}),
+    ...(record.bindingId ? { bindingId: record.bindingId } : {}),
+    ...(record.context !== undefined ? { context: record.context } : {}),
+    ...(record.responseContract ? { responseContract: record.responseContract } : {}),
+    ...(record.contextContract ? { contextContract: record.contextContract } : {}),
+    ...(record.placement ? { placement: record.placement } : {}),
   };
 }
 
@@ -176,41 +188,34 @@ export function createSyntheticFrameStream(frames: DurableFrame[]): Stream<strin
 }
 
 export function initialSnapshotBoundary(frames: DurableFrame[]): {
-  messages: Extract<StreamEvent, { type: "MESSAGES_SNAPSHOT" }> | null;
-  activities: Array<Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>>;
-  state: Extract<StreamEvent, { type: "STATE_SNAPSHOT" }> | null;
+  messages: Extract<StreamEvent, { type: EventType.MESSAGES_SNAPSHOT }> | null;
+  state: Extract<StreamEvent, { type: EventType.STATE_SNAPSHOT }> | null;
   nextIndex: number;
 } {
   let index = 0;
-  if (frames[index]?.event.type === "RUN_STARTED") {
+  if (frames[index]?.event.type === EventType.RUN_STARTED) {
     index += 1;
   }
 
   const messages =
-    frames[index]?.event.type === "MESSAGES_SNAPSHOT"
-      ? (frames[index++]!.event as Extract<StreamEvent, { type: "MESSAGES_SNAPSHOT" }>)
+    frames[index]?.event.type === EventType.MESSAGES_SNAPSHOT
+      ? (frames[index++]!.event as Extract<StreamEvent, { type: EventType.MESSAGES_SNAPSHOT }>)
       : null;
-
-  const activities: Array<Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>> = [];
-  while (frames[index]?.event.type === "ACTIVITY_SNAPSHOT") {
-    activities.push(frames[index++]!.event as Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>);
-  }
 
   const state =
-    frames[index]?.event.type === "STATE_SNAPSHOT"
-      ? (frames[index++]!.event as Extract<StreamEvent, { type: "STATE_SNAPSHOT" }>)
+    frames[index]?.event.type === EventType.STATE_SNAPSHOT
+      ? (frames[index++]!.event as Extract<StreamEvent, { type: EventType.STATE_SNAPSHOT }>)
       : null;
 
-  return { messages, activities, state, nextIndex: index };
+  return { messages, state, nextIndex: index };
 }
 
 export function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnapshotBoundary>): {
   messages: {
-    type: "MESSAGES_SNAPSHOT";
+    type: EventType.MESSAGES_SNAPSHOT;
     messages: ReturnType<typeof toProviderHistorySnapshot>;
   } | null;
-  activities: Array<Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>>;
-  state: Extract<StreamEvent, { type: "STATE_SNAPSHOT" }> | null;
+  state: Extract<StreamEvent, { type: EventType.STATE_SNAPSHOT }> | null;
   nextIndex: number;
 } {
   const internalMessages = boundary.messages
@@ -218,24 +223,27 @@ export function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnap
     : [];
   const messages = boundary.messages
     ? {
-        type: "MESSAGES_SNAPSHOT" as const,
-        messages: toProviderHistorySnapshot(internalMessages, undefined),
+        type: EventType.MESSAGES_SNAPSHOT as const,
+        messages: toProviderHistorySnapshot(internalMessages),
       }
     : null;
-  const extractedActivities = activitySnapshotsForMessages(internalMessages, undefined);
-  const activitiesByMessageId = new Map<
-    string,
-    Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>
-  >();
-  for (const activity of [...extractedActivities, ...boundary.activities]) {
-    activitiesByMessageId.set(activity.messageId, activity);
-  }
   return {
     messages,
-    activities: [...activitiesByMessageId.values()],
     state: boundary.state,
     nextIndex: boundary.nextIndex,
   };
+}
+
+function activitySnapshotsFromFrames(
+  frames: readonly DurableFrame[],
+): Extract<StreamEvent, { type: EventType.ACTIVITY_SNAPSHOT }>[] {
+  const latest = new Map<string, Extract<StreamEvent, { type: EventType.ACTIVITY_SNAPSHOT }>>();
+  for (const frame of frames) {
+    if (frame.event.type === EventType.ACTIVITY_SNAPSHOT) {
+      latest.set(frame.event.messageId, frame.event);
+    }
+  }
+  return [...latest.values()];
 }
 
 export function* buildCheckpointSnapshotEventsFromFrames(
@@ -244,10 +252,10 @@ export function* buildCheckpointSnapshotEventsFromFrames(
   const replay = yield* replayFramesToConversation(frames);
   return [
     {
-      type: "MESSAGES_SNAPSHOT",
-      messages: toProviderHistorySnapshot(replay.history, replay.replayState),
+      type: EventType.MESSAGES_SNAPSHOT,
+      messages: toProviderHistorySnapshot(replay.history),
     },
-    ...activitySnapshotsForMessages(replay.history, replay.replayState),
+    ...activitySnapshotsFromFrames(frames),
   ];
 }
 
@@ -267,18 +275,18 @@ export function* completedConversationHydrateEvents(params: {
   const replay = yield* replayFramesToConversation(frames);
   return [
     {
-      type: "MESSAGES_SNAPSHOT",
-      messages: toProviderHistorySnapshot(replay.history, replay.replayState),
+      type: EventType.MESSAGES_SNAPSHOT,
+      messages: toProviderHistorySnapshot(replay.history),
     },
-    ...activitySnapshotsForMessages(replay.history, replay.replayState),
+    ...activitySnapshotsFromFrames(frames),
     {
-      type: "STATE_SNAPSHOT",
+      type: EventType.STATE_SNAPSHOT,
       snapshot: buildAgUiCustomState({ elicits }),
     },
     ...(openInterrupts.length > 0
       ? [
           {
-            type: "RUN_FINISHED" as const,
+            type: EventType.RUN_FINISHED as const,
             threadId: conversationId,
             runId,
             outcome: {

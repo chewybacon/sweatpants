@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { withTestScenario } from "@sweatpants/test-rig";
 import {
@@ -100,7 +101,9 @@ describe("model-sampling placement semantics", () => {
         yield* choose.accept({ selected: "placement-alpha" });
         const final = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
         expect(
-          JSON.stringify(s.agui.events().filter((event) => event.type === "TEXT_MESSAGE_CONTENT")),
+          JSON.stringify(
+            s.agui.events().filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT),
+          ),
         ).not.toContain("private note");
         yield* final.respond.text("PLACEMENT_NESTED_COMPLETE");
         expect((yield* turn.settled()).text).toBe("PLACEMENT_NESTED_COMPLETE");

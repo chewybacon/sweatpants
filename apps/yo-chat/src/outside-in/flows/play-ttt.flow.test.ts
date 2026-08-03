@@ -30,12 +30,8 @@ import { AssertionFailure, withFlakePolicy } from "../lib/flake.ts";
 import { liveReady, selectedTiers } from "./tiers.ts";
 
 function elicitContext(elicit: ElicitState): Record<string, unknown> {
-  if (elicit.context && typeof elicit.context === "object") {
-    return elicit.context as Record<string, unknown>;
-  }
-  const schemaContext = elicit.schema["x-elicit-context"] ?? null;
-  if (schemaContext && typeof schemaContext === "object") {
-    return schemaContext as Record<string, unknown>;
+  if (elicit.context && typeof elicit.context === "object" && !Array.isArray(elicit.context)) {
+    return elicit.context;
   }
   return {};
 }

@@ -25,7 +25,6 @@ export const ChatSessionRuntimeApi = createApi("chat-core:session-runtime", {
       ...options,
       ...(plan.conversationId ? { conversationId: plan.conversationId } : {}),
       ...(plan.elicitResponses ? { elicitResponses: [...plan.elicitResponses] } : {}),
-      ...(plan.replayState ? { replayState: plan.replayState } : {}),
       ...(plan.pluginAbort ? { pluginAbort: plan.pluginAbort } : {}),
     });
   },

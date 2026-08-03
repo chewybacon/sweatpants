@@ -56,6 +56,9 @@ function replaceConversationId(): string {
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const busy = message.parts.some(
+    (part) => (part.type === "text" || part.type === "reasoning") && part.state === "streaming",
+  );
 
   return (
     <div className={`mb-8 ${isUser ? "text-right" : ""}`}>
@@ -67,9 +70,7 @@ function Message({ message }: { message: ChatMessage }) {
           }`}
         >
           {isUser ? "You" : isSystem ? "System" : "Assistant"}
-          {message.isStreaming && (
-            <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>
-          )}
+          {busy && <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>}
         </div>
 
         {/* Message content container */}
@@ -110,9 +111,7 @@ function Message({ message }: { message: ChatMessage }) {
           })}
 
           {/* Cursor for streaming messages */}
-          {message.isStreaming && (
-            <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-          )}
+          {busy && <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />}
         </div>
       </div>
     </div>
@@ -130,27 +129,28 @@ function BasicChatSession({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scriptedRendering = scriptedRenderingEnabled();
-  const { messages, streamingMessage, isStreaming, pipelineReady, send, abort, error } = useChat({
+  const { messages, status, renderStatus, sendMessage, stop, error } = useChat({
     // Full pipeline for rich markdown rendering
     pipeline: "full",
-    ...(scriptedRendering ? { baseUrl: "/api/chat?scripted=rendering" } : {}),
+    ...(scriptedRendering ? { api: "/api/chat?scripted=rendering" } : {}),
     // No tools - clean baseline chat
-    tools: [],
     // No plugins
     plugins: [],
     conversationId,
   });
+  const busy = status === "submitted" || status === "streaming";
+  const renderReady = renderStatus === "ready";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingMessage?.parts.length]);
+  }, [messages, messages.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) {
+    if (!input.trim() || busy) {
       return;
     }
-    send(input.trim());
+    sendMessage({ text: input.trim() });
     setInput("");
   };
 
@@ -166,7 +166,7 @@ function BasicChatSession({
             </p>
           </div>
           <div className="text-xs">
-            {pipelineReady ? (
+            {renderReady ? (
               <span className="text-emerald-500">Pipeline ready</span>
             ) : (
               <span className="text-amber-500 animate-pulse">Loading pipeline...</span>
@@ -176,7 +176,7 @@ function BasicChatSession({
 
         {/* Messages */}
         <div className="bg-slate-900 rounded-xl p-6 min-h-[60vh] max-h-[70vh] overflow-y-auto mb-6 shadow-inner border border-slate-800">
-          {messages.length === 0 && !isStreaming && (
+          {messages.length === 0 && !busy && (
             <div className="text-slate-600 text-center py-20 flex flex-col items-center gap-4">
               <div className="text-4xl opacity-20">~</div>
               <p>Send a message to start chatting</p>
@@ -207,15 +207,9 @@ function BasicChatSession({
             <Message key={msg.id} message={msg} />
           ))}
 
-          {streamingMessage && streamingMessage.parts.length > 0 && (
-            <div className="text-xs text-slate-600 mt-2">
-              Streaming: {streamingMessage.parts.length} parts
-            </div>
-          )}
-
           {error && (
             <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 my-4">
-              <strong>Error:</strong> {error}
+              <strong>Error:</strong> {error?.message}
             </div>
           )}
 
@@ -228,16 +222,16 @@ function BasicChatSession({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isStreaming ? "Waiting for response..." : "Type a message..."}
-            disabled={isStreaming}
+            placeholder={busy ? "Waiting for response..." : "Type a message..."}
+            disabled={busy}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
 
           <div className="absolute right-2 top-2 bottom-2 flex gap-2">
-            {isStreaming ? (
+            {busy ? (
               <button
                 type="button"
-                onClick={abort}
+                onClick={stop}
                 className="h-full px-6 bg-red-900/20 hover:bg-red-900/40 text-red-500 rounded-lg font-medium transition-colors border border-red-900/30"
               >
                 Stop
@@ -257,7 +251,7 @@ function BasicChatSession({
         <div className="mt-4 flex justify-between text-xs text-slate-600 px-2">
           <button
             onClick={onClearHistory}
-            disabled={isStreaming || messages.length === 0}
+            disabled={busy || messages.length === 0}
             className="hover:text-slate-400 disabled:opacity-50 transition-colors"
           >
             Clear History

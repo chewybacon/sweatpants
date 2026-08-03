@@ -134,6 +134,7 @@ export function createToolSession<
               key: event.request.key,
               message: event.request.message,
               schema: event.request.schema.json,
+              ...(event.request.context !== undefined ? { context: event.request.context } : {}),
             });
             break;
           }

@@ -4,26 +4,9 @@
  * Provides client-side elicitation handlers for the play_ttt tool.
  * Uses the GameChatView component to render the game as a chat-style conversation.
  */
-import { makePlugin, getElicitContext } from "@sweatpants/tool-session/mcp";
+import { makePlugin } from "@sweatpants/react-chat";
 import { playTttTool } from "./tool";
-import { GameChatView, type GameMove } from "./components/GameChatView";
-import type { Board, Player } from "../tictactoe/types.ts";
-
-// =============================================================================
-// CONTEXT TYPES
-// =============================================================================
-
-interface PickMoveContext {
-  board: Board;
-  moveHistory: GameMove[];
-  lastMove?: { position: number; player: Player };
-  winningLine?: number[];
-  gameOver?: boolean;
-  resultMessage?: string;
-  modelSymbol: Player;
-  userSymbol: Player;
-  [key: string]: unknown;
-}
+import { GameChatView } from "./components/GameChatView";
 
 // =============================================================================
 // PLUGIN DEFINITION
@@ -35,9 +18,7 @@ export const playTttPlugin = makePlugin(playTttTool)
      * Handler for pickMove elicitation.
      * Renders the GameChatView component which shows move history and current board.
      */
-    pickMove: function* (req, ctx) {
-      // Extract context from x-elicit-context
-      const context = getElicitContext<PickMoveContext>(req);
+    pickMove: function* (input, ctx) {
       const {
         board,
         moveHistory,
@@ -47,7 +28,7 @@ export const playTttPlugin = makePlugin(playTttTool)
         resultMessage,
         modelSymbol,
         userSymbol,
-      } = context;
+      } = input.context;
 
       // Build props for GameChatView
       const props = {

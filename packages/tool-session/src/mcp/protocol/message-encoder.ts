@@ -45,6 +45,7 @@ import type {
   CancelledEvent,
 } from "../../contract.ts";
 import { SCHEMA_TOOL_NAME, type LogLevel as ToolLogLevel } from "@sweatpants/agent-sdk";
+import { encodeElicitContext } from "../../elicit-context/index.ts";
 
 // =============================================================================
 // LOG LEVEL MAPPING
@@ -134,14 +135,18 @@ export function encodeElicitationRequest(
     );
   }
 
+  const encoded =
+    event.context === undefined
+      ? { message: event.message, schema: event.schema }
+      : encodeElicitContext(event.message, event.context, event.schema);
   return {
     jsonrpc: "2.0",
     id: requestId,
     method: "elicitation/create",
     params: {
       mode: "form",
-      message: event.message,
-      requestedSchema: event.schema,
+      message: encoded.message,
+      requestedSchema: encoded.schema,
     },
   };
 }

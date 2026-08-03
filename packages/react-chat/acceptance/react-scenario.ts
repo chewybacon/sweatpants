@@ -1,19 +1,19 @@
-import { useEffect } from "react";
 import { act, renderHook, type RenderHookResult } from "@testing-library/react";
 import { call, resource, type Operation } from "effection";
 import type { ScenarioContext } from "@sweatpants/test-rig";
 import {
+  createChatClient,
   useChat,
   type ChatMessage,
+  type ReactChatClient,
+  type ReactRenderPart,
   type UseChatOptions,
-  type UseChatReturn,
+  type UseChatResult,
 } from "../src/index.ts";
-import type { ToolEmissionState } from "../src/types.ts";
-
-type StreamEntry = Parameters<NonNullable<UseChatOptions["onStreamEvent"]>>[0];
+import { useEffect } from "react";
 
 interface Waiter<T> {
-  select(value: UseChatReturn): T | undefined;
+  select(value: UseChatResult): T | undefined;
   resolve(value: T): void;
   reject(error: unknown): void;
 }
@@ -30,19 +30,19 @@ export interface ReactMessageHandle {
   readonly html: string;
 }
 
-export interface ReactEmissionExpectation {
+export interface ReactRenderExpectation {
   toolName?: string;
   componentKey?: string;
-  status?: ToolEmissionState["status"];
+  status?: "pending" | "complete";
 }
 
-export interface ReactEmissionHandle {
+export interface ReactRenderHandle {
   readonly callId: string;
   readonly id: string;
   readonly toolName: string;
   readonly componentKey?: string;
   readonly props?: Record<string, unknown>;
-  readonly status: ToolEmissionState["status"];
+  readonly status: "pending" | "complete";
   respond(value: unknown): Operation<void>;
 }
 
@@ -50,14 +50,35 @@ export interface ReactChatHandle {
   send(content: string): Operation<void>;
   abort(): Operation<void>;
   reset(): Operation<void>;
-  /** Wait for a React-observed active run to return to terminal state. */
-  settled(): Operation<UseChatReturn>;
-  snapshot(assertion?: (chat: UseChatReturn) => void): Operation<UseChatReturn>;
+  settled(): Operation<UseChatResult>;
+  snapshot(assertion?: (chat: UseChatResult) => void): Operation<UseChatResult>;
   message(expectation: ReactMessageExpectation): Operation<ReactMessageHandle>;
-  emission(expectation: ReactEmissionExpectation): Operation<ReactEmissionHandle>;
-  /** Passive raw AG-UI evidence; React-visible barriers drive choreography. */
-  events(): readonly StreamEntry[];
+  render(expectation: ReactRenderExpectation): Operation<ReactRenderHandle>;
+  events(): readonly unknown[];
   unmount(): Operation<void>;
+}
+
+const clientsByScenario = new WeakMap<object, Map<string, ReactChatClient>>();
+
+function getClient(scenario: ScenarioContext, options: UseChatOptions): ReactChatClient {
+  if ("client" in options && options.client) return options.client;
+  const conversationId = options.conversationId;
+  let clients = clientsByScenario.get(scenario as object);
+  if (!clients) {
+    clients = new Map();
+    clientsByScenario.set(scenario as object, clients);
+  }
+  const existing = clients.get(conversationId);
+  if (existing) return existing;
+  const created = createChatClient({
+    conversationId,
+    transport: { http: { fetch: scenario.transport.fetch } },
+    ...(options.pipeline !== undefined ? { pipeline: options.pipeline } : {}),
+    ...(options.scheduler !== undefined ? { scheduler: options.scheduler } : {}),
+    ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
+  });
+  clients.set(conversationId, created);
+  return created;
 }
 
 function projectedMessage(message: ChatMessage): ReactMessageHandle {
@@ -67,49 +88,70 @@ function projectedMessage(message: ChatMessage): ReactMessageHandle {
   return {
     message,
     role: message.role,
-    text: textParts.map((part) => part.content).join(""),
-    html: textParts.map((part) => part.rendered).join(""),
+    text: textParts.map((part) => part.text).join(""),
+    html:
+      textParts.map((part) => (part.rendered !== part.text ? part.rendered : "")).join("") ||
+      textParts.map((part) => part.rendered).join(""),
   };
 }
 
-function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+function allRenderParts(messages: readonly ChatMessage[]): ReactRenderPart[] {
+  const output: ReactRenderPart[] = [];
+  const visit = (parts: readonly ChatMessage["parts"][number][]): void => {
+    for (const part of parts) {
+      if (part.type === "render") output.push(part);
+      else if (part.type === "message") visit(part.message.parts);
+      else if (part.type === "tool-call" || part.type === "activity" || part.type === "elicit")
+        visit(part.parts);
+    }
+  };
+  for (const message of messages) visit(message.parts);
+  return output;
 }
 
-/** Mount the real React hooks and expose semantic, buffered state barriers. */
+function findElicit(
+  messages: readonly ChatMessage[],
+  elicitId: string,
+): Extract<ChatMessage["parts"][number], { type: "elicit" }> | undefined {
+  let found: Extract<ChatMessage["parts"][number], { type: "elicit" }> | undefined;
+  const visit = (parts: readonly ChatMessage["parts"][number][]): void => {
+    for (const part of parts) {
+      if (part.type === "elicit" && part.elicitId === elicitId) found = part;
+      else if (part.type === "message") visit(part.message.parts);
+      else if (part.type === "tool-call" || part.type === "activity" || part.type === "elicit")
+        visit(part.parts);
+    }
+  };
+  for (const message of messages) visit(message.parts);
+  return found;
+}
+
+/** Mounts the real thin React adapter around one externally owned client. */
 export function mountReactChat(
   scenario: ScenarioContext,
-  options: UseChatOptions = {},
+  options: Exclude<UseChatOptions, { readonly client: ReactChatClient }> & {
+    readonly conversationId: string;
+  },
   timeoutMs = 10_000,
 ): Operation<ReactChatHandle> {
   return resource(function* (provide) {
-    const snapshots: UseChatReturn[] = [];
+    const client = getClient(scenario, options);
+    const snapshots: UseChatResult[] = [];
     const waiters: Waiter<unknown>[] = [];
-    const streamEvents: StreamEntry[] = [];
     let closed = false;
-    let rendered: RenderHookResult<UseChatReturn, unknown> | undefined;
+    let rendered: RenderHookResult<UseChatResult, unknown> | undefined;
 
     const close = (): void => {
-      if (closed) {
-        return;
-      }
+      if (closed) return;
       closed = true;
       const error = new Error("React chat harness is closed");
-      for (const waiter of waiters.splice(0)) {
-        waiter.reject(error);
-      }
+      for (const waiter of waiters.splice(0)) waiter.reject(error);
       rendered?.unmount();
       rendered = undefined;
     };
-
     const assertOpen = (): void => {
-      if (closed) {
-        throw new Error("React chat harness is closed");
-      }
+      if (closed) throw new Error("React chat harness is closed");
     };
-
     const timeout = <T>(promise: Promise<T>, label: string): Promise<T> =>
       new Promise<T>((resolve, reject) => {
         const timer = setTimeout(
@@ -120,24 +162,19 @@ export function mountReactChat(
           (value) => {
             clearTimeout(timer);
             resolve(value);
-            return undefined;
           },
-          (error: unknown) => {
+          (error) => {
             clearTimeout(timer);
             reject(error);
-            return undefined;
           },
         );
       });
-
-    const publish = (chat: UseChatReturn): void => {
+    const publish = (chat: UseChatResult): void => {
       snapshots.push(chat);
       for (const waiter of [...waiters]) {
         try {
           const selected = waiter.select(chat);
-          if (selected === undefined) {
-            continue;
-          }
+          if (selected === undefined) continue;
           waiters.splice(waiters.indexOf(waiter), 1);
           waiter.resolve(selected);
         } catch (error) {
@@ -147,96 +184,72 @@ export function mountReactChat(
       }
     };
 
-    const originalStreamObserver = options.onStreamEvent;
-    const hookOptions: UseChatOptions = {
-      ...options,
-      fetch: scenario.transport.fetch,
-      onStreamEvent(entry) {
-        streamEvents.push(entry);
-        originalStreamObserver?.(entry);
-      },
-    };
-
     rendered = renderHook(() => {
-      const chat = useChat(hookOptions);
+      const chat = useChat({ client });
       useEffect(() => publish(chat), [chat]);
       return chat;
     });
 
-    function waitFor<T>(label: string, select: (chat: UseChatReturn) => T | undefined): Promise<T> {
-      if (closed) {
-        return Promise.reject(new Error("React chat harness is closed"));
-      }
+    function waitFor<T>(label: string, select: (chat: UseChatResult) => T | undefined): Promise<T> {
+      if (closed) return Promise.reject(new Error("React chat harness is closed"));
       for (let index = snapshots.length - 1; index >= 0; index -= 1) {
         const selected = select(snapshots[index]!);
-        if (selected !== undefined) {
-          return Promise.resolve(selected);
-        }
+        if (selected !== undefined) return Promise.resolve(selected);
       }
       return timeout(
-        new Promise<T>((resolve, reject) => {
-          waiters.push({ select, resolve, reject } as Waiter<unknown>);
-        }),
+        new Promise<T>((resolve, reject) =>
+          waiters.push({ select, resolve, reject } as Waiter<unknown>),
+        ),
         label,
       );
-    }
-
-    function emissionHandle(chat: UseChatReturn, emission: ToolEmissionState): ReactEmissionHandle {
-      const payload = record(emission.payload);
-      const props = record(payload?.["props"]);
-      const componentKey =
-        typeof payload?.["componentKey"] === "string" ? payload["componentKey"] : undefined;
-      return {
-        callId: emission.callId,
-        id: emission.id,
-        toolName: emission.toolName,
-        ...(componentKey ? { componentKey } : {}),
-        ...(props ? { props } : {}),
-        status: emission.status,
-        *respond(value) {
-          assertOpen();
-          yield* call(() =>
-            act(async () => {
-              chat.session.respondToEmission(emission.callId, emission.id, value);
-            }),
-          );
-        },
-      };
     }
 
     const handle: ReactChatHandle = {
       *send(content) {
         assertOpen();
-        yield* call(() => act(async () => rendered!.result.current.send(content)));
+        yield* call(() =>
+          act(() => {
+            void rendered!.result.current.sendMessage({ text: content });
+          }),
+        );
+        yield* call(() =>
+          waitFor("submitted", (chat) =>
+            chat.status === "submitted" || chat.status === "streaming" ? chat : undefined,
+          ),
+        );
       },
       *abort() {
         assertOpen();
-        yield* call(() => act(async () => rendered!.result.current.abort()));
+        yield* call(() =>
+          act(async () => {
+            await rendered!.result.current.stop();
+          }),
+        );
       },
       *reset() {
         assertOpen();
-        yield* call(() => act(async () => rendered!.result.current.reset()));
+        yield* call(() => act(() => rendered!.result.current.setMessages([])));
       },
       *settled() {
         let observedActive = false;
-        let terminal: UseChatReturn | undefined;
-        for (const snapshot of snapshots) {
-          if (snapshot.isStreaming || snapshot.session.state.activeRun !== null) {
-            observedActive = true;
-          } else if (observedActive) {
-            terminal = snapshot;
-          }
-        }
-        if (terminal) {
-          return terminal;
+        const complete = (chat: UseChatResult): boolean =>
+          (observedActive &&
+            (chat.status === "ready" || chat.status === "error") &&
+            !JSON.stringify(chat.messages).includes('"type":"elicit"')) ||
+          (observedActive &&
+            (chat.status === "ready" || chat.status === "error") &&
+            !JSON.stringify(chat.messages).includes('"state":"pending"'));
+        for (const chat of snapshots) {
+          if (chat.status === "submitted" || chat.status === "streaming") observedActive = true;
+          else if (complete(chat)) return chat;
         }
         return yield* call(() =>
           waitFor("React run settlement", (chat) => {
-            if (chat.isStreaming || chat.session.state.activeRun !== null) {
+            if (chat.status === "submitted" || chat.status === "streaming") {
               observedActive = true;
               return undefined;
             }
-            return observedActive ? chat : undefined;
+            return complete(chat) ? chat : undefined;
           }),
         );
       },
@@ -248,49 +261,58 @@ export function mountReactChat(
       *message(expectation) {
         return yield* call(() =>
           waitFor("projected message", (chat) => {
-            for (const message of chat.messages) {
+            for (const message of [...chat.messages].reverse()) {
               const projected = projectedMessage(message);
-              if (expectation.role !== undefined && projected.role !== expectation.role) {
-                continue;
-              }
+              if (expectation.role !== undefined && projected.role !== expectation.role) continue;
               if (
                 expectation.containing !== undefined &&
                 !projected.text.includes(expectation.containing)
-              ) {
+              )
                 continue;
-              }
               return projected;
             }
             return undefined;
           }),
         );
       },
-      *emission(expectation) {
+      *render(expectation) {
         return yield* call(() =>
-          waitFor("plugin emission", (chat) => {
-            for (const tracking of chat.session.toolEmissions) {
-              for (const emission of tracking.emissions) {
-                const payload = record(emission.payload);
-                if (expectation.toolName && emission.toolName !== expectation.toolName) {
-                  continue;
-                }
-                if (
-                  expectation.componentKey &&
-                  payload?.["componentKey"] !== expectation.componentKey
-                ) {
-                  continue;
-                }
-                if (expectation.status && emission.status !== expectation.status) {
-                  continue;
-                }
-                return emissionHandle(chat, emission);
-              }
+          waitFor("local render", (chat) => {
+            for (const render of allRenderParts(chat.messages)) {
+              const owner = findElicit(chat.messages, render.parentElicitId);
+              const element = render.node as {
+                readonly type?: { readonly displayName?: string; readonly name?: string };
+                readonly props?: Record<string, unknown>;
+              };
+              const component = element.type as
+                | { readonly displayName?: string; readonly name?: string }
+                | undefined;
+              const componentKey = component?.displayName ?? component?.name;
+              const status = render.state === "pending" ? "pending" : "complete";
+              if (expectation.status && expectation.status !== status) continue;
+              if (expectation.componentKey && expectation.componentKey !== componentKey) continue;
+              if (expectation.toolName && owner === undefined) continue;
+              return {
+                callId: owner?.elicitId ?? "",
+                id: render.id,
+                toolName: owner?.key ?? "",
+                ...(componentKey ? { componentKey } : {}),
+                ...(element.props !== undefined ? { props: element.props } : {}),
+                status,
+                *respond(value: unknown) {
+                  assertOpen();
+                  const respond = element.props?.["onRespond"];
+                  if (typeof respond !== "function")
+                    throw new Error("Prepared render part has no responder");
+                  yield* call(() => act(() => (respond as (value: unknown) => void)(value)));
+                },
+              } satisfies ReactRenderHandle;
             }
             return undefined;
           }),
         );
       },
-      events: () => Object.freeze([...streamEvents]),
+      events: () => Object.freeze([]),
       *unmount() {
         close();
       },

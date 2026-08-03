@@ -19,7 +19,6 @@ import {
   type ReasoningPart,
   type ToolCallPart,
 } from "@sweatpants/react-chat";
-import { calculator } from "@/tools/calculator";
 import "katex/dist/katex.min.css";
 
 export const Route = createFileRoute("/chat/math/")({
@@ -38,7 +37,7 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Get preview text (strip HTML for preview)
-  const previewText = part.content.slice(0, 60).replace(/\n/g, " ");
+  const previewText = part.text.slice(0, 60).replace(/\n/g, " ");
 
   return (
     <div className="group mb-3">
@@ -72,9 +71,9 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
 function ToolCallPartView({ part }: { part: ToolCallPart }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const isComplete = part.state === "complete";
-  const isError = part.state === "error";
-  const isPending = part.state === "pending" || part.state === "running";
+  const isComplete = part.state === "output-available";
+  const isError = part.state === "output-error";
+  const isPending = part.state === "input-streaming" || part.state === "input-available";
 
   // Format arguments for display
   const formatArgs = (args: unknown): string => {
@@ -116,7 +115,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
 
         {/* Args Preview */}
         <div className="flex-1 font-mono text-xs text-slate-500 truncate">
-          {typeof part.arguments === "string" ? part.arguments : JSON.stringify(part.arguments)}
+          {typeof part.rawInput === "string" ? part.rawInput : JSON.stringify(part.input ?? {})}
         </div>
 
         {/* Toggle Icon */}
@@ -128,22 +127,22 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
         <div className="border-t border-slate-800 bg-slate-950 p-3 font-mono text-xs overflow-x-auto">
           <div className="text-slate-500 mb-1 uppercase tracking-wider text-[10px]">Arguments</div>
           <pre className="text-slate-300 mb-3 whitespace-pre-wrap">
-            {formatArgs(part.arguments)}
+            {formatArgs(part.rawInput ?? part.input ?? {})}
           </pre>
 
-          {isComplete && part.result !== undefined && (
+          {isComplete && part.output !== undefined && (
             <>
               <div className="text-green-600 mb-1 uppercase tracking-wider text-[10px]">Result</div>
               <pre className="text-green-400 whitespace-pre-wrap">
-                {String(formatResult(part.result))}
+                {String(formatResult(part.output))}
               </pre>
             </>
           )}
 
-          {isError && part.error && (
+          {isError && part.errorText && (
             <>
               <div className="text-red-600 mb-1 uppercase tracking-wider text-[10px]">Error</div>
-              <pre className="text-red-400 whitespace-pre-wrap">{part.error}</pre>
+              <pre className="text-red-400 whitespace-pre-wrap">{part.errorText}</pre>
             </>
           )}
         </div>
@@ -155,11 +154,11 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
 /**
  * Renders a text content part with full pipeline rendering.
  */
-function TextPartView({ part, isStreaming = false }: { part: TextPart; isStreaming?: boolean }) {
+function TextPartView({ part, busy = false }: { part: TextPart; busy?: boolean }) {
   return (
     <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
       <div dangerouslySetInnerHTML={{ __html: part.rendered }} />
-      {isStreaming && <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />}
+      {busy && <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />}
     </div>
   );
 }
@@ -169,11 +168,11 @@ function TextPartView({ part, isStreaming = false }: { part: TextPart; isStreami
  */
 function MessagePartView({
   part,
-  isStreaming = false,
+  busy = false,
   isActivePart = false,
 }: {
   part: MessagePart;
-  isStreaming?: boolean;
+  busy?: boolean;
   isActivePart?: boolean;
 }) {
   switch (part.type) {
@@ -182,7 +181,7 @@ function MessagePartView({
     case "tool-call":
       return <ToolCallPartView part={part} />;
     case "text":
-      return <TextPartView part={part} isStreaming={isStreaming && isActivePart} />;
+      return <TextPartView part={part} busy={busy && isActivePart} />;
     default:
       return null;
   }
@@ -198,6 +197,9 @@ function MessagePartView({
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const busy = message.parts.some(
+    (part) => (part.type === "text" || part.type === "reasoning") && part.state === "streaming",
+  );
 
   return (
     <div className={`mb-8 ${isUser ? "text-right" : ""}`}>
@@ -209,9 +211,7 @@ function Message({ message }: { message: ChatMessage }) {
           }`}
         >
           {isUser ? "You" : isSystem ? "System" : "Assistant"}
-          {message.isStreaming && (
-            <span className="ml-2 text-emerald-500 animate-pulse">thinking...</span>
-          )}
+          {busy && <span className="ml-2 text-emerald-500 animate-pulse">thinking...</span>}
         </div>
 
         {/* Message content container */}
@@ -227,13 +227,13 @@ function Message({ message }: { message: ChatMessage }) {
             <MessagePartView
               key={part.id}
               part={part}
-              isStreaming={message.isStreaming}
+              busy={busy}
               isActivePart={index === message.parts.length - 1}
             />
           ))}
 
           {/* Show loading if streaming but no parts yet */}
-          {message.isStreaming && message.parts.length === 0 && (
+          {busy && message.parts.length === 0 && (
             <div className="text-slate-500 flex items-center gap-2">
               <div className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse" />
               <span className="text-xs">Thinking...</span>
@@ -250,12 +250,15 @@ function Message({ message }: { message: ChatMessage }) {
 // =============================================================================
 
 function MathAssistantDemo() {
-  const { messages, isStreaming, pipelineReady, send, abort, reset, error } = useChat({
+  const { messages, status, renderStatus, sendMessage, stop, setMessages, error } = useChat({
+    conversationId: "math-chat",
     // Use math pipeline: markdown + KaTeX
     pipeline: "math",
     // Enable the calculator tool
-    tools: [calculator],
   });
+  const busy = status === "submitted" || status === "streaming";
+  const renderReady = renderStatus === "ready";
+  const clear = () => setMessages([]);
 
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -267,10 +270,10 @@ function MathAssistantDemo() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) {
+    if (!input.trim() || busy) {
       return;
     }
-    send(input.trim());
+    sendMessage({ text: input.trim() });
     setInput("");
   };
 
@@ -287,7 +290,7 @@ function MathAssistantDemo() {
           </div>
           {/* Pipeline status */}
           <div className="text-xs">
-            {pipelineReady ? (
+            {renderReady ? (
               <span className="text-emerald-500">Pipeline ready</span>
             ) : (
               <span className="text-amber-500 animate-pulse">Loading KaTeX...</span>
@@ -307,7 +310,7 @@ function MathAssistantDemo() {
 
         {/* Messages */}
         <div className="bg-slate-900 rounded-xl p-6 min-h-[60vh] max-h-[70vh] overflow-y-auto mb-6 shadow-inner border border-slate-800">
-          {messages.length === 0 && !isStreaming && (
+          {messages.length === 0 && !busy && (
             <div className="text-slate-600 text-center py-20 flex flex-col items-center gap-4">
               <div className="text-4xl opacity-20">*</div>
               <p>Ask me a math question...</p>
@@ -342,7 +345,7 @@ function MathAssistantDemo() {
           {/* Error display */}
           {error && (
             <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 my-4">
-              <strong>Error:</strong> {error}
+              <strong>Error:</strong> {error?.message}
             </div>
           )}
 
@@ -355,16 +358,16 @@ function MathAssistantDemo() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isStreaming ? "Waiting for response..." : "Type a math problem..."}
-            disabled={isStreaming}
+            placeholder={busy ? "Waiting for response..." : "Type a math problem..."}
+            disabled={busy}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
 
           <div className="absolute right-2 top-2 bottom-2 flex gap-2">
-            {isStreaming ? (
+            {busy ? (
               <button
                 type="button"
-                onClick={abort}
+                onClick={stop}
                 className="h-full px-6 bg-red-900/20 hover:bg-red-900/40 text-red-500 rounded-lg font-medium transition-colors border border-red-900/30"
               >
                 Stop
@@ -383,8 +386,8 @@ function MathAssistantDemo() {
 
         <div className="mt-4 flex justify-between text-xs text-slate-600 px-2">
           <button
-            onClick={reset}
-            disabled={isStreaming || messages.length === 0}
+            onClick={clear}
+            disabled={busy || messages.length === 0}
             className="hover:text-slate-400 disabled:opacity-50 transition-colors"
           >
             Clear History

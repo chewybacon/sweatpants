@@ -1,0 +1,21 @@
+/** Framework-neutral frame and processor contracts owned by the client pipeline facade. */
+export type {
+  Annotation,
+  Block,
+  BlockStatus,
+  BlockType,
+  Frame,
+  FrameEmitter,
+  ParseContext,
+  Parser,
+  ParserFactory,
+  PipelineConfig,
+  PipelineResult,
+  ProcessFn,
+  Processor,
+  ProcessorPreset,
+  RenderPass,
+  ResolvedProcessors,
+  TraceAction,
+  TraceEntry,
+} from "@sweatpants/chat-core";

@@ -5,14 +5,14 @@
  * Used by the book_flight tool's pickSeat elicitation.
  */
 import { useState } from "react";
-import type { RenderableProps } from "@sweatpants/react-chat/browser-rendering";
+import type { ReactRenderableProps } from "@sweatpants/react-chat";
 import type { SeatMap } from "../tool";
 
 // =============================================================================
 // TYPES
 // =============================================================================
 
-interface SeatPickerProps extends RenderableProps<{ row: number; seat: string }> {
+interface SeatPickerProps extends ReactRenderableProps<{ row: number; seat: string }> {
   seatMap: SeatMap;
   message: string;
   flightInfo?: {

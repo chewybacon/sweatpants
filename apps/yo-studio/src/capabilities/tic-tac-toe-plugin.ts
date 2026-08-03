@@ -1,25 +1,13 @@
-import { getElicitContext, makePlugin } from "@sweatpants/tool-session/mcp";
+import { makePlugin } from "@sweatpants/react-chat";
 
 import { TicTacToeGame } from "./tic-tac-toe-game.tsx";
-import { playTttTool, type Board, type GameMove, type Player } from "./tic-tac-toe.ts";
-
-interface PickMoveContext {
-  readonly board: Board;
-  readonly moveHistory: GameMove[];
-  readonly lastMove?: { readonly position: number; readonly player: Player };
-  readonly winningLine?: number[];
-  readonly gameOver?: boolean;
-  readonly resultMessage?: string;
-  readonly modelSymbol: Player;
-  readonly userSymbol: Player;
-  readonly [key: string]: unknown;
-}
+import { playTttTool } from "./tic-tac-toe.ts";
 
 /** Client projection for each durable pickMove elicitation. */
 export const playTttPlugin = makePlugin(playTttTool)
   .onElicit({
-    pickMove: function* (request, context) {
-      const game = getElicitContext<PickMoveContext>(request);
+    pickMove: function* (input, context) {
+      const game = input.context;
       const response = yield* context.render(TicTacToeGame, {
         board: game.board,
         moveHistory: game.moveHistory,

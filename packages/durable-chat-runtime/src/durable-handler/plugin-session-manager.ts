@@ -45,6 +45,7 @@
  * @packageDocumentation
  */
 import { type Operation, type Channel, resource } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import type {
   ToolSession,
   ToolSessionStatus,
@@ -60,7 +61,15 @@ import type {
   ParsedSampleExchangeCompletion,
   ToolCallSampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
-import type { ComponentEmissionPayload, PendingEmission } from "@sweatpants/chat-core";
+interface ComponentEmissionPayload {
+  readonly componentKey: string;
+  readonly props: Record<string, unknown>;
+  readonly _component?: unknown;
+}
+interface PendingEmission<TPayload = unknown, TResponse = unknown> {
+  readonly emission: { readonly payload: TPayload };
+  readonly respond: (value: TResponse) => void;
+}
 
 // =============================================================================
 // TYPES
@@ -93,7 +102,7 @@ export type PluginSessionEvent =
       key: string;
       message: string;
       schema: Record<string, unknown>;
-      context?: Record<string, unknown>;
+      context?: Json;
     }
   | {
       type: "result";

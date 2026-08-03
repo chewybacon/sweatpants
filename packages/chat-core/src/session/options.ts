@@ -8,9 +8,6 @@ import type { Channel, Operation } from "effection";
 import type { ChatStateEvent } from "../state/events.ts";
 import type { StreamEvent } from "./streaming.ts";
 import type { ChatTurnSettlement } from "./settlement.ts";
-import type { ConversationReplayState } from "./replay-types.ts";
-import type { ToolExecutionTrace } from "../trace-types.ts";
-import type { PluginReplayTraceSpec } from "../plugin-spec.ts";
 import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ToolExecutionRef } from "@sweatpants/tool-runtime";
@@ -56,8 +53,6 @@ export interface ElicitResponseData {
   elicitId: string;
   /** Transport-safe facts that complete the pending elicitation exchange. */
   completion: ElicitExchangeCompletion<unknown>;
-  /** Browser render trace for replaying plugin UI after refresh. */
-  trace?: ToolExecutionTrace;
 }
 
 // =============================================================================
@@ -115,26 +110,6 @@ export interface SessionOptions {
    * their names as `enabledTools`; server execution comes from ToolInventory.
    */
   tools?: unknown[];
-
-  /**
-   * Plugin handles to enable for this session.
-   *
-   * Pass concrete plugin objects (the return value of
-   * `makePlugin(tool).onElicit({...}).build()`). The framework derives the
-   * server-side `enabledPlugins` list automatically from each plugin's
-   * `client.toolName` and registers client-side elicitation handlers from
-   * `plugin.client`.
-   *
-   * ```typescript
-   * useChat({
-   *   plugins: [bookFlightPlugin, tictactoePlugin],
-   * })
-   * ```
-   *
-   * The old `enabledPlugins` string array option is removed — plugin tool
-   * exposure is derived from the `plugins` array.
-   */
-  plugins?: PluginReplayTraceSpec[];
 
   /**
    * Tools to enable by name (for server-side tool selection).
@@ -264,7 +239,6 @@ export interface SessionOptions {
  * Options for streamChatOnce.
  */
 export interface StreamChatOptions extends SessionOptions {
-  replayState?: ConversationReplayState;
   /** Explicit server-side cancellation of the active Program Runtime task tree. */
   pluginAbort?: { sessionId?: string; reason?: string };
 
@@ -329,8 +303,6 @@ export type ChatCommand =
       elicitId: string;
       /** Transport-safe facts that complete the pending elicitation exchange. */
       completion: ElicitExchangeCompletion<unknown>;
-      /** Browser render trace for replaying plugin UI after refresh. */
-      trace?: ToolExecutionTrace;
       /**
        * If true, automatically send a continuation request after storing the response.
        * This allows multi-step elicitation flows to progress without user intervention.

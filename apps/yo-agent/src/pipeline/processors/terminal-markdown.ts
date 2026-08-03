@@ -14,8 +14,8 @@
  * frame/block level, not here.
  */
 import type { Operation } from "effection";
-import type { Frame, Processor } from "@sweatpants/react-chat/pipeline";
-import { updateBlockById, setBlockRendered, addTrace } from "@sweatpants/react-chat/pipeline";
+import type { Frame, Processor } from "@sweatpants/chat-client/pipeline";
+import { updateBlockById, setBlockRendered, addTrace } from "@sweatpants/chat-client/pipeline";
 import chalk from "chalk";
 
 // =============================================================================

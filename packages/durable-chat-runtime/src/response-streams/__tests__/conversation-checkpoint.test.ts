@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import type { StreamEvent } from "../../handler/types.ts";
 import {
@@ -8,7 +9,7 @@ import {
 
 const events: StreamEvent[] = [
   {
-    type: "RUN_STARTED",
+    type: EventType.RUN_STARTED,
     threadId: "thread-1",
     runId: "run-1",
     input: {
@@ -37,36 +38,12 @@ const events: StreamEvent[] = [
     },
   },
   {
-    type: "MESSAGES_SNAPSHOT",
-    messages: [
-      { id: "tool-1", role: "tool", content: "done", toolCallId: "call-1", name: "bookFlight" },
-    ],
+    type: EventType.MESSAGES_SNAPSHOT,
+    messages: [{ id: "tool-1", role: "tool", content: "done", toolCallId: "call-1" }],
   },
   {
-    type: "STATE_SNAPSHOT",
+    type: EventType.STATE_SNAPSHOT,
     snapshot: {
-      replay: {
-        toolTraces: [
-          {
-            callId: "call-1",
-            toolName: "bookFlight",
-            trace: {
-              version: 1,
-              startedAt: 1,
-              completedAt: 2,
-              emissions: [
-                {
-                  order: 0,
-                  emissionId: "emission-1",
-                  componentKey: "FlightCard",
-                  props: { flight: "FL001" },
-                  timestamp: 2,
-                },
-              ],
-            },
-          },
-        ],
-      },
       pendingClientActions: [
         {
           toolCallId: "call-1",
@@ -81,40 +58,39 @@ const events: StreamEvent[] = [
       ],
     },
   },
-  { type: "TEXT_MESSAGE_START", messageId: "assistant-2", role: "assistant" },
-  { type: "TEXT_MESSAGE_CONTENT", messageId: "assistant-2", delta: "Booked." },
-  { type: "TEXT_MESSAGE_END", messageId: "assistant-2" },
-  { type: "TOOL_CALL_START", toolCallId: "call-2", toolCallName: "notify" },
-  { type: "TOOL_CALL_ARGS", toolCallId: "call-2", delta: "{}" },
-  { type: "TOOL_CALL_END", toolCallId: "call-2" },
+  { type: EventType.TEXT_MESSAGE_START, messageId: "assistant-2", role: "assistant" },
+  { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "assistant-2", delta: "Booked." },
+  { type: EventType.TEXT_MESSAGE_END, messageId: "assistant-2" },
+  { type: EventType.TOOL_CALL_START, toolCallId: "call-2", toolCallName: "notify" },
+  { type: EventType.TOOL_CALL_ARGS, toolCallId: "call-2", delta: "{}" },
+  { type: EventType.TOOL_CALL_END, toolCallId: "call-2" },
   {
-    type: "TOOL_CALL_RESULT",
+    type: EventType.TOOL_CALL_RESULT,
     messageId: "tool-2",
     toolCallId: "call-2",
-    toolCallName: "notify",
     content: "ok",
     role: "tool",
-    isError: false,
   },
   {
-    type: "ACTIVITY_SNAPSHOT",
-    messageId: "sweatpants:plugin-replay:call-1",
-    activityType: "sweatpants:plugin-replay",
+    type: EventType.ACTIVITY_SNAPSHOT,
+    messageId: "activity-record-1",
+    activityType: "sweatpants:public-execution",
     replace: true,
     content: {
       version: 1,
-      toolCallId: "call-1",
-      toolName: "bookFlight",
-      trace: {
-        version: 1,
-        startedAt: 1,
-        completedAt: 2,
-        emissions: [],
+      node: {
+        nodeId: "activity-1",
+        parentNodeId: null,
+        sequence: 0,
+        kind: "activity",
+        state: "running",
+        presentation: "opaque",
+        publicData: { kind: "activity", activityType: "opaque-execution" },
       },
     },
   },
   {
-    type: "RUN_FINISHED",
+    type: EventType.RUN_FINISHED,
     threadId: "thread-1",
     runId: "run-1",
     outcome: {
@@ -131,8 +107,8 @@ const events: StreamEvent[] = [
       ],
     },
   },
-  { type: "REASONING_MESSAGE_CONTENT", messageId: "reasoning-1", delta: "Thinking" },
-  { type: "RUN_ERROR", message: "planned failure", code: "provider_unavailable" },
+  { type: EventType.REASONING_MESSAGE_CONTENT, messageId: "reasoning-1", delta: "Thinking" },
+  { type: EventType.RUN_ERROR, message: "planned failure", code: "provider_unavailable" },
 ];
 
 describe("conversation checkpoint codec", () => {
@@ -145,10 +121,15 @@ describe("conversation checkpoint codec", () => {
   it.each([
     ["unversioned array", JSON.stringify(events)],
     ["unknown version", JSON.stringify({ version: 2, events: [] })],
+    ["frontend-local envelope field", JSON.stringify({ version: 1, events: [], localRenders: [] })],
+    ["legacy replay envelope field", JSON.stringify({ version: 1, events: [], pluginReplay: {} })],
     ["unknown event", JSON.stringify({ version: 1, events: [{ type: "OLD_EVENT" }] })],
     [
       "unknown event field",
-      JSON.stringify({ version: 1, events: [{ type: "RUN_ERROR", message: "x", extra: true }] }),
+      JSON.stringify({
+        version: 1,
+        events: [{ type: EventType.RUN_ERROR, message: "x", extra: true }],
+      }),
     ],
     [
       "malformed nested message",
@@ -156,7 +137,7 @@ describe("conversation checkpoint codec", () => {
         version: 1,
         events: [
           {
-            type: "MESSAGES_SNAPSHOT",
+            type: EventType.MESSAGES_SNAPSHOT,
             messages: [
               {
                 id: "m",
@@ -170,6 +151,113 @@ describe("conversation checkpoint codec", () => {
     ],
   ])("rejects %s", (_label, raw) => {
     expect(() => decodeConversationCheckpoint(raw)).toThrow(ConversationCheckpointError);
+  });
+
+  it("rejects frontend render state in a host tree checkpoint", () => {
+    expect(() =>
+      encodeConversationCheckpoint([
+        {
+          type: "HOST_TREE_SNAPSHOT",
+          snapshot: {
+            messages: [
+              {
+                type: "message",
+                id: "message-1",
+                placement: { nodeId: "message-1", parentNodeId: null, sequence: 0 },
+                role: "assistant",
+                parts: [
+                  {
+                    type: "tool-call",
+                    id: "part-1",
+                    callId: "call-1",
+                    name: "pick",
+                    arguments: {},
+                    state: "running",
+                    execution: {
+                      type: "execution",
+                      placement: { nodeId: "execution-1", parentNodeId: "message-1", sequence: 0 },
+                      executionId: "execution-1",
+                      presentation: "public",
+                      status: "running",
+                      children: [
+                        {
+                          type: "elicit",
+                          placement: {
+                            nodeId: "elicit-1",
+                            parentNodeId: "execution-1",
+                            sequence: 0,
+                          },
+                          elicitId: "elicit-1",
+                          bindingId: "binding-1",
+                          key: "pick",
+                          message: "Pick",
+                          status: "pending",
+                          renders: [{ nativeHandle: "not-host-data" }],
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        } as unknown as StreamEvent,
+      ]),
+    ).toThrow(ConversationCheckpointError);
+  });
+
+  it("rejects frontend fields even when the render collection is empty", () => {
+    expect(() =>
+      encodeConversationCheckpoint([
+        {
+          type: "HOST_TREE_SNAPSHOT",
+          snapshot: {
+            messages: [
+              {
+                type: "message",
+                id: "message-1",
+                placement: { nodeId: "message-1", parentNodeId: null, sequence: 0 },
+                role: "assistant",
+                parts: [
+                  {
+                    type: "tool-call",
+                    id: "part-1",
+                    callId: "call-1",
+                    name: "pick",
+                    arguments: {},
+                    state: "running",
+                    execution: {
+                      type: "execution",
+                      placement: { nodeId: "execution-1", parentNodeId: "message-1", sequence: 0 },
+                      executionId: "execution-1",
+                      presentation: "public",
+                      status: "running",
+                      children: [
+                        {
+                          type: "elicit",
+                          placement: {
+                            nodeId: "elicit-1",
+                            parentNodeId: "execution-1",
+                            sequence: 0,
+                          },
+                          elicitId: "elicit-1",
+                          bindingId: "binding-1",
+                          key: "pick",
+                          message: "Pick",
+                          status: "pending",
+                          renders: [],
+                          response: "local-only",
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        } as unknown as StreamEvent,
+      ]),
+    ).toThrow(ConversationCheckpointError);
   });
 
   it("rejects a checkpoint larger than the durable bound", () => {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Json } from "@sweatpants/foundation";
 
 export const PROTOCOL_VERSION = "sweatpants.agentcore.tool-session.v1" as const;
 
@@ -86,7 +87,7 @@ export type RuntimeEvent =
       key: string;
       message: string;
       schema: Record<string, unknown>;
-      context?: Record<string, unknown>;
+      context?: Json;
     }
   | {
       type: "sample_request";

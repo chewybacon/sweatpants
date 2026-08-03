@@ -16,7 +16,6 @@ import type {
 } from "@sweatpants/agent-sdk/transport/worker";
 import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { ExtendedMessage, ToolCallMessage } from "@sweatpants/tool-session/messages";
-import { MODEL_CONTEXT_SCHEMA_KEY } from "@sweatpants/tool-session/mcp";
 import { WorkerSessionStateContext } from "./worker-session-context.ts";
 
 /**
@@ -98,16 +97,12 @@ export const WorkerSessionApi = createApi("worker-session", {
     const queue = createQueue<ElicitExchangeCompletion<unknown>, void>();
     state.pendingElicitChannels.set(elicitId, queue);
 
-    const schemaWithContext = request.context
-      ? { ...request.schema, [MODEL_CONTEXT_SCHEMA_KEY]: request.context }
-      : request.schema;
-
     yield* state.emitEvent({
       type: "elicit_request",
       elicitId,
       key: request.key,
       message: request.message,
-      schema: schemaWithContext,
+      schema: request.schema,
       ...(request.context !== undefined && { context: request.context }),
     });
 

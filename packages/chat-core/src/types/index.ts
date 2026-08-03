@@ -5,16 +5,13 @@
  */
 
 export type {
-  ChatEmission,
   ChatMessage,
-  StreamingMessage,
   TextPart,
   ReasoningPart,
   ToolCallPart,
   ToolResultPart,
   MessagePart,
   ContentPart,
-  PluginElicit,
 } from "./chat-message.ts";
 
 export {

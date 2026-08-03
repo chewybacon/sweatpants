@@ -23,10 +23,6 @@ export default defineConfig({
       ...options.alias,
       "@sweatpants/agent-sdk/tool": resolve(here, "../../packages/agent-sdk/src/tool/index.ts"),
       "@sweatpants/agent-sdk": resolve(here, "../../packages/agent-sdk/src/index.ts"),
-      "@sweatpants/react-chat/browser-rendering": resolve(
-        here,
-        "../../packages/react-chat/src/browser-rendering/index.ts",
-      ),
       "@sweatpants/chat-core": resolve(here, "../../packages/chat-core/src/index.ts"),
       "@sweatpants/tool-session/mcp": resolve(here, "../../packages/tool-session/src/mcp/index.ts"),
     };

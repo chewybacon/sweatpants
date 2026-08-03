@@ -5,16 +5,6 @@ import type { Operation } from "effection";
 import { call } from "effection";
 import type { Message } from "../messages.ts";
 import type { StreamChatOptions, ElicitResponseData } from "./options.ts";
-import { normalizeClientReplayTrace } from "./plugin-replay.ts";
-
-/**
- * Derive the server-side `enabledPlugins` list from the plugin handles passed
- * to the session. Each plugin's `client.toolName` is the canonical tool name
- * the server should expose. Authors never specify `enabledPlugins` directly.
- */
-function deriveEnabledPlugins(options: StreamChatOptions): string[] {
-  return (options.plugins ?? []).map((plugin) => plugin.client.toolName);
-}
 
 function deriveEnabledTools(options: StreamChatOptions): boolean | string[] | undefined {
   if (options.enabledTools !== undefined) {
@@ -50,36 +40,10 @@ function resumeEntryForElicitResponse(response: ElicitResponseData) {
   };
 }
 
-function buildResumeForwardedProps(options: StreamChatOptions): {
-  resume?: ReturnType<typeof resumeEntryForElicitResponse>[];
-  forwardedProps?: { sweatpants: { clientReplayTraces: Record<string, unknown> } };
-} {
-  const elicitResponses = options.elicitResponses ?? [];
-  if (elicitResponses.length === 0) {
-    return {};
-  }
-
-  const resume = elicitResponses.map(resumeEntryForElicitResponse);
-  const clientReplayTraces: Record<string, unknown> = {};
-
-  for (const response of elicitResponses) {
-    if (!response.trace) {
-      continue;
-    }
-    const normalized = normalizeClientReplayTrace(response.trace, {
-      interruptId: response.elicitId,
-    });
-    if (normalized) {
-      clientReplayTraces[response.elicitId] = normalized;
-    }
-  }
-
-  return {
-    resume,
-    ...(Object.keys(clientReplayTraces).length > 0
-      ? { forwardedProps: { sweatpants: { clientReplayTraces } } }
-      : {}),
-  };
+function buildResume(
+  options: StreamChatOptions,
+): ReturnType<typeof resumeEntryForElicitResponse>[] {
+  return (options.elicitResponses ?? []).map(resumeEntryForElicitResponse);
 }
 
 export function* executeChatFetch(
@@ -88,7 +52,7 @@ export function* executeChatFetch(
   options: StreamChatOptions,
   signal: AbortSignal,
 ): Operation<Response> {
-  const resumeForwardedProps = buildResumeForwardedProps(options);
+  const resume = buildResume(options);
 
   const chatFetch = options.fetch ?? globalThis.fetch;
   const response = yield* call(() =>
@@ -99,7 +63,6 @@ export function* executeChatFetch(
         threadId: options.conversationId,
         messages,
         enabledTools: deriveEnabledTools(options),
-        enabledPlugins: deriveEnabledPlugins(options),
         systemPrompt: options.systemPrompt,
         persona: options.persona,
         personaConfig: options.personaConfig,
@@ -107,9 +70,8 @@ export function* executeChatFetch(
         effort: options.effort,
         streamOptions: options.streamOptions,
         initialToolChoice: options.initialToolChoice,
-        replayState: options.replayState,
         pluginAbort: options.pluginAbort,
-        ...resumeForwardedProps,
+        ...(resume.length > 0 ? { resume } : {}),
         ...(options.conversationId && { conversationId: options.conversationId }),
       }),
       signal,

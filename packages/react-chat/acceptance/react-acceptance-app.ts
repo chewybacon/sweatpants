@@ -74,6 +74,7 @@ export function createReactAcceptanceApplication(
       });
     },
     handler: createChatHandler({
+      defaultEnabledTools: true,
       programDriverJournalStore: journalStore,
       setup: function* (): Operation<void> {
         yield* context.model.install();

@@ -5,26 +5,10 @@
  * Each elicitation key (pickFlight, pickSeat) has a handler that renders
  * a React component and returns the user's selection.
  */
-import { makePlugin, getElicitContext } from "@sweatpants/tool-session/mcp";
-import { bookFlightTool, type Flight, type SeatMap } from "./tool";
+import { makePlugin } from "@sweatpants/react-chat";
+import { bookFlightTool } from "./tool";
 import { FlightList } from "./components/FlightList";
 import { SeatPicker } from "./components/SeatPicker";
-
-// =============================================================================
-// CONTEXT TYPES
-// =============================================================================
-
-// Using type instead of interface to satisfy Record<string, unknown> constraint
-type PickFlightContext = {
-  flights: Flight[];
-  [key: string]: unknown;
-};
-
-type PickSeatContext = {
-  seatMap: SeatMap;
-  flightInfo?: { airline: string; flightNumber: string };
-  [key: string]: unknown;
-};
 
 // =============================================================================
 // PLUGIN DEFINITION
@@ -36,10 +20,9 @@ export const bookFlightPlugin = makePlugin(bookFlightTool)
      * Handler for pickFlight elicitation.
      * Renders the FlightList component and returns the selected flight ID.
      */
-    pickFlight: function* (req, ctx) {
-      const context = getElicitContext<PickFlightContext>(req);
-      const flights = context.flights ?? [];
-      const cleanMessage = req.message;
+    pickFlight: function* (input, ctx) {
+      const { flights } = input.context;
+      const cleanMessage = input.message;
 
       // Render the FlightList component and wait for user selection
       const result = yield* ctx.render(FlightList, {
@@ -55,15 +38,9 @@ export const bookFlightPlugin = makePlugin(bookFlightTool)
      * Handler for pickSeat elicitation.
      * Renders the SeatPicker component and returns the selected seat.
      */
-    pickSeat: function* (req, ctx) {
-      const context = getElicitContext<PickSeatContext>(req);
-      const seatMap = context.seatMap ?? {
-        rows: 10,
-        seatsPerRow: ["A", "B", "C", "D", "E", "F"],
-        taken: [],
-      };
-      const flightInfo = context.flightInfo;
-      const cleanMessage = req.message;
+    pickSeat: function* (input, ctx) {
+      const { seatMap, flightInfo } = input.context;
+      const cleanMessage = input.message;
 
       // Build props, only including flightInfo if it exists
       const seatPickerProps = flightInfo

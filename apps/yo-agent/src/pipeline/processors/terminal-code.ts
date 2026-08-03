@@ -11,8 +11,8 @@
  */
 import type { Operation } from "effection";
 import { call } from "effection";
-import type { Frame, Processor } from "@sweatpants/react-chat/pipeline";
-import { updateBlockById, setBlockRendered, addTrace } from "@sweatpants/react-chat/pipeline";
+import type { Frame, Processor } from "@sweatpants/chat-client/pipeline";
+import { updateBlockById, setBlockRendered, addTrace } from "@sweatpants/chat-client/pipeline";
 import { codeToANSI } from "@shikijs/cli";
 import type { BundledLanguage, BundledTheme } from "shiki";
 import chalk from "chalk";

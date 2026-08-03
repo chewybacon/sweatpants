@@ -1,10 +1,14 @@
+import { EventType } from "@ag-ui/core";
 import type { Message } from "../messages.ts";
-import type { ChatState, ChatStateInternal } from "../state/chat-state.ts";
-import { createInitialChatStateInternal } from "../state/chat-state.ts";
+import {
+  createInitialChatStateInternal,
+  type ChatState,
+  type ChatStateInternal,
+} from "../state/chat-state.ts";
 import type { ChatStateEvent, LocalChatAction } from "../state/events.ts";
 import type { ChatCommand, ElicitResponseData, StreamChatOptions } from "./options.ts";
 import { foldChatState, publicChatState } from "./projection.ts";
-import type { ConversationReplayState, ElicitRequestStreamEvent } from "./streaming.ts";
+import type { ElicitRequestStreamEvent } from "./streaming.ts";
 import type { ChatTransportReceipt, ChatTurnFailure, ChatTurnSettlement } from "./settlement.ts";
 import {
   appendAssistantFinalMessage,
@@ -38,7 +42,6 @@ export interface SessionProjectionState {
   readonly history: readonly Message[];
   readonly run: RunProjection;
   readonly openCalls: readonly OpenToolCall[];
-  readonly replayState?: ConversationReplayState;
   readonly conversationId?: string;
   readonly pendingElicitResponses: readonly ElicitResponseData[];
   readonly sentElicitResponseIds: ReadonlySet<string>;
@@ -54,7 +57,6 @@ export interface ChatRequestPlan {
   readonly lifecycle: RequestLifecycle;
   readonly conversationId?: string;
   readonly elicitResponses?: readonly ElicitResponseData[];
-  readonly replayState?: ConversationReplayState;
   readonly pluginAbort?: StreamChatOptions["pluginAbort"];
 }
 
@@ -63,7 +65,6 @@ export type SessionInput =
       readonly type: "hydrate";
       readonly history: readonly Message[];
       readonly events: readonly ChatStateEvent[];
-      readonly replayState?: ConversationReplayState;
       readonly observedAt: number;
     }
   | {
@@ -132,7 +133,12 @@ function pendingElicitations(state: ChatState): ElicitRequestStreamEvent[] {
       elicitId: elicit.elicitId,
       key: elicit.key,
       message: elicit.message,
-      schema: elicit.schema,
+      ...(elicit.schema ? { schema: elicit.schema } : {}),
+      ...(elicit.bindingId ? { bindingId: elicit.bindingId } : {}),
+      ...(elicit.context !== undefined ? { context: elicit.context } : {}),
+      ...(elicit.responseContract ? { responseContract: elicit.responseContract } : {}),
+      ...(elicit.contextContract ? { contextContract: elicit.contextContract } : {}),
+      ...(elicit.placement ? { placement: elicit.placement } : {}),
     }));
 }
 
@@ -142,8 +148,7 @@ function upsertHistoryMessage(
 ): { history: readonly Message[]; added: boolean } {
   const existingIndex = history.findIndex((candidate) => candidate.id === message.id);
   if (existingIndex >= 0) {
-    const existing = history[existingIndex]!;
-    const replacement = existing.replay && !message.replay ? existing : message;
+    const replacement = message;
     return {
       history: history.map((candidate, index) =>
         index === existingIndex ? replacement : candidate,
@@ -230,7 +235,9 @@ function appendCancelledToolResults(
   history: readonly Message[],
   calls: readonly OpenToolCall[],
 ): readonly Message[] {
-  if (calls.length === 0) return history;
+  if (calls.length === 0) {
+    return history;
+  }
   const next = [...history];
   const transcript = createTranscriptState(next);
   for (const call of calls) {
@@ -307,7 +314,6 @@ function createRequestPlan(
     ...(state.pendingElicitResponses.length > 0
       ? { elicitResponses: state.pendingElicitResponses }
       : {}),
-    ...(state.replayState ? { replayState: state.replayState } : {}),
     ...(pluginAbort ? { pluginAbort } : {}),
   };
   return {
@@ -366,19 +372,13 @@ function transitionCommand(
       const sentIds = new Set(next.sentElicitResponseIds);
       const sentCalls = new Map(next.sentElicitCallIds);
       for (const elicit of pendingElicitations(publicChatState(next.view))) {
-        if (sentIds.has(elicit.elicitId)) continue;
+        if (sentIds.has(elicit.elicitId)) {
+          continue;
+        }
         sentIds.add(elicit.elicitId);
         sentCalls.set(elicit.elicitId, elicit.callId);
-        next = applyLocalAction(
-          next,
-          {
-            type: "LOCAL_ELICIT_RESPONSE",
-            callId: elicit.callId,
-            elicitId: elicit.elicitId,
-            response: { action: "cancel" },
-          },
-          input.observedAt,
-        );
+        // The public send is a supersession, not a user cancellation response.
+        // The host derives its cancellation from the new message request.
       }
 
       const user = appendUser(next.history, command.content);
@@ -425,7 +425,6 @@ function transitionCommand(
       return {
         state: {
           ...createInitialSessionProjectionState(state.conversationId),
-          ...(state.replayState ? { replayState: state.replayState } : {}),
         },
         outputs: [{ type: "cancel-request" }],
       };
@@ -441,23 +440,15 @@ function transitionCommand(
         ...(command.ref ? { ref: command.ref } : {}),
         elicitId: command.elicitId,
         completion: command.completion,
-        ...(command.trace ? { trace: command.trace } : {}),
       };
-      const next = applyLocalAction(
-        {
-          ...state,
-          pendingElicitResponses: [...state.pendingElicitResponses, response],
-          sentElicitResponseIds: new Set(state.sentElicitResponseIds).add(command.elicitId),
-          sentElicitCallIds: new Map(state.sentElicitCallIds).set(command.elicitId, command.callId),
-        },
-        {
-          type: "LOCAL_ELICIT_RESPONSE",
-          callId: command.callId,
-          elicitId: command.elicitId,
-          response: command.completion,
-        },
-        input.observedAt,
-      );
+      // Sending a terminal candidate does not settle the generic host node.
+      // The host result event remains the only settlement authority.
+      const next: SessionProjectionState = {
+        ...state,
+        pendingElicitResponses: [...state.pendingElicitResponses, response],
+        sentElicitResponseIds: new Set(state.sentElicitResponseIds).add(command.elicitId),
+        sentElicitCallIds: new Map(state.sentElicitCallIds).set(command.elicitId, command.callId),
+      };
       return command.autoContinue === false
         ? { state: next, outputs: [] }
         : startRequestOutputs(next, requireRequestId(input));
@@ -475,7 +466,7 @@ function transitionStreamEvent(
   let run = next.run;
   let openCalls = next.openCalls;
 
-  if (event.type === "RUN_STARTED") {
+  if (event.type === EventType.RUN_STARTED) {
     run = {
       phase: "streaming",
       threadId: event.threadId,
@@ -486,16 +477,18 @@ function transitionStreamEvent(
     run = { ...run, producedMessage: true };
   }
 
-  if (event.type === "TOOL_CALL_END") {
+  if (event.type === EventType.TOOL_CALL_END) {
     const name = next.view.toolCallDrafts[event.toolCallId]?.name;
-    if (name) openCalls = addOpenCall(openCalls, { callId: event.toolCallId, toolName: name });
-  } else if (event.type === "TOOL_CALL_RESULT") {
+    if (name) {
+      openCalls = addOpenCall(openCalls, { callId: event.toolCallId, toolName: name });
+    }
+  } else if (event.type === EventType.TOOL_CALL_RESULT) {
     openCalls = openCalls.filter((call) => call.callId !== event.toolCallId);
   }
 
   let sentElicitResponseIds: ReadonlySet<string> = next.sentElicitResponseIds;
   let sentElicitCallIds: ReadonlyMap<string, string> = next.sentElicitCallIds;
-  if (event.type === "TOOL_CALL_RESULT") {
+  if (event.type === EventType.TOOL_CALL_RESULT) {
     const responseIds = new Set(sentElicitResponseIds);
     const callIds = new Map(sentElicitCallIds);
     for (const [elicitId, callId] of callIds) {
@@ -514,10 +507,9 @@ function transitionStreamEvent(
     openCalls,
     sentElicitResponseIds,
     sentElicitCallIds,
-    ...(next.view.replay ? { replayState: next.view.replay } : {}),
   };
 
-  if (event.type === "RUN_FINISHED") {
+  if (event.type === EventType.RUN_FINISHED) {
     if (event.outcome?.type === "interrupt") {
       // A parked turn is authoritative only when the producer emits the
       // interrupt outcome. Pending view state alone may be a replay snapshot.
@@ -560,7 +552,7 @@ function transitionStreamEvent(
     };
   }
 
-  if (event.type === "RUN_ERROR") {
+  if (event.type === EventType.RUN_ERROR) {
     const failure: ChatTurnFailure = {
       message: event.message,
       ...(event.code ? { code: event.code } : {}),
@@ -664,7 +656,6 @@ function hydrate(
       history,
       run: { phase: "idle" },
       openCalls: unresolvedCalls(history),
-      ...(input.replayState ? { replayState: input.replayState } : {}),
     },
     outputs: [],
   };

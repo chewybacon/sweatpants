@@ -8,7 +8,7 @@
  */
 import React from "react";
 import { Box, Text } from "ink";
-import type { Frame, Block } from "@sweatpants/react-chat/pipeline";
+import type { Frame, Block } from "@sweatpants/chat-client/pipeline";
 
 // =============================================================================
 // Block Renderer
@@ -59,8 +59,6 @@ function BlockRenderer({ block }: BlockRendererProps) {
 interface FrameRendererProps {
   /** The frame to render */
   frame: Frame;
-  /** Whether content is still streaming */
-  isStreaming?: boolean;
 }
 
 /**
@@ -68,7 +66,7 @@ interface FrameRendererProps {
  *
  * Iterates through blocks and renders each one appropriately.
  */
-export function FrameRenderer({ frame, isStreaming = false }: FrameRendererProps) {
+export function FrameRenderer({ frame }: FrameRendererProps) {
   if (frame.blocks.length === 0) {
     return null;
   }

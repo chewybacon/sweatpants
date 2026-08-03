@@ -104,6 +104,14 @@ function mcpEventToExecution(
           message: event.message,
           schema: event.schema,
           ...(event.context !== undefined ? { context: event.context } : {}),
+          ...(event.bindingId ? { bindingId: event.bindingId } : {}),
+          ...(event.responseContract ? { responseContract: event.responseContract } : {}),
+          ...(event.contextContract ? { contextContract: event.contextContract } : {}),
+          ...(event.placement ? { placement: event.placement } : {}),
+          ...(event.ownerInterfaceDigest
+            ? { ownerInterfaceDigest: event.ownerInterfaceDigest }
+            : {}),
+          ...(event.clientMetadata !== undefined ? { clientMetadata: event.clientMetadata } : {}),
         },
       };
     case "result":

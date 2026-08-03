@@ -40,14 +40,12 @@ test("threaded chat reconstructs a completed durable tool turn after refresh", a
   await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("message-user").filter({ hasText: prompt })).toBeVisible();
 
-  const replayed = page.getByTestId("tool-call-block").filter({ hasText: `You picked: ${picked}` });
-  await expect(replayed).toHaveCount(1);
-  await expect(
-    replayed
-      .locator("button")
-      .filter({ hasText: /[AKQJ\d]+[♥♦♣♠]/ })
-      .first(),
-  ).toBeDisabled();
+  // Frontend-local render records are intentionally not durable checkpoint
+  // state. Refresh restores the host tree and settled assistant result, not a
+  // native card component or its local response presentation.
+  const replayed = page.getByTestId("tool-call-block").last();
+  await expect(replayed).toBeVisible();
+  await expect(replayed.locator("button")).toHaveCount(0);
   await expect(
     page.getByTestId("message-assistant").filter({
       hasText: "Thread reconstruction fixture complete.",

@@ -42,6 +42,17 @@
             },
             "default": "./src/port.ts"
         },
+        "./stream": {
+            "development": {
+                "import": "./src/stream.ts",
+                "types": "./src/stream.ts"
+            },
+            "import": {
+                "types": "./dist/stream.d.ts",
+                "default": "./dist/stream.js"
+            },
+            "default": "./src/stream.ts"
+        },
         "./errors": {
             "development": {
                 "import": "./src/errors.ts",

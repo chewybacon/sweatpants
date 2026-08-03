@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { call, createScope, each, spawn, type Operation } from "effection";
 import {
   createChatSession,
@@ -9,13 +10,12 @@ import {
   type ElicitState,
   type SessionOptions,
 } from "@sweatpants/chat-core";
-import type { PluginHandleInput } from "@sweatpants/tool-session/mcp";
 
 export type ChatFetch = FrameworkChatFetch;
 
 export interface ConversationOptions {
   conversationId?: string;
-  plugins?: PluginHandleInput[];
+  plugins?: unknown[];
   tools?: unknown[];
   enabledTools?: string[] | boolean;
   systemPrompt?: string;
@@ -133,8 +133,8 @@ function firstPendingElicit(state: ChatState, responded: Set<string>): ElicitSta
 function textFromEvents(events: readonly ChatSessionStreamEvent[]): string {
   return events
     .filter(
-      (event): event is Extract<ChatSessionStreamEvent, { type: "TEXT_MESSAGE_CONTENT" }> =>
-        event.type === "TEXT_MESSAGE_CONTENT",
+      (event): event is Extract<ChatSessionStreamEvent, { type: EventType.TEXT_MESSAGE_CONTENT }> =>
+        event.type === EventType.TEXT_MESSAGE_CONTENT,
     )
     .map((event) => event.delta)
     .join("");
@@ -366,7 +366,6 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
           const session = yield* createChatSession({
             baseUrl: options.baseUrl ?? "/api/chat",
             fetch: conversationFetch,
-            ...(conversationOptions.plugins ? { plugins: conversationOptions.plugins } : {}),
             ...(conversationOptions.tools ? { tools: conversationOptions.tools } : {}),
             ...(conversationOptions.enabledTools !== undefined
               ? { enabledTools: conversationOptions.enabledTools }
@@ -383,10 +382,10 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
             onStreamEvent: ({ event }) => {
               cumulativeEvents.push(event);
               activeTurnEvents?.push(event);
-              if (event.type === "TEXT_MESSAGE_CONTENT") {
+              if (event.type === EventType.TEXT_MESSAGE_CONTENT) {
                 resolveDeltaWaiters(event.delta, event.messageId);
               }
-              if (event.type === "RUN_ERROR") {
+              if (event.type === EventType.RUN_ERROR) {
                 pendingRunError = new Error(event.message);
               }
             },

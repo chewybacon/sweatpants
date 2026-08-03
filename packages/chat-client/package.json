@@ -1,0 +1,99 @@
+{
+    "name": "@sweatpants/chat-client",
+    "version": "0.1.0",
+    "description": "Headless Sweatpants chat client, runtime, transport ports, and frame pipeline",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "require": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.cjs"
+            },
+            "default": "./src/index.ts"
+        },
+        "./pipeline": {
+            "development": {
+                "import": "./src/pipeline/index.ts",
+                "types": "./src/pipeline/index.ts"
+            },
+            "import": {
+                "types": "./dist/pipeline/index.d.ts",
+                "default": "./dist/pipeline.js"
+            },
+            "require": {
+                "types": "./dist/pipeline/index.d.ts",
+                "default": "./dist/pipeline.cjs"
+            },
+            "default": "./src/pipeline/index.ts"
+        },
+        "./http": {
+            "development": {
+                "import": "./src/http.ts",
+                "types": "./src/http.ts"
+            },
+            "import": {
+                "types": "./dist/http.d.ts",
+                "default": "./dist/http.js"
+            },
+            "require": {
+                "types": "./dist/http.d.ts",
+                "default": "./dist/http.cjs"
+            },
+            "default": "./src/http.ts"
+        },
+        "./ports": {
+            "development": {
+                "import": "./src/ports.ts",
+                "types": "./src/ports.ts"
+            },
+            "import": {
+                "types": "./dist/ports.d.ts",
+                "default": "./dist/ports.js"
+            },
+            "require": {
+                "types": "./dist/ports.d.ts",
+                "default": "./dist/ports.cjs"
+            },
+            "default": "./src/ports.ts"
+        }
+    },
+    "scripts": {
+        "build": "tsup && pnpm build:types",
+        "dev": "tsup --watch",
+        "check": "tsc -b",
+        "test": "vitest run --passWithNoTests",
+        "build:types": "tsc -b tsconfig.json --force"
+    },
+    "dependencies": {
+        "@sweatpants/chat-core": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
+        "effection": "catalog:",
+        "katex": "^0.16.27",
+        "marked": "^17.0.1",
+        "mermaid": "^11.12.2",
+        "shiki": "^3.20.0"
+    },
+    "devDependencies": {
+        "@ag-ui/core": "0.0.57",
+        "@sweatpants/ts-config": "workspace:*",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    },
+    "peerDependencies": {
+        "@ag-ui/core": "0.0.57"
+    }
+}

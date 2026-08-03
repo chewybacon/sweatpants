@@ -87,6 +87,7 @@
         "zod": "catalog:"
     },
     "devDependencies": {
+        "@ag-ui/core": "0.0.57",
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",
         "tsup": "catalog:",

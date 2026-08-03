@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import { ACCEPTANCE_MODEL_ID, createAcceptanceApplication } from "./lib/acceptance-app.ts";
@@ -37,8 +38,8 @@ async function recoverConversation(binding: Binding, kind: FailureKind): Promise
 
       yield* failedTurn.failure();
       const events = conversation.transcript().events;
-      expect(events.filter((event) => event.type === "RUN_ERROR")).toHaveLength(1);
-      expect(events.some((event) => event.type === "RUN_FINISHED")).toBe(false);
+      expect(events.filter((event) => event.type === EventType.RUN_ERROR)).toHaveLength(1);
+      expect(events.some((event) => event.type === EventType.RUN_FINISHED)).toBe(false);
       if (kind !== "error") {
         expect(conversation.transcript().text).toContain("PARTIAL_V1");
       }

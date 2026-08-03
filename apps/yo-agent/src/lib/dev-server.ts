@@ -18,12 +18,20 @@
  * })
  * ```
  */
-import { resource, call, spawn, each, createSignal, useScope } from "effection";
-import type { Operation, Stream } from "effection";
+import {
+  resource,
+  call,
+  spawn,
+  each,
+  createSignal,
+  useScope,
+  type Operation,
+  type Stream,
+} from "effection";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-import { useVite, type ViteHandle, type HmrEvent } from "./vite-resource.ts";
-import type { ModelSelection } from "@sweatpants/model-provider-pi-ai";
+import { useVite, type ViteHandle } from "./vite-resource.ts";
+import type { RuntimeTool } from "@sweatpants/agent-sdk";
 
 /**
  * Options for the dev server
@@ -33,8 +41,6 @@ export interface DevServerOptions {
   root?: string;
   /** Path to tools directory (relative to root) */
   toolsPath?: string;
-  /** Primary chat model. */
-  model?: ModelSelection;
 }
 
 /**
@@ -72,11 +78,7 @@ export interface DevServerHandle {
 export function useDevServer(options: DevServerOptions = {}): Operation<DevServerHandle> {
   return resource(function* (provide) {
     const ownerScope = yield* useScope();
-    const {
-      root = process.cwd(),
-      toolsPath = "./src/tools",
-      model = { provider: "ollama", id: "gemma4:12b-mlx" },
-    } = options;
+    const { root = process.cwd(), toolsPath = "./src/tools" } = options;
 
     // Start Vite in middleware mode for HMR
     const vite = yield* useVite({ root, logLevel: "warn" });
@@ -90,9 +92,10 @@ export function useDevServer(options: DevServerOptions = {}): Operation<DevServe
     // Load/reload the handler with current tools
     function* loadHandler(): Operation<void> {
       // Import tools through Vite (gets HMR support)
-      const toolsModule = yield* vite.import<{ tools?: unknown[]; toolList?: unknown[] }>(
-        `${toolsPath}/index.ts`,
-      );
+      const toolsModule = yield* vite.import<{
+        tools?: RuntimeTool[];
+        toolList?: RuntimeTool[];
+      }>(`${toolsPath}/index.ts`);
 
       const tools = toolsModule.tools ?? toolsModule.toolList ?? [];
 
@@ -102,8 +105,7 @@ export function useDevServer(options: DevServerOptions = {}): Operation<DevServe
 
       // Create new handler with loaded tools
       currentHandler = createInProcessHandler({
-        model,
-        tools: tools as any[],
+        tools,
         toolsModuleUrl: pathToFileURL(resolve(root, toolsPath, "index.ts")).toString(),
         owner: { scope: ownerScope, register: () => undefined },
       });

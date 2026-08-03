@@ -10,10 +10,13 @@ import type {
   SampleResultWithToolCalls,
   SampleSchemaConfig,
   SampleSchemaResult,
+  SampleToolsConfig,
   SampleToolsResult,
   ToolMessage,
   ToolSamplingMessage,
   ToolSampleConfig,
+  ToolElicitResult,
+  PerCallInterruptOptions,
 } from "@sweatpants/agent-sdk/tool";
 import type { Operation } from "effection";
 import type { WorkerTool, WorkerToolContext } from "./worker-types.ts";
@@ -114,7 +117,7 @@ function createCanonicalWorkerContext(
 
   const sample = canonicalSample as CanonicalRuntimeContext["sample"];
 
-  const context: CanonicalRuntimeContext = {
+  const context = {
     signal: worker.signal,
     get messages() {
       return messages;
@@ -126,7 +129,7 @@ function createCanonicalWorkerContext(
       return worker.log(level, message);
     },
     sample,
-    *sampleTools(config): Operation<SampleToolsResult> {
+    *sampleTools(config: SampleToolsConfig<ToolSamplingMessage>): Operation<SampleToolsResult> {
       const result = yield* worker.sampleTools(config);
       track(result.exchange, "prompt" in config);
       return result;
@@ -138,7 +141,10 @@ function createCanonicalWorkerContext(
       track(result.exchange, "prompt" in config);
       return result;
     },
-    *elicit(key, request) {
+    *elicit<K extends string>(
+      key: K,
+      request: { message: string; context?: JsonObject; interrupt?: PerCallInterruptOptions },
+    ): Operation<ToolElicitResult<JsonObject | undefined, any>> {
       const definition = tool.elicits[key];
       const schema = elicitSchemas[key];
       if (!definition || !schema) {
@@ -165,7 +171,10 @@ function createCanonicalWorkerContext(
       return result;
     },
   };
-  return context;
+  // RuntimeTool intentionally erases the authored elicitation map. The
+  // worker adapter preserves the open JSON context at this boundary while
+  // the concrete tool invocation retains its authored type witness.
+  return context as CanonicalRuntimeContext;
 }
 
 function namedSampleOutput(tool: RuntimeTool, key: string): StandardSchemaV1 | undefined {

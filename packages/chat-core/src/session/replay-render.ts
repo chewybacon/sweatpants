@@ -1,5 +1,5 @@
-import type { Channel, Operation, Task } from "effection";
-import { each, spawn } from "effection";
+import { EventType } from "@ag-ui/core";
+import { each, spawn, type Channel, type Operation, type Task } from "effection";
 import type { MessagePart } from "../types/chat-message.ts";
 import type { ChatStateEvent } from "../state/events.ts";
 import { createChatStateProjection } from "./projection.ts";
@@ -73,11 +73,11 @@ export function* renderReplayMessageParts(
   });
 
   const correlation = { threadId: "replay", runId: `replay:${messageId}` };
-  yield* input.send({ type: "RUN_STARTED", ...correlation });
-  yield* input.send({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" });
-  yield* input.send({ type: "TEXT_MESSAGE_CONTENT", messageId, delta: content });
-  yield* input.send({ type: "TEXT_MESSAGE_END", messageId });
-  yield* input.send({ type: "RUN_FINISHED", ...correlation, outcome: { type: "success" } });
+  yield* input.send({ type: EventType.RUN_STARTED, ...correlation });
+  yield* input.send({ type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" });
+  yield* input.send({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: content });
+  yield* input.send({ type: EventType.TEXT_MESSAGE_END, messageId });
+  yield* input.send({ type: EventType.RUN_FINISHED, ...correlation, outcome: { type: "success" } });
   yield* input.close();
   yield* transformTask;
   yield* collectTask;

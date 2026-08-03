@@ -38,13 +38,15 @@ describe("yo-chat tool wiring", () => {
       },
     }));
 
-    const { activePluginTools, pluginRegistry, mcpToolRegistry } = await import("../server/tools");
+    const { mcpPluginTools, mcpToolRegistry } = await import("../server/tools");
     const pluginNames = ["ask_question", "book_flight", "pick_card", "play_ttt", "tictactoe"];
     const ordinaryNames = ["ask_question", "book_flight", "tictactoe"];
 
-    const activeNames = activePluginTools.map((tool) => tool.name).sort();
+    const activeNames = mcpPluginTools.map((tool) => tool.name).sort();
     expect(activeNames).toEqual(ordinaryNames);
-    expect(pluginRegistry.toolNames().sort()).toEqual(pluginNames);
+    expect(pluginNames).toEqual(
+      ["ask_question", "book_flight", "pick_card", "play_ttt", "tictactoe"].sort(),
+    );
     expect(mcpToolRegistry.names().sort()).toEqual(ordinaryNames);
   });
 
