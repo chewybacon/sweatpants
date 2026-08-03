@@ -5,6 +5,8 @@ import {
   createStrategyToolRuntime,
   createToolExecutionRef,
   createToolInventory,
+  installToolInventory,
+  ToolInventoryApi,
   type ToolInventoryEntry,
 } from "./index.ts";
 
@@ -38,6 +40,16 @@ describe("neutral tool runtime contracts", () => {
     expect(() => createToolInventory([entry, entry])).toThrow(
       "Duplicate tool name in inventory: echo",
     );
+  });
+
+  it("installs the Host inventory through the scoped installer", async () => {
+    const inventory = createToolInventory([entry]);
+    expect(
+      await run(function* () {
+        yield* installToolInventory(inventory);
+        return yield* ToolInventoryApi.list();
+      }),
+    ).toEqual([entry]);
   });
 
   it("routes execution through the owning strategy", async () => {

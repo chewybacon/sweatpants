@@ -27,10 +27,10 @@ describe("ChatRuntime composition", () => {
     const trace: string[] = [];
     const driver: ChatTransportContract = {
       *sendMessages(request) {
-        trace.push(`driver:${request.conversationId}`);
+        trace.push(`driver:${request.threadId}`);
         return stream([
-          { type: "RUN_STARTED", threadId: request.conversationId, runId: request.runId },
-          { type: "RUN_FINISHED", threadId: request.conversationId, runId: request.runId },
+          { type: "RUN_STARTED", threadId: request.threadId, runId: request.runId },
+          { type: "RUN_FINISHED", threadId: request.threadId, runId: request.runId },
         ]);
       },
       *reconnectToStream() {
@@ -53,8 +53,8 @@ describe("ChatRuntime composition", () => {
         },
       ],
     });
-    const first = runtime.createClient({ conversationId: "first" });
-    const second = runtime.createClient({ conversationId: "second" });
+    const first = runtime.createClient({ threadId: "first" });
+    const second = runtime.createClient({ threadId: "second" });
     await Promise.all([first.initialized, second.initialized]);
     await first.sendMessage({ text: "one" });
     await second.sendMessage({ text: "two" });
@@ -74,10 +74,10 @@ describe("ChatRuntime composition", () => {
     const calls: string[] = [];
     const make = (label: string): ChatTransportContract => ({
       *sendMessages(request) {
-        calls.push(`${label}:${request.conversationId}`);
+        calls.push(`${label}:${request.threadId}`);
         return stream([
-          { type: "RUN_STARTED", threadId: request.conversationId, runId: request.runId },
-          { type: "RUN_FINISHED", threadId: request.conversationId, runId: request.runId },
+          { type: "RUN_STARTED", threadId: request.threadId, runId: request.runId },
+          { type: "RUN_FINISHED", threadId: request.threadId, runId: request.runId },
         ]);
       },
       *reconnectToStream() {
@@ -89,7 +89,7 @@ describe("ChatRuntime composition", () => {
     });
     const runtime = createChatRuntime({ transport: { driver: make("parent") } });
     const client = runtime.createClient({
-      conversationId: "child",
+      threadId: "child",
       transport: { driver: make("child") },
     });
     await client.initialized;
@@ -124,8 +124,8 @@ describe("ChatRuntime composition", () => {
           *sendMessages(request) {
             trace.push("driver");
             return stream([
-              { type: "RUN_STARTED", threadId: request.conversationId, runId: request.runId },
-              { type: "RUN_FINISHED", threadId: request.conversationId, runId: request.runId },
+              { type: "RUN_STARTED", threadId: request.threadId, runId: request.runId },
+              { type: "RUN_FINISHED", threadId: request.threadId, runId: request.runId },
             ]);
           },
           *reconnectToStream() {
@@ -137,7 +137,7 @@ describe("ChatRuntime composition", () => {
         },
       },
     });
-    const client = runtime.createClient({ conversationId: "middleware-order" });
+    const client = runtime.createClient({ threadId: "middleware-order" });
     await client.initialized;
     await client.sendMessage({ text: "hello" });
     expect(trace).toEqual(["a:enter", "b:enter", "driver", "b:exit", "a:exit"]);
@@ -160,8 +160,8 @@ describe("ChatRuntime composition", () => {
         driver: {
           *sendMessages(request) {
             return stream([
-              { type: "RUN_STARTED", threadId: request.conversationId, runId: request.runId },
-              { type: "RUN_FINISHED", threadId: request.conversationId, runId: request.runId },
+              { type: "RUN_STARTED", threadId: request.threadId, runId: request.runId },
+              { type: "RUN_FINISHED", threadId: request.threadId, runId: request.runId },
             ]);
           },
           *reconnectToStream() {
@@ -174,7 +174,7 @@ describe("ChatRuntime composition", () => {
       },
     });
     const client = runtime.createClient({
-      conversationId: "event-middleware",
+      threadId: "event-middleware",
       eventMiddleware: [
         {
           *accept(args, next) {
@@ -201,8 +201,8 @@ describe("ChatRuntime composition", () => {
   });
 
   it("has no implicit global client when using the standalone factory", async () => {
-    const first = createChatClient({ conversationId: "one" });
-    const second = createChatClient({ conversationId: "two" });
+    const first = createChatClient({ threadId: "one" });
+    const second = createChatClient({ threadId: "two" });
     await Promise.all([first.initialized, second.initialized]);
     first.setMessages([]);
     expect(second.getSnapshot().messages).toHaveLength(0);

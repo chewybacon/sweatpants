@@ -32,7 +32,7 @@ import { useChat } from "@sweatpants/react-chat";
 
 function Chat() {
     const { messages, sendMessage, status } = useChat({
-        conversationId: "demo",
+        threadId: "demo",
         api: "/api/chat",
     });
 

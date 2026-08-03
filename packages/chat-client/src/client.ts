@@ -7,11 +7,13 @@ import {
   suspend,
   useAbortSignal,
   useScope,
+  withResolvers,
   type Around,
   type Operation,
   type Scope,
   type Stream,
   type Task,
+  type WithResolvers,
 } from "effection";
 import { asChatClientError, ChatClientError } from "./errors.ts";
 import {
@@ -27,7 +29,7 @@ import {
   type ChatEventMiddleware,
   type ChatTransportMiddleware,
 } from "./ports.ts";
-import { createHttpTransport, type HttpTransportOptions } from "./http.ts";
+import { createHttpTransport, type ChatFetch, type HttpTransportOptions } from "./http.ts";
 import {
   projectChatMessagesToWire as messagesToWire,
   type ClientChatMessage as ChatMessage,
@@ -39,6 +41,7 @@ import {
   type ChatStreamEvent,
   type ChatTransportContract,
   type ChatTransportControl,
+  type ChatQueueOption,
   type FramePipelineFactory,
   type RegenerateOptions,
   type SendMessageOptions,
@@ -61,6 +64,7 @@ import { LiveChatCompactor, type LiveCompactorAction } from "./live-compactor.ts
 export type PipelinePreset = ProcessorPreset;
 
 export interface ChatTransportOptions {
+  /** Lower-level driver slot; prefer ChatClientOptions.connection at the public boundary. */
   readonly driver?: ChatTransportContract;
   readonly middleware?: readonly ChatTransportMiddleware[];
   readonly http?: HttpTransportOptions;
@@ -90,24 +94,38 @@ export interface ChatInteractionRuntime<
 export interface ChatClientOptions<
   TLocalPart extends { readonly type: string; readonly id: string } = never,
 > {
-  readonly conversationId: string;
+  readonly threadId: string;
   readonly clientId?: string;
+  /** HTTP endpoint used with the fetcher convenience. */
+  readonly api?: string;
+  /** Custom request/reconnect boundary. */
+  readonly connection?: ChatTransportContract;
   readonly transport?: ChatTransportOptions;
+  /** Fetch-compatible transport convenience used when no custom driver is supplied. */
+  readonly fetcher?: ChatFetch;
   readonly middleware?: readonly ChatClientMiddleware[];
   readonly eventMiddleware?: readonly ChatEventMiddleware[];
   readonly pipeline?: PipelineConfig | PipelinePreset | FramePipelineFactory;
   readonly scheduler?: ChatSchedulerDriver;
   readonly interaction?: ChatInteractionRuntime<TLocalPart>;
-  readonly busy?: "queue" | "drop" | "interrupt";
+  readonly queue?: ChatQueueOption;
   readonly setup?: () => Operation<void>;
   readonly initialize?: (client: ChatClientControl<TLocalPart>) => Operation<void>;
   readonly state?: Json;
+  /** AG-UI context entries forwarded to the host; never an authorization claim. */
   readonly context?: readonly { readonly description: string; readonly value: string }[];
+  /** Untrusted serializable properties forwarded to host request policy. */
   readonly forwardedProps?: Json;
 }
 
 export interface ChatRuntimeOptions {
+  /** HTTP endpoint used with the fetcher convenience for child clients. */
+  readonly api?: string;
+  /** Default custom request/reconnect boundary for child clients. */
+  readonly connection?: ChatTransportContract;
   readonly transport?: ChatTransportOptions;
+  /** Fetch-compatible transport convenience for child clients without a custom driver. */
+  readonly fetcher?: ChatFetch;
   readonly middleware?: readonly ChatClientMiddleware[];
   readonly eventMiddleware?: readonly ChatEventMiddleware[];
   readonly setup?: () => Operation<void>;
@@ -123,7 +141,7 @@ export interface ChatClientControl<
   TLocalPart extends { readonly type: string; readonly id: string } = never,
 > {
   readonly id: string;
-  readonly conversationId: string;
+  readonly threadId: string;
   getSnapshot(): ChatSnapshot<ChatMessage<TLocalPart>>;
   reconnect(): Promise<void>;
 }
@@ -132,7 +150,7 @@ export type ChatSchedulerDriver = ChatSchedulerContract;
 
 export interface ChatClient<TMessage extends ChatMessage<ChatLocalPart> = ChatMessage> {
   readonly id: string;
-  readonly conversationId: string;
+  readonly threadId: string;
   readonly initialized: Promise<void>;
   readonly transport: ChatTransportControl;
   getSnapshot(): ChatSnapshot<TMessage>;
@@ -142,6 +160,7 @@ export interface ChatClient<TMessage extends ChatMessage<ChatLocalPart> = ChatMe
   regenerate(options?: RegenerateOptions): Promise<void>;
   stop(): Promise<void>;
   reconnect(): Promise<void>;
+  cancelQueued(id: string): Promise<void>;
   setMessages(
     update: readonly TMessage[] | ((current: readonly TMessage[]) => readonly TMessage[]),
   ): void;
@@ -152,27 +171,6 @@ export interface ChatClient<TMessage extends ChatMessage<ChatLocalPart> = ChatMe
 interface CommandEntry {
   run(): Promise<void>;
   reject(error: unknown): void;
-}
-
-interface Deferred<T> {
-  readonly promise: Promise<T>;
-  resolve(value: T): void;
-  reject(error: unknown): void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolveValue!: (value: T) => void;
-  let rejectValue!: (error: unknown) => void;
-  const promise = new Promise<T>((resolve, reject) => {
-    resolveValue = resolve;
-    rejectValue = reject;
-  });
-  void promise.catch(() => undefined);
-  return {
-    promise,
-    resolve: resolveValue,
-    reject: rejectValue,
-  };
 }
 
 function deepFreeze<T>(value: T, seen = new WeakSet()): T {
@@ -199,7 +197,8 @@ function makeInitialSnapshot<TLocalPart extends ChatLocalPart = never>(): ChatSn
     connectionStatus: "disconnected" as const,
     renderStatus: "loading" as const,
     error: null,
-    queuedMessages: Object.freeze([]),
+    runId: null,
+    queue: Object.freeze([]),
   });
 }
 
@@ -273,6 +272,67 @@ function createUserWire(input: UserMessageInput): Extract<ChatRequestMessage, { 
   };
 }
 
+interface ResolvedQueueOptions {
+  readonly whenBusy: "queue" | "drop" | "interrupt";
+  readonly maxSize?: number;
+  readonly onOverflow: "reject" | "drop-oldest";
+}
+
+function isQueueBusyPolicy(value: unknown): value is ResolvedQueueOptions["whenBusy"] {
+  return value === "queue" || value === "drop" || value === "interrupt";
+}
+
+function isQueueOverflowPolicy(value: unknown): value is ResolvedQueueOptions["onOverflow"] {
+  return value === "reject" || value === "drop-oldest";
+}
+
+function invalidQueueOption(message: string): never {
+  throw new ChatClientError("chat_queue_invalid", message);
+}
+
+function isPortDriverDuplicate(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error as Error & { readonly code?: unknown }).code === "port_driver_duplicate"
+  );
+}
+
+function normalizeQueueOption(option: ChatQueueOption | undefined): ResolvedQueueOptions {
+  const base: ResolvedQueueOptions = {
+    whenBusy: "queue",
+    onOverflow: "reject",
+  };
+  if (option === undefined) {
+    return base;
+  }
+  if (typeof option === "string") {
+    if (!isQueueBusyPolicy(option)) {
+      return invalidQueueOption(`Unknown chat queue whenBusy policy: ${String(option)}`);
+    }
+    return { ...base, whenBusy: option };
+  }
+  if (option === null || typeof option !== "object" || Array.isArray(option)) {
+    return invalidQueueOption("Chat queue options must be a policy string or object");
+  }
+  if (option.whenBusy !== undefined && !isQueueBusyPolicy(option.whenBusy)) {
+    return invalidQueueOption(`Unknown chat queue whenBusy policy: ${String(option.whenBusy)}`);
+  }
+  if (option.onOverflow !== undefined && !isQueueOverflowPolicy(option.onOverflow)) {
+    return invalidQueueOption(`Unknown chat queue onOverflow policy: ${String(option.onOverflow)}`);
+  }
+  if (option.maxSize !== undefined) {
+    if (!Number.isInteger(option.maxSize) || option.maxSize < 0) {
+      return invalidQueueOption("Chat queue maxSize must be a non-negative integer");
+    }
+  }
+  return {
+    ...base,
+    ...(option.whenBusy !== undefined ? { whenBusy: option.whenBusy } : {}),
+    ...(option.maxSize !== undefined ? { maxSize: option.maxSize } : {}),
+    ...(option.onOverflow !== undefined ? { onOverflow: option.onOverflow } : {}),
+  };
+}
+
 function installMiddleware<T extends object>(
   api: { around(middleware: Partial<Around<T>>): Operation<void> },
   middleware: readonly Partial<Around<T>>[],
@@ -288,11 +348,11 @@ class ChatClientController<
   TLocalPart extends { readonly type: string; readonly id: string } = never,
 > implements ChatClient<ChatMessage<TLocalPart>> {
   readonly id: string;
-  readonly conversationId: string;
+  readonly threadId: string;
   readonly initialized: Promise<void>;
   readonly transport: ChatTransportControl;
 
-  private readonly initWaiter = deferred<void>();
+  private readonly initWaiter = withResolvers<void>("chat client initialization");
   private readonly parentScopeFactory: () => Scope;
   private readonly parentInitialized: Promise<void>;
   private readonly destroyParentScope: (() => Promise<void>) | null;
@@ -303,12 +363,13 @@ class ChatClientController<
   private readonly transportListeners = new Set<() => void>();
   private readonly commandQueue: CommandEntry[] = [];
   private readonly compactor: LiveChatCompactor;
+  private readonly queueOptions: ResolvedQueueOptions;
   private pendingPublicationChanges: Partial<ChatSnapshot<ChatMessage<TLocalPart>>> = {};
   private snapshot: ChatSnapshot<ChatMessage<TLocalPart>> = makeInitialSnapshot<TLocalPart>();
   private serverSnapshot: ChatSnapshot<ChatMessage<TLocalPart>> = this.snapshot;
   private manualMessages: readonly ChatMessage<TLocalPart>[] | null = null;
   private queued: readonly QueuedUserMessage[] = [];
-  private readonly queuedCompletions: Deferred<void>[] = [];
+  private readonly queuedCompletions: WithResolvers<void>[] = [];
   private clientScope: Scope | null = null;
   private commandScope: Scope | null = null;
   private destroyClientScope: (() => Promise<void>) | null = null;
@@ -319,7 +380,6 @@ class ChatClientController<
   private initializedResolved = false;
   private closed = false;
   private closePromise: Promise<void> | null = null;
-  private cursor: number | undefined;
   private readonly state: Json;
   private readonly context: readonly { readonly description: string; readonly value: string }[];
   private readonly forwardedProps: Json;
@@ -337,8 +397,10 @@ class ChatClientController<
     this.options = options;
     this.interaction = options.interaction ?? null;
     this.id = options.clientId ?? crypto.randomUUID();
-    this.conversationId = options.conversationId;
-    this.initialized = this.initWaiter.promise;
+    this.threadId = options.threadId;
+    this.queueOptions = normalizeQueueOption(options.queue);
+    this.initialized = bootstrapScope.run(() => this.initWaiter.operation);
+    void this.initialized.catch(() => undefined);
     const pipelineFactory =
       typeof options.pipeline === "function"
         ? options.pipeline
@@ -397,6 +459,10 @@ class ChatClientController<
 
   reconnect(): Promise<void> {
     return this.enqueueCommand(() => ChatClientApi.operations.reconnect());
+  }
+
+  cancelQueued(id: string): Promise<void> {
+    return this.enqueueCommand(() => ChatClientApi.operations.cancelQueued(id));
   }
 
   setMessages(
@@ -476,12 +542,30 @@ class ChatClientController<
   }
 
   private runInClientScope(factory: () => Operation<void>): Promise<void> {
-    const scope = this.clientScope;
-    if (!scope || (this.closed && !this.closePromise)) {
+    const parentScope = this.clientScope;
+    if (!parentScope || (this.closed && !this.closePromise)) {
       return Promise.reject(new ChatClientError("chat_client_closed", "Chat client is closed"));
     }
-    const commandScope = this.commandScope ?? scope;
-    return commandScope.run(factory).then(() => undefined);
+    // Every public command gets a child scope. A rejected busy/queue command
+    // must not fault the shared client scope and halt an unrelated active turn.
+    const [commandScope, destroy] = createScope(this.commandScope ?? parentScope);
+    const task = commandScope.run(function* (): Operation<
+      { readonly ok: true } | { readonly ok: false; readonly error: unknown }
+    > {
+      try {
+        yield* factory();
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error };
+      }
+    });
+    return task
+      .then((result) => {
+        if (!result.ok) {
+          throw result.error;
+        }
+      })
+      .finally(() => destroy().catch(() => undefined));
   }
 
   private *bootstrap(): Operation<void> {
@@ -539,10 +623,14 @@ class ChatClientController<
       yield* installMiddleware(ChatTransportPort.api, this.options.transport.middleware);
     }
 
-    if (this.options.transport?.driver) {
+    const connection = this.options.connection ?? this.options.transport?.driver;
+    if (connection) {
       try {
-        yield* ChatTransportPort.installDriver(this.options.transport.driver);
+        yield* ChatTransportPort.installDriver(connection);
       } catch (error) {
+        if (!isPortDriverDuplicate(error)) {
+          throw error;
+        }
         throw new ChatClientError(
           "chat_driver_duplicate",
           "Duplicate chat transport driver in client scope",
@@ -550,13 +638,24 @@ class ChatClientController<
         );
       }
     } else if (!(yield* ChatTransportPort.isInstalled())) {
-      yield* ChatTransportPort.installDriver(createHttpTransport(this.options.transport?.http));
+      const http =
+        this.options.transport?.http ??
+        (this.options.api !== undefined || this.options.fetcher !== undefined
+          ? {
+              ...(this.options.api !== undefined ? { api: this.options.api } : {}),
+              ...(this.options.fetcher !== undefined ? { fetch: this.options.fetcher } : {}),
+            }
+          : undefined);
+      yield* ChatTransportPort.installDriver(createHttpTransport(http));
     }
 
     if (this.options.scheduler) {
       try {
         yield* ChatSchedulerPort.installDriver(this.options.scheduler);
       } catch (error) {
+        if (!isPortDriverDuplicate(error)) {
+          throw error;
+        }
         throw new ChatClientError(
           "chat_driver_duplicate",
           "Duplicate chat scheduler driver in client scope",
@@ -607,6 +706,7 @@ class ChatClientController<
       stop: () => this.stopImpl("user"),
       regenerate: (options) => this.regenerateImpl(options ?? {}),
       reconnect: () => this.reconnectImpl(),
+      cancelQueued: (id) => this.cancelQueuedImpl(id),
       setMessages: (update) =>
         this.setMessagesImpl(
           update as
@@ -621,23 +721,37 @@ class ChatClientController<
   private *sendMessageImpl(input: UserMessageInput, options: SendMessageOptions): Operation<void> {
     this.ensureOpen();
     if (this.activeTask) {
-      const policy = options.whenBusy ?? this.options.busy ?? "queue";
+      const policy = options.whenBusy ?? this.queueOptions.whenBusy;
       if (policy === "drop") {
-        throw new ChatClientError(
-          "chat_busy_dropped",
-          "Message dropped while chat client was busy",
-        );
+        return;
       }
       if (policy === "queue") {
         const queued: QueuedUserMessage = {
           id: "id" in input && input.id ? input.id : crypto.randomUUID(),
           input,
+          createdAt: Date.now(),
         };
-        const completion = deferred<void>();
+        if (
+          this.queueOptions.maxSize !== undefined &&
+          this.queued.length >= this.queueOptions.maxSize
+        ) {
+          if (this.queueOptions.onOverflow !== "drop-oldest" || this.queueOptions.maxSize === 0) {
+            throw new ChatClientError(
+              "chat_queue_full",
+              `Chat queue is full (maxSize: ${this.queueOptions.maxSize})`,
+            );
+          }
+          const droppedCompletion = this.queuedCompletions.shift();
+          this.queued = this.queued.slice(1);
+          droppedCompletion?.reject(
+            new ChatClientError("chat_queue_dropped", "Queued message was dropped oldest-first"),
+          );
+        }
+        const completion = withResolvers<void>("queued chat message");
         this.queued = [...this.queued, queued];
         this.queuedCompletions.push(completion);
-        this.publish({ queuedMessages: this.queued });
-        yield* call(() => completion.promise);
+        this.publish({ queue: this.queued });
+        yield* completion.operation;
         return;
       }
       yield* this.stopImpl("superseded");
@@ -647,12 +761,12 @@ class ChatClientController<
     const localBase = this.manualMessages ?? this.snapshot.messages;
     this.manualMessages = null;
     this.compactor.append(wire);
-    this.publishProjection({ status: "submitted", connectionStatus: "connecting" });
     const runId = crypto.randomUUID();
+    this.publishProjection({ status: "submitted", connectionStatus: "connecting", runId });
     const request: ChatSendRequest = {
       trigger: "submit-message",
       clientId: this.id,
-      conversationId: this.conversationId,
+      threadId: this.threadId,
       runId,
       messages: [...messagesToWire(localBase), wire],
       state: this.state,
@@ -661,7 +775,6 @@ class ChatClientController<
     };
     const terminal = yield* this.runRequest(request);
     yield* this.finishRequest(terminal);
-    yield* this.drainQueue();
   }
 
   private *regenerateImpl(options: RegenerateOptions): Operation<void> {
@@ -681,18 +794,19 @@ class ChatClientController<
       }
     }
     this.manualMessages = null;
+    const runId = crypto.randomUUID();
     const request: ChatSendRequest = {
       trigger: "regenerate-message",
       clientId: this.id,
-      conversationId: this.conversationId,
-      runId: crypto.randomUUID(),
+      threadId: this.threadId,
+      runId,
       ...(target !== undefined ? { messageId: target } : {}),
       messages: messagesToWire(baseMessages),
       state: this.state,
       context: this.context,
       forwardedProps: options.forwardedProps ?? this.forwardedProps,
     };
-    this.publish({ status: "submitted", connectionStatus: "connecting" });
+    this.publish({ status: "submitted", connectionStatus: "connecting", runId });
     const terminal = yield* this.runRequest(request);
     yield* this.finishRequest(terminal);
   }
@@ -718,7 +832,7 @@ class ChatClientController<
         yield* this.flushPublication({}, true);
       } catch (error) {
         this.publish({
-          error: asChatClientError(error, "chat_event_invalid", "Host cancellation failed"),
+          error: asChatClientError(error, "chat_transport_failed", "Host cancellation failed"),
         });
       }
     }
@@ -727,7 +841,7 @@ class ChatClientController<
       this.activeTask = null;
       this.activeRequest = null;
     }
-    this.publish({ connectionStatus: "disconnected", status: "ready" });
+    this.publish({ connectionStatus: "disconnected", status: "ready", runId: null });
   }
 
   private *reconnectImpl(): Operation<void> {
@@ -738,8 +852,7 @@ class ChatClientController<
       const stream = yield* ChatTransportPort.api.operations.reconnectToStream(
         {
           clientId: this.id,
-          conversationId: this.conversationId,
-          ...(this.cursor !== undefined ? { cursor: this.cursor } : {}),
+          threadId: this.threadId,
         },
         signal,
       );
@@ -747,6 +860,7 @@ class ChatClientController<
         this.publish({
           connectionStatus: "disconnected",
           status: this.snapshot.status === "error" ? "ready" : this.snapshot.status,
+          runId: null,
         });
         return;
       }
@@ -758,11 +872,12 @@ class ChatClientController<
         {
           connectionStatus: "disconnected",
           status: terminal?.type === EventType.RUN_ERROR ? "error" : "ready",
+          runId: null,
         },
         true,
       );
     } catch (error) {
-      const failure = asChatClientError(error, "chat_event_invalid", "Chat reconnect failed");
+      const failure = asChatClientError(error, "chat_transport_failed", "Chat reconnect failed");
       this.publish({ connectionStatus: "error", status: "error", error: failure });
       throw failure;
     }
@@ -777,7 +892,21 @@ class ChatClientController<
       this.activeTask = null;
       this.activeRequest = null;
     }
-    this.publish({ connectionStatus: "disconnected" });
+    this.publish({ connectionStatus: "disconnected", runId: null });
+  }
+
+  private *cancelQueuedImpl(id: string): Operation<void> {
+    this.ensureOpen();
+    const index = this.queued.findIndex((item) => item.id === id);
+    if (index === -1) {
+      return;
+    }
+    const completion = this.queuedCompletions.splice(index, 1)[0];
+    this.queued = [...this.queued.slice(0, index), ...this.queued.slice(index + 1)];
+    // Cancellation is an intentional local no-op, not a failed transport
+    // request. The caller can observe removal through the queue snapshot.
+    completion?.resolve(undefined);
+    this.publish({ queue: this.queued });
   }
 
   private *setMessagesImpl(
@@ -826,7 +955,7 @@ class ChatClientController<
         this.activeRequest = null;
       }
       if (failure) {
-        this.publish({ status: "error", connectionStatus: "error", error: failure });
+        this.publish({ status: "error", connectionStatus: "error", error: failure, runId: null });
       }
     }
   }
@@ -841,7 +970,7 @@ class ChatClientController<
       if (signal.aborted) {
         throw error;
       }
-      const failure = asChatClientError(error, "chat_event_invalid", "Chat request failed");
+      const failure = asChatClientError(error, "chat_transport_failed", "Chat request failed");
       this.rejectQueued(failure);
       throw failure;
     }
@@ -853,6 +982,7 @@ class ChatClientController<
       {
         status: runError ? "error" : "ready",
         connectionStatus: "disconnected",
+        runId: null,
         ...(runError
           ? { error: new ChatClientError(runError.code ?? "chat_run_error", runError.message) }
           : {}),
@@ -983,6 +1113,7 @@ class ChatClientController<
       event.type === EventType.TOOL_CALL_ARGS;
     this.stagePublication({
       status: streaming ? "streaming" : this.currentPublicationStatus(),
+      ...(event.type === EventType.RUN_STARTED ? { runId: event.runId } : {}),
     });
   }
 
@@ -1020,7 +1151,7 @@ class ChatClientController<
     const transportRequest: ChatSendRequest = {
       trigger: "submit-message",
       clientId: this.id,
-      conversationId: this.conversationId,
+      threadId: this.threadId,
       runId: crypto.randomUUID(),
       messages: messagesToWire(this.snapshot.messages),
       state: this.state,
@@ -1056,6 +1187,7 @@ class ChatClientController<
     const finalChanges = this.pendingPublicationChanges;
     this.pendingPublicationChanges = {};
     this.publishProjection(finalChanges);
+    yield* this.drainQueue();
   }
 
   private recordPipelineFailure(error: unknown): void {
@@ -1067,7 +1199,7 @@ class ChatClientController<
     const queued = this.queued;
     const completions = this.queuedCompletions.splice(0);
     this.queued = [];
-    this.publish({ queuedMessages: [] });
+    this.publish({ queue: [] });
     for (let index = 0; index < queued.length; index += 1) {
       const item = queued[index]!;
       const completion = completions[index]!;
@@ -1075,9 +1207,10 @@ class ChatClientController<
         yield* this.sendMessageImpl(item.input, { whenBusy: "queue" });
         completion.resolve(undefined);
       } catch (error) {
-        completion.reject(error);
+        const failure = error instanceof Error ? error : new Error(String(error));
+        completion.reject(failure);
         for (const pending of completions.slice(index + 1)) {
-          pending.reject(error);
+          pending.reject(failure);
         }
         throw error;
       }
@@ -1087,11 +1220,12 @@ class ChatClientController<
   private rejectQueued(error: unknown): void {
     const completions = this.queuedCompletions.splice(0);
     this.queued = [];
+    const failure = error instanceof Error ? error : new Error(String(error));
     for (const completion of completions) {
-      completion.reject(error);
+      completion.reject(failure);
     }
     if (completions.length > 0) {
-      this.publish({ queuedMessages: [] });
+      this.publish({ queue: [] });
     }
   }
 
@@ -1116,7 +1250,7 @@ class ChatClientController<
       ...this.serverSnapshot,
       ...changes,
       messages: serverMessages,
-      queuedMessages: changes.queuedMessages ?? this.queued,
+      queue: changes.queue ?? this.queued,
     });
   }
 
@@ -1127,11 +1261,18 @@ class ChatClientController<
     const next = deepFreeze({
       ...this.snapshot,
       ...changes,
-      queuedMessages: changes.queuedMessages ?? this.queued,
+      queue: changes.queue ?? this.queued,
     });
     this.snapshot = next;
     if (updateServer) {
-      this.serverSnapshot = next;
+      const serverChanges = Object.fromEntries(
+        Object.entries(changes).filter(([key]) => key !== "messages"),
+      ) as Partial<ChatSnapshot<ChatMessage<TLocalPart>>>;
+      this.serverSnapshot = deepFreeze({
+        ...this.serverSnapshot,
+        ...serverChanges,
+        queue: changes.queue ?? this.queued,
+      });
     }
     // eslint-disable-next-line unicorn/no-useless-spread -- Publish to the listener snapshot that existed when this update began.
     for (const listener of [...this.listeners]) {
@@ -1211,6 +1352,9 @@ function awaitDestroy(destroy: (() => Promise<void>) | null): void {
 export function createChatClient<
   TLocalPart extends { readonly type: string; readonly id: string } = never,
 >(options: ChatClientOptions<TLocalPart>): ChatClient<ChatMessage<TLocalPart>> {
+  // Validate before allocating the owned root scope so malformed configuration
+  // cannot leave a scope behind while the controller is being constructed.
+  normalizeQueueOption(options.queue);
   const [scope, destroy] = createScope();
   const controller = new ChatClientController<TLocalPart>(
     scope,

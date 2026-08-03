@@ -1,4 +1,11 @@
-import { createScope, suspend, useScope, type Around, type Operation } from "effection";
+import {
+  createScope,
+  suspend,
+  useScope,
+  withResolvers,
+  type Around,
+  type Operation,
+} from "effection";
 import { ChatClientError, asChatClientError } from "./errors.ts";
 import { ChatClientApi, ChatEventApi, ChatTransportPort } from "./ports.ts";
 import { createHttpTransport } from "./http.ts";
@@ -12,23 +19,6 @@ import {
 } from "./client.ts";
 import type { ClientChatMessage as ChatMessage } from "@sweatpants/chat-core";
 
-interface Deferred<T> {
-  readonly promise: Promise<T>;
-  resolve(value: T): void;
-  reject(error: unknown): void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolveValue!: (value: T) => void;
-  let rejectValue!: (error: unknown) => void;
-  const promise = new Promise<T>((resolve, reject) => {
-    resolveValue = resolve;
-    rejectValue = reject;
-  });
-  void promise.catch(() => undefined);
-  return { promise, resolve: resolveValue, reject: rejectValue };
-}
-
 function* installMiddleware<T extends object>(
   api: { around(middleware: Partial<Around<T>>): Operation<void> },
   middleware: readonly Partial<Around<T>>[],
@@ -36,6 +26,13 @@ function* installMiddleware<T extends object>(
   for (const item of middleware) {
     yield* api.around(item);
   }
+}
+
+function isPortDriverDuplicate(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error as Error & { readonly code?: unknown }).code === "port_driver_duplicate"
+  );
 }
 
 export interface ChatRuntime {
@@ -48,13 +45,15 @@ export interface ChatRuntime {
 
 export function createChatRuntime(options: ChatRuntimeOptions = {}): ChatRuntime {
   const [scope, destroy] = createScope();
-  const initialized = deferred<void>();
+  const initialized = withResolvers<void>("chat runtime initialization");
+  const initializedTask = scope.run(() => initialized.operation);
+  void initializedTask.catch(() => undefined);
   let initializationFinished = false;
   let closed = false;
   const internal: InternalRuntime = {
     bootstrapScope: scope,
     scope,
-    initialized: initialized.promise,
+    initialized: initializedTask,
   };
 
   const initTask = scope.run(function* (): Operation<void> {
@@ -72,10 +71,14 @@ export function createChatRuntime(options: ChatRuntimeOptions = {}): ChatRuntime
       if (options.transport?.middleware) {
         yield* installMiddleware(ChatTransportPort.api, options.transport.middleware);
       }
-      if (options.transport?.driver) {
+      const connection = options.connection ?? options.transport?.driver;
+      if (connection) {
         try {
-          yield* ChatTransportPort.installDriver(options.transport.driver);
+          yield* ChatTransportPort.installDriver(connection);
         } catch (error) {
+          if (!isPortDriverDuplicate(error)) {
+            throw error;
+          }
           throw new ChatClientError(
             "chat_driver_duplicate",
             "Duplicate chat transport driver in runtime scope",
@@ -85,11 +88,24 @@ export function createChatRuntime(options: ChatRuntimeOptions = {}): ChatRuntime
       }
       // A runtime may opt into a concrete HTTP transport for all children. It
       // remains a composition-owned default, not a hidden global singleton.
-      if (!options.transport?.driver && options.transport?.http) {
-        yield* ChatTransportPort.installDriver(createHttpTransport(options.transport.http));
+      if (
+        !connection &&
+        (options.transport?.http || options.api !== undefined || options.fetcher !== undefined)
+      ) {
+        yield* ChatTransportPort.installDriver(
+          createHttpTransport(
+            options.transport?.http ??
+              (options.api !== undefined || options.fetcher !== undefined
+                ? {
+                    ...(options.api !== undefined ? { api: options.api } : {}),
+                    ...(options.fetcher !== undefined ? { fetch: options.fetcher } : {}),
+                  }
+                : undefined),
+          ),
+        );
       }
       if (options.initialize) {
-        const control: ChatRuntimeControl = { initialized: initialized.promise, scope };
+        const control: ChatRuntimeControl = { initialized: initializedTask, scope };
         yield* options.initialize(control);
       }
       initializationFinished = true;
@@ -108,7 +124,7 @@ export function createChatRuntime(options: ChatRuntimeOptions = {}): ChatRuntime
   void initTask.catch(() => undefined);
 
   return {
-    initialized: initialized.promise,
+    initialized: initializedTask,
     createClient<TLocalPart extends { readonly type: string; readonly id: string } = never>(
       clientOptions: ChatClientOptions<TLocalPart>,
     ) {

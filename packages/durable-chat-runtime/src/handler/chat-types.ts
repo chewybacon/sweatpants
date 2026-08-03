@@ -40,6 +40,7 @@ export interface ChatRequestBody {
   runId?: string;
   parentRunId?: string;
   state?: unknown;
+  /** Client/plugin contract metadata; never an executable inventory declaration. */
   tools?: unknown[];
   context?: Array<{ description: string; value: string }>;
   forwardedProps?: unknown;
@@ -52,7 +53,6 @@ export interface ChatRequestBody {
   effort?: string;
   streamOptions?: StreamOptions;
   initialToolChoice?: StreamOptions["toolChoice"];
-  enabledTools?: boolean | string[];
   model?: ModelSelection;
   elicitResponses?: ElicitResponse[];
   pluginAbort?: PluginAbortRequest;

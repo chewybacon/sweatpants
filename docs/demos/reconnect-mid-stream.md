@@ -19,10 +19,10 @@ Conversation identity is stored in `localStorage` for this demo route.
 ```tsx
 import { useChat } from "@sweatpants/react-chat";
 
-// useChat reconnects via conversation id + durable handler protocol
+// useChat reconnects via thread id + durable handler protocol
 const { messages, sendMessage, status } = useChat({
   api: "/api/chat",
-  conversationId,
+  threadId: "demo-thread",
 });
 ```
 

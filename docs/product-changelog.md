@@ -12,6 +12,44 @@ See also: [product-surface.md](./product-surface.md) · [product-facade-allowlis
 
 ---
 
+## 2026-08-03 — Host-owned executable tool inventory
+
+### Summary
+
+Executable chat tools now come only from the `ToolInventory` installed in the Host scope with
+`installToolInventory()`. Manual chat mode presents that complete scoped inventory by default.
+Client plugins, request `tools` metadata, and unknown request fields cannot install, authorize, or
+expand the server executable inventory. `ToolExposurePolicy` remains a model-presentation filter
+over that Host-owned inventory.
+
+### Migration note
+
+Remove `defaultEnabledTools` from durable chat handler configuration, `enabledTools` from chat request
+bodies, and `enabledTools` from Test Rig stream options. Install the complete server inventory once
+through `installToolInventory(createToolInventory(...))`; use persona resolution or a
+`ToolExposurePolicy` when the model should see a filtered presentation.
+
+---
+
+## 2026-08-03 — thread-oriented client API and bounded send queues
+
+### Summary
+
+The public client identity is now `threadId`, matching the AG-UI/TanStack transport vocabulary;
+internal durable handlers may continue to map that identity to their conversation key. Client snapshots
+expose the active `runId` and a bounded/cancellable `queue`. React `useChat` forwards client state,
+AG-UI context, and untrusted `forwardedProps`, while low-level clients and React adapters accept a
+fetch-compatible `fetcher` convenience without changing durable framing or reconnect semantics.
+
+### Migration note
+
+Replace public client and `useChat` `conversationId` options with `threadId`. Replace
+`queuedMessages` with `queue`, and use `cancelQueued(id)` for local queue cancellation. A queue may
+use `{ maxSize, onOverflow: "reject" | "drop-oldest" }`; `reject` rejects the incoming send and
+`drop-oldest` rejects the displaced send. Explicit cancellation remains a local no-op rather than a
+transport request. `fetcher` is a convenience for the default HTTP transport;
+custom `ChatTransportContract` drivers remain available for genuine transport boundaries.
+
 ## 2026-08-03 — headless client and recursive interaction projection
 
 ### Summary

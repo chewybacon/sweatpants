@@ -16,7 +16,13 @@ import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
 import { createDevelopmentProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
+import {
+  createToolInventory,
+  createToolInventoryEntry,
+  installToolInventory,
+  installToolRuntime,
+  type ToolRuntime,
+} from "@sweatpants/tool-runtime";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -26,12 +32,7 @@ import {
   type StreamEvent as RuntimeStreamEvent,
   type ToolCall,
 } from "@sweatpants/model-provider";
-import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
-import {
-  createToolExecutionRef,
-  installToolRuntime,
-  type ToolRuntime,
-} from "@sweatpants/tool-runtime";
+import { createToolExecutionRef } from "@sweatpants/tool-runtime";
 import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { eventsOfType, readDurableEvents } from "./ndjson.ts";
@@ -271,7 +272,7 @@ describe("product facade golden path", () => {
     const app = createChatApplication({
       setup: function* () {
         yield* setupInMemoryDurableStreams<string>();
-        yield* ToolInventoryContext.set(
+        yield* installToolInventory(
           // The authored projection, not a second derivation of it.
           createToolInventory([createToolInventoryEntry(echo)]),
         );
@@ -287,7 +288,6 @@ describe("product facade golden path", () => {
           yield* ModelProviderModelContext.set(mockModel());
         },
         maxToolIterations: 2,
-        defaultEnabledTools: true,
       }),
     });
 
@@ -298,6 +298,15 @@ describe("product facade golden path", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: [{ id: "user:1", role: "user", content: "Please echo hello-facade" }],
+            // Client plugin contracts are presentation metadata only. They do
+            // not add executable tools to the Host inventory.
+            tools: [
+              {
+                name: "client-plugin-contract",
+                description: "must not become executable",
+                parameters: { type: "object" },
+              },
+            ],
           }),
         }),
       );
@@ -307,6 +316,9 @@ describe("product facade golden path", () => {
 
       const finished = eventsOfType(events, "RUN_FINISHED");
       expect(finished.length).toBeGreaterThanOrEqual(1);
+      const started = eventsOfType(events, "RUN_STARTED");
+      expect(JSON.stringify(started)).toContain('"name":"echo"');
+      expect(JSON.stringify(started)).not.toContain("client-plugin-contract");
 
       const toolResults = eventsOfType(events, "TOOL_CALL_RESULT");
       expect(toolResults.length).toBeGreaterThanOrEqual(1);

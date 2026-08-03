@@ -98,7 +98,7 @@ async function runHookProjection(binding: Binding): Promise<void> {
       const aguiStart = s.agui.mark();
       const privateSystemPrompt = "__REACT_PRIVATE_SYSTEM_PROMPT__";
       const ui = yield* mountReactChat(s, {
-        conversationId: "react-hook-projection",
+        threadId: "react-hook-projection",
         plugins: [reactBookingPlugin],
         pipeline: "markdown",
       });
@@ -124,6 +124,11 @@ async function runHookProjection(binding: Binding): Promise<void> {
         message: "Choose a flight for NYC-LAX",
       });
       yield* render.respond({ flightId: "FL-REACT-1" });
+      const afterRender = yield* ui.snapshot();
+      expect(() => JSON.stringify(afterRender.client.getServerSnapshot())).not.toThrow();
+      expect(JSON.stringify(afterRender.client.getServerSnapshot())).not.toContain(
+        '"type":"render"',
+      );
 
       const completedRender = yield* ui.render({
         toolName: REACT_BOOKING_TOOL_NAME,
@@ -201,7 +206,7 @@ async function runRemountProjection(binding: Binding): Promise<void> {
     },
     function* (s) {
       const options = {
-        conversationId: "react-remount-conversation",
+        threadId: "react-remount-conversation",
         plugins: [reactBookingPlugin],
         pipeline: "markdown" as const,
       };
@@ -272,7 +277,7 @@ describe("React client live compaction", () => {
       },
       function* (s) {
         const ui = yield* mountReactChat(s, {
-          conversationId: "react-live-compaction",
+          threadId: "react-live-compaction",
           scheduler: scheduler.driver,
           pipeline: "markdown",
         });

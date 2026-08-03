@@ -14,7 +14,6 @@ export interface StreamCheckpoint {
 export interface OpenStreamTurnOptions {
   conversationId: string;
   message: string;
-  enabledTools?: boolean | string[];
 }
 
 export interface StreamTurnHandle {
@@ -239,7 +238,6 @@ export function createStreamTransportHandle(
                 content: options.message,
               },
             ],
-            ...(options.enabledTools !== undefined ? { enabledTools: options.enabledTools } : {}),
           }),
         }),
       );

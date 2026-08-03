@@ -200,13 +200,9 @@ export async function runChatFlow(
   };
 
   const client = createChatClient({
-    conversationId,
-    transport: {
-      http: {
-        api: binding.baseUrl,
-        fetch: requestOptionsFetch(binding, conversationId, options),
-      },
-    },
+    threadId: conversationId,
+    api: binding.baseUrl,
+    fetcher: requestOptionsFetch(binding, conversationId, options),
     eventMiddleware: [eventMiddleware],
     interaction,
   });

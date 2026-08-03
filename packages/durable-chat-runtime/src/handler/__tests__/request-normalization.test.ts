@@ -11,11 +11,13 @@ describe("parseChatRequestBody", () => {
       pluginAbort: { sessionId: "tool:1", reason: "user_cancelled" },
       streamOptions: { toolChoice: "auto", maxTokens: 128 },
       state: { step: 1 },
+      tools: [{ name: "client-plugin-contract" }],
     });
 
     expect(parsed.messages).toEqual([{ id: "user:1", role: "user", content: "hello" }]);
     expect(parsed.resume?.[0]?.status).toBe("cancelled");
     expect(parsed.model).toEqual({ provider: "test", id: "model" });
+    expect(parsed.tools).toEqual([{ name: "client-plugin-contract" }]);
   });
 
   it.each([
@@ -26,6 +28,7 @@ describe("parseChatRequestBody", () => {
     ["invalid resume status", { messages: [], resume: [{ interruptId: "i", status: "done" }] }],
     ["missing resume ID", { messages: [], resume: [{ status: "resolved" }] }],
     ["unknown owned field", { messages: [], unexpected: true }],
+    ["removed client inventory field", { messages: [], enabledTools: true }],
     [
       "malformed nested tool call",
       {

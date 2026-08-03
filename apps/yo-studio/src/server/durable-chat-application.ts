@@ -1,6 +1,9 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
+import {
+  createToolInventory,
+  createToolInventoryEntry,
+  installToolInventory,
+} from "@sweatpants/tool-runtime";
 import { resource, type Operation, type Stream } from "effection";
-import { ToolInventoryContext, createToolInventory } from "@sweatpants/tool-runtime";
 import {
   type AssistantMessage,
   type Model,
@@ -117,7 +120,7 @@ export function createStudioDurableChatApplication(options: {
         bufferStore: createInMemoryBufferStore<string>(),
         registryStore: createInMemoryRegistryStore(),
       });
-      yield* ToolInventoryContext.set(
+      yield* installToolInventory(
         createToolInventory(definitions.map((definition) => createToolInventoryEntry(definition))),
       );
       yield* ProgramDriverNativeToolsContext.set({

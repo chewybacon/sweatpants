@@ -24,10 +24,17 @@ export type ToolCallPart = Extract<ReactChatPart, { type: "tool-call" }>;
 export type ChatToolCall = ToolCallPart;
 
 export type {
+  ChatFetch,
+  ChatTransportContract,
+  ChatTransportOptions,
   ChatSnapshot,
   ChatStatus,
   ChatConnectionStatus,
   ChatRenderStatus,
+  ChatBusyPolicy,
+  ChatQueueOverflowPolicy,
+  ChatQueueOptions,
+  ChatQueueOption,
   UserMessageInput,
   SendMessageOptions,
   RegenerateOptions,

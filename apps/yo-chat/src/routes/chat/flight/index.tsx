@@ -161,7 +161,7 @@ function Message({ message }: { message: ChatMessage }) {
 
 function FlightChatDemo() {
   const { messages, status, renderStatus, sendMessage, stop, setMessages, error } = useChat({
-    conversationId: "flight-chat",
+    threadId: "flight-chat",
     pipeline: "markdown",
     // Browser interaction is supplied by the plugin.
     // Client plugin registration is local; server tool composition is independent.

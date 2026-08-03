@@ -105,12 +105,14 @@ export function definePort<T extends object>(name: string, declaration: T): Port
         throw error;
       }
       if ((yield* owner.get()) === scope) {
-        throw new Error(
+        const error = new Error(
           `Port "${name}" already has a driver installed in this scope. ` +
             "Drivers are terminal, so a second install in the same scope would be " +
             "silently ignored rather than replacing the first. Install the " +
             "override in a child scope, or install only one driver here.",
         );
+        Object.assign(error, { code: "port_driver_duplicate" });
+        throw error;
       }
       yield* owner.set(scope);
 

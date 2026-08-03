@@ -251,7 +251,7 @@ function Message({ message }: { message: ChatMessage }) {
 
 function MathAssistantDemo() {
   const { messages, status, renderStatus, sendMessage, stop, setMessages, error } = useChat({
-    conversationId: "math-chat",
+    threadId: "math-chat",
     // Use math pipeline: markdown + KaTeX
     pipeline: "math",
     // Enable the calculator tool
