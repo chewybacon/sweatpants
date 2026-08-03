@@ -33,7 +33,7 @@ import type { TestRig } from "./rig-types.ts";
  *
  * ```ts
  * await scenario(rig, function* (s) {
- *   const conv = s.conversation({ tools: [bookingTool] });
+ *   const conv = s.conversation();
  *   const turn = yield* conv.send("Book NYC to LAX.");
  *
  *   const first = yield* s.model.request();
@@ -175,7 +175,7 @@ export interface ScenarioContext {
     page(sessionId: string, cursor?: string): Operation<ScenarioHistoryPage>;
   };
   readonly evidence: {
-    checkpoint(executionId: string): Operation<CheckpointEvidence | null>;
+    checkpoint(executionId: string): Operation<CheckpointEvidence>;
     storageMetrics(): Operation<StorageMetrics>;
   };
   /** Low-level binding seam for package-owned client adapters such as React. */

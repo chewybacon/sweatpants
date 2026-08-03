@@ -6,7 +6,9 @@ import type {
   ActivityPart,
   ActivitySnapshotEvent,
   ChatMessage,
+  ChatLocalPart,
   ChatPart,
+  ChatRequestMessage,
   ChatWireMessage,
   ChatStreamEvent,
   ClientElicitFact,
@@ -835,6 +837,85 @@ function chatRole(role: ChatWireMessage["role"]): ChatMessage["role"] | undefine
     return "system";
   }
   return undefined;
+}
+
+function messageToWire<TLocalPart extends ChatLocalPart>(
+  message: ChatMessage<TLocalPart>,
+): ChatRequestMessage {
+  const text = message.parts
+    .filter((part): part is TextPart => part.type === "text" && "text" in part)
+    .map((part) => part.text)
+    .join("");
+  const toolCalls = message.parts
+    .filter(
+      (part): part is ToolCallPart<TLocalPart> => part.type === "tool-call" && "callId" in part,
+    )
+    .map((part) => ({
+      id: part.callId,
+      type: "function" as const,
+      function: {
+        name: part.name,
+        arguments: part.rawInput ?? JSON.stringify(part.input ?? {}),
+      },
+    }));
+  if (message.role === "user" || message.role === "system") {
+    return { id: message.id, role: message.role, content: text };
+  }
+  return {
+    id: message.id,
+    role: "assistant",
+    ...(text.length > 0 ? { content: text } : {}),
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+  };
+}
+
+/** Project public root messages back to provider-facing AG-UI history. */
+export function projectChatMessagesToWire<TLocalPart extends ChatLocalPart>(
+  messages: readonly ChatMessage<TLocalPart>[],
+): readonly ChatRequestMessage[] {
+  return messages.flatMap((message) => {
+    const wire = messageToWire(message);
+    if (message.role !== "assistant") {
+      return [wire];
+    }
+    const results: ChatRequestMessage[] = message.parts.flatMap((part): ChatRequestMessage[] => {
+      if (part.type !== "tool-call" || !("callId" in part)) {
+        return [];
+      }
+      const toolCall = part;
+      if (toolCall.state === "output-available") {
+        const content =
+          typeof toolCall.output === "string"
+            ? toolCall.output
+            : JSON.stringify(toolCall.output ?? null);
+        return [
+          {
+            id: `tool-result:${toolCall.callId}`,
+            role: "tool" as const,
+            toolCallId: toolCall.callId,
+            name: toolCall.name,
+            content,
+            isError: false,
+          },
+        ];
+      }
+      if (toolCall.state === "output-error") {
+        return [
+          {
+            id: `tool-result:${toolCall.callId}`,
+            role: "tool" as const,
+            toolCallId: toolCall.callId,
+            name: toolCall.name,
+            content: toolCall.errorText ?? "Tool execution failed",
+            isError: true,
+            error: toolCall.errorText ?? "Tool execution failed",
+          },
+        ];
+      }
+      return [];
+    });
+    return [wire, ...results];
+  });
 }
 
 export function appendChatWireMessage(

@@ -2,7 +2,35 @@ import { readFile } from "node:fs/promises";
 import { parse, traverse, transformFromAstSync, types as t } from "@babel/core";
 import type { Plugin } from "vite";
 
-const CLIENT_QUERY = "?sweatpants-client-contract";
+const CLIENT_QUERY_NAME = "sweatpants-client-contract";
+const CLIENT_QUERY = `?${CLIENT_QUERY_NAME}`;
+
+function clientContractSource(source: string, exports: readonly string[]): string {
+  return exports.length === 0
+    ? `${source}${CLIENT_QUERY}`
+    : `${source}${CLIENT_QUERY}=${encodeURIComponent(exports.join(","))}`;
+}
+
+function parseClientContractId(
+  id: string,
+): { readonly plain: string; readonly exports: readonly string[] } | undefined {
+  const marker = `${CLIENT_QUERY}=`;
+  const markerIndex = id.indexOf(marker);
+  if (markerIndex !== -1) {
+    const value = id.slice(markerIndex + marker.length).split("&", 1)[0] ?? "";
+    return {
+      plain: id.slice(0, markerIndex),
+      exports: decodeURIComponent(value).split(",").filter(Boolean),
+    };
+  }
+  return id.endsWith(CLIENT_QUERY)
+    ? { plain: id.slice(0, -CLIENT_QUERY.length), exports: [] }
+    : undefined;
+}
+
+function exportedName(node: t.Identifier | t.StringLiteral): string {
+  return t.isIdentifier(node) ? node.name : node.value;
+}
 
 export type ClientContractDiagnosticCode =
   | "client_contract_not_static"
@@ -26,7 +54,7 @@ export interface ClientContractAnalysis {
 function parseSource(source: string, filename: string) {
   const ast = parse(source, {
     filename,
-    presets: ["@babel/preset-typescript"],
+    parserOpts: { plugins: ["typescript", "jsx"] },
     sourceType: "module",
   });
   if (!ast) {
@@ -109,20 +137,28 @@ function contractTerminal(): t.FunctionExpression {
 
 /**
  * Generate a client-only variant of a tool module. The fluent builder still
- * creates the authored schemas and artifacts, while the executable terminal is
- * replaced before the module reaches a frontend bundle.
+ * creates the authored schemas and artifacts, while ordinary execution and
+ * durable effect implementations are replaced before the module reaches a
+ * frontend bundle.
  */
-export function generateClientContractModule(source: string, filename = "<tool-module>"): string {
+export function generateClientContractModule(
+  source: string,
+  filename = "<tool-module>",
+  requestedExports: readonly string[] = [],
+): string {
   const ast = parseSource(source, filename);
   let executeTerminals = 0;
   traverse(ast, {
     CallExpression(path) {
       const callee = path.node.callee;
-      if (
-        !t.isMemberExpression(callee) ||
-        callee.computed ||
-        !t.isIdentifier(callee.property, { name: "execute" })
-      ) {
+      if (!t.isMemberExpression(callee) || callee.computed || !t.isIdentifier(callee.property)) {
+        return;
+      }
+      if (callee.property.name === "effects") {
+        path.node.arguments = [t.objectExpression([])];
+        return;
+      }
+      if (callee.property.name !== "execute") {
         return;
       }
       if (path.node.arguments.length !== 1) {
@@ -136,11 +172,54 @@ export function generateClientContractModule(source: string, filename = "<tool-m
     },
   });
   if (executeTerminals === 0) {
-    throw new ClientContractCompilerError(
-      "client_contract_not_static",
-      `${filename}: no supported createTool/createDurableTool execute terminal was found`,
-    );
+    const requested = new Set(requestedExports);
+    let rewritten = 0;
+    ast.program.body = ast.program.body.flatMap((statement): t.Statement[] => {
+      if (t.isExportNamedDeclaration(statement) && statement.source) {
+        const specifiers = statement.specifiers.filter(
+          (specifier): specifier is t.ExportSpecifier =>
+            t.isExportSpecifier(specifier) && requested.has(exportedName(specifier.exported)),
+        );
+        if (specifiers.length === 0) {
+          return [];
+        }
+        const imported = specifiers.map((specifier) => exportedName(specifier.local));
+        statement.specifiers = specifiers;
+        statement.source.value = clientContractSource(statement.source.value, imported);
+        rewritten += 1;
+        return [statement];
+      }
+      if (t.isExportAllDeclaration(statement) && requested.size > 0) {
+        statement.source.value = clientContractSource(statement.source.value, [...requested]);
+        rewritten += 1;
+        return [statement];
+      }
+      return [];
+    });
+    if (rewritten === 0) {
+      throw new ClientContractCompilerError(
+        "client_contract_not_static",
+        `${filename}: no supported tool terminal or explicit re-export was found`,
+      );
+    }
+    const result = transformFromAstSync(ast, source, {
+      filename,
+      presets: [["@babel/preset-typescript", { allExtensions: true, isTSX: true }]],
+      sourceType: "module",
+    });
+    if (!result?.code) {
+      throw new ClientContractCompilerError(
+        "client_contract_server_reachable",
+        `${filename}: client contract barrel generation produced no module`,
+      );
+    }
+    return result.code;
   }
+  traverse(ast, {
+    Program(path) {
+      path.scope.crawl();
+    },
+  });
   traverse(ast, {
     ImportDeclaration(path) {
       if (path.node.specifiers.length === 0) {
@@ -160,7 +239,7 @@ export function generateClientContractModule(source: string, filename = "<tool-m
   });
   const result = transformFromAstSync(ast, source, {
     filename,
-    presets: ["@babel/preset-typescript"],
+    presets: [["@babel/preset-typescript", { allExtensions: true, isTSX: true }]],
     sourceType: "module",
   });
   if (!result?.code) {
@@ -211,18 +290,27 @@ function rewriteStaticToolImports(source: string, filename: string): string | nu
     if (!t.isImportDeclaration(statement)) {
       continue;
     }
-    const hasTool = statement.specifiers.some((specifier) =>
-      t.isImportSpecifier(specifier) || t.isImportDefaultSpecifier(specifier)
-        ? importedTools.has(specifier.local.name)
-        : false,
-    );
-    if (hasTool) {
-      statement.source.value = `${statement.source.value}${CLIENT_QUERY}`;
+    const requested = statement.specifiers.flatMap((specifier) => {
+      if (!importedTools.has(specifier.local.name)) {
+        return [];
+      }
+      if (t.isImportDefaultSpecifier(specifier)) {
+        return ["default"];
+      }
+      if (t.isImportSpecifier(specifier)) {
+        return [
+          t.isIdentifier(specifier.imported) ? specifier.imported.name : specifier.imported.value,
+        ];
+      }
+      return [];
+    });
+    if (requested.length > 0) {
+      statement.source.value = clientContractSource(statement.source.value, requested);
     }
   }
   const result = transformFromAstSync(ast, source, {
     filename,
-    presets: ["@babel/preset-typescript"],
+    presets: [["@babel/preset-typescript", { allExtensions: true, isTSX: true }]],
     sourceType: "module",
   });
   return result?.code ?? source;
@@ -234,22 +322,29 @@ export function clientContractPlugin(): Plugin {
     name: "@sweatpants/vite-plugin:client-contract",
     enforce: "pre",
     async resolveId(source, importer) {
-      if (!source.endsWith(CLIENT_QUERY)) {
+      const contract = parseClientContractId(source);
+      if (!contract) {
         return null;
       }
-      const plain = source.slice(0, -CLIENT_QUERY.length);
-      const resolved = await this.resolve(plain, importer, { skipSelf: true });
-      return resolved ? `${resolved.id}${CLIENT_QUERY}` : null;
+      const resolved = await this.resolve(contract.plain, importer, { skipSelf: true });
+      return resolved ? clientContractSource(resolved.id, contract.exports) : null;
     },
     async load(id) {
-      if (!id.endsWith(CLIENT_QUERY)) {
+      const contract = parseClientContractId(id);
+      if (!contract) {
         return null;
       }
-      const plain = id.slice(0, -CLIENT_QUERY.length);
-      return generateClientContractModule(await readFile(plain, "utf8"), plain);
+      return generateClientContractModule(
+        await readFile(contract.plain, "utf8"),
+        contract.plain,
+        contract.exports,
+      );
     },
     transform(source, id) {
-      if (id.includes(CLIENT_QUERY)) {
+      if (
+        parseClientContractId(id) ||
+        !/import\s*\{[^}]*\bmakePlugin\b[^}]*\}\s*from/u.test(source)
+      ) {
         return null;
       }
       return rewriteStaticToolImports(source, id);

@@ -6,7 +6,6 @@
  * must close the open interrupt and let the free-form turn complete.
  */
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { pickCardPlugin } from "@/tools/pick-card";
 import {
   expectElicit,
   expectNoOpenInterruptError,
@@ -28,13 +27,12 @@ for (const tier of selectedTiers()) {
       binding = await tier.create();
     });
     afterAll(async () => {
-      await binding?.close();
+      await binding.close();
     });
 
     it("accepts a free-form follow-up while pick_card is still waiting for a click", async () => {
       const transcript = await withFlakePolicy(() =>
         runChatFlow(binding, {
-          plugins: [pickCardPlugin],
           initialToolChoice: "required",
           // Keep the free-form answer from re-opening tools.
           systemPrompt: `You can use pick_card when the user asks to draw/pick cards.

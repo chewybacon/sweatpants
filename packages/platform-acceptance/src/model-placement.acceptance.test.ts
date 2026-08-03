@@ -6,7 +6,6 @@ import {
   ACCEPTANCE_MODEL_ID,
   DURABLE_SAMPLE_PROMPT_MARKER,
   DURABLE_SAMPLE_RESPONSE_MARKER,
-  acceptanceDurableTool,
   createAcceptanceApplication,
   type AcceptanceApplicationInspection,
 } from "./lib/acceptance-app.ts";
@@ -80,8 +79,6 @@ describe("model-sampling placement semantics", () => {
       function* (s) {
         const turn = yield* s
           .conversation({
-            tools: [acceptanceDurableTool],
-            enabledTools: true,
             initialToolChoice: "required",
           })
           .send("Run the durable selection tool.");

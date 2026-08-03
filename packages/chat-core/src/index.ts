@@ -41,6 +41,7 @@ export type {
   ChatSendRequest,
   ChatReconnectRequest,
   ChatWireMessage,
+  ChatRequestMessage,
   ChatTransportContract,
   ChatTransportSnapshot,
   ChatTransportControl,
@@ -95,6 +96,7 @@ export {
   transitionChatProjection,
   appendChatWireMessage,
   materializeChatMessages,
+  projectChatMessagesToWire,
   updateTextPartFrame,
   findElicitNode,
   findTextParts,
@@ -139,9 +141,6 @@ export {
 // History policy
 export * from "./history-policy.ts";
 
-// Message part types
-export * from "./types/index.ts";
-
 // Personas
 export * from "./personas/index.ts";
 
@@ -155,42 +154,17 @@ export {
   type ToolParameterValidationErrorPayload,
 } from "@sweatpants/agent-sdk/tool";
 
-// Chat state (reducer, timeline, derive)
-export { initialChatState, deriveMessages, deriveCompletedMessages } from "./state/index.ts";
-export type {
-  ChatState,
-  ChatStateEvent,
-  LocalChatAction,
-  StreamingPartsState,
-  ElicitState,
-  ElicitTrackingState,
-} from "./state/index.ts";
-
-// Chat session (create, stream, replay, transforms)
+// Framework-neutral AG-UI and provider-history projection.
 export {
-  createChatSession,
-  runChatSession,
-  ChatSessionRuntimeApi,
-  streamChatOnce,
-  readDurableHistory,
-  replayFramesToConversation,
-  deduplicateMessages,
-  useTransformPipeline,
-  passthroughTransform,
-  loggingTransform,
-  BaseUrlContext,
-  // AG-UI projection
   buildAgUiCheckpoint,
   buildAgUiCustomState,
   providerHistoryMessages,
   toProviderHistorySnapshot,
-  // AG-UI messages
   internalMessageToAgUiMessage,
   internalMessagesToAgUiMessages,
   agUiMessageToInternalMessage,
   agUiMessagesToInternalMessages,
   isAgUiMessageArray,
-  // Message identity
   deriveTurnKeyFromToolCalls,
   turnKeyFromToolCalls,
   messageIdForUser,
@@ -199,31 +173,16 @@ export {
   messageIdForAssistantFinal,
   messageIdForSystem,
   assertMessageHasId,
-} from "./session/index.ts";
+} from "./ag-ui/index.ts";
 export type {
-  ChatSession,
-  StreamChatOptions,
-  ElicitResponseData,
-  DurableHistoryReplay,
   DurableFrame,
   AgUiCheckpoint,
   AgUiCustomState,
   AgUiRunMetadata,
   ElicitRequestStreamEvent,
-  ChatTransportReceipt,
-  ChatTurnFailure,
-  ChatTurnSettlement,
-  ChatRequestPlan,
-  RequestLifecycle,
   StreamEvent as ChatSessionStreamEvent,
-  StreamEventEntry,
-  ChatFetch,
-  MessageRenderer,
-  ChatEventTransform,
-  SessionOptions,
-  ChatCommand,
   BuildAgUiCheckpointOptions,
-} from "./session/index.ts";
+} from "./ag-ui/index.ts";
 
 // Durable chat authoring
 export * from "./authoring/index.ts";

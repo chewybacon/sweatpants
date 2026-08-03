@@ -5,7 +5,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import viteTsConfigPaths from "vite-tsconfig-paths";
 import tailwindcss from "@tailwindcss/vite";
-import { nodeWorkerPlugin } from "@sweatpants/vite-plugin";
+import { clientContractPlugin, nodeWorkerPlugin } from "@sweatpants/vite-plugin";
 import { imagetools } from "vite-imagetools";
 const isProd = process.env["NODE_ENV"] === "production";
 const nodeBuiltins = Array.from(new Set(builtinModules.flatMap((name) => [name, `node:${name}`])));
@@ -34,6 +34,8 @@ const config = defineConfig({
   },
 
   plugins: [
+    // Derive browser-safe interaction contracts from statically imported authored tools.
+    clientContractPlugin(),
     // Node.js worker_threads support with ?nodeWorker and ?modulePath imports.
     // Skipped under Vitest: its resolveId rewrites the worker id (appending
     // &importer=...), which defeats vitest's module mocking of the `?modulePath`

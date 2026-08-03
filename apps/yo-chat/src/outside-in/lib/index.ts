@@ -5,12 +5,7 @@
  * outcome assertions, auth precheck, flake policy, and the two tier bindings,
  * reused by both tiers and by future flows.
  */
-export {
-  type ChatFetch,
-  type ChatBinding,
-  withChatFetch,
-  handlerToChatFetch,
-} from "./chat-fetch.ts";
+export { type ChatFetch, type ChatBinding, handlerToChatFetch } from "./chat-fetch.ts";
 export {
   type NormalizedEvent,
   type Transcript,

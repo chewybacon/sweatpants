@@ -62,6 +62,7 @@ export type {
   ChatSendRequest,
   ChatReconnectRequest,
   ChatWireMessage,
+  ChatRequestMessage,
   ChatTransportContract,
   ChatTransportSnapshot,
   ChatTransportControl,

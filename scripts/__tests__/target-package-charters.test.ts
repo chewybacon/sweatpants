@@ -155,10 +155,15 @@ describe("target package charters", () => {
       /state\.messages\.slice\(history/,
       /\b(?:requestActive|activeMessageIds|finishRequestTracking)\b/,
     ]);
-    expect(source.match(/reduceChatState\(/g)).toHaveLength(2);
-    for (const file of ["ag-ui-stream.ts", "turn-manager.ts", "turn-state.ts"]) {
-      expect(existsSync(resolve(root, "packages/chat-core/src/session", file))).toBe(false);
-    }
+    expect(source).not.toMatch(
+      /\b(?:createChatSession|runChatSession|ChatSessionRuntimeApi|ChatState|reduceChatState)\b/,
+    );
+    expect(existsSync(resolve(root, "packages/chat-core/src/session"))).toBe(false);
+    expect(existsSync(resolve(root, "packages/chat-core/src/recursive-tree.ts"))).toBe(false);
+    expect(existsSync(resolve(root, "packages/chat-core/src/ag-ui/index.ts"))).toBe(true);
+    expect(existsSync(resolve(root, "packages/chat-core/src/chat-client-projection.ts"))).toBe(
+      true,
+    );
   });
 
   it("keeps Durable Execution free of persistence, hosting, and chat projection", () => {

@@ -12,6 +12,27 @@ See also: [product-surface.md](./product-surface.md) · [product-facade-allowlis
 
 ---
 
+## 2026-08-03 — headless client and recursive interaction projection
+
+### Summary
+
+Replaced the pre-release `createChatSession`/`ChatState` client with one first-class
+`@sweatpants/chat-client` runtime. React Chat is now a thin external-store and native-interaction
+adapter. Active and nested messages use one recursive `messages[]`/`parts[]` model; exact typed client
+elicitation remains local while host settlement and public placement remain durable authorities.
+Frame processing moved below framework hooks and is paced by a frontend clock over an eager client
+buffer, with direct transport-cadence fallback for unpaced clients. Product Vite builds derive
+client-only contract variants from static `makePlugin(importedTool)` calls, retaining authored schemas
+while excluding ordinary execution and durable effect implementations.
+
+### Migration note
+
+Use `createChatClient`/`createChatRuntime` from `@sweatpants/chat-client` or the React-specialized
+facades and `useChat` from `@sweatpants/react-chat`. Render messages and parts recursively. The removed
+`createChatSession`, `ChatState`, `streamingMessage`, host-tree, browser replay, and
+`execution.children` APIs have no compatibility aliases. Server/application composition—not client
+plugin registration—owns executable tools and model policy.
+
 ## 2026-07-20 — durable-tool authoring DX
 
 ### Summary

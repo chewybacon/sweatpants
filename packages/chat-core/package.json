@@ -1,7 +1,7 @@
 {
     "name": "@sweatpants/chat-core",
     "version": "0.1.0",
-    "description": "Chat messages, Turn state, authoring, personas, model contracts, and portable codecs",
+    "description": "Framework-neutral chat types, codecs, projection, frames, and authoring",
     "license": "MIT",
     "files": [
         "dist",

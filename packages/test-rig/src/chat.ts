@@ -1,26 +1,24 @@
 import { EventType } from "@ag-ui/core";
-import { call, createScope, each, spawn, type Operation } from "effection";
+import type { StreamOptions } from "@sweatpants/model-provider";
+import { assertJson } from "@sweatpants/foundation";
 import {
-  createChatSession,
-  type ChatCommand,
+  createChatClient,
+  type ChatClient,
+  type ChatEventMiddleware,
   type ChatFetch as FrameworkChatFetch,
-  type ChatSession,
-  type ChatSessionStreamEvent,
-  type ChatState,
-  type ElicitState,
-  type SessionOptions,
-} from "@sweatpants/chat-core";
+  type ChatInteractionCompletion,
+  type ChatInteractionRequest,
+  type ChatInteractionRuntime,
+  type ChatStreamEvent,
+} from "@sweatpants/chat-client";
 
 export type ChatFetch = FrameworkChatFetch;
 
 export interface ConversationOptions {
   conversationId?: string;
-  plugins?: unknown[];
-  tools?: unknown[];
-  enabledTools?: string[] | boolean;
   systemPrompt?: string;
-  initialToolChoice?: SessionOptions["initialToolChoice"];
-  streamOptions?: SessionOptions["streamOptions"];
+  initialToolChoice?: StreamOptions["toolChoice"];
+  streamOptions?: StreamOptions;
 }
 
 export interface TextDeltaBarrier {
@@ -38,14 +36,14 @@ export interface ElicitBarrier {
 }
 
 export interface TurnTranscript {
-  readonly events: readonly ChatSessionStreamEvent[];
+  readonly events: readonly ChatStreamEvent[];
   readonly text: string;
   readonly outcome: "success" | "error" | "interrupt";
 }
 
 export interface ConversationTranscript {
   readonly conversationId: string;
-  readonly events: readonly ChatSessionStreamEvent[];
+  readonly events: readonly ChatStreamEvent[];
   readonly text: string;
 }
 
@@ -62,7 +60,7 @@ export interface ConversationHandle {
   readonly conversationId: string;
   send(message: string): TurnHandle;
   supersede(message: string): TurnHandle;
-  /** Recreate the client-session resource while retaining durable conversation identity. */
+  /** Recreate the headless client while retaining durable conversation identity. */
   reopen(): Promise<ConversationHandle>;
   transcript(): ConversationTranscript;
 }
@@ -85,8 +83,6 @@ function deferred<T>(): Deferred<T> {
     resolvePromise = resolve;
     rejectPromise = reject;
   });
-  // Barriers may be rejected during teardown before a caller reaches its await.
-  // Attach a passive observer without changing the original promise semantics.
   void promise.catch(() => undefined);
   return {
     promise,
@@ -119,21 +115,10 @@ function matchesDelta(
   return true;
 }
 
-function firstPendingElicit(state: ChatState, responded: Set<string>): ElicitState | undefined {
-  for (const tracking of Object.values(state.pendingElicits)) {
-    for (const elicit of tracking.elicitations) {
-      if (elicit.status === "pending" && !responded.has(elicit.elicitId)) {
-        return elicit;
-      }
-    }
-  }
-  return undefined;
-}
-
-function textFromEvents(events: readonly ChatSessionStreamEvent[]): string {
+function textFromEvents(events: readonly ChatStreamEvent[]): string {
   return events
     .filter(
-      (event): event is Extract<ChatSessionStreamEvent, { type: EventType.TEXT_MESSAGE_CONTENT }> =>
+      (event): event is Extract<ChatStreamEvent, { type: EventType.TEXT_MESSAGE_CONTENT }> =>
         event.type === EventType.TEXT_MESSAGE_CONTENT,
     )
     .map((event) => event.delta)
@@ -162,6 +147,35 @@ export interface ChatRuntime {
   close(): Promise<void>;
 }
 
+function requestOptionsFetch(
+  fetch: ChatFetch,
+  conversationId: string,
+  options: ConversationOptions,
+): ChatFetch {
+  return async (input, init) => {
+    if ((init?.method === undefined || init.method === "POST") && typeof init?.body === "string") {
+      try {
+        const body = JSON.parse(init.body) as Record<string, unknown>;
+        body["threadId"] = conversationId;
+        body["conversationId"] = conversationId;
+        if (options.systemPrompt !== undefined) {
+          body["systemPrompt"] = options.systemPrompt;
+        }
+        if (options.initialToolChoice !== undefined) {
+          body["initialToolChoice"] = options.initialToolChoice;
+        }
+        if (options.streamOptions !== undefined) {
+          body["streamOptions"] = options.streamOptions;
+        }
+        return fetch(input, { ...init, body: JSON.stringify(body) });
+      } catch {
+        // Non-JSON requests pass through unchanged.
+      }
+    }
+    return fetch(input, init);
+  };
+}
+
 export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntime {
   const conversations = new Map<string, OwnedConversation>();
 
@@ -173,43 +187,25 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         return existing.handle;
       }
 
-      const cumulativeEvents: ChatSessionStreamEvent[] = [];
+      const cumulativeEvents: ChatStreamEvent[] = [];
       let activeTurn: { id: string; reject(error: unknown): void } | undefined;
+      let activeTurnEvents: ChatStreamEvent[] | undefined;
+      let turnSettled: Deferred<TurnTranscript> | undefined;
       let closed = false;
-      const stateRef: { current: ChatState | null } = { current: null };
-      const sessionReady = deferred<ChatSession>();
-      let activeTurnEvents: ChatSessionStreamEvent[] | undefined;
       const pendingDeltas: Array<{
         expectation: string | RegExp | ((delta: string) => void);
         wait: Deferred<TextDeltaBarrier>;
       }> = [];
       const pendingElicits: ElicitBarrier[] = [];
       const elicitWaiters: Array<{ key: string; wait: Deferred<ElicitBarrier> }> = [];
-      const publishedElicits = new Set<string>();
-      const respondedElicits = new Set<string>();
       const elicitationBarriers = new Map<string, ElicitBarrier>();
-      let turnSettled: Deferred<TurnTranscript> | undefined;
+      const respondedElicits = new Set<string>();
+      let terminalSuccessPending = false;
       let pendingRunError: Error | undefined;
-      let serverCancellation: Deferred<void> | undefined;
-
-      // Keep a stable conversation ID on chat POSTs without enabling
-      // createChatSession's durable-history GET hydration path.
-      const conversationFetch: ChatFetch = async (input, init) => {
-        if (
-          (init?.method === undefined || init.method === "POST") &&
-          typeof init?.body === "string"
-        ) {
-          try {
-            const parsed = JSON.parse(init.body) as Record<string, unknown>;
-            parsed["threadId"] = conversationId;
-            parsed["conversationId"] = conversationId;
-            return options.fetch(input, { ...init, body: JSON.stringify(parsed) });
-          } catch {
-            // Not JSON — pass through unchanged.
-          }
-        }
-        return options.fetch(input, init);
-      };
+      let cancellationInProgress = false;
+      let completionHandler:
+        | ((request: ChatInteractionRequest, completion: ChatInteractionCompletion) => void)
+        | undefined;
 
       function withBarrierTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
         return new Promise<T>((resolve, reject) => {
@@ -258,6 +254,27 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         turnSettled = undefined;
       }
 
+      function settleTurn(): void {
+        if (!turnSettled || !activeTurnEvents) {
+          return;
+        }
+        const events = activeTurnEvents;
+        for (const waiter of pendingDeltas.splice(0)) {
+          waiter.wait.reject(new Error("Turn completed before the expected text delta"));
+        }
+        for (const waiter of elicitWaiters.splice(0)) {
+          waiter.wait.reject(new Error("Turn completed before the expected elicit barrier"));
+        }
+        turnSettled.resolve({
+          events: Object.freeze([...events]),
+          text: textFromEvents(events),
+          outcome: "success",
+        });
+        activeTurn = undefined;
+        activeTurnEvents = undefined;
+        turnSettled = undefined;
+      }
+
       function resolveDeltaWaiters(delta: string, messageId?: string): void {
         for (let index = pendingDeltas.length - 1; index >= 0; index -= 1) {
           const waiter = pendingDeltas[index]!;
@@ -266,10 +283,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
               continue;
             }
             pendingDeltas.splice(index, 1);
-            waiter.wait.resolve({
-              delta,
-              ...(messageId ? { messageId } : {}),
-            });
+            waiter.wait.resolve({ delta, ...(messageId ? { messageId } : {}) });
           } catch (error) {
             pendingDeltas.splice(index, 1);
             waiter.wait.reject(error);
@@ -277,204 +291,149 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         }
       }
 
-      function publishElicits(state: ChatState): void {
-        while (true) {
-          const pending = firstPendingElicit(state, publishedElicits);
-          if (!pending || !activeTurn) {
-            return;
-          }
-          publishedElicits.add(pending.elicitId);
-          const barrier = createElicitBarrier(pending);
-          elicitationBarriers.set(pending.elicitId, barrier);
-          const matchingWaiters = elicitWaiters.filter((waiter) => waiter.key === pending.key);
-          if (matchingWaiters.length === 0) {
-            pendingElicits.push(barrier);
-            continue;
-          }
-          for (const waiter of matchingWaiters) {
-            elicitWaiters.splice(elicitWaiters.indexOf(waiter), 1);
-            waiter.wait.resolve(barrier);
-          }
+      function publishElicit(request: ChatInteractionRequest): void {
+        if (respondedElicits.has(request.elicitId) || elicitationBarriers.has(request.elicitId)) {
+          return;
         }
-      }
-
-      function createElicitBarrier(elicit: ElicitState): ElicitBarrier {
         let answered = false;
-        const answer = async (
-          result:
-            | { action: "accept"; content: unknown }
-            | { action: "decline" }
-            | { action: "cancel" },
-        ): Promise<void> => {
+        const answer = async (completion: ChatInteractionCompletion): Promise<void> => {
           assertOpen();
-          if (answered || respondedElicits.has(elicit.elicitId)) {
-            throw new Error(`Elicit ${elicit.key} was already answered`);
+          if (answered || respondedElicits.has(request.elicitId)) {
+            throw new Error(`Elicit ${request.key} was already answered`);
           }
           answered = true;
-          respondedElicits.add(elicit.elicitId);
-          const session = await sessionReady.promise;
-          const command: ChatCommand = {
-            type: "elicit_response",
-            sessionId: elicit.sessionId,
-            callId: elicit.callId,
-            ...(elicit.toolName ? { toolName: elicit.toolName } : {}),
-            elicitId: elicit.elicitId,
-            completion: result,
-            autoContinue: true,
-          };
-          session.dispatch(command);
+          respondedElicits.add(request.elicitId);
+          if (!completionHandler) {
+            throw new Error("Test interaction runtime has no completion handler");
+          }
+          completionHandler(request, completion);
         };
-
-        return {
-          key: elicit.key,
-          elicitId: elicit.elicitId,
-          context: elicit.context,
-          accept: (content) => answer({ action: "accept", content }),
+        const barrier: ElicitBarrier = {
+          key: request.key,
+          elicitId: request.elicitId,
+          context: request.context,
+          accept: (content) => answer({ action: "accept", content: assertJson(content ?? {}) }),
           decline: () => answer({ action: "decline" }),
           cancel: () => answer({ action: "cancel" }),
         };
-      }
-
-      function settleTurn(): void {
-        if (!turnSettled || !activeTurnEvents) {
+        elicitationBarriers.set(request.elicitId, barrier);
+        const matchingWaiters = elicitWaiters.filter((waiter) => waiter.key === request.key);
+        if (matchingWaiters.length === 0) {
+          pendingElicits.push(barrier);
           return;
         }
-        const events = activeTurnEvents;
-        const transcript: TurnTranscript = {
-          events: Object.freeze([...events]),
-          text: textFromEvents(events),
-          outcome: "success",
-        };
-        for (const waiter of pendingDeltas.splice(0)) {
-          waiter.wait.reject(new Error("Turn completed before the expected text delta"));
+        for (const waiter of matchingWaiters) {
+          elicitWaiters.splice(elicitWaiters.indexOf(waiter), 1);
+          waiter.wait.resolve(barrier);
         }
-        for (const waiter of elicitWaiters.splice(0)) {
-          waiter.wait.reject(new Error("Turn completed before the expected elicit barrier"));
-        }
-        turnSettled.resolve(transcript);
-        activeTurn = undefined;
-        activeTurnEvents = undefined;
-        turnSettled = undefined;
       }
 
-      // Own one Effection scope for the conversation lifetime. Dispatch and
-      // state observation both happen inside this scope, matching the working
-      // createChatSession acceptance pattern.
-      const [conversationScope, destroyConversationScope] = createScope();
-      const conversationTask = conversationScope.run(function* (): Operation<void> {
-        try {
-          const session = yield* createChatSession({
-            baseUrl: options.baseUrl ?? "/api/chat",
-            fetch: conversationFetch,
-            ...(conversationOptions.tools ? { tools: conversationOptions.tools } : {}),
-            ...(conversationOptions.enabledTools !== undefined
-              ? { enabledTools: conversationOptions.enabledTools }
-              : {}),
-            ...(conversationOptions.systemPrompt
-              ? { systemPrompt: conversationOptions.systemPrompt }
-              : {}),
-            ...(conversationOptions.initialToolChoice
-              ? { initialToolChoice: conversationOptions.initialToolChoice }
-              : {}),
-            ...(conversationOptions.streamOptions
-              ? { streamOptions: conversationOptions.streamOptions }
-              : {}),
-            onStreamEvent: ({ event }) => {
-              cumulativeEvents.push(event);
-              activeTurnEvents?.push(event);
-              if (event.type === EventType.TEXT_MESSAGE_CONTENT) {
-                resolveDeltaWaiters(event.delta, event.messageId);
-              }
-              if (event.type === EventType.RUN_ERROR) {
-                pendingRunError = new Error(event.message);
-              }
-            },
-            onTurnSettled: (result) => {
-              if (pendingRunError) {
-                const error = pendingRunError;
-                pendingRunError = undefined;
-                failTurn(error);
-              } else if (result.outcome === "complete") {
-                settleTurn();
-              } else if (stateRef.current) {
-                // Publish elicit barriers only after createChatSession has
-                // persisted the interrupted request into client history.
-                publishElicits(stateRef.current);
-              }
-            },
-            onRequestError: (error) => {
-              pendingRunError ??=
-                error instanceof Error ? error : new Error(String(error ?? "request failed"));
-            },
-            onRequestFinished: () => {
-              if (pendingRunError && activeTurn) {
-                const error = pendingRunError;
-                pendingRunError = undefined;
-                failTurn(error);
-              }
-            },
-            onCancellationSettled: () => {
-              serverCancellation?.resolve();
-            },
-          });
+      const interaction: ChatInteractionRuntime = {
+        observe: publishElicit,
+        settled(elicitId) {
+          respondedElicits.add(elicitId);
+          elicitationBarriers.delete(elicitId);
+        },
+        cancel(elicitId) {
+          respondedElicits.add(elicitId);
+          elicitationBarriers.delete(elicitId);
+        },
+        localParts: () => new Map(),
+        onChange: () => () => undefined,
+        setOnCompletion(handler) {
+          completionHandler = handler;
+        },
+        dispose() {
+          completionHandler = undefined;
+          elicitationBarriers.clear();
+          pendingElicits.splice(0);
+        },
+      };
 
-          const firstState = deferred<void>();
-          yield* spawn(function* () {
-            for (const next of yield* each(session.state)) {
-              stateRef.current = next;
-              firstState.resolve();
-              yield* each.next();
-            }
-          });
+      const eventMiddleware: ChatEventMiddleware = {
+        *accept(args, next) {
+          const event = args[0];
+          cumulativeEvents.push(event);
+          if (!cancellationInProgress) {
+            activeTurnEvents?.push(event);
+          }
+          if (!cancellationInProgress && event.type === EventType.TEXT_MESSAGE_CONTENT) {
+            resolveDeltaWaiters(event.delta, event.messageId);
+          }
+          if (!cancellationInProgress && event.type === EventType.RUN_ERROR) {
+            pendingRunError = new Error(event.message);
+          }
+          if (
+            !cancellationInProgress &&
+            event.type === EventType.RUN_FINISHED &&
+            event.outcome?.type !== "interrupt"
+          ) {
+            terminalSuccessPending = true;
+          }
+          yield* next(...args);
+        },
+      };
 
-          yield* call(() => firstState.promise);
-          sessionReady.resolve(session);
-
-          // Keep the resource scope alive for the conversation lifetime.
-          yield* call(() => new Promise<never>(() => {}));
-        } catch (error) {
-          const failure =
-            error instanceof Error ? error : new Error(String(error ?? "chat session failed"));
-          options.onPoison?.(failure);
-          sessionReady.reject(failure);
+      const client: ChatClient = createChatClient({
+        conversationId,
+        transport: {
+          http: {
+            api: options.baseUrl ?? "/api/chat",
+            fetch: requestOptionsFetch(options.fetch, conversationId, conversationOptions),
+          },
+        },
+        eventMiddleware: [eventMiddleware],
+        interaction,
+      });
+      const unsubscribe = client.subscribe(() => {
+        const snapshot = client.getSnapshot();
+        if (terminalSuccessPending && snapshot.status === "ready") {
+          terminalSuccessPending = false;
+          settleTurn();
+        }
+        if (pendingRunError && snapshot.status === "error") {
+          const failure = pendingRunError;
+          pendingRunError = undefined;
           failTurn(failure);
         }
       });
 
-      function retireOpenElicits(): void {
-        for (const barrier of elicitationBarriers.values()) {
-          respondedElicits.add(barrier.elicitId);
-        }
-        pendingElicits.splice(0);
-      }
-
       function startTurn(message: string, supersede: boolean): TurnHandle {
         assertOpen();
+        if (activeTurn && !supersede) {
+          throw new Error(`Complete active turn ${activeTurn.id} before sending another turn`);
+        }
         if (activeTurn) {
-          if (!supersede) {
-            throw new Error(`Complete active turn ${activeTurn.id} before sending another turn`);
-          }
-          retireOpenElicits();
           failTurn(new Error(`turn_superseded: ${activeTurn.id}`));
         }
         const turnId = crypto.randomUUID();
         const settled = deferred<TurnTranscript>();
         turnSettled = settled;
         activeTurnEvents = [];
-        pendingRunError = undefined;
-        activeTurn = {
-          id: turnId,
-          reject: (error) => settled.reject(error),
+        activeTurn = { id: turnId, reject: (error) => settled.reject(error) };
+        const launch = async (): Promise<void> => {
+          try {
+            await client.initialized;
+            if (supersede) {
+              cancellationInProgress = true;
+              try {
+                await client.stop();
+              } catch (error) {
+                if (!(error instanceof Error) || error.message !== "halted") {
+                  throw error;
+                }
+              } finally {
+                cancellationInProgress = false;
+              }
+            }
+            await client.sendMessage({ text: message });
+          } catch (error) {
+            if (activeTurn?.id === turnId) {
+              failTurn(error);
+            }
+          }
         };
-
-        void sessionReady.promise
-          .then((session) => {
-            session.dispatch({ type: "send", content: message });
-            return undefined;
-          })
-          .catch((error) => {
-            failTurn(error);
-          });
+        void launch();
 
         return {
           expectTextDelta(expectation) {
@@ -502,15 +461,17 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
           },
           async cancel() {
             assertOpen();
-            const session = await sessionReady.promise;
-            const cancelled = deferred<void>();
-            serverCancellation = cancelled;
-            session.dispatch({ type: "abort" });
-            failTurn(new Error(`turn_cancelled: ${turnId}`));
-            await withBarrierTimeout(cancelled.promise, `server cancellation for turn ${turnId}`);
-            if (serverCancellation === cancelled) {
-              serverCancellation = undefined;
+            cancellationInProgress = true;
+            try {
+              await client.stop();
+            } catch (error) {
+              if (!(error instanceof Error) || error.message !== "halted") {
+                throw error;
+              }
+            } finally {
+              cancellationInProgress = false;
             }
+            failTurn(new Error(`turn_cancelled: ${turnId}`));
           },
           complete() {
             return withBarrierTimeout(settled.promise, `completion for turn ${turnId}`);
@@ -520,24 +481,18 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
 
       const handle: ConversationHandle = {
         conversationId,
-        send(message: string): TurnHandle {
-          return startTurn(message, false);
-        },
-        supersede(message: string): TurnHandle {
-          return startTurn(message, true);
-        },
+        send: (message) => startTurn(message, false),
+        supersede: (message) => startTurn(message, true),
         async reopen() {
           await owned.close();
           conversations.delete(conversationId);
           return chatHandle.conversation({ ...conversationOptions, conversationId });
         },
-        transcript() {
-          return {
-            conversationId,
-            events: Object.freeze([...cumulativeEvents]),
-            text: textFromEvents(cumulativeEvents),
-          };
-        },
+        transcript: () => ({
+          conversationId,
+          events: Object.freeze([...cumulativeEvents]),
+          text: textFromEvents(cumulativeEvents),
+        }),
       };
 
       const owned: OwnedConversation = {
@@ -546,40 +501,23 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
           if (activeTurn || turnSettled || pendingDeltas.length || elicitWaiters.length) {
             throw new Error(
               `Conversation ${conversationId} has active work: ` +
-                `${activeTurn ? "active turn; " : ""}` +
+                (activeTurn ? "active turn; " : "") +
                 `${pendingDeltas.length} delta waiter(s); ` +
                 `${elicitWaiters.length} elicit waiter(s)`,
             );
           }
         },
-        poison(error) {
-          failTurn(error);
-        },
+        poison: failTurn,
         async close() {
           if (closed) {
             return;
           }
           closed = true;
-          const error =
-            options.getRootFailure?.() ?? new Error(`Conversation ${conversationId} closed`);
-          failTurn(error);
-          sessionReady.reject(error);
-          try {
-            await destroyConversationScope();
-          } catch (haltError) {
-            // Effection and Node surface explicit scope destruction differently
-            // (`halted` vs AbortError/DOM abort text); all are expected only
-            // after this conversation has entered its closed state.
-            const expectedTermination =
-              haltError instanceof Error &&
-              (haltError.message === "halted" ||
-                haltError.name === "AbortError" ||
-                /operation was aborted/i.test(haltError.message));
-            if (!expectedTermination) {
-              throw haltError;
-            }
-          }
-          await conversationTask.catch(() => undefined);
+          failTurn(
+            options.getRootFailure?.() ?? new Error(`Conversation ${conversationId} closed`),
+          );
+          unsubscribe();
+          await client.close();
         },
       };
       conversations.set(conversationId, owned);

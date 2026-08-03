@@ -85,7 +85,7 @@ export function createTierABinding(): ChatBinding {
 
   const baseUrl = "http://localhost/api/chat";
 
-  // Capture the REAL fetch now, before any `withChatFetch` global override.
+  // Capture the real fetch for model-provider egress; Chat Client receives the app binding explicitly.
   // CRITICAL (Tier A is in-process): the model provider makes its own outbound
   // HTTPS call to Copilot via `globalThis.fetch`. When the driver installs this
   // seam as the global fetch, we must intercept ONLY the chat URL and delegate
@@ -104,8 +104,7 @@ export function createTierABinding(): ChatBinding {
   const fetch: typeof handlerFetch = (input, init) => {
     let url =
       typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    // Resolve relative URLs (e.g. /api/chat?conversationId=... from
-    // readDurableHistory) against the baseUrl so the handler receives a
+    // Resolve relative Chat Client transport URLs against the baseUrl so the handler receives a
     // valid absolute URL.
     if (url.startsWith("/")) {
       url = `${baseUrl.replace("/api/chat", "")}${url}`;

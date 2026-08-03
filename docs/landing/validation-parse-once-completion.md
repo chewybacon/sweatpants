@@ -190,15 +190,14 @@ Test Rig now passively observes the same application response body consumed by C
 
 With that path authoritative, 29 mock-backed, synthetic-event, implementation-state, duplicate stream/HTTP smoke, simple export/helper, and upstream Effection suites were deleted (nearly 9,000 lines). Platform Acceptance also stopped running every semantic scenario through both bindings: semantics now run in-process, while HTTP is reserved for reconnect, streaming, connection isolation, generation replacement, cancellation propagation, and one complex parity flow. Pairwise A2A posture coverage replaced Cartesian binding coverage, removing 36 duplicate acceptance cases. Chat Core no longer directly tests reducer/class state arrangements; retained tests cover public functional contracts such as authoring, policy, replay bounds, projection facts, and a compact codec boundary. React Chat now relies on rendering and simulator-to-hook acceptance rather than mock plugin executors. Durable Chat retains authority/fencing/store/parser tests while model/tool/AG-UI/session/HTTP behavior is covered through Test Rig, React, and Platform Acceptance. A charter gate prevents mock providers, local AG-UI schema mirrors, and the removed internal-state suites from returning. The package-test coverage baseline was deliberately lowered after each deletion; it now records 1,043 collected package tests (1,019 passed, 17 skipped). The lower count is intentional consolidation, not missing imports.
 
-### Canonical Chat Core session projection
+### Retired Chat Core session projection
 
-Chat Core now has one production projection authority for canonical AG-UI events, public `ChatState`, incrementally retained provider history, pending elicitations, and turn settlement. The response transport only forwards events and returns a narrow `ChatTransportReceipt`; it no longer reconstructs `ConversationState`, tool calls, tool results, or assistant text. Session orchestration folds transformed events into the projection once and publishes the resulting state directly, removing the previous transport fold, mirror fold, public subscriber fold, and `StreamResult`-to-history repair path.
-
-The projection is now an immutable Elm-style machine: `SessionProjectionState + SessionInput -> SessionProjectionState + SessionOutput[]`. Tagged `RunProjection` variants derive lifecycle from `RUN_STARTED`, `RUN_FINISHED`, and `RUN_ERROR`; producer-known request IDs fence stale events after cancellation. Commands emit declarative cancel/start outputs, while transport drain/failure inputs produce explicit complete, interrupt, or failed settlements. Time and identity enter as runtime-established input facts, so the transition contains no clock, random identity, channel, task, callback, or I/O authority.
-
-`ChatSessionRuntimeApi`, built with Effection `createApi`, interprets external request plans in the current scope. `around()` middleware can instrument, authorize, or substitute the genuine external transport, and spawned requests inherit that scoped middleware while remaining children of the session resource. The event loop serializes command, protocol, and transport inputs; the only mutable domain cell is replacement of the current immutable machine state.
-
-`StreamResult`, `ConversationState`, `turn-manager.ts`, `turn-state.ts`, and `ag-ui-stream.ts` were deleted. `session/machine.ts`, `session/projection.ts`, `session/runtime-api.ts`, `session/settlement.ts`, and `session/transport.ts` now own the corresponding responsibilities. Durable replay and rendered-history paths consume the same state transition, while reducer draft bookkeeping is no longer part of the public `ChatState` type. React, Test Rig, and Durable Chat Runtime carry only the canonical event, transport receipt, and semantic settlement contracts; no package dependency edge changed.
+The intermediate `ChatState`/`createChatSession` client described by the original migration memo was
+subsequently replaced by the first-class `@sweatpants/chat-client` runtime. Test Rig, React Chat, Ink,
+and outside-in drivers now use that single client. Chat Core retains only framework-neutral AG-UI
+codecs, immutable nested projection, provider-history conversion, frame types, and authored chat
+programs; the fetch-oriented session machine, pending-elicit side state, and prototype execution tree
+were deleted rather than preserved as a second pre-release client API.
 
 ## Validation performed
 

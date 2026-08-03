@@ -27,9 +27,9 @@ confirmation tokens, terminal states), not model prose.
 ```
 src/outside-in/
   lib/
-    chat-fetch.ts      # ChatFetch seam, ChatBinding, withChatFetch
+    chat-fetch.ts      # explicit ChatFetch seam and ChatBinding
     transcript.ts      # normalized AG-UI event stream + outcome
-    driver.ts          # runChatFlow: turns, elicit→resume loop, fail-fast timeout
+    driver.ts          # ChatClient-driven turns, elicit→resume loop, fail-fast timeout
     assertions.ts      # expectToolCalled/expectElicit/expectOutcome/...
     auth.ts            # Copilot auth precheck (fail fast, don't hang)
     flake.ts           # bounded retry on transient errors only (never assertions)

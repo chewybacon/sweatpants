@@ -9,7 +9,6 @@ import {
   NESTED_SAMPLE_RESPONSE_MARKER,
   OUTER_TERMINAL_TEXT,
   TOOL_RESULT_MARKER,
-  acceptanceBookingTool,
 } from "./lib/acceptance-app.ts";
 
 type Binding = TestRigOptions["binding"];
@@ -33,8 +32,6 @@ async function runInteractiveToolScenario(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation({
-        tools: [acceptanceBookingTool],
-        enabledTools: true,
         initialToolChoice: "required",
       });
       const turn = yield* conversation.send(
@@ -109,7 +106,7 @@ async function runDuplicateElicitScenario(binding: Binding): Promise<void> {
   await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
-      const conversation = s.conversation({ tools: [acceptanceBookingTool] });
+      const conversation = s.conversation();
       const turn = yield* conversation.send("DUPLICATE_ELICIT_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
@@ -143,8 +140,6 @@ async function runElicitOutcomeScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation({
-        tools: [acceptanceBookingTool],
-        enabledTools: true,
         initialToolChoice: "required",
       });
       const turn = yield* conversation.send(`ELICIT_${action.toUpperCase()}_V1`);

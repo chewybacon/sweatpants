@@ -24,26 +24,6 @@ export interface ChatBinding {
 }
 
 /**
- * Run `fn` with `globalThis.fetch` bound to `chatFetch`, restoring the original
- * afterward — even on throw. This is the encapsulated global-override strategy
- * from design Decision 1 (Option 1). The real client transport
- * (`api-transport.executeChatFetch`) calls the ambient `fetch`, so binding it
- * here keeps the real client path intact without any production changes.
- *
- * For Tier B the seam is just the real `fetch`, so this override is a no-op in
- * practice while keeping a single, uniform test code path.
- */
-export async function withChatFetch<T>(chatFetch: ChatFetch, fn: () => Promise<T>): Promise<T> {
-  const original = globalThis.fetch;
-  globalThis.fetch = chatFetch as typeof globalThis.fetch;
-  try {
-    return await fn();
-  } finally {
-    globalThis.fetch = original;
-  }
-}
-
-/**
  * Adapt a `Request -> Promise<Response>` handler (e.g. `ChatApplication.handle`)
  * into a `ChatFetch`. Mirrors the request reconstruction used by the existing
  * `tool-blackbox` outside-in test: strip the abort `signal` (in-process handlers

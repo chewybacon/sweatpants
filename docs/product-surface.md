@@ -40,7 +40,7 @@ Three lanes classify every workspace package:
 | `@sweatpants/tool-runtime-local` | Local/worker tool runtime (advanced app wiring) |
 | `@sweatpants/tool-runtime-agentcore` | AgentCore remote tool runtime (advanced app wiring) |
 | `@sweatpants/model-provider-pi-ai` | Model provider adapter (advanced app wiring) |
-| `@sweatpants/vite-plugin` | Build/dev plugin for apps |
+| `@sweatpants/vite-plugin` | Build/dev plugin for client-contract extraction, workers, and app tooling |
 | `@sweatpants/ts-config` | Shared TypeScript config |
 | `destination domain packages` **internals** | Durable handler implementation, session runtime, mcp-tools implementation modules not on the facade allowlist |
 

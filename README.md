@@ -17,7 +17,7 @@ At most four conceptual targets (concrete package names today):
 | `@sweatpants/react`  | `@sweatpants/react-chat`        | UI hooks / chat client                  |
 | `@sweatpants/server` | `@sweatpants/agent-host/server` | Durable handler + app wiring            |
 | `@sweatpants/tools`  | `@sweatpants/agent-sdk`         | `createTool` authoring                  |
-| `@sweatpants/chat`   | `@sweatpants/chat-core`         | Plugins, session helpers, advanced chat |
+| `@sweatpants/chat`   | `@sweatpants/chat-core`         | Protocol, frames, projection, authoring |
 
 ```bash
 pnpm add @sweatpants/react-chat @sweatpants/agent-host @sweatpants/agent-sdk

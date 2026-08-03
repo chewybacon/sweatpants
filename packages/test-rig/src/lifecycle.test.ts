@@ -80,7 +80,7 @@ describe("withTestRig lifecycle", () => {
           await turn.complete();
         },
       ),
-    ).rejects.toThrow(/barrier_timeout|scenario_timeout|RUN_ERROR|unused/);
+    ).rejects.toThrow(/barrier_timeout|scenario_timeout|RUN_ERROR|unused|chat_transport_truncated/);
   });
 
   it("fails teardown when the application observed a checkpoint error", async () => {

@@ -2,6 +2,7 @@ import type { ToolCall } from "@sweatpants/model-provider";
 import type { Message } from "../messages.ts";
 
 function sortedUnique(values: string[]): string[] {
+  // eslint-disable-next-line unicorn/no-array-sort -- The array is a fresh copy created solely for canonical ordering.
   return [...new Set(values)].sort();
 }
 

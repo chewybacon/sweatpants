@@ -28,22 +28,23 @@ import {
   type ChatTransportMiddleware,
 } from "./ports.ts";
 import { createHttpTransport, type HttpTransportOptions } from "./http.ts";
-import type {
-  ClientChatMessage as ChatMessage,
-  ChatLocalPart,
-  ClientChatPart as ChatPart,
-  ChatSendRequest,
-  ClientChatSnapshot as ChatSnapshot,
-  ChatStreamEvent,
-  ChatTransportContract,
-  ChatTransportControl,
-  FramePipelineFactory,
-  RegenerateOptions,
-  SendMessageOptions,
-  UserMessageInput,
-  ChatWireMessage,
-  ClientElicitFact,
-  QueuedUserMessage,
+import {
+  projectChatMessagesToWire as messagesToWire,
+  type ClientChatMessage as ChatMessage,
+  type ChatLocalPart,
+  type ClientChatPart as ChatPart,
+  type ChatSendRequest,
+  type ChatRequestMessage,
+  type ClientChatSnapshot as ChatSnapshot,
+  type ChatStreamEvent,
+  type ChatTransportContract,
+  type ChatTransportControl,
+  type FramePipelineFactory,
+  type RegenerateOptions,
+  type SendMessageOptions,
+  type UserMessageInput,
+  type ClientElicitFact,
+  type QueuedUserMessage,
 } from "@sweatpants/chat-core";
 import type { Json } from "@sweatpants/foundation";
 import { createEagerBuffer } from "@sweatpants/foundation/stream";
@@ -252,43 +253,6 @@ function textFromInput(input: UserMessageInput): string {
     .join("");
 }
 
-function messageToWire(message: ChatMessage<ChatLocalPart>): ChatWireMessage | null {
-  const text = message.parts
-    .filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text")
-    .map((part) => part.text)
-    .join("");
-  const toolCalls = message.parts
-    .filter(
-      (part): part is Extract<typeof part, { type: "tool-call" }> => part.type === "tool-call",
-    )
-    .map((part) => ({
-      id: part.callId,
-      type: "function" as const,
-      function: {
-        name: part.name,
-        arguments: part.rawInput ?? JSON.stringify(part.input ?? {}),
-      },
-    }));
-  if (message.role === "user" || message.role === "system") {
-    return { id: message.id, role: message.role, content: text };
-  }
-  return {
-    id: message.id,
-    role: "assistant",
-    ...(text.length > 0 ? { content: text } : {}),
-    ...(toolCalls.length > 0 ? { toolCalls } : {}),
-  };
-}
-
-function messagesToWire(
-  messages: readonly ChatMessage<ChatLocalPart>[],
-): readonly ChatWireMessage[] {
-  return messages.flatMap((message) => {
-    const wire = messageToWire(message);
-    return wire ? [wire] : [];
-  });
-}
-
 function lastRegeneratableMessageId<TLocalPart extends ChatLocalPart>(
   messages: readonly ChatMessage<TLocalPart>[],
 ): string | undefined {
@@ -301,7 +265,7 @@ function lastRegeneratableMessageId<TLocalPart extends ChatLocalPart>(
   return undefined;
 }
 
-function createUserWire(input: UserMessageInput): ChatWireMessage {
+function createUserWire(input: UserMessageInput): Extract<ChatRequestMessage, { role: "user" }> {
   return {
     id: input.id ?? crypto.randomUUID(),
     role: "user",
@@ -349,7 +313,7 @@ class ChatClientController<
   private commandScope: Scope | null = null;
   private destroyClientScope: (() => Promise<void>) | null = null;
   private bootstrapTask: Task<void> | null = null;
-  private activeTask: Task<void> | null = null;
+  private activeTask: Task<ChatStreamEvent | null> | null = null;
   private activeRequest: ChatSendRequest | null = null;
   private readyForCommands = false;
   private initializedResolved = false;
@@ -695,7 +659,8 @@ class ChatClientController<
       context: this.context,
       forwardedProps: options.forwardedProps ?? this.forwardedProps,
     };
-    yield* this.runRequest(request);
+    const terminal = yield* this.runRequest(request);
+    yield* this.finishRequest(terminal);
     yield* this.drainQueue();
   }
 
@@ -728,7 +693,8 @@ class ChatClientController<
       forwardedProps: options.forwardedProps ?? this.forwardedProps,
     };
     this.publish({ status: "submitted", connectionStatus: "connecting" });
-    yield* this.runRequest(request);
+    const terminal = yield* this.runRequest(request);
+    yield* this.finishRequest(terminal);
   }
 
   private *stopImpl(reason: string): Operation<void> {
@@ -842,42 +808,57 @@ class ChatClientController<
     }
   }
 
-  private *runRequest(request: ChatSendRequest): Operation<void> {
+  private *runRequest(request: ChatSendRequest): Operation<ChatStreamEvent | null> {
     const task = yield* spawn(() => this.requestOperation(request));
     this.activeTask = task;
     this.activeRequest = request;
+    let failure: ChatClientError | null = null;
     try {
-      yield* task;
+      return yield* task;
+    } catch (error) {
+      if (error instanceof ChatClientError) {
+        failure = error;
+      }
+      throw error;
     } finally {
       if (this.activeTask === task) {
         this.activeTask = null;
         this.activeRequest = null;
       }
+      if (failure) {
+        this.publish({ status: "error", connectionStatus: "error", error: failure });
+      }
     }
   }
 
-  private *requestOperation(request: ChatSendRequest): Operation<void> {
+  private *requestOperation(request: ChatSendRequest): Operation<ChatStreamEvent | null> {
     const signal = yield* useAbortSignal();
     try {
       const stream = yield* ChatTransportPort.api.operations.sendMessages(request, signal);
       this.publish({ connectionStatus: "connected" });
-      const terminal = yield* this.consumeStream(stream, true);
-      yield* this.flushPublication(
-        {
-          status: terminal?.type === EventType.RUN_ERROR ? "error" : "ready",
-          connectionStatus: "disconnected",
-        },
-        true,
-      );
+      return yield* this.consumeStream(stream, true);
     } catch (error) {
       if (signal.aborted) {
         throw error;
       }
       const failure = asChatClientError(error, "chat_event_invalid", "Chat request failed");
       this.rejectQueued(failure);
-      this.publish({ status: "error", connectionStatus: "error", error: failure });
       throw failure;
     }
+  }
+
+  private *finishRequest(terminal: ChatStreamEvent | null): Operation<void> {
+    const runError = terminal?.type === EventType.RUN_ERROR ? terminal : null;
+    yield* this.flushPublication(
+      {
+        status: runError ? "error" : "ready",
+        connectionStatus: "disconnected",
+        ...(runError
+          ? { error: new ChatClientError(runError.code ?? "chat_run_error", runError.message) }
+          : {}),
+      },
+      true,
+    );
   }
 
   private *consumeStream(
@@ -990,8 +971,6 @@ class ChatClientController<
       throw failure;
     }
     if (event.type === EventType.RUN_ERROR) {
-      const failure = new ChatClientError(event.code ?? "chat_run_error", event.message);
-      this.stagePublication({ status: "error", error: failure });
       return;
     }
     const streaming =
@@ -1050,7 +1029,8 @@ class ChatClientController<
       resume,
     };
     this.publish({ status: "submitted", connectionStatus: "connecting" });
-    yield* this.runRequest(transportRequest);
+    const terminal = yield* this.runRequest(transportRequest);
+    yield* this.finishRequest(terminal);
   }
 
   private currentPublicationStatus(): ChatSnapshot<ChatMessage<TLocalPart>>["status"] {

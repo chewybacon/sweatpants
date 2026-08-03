@@ -21,7 +21,6 @@ import {
   ACCEPTANCE_MODEL_ID,
   DURABLE_SAMPLE_PROMPT_MARKER,
   DURABLE_TOOL_RESULT_MARKER,
-  acceptanceDurableTool,
   createAcceptanceApplication,
 } from "./lib/acceptance-app.ts";
 
@@ -139,7 +138,7 @@ async function invokeStructuredChild(binding: Binding, posture: Posture): Promis
         scenarioTimeoutMs: 30_000,
       },
       function* (s) {
-        const conversation = s.conversation({ tools: [acceptanceDurableTool] });
+        const conversation = s.conversation();
         const turn = yield* conversation.send(`Delegate train selection using ${posture}`);
         const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
         yield* outer.respond.toolCalls([
