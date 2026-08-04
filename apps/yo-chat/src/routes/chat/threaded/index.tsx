@@ -4,6 +4,7 @@ import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pickCardPlugin } from "@/tools/pick-card";
 import { renderNestedParts } from "@/components/ChatPartTree";
+import { StreamInspector } from "@/components/StreamInspector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -247,6 +248,8 @@ function ThreadPanel({
           </div>
         </div>
       </div>
+
+      <StreamInspector threadId={threadId} />
 
       <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
         {messages.length === 0 ? (

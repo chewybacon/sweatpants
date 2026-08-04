@@ -237,16 +237,35 @@ export function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnap
   };
 }
 
-function activitySnapshotsFromFrames(
-  frames: readonly DurableFrame[],
-): Extract<StreamEvent, { type: EventType.ACTIVITY_SNAPSHOT }>[] {
-  const latest = new Map<string, Extract<StreamEvent, { type: EventType.ACTIVITY_SNAPSHOT }>>();
-  for (const frame of frames) {
-    if (frame.event.type === EventType.ACTIVITY_SNAPSHOT) {
-      latest.set(frame.event.messageId, frame.event);
+function activityProjectionEventsFromFrames(frames: readonly DurableFrame[]): StreamEvent[] {
+  const latest = new Map<
+    string,
+    { index: number; event: Extract<StreamEvent, { type: EventType.ACTIVITY_SNAPSHOT }> }
+  >();
+  for (let index = 0; index < frames.length; index += 1) {
+    const event = frames[index]!.event;
+    if (event.type === EventType.ACTIVITY_SNAPSHOT) {
+      latest.set(event.messageId, { index, event });
     }
   }
-  return [...latest.values()];
+
+  const snapshots = [...latest.values()]
+    .sort((left, right) => left.index - right.index)
+    .map(({ event }) => event);
+  const deltas = frames
+    .filter(
+      (
+        frame,
+      ): frame is DurableFrame & {
+        event: Extract<StreamEvent, { type: EventType.ACTIVITY_DELTA }>;
+      } => frame.event.type === EventType.ACTIVITY_DELTA,
+    )
+    .filter((frame) => {
+      const snapshot = latest.get(frame.event.messageId);
+      return snapshot !== undefined && frames.indexOf(frame) > snapshot.index;
+    })
+    .map((frame) => frame.event);
+  return [...snapshots, ...deltas];
 }
 
 function providerHistoryFromFrames(frames: readonly DurableFrame[]) {
@@ -278,7 +297,7 @@ export function* buildCheckpointSnapshotEventsFromFrames(
       type: EventType.MESSAGES_SNAPSHOT,
       messages: [...providerHistoryFromFrames(frames)],
     },
-    ...activitySnapshotsFromFrames(frames),
+    ...activityProjectionEventsFromFrames(frames),
   ];
 }
 
@@ -300,7 +319,7 @@ export function* completedConversationHydrateEvents(params: {
       type: EventType.MESSAGES_SNAPSHOT,
       messages: [...providerHistoryFromFrames(frames)],
     },
-    ...activitySnapshotsFromFrames(frames),
+    ...activityProjectionEventsFromFrames(frames),
     {
       type: EventType.STATE_SNAPSHOT,
       snapshot: buildAgUiCustomState({ elicits }),
