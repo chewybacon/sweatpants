@@ -170,6 +170,7 @@ async function runHookProjection(binding: Binding): Promise<void> {
       expect(snapshot.status).toBe("ready");
       expect(snapshot.error).toBeNull();
       expect(JSON.stringify(snapshot.messages)).not.toContain('"state":"pending"');
+      expect(JSON.stringify(snapshot.messages)).toContain('"state":"completed"');
       yield* s.agui.event("RUN_FINISHED", { after: finalRun });
       s.agui.assertConformant({ after: aguiStart });
       const emitted = s.agui.events(aguiStart);

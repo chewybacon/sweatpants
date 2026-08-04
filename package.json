@@ -17,6 +17,7 @@
         "test:tooling": "vitest run --config vitest.scripts.config.ts",
         "check:tests": "./scripts/check-tests.sh",
         "test:e2e": "pnpm -C apps/yo-chat test:e2e && pnpm -C apps/yo-mcp test",
+        "test:e2e:optional": "pnpm -C apps/yo-chat test:e2e",
         "test:e2e:manual": "pnpm -C apps/yo-chat test:e2e:manual",
         "test:e2e:manual:ui": "pnpm -C apps/yo-chat test:e2e:manual:ui",
         "land": "tsx scripts/land.ts deterministic",

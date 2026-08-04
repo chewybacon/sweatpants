@@ -2,20 +2,23 @@
 
 Yo-chat intentionally has two separate browser gates.
 
-## Deterministic landing smoke
+## Optional deterministic browser smoke
 
 ```bash
 pnpm -C apps/yo-chat test:e2e
 ```
 
-This runs four thin browser-boundary tests and is invoked by `pnpm land`:
+This runs thin browser-boundary tests when explicitly invoked. It is not part of
+`pnpm land`; semantic chat behavior is covered by Test Rig and React/jsdom acceptance.
 
-- canonical plugin DOM interaction,
-- journal inspector UI,
-- Markdown/KaTeX/Mermaid rendering and persistence,
-- threaded durable reconstruction after refresh.
+The optional presentation suite covers:
 
-Keep this suite fast, deterministic, and provider-independent.
+- canonical plugin DOM interaction;
+- journal inspector UI;
+- Markdown/KaTeX/Mermaid rendering and persistence.
+
+Keep this suite provider-independent when possible. It must not become the source of
+truth for message ordering, elicitation state, replay, or durable tool behavior.
 
 ## Extensive manual Copilot suite
 

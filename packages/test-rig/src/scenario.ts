@@ -1,5 +1,5 @@
 import { call, run, type Operation } from "effection";
-import type { AgUiEvent } from "./ag-ui.ts";
+import type { AgUiEvent, AgUiFrame } from "./ag-ui.ts";
 import type {
   ChatFetch,
   ConversationHandle,
@@ -41,6 +41,9 @@ import type { TestRig } from "./rig-types.ts";
  *
  *   const pickFlight = yield* turn.elicit("pickFlight");
  *   yield* pickFlight.accept({ flightId: "FL001" });
+ *   const snapshot = yield* turn.expectSnapshot((value) =>
+ *     value.messages.some((message) => JSON.stringify(message).includes("pickFlight")),
+ *   );
  *
  *   const final = yield* s.model.request();
  *   yield* final.respond.text("Done.");
@@ -87,8 +90,21 @@ export interface ScriptModelRequest {
 }
 
 /** An elicitation handle whose answer controls are Effection operations. */
+export interface ScriptElicitPlacement {
+  readonly nodeId: string;
+  readonly parentNodeId: string | null;
+  readonly sequence: number;
+}
+
+export type ChatSnapshot = import("@sweatpants/chat-client").ChatSnapshot;
+
 export interface ScriptElicit {
   readonly key: string;
+  readonly elicitId: string;
+  readonly bindingId: string;
+  readonly toolName: string;
+  readonly callId: string;
+  readonly placement: ScriptElicitPlacement;
   readonly context: unknown;
   accept(content?: unknown): Operation<void>;
   decline(): Operation<void>;
@@ -101,6 +117,10 @@ export type FailureExpectation = string | RegExp | ((error: Error) => void);
 export interface ScriptTurn {
   /** Consume the next elicitation with this key (buffered or future). */
   elicit(key: string): Operation<ScriptElicit>;
+  /** Return the authoritative generic snapshot at the current causal point. */
+  snapshot(): Operation<ChatSnapshot>;
+  /** Wait for an authoritative snapshot matching the predicate. */
+  expectSnapshot(predicate: (snapshot: ChatSnapshot) => boolean): Operation<ChatSnapshot>;
   /** Wait for a streamed text delta matching the expectation. */
   textDelta(expectation: string | RegExp | ((delta: string) => void)): Operation<TextDeltaBarrier>;
   /** Wait for the turn to settle successfully and return its transcript. */
@@ -113,6 +133,7 @@ export interface ScriptTurn {
 
 export interface ScriptConversation {
   readonly conversationId: string;
+  snapshot(): ChatSnapshot;
   /** Send a user message, starting a turn. Fails if a turn is already active. */
   send(message: string): Operation<ScriptTurn>;
   /** Cancel-on-send: replace the active turn with a new user message. */
@@ -141,6 +162,7 @@ export interface ScenarioContext {
   readonly agui: {
     mark(): number;
     events(after?: number): readonly AgUiEvent[];
+    frames(after?: number): readonly AgUiFrame[];
     event(type: string, options?: { after?: number }): Operation<AgUiEvent>;
     assertConformant(options?: { after?: number; lifecycle?: boolean }): void;
   };
@@ -216,6 +238,11 @@ function toScriptRequest(request: PendingModelRequest): ScriptModelRequest {
 function toScriptElicit(barrier: ElicitBarrier): ScriptElicit {
   return {
     key: barrier.key,
+    elicitId: barrier.elicitId,
+    bindingId: barrier.bindingId,
+    toolName: barrier.toolName,
+    callId: barrier.callId,
+    placement: barrier.placement,
     context: barrier.context,
     accept: (content) => op(() => barrier.accept(content)),
     decline: () => op(() => barrier.decline()),
@@ -248,6 +275,10 @@ function toScriptTurn(turn: TurnHandle, label: string): ScriptTurn {
       const barrier = yield* op(() => turn.expectElicit(key));
       return toScriptElicit(barrier);
     },
+    snapshot: function* () {
+      return turn.snapshot();
+    },
+    expectSnapshot: (predicate) => op(() => turn.expectSnapshot(predicate)),
     textDelta: (expectation) => op(() => turn.expectTextDelta(expectation)),
     settled: () => op(() => turn.complete()),
     *failure(expectation) {
@@ -280,6 +311,7 @@ function toScriptStream(turn: StreamTurnHandle): ScriptStreamTurn {
 function toScriptConversation(conversation: ConversationHandle): ScriptConversation {
   return {
     conversationId: conversation.conversationId,
+    snapshot: () => conversation.snapshot(),
     *send(message) {
       return toScriptTurn(conversation.send(message), JSON.stringify(message));
     },
@@ -308,6 +340,7 @@ export function scenario<T>(
     agui: {
       mark: () => rig.agui.mark(),
       events: (after) => rig.agui.events(after),
+      frames: (after) => rig.agui.frames(after),
       event: (type, options) => op(() => rig.agui.expectEvent(type, options)),
       assertConformant: (options) => rig.agui.assertConformant(options),
     },

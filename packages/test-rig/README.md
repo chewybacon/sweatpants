@@ -37,7 +37,7 @@ This is race-free because scenario mode buffers model requests and elicitations 
 - `src/scenario.ts` — primary authoring API. Adapts low-level promises into causal Effection operations.
 - `src/index.ts` — owns complete rig lifecycle: simulator, application, binding, conversation runtime, poisoning, verification, timeouts, and cleanup.
 - `src/model.ts` — Simulacrum/OpenAI Responses boundary. Captures real HTTP provider requests and emits parser-compatible SSE responses. Scenario requests use a strict FIFO arrival buffer.
-- `src/chat.ts` — low-level conversation, turn, delta, elicitation, cancellation, and transcript barriers over the real chat client.
+- `src/chat.ts` — low-level conversation, turn, delta, authoritative snapshot, elicitation, cancellation, refresh, and transcript barriers over the real chat client.
 - `src/transport.ts` — low-level response-stream open/checkpoint/disconnect/reconnect handle.
 - `src/history.ts` — canonical normalization of OpenAI Responses input for assertions.
 
@@ -56,6 +56,7 @@ Framework acceptance use of the escape hatch requires a `scenario-escape-hatch:`
 ## Invariants
 
 - Provider requests are consumed FIFO; expectations validate the oldest arrival and never search past it.
+- `ScenarioContext.agui.frames()` retains raw observed AG-UI frames (including LSNs) for replay/inspector assertions; `events()` remains the live-run conformance view.
 - Every consumed provider request must be answered, failed, disconnected, or aborted.
 - Every turn must settle, fail, be cancelled, or be superseded.
 - Successful rig cleanup verifies no requests, expectations, turns, or semantic barriers remain.

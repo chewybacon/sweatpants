@@ -2,6 +2,11 @@ import { EventSchemas, EventType, type AGUIEvent } from "@ag-ui/core";
 
 export type AgUiEvent = AGUIEvent;
 
+export interface AgUiFrame {
+  readonly lsn?: number;
+  readonly event: AgUiEvent;
+}
+
 const deprecatedEventTypes = new Set([
   "THINKING_START",
   "THINKING_END",
@@ -36,14 +41,17 @@ export interface AgUiConformanceOptions {
 export interface AgUiProbe {
   mark(): number;
   events(after?: number): readonly AgUiEvent[];
+  frames(after?: number): readonly AgUiFrame[];
   expectEvent(type: string, options?: { after?: number }): Promise<AgUiEvent>;
   assertConformant(options?: AgUiConformanceOptions): void;
   observe(response: Response): Response;
+  /** Records replay/hydration frames without mixing them into live run lifecycle events. */
+  observeReplay(response: Response): Response;
   settle(): Promise<void>;
   close(error?: unknown): void;
 }
 
-function eventFromJson(value: unknown): AgUiEvent | undefined {
+function frameFromJson(value: unknown): AgUiFrame | undefined {
   if (typeof value !== "object" || value === null) {
     return undefined;
   }
@@ -73,7 +81,15 @@ function eventFromJson(value: unknown): AgUiEvent | undefined {
       `Invalid AG-UI event ${JSON.stringify(type)} ${JSON.stringify(candidate).slice(0, 1000)}: ${parsed.error.message}`,
     );
   }
-  return parsed.data;
+  const event = parsed.data;
+  if (!event) {
+    return undefined;
+  }
+  const lsn =
+    typeof record["lsn"] === "number" && Number.isSafeInteger(record["lsn"]) && record["lsn"] >= 0
+      ? record["lsn"]
+      : undefined;
+  return { ...(lsn === undefined ? {} : { lsn }), event };
 }
 
 function assertLifecycle(events: readonly AgUiEvent[]): void {
@@ -145,6 +161,7 @@ function assertLifecycle(events: readonly AgUiEvent[]): void {
 
 export function createAgUiProbe(onError: (error: Error) => void): AgUiProbe {
   const events: AgUiEvent[] = [];
+  const frames: AgUiFrame[] = [];
   const waiters: EventWaiter[] = [];
   let failure: Error | undefined;
   let closed = false;
@@ -161,22 +178,26 @@ export function createAgUiProbe(onError: (error: Error) => void): AgUiProbe {
     return failure;
   };
 
-  const publish = (value: unknown): void => {
-    const event = eventFromJson(value);
-    if (!event) {
+  const publish = (value: unknown, includeEvent = true): void => {
+    const frame = frameFromJson(value);
+    if (!frame) {
       return;
     }
-    const index = events.push(event) - 1;
+    frames.push(frame);
+    if (!includeEvent) {
+      return;
+    }
+    const index = events.push(frame.event) - 1;
     for (const waiter of [...waiters]) {
-      if (index < waiter.after || String(event.type) !== waiter.type) {
+      if (index < waiter.after || String(frame.event.type) !== waiter.type) {
         continue;
       }
       waiters.splice(waiters.indexOf(waiter), 1);
-      waiter.resolve(event);
+      waiter.resolve(frame.event);
     }
   };
 
-  const observedResponse = (response: Response): Response => {
+  const observedResponse = (response: Response, includeEvent = true): Response => {
     if (!response.body) {
       return response;
     }
@@ -201,12 +222,12 @@ export function createAgUiProbe(onError: (error: Error) => void): AgUiProbe {
               .join("\n")
           : frame.trim();
         if (payload) {
-          publish(JSON.parse(payload));
+          publish(JSON.parse(payload), includeEvent);
         }
       }
       const trailing = buffer.trim();
       if (flush && trailing && !contentType.includes("event-stream")) {
-        publish(JSON.parse(trailing));
+        publish(JSON.parse(trailing), includeEvent);
         buffer = "";
       }
     };
@@ -241,6 +262,7 @@ export function createAgUiProbe(onError: (error: Error) => void): AgUiProbe {
   return {
     mark: () => events.length,
     events: (after = 0) => Object.freeze(events.slice(after)),
+    frames: (after = 0) => Object.freeze(frames.slice(after)),
     expectEvent(type, options = {}) {
       if (failure) {
         return Promise.reject(failure);
@@ -270,7 +292,13 @@ export function createAgUiProbe(onError: (error: Error) => void): AgUiProbe {
       if (closed) {
         return response;
       }
-      return observedResponse(response);
+      return observedResponse(response, true);
+    },
+    observeReplay(response) {
+      if (closed) {
+        return response;
+      }
+      return observedResponse(response, false);
     },
     async settle() {
       if (failure) {

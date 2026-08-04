@@ -12,6 +12,27 @@ See also: [product-surface.md](./product-surface.md) · [product-facade-allowlis
 
 ---
 
+## 2026-08-03 — deterministic chat timeline acceptance
+
+### Summary
+
+Test Rig now exposes authoritative server snapshots, raw AG-UI frames with LSNs, placement-aware
+elicitation barriers, and deterministic conversation reopen/hydration. Platform acceptance covers the
+canonical multi-turn message timeline across ordinary foreign tools and crank-native durable tools over
+in-process and HTTP bindings. Completed elicitation activity facts survive response-session checkpoint
+replacement, and React-local render records settle into disabled completed parts during the active mount.
+
+Chat timeline and elicitation regressions no longer require Playwright. Browser E2E is optional and is
+reserved for presentation/browser-boundary coverage.
+
+### Migration note
+
+Use `withTestScenario()` and snapshot/timeline assertions for ordering, nesting, elicitation state,
+replay, and tool-placement behavior. Use React/jsdom acceptance for adapter rendering. Run
+`pnpm test:e2e:optional` only for browser presentation smoke coverage.
+
+---
+
 ## 2026-08-03 — Host-owned executable tool inventory
 
 ### Summary

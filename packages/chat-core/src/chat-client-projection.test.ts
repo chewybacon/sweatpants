@@ -38,6 +38,34 @@ function activity(input: {
 }
 
 describe("headless nested projection", () => {
+  it("preserves chronological root message order when turn-local sequences repeat", () => {
+    let state = createChatProjection();
+    for (const messageId of ["user-1", "assistant-1", "user-2", "assistant-2"]) {
+      state = foldChatStreamEvent(
+        state,
+        activity({
+          messageId: `record:${messageId}`,
+          nodeId: `node:${messageId}`,
+          parentNodeId: null,
+          sequence: 0,
+          kind: "message",
+          state: "streaming",
+          publicData: {
+            kind: "message",
+            messageId,
+            role: messageId.startsWith("user") ? "user" : "assistant",
+          },
+        }),
+      );
+    }
+    expect(materializeChatMessages(state).map((message) => message.id)).toEqual([
+      "user-1",
+      "assistant-1",
+      "user-2",
+      "assistant-2",
+    ]);
+  });
+
   it("returns client-local actions beside the pure projection", () => {
     const started = foldChatStreamEvent(createChatProjection(), {
       type: EventType.TEXT_MESSAGE_START,

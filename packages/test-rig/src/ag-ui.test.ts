@@ -33,6 +33,7 @@ describe("passive AG-UI conformance probe", () => {
       "TEXT_MESSAGE_END",
       "RUN_FINISHED",
     ]);
+    expect(probe.frames().map((frame) => frame.lsn)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("rejects obsolete output from the application", async () => {

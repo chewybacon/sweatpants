@@ -66,6 +66,11 @@ const config = defineConfig({
   },
 
   test: {
+    // Real worker-thread acceptance fixtures are stable under the fork pool;
+    // the default threads pool can lose Vitest task-update heartbeats during
+    // long deterministic runtime-invariance tests.
+    pool: "forks",
+    fileParallelism: false,
     // Use jsdom for DOM testing with Interactors
     environment: "jsdom",
     env: {

@@ -70,7 +70,25 @@ export class ReactInteractionRuntime implements ChatInteractionRuntime<ReactRend
   settled(elicitId: string): void {
     this.hostSettled.add(elicitId);
     this.dispatcher.settled(elicitId);
-    this.records.delete(elicitId);
+    const records = this.records.get(elicitId);
+    if (records) {
+      this.records.set(
+        elicitId,
+        records.map((record) =>
+          Object.freeze({
+            ...record,
+            state: "completed" as const,
+            disabled: true,
+            node: React.isValidElement(record.node)
+              ? React.cloneElement(
+                  record.node as React.ReactElement<{ readonly disabled?: boolean }>,
+                  { disabled: true },
+                )
+              : record.node,
+          }),
+        ),
+      );
+    }
     this.notify();
   }
 
@@ -134,7 +152,12 @@ export class ReactInteractionRuntime implements ChatInteractionRuntime<ReactRend
           const response = createSignal<unknown, void>();
           let answered = false;
           const respond = (value: unknown): void => {
-            if (answered || signal.aborted || driver.disposed) {
+            if (
+              answered ||
+              signal.aborted ||
+              driver.disposed ||
+              driver.hostSettled.has(request.elicitId)
+            ) {
               return;
             }
             answered = true;

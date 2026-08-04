@@ -10,8 +10,8 @@ if (!Number.isSafeInteger(playwrightPort) || playwrightPort < 1 || playwrightPor
 }
 const playwrightBaseUrl = `http://localhost:${playwrightPort}`;
 
-// Playwright has two deliberately separate gates:
-// - default: thin deterministic browser boundary used by `pnpm land`
+// Playwright is an optional presentation/browser gate:
+// - default: deterministic browser smoke tests when explicitly invoked
 // - E2E_FULL=1: extensive, manually-invoked live Copilot suite
 //
 // The manual suite retains the historical threaded-chat, pick-card, play_ttt,
@@ -23,7 +23,6 @@ const deterministicBrowserSmokeSpecs = [
   "**/deterministic-elicit-rendering.spec.ts",
   "**/journal-inspector.spec.ts",
   "**/rendering-pipeline.spec.ts",
-  "**/threaded-reconstruction.spec.ts",
 ];
 
 export default defineConfig({

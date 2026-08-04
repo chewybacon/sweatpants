@@ -1,4 +1,5 @@
 import { EventType } from "@ag-ui/core";
+import { call, type Operation } from "effection";
 import type { StreamOptions } from "@sweatpants/model-provider";
 import { assertJson } from "@sweatpants/foundation";
 import {
@@ -9,6 +10,7 @@ import {
   type ChatInteractionCompletion,
   type ChatInteractionRequest,
   type ChatInteractionRuntime,
+  type ChatSnapshot,
   type ChatStreamEvent,
 } from "@sweatpants/chat-client";
 
@@ -48,6 +50,8 @@ function deferred<T>(): Deferred<T> {
 
 export interface ConversationOptions {
   conversationId?: string;
+  /** Test-rig-only hydration mode used when reopening a durable conversation. */
+  reconnectOnOpen?: boolean;
   systemPrompt?: string;
   initialToolChoice?: StreamOptions["toolChoice"];
   streamOptions?: StreamOptions;
@@ -61,6 +65,10 @@ export interface TextDeltaBarrier {
 export interface ElicitBarrier {
   readonly key: string;
   readonly elicitId: string;
+  readonly bindingId: string;
+  readonly toolName: string;
+  readonly callId: string;
+  readonly placement: ChatInteractionRequest["placement"];
   readonly context: unknown;
   accept(content?: unknown): Promise<void>;
   decline(): Promise<void>;
@@ -84,12 +92,15 @@ export interface TurnHandle {
     expectation: string | RegExp | ((delta: string) => void),
   ): Promise<TextDeltaBarrier>;
   expectElicit(key: string): Promise<ElicitBarrier>;
+  snapshot(): ChatSnapshot;
+  expectSnapshot(predicate: (snapshot: ChatSnapshot) => boolean): Promise<ChatSnapshot>;
   cancel(): Promise<void>;
   complete(): Promise<TurnTranscript>;
 }
 
 export interface ConversationHandle {
   readonly conversationId: string;
+  snapshot(): ChatSnapshot;
   send(message: string): TurnHandle;
   supersede(message: string): TurnHandle;
   /** Recreate the headless client while retaining durable conversation identity. */
@@ -135,6 +146,7 @@ export interface CreateChatRuntimeOptions {
 
 interface OwnedConversation {
   handle: ConversationHandle;
+  readonly ready: Promise<void>;
   verify(): void;
   poison(error: Error): void;
   close(): Promise<void>;
@@ -196,6 +208,11 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         expectation: string | RegExp | ((delta: string) => void);
         wait: Deferred<TextDeltaBarrier>;
       }> = [];
+      const pendingSnapshots: Array<{
+        turnId: string;
+        predicate: (snapshot: ChatSnapshot) => boolean;
+        wait: Deferred<ChatSnapshot>;
+      }> = [];
       const pendingElicits: ElicitBarrier[] = [];
       const elicitWaiters: Array<{ key: string; wait: Deferred<ElicitBarrier> }> = [];
       const elicitationBarriers = new Map<string, ElicitBarrier>();
@@ -248,6 +265,9 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         for (const waiter of elicitWaiters.splice(0)) {
           waiter.wait.reject(error);
         }
+        for (const waiter of pendingSnapshots.splice(0)) {
+          waiter.wait.reject(error);
+        }
         activeTurn?.reject(error);
         activeTurn = undefined;
         activeTurnEvents = undefined;
@@ -264,6 +284,15 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         }
         for (const waiter of elicitWaiters.splice(0)) {
           waiter.wait.reject(new Error("Turn completed before the expected elicit barrier"));
+        }
+        const settledTurnId = activeTurn?.id;
+        for (let index = pendingSnapshots.length - 1; index >= 0; index -= 1) {
+          if (pendingSnapshots[index]?.turnId === settledTurnId) {
+            pendingSnapshots[index]!.wait.reject(
+              new Error("Turn completed before the expected snapshot"),
+            );
+            pendingSnapshots.splice(index, 1);
+          }
         }
         turnSettled.resolve({
           events: Object.freeze([...events]),
@@ -291,6 +320,22 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         }
       }
 
+      function resolveSnapshotWaiters(snapshot: ChatSnapshot): void {
+        for (let index = pendingSnapshots.length - 1; index >= 0; index -= 1) {
+          const waiter = pendingSnapshots[index]!;
+          try {
+            if (!waiter.predicate(snapshot)) {
+              continue;
+            }
+            pendingSnapshots.splice(index, 1);
+            waiter.wait.resolve(snapshot);
+          } catch (error) {
+            pendingSnapshots.splice(index, 1);
+            waiter.wait.reject(error);
+          }
+        }
+      }
+
       function publishElicit(request: ChatInteractionRequest): void {
         if (respondedElicits.has(request.elicitId) || elicitationBarriers.has(request.elicitId)) {
           return;
@@ -311,6 +356,10 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         const barrier: ElicitBarrier = {
           key: request.key,
           elicitId: request.elicitId,
+          bindingId: request.bindingId,
+          toolName: request.toolName,
+          callId: request.callId,
+          placement: request.placement,
           context: request.context,
           accept: (content) => answer({ action: "accept", content: assertJson(content ?? {}) }),
           decline: () => answer({ action: "decline" }),
@@ -328,15 +377,24 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         }
       }
 
+      function forgetElicit(elicitId: string): void {
+        elicitationBarriers.delete(elicitId);
+        for (let index = pendingElicits.length - 1; index >= 0; index -= 1) {
+          if (pendingElicits[index]!.elicitId === elicitId) {
+            pendingElicits.splice(index, 1);
+          }
+        }
+      }
+
       const interaction: ChatInteractionRuntime = {
         observe: publishElicit,
         settled(elicitId) {
           respondedElicits.add(elicitId);
-          elicitationBarriers.delete(elicitId);
+          forgetElicit(elicitId);
         },
         cancel(elicitId) {
           respondedElicits.add(elicitId);
-          elicitationBarriers.delete(elicitId);
+          forgetElicit(elicitId);
         },
         localParts: () => new Map(),
         onChange: () => () => undefined,
@@ -380,9 +438,17 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         fetcher: requestOptionsFetch(options.fetch, conversationId, conversationOptions),
         eventMiddleware: [eventMiddleware],
         interaction,
+        ...(conversationOptions.reconnectOnOpen
+          ? {
+              initialize: function* (control): Operation<void> {
+                yield* call(() => control.reconnect());
+              },
+            }
+          : {}),
       });
       const unsubscribe = client.subscribe(() => {
-        const snapshot = client.getSnapshot();
+        const snapshot = client.getServerSnapshot();
+        resolveSnapshotWaiters(snapshot);
         if (terminalSuccessPending && snapshot.status === "ready") {
           terminalSuccessPending = false;
           settleTurn();
@@ -455,6 +521,20 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
             elicitWaiters.push({ key, wait });
             return withBarrierTimeout(wait.promise, `elicit ${key} for turn ${turnId}`);
           },
+          snapshot() {
+            assertOpen();
+            return client.getServerSnapshot();
+          },
+          expectSnapshot(predicate) {
+            assertOpen();
+            const current = client.getServerSnapshot();
+            if (predicate(current)) {
+              return Promise.resolve(current);
+            }
+            const wait = deferred<ChatSnapshot>();
+            pendingSnapshots.push({ turnId, predicate, wait });
+            return withBarrierTimeout(wait.promise, `snapshot for turn ${turnId}`);
+          },
           async cancel() {
             assertOpen();
             cancellationInProgress = true;
@@ -477,12 +557,19 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
 
       const handle: ConversationHandle = {
         conversationId,
+        snapshot: () => client.getServerSnapshot(),
         send: (message) => startTurn(message, false),
         supersede: (message) => startTurn(message, true),
         async reopen() {
           await owned.close();
           conversations.delete(conversationId);
-          return chatHandle.conversation({ ...conversationOptions, conversationId });
+          const reopened = chatHandle.conversation({
+            ...conversationOptions,
+            conversationId,
+            reconnectOnOpen: true,
+          });
+          await conversations.get(conversationId)?.ready;
+          return reopened;
         },
         transcript: () => ({
           conversationId,
@@ -493,6 +580,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
 
       const owned: OwnedConversation = {
         handle,
+        ready: client.initialized,
         verify() {
           if (activeTurn || turnSettled || pendingDeltas.length || elicitWaiters.length) {
             throw new Error(

@@ -15,7 +15,6 @@ async function main(): Promise<void> {
   const artifactDir = join(root, ".artifacts", "landing", `${stamp}-${mode}`);
   await mkdir(artifactDir, { recursive: true });
 
-  const playwrightPort = Number(process.env["LAND_PLAYWRIGHT_PORT"] ?? "18110");
   const livePlaywrightPort = Number(process.env["LAND_LIVE_PLAYWRIGHT_PORT"] ?? "18111");
   const packageTestConcurrency = Number(process.env["LAND_PACKAGE_TEST_CONCURRENCY"] ?? "3");
   const summary: RunSummary = { mode, startedAt: new Date().toISOString(), stages: [] };
@@ -120,23 +119,6 @@ async function main(): Promise<void> {
         timeoutMs: 15 * 60_000,
       },
       ...appTests,
-      {
-        name: "e2e:yo-chat:deterministic",
-        command: "pnpm",
-        args: [
-          "-C",
-          "apps/yo-chat",
-          "exec",
-          "playwright",
-          "test",
-          "--max-failures=1",
-          "--retries=0",
-          "--reporter=line",
-        ],
-        timeoutMs: 10 * 60_000,
-        env: { PLAYWRIGHT_PORT: String(playwrightPort) },
-        forbidSkips: true,
-      },
     ];
   }
 
@@ -232,13 +214,7 @@ async function main(): Promise<void> {
         `LAND_PACKAGE_TEST_CONCURRENCY must be an integer from 1 through 8; received ${packageTestConcurrency}`,
       );
     }
-    const deterministicPorts = [playwrightPort];
-    const ports =
-      selectedMode === "live"
-        ? [livePlaywrightPort]
-        : selectedMode === "full"
-          ? [...deterministicPorts, livePlaywrightPort]
-          : deterministicPorts;
+    const ports = selectedMode === "live" || selectedMode === "full" ? [livePlaywrightPort] : [];
     for (const port of ports) {
       if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
         failPreflight("PREFLIGHT_PORT_INVALID", `Invalid isolated Playwright port: ${port}`);

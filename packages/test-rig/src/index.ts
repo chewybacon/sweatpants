@@ -287,9 +287,13 @@ export async function withTestRig<T>(
         typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       const pathname = new URL(raw, "http://localhost").pathname;
       const method = init?.method ?? (input instanceof Request ? input.method : "GET");
-      return method.toUpperCase() === "POST" && pathname.endsWith("/chat")
-        ? agui.observe(response)
-        : response;
+      if (pathname.endsWith("/chat") && method.toUpperCase() === "POST") {
+        return agui.observe(response);
+      }
+      if (pathname.endsWith("/chat") && method.toUpperCase() === "GET") {
+        return agui.observeReplay(response);
+      }
+      return response;
     };
 
     chatRuntime = createChatRuntime({

@@ -127,7 +127,7 @@ pnpm land:live  # provider/model-dependent validation only
 pnpm land:full  # deterministic followed by live validation
 ```
 
-`pnpm land` is the default definition of landed for broad, risky, multi-package, or browser-visible changes. It runs generated checks, types, lint, build, package-owned tests with bounded dependency-aware concurrency, isolated app tests, and the thin hermetic yo-chat Playwright boundary—including deterministic threaded AG-UI reconstruction. Third-party MCP Inspector UI checks are opt-in (`pnpm -C apps/yo-mcp test:inspector`); MCP protocol/backchannel behavior is part of package acceptance.
+`pnpm land` is the default definition of landed for broad, risky, multi-package, or browser-visible changes. It runs generated checks, types, lint, build, package-owned tests with bounded dependency-aware concurrency, and isolated app tests. Chat semantics—including deterministic AG-UI ordering, elicitation state, replay, and durable tool behavior—are covered by Test Rig and React/jsdom acceptance; browser E2E is optional presentation coverage. Third-party MCP Inspector UI checks are opt-in (`pnpm -C apps/yo-mcp test:inspector`); MCP protocol/backchannel behavior is part of package acceptance.
 
 Live-provider tests are separate because auth, provider availability, and model behavior are not deterministic. Run `pnpm land:live` when provider/model integration changed or the user explicitly requests live confidence. Use `pnpm land:full` when both are required.
 

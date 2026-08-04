@@ -1352,17 +1352,19 @@ export function materializeChatMessages<
       `Unresolved public activity parents: ${parents}`,
     );
   }
-  const roots = state.messageOrder.flatMap((messageId) => {
+  const roots = state.messageOrder.flatMap((messageId, order) => {
     const message = state.messageById.get(messageId);
     const nodeId = state.messageNodeById.get(messageId);
     const node = nodeId ? state.nodes.get(nodeId) : undefined;
     return message && node && node.node.parentNodeId === null
-      ? [{ message, sequence: node.node.sequence }]
+      ? [{ message, sequence: node.node.sequence, order }]
       : [];
   });
   roots.sort(
     (left, right) =>
-      left.sequence - right.sequence || left.message.id.localeCompare(right.message.id),
+      left.order - right.order ||
+      left.sequence - right.sequence ||
+      left.message.id.localeCompare(right.message.id),
   );
   const output = roots.map(({ message }) => materializeMessage<TLocalPart>(state, message));
   return Object.freeze(output);

@@ -11,14 +11,20 @@ import { resource, type Operation, type Stream } from "effection";
 import type { TokenBufferStore, TokenBufferWriter } from "@sweatpants/durable-streams";
 import type { StreamEvent } from "../handler/types.ts";
 import type { DurableFrame } from "@sweatpants/chat-core";
-import { recordConversationCheckpoint } from "./conversation-index.ts";
+import {
+  readLatestConversationCheckpoint,
+  recordConversationCheckpoint,
+} from "./conversation-index.ts";
 import {
   interruptRecordsForThread,
   registerInterruptsFromRunFinished,
 } from "../interrupts/index.ts";
 import { recordThreadInterruptState } from "../interrupts/index.ts";
 import { buildCheckpointSnapshotEventsFromFrames, toStrictPublicEvent } from "../projection.ts";
-import { encodeConversationCheckpoint } from "./conversation-checkpoint.ts";
+import {
+  decodeConversationCheckpoint,
+  encodeConversationCheckpoint,
+} from "./conversation-checkpoint.ts";
 
 export type TurnEventSink = (event: StreamEvent) => Operation<void>;
 export type ChatEngineSource =
@@ -57,7 +63,18 @@ export function createSerializedEventStream(
       }
       checkpointPersisted = true;
       try {
-        const checkpointEvents = yield* buildCheckpointSnapshotEventsFromFrames(emittedFrames);
+        const previousCheckpoint = yield* readLatestConversationCheckpoint(
+          options.checkpointStore,
+          options.conversationId,
+        );
+        const previousEvents = previousCheckpoint
+          ? decodeConversationCheckpoint(previousCheckpoint)
+          : [];
+        const checkpointFrames: DurableFrame[] = [
+          ...previousEvents.map((event, index) => ({ lsn: index + 1, event })),
+          ...emittedFrames,
+        ];
+        const checkpointEvents = yield* buildCheckpointSnapshotEventsFromFrames(checkpointFrames);
         if (checkpointEvents.length === 0) {
           return;
         }
