@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { MessageCirclePlus, PanelLeftOpen, RefreshCcw, Terminal } from "lucide-react";
 import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickCardPlugin } from "@/tools/pick-card";
 import { renderNestedParts } from "@/components/ChatPartTree";
 import { StreamInspector } from "@/components/StreamInspector";
@@ -9,6 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { ThreadSummary } from "@/lib/threaded-chat-types";
+import {
+  createStreamInspectorStore,
+  createStreamInspectorTransportMiddleware,
+  type StreamInspectorStore,
+} from "@/lib/stream-inspector";
 
 export const Route = createFileRoute("/chat/threaded/")({
   component: ThreadedChatDemo,
@@ -187,8 +192,8 @@ function ThreadPanel({
   threadId,
   onMetadata,
   onInspectorToggle,
-  onInspectorRefresh,
   inspectorOpen,
+  inspectorStore,
 }: {
   threadId: string;
   onMetadata: (
@@ -196,20 +201,25 @@ function ThreadPanel({
     summary: Pick<ThreadSummary, "title" | "lastMessagePreview" | "messageCount">,
   ) => void;
   onInspectorToggle: () => void;
-  onInspectorRefresh: () => void;
   inspectorOpen: boolean;
+  inspectorStore: StreamInspectorStore;
 }) {
   const [draft, setDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const inspectorTransport = useMemo(
+    () => ({
+      http: {},
+      middleware: createStreamInspectorTransportMiddleware(inspectorStore),
+    }),
+    [inspectorStore],
+  );
+
   const { messages, status, renderStatus, sendMessage, stop, error } = useChat({
     pipeline: "full",
-    ...(typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("scriptedRendering") === "1"
-      ? { api: "/api/chat?scripted=rendering" }
-      : {}),
     plugins: [pickCardPlugin],
     threadId,
+    transport: inspectorTransport,
   });
   const busy = status === "submitted" || status === "streaming";
   const renderReady = renderStatus === "ready";
@@ -221,12 +231,6 @@ function ThreadPanel({
   useEffect(() => {
     onMetadata(threadId, summarizeThread(threadId, messages));
   }, [messages, onMetadata, threadId]);
-
-  useEffect(() => {
-    if (status === "ready") {
-      onInspectorRefresh();
-    }
-  }, [onInspectorRefresh, status]);
 
   const handleSubmit = useCallback(
     (event: React.FormEvent) => {
@@ -338,14 +342,10 @@ function ThreadedChatDemo() {
   const [hydrated, setHydrated] = useState(false);
   const [sessionMountKey, setSessionMountKey] = useState(0);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorRefreshKey, setInspectorRefreshKey] = useState(0);
+  const [inspectorStore] = useState(() => createStreamInspectorStore());
 
   const handleInspectorToggle = useCallback(() => {
     setInspectorOpen((open) => !open);
-  }, []);
-
-  const handleInspectorRefresh = useCallback(() => {
-    setInspectorRefreshKey((key) => key + 1);
   }, []);
 
   const persistSelection = useCallback((threadId: string | null) => {
@@ -360,6 +360,7 @@ function ThreadedChatDemo() {
   }, []);
 
   const hydrate = useCallback(async () => {
+    inspectorStore.clear();
     setLoading(true);
     setError(null);
 
@@ -387,7 +388,7 @@ function ThreadedChatDemo() {
     } finally {
       setLoading(false);
     }
-  }, [persistSelection]);
+  }, [inspectorStore, persistSelection]);
 
   useEffect(() => {
     setHydrated(true);
@@ -397,6 +398,7 @@ function ThreadedChatDemo() {
   const handleNewThread = useCallback(async () => {
     try {
       setError(null);
+      inspectorStore.clear();
       const created = await createThread();
       setThreads((previous) => [created, ...previous]);
       setSelectedThreadId(created.id);
@@ -405,15 +407,16 @@ function ThreadedChatDemo() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create thread");
     }
-  }, [persistSelection]);
+  }, [inspectorStore, persistSelection]);
 
   const handleSelectThread = useCallback(
     (threadId: string) => {
+      inspectorStore.clear();
       setSelectedThreadId(threadId);
       persistSelection(threadId);
       setSessionMountKey((current) => current + 1);
     },
-    [persistSelection],
+    [inspectorStore, persistSelection],
   );
 
   const handleMetadata = useCallback(
@@ -548,8 +551,8 @@ function ThreadedChatDemo() {
               threadId={selectedThreadId}
               onMetadata={handleMetadata}
               onInspectorToggle={handleInspectorToggle}
-              onInspectorRefresh={handleInspectorRefresh}
               inspectorOpen={inspectorOpen}
+              inspectorStore={inspectorStore}
             />
           )}
 
@@ -563,7 +566,7 @@ function ThreadedChatDemo() {
         {inspectorOpen && selectedThreadId && (
           <StreamInspector
             threadId={selectedThreadId}
-            refreshKey={inspectorRefreshKey}
+            store={inspectorStore}
             onClose={handleInspectorToggle}
           />
         )}

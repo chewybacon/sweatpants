@@ -64,7 +64,7 @@ Both populations are maintained on purpose.
 | --- | --- | --- |
 | E2E | ✅ `apps/yo-chat/acceptance/book-flight-program-driver.acceptance.test.ts`, `book-flight-program-driver-http.acceptance.test.ts` (unchanged authored tool through ProgramRuntime) | ✅ `apps/yo-chat/e2e/book-flight.spec.ts` (501 lines: full flow, decline/cancel, repeat booking in one session) · `book-flight-full.spec.ts` · `src/outside-in/flows/book-flight.flow.test.ts` |
 | Process replacement | ✅ `apps/yo-a2a/test/process-replacement.test.ts` ("multi-elicit workflow across two process replacements": SIGKILL while parked before flight selection *and* between the two elicitations; exactly-once reservation; post-completion continuation retry reconciles) | ⬜ **Gap G1** (same as pick_card; this is the sharpest instance) |
-| Local model | ⬜ | ⬜ (frontier/scripted models only today) |
+| Local model | ⬜ | ⬜ (frontier models only today) |
 | Third-party interop | ⬜ | ⬜ |
 
 ### tictactoe — bounded agent loop with HITL

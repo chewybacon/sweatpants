@@ -1,16 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Filter, Radio, RefreshCcw, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { ChevronDown, ChevronRight, Filter, Radio, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { InspectorEventEntry, StreamInspectorStore } from "@/lib/stream-inspector";
 import { Button } from "@/components/ui/button";
 
 type EventCategory = "lifecycle" | "text" | "tool" | "state" | "error" | "other";
-
-type StreamFrame = {
-  readonly lsn: number;
-  readonly event: { readonly type: string; readonly [key: string]: unknown };
-  readonly phase: "replay";
-  readonly receivedAt: number;
-};
 
 const categoryColors: Record<EventCategory, string> = {
   text: "text-blue-300",
@@ -67,44 +61,7 @@ function categorize(type: string): EventCategory {
   return "other";
 }
 
-function parseFrames(text: string, receivedAt: number): StreamFrame[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        const value = JSON.parse(line) as unknown;
-        if (typeof value !== "object" || value === null || Array.isArray(value)) {
-          return [];
-        }
-        const frame = value as Record<string, unknown>;
-        const event = frame["event"];
-        if (
-          typeof frame["lsn"] !== "number" ||
-          !Number.isSafeInteger(frame["lsn"]) ||
-          typeof event !== "object" ||
-          event === null ||
-          Array.isArray(event) ||
-          typeof (event as Record<string, unknown>)["type"] !== "string"
-        ) {
-          return [];
-        }
-        return [
-          {
-            lsn: frame["lsn"] as number,
-            event: event as StreamFrame["event"],
-            phase: "replay" as const,
-            receivedAt,
-          },
-        ];
-      } catch {
-        return [];
-      }
-    });
-}
-
-function EventRow({ entry, baseTime }: { entry: StreamFrame; baseTime: number }) {
+function EventRow({ entry, baseTime }: { entry: InspectorEventEntry; baseTime: number }) {
   const [expanded, setExpanded] = useState(false);
   const category = categorize(entry.event.type);
   const relativeMs = entry.receivedAt - baseTime;
@@ -120,9 +77,16 @@ function EventRow({ entry, baseTime }: { entry: StreamFrame; baseTime: number })
           {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
         </span>
         <span className="w-8 shrink-0 text-right tabular-nums text-slate-500">
-          {String(entry.lsn).padStart(3, "0")}
+          {String(entry.sequence).padStart(3, "0")}
         </span>
-        <span className="w-14 shrink-0 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wider text-amber-300">
+        <span
+          className={cn(
+            "w-14 shrink-0 rounded-full px-1.5 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wider",
+            entry.phase === "replay"
+              ? "bg-amber-500/20 text-amber-300"
+              : "bg-emerald-500/20 text-emerald-300",
+          )}
+        >
           {entry.phase}
         </span>
         <span className={cn("min-w-0 flex-1 truncate", categoryColors[category])}>
@@ -147,56 +111,26 @@ function EventRow({ entry, baseTime }: { entry: StreamFrame; baseTime: number })
 
 export interface StreamInspectorProps {
   readonly threadId: string;
-  readonly refreshKey?: number | string;
+  readonly store: StreamInspectorStore;
   readonly onClose: () => void;
 }
 
-export function StreamInspector({ threadId, refreshKey, onClose }: StreamInspectorProps) {
-  const [frames, setFrames] = useState<readonly StreamFrame[]>([]);
+export function StreamInspector({ threadId, store, onClose }: StreamInspectorProps) {
+  const entries = useSyncExternalStore(store.subscribe, store.snapshot, store.snapshot);
   const [enabledCategories, setEnabledCategories] = useState<ReadonlySet<EventCategory>>(
     () => new Set(allCategories),
   );
   const [filterOpen, setFilterOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
   const previousCount = useRef(0);
 
-  const reload = useCallback(async (): Promise<void> => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/chat?conversationId=${encodeURIComponent(threadId)}`, {
-        headers: { Accept: "application/x-ndjson" },
-      });
-      if (response.status === 404) {
-        setFrames([]);
-        return;
-      }
-      if (!response.ok) {
-        throw new Error(`Stream request failed (${response.status})`);
-      }
-      setFrames(parseFrames(await response.text(), Date.now()));
-      userScrolledUp.current = false;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      setFrames([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [threadId]);
-
   useEffect(() => {
-    void reload();
-  }, [reload, refreshKey]);
-
-  useEffect(() => {
-    if (frames.length > previousCount.current && !userScrolledUp.current && scrollRef.current) {
+    if (entries.length > previousCount.current && !userScrolledUp.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-    previousCount.current = frames.length;
-  }, [frames.length]);
+    previousCount.current = entries.length;
+  }, [entries.length]);
 
   const handleScroll = useCallback(() => {
     const element = scrollRef.current;
@@ -220,33 +154,40 @@ export function StreamInspector({ threadId, refreshKey, onClose }: StreamInspect
   }, []);
 
   const clear = useCallback(() => {
-    setFrames([]);
-    setError(null);
+    store.clear();
+    userScrolledUp.current = false;
     previousCount.current = 0;
-  }, []);
+  }, [store]);
 
-  const filtered = frames.filter((frame) => enabledCategories.has(categorize(frame.event.type)));
-  const baseTime = frames[0]?.receivedAt ?? 0;
+  const filtered = entries.filter((entry) => enabledCategories.has(categorize(entry.event.type)));
+  const baseTime = entries[0]?.receivedAt ?? 0;
+  const isLive = entries.some((entry) => entry.phase === "live");
 
   return (
     <div
       className="flex h-full min-h-0 w-full flex-none flex-col overflow-hidden rounded-[28px] border border-slate-800/80 bg-slate-950/70 shadow-2xl shadow-black/30 backdrop-blur md:w-96"
       data-testid="stream-inspector"
+      data-thread-id={threadId}
     >
       <div className="flex shrink-0 items-center gap-2 border-b border-slate-800/80 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="text-xs uppercase tracking-[0.3em] text-sky-300/70">Inspector</div>
           <div className="flex items-center gap-2">
             <span className="font-serif text-lg text-slate-100">Stream Events</span>
-            <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
-              <Radio className="size-2.5" />
-              Replay
+            <span
+              className={cn(
+                "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                isLive ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300",
+              )}
+            >
+              <Radio className={cn("size-2.5", isLive && "animate-pulse")} />
+              {isLive ? "Live" : "Replay"}
             </span>
           </div>
         </div>
         <span className="shrink-0 tabular-nums text-xs text-slate-600">
           {filtered.length}
-          {filtered.length !== frames.length ? `/${frames.length}` : ""} events
+          {filtered.length !== entries.length ? `/${entries.length}` : ""} events
         </span>
         <Button
           variant="ghost"
@@ -290,17 +231,6 @@ export function StreamInspector({ threadId, refreshKey, onClose }: StreamInspect
           )}
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void reload()}
-          disabled={loading}
-          className="h-6 gap-1 px-2 text-[10px] text-slate-400 hover:text-slate-200"
-        >
-          <RefreshCcw className={cn("size-3", loading && "animate-spin")} />
-          Reload
-        </Button>
-
         <div className="flex-1" />
 
         <Button
@@ -314,18 +244,20 @@ export function StreamInspector({ threadId, refreshKey, onClose }: StreamInspect
         </Button>
       </div>
 
-      {error && <div className="shrink-0 px-4 py-2 text-xs text-red-300">{error}</div>}
-
       <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
           <div className="px-4 py-12 text-center text-xs text-slate-600">
-            {frames.length === 0
-              ? "No replay frames yet. Send a message or reload this thread."
+            {entries.length === 0
+              ? "No events yet. Send a message to see the live stream."
               : "All events filtered out."}
           </div>
         ) : (
-          filtered.map((frame) => (
-            <EventRow key={`${frame.lsn}:${frame.event.type}`} entry={frame} baseTime={baseTime} />
+          filtered.map((entry) => (
+            <EventRow
+              key={`${entry.sequence}:${entry.event.type}`}
+              entry={entry}
+              baseTime={baseTime}
+            />
           ))
         )}
       </div>

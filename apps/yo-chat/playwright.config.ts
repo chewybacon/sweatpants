@@ -15,14 +15,13 @@ const playwrightBaseUrl = `http://localhost:${playwrightPort}`;
 // - E2E_FULL=1: extensive, manually-invoked live Copilot suite
 //
 // The manual suite retains the historical threaded-chat, pick-card, play_ttt,
-// tictactoe, book-flight, durable-chat, and rendering/math coverage. Ollama is
-// a third opt-in because it requires a separate local service/model.
+// tictactoe, book-flight, and durable-chat coverage. Ollama is a third opt-in
+// because it requires a separate local service/model.
 const runFullE2E = process.env["E2E_FULL"] === "1";
 const includeOllama = process.env["E2E_INCLUDE_OLLAMA"] === "1";
 const deterministicBrowserSmokeSpecs = [
   "**/deterministic-elicit-rendering.spec.ts",
   "**/journal-inspector.spec.ts",
-  "**/rendering-pipeline.spec.ts",
 ];
 
 export default defineConfig({
@@ -62,8 +61,6 @@ export default defineConfig({
       OLLAMA_URL: process.env["OLLAMA_URL"] ?? "http://localhost:11434",
       MCP_TOOL_RUNTIME: process.env["MCP_TOOL_RUNTIME"] ?? "local",
       PLAYWRIGHT_TEST_SERVER: "1",
-      ENABLE_SCRIPTED_RENDERING_PROVIDER: "yes",
-      VITE_ENABLE_SCRIPTED_RENDERING: "1",
     },
   },
 });

@@ -9,8 +9,6 @@ import {
   type ModelSelection,
 } from "@sweatpants/model-provider-pi-ai";
 import { env } from "@/env";
-import { installScriptedRenderingModelProvider } from "./scripted-rendering-provider";
-
 type ChatRequestModelBody = {
   model?: unknown;
 };
@@ -23,17 +21,6 @@ function defaultChatModel(): ModelSelection {
 }
 
 export function* setupYoChatModelProvider(ctx: ChatHandlerSetupContext): Operation<void> {
-  const url = new URL(ctx.request.url);
-  if (url.searchParams.get("scripted") === "rendering") {
-    if (env.ENABLE_SCRIPTED_RENDERING_PROVIDER !== "yes") {
-      throw new Error(
-        "Scripted rendering provider is disabled. Set ENABLE_SCRIPTED_RENDERING_PROVIDER=yes for deterministic rendering tests.",
-      );
-    }
-    yield* installScriptedRenderingModelProvider();
-    return;
-  }
-
   const body = ctx.body as ChatRequestModelBody;
   const requestModel = parseRequestModelSelection(body.model, "model");
   const selection = resolveModelSelection({

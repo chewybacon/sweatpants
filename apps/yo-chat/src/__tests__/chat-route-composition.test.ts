@@ -78,28 +78,6 @@ describe("yo-chat chat application composition", () => {
     expect(handler).toContain("PROGRAM_DRIVER_CAPABILITY_SECRET");
   });
 
-  it("keeps scripted rendering fixtures behind explicit Playwright-only gates", () => {
-    const envSchema = read("src/env.schema.ts");
-    const modelProvider = read("src/server/model-provider.ts");
-    const basicRoute = read("src/routes/chat/basic/index.tsx");
-    const playwrightConfig = read("playwright.config.ts");
-
-    expect(envSchema).toContain("ENABLE_SCRIPTED_RENDERING_PROVIDER");
-    expect(envSchema).toContain("VITE_ENABLE_SCRIPTED_RENDERING");
-    expect(modelProvider).toMatch(/env\.ENABLE_SCRIPTED_RENDERING_PROVIDER !== ["']yes["']/);
-    expect(modelProvider).toContain("Scripted rendering provider is disabled");
-    expect(modelProvider).toContain("installScriptedRenderingModelProvider");
-    // Quote style is the formatter's business; the gate is the env check.
-    expect(basicRoute).toMatch(
-      /import\.meta\.env\[["']VITE_ENABLE_SCRIPTED_RENDERING["']\]\s*===\s*["']1["']/,
-    );
-    expect(playwrightConfig).toContain("ENABLE_SCRIPTED_RENDERING_PROVIDER");
-    expect(playwrightConfig).toContain("VITE_ENABLE_SCRIPTED_RENDERING");
-    expect(playwrightConfig).toContain("E2E_FULL");
-    expect(playwrightConfig).toContain("deterministicBrowserSmokeSpecs");
-    expect(playwrightConfig).toMatch(/globalSetup:\s*["']\.\/e2e\/global-setup\.ts["']/);
-  });
-
   it("keeps production chat wiring in app-owned server modules", () => {
     const serverFiles = listFiles("src/server");
     expect(serverFiles).toContain("src/server/chat-application.ts");
