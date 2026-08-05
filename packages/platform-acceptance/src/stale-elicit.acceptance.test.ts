@@ -45,7 +45,37 @@ function readResponseWithin(response: Response, timeoutMs: number): Promise<stri
   });
 }
 
-async function runStaleElicit(binding: Binding): Promise<void> {
+type Settlement = "accept" | "decline" | "cancel";
+
+type ResumeEntry = {
+  readonly interruptId: string;
+  readonly status: "resolved" | "cancelled";
+  readonly payload?: Record<string, unknown>;
+};
+
+function settledResume(interruptId: string, settlement: Settlement): ResumeEntry {
+  if (settlement === "cancel") {
+    return { interruptId, status: "cancelled" };
+  }
+  return {
+    interruptId,
+    status: "resolved",
+    payload:
+      settlement === "accept"
+        ? { action: "accept", content: { selected: "stale-alpha" } }
+        : { action: "decline" },
+  };
+}
+
+function conflictingResume(interruptId: string): ResumeEntry {
+  return {
+    interruptId,
+    status: "resolved",
+    payload: { action: "accept", content: { selected: "stale-beta" } },
+  };
+}
+
+async function runStaleElicit(binding: Binding, settlement: Settlement): Promise<void> {
   await withTestScenario(
     {
       binding,
@@ -55,36 +85,36 @@ async function runStaleElicit(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation({ initialToolChoice: "required" });
-      const turn = yield* conversation.send("STALE_ELICIT_DURABLE_V1");
+      const turn = yield* conversation.send(`STALE_ELICIT_${settlement.toUpperCase()}_V1`);
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {
-          id: "stale-elicit-call",
+          id: `stale-elicit-${settlement}-call`,
           name: ACCEPTANCE_DURABLE_TOOL_NAME,
-          arguments: { topic: "stale" },
+          arguments: { topic: `stale-${settlement}` },
         },
       ]);
       const sample = yield* s.model.request((request) => {
         expect(JSON.stringify(request.body.input)).toContain(DURABLE_SAMPLE_PROMPT_MARKER);
       });
-      yield* sample.respond.text("STALE_ELICIT_SAMPLE_V1");
+      yield* sample.respond.text(`STALE_ELICIT_${settlement.toUpperCase()}_SAMPLE_V1`);
 
       const pending = yield* turn.elicit("chooseOption");
       const pendingSnapshot = yield* turn.snapshot();
       const staleMessages = projectChatMessagesToWire(pendingSnapshot.messages);
-      const staleResume = {
-        interruptId: pending.elicitId,
-        status: "resolved" as const,
-        payload: {
-          action: "accept" as const,
-          content: { selected: "stale-beta" },
-        },
-      };
+      const acceptedResume = settledResume(pending.elicitId, settlement);
+      const staleConflict = conflictingResume(pending.elicitId);
 
       // A current client settles the durable elicit first.
-      yield* pending.accept({ selected: "stale-alpha" });
+      if (settlement === "accept") {
+        yield* pending.accept({ selected: "stale-alpha" });
+      } else if (settlement === "decline") {
+        yield* pending.decline();
+      } else {
+        yield* pending.cancel();
+      }
       const terminal = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
-      yield* terminal.respond.text("STALE_ELICIT_COMPLETE_V1");
+      yield* terminal.respond.text(`STALE_ELICIT_${settlement.toUpperCase()}_COMPLETE_V1`);
       yield* turn.settled();
 
       // Reopen proves the settled fact is reconstructed before the old client
@@ -92,10 +122,11 @@ async function runStaleElicit(binding: Binding): Promise<void> {
       const reopened = yield* conversation.reopen();
       const reconstructed = reopened.snapshot();
       const reconstructedText = JSON.stringify(reconstructed.messages);
+      const expectedState = settlement === "cancel" ? "cancelled" : "responded";
       expect(reconstructedText).toContain(pending.elicitId);
-      expect(reconstructedText).toContain('"state":"responded"');
+      expect(reconstructedText).toContain(`"state":"${expectedState}"`);
 
-      const postCapturedResume = function* (selection: string) {
+      const postCapturedResume = function* (entry: ResumeEntry, label: string) {
         const response = yield* call(() =>
           s.transport.fetch("/api/chat", {
             method: "POST",
@@ -104,17 +135,9 @@ async function runStaleElicit(binding: Binding): Promise<void> {
               trigger: "submit-message",
               threadId: conversation.conversationId,
               conversationId: conversation.conversationId,
-              runId: `stale-client-run:${selection}`,
+              runId: `stale-client-run:${settlement}:${label}`,
               messages: staleMessages,
-              resume: [
-                {
-                  ...staleResume,
-                  payload: {
-                    action: "accept" as const,
-                    content: { selected: selection },
-                  },
-                },
-              ],
+              resume: [entry],
             }),
           }),
         );
@@ -125,7 +148,7 @@ async function runStaleElicit(binding: Binding): Promise<void> {
       // An exact retry is a durable no-op: it receives a finite replay response,
       // but does not execute the tool or ask the provider for another turn.
       const requestsBeforeRetry = s.model.requests().length;
-      const retry = yield* postCapturedResume("stale-alpha");
+      const retry = yield* postCapturedResume(acceptedResume, "retry");
       expect(retry.response.ok).toBe(true);
       expect(retry.frames).toEqual(
         expect.arrayContaining([
@@ -136,10 +159,10 @@ async function runStaleElicit(binding: Binding): Promise<void> {
       );
       expect(s.model.requests()).toHaveLength(requestsBeforeRetry);
 
-      // A stale client with a different answer conflicts with the durable
-      // settlement and is rejected before any execution is resumed.
+      // A stale client with a different terminal response conflicts with the
+      // durable settlement and is rejected before any execution is resumed.
       const requestsBeforeConflict = s.model.requests().length;
-      const conflict = yield* postCapturedResume("stale-beta");
+      const conflict = yield* postCapturedResume(staleConflict, "conflict");
       expect(conflict.response.ok).toBe(true);
       expect(conflict.frames).toEqual(
         expect.arrayContaining([
@@ -152,17 +175,25 @@ async function runStaleElicit(binding: Binding): Promise<void> {
         ]),
       );
       expect(s.model.requests()).toHaveLength(requestsBeforeConflict);
-      expect(JSON.stringify(reopened.snapshot().messages)).toContain('"state":"responded"');
+      expect(JSON.stringify(reopened.snapshot().messages)).toContain(`"state":"${expectedState}"`);
     },
   );
 }
 
 describe("single durable elicitation stale-client semantics", () => {
-  it("rejects a conflicting already-settled response in-process", async () => {
-    await runStaleElicit("in-process");
-  }, 30_000);
+  it.each(["accept", "decline", "cancel"] as const)(
+    "%s remains safe for stale clients in-process",
+    async (settlement) => {
+      await runStaleElicit("in-process", settlement);
+    },
+    30_000,
+  );
 
-  it("rejects a conflicting already-settled response over HTTP", async () => {
-    await runStaleElicit("http");
-  }, 30_000);
+  it.each(["accept", "decline", "cancel"] as const)(
+    "%s remains safe for stale clients over HTTP",
+    async (settlement) => {
+      await runStaleElicit("http", settlement);
+    },
+    30_000,
+  );
 });

@@ -1023,10 +1023,16 @@ function projectRecords(
           : undefined;
       const request = pullRequest(allRecords, recordEntry.payload.pullId);
       if (request?.descriptor.kind === "elicit") {
+        const completion =
+          recordEntry.payload.outcome.status === "ok"
+            ? jsonRecord(recordEntry.payload.outcome.value)
+            : undefined;
+        const cancelled =
+          recordEntry.payload.outcome.status === "cancelled" || completion?.["action"] === "cancel";
         events.push(
           publicElicitActivityDelta(
             `elicit:${recordEntry.payload.pullId}`,
-            recordEntry.payload.outcome.status === "cancelled" ? "cancelled" : "responded",
+            cancelled ? "cancelled" : "responded",
           ),
         );
       }
