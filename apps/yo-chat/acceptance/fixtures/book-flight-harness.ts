@@ -43,7 +43,7 @@ export type PublicEvent = { type: string; [key: string]: unknown };
 /** Resume coordinates plus the elicitation answer being submitted. */
 export type ResumeInput = {
   interruptId: string;
-  result: { action: string; content: unknown };
+  result: { action: string; content?: unknown };
   /** Tool call the elicitation belongs to; retries allocate a new call id. */
   callId: string;
 };

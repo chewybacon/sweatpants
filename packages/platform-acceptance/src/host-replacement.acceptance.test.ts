@@ -8,6 +8,8 @@ import type { ProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime
 import {
   ACCEPTANCE_DURABLE_TOOL_NAME,
   ACCEPTANCE_MODEL_ID,
+  DURABLE_EFFECT_NAME,
+  DURABLE_SAMPLE_PROMPT_MARKER,
   DURABLE_SAMPLE_RESPONSE_MARKER,
   createAcceptanceApplication,
 } from "./lib/acceptance-app.ts";
@@ -19,6 +21,7 @@ function createReplacementFactory(): {
     context: TestApplicationFactoryContext,
   ): ReturnType<typeof createAcceptanceApplication>;
   generations(): number;
+  journalStore(): ProgramDriverJournalStore;
 } {
   let journalStore: ProgramDriverJournalStore | undefined;
   let generation = 0;
@@ -34,6 +37,12 @@ function createReplacementFactory(): {
       );
     },
     generations: () => generation,
+    journalStore: () => {
+      if (!journalStore) {
+        throw new Error("replacement journal store was not installed");
+      }
+      return journalStore;
+    },
   };
 }
 
@@ -69,10 +78,33 @@ async function runScenario(binding: Binding): Promise<void> {
       expect(factory.generations()).toBe(2);
 
       yield* choose.accept({ selected: "replacement-alpha" });
-      const final = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+      const final = yield* s.model.request((request) => {
+        expect(request.body.model).toBe(ACCEPTANCE_MODEL_ID);
+        expect(JSON.stringify(request.body.input)).not.toContain(DURABLE_SAMPLE_PROMPT_MARKER);
+      });
       yield* final.respond.text("HOST_REPLACEMENT_TERMINAL_V1");
 
       expect((yield* turn.settled()).text).toBe("HOST_REPLACEMENT_TERMINAL_V1");
+      expect(s.model.requests()).toHaveLength(3);
+
+      const opened = yield* factory.journalStore().open(conversation.conversationId);
+      const journal = yield* opened.readJournal(conversation.conversationId);
+      expect(
+        journal.filter(
+          (entry) =>
+            entry.payload.type === "PullRequested" &&
+            entry.payload.descriptor.kind === "effect" &&
+            entry.payload.descriptor.name === DURABLE_EFFECT_NAME,
+        ),
+      ).toHaveLength(1);
+      expect(
+        journal.filter(
+          (entry) =>
+            entry.payload.type === "PullRequested" &&
+            entry.payload.descriptor.kind === "record" &&
+            entry.payload.descriptor.key === "acceptance-recorded-value",
+        ),
+      ).toHaveLength(1);
     },
   );
 }
