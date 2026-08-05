@@ -25,6 +25,7 @@ export interface ThreadMessageInput {
 }
 
 export interface ThreadSummary {
+  namespace: string;
   id: string;
   title: string;
   createdAt: number;
@@ -61,6 +62,7 @@ export function summarizeThreadFromEvents(
   const preview = compact(lastSource) || "No messages yet";
 
   return {
+    namespace: "default",
     id: threadId,
     title: title.length > 40 ? `${title.slice(0, 37)}...` : title,
     createdAt,

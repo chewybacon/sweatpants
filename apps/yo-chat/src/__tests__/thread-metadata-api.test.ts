@@ -46,6 +46,31 @@ describe("thread metadata API", () => {
     expect(listPayload.threads[0]?.title).toBe("Discuss durable adapters");
   });
 
+  it("lists only the requested demo namespace", async () => {
+    const store = getThreadMetadataStore();
+    store.create({ namespace: "cards", id: "cards:one", title: "Cards" });
+    store.create({ namespace: "math", id: "math:one", title: "Math" });
+
+    const response = await handleThreadMetadataRequest(
+      new Request("http://localhost/api/threaded-chat/threads?namespace=cards", { method: "GET" }),
+    );
+    const payload = (await response.json()) as {
+      threads: Array<{ namespace: string; id: string }>;
+    };
+
+    expect(payload.threads).toEqual([
+      {
+        namespace: "cards",
+        id: "cards:one",
+        title: "Cards",
+        createdAt: expect.any(Number),
+        updatedAt: expect.any(Number),
+        lastMessagePreview: "No messages yet",
+        messageCount: 0,
+      },
+    ]);
+  });
+
   it("updates and deletes thread metadata by id", async () => {
     const store = getThreadMetadataStore();
     const thread = store.create({ id: "thread-abc", title: "Initial title" });

@@ -21,7 +21,7 @@ export async function handleThreadMetadataRequest(request: Request): Promise<Res
 
   if (pathname === "/api/threaded-chat/threads") {
     if (method === "GET") {
-      return Response.json({ threads: store.list() });
+      return Response.json({ threads: store.list(url.searchParams.get("namespace") ?? undefined) });
     }
 
     if (method === "POST") {
