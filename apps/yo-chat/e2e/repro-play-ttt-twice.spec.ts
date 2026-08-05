@@ -9,6 +9,7 @@ test.describe("play_ttt Multiple Games", () => {
 
     // 2. Start the first game
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for the game to start (board visible)
     const emptyCell = page
@@ -31,7 +32,7 @@ test.describe("play_ttt Multiple Games", () => {
 
     // Play one move to ensure it's active
     await emptyCell.click();
-    const thinking = page.getByText("thinking...", { exact: true });
+    const thinking = page.getByRole("button", { name: "Stop" });
     await expect(thinking).toBeVisible({ timeout: 10000 });
     try {
       await expect(thinking).not.toBeVisible({ timeout: 90000 });

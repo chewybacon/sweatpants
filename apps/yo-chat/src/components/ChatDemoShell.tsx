@@ -2,11 +2,12 @@ import { MessageCirclePlus, PanelLeftOpen, RefreshCcw, Terminal } from "lucide-r
 import {
   useChat,
   type ChatMessage,
+  type ChatPart,
   type ChatToolCall,
   type UseChatOptions,
 } from "@sweatpants/react-chat";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { renderNestedParts } from "@/components/ChatPartTree";
 import { StreamInspector } from "@/components/StreamInspector";
 import {
   createStreamInspectorStore,
@@ -73,9 +74,20 @@ function summarizeThread(
   };
 }
 
+function formatToolResult(result: unknown): string {
+  if (typeof result === "string") {
+    return result;
+  }
+  if (!result || typeof result !== "object") {
+    return "";
+  }
+  const record = result as Record<string, unknown>;
+  return typeof record["message"] === "string" ? record["message"] : JSON.stringify(result);
+}
+
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
-  const prepared = renderNestedParts(toolCall.parts);
-  const hasRenderedChildren = prepared.length > 0;
+  const hasRenderedChildren = toolCall.parts.length > 0;
+  const resultText = toolCall.state === "output-available" ? formatToolResult(toolCall.output) : "";
 
   return (
     <div
@@ -86,18 +98,79 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
       <div className="mb-2 text-[11px] uppercase tracking-[0.25em] text-sky-300/70">
         Tool · {toolCall.name}
       </div>
-      {prepared.map((child, index) => (
-        <span key={`${toolCall.callId}:child:${index}`}>{child}</span>
-      ))}
+      {toolCall.parts.map((part) => renderPart(part))}
       {!hasRenderedChildren &&
         (toolCall.state === "input-streaming" || toolCall.state === "input-available") && (
           <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
         )}
+      {toolCall.state === "output-available" && resultText && (
+        <div className="mt-3 rounded border border-emerald-700/50 bg-emerald-950/20 p-3 text-sm text-emerald-100">
+          {resultText}
+        </div>
+      )}
       {toolCall.state === "output-error" && toolCall.errorText && (
         <div className="text-xs text-red-300">Error: {toolCall.errorText}</div>
       )}
     </div>
   );
+}
+
+function renderPart(part: ChatPart): ReactNode {
+  switch (part.type) {
+    case "text":
+      return (
+        <div
+          key={part.id}
+          data-testid="message-text"
+          className="prose prose-sm max-w-none leading-7 prose-invert"
+          dangerouslySetInnerHTML={{ __html: part.rendered }}
+        />
+      );
+    case "reasoning":
+      return (
+        <details key={part.id} className="mb-3 text-xs">
+          <summary className="cursor-pointer text-slate-500 hover:text-slate-400">
+            Thinking...
+          </summary>
+          <div
+            className="mt-2 rounded bg-slate-950/80 p-2 text-slate-400 italic"
+            dangerouslySetInnerHTML={{ __html: part.rendered }}
+          />
+        </details>
+      );
+    case "tool-call":
+      return <ToolCallBlock key={part.id} toolCall={part} />;
+    case "message":
+      return (
+        <div key={part.id} className="ml-4 border-l border-slate-700 pl-3">
+          <MessageBubble message={part.message} />
+        </div>
+      );
+    case "activity":
+      return (
+        <div key={part.id} className="my-2 rounded border border-slate-700/50 p-2">
+          <div className="mb-1 text-xs text-slate-500">
+            {part.activityType} · {part.state}
+          </div>
+          {part.parts.map((child) => renderPart(child))}
+        </div>
+      );
+    case "elicit":
+      return (
+        <div key={part.id} className="my-2">
+          {part.parts.map((child) => renderPart(child))}
+          {part.parts.length === 0 && (
+            <div className="text-xs text-amber-400">
+              {part.message} ({part.state})
+            </div>
+          )}
+        </div>
+      );
+    case "render":
+      return <span key={part.id}>{part.node}</span>;
+    default:
+      return null;
+  }
 }
 
 function MessageBubble({ message }: { message: ChatMessage }) {
@@ -122,35 +195,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           {busy ? " - streaming" : ""}
         </div>
 
-        {message.parts.map((part) => {
-          if (part.type === "reasoning") {
-            return (
-              <details key={part.id} className="mb-3 text-xs">
-                <summary className="cursor-pointer text-slate-500 hover:text-slate-400">
-                  Thinking...
-                </summary>
-                <div
-                  className="mt-2 rounded bg-slate-950/80 p-2 text-slate-400 italic"
-                  dangerouslySetInnerHTML={{ __html: part.rendered }}
-                />
-              </details>
-            );
-          }
-          if (part.type === "tool-call") {
-            return <ToolCallBlock key={part.id} toolCall={part} />;
-          }
-          if (part.type === "text") {
-            return (
-              <div
-                key={part.id}
-                data-testid="message-text"
-                className={`prose prose-sm max-w-none leading-7 ${isUser ? "prose-stone" : "prose-invert"}`}
-                dangerouslySetInnerHTML={{ __html: part.rendered }}
-              />
-            );
-          }
-          return null;
-        })}
+        {message.parts.map((part) => renderPart(part))}
       </div>
     </div>
   );
@@ -296,7 +341,7 @@ function DemoThreadPanel({
                 <button
                   key={suggestion.label}
                   type="button"
-                  onClick={() => sendMessage({ text: suggestion.message })}
+                  onClick={() => setDraft(suggestion.message)}
                   disabled={busy}
                   className="rounded-full border border-slate-700 bg-slate-900/80 px-4 py-2 text-xs text-slate-300 transition hover:border-sky-400 hover:text-sky-200 disabled:opacity-50"
                 >

@@ -54,7 +54,9 @@ test("book_flight full flow: flight → seat → confirmation", async ({ page })
 
   await page.goto("/chat/flight/", { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { name: "Flight Booking" })).toBeVisible();
-  await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
+  await page.getByTestId("thread-create").click();
+  await expect(page.getByPlaceholder("Type a message...")).toBeEnabled({ timeout: 15000 });
 
   const input = page.getByPlaceholder("Type a message...");
   await input.click(); // Ensure hydration
@@ -109,7 +111,7 @@ test("book_flight full flow: flight → seat → confirmation", async ({ page })
     console.log("Ticket number not directly visible, checking for confirmation...");
 
     // Wait for streaming to complete
-    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 60000 });
 
     // Check for confirmation indicators in the response
     const pageText = await page.locator("body").textContent();

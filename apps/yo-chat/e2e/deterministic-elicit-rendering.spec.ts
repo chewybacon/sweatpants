@@ -219,7 +219,9 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
 
   await page.goto("/chat/flight/", { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { name: "Flight Booking" })).toBeVisible();
-  await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
+  await page.getByTestId("thread-create").click();
+  await expect(page.getByPlaceholder("Type a message...")).toBeEnabled({ timeout: 10000 });
 
   await page.getByPlaceholder("Type a message...").fill("book a flight");
   await page.getByRole("button", { name: "Send" }).click();

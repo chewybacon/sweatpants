@@ -32,7 +32,7 @@ test.describe("Ollama chat integration", () => {
 
     await page.goto("/chat/basic/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Basic Chat" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
     // Click input to ensure React is hydrated
     await page.getByPlaceholder("Type a message...").click();
   });
@@ -49,10 +49,10 @@ test.describe("Ollama chat integration", () => {
     await sendButton.click();
 
     // Wait for streaming to start
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
 
     // Wait for the response to complete (streaming indicator disappears)
-    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 120000 });
 
     // Should have both user message and assistant response
     await expect(page.getByText("Say exactly: Hello World").first()).toBeVisible();
@@ -70,7 +70,7 @@ test.describe("Ollama chat integration", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for streaming to start
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
 
     // If the model responds too quickly, the Stop button may never become clickable.
     // Only abort if Stop is actually visible.
@@ -78,9 +78,9 @@ test.describe("Ollama chat integration", () => {
     const stopVisible = await stopButton.isVisible();
     if (stopVisible) {
       await stopButton.click();
-      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 10000 });
     } else {
-      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
+      await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 120000 });
     }
 
     // Should show messages were received (at least user message)
@@ -96,20 +96,20 @@ test.describe("Ollama chat integration", () => {
     // Wait for response. Local models can occasionally generate slowly; abort
     // after the long wait because this test verifies reset behavior, not model
     // completion quality.
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
     try {
-      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
+      await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 120000 });
       await expect(page.getByText("2 messages")).toBeVisible({ timeout: 5000 });
     } catch {
       await page.getByRole("button", { name: "Stop" }).click();
-      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 30000 });
+      await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 30000 });
     }
 
     // Reset the conversation
-    await page.getByRole("button", { name: "Clear History" }).click();
+    await page.getByTestId("thread-create").click();
 
     // Should show empty state
-    await expect(page.getByText("Send a message to start chatting")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
     await expect(page.getByText("0 messages")).toBeVisible();
   });
 });
@@ -121,10 +121,10 @@ test.describe("Ollama tool calling", () => {
   test("LLM can call the calculator tool", async ({ page }) => {
     await page.goto("/chat/math/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Math Assistant" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
     // Ask a math question that should trigger the calculator tool
-    const input = page.getByPlaceholder("Type a math problem...");
+    const input = page.getByPlaceholder("Type a message...");
     await input.click(); // Ensure hydration
     await input.pressSequentially(
       "Use the calculator tool to compute 42 * 17. What is the result?",
@@ -132,7 +132,7 @@ test.describe("Ollama tool calling", () => {
     );
 
     // Send the message
-    await page.getByRole("button", { name: "Solve", exact: true }).click();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
 
     // Wait for response to complete. Prefer stable UI signals over ambiguous text.
     const stopButton = page.getByRole("button", { name: "Stop" });
@@ -160,7 +160,7 @@ test.describe("Ollama tool calling", () => {
   test("LLM can call the pick_card tool and user can interact", async ({ page }) => {
     await page.goto("/chat/cards/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Card Picker" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
     // Ask to pick a card - this should trigger the canonical pick_card tool
     const input = page.getByPlaceholder("Type a message...");
@@ -173,7 +173,7 @@ test.describe("Ollama tool calling", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for response - could be card picker UI or an error message
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
 
     // Try to wait for card picker UI, but don't fail if it doesn't appear
     // The CardPicker component renders buttons with card symbols
@@ -198,7 +198,7 @@ test.describe("Ollama tool calling", () => {
       console.log("Card selection successful!");
     } catch {
       // Card picker didn't appear - check if there's an error or just text response
-      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 60000 });
+      await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 60000 });
       const responseText = await page.locator(".prose").last().textContent();
       console.log("No card picker appeared. Response:", responseText?.slice(0, 300));
 
@@ -210,7 +210,7 @@ test.describe("Ollama tool calling", () => {
   test("pick_card tool: LLM response reflects the card user picked", async ({ page }) => {
     await page.goto("/chat/cards/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Card Picker" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
     /**
      * This test verifies the complete pick_card flow:
@@ -255,7 +255,7 @@ test.describe("Ollama tool calling", () => {
 
     // Now wait for the LLM to respond with a message about the card we picked
     // The streaming should complete
-    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 60000 });
 
     // The final assistant message should mention the card we picked
     // Get the last .prose element which is the final assistant response
@@ -306,7 +306,7 @@ test.describe("Ollama tool calling", () => {
   test("pick_card tool: CardPicker appears inline in chat timeline", async ({ page }) => {
     await page.goto("/chat/cards/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Card Picker" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
     /**
      * This test verifies that the CardPicker component appears in the

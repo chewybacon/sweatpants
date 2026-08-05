@@ -19,7 +19,7 @@ test.describe("Markdown rendering persistence", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chat/basic/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Basic Chat" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
     // Click input to ensure React is hydrated
     await page.getByPlaceholder("Type a message...").click();
   });
@@ -58,7 +58,7 @@ test.describe("Markdown rendering persistence", () => {
    */
   function getAssistantMessages(page: Page) {
     // Assistant messages have bg-slate-800/50 class
-    return page.locator(".bg-slate-800\\/50");
+    return page.getByTestId("message-assistant");
   }
 
   /**

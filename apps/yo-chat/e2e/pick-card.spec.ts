@@ -13,19 +13,19 @@ test.describe("chat page basics", () => {
     await page.goto("/chat/cards/");
 
     await expect(page.getByRole("heading", { name: "Card Picker" })).toBeVisible();
-    await expect(page.getByText("Ask me to pick a card for you!")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
   });
 
-  test("shows pipeline ready indicator", async ({ page }) => {
+  test("shows shared thread ready indicator", async ({ page }) => {
     await page.goto("/chat/cards/");
 
     // Pipeline should load and show ready state
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
   });
 
   test("send button enables when text is entered", async ({ page }) => {
     await page.goto("/chat/cards/", { waitUntil: "networkidle" });
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
     // Initially button should be disabled (no text)
     const sendButton = page.getByRole("button", { name: "Send" });
@@ -48,14 +48,14 @@ test.describe("chat page basics", () => {
 
   test("quick action buttons populate input", async ({ page }) => {
     await page.goto("/chat/cards/", { waitUntil: "networkidle" });
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
     // Wait for React hydration by verifying input is interactive
     const input = page.getByPlaceholder("Type a message...");
     await input.click();
 
     // Click a quick action button with retry logic
-    const quickActionBtn = page.getByRole("button", { name: '"Pick a card"' });
+    const quickActionBtn = page.getByRole("button", { name: "Pick a card" });
     await expect(quickActionBtn).toBeVisible();
 
     // Retry clicking until it works (handles hydration timing)
