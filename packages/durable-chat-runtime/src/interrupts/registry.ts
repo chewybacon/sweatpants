@@ -334,9 +334,7 @@ export function deriveResumeScopeFromEntries(
     return null;
   }
   const matched = resume.flatMap((entry) =>
-    [...recordsByKey.values()].filter(
-      (record) => record.interruptId === entry.interruptId && record.status === "open",
-    ),
+    [...recordsByKey.values()].filter((record) => record.interruptId === entry.interruptId),
   );
   const threadIds = new Set(matched.map((record) => record.threadId));
   const scopeIds = new Set(matched.map((record) => record.scopeId));
@@ -363,13 +361,33 @@ export function verifyResumeEntries(params: {
     if (resume.length === 0) {
       return { ok: true, scopeId, records: [], entries: [], idempotent: false };
     }
-    const allIdempotent = resume.every((entry) => {
+    const seen = new Set<string>();
+    for (const entry of resume) {
+      if (seen.has(entry.interruptId)) {
+        return {
+          ok: false,
+          code: "INVALID_RESUME",
+          message: `Duplicate resume interruptId: ${entry.interruptId}`,
+        };
+      }
+      seen.add(entry.interruptId);
       const record = scopeRecords.find((candidate) => candidate.interruptId === entry.interruptId);
-      return record?.resolutionHash === resumeResolutionHash(entry);
-    });
-    return allIdempotent
-      ? { ok: true, scopeId, records: [], entries: resume, idempotent: true }
-      : { ok: false, code: "INVALID_RESUME", message: "No open interrupt matches resume request" };
+      if (!record) {
+        return {
+          ok: false,
+          code: "INVALID_RESUME",
+          message: `Unknown or stale resume interruptId: ${entry.interruptId}`,
+        };
+      }
+      if (record.resolutionHash !== resumeResolutionHash(entry)) {
+        return {
+          ok: false,
+          code: "RESUME_CONFLICT",
+          message: `Resume conflicts with settled interrupt: ${entry.interruptId}`,
+        };
+      }
+    }
+    return { ok: true, scopeId, records: [], entries: resume, idempotent: true };
   }
 
   if (resume.length === 0) {

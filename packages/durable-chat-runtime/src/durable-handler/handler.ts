@@ -391,6 +391,41 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     : "program-runtime",
                 });
 
+                // An exact retry of an already-settled resume is a durable no-op.
+                // Replay the committed conversation checkpoint instead of creating
+                // another provider turn. Conflicting settled responses remain
+                // preflight errors below.
+                if (plan.resumeValidation?.ok && plan.resumeValidation.idempotent) {
+                  const idempotentCheckpoint = yield* readLatestConversationCheckpoint(
+                    bufferStore,
+                    requestedConversationId,
+                  );
+                  if (!idempotentCheckpoint) {
+                    throw new CrankError(
+                      "invalid_chat_request",
+                      "Settled resume cannot be replayed because its conversation checkpoint is missing",
+                    );
+                  }
+                  let checkpointEvents: StreamEvent[];
+                  try {
+                    checkpointEvents = decodeConversationCheckpoint(idempotentCheckpoint);
+                  } catch (error) {
+                    throw new CrankError(
+                      "invalid_chat_request",
+                      "Stored conversation checkpoint is malformed",
+                      undefined,
+                      { cause: error },
+                    );
+                  }
+                  return yield* createStoredConversationCheckpointResponse({
+                    ctx,
+                    conversationId: requestedConversationId,
+                    checkpointEvents,
+                    parsedOffset,
+                    terminalRunId: agUiRunId,
+                  });
+                }
+
                 log.debug(
                   { provider: model.provider, model: model.id, api: model.api },
                   "model provider configured",
