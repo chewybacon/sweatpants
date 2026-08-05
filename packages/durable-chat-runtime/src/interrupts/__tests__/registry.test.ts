@@ -4,6 +4,7 @@ import {
   registerInterruptsFromRunFinished,
   resetInterruptRegistry,
   scopeIdForInterruptRun,
+  upsertInterruptRecords,
   verifyResumeEntries,
 } from "../registry.ts";
 
@@ -52,6 +53,54 @@ describe("interrupt resume action validation", () => {
       expect(result.ok).toBe(true);
     },
   );
+
+  it("distinguishes an idempotent retry from a conflicting stale response", () => {
+    const accepted = verifyResumeEntries({
+      threadId,
+      scopeId,
+      runId: "run-first-settlement",
+      resume: [
+        {
+          interruptId: "pick-card",
+          status: "resolved",
+          payload: { action: "accept", content: { cardId: "ace-spades" } },
+        },
+      ],
+    });
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) {
+      throw new Error(accepted.message);
+    }
+    upsertInterruptRecords(accepted.records);
+
+    const retry = verifyResumeEntries({
+      threadId,
+      scopeId,
+      runId: "run-stale-retry",
+      resume: [
+        {
+          interruptId: "pick-card",
+          status: "resolved",
+          payload: { action: "accept", content: { cardId: "ace-spades" } },
+        },
+      ],
+    });
+    expect(retry).toMatchObject({ ok: true, idempotent: true, records: [] });
+
+    const conflict = verifyResumeEntries({
+      threadId,
+      scopeId,
+      runId: "run-stale-conflict",
+      resume: [
+        {
+          interruptId: "pick-card",
+          status: "resolved",
+          payload: { action: "accept", content: { cardId: "king-hearts" } },
+        },
+      ],
+    });
+    expect(conflict).toMatchObject({ ok: false, code: "RESUME_CONFLICT" });
+  });
 
   it("validates accept.content against the response schema", () => {
     const invalid = verifyResumeEntries({

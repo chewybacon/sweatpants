@@ -36,6 +36,7 @@ function toFrames(events: StreamEvent[]) {
 function storedCheckpointHydrateEvents(
   checkpointEvents: StreamEvent[],
   conversationId: string,
+  terminalRunId?: string,
 ): StreamEvent[] {
   const openInterrupts = openInterruptsForThread(conversationId);
   const elicits = elicitsForOpenInterrupts(openInterrupts);
@@ -58,7 +59,16 @@ function storedCheckpointHydrateEvents(
             },
           },
         ]
-      : []),
+      : terminalRunId
+        ? [
+            {
+              type: EventType.RUN_FINISHED as const,
+              threadId: conversationId,
+              runId: terminalRunId,
+              outcome: { type: "success" as const },
+            },
+          ]
+        : []),
   ];
 }
 
@@ -67,8 +77,9 @@ export function* createStoredConversationCheckpointResponse(params: {
   conversationId: string;
   checkpointEvents: StreamEvent[];
   parsedOffset: ParsedOffset;
+  terminalRunId?: string;
 }): Operation<HydrateResponse> {
-  const { ctx, conversationId, checkpointEvents, parsedOffset } = params;
+  const { ctx, conversationId, checkpointEvents, parsedOffset, terminalRunId } = params;
   const offsetRequested = new URL(ctx.request.url).searchParams.has("offset");
   const resetRequested = offsetRequested && !parsedOffset.isNow && parsedOffset.value !== 0;
   const emptyRequested = offsetRequested && (parsedOffset.isNow || parsedOffset.value === 0);
@@ -85,7 +96,7 @@ export function* createStoredConversationCheckpointResponse(params: {
   }
 
   const subscription = yield* createSyntheticFrameStream(
-    toFrames(storedCheckpointHydrateEvents(checkpointEvents, conversationId)),
+    toFrames(storedCheckpointHydrateEvents(checkpointEvents, conversationId, terminalRunId)),
   );
 
   return { subscription };
