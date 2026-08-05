@@ -105,6 +105,8 @@ export interface ConversationHandle {
   supersede(message: string): TurnHandle;
   /** Recreate the headless client while retaining durable conversation identity. */
   reopen(): Promise<ConversationHandle>;
+  /** Attach a new turn handle to one durable elicitation recovered by reopen(). */
+  resumePendingElicit(key: string): TurnHandle;
   transcript(): ConversationTranscript;
 }
 
@@ -386,6 +388,15 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         }
       }
 
+      function hasPendingElicit(key: string): boolean {
+        return (
+          pendingElicits.some((barrier) => barrier.key === key) ||
+          [...elicitationBarriers.values()].some(
+            (barrier) => barrier.key === key && !respondedElicits.has(barrier.elicitId),
+          )
+        );
+      }
+
       const interaction: ChatInteractionRuntime = {
         observe: publishElicit,
         settled(elicitId) {
@@ -460,7 +471,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         }
       });
 
-      function startTurn(message: string, supersede: boolean): TurnHandle {
+      function startTurn(message: string, supersede: boolean, sendMessage = true): TurnHandle {
         assertOpen();
         if (activeTurn && !supersede) {
           throw new Error(`Complete active turn ${activeTurn.id} before sending another turn`);
@@ -488,7 +499,9 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
                 cancellationInProgress = false;
               }
             }
-            await client.sendMessage({ text: message });
+            if (sendMessage) {
+              await client.sendMessage({ text: message });
+            }
           } catch (error) {
             if (activeTurn?.id === turnId) {
               failTurn(error);
@@ -560,6 +573,13 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         snapshot: () => client.getServerSnapshot(),
         send: (message) => startTurn(message, false),
         supersede: (message) => startTurn(message, true),
+        resumePendingElicit: (key) => {
+          assertOpen();
+          if (!hasPendingElicit(key)) {
+            throw new Error(`No pending elicitation named ${JSON.stringify(key)}`);
+          }
+          return startTurn(key, false, false);
+        },
         async reopen() {
           await owned.close();
           conversations.delete(conversationId);

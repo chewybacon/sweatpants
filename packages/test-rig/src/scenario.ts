@@ -140,6 +140,8 @@ export interface ScriptConversation {
   supersede(message: string): Operation<ScriptTurn>;
   /** Recreate the client session, retaining durable conversation identity. */
   reopen(): Operation<ScriptConversation>;
+  /** Attach a new turn handle to one durable elicitation recovered by reopen(). */
+  resumePendingElicit(key: string): ScriptTurn;
   transcript(): ConversationTranscript;
 }
 
@@ -321,6 +323,11 @@ function toScriptConversation(conversation: ConversationHandle): ScriptConversat
     *reopen() {
       return toScriptConversation(yield* op(() => conversation.reopen()));
     },
+    resumePendingElicit: (key) =>
+      toScriptTurn(
+        conversation.resumePendingElicit(key),
+        `resume elicitation ${JSON.stringify(key)}`,
+      ),
     transcript: () => conversation.transcript(),
   };
 }
