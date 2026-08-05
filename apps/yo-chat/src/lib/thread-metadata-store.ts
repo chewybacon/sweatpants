@@ -1,6 +1,7 @@
 import type { ThreadSummary } from "@/lib/threaded-chat-types";
 
 export interface CreateThreadMetadataInput {
+  namespace?: string;
   id?: string;
   title?: string;
   lastMessagePreview?: string;
@@ -14,11 +15,16 @@ export interface UpdateThreadMetadataInput {
 }
 
 export interface ThreadMetadataStore {
-  list(): ThreadSummary[];
+  list(namespace?: string): ThreadSummary[];
   get(threadId: string): ThreadSummary | null;
   create(input?: CreateThreadMetadataInput): ThreadSummary;
   update(threadId: string, input: UpdateThreadMetadataInput): ThreadSummary | null;
   delete(threadId: string): boolean;
+}
+
+function normalizeNamespace(namespace: string | undefined): string {
+  const value = compact(namespace ?? "");
+  return value || "default";
 }
 
 function compact(text: string): string {
@@ -48,6 +54,7 @@ export function createThreadSummary(
   now: number = Date.now(),
 ): ThreadSummary {
   return {
+    namespace: normalizeNamespace(input.namespace),
     id: input.id ?? crypto.randomUUID(),
     title: normalizeTitle(input.title),
     createdAt: now,
@@ -61,8 +68,10 @@ export function createInMemoryThreadMetadataStore(): ThreadMetadataStore {
   const threads = new Map<string, ThreadSummary>();
 
   return {
-    list() {
-      return Array.from(threads.values()).sort((left, right) => right.updatedAt - left.updatedAt);
+    list(namespace) {
+      return Array.from(threads.values())
+        .filter((thread) => namespace === undefined || thread.namespace === namespace)
+        .sort((left, right) => right.updatedAt - left.updatedAt);
     },
 
     get(threadId) {
