@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { MessageCirclePlus, PanelLeftOpen, RefreshCcw } from "lucide-react";
+import { MessageCirclePlus, PanelLeftOpen, RefreshCcw, Terminal } from "lucide-react";
 import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pickCardPlugin } from "@/tools/pick-card";
@@ -186,12 +186,18 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 function ThreadPanel({
   threadId,
   onMetadata,
+  onInspectorToggle,
+  onInspectorRefresh,
+  inspectorOpen,
 }: {
   threadId: string;
   onMetadata: (
     threadId: string,
     summary: Pick<ThreadSummary, "title" | "lastMessagePreview" | "messageCount">,
   ) => void;
+  onInspectorToggle: () => void;
+  onInspectorRefresh: () => void;
+  inspectorOpen: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -215,6 +221,12 @@ function ThreadPanel({
   useEffect(() => {
     onMetadata(threadId, summarizeThread(threadId, messages));
   }, [messages, onMetadata, threadId]);
+
+  useEffect(() => {
+    if (status === "ready") {
+      onInspectorRefresh();
+    }
+  }, [onInspectorRefresh, status]);
 
   const handleSubmit = useCallback(
     (event: React.FormEvent) => {
@@ -243,13 +255,20 @@ function ThreadPanel({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onInspectorToggle}
+            className={cn("rounded-lg", inspectorOpen && "bg-sky-500/15 text-sky-300")}
+            title="Toggle stream inspector"
+          >
+            <Terminal className="size-4" />
+          </Button>
           <div className="rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1 text-xs text-sky-200">
             {threadId}
           </div>
         </div>
       </div>
-
-      <StreamInspector threadId={threadId} />
 
       <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
         {messages.length === 0 ? (
@@ -318,6 +337,16 @@ function ThreadedChatDemo() {
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [sessionMountKey, setSessionMountKey] = useState(0);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorRefreshKey, setInspectorRefreshKey] = useState(0);
+
+  const handleInspectorToggle = useCallback(() => {
+    setInspectorOpen((open) => !open);
+  }, []);
+
+  const handleInspectorRefresh = useCallback(() => {
+    setInspectorRefreshKey((key) => key + 1);
+  }, []);
 
   const persistSelection = useCallback((threadId: string | null) => {
     if (typeof window === "undefined") {
@@ -434,7 +463,7 @@ function ThreadedChatDemo() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.16),_transparent_30%),linear-gradient(180deg,_#0f172a_0%,_#111827_52%,_#0b1220_100%)] text-slate-100">
-      <div className="mx-auto flex h-[calc(100vh-64px)] flex-col gap-4 p-4 md:flex-row md:p-6">
+      <div className="mx-auto flex h-[calc(100vh-64px)] min-h-0 flex-col gap-4 p-4 md:flex-row md:p-6">
         <aside
           className={cn(
             "w-full shrink-0 flex-col rounded-[28px] border border-amber-200/10 bg-slate-950/70 p-4 shadow-2xl shadow-black/30 backdrop-blur md:flex md:w-80",
@@ -502,7 +531,7 @@ function ThreadedChatDemo() {
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[32px] border border-slate-800/80 bg-slate-950/75 shadow-2xl shadow-black/30 backdrop-blur">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[32px] border border-slate-800/80 bg-slate-950/75 shadow-2xl shadow-black/30 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800/80 px-5 py-4 md:hidden">
             <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen((open) => !open)}>
               <PanelLeftOpen className="size-4" />
@@ -518,6 +547,9 @@ function ThreadedChatDemo() {
               key={`${selectedThreadId}-${sessionMountKey}`}
               threadId={selectedThreadId}
               onMetadata={handleMetadata}
+              onInspectorToggle={handleInspectorToggle}
+              onInspectorRefresh={handleInspectorRefresh}
+              inspectorOpen={inspectorOpen}
             />
           )}
 
@@ -527,6 +559,14 @@ function ThreadedChatDemo() {
             </div>
           )}
         </main>
+
+        {inspectorOpen && selectedThreadId && (
+          <StreamInspector
+            threadId={selectedThreadId}
+            refreshKey={inspectorRefreshKey}
+            onClose={handleInspectorToggle}
+          />
+        )}
       </div>
     </div>
   );
