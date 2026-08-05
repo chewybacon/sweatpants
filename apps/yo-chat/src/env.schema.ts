@@ -45,10 +45,6 @@ export const appEnv = createEnv({
     OPENAI_BASE_URL: z.string().default("https://api.openai.com/v1"),
     AWS_REGION: z.string().optional(),
 
-    // Test-only deterministic model provider for rendering pipeline e2e fixtures.
-    // Production/shared servers MUST leave this unset.
-    ENABLE_SCRIPTED_RENDERING_PROVIDER: z.enum(["yes"]).optional(),
-
     // Default system prompt for manual chat mode. Individual requests/personas may override it.
     CHAT_SYSTEM_PROMPT: z
       .string()
@@ -98,8 +94,6 @@ export const appEnv = createEnv({
   client: {
     // Example public env var (expand as needed)
     VITE_BASE_URL: z.string().optional(),
-    // Test-only UI gate for deterministic rendering e2e fixtures.
-    VITE_ENABLE_SCRIPTED_RENDERING: z.enum(["1"]).optional(),
   },
 
   /**

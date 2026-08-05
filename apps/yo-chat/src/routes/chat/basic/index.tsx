@@ -14,25 +14,13 @@ export const Route = createFileRoute("/chat/basic/")({
 });
 
 const CONVERSATION_ID_KEY = "basic-chat-conversation-id";
-const SCRIPTED_RENDERING_CONVERSATION_ID_KEY = "basic-chat-scripted-rendering-conversation-id";
-
-function scriptedRenderingEnabled(): boolean {
-  return (
-    import.meta.env["VITE_ENABLE_SCRIPTED_RENDERING"] === "1" &&
-    new URLSearchParams(window.location.search).get("scriptedRendering") === "1"
-  );
-}
-
-function conversationIdKey(): string {
-  return scriptedRenderingEnabled() ? SCRIPTED_RENDERING_CONVERSATION_ID_KEY : CONVERSATION_ID_KEY;
-}
 
 function createConversationId(): string {
   return crypto.randomUUID();
 }
 
 function getOrCreateConversationId(): string {
-  const key = conversationIdKey();
+  const key = CONVERSATION_ID_KEY;
   const existingId = window.localStorage.getItem(key);
   if (existingId) {
     return existingId;
@@ -44,7 +32,7 @@ function getOrCreateConversationId(): string {
 }
 
 function replaceConversationId(): string {
-  const key = conversationIdKey();
+  const key = CONVERSATION_ID_KEY;
   const nextId = createConversationId();
   window.localStorage.setItem(key, nextId);
   return nextId;
@@ -128,11 +116,9 @@ function BasicChatSession({
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scriptedRendering = scriptedRenderingEnabled();
   const { messages, status, renderStatus, sendMessage, stop, error } = useChat({
     // Full pipeline for rich markdown rendering
     pipeline: "full",
-    ...(scriptedRendering ? { api: "/api/chat?scripted=rendering" } : {}),
     // No tools - clean baseline chat
     // No plugins
     plugins: [],

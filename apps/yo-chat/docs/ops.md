@@ -13,7 +13,6 @@ Production-candidate ops story for the cutover app (`apps/yo-chat`).
 | `REDIS_URL` | No | When set, durable token buffers use Redis |
 | `AGENTCORE_RUNTIME_ARN` | AgentCore only | Remote tool runtime ARN |
 | `AWS_REGION` / `AGENTCORE_REGION` | AgentCore / Bedrock | AWS region |
-| `VITE_ENABLE_SCRIPTED_RENDERING` | No | Test/scripted rendering flag |
 
 **Secrets:** never hardcode API keys or tokens in source or docs. Use env vars or `pnpm copilot:auth:*` helpers. Durable stores and model credentials are sensitive configuration and must not be committed.
 
