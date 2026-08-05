@@ -32,7 +32,7 @@ test.describe("play_ttt Agentic Tool", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chat/play-ttt/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Agentic Tic-Tac-Toe" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
   });
 
   // =============================================================================
@@ -102,9 +102,10 @@ test.describe("play_ttt Agentic Tool", () => {
   test("game starts and board appears", async ({ page }) => {
     // Click the Start Game button
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for streaming to start (use exact match to avoid matching "Thinking..." summary)
-    await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 30000 });
 
     // Wait for the board to appear - look for clickable cells (numbers 0-8)
     // These are buttons with just a number (the position indicator for empty cells)
@@ -124,6 +125,7 @@ test.describe("play_ttt Agentic Tool", () => {
 
   test("user can click a cell to make a move", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for board to appear
     const emptyCell = await waitForPlayableCell(page);
@@ -138,7 +140,7 @@ test.describe("play_ttt Agentic Tool", () => {
 
       // After clicking, the cell should show user's mark
       // Wait for the response and next board state
-      await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 10000 });
 
       console.log("Move registered, waiting for model response...");
     } catch (e) {
@@ -153,6 +155,7 @@ test.describe("play_ttt Agentic Tool", () => {
 
   test("game progresses after a user move without tool errors", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
     console.log("Starting game...");
 
     const emptyCell = await waitForPlayableCell(page);
@@ -183,6 +186,7 @@ test.describe("play_ttt Agentic Tool", () => {
 
   test("handles both X and O assignment for user", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for board to appear
     const emptyCell = await waitForPlayableCell(page);
@@ -202,7 +206,7 @@ test.describe("play_ttt Agentic Tool", () => {
 
       // The cell we clicked should now be filled (not a button with just a number)
       // Or model should be thinking (use exact match to avoid "Thinking..." summary)
-      const thinkingIndicator = page.getByText("thinking...", { exact: true });
+      const thinkingIndicator = page.getByRole("button", { name: "Stop" });
       const moveHistory = page.locator('[data-tsd-source*="GameMoveCard"]');
 
       // Either model is thinking, or we already have a move in history
@@ -221,13 +225,14 @@ test.describe("play_ttt Agentic Tool", () => {
 
   test("board shows correct player marks with colors", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for an interactive board.
     const emptyCell = await waitForPlayableCell(page);
 
     if (await emptyCell.isVisible()) {
       await emptyCell.click();
-      const thinkingLocator = page.getByText("thinking...", { exact: true });
+      const thinkingLocator = page.getByRole("button", { name: "Stop" });
       await expect(thinkingLocator)
         .toBeVisible({ timeout: 10000 })
         .catch(() => {});
@@ -246,6 +251,7 @@ test.describe("play_ttt Agentic Tool", () => {
 
   test("board highlights last move", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for board
     const emptyCell = await waitForPlayableCell(page);
@@ -274,11 +280,12 @@ test.describe("play_ttt Agentic Tool", () => {
     // The strategy comes from the L1 sampleTools() call in the game loop.
 
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     const emptyCell = await waitForPlayableCell(page);
 
     // Play through a few moves so the model has at least 2 turns
-    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    const thinkingLocator = page.getByRole("button", { name: "Stop" });
     let moves = 0;
     const gameOver = page.locator("text=/wins!|draw!|Good game!|Well played!/i");
 
@@ -327,6 +334,7 @@ test.describe("play_ttt Agentic Tool", () => {
     // Each move should appear as a separate card, not replace the previous one
 
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
     console.log("Starting game...");
 
     // Wait for board to appear
@@ -337,7 +345,7 @@ test.describe("play_ttt Agentic Tool", () => {
     await emptyCell.click();
 
     // Wait for model response (use exact match to avoid "Thinking..." summary)
-    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    const thinkingLocator = page.getByRole("button", { name: "Stop" });
     await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
     await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
 
@@ -402,6 +410,7 @@ test.describe("play_ttt Agentic Tool", () => {
 
   test("handles game cancellation gracefully", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     await waitForPlayableCell(page);
 
@@ -413,11 +422,12 @@ test.describe("play_ttt Agentic Tool", () => {
     }
 
     // Click New Game to reset
-    await page.getByRole("button", { name: "New Game" }).click();
+    await page.getByTestId("thread-create").click();
 
     // Should be able to start a new game
     await page.getByRole("button", { name: "Start Game" }).click();
-    await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 30000 });
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 30000 });
 
     console.log("Game reset successful!");
   });

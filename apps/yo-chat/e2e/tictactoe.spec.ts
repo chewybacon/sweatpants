@@ -32,7 +32,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chat/tictactoe/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Tic-Tac-Toe" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
   });
 
   // =============================================================================
@@ -92,9 +92,10 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
   test("game starts and board appears", async ({ page }) => {
     // Click the Start Game button
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for streaming to start
-    await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 30000 });
 
     // Wait for the board to appear - look for clickable cells (numbers 0-8)
     const boardCell = page
@@ -137,6 +138,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
   test("user can click a cell to make a move", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     const emptyCell = page
       .locator("button:not([disabled])")
@@ -151,7 +153,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
       await emptyCell.click();
 
-      await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 10000 });
 
       console.log("Move registered, waiting for model response...");
     } catch (e) {
@@ -166,6 +168,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
   test("game progresses after a user move without tool errors", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
     console.log("Starting game...");
 
     const emptyCell = page
@@ -223,6 +226,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
   test("handles both X and O assignment for user", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     const emptyCell = page
       .locator("button:not([disabled])")
@@ -253,7 +257,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
       await page.waitForTimeout(500);
 
-      const thinkingIndicator = page.getByText("thinking...", { exact: true });
+      const thinkingIndicator = page.getByRole("button", { name: "Stop" });
       const moveHistory = page.locator('[data-tsd-source*="GameMoveCard"]');
 
       const isThinking = await thinkingIndicator.isVisible();
@@ -271,6 +275,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
   test("board shows correct player marks with colors", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     const emptyCell = await waitForInteractiveCellOrSkip(page);
     if (!emptyCell) {
@@ -282,7 +287,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
     await emptyCell.click();
 
-    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    const thinkingLocator = page.getByRole("button", { name: "Stop" });
     await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
     await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
 
@@ -293,6 +298,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
   test("board highlights last move", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     const emptyCell = await waitForInteractiveCellOrSkip(page);
     if (!emptyCell) {
@@ -319,13 +325,14 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     // Unlike play-ttt, there's no structured output - we parse free-form text
 
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     const emptyCell = await waitForInteractiveCellOrSkip(page);
     if (!emptyCell) {
       return;
     }
 
-    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    const thinkingLocator = page.getByRole("button", { name: "Stop" });
     let moves = 0;
     while (moves < 4) {
       const nextEmptyCell = page
@@ -367,13 +374,14 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
   test("multiple moves visible as separate cards (emission accumulation)", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
     console.log("Starting game...");
 
     const emptyCell = page
       .locator("button:not([disabled])")
       .filter({ hasText: /^[0-8]$/ })
       .last();
-    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    const thinkingLocator = page.getByRole("button", { name: "Stop" });
     await expect(thinkingLocator).toBeVisible({ timeout: 30000 });
 
     const boardAppeared = await emptyCell
@@ -460,6 +468,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     const emptyCell = await waitForInteractiveCellOrSkip(page);
     if (!emptyCell) {
@@ -468,7 +477,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
     await emptyCell.click();
 
-    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    const thinkingLocator = page.getByRole("button", { name: "Stop" });
     await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
     await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
 
@@ -499,6 +508,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
   test("handles game cancellation gracefully", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     const emptyCell = page
       .locator("button:not([disabled])")
@@ -514,10 +524,11 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
         console.log("Clicked Stop button");
       }
 
-      await page.getByRole("button", { name: "New Game" }).click();
+      await page.getByTestId("thread-create").click();
 
       await page.getByRole("button", { name: "Start Game" }).click();
-      await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 30000 });
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 30000 });
 
       console.log("Game reset successful!");
     } catch {
@@ -533,8 +544,9 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
-    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    const thinkingLocator = page.getByRole("button", { name: "Stop" });
     const openInterruptError = page.locator("text=/Open interrupts require resume/i");
     const gameOver = page.locator("text=/wins!|draw!|Good game!|Well played!/i");
 

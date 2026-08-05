@@ -14,7 +14,7 @@ function TicTacToeDemo() {
         label: "Tic-Tac-Toe",
         pipeline: "markdown",
         plugins: [tictactoePlugin],
-        suggestions: [{ label: "Start game", message: "Let's play tic-tac-toe!" }],
+        suggestions: [{ label: "Start Game", message: "Let's play tic-tac-toe!" }],
       }}
     />
   );

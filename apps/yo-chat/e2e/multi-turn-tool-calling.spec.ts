@@ -18,7 +18,7 @@ test.describe("multi-turn tool calling", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chat/cards/", { waitUntil: "networkidle" });
     // Wait for pipeline to be ready
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 15000 });
     // Click input to ensure React is hydrated
     await page.getByPlaceholder("Type a message...").click();
   });
@@ -88,7 +88,7 @@ test.describe("multi-turn tool calling", () => {
     }
 
     // Also wait for the "streaming..." indicator to disappear
-    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 15000 });
 
     // Second turn: ask for more cards
     await input.pressSequentially("draw 2 more cards", { delay: 10 });
@@ -163,7 +163,7 @@ test.describe("multi-turn tool calling", () => {
     // A card picker can settle before the terminal model continuation. Wait on
     // hook-visible run state rather than `isEnabled()` (which returns an
     // immediate boolean and does not wait despite accepting options).
-    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 60000 });
     await expect(input).toBeEnabled({ timeout: 60000 });
     await expect(page.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 60000 });
 

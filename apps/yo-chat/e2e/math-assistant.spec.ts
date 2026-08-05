@@ -19,10 +19,11 @@ test.describe("Math Assistant", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chat/math/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Math Assistant" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 15000 });
 
-    // Click input to ensure React hydration is complete
-    await page.getByPlaceholder("Type a math problem...").click();
+    // Start a fresh namespaced thread for each test.
+    await page.getByTestId("thread-create").click();
+    await expect(page.getByPlaceholder("Type a message...")).toBeEnabled({ timeout: 15000 });
   });
 
   /**
@@ -30,14 +31,14 @@ test.describe("Math Assistant", () => {
    */
   async function waitForStreamingComplete(page: Page) {
     await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 180000 });
-    await expect(page.getByPlaceholder("Type a math problem...")).toBeEnabled({ timeout: 10000 });
+    await expect(page.getByPlaceholder("Type a message...")).toBeEnabled({ timeout: 10000 });
   }
 
   /**
    * Helper to send a message and wait for completion.
    */
   async function sendMessageAndWait(page: Page, message: string) {
-    const input = page.getByPlaceholder("Type a math problem...");
+    const input = page.getByPlaceholder("Type a message...");
     const actualMessage = `/no_think ${message}`;
 
     // Focus and type the input using pressSequentially for reliable React state updates
@@ -49,7 +50,7 @@ test.describe("Math Assistant", () => {
 
     // Wait for button to be enabled (React state update)
     // Use exact: true to avoid matching quick action buttons like "Solve 2x + 5 = 15"
-    const solveButton = page.getByRole("button", { name: "Solve", exact: true });
+    const solveButton = page.getByRole("button", { name: "Send", exact: true });
     await expect(solveButton).toBeEnabled({ timeout: 15000 });
 
     await solveButton.click();
@@ -65,7 +66,7 @@ test.describe("Math Assistant", () => {
    * Get assistant message containers.
    */
   function getAssistantMessages(page: Page) {
-    return page.locator(".bg-slate-800\\/50");
+    return page.getByTestId("message-assistant");
   }
 
   async function expectAssistantResponse(page: Page) {
@@ -79,16 +80,14 @@ test.describe("Math Assistant", () => {
   // BASIC FUNCTIONALITY
   // ===========================================================================
 
-  test("loads correctly with pipeline ready", async ({ page }) => {
-    await expect(page.getByText("Pipeline ready")).toBeVisible();
-    await expect(page.getByText("calculator")).toBeVisible();
-    await expect(page.getByText("reasoning")).toBeVisible();
-    await expect(page.getByText("Ask me a math question...")).toBeVisible();
+  test("loads correctly with the shared demo layout", async ({ page }) => {
+    await expect(page.getByText("Thread ready")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
   });
 
   test("quick action buttons populate input", async ({ page }) => {
-    await page.getByRole("button", { name: '"sqrt(12345) * pi"' }).click();
-    const input = page.getByPlaceholder("Type a math problem...");
+    await page.getByRole("button", { name: "sqrt(12345) * pi" }).click();
+    const input = page.getByPlaceholder("Type a message...");
     await expect(input).toHaveValue("Calculate sqrt(12345) * pi", { timeout: 5000 });
   });
 
@@ -342,18 +341,18 @@ test.describe("Math Assistant", () => {
   // ===========================================================================
 
   test("shows streaming indicator while processing", async ({ page }) => {
-    const input = page.getByPlaceholder("Type a math problem...");
+    const input = page.getByPlaceholder("Type a message...");
     await input.pressSequentially("What is the meaning of life in mathematical terms?", {
       delay: 5,
     });
 
     // Wait for button to be enabled (React state update)
-    const solveButton = page.getByRole("button", { name: "Solve", exact: true });
+    const solveButton = page.getByRole("button", { name: "Send", exact: true });
     await expect(solveButton).toBeEnabled({ timeout: 15000 });
     await solveButton.click();
 
     // Should show streaming indicator
-    await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 30000 });
 
     // Stop button should be visible
     await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
@@ -362,15 +361,15 @@ test.describe("Math Assistant", () => {
     await waitForStreamingComplete(page);
 
     // Streaming indicator should be gone
-    await expect(page.getByText("thinking...", { exact: true })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible();
   });
 
   test("can abort streaming response", async ({ page }) => {
-    const input = page.getByPlaceholder("Type a math problem...");
+    const input = page.getByPlaceholder("Type a message...");
     await input.pressSequentially("Explain all the prime numbers up to 1000", { delay: 5 });
 
     // Wait for button to be enabled (React state update)
-    const solveButton = page.getByRole("button", { name: "Solve", exact: true });
+    const solveButton = page.getByRole("button", { name: "Send", exact: true });
     await expect(solveButton).toBeEnabled({ timeout: 15000 });
     await solveButton.click();
 
@@ -400,10 +399,10 @@ test.describe("Math Assistant", () => {
     await expectAssistantResponse(page);
 
     // Clear history
-    await page.getByRole("button", { name: "Clear History" }).click();
+    await page.getByTestId("thread-create").click();
 
     // Should show empty state
-    await expect(page.getByText("Ask me a math question...")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
     await expect(page.getByText("0 messages")).toBeVisible();
   });
 });

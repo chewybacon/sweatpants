@@ -16,7 +16,7 @@ function PlayTttDemo() {
         plugins: [playTttPlugin],
         suggestions: [
           {
-            label: "Start game",
+            label: "Start Game",
             message:
               "Start a tic-tac-toe game by calling the play_ttt tool now. Do not respond with prose.",
           },

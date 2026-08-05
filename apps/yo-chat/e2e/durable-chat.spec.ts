@@ -30,9 +30,9 @@ test.describe("Durable Chat - Feature Parity", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chat/basic/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Basic Chat" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
-    // Click input to ensure React is hydrated
-    await page.getByPlaceholder("Type a message...").click();
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
+    await page.getByTestId("thread-create").click();
+    await expect(page.getByPlaceholder("Type a message...")).toBeEnabled({ timeout: 15000 });
   });
 
   test("can send a simple message and receive a response", async ({ page }) => {
@@ -42,10 +42,10 @@ test.describe("Durable Chat - Feature Parity", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for streaming to start
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
 
     // Wait for the response to complete
-    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 120000 });
 
     // Should have user message (use first() to avoid strict mode if LLM quotes it)
     await expect(page.getByText("Say exactly: Hello World").first()).toBeVisible();
@@ -78,7 +78,7 @@ test.describe("Durable Chat - Feature Parity", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for streaming to start
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
 
     // Wait for Stop button to appear (it replaces Send during streaming)
     const stopButton = page.getByRole("button", { name: "Stop" });
@@ -88,7 +88,7 @@ test.describe("Durable Chat - Feature Parity", () => {
     await stopButton.click();
 
     // Streaming should stop
-    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 10000 });
 
     // Should show messages were received
     await expect(page.locator("text=/[12] messages/")).toBeVisible({ timeout: 5000 });
@@ -103,8 +103,8 @@ test.describe("Durable Chat - Feature Parity", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for response to complete
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
-    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 120000 });
 
     // Get all text content from the assistant's response area
     const pageContent = await page.content();
@@ -132,15 +132,15 @@ test.describe("Durable Chat - Feature Parity", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for response
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
-    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 120000 });
     await expect(page.getByText("2 messages")).toBeVisible({ timeout: 5000 });
 
     // Reset the conversation
-    await page.getByRole("button", { name: "Clear History" }).click();
+    await page.getByTestId("thread-create").click();
 
     // Should show empty state
-    await expect(page.getByText("Send a message to start chatting")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
     await expect(page.getByText("0 messages")).toBeVisible();
   });
 });
@@ -150,21 +150,21 @@ test.describe("Durable Chat - Tool Calling", () => {
     // Use math route for calculator tool
     await page.goto("/chat/math/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Math Assistant" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
-    const input = page.getByPlaceholder("Type a math problem...");
+    const input = page.getByPlaceholder("Type a message...");
     await input.click(); // Ensure hydration
     await input.pressSequentially(
       "Use the calculator tool to compute 42 * 17. What is the result?",
       { delay: 5 },
     );
 
-    await page.getByRole("button", { name: "Solve", exact: true }).click();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
 
     // Wait for response to start and complete
     // Use exact match for streaming indicator (lowercase 'thinking...')
-    await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 60000 });
-    await expect(page.getByText("thinking...", { exact: true })).not.toBeVisible({
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({
       timeout: 120000,
     });
 
@@ -178,7 +178,7 @@ test.describe("Durable Chat - Tool Calling", () => {
     // Use cards route for pickCard tool
     await page.goto("/chat/cards/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Card Picker" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
     const input = page.getByPlaceholder("Type a message...");
     await input.click(); // Ensure hydration
@@ -189,7 +189,7 @@ test.describe("Durable Chat - Tool Calling", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for response - could be card picker UI or text
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
 
     // CRITICAL: Check there are no error messages displayed
     // This catches tool execution errors like "yield* is not iterable"
@@ -220,7 +220,7 @@ test.describe("Durable Chat - Tool Calling", () => {
       console.log("Card selection successful!");
     } catch (e) {
       // Card picker didn't appear - check if there's a text response
-      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
+      await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 120000 });
 
       // Check for errors again after streaming completes
       const postStreamError = page.locator("text=/Error:|is not iterable|yield\\*/");
@@ -360,23 +360,23 @@ test.describe("Durable Chat - Reconnection", () => {
     // Navigate to basic chat
     await page.goto("/chat/basic/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Basic Chat" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
-    // Get the conversation ID from localStorage
-    const conversationId1 = await page.evaluate(() =>
-      localStorage.getItem("basic-chat-conversation-id"),
-    );
+    // Get the namespaced active thread ID from the shared sidebar.
+    const activeThread = page.getByTestId("thread-item").filter({ hasText: "Active" });
+    const conversationId1 = await activeThread.getAttribute("data-thread-id");
     expect(conversationId1).toBeTruthy();
-    expect(conversationId1!.length).toBeGreaterThan(0);
+    expect(conversationId1!.startsWith("basic:")).toBe(true);
 
     // Refresh the page
     await page.reload({ waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Basic Chat" })).toBeVisible();
 
-    // Verify the same conversation ID persists
-    const conversationId2 = await page.evaluate(() =>
-      localStorage.getItem("basic-chat-conversation-id"),
-    );
+    // Verify the same namespaced conversation persists.
+    const conversationId2 = await page
+      .getByTestId("thread-item")
+      .filter({ hasText: "Active" })
+      .getAttribute("data-thread-id");
     expect(conversationId2).toBe(conversationId1);
 
     console.log(`Conversation ID persisted across refresh: ${conversationId1}`);
@@ -386,33 +386,35 @@ test.describe("Durable Chat - Reconnection", () => {
     // Navigate to basic chat
     await page.goto("/chat/basic/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Basic Chat" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
-    // Get the initial conversation ID
-    const conversationId1 = await page.evaluate(() =>
-      localStorage.getItem("basic-chat-conversation-id"),
-    );
+    // Get the initial namespaced conversation ID.
+    const conversationId1 = await page
+      .getByTestId("thread-item")
+      .filter({ hasText: "Active" })
+      .getAttribute("data-thread-id");
     expect(conversationId1).toBeTruthy();
 
     // Send a message and wait for response
     const input = page.getByPlaceholder("Type a message...");
     await input.pressSequentially("Say hello", { delay: 10 });
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
-    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 120000 });
     await expect(page.getByText("2 messages")).toBeVisible({ timeout: 5000 });
 
     // Clear history
-    await page.getByRole("button", { name: "Clear History" }).click();
+    await page.getByTestId("thread-create").click();
 
     // Wait for page to reload
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: "Basic Chat" })).toBeVisible();
 
-    // Verify a new conversation ID was generated
-    const conversationId2 = await page.evaluate(() =>
-      localStorage.getItem("basic-chat-conversation-id"),
-    );
+    // Verify a new namespaced conversation ID was generated.
+    const conversationId2 = await page
+      .getByTestId("thread-item")
+      .filter({ hasText: "Active" })
+      .getAttribute("data-thread-id");
     expect(conversationId2).toBeTruthy();
     expect(conversationId2).not.toBe(conversationId1);
 

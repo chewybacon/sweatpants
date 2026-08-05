@@ -127,7 +127,7 @@ async function waitForAdditionalBookingConfirmation(
   previousConfirmationCount: number,
 ): Promise<number> {
   console.log(`${label}: waiting for booking confirmation`);
-  await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 60000 });
+  await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 60000 });
   await expect
     .poll(async () => confirmationMessages(page).count(), {
       message: `${label}: expected another booking confirmation message`,
@@ -158,9 +158,9 @@ test.describe("book_flight Plugin Tool", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chat/flight/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Flight Booking" })).toBeVisible();
-    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
-    // Click input to ensure React is hydrated
-    await page.getByPlaceholder("Type a message...").click();
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
+    await page.getByTestId("thread-create").click();
+    await expect(page.getByPlaceholder("Type a message...")).toBeEnabled({ timeout: 15000 });
   });
 
   // =============================================================================
@@ -186,7 +186,7 @@ test.describe("book_flight Plugin Tool", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for streaming to start
-    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 30000 });
 
     // Check for actual error messages (not just 'error' as substring in words like 'cancelled')
     const errorLocator = page.locator(
@@ -213,7 +213,7 @@ test.describe("book_flight Plugin Tool", () => {
       console.log(`Found ${cardCount} flight options`);
     } catch (e) {
       // FlightList didn't appear - check what happened
-      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 30000 });
+      await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 30000 });
 
       const pageContent = await page.content();
       // Check for actual error indicators (not 'cancelled' which contains 'error' as substring)
@@ -261,7 +261,7 @@ test.describe("book_flight Plugin Tool", () => {
 
       console.log("Flight selection successful!");
     } catch (e) {
-      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 30000 });
+      await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 30000 });
       const responseText = await page.locator(".prose").last().textContent();
       console.log("Flight selection flow incomplete. Response:", responseText?.slice(0, 500));
       test.skip(true, "Could not complete flight selection flow");
@@ -287,7 +287,7 @@ test.describe("book_flight Plugin Tool", () => {
       await expect(flightCard).toBeVisible({ timeout: 90000 });
       console.log("FlightList appeared!");
     } catch {
-      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 30000 });
+      await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 30000 });
       test.skip(true, "LLM did not trigger FlightList");
       return;
     }
@@ -366,7 +366,7 @@ test.describe("book_flight Plugin Tool", () => {
 
     if (!confirmed) {
       // Get final response for debugging
-      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 30000 });
+      await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 30000 });
       const finalResponse = await page.locator(".prose").last().textContent();
       console.log("Final response:", finalResponse?.slice(0, 500));
 
