@@ -1,9 +1,35 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import type { Message as ChatMessage } from "@sweatpants/chat-core";
+import type { ChatMessageContent, Message as ChatMessage } from "@sweatpants/chat-core";
 import type {
   PortableModelAssistantBlock,
   PortableModelContextMessage,
+  PortableModelInputBlock,
 } from "@sweatpants/model-provider";
+
+function textContent(content: ChatMessageContent): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  return content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("");
+}
+
+function inputContent(content: ChatMessageContent): string | PortableModelInputBlock[] {
+  if (typeof content === "string") {
+    return content;
+  }
+  return content.flatMap((part): PortableModelInputBlock[] => {
+    if (part.type === "text") {
+      return [{ type: "text", text: part.text }];
+    }
+    if (part.type === "image" && part.source.type === "data") {
+      return [{ type: "image", data: part.source.value, mimeType: part.source.mimeType }];
+    }
+    return [];
+  });
+}
 
 /**
  * Projects canonical Chat Core history once into the provider-owned settled
@@ -21,19 +47,20 @@ export function projectChatHistory(
         return [];
       case "developer":
       case "system":
-        return [{ role: "system", content: message.content }];
+        return [{ role: "system", content: textContent(message.content) }];
       case "user":
-        return [{ role: "user", content: message.content }];
+        return [{ role: "user", content: inputContent(message.content) }];
       case "reasoning":
         return [
           {
             role: "assistant",
-            content: [{ type: "thinking", text: message.content }],
+            content: [{ type: "thinking", text: textContent(message.content) }],
           },
         ];
       case "assistant": {
+        const assistantText = textContent(message.content);
         const content: PortableModelAssistantBlock[] = [
-          ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
+          ...(assistantText ? [{ type: "text" as const, text: assistantText }] : []),
           ...(message.tool_calls ?? []).map((call) => ({
             type: "toolCall" as const,
             toolCall: {
@@ -63,7 +90,7 @@ export function projectChatHistory(
             role: "tool",
             tool_call_id: message.tool_call_id,
             name: message.name,
-            content: message.content,
+            content: inputContent(message.content),
             isError: message.isError === true,
           },
         ];

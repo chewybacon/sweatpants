@@ -139,7 +139,9 @@ async function invokeStructuredChild(binding: Binding, posture: Posture): Promis
       },
       function* (s) {
         const conversation = s.conversation();
-        const turn = yield* conversation.send(`Delegate train selection using ${posture}`);
+        const turn = yield* conversation.send({
+          text: `Delegate train selection using ${posture}`,
+        });
         const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
         yield* outer.respond.toolCalls([
           {

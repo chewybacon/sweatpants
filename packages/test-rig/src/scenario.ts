@@ -1,4 +1,5 @@
 import { call, run, type Operation } from "effection";
+import type { UserMessageInput } from "@sweatpants/chat-client";
 import type { AgUiEvent, AgUiFrame } from "./ag-ui.ts";
 import type {
   ChatFetch,
@@ -34,7 +35,7 @@ import type { TestRig } from "./rig-types.ts";
  * ```ts
  * await scenario(rig, function* (s) {
  *   const conv = s.conversation();
- *   const turn = yield* conv.send("Book NYC to LAX.");
+ *   const turn = yield* conv.send({ text: "Book NYC to LAX." });
  *
  *   const first = yield* s.model.request();
  *   yield* first.respond.toolCalls([{ id, name, arguments: { ... } }]);
@@ -134,10 +135,10 @@ export interface ScriptTurn {
 export interface ScriptConversation {
   readonly conversationId: string;
   snapshot(): ChatSnapshot;
-  /** Send a user message, starting a turn. Fails if a turn is already active. */
-  send(message: string): Operation<ScriptTurn>;
-  /** Cancel-on-send: replace the active turn with a new user message. */
-  supersede(message: string): Operation<ScriptTurn>;
+  /** Send one message using the exact ChatClient.sendMessage input contract. */
+  send(message: UserMessageInput): Operation<ScriptTurn>;
+  /** Cancel-on-send using the same ChatClient.sendMessage input contract. */
+  supersede(message: UserMessageInput): Operation<ScriptTurn>;
   /** Recreate the client session, retaining durable conversation identity. */
   reopen(): Operation<ScriptConversation>;
   /** Attach a new turn handle to one durable elicitation recovered by reopen(). */

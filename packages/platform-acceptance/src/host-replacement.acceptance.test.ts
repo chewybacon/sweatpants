@@ -59,7 +59,7 @@ async function runScenario(binding: Binding): Promise<void> {
       const conversation = s.conversation({
         initialToolChoice: "required",
       });
-      const turn = yield* conversation.send("HOST_REPLACEMENT_DURABLE_TURN_V1");
+      const turn = yield* conversation.send({ text: "HOST_REPLACEMENT_DURABLE_TURN_V1" });
 
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([

@@ -147,7 +147,7 @@ async function runDurableSelectionOrder(binding: Binding): Promise<void> {
     function* (s) {
       const conversation = s.conversation({ initialToolChoice: "required" });
       const firstPrompt = "DURABLE_ORDER_TURN_1 Select an option.";
-      const firstTurn = yield* conversation.send(firstPrompt);
+      const firstTurn = yield* conversation.send({ text: firstPrompt });
       const initial = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* initial.respond.toolCalls([
         {
@@ -181,7 +181,7 @@ async function runDurableSelectionOrder(binding: Binding): Promise<void> {
       expect(latestElicit(durableRefreshed, "chooseOption").state).toBe("responded");
 
       const secondPrompt = "DURABLE_ORDER_TURN_2 Select another option.";
-      const secondTurn = yield* durableReopened.send(secondPrompt);
+      const secondTurn = yield* durableReopened.send({ text: secondPrompt });
       const secondInitial = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* secondInitial.respond.toolCalls([
         {
@@ -225,7 +225,7 @@ async function runOrdinaryBookingOrder(binding: Binding): Promise<void> {
     function* (s) {
       const conversation = s.conversation({ initialToolChoice: "required" });
       const firstPrompt = "ORDER_TURN_1 Book NYC to LAX.";
-      const firstTurn = yield* conversation.send(firstPrompt);
+      const firstTurn = yield* conversation.send({ text: firstPrompt });
       const initial = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* initial.respond.toolCalls([
         {
@@ -273,7 +273,7 @@ async function runOrdinaryBookingOrder(binding: Binding): Promise<void> {
       expect(latestElicit(refreshed, "pickSeat").state).toBe("responded");
 
       const secondPrompt = "ORDER_TURN_2 Book NYC to LAX again.";
-      const secondTurn = yield* reopened.send(secondPrompt);
+      const secondTurn = yield* reopened.send({ text: secondPrompt });
       const secondInitial = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* secondInitial.respond.toolCalls([
         {

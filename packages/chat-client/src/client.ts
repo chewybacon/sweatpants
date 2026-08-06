@@ -239,19 +239,6 @@ function defaultPipelineFactory(
   return () => createPipeline(config);
 }
 
-function textFromInput(input: UserMessageInput): string {
-  if ("text" in input) {
-    return input.text;
-  }
-  return input.parts
-    .filter(
-      (part): part is { readonly type: "text"; readonly text: string } =>
-        part.type === "text" && typeof part.text === "string",
-    )
-    .map((part) => part.text)
-    .join("");
-}
-
 function lastRegeneratableMessageId<TLocalPart extends ChatLocalPart>(
   messages: readonly ChatMessage<TLocalPart>[],
 ): string | undefined {
@@ -268,7 +255,7 @@ function createUserWire(input: UserMessageInput): Extract<ChatRequestMessage, { 
   return {
     id: input.id ?? crypto.randomUUID(),
     role: "user",
-    content: textFromInput(input),
+    content: "text" in input ? input.text : [...input.parts],
   };
 }
 

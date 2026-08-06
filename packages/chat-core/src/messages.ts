@@ -6,6 +6,7 @@
  * Settled decoded tool calls are owned by `@sweatpants/model-provider`; Chat
  * Core carries that producer-established representation unchanged.
  */
+import type { InputContentPart } from "@ag-ui/core";
 import type { ToolCall } from "@sweatpants/model-provider";
 import type { TokenUsage } from "./core-types.ts";
 
@@ -17,10 +18,12 @@ import type { TokenUsage } from "./core-types.ts";
  * Universal message interface that all chat providers must support.
  * This provides a common contract for message passing between layers.
  */
+export type ChatMessageContent = string | InputContentPart[];
+
 export interface Message {
   id: string;
   role: "developer" | "system" | "user" | "assistant" | "tool" | "activity" | "reasoning";
-  content: string;
+  content: ChatMessageContent;
   partial?: boolean;
   tool_calls?: ToolCall[];
   tool_call_id?: string;

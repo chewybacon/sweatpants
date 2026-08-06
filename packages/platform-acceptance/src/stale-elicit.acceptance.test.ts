@@ -85,7 +85,9 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
     },
     function* (s) {
       const conversation = s.conversation({ initialToolChoice: "required" });
-      const turn = yield* conversation.send(`STALE_ELICIT_${settlement.toUpperCase()}_V1`);
+      const turn = yield* conversation.send({
+        text: `STALE_ELICIT_${settlement.toUpperCase()}_V1`,
+      });
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {

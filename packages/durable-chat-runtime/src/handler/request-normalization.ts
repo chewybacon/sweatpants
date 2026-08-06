@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { CrankError } from "@sweatpants/durable-execution";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
+import type { ChatMessageContent } from "@sweatpants/chat-core";
 import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
 import type { Json } from "@sweatpants/foundation";
 import type { OpenInterruptRecord } from "../interrupts/index.ts";
@@ -32,6 +33,53 @@ function parseToolArguments(value: Json | string): Json {
   }
 }
 
+function isMultimodalPart(value: unknown): boolean {
+  if (!isRecord(value) || typeof value["type"] !== "string") {
+    return false;
+  }
+  if (value["type"] === "text") {
+    return typeof value["text"] === "string";
+  }
+  if (!["image", "audio", "video", "document"].includes(value["type"])) {
+    return false;
+  }
+  const source = value["source"];
+  if (
+    !isRecord(source) ||
+    typeof source["type"] !== "string" ||
+    typeof source["value"] !== "string"
+  ) {
+    return false;
+  }
+  if (source["type"] === "data" && typeof source["mimeType"] !== "string") {
+    return false;
+  }
+  if (source["type"] !== "data" && source["type"] !== "url") {
+    return false;
+  }
+  return value["metadata"] === undefined || z.json().safeParse(value["metadata"]).success;
+}
+
+function normalizeTextContent(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  return value === undefined ? "" : JSON.stringify(value);
+}
+
+function normalizeUserContent(value: unknown): ChatMessageContent {
+  if (typeof value === "string" || value === undefined) {
+    return value ?? "";
+  }
+  if (!Array.isArray(value)) {
+    return JSON.stringify(value);
+  }
+  if (value.length > 64 || !value.every(isMultimodalPart)) {
+    throw new Error("Invalid multimodal user message content");
+  }
+  return value as ChatMessageContent;
+}
+
 function normalizeIncomingMessages(
   messages: readonly z.infer<typeof rawMessageSchema>[],
 ): ChatRequestBody["messages"] {
@@ -48,11 +96,9 @@ function normalizeIncomingMessages(
     const role = message.role;
     const id = message.id && message.id.length > 0 ? message.id : `${role}:${index}`;
     const content =
-      typeof message.content === "string"
-        ? message.content
-        : message.content === undefined
-          ? ""
-          : JSON.stringify(message.content);
+      role === "user"
+        ? normalizeUserContent(message.content)
+        : normalizeTextContent(message.content);
 
     if (role === "assistant") {
       const toolCalls = message.tool_calls ?? message.toolCalls ?? [];
