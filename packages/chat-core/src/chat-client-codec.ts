@@ -11,6 +11,8 @@ import type {
   JsonPatchOperation,
   PublicActivityData,
   PublicActivityNode,
+  StructuredOutputCompleteEvent,
+  StructuredOutputStartEvent,
   SweatpantsPublicActivity,
 } from "./chat-client-types.ts";
 
@@ -140,6 +142,57 @@ function assertKeys(
       activityInvalid(`unknown field ${key}`, `${path}.${key}`);
     }
   }
+}
+
+function assertEventKeys(
+  input: Record<string, unknown>,
+  allowed: readonly string[],
+  path: string,
+): void {
+  for (const key of Object.keys(input)) {
+    if (!allowed.includes(key)) {
+      invalid(`unknown field ${key}`, `${path}.${key}`);
+    }
+  }
+}
+
+function decodeStructuredOutputStart(
+  base: ChatStreamEvent,
+  input: Record<string, unknown>,
+): StructuredOutputStartEvent {
+  const value = record(input["value"], "$.value");
+  assertEventKeys(value, ["messageId"], "$.value");
+  const messageId = string(value["messageId"], "$.value.messageId");
+  return {
+    ...(base as StructuredOutputStartEvent),
+    name: "structured-output.start",
+    value: { messageId },
+  };
+}
+
+function decodeStructuredOutputComplete(
+  base: ChatStreamEvent,
+  input: Record<string, unknown>,
+): StructuredOutputCompleteEvent {
+  const value = record(input["value"], "$.value");
+  assertEventKeys(value, ["messageId", "object", "raw", "reasoning"], "$.value");
+  const messageId =
+    value["messageId"] === undefined ? undefined : string(value["messageId"], "$.value.messageId");
+  const raw = string(value["raw"], "$.value.raw");
+  const reasoning = value["reasoning"];
+  if (reasoning !== undefined && typeof reasoning !== "string") {
+    invalid("expected a string", "$.value.reasoning");
+  }
+  return {
+    ...(base as StructuredOutputCompleteEvent),
+    name: "structured-output.complete",
+    value: {
+      ...(messageId !== undefined ? { messageId } : {}),
+      object: json(value["object"], "$.value.object"),
+      raw,
+      ...(reasoning !== undefined ? { reasoning } : {}),
+    },
+  };
 }
 
 function parseDescriptor(value: unknown, path: string): PortableSchemaDescriptor {
@@ -458,6 +511,14 @@ export function decodeChatStreamEvent(value: unknown): ChatStreamEvent {
   }
   if (type === EventType.ACTIVITY_DELTA) {
     return decodeActivityDelta(input);
+  }
+  if (type === EventType.CUSTOM) {
+    if (parsed.data.name === "structured-output.start") {
+      return decodeStructuredOutputStart(parsed.data, input);
+    }
+    if (parsed.data.name === "structured-output.complete") {
+      return decodeStructuredOutputComplete(parsed.data, input);
+    }
   }
   return parsed.data;
 }

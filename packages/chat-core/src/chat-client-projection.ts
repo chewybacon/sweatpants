@@ -1,5 +1,6 @@
 import { EventType } from "@ag-ui/core";
-import { canonicalJson, type Json } from "@sweatpants/foundation";
+import { parse as parsePartialJson } from "partial-json";
+import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
 import { emptyFrame, type Frame } from "./frame.ts";
 import type {
   ActivityDeltaEvent,
@@ -19,6 +20,7 @@ import type {
   PublicElicitActivityNode,
   PublicToolActivityNode,
   ReasoningPart,
+  StructuredOutputPart,
   TextPart,
   ToolCallPart,
 } from "./chat-client-types.ts";
@@ -50,12 +52,25 @@ interface InternalTextPart {
   readonly sequence: number;
 }
 
+interface InternalStructuredOutputPart {
+  readonly kind: "structured-output";
+  readonly id: string;
+  readonly status: StructuredOutputPart["status"];
+  readonly raw: string;
+  readonly partial?: Json;
+  readonly data?: Json;
+  readonly errorText?: string;
+  readonly sequence: number;
+}
+
+type InternalMessagePart = InternalTextPart | InternalStructuredOutputPart;
+
 interface InternalMessage {
   readonly id: string;
   readonly role: ChatMessage["role"];
   readonly metadata?: Readonly<Record<string, Json>>;
   readonly nodeId: string;
-  readonly parts: readonly InternalTextPart[];
+  readonly parts: readonly InternalMessagePart[];
 }
 
 interface InternalNode {
@@ -91,6 +106,7 @@ export interface ChatProjectionState {
   readonly attachedChildren: ReadonlyMap<string, readonly string[]>;
   readonly pendingChildren: ReadonlyMap<string, readonly string[]>;
   readonly messageOrder: readonly string[];
+  readonly structuredOutputByMessageId: ReadonlyMap<string, string>;
   readonly nextSequence: number;
   readonly error: Error | null;
 }
@@ -106,6 +122,7 @@ export function createChatProjection(): ChatProjectionState {
     attachedChildren: new Map(),
     pendingChildren: new Map(),
     messageOrder: [],
+    structuredOutputByMessageId: new Map(),
     nextSequence: 0,
     error: null,
   };
@@ -521,7 +538,9 @@ function contentPart(
       break;
     }
   }
-  if (index < 0 || parts[index]!.state === "done") {
+  const existing = index >= 0 ? parts[index] : undefined;
+  const existingText = existing?.kind === "structured-output" ? undefined : existing;
+  if (index < 0 || existing?.kind === "structured-output" || existingText?.state === "done") {
     parts.push({
       kind,
       id: `${messageId}:${kind}:${next.nextSequence}`,
@@ -535,6 +554,12 @@ function contentPart(
     next = { ...next, nextSequence: next.nextSequence + 1 };
   }
   const current = parts[index]!;
+  if (current.kind === "structured-output") {
+    throw new ChatProjectionError(
+      "chat_activity_conflict",
+      `Text content for message "${messageId}" points at structured output`,
+    );
+  }
   parts[index] = { ...current, text: current.text + delta };
   return updateMessage(next, messageId, (value) => ({ ...value, parts }));
 }
@@ -549,7 +574,8 @@ function startContent(
   const message = next.messageById.get(messageId)!;
   const parts = [...message.parts];
   const last = parts[parts.length - 1];
-  if (!last || last.kind !== kind || last.state === "done") {
+  const lastDone = last !== undefined && last.kind !== "structured-output" && last.state === "done";
+  if (!last || last.kind !== kind || lastDone) {
     parts.push({
       kind,
       id: `${messageId}:${kind}:${next.nextSequence}`,
@@ -575,6 +601,190 @@ function endContent(
     );
     return { ...message, parts };
   });
+}
+
+function parseStructuredOutputPartial(raw: string): Json | undefined {
+  if (raw.trim().length === 0) {
+    return undefined;
+  }
+  try {
+    return assertJson(parsePartialJson(raw));
+  } catch {
+    return undefined;
+  }
+}
+
+function structuredOutputPart(
+  state: ChatProjectionState,
+  messageId: string,
+):
+  | {
+      readonly message: InternalMessage;
+      readonly index: number;
+      readonly part: InternalStructuredOutputPart;
+    }
+  | undefined {
+  const partId = state.structuredOutputByMessageId.get(messageId);
+  if (!partId) {
+    return undefined;
+  }
+  const message = state.messageById.get(messageId);
+  if (!message) {
+    return undefined;
+  }
+  const index = message.parts.findIndex(
+    (part): part is InternalStructuredOutputPart =>
+      part.kind === "structured-output" && part.id === partId,
+  );
+  const part = index >= 0 ? message.parts[index] : undefined;
+  return part?.kind === "structured-output" ? { message, index, part } : undefined;
+}
+
+function startStructuredOutput(state: ChatProjectionState, messageId: string): ChatProjectionState {
+  let next = ensureMessage(state, messageId, "assistant");
+  const active = structuredOutputPart(next, messageId);
+  if (active?.part.status === "streaming") {
+    return next;
+  }
+  const message = next.messageById.get(messageId)!;
+  const parts = [...message.parts];
+  const last = parts[parts.length - 1];
+  if (last?.kind === "text" && last.state === "streaming" && last.text.length === 0) {
+    parts.pop();
+  }
+  const part: InternalStructuredOutputPart = {
+    kind: "structured-output",
+    id: `${messageId}:structured-output:${next.nextSequence}`,
+    status: "streaming",
+    raw: "",
+    sequence: next.nextSequence,
+  };
+  parts.push(part);
+  const structuredOutputByMessageId = mapCopy(next.structuredOutputByMessageId);
+  structuredOutputByMessageId.set(messageId, part.id);
+  next = {
+    ...next,
+    structuredOutputByMessageId,
+    nextSequence: next.nextSequence + 1,
+  };
+  return updateMessage(next, messageId, (value) => ({ ...value, parts }));
+}
+
+function appendStructuredOutput(
+  state: ChatProjectionState,
+  messageId: string,
+  delta: string,
+): ChatProjectionState {
+  const active = structuredOutputPart(state, messageId);
+  if (!active) {
+    throw new ChatProjectionError(
+      "chat_activity_parent_missing",
+      `Structured output for message "${messageId}" has no start event`,
+    );
+  }
+  if (active.part.status !== "streaming") {
+    throw new ChatProjectionError(
+      "chat_activity_conflict",
+      `Structured output for message "${messageId}" received content after ${active.part.status}`,
+    );
+  }
+  const raw = active.part.raw + delta;
+  const partial = parseStructuredOutputPartial(raw);
+  return updateMessage(state, messageId, (message) => {
+    const parts = [...message.parts];
+    parts[active.index] = {
+      ...active.part,
+      raw,
+      ...(partial !== undefined ? { partial } : {}),
+    };
+    return { ...message, parts };
+  });
+}
+
+function completeStructuredOutput(
+  state: ChatProjectionState,
+  messageId: string,
+  value: { readonly object: Json; readonly raw: string },
+): ChatProjectionState {
+  let next = ensureMessage(state, messageId, "assistant");
+  const active = structuredOutputPart(next, messageId);
+  const partial = parseStructuredOutputPartial(value.raw) ?? value.object;
+  if (active?.part.status === "complete") {
+    if (
+      canonicalJson(active.part.data) !== canonicalJson(value.object) ||
+      active.part.raw !== value.raw
+    ) {
+      throw new ChatProjectionError(
+        "chat_activity_conflict",
+        `Structured output for message "${messageId}" was completed with conflicting data`,
+      );
+    }
+    return next;
+  }
+  if (active && active.part.status === "error") {
+    throw new ChatProjectionError(
+      "chat_activity_conflict",
+      `Structured output for message "${messageId}" was completed after an error`,
+    );
+  }
+  const message = next.messageById.get(messageId)!;
+  const part: InternalStructuredOutputPart = {
+    kind: "structured-output",
+    id: active?.part.id ?? `${messageId}:structured-output:${next.nextSequence}`,
+    status: "complete",
+    raw: value.raw,
+    partial,
+    data: value.object,
+    sequence: active?.part.sequence ?? next.nextSequence,
+  };
+  const parts = [...message.parts];
+  if (active) {
+    parts[active.index] = part;
+  } else {
+    parts.push(part);
+    next = { ...next, nextSequence: next.nextSequence + 1 };
+  }
+  const structuredOutputByMessageId = mapCopy(next.structuredOutputByMessageId);
+  structuredOutputByMessageId.delete(messageId);
+  next = { ...next, structuredOutputByMessageId };
+  return updateMessage(next, messageId, () => ({ ...message, parts }));
+}
+
+function errorStructuredOutput(
+  state: ChatProjectionState,
+  messageId: string,
+  errorText: string,
+): ChatProjectionState {
+  const active = structuredOutputPart(state, messageId);
+  if (!active) {
+    return state;
+  }
+  if (active.part.status === "complete") {
+    return state;
+  }
+  const parts = [...active.message.parts];
+  parts[active.index] = {
+    ...active.part,
+    status: "error",
+    errorText,
+  };
+  const structuredOutputByMessageId = mapCopy(state.structuredOutputByMessageId);
+  structuredOutputByMessageId.delete(messageId);
+  return updateMessage({ ...state, structuredOutputByMessageId }, messageId, (message) => ({
+    ...message,
+    parts,
+  }));
+}
+
+function errorActiveStructuredOutputs(
+  state: ChatProjectionState,
+  errorText: string,
+): ChatProjectionState {
+  let next = state;
+  for (const messageId of state.structuredOutputByMessageId.keys()) {
+    next = errorStructuredOutput(next, messageId, errorText);
+  }
+  return next;
 }
 
 function toolNode(
@@ -843,8 +1053,15 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
   message: ChatMessage<TLocalPart>,
 ): ChatRequestMessage {
   const text = message.parts
-    .filter((part): part is TextPart => part.type === "text" && "text" in part)
-    .map((part) => part.text)
+    .flatMap((part) => {
+      if (part.type === "text") {
+        return [(part as TextPart).text];
+      }
+      if (part.type === "structured-output") {
+        return [(part as StructuredOutputPart).raw];
+      }
+      return [];
+    })
     .join("");
   const toolCalls = message.parts
     .filter(
@@ -997,13 +1214,18 @@ export function foldChatStreamEvent(
       return next;
     }
     case EventType.TEXT_MESSAGE_START: {
+      if (state.structuredOutputByMessageId.has(event.messageId)) {
+        return state;
+      }
       const role = chatRole(event.role);
       return role === undefined
         ? state
         : startContent(ensureMessage(state, event.messageId, role), event.messageId, "text");
     }
     case EventType.TEXT_MESSAGE_CONTENT:
-      return contentPart(state, event.messageId, "text", event.delta);
+      return state.structuredOutputByMessageId.has(event.messageId)
+        ? appendStructuredOutput(state, event.messageId, event.delta)
+        : contentPart(state, event.messageId, "text", event.delta);
     case EventType.TEXT_MESSAGE_END:
       return endContent(state, event.messageId, "text");
     case EventType.REASONING_MESSAGE_START:
@@ -1016,6 +1238,35 @@ export function foldChatStreamEvent(
       return contentPart(state, event.messageId, "reasoning", event.delta);
     case EventType.REASONING_MESSAGE_END:
       return endContent(state, event.messageId, "reasoning");
+    case EventType.CUSTOM: {
+      if (event.name === "structured-output.start") {
+        const value = event.value as { readonly messageId: string };
+        return startStructuredOutput(state, value.messageId);
+      }
+      if (event.name === "structured-output.complete") {
+        const value = event.value as {
+          readonly messageId?: string;
+          readonly object: Json;
+          readonly raw: string;
+        };
+        const messageId = value.messageId ?? latestMessageId(state, "assistant");
+        if (!messageId) {
+          throw new ChatProjectionError(
+            "chat_activity_parent_missing",
+            "Structured output complete event has no assistant message",
+          );
+        }
+        return completeStructuredOutput(state, messageId, value);
+      }
+      return state;
+    }
+    case EventType.RUN_ERROR:
+      return errorActiveStructuredOutputs(state, event.message);
+    case EventType.RUN_FINISHED:
+      return errorActiveStructuredOutputs(
+        state,
+        "Structured output stream ended before completion",
+      );
     case EventType.TOOL_CALL_START:
       return toolNode(state, event.toolCallId, event.toolCallName, event.parentMessageId);
     case EventType.TOOL_CALL_ARGS: {
@@ -1112,24 +1363,34 @@ export function transitionChatProjection(
     event.type === EventType.TEXT_MESSAGE_CONTENT ||
     event.type === EventType.REASONING_MESSAGE_CONTENT
   ) {
-    actions.push({
-      type: "text-changed",
-      messageId: event.messageId,
-      kind: event.type === EventType.TEXT_MESSAGE_CONTENT ? "text" : "reasoning",
-      delta: event.delta,
-      done: false,
-    });
+    const structuredOutput =
+      event.type === EventType.TEXT_MESSAGE_CONTENT &&
+      state.structuredOutputByMessageId.has(event.messageId);
+    if (!structuredOutput) {
+      actions.push({
+        type: "text-changed",
+        messageId: event.messageId,
+        kind: event.type === EventType.TEXT_MESSAGE_CONTENT ? "text" : "reasoning",
+        delta: event.delta,
+        done: false,
+      });
+    }
   } else if (
     event.type === EventType.TEXT_MESSAGE_END ||
     event.type === EventType.REASONING_MESSAGE_END
   ) {
-    actions.push({
-      type: "text-changed",
-      messageId: event.messageId,
-      kind: event.type === EventType.TEXT_MESSAGE_END ? "text" : "reasoning",
-      delta: "",
-      done: true,
-    });
+    const structuredOutput =
+      event.type === EventType.TEXT_MESSAGE_END &&
+      state.structuredOutputByMessageId.has(event.messageId);
+    if (!structuredOutput) {
+      actions.push({
+        type: "text-changed",
+        messageId: event.messageId,
+        kind: event.type === EventType.TEXT_MESSAGE_END ? "text" : "reasoning",
+        delta: "",
+        done: true,
+      });
+    }
   }
 
   let elicit: PublicElicitActivityNode | undefined;
@@ -1168,7 +1429,7 @@ export function updateTextPartFrame(
   return updateMessage(state, messageId, (message) => ({
     ...message,
     parts: message.parts.map((part) =>
-      part.id === partId
+      (part.kind === "text" || part.kind === "reasoning") && part.id === partId
         ? {
             ...part,
             frame,
@@ -1310,23 +1571,33 @@ function materializeMessage<TLocalPart extends { readonly type: string; readonly
   const parts = [
     ...message.parts.map((part) => ({
       value:
-        part.kind === "text"
+        part.kind === "structured-output"
           ? ({
-              type: "text" as const,
+              type: "structured-output" as const,
               id: part.id,
-              text: part.text,
-              state: part.state,
-              frame: part.frame,
-              rendered: part.rendered,
-            } satisfies TextPart)
-          : ({
-              type: "reasoning" as const,
-              id: part.id,
-              text: part.text,
-              state: part.state,
-              frame: part.frame,
-              rendered: part.rendered,
-            } satisfies ReasoningPart),
+              status: part.status,
+              raw: part.raw,
+              ...(part.partial !== undefined ? { partial: part.partial } : {}),
+              ...(part.data !== undefined ? { data: part.data } : {}),
+              ...(part.errorText !== undefined ? { errorText: part.errorText } : {}),
+            } satisfies StructuredOutputPart)
+          : part.kind === "text"
+            ? ({
+                type: "text" as const,
+                id: part.id,
+                text: part.text,
+                state: part.state,
+                frame: part.frame,
+                rendered: part.rendered,
+              } satisfies TextPart)
+            : ({
+                type: "reasoning" as const,
+                id: part.id,
+                text: part.text,
+                state: part.state,
+                frame: part.frame,
+                rendered: part.rendered,
+              } satisfies ReasoningPart),
       sequence: part.sequence,
     })),
     ...nodeParts,
@@ -1384,6 +1655,8 @@ export function findTextParts(
   state: ChatProjectionState,
 ): readonly { messageId: string; part: InternalTextPart }[] {
   return [...state.messageById.values()].flatMap((message) =>
-    message.parts.map((part) => ({ messageId: message.id, part })),
+    message.parts
+      .filter((part): part is InternalTextPart => part.kind === "text" || part.kind === "reasoning")
+      .map((part) => ({ messageId: message.id, part })),
   );
 }

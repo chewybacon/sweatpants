@@ -20,6 +20,7 @@ export type MessagePart = ReactChatPart;
 export type ChatPart = ReactChatPart;
 export type TextPart = Extract<ReactChatPart, { type: "text" }>;
 export type ReasoningPart = Extract<ReactChatPart, { type: "reasoning" }>;
+export type StructuredOutputPart = Extract<ReactChatPart, { type: "structured-output" }>;
 export type ToolCallPart = Extract<ReactChatPart, { type: "tool-call" }>;
 export type ChatToolCall = ToolCallPart;
 

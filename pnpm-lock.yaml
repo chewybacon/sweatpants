@@ -1301,6 +1301,9 @@ importers:
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
+      partial-json:
+        specifier: 0.1.7
+        version: 0.1.7
       zod:
         specifier: 'catalog:'
         version: 4.1.13
