@@ -19,7 +19,7 @@ async function runPendingElicitReconnect(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation({ initialToolChoice: "required" });
-      const turn = yield* conversation.send("PENDING_ELICIT_RECONNECT_V1");
+      const turn = yield* conversation.send({ text: "PENDING_ELICIT_RECONNECT_V1" });
 
       const initial = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* initial.respond.toolCalls([

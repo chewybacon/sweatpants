@@ -11,7 +11,7 @@
  */
 
 // Core message types
-export type { Message, ChatEvent, ChatResult } from "./messages.ts";
+export type { Message, ChatEvent, ChatResult, ChatMessageContent } from "./messages.ts";
 
 // Headless client protocol and nested message model. These names are aliased
 // here because the pre-release legacy message authoring types remain internal
@@ -24,6 +24,11 @@ export type {
   TextPart as ClientTextPart,
   ReasoningPart as ClientReasoningPart,
   StructuredOutputPart as ClientStructuredOutputPart,
+  ImagePart as ClientImagePart,
+  AudioPart as ClientAudioPart,
+  VideoPart as ClientVideoPart,
+  DocumentPart as ClientDocumentPart,
+  MediaPart as ClientMediaPart,
   StructuredOutputStartEvent,
   StructuredOutputCompleteEvent,
   ToolCallPart as ClientToolCallPart,
@@ -39,6 +44,11 @@ export type {
   ChatQueueOption,
   ChatSnapshot as ClientChatSnapshot,
   QueuedUserMessage,
+  UserInputTextPart,
+  UserInputDataSource,
+  UserInputUrlSource,
+  UserInputSource,
+  UserInputMediaPart,
   UserInputPart,
   UserMessageInput,
   SendMessageOptions,

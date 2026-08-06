@@ -48,6 +48,7 @@ export type ChatPart<TLocalPart extends ChatLocalPart = never> =
   | TextPart
   | ReasoningPart
   | StructuredOutputPart
+  | MediaPart
   | ToolCallPart<TLocalPart>
   | NestedMessagePart<TLocalPart>
   | ActivityPart<TLocalPart>
@@ -81,6 +82,36 @@ export interface StructuredOutputPart {
   readonly data?: Json;
   readonly errorText?: string;
 }
+
+export interface ImagePart {
+  readonly type: "image";
+  readonly id: string;
+  readonly source: UserInputSource;
+  readonly metadata?: Json;
+}
+
+export interface AudioPart {
+  readonly type: "audio";
+  readonly id: string;
+  readonly source: UserInputSource;
+  readonly metadata?: Json;
+}
+
+export interface VideoPart {
+  readonly type: "video";
+  readonly id: string;
+  readonly source: UserInputSource;
+  readonly metadata?: Json;
+}
+
+export interface DocumentPart {
+  readonly type: "document";
+  readonly id: string;
+  readonly source: UserInputSource;
+  readonly metadata?: Json;
+}
+
+export type MediaPart = ImagePart | AudioPart | VideoPart | DocumentPart;
 
 export type StructuredOutputStartEvent = CustomEvent & {
   readonly name: "structured-output.start";
@@ -172,9 +203,32 @@ export interface ChatSnapshot<TMessage extends ChatMessage<ChatLocalPart> = Chat
   readonly queue: readonly QueuedUserMessage[];
 }
 
-export type UserInputPart =
-  | { readonly type: "text"; readonly text: string }
-  | { readonly type: string; readonly [key: string]: Json };
+export interface UserInputTextPart {
+  readonly type: "text";
+  readonly text: string;
+}
+
+export interface UserInputDataSource {
+  readonly type: "data";
+  readonly value: string;
+  readonly mimeType: string;
+}
+
+export interface UserInputUrlSource {
+  readonly type: "url";
+  readonly value: string;
+  readonly mimeType?: string;
+}
+
+export type UserInputSource = UserInputDataSource | UserInputUrlSource;
+
+export interface UserInputMediaPart {
+  readonly type: "image" | "audio" | "video" | "document";
+  readonly source: UserInputSource;
+  readonly metadata?: Json;
+}
+
+export type UserInputPart = UserInputTextPart | UserInputMediaPart;
 
 export type UserMessageInput =
   | {

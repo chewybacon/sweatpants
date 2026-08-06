@@ -34,9 +34,9 @@ async function runInteractiveToolScenario(binding: Binding): Promise<void> {
       const conversation = s.conversation({
         initialToolChoice: "required",
       });
-      const turn = yield* conversation.send(
-        "Book a flight from NYC to LAX using the available tool.",
-      );
+      const turn = yield* conversation.send({
+        text: "Book a flight from NYC to LAX using the available tool.",
+      });
       const outerRequest = yield* s.model.request({
         model: ACCEPTANCE_MODEL_ID,
         stream: true,
@@ -107,7 +107,7 @@ async function runDuplicateElicitScenario(binding: Binding): Promise<void> {
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send("DUPLICATE_ELICIT_V1");
+      const turn = yield* conversation.send({ text: "DUPLICATE_ELICIT_V1" });
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {
@@ -142,7 +142,7 @@ async function runElicitOutcomeScenario(
       const conversation = s.conversation({
         initialToolChoice: "required",
       });
-      const turn = yield* conversation.send(`ELICIT_${action.toUpperCase()}_V1`);
+      const turn = yield* conversation.send({ text: `ELICIT_${action.toUpperCase()}_V1` });
       const outerRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outerRequest.respond.toolCalls([
         {

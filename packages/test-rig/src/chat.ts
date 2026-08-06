@@ -12,6 +12,7 @@ import {
   type ChatInteractionRuntime,
   type ChatSnapshot,
   type ChatStreamEvent,
+  type UserMessageInput,
 } from "@sweatpants/chat-client";
 
 export type ChatFetch = FrameworkChatFetch;
@@ -101,8 +102,10 @@ export interface TurnHandle {
 export interface ConversationHandle {
   readonly conversationId: string;
   snapshot(): ChatSnapshot;
-  send(message: string): TurnHandle;
-  supersede(message: string): TurnHandle;
+  /** Send one message using the exact ChatClient.sendMessage input contract. */
+  send(message: UserMessageInput): TurnHandle;
+  /** Cancel-on-send using the same ChatClient.sendMessage input contract. */
+  supersede(message: UserMessageInput): TurnHandle;
   /** Recreate the headless client while retaining durable conversation identity. */
   reopen(): Promise<ConversationHandle>;
   /** Attach a new turn handle to one durable elicitation recovered by reopen(). */
@@ -471,7 +474,11 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         }
       });
 
-      function startTurn(message: string, supersede: boolean, sendMessage = true): TurnHandle {
+      function startTurn(
+        message: string | UserMessageInput,
+        supersede: boolean,
+        sendMessage = true,
+      ): TurnHandle {
         assertOpen();
         if (activeTurn && !supersede) {
           throw new Error(`Complete active turn ${activeTurn.id} before sending another turn`);
@@ -500,7 +507,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
               }
             }
             if (sendMessage) {
-              await client.sendMessage({ text: message });
+              await client.sendMessage(typeof message === "string" ? { text: message } : message);
             }
           } catch (error) {
             if (activeTurn?.id === turnId) {

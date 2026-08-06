@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import type { ToolCall as InternalToolCall } from "@sweatpants/model-provider";
 import type { Json } from "@sweatpants/foundation";
-import type { Message as InternalMessage } from "../messages.ts";
+import type { ChatMessageContent, Message as InternalMessage } from "../messages.ts";
 
 const jsonObjectSchema = z.record(z.string(), z.json());
 
@@ -60,20 +60,22 @@ export function internalMessageToAgUiMessage(message: InternalMessage): Message 
     if (!message.tool_call_id) {
       throw new Error(`Tool message "${id}" has no settled tool_call_id`);
     }
+    const content = messageContentText(message.content);
     return {
       id,
       role: "tool",
-      content: message.content,
+      content,
       toolCallId: message.tool_call_id,
-      ...(message.isError ? { error: message.content } : {}),
+      ...(message.isError ? { error: content } : {}),
     };
   }
 
   if (message.role === "assistant") {
+    const content = messageContentText(message.content);
     return {
       id,
       role: "assistant",
-      ...(message.content ? { content: message.content } : {}),
+      ...(content ? { content } : {}),
       ...(message.tool_calls?.length ? { toolCalls: message.tool_calls.map(toolCallToAgUi) } : {}),
     };
   }
@@ -83,18 +85,22 @@ export function internalMessageToAgUiMessage(message: InternalMessage): Message 
       id,
       role: "activity",
       activityType: message.activityType ?? "sweatpants:activity",
-      content: parseActivityContent(message.content),
+      content: parseActivityContent(messageContentText(message.content)),
     };
+  }
+
+  if (message.role === "user") {
+    return { id, role: "user", content: message.content } as Message;
   }
 
   return {
     id,
     role: message.role,
-    content: message.content,
-  };
+    content: messageContentText(message.content),
+  } as Message;
 }
 
-function messageContentText(content: Message["content"] | undefined): string {
+function messageContentText(content: ChatMessageContent | undefined): string {
   if (content === undefined || typeof content === "string") {
     return content ?? "";
   }
@@ -166,10 +172,19 @@ export function agUiMessageToInternalMessage(
     };
   }
 
+  if (message.role === "user") {
+    return {
+      id: message.id,
+      role: "user",
+      content: message.content,
+    };
+  }
+
   return {
     id: message.id,
     role: message.role === "developer" ? "system" : message.role,
-    content: messageContentText(message.content),
+    content:
+      typeof message.content === "string" ? message.content : messageContentText(message.content),
   };
 }
 

@@ -30,7 +30,7 @@ async function runHistoryScenario(binding: Binding): Promise<void> {
         initialToolChoice: "required",
       });
       // ── Turn 1: booking with two elicitations and one nested sample ──
-      const turn1 = yield* conv.send("Book NYC to LAX with the available tool.");
+      const turn1 = yield* conv.send({ text: "Book NYC to LAX with the available tool." });
 
       const initial = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* initial.respond.toolCalls([
@@ -57,7 +57,7 @@ async function runHistoryScenario(binding: Binding): Promise<void> {
       yield* turn1.settled();
 
       // ── Turn 2: what history does the framework put on the wire? ──
-      const turn2 = yield* conv.send("FOLLOW_UP_V1 What route did I book?");
+      const turn2 = yield* conv.send({ text: "FOLLOW_UP_V1 What route did I book?" });
       const followUp = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       const history = normalizeResponsesHistory(followUp.body.input);
 

@@ -21,7 +21,9 @@ import type {
   PublicToolActivityNode,
   ReasoningPart,
   StructuredOutputPart,
+  MediaPart,
   TextPart,
+  UserInputPart,
   ToolCallPart,
 } from "./chat-client-types.ts";
 import { decodePublicActivity } from "./chat-client-codec.ts";
@@ -63,7 +65,16 @@ interface InternalStructuredOutputPart {
   readonly sequence: number;
 }
 
-type InternalMessagePart = InternalTextPart | InternalStructuredOutputPart;
+interface InternalMediaPart {
+  readonly kind: "media";
+  readonly id: string;
+  readonly media: MediaPart["type"];
+  readonly source: MediaPart["source"];
+  readonly metadata?: Json;
+  readonly sequence: number;
+}
+
+type InternalMessagePart = InternalTextPart | InternalStructuredOutputPart | InternalMediaPart;
 
 interface InternalMessage {
   readonly id: string;
@@ -539,8 +550,9 @@ function contentPart(
     }
   }
   const existing = index >= 0 ? parts[index] : undefined;
-  const existingText = existing?.kind === "structured-output" ? undefined : existing;
-  if (index < 0 || existing?.kind === "structured-output" || existingText?.state === "done") {
+  const existingText =
+    existing?.kind === "text" || existing?.kind === "reasoning" ? existing : undefined;
+  if (index < 0 || existing?.kind !== kind || existingText?.state === "done") {
     parts.push({
       kind,
       id: `${messageId}:${kind}:${next.nextSequence}`,
@@ -554,7 +566,7 @@ function contentPart(
     next = { ...next, nextSequence: next.nextSequence + 1 };
   }
   const current = parts[index]!;
-  if (current.kind === "structured-output") {
+  if (current.kind === "structured-output" || current.kind === "media") {
     throw new ChatProjectionError(
       "chat_activity_conflict",
       `Text content for message "${messageId}" points at structured output`,
@@ -574,7 +586,10 @@ function startContent(
   const message = next.messageById.get(messageId)!;
   const parts = [...message.parts];
   const last = parts[parts.length - 1];
-  const lastDone = last !== undefined && last.kind !== "structured-output" && last.state === "done";
+  const lastDone =
+    last !== undefined &&
+    (last.kind === "text" || last.kind === "reasoning") &&
+    last.state === "done";
   if (!last || last.kind !== kind || lastDone) {
     parts.push({
       kind,
@@ -1023,6 +1038,115 @@ function activityDelta(state: ChatProjectionState, event: ActivityDeltaEvent): C
   return { ...state, nodes };
 }
 
+function wireMediaPart(value: unknown): UserInputPart | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const part = value as Record<string, unknown>;
+  if (part["type"] === "text" && typeof part["text"] === "string") {
+    return { type: "text", text: part["text"] };
+  }
+  if (
+    (part["type"] !== "image" &&
+      part["type"] !== "audio" &&
+      part["type"] !== "video" &&
+      part["type"] !== "document") ||
+    part["source"] === null ||
+    typeof part["source"] !== "object" ||
+    Array.isArray(part["source"])
+  ) {
+    return undefined;
+  }
+  const source = part["source"] as Record<string, unknown>;
+  if (
+    (source["type"] !== "data" && source["type"] !== "url") ||
+    typeof source["value"] !== "string" ||
+    (source["type"] === "data" && typeof source["mimeType"] !== "string")
+  ) {
+    return undefined;
+  }
+  return {
+    type: part["type"],
+    source: {
+      type: source["type"],
+      value: source["value"],
+      ...(typeof source["mimeType"] === "string" ? { mimeType: source["mimeType"] } : {}),
+    },
+    ...(part["metadata"] !== undefined ? { metadata: assertJson(part["metadata"]) } : {}),
+  } as UserInputPart;
+}
+
+function appendMediaPart(
+  state: ChatProjectionState,
+  messageId: string,
+  input: Exclude<UserInputPart, { readonly type: "text" }>,
+): ChatProjectionState {
+  let next = ensureMessage(state, messageId, "user");
+  const message = next.messageById.get(messageId)!;
+  const duplicate = message.parts.some(
+    (part) =>
+      part.kind === "media" &&
+      canonicalJson({
+        type: part.media,
+        source: part.source,
+        ...(part.metadata !== undefined ? { metadata: part.metadata } : {}),
+      }) === canonicalJson(input),
+  );
+  if (duplicate) {
+    return next;
+  }
+  const media: InternalMediaPart = {
+    kind: "media",
+    id: `${messageId}:${input.type}:${next.nextSequence}`,
+    media: input.type,
+    source: input.source,
+    ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+    sequence: next.nextSequence,
+  };
+  next = { ...next, nextSequence: next.nextSequence + 1 };
+  return updateMessage(next, messageId, (value) => ({ ...value, parts: [...value.parts, media] }));
+}
+
+function appendWireContent(
+  state: ChatProjectionState,
+  messageId: string,
+  role: ChatMessage["role"],
+  value: unknown,
+): ChatProjectionState {
+  if (!Array.isArray(value)) {
+    const text = wireContent(value);
+    if (text === undefined || text.length === 0) {
+      return state;
+    }
+    const message = state.messageById.get(messageId);
+    if (message?.parts.some((part) => part.kind === "text" && part.text === text)) {
+      return state;
+    }
+    let next = startContent(ensureMessage(state, messageId, role), messageId, "text");
+    next = contentPart(next, messageId, "text", text);
+    return endContent(next, messageId, "text");
+  }
+  let next = state;
+  for (const rawPart of value) {
+    const part = wireMediaPart(rawPart);
+    if (!part) {
+      continue;
+    }
+    if (part.type === "text") {
+      const message = next.messageById.get(messageId);
+      if (message?.parts.some((entry) => entry.kind === "text" && entry.text === part.text)) {
+        continue;
+      }
+      next = startContent(ensureMessage(next, messageId, role), messageId, "text");
+      next = contentPart(next, messageId, "text", part.text);
+      next = endContent(next, messageId, "text");
+    } else {
+      next = appendMediaPart(next, messageId, part);
+    }
+  }
+  return next;
+}
+
 function wireContent(value: unknown): string | undefined {
   if (typeof value === "string") {
     return value;
@@ -1063,6 +1187,28 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
       return [];
     })
     .join("");
+  const contentParts: UserInputPart[] = message.parts.flatMap((part): UserInputPart[] => {
+    if (part.type === "text") {
+      return [{ type: "text", text: (part as TextPart).text }];
+    }
+    if (
+      (part.type === "image" ||
+        part.type === "audio" ||
+        part.type === "video" ||
+        part.type === "document") &&
+      "source" in part
+    ) {
+      return [
+        {
+          type: part.type,
+          source: part.source,
+          ...(part.metadata !== undefined ? { metadata: part.metadata } : {}),
+        },
+      ];
+    }
+    return [];
+  });
+  const hasMedia = contentParts.some((part) => part.type !== "text");
   const toolCalls = message.parts
     .filter(
       (part): part is ToolCallPart<TLocalPart> => part.type === "tool-call" && "callId" in part,
@@ -1076,7 +1222,11 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
       },
     }));
   if (message.role === "user" || message.role === "system") {
-    return { id: message.id, role: message.role, content: text };
+    return {
+      id: message.id,
+      role: message.role,
+      content: message.role === "user" && hasMedia ? contentParts : text,
+    } as Extract<ChatRequestMessage, { role: "user" | "system" }>;
   }
   return {
     id: message.id,
@@ -1164,16 +1314,7 @@ export function appendChatWireMessage(
     return state;
   }
   let next = ensureMessage(state, message.id, role);
-  const content = wireContent(message.content);
-  const existing = next.messageById.get(message.id);
-  const alreadyHasContent =
-    content !== undefined &&
-    existing?.parts.some((part) => part.kind === "text" && part.text === content) === true;
-  if (content !== undefined && content.length > 0 && !alreadyHasContent) {
-    next = startContent(next, message.id, "text");
-    next = contentPart(next, message.id, "text", content);
-    next = endContent(next, message.id, "text");
-  }
+  next = appendWireContent(next, message.id, role, message.content);
   if (message.role === "assistant") {
     for (const call of message.toolCalls ?? []) {
       next = toolNode(next, call.id, call.function.name, message.id);
@@ -1581,23 +1722,30 @@ function materializeMessage<TLocalPart extends { readonly type: string; readonly
               ...(part.data !== undefined ? { data: part.data } : {}),
               ...(part.errorText !== undefined ? { errorText: part.errorText } : {}),
             } satisfies StructuredOutputPart)
-          : part.kind === "text"
+          : part.kind === "media"
             ? ({
-                type: "text" as const,
+                type: part.media,
                 id: part.id,
-                text: part.text,
-                state: part.state,
-                frame: part.frame,
-                rendered: part.rendered,
-              } satisfies TextPart)
-            : ({
-                type: "reasoning" as const,
-                id: part.id,
-                text: part.text,
-                state: part.state,
-                frame: part.frame,
-                rendered: part.rendered,
-              } satisfies ReasoningPart),
+                source: part.source,
+                ...(part.metadata !== undefined ? { metadata: part.metadata } : {}),
+              } as MediaPart)
+            : part.kind === "text"
+              ? ({
+                  type: "text" as const,
+                  id: part.id,
+                  text: part.text,
+                  state: part.state,
+                  frame: part.frame,
+                  rendered: part.rendered,
+                } satisfies TextPart)
+              : ({
+                  type: "reasoning" as const,
+                  id: part.id,
+                  text: part.text,
+                  state: part.state,
+                  frame: part.frame,
+                  rendered: part.rendered,
+                } satisfies ReasoningPart),
       sequence: part.sequence,
     })),
     ...nodeParts,

@@ -21,6 +21,10 @@ export type ChatPart = ReactChatPart;
 export type TextPart = Extract<ReactChatPart, { type: "text" }>;
 export type ReasoningPart = Extract<ReactChatPart, { type: "reasoning" }>;
 export type StructuredOutputPart = Extract<ReactChatPart, { type: "structured-output" }>;
+export type ImagePart = Extract<ReactChatPart, { type: "image" }>;
+export type AudioPart = Extract<ReactChatPart, { type: "audio" }>;
+export type VideoPart = Extract<ReactChatPart, { type: "video" }>;
+export type DocumentPart = Extract<ReactChatPart, { type: "document" }>;
 export type ToolCallPart = Extract<ReactChatPart, { type: "tool-call" }>;
 export type ChatToolCall = ToolCallPart;
 
