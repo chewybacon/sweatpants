@@ -1,8 +1,8 @@
 {
     "test:packages": {
-        "passed": 1060,
+        "passed": 1070,
         "skipped": 17,
-        "total": 1084
+        "total": 1094
     },
     "test:tooling": {
         "passed": 27,

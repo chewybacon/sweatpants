@@ -29,6 +29,53 @@ describe("official AG-UI chat codec", () => {
     ).toMatchObject({ type: EventType.CUSTOM, name: "diagnostic" });
   });
 
+  it("validates structured-output lifecycle events", () => {
+    const start = decodeChatStreamEvent({
+      type: EventType.CUSTOM,
+      name: "structured-output.start",
+      value: { messageId: "assistant-1" },
+    });
+    expect(start).toMatchObject({
+      type: EventType.CUSTOM,
+      name: "structured-output.start",
+      value: { messageId: "assistant-1" },
+    });
+
+    const complete = decodeChatStreamEvent({
+      type: EventType.CUSTOM,
+      name: "structured-output.complete",
+      value: {
+        messageId: "assistant-1",
+        object: { title: "Ada" },
+        raw: '{"title":"Ada"}',
+        reasoning: "validated output",
+      },
+    });
+    expect(complete).toMatchObject({
+      type: EventType.CUSTOM,
+      name: "structured-output.complete",
+      value: {
+        messageId: "assistant-1",
+        object: { title: "Ada" },
+        raw: '{"title":"Ada"}',
+        reasoning: "validated output",
+      },
+    });
+    expect(JSON.parse(encodeChatStreamEvent(complete))).toEqual(complete);
+  });
+
+  it.each([
+    ["structured-output.start", { value: {} }],
+    ["structured-output.start", { value: { messageId: "m", extra: true } }],
+    ["structured-output.complete", { value: { object: {}, raw: 4 } }],
+    ["structured-output.complete", { value: { object: {}, raw: "{}", extra: true } }],
+    ["structured-output.complete", { value: { raw: "{}" } }],
+  ] as const)("rejects malformed %s events", (name, fields) => {
+    expect(() => decodeChatStreamEvent({ type: EventType.CUSTOM, name, ...fields })).toThrow(
+      ChatProtocolError,
+    );
+  });
+
   it("rejects deprecated thinking and prototype host-tree events", () => {
     for (const event of [
       { type: "THINKING_START" },

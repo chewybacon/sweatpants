@@ -34,6 +34,7 @@
         "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/tool-runtime": "workspace:*",
         "effection": "catalog:",
+        "partial-json": "0.1.7",
         "zod": "catalog:"
     },
     "devDependencies": {

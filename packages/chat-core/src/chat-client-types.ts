@@ -47,6 +47,7 @@ export interface ChatMessage<TLocalPart extends ChatLocalPart = never> {
 export type ChatPart<TLocalPart extends ChatLocalPart = never> =
   | TextPart
   | ReasoningPart
+  | StructuredOutputPart
   | ToolCallPart<TLocalPart>
   | NestedMessagePart<TLocalPart>
   | ActivityPart<TLocalPart>
@@ -70,6 +71,31 @@ export interface ReasoningPart {
   readonly frame: Frame;
   readonly rendered: string;
 }
+
+export interface StructuredOutputPart {
+  readonly type: "structured-output";
+  readonly id: string;
+  readonly status: "streaming" | "complete" | "error";
+  readonly raw: string;
+  readonly partial?: Json;
+  readonly data?: Json;
+  readonly errorText?: string;
+}
+
+export type StructuredOutputStartEvent = CustomEvent & {
+  readonly name: "structured-output.start";
+  readonly value: { readonly messageId: string };
+};
+
+export type StructuredOutputCompleteEvent = CustomEvent & {
+  readonly name: "structured-output.complete";
+  readonly value: {
+    readonly messageId?: string;
+    readonly object: Json;
+    readonly raw: string;
+    readonly reasoning?: string;
+  };
+};
 
 export interface ToolCallPart<TLocalPart extends ChatLocalPart = never> {
   readonly type: "tool-call";

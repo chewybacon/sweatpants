@@ -6,6 +6,7 @@ import {
   decodeChatStreamEvent,
   foldChatStreamEvent,
   materializeChatMessages,
+  projectChatMessagesToWire,
   transitionChatProjection,
 } from "./index.ts";
 
@@ -89,6 +90,155 @@ describe("headless nested projection", () => {
     expect(materializeChatMessages(transition.projection)[0]?.parts[0]).toMatchObject({
       type: "text",
       text: "hello",
+    });
+  });
+
+  it("projects structured output deltas into one typed message part", () => {
+    let state = createChatProjection();
+    state = foldChatStreamEvent(
+      state,
+      decodeChatStreamEvent({
+        type: EventType.CUSTOM,
+        name: "structured-output.start",
+        value: { messageId: "assistant-structured" },
+      }),
+    );
+    state = foldChatStreamEvent(state, {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "assistant-structured",
+      role: "assistant",
+    });
+    expect(materializeChatMessages(state)[0]?.parts).toHaveLength(1);
+    const delta = decodeChatStreamEvent({
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "assistant-structured",
+      delta: '{"title":"Ada",',
+    });
+    const transition = transitionChatProjection(state, delta);
+    expect(transition.actions).toEqual([]);
+    state = transition.projection;
+    state = foldChatStreamEvent(state, {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "assistant-structured",
+      delta: '"count": 1}',
+    });
+
+    const streaming = materializeChatMessages(state)[0]?.parts[0];
+    expect(streaming).toMatchObject({
+      type: "structured-output",
+      status: "streaming",
+      raw: '{"title":"Ada","count": 1}',
+      partial: { title: "Ada", count: 1 },
+    });
+
+    state = foldChatStreamEvent(
+      state,
+      decodeChatStreamEvent({
+        type: EventType.CUSTOM,
+        name: "structured-output.complete",
+        value: {
+          messageId: "assistant-structured",
+          object: { title: "Ada", count: 1 },
+          raw: '{"title":"Ada","count": 1}',
+        },
+      }),
+    );
+    expect(materializeChatMessages(state)[0]?.parts[0]).toEqual({
+      type: "structured-output",
+      id: "assistant-structured:structured-output:2",
+      status: "complete",
+      raw: '{"title":"Ada","count": 1}',
+      partial: { title: "Ada", count: 1 },
+      data: { title: "Ada", count: 1 },
+    });
+  });
+
+  it("retains structured output parts across assistant turns", () => {
+    let state = createChatProjection();
+    for (const [messageId, title] of [
+      ["assistant-1", "first"],
+      ["assistant-2", "second"],
+    ] as const) {
+      state = foldChatStreamEvent(
+        state,
+        decodeChatStreamEvent({
+          type: EventType.CUSTOM,
+          name: "structured-output.start",
+          value: { messageId },
+        }),
+      );
+      state = foldChatStreamEvent(
+        state,
+        decodeChatStreamEvent({
+          type: EventType.CUSTOM,
+          name: "structured-output.complete",
+          value: {
+            messageId,
+            object: { title },
+            raw: JSON.stringify({ title }),
+          },
+        }),
+      );
+    }
+    expect(materializeChatMessages(state).map((message) => message.id)).toEqual([
+      "assistant-1",
+      "assistant-2",
+    ]);
+    expect(materializeChatMessages(state).map((message) => message.parts[0])).toMatchObject([
+      { type: "structured-output", data: { title: "first" } },
+      { type: "structured-output", data: { title: "second" } },
+    ]);
+  });
+
+  it("marks an incomplete structured output as an error at run termination", () => {
+    let state = foldChatStreamEvent(
+      createChatProjection(),
+      decodeChatStreamEvent({
+        type: EventType.CUSTOM,
+        name: "structured-output.start",
+        value: { messageId: "assistant-error" },
+      }),
+    );
+    state = foldChatStreamEvent(state, {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "assistant-error",
+      delta: '{"title":"truncated"',
+    });
+    state = foldChatStreamEvent(
+      state,
+      decodeChatStreamEvent({
+        type: EventType.RUN_FINISHED,
+        threadId: "thread",
+        runId: "run",
+        outcome: { type: "success" },
+      }),
+    );
+    expect(materializeChatMessages(state)[0]?.parts[0]).toMatchObject({
+      type: "structured-output",
+      status: "error",
+      raw: '{"title":"truncated"',
+      errorText: "Structured output stream ended before completion",
+    });
+  });
+
+  it("includes structured output raw JSON in provider history", () => {
+    let state = foldChatStreamEvent(
+      createChatProjection(),
+      decodeChatStreamEvent({
+        type: EventType.CUSTOM,
+        name: "structured-output.complete",
+        value: {
+          messageId: "assistant-history",
+          object: { title: "history" },
+          raw: '{"title":"history"}',
+        },
+      }),
+    );
+    const messages = materializeChatMessages(state);
+    expect(messages[0]?.parts[0]?.type).toBe("structured-output");
+    expect(messages[0] && projectChatMessagesToWire(messages)[0]).toMatchObject({
+      role: "assistant",
+      content: '{"title":"history"}',
     });
   });
 
