@@ -1,13 +1,13 @@
 export { SweatpantsApi, elicit, notify, sample } from "./api.ts";
-export {
-  SweatpantsProtocol,
-  ElicitPayloadSchema,
-  ElicitResultSchema,
-  NotifyPayloadSchema,
-  NotifyResultSchema,
-  SamplePayloadSchema,
-  SampleResultSchema,
-  SampleMessageSchema,
+export { SweatpantsProtocol } from "./protocol.ts";
+export type {
+  BuiltinElicitPayload,
+  BuiltinElicitResult,
+  BuiltinNotifyPayload,
+  BuiltinNotifyResult,
+  BuiltinSampleMessage,
+  BuiltinSamplePayload,
+  BuiltinSampleResult,
 } from "./protocol.ts";
 export type {
   ElicitOptions,

@@ -11,7 +11,14 @@ import {
   type ProgramIdentityProvenanceV1,
 } from "./program-contract.ts";
 import type { DurableProgramFactory, DurableTool } from "./program-authoring.ts";
-import { canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import {
+  canonicalJson,
+  canonicalSnapshot,
+  failure,
+  parser,
+  sha256,
+  success,
+} from "@sweatpants/foundation";
 import { createPinnedDurableProgram, parseDurableManifest } from "./program-authoring-runtime.ts";
 import type { Json } from "@sweatpants/foundation";
 import { CrankError } from "./errors.ts";
@@ -28,37 +35,53 @@ const programArtifactIdentityInputSchema = z.strictObject({
   resourcePackageDigests: z.array(z.string().regex(SHA256_RE)).max(16_384),
 });
 
-/** Validates and canonicalizes every declared program artifact identity input. */
-export function normalizeProgramArtifactIdentityInput(
-  input: ProgramArtifactIdentityInputV1,
-): ProgramArtifactIdentityInputV1 {
-  const structural = programArtifactIdentityInputSchema.safeParse(input);
-  if (!structural.success) {
-    invalidIdentity("identity input must use the closed v1 shape");
-  }
-  const parsed = structural.data;
+export const programArtifactIdentityInputParser = parser(
+  programArtifactIdentityInputSchema,
+).andThen((parsed) => {
   const resources = [...parsed.resourcePackageDigests].sort();
   for (let index = 1; index < resources.length; index += 1) {
     if (resources[index] === resources[index - 1]) {
-      invalidIdentity("resourcePackageDigests must be duplicate-free");
+      return failure<ProgramArtifactIdentityInputV1>({
+        path: ["resourcePackageDigests", index],
+        message: "resourcePackageDigests must be duplicate-free",
+      });
     }
   }
 
-  // Durable-manifest parsing remains authoritative for nested descriptors,
-  // effects, elicitations, replay capabilities, and unknown-field policy.
-  const validatedManifest = parseDurableManifest({
-    ...parsed.manifest,
-    digest: "0".repeat(64),
-  });
-  const { digest: _validationDigest, ...manifest } = validatedManifest;
+  try {
+    // Durable-manifest parsing remains authoritative for nested descriptors,
+    // effects, elicitations, replay capabilities, and unknown-field policy.
+    const validatedManifest = parseDurableManifest({
+      ...parsed.manifest,
+      digest: "0".repeat(64),
+    });
+    const { digest: _validationDigest, ...manifest } = validatedManifest;
+    return success(
+      deepFreeze({
+        format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+        generatorVersion: parsed.generatorVersion,
+        manifest,
+        implementationArtifactDigest: parsed.implementationArtifactDigest,
+        resourcePackageDigests: resources,
+      }),
+    );
+  } catch {
+    return failure<ProgramArtifactIdentityInputV1>({
+      path: ["manifest"],
+      message: "identity manifest is invalid",
+    });
+  }
+});
 
-  return deepFreeze({
-    format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,
-    generatorVersion: parsed.generatorVersion,
-    manifest,
-    implementationArtifactDigest: parsed.implementationArtifactDigest,
-    resourcePackageDigests: resources,
-  });
+/** Caller-owned mapping for generated identity construction. */
+export function normalizeProgramArtifactIdentityInput(
+  input: ProgramArtifactIdentityInputV1,
+): ProgramArtifactIdentityInputV1 {
+  const parsed = programArtifactIdentityInputParser.parse(input);
+  if (!parsed.ok) {
+    invalidIdentity(parsed.issues[0]?.message ?? "identity input must use the closed v1 shape");
+  }
+  return parsed.value;
 }
 
 /** Computes the exact domain-separated program digest from normalized declared artifacts. */

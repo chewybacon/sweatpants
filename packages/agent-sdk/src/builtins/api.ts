@@ -1,7 +1,7 @@
 import { createApi } from "effection/experimental";
 import type { Operation, Subscription } from "effection";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
+import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { TransportContext } from "../context/transport.ts";
 import type { ElicitResponse, NotifyResponse } from "../types/transport.ts";
 import type {
@@ -91,8 +91,11 @@ export const SweatpantsApi = createApi("sweatpants", {
 
     // Map Principal/Operative transport status dialect → action vocabulary
     if (response.status === "accepted") {
-      const parsed = yield* validateStandardSchema(options.schema, response.content);
-      if (parsed.issues !== undefined) {
+      const parsed = validateAuthoredSchema<StandardSchemaV1.InferOutput<TSchema>>(
+        options.schema,
+        response.content,
+      );
+      if (parsed.status !== "ok") {
         throw new Error("Elicit response does not satisfy its declared schema");
       }
       return { action: "accept", content: parsed.value };

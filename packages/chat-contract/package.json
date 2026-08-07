@@ -38,7 +38,8 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@sweatpants/foundation": "workspace:*"
+        "@sweatpants/foundation": "workspace:*",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",

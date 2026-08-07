@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalSnapshot, parser } from "@sweatpants/foundation";
 import { z } from "zod";
 import {
   InvalidExecutionTransition,
@@ -192,11 +192,16 @@ export function proposeQuiescentCut(
   return { status: "checkpointed", checkpoint: canonicalSnapshot(checkpoint).value };
 }
 
-/** Boundary parser rejecting malformed or incomplete persisted checkpoints. */
+/** Result-oriented parser for malformed or incomplete persisted checkpoints. */
+export const recoveryCheckpointParser = parser(recoveryCheckpointSchema).map(
+  (value): RecoveryCheckpoint => canonicalSnapshot(value).value,
+);
+
+/** Caller-owned throwing mapping for the checkpoint restoration boundary. */
 export function parseRecoveryCheckpoint(value: unknown): RecoveryCheckpoint {
-  const parsed = recoveryCheckpointSchema.safeParse(value);
-  if (!parsed.success) {
-    const taskIssue = parsed.error.issues.find((issue) => issue.path[0] === "tasks");
+  const parsed = recoveryCheckpointParser.parse(value);
+  if (!parsed.ok) {
+    const taskIssue = parsed.issues.find((issue) => issue.path[0] === "tasks");
     if (taskIssue?.code === "too_small") {
       throw new InvalidExecutionTransition("Recovery Checkpoint must retain parked topology");
     }
@@ -205,5 +210,5 @@ export function parseRecoveryCheckpoint(value: unknown): RecoveryCheckpoint {
     }
     throw new InvalidExecutionTransition("Recovery Checkpoint field value is invalid");
   }
-  return canonicalSnapshot(parsed.data).value;
+  return parsed.value;
 }

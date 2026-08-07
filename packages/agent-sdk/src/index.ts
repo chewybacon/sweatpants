@@ -163,13 +163,6 @@ export {
   notify,
   sample,
   SweatpantsProtocol,
-  ElicitPayloadSchema,
-  ElicitResultSchema,
-  NotifyPayloadSchema,
-  NotifyResultSchema,
-  SamplePayloadSchema,
-  SampleResultSchema,
-  SampleMessageSchema,
   type ElicitOptions,
   type ElicitResult,
   type NotifyOptions,
@@ -177,6 +170,13 @@ export {
   type SampleOptions,
   type SampleResult,
   type SampleMessage,
+  type BuiltinElicitPayload,
+  type BuiltinElicitResult,
+  type BuiltinNotifyPayload,
+  type BuiltinNotifyResult,
+  type BuiltinSampleMessage,
+  type BuiltinSamplePayload,
+  type BuiltinSampleResult,
 } from "./builtins/index.ts";
 
 // Re-export protocol utilities and types

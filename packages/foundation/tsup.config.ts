@@ -9,6 +9,7 @@ export default defineConfig({
     errors: "src/errors.ts",
     schema: "src/schema.ts",
     "schema-validation": "src/schema-validation.ts",
+    parser: "src/parser.ts",
   },
   format: ["esm"],
   dts: {

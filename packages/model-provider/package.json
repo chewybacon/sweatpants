@@ -29,7 +29,8 @@
     "dependencies": {
         "@sweatpants/chat-contract": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
-        "effection": "catalog:"
+        "effection": "catalog:",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",

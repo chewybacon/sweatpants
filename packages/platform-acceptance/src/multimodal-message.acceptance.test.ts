@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import { ACCEPTANCE_MODEL_ID, createAcceptanceApplication } from "./lib/acceptance-app.ts";
+import type { ChatContent } from "@sweatpants/chat-contract";
 
 type Binding = TestRigOptions["binding"];
 
@@ -39,7 +40,7 @@ const multimodalParts = [
       mimeType: "application/pdf",
     },
   },
-] as const;
+] as unknown as ChatContent;
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)

@@ -16,6 +16,7 @@ import {
   withJournalAuthority,
   createCapabilityKeyring,
   createInMemoryDurableJournalAuthority,
+  durableAuthoritySnapshotParser,
   parseDurableAuthoritySnapshot,
   signCapability,
 } from "../index.ts";
@@ -150,6 +151,11 @@ describe("persisted boundary parsing", () => {
       journalId: "current-format-only",
       keyring,
     }).exportSnapshot();
+    expect(durableAuthoritySnapshotParser.parse(snapshot)).toEqual({
+      ok: true,
+      value: snapshot,
+    });
+    expect(durableAuthoritySnapshotParser.parse({ ...snapshot, unknown: true }).ok).toBe(false);
     for (const version of [2, 3]) {
       expect(() => parseDurableAuthoritySnapshot(JSON.stringify({ ...snapshot, version }))).toThrow(
         "Invalid durable authority snapshot",

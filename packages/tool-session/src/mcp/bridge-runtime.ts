@@ -33,9 +33,12 @@ import {
   call,
   useAbortSignal,
 } from "effection";
-import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
-import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
-import { parseToolParameters, toToolParameterJsonSchema } from "../tool-parameters.ts";
+import { safeSchemaIssues, validateAuthoredSchema } from "@sweatpants/foundation/parser";
+import {
+  parseToolParameters,
+  requireToolParameterResult,
+  toToolParameterJsonSchema,
+} from "../tool-parameters.ts";
 import type { ChatContent, ChatMessage, ChatMessagePart } from "@sweatpants/chat-contract";
 import type {
   McpToolContextWithElicits,
@@ -592,8 +595,14 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             const schema = config.schema;
             try {
               const jsonParsed: unknown = JSON.parse(result.text);
-              const parsedResult = yield* validateStandardSchema(schema, jsonParsed);
-              if (parsedResult.issues === undefined) {
+              const parsedResult = validateAuthoredSchema<unknown>(schema, jsonParsed);
+              const parsedIssues =
+                parsedResult.status === "invalid"
+                  ? parsedResult.issues
+                  : parsedResult.status === "schema-error"
+                    ? [{ path: [], message: `schema ${parsedResult.reason}` }]
+                    : [];
+              if (parsedResult.status === "ok") {
                 // Create structured exchange with 3 messages
                 const exchange = createStructuredSampleExchange(
                   promptTextStr,
@@ -616,7 +625,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   ...result,
                   parsed: null,
                   parseError: {
-                    message: safeSchemaIssues(parsedResult.issues ?? [])
+                    message: safeSchemaIssues(parsedIssues)
                       .map((issue) => issue.message)
                       .join("; ")
                       .slice(0, 512),
@@ -852,8 +861,14 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             const schema = config.schema;
             try {
               const jsonParsed: unknown = JSON.parse(result.text);
-              const parsedResult = yield* validateStandardSchema(schema, jsonParsed);
-              if (parsedResult.issues === undefined) {
+              const parsedResult = validateAuthoredSchema<T>(schema, jsonParsed);
+              const parsedIssues =
+                parsedResult.status === "invalid"
+                  ? parsedResult.issues
+                  : parsedResult.status === "schema-error"
+                    ? [{ path: [], message: `schema ${parsedResult.reason}` }]
+                    : [];
+              if (parsedResult.status === "ok") {
                 // Update tool-local messages if using prompt mode
                 if ("prompt" in config && config.prompt) {
                   state.messages.push(
@@ -877,7 +892,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   exchange,
                 };
               } else {
-                lastError = safeSchemaIssues(parsedResult.issues ?? [])
+                lastError = safeSchemaIssues(parsedIssues)
                   .map((issue) => issue.message)
                   .join("; ")
                   .slice(0, 512);
@@ -890,7 +905,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   ...result,
                   parsed: null,
                   parseError: {
-                    message: safeSchemaIssues(parsedResult.issues ?? [])
+                    message: safeSchemaIssues(parsedIssues)
                       .map((issue) => issue.message)
                       .join("; ")
                       .slice(0, 512),
@@ -1092,12 +1107,15 @@ export function createBridgeHost<
       return {
         *[Symbol.iterator]() {
           const { tool, params, limits: overrideLimits, systemPrompt } = config;
-          const validatedParams = yield* parseToolParameters<TParams>({
-            schema: tool.parameters,
-            params,
-            toolName: tool.name,
-            callId,
-          });
+          const validatedParams = requireToolParameterResult(
+            parseToolParameters<TParams>({
+              schema: tool.parameters,
+              params,
+              toolName: tool.name,
+              callId,
+            }),
+            { toolName: tool.name, callId },
+          );
 
           // Merge limits (host options only; tools no longer carry limits)
           const limits: McpToolLimits = {
@@ -1219,12 +1237,15 @@ export function runBridgeTool<
   return {
     *[Symbol.iterator]() {
       const callId = config.callId ?? config.tool.name;
-      const params = yield* parseToolParameters<TParams>({
-        schema: config.tool.parameters,
-        params: config.params,
-        toolName: config.tool.name,
-        callId,
-      });
+      const params = requireToolParameterResult(
+        parseToolParameters<TParams>({
+          schema: config.tool.parameters,
+          params: config.params,
+          toolName: config.tool.name,
+          callId,
+        }),
+        { toolName: config.tool.name, callId },
+      );
 
       // createBridgeHost now uses a buffered channel internally,
       // so no sleep(0) hacks are needed. Events are queued until subscriber is ready.

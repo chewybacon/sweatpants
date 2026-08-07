@@ -1,11 +1,10 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { Operation } from "effection";
-
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   safeSchemaIssues,
   validateStandardSchema,
+  SchemaImplementationError,
   type SafeSchemaIssue,
 } from "@sweatpants/foundation/schema-validation";
 import {
@@ -53,6 +52,10 @@ export interface DurableSchemaRegistry {
 export type RegistrySchemaValidation =
   | { status: "ok"; value: Json }
   | { status: "invalid"; issues: SafeSchemaIssue[] }
+  | {
+      status: "schema-error";
+      reason: "validator-threw" | "async-unsupported";
+    }
   | { status: "unavailable"; digest: string };
 
 /** Creates a versioned validator catalog after descriptor boundary validation. */
@@ -113,22 +116,23 @@ export function reconcileSchemaCoverage(
  * canonicalizing successful output as bounded `Json`. Missing digests report
  * `unavailable` so callers can reject with `schema_version_unavailable`.
  */
-export function* parseRegisteredSchema(
+export function parseRegisteredSchema(
   registry: DurableSchemaRegistry,
   digest: string,
   value: unknown,
-): Operation<RegistrySchemaValidation> {
+): RegistrySchemaValidation {
   const entry = registry.get(digest);
   if (!entry) {
     return { status: "unavailable", digest };
   }
   let result: StandardSchemaV1.Result<unknown>;
   try {
-    result = yield* validateStandardSchema(entry.schema, value);
-  } catch {
-    // Thrown validator values may contain secrets or runtime internals; only a
-    // bounded synthetic issue is reported.
-    return { status: "invalid", issues: [{ message: "schema validation threw" }] };
+    result = validateStandardSchema(entry.schema, value);
+  } catch (error) {
+    if (error instanceof SchemaImplementationError) {
+      return { status: "schema-error", reason: error.reason };
+    }
+    return { status: "schema-error", reason: "validator-threw" };
   }
   if (result.issues) {
     return { status: "invalid", issues: safeSchemaIssues(result.issues) };

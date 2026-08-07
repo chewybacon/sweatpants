@@ -1,4 +1,7 @@
-import { parseRuntimeToolParameters } from "@sweatpants/tool-session/tool-parameters";
+import {
+  parseRuntimeToolParameters,
+  requireToolParameterResult,
+} from "@sweatpants/tool-session/tool-parameters";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { ChatToolCall } from "@sweatpants/chat-contract";
 import { action, resource, spawn, type Operation, type Stream } from "effection";
@@ -229,7 +232,10 @@ export function createLocalSessionToolExecutionStrategy(
           `Local session strategy cannot execute tool: ${entry.definition.name}`,
         );
       }
-      const params = yield* parseRuntimeToolParameters(tool, call.input, call.id);
+      const params = requireToolParameterResult(
+        parseRuntimeToolParameters(tool, call.input, call.id),
+        { toolName: tool.name, callId: call.id },
+      );
       const session = yield* options.registry.create(tool, params, {
         sessionId: call.id,
         ...(ctx.signal ? { signal: ctx.signal } : {}),

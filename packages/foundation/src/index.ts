@@ -21,3 +21,4 @@ export type { SerializedApplicationError } from "./errors.ts";
 export * from "./schema.ts";
 
 export * from "./schema-validation.ts";
+export * from "./parser.ts";

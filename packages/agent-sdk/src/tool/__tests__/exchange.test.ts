@@ -167,12 +167,12 @@ describe("authored elicitation exchange completion", () => {
 
   it("restores only closed JSON completion payloads", () => {
     expect(parseElicitExchangeCompletion({ action: "accept", content: { ok: true } })).toEqual({
-      action: "accept",
-      content: { ok: true },
+      ok: true,
+      value: { action: "accept", content: { ok: true } },
     });
-    expect(() =>
-      parseElicitExchangeCompletion({ action: "accept", content: { ok: true }, extra: true }),
-    ).toThrow();
-    expect(() => parseElicitExchangeCompletion({ action: "accept" })).toThrow();
+    expect(
+      parseElicitExchangeCompletion({ action: "accept", content: { ok: true }, extra: true }).ok,
+    ).toBe(false);
+    expect(parseElicitExchangeCompletion({ action: "accept" }).ok).toBe(false);
   });
 });

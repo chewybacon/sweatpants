@@ -455,11 +455,8 @@ function decodeSampleResponse(value: Json): SampleExchangeCompletion | undefined
 }
 
 function decodeElicitResponse(value: Json): ElicitExchangeCompletion<Json> | undefined {
-  try {
-    return parseElicitExchangeCompletion(value);
-  } catch {
-    return undefined;
-  }
+  const parsed = parseElicitExchangeCompletion(value);
+  return parsed.ok ? parsed.value : undefined;
 }
 
 function failure(

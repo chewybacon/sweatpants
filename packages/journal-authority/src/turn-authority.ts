@@ -1,7 +1,7 @@
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   completeRoot,
-  parseTerminalCapsule,
+  terminalCapsuleParser,
   type ExecutionTreeSnapshot,
   type ProgramIdentity,
   type ProjectionFactEnvelope,
@@ -67,7 +67,7 @@ export const TurnJournalAuthority = createApi("turn-journal-authority", {
           throw new TurnAuthorityBoundaryError(`Execution ${request.executionId} is not open`);
         }
         if (current.record.format === "sweatpants.terminal-execution.v1") {
-          return { status: "return", result: parseTerminalCapsule(current.record) };
+          return { status: "return", result: requireTerminalCapsule(current.record) };
         }
         assertFacts(current.record, request.facts);
         const factsValue: Json = request.facts.map((fact) => ({
@@ -104,7 +104,7 @@ export const TurnJournalAuthority = createApi("turn-journal-authority", {
     const current = yield* ExecutionStoreApi.operations.loadExecution(executionId);
     if (!current) return null;
     return current.record.format === "sweatpants.terminal-execution.v1"
-      ? parseTerminalCapsule(current.record)
+      ? requireTerminalCapsule(current.record)
       : current.record;
   },
 
@@ -130,7 +130,7 @@ export const TurnJournalAuthority = createApi("turn-journal-authority", {
         if (!current || current.record.format !== "sweatpants.terminal-execution.v1") {
           throw new TurnAuthorityBoundaryError(`Execution ${executionId} is not terminal`);
         }
-        const capsule = parseTerminalCapsule(current.record);
+        const capsule = requireTerminalCapsule(current.record);
         if (capsule.publication === "published") {
           return { status: "return", result: capsule };
         }
@@ -197,6 +197,14 @@ function assertFacts(
       throw new TurnAuthorityBoundaryError(`Projection Fact ${index + 1} has an invalid frontier`);
     }
   });
+}
+
+function requireTerminalCapsule(value: unknown): TerminalCapsule {
+  const parsed = terminalCapsuleParser.parse(value);
+  if (!parsed.ok) {
+    throw new TurnAuthorityBoundaryError("Stored Terminal Capsule is invalid");
+  }
+  return parsed.value;
 }
 
 function parseFact(value: unknown): ProjectionFactEnvelope {

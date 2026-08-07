@@ -3,6 +3,8 @@ import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 
 import { canonicalJson } from "@sweatpants/foundation";
+import { parser } from "@sweatpants/foundation/parser";
+import { z } from "zod";
 
 import type {
   CapabilityClaims,
@@ -293,68 +295,53 @@ export function isResolutionClaims(claims: CapabilityClaims): claims is Resoluti
   );
 }
 
+const capabilityCommonSchema = {
+  version: z.literal(1),
+  issuer: z.string().min(1),
+  keyId: z.string().min(1),
+  journalId: z.string().min(1),
+  journalIncarnation: z.string().min(1),
+  sessionId: z.string().min(1),
+  taskId: z.string().min(1),
+  audience: z.string().min(1),
+  nonce: z.string().min(1),
+} as const;
+
+const programCapabilityClaimsSchema = z.strictObject({
+  ...capabilityCommonSchema,
+  programId: z.string().min(1),
+  programVersion: z.string().min(1),
+  programDigest: z.string().min(1),
+  attachmentId: z.string().min(1),
+  executionEpoch: z.number().int().nonnegative().safe(),
+  permissions: z.tuple([z.literal("propose"), z.literal("complete")]),
+});
+
+const resolutionCapabilityClaimsSchema = z.strictObject({
+  ...capabilityCommonSchema,
+  pullId: z.string().min(1),
+  descriptorDigest: z.string().min(1),
+  resultSchemaDigest: z.string().min(1),
+  attemptId: z.string().min(1),
+  maxOutcomeBytes: z.number().int().nonnegative().safe(),
+  permissions: z.tuple([z.literal("resolve")]),
+});
+
+const capabilityClaimsSchema = z.union([
+  programCapabilityClaimsSchema,
+  resolutionCapabilityClaimsSchema,
+]);
+
+export const capabilityClaimsParser = parser(capabilityClaimsSchema).map(
+  (value): CapabilityClaims => value as CapabilityClaims,
+);
+
 function parseClaims(input: unknown): CapabilityClaims {
-  if (!isUnknownRecord(input) || input["version"] !== 1) {
+  const parsed = capabilityClaimsParser.parse(input);
+  if (!parsed.ok) {
     throw invalid();
   }
-  const common = {
-    version: 1 as const,
-    issuer: requiredString(input, "issuer"),
-    keyId: requiredString(input, "keyId"),
-    journalId: requiredString(input, "journalId"),
-    journalIncarnation: requiredString(input, "journalIncarnation"),
-    sessionId: requiredString(input, "sessionId"),
-    taskId: requiredString(input, "taskId"),
-    audience: requiredString(input, "audience"),
-    nonce: requiredString(input, "nonce"),
-  };
-  const permissions = input["permissions"];
-  if (
-    Array.isArray(permissions) &&
-    permissions.length === 2 &&
-    permissions[0] === "propose" &&
-    permissions[1] === "complete"
-  ) {
-    requireExactKeys(input, [
-      ...Object.keys(common),
-      "programId",
-      "programVersion",
-      "programDigest",
-      "attachmentId",
-      "executionEpoch",
-      "permissions",
-    ]);
-    return {
-      ...common,
-      programId: requiredString(input, "programId"),
-      programVersion: requiredString(input, "programVersion"),
-      programDigest: requiredString(input, "programDigest"),
-      attachmentId: requiredString(input, "attachmentId"),
-      executionEpoch: requiredNonNegativeInteger(input, "executionEpoch"),
-      permissions: ["propose", "complete"],
-    };
-  }
-  if (Array.isArray(permissions) && permissions.length === 1 && permissions[0] === "resolve") {
-    requireExactKeys(input, [
-      ...Object.keys(common),
-      "pullId",
-      "descriptorDigest",
-      "resultSchemaDigest",
-      "attemptId",
-      "maxOutcomeBytes",
-      "permissions",
-    ]);
-    return {
-      ...common,
-      pullId: requiredString(input, "pullId"),
-      descriptorDigest: requiredString(input, "descriptorDigest"),
-      resultSchemaDigest: requiredString(input, "resultSchemaDigest"),
-      attemptId: requiredString(input, "attemptId"),
-      maxOutcomeBytes: requiredNonNegativeInteger(input, "maxOutcomeBytes"),
-      permissions: ["resolve"],
-    };
-  }
-  throw invalid();
+  return parsed.value;
 }
 
 function keyringState(keyring: CapabilityKeyring): KeyringState {
@@ -363,36 +350,6 @@ function keyringState(keyring: CapabilityKeyring): KeyringState {
     throw new CrankError("invalid_manifest", "Capability keyring was not created by this module");
   }
   return state;
-}
-
-function isUnknownRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function requiredString(value: Record<string, unknown>, field: string): string {
-  const candidate = value[field];
-  if (typeof candidate !== "string" || candidate.length === 0) {
-    throw invalid();
-  }
-  return candidate;
-}
-
-function requiredNonNegativeInteger(value: Record<string, unknown>, field: string): number {
-  const candidate = value[field];
-  if (typeof candidate !== "number" || !Number.isSafeInteger(candidate) || candidate < 0) {
-    throw invalid();
-  }
-  return candidate;
-}
-
-function requireExactKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
-  const expected = new Set(allowed);
-  if (
-    Object.keys(value).some((key) => !expected.has(key)) ||
-    Object.keys(value).length !== expected.size
-  ) {
-    throw invalid();
-  }
 }
 
 function invalid(): CrankError {

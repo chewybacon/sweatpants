@@ -1,4 +1,5 @@
 import { canonicalSnapshot, sortStrings } from "@sweatpants/foundation";
+import { parser } from "@sweatpants/foundation/parser";
 import { z } from "zod";
 import type { OperationOutcome } from "@sweatpants/durable-effects/contract";
 import {
@@ -170,14 +171,10 @@ export function completeRoot(
   };
 }
 
-/** Strict boundary parser for a persisted Terminal Capsule. */
-export function parseTerminalCapsule(value: unknown): TerminalCapsule {
-  const parsed = terminalCapsuleSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new InvalidExecutionTransition("Terminal Capsule structure is invalid");
-  }
-  return canonicalSnapshot(parsed.data).value;
-}
+/** Strict result-oriented parser for a persisted Terminal Capsule. */
+export const terminalCapsuleParser = parser(terminalCapsuleSchema).map(
+  (value): TerminalCapsule => canonicalSnapshot(value).value,
+);
 
 function task(snapshot: ExecutionTreeSnapshot, taskId: string): TaskControlState {
   const selected = snapshot.tasks.find((candidate) => candidate.taskId === taskId);

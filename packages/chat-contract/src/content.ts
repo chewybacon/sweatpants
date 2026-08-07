@@ -1,10 +1,16 @@
 import {
   assertJson,
   canonicalJson,
-  requireJsonObject,
+  failure,
+  parser,
+  success,
   type Json,
   type JsonObject,
+  type ParseIssue,
+  type ParseResult,
+  type Parser,
 } from "@sweatpants/foundation";
+import { z } from "zod";
 
 export type ChatContent = string | readonly ChatContentPart[];
 
@@ -128,24 +134,100 @@ const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/
 const MEDIA_TYPES = ["image", "audio", "video", "document"] as const;
 type MediaType = (typeof MEDIA_TYPES)[number];
 
+const contentSourceSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("data"), value: z.string(), mimeType: z.string() }),
+  z.strictObject({
+    type: z.literal("url"),
+    value: z.string(),
+    mimeType: z.string().optional(),
+  }),
+]);
+
+const contentMetadataSchema = z.record(z.string(), z.json()).nullable().optional();
+const contentPartSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("text"), text: z.string() }),
+  z.strictObject({
+    type: z.literal("image"),
+    source: contentSourceSchema,
+    metadata: contentMetadataSchema,
+  }),
+  z.strictObject({
+    type: z.literal("audio"),
+    source: contentSourceSchema,
+    metadata: contentMetadataSchema,
+  }),
+  z.strictObject({
+    type: z.literal("video"),
+    source: contentSourceSchema,
+    metadata: contentMetadataSchema,
+  }),
+  z.strictObject({
+    type: z.literal("document"),
+    source: contentSourceSchema,
+    metadata: contentMetadataSchema,
+  }),
+]);
+
+const chatContentSchema = z.union([z.string(), z.array(contentPartSchema)]);
+
+type StructuralChatContent = z.infer<typeof chatContentSchema>;
+type StructuralChatContentPart = z.infer<typeof contentPartSchema>;
+type StructuralChatContentSource = z.infer<typeof contentSourceSchema>;
+
+const chatContentStructureParser = parser(chatContentSchema);
+const chatContentArrayStructureParser = parser(z.array(contentPartSchema));
+const chatContentPartStructureParser = parser(contentPartSchema);
+
+/** Result-oriented parser for the default bounded chat content contract. */
+export const chatContentParser = createChatContentParser();
+
+/** Result-oriented parser for one default bounded chat content part. */
+export const chatContentPartParser = createChatContentPartParser();
+
+export function createChatContentParser(
+  options: DecodeChatContentOptions = {},
+): Parser<ChatContent> {
+  const limits = resolveLimits(options.limits);
+  return makeParser((value) => {
+    const parsed = parseChatContentStructure(value);
+    if (!parsed.ok) return parsed;
+    try {
+      return success(normalizeChatContent(parsed.value, limits));
+    } catch (error) {
+      if (error instanceof ChatContentDecodeError) {
+        return failure(issueFromContentError(error));
+      }
+      throw error;
+    }
+  });
+}
+
+export function createChatContentPartParser(
+  options: DecodeChatContentOptions = {},
+): Parser<ChatContentPart> {
+  const limits = resolveLimits(options.limits);
+  return chatContentPartStructureParser.andThen((value) => {
+    try {
+      return success(normalizeChatContentPart(value, "$.0", limits));
+    } catch (error) {
+      if (error instanceof ChatContentDecodeError) {
+        return failure(issueFromContentError(error));
+      }
+      throw error;
+    }
+  });
+}
+
 export function decodeChatContent(
   value: unknown,
   options: DecodeChatContentOptions = {},
 ): ChatContent {
   const limits = resolveLimits(options.limits);
-  if (typeof value === "string") {
-    assertByteLimit(value, limits.maxTextBytes, "maxTextBytes", "$");
-    const output = value;
-    assertContentSize(output, limits);
-    return output;
+  const parsed = parseChatContentStructure(value);
+  if (!parsed.ok) {
+    throw contentErrorFromIssues(parsed.issues, "$");
   }
-
-  const input = requireArray(value, "$");
-  assertCountLimit(input.length, limits.maxParts, "maxParts", "$");
-  const output = input.map((part, index) => decodePart(part, `$.${index}`, limits));
-  const frozen = deepFreeze(output) as readonly ChatContentPart[];
-  assertContentSize(frozen, limits);
-  return frozen;
+  return normalizeChatContent(parsed.value, limits);
 }
 
 /** Decodes one content part; composition owners use this instead of re-wrapping arrays. */
@@ -155,7 +237,11 @@ export function decodeChatContentPart(
   options: DecodeChatContentOptions = {},
 ): ChatContentPart {
   const limits = resolveLimits(options.limits);
-  return deepFreeze(decodePart(value, path, limits));
+  const parsed = chatContentPartStructureParser.parse(value);
+  if (!parsed.ok) {
+    throw contentErrorFromIssues(parsed.issues, path);
+  }
+  return normalizeChatContentPart(parsed.value, path, limits);
 }
 
 function resolveLimits(requested: Partial<ChatContentLimits> | undefined): ChatContentLimits {
@@ -174,112 +260,132 @@ function resolveLimits(requested: Partial<ChatContentLimits> | undefined): ChatC
   return Object.freeze(limits);
 }
 
-function decodePart(value: unknown, path: string, limits: ChatContentLimits): ChatContentPart {
-  const input = jsonObject(value, path);
-  const type = stringValue(input["type"], `${path}.type`);
-  switch (type) {
-    case "text":
-      assertKeys(input, ["type", "text"], path);
-      return { type, text: boundedText(input["text"], limits.maxTextBytes, `${path}.text`) };
-    case "image":
-    case "audio":
-    case "video":
-    case "document":
-      assertKeys(input, ["type", "source", "metadata"], path);
-      return decodeMediaPart(type, input, path, limits);
-    default:
-      throw new ChatContentDecodeError(
-        "invalid-discriminator",
-        `${path}.type`,
-        `unsupported content part type ${JSON.stringify(type)}`,
-      );
-  }
+function makeParser<T>(parse: (value: unknown) => ParseResult<T>): Parser<T> {
+  return {
+    parse,
+    map<U>(transform: (value: T) => U): Parser<U> {
+      return makeParser((input) => {
+        const result = parse(input);
+        return result.ok ? success(transform(result.value)) : result;
+      });
+    },
+    andThen<U>(next: (value: T) => ParseResult<U>): Parser<U> {
+      return makeParser((input) => {
+        const result = parse(input);
+        return result.ok ? next(result.value) : result;
+      });
+    },
+  };
 }
 
-function decodeMediaPart(
-  type: MediaType,
-  input: JsonObject,
+function parseChatContentStructure(value: unknown): ParseResult<StructuralChatContent> {
+  if (Array.isArray(value)) {
+    return chatContentArrayStructureParser.parse(value) as ParseResult<StructuralChatContent>;
+  }
+  return chatContentStructureParser.parse(value);
+}
+
+function normalizeChatContent(
+  value: StructuralChatContent,
+  limits: ChatContentLimits,
+): ChatContent {
+  if (typeof value === "string") {
+    assertByteLimit(value, limits.maxTextBytes, "maxTextBytes", "$");
+    assertContentSize(value, limits);
+    return value;
+  }
+
+  assertCountLimit(value.length, limits.maxParts, "maxParts", "$");
+  const output = value.map((part, index) => normalizeChatContentPart(part, `$.${index}`, limits));
+  const frozen = deepFreeze(output) as readonly ChatContentPart[];
+  assertContentSize(frozen, limits);
+  return frozen;
+}
+
+function normalizeChatContentPart(
+  part: StructuralChatContentPart,
   path: string,
   limits: ChatContentLimits,
 ): ChatContentPart {
-  const source = decodeSource(input["source"], `${path}.source`, type, limits);
-  const metadata = decodeMetadata(input["metadata"], `${path}.metadata`, limits);
-  return { type, source, metadata };
+  if (part.type === "text") {
+    return {
+      type: "text",
+      text: boundedText(part.text, limits.maxTextBytes, `${path}.text`),
+    };
+  }
+
+  const source = normalizeSource(part.source, `${path}.source`, part.type, limits);
+  const metadata = normalizeMetadata(part.metadata, `${path}.metadata`, limits);
+  return { type: part.type, source, metadata } as ChatContentPart;
 }
 
-function decodeSource(
-  value: unknown,
+function normalizeSource(
+  source: StructuralChatContentSource,
   path: string,
   modality: MediaType,
   limits: ChatContentLimits,
 ): ChatContentSource {
-  const input = jsonObject(value, path);
-  const type = stringValue(input["type"], `${path}.type`);
-  switch (type) {
-    case "data": {
-      assertKeys(input, ["type", "value", "mimeType"], path);
-      const encoded = stringValue(input["value"], `${path}.value`);
-      if (encoded.length === 0 || !BASE64_PATTERN.test(encoded)) {
-        throw new ChatContentDecodeError(
-          "invalid-base64",
-          `${path}.value`,
-          "expected non-empty canonical RFC 4648 base64",
-        );
-      }
-      assertByteLimit(encoded, limits.maxEncodedDataBytes, "maxEncodedDataBytes", `${path}.value`);
-      const mimeType = decodeMimeType(input["mimeType"], `${path}.mimeType`, modality);
-      return { type, value: encoded, mimeType };
-    }
-    case "url": {
-      assertKeys(input, ["type", "value", "mimeType"], path);
-      const value = stringValue(input["value"], `${path}.value`);
-      assertByteLimit(value, limits.maxUrlBytes, "maxUrlBytes", `${path}.value`);
-      assertHttpUrl(value, `${path}.value`);
-      const rawMimeType = input["mimeType"];
-      const mimeType =
-        rawMimeType === undefined
-          ? undefined
-          : decodeMimeType(rawMimeType, `${path}.mimeType`, modality);
-      return mimeType === undefined ? { type, value } : { type, value, mimeType };
-    }
-    default:
+  if (source.type === "data") {
+    if (source.value.length === 0 || !BASE64_PATTERN.test(source.value)) {
       throw new ChatContentDecodeError(
-        "invalid-source",
-        `${path}.type`,
-        `unsupported content source type ${JSON.stringify(type)}`,
+        "invalid-base64",
+        `${path}.value`,
+        "expected non-empty canonical RFC 4648 base64",
       );
+    }
+    assertByteLimit(
+      source.value,
+      limits.maxEncodedDataBytes,
+      "maxEncodedDataBytes",
+      `${path}.value`,
+    );
+    return {
+      type: "data",
+      value: source.value,
+      mimeType: decodeMimeType(source.mimeType, `${path}.mimeType`, modality),
+    };
   }
+
+  assertByteLimit(source.value, limits.maxUrlBytes, "maxUrlBytes", `${path}.value`);
+  assertHttpUrl(source.value, `${path}.value`);
+  if (source.mimeType === undefined) {
+    return { type: "url", value: source.value };
+  }
+  return {
+    type: "url",
+    value: source.value,
+    mimeType: decodeMimeType(source.mimeType, `${path}.mimeType`, modality),
+  };
 }
 
-function decodeMetadata(
-  value: unknown,
+function normalizeMetadata(
+  value: Record<string, Json> | null | undefined,
   path: string,
   limits: ChatContentLimits,
 ): JsonObject | null {
   if (value === undefined || value === null) return null;
-  const metadata = jsonObject(value, path);
+  const metadata = value as JsonObject;
   const canonical = canonicalJson(metadata);
   assertByteLimit(canonical, limits.maxMetadataBytes, "maxMetadataBytes", path);
   assertDepth(metadata, limits.maxDepth, path);
   return deepFreeze(metadata) as JsonObject;
 }
 
-function decodeMimeType(value: unknown, path: string, modality: MediaType): string {
-  const mimeType = stringValue(value, path);
-  if (!MIME_TYPE_PATTERN.test(mimeType)) {
+function decodeMimeType(value: string, path: string, modality: MediaType): string {
+  if (!MIME_TYPE_PATTERN.test(value)) {
     throw new ChatContentDecodeError("invalid-mime-type", path, "invalid MIME type");
   }
-  const family = mimeType.slice(0, mimeType.indexOf("/")).toLowerCase();
+  const family = value.slice(0, value.indexOf("/")).toLowerCase();
   const compatible =
     modality === "document" ? family === "application" || family === "text" : family === modality;
   if (!compatible) {
     throw new ChatContentDecodeError(
       "modality-mismatch",
       path,
-      `MIME type ${mimeType} is not compatible with ${modality} content`,
+      `MIME type ${value} is not compatible with ${modality}`,
     );
   }
-  return mimeType;
+  return value;
 }
 
 function assertHttpUrl(value: string, path: string): void {
@@ -294,58 +400,9 @@ function assertHttpUrl(value: string, path: string): void {
   }
 }
 
-function jsonObject(value: unknown, path: string): JsonObject {
-  try {
-    return requireJsonObject(assertJson(value, path), path);
-  } catch (error) {
-    if (error instanceof ChatContentDecodeError) throw error;
-    throw new ChatContentDecodeError(
-      "invalid-value",
-      path,
-      error instanceof Error ? error.message : "expected a JSON object",
-    );
-  }
-}
-
-function requireArray(value: unknown, path: string): readonly unknown[] {
-  if (!Array.isArray(value)) {
-    throw new ChatContentDecodeError(
-      "invalid-value",
-      path,
-      "expected a string or content-part array",
-    );
-  }
-  try {
-    return assertJson(value, path) as Json[];
-  } catch (error) {
-    throw new ChatContentDecodeError(
-      "invalid-value",
-      path,
-      error instanceof Error ? error.message : "invalid JSON array",
-    );
-  }
-}
-
-function stringValue(value: unknown, path: string): string {
-  if (typeof value !== "string") {
-    throw new ChatContentDecodeError("invalid-value", path, "expected a string");
-  }
+function boundedText(value: string, maximum: number, path: string): string {
+  assertByteLimit(value, maximum, "maxTextBytes", path);
   return value;
-}
-
-function boundedText(value: unknown, maximum: number, path: string): string {
-  const text = stringValue(value, path);
-  assertByteLimit(text, maximum, "maxTextBytes", path);
-  return text;
-}
-
-function assertKeys(input: JsonObject, allowed: readonly string[], path: string): void {
-  const allowedSet = new Set(allowed);
-  for (const key of Object.keys(input)) {
-    if (!allowedSet.has(key)) {
-      throw new ChatContentDecodeError("unknown-field", `${path}.${key}`, `unknown field ${key}`);
-    }
-  }
 }
 
 function assertByteLimit(
@@ -398,6 +455,42 @@ function assertDepth(value: Json, maximum: number, path: string, depth = 0): voi
       assertDepth(child, maximum, `${path}.${key}`, depth + 1);
     }
   }
+}
+
+function contentErrorFromIssues(
+  issues: readonly ParseIssue[],
+  basePath: string,
+): ChatContentDecodeError {
+  const issue = issues[0] ?? { path: [], message: "invalid content" };
+  const relativePath = issue.path.map(String).join(".");
+  const path = relativePath.length === 0 ? basePath : `${basePath}.${relativePath}`;
+  const code = structuralErrorCode(issue);
+  return new ChatContentDecodeError(code, path, issue.message);
+}
+
+function structuralErrorCode(issue: ParseIssue): ChatContentDecodeErrorCode {
+  if (issue.code === "unrecognized_keys") return "unknown-field";
+  if (issue.path.includes("source") && issue.path.at(-1) === "type") return "invalid-source";
+  if (issue.path.at(-1) === "type") return "invalid-discriminator";
+  if (issue.path.includes("metadata")) return "invalid-value";
+  return "invalid-value";
+}
+
+function issueFromContentError(error: ChatContentDecodeError): ParseIssue {
+  return {
+    path: decodeIssuePath(error.path),
+    message: error.message,
+    code: error.code,
+  };
+}
+
+function decodeIssuePath(path: string): Array<string | number> {
+  if (path === "$" || path.length === 0) return [];
+  return path
+    .replace(/^\$\.?/u, "")
+    .split(/[.[\]]+/u)
+    .filter(Boolean)
+    .map((part) => (/^\d+$/u.test(part) ? Number(part) : part));
 }
 
 function deepFreeze<T>(value: T): T {

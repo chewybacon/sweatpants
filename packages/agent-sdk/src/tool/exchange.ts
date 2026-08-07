@@ -10,7 +10,12 @@ import {
   assistantToolCalls,
   type ModelSampleResult,
 } from "@sweatpants/model-sampling";
-import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
+import {
+  parser,
+  safeSchemaIssues,
+  validateAuthoredSchema,
+  type ParseResult,
+} from "@sweatpants/foundation/parser";
 import type { Operation } from "effection";
 import { z } from "zod";
 import type {
@@ -34,17 +39,24 @@ const elicitExchangeCompletionSchema = z.discriminatedUnion("action", [
 ]);
 
 /** Owns structural restoration of an elicitation completion at JSON boundaries. */
-export function parseElicitExchangeCompletion(value: unknown): ElicitExchangeCompletion<Json> {
-  const parsed = elicitExchangeCompletionSchema.parse(value);
-  if (parsed.action === "accept") return parsed;
-  if (parsed.action === "decline") {
+export const elicitExchangeCompletionParser = parser(elicitExchangeCompletionSchema).map(
+  (parsed): ElicitExchangeCompletion<Json> => {
+    if (parsed.action === "accept") return parsed;
+    if (parsed.action === "decline") {
+      return parsed.reason === undefined
+        ? { action: "decline" }
+        : { action: "decline", reason: parsed.reason };
+    }
     return parsed.reason === undefined
-      ? { action: "decline" }
-      : { action: "decline", reason: parsed.reason };
-  }
-  return parsed.reason === undefined
-    ? { action: "cancel" }
-    : { action: "cancel", reason: parsed.reason };
+      ? { action: "cancel" }
+      : { action: "cancel", reason: parsed.reason };
+  },
+);
+
+export function parseElicitExchangeCompletion(
+  value: unknown,
+): ParseResult<ElicitExchangeCompletion<Json>> {
+  return elicitExchangeCompletionParser.parse(value);
 }
 
 export const SCHEMA_TOOL_NAME = "__schema__";
@@ -205,8 +217,11 @@ export function* completeElicitExchange<TContext, TResponse>(
       : { action: "cancel", reason: completion.reason };
   }
 
-  const parsed = yield* validateStandardSchema(options.responseSchema, completion.content);
-  if (parsed.issues !== undefined) {
+  const parsed = validateAuthoredSchema<TResponse>(options.responseSchema, completion.content);
+  if (parsed.status === "schema-error") {
+    throw new Error(`Elicit response schema implementation failed for key "${options.key}"`);
+  }
+  if (parsed.status === "invalid") {
     const issues = safeSchemaIssues(parsed.issues)
       .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
       .join("; ");

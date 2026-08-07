@@ -1,10 +1,12 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
 import { createProtocol } from "../protocol/create.ts";
+import type { Method, Protocol } from "../protocol/types.ts";
 
 /**
  * Schema for elicit options sent over the wire.
  */
-const ElicitPayloadSchema = z.object({
+const ElicitPayloadSchema = z.strictObject({
   type: z.string(),
   message: z.string(),
   schemaDescriptor: z.record(z.string(), z.json()).optional(),
@@ -15,15 +17,15 @@ const ElicitPayloadSchema = z.object({
  * Schema for elicit result.
  */
 const ElicitResultSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("accept"), content: z.unknown() }),
-  z.object({ action: z.literal("decline"), reason: z.string().optional() }),
-  z.object({ action: z.literal("cancel"), reason: z.string().optional() }),
+  z.strictObject({ action: z.literal("accept"), content: z.unknown() }),
+  z.strictObject({ action: z.literal("decline"), reason: z.string().optional() }),
+  z.strictObject({ action: z.literal("cancel"), reason: z.string().optional() }),
 ]);
 
 /**
  * Schema for notify options sent over the wire.
  */
-const NotifyPayloadSchema = z.object({
+const NotifyPayloadSchema = z.strictObject({
   message: z.string(),
   progress: z.number().optional(),
   level: z.enum(["info", "warning", "error", "success"]).optional(),
@@ -33,14 +35,14 @@ const NotifyPayloadSchema = z.object({
 /**
  * Schema for notify result.
  */
-const NotifyResultSchema = z.object({
+const NotifyResultSchema = z.strictObject({
   ok: z.boolean(),
 });
 
 /**
  * Schema for sample message.
  */
-const SampleMessageSchema = z.object({
+const SampleMessageSchema = z.strictObject({
   role: z.enum(["system", "user", "assistant"]),
   content: z.string(),
 });
@@ -48,7 +50,7 @@ const SampleMessageSchema = z.object({
 /**
  * Schema for sample options sent over the wire.
  */
-const SamplePayloadSchema = z.object({
+const SamplePayloadSchema = z.strictObject({
   prompt: z.union([z.string(), z.array(SampleMessageSchema)]),
   maxTokens: z.number().optional(),
   temperature: z.number().optional(),
@@ -60,7 +62,7 @@ const SamplePayloadSchema = z.object({
 /**
  * Schema for sample result.
  */
-const SampleResultSchema = z.object({
+const SampleResultSchema = z.strictObject({
   text: z.string(),
   usage: z
     .object({
@@ -72,6 +74,66 @@ const SampleResultSchema = z.object({
   model: z.string().optional(),
   finishReason: z.enum(["stop", "length", "content_filter", "tool_calls"]).optional(),
 });
+
+export interface BuiltinElicitPayload {
+  readonly type: string;
+  readonly message: string;
+  readonly schemaDescriptor?: Record<string, unknown>;
+  readonly meta?: Record<string, unknown>;
+}
+
+export type BuiltinElicitResult =
+  | { readonly action: "accept"; readonly content: unknown }
+  | { readonly action: "decline"; readonly reason?: string }
+  | { readonly action: "cancel"; readonly reason?: string };
+
+export interface BuiltinNotifyPayload {
+  readonly message: string;
+  readonly progress?: number;
+  readonly level?: "info" | "warning" | "error" | "success";
+  readonly meta?: Record<string, unknown>;
+}
+
+export interface BuiltinNotifyResult {
+  readonly ok: boolean;
+}
+
+export interface BuiltinSampleMessage {
+  readonly role: "system" | "user" | "assistant";
+  readonly content: string;
+}
+
+export interface BuiltinSamplePayload {
+  readonly prompt: string | readonly BuiltinSampleMessage[];
+  readonly maxTokens?: number;
+  readonly temperature?: number;
+  readonly stop?: readonly string[];
+  readonly model?: string;
+  readonly meta?: Record<string, unknown>;
+}
+
+export interface BuiltinSampleResult {
+  readonly text: string;
+  readonly usage?: {
+    readonly promptTokens: number;
+    readonly completionTokens: number;
+    readonly totalTokens: number;
+  };
+  readonly model?: string;
+  readonly finishReason?: "stop" | "length" | "content_filter" | "tool_calls";
+}
+
+type BuiltinMethod<I, O> = Method<
+  StandardSchemaV1<unknown, I>,
+  StandardSchemaV1<unknown, never>,
+  StandardSchemaV1<unknown, O>
+>;
+
+type BuiltinMethods = {
+  readonly elicit: BuiltinMethod<BuiltinElicitPayload, BuiltinElicitResult>;
+  readonly notify: BuiltinMethod<BuiltinNotifyPayload, BuiltinNotifyResult>;
+  readonly sample: BuiltinMethod<BuiltinSamplePayload, BuiltinSampleResult>;
+};
 
 /**
  * The Sweatpants Protocol defines the built-in operations that can be
@@ -105,7 +167,7 @@ const SampleResultSchema = z.object({
  * yield* serveProtocol(handle, operativeTransport);
  * ```
  */
-export const SweatpantsProtocol = createProtocol({
+export const SweatpantsProtocol: Protocol<BuiltinMethods> = createProtocol({
   /**
    * Elicit structured data from the user.
    * The operative should display appropriate UI based on the type and schema.
@@ -135,15 +197,4 @@ export const SweatpantsProtocol = createProtocol({
     progress: z.never(),
     output: SampleResultSchema,
   },
-});
-
-// Export schemas for use in implementations
-export {
-  ElicitPayloadSchema,
-  ElicitResultSchema,
-  NotifyPayloadSchema,
-  NotifyResultSchema,
-  SamplePayloadSchema,
-  SampleResultSchema,
-  SampleMessageSchema,
-};
+} as unknown as BuiltinMethods);
