@@ -20,67 +20,84 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from "effection";
-import { call } from "effection";
+import { call, type Operation } from "effection";
+import { parser } from "@sweatpants/foundation";
 import { z } from "zod";
 import { MCP_PROTOCOL_VERSION } from "../protocol-version.ts";
-import type {
-  McpParsedRequest,
-  McpRequestHeaders,
-  McpHttpMethod,
-  McpClassifiedRequest,
-  McpToolsCallRequest,
-  McpElicitResponse,
-  McpSampleResponse,
-  McpSseStreamRequest,
-  McpTerminateRequest,
-  McpInitializeRequest,
-  McpToolsListRequest,
-  McpPingRequest,
-  McpNotification,
+import {
+  MCP_HANDLER_ERRORS,
+  McpHandlerError,
+  type McpParsedRequest,
+  type McpRequestHeaders,
+  type McpHttpMethod,
+  type McpClassifiedRequest,
+  type McpToolsCallRequest,
+  type McpElicitResponse,
+  type McpSampleResponse,
+  type McpSseStreamRequest,
+  type McpTerminateRequest,
+  type McpInitializeRequest,
+  type McpToolsListRequest,
+  type McpPingRequest,
+  type McpNotification,
 } from "./types.ts";
-import { McpHandlerError, MCP_HANDLER_ERRORS } from "./types.ts";
 import { parseEventId } from "../protocol/sse-formatter.ts";
-import type {
-  JsonRpcId,
-  JsonRpcRequest,
-  JsonRpcResponse,
-  McpToolCallParams,
-  McpElicitationResult,
-  McpCreateMessageResult,
-} from "../protocol/types.ts";
+import type { JsonRpcId, JsonRpcRequest, JsonRpcResponse } from "../protocol/types.ts";
 
-const requestIdSchema = z.union([z.string().max(512), z.number().finite()]);
-const jsonRpcRequestSchema = z
-  .object({
+export const MCP_MAX_REQUEST_BYTES = 2 * 1024 * 1024;
+const requestEncoder = new TextEncoder();
+const requestIdSchema = z.union([z.string().max(512), z.number()]);
+const jsonRpcRequestSchema = z.looseObject({
+  jsonrpc: z.literal("2.0"),
+  id: requestIdSchema,
+  method: z.string().min(1),
+  params: z.json().optional(),
+});
+const jsonRpcNotificationSchema = z
+  .looseObject({
     jsonrpc: z.literal("2.0"),
-    id: requestIdSchema,
     method: z.string().min(1),
     params: z.json().optional(),
   })
-  .passthrough();
-const jsonRpcNotificationSchema = z
-  .object({ jsonrpc: z.literal("2.0"), method: z.string().min(1), params: z.json().optional() })
-  .passthrough()
   .refine((value) => !("id" in value));
 const jsonRpcResponseSchema = z
-  .object({
+  .looseObject({
     jsonrpc: z.literal("2.0"),
     id: z.union([requestIdSchema, z.null()]),
     result: z.json().optional(),
     error: z
-      .object({ code: z.number().finite(), message: z.string(), data: z.json().optional() })
+      .object({ code: z.number(), message: z.string(), data: z.json().optional() })
       .strict()
       .optional(),
   })
-  .passthrough()
   .refine((value) => value.result !== undefined || value.error !== undefined);
-const elicitationResultSchema = z
-  .object({ action: z.enum(["accept", "decline", "cancel"]), content: z.json().optional() })
-  .passthrough();
-const samplingResultSchema = z
-  .object({ role: z.literal("assistant"), content: z.json(), model: z.string() })
-  .passthrough();
+const elicitationResultSchema = z.object({
+  action: z.enum(["accept", "decline", "cancel"]),
+  content: z.record(z.string(), z.json()).optional(),
+});
+const samplingResultSchema = z.object({
+  role: z.literal("assistant"),
+  content: z.json(),
+  model: z.string(),
+  stopReason: z.string().optional(),
+});
+const jsonRpcEnvelopeParser = parser(
+  z.union([jsonRpcNotificationSchema, jsonRpcRequestSchema, jsonRpcResponseSchema]),
+);
+const responseResultParser = parser(z.union([elicitationResultSchema, samplingResultSchema]));
+const initializeParamsParser = parser(
+  z.looseObject({
+    protocolVersion: z.string().min(1),
+    capabilities: z.record(z.string(), z.json()).optional(),
+    clientInfo: z.looseObject({ name: z.string(), version: z.string() }).optional(),
+  }),
+);
+const toolCallParamsParser = parser(
+  z.looseObject({
+    name: z.string().min(1),
+    arguments: z.record(z.string(), z.json()).optional(),
+  }),
+);
 
 // =============================================================================
 // HEADER PARSING
@@ -156,9 +173,28 @@ export function* parseRequest(request: Request): Operation<McpParsedRequest> {
   let body: unknown;
   if (method === "POST") {
     assertPostHeaders(headers);
+    const declaredLength = Number(request.headers.get("Content-Length"));
+    if (Number.isFinite(declaredLength) && declaredLength > MCP_MAX_REQUEST_BYTES) {
+      throw new McpHandlerError(
+        MCP_HANDLER_ERRORS.INVALID_REQUEST,
+        "MCP request body exceeds 2 MiB",
+        413,
+      );
+    }
     try {
-      body = yield* call(() => request.json());
-    } catch {
+      const text = yield* call(() => request.text());
+      if (requestEncoder.encode(text).byteLength > MCP_MAX_REQUEST_BYTES) {
+        throw new McpHandlerError(
+          MCP_HANDLER_ERRORS.INVALID_REQUEST,
+          "MCP request body exceeds 2 MiB",
+          413,
+        );
+      }
+      body = JSON.parse(text) as unknown;
+    } catch (error) {
+      if (error instanceof McpHandlerError) {
+        throw error;
+      }
       throw new McpHandlerError(
         MCP_HANDLER_ERRORS.INVALID_REQUEST,
         "Invalid JSON in request body",
@@ -181,33 +217,6 @@ export function* parseRequest(request: Request): Operation<McpParsedRequest> {
 }
 
 // =============================================================================
-// JSON-RPC VALIDATION
-// =============================================================================
-
-/**
- * Check if a value is a valid JSON-RPC request.
- */
-function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
-  return jsonRpcRequestSchema.safeParse(value).success;
-}
-
-/**
- * Check if a value is a valid JSON-RPC notification (request without id).
- */
-function isJsonRpcNotification(
-  value: unknown,
-): value is { jsonrpc: "2.0"; method: string; params?: unknown } {
-  return jsonRpcNotificationSchema.safeParse(value).success;
-}
-
-/**
- * Check if a value is a valid JSON-RPC response.
- */
-function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
-  return jsonRpcResponseSchema.safeParse(value).success;
-}
-
-// =============================================================================
 // REQUEST CLASSIFICATION
 // =============================================================================
 
@@ -225,9 +234,19 @@ function classifyPostBody(
   | McpToolsListRequest
   | McpPingRequest
   | McpNotification {
+  const parsedEnvelope = jsonRpcEnvelopeParser.parse(body);
+  if (!parsedEnvelope.ok) {
+    throw new McpHandlerError(
+      MCP_HANDLER_ERRORS.INVALID_REQUEST,
+      "Request body must be a JSON-RPC request or response",
+      400,
+    );
+  }
+  const envelope = parsedEnvelope.value;
+
   // Check for JSON-RPC notification (no id - fire and forget)
-  if (isJsonRpcNotification(body)) {
-    const notif = body as { method: string; params?: unknown };
+  if ("method" in envelope && !("id" in envelope)) {
+    const notif = envelope as { method: string; params?: unknown };
     return {
       type: "notification",
       method: notif.method,
@@ -236,8 +255,8 @@ function classifyPostBody(
   }
 
   // Check for JSON-RPC request (tools/call, initialize, tools/list)
-  if (isJsonRpcRequest(body)) {
-    const req = body as JsonRpcRequest;
+  if ("method" in envelope) {
+    const req = envelope as JsonRpcRequest;
 
     if (req.method === "ping") {
       return {
@@ -247,15 +266,8 @@ function classifyPostBody(
     }
 
     if (req.method === "initialize") {
-      const params = req.params as
-        | {
-            protocolVersion?: string;
-            capabilities?: Record<string, unknown>;
-            clientInfo?: { name: string; version: string };
-          }
-        | undefined;
-
-      if (typeof params?.protocolVersion !== "string" || params.protocolVersion.length === 0) {
+      const params = initializeParamsParser.parse(req.params);
+      if (!params.ok) {
         throw new McpHandlerError(
           MCP_HANDLER_ERRORS.INVALID_REQUEST,
           "initialize requires params.protocolVersion",
@@ -266,9 +278,9 @@ function classifyPostBody(
       return {
         type: "initialize",
         requestId: req.id,
-        protocolVersion: params.protocolVersion,
-        capabilities: params.capabilities ?? {},
-        clientInfo: params.clientInfo ?? { name: "unknown", version: "0.0.0" },
+        protocolVersion: params.value.protocolVersion,
+        capabilities: params.value.capabilities ?? {},
+        clientInfo: params.value.clientInfo ?? { name: "unknown", version: "0.0.0" },
       };
     }
 
@@ -280,8 +292,8 @@ function classifyPostBody(
     }
 
     if (req.method === "tools/call") {
-      const params = req.params as McpToolCallParams | undefined;
-      if (!params || typeof params.name !== "string") {
+      const params = toolCallParamsParser.parse(req.params);
+      if (!params.ok) {
         throw new McpHandlerError(
           MCP_HANDLER_ERRORS.INVALID_REQUEST,
           "tools/call requires params.name",
@@ -292,8 +304,8 @@ function classifyPostBody(
       const result: McpToolsCallRequest = {
         type: "tools_call",
         requestId: req.id,
-        toolName: params.name,
-        arguments: params.arguments ?? {},
+        toolName: params.value.name,
+        arguments: params.value.arguments ?? {},
       };
       if (sessionId !== undefined) {
         result.sessionId = sessionId;
@@ -309,8 +321,8 @@ function classifyPostBody(
   }
 
   // Check for JSON-RPC response (elicit or sample response)
-  if (isJsonRpcResponse(body)) {
-    const resp = body as JsonRpcResponse;
+  {
+    const resp = envelope as JsonRpcResponse;
 
     // Must have a session for responses
     if (!sessionId) {
@@ -349,34 +361,33 @@ function classifyPostBody(
 
     const result = (resp as { result: unknown }).result;
 
-    // Try to classify as elicitation response
-    if (isElicitationResult(result)) {
+    const parsedResult = responseResultParser.parse(result);
+    if (parsedResult.ok && "action" in parsedResult.value) {
       const elicitResult: McpElicitResponse = {
         type: "elicit_response",
         requestId: resp.id,
-        elicitId: String(resp.id), // Correlate by request ID
-        action: result.action,
+        elicitId: String(resp.id),
+        action: parsedResult.value.action,
         sessionId,
       };
-      if (result.content !== undefined) {
-        elicitResult.content = result.content;
+      if (parsedResult.value.content !== undefined) {
+        elicitResult.content = parsedResult.value.content;
       }
       return elicitResult;
     }
 
-    // Try to classify as sampling response
-    if (isSamplingResult(result)) {
+    if (parsedResult.ok && "role" in parsedResult.value) {
       const sampleResult: McpSampleResponse = {
         type: "sample_response",
         requestId: resp.id,
-        sampleId: String(resp.id), // Correlate by request ID
-        role: result.role,
-        content: result.content,
-        model: result.model,
+        sampleId: String(resp.id),
+        role: parsedResult.value.role,
+        content: parsedResult.value.content,
+        model: parsedResult.value.model,
         sessionId,
       };
-      if (result.stopReason !== undefined) {
-        sampleResult.stopReason = result.stopReason;
+      if (parsedResult.value.stopReason !== undefined) {
+        sampleResult.stopReason = parsedResult.value.stopReason;
       }
       return sampleResult;
     }
@@ -387,26 +398,6 @@ function classifyPostBody(
       400,
     );
   }
-
-  throw new McpHandlerError(
-    MCP_HANDLER_ERRORS.INVALID_REQUEST,
-    "Request body must be a JSON-RPC request or response",
-    400,
-  );
-}
-
-/**
- * Check if a result looks like an elicitation result.
- */
-function isElicitationResult(result: unknown): result is McpElicitationResult {
-  return elicitationResultSchema.safeParse(result).success;
-}
-
-/**
- * Check if a result looks like a sampling result.
- */
-function isSamplingResult(result: unknown): result is McpCreateMessageResult {
-  return samplingResultSchema.safeParse(result).success;
 }
 
 /**

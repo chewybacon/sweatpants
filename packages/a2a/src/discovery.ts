@@ -21,6 +21,7 @@ import {
   type A2AHttpClient,
 } from "./http-client.ts";
 import { normalizedTransportOrigin, verifyA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
+import { assertBoundedA2AJson } from "./json-bounds.ts";
 
 const boundedTextSchema = z.string().min(1).max(256);
 const pinnedProgramSchema = z.strictObject({
@@ -31,11 +32,11 @@ const pinnedProgramSchema = z.strictObject({
 const agentCardCoreSchema = z.looseObject({
   name: boundedTextSchema,
   version: boundedTextSchema,
-  supportedInterfaces: z.array(z.unknown()).min(1),
-  defaultInputModes: z.array(z.string()),
-  defaultOutputModes: z.array(z.string()),
-  skills: z.array(z.looseObject({ id: boundedTextSchema, name: boundedTextSchema })),
-  capabilities: z.looseObject({ extensions: z.array(z.unknown()) }),
+  supportedInterfaces: z.array(z.unknown()).min(1).max(128),
+  defaultInputModes: z.array(z.string()).max(256),
+  defaultOutputModes: z.array(z.string()).max(256),
+  skills: z.array(z.looseObject({ id: boundedTextSchema, name: boundedTextSchema })).max(1_024),
+  capabilities: z.looseObject({ extensions: z.array(z.unknown()).max(128) }),
 });
 const extensionIdentitySchema = z.looseObject({ uri: z.string() });
 const callerAuthoritativeDeclarationSchema = z.strictObject({
@@ -108,6 +109,7 @@ export async function discoverCallerAuthoritativeProgram(
   }
   let card: Json;
   try {
+    assertBoundedA2AJson(cardValue);
     card = assertJson(cardValue);
   } catch (error) {
     throw a2aError("agent_card_invalid", "Agent Card is not canonical JSON", error);

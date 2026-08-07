@@ -65,6 +65,7 @@ export {
   preflightRemoteEffectHandlers,
   type FetchRemoteProgramManifestOptions,
 } from "./manifest.ts";
+export { A2A_MAX_JSON_DEPTH, A2A_MAX_JSON_NODES } from "./json-bounds.ts";
 export {
   createSecureA2AHttpClient,
   jsonHttpBody,

@@ -33,7 +33,6 @@ import {
   type CapabilityKeyring,
 } from "./capabilities.ts";
 import {
-  assertJson,
   canonicalJson,
   canonicalSnapshot,
   failure,
@@ -45,7 +44,12 @@ import {
   type ParseResult,
   type Parser,
 } from "@sweatpants/foundation";
-import { durableAuthoritySnapshotStructureParser } from "./durable-authority-snapshot-schema.ts";
+import {
+  DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES,
+  durableAuthoritySnapshotStructureParser,
+} from "./durable-authority-snapshot-schema.ts";
+
+export { DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES } from "./durable-authority-snapshot-schema.ts";
 import {
   effectContractDigest,
   hasLiveDurableEffect,
@@ -2527,7 +2531,10 @@ function snapshotFailure(path: readonly (string | number)[], detail: string): Pa
  */
 export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthoritySnapshot {
   try {
-    const value = assertJson(JSON.parse(serialized));
+    if (new TextEncoder().encode(serialized).byteLength > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) {
+      throw invalidSnapshot();
+    }
+    const value: unknown = JSON.parse(serialized);
     const parsed = durableAuthoritySnapshotParser.parse(value);
     if (!parsed.ok) {
       throw invalidSnapshot();

@@ -3,9 +3,12 @@
  *
  * Tests for the MCP Streamable HTTP handler implementation.
  */
+import { run } from "effection";
 import { describe, it, expect } from "vitest";
 import {
+  MCP_MAX_REQUEST_BYTES,
   parseHeaders,
+  parseRequest,
   assertPostHeaders,
   assertGetHeaders,
   classifyRequest,
@@ -18,6 +21,21 @@ import type { McpParsedRequest } from "../types.ts";
 // =============================================================================
 
 describe("request-parser", () => {
+  it("rejects oversized POST bodies before JSON parsing", async () => {
+    const request = new Request("http://localhost/mcp", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": String(MCP_MAX_REQUEST_BYTES + 1),
+      },
+      body: "{}",
+    });
+    await expect(run(() => parseRequest(request))).rejects.toMatchObject({
+      code: "INVALID_REQUEST",
+      httpStatus: 413,
+    });
+  });
+
   describe("parseHeaders", () => {
     it("parses Mcp-Session-Id header", () => {
       const request = new Request("http://localhost/mcp", {

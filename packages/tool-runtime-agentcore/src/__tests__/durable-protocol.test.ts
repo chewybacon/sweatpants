@@ -4,6 +4,8 @@ import { type ReplayOperationEntry } from "@sweatpants/durable-execution";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 
 import {
+  agentCoreRuntimeReleaseParser,
+  agentCoreTaskPlacementParser,
   computeFrontierDigest,
   computeReplayChainSeed,
   createInvocationAgentCorePlacement,
@@ -42,6 +44,7 @@ const attach = {
 describe("AgentCore durable placement and protocol", () => {
   it("validates lifecycle bounds and deterministically isolates invocation placements", () => {
     expect(verifyAgentCoreRuntimeRelease(parseAgentCoreRuntimeRelease(release))).toEqual(release);
+    expect(agentCoreRuntimeReleaseParser.parse(release)).toEqual({ ok: true, value: release });
     const first = createInvocationAgentCorePlacement({
       journalId: "j",
       rootTaskId: "one",
@@ -81,6 +84,7 @@ describe("AgentCore durable placement and protocol", () => {
       /release metadata/,
     );
     expect(() => parseAgentCoreTaskPlacement({ release })).toThrow(/placement/);
+    expect(agentCoreTaskPlacementParser.parse({ release }).ok).toBe(false);
   });
 
   it("round-trips closed canonical frames and rejects identity/control extensions", () => {

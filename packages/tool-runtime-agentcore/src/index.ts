@@ -89,8 +89,11 @@ export {
   DEFAULT_AGENTCORE_IDLE_TIMEOUT_SECONDS,
   DEFAULT_AGENTCORE_MAX_LIFETIME_SECONDS,
   DEFAULT_AGENTCORE_WORKSPACE_MOUNT,
+  agentCoreRuntimeReleaseParser,
+  agentCoreTaskPlacementParser,
   createInvocationAgentCorePlacement,
   reconcileAgentCoreDurableReadiness,
+  sandboxAffinityParser,
   parseAgentCoreRuntimeRelease,
   parseAgentCoreTaskPlacement,
   verifyAgentCoreRuntimeRelease,
@@ -145,7 +148,9 @@ export {
 } from "./placement-model-producer.ts";
 
 export {
+  REMOTE_SAMPLE_MAX_RECORD_BYTES,
   createRedisPlacementModelSampler,
+  remoteSampleRecordParser,
   type RedisPlacementModelSampler,
 } from "./redis-placement-model-sampler.ts";
 
