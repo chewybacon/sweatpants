@@ -1,9 +1,21 @@
-import { type DurableEffectRegistry, type EffectDefinition } from "@sweatpants/durable-effects";
+import {
+  durableEffectRuntimeSchemas,
+  type DurableEffectRegistry,
+  type EffectDefinition,
+} from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
-import { durableEffectRuntimeSchemas } from "@sweatpants/durable-effects";
 import { assertEffectDefinition } from "@sweatpants/durable-effects/authoring";
-import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
+import {
+  canonicalJson,
+  canonicalSnapshot,
+  failure,
+  parser,
+  sha256,
+  success,
+  type Json,
+  type Parser,
+} from "@sweatpants/foundation";
 import { z } from "zod";
 
 const peerDigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
@@ -14,6 +26,15 @@ const requirementManifestShapeSchema = z.strictObject({
   amendmentRequests: z.boolean(),
   releaseDigest: peerDigestSchema,
   manifestDigest: peerDigestSchema,
+});
+const peerContractShapeSchema = z.strictObject({
+  name: z.string().min(1),
+  version: z.string().min(1),
+  inputSchema: z.json(),
+  outputSchema: z.json(),
+  retrySafety: z.json(),
+  contractDigest: peerDigestSchema,
+  cancellation: z.strictObject({ partialSchema: z.json() }).optional(),
 });
 const requirementShapeSchema = z.strictObject({
   contract: z.json(),
@@ -28,6 +49,13 @@ const requirementShapeSchema = z.strictObject({
   defaultConstraints: z.json().optional(),
   defaultBudget: z.json().optional(),
 });
+const requirementIdentityParser = parser(
+  z.strictObject({ skillId: z.string().min(1), releaseDigest: peerDigestSchema }),
+);
+const requirementManifestStructureParser = parser(requirementManifestShapeSchema);
+const requirementStructureParser = parser(requirementShapeSchema);
+const peerContractStructureParser = parser(peerContractShapeSchema);
+
 import type {
   PeerEffectContract,
   PeerEffectOffer,
@@ -41,6 +69,15 @@ import type {
 const CONTRACT_DOMAIN = "sweatpants.peer.effect-contract.v1";
 const MANIFEST_DOMAIN = "sweatpants.peer.requirement-manifest.v1";
 const GRANT_DOMAIN = "sweatpants.peer.grant-set.v1";
+
+export const peerEffectContractParser: Parser<PeerEffectContract> =
+  peerContractStructureParser.andThen((value) => semanticParse(() => normalizeContract(value)));
+const peerEffectRequirementParser: Parser<PeerEffectRequirement> =
+  requirementStructureParser.andThen((value) => semanticParse(() => normalizeRequirement(value)));
+export const peerRequirementManifestParser: Parser<PeerEffectRequirementManifest> =
+  requirementManifestStructureParser.andThen((value) =>
+    semanticParse(() => normalizeRequirementManifest(value)),
+  );
 
 export function definePeerEffectContract(
   definition: EffectDefinition<Json, Json, Json>,
@@ -63,12 +100,21 @@ export function definePeerEffectContract(
 }
 
 export function parsePeerRequirementManifest(value: unknown): PeerEffectRequirementManifest {
-  const manifest = requirementManifestShapeSchema.safeParse(value);
-  if (!manifest.success) {
-    throw new CrankError("peer_manifest_invalid", "Invalid closed peer requirement manifest");
+  const parsed = peerRequirementManifestParser.parse(value);
+  if (!parsed.ok) {
+    throw new CrankError(
+      "peer_manifest_invalid",
+      parsed.issues[0]?.message ?? "Invalid closed peer requirement manifest",
+    );
   }
+  return parsed.value;
+}
+
+function normalizeRequirementManifest(
+  manifest: z.output<typeof requirementManifestShapeSchema>,
+): PeerEffectRequirementManifest {
   const names = new Set<string>();
-  const requirements = manifest.data.requirements.map((requirement) => {
+  const requirements = manifest.requirements.map((requirement) => {
     const parsed = parseRequirement(requirement);
     if (names.has(parsed.contract.name)) {
       throw new CrankError(
@@ -81,13 +127,13 @@ export function parsePeerRequirementManifest(value: unknown): PeerEffectRequirem
   });
   const body = {
     protocolVersion: 1 as const,
-    skillId: manifest.data.skillId,
+    skillId: manifest.skillId,
     requirements: [...requirements].sort(compareRequirements),
-    amendmentRequests: manifest.data.amendmentRequests,
-    releaseDigest: manifest.data.releaseDigest,
+    amendmentRequests: manifest.amendmentRequests,
+    releaseDigest: manifest.releaseDigest,
   };
   const computed = sha256(canonicalJson({ domain: MANIFEST_DOMAIN, manifest: body }));
-  if (computed !== manifest.data.manifestDigest) {
+  if (computed !== manifest.manifestDigest) {
     throw new CrankError("peer_manifest_invalid", "Peer requirement manifest digest mismatch");
   }
   return Object.freeze({ ...body, manifestDigest: computed });
@@ -108,7 +154,12 @@ export function createPeerRequirementManifest(input: {
     names.add(parsed.contract.name);
     return parsed;
   });
-  if (!nonempty(input.skillId) || !digest(input.releaseDigest)) {
+  if (
+    !requirementIdentityParser.parse({
+      skillId: input.skillId,
+      releaseDigest: input.releaseDigest,
+    }).ok
+  ) {
     throw new CrankError("peer_manifest_invalid", "Invalid peer requirement identity");
   }
   const body = {
@@ -301,36 +352,45 @@ function preflightCallerContract(
   }
 }
 function parseRequirement(value: unknown): PeerEffectRequirement {
-  const parsed = requirementShapeSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new CrankError("peer_manifest_invalid", "Invalid peer effect requirement");
+  const parsed = peerEffectRequirementParser.parse(value);
+  if (!parsed.ok) {
+    const issue = parsed.issues[0];
+    throw new CrankError(
+      issue?.code?.startsWith("peer_") ? issue.code : "peer_manifest_invalid",
+      issue?.message ?? "Invalid peer effect requirement",
+    );
   }
-  const requirement = parsed.data;
-  const contract = parseContract(requirement.contract);
+  return parsed.value;
+}
+function normalizeRequirement(
+  requirement: z.output<typeof requirementShapeSchema>,
+): PeerEffectRequirement {
+  const contract = requireContract(requirement.contract);
   return Object.freeze({
     contract,
     availability: requirement.availability,
     required: requirement.required,
     allowedRoutes: [...new Set(requirement.allowedRoutes)],
-    ...(requirement.defaultConstraints !== undefined
-      ? { defaultConstraints: requirement.defaultConstraints }
-      : {}),
-    ...(requirement.defaultBudget !== undefined
-      ? { defaultBudget: requirement.defaultBudget }
-      : {}),
+    ...(requirement.defaultConstraints === undefined
+      ? {}
+      : { defaultConstraints: requirement.defaultConstraints }),
+    ...(requirement.defaultBudget === undefined
+      ? {}
+      : { defaultBudget: requirement.defaultBudget }),
   });
 }
-function parseContract(value: unknown): PeerEffectContract {
-  if (
-    !record(value) ||
-    !onlyKeys(
-      value,
-      ["name", "version", "inputSchema", "outputSchema", "retrySafety", "contractDigest"],
-      ["cancellation"],
-    )
-  ) {
-    throw new CrankError("peer_manifest_invalid", "Invalid peer effect contract");
+function requireContract(value: unknown): PeerEffectContract {
+  const parsed = peerEffectContractParser.parse(value);
+  if (!parsed.ok) {
+    const issue = parsed.issues[0];
+    throw new CrankError(
+      issue?.code?.startsWith("peer_") ? issue.code : "peer_manifest_invalid",
+      issue?.message ?? "Invalid peer effect contract",
+    );
   }
+  return parsed.value;
+}
+function normalizeContract(value: z.output<typeof peerContractShapeSchema>): PeerEffectContract {
   const definition = peerContractAsEffectDefinition(value as unknown as PeerEffectContract);
   return definePeerEffectContract(definition);
 }
@@ -371,22 +431,13 @@ function compareContracts(left: PeerEffectContract, right: PeerEffectContract): 
     left.contractDigest.localeCompare(right.contractDigest)
   );
 }
-function record(value: unknown): value is Record<string, Json> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-function nonempty(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-function digest(value: unknown): value is string {
-  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
-}
-function onlyKeys(
-  value: Record<string, Json>,
-  required: readonly string[],
-  optional: readonly string[],
-): boolean {
-  const allowed = new Set([...required, ...optional]);
-  return (
-    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
-  );
+function semanticParse<T>(operation: () => T) {
+  try {
+    return success(operation());
+  } catch (error) {
+    if (error instanceof CrankError) {
+      return failure<T>({ path: [], message: error.message, code: error.code });
+    }
+    throw error;
+  }
 }

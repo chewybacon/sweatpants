@@ -47,7 +47,7 @@ const programSchema = z
 const executorHelloSchema = z
   .object({
     type: z.literal("hello"),
-    protocolVersion: z.number().int().safe(),
+    protocolVersion: z.number().int(),
     extensionUri: z.string().max(512),
     executorId: protocolIdentifierSchema,
     maxFrameBytes: z.literal(A2A_MAX_FRAME_BYTES),
@@ -100,7 +100,7 @@ const operationDescriptorSchema = z.discriminatedUnion("kind", [
       kind: z.literal("wait"),
       key: protocolIdentifierSchema,
       notBefore: z.string().optional(),
-      durationMs: z.number().int().nonnegative().safe().optional(),
+      durationMs: z.number().int().nonnegative().optional(),
     })
     .refine((value) => (value.notBefore === undefined) !== (value.durationMs === undefined)),
   z.strictObject({ kind: z.literal("invoke"), child: childSchema }),
@@ -130,14 +130,14 @@ const commandSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("start"), input: z.json() }),
   z.strictObject({
     type: z.literal("resume"),
-    actionIndex: z.number().int().nonnegative().safe(),
+    actionIndex: z.number().int().nonnegative(),
     outcome: outcomeSchema,
     receipt: receiptSchema,
     replayed: z.boolean(),
   }),
   z.strictObject({
     type: z.literal("authorize"),
-    actionIndex: z.number().int().nonnegative().safe(),
+    actionIndex: z.number().int().nonnegative(),
     pullId: protocolIdentifierSchema,
     attemptId: protocolIdentifierSchema,
     descriptor: operationDescriptorSchema.optional(),
@@ -145,7 +145,7 @@ const commandSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({
     type: z.literal("ack_emission"),
-    actionIndex: z.number().int().nonnegative().safe(),
+    actionIndex: z.number().int().nonnegative(),
     offset: protocolIdentifierSchema,
   }),
   z.strictObject({ type: z.literal("cancel"), reason: z.string().optional() }),
@@ -153,29 +153,29 @@ const commandSchema = z.discriminatedUnion("type", [
 const stepSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("operation"),
-    actionIndex: z.number().int().nonnegative().safe(),
+    actionIndex: z.number().int().nonnegative(),
     descriptor: operationDescriptorSchema,
     authorizedOutcome: outcomeSchema.optional(),
   }),
   z.strictObject({
     type: z.literal("emission"),
-    actionIndex: z.number().int().nonnegative().safe(),
+    actionIndex: z.number().int().nonnegative(),
     descriptor: z.strictObject({ eventType: protocolIdentifierSchema, payload: z.json() }),
   }),
   z.strictObject({
     type: z.literal("completed"),
-    actionIndex: z.number().int().nonnegative().safe(),
+    actionIndex: z.number().int().nonnegative(),
     value: z.json(),
   }),
   z.strictObject({
     type: z.literal("failed"),
-    actionIndex: z.number().int().nonnegative().safe(),
+    actionIndex: z.number().int().nonnegative(),
     error: applicationErrorSchema,
   }),
 ]);
 const replayOperationSchema = z.strictObject({
   type: z.literal("operation"),
-  actionIndex: z.number().int().nonnegative().safe(),
+  actionIndex: z.number().int().nonnegative(),
   descriptorKind: protocolIdentifierSchema,
   descriptorDigest: digestSchema,
   previousEntryDigest: digestSchema,
@@ -185,7 +185,7 @@ const replayOperationSchema = z.strictObject({
 });
 const replayEmissionSchema = z.strictObject({
   type: z.literal("emission"),
-  actionIndex: z.number().int().nonnegative().safe(),
+  actionIndex: z.number().int().nonnegative(),
   descriptorKind: protocolIdentifierSchema,
   descriptorDigest: digestSchema,
   previousEntryDigest: digestSchema,
@@ -193,13 +193,13 @@ const replayEmissionSchema = z.strictObject({
   offset: protocolIdentifierSchema,
 });
 const envelopeBaseShape = {
-  protocolVersion: z.number().int().safe(),
+  protocolVersion: z.number().int(),
   extensionUri: z.string().max(512),
   executionId: protocolIdentifierSchema,
   program: programSchema,
-  executionEpoch: z.number().int().positive().safe(),
+  executionEpoch: z.number().int().positive(),
   attachmentId: protocolIdentifierSchema.optional(),
-  actionIndex: z.number().int().nonnegative().safe().optional(),
+  actionIndex: z.number().int().nonnegative().optional(),
   commandId: protocolIdentifierSchema.optional(),
 };
 const clientEnvelopeSchema = z.discriminatedUnion("type", [
@@ -237,7 +237,7 @@ const clientEnvelopeSchema = z.discriminatedUnion("type", [
     payload: z.strictObject({
       input: z.json(),
       inputDigest: digestSchema,
-      replayedThroughActionIndex: z.number().int().safe().min(-1),
+      replayedThroughActionIndex: z.number().int().min(-1),
       replayChainSeed: digestSchema,
       affinity: affinitySchema,
     }),
@@ -256,7 +256,7 @@ const clientEnvelopeSchema = z.discriminatedUnion("type", [
     ...envelopeBaseShape,
     type: z.literal("replay_end"),
     payload: z.strictObject({
-      entryCount: z.number().int().nonnegative().safe(),
+      entryCount: z.number().int().nonnegative(),
       replayChainDigest: digestSchema,
     }),
   }),
@@ -293,7 +293,7 @@ const serverEnvelopeSchema = z.discriminatedUnion("type", [
     type: z.literal("frontier"),
     payload: z.strictObject({
       step: stepSchema,
-      replayedThroughActionIndex: z.number().int().safe().min(-1),
+      replayedThroughActionIndex: z.number().int().min(-1),
       replayChainDigest: digestSchema,
       frontierDigest: digestSchema,
     }),

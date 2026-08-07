@@ -1,15 +1,22 @@
 import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
-import { ChatProtocolError, decodeAGUIEvent, encodeAGUIEvent } from "./chat-client-codec.ts";
+import {
+  ChatProtocolError,
+  activityPatchParser,
+  aguiEventParser,
+  decodeAGUIEvent,
+  encodeAGUIEvent,
+  publicActivityParser,
+} from "./chat-client-codec.ts";
 
 describe("official AG-UI chat codec", () => {
   it("accepts official message, reasoning, raw, and custom events", () => {
-    expect(
-      decodeAGUIEvent({
-        type: EventType.MESSAGES_SNAPSHOT,
-        messages: [{ id: "user-1", role: "user", content: "hello" }],
-      }),
-    ).toMatchObject({ type: EventType.MESSAGES_SNAPSHOT });
+    const snapshot = {
+      type: EventType.MESSAGES_SNAPSHOT,
+      messages: [{ id: "user-1", role: "user" as const, content: "hello" }],
+    };
+    expect(decodeAGUIEvent(snapshot)).toMatchObject({ type: EventType.MESSAGES_SNAPSHOT });
+    expect(aguiEventParser.parse(snapshot)).toEqual({ ok: true, value: snapshot });
     expect(
       decodeAGUIEvent({
         type: EventType.REASONING_MESSAGE_CONTENT,
@@ -82,6 +89,34 @@ describe("official AG-UI chat codec", () => {
     ]) {
       expect(() => decodeAGUIEvent(event)).toThrow(ChatProtocolError);
     }
+  });
+
+  it("returns result values for public activity and patch validation", () => {
+    const activity = {
+      version: 1,
+      node: {
+        nodeId: "node-1",
+        parentNodeId: null,
+        sequence: 0,
+        kind: "activity",
+        state: "running",
+        presentation: "public",
+      },
+    };
+    expect(publicActivityParser.parse(activity)).toEqual({ ok: true, value: activity });
+    expect(
+      publicActivityParser.parse({
+        ...activity,
+        node: { ...activity.node, state: "done" },
+      }).ok,
+    ).toBe(false);
+    expect(
+      activityPatchParser.parse([{ op: "replace", path: "/node/state", value: "complete" }]),
+    ).toEqual({
+      ok: true,
+      value: [{ op: "replace", path: "/node/state", value: "complete" }],
+    });
+    expect(activityPatchParser.parse([{ op: "remove", path: "/node/state" }]).ok).toBe(false);
   });
 
   it("strictly validates public activity content and mutable patches", () => {

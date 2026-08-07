@@ -1,9 +1,19 @@
 import { EventSchemas, EventType, type AGUIEvent } from "@ag-ui/core";
-import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
+import {
+  assertJson,
+  canonicalJson,
+  failure,
+  parser,
+  success,
+  type Json,
+  type ParseResult,
+  type Parser,
+} from "@sweatpants/foundation";
 import {
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,
 } from "@sweatpants/foundation/schema";
+import { z } from "zod";
 import type {
   ActivityDeltaEvent,
   ActivitySnapshotEvent,
@@ -43,20 +53,6 @@ function patchInvalid(message: string, path?: string): never {
   throw new ChatProtocolError("chat_activity_patch_invalid", message, path);
 }
 
-function record(value: unknown, path: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    invalid("expected an object", path);
-  }
-  return value as Record<string, unknown>;
-}
-
-function string(value: unknown, path: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    invalid("expected a non-empty string", path);
-  }
-  return value;
-}
-
 function json(value: unknown, path: string): Json {
   try {
     return assertJson(value, path);
@@ -80,15 +76,102 @@ const statesByKind: Readonly<Record<PublicActivityNode["kind"], ReadonlySet<stri
   elicit: new Set(["pending", "responded", "cancelled"]),
 };
 const states = new Set(Object.values(statesByKind).flatMap((values) => [...values]));
-const kinds = new Set<PublicActivityNode["kind"]>(["tool-call", "message", "activity", "elicit"]);
-
-function isActivityKind(value: unknown): value is PublicActivityNode["kind"] {
-  return typeof value === "string" && kinds.has(value as PublicActivityNode["kind"]);
-}
-
-function isActivityState(value: unknown): value is PublicActivityNode["state"] {
-  return typeof value === "string" && states.has(value);
-}
+const jsonValueSchema: z.ZodType = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+const publicMessageDataSchema = z.strictObject({
+  kind: z.literal("message"),
+  messageId: z.string().min(1),
+  role: z.enum(["user", "assistant", "system"]),
+});
+const publicToolCallDataSchema = z.strictObject({
+  kind: z.literal("tool-call"),
+  callId: z.string().min(1),
+  name: z.string().min(1),
+  rawInput: z.string().optional(),
+  input: jsonValueSchema.optional(),
+  output: jsonValueSchema.optional(),
+  errorText: z.string().optional(),
+});
+const publicActivityDataSchema = z.strictObject({
+  kind: z.literal("activity"),
+  activityType: z.string().min(1),
+  data: jsonValueSchema.optional(),
+});
+const publicElicitDataSchema = z.strictObject({
+  kind: z.literal("elicit"),
+  elicitId: z.string().min(1),
+  bindingId: z.string().min(1),
+  key: z.string().min(1),
+  message: z.string().min(1),
+  context: jsonValueSchema.optional(),
+  responseContract: z.record(z.string(), z.unknown()),
+  contextContract: z.record(z.string(), z.unknown()).optional(),
+  toolName: z.string().min(1),
+  callId: z.string().min(1),
+  producerSequence: z.number().int().nonnegative(),
+});
+const publicActivitySchema = z.strictObject({
+  version: z.literal(1),
+  node: z.strictObject({
+    nodeId: z.string().min(1),
+    parentNodeId: z.string().nullable(),
+    sequence: z.number().int().nonnegative(),
+    kind: z.enum(["tool-call", "message", "activity", "elicit"]),
+    state: z.enum([
+      "streaming",
+      "done",
+      "input-streaming",
+      "input-available",
+      "output-available",
+      "output-error",
+      "running",
+      "complete",
+      "error",
+      "cancelled",
+      "pending",
+      "responded",
+    ]),
+    presentation: z.enum(["public", "opaque"]),
+    publicData: z.record(z.string(), z.unknown()).optional(),
+  }),
+});
+const activityPatchSchema = z.array(
+  z.strictObject({
+    op: z.enum(["add", "remove", "replace"]),
+    path: z.string(),
+    from: z.unknown().optional(),
+    value: jsonValueSchema.optional(),
+  }),
+);
+const structuredOutputStartValueSchema = z.strictObject({ messageId: z.string().min(1) });
+const structuredOutputCompleteValueSchema = z.strictObject({
+  messageId: z.string().min(1).optional(),
+  object: jsonValueSchema,
+  raw: z.string().min(1),
+  reasoning: z.string().optional(),
+});
+const aguiEnvelopeSchema = z.record(z.string(), z.unknown());
+const aguiEnvelopeParser = parser(aguiEnvelopeSchema);
+const activityContentParser = parser(z.record(z.string(), z.unknown()));
+const aguiEventStructureParser = parser(EventSchemas);
+const publicDataParsers = {
+  message: parser(publicMessageDataSchema),
+  "tool-call": parser(publicToolCallDataSchema),
+  activity: parser(publicActivityDataSchema),
+  elicit: parser(publicElicitDataSchema),
+} as const;
+const publicActivityStructureParser = parser(publicActivitySchema);
+const activityPatchStructureParser = parser(activityPatchSchema);
+const structuredOutputStartValueParser = parser(structuredOutputStartValueSchema);
+const structuredOutputCompleteValueParser = parser(structuredOutputCompleteValueSchema);
 
 function assertKindState(
   kind: PublicActivityNode["kind"],
@@ -131,41 +214,18 @@ function assertToolLifecycle(
   }
 }
 
-function assertKeys(
-  input: Record<string, unknown>,
-  allowed: readonly string[],
-  path: string,
-): void {
-  for (const key of Object.keys(input)) {
-    if (!allowed.includes(key)) {
-      activityInvalid(`unknown field ${key}`, `${path}.${key}`);
-    }
-  }
-}
-
-function assertEventKeys(
-  input: Record<string, unknown>,
-  allowed: readonly string[],
-  path: string,
-): void {
-  for (const key of Object.keys(input)) {
-    if (!allowed.includes(key)) {
-      invalid(`unknown field ${key}`, `${path}.${key}`);
-    }
-  }
-}
-
 function decodeStructuredOutputStart(
   base: AGUIEvent,
   input: Record<string, unknown>,
 ): StructuredOutputStartEvent {
-  const value = record(input["value"], "$.value");
-  assertEventKeys(value, ["messageId"], "$.value");
-  const messageId = string(value["messageId"], "$.value.messageId");
+  const parsed = structuredOutputStartValueParser.parse(input["value"]);
+  if (!parsed.ok) {
+    invalid("invalid structured-output.start value", "$.value");
+  }
   return {
     ...(base as StructuredOutputStartEvent),
     name: "structured-output.start",
-    value: { messageId },
+    value: { messageId: parsed.value.messageId },
   };
 }
 
@@ -173,23 +233,19 @@ function decodeStructuredOutputComplete(
   base: AGUIEvent,
   input: Record<string, unknown>,
 ): StructuredOutputCompleteEvent {
-  const value = record(input["value"], "$.value");
-  assertEventKeys(value, ["messageId", "object", "raw", "reasoning"], "$.value");
-  const messageId =
-    value["messageId"] === undefined ? undefined : string(value["messageId"], "$.value.messageId");
-  const raw = string(value["raw"], "$.value.raw");
-  const reasoning = value["reasoning"];
-  if (reasoning !== undefined && typeof reasoning !== "string") {
-    invalid("expected a string", "$.value.reasoning");
+  const parsed = structuredOutputCompleteValueParser.parse(input["value"]);
+  if (!parsed.ok) {
+    invalid("invalid structured-output.complete value", "$.value");
   }
+  const value = parsed.value;
   return {
     ...(base as StructuredOutputCompleteEvent),
     name: "structured-output.complete",
     value: {
-      ...(messageId !== undefined ? { messageId } : {}),
-      object: json(value["object"], "$.value.object"),
-      raw,
-      ...(reasoning !== undefined ? { reasoning } : {}),
+      ...(value.messageId !== undefined ? { messageId: value.messageId } : {}),
+      object: json(value.object, "$.value.object"),
+      raw: value.raw,
+      ...(value.reasoning !== undefined ? { reasoning: value.reasoning } : {}),
     },
   };
 }
@@ -210,159 +266,88 @@ function publicData(
   if (value === undefined) {
     return undefined;
   }
-  const input = record(value, path);
-  if (input["kind"] !== kind) {
-    activityInvalid("publicData.kind must equal node.kind", `${path}.kind`);
+  const parsed = publicDataParsers[kind].parse(value);
+  if (!parsed.ok) {
+    activityInvalid(parsed.issues[0]?.message ?? "invalid public activity data", path);
   }
+  const input = parsed.value as Record<string, unknown>;
   if (kind === "message") {
-    assertKeys(input, ["kind", "messageId", "role"], path);
-    const role = input["role"];
-    if (role !== "user" && role !== "assistant" && role !== "system") {
-      activityInvalid("invalid message role", `${path}.role`);
-    }
-    return { kind, messageId: string(input["messageId"], `${path}.messageId`), role };
-  }
-  if (kind === "tool-call") {
-    assertKeys(input, ["kind", "callId", "name", "rawInput", "input", "output", "errorText"], path);
-    const output: {
-      kind: "tool-call";
-      callId: string;
-      name: string;
-      rawInput?: string;
-      input?: Json;
-      output?: Json;
-      errorText?: string;
-    } = {
-      kind,
-      callId: string(input["callId"], `${path}.callId`),
-      name: string(input["name"], `${path}.name`),
-    };
-    for (const key of ["rawInput", "errorText"] as const) {
-      const valueAtKey = input[key];
-      if (valueAtKey !== undefined) {
-        if (typeof valueAtKey !== "string") {
-          activityInvalid(`expected string ${key}`, `${path}.${key}`);
-        }
-        output[key] = valueAtKey;
-      }
-    }
-    for (const key of ["input", "output"] as const) {
-      const valueAtKey = input[key];
-      if (valueAtKey !== undefined) {
-        output[key] = json(valueAtKey, `${path}.${key}`);
-      }
-    }
-    return output;
-  }
-  if (kind === "activity") {
-    assertKeys(input, ["kind", "activityType", "data"], path);
-    const activityType = string(input["activityType"], `${path}.activityType`);
     return {
       kind,
-      activityType,
+      messageId: input["messageId"] as string,
+      role: input["role"] as "user" | "assistant" | "system",
+    };
+  }
+  if (kind === "tool-call") {
+    return {
+      kind,
+      callId: input["callId"] as string,
+      name: input["name"] as string,
+      ...(input["rawInput"] !== undefined ? { rawInput: input["rawInput"] as string } : {}),
+      ...(input["input"] !== undefined ? { input: json(input["input"], `${path}.input`) } : {}),
+      ...(input["output"] !== undefined ? { output: json(input["output"], `${path}.output`) } : {}),
+      ...(input["errorText"] !== undefined ? { errorText: input["errorText"] as string } : {}),
+    };
+  }
+  if (kind === "activity") {
+    return {
+      kind,
+      activityType: input["activityType"] as string,
       ...(input["data"] !== undefined ? { data: json(input["data"], `${path}.data`) } : {}),
     };
   }
-  assertKeys(
-    input,
-    [
-      "kind",
-      "elicitId",
-      "bindingId",
-      "key",
-      "message",
-      "context",
-      "responseContract",
-      "contextContract",
-      "toolName",
-      "callId",
-      "producerSequence",
-    ],
-    path,
-  );
   const responseContract = parseDescriptor(input["responseContract"], `${path}.responseContract`);
   const contextContract =
     input["contextContract"] === undefined
       ? undefined
       : parseDescriptor(input["contextContract"], `${path}.contextContract`);
-  const producerSequence = input["producerSequence"];
-  if (
-    typeof producerSequence !== "number" ||
-    !Number.isSafeInteger(producerSequence) ||
-    producerSequence < 0
-  ) {
-    activityInvalid(
-      "producerSequence must be a nonnegative safe integer",
-      `${path}.producerSequence`,
-    );
-  }
   return {
     kind,
-    elicitId: string(input["elicitId"], `${path}.elicitId`),
-    bindingId: string(input["bindingId"], `${path}.bindingId`),
-    key: string(input["key"], `${path}.key`),
-    message: string(input["message"], `${path}.message`),
+    elicitId: input["elicitId"] as string,
+    bindingId: input["bindingId"] as string,
+    key: input["key"] as string,
+    message: input["message"] as string,
     ...(input["context"] !== undefined
       ? { context: json(input["context"], `${path}.context`) }
       : {}),
     responseContract,
     ...(contextContract !== undefined ? { contextContract } : {}),
-    toolName: string(input["toolName"], `${path}.toolName`),
-    callId: string(input["callId"], `${path}.callId`),
-    producerSequence,
+    toolName: input["toolName"] as string,
+    callId: input["callId"] as string,
+    producerSequence: input["producerSequence"] as number,
   };
 }
 
+export const publicActivityParser: Parser<SweatpantsPublicActivity> =
+  publicActivityStructureParser.andThen((value) => {
+    try {
+      return success(normalizePublicActivity(value, "$.content"));
+    } catch (error) {
+      if (error instanceof ChatProtocolError) {
+        return failure({ path: [], message: chatProtocolMessage(error), code: error.code });
+      }
+      throw error;
+    }
+  });
+
 export function decodePublicActivity(value: unknown, path = "$.content"): SweatpantsPublicActivity {
-  const input = record(value, path);
-  assertKeys(input, ["version", "node"], path);
-  if (input["version"] !== 1) {
-    activityInvalid("content.version must be 1", `${path}.version`);
+  const parsed = publicActivityParser.parse(value);
+  if (!parsed.ok) {
+    activityInvalid(parsed.issues[0]?.message ?? "invalid public activity", path);
   }
-  const nodeInput = record(input["node"], `${path}.node`);
-  assertKeys(
-    nodeInput,
-    ["nodeId", "parentNodeId", "sequence", "kind", "state", "presentation", "publicData"],
-    `${path}.node`,
-  );
-  const kindValue = nodeInput["kind"];
-  if (!isActivityKind(kindValue)) {
-    activityInvalid("invalid node.kind", `${path}.node.kind`);
-  }
-  const kind = kindValue;
-  const stateValue = nodeInput["state"];
-  if (!isActivityState(stateValue)) {
-    activityInvalid("invalid node.state", `${path}.node.state`);
-  }
-  const state = stateValue;
+  return parsed.value;
+}
+
+function normalizePublicActivity(value: unknown, path: string): SweatpantsPublicActivity {
+  const input = value as Record<string, unknown>;
+  const nodeInput = input["node"] as Record<string, unknown>;
+  const kind = nodeInput["kind"] as PublicActivityNode["kind"];
+  const state = nodeInput["state"] as PublicActivityNode["state"];
   assertKindState(kind, state, `${path}.node.state`);
-  const sequenceValue = nodeInput["sequence"];
-  if (
-    typeof sequenceValue !== "number" ||
-    !Number.isSafeInteger(sequenceValue) ||
-    sequenceValue < 0
-  ) {
-    activityInvalid("node.sequence must be a nonnegative safe integer", `${path}.node.sequence`);
-  }
-  const sequence = sequenceValue;
-  const parentValue = nodeInput["parentNodeId"];
-  if (parentValue !== null && typeof parentValue !== "string") {
-    activityInvalid("parentNodeId must be string or null", `${path}.node.parentNodeId`);
-  }
-  const parentNodeId: string | null = parentValue;
-  const presentation = nodeInput["presentation"];
-  if (presentation !== "public" && presentation !== "opaque") {
-    activityInvalid("invalid presentation", `${path}.node.presentation`);
-  }
+  const presentation = nodeInput["presentation"] as "public" | "opaque";
   const data = publicData(nodeInput["publicData"], `${path}.node.publicData`, kind);
-  if (kind === "message" && data === undefined) {
-    activityInvalid("message activity requires publicData", `${path}.node.publicData`);
-  }
-  if (kind === "tool-call" && data === undefined) {
-    activityInvalid("tool-call activity requires publicData", `${path}.node.publicData`);
-  }
-  if (kind === "elicit" && data === undefined) {
-    activityInvalid("elicit activity requires publicData", `${path}.node.publicData`);
+  if (kind !== "activity" && data === undefined) {
+    activityInvalid(`${kind} activity requires publicData`, `${path}.node.publicData`);
   }
   if (data !== undefined) {
     assertToolLifecycle(state, data, `${path}.node.publicData`);
@@ -379,15 +364,19 @@ export function decodePublicActivity(value: unknown, path = "$.content"): Sweatp
     activityInvalid("opaque activities may not carry public data", `${path}.node.publicData`);
   }
   const node = {
-    nodeId: string(nodeInput["nodeId"], `${path}.node.nodeId`),
-    parentNodeId,
-    sequence,
+    nodeId: nodeInput["nodeId"] as string,
+    parentNodeId: nodeInput["parentNodeId"] as string | null,
+    sequence: nodeInput["sequence"] as number,
     kind,
     state,
     presentation,
     ...(data !== undefined ? { publicData: data } : {}),
   } as PublicActivityNode;
   return { version: 1, node };
+}
+
+function chatProtocolMessage(error: ChatProtocolError): string {
+  return error.message.slice(`[${error.code}] `.length);
 }
 
 function patchPathAllowed(path: string): boolean {
@@ -401,38 +390,57 @@ function patchPathAllowed(path: string): boolean {
   );
 }
 
-export function validateActivityPatch(patchValue: unknown, path = "$.patch"): JsonPatchOperation[] {
-  if (!Array.isArray(patchValue)) {
-    patchInvalid("patch must be an array", path);
-  }
-  return patchValue.map((entry, index) => {
-    const input = record(entry, `${path}[${index}]`);
-    const opValue = input["op"];
-    if (opValue !== "add" && opValue !== "remove" && opValue !== "replace") {
-      patchInvalid("invalid RFC 6902 operation", `${path}[${index}].op`);
+export const activityPatchParser: Parser<JsonPatchOperation[]> =
+  activityPatchStructureParser.andThen((value) => {
+    try {
+      return success(normalizeActivityPatch(value, "$.patch"));
+    } catch (error) {
+      if (error instanceof ChatProtocolError) {
+        return failure({ path: [], message: chatProtocolMessage(error), code: error.code });
+      }
+      throw error;
     }
-    const op = opValue;
-    const patchPath = string(input["path"], `${path}[${index}].path`);
+  });
+
+export function validateActivityPatch(patchValue: unknown, path = "$.patch"): JsonPatchOperation[] {
+  const parsed = activityPatchParser.parse(patchValue);
+  if (!parsed.ok) {
+    patchInvalid(parsed.issues[0]?.message ?? "invalid activity patch", path);
+  }
+  return parsed.value;
+}
+
+function normalizeActivityPatch(
+  value: readonly {
+    readonly op: "add" | "remove" | "replace";
+    readonly path: string;
+    readonly from?: unknown;
+    readonly value?: unknown;
+  }[],
+  path: string,
+): JsonPatchOperation[] {
+  return value.map((input, index) => {
+    const patchPath = input.path;
     if (!patchPathAllowed(patchPath)) {
       patchInvalid("patch path is immutable or disallowed", `${path}[${index}].path`);
     }
-    if (input["from"] !== undefined) {
+    if (input.from !== undefined) {
       patchInvalid(
         "from is not valid for an allowed activity patch operation",
         `${path}[${index}].from`,
       );
     }
-    if (op === "remove" && input["value"] !== undefined) {
+    if (input.op === "remove" && input.value !== undefined) {
       patchInvalid("remove patches must not carry a value", `${path}[${index}].value`);
     }
-    if ((op === "add" || op === "replace") && input["value"] === undefined) {
+    if ((input.op === "add" || input.op === "replace") && input.value === undefined) {
       patchInvalid("add and replace patches require a value", `${path}[${index}].value`);
     }
     const patchJsonValue =
-      input["value"] === undefined ? undefined : json(input["value"], `${path}[${index}].value`);
+      input.value === undefined ? undefined : json(input.value, `${path}[${index}].value`);
     if (
       patchPath === "/node/state" &&
-      (op === "remove" ||
+      (input.op === "remove" ||
         patchJsonValue === undefined ||
         typeof patchJsonValue !== "string" ||
         !states.has(patchJsonValue))
@@ -447,7 +455,7 @@ export function validateActivityPatch(patchValue: unknown, path = "$.patch"): Js
       patchInvalid("public activity text fields require strings", `${path}[${index}].value`);
     }
     return {
-      op,
+      op: input.op,
       path: patchPath,
       ...(patchJsonValue !== undefined ? { value: patchJsonValue } : {}),
     };
@@ -455,16 +463,17 @@ export function validateActivityPatch(patchValue: unknown, path = "$.patch"): Js
 }
 
 function decodeActivitySnapshot(input: Record<string, unknown>): ActivitySnapshotEvent {
-  const messageId = string(input["messageId"], "$.messageId");
-  const activityType = string(input["activityType"], "$.activityType");
+  const messageId = input["messageId"] as string;
+  const activityType = input["activityType"] as string;
   const content = json(input["content"], "$.content");
-  if (content === null || typeof content !== "object" || Array.isArray(content)) {
+  const contentResult = activityContentParser.parse(content);
+  if (!contentResult.ok) {
     activityInvalid("content must be an object", "$.content");
   }
   if (activityType === "sweatpants:public-execution") {
-    decodePublicActivity(content);
+    decodePublicActivity(contentResult.value);
   }
-  const contentObject = content;
+  const contentObject = contentResult.value;
   return {
     type: EventType.ACTIVITY_SNAPSHOT,
     messageId,
@@ -477,49 +486,87 @@ function decodeActivitySnapshot(input: Record<string, unknown>): ActivitySnapsho
 function decodeActivityDelta(input: Record<string, unknown>): ActivityDeltaEvent {
   return {
     type: EventType.ACTIVITY_DELTA,
-    messageId: string(input["messageId"], "$.messageId"),
-    activityType: string(input["activityType"], "$.activityType"),
+    messageId: input["messageId"] as string,
+    activityType: input["activityType"] as string,
     patch: validateActivityPatch(input["patch"]),
   };
 }
 
-/** Parse and validate one serialized AG-UI event at a transport/checkpoint boundary. */
-export function decodeAGUIEvent(value: unknown): AGUIEvent {
-  const envelope = record(value, "$");
+/** Result-oriented parser for one serialized AG-UI event. */
+export const aguiEventParser: Parser<AGUIEvent> =
+  aguiEnvelopeParser.andThen(normalizeAGUIEventResult);
+
+function normalizeAGUIEventResult(envelope: Record<string, unknown>): ParseResult<AGUIEvent> {
   const input =
-    envelope["type"] === undefined &&
-    envelope["event"] !== undefined &&
-    typeof envelope["event"] === "object"
-      ? record(envelope["event"], "$.event")
-      : envelope;
-  const type = input["type"];
+    envelope["type"] === undefined && envelope["event"] !== undefined
+      ? aguiEnvelopeParser.parse(envelope["event"])
+      : success(envelope);
+  if (!input.ok) {
+    return input;
+  }
+
+  const type = input.value["type"];
   if (
     type === "HOST_TREE_DELTA" ||
     type === "HOST_TREE_SNAPSHOT" ||
     type === "sweatpants:plugin-replay" ||
     (typeof type === "string" && deprecatedEventTypes.has(type))
   ) {
-    invalid(`removed or deprecated event ${String(type)}`);
+    return failure({
+      path: ["type"],
+      message: `removed or deprecated event ${String(type)}`,
+      code: "chat_event_invalid",
+    });
   }
-  const parsed = EventSchemas.safeParse(input);
-  if (!parsed.success) {
-    invalid(`invalid AG-UI event: ${parsed.error.message}`);
+  const parsed = aguiEventStructureParser.parse(input.value);
+  if (!parsed.ok) {
+    return parsed;
   }
-  if (type === EventType.ACTIVITY_SNAPSHOT) {
-    return decodeActivitySnapshot(input);
-  }
-  if (type === EventType.ACTIVITY_DELTA) {
-    return decodeActivityDelta(input);
-  }
-  if (type === EventType.CUSTOM) {
-    if (parsed.data.name === "structured-output.start") {
-      return decodeStructuredOutputStart(parsed.data, input);
+
+  try {
+    if (type === EventType.ACTIVITY_SNAPSHOT) {
+      return success(decodeActivitySnapshot(input.value));
     }
-    if (parsed.data.name === "structured-output.complete") {
-      return decodeStructuredOutputComplete(parsed.data, input);
+    if (type === EventType.ACTIVITY_DELTA) {
+      return success(decodeActivityDelta(input.value));
     }
+    if (type === EventType.CUSTOM) {
+      const custom = parsed.value as AGUIEvent & { name?: string };
+      if (custom.name === "structured-output.start") {
+        return success(decodeStructuredOutputStart(parsed.value, input.value));
+      }
+      if (custom.name === "structured-output.complete") {
+        return success(decodeStructuredOutputComplete(parsed.value, input.value));
+      }
+    }
+    return success(parsed.value);
+  } catch (error) {
+    if (error instanceof ChatProtocolError) {
+      return failure({ path: [], message: chatProtocolMessage(error), code: error.code });
+    }
+    throw error;
   }
-  return parsed.data;
+}
+
+/** Parse and validate one serialized AG-UI event at a transport/checkpoint boundary. */
+export function decodeAGUIEvent(value: unknown): AGUIEvent {
+  const parsed = aguiEventParser.parse(value);
+  if (parsed.ok) {
+    return parsed.value;
+  }
+
+  const issue = parsed.issues[0];
+  const code =
+    issue?.code === "chat_activity_invalid" ||
+    issue?.code === "chat_activity_patch_invalid" ||
+    issue?.code === "chat_event_invalid"
+      ? issue.code
+      : "chat_event_invalid";
+  throw new ChatProtocolError(
+    code,
+    issue?.message ?? "invalid AG-UI event",
+    issue && issue.path.length > 0 ? `$.${issue.path.join(".")}` : undefined,
+  );
 }
 
 export function encodeAGUIEvent(event: AGUIEvent): string {
@@ -534,17 +581,17 @@ export function encodeAGUIEvent(event: AGUIEvent): string {
 }
 
 export function decodeActivitySnapshotEvent(value: unknown): ActivitySnapshotEvent {
-  const input = record(value, "$");
-  if (input["type"] !== EventType.ACTIVITY_SNAPSHOT) {
+  const event = decodeAGUIEvent(value);
+  if (event.type !== EventType.ACTIVITY_SNAPSHOT) {
     invalid("expected ACTIVITY_SNAPSHOT");
   }
-  return decodeActivitySnapshot(input);
+  return event;
 }
 
 export function decodeActivityDeltaEvent(value: unknown): ActivityDeltaEvent {
-  const input = record(value, "$");
-  if (input["type"] !== EventType.ACTIVITY_DELTA) {
+  const event = decodeAGUIEvent(value);
+  if (event.type !== EventType.ACTIVITY_DELTA) {
     invalid("expected ACTIVITY_DELTA");
   }
-  return decodeActivityDelta(input);
+  return event;
 }

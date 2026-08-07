@@ -9,6 +9,7 @@ export {
   normalizeResourcePath,
   parseResourcePackageManifest,
   parseResourceUri,
+  resourcePackageManifestParser,
   resolveResourceLimits,
   textResource,
   verifyCompleteResourceBindings,

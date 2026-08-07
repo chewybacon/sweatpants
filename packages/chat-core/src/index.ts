@@ -59,6 +59,8 @@ export type {
 // Durable Chat History composes canonical messages.
 export {
   ChatHistoryDecodeError,
+  chatHistoryEntriesParser,
+  chatHistoryEntryParser,
   decodeChatHistoryEntry,
   decodeChatHistoryEntries,
 } from "./history.ts";
@@ -146,8 +148,11 @@ export type {
 } from "./chat-client-types.ts";
 export {
   ChatProtocolError,
+  activityPatchParser,
+  aguiEventParser,
   decodeAGUIEvent,
   encodeAGUIEvent,
+  publicActivityParser,
   decodePublicActivity,
   validateActivityPatch,
   decodeActivitySnapshotEvent,

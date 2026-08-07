@@ -156,6 +156,47 @@ describe("persisted boundary parsing", () => {
       value: snapshot,
     });
     expect(durableAuthoritySnapshotParser.parse({ ...snapshot, unknown: true }).ok).toBe(false);
+    expect(
+      durableAuthoritySnapshotParser.parse({
+        ...snapshot,
+        activationLeases: [
+          [
+            "session-1",
+            {
+              sessionId: "session-1",
+              ownerId: "owner-1",
+              epoch: 1,
+              expiresAtMs: 1,
+              leaseDurationMs: 1,
+              claimedTaskRevision: 0,
+              claimedHeadDigest: "head",
+              restoreNonce: "nonce",
+              unknown: true,
+            },
+          ],
+        ],
+      }).ok,
+    ).toBe(false);
+    expect(
+      durableAuthoritySnapshotParser.parse({
+        ...snapshot,
+        activationLeases: [
+          [
+            "session-1",
+            {
+              sessionId: "different-session",
+              ownerId: "owner-1",
+              epoch: 1,
+              expiresAtMs: 1,
+              leaseDurationMs: 1,
+              claimedTaskRevision: 0,
+              claimedHeadDigest: "head",
+              restoreNonce: "nonce",
+            },
+          ],
+        ],
+      }).ok,
+    ).toBe(false);
     for (const version of [2, 3]) {
       expect(() => parseDurableAuthoritySnapshot(JSON.stringify({ ...snapshot, version }))).toThrow(
         "Invalid durable authority snapshot",

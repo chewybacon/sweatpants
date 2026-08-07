@@ -1,14 +1,15 @@
+import { parser, type Parser } from "@sweatpants/foundation";
 import { z } from "zod";
 
-import type {
-  AgentCoreToolEvent,
-  AgentCoreToolRuntimeResponse,
-  AgentCoreToolSessionHandle,
+import {
+  AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
+  type AgentCoreToolEvent,
+  type AgentCoreToolRuntimeResponse,
+  type AgentCoreToolSessionHandle,
 } from "./agentcore-types.ts";
-import { AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION } from "./agentcore-types.ts";
 
 const boundedString = z.string().min(1).max(2_048);
-const timestamp = z.string().datetime({ offset: true });
+const timestamp = z.iso.datetime({ offset: true });
 const statusSchema = z.enum([
   "initializing",
   "running",
@@ -40,8 +41,8 @@ const handleSchema = z
     region: boundedString,
     status: statusSchema,
     pendingRequest: pendingRequestSchema.optional(),
-    lastEventLsn: z.number().int().nonnegative().safe(),
-    lastRuntimeEventSeq: z.number().int().nonnegative().safe(),
+    lastEventLsn: z.number().int().nonnegative(),
+    lastRuntimeEventSeq: z.number().int().nonnegative(),
     createdAt: timestamp,
     updatedAt: timestamp,
     expiresAt: timestamp,
@@ -94,7 +95,7 @@ const eventSchema = z.discriminatedUnion("type", [
         .string()
         .max(64 * 1_024)
         .optional(),
-      maxTokens: z.number().int().positive().safe().optional(),
+      maxTokens: z.number().int().positive().optional(),
       modelPreferences: z.record(z.string(), z.json()).optional(),
       tools: z.array(z.json()).max(1_024).optional(),
       toolChoice: z.json().optional(),
@@ -122,7 +123,7 @@ const responseSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("tool_event"),
       toolSessionId: boundedString,
-      runtimeEventSeq: z.number().int().nonnegative().safe(),
+      runtimeEventSeq: z.number().int().nonnegative(),
       runtimeEventId: boundedString,
       event: eventSchema,
     })
@@ -133,7 +134,7 @@ const responseSchema = z.discriminatedUnion("type", [
       toolSessionId: boundedString,
       status: statusSchema,
       pendingRequest: pendingRequestSchema.optional(),
-      lastRuntimeEventSeq: z.number().int().nonnegative().safe(),
+      lastRuntimeEventSeq: z.number().int().nonnegative(),
     })
     .strict(),
   z.object({ type: z.literal("session_not_found"), toolSessionId: boundedString }).strict(),
@@ -166,30 +167,27 @@ const dedupRecordSchema = z
   .object({
     runtimeEventId: boundedString,
     event: eventSchema,
-    lsn: z.number().int().positive().safe(),
+    lsn: z.number().int().positive(),
   })
   .strict();
 
-export function parseAgentCoreToolSessionHandle(value: unknown): AgentCoreToolSessionHandle {
-  return handleSchema.parse(value) as AgentCoreToolSessionHandle;
-}
+export const agentCoreToolSessionHandleParser: Parser<AgentCoreToolSessionHandle> =
+  parser(handleSchema);
 
-export function parseAgentCoreToolEvent(value: unknown): AgentCoreToolEvent {
-  return eventSchema.parse(value) as AgentCoreToolEvent;
-}
+export const agentCoreToolEventParser: Parser<AgentCoreToolEvent> = parser(eventSchema).map(
+  (value) => value as AgentCoreToolEvent,
+);
 
-export function parseAgentCoreToolRuntimeResponse(value: unknown): AgentCoreToolRuntimeResponse {
-  return responseSchema.parse(value) as AgentCoreToolRuntimeResponse;
-}
+export const agentCoreToolRuntimeResponseParser: Parser<AgentCoreToolRuntimeResponse> = parser(
+  responseSchema,
+).map((value) => value as AgentCoreToolRuntimeResponse);
 
-export function parseAgentCoreEventDedupRecord(value: unknown): {
+export interface AgentCoreEventDedupRecord {
   readonly runtimeEventId: string;
   readonly event: AgentCoreToolEvent;
   readonly lsn: number;
-} {
-  return dedupRecordSchema.parse(value) as {
-    readonly runtimeEventId: string;
-    readonly event: AgentCoreToolEvent;
-    readonly lsn: number;
-  };
 }
+
+export const agentCoreEventDedupRecordParser: Parser<AgentCoreEventDedupRecord> = parser(
+  dedupRecordSchema,
+).map((value) => value as AgentCoreEventDedupRecord);

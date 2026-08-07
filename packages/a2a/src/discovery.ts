@@ -28,6 +28,22 @@ const pinnedProgramSchema = z.strictObject({
   version: boundedTextSchema,
   digest: z.string().regex(/^[0-9a-f]{64}$/u),
 });
+const agentCardCoreSchema = z.looseObject({
+  name: boundedTextSchema,
+  version: boundedTextSchema,
+  supportedInterfaces: z.array(z.unknown()).min(1),
+  defaultInputModes: z.array(z.string()),
+  defaultOutputModes: z.array(z.string()),
+  skills: z.array(z.looseObject({ id: boundedTextSchema, name: boundedTextSchema })),
+  capabilities: z.looseObject({ extensions: z.array(z.unknown()) }),
+});
+const extensionIdentitySchema = z.looseObject({ uri: z.string() });
+const callerAuthoritativeDeclarationSchema = z.strictObject({
+  uri: z.literal(CALLER_AUTHORITATIVE_EXTENSION_URI),
+  params: z.json(),
+  description: z.string().optional(),
+  required: z.boolean().optional(),
+});
 const callerAuthoritativeParamsSchema = z.strictObject({
   protocolVersion: z.literal(1),
   manifestEndpoint: z.string().min(1).max(4_096),
@@ -42,6 +58,10 @@ const callerAuthoritativeParamsSchema = z.strictObject({
     .min(1)
     .max(1_024),
 });
+
+const agentCardCoreParser = parser(agentCardCoreSchema);
+const extensionIdentityParser = parser(extensionIdentitySchema);
+const callerAuthoritativeDeclarationParser = parser(callerAuthoritativeDeclarationSchema);
 
 export type A2AAgentCardSource =
   | { card: unknown; cardUrl?: string; cardOrigin?: string }
@@ -92,18 +112,14 @@ export async function discoverCallerAuthoritativeProgram(
   } catch (error) {
     throw a2aError("agent_card_invalid", "Agent Card is not canonical JSON", error);
   }
-  if (!record(card)) {
-    throw a2aError("agent_card_invalid", "Agent Card must be an object");
+  const parsedCard = agentCardCoreParser.parse(card);
+  if (!parsedCard.ok) {
+    throw a2aError("agent_card_invalid", "Agent Card is missing required A2A fields");
   }
-  assertAgentCardCore(card);
-  const capabilities = card["capabilities"];
-  if (!record(capabilities) || !Array.isArray(capabilities["extensions"])) {
-    throw a2aError("extension_not_advertised", "Agent Card does not advertise extensions");
-  }
-  const declarations = capabilities["extensions"].filter(
-    (value): value is Record<string, Json> =>
-      record(value) && value["uri"] === CALLER_AUTHORITATIVE_EXTENSION_URI,
-  );
+  const declarations = parsedCard.value.capabilities.extensions.filter((value) => {
+    const identity = extensionIdentityParser.parse(value);
+    return identity.ok && identity.value.uri === CALLER_AUTHORITATIVE_EXTENSION_URI;
+  });
   if (declarations.length !== 1) {
     throw a2aError(
       declarations.length === 0 ? "extension_not_advertised" : "agent_card_invalid",
@@ -112,15 +128,12 @@ export async function discoverCallerAuthoritativeProgram(
         : "Caller-authoritative A2A extension is advertised more than once",
     );
   }
-  const declaration = declarations[0]!;
-  if (
-    !onlyKeys(declaration, ["uri", "params"], ["description", "required"]) ||
-    (declaration["description"] !== undefined && typeof declaration["description"] !== "string") ||
-    (declaration["required"] !== undefined && typeof declaration["required"] !== "boolean")
-  ) {
+  const parsedDeclaration = callerAuthoritativeDeclarationParser.parse(declarations[0]);
+  if (!parsedDeclaration.ok) {
     throw a2aError("agent_card_invalid", "Invalid A2A extension declaration");
   }
-  const params = parseCallerAuthoritativeExtensionParams(declaration["params"]);
+  const declaration = parsedDeclaration.value;
+  const params = parseCallerAuthoritativeExtensionParams(declaration.params);
   const originForEndpoints = cardOrigin;
   if (!originForEndpoints) {
     throw a2aError(
@@ -140,7 +153,7 @@ export async function discoverCallerAuthoritativeProgram(
       cardOrigin: originForEndpoints,
     }),
   ]);
-  assertSkillMappings(card, params);
+  assertSkillMappings(parsedCard.value.skills, params);
   const snapshot = canonicalSnapshot(card);
   return Object.freeze({
     card: snapshot.value,
@@ -148,12 +161,8 @@ export async function discoverCallerAuthoritativeProgram(
     cardDigest: snapshot.sha,
     extension: Object.freeze({
       uri: CALLER_AUTHORITATIVE_EXTENSION_URI,
-      ...(typeof declaration["description"] === "string"
-        ? { description: declaration["description"] }
-        : {}),
-      ...(typeof declaration["required"] === "boolean"
-        ? { required: declaration["required"] }
-        : {}),
+      ...(declaration.description === undefined ? {} : { description: declaration.description }),
+      ...(declaration.required === undefined ? {} : { required: declaration.required }),
       params,
     }),
     programForSkill(skillId: string): PinnedProgram {
@@ -174,30 +183,26 @@ export const callerAuthoritativeExtensionParamsParser = parser(
   callerAuthoritativeParamsSchema,
 ).andThen((value) => {
   const skills = new Set<string>();
-  const programs = value.programs.map((mapping, index) => {
+  const programs: { skillId: string; program: PinnedProgram }[] = [];
+  for (const [index, mapping] of value.programs.entries()) {
     if (skills.has(mapping.skillId)) {
-      return failure<never>({
+      return failure({
         path: ["programs", index, "skillId"],
         message: "Duplicate A2A skill mapping",
       });
     }
     skills.add(mapping.skillId);
-    return success({
+    programs.push({
       skillId: mapping.skillId,
       program: Object.freeze(mapping.program),
     });
-  });
-  const invalid = programs.find((entry) => !entry.ok);
-  if (invalid && !invalid.ok) return invalid;
+  }
   return success(
     Object.freeze({
       protocolVersion: 1 as const,
       manifestEndpoint: value.manifestEndpoint,
       driverEndpoint: value.driverEndpoint,
-      programs: programs.map((entry) => (entry.ok ? Object.freeze(entry.value) : undefined)) as {
-        skillId: string;
-        program: PinnedProgram;
-      }[],
+      programs: programs.map((entry) => Object.freeze(entry)),
     }),
   );
 });
@@ -220,38 +225,11 @@ export function parsePinnedProgram(value: unknown): PinnedProgram {
   return parsed.value;
 }
 
-function assertAgentCardCore(card: Record<string, Json>): void {
-  if (
-    !nonempty(card["name"]) ||
-    !nonempty(card["version"]) ||
-    !Array.isArray(card["supportedInterfaces"]) ||
-    card["supportedInterfaces"].length === 0 ||
-    !Array.isArray(card["defaultInputModes"]) ||
-    !card["defaultInputModes"].every((mode) => typeof mode === "string") ||
-    !Array.isArray(card["defaultOutputModes"]) ||
-    !card["defaultOutputModes"].every((mode) => typeof mode === "string") ||
-    !Array.isArray(card["skills"])
-  ) {
-    throw a2aError("agent_card_invalid", "Agent Card is missing required A2A fields");
-  }
-  for (const skill of card["skills"]) {
-    if (!record(skill) || !nonempty(skill["id"]) || !nonempty(skill["name"])) {
-      throw a2aError("agent_card_invalid", "Agent Card contains an invalid skill");
-    }
-  }
-}
-
 function assertSkillMappings(
-  card: Record<string, Json>,
+  skills: readonly { readonly id: string }[],
   params: CallerAuthoritativeProgramExtensionParamsV1,
 ): void {
-  const skills = card["skills"];
-  if (!Array.isArray(skills)) {
-    throw a2aError("agent_card_invalid", "Agent Card skills must be an array");
-  }
-  const ids = new Set(
-    skills.flatMap((skill) => (record(skill) && nonempty(skill["id"]) ? [skill["id"]] : [])),
-  );
+  const ids = new Set(skills.map((skill) => skill.id));
   for (const mapping of params.programs) {
     if (!ids.has(mapping.skillId)) {
       throw a2aError("agent_card_invalid", "Extension maps an undeclared Agent Card skill");
@@ -270,21 +248,4 @@ function classifyHttpStatus(status: number, resource: "agent-card" | "manifest")
     throw a2aError("authorization_denied", `A2A ${resource} is unavailable`);
   }
   throw a2aError("transport_lost", `A2A ${resource} request failed with status ${status}`);
-}
-
-function record(value: unknown): value is Record<string, Json> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-function nonempty(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && value.length <= 256;
-}
-function onlyKeys(
-  value: Record<string, Json>,
-  required: readonly string[],
-  optional: readonly string[],
-): boolean {
-  const allowed = new Set([...required, ...optional]);
-  return (
-    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
-  );
 }

@@ -1,20 +1,23 @@
 import {
+  ANY_JSON_SCHEMA_DESCRIPTOR,
   CrankError,
-  assertInlineSize,
   DEFAULT_MAX_INLINE_BYTES,
+  NULL_RESULT_SCHEMA_DESCRIPTOR,
+  assertInlineSize,
+  type DurableOperationDescriptor,
+  type DurableProgramManifest,
+  type ProgramRoute,
+  type ProgramStep,
+  type ReplayEmissionEntry,
+  type ReplayEntry,
+  type ReplayOperationEntry,
+  type ResolutionReceipt,
 } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import { z } from "zod";
 
-import {
-  parsePortableSchemaDescriptor,
-  type PortableSchemaDescriptor,
-} from "@sweatpants/foundation/schema";
-import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
-  NULL_RESULT_SCHEMA_DESCRIPTOR,
-} from "@sweatpants/durable-execution";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import {
   createDurableSchemaRegistry,
   parseRegisteredSchema,
@@ -38,9 +41,11 @@ import {
   sha256,
   stableOpaqueId,
   success,
+  type Json,
   type ParseResult,
+  type Parser,
 } from "@sweatpants/foundation";
-import { type Json } from "@sweatpants/foundation";
+import { durableAuthoritySnapshotStructureParser } from "./durable-authority-snapshot-schema.ts";
 import {
   effectContractDigest,
   hasLiveDurableEffect,
@@ -83,17 +88,6 @@ import type {
   RestoreTicketClaims,
   TaskCloseReceipt,
 } from "./durable-authority-types.ts";
-import type {
-  DurableOperationDescriptor,
-  DurableProgramManifest,
-  ProgramRoute,
-  ProgramStep,
-  ReplayEmissionEntry,
-  ReplayEntry,
-  ReplayOperationEntry,
-  ResolutionReceipt,
-} from "@sweatpants/durable-execution";
-
 /** Closed attempt-state algebra persisted by the authority. */
 export type DurableAttemptState = "started" | "detached" | "completed" | "revoked" | "superseded";
 
@@ -505,7 +499,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
     const catalog =
       request.catalog === undefined ? undefined : canonicalSnapshot(request.catalog).value;
-    if (catalog && (!isJsonRecord(catalog) || catalog["digest"] !== request.catalogDigest)) {
+    if (
+      catalog &&
+      (typeof catalog !== "object" ||
+        Array.isArray(catalog) ||
+        (catalog as Record<string, Json>)["digest"] !== request.catalogDigest)
+    ) {
       throw new CrankError("invalid_manifest", "Accepted catalog digest differs");
     }
     if (catalog) {
@@ -2415,31 +2414,111 @@ export function createInMemoryDurableJournalAuthority(
   return new InMemoryDurableJournalAuthority(options);
 }
 
-const durableAuthoritySnapshotStructureSchema = z.strictObject({
-  version: z.literal(4),
-  tasks: z.array(z.unknown()),
-  records: z.array(z.unknown()),
-  runnable: z.array(z.string()),
-  nonce: z.number().int().nonnegative().safe(),
-  activationLeases: z.array(z.unknown()),
-  lastActivationEpochBySession: z.array(z.unknown()),
-  taskRevisions: z.array(z.unknown()),
-  restoreNonces: z.array(z.unknown()),
-  restoreFrontierDigests: z.array(z.unknown()),
-  consecutiveRestoreStales: z.array(z.unknown()),
-  activationNotBeforeMs: z.array(z.unknown()),
-});
-
 /** Result-oriented parser for the exact current Journal Authority snapshot. */
-export const durableAuthoritySnapshotParser = parser(
-  durableAuthoritySnapshotStructureSchema,
-).andThen(verifyDurableAuthoritySnapshot);
+export const durableAuthoritySnapshotParser: Parser<DurableAuthoritySnapshot> =
+  durableAuthoritySnapshotStructureParser.andThen(verifyDurableAuthoritySnapshot);
 
 function verifyDurableAuthoritySnapshot(value: unknown): ParseResult<DurableAuthoritySnapshot> {
-  if (!isDurableAuthoritySnapshot(value)) {
-    return failure({ path: [], message: "invalid durable authority snapshot" });
+  const snapshot = value as DurableAuthoritySnapshot;
+  const leases = verifySnapshotLeaseBindings(snapshot);
+  if (!leases.ok) {
+    return leases;
   }
-  return success(value);
+  const tasks = verifySnapshotTaskRelationships(snapshot);
+  if (!tasks.ok) {
+    return tasks;
+  }
+  const records = verifySnapshotRecordRelationships(snapshot);
+  if (!records.ok) {
+    return records;
+  }
+  return success(snapshot);
+}
+
+function verifySnapshotLeaseBindings(snapshot: DurableAuthoritySnapshot): ParseResult<void> {
+  for (const [index, [sessionId, lease]] of snapshot.activationLeases.entries()) {
+    if (lease.sessionId !== sessionId) {
+      return snapshotFailure(["activationLeases", index], "lease session does not match its key");
+    }
+  }
+  return success(undefined);
+}
+
+function verifySnapshotTaskRelationships(snapshot: DurableAuthoritySnapshot): ParseResult<void> {
+  for (const [taskIndex, task] of snapshot.tasks.entries()) {
+    const path = ["tasks", taskIndex] as const;
+    if ((task.parentTaskId === undefined) !== (task.parentPullId === undefined)) {
+      return snapshotFailure(path, "parent task and pull must be supplied together");
+    }
+    if ((task.catalog === undefined) !== (task.catalogDigest === undefined)) {
+      return snapshotFailure(path, "catalog and catalog digest must be supplied together");
+    }
+    if (["closed", "cancelled"].includes(task.status) !== (task.close !== undefined)) {
+      return snapshotFailure(path, "task status and close receipt differ");
+    }
+    const policy = task.emissionPolicy;
+    if (policy === undefined) {
+      if (task.acceptedEmissionCount !== undefined || task.cumulativeEmissionBytes !== undefined) {
+        return snapshotFailure(path, "emission counters require an emission policy");
+      }
+    } else if (
+      policy.maxEmissionsPerTask === undefined &&
+      policy.maxCumulativeEmissionBytes === undefined
+    ) {
+      return snapshotFailure(path, "emission policy has no bound");
+    } else if (
+      task.acceptedEmissionCount === undefined ||
+      task.cumulativeEmissionBytes === undefined ||
+      task.acceptedEmissionCount !== task.emissionsByAction.length
+    ) {
+      return snapshotFailure(path, "emission counters differ from accepted emissions");
+    }
+    for (const [pullIndex, [, pull]] of task.pullsByAction.entries()) {
+      if (
+        pull.descriptorDigest !== canonicalSnapshot(pull.descriptor).sha ||
+        pull.resultSchemaDigest !==
+          (pull.resultDescriptor as unknown as Record<string, unknown>)["digest"] ||
+        (pull.outcome === undefined) !== (pull.outcomeDigest === undefined) ||
+        (pull.outcome !== undefined &&
+          pull.outcomeDigest !== canonicalSnapshot(pull.outcome).sha) ||
+        (pull.outcome === undefined) !== (pull.receipt === undefined)
+      ) {
+        return snapshotFailure(
+          [...path, "pullsByAction", pullIndex],
+          "pull integrity relationship is invalid",
+        );
+      }
+    }
+    for (const [name, effect] of Object.entries(task.manifest.effects)) {
+      if (effect.name !== name) {
+        return snapshotFailure([...path, "manifest", "effects", name], "effect name differs");
+      }
+    }
+  }
+  return success(undefined);
+}
+
+function verifySnapshotRecordRelationships(snapshot: DurableAuthoritySnapshot): ParseResult<void> {
+  for (const [groupIndex, recordGroup] of snapshot.records.entries()) {
+    for (const [recordIndex, record] of recordGroup[1].entries()) {
+      const payload = record.payload;
+      if (
+        payload.type === "TaskOpened" &&
+        ((payload.catalog === undefined) !== (payload.catalogDigest === undefined) ||
+          (payload.parentTaskId === undefined) !== (payload.parentPullId === undefined))
+      ) {
+        return snapshotFailure(
+          ["records", groupIndex, 1, recordIndex, "payload"],
+          "task-open relationships are invalid",
+        );
+      }
+    }
+  }
+  return success(undefined);
+}
+
+function snapshotFailure(path: readonly (string | number)[], detail: string): ParseResult<never> {
+  return failure({ path, message: `invalid durable authority snapshot: ${detail}` });
 }
 
 /**
@@ -2460,764 +2539,6 @@ export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthor
     }
     throw invalidSnapshot();
   }
-}
-
-function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySnapshot {
-  const keys = [
-    "version",
-    "tasks",
-    "records",
-    "runnable",
-    "nonce",
-    "activationLeases",
-    "lastActivationEpochBySession",
-    "taskRevisions",
-    "restoreNonces",
-    "restoreFrontierDigests",
-    "consecutiveRestoreStales",
-    "activationNotBeforeMs",
-  ];
-  if (!isJsonRecord(value) || !hasExactKeys(value, keys)) {
-    return false;
-  }
-  return (
-    value["version"] === 4 &&
-    isNonNegativeInteger(value["nonce"]) &&
-    Array.isArray(value["tasks"]) &&
-    value["tasks"].every(isTaskSnapshot) &&
-    Array.isArray(value["records"]) &&
-    value["records"].every(isRecordCollection) &&
-    Array.isArray(value["runnable"]) &&
-    value["runnable"].every((entry) => typeof entry === "string") &&
-    Array.isArray(value["activationLeases"]) &&
-    value["activationLeases"].every(isActivationLeaseTuple) &&
-    isStringNumberTupleArray(value["lastActivationEpochBySession"]) &&
-    isStringNumberTupleArray(value["taskRevisions"]) &&
-    isStringStringTupleArray(value["restoreNonces"]) &&
-    isStringStringTupleArray(value["restoreFrontierDigests"]) &&
-    isStringNumberTupleArray(value["consecutiveRestoreStales"]) &&
-    isStringNumberTupleArray(value["activationNotBeforeMs"])
-  );
-}
-
-function isStringNumberTupleArray(value: Json | undefined): boolean {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (entry) =>
-        Array.isArray(entry) &&
-        entry.length === 2 &&
-        typeof entry[0] === "string" &&
-        isNonNegativeInteger(entry[1]),
-    )
-  );
-}
-
-function isStringStringTupleArray(value: Json | undefined): boolean {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (entry) =>
-        Array.isArray(entry) &&
-        entry.length === 2 &&
-        typeof entry[0] === "string" &&
-        typeof entry[1] === "string",
-    )
-  );
-}
-
-function isActivationLeaseTuple(value: Json): boolean {
-  if (
-    !Array.isArray(value) ||
-    value.length !== 2 ||
-    typeof value[0] !== "string" ||
-    !isJsonRecord(value[1])
-  ) {
-    return false;
-  }
-  const lease = value[1];
-  return (
-    hasExactKeys(lease, [
-      "sessionId",
-      "ownerId",
-      "epoch",
-      "expiresAtMs",
-      "leaseDurationMs",
-      "claimedTaskRevision",
-      "claimedHeadDigest",
-      "restoreNonce",
-    ]) &&
-    lease["sessionId"] === value[0] &&
-    typeof lease["ownerId"] === "string" &&
-    isNonNegativeInteger(lease["epoch"]) &&
-    isNonNegativeInteger(lease["expiresAtMs"]) &&
-    isNonNegativeInteger(lease["leaseDurationMs"]) &&
-    isNonNegativeInteger(lease["claimedTaskRevision"]) &&
-    typeof lease["claimedHeadDigest"] === "string" &&
-    typeof lease["restoreNonce"] === "string"
-  );
-}
-
-function isTaskSnapshot(value: Json): boolean {
-  if (!isJsonRecord(value)) {
-    return false;
-  }
-  const required = [
-    "sessionId",
-    "turnId",
-    "taskId",
-    "manifest",
-    "input",
-    "executionEpoch",
-    "attachmentId",
-    "audience",
-    "nextActionIndex",
-    "nextPullIndex",
-    "nextEmissionIndex",
-    "pullsByAction",
-    "emissionsByAction",
-    "status",
-    "cancellation",
-  ];
-  const optional = [
-    "close",
-    "parentTaskId",
-    "parentPullId",
-    "emissionPolicy",
-    "acceptedEmissionCount",
-    "cumulativeEmissionBytes",
-    "catalog",
-    "catalogDigest",
-    "route",
-  ];
-  if (!hasOnlyKeys(value, required, optional)) {
-    return false;
-  }
-  return (
-    required.slice(0, 3).every((key) => typeof value[key] === "string") &&
-    isManifestSnapshot(value["manifest"]) &&
-    typeof value["attachmentId"] === "string" &&
-    typeof value["audience"] === "string" &&
-    ["executionEpoch", "nextActionIndex", "nextPullIndex", "nextEmissionIndex"].every((key) =>
-      isNonNegativeInteger(value[key]),
-    ) &&
-    Array.isArray(value["pullsByAction"]) &&
-    value["pullsByAction"].every(isIndexedPullTuple) &&
-    Array.isArray(value["emissionsByAction"]) &&
-    value["emissionsByAction"].every(isIndexedEmissionTuple) &&
-    isTaskEmissionPolicySnapshot(value) &&
-    ((value["catalog"] === undefined && value["catalogDigest"] === undefined) ||
-      (isJsonRecord(value["catalog"]) && typeof value["catalogDigest"] === "string")) &&
-    ["active", "closed", "cancelled", "orphaned"].includes(String(value["status"])) &&
-    isCancellationStateSnapshot(value["cancellation"]) &&
-    ["closed", "cancelled"].includes(String(value["status"])) ===
-      isTaskCloseSnapshot(value["close"]) &&
-    (value["parentTaskId"] === undefined) === (value["parentPullId"] === undefined) &&
-    ["close", "parentTaskId", "parentPullId"].every(
-      (key) =>
-        value[key] === undefined || typeof value[key] === "string" || isJsonRecord(value[key]),
-    )
-  );
-}
-
-function isTaskEmissionPolicySnapshot(value: Record<string, Json>): boolean {
-  const policy = value["emissionPolicy"];
-  const count = value["acceptedEmissionCount"];
-  const bytes = value["cumulativeEmissionBytes"];
-  if (policy === undefined) {
-    return count === undefined && bytes === undefined;
-  }
-  if (
-    !isJsonRecord(policy) ||
-    !isEmissionPolicyValue(policy) ||
-    (policy["maxEmissionsPerTask"] === undefined &&
-      policy["maxCumulativeEmissionBytes"] === undefined)
-  ) {
-    return false;
-  }
-  return (
-    isNonNegativeInteger(count) &&
-    isNonNegativeInteger(bytes) &&
-    count === (value["emissionsByAction"] as Json[]).length
-  );
-}
-
-function isManifestSnapshot(value: unknown): boolean {
-  if (!isJsonRecord(value)) {
-    return false;
-  }
-  const capabilities = value["capabilities"];
-  const effects = value["effects"];
-  if (
-    !hasExactKeys(value, [
-      "programId",
-      "version",
-      "digest",
-      "inputSchema",
-      "outputSchema",
-      "elicits",
-      "effects",
-      "capabilities",
-    ])
-  ) {
-    return false;
-  }
-  return (
-    typeof value["programId"] === "string" &&
-    typeof value["version"] === "string" &&
-    typeof value["digest"] === "string" &&
-    /^[0-9a-f]{64}$/.test(value["digest"]) &&
-    isSchemaDescriptorSnapshot(value["inputSchema"]) &&
-    isSchemaDescriptorSnapshot(value["outputSchema"]) &&
-    isJsonRecord(value["elicits"]) &&
-    Object.values(value["elicits"]).every(
-      (declaration) =>
-        isJsonRecord(declaration) &&
-        hasOnlyKeys(declaration, ["response"], ["context", "contextContract"]) &&
-        isSchemaDescriptorSnapshot(declaration["response"]) &&
-        (declaration["context"] === undefined ||
-          isSchemaDescriptorSnapshot(declaration["context"])) &&
-        (declaration["contextContract"] === undefined ||
-          isSchemaDescriptorSnapshot(declaration["contextContract"])),
-    ) &&
-    isJsonRecord(effects) &&
-    Object.entries(effects).every(
-      ([name, effect]) =>
-        isJsonRecord(effect) &&
-        hasOnlyKeys(
-          effect,
-          ["name", "version", "inputSchema", "outputSchema", "retrySafety"],
-          ["cancellation"],
-        ) &&
-        isSchemaDescriptorSnapshot(effect["inputSchema"]) &&
-        isSchemaDescriptorSnapshot(effect["outputSchema"]) &&
-        (effect["cancellation"] === undefined ||
-          (isJsonRecord(effect["cancellation"]) &&
-            hasExactKeys(effect["cancellation"], ["partialSchema"]) &&
-            isSchemaDescriptorSnapshot(effect["cancellation"]["partialSchema"]))) &&
-        effect["name"] === name &&
-        typeof effect["version"] === "string" &&
-        isRetrySafetySnapshot(effect["retrySafety"]),
-    ) &&
-    isJsonRecord(capabilities) &&
-    hasExactKeys(capabilities, ["durableEmissions", "structuredChildren", "replay"]) &&
-    typeof capabilities["durableEmissions"] === "boolean" &&
-    typeof capabilities["structuredChildren"] === "boolean" &&
-    capabilities["replay"] === "strict"
-  );
-}
-
-function isRetrySafetySnapshot(value: unknown): boolean {
-  if (!isJsonRecord(value) || typeof value["mode"] !== "string") {
-    return false;
-  }
-  if (value["mode"] === "repeatable") {
-    return hasExactKeys(value, ["mode"]);
-  }
-  if (value["mode"] === "unsafe") {
-    return hasExactKeys(value, ["mode"]);
-  }
-  return (
-    value["mode"] === "idempotent" &&
-    hasExactKeys(value, ["mode", "mechanism"]) &&
-    (value["mechanism"] === "pull_id_key" || value["mechanism"] === "inherent")
-  );
-}
-
-function isTaskCloseSnapshot(value: unknown): boolean {
-  return (
-    isJsonRecord(value) &&
-    hasExactKeys(value, ["digest", "receipt"]) &&
-    typeof value["digest"] === "string" &&
-    isJsonRecord(value["receipt"]) &&
-    hasExactKeys(value["receipt"], ["offset", "duplicate"]) &&
-    typeof value["receipt"]["offset"] === "string" &&
-    typeof value["receipt"]["duplicate"] === "boolean"
-  );
-}
-
-function isIndexedPullTuple(value: Json): boolean {
-  if (!Array.isArray(value) || value.length !== 2 || !isNonNegativeInteger(value[0])) {
-    return false;
-  }
-  const pull = value[1];
-  if (
-    !isJsonRecord(pull) ||
-    !hasOnlyKeys(
-      pull,
-      [
-        "pullId",
-        "actionIndex",
-        "pullIndex",
-        "descriptor",
-        "descriptorDigest",
-        "effectiveDescriptor",
-        "resultDescriptor",
-        "resultSchemaDigest",
-        "audience",
-        "maxOutcomeBytes",
-        "attempts",
-        "revoked",
-      ],
-      ["capability", "outcome", "outcomeDigest", "receipt"],
-    )
-  ) {
-    return false;
-  }
-  return (
-    typeof pull["pullId"] === "string" &&
-    isNonNegativeInteger(pull["actionIndex"]) &&
-    isNonNegativeInteger(pull["pullIndex"]) &&
-    isDescriptorSnapshot(pull["descriptor"]) &&
-    typeof pull["descriptorDigest"] === "string" &&
-    pull["descriptorDigest"] === canonicalSnapshot(pull["descriptor"]).sha &&
-    isDescriptorSnapshot(pull["effectiveDescriptor"]) &&
-    isSchemaDescriptorSnapshot(pull["resultDescriptor"]) &&
-    typeof pull["resultSchemaDigest"] === "string" &&
-    pull["resultSchemaDigest"] === (pull["resultDescriptor"] as Record<string, Json>)["digest"] &&
-    typeof pull["audience"] === "string" &&
-    isNonNegativeInteger(pull["maxOutcomeBytes"]) &&
-    Array.isArray(pull["attempts"]) &&
-    pull["attempts"].every(isAttemptSnapshot) &&
-    typeof pull["revoked"] === "boolean" &&
-    (pull["capability"] === undefined || typeof pull["capability"] === "string") &&
-    (pull["outcome"] === undefined || isOperationOutcomeJson(pull["outcome"])) &&
-    (pull["outcome"] === undefined) === (pull["outcomeDigest"] === undefined) &&
-    (pull["outcome"] === undefined ||
-      pull["outcomeDigest"] === canonicalSnapshot(pull["outcome"]).sha) &&
-    (pull["outcome"] === undefined) === (pull["receipt"] === undefined) &&
-    (pull["receipt"] === undefined || isResolutionReceiptJson(pull["receipt"]))
-  );
-}
-
-function isResolutionReceiptJson(value: unknown): boolean {
-  return (
-    isJsonRecord(value) &&
-    hasExactKeys(value, [
-      "sessionId",
-      "taskId",
-      "pullId",
-      "resolutionOffset",
-      "outcomeDigest",
-      "status",
-    ]) &&
-    ["sessionId", "taskId", "pullId", "resolutionOffset", "outcomeDigest"].every(
-      (key) => typeof value[key] === "string",
-    ) &&
-    (value["status"] === "accepted" || value["status"] === "duplicate")
-  );
-}
-
-function isDescriptorSnapshot(value: unknown): boolean {
-  if (!isJsonRecord(value) || typeof value["kind"] !== "string") {
-    return false;
-  }
-  switch (value["kind"]) {
-    case "record":
-      return (
-        hasExactKeys(value, ["kind", "key", "retrySafety"]) &&
-        typeof value["key"] === "string" &&
-        value["key"].length > 0 &&
-        new TextEncoder().encode(value["key"]).byteLength <= 128 &&
-        isRetrySafetySnapshot(value["retrySafety"])
-      );
-    case "effect":
-      return (
-        hasExactKeys(value, ["kind", "name", "version", "input", "resolver"]) &&
-        typeof value["name"] === "string" &&
-        typeof value["version"] === "string" &&
-        isJsonRecord(value["resolver"]) &&
-        hasOnlyKeys(value["resolver"], ["audience"], ["route"]) &&
-        typeof value["resolver"]["audience"] === "string" &&
-        (value["resolver"]["route"] === undefined || typeof value["resolver"]["route"] === "string")
-      );
-    case "elicit":
-      return (
-        hasOnlyKeys(
-          value,
-          ["kind", "key", "message", "response"],
-          ["context", "contextContract"],
-        ) &&
-        typeof value["key"] === "string" &&
-        typeof value["message"] === "string" &&
-        isSchemaDescriptorSnapshot(value["response"]) &&
-        (value["contextContract"] === undefined ||
-          isSchemaDescriptorSnapshot(value["contextContract"]))
-      );
-    case "wait": {
-      const hasAbsolute =
-        typeof value["notBefore"] === "string" && Number.isFinite(Date.parse(value["notBefore"]));
-      const hasRelative = isNonNegativeInteger(value["durationMs"]);
-      return (
-        hasOnlyKeys(value, ["kind", "key"], ["notBefore", "durationMs"]) &&
-        typeof value["key"] === "string" &&
-        (hasAbsolute || hasRelative)
-      );
-    }
-    case "invoke":
-    case "spawn":
-      return hasExactKeys(value, ["kind", "child"]) && isChildSnapshot(value["child"]);
-    case "all":
-    case "race":
-      return (
-        hasExactKeys(value, ["kind", "children"]) &&
-        Array.isArray(value["children"]) &&
-        value["children"].every(isChildSnapshot)
-      );
-    case "join":
-      return (
-        hasExactKeys(value, ["kind", "handle"]) &&
-        isJsonRecord(value["handle"]) &&
-        hasExactKeys(value["handle"], ["__durableTask", "owner"]) &&
-        typeof value["handle"]["__durableTask"] === "string" &&
-        typeof value["handle"]["owner"] === "string"
-      );
-    default:
-      return false;
-  }
-}
-
-function isSchemaDescriptorSnapshot(value: unknown): boolean {
-  try {
-    parsePortableSchemaDescriptor(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isChildSnapshot(value: unknown): boolean {
-  return (
-    isJsonRecord(value) &&
-    hasExactKeys(value, ["id", "version", "digest", "input"]) &&
-    typeof value["id"] === "string" &&
-    typeof value["version"] === "string" &&
-    typeof value["digest"] === "string" &&
-    /^[0-9a-f]{64}$/.test(value["digest"])
-  );
-}
-
-function isAttemptSnapshot(value: Json): boolean {
-  return (
-    isJsonRecord(value) &&
-    hasExactKeys(value, ["attemptId", "attemptIndex", "state", "capability"]) &&
-    typeof value["attemptId"] === "string" &&
-    isNonNegativeInteger(value["attemptIndex"]) &&
-    ["started", "detached", "completed", "revoked", "superseded"].includes(
-      String(value["state"]),
-    ) &&
-    typeof value["capability"] === "string"
-  );
-}
-
-function isIndexedEmissionTuple(value: Json): boolean {
-  if (!Array.isArray(value) || value.length !== 2 || !isNonNegativeInteger(value[0])) {
-    return false;
-  }
-  const emission = value[1];
-  return (
-    isJsonRecord(emission) &&
-    hasExactKeys(emission, ["digest", "receipt"]) &&
-    typeof emission["digest"] === "string" &&
-    isJsonRecord(emission["receipt"]) &&
-    hasExactKeys(emission["receipt"], ["offset", "eventId", "duplicate"]) &&
-    typeof emission["receipt"]["offset"] === "string" &&
-    typeof emission["receipt"]["eventId"] === "string" &&
-    typeof emission["receipt"]["duplicate"] === "boolean"
-  );
-}
-
-function isRecordCollection(value: Json): boolean {
-  return (
-    Array.isArray(value) &&
-    value.length === 2 &&
-    typeof value[0] === "string" &&
-    Array.isArray(value[1]) &&
-    value[1].every(
-      (record) =>
-        isJsonRecord(record) &&
-        hasOnlyKeys(record, ["offset", "eventId", "sessionId", "payload"], ["ownerEpoch"]) &&
-        (record["ownerEpoch"] === undefined || isNonNegativeInteger(record["ownerEpoch"])) &&
-        typeof record["offset"] === "string" &&
-        typeof record["eventId"] === "string" &&
-        typeof record["sessionId"] === "string" &&
-        isSemanticPayload(record["payload"]),
-    )
-  );
-}
-
-function isSemanticPayload(value: unknown): boolean {
-  if (
-    !isJsonRecord(value) ||
-    typeof value["type"] !== "string" ||
-    typeof value["taskId"] !== "string"
-  ) {
-    return false;
-  }
-  switch (value["type"]) {
-    case "TaskOpened":
-      return (
-        hasOnlyKeys(
-          value,
-          [
-            "type",
-            "taskId",
-            "turnId",
-            "programId",
-            "programVersion",
-            "programDigest",
-            "input",
-            "inputDigest",
-          ],
-          ["parentTaskId", "parentPullId", "catalog", "catalogDigest"],
-        ) &&
-        ["turnId", "programId", "programVersion", "programDigest", "inputDigest"].every(
-          (key) => typeof value[key] === "string",
-        ) &&
-        ((value["catalog"] === undefined && value["catalogDigest"] === undefined) ||
-          (isJsonRecord(value["catalog"]) && typeof value["catalogDigest"] === "string"))
-      );
-    case "PullRequested":
-      return (
-        hasExactKeys(value, [
-          "type",
-          "taskId",
-          "turnId",
-          "actionIndex",
-          "pullIndex",
-          "pullId",
-          "descriptor",
-          "descriptorDigest",
-        ]) &&
-        typeof value["turnId"] === "string" &&
-        isNonNegativeInteger(value["actionIndex"]) &&
-        isNonNegativeInteger(value["pullIndex"]) &&
-        typeof value["pullId"] === "string" &&
-        isJsonRecord(value["descriptor"]) &&
-        typeof value["descriptorDigest"] === "string"
-      );
-    case "AttemptStarted":
-      return (
-        hasExactKeys(value, ["type", "taskId", "pullId", "attemptId", "attemptIndex"]) &&
-        typeof value["pullId"] === "string" &&
-        typeof value["attemptId"] === "string" &&
-        isNonNegativeInteger(value["attemptIndex"])
-      );
-    case "AttemptDetached":
-    case "AttemptAbandoned":
-      return (
-        hasExactKeys(value, ["type", "taskId", "pullId", "attemptId", "reason"]) &&
-        typeof value["pullId"] === "string" &&
-        typeof value["attemptId"] === "string" &&
-        typeof value["reason"] === "string"
-      );
-    case "AttemptSuperseded":
-      return (
-        hasExactKeys(value, ["type", "taskId", "pullId", "attemptId", "winnerAttemptId"]) &&
-        typeof value["pullId"] === "string" &&
-        typeof value["attemptId"] === "string" &&
-        typeof value["winnerAttemptId"] === "string"
-      );
-    case "PullIndeterminate":
-      return (
-        hasExactKeys(value, ["type", "taskId", "pullId", "attemptId"]) &&
-        typeof value["pullId"] === "string" &&
-        typeof value["attemptId"] === "string"
-      );
-    case "PullResolved":
-      return (
-        hasOnlyKeys(
-          value,
-          ["type", "taskId", "pullId", "outcome", "outcomeDigest"],
-          ["attemptId"],
-        ) &&
-        typeof value["pullId"] === "string" &&
-        (value["attemptId"] === undefined || typeof value["attemptId"] === "string") &&
-        isOperationOutcomeJson(value["outcome"]) &&
-        typeof value["outcomeDigest"] === "string"
-      );
-    case "DurableEmission":
-      return (
-        hasExactKeys(value, [
-          "type",
-          "taskId",
-          "actionIndex",
-          "emissionIndex",
-          "descriptor",
-          "descriptorDigest",
-        ]) &&
-        isNonNegativeInteger(value["actionIndex"]) &&
-        isNonNegativeInteger(value["emissionIndex"]) &&
-        isJsonRecord(value["descriptor"]) &&
-        hasExactKeys(value["descriptor"], ["eventType", "payload"]) &&
-        typeof value["descriptor"]["eventType"] === "string" &&
-        typeof value["descriptorDigest"] === "string"
-      );
-    case "RaceWinnerSelected":
-      return (
-        hasExactKeys(value, [
-          "type",
-          "taskId",
-          "pullId",
-          "winnerTaskId",
-          "closeOffset",
-          "outcomeDigest",
-        ]) &&
-        typeof value["pullId"] === "string" &&
-        typeof value["winnerTaskId"] === "string" &&
-        typeof value["closeOffset"] === "string" &&
-        typeof value["outcomeDigest"] === "string"
-      );
-    case "CancellationRequested":
-      return (
-        hasOnlyKeys(value, ["type", "taskId", "commandId", "frontier"], ["reason"]) &&
-        typeof value["commandId"] === "string" &&
-        (value["reason"] === undefined || typeof value["reason"] === "string") &&
-        isCancellationFrontierSnapshot(value["frontier"])
-      );
-    case "CancellationPartialDiscarded":
-      return (
-        hasExactKeys(value, ["type", "taskId", "pullId", "reason"]) &&
-        typeof value["pullId"] === "string" &&
-        (value["reason"] === "schema_validation_failed" ||
-          value["reason"] === "payload_too_large" ||
-          value["reason"] === "schema_version_unavailable")
-      );
-    case "AttemptOutcomeUnknown":
-      return (
-        hasOnlyKeys(value, ["type", "taskId", "pullId", "reason"], ["attemptId"]) &&
-        typeof value["pullId"] === "string" &&
-        (value["attemptId"] === undefined || typeof value["attemptId"] === "string") &&
-        (value["reason"] === "no_settlement_path" || value["reason"] === "force_orphaned")
-      );
-    case "CleanupSkipped":
-    case "TaskOrphaned":
-      return (
-        hasExactKeys(value, ["type", "taskId", "reason"]) &&
-        (value["reason"] === "program_version_unavailable" ||
-          value["reason"] === "program_corrupt" ||
-          value["reason"] === "cleanup_stuck" ||
-          value["reason"] === "replay_execution_failed" ||
-          value["reason"] === "replay_diverged")
-      );
-    case "TaskClosed":
-      return (
-        hasExactKeys(value, ["type", "taskId", "outcome"]) &&
-        isOperationOutcomeJson(value["outcome"])
-      );
-    default:
-      return false;
-  }
-}
-
-function isOperationOutcomeJson(value: unknown): boolean {
-  if (!isJsonRecord(value)) {
-    return false;
-  }
-  switch (value["status"]) {
-    case "ok":
-      return hasExactKeys(value, ["status", "value"]);
-    case "error":
-      return (
-        hasExactKeys(value, ["status", "error"]) &&
-        isJsonRecord(value["error"]) &&
-        hasOnlyKeys(value["error"], ["code", "message"], ["details"]) &&
-        typeof value["error"]["code"] === "string" &&
-        typeof value["error"]["message"] === "string"
-      );
-    case "cancelled":
-      return hasOnlyKeys(value, ["status"], ["partial"]);
-    default:
-      return false;
-  }
-}
-
-function isCancellationFrontierSnapshot(value: unknown): boolean {
-  return (
-    isJsonRecord(value) &&
-    hasOnlyKeys(value, ["actionIndex"], ["pullId"]) &&
-    isNonNegativeInteger(value["actionIndex"]) &&
-    (value["pullId"] === undefined || typeof value["pullId"] === "string")
-  );
-}
-
-function isCancellationStateSnapshot(value: unknown): boolean {
-  if (!isJsonRecord(value) || typeof value["type"] !== "string") {
-    return false;
-  }
-  switch (value["type"]) {
-    case "none":
-      return hasExactKeys(value, ["type"]);
-    case "requested":
-      return (
-        hasOnlyKeys(value, ["type", "commandId", "frontier"], ["reason"]) &&
-        typeof value["commandId"] === "string" &&
-        (value["reason"] === undefined || typeof value["reason"] === "string") &&
-        isCancellationFrontierSnapshot(value["frontier"])
-      );
-    case "settling_effect":
-      return (
-        hasOnlyKeys(value, ["type", "commandId", "pullId", "frontier"], ["reason"]) &&
-        typeof value["commandId"] === "string" &&
-        typeof value["pullId"] === "string" &&
-        (value["reason"] === undefined || typeof value["reason"] === "string") &&
-        isCancellationFrontierSnapshot(value["frontier"])
-      );
-    case "cancelling_children":
-      return (
-        hasOnlyKeys(value, ["type", "commandId", "childTaskIds", "frontier"], ["reason"]) &&
-        typeof value["commandId"] === "string" &&
-        Array.isArray(value["childTaskIds"]) &&
-        value["childTaskIds"].every((entry) => typeof entry === "string") &&
-        (value["reason"] === undefined || typeof value["reason"] === "string") &&
-        isCancellationFrontierSnapshot(value["frontier"])
-      );
-    case "unwinding":
-      return (
-        hasOnlyKeys(value, ["type", "commandId", "frontier"], ["reason"]) &&
-        typeof value["commandId"] === "string" &&
-        (value["reason"] === undefined || typeof value["reason"] === "string") &&
-        isCancellationFrontierSnapshot(value["frontier"])
-      );
-    case "cancelled":
-      return hasExactKeys(value, ["type", "commandId"]) && typeof value["commandId"] === "string";
-    case "orphaned":
-      return (
-        hasExactKeys(value, ["type", "reason"]) &&
-        (value["reason"] === "program_version_unavailable" ||
-          value["reason"] === "program_corrupt" ||
-          value["reason"] === "cleanup_stuck" ||
-          value["reason"] === "replay_execution_failed" ||
-          value["reason"] === "replay_diverged")
-      );
-    default:
-      return false;
-  }
-}
-
-function isJsonRecord(value: unknown): value is Record<string, Json> {
-  return (
-    value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
-  );
-}
-
-function isNonNegativeInteger(value: Json | undefined): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-
-function hasExactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
-}
-
-function hasOnlyKeys(
-  value: Record<string, Json>,
-  required: readonly string[],
-  optional: readonly string[],
-): boolean {
-  const allowed = new Set([...required, ...optional]);
-  return (
-    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
-  );
 }
 
 function sanitizeCancellationReason(reason: string | undefined): string | undefined {
@@ -3241,14 +2562,14 @@ const restoreTicketClaimsSchema = z.strictObject({
   sessionId: z.string().min(1),
   taskId: z.string().min(1),
   ownerId: z.string().min(1),
-  activationEpoch: z.number().int().nonnegative().safe(),
+  activationEpoch: z.number().int().nonnegative(),
   releaseId: z.string().min(1).optional(),
   sandboxSessionId: z.string().min(1).optional(),
   replayDomain: z.string().min(1).optional(),
   frontierDomain: z.string().min(1).optional(),
-  taskRevision: z.number().int().nonnegative().safe(),
+  taskRevision: z.number().int().nonnegative(),
   journalHeadDigest: z.string().min(1),
-  replayedThroughActionIndex: z.number().int().safe().min(-1),
+  replayedThroughActionIndex: z.number().int().min(-1),
   replayChainDigest: z.string().min(1),
   restoreNonce: z.string().min(1),
 });
@@ -3322,8 +2643,8 @@ function normalizeEmissionPolicy(
 }
 
 const emissionPolicySchema = z.strictObject({
-  maxEmissionsPerTask: z.number().int().nonnegative().safe().optional(),
-  maxCumulativeEmissionBytes: z.number().int().nonnegative().safe().optional(),
+  maxEmissionsPerTask: z.number().int().nonnegative().optional(),
+  maxCumulativeEmissionBytes: z.number().int().nonnegative().optional(),
 });
 
 export const emissionPolicyParser = parser(emissionPolicySchema).map(

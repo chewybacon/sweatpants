@@ -313,7 +313,7 @@ const programCapabilityClaimsSchema = z.strictObject({
   programVersion: z.string().min(1),
   programDigest: z.string().min(1),
   attachmentId: z.string().min(1),
-  executionEpoch: z.number().int().nonnegative().safe(),
+  executionEpoch: z.number().int().nonnegative(),
   permissions: z.tuple([z.literal("propose"), z.literal("complete")]),
 });
 
@@ -323,7 +323,7 @@ const resolutionCapabilityClaimsSchema = z.strictObject({
   descriptorDigest: z.string().min(1),
   resultSchemaDigest: z.string().min(1),
   attemptId: z.string().min(1),
-  maxOutcomeBytes: z.number().int().nonnegative().safe(),
+  maxOutcomeBytes: z.number().int().nonnegative(),
   permissions: z.tuple([z.literal("resolve")]),
 });
 

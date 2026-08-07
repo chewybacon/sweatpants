@@ -1,5 +1,13 @@
-import { assertJson, requireJsonObject, type JsonObject } from "@sweatpants/foundation";
-import { decodeChatMessage, type ChatMessage } from "@sweatpants/chat-contract";
+import {
+  failure,
+  parser,
+  success,
+  type JsonObject,
+  type ParseIssue,
+  type Parser,
+} from "@sweatpants/foundation";
+import { chatMessageParser, type ChatMessage } from "@sweatpants/chat-contract";
+import { z } from "zod";
 
 export type ChatHistoryEntry = ChatHistoryMessageEntry | ChatHistoryActivityEntry;
 
@@ -38,117 +46,162 @@ export class ChatHistoryDecodeError extends TypeError {
   }
 }
 
-export function decodeChatHistoryEntry(value: unknown, path = "$"): ChatHistoryEntry {
-  const input = jsonObject(value, path);
-  const type = requiredString(input, "type", path);
-  const id = requiredString(input, "id", path);
-  switch (type) {
-    case "message":
-      assertKeys(input, ["type", "id", "message", "metadata"], path);
-      if (!hasOwn(input, "message")) {
-        throw new ChatHistoryDecodeError("missing-field", `${path}.message`, "message is required");
-      }
-      try {
-        return freeze({
-          type,
-          id,
-          message: decodeChatMessage(input["message"], `${path}.message`),
-          metadata: metadata(input, path),
-        });
-      } catch (error) {
-        if (error instanceof ChatHistoryDecodeError) throw error;
-        throw new ChatHistoryDecodeError(
-          "invalid-message",
-          `${path}.message`,
-          error instanceof Error ? error.message : "invalid canonical Chat message",
+const jsonObjectSchema = z.record(z.string(), z.json());
+const historyEntrySchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("message"),
+    id: z.string().min(1),
+    message: z.json(),
+    metadata: jsonObjectSchema.optional(),
+  }),
+  z.strictObject({
+    type: z.literal("activity"),
+    id: z.string().min(1),
+    activityType: z.string().min(1),
+    data: jsonObjectSchema,
+    metadata: jsonObjectSchema.optional(),
+  }),
+]);
+const historyEntryStructureParser = parser(historyEntrySchema);
+const historyEntriesStructureParser = parser(z.array(z.json()));
+
+/** Result-oriented parser for one canonical Chat history entry. */
+export const chatHistoryEntryParser: Parser<ChatHistoryEntry> = historyEntryStructureParser.andThen(
+  (value) => {
+    if (value.type === "message") {
+      const message = chatMessageParser.parse(value.message);
+      if (!message.ok) {
+        return failure(
+          message.issues.map((issue) => ({
+            ...issue,
+            path: ["message", ...issue.path],
+            code: "invalid-message",
+          })),
         );
       }
-    case "activity":
-      assertKeys(input, ["type", "id", "activityType", "data", "metadata"], path);
-      return freeze({
-        type,
-        id,
-        activityType: requiredString(input, "activityType", path),
-        data: requiredObject(input, "data", path),
-        metadata: metadata(input, path),
-      });
-    default:
-      throw new ChatHistoryDecodeError(
-        "invalid-entry",
-        `${path}.type`,
-        `unsupported history entry ${JSON.stringify(type)}`,
+      return success(
+        freeze({
+          type: "message" as const,
+          id: value.id,
+          message: message.value,
+          metadata: freeze(value.metadata ?? {}),
+        }),
       );
+    }
+    return success(
+      freeze({
+        type: "activity" as const,
+        id: value.id,
+        activityType: value.activityType,
+        data: freeze(value.data),
+        metadata: freeze(value.metadata ?? {}),
+      }),
+    );
+  },
+);
+
+/** Result-oriented parser for canonical Chat history entry arrays. */
+export const chatHistoryEntriesParser: Parser<readonly ChatHistoryEntry[]> =
+  historyEntriesStructureParser.andThen((values) => {
+    const entries: ChatHistoryEntry[] = [];
+    for (const [index, value] of values.entries()) {
+      const parsed = chatHistoryEntryParser.parse(value);
+      if (!parsed.ok) {
+        return failure(parsed.issues.map((issue) => ({ ...issue, path: [index, ...issue.path] })));
+      }
+      entries.push(parsed.value);
+    }
+    return success(freeze(entries) as readonly ChatHistoryEntry[]);
+  });
+
+export function decodeChatHistoryEntry(value: unknown, path = "$"): ChatHistoryEntry {
+  const parsed = chatHistoryEntryParser.parse(value);
+  if (!parsed.ok) {
+    throw historyError(parsed.issues, value, path);
   }
+  return parsed.value;
 }
 
 export function decodeChatHistoryEntries(value: unknown, path = "$"): readonly ChatHistoryEntry[] {
-  if (!Array.isArray(value)) {
-    throw new ChatHistoryDecodeError("invalid-value", path, "expected a history entry array");
+  const parsed = chatHistoryEntriesParser.parse(value);
+  if (!parsed.ok) {
+    throw historyError(parsed.issues, value, path);
   }
-  return freeze(value.map((entry, index) => decodeChatHistoryEntry(entry, `${path}[${index}]`)));
+  return parsed.value;
 }
 
-function metadata(input: JsonObject, path: string): JsonObject {
-  if (!hasOwn(input, "metadata")) return Object.freeze({});
-  return requiredObject(input, "metadata", path);
-}
-
-function requiredObject(input: JsonObject, key: string, path: string): JsonObject {
-  if (!hasOwn(input, key)) {
-    throw new ChatHistoryDecodeError("missing-field", `${path}.${key}`, `${key} is required`);
-  }
-  try {
-    return freeze(requireJsonObject(assertJson(input[key], `${path}.${key}`)));
-  } catch (error) {
-    throw new ChatHistoryDecodeError(
-      "invalid-field",
-      `${path}.${key}`,
-      error instanceof Error ? error.message : `expected a JSON object for ${key}`,
-    );
-  }
-}
-
-function requiredString(input: JsonObject, key: string, path: string): string {
-  if (!hasOwn(input, key) || typeof input[key] !== "string" || input[key].length === 0) {
-    throw new ChatHistoryDecodeError(
-      "missing-field",
-      `${path}.${key}`,
-      `${key} must be a non-empty string`,
-    );
-  }
-  return input[key] as string;
-}
-
-function jsonObject(value: unknown, path: string): JsonObject {
-  try {
-    return requireJsonObject(assertJson(value, path), path);
-  } catch (error) {
-    if (error instanceof ChatHistoryDecodeError) throw error;
-    throw new ChatHistoryDecodeError(
-      "invalid-value",
+function historyError(
+  issues: readonly ParseIssue[],
+  input: unknown,
+  root: string,
+): ChatHistoryDecodeError {
+  const issue = issues[0];
+  const relativePath = issue?.path ?? [];
+  const path = formatPath(root, relativePath);
+  if (issue?.code === "invalid-message") {
+    return new ChatHistoryDecodeError(
+      "invalid-message",
       path,
-      error instanceof Error ? error.message : "expected a JSON object",
+      issue.message || "invalid canonical Chat message",
     );
   }
-}
-
-function assertKeys(input: JsonObject, allowed: readonly string[], path: string): void {
-  const allowedKeys = new Set(allowed);
-  for (const key of Object.keys(input)) {
-    if (!allowedKeys.has(key)) {
-      throw new ChatHistoryDecodeError("unknown-field", `${path}.${key}`, `unknown field ${key}`);
-    }
+  if (issue?.code === "unrecognized_keys") {
+    return new ChatHistoryDecodeError("unknown-field", path, issue.message);
   }
+  if (!isRecord(input) && !Array.isArray(input)) {
+    return new ChatHistoryDecodeError("invalid-value", root, issue?.message ?? "invalid value");
+  }
+  const owner = valueAtPath(input, relativePath.slice(0, -1));
+  const key = relativePath.at(-1);
+  if (
+    (typeof key === "string" || typeof key === "number") &&
+    isRecord(owner) &&
+    !Object.prototype.hasOwnProperty.call(owner, key)
+  ) {
+    return new ChatHistoryDecodeError("missing-field", path, `${String(key)} is required`);
+  }
+  if (key === "type") {
+    return new ChatHistoryDecodeError(
+      "invalid-entry",
+      path,
+      issue?.message ?? "invalid entry type",
+    );
+  }
+  if (relativePath.includes("metadata")) {
+    return new ChatHistoryDecodeError("invalid-value", path, issue?.message ?? "invalid metadata");
+  }
+  return new ChatHistoryDecodeError("invalid-field", path, issue?.message ?? "invalid field");
 }
 
-function hasOwn(input: JsonObject, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(input, key);
+function valueAtPath(value: unknown, path: readonly (string | number)[]): unknown {
+  let current = value;
+  for (const segment of path) {
+    if (!isRecord(current) && !Array.isArray(current)) {
+      return undefined;
+    }
+    current = current[segment as keyof typeof current];
+  }
+  return current;
+}
+
+function formatPath(root: string, path: readonly (string | number)[]): string {
+  return path.reduce<string>(
+    (output, segment) =>
+      typeof segment === "number" ? `${output}[${segment}]` : `${output}.${segment}`,
+    root,
+  );
+}
+
+function isRecord(value: unknown): value is Record<string | number, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     Object.freeze(value);
-    for (const child of Object.values(value)) freeze(child);
+    for (const child of Object.values(value)) {
+      freeze(child);
+    }
   }
   return value;
 }

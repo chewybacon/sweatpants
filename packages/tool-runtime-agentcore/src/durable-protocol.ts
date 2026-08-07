@@ -1,5 +1,5 @@
-import { CrankError } from "@sweatpants/durable-execution";
 import {
+  CrankError,
   type AttachProgramRequest,
   type ProgramAttachment,
   type ProgramCommand,
@@ -9,7 +9,16 @@ import {
   type ReplayEntry,
   type ReplayOperationEntry,
 } from "@sweatpants/durable-execution";
-import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
+import {
+  canonicalJson,
+  canonicalSnapshot,
+  failure,
+  parser,
+  sha256,
+  success,
+  type ParseResult,
+  type Parser,
+} from "@sweatpants/foundation";
 import { z } from "zod";
 
 import { AGENTCORE_DURABLE_PROTOCOL_VERSION } from "./durable-placement.ts";
@@ -89,31 +98,288 @@ export type RuntimeProgramMessage =
       }
     >;
 
-const hostTypes = new Set([
-  "restore_begin",
-  "replay_operation",
-  "replay_emission",
-  "replay_end",
-  "command",
-  "shutdown",
-]);
-const runtimeTypes = new Set([
-  "restore_ready",
-  "frontier",
-  "step",
-  "shutdown_complete",
-  "rejected",
-]);
-const durableEnvelopeSchema = z.strictObject({
-  protocolVersion: z.number().int().safe(),
-  type: z.string().min(1).max(128),
-  releaseId: z.string().min(1).max(4_096),
-  taskId: z.string().min(1).max(4_096),
-  activationEpoch: z.number().int().nonnegative().safe(),
-  attachmentId: z.string().min(1).max(4_096).optional(),
-  actionIndex: z.number().int().nonnegative().safe().optional(),
-  payload: z.record(z.string(), z.json()),
+const digestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
+const nonemptyStringSchema = z.string().min(1);
+const envelopeIdentifierSchema = nonemptyStringSchema.max(4_096);
+const nonNegativeIntegerSchema = z.number().int().nonnegative();
+const replayPositionSchema = z.number().int().min(-1);
+const pinnedProgramSchema = z.strictObject({
+  id: nonemptyStringSchema,
+  version: nonemptyStringSchema,
+  digest: digestSchema,
 });
+const affinitySchema = z.strictObject({
+  kind: z.enum(["invocation", "conversation", "workspace"]),
+  key: nonemptyStringSchema,
+});
+const retrySafetySchema = z.discriminatedUnion("mode", [
+  z.strictObject({ mode: z.literal("repeatable") }),
+  z.strictObject({ mode: z.literal("unsafe") }),
+  z.strictObject({ mode: z.literal("idempotent"), mechanism: z.enum(["pull_id_key", "inherent"]) }),
+]);
+const childSchema = z.strictObject({
+  id: nonemptyStringSchema,
+  version: nonemptyStringSchema,
+  digest: digestSchema,
+  input: z.json(),
+});
+const resolverSchema = z.strictObject({
+  audience: nonemptyStringSchema,
+  route: nonemptyStringSchema.optional(),
+});
+const operationDescriptorSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("record"),
+    key: z.string().min(1).max(128),
+    retrySafety: retrySafetySchema,
+  }),
+  z.strictObject({
+    kind: z.literal("effect"),
+    name: nonemptyStringSchema,
+    version: nonemptyStringSchema,
+    input: z.json(),
+    resolver: resolverSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("elicit"),
+    key: nonemptyStringSchema,
+    message: z.string(),
+    response: z.json(),
+    context: z.json().optional(),
+    contextContract: z.json().optional(),
+  }),
+  z
+    .strictObject({
+      kind: z.literal("wait"),
+      key: nonemptyStringSchema,
+      notBefore: z.string().optional(),
+      durationMs: nonNegativeIntegerSchema.optional(),
+    })
+    .refine((value) => (value.notBefore === undefined) !== (value.durationMs === undefined)),
+  z.strictObject({ kind: z.literal("invoke"), child: childSchema }),
+  z.strictObject({ kind: z.literal("spawn"), child: childSchema }),
+  z.strictObject({
+    kind: z.literal("join"),
+    handle: z.strictObject({
+      __durableTask: nonemptyStringSchema,
+      owner: nonemptyStringSchema,
+    }),
+  }),
+  z.strictObject({ kind: z.enum(["all", "race"]), children: z.array(childSchema) }),
+]);
+const applicationErrorSchema = z.strictObject({
+  code: nonemptyStringSchema,
+  message: z.string(),
+  details: z.json().optional(),
+});
+const outcomeSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("ok"), value: z.json() }),
+  z.strictObject({ status: z.literal("error"), error: applicationErrorSchema }),
+  z.strictObject({ status: z.literal("cancelled"), partial: z.json().optional() }),
+]);
+const receiptSchema = z.strictObject({
+  sessionId: nonemptyStringSchema,
+  taskId: nonemptyStringSchema,
+  pullId: nonemptyStringSchema,
+  resolutionOffset: nonemptyStringSchema,
+  outcomeDigest: digestSchema,
+  status: z.enum(["accepted", "duplicate"]),
+});
+const placementSchema = z.strictObject({
+  journal: z.strictObject({ id: nonemptyStringSchema, incarnation: nonemptyStringSchema }),
+  program: pinnedProgramSchema,
+  route: z.json(),
+  driverKind: nonemptyStringSchema,
+});
+const commandSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("start"), input: z.json() }),
+  z.strictObject({
+    type: z.literal("resume"),
+    actionIndex: nonNegativeIntegerSchema,
+    outcome: outcomeSchema,
+    receipt: receiptSchema,
+    replayed: z.boolean(),
+  }),
+  z.strictObject({
+    type: z.literal("authorize"),
+    actionIndex: nonNegativeIntegerSchema,
+    pullId: nonemptyStringSchema,
+    attemptId: nonemptyStringSchema,
+    resolutionCapability: nonemptyStringSchema,
+    descriptor: z
+      .union([operationDescriptorSchema.options[0], operationDescriptorSchema.options[1]])
+      .optional(),
+    effectContractDigest: digestSchema.optional(),
+    placement: placementSchema.optional(),
+  }),
+  z.strictObject({
+    type: z.literal("ack_emission"),
+    actionIndex: nonNegativeIntegerSchema,
+    offset: nonemptyStringSchema,
+  }),
+  z.strictObject({ type: z.literal("cancel"), reason: z.string().optional() }),
+]);
+const stepSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("operation"),
+    actionIndex: nonNegativeIntegerSchema,
+    descriptor: operationDescriptorSchema,
+    authorizedOutcome: outcomeSchema.optional(),
+  }),
+  z.strictObject({
+    type: z.literal("emission"),
+    actionIndex: nonNegativeIntegerSchema,
+    descriptor: z.strictObject({ eventType: nonemptyStringSchema, payload: z.json() }),
+  }),
+  z.strictObject({
+    type: z.literal("completed"),
+    actionIndex: nonNegativeIntegerSchema,
+    value: z.json(),
+  }),
+  z.strictObject({
+    type: z.literal("failed"),
+    actionIndex: nonNegativeIntegerSchema,
+    error: applicationErrorSchema,
+  }),
+]);
+const replayOperationSchema = z.strictObject({
+  type: z.literal("operation"),
+  actionIndex: nonNegativeIntegerSchema,
+  descriptorKind: nonemptyStringSchema,
+  descriptorDigest: digestSchema,
+  previousEntryDigest: digestSchema,
+  entryDigest: digestSchema,
+  outcome: outcomeSchema,
+  receipt: receiptSchema,
+});
+const replayEmissionSchema = z.strictObject({
+  type: z.literal("emission"),
+  actionIndex: nonNegativeIntegerSchema,
+  descriptorKind: nonemptyStringSchema,
+  descriptorDigest: digestSchema,
+  previousEntryDigest: digestSchema,
+  entryDigest: digestSchema,
+  offset: nonemptyStringSchema,
+});
+const attachSchema = z.strictObject({
+  sessionId: nonemptyStringSchema,
+  taskId: nonemptyStringSchema,
+  program: pinnedProgramSchema,
+  input: z.json(),
+  route: z.json(),
+  executionEpoch: nonNegativeIntegerSchema,
+  affinity: affinitySchema,
+});
+const attachmentSchema = z.strictObject({
+  attachmentId: nonemptyStringSchema,
+  taskId: nonemptyStringSchema,
+  driverKind: nonemptyStringSchema,
+  route: z.json(),
+  executionEpoch: nonNegativeIntegerSchema,
+});
+const envelopeBaseShape = {
+  protocolVersion: z.number().int(),
+  releaseId: envelopeIdentifierSchema,
+  taskId: envelopeIdentifierSchema,
+  activationEpoch: nonNegativeIntegerSchema,
+  attachmentId: envelopeIdentifierSchema.optional(),
+  actionIndex: nonNegativeIntegerSchema.optional(),
+};
+const hostEnvelopeSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("restore_begin"),
+    payload: z.strictObject({
+      attach: attachSchema,
+      programInputDigest: nonemptyStringSchema,
+      replayedThroughActionIndex: replayPositionSchema,
+      replayChainSeed: digestSchema,
+    }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("replay_operation"),
+    attachmentId: envelopeIdentifierSchema,
+    actionIndex: nonNegativeIntegerSchema,
+    payload: replayOperationSchema,
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("replay_emission"),
+    attachmentId: envelopeIdentifierSchema,
+    actionIndex: nonNegativeIntegerSchema,
+    payload: replayEmissionSchema,
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("replay_end"),
+    attachmentId: envelopeIdentifierSchema,
+    payload: z.strictObject({
+      entryCount: nonNegativeIntegerSchema,
+      replayChainDigest: digestSchema,
+    }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("command"),
+    attachmentId: envelopeIdentifierSchema,
+    payload: z.strictObject({ command: commandSchema }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("shutdown"),
+    attachmentId: envelopeIdentifierSchema,
+    payload: z.strictObject({
+      reason: z.enum([
+        "parked",
+        "completed",
+        "failed",
+        "cancelled",
+        "transport_lost",
+        "scope_exit",
+      ]),
+    }),
+  }),
+]);
+const runtimeEnvelopeSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("restore_ready"),
+    payload: z.strictObject({
+      attachment: attachmentSchema,
+      computeGeneration: nonemptyStringSchema,
+    }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("frontier"),
+    attachmentId: envelopeIdentifierSchema,
+    payload: z.strictObject({
+      step: stepSchema,
+      replayedThroughActionIndex: replayPositionSchema,
+      replayChainDigest: digestSchema,
+      frontierDigest: digestSchema,
+    }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("step"),
+    attachmentId: envelopeIdentifierSchema,
+    actionIndex: nonNegativeIntegerSchema,
+    payload: z.strictObject({ step: stepSchema }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("shutdown_complete"),
+    attachmentId: envelopeIdentifierSchema,
+    payload: z.strictObject({}),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("rejected"),
+    payload: z.strictObject({ code: z.string(), message: z.string() }),
+  }),
+]);
 
 const errorCodes = new Set<AgentCoreDurableProgramErrorCode>([
   "placement_unavailable",
@@ -134,6 +400,12 @@ const errorCodes = new Set<AgentCoreDurableProgramErrorCode>([
   "agentcore_runtime_rejected",
 ]);
 
+export const hostProgramMessageParser: Parser<HostProgramMessage> =
+  parser(hostEnvelopeSchema).andThen(verifyHostProgramMessage);
+export const runtimeProgramMessageParser: Parser<RuntimeProgramMessage> = parser(
+  runtimeEnvelopeSchema,
+).andThen(verifyRuntimeProgramMessage);
+
 export function encodeAgentCoreProgramMessage(
   message: HostProgramMessage | RuntimeProgramMessage,
 ): string {
@@ -145,18 +417,14 @@ export function encodeAgentCoreProgramMessage(
 }
 
 export function parseHostProgramMessage(frame: string | Uint8Array): HostProgramMessage {
-  return parseMessage(frame, hostTypes, assertHostPayload) as HostProgramMessage;
+  return parseMessage(frame, hostProgramMessageParser);
 }
 
 export function parseRuntimeProgramMessage(frame: string | Uint8Array): RuntimeProgramMessage {
-  return parseMessage(frame, runtimeTypes, assertRuntimePayload) as RuntimeProgramMessage;
+  return parseMessage(frame, runtimeProgramMessageParser);
 }
 
-function parseMessage(
-  frame: string | Uint8Array,
-  allowed: ReadonlySet<string>,
-  parsePayload: (type: string, envelope: Record<string, Json>) => void,
-): HostProgramMessage | RuntimeProgramMessage {
+function parseMessage<T>(frame: string | Uint8Array, messageParser: Parser<T>): T {
   const bytes = typeof frame === "string" ? new TextEncoder().encode(frame) : frame;
   if (bytes.byteLength > AGENTCORE_MAX_FRAME_BYTES) {
     throw protocol("payload_too_large", "Frame exceeds 2 MiB");
@@ -169,217 +437,106 @@ function parseMessage(
   } catch (error) {
     throw protocol("program_protocol_error", "Malformed canonical JSON", error);
   }
-  const parsed = durableEnvelopeSchema.safeParse(decoded);
-  if (!parsed.success) {
-    const closed = parsed.error.issues.some((issue) => issue.code === "unrecognized_keys");
+  const parsed = messageParser.parse(decoded);
+  if (!parsed.ok) {
+    const issue = parsed.issues[0];
+    if (issue?.code === "protocol_version_unsupported") {
+      throw protocol("protocol_version_unsupported", issue.message);
+    }
     throw protocol(
       "program_protocol_error",
-      closed ? "Envelope fields are not closed" : "Envelope structure is invalid",
+      issue?.code === "unrecognized_keys"
+        ? "Envelope fields are not closed"
+        : (issue?.message ?? "Envelope structure is invalid"),
     );
   }
-  const envelope = parsed.data;
-  if (!allowed.has(envelope.type)) {
-    throw protocol("program_protocol_error", "Unknown protocol message type");
-  }
-  if (envelope.protocolVersion !== AGENTCORE_DURABLE_PROTOCOL_VERSION) {
-    throw protocol("protocol_version_unsupported", "Unsupported protocol version");
-  }
-  const canonicalEnvelope: Record<string, Json> = {
-    protocolVersion: envelope.protocolVersion,
-    type: envelope.type,
-    releaseId: envelope.releaseId,
-    taskId: envelope.taskId,
-    activationEpoch: envelope.activationEpoch,
-    payload: envelope.payload,
-  };
-  if (envelope.attachmentId !== undefined)
-    canonicalEnvelope["attachmentId"] = envelope.attachmentId;
-  if (envelope.actionIndex !== undefined) canonicalEnvelope["actionIndex"] = envelope.actionIndex;
-  parsePayload(envelope.type, canonicalEnvelope);
-  return canonicalSnapshot(canonicalEnvelope).value as unknown as
-    | HostProgramMessage
-    | RuntimeProgramMessage;
+  return parsed.value;
 }
 
-function assertHostPayload(type: string, envelope: Record<string, Json>): void {
-  const payload = envelope["payload"] as Record<string, Json>;
-  switch (type) {
-    case "restore_begin": {
+function verifyHostProgramMessage(value: unknown): ParseResult<HostProgramMessage> {
+  const envelope = value as HostProgramMessage;
+  const common = verifyProtocolVersion(envelope.protocolVersion);
+  if (!common.ok) {
+    return common;
+  }
+  switch (envelope.type) {
+    case "restore_begin":
       if (
-        !exactKeys(payload, [
-          "attach",
-          "programInputDigest",
-          "replayedThroughActionIndex",
-          "replayChainSeed",
-        ]) ||
-        !record(payload["attach"]) ||
-        !nonempty(payload["programInputDigest"]) ||
-        !replayPosition(payload["replayedThroughActionIndex"]) ||
-        !digest(payload["replayChainSeed"])
+        envelope.payload.attach.taskId !== envelope.taskId ||
+        envelope.payload.attach.executionEpoch !== envelope.activationEpoch
       ) {
-        fail();
-      }
-      const attach = payload["attach"] as Record<string, Json>;
-      if (
-        !exactKeys(attach, [
-          "sessionId",
-          "taskId",
-          "program",
-          "input",
-          "route",
-          "executionEpoch",
-          "affinity",
-        ]) ||
-        attach["taskId"] !== envelope["taskId"] ||
-        attach["executionEpoch"] !== envelope["activationEpoch"] ||
-        !record(attach["program"]) ||
-        !validAffinity(attach["affinity"])
-      ) {
-        fail();
+        return invalidProtocolPayload();
       }
       break;
-    }
     case "replay_operation":
     case "replay_emission":
-      assertReplayEntry(payload, type === "replay_operation" ? "operation" : "emission");
+      if (envelope.actionIndex !== envelope.payload.actionIndex) {
+        return invalidProtocolPayload();
+      }
+      break;
+    case "command":
       if (
-        envelope["actionIndex"] !== payload["actionIndex"] ||
-        !nonempty(envelope["attachmentId"])
+        (envelope.payload.command.type === "resume" ||
+          envelope.payload.command.type === "authorize" ||
+          envelope.payload.command.type === "ack_emission") &&
+        envelope.actionIndex !== envelope.payload.command.actionIndex
       ) {
-        fail();
+        return invalidProtocolPayload();
       }
       break;
     case "replay_end":
-      if (
-        !exactKeys(payload, ["entryCount", "replayChainDigest"]) ||
-        !integer(payload["entryCount"]) ||
-        !digest(payload["replayChainDigest"]) ||
-        !nonempty(envelope["attachmentId"])
-      ) {
-        fail();
-      }
-      break;
-    case "command": {
-      if (
-        !exactKeys(payload, ["command"]) ||
-        !record(payload["command"]) ||
-        !nonempty(envelope["attachmentId"])
-      ) {
-        fail();
-      }
-      const command = payload["command"] as Record<string, Json>;
-      if (
-        !nonempty(command["type"]) ||
-        !["start", "resume", "authorize", "ack_emission", "cancel"].includes(
-          String(command["type"]),
-        )
-      ) {
-        fail();
-      }
-      if (
-        ["resume", "authorize", "ack_emission"].includes(String(command["type"])) &&
-        envelope["actionIndex"] !== command["actionIndex"]
-      ) {
-        fail();
-      }
-      break;
-    }
     case "shutdown":
-      if (
-        !exactKeys(payload, ["reason"]) ||
-        !["parked", "completed", "failed", "cancelled", "transport_lost", "scope_exit"].includes(
-          String(payload["reason"]),
-        ) ||
-        !nonempty(envelope["attachmentId"])
-      ) {
-        fail();
-      }
+      break;
   }
+  return success(canonicalSnapshot(envelope).value);
 }
 
-function assertRuntimePayload(type: string, envelope: Record<string, Json>): void {
-  const payload = envelope["payload"] as Record<string, Json>;
-  switch (type) {
-    case "restore_ready":
-      if (
-        !exactKeys(payload, ["attachment", "computeGeneration"]) ||
-        !record(payload["attachment"]) ||
-        !nonempty(payload["computeGeneration"])
-      ) {
-        fail();
-      }
-      break;
-    case "frontier":
-      if (
-        !exactKeys(payload, [
-          "step",
-          "replayedThroughActionIndex",
-          "replayChainDigest",
-          "frontierDigest",
-        ]) ||
-        !validStep(payload["step"]) ||
-        !replayPosition(payload["replayedThroughActionIndex"]) ||
-        !digest(payload["replayChainDigest"]) ||
-        !digest(payload["frontierDigest"]) ||
-        !nonempty(envelope["attachmentId"])
-      ) {
-        fail();
-      }
-      break;
+function verifyRuntimeProgramMessage(value: unknown): ParseResult<RuntimeProgramMessage> {
+  const envelope = value as RuntimeProgramMessage;
+  const common = verifyProtocolVersion(envelope.protocolVersion);
+  if (!common.ok) {
+    return common;
+  }
+  switch (envelope.type) {
     case "step":
-      if (
-        !exactKeys(payload, ["step"]) ||
-        !validStep(payload["step"]) ||
-        !nonempty(envelope["attachmentId"])
-      ) {
-        fail();
-      }
-      if (record(payload["step"]) && envelope["actionIndex"] !== payload["step"]["actionIndex"]) {
-        fail();
-      }
-      break;
-    case "shutdown_complete":
-      if (!exactKeys(payload, []) || !nonempty(envelope["attachmentId"])) {
-        fail();
+      if (envelope.actionIndex !== envelope.payload.step.actionIndex) {
+        return invalidProtocolPayload();
       }
       break;
     case "rejected":
       if (
-        !exactKeys(payload, ["code", "message"]) ||
-        !errorCodes.has(payload["code"] as AgentCoreDurableProgramErrorCode) ||
-        typeof payload["message"] !== "string" ||
-        new TextEncoder().encode(payload["message"]).byteLength > AGENTCORE_MAX_ERROR_TEXT_BYTES
+        !errorCodes.has(envelope.payload.code) ||
+        new TextEncoder().encode(envelope.payload.message).byteLength >
+          AGENTCORE_MAX_ERROR_TEXT_BYTES
       ) {
-        fail();
+        return invalidProtocolPayload();
       }
       break;
+    case "restore_ready":
+    case "frontier":
+    case "shutdown_complete":
+      break;
   }
+  return success(canonicalSnapshot(envelope).value);
 }
 
-function assertReplayEntry(
-  payload: Record<string, Json>,
-  expected: "operation" | "emission",
-): void {
-  const common = [
-    "type",
-    "actionIndex",
-    "descriptorKind",
-    "descriptorDigest",
-    "previousEntryDigest",
-    "entryDigest",
-  ];
-  const variant = expected === "operation" ? ["outcome", "receipt"] : ["offset"];
-  if (
-    !exactKeys(payload, [...common, ...variant]) ||
-    payload["type"] !== expected ||
-    !integer(payload["actionIndex"]) ||
-    !nonempty(payload["descriptorKind"]) ||
-    !digest(payload["descriptorDigest"]) ||
-    !digest(payload["previousEntryDigest"]) ||
-    !digest(payload["entryDigest"])
-  ) {
-    fail();
+function verifyProtocolVersion(version: number): ParseResult<never> | { readonly ok: true } {
+  if (version !== AGENTCORE_DURABLE_PROTOCOL_VERSION) {
+    return failure({
+      path: ["protocolVersion"],
+      message: "Unsupported protocol version",
+      code: "protocol_version_unsupported",
+    });
   }
+  return { ok: true };
+}
+
+function invalidProtocolPayload(): ParseResult<never> {
+  return failure({
+    path: [],
+    message: "Invalid protocol payload",
+    code: "program_protocol_error",
+  });
 }
 
 export interface ReplayChainSeedInput {
@@ -446,41 +603,8 @@ export function computeFrontierDigest(input: FrontierDigestInput): string {
   );
 }
 
-function validStep(value: Json | undefined): boolean {
-  return (
-    record(value) &&
-    ["operation", "emission", "completed", "failed"].includes(String(value["type"])) &&
-    integer(value["actionIndex"])
-  );
-}
-function record(value: unknown): value is Record<string, Json> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-function replayPosition(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= -1;
-}
-function integer(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-function nonempty(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-function validAffinity(value: unknown): boolean {
-  return Boolean(
-    record(value) &&
-    exactKeys(value, ["kind", "key"]) &&
-    ["invocation", "conversation", "workspace"].includes(String(value["kind"])) &&
-    nonempty(value["key"]),
-  );
-}
 function digest(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
-}
-function exactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
-}
-function fail(): never {
-  throw protocol("program_protocol_error", "Invalid protocol payload");
 }
 function protocol(
   code: AgentCoreDurableProgramErrorCode,

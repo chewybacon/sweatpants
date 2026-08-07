@@ -4,6 +4,7 @@ import {
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
   ModelSamplingApi,
+  modelSampleRequestParser,
   runWithModelSamplingService,
   settleModelSample,
   type ModelSampleRequest,
@@ -47,6 +48,8 @@ describe("durable model sampling", () => {
       request,
     );
     expect(parsed).toHaveProperty("value");
+    expect(modelSampleRequestParser.parse(request)).toEqual({ ok: true, value: request });
+    expect(modelSampleRequestParser.parse({ ...request, unknown: true }).ok).toBe(false);
   });
 
   it("rejects the removed loose request and unknown message roles", async () => {

@@ -1,5 +1,5 @@
-import { EventSchemas, EventType, MessageSchema, type AGUIEvent } from "@ag-ui/core";
-import { decodeAGUIEvent } from "@sweatpants/chat-core";
+import { EventType, type AGUIEvent } from "@ag-ui/core";
+import { aguiEventParser } from "@sweatpants/chat-core";
 
 type StreamEvent = AGUIEvent;
 
@@ -127,13 +127,6 @@ function assertMessageSnapshot(value: unknown): void {
   for (const entry of value) {
     const input = record(entry, "MESSAGES_SNAPSHOT.messages[]");
     assertMessageKeys(input);
-    const parsed = MessageSchema.safeParse(entry);
-    if (!parsed.success) {
-      throw checkpointError(
-        "MESSAGES_SNAPSHOT contains an invalid official AG-UI message",
-        parsed.error,
-      );
-    }
   }
 }
 
@@ -171,18 +164,19 @@ function assertBoundedOutcome(value: unknown): void {
 function validateCheckpointEvent(value: unknown): StreamEvent {
   const input = record(value, "event");
   assertKnownEventKeys(input);
-  const parsed = EventSchemas.safeParse(input);
-  if (!parsed.success) {
-    throw checkpointError("event is not a valid official AG-UI event", parsed.error);
+  const parsed = aguiEventParser.parse(input);
+  if (!parsed.ok) {
+    throw checkpointError(parsed.issues[0]?.message ?? "event is not a valid official AG-UI event");
   }
-  if (input["type"] === EventType.MESSAGES_SNAPSHOT) {
-    assertMessageSnapshot(input["messages"]);
-  } else if (input["type"] === EventType.RUN_STARTED) {
-    assertBoundedRunInput(input["input"]);
-  } else if (input["type"] === EventType.RUN_FINISHED && input["outcome"] !== undefined) {
-    assertBoundedOutcome(input["outcome"]);
+  const event = parsed.value;
+  if (event.type === EventType.MESSAGES_SNAPSHOT) {
+    assertMessageSnapshot(event.messages);
+  } else if (event.type === EventType.RUN_STARTED) {
+    assertBoundedRunInput(event.input);
+  } else if (event.type === EventType.RUN_FINISHED && event.outcome !== undefined) {
+    assertBoundedOutcome(event.outcome);
   }
-  return decodeAGUIEvent(input);
+  return event;
 }
 
 function assertCheckpointSize(encoded: string): void {

@@ -1,7 +1,7 @@
-import { type DurableEffectRegistry } from "@sweatpants/durable-effects";
+import type { DurableEffectRegistry } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, parser, type Json, type Parser } from "@sweatpants/foundation";
 import { z } from "zod";
 import {
   discoverForeignA2AAgent,
@@ -34,6 +34,47 @@ import {
   type SweatpantsPeerProfileParamsV1,
 } from "./peer-types.ts";
 import { verifyA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
+
+const positiveIntegerSchema = z.number().int().positive();
+const peerRetentionSchema = z.strictObject({
+  taskSeconds: positiveIntegerSchema,
+  invocationBindingSeconds: positiveIntegerSchema,
+  effectEventSeconds: positiveIntegerSchema,
+  grantSeconds: positiveIntegerSchema,
+  effectResponseSeconds: positiveIntegerSchema,
+  cancellationEvidenceSeconds: positiveIntegerSchema,
+  terminalEvidenceSeconds: positiveIntegerSchema,
+});
+const peerProfileParamsSchema = z.strictObject({
+  protocolVersion: z.literal(1),
+  delegatedEffectsVersion: z.literal(1),
+  requirementManifestEndpoint: z.string(),
+  delegatedEffectsEndpoint: z.string(),
+  retention: peerRetentionSchema,
+  terminalEvidenceKeyId: z.string().optional(),
+});
+const extensionContainerSchema = z.looseObject({
+  capabilities: z.looseObject({ extensions: z.array(z.unknown()) }),
+});
+const extensionDeclarationSchema = z.looseObject({ uri: z.string(), params: z.json().optional() });
+const peerTaskMetadataParser = parser(z.record(z.string(), z.json()));
+const peerTaskProfileParser = parser(
+  z.looseObject({ grantSetDigest: z.string(), requirementManifestDigest: z.string() }),
+);
+const extensionContainerParser = parser(extensionContainerSchema);
+const extensionDeclarationParser = parser(extensionDeclarationSchema);
+export const peerProfileParamsParser: Parser<SweatpantsPeerProfileParamsV1> = parser(
+  peerProfileParamsSchema,
+).map((value) => ({
+  protocolVersion: 1,
+  delegatedEffectsVersion: 1,
+  requirementManifestEndpoint: value.requirementManifestEndpoint,
+  delegatedEffectsEndpoint: value.delegatedEffectsEndpoint,
+  retention: canonicalSnapshot(value.retention).value as PeerRetentionV1,
+  ...(value.terminalEvidenceKeyId === undefined
+    ? {}
+    : { terminalEvidenceKeyId: value.terminalEvidenceKeyId }),
+}));
 
 export interface SweatpantsPeerDiscoveryOptions extends Omit<
   ForeignA2ADiscoveryOptions,
@@ -183,99 +224,43 @@ export function callPeerAgent(pin: PeerInvocationPin, request: ForeignA2AStartRe
 }
 
 export function verifyPeerTaskEcho(task: ForeignA2ATask, pin: PeerInvocationPin): void {
-  const metadata = z.record(z.string(), z.json()).safeParse(task.metadata);
-  if (!metadata.success) {
+  const metadata = peerTaskMetadataParser.parse(task.metadata);
+  if (!metadata.ok) {
     throw new CrankError("peer_grant_echo_mismatch", "Peer task omitted profile metadata");
   }
-  const profile = z
-    .object({ grantSetDigest: z.string(), requirementManifestDigest: z.string() })
-    .loose()
-    .safeParse(metadata.data[SWEATPANTS_PEER_PROFILE_URI]);
+  const profile = peerTaskProfileParser.parse(metadata.value[SWEATPANTS_PEER_PROFILE_URI]);
   if (
-    !profile.success ||
-    profile.data.grantSetDigest !== pin.grantSet.digest ||
-    profile.data.requirementManifestDigest !== pin.requirementManifest.manifestDigest
+    !profile.ok ||
+    profile.value.grantSetDigest !== pin.grantSet.digest ||
+    profile.value.requirementManifestDigest !== pin.requirementManifest.manifestDigest
   ) {
     throw new CrankError("peer_grant_echo_mismatch", "Peer task grant/manifest echo differs");
   }
 }
 
 export function parsePeerProfileParams(value: unknown): SweatpantsPeerProfileParamsV1 {
-  if (
-    !record(value) ||
-    !onlyKeys(
-      value,
-      [
-        "protocolVersion",
-        "delegatedEffectsVersion",
-        "requirementManifestEndpoint",
-        "delegatedEffectsEndpoint",
-        "retention",
-      ],
-      ["terminalEvidenceKeyId"],
-    ) ||
-    value["protocolVersion"] !== 1 ||
-    value["delegatedEffectsVersion"] !== 1 ||
-    typeof value["requirementManifestEndpoint"] !== "string" ||
-    typeof value["delegatedEffectsEndpoint"] !== "string" ||
-    !record(value["retention"])
-  ) {
+  const parsed = peerProfileParamsParser.parse(value);
+  if (!parsed.ok) {
     throw new CrankError("peer_profile_invalid", "Invalid Sweatpants peer profile parameters");
   }
-  const retention = value["retention"];
-  const keys: Array<keyof PeerRetentionV1> = [
-    "taskSeconds",
-    "invocationBindingSeconds",
-    "effectEventSeconds",
-    "grantSeconds",
-    "effectResponseSeconds",
-    "cancellationEvidenceSeconds",
-    "terminalEvidenceSeconds",
-  ];
-  if (!exactKeys(retention, keys)) {
-    throw new CrankError("peer_profile_invalid", "Invalid peer retention declaration");
-  }
-  for (const key of keys) {
-    if (!Number.isSafeInteger(retention[key]) || Number(retention[key]) <= 0) {
-      throw new CrankError("peer_profile_invalid", `Invalid peer retention ${key}`);
-    }
-  }
-  if (
-    value["terminalEvidenceKeyId"] !== undefined &&
-    typeof value["terminalEvidenceKeyId"] !== "string"
-  ) {
-    throw new CrankError("peer_profile_invalid", "Invalid terminal evidence key ID");
-  }
-  return Object.freeze({
-    protocolVersion: 1,
-    delegatedEffectsVersion: 1,
-    requirementManifestEndpoint: value["requirementManifestEndpoint"],
-    delegatedEffectsEndpoint: value["delegatedEffectsEndpoint"],
-    retention: canonicalSnapshot(retention).value as PeerRetentionV1,
-    ...(typeof value["terminalEvidenceKeyId"] === "string"
-      ? { terminalEvidenceKeyId: value["terminalEvidenceKeyId"] }
-      : {}),
-  });
+  return Object.freeze(parsed.value);
 }
 
 function extension(card: Json, uri: string): Record<string, Json> {
-  if (
-    !record(card) ||
-    !record(card["capabilities"]) ||
-    !Array.isArray(card["capabilities"]["extensions"])
-  ) {
+  const container = extensionContainerParser.parse(card);
+  if (!container.ok) {
     throw new CrankError(
       "peer_profile_unavailable",
       "Agent Card extension declarations are invalid",
     );
   }
-  const selected = card["capabilities"]["extensions"].find(
-    (candidate) => record(candidate) && candidate["uri"] === uri,
-  );
-  if (!record(selected)) {
-    throw new CrankError("peer_profile_unavailable", "Peer profile is unavailable");
+  for (const candidate of container.value.capabilities.extensions) {
+    const declaration = extensionDeclarationParser.parse(candidate);
+    if (declaration.ok && declaration.value.uri === uri) {
+      return declaration.value as Record<string, Json>;
+    }
   }
-  return selected;
+  throw new CrankError("peer_profile_unavailable", "Peer profile is unavailable");
 }
 function retentionExpirations(
   retention: PeerRetentionV1,
@@ -298,20 +283,4 @@ function requireExtensionEcho(headers: Readonly<Record<string, string>>, uri: st
   ) {
     throw new CrankError("extension_echo_mismatch", `Peer extension was not echoed: ${uri}`);
   }
-}
-function record(value: unknown): value is Record<string, Json> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-function exactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
-}
-function onlyKeys(
-  value: Record<string, Json>,
-  required: readonly string[],
-  optional: readonly string[],
-): boolean {
-  const allowed = new Set([...required, ...optional]);
-  return (
-    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
-  );
 }

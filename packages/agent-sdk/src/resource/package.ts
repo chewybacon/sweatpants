@@ -2,9 +2,13 @@ import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
+  failure,
   parser,
   sha256,
   sha256Bytes,
+  success,
+  type ParseResult,
+  type Parser,
 } from "@sweatpants/foundation";
 import { z } from "zod";
 
@@ -15,6 +19,7 @@ import {
   ResourceError,
   sortedResourceValues,
   type ResourceContentBindings,
+  type ResourceErrorCode,
   type ResourceFileDeclaration,
   type ResourceFileManifestV1,
   type ResourceFileRefV1,
@@ -38,7 +43,7 @@ const resourceFileDeclarationSchema = z.strictObject({
 const resourceFileManifestSchema = z.strictObject({
   digest: z.string().regex(SHA256_RE),
   mediaType: z.string(),
-  size: z.number().int().nonnegative().safe(),
+  size: z.number().int().nonnegative(),
 });
 const resourcePackageManifestSchema = z.strictObject({
   format: z.literal(RESOURCE_PACKAGE_FORMAT),
@@ -48,13 +53,13 @@ const resourcePackageManifestSchema = z.strictObject({
   files: z.record(z.string(), resourceFileManifestSchema),
 });
 const resourceLimitsSchema = z.strictObject({
-  maxFiles: z.number().int().positive().safe().optional(),
-  maxFileBytes: z.number().int().positive().safe().optional(),
-  maxPackageBytes: z.number().int().positive().safe().optional(),
-  maxPathBytes: z.number().int().positive().safe().optional(),
-  maxReadBytes: z.number().int().positive().safe().optional(),
-  maxListEntries: z.number().int().positive().safe().optional(),
-  maxSearchMatches: z.number().int().positive().safe().optional(),
+  maxFiles: z.number().int().positive().optional(),
+  maxFileBytes: z.number().int().positive().optional(),
+  maxPackageBytes: z.number().int().positive().optional(),
+  maxPathBytes: z.number().int().positive().optional(),
+  maxReadBytes: z.number().int().positive().optional(),
+  maxListEntries: z.number().int().positive().optional(),
+  maxSearchMatches: z.number().int().positive().optional(),
 });
 const resourcePackageOptionsSchema = z.strictObject({
   id: z.string(),
@@ -64,8 +69,11 @@ const resourcePackageOptionsSchema = z.strictObject({
 });
 const resourcePackageOptionsParser = parser(resourcePackageOptionsSchema);
 const resourceFileDeclarationParser = parser(resourceFileDeclarationSchema);
-const resourcePackageManifestParser = parser(resourcePackageManifestSchema);
+export const resourcePackageManifestParser: Parser<ResourcePackageManifestV1> = parser(
+  resourcePackageManifestSchema,
+).andThen(verifyResourcePackageManifest);
 const resourceLimitsParser = parser(resourceLimitsSchema);
+const resourceBindingsParser = parser(z.record(z.string(), z.instanceof(Uint8Array)));
 
 export interface DefineResourcePackageOptions {
   readonly id: string;
@@ -187,9 +195,6 @@ export function defineResourcePackage(options: DefineResourcePackageOptions): Re
   }
   requirePackageId(options.id);
   requireVersion(options.version);
-  if (!isPlainRecord(options.files)) {
-    invalidManifest();
-  }
   const limits = resolveResourceLimits(options.limits);
   const normalized = normalizeFileDeclarations(options.files, limits);
   const files: Record<string, ResourceFileManifestV1> = {};
@@ -219,15 +224,34 @@ export function defineResourcePackage(options: DefineResourcePackageOptions): Re
 
 /** Parses the closed v1 manifest shape and verifies its package digest. */
 export function parseResourcePackageManifest(value: unknown): ResourcePackageManifestV1 {
+  const parsed = resourcePackageManifestParser.parse(value);
+  if (parsed.ok) {
+    return parsed.value;
+  }
+  const issue = parsed.issues[0];
+  if (issue?.code && manifestErrorCodes.has(issue.code as ResourceErrorCode)) {
+    throw new ResourceError(issue.code as ResourceErrorCode, issue.message);
+  }
+  invalidManifest();
+}
+
+const manifestErrorCodes = new Set<ResourceErrorCode>([
+  "invalid_resource_manifest",
+  "invalid_resource_path",
+  "resource_limit_exceeded",
+  "resource_digest_mismatch",
+]);
+
+function verifyResourcePackageManifest(
+  value: z.output<typeof resourcePackageManifestSchema>,
+): ParseResult<ResourcePackageManifestV1> {
   try {
-    const parsed = resourcePackageManifestParser.parse(value);
-    if (!parsed.ok) invalidManifest();
-    requirePackageId(parsed.value.id);
-    requireVersion(parsed.value.version);
-    requireDigest(parsed.value.digest);
+    requirePackageId(value.id);
+    requireVersion(value.version);
+    requireDigest(value.digest);
     const files: Record<string, ResourceFileManifestV1> = {};
     const collisions = new Map<string, string>();
-    for (const [rawPath, rawFile] of Object.entries(parsed.value.files)) {
+    for (const [rawPath, rawFile] of Object.entries(value.files)) {
       const path = normalizeResourcePath(rawPath, DEFAULT_RESOURCE_LIMITS);
       assertPathCollision(collisions, rawPath, path);
       requireDigest(rawFile.digest);
@@ -241,22 +265,28 @@ export function parseResourcePackageManifest(value: unknown): ResourcePackageMan
     }
     const projection = {
       format: RESOURCE_PACKAGE_FORMAT,
-      id: parsed.value.id,
-      version: parsed.value.version,
+      id: value.id,
+      version: value.version,
       files,
     };
-    if (sha256(RESOURCE_PACKAGE_DOMAIN + canonicalJson(projection)) !== parsed.value.digest) {
-      throw new ResourceError("resource_digest_mismatch", "Resource package digest mismatch");
+    if (sha256(RESOURCE_PACKAGE_DOMAIN + canonicalJson(projection)) !== value.digest) {
+      return failure({
+        path: ["digest"],
+        message: "Resource package digest mismatch",
+        code: "resource_digest_mismatch",
+      });
     }
-    return deepFreeze(
-      canonicalSnapshot({ ...projection, digest: parsed.value.digest })
-        .value as ResourcePackageManifestV1,
+    return success(
+      deepFreeze(
+        canonicalSnapshot({ ...projection, digest: value.digest })
+          .value as ResourcePackageManifestV1,
+      ),
     );
   } catch (error) {
     if (error instanceof ResourceError) {
-      throw error;
+      return failure({ path: [], message: error.message, code: error.code });
     }
-    invalidManifest();
+    throw error;
   }
 }
 
@@ -277,13 +307,11 @@ export function bindResourcePackage(
       }
     }
   } else {
-    if (!isPlainRecord(bindings)) {
+    const parsedBindings = resourceBindingsParser.parse(bindings);
+    if (!parsedBindings.ok) {
       invalidManifest();
     }
-    for (const [path, value] of Object.entries(bindings)) {
-      if (!(value instanceof Uint8Array)) {
-        invalidManifest();
-      }
+    for (const [path, value] of Object.entries(parsedBindings.value)) {
       supplied.set(path, new Uint8Array(value));
     }
   }
@@ -543,14 +571,6 @@ function assertUnicode(value: string): void {
   }
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
 function hasControlCharacter(value: string): boolean {
   for (const character of value) {
     const code = character.codePointAt(0)!;
@@ -559,17 +579,6 @@ function hasControlCharacter(value: string): boolean {
     }
   }
   return false;
-}
-
-function hasExactKeys(value: object, expected: readonly string[]): boolean {
-  const actual = sortedResourceValues(Object.keys(value), compareText);
-  const sorted = sortedResourceValues(expected, compareText);
-  return actual.length === sorted.length && actual.every((key, index) => key === sorted[index]);
-}
-
-function hasOnlyKeys(value: object, expected: readonly string[]): boolean {
-  const allowed = new Set(expected);
-  return Object.keys(value).every((key) => allowed.has(key));
 }
 
 function isResourceBindings(value: unknown): value is ResourceContentBindings {
