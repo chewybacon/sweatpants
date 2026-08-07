@@ -2,14 +2,22 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { call, race, sleep, type Operation } from "effection";
 import { z } from "zod";
 import type { RedisClientType } from "redis";
-import type { TokenBuffer, TokenBufferStore } from "@sweatpants/durable-streams";
-import { StaleTokenWriterError } from "@sweatpants/durable-streams";
-import { type ModelSampleDisposition } from "@sweatpants/model-sampling";
+import {
+  StaleTokenWriterError,
+  type TokenBuffer,
+  type TokenBufferStore,
+} from "@sweatpants/durable-streams";
+import type { ModelSampleDisposition } from "@sweatpants/model-sampling";
 import {
   canonicalJson,
   canonicalSnapshot,
+  failure,
+  parser,
   stableOpaqueId,
+  success,
   type Json,
+  type ParseResult,
+  type Parser,
 } from "@sweatpants/foundation";
 
 import {
@@ -22,6 +30,9 @@ import {
   type RemoteSampleIdentity,
   type RemoteSampleRecord,
 } from "./placement-model-sampler.ts";
+
+export const REMOTE_SAMPLE_MAX_RECORD_BYTES = 1024 * 1024;
+const remoteSampleEncoder = new TextEncoder();
 
 export interface RedisPlacementModelSampler
   extends PlacementModelSampler, PlacementModelSampleProducerStore {
@@ -95,7 +106,7 @@ const remoteSampleRecordSchema = z
     state: z.enum(["starting", "streaming", "completed", "cancelled", "failed", "orphaned"]),
     producerOwnerId: z.string().min(1).max(512),
     producerEpoch: z.number().int().nonnegative(),
-    producerLeaseExpiresAt: z.string().datetime({ offset: true }),
+    producerLeaseExpiresAt: z.iso.datetime({ offset: true }),
     terminalLsn: z.number().int().nonnegative().optional(),
     disposition: z.json().optional(),
     dispositionDigest: z
@@ -106,17 +117,56 @@ const remoteSampleRecordSchema = z
       .string()
       .regex(/^[0-9a-f]{64}$/)
       .optional(),
-    acknowledgedAt: z.string().datetime({ offset: true }).optional(),
-    retentionExpiresAt: z.string().datetime({ offset: true }),
+    acknowledgedAt: z.iso.datetime({ offset: true }).optional(),
+    retentionExpiresAt: z.iso.datetime({ offset: true }),
   })
   .strict();
+const remoteSampleRecordStructureParser = parser(remoteSampleRecordSchema);
+export const remoteSampleRecordParser: Parser<RemoteSampleRecord> =
+  remoteSampleRecordStructureParser.andThen((value) =>
+    verifyRemoteSampleRecord(value as RemoteSampleRecord),
+  );
+
+function verifyRemoteSampleRecord(record: RemoteSampleRecord): ParseResult<RemoteSampleRecord> {
+  const terminalState = terminal(record.state);
+  if (
+    terminalState !==
+    (record.terminalLsn !== undefined &&
+      record.disposition !== undefined &&
+      record.dispositionDigest !== undefined)
+  ) {
+    return invalidRemoteSampleRecord("terminal state and disposition differ");
+  }
+  if (
+    record.disposition !== undefined &&
+    record.dispositionDigest !== canonicalSnapshot(record.disposition).sha
+  ) {
+    return invalidRemoteSampleRecord("disposition digest differs");
+  }
+  if ((record.acknowledgedOutcomeDigest === undefined) !== (record.acknowledgedAt === undefined)) {
+    return invalidRemoteSampleRecord("acknowledgement fields differ");
+  }
+  return success(canonicalSnapshot(record).value);
+}
+
+function invalidRemoteSampleRecord(message: string): ParseResult<never> {
+  return failure({ path: [], message, code: "remote_sample_protocol_error" });
+}
+
 function parseRecord(raw: string): RemoteSampleRecord {
+  if (remoteSampleEncoder.encode(raw).byteLength > REMOTE_SAMPLE_MAX_RECORD_BYTES) {
+    throw new CrankError("remote_sample_protocol_error", "Remote sample record exceeds 1 MiB");
+  }
   try {
     const value: unknown = JSON.parse(raw);
-    return remoteSampleRecordSchema.parse(value) as unknown as RemoteSampleRecord;
+    const parsed = remoteSampleRecordParser.parse(value);
+    if (parsed.ok) {
+      return parsed.value;
+    }
   } catch {
-    throw new CrankError("remote_sample_protocol_error", "Remote sample record is malformed");
+    // Malformed JSON and invalid records share one storage-boundary outcome.
   }
+  throw new CrankError("remote_sample_protocol_error", "Remote sample record is malformed");
 }
 function attachment(record: RemoteSampleRecord): RemoteSampleAttachment {
   return {

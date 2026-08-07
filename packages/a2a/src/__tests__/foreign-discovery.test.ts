@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  A2A_MAX_FRAME_BYTES,
   DURABLE_INVOCATION_EXTENSION_URI,
   discoverForeignA2AAgent,
+  parseA2AJsonResponse,
   prepareForeignA2AInvocation,
 } from "../index.ts";
 
@@ -46,6 +48,36 @@ function card(withExtension = true) {
 const policy = { resolve: async () => ["93.184.216.34"] };
 
 describe("foreign A2A discovery and guarantee negotiation", () => {
+  it("rejects oversized documents and Agent Card collections", async () => {
+    expect(() =>
+      parseA2AJsonResponse({
+        url: new URL("https://foreign.example/card"),
+        status: 200,
+        headers: {},
+        body: new Uint8Array(A2A_MAX_FRAME_BYTES + 1),
+      }),
+    ).toThrowError(expect.objectContaining({ code: "payload_too_large" }));
+
+    await expect(
+      discoverForeignA2AAgent({
+        source: {
+          card: {
+            ...card(),
+            skills: Array.from({ length: 1_025 }, (_, index) => ({
+              id: `skill-${index}`,
+              name: `Skill ${index}`,
+            })),
+          },
+          cardOrigin: "https://foreign.example",
+        },
+        skillId: "skill-0",
+        principalId: "principal-1",
+        supportedAuthSchemes: ["bearer"],
+        urlPolicy: policy,
+      }),
+    ).rejects.toMatchObject({ code: "agent_card_invalid" });
+  });
+
   it("requires and pins reconciled mode by default", async () => {
     const discovered = await discoverForeignA2AAgent({
       source: { card: card(), cardOrigin: "https://foreign.example" },

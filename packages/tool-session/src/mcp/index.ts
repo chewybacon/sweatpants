@@ -134,6 +134,7 @@ export {
   decodeToolCallRequest,
   decodeResponse,
   createDecoderContext,
+  MCP_MAX_MESSAGE_BYTES,
   parseJsonRpcMessage,
 
   // SSE

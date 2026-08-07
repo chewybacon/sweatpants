@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseChatRequestBody } from "../request-normalization.ts";
+import { chatRequestBodyParser, parseChatRequestBody } from "../request-normalization.ts";
 
 function request(input: Record<string, unknown>, controls: Record<string, unknown> = {}) {
   return {
@@ -55,6 +55,21 @@ describe("parseChatRequestBody", () => {
     expect(parsed.tools).toEqual([
       { name: "client-plugin-contract", description: "client", parameters: {} },
     ]);
+  });
+
+  it("returns parser results and rejects oversized ingress collections", () => {
+    expect(chatRequestBodyParser.parse(request({})).ok).toBe(true);
+    expect(
+      chatRequestBodyParser.parse(
+        request({
+          messages: Array.from({ length: 4_097 }, (_, index) => ({
+            id: `message-${index}`,
+            role: "user",
+            content: "bounded",
+          })),
+        }),
+      ).ok,
+    ).toBe(false);
   });
 
   it("uses the AG-UI and canonical Chat owner codecs for multimodal input", () => {

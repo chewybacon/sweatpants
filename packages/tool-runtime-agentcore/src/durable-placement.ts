@@ -1,14 +1,23 @@
 import { z } from "zod";
-import { CrankError } from "@sweatpants/durable-execution";
 import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
+  CrankError,
   exactProgramKey,
   type DurableProgramManifest,
   type PinnedProgram,
   type SandboxAffinity,
 } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, stableOpaqueId } from "@sweatpants/foundation";
+import {
+  canonicalSnapshot,
+  failure,
+  parser,
+  stableOpaqueId,
+  success,
+  type ParseIssue,
+  type ParseResult,
+  type Parser,
+} from "@sweatpants/foundation";
 
 export const AGENTCORE_DURABLE_PROTOCOL_VERSION = 1 as const;
 export const DEFAULT_AGENTCORE_WORKSPACE_MOUNT = "/mnt/workspace";
@@ -60,37 +69,69 @@ const agentCoreTaskPlacementSchema = z
     runtimeSessionId: z.string().min(1).max(512),
     release: agentCoreRuntimeReleaseSchema,
     program: pinnedProgramSchema,
-    createdAt: z.string().datetime({ offset: true }),
-    terminalAt: z.string().datetime({ offset: true }).optional(),
+    createdAt: z.iso.datetime({ offset: true }),
+    terminalAt: z.iso.datetime({ offset: true }).optional(),
     lastComputeGeneration: z.string().min(1).max(512).optional(),
   })
   .strict();
 
+const agentCoreRuntimeReleaseStructureParser = parser(agentCoreRuntimeReleaseSchema);
+const agentCoreTaskPlacementStructureParser = parser(agentCoreTaskPlacementSchema);
+
+export const sandboxAffinityParser: Parser<SandboxAffinity> = parser(sandboxAffinitySchema).map(
+  (value) => canonicalSnapshot(value).value,
+);
+export const agentCoreRuntimeReleaseParser: Parser<AgentCoreRuntimeRelease> =
+  agentCoreRuntimeReleaseStructureParser.andThen((value) =>
+    verifyRuntimeReleaseResult(value as AgentCoreRuntimeRelease),
+  );
+export const agentCoreTaskPlacementParser: Parser<AgentCoreTaskPlacement> =
+  agentCoreTaskPlacementStructureParser.andThen((value) => {
+    const release = agentCoreRuntimeReleaseParser.parse(value.release);
+    if (!release.ok) {
+      return prefixFailure(release.issues, ["release"]);
+    }
+    return success(
+      canonicalSnapshot({ ...value, release: release.value }).value as AgentCoreTaskPlacement,
+    );
+  });
+
 /** Parses a closed affinity value at an AgentCore adapter ingress. */
 export function parseSandboxAffinity(value: unknown): SandboxAffinity {
-  try {
-    return canonicalSnapshot(sandboxAffinitySchema.parse(value))
-      .value as unknown as SandboxAffinity;
-  } catch {
+  const parsed = sandboxAffinityParser.parse(value);
+  if (!parsed.ok) {
     throw new CrankError("invalid_command", "Unknown or empty sandbox affinity");
   }
+  return parsed.value;
 }
 
-/** Parses closed AgentCore lifecycle metadata before nested access. */
+/** Parses and verifies closed AgentCore lifecycle metadata before nested access. */
 export function parseAgentCoreRuntimeRelease(value: unknown): AgentCoreRuntimeRelease {
-  try {
-    return agentCoreRuntimeReleaseSchema.parse(value) as unknown as AgentCoreRuntimeRelease;
-  } catch {
-    throw new CrankError("placement_unavailable", "AgentCore release metadata is incomplete");
+  const parsed = agentCoreRuntimeReleaseParser.parse(value);
+  if (!parsed.ok) {
+    const issue = parsed.issues[0];
+    throw new CrankError(
+      "placement_unavailable",
+      issue?.code === "placement_unavailable"
+        ? issue.message
+        : "AgentCore release metadata is incomplete",
+    );
   }
+  return parsed.value;
 }
 
 export function parseAgentCoreTaskPlacement(value: unknown): AgentCoreTaskPlacement {
-  try {
-    return agentCoreTaskPlacementSchema.parse(value) as unknown as AgentCoreTaskPlacement;
-  } catch {
-    throw new CrankError("placement_unavailable", "AgentCore task placement is malformed");
+  const parsed = agentCoreTaskPlacementParser.parse(value);
+  if (!parsed.ok) {
+    const issue = parsed.issues[0];
+    throw new CrankError(
+      "placement_unavailable",
+      issue?.code === "placement_unavailable"
+        ? issue.message
+        : "AgentCore task placement is malformed",
+    );
   }
+  return parsed.value;
 }
 
 /** Verifies AgentCore lifecycle and managed-storage policy after parsing. */
@@ -110,6 +151,26 @@ export function verifyAgentCoreRuntimeRelease(
   return canonicalSnapshot(release).value;
 }
 
+function verifyRuntimeReleaseResult(
+  release: AgentCoreRuntimeRelease,
+): ParseResult<AgentCoreRuntimeRelease> {
+  try {
+    return success(verifyAgentCoreRuntimeRelease(release));
+  } catch (error) {
+    if (error instanceof CrankError) {
+      return failure({ path: [], message: error.message, code: error.code });
+    }
+    throw error;
+  }
+}
+
+function prefixFailure<T = never>(
+  issues: readonly ParseIssue[],
+  prefix: readonly (string | number)[],
+): ParseResult<T> {
+  return failure(issues.map((issue) => ({ ...issue, path: [...prefix, ...issue.path] })));
+}
+
 export interface InvocationPlacementRequest {
   readonly journalId: string;
   readonly rootTaskId: string;
@@ -123,7 +184,7 @@ export interface InvocationPlacementRequest {
 export function createInvocationAgentCorePlacement(
   request: InvocationPlacementRequest,
 ): AgentCoreTaskPlacement {
-  const release = verifyAgentCoreRuntimeRelease(parseAgentCoreRuntimeRelease(request.release));
+  const release = parseAgentCoreRuntimeRelease(request.release);
   const affinity = parseSandboxAffinity({ kind: "invocation", key: request.rootTaskId });
   const runtimeSessionId =
     request.mintRuntimeSessionId?.(request.rootTaskId) ??
@@ -186,7 +247,7 @@ export function reconcileAgentCoreDurableReadiness(
     if (!input.release) {
       missing.add("release");
     } else {
-      verifyAgentCoreRuntimeRelease(parseAgentCoreRuntimeRelease(input.release));
+      parseAgentCoreRuntimeRelease(input.release);
     }
   } catch {
     missing.add("release");

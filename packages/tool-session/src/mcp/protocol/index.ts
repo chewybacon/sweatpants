@@ -166,6 +166,7 @@ export {
   createDecoderContext,
 
   // Parsing
+  MCP_MAX_MESSAGE_BYTES,
   parseJsonRpcMessage,
 } from "./message-decoder.ts";
 

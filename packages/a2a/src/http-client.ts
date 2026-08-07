@@ -10,6 +10,7 @@ import {
 } from "./types.ts";
 import { a2aError } from "./protocol.ts";
 import { normalizedTransportOrigin, verifyA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
+import { assertBoundedA2AJson } from "./json-bounds.ts";
 
 export interface A2AHttpResponse {
   readonly url: URL;
@@ -107,10 +108,15 @@ export function createSecureA2AHttpClient(): A2AHttpClient {
 }
 
 export function parseA2AJsonResponse(response: A2AHttpResponse): Json {
+  if (response.body.byteLength > A2A_MAX_FRAME_BYTES) {
+    throw a2aError("payload_too_large", "A2A JSON document exceeds 2 MiB");
+  }
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(response.body);
-    return assertJson(JSON.parse(text));
+    const value: unknown = JSON.parse(text);
+    assertBoundedA2AJson(value);
+    return assertJson(value);
   } catch {
     throw a2aError("agent_card_invalid", "A2A endpoint returned malformed JSON");
   }

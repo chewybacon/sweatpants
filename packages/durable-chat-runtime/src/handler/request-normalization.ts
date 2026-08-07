@@ -9,26 +9,38 @@
 import { RunAgentInputSchema, type RunAgentInput } from "@ag-ui/core";
 import { z } from "zod";
 import { CrankError } from "@sweatpants/durable-execution";
-import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
-import { assertJson } from "@sweatpants/foundation";
+import {
+  assertJson,
+  failure,
+  parser,
+  success,
+  type ParseIssue,
+  type ParseResult,
+  type Parser,
+} from "@sweatpants/foundation";
 import { agUiMessagesToChatHistoryEntries } from "@sweatpants/chat-core/ag-ui";
 import type { ResumeEntry } from "@sweatpants/chat-core";
 import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
 import type { OpenInterruptRecord } from "../interrupts/index.ts";
 
+const MAX_REQUEST_MESSAGES = 4_096;
+const MAX_REQUEST_TOOLS = 1_024;
+const MAX_REQUEST_CONTEXT_ENTRIES = 1_024;
+const MAX_REQUEST_RESUME_ENTRIES = 256;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Reject deleted OpenAI-compatible spellings before AG-UI's permissive parser can strip them. */
-function rejectLegacyMessageFields(
-  value: unknown,
-  path = "$.input",
-  seen = new WeakSet<object>(),
-): void {
-  if (value === null || typeof value !== "object") return;
-  if (seen.has(value)) return;
+function rejectLegacyMessageFields(value: unknown, path = "$.input", seen = new WeakSet()): void {
+  if (value === null || typeof value !== "object") {
+    return;
+  }
+  if (seen.has(value)) {
+    return;
+  }
   seen.add(value);
   if (Array.isArray(value)) {
     value.forEach((item, index) => rejectLegacyMessageFields(item, `${path}[${index}]`, seen));
@@ -46,6 +58,7 @@ function rejectLegacyMessageFields(
 }
 
 const jsonValueSchema = z.json();
+const runAgentInputParser = parser(RunAgentInputSchema.strict());
 const resumeEntrySchema = z
   .object({
     interruptId: z.string().min(1).max(512),
@@ -85,8 +98,8 @@ const streamOptionsSchema = z
     sessionId: z.string().max(512).optional(),
     toolChoice: z.enum(["auto", "none", "required"]).optional(),
     maxTokens: z.number().int().positive().max(16_000).optional(),
-    temperature: z.number().finite().min(0).max(2).optional(),
-    topP: z.number().finite().min(0).max(1).optional(),
+    temperature: z.number().min(0).max(2).optional(),
+    topP: z.number().min(0).max(1).optional(),
     topK: z.number().int().positive().max(100_000).optional(),
     thinking: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
     thinkingBudgets: z
@@ -143,29 +156,37 @@ const chatTransportRequestSchema = z
   })
   .strict();
 
+const chatTransportRequestStructureParser = parser(chatTransportRequestSchema);
+const resumeEntriesParser = parser(z.array(resumeEntrySchema));
+
 type DecodedStreamOptions = z.infer<typeof streamOptionsSchema>;
 
-function decodeRunAgentInput(value: unknown): RunAgentInput {
-  return RunAgentInputSchema.strict().parse(value);
-}
-
-function decodeResumeEntries(value: RunAgentInput["resume"]): ResumeEntry[] | undefined {
-  if (value === undefined) return undefined;
-  return value.map((entry, index) => {
-    const parsed = resumeEntrySchema.parse(entry);
-    return {
-      interruptId: parsed.interruptId,
-      status: parsed.status,
-      ...(parsed.payload === undefined
+function decodeResumeEntries(
+  value: RunAgentInput["resume"],
+): ParseResult<ResumeEntry[] | undefined> {
+  if (value === undefined) {
+    return success(undefined);
+  }
+  const parsed = resumeEntriesParser.parse(value);
+  if (!parsed.ok) {
+    return prefixFailure(parsed.issues, ["input", "resume"]);
+  }
+  return success(
+    parsed.value.map((entry, index) => ({
+      interruptId: entry.interruptId,
+      status: entry.status,
+      ...(entry.payload === undefined
         ? {}
-        : { payload: assertJson(parsed.payload, `$.input.resume[${index}].payload`) }),
-    };
-  });
+        : { payload: assertJson(entry.payload, `$.input.resume[${index}].payload`) }),
+    })),
+  );
 }
 
 /** Configuration remains optional; this boundary converts the validated DTO once. */
 function decodeStreamOptions(value: DecodedStreamOptions | undefined): StreamOptions | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   const thinkingBudgets = value.thinkingBudgets;
   const responseFormat = value.responseFormat;
   return {
@@ -247,39 +268,52 @@ function decodeElicitResponse(value: DecodedElicitResponse, index: number): Elic
 function decodePluginAbort(
   value: z.infer<typeof chatTransportRequestSchema>["pluginAbort"],
 ): ChatRequestBody["pluginAbort"] {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   return {
     ...(value.sessionId === undefined ? {} : { sessionId: value.sessionId }),
     ...(value.reason === undefined ? {} : { reason: value.reason }),
   };
 }
 
-/**
- * Validates a `ChatTransportRequest` and converts only its AG-UI input through
- * the owner codec before any semantic acceptance, provider work, or writes.
- */
-export function parseChatRequestBody(value: unknown): ChatRequestBody {
+/** Result-oriented ingress parser for one complete durable Chat request. */
+export const chatRequestBodyParser: Parser<ChatRequestBody> =
+  chatTransportRequestStructureParser.andThen(normalizeChatRequestBody);
+
+function normalizeChatRequestBody(
+  controls: z.output<typeof chatTransportRequestSchema>,
+): ParseResult<ChatRequestBody> {
   try {
-    const controls = chatTransportRequestSchema.parse(value);
     rejectLegacyMessageFields(controls.input);
-    const input = decodeRunAgentInput(controls.input);
-    const resume = decodeResumeEntries(input.resume);
-    const messages = agUiMessagesToChatHistoryEntries(input.messages);
+    const bounds = verifyRunAgentInputBounds(controls.input);
+    if (!bounds.ok) {
+      return bounds;
+    }
+    const input = runAgentInputParser.parse(controls.input);
+    if (!input.ok) {
+      return prefixFailure(input.issues, ["input"]);
+    }
+    const resume = decodeResumeEntries(input.value.resume);
+    if (!resume.ok) {
+      return resume;
+    }
+    const messages = agUiMessagesToChatHistoryEntries(input.value.messages);
     const streamOptions = decodeStreamOptions(controls.streamOptions);
     const pluginAbort = decodePluginAbort(controls.pluginAbort);
-    return {
+    return success({
       ...(controls.trigger === undefined ? {} : { trigger: controls.trigger }),
       ...(controls.clientId === undefined ? {} : { clientId: controls.clientId }),
       ...(controls.conversationId === undefined ? {} : { conversationId: controls.conversationId }),
       ...(controls.messageId === undefined ? {} : { messageId: controls.messageId }),
-      threadId: input.threadId,
-      runId: input.runId,
-      ...(input.parentRunId === undefined ? {} : { parentRunId: input.parentRunId }),
-      state: input.state,
-      tools: input.tools,
-      context: input.context,
-      forwardedProps: input.forwardedProps,
-      ...(resume === undefined ? {} : { resume }),
+      threadId: input.value.threadId,
+      runId: input.value.runId,
+      ...(input.value.parentRunId === undefined ? {} : { parentRunId: input.value.parentRunId }),
+      state: input.value.state,
+      tools: input.value.tools,
+      context: input.value.context,
+      forwardedProps: input.value.forwardedProps,
+      ...(resume.value === undefined ? {} : { resume: resume.value }),
       messages,
       ...(controls.systemPrompt === undefined ? {} : { systemPrompt: controls.systemPrompt }),
       ...(controls.persona === undefined ? {} : { persona: controls.persona }),
@@ -297,18 +331,68 @@ export function parseChatRequestBody(value: unknown): ChatRequestBody {
         ? {}
         : { elicitResponses: controls.elicitResponses.map(decodeElicitResponse) }),
       ...(pluginAbort === undefined ? {} : { pluginAbort }),
-    };
+    });
   } catch (error) {
-    const message =
-      error instanceof z.ZodError
-        ? `Chat request shape is invalid: ${safeSchemaIssues(error.issues)
-            .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
-            .join("; ")}`
-        : error instanceof Error
+    return failure({
+      path: [],
+      message:
+        error instanceof Error
           ? `Chat request could not be parsed: ${error.message}`
-          : "Chat request could not be parsed";
-    throw new CrankError("invalid_chat_request", message, undefined, { cause: error });
+          : "Chat request could not be parsed",
+      code: "invalid_chat_request",
+    });
   }
+}
+
+/** Maps ingress parser failure to the durable Chat domain boundary. */
+export function parseChatRequestBody(value: unknown): ChatRequestBody {
+  const parsed = chatRequestBodyParser.parse(value);
+  if (parsed.ok) {
+    return parsed.value;
+  }
+  const issue = parsed.issues[0];
+  const message = parsed.issues
+    .map((candidate) =>
+      candidate.path.length > 0
+        ? `${candidate.path.join(".")}: ${candidate.message}`
+        : candidate.message,
+    )
+    .join("; ");
+  throw new CrankError(
+    "invalid_chat_request",
+    issue?.code === "invalid_chat_request"
+      ? issue.message
+      : `Chat request shape is invalid: ${message || "invalid request"}`,
+  );
+}
+
+function verifyRunAgentInputBounds(input: unknown): ParseResult<void> {
+  if (!isRecord(input)) {
+    return success(undefined);
+  }
+  for (const [path, value, maximum] of [
+    [["input", "messages"], input["messages"], MAX_REQUEST_MESSAGES],
+    [["input", "tools"], input["tools"], MAX_REQUEST_TOOLS],
+    [["input", "context"], input["context"], MAX_REQUEST_CONTEXT_ENTRIES],
+    [["input", "resume"], input["resume"], MAX_REQUEST_RESUME_ENTRIES],
+  ] as const) {
+    if (Array.isArray(value) && value.length > maximum) {
+      return failure({ path, message: `entry count exceeds ${maximum}`, code: "too_big" });
+    }
+  }
+  return success(undefined);
+}
+
+function prefixFailure<T = never>(
+  issues: readonly ParseIssue[],
+  prefix: readonly (string | number)[],
+): ParseResult<T> {
+  return failure(
+    issues.map((issue) => ({
+      ...issue,
+      path: [...prefix, ...issue.path],
+    })),
+  );
 }
 
 function mapResolvedResumePayload(payload: unknown): ElicitResponse["completion"] {
@@ -327,14 +411,18 @@ export function mapResumeEntriesToElicitResponses(
   runtimeId: string,
 ): ElicitResponse[] {
   const resume = body.resume ?? [];
-  if (resume.length === 0) return [];
+  if (resume.length === 0) {
+    return [];
+  }
 
   const recordsByInterruptId = new Map(records.map((record) => [record.interruptId, record]));
   const mapped: ElicitResponse[] = [];
 
   for (const entry of resume) {
     const record = recordsByInterruptId.get(entry.interruptId);
-    if (!record?.toolCallId) continue;
+    if (!record?.toolCallId) {
+      continue;
+    }
     const completion =
       entry.status === "cancelled"
         ? { action: "cancel" as const }

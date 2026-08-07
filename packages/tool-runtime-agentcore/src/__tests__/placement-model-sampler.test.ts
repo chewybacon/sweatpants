@@ -12,6 +12,7 @@ import { canonicalSnapshot } from "@sweatpants/foundation";
 
 import { createInMemoryPlacementModelSampler } from "../in-memory-placement-model-sampler.ts";
 import { runPlacementModelSampleProducer } from "../placement-model-producer.ts";
+import { remoteSampleRecordParser } from "../redis-placement-model-sampler.ts";
 import {
   createPlacementSamplingAuthorizationIssuer,
   verifyPlacementSamplingAuthorization,
@@ -68,6 +69,27 @@ function attachRequest(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as never;
 }
+
+describe("remote model sample records", () => {
+  it("parses bounded records and rejects incomplete terminal relationships", () => {
+    const record = {
+      version: 1,
+      identity,
+      releaseId: "release-1",
+      requestDigest,
+      effectContractDigest: contractDigest,
+      classificationsDigest: "c".repeat(64),
+      streamId: "stream-1",
+      state: "starting",
+      producerOwnerId: "owner-1",
+      producerEpoch: 1,
+      producerLeaseExpiresAt: "2030-01-01T00:00:00.000Z",
+      retentionExpiresAt: "2030-01-02T00:00:00.000Z",
+    };
+    expect(remoteSampleRecordParser.parse(record)).toEqual({ ok: true, value: record });
+    expect(remoteSampleRecordParser.parse({ ...record, state: "completed" }).ok).toBe(false);
+  });
+});
 
 describe("in-memory placement model sampler", () => {
   it("issues bounded pull-scoped authorization and rejects expiry or claim mismatch", async () => {

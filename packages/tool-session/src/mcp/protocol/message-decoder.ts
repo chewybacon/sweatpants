@@ -15,18 +15,21 @@
  * @packageDocumentation
  */
 import { z } from "zod";
-import type { Json } from "@sweatpants/foundation";
+import { parser, type Json } from "@sweatpants/foundation";
 import type { ChatToolCall } from "@sweatpants/chat-contract";
-import type {
-  JsonRpcResponse,
-  JsonRpcRequest,
-  JsonRpcNotification,
-  McpElicitationResult,
-  McpCreateMessageResult,
-  McpToolCallParams,
-  McpContentBlock,
+import {
+  isJsonRpcError,
+  isJsonRpcSuccess,
+  isTextContent,
+  isToolUseContent,
+  type JsonRpcResponse,
+  type JsonRpcRequest,
+  type JsonRpcNotification,
+  type McpElicitationResult,
+  type McpCreateMessageResult,
+  type McpToolCallParams,
+  type McpContentBlock,
 } from "./types.ts";
-import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } from "./types.ts";
 import type {
   ElicitExchangeCompletion,
   SampleExchangeCompletionBase,
@@ -306,6 +309,9 @@ export function decodeResponse(response: JsonRpcResponse, ctx: DecoderContext): 
 /**
  * Parsed JSON-RPC message union type.
  */
+export const MCP_MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
+const messageEncoder = new TextEncoder();
+
 export type ParsedJsonRpcMessage =
   | { type: "request"; message: JsonRpcRequest }
   | { type: "notification"; message: JsonRpcNotification }
@@ -316,43 +322,46 @@ export type ParsedJsonRpcMessage =
  * Parse a raw JSON string into a typed JSON-RPC message.
  */
 export function parseJsonRpcMessage(raw: string): ParsedJsonRpcMessage {
-  let parsed: unknown;
+  if (messageEncoder.encode(raw).byteLength > MCP_MAX_MESSAGE_BYTES) {
+    return { type: "invalid", raw: undefined, error: "Message exceeds 2 MiB" };
+  }
+  let decoded: unknown;
   try {
-    parsed = JSON.parse(raw);
+    decoded = JSON.parse(raw);
   } catch {
     return { type: "invalid", raw, error: "Invalid JSON" };
   }
 
-  const response = parseJsonRpcResponse(parsed);
-  if (response) {
-    return { type: "response", message: response };
+  const parsed = jsonRpcMessageEnvelopeParser.parse(decoded);
+  if (!parsed.ok) {
+    return {
+      type: "invalid",
+      raw: decoded,
+      error:
+        typeof decoded === "object" && decoded !== null ? "Unknown message type" : "Not an object",
+    };
   }
-
-  const request = jsonRpcRequestEnvelopeSchema.safeParse(parsed);
-  if (request.success) {
-    if (request.data.method === "tools/call") {
-      const toolCall = parseToolCallRequest(request.data);
+  const message = parsed.value;
+  if ("result" in message || "error" in message) {
+    return { type: "response", message: message as JsonRpcResponse };
+  }
+  if ("id" in message) {
+    if (message.method === "tools/call") {
+      const toolCall = parseToolCallRequest(message);
       return toolCall
         ? { type: "request", message: toolCall }
-        : { type: "invalid", raw: parsed, error: "Invalid tools/call request" };
+        : { type: "invalid", raw: decoded, error: "Invalid tools/call request" };
     }
-    return { type: "request", message: request.data };
+    return { type: "request", message: message as JsonRpcRequest };
   }
-
-  const notification = jsonRpcNotificationEnvelopeSchema.safeParse(parsed);
-  if (notification.success) return { type: "notification", message: notification.data };
-  return {
-    type: "invalid",
-    raw: parsed,
-    error: typeof parsed === "object" && parsed !== null ? "Unknown message type" : "Not an object",
-  };
+  return { type: "notification", message: message as JsonRpcNotification };
 }
 
-const jsonRpcIdSchema = z.union([z.string().max(512), z.number().finite(), z.null()]);
+const jsonRpcIdSchema = z.union([z.string().max(512), z.number(), z.null()]);
 const jsonRpcRequestEnvelopeSchema = z
   .object({
     jsonrpc: z.literal("2.0"),
-    id: z.union([z.string().max(512), z.number().finite()]),
+    id: z.union([z.string().max(512), z.number()]),
     method: z.string().min(1).max(4_096),
     params: z.json().optional(),
   })
@@ -366,7 +375,7 @@ const jsonRpcNotificationEnvelopeSchema = z
   .strict();
 const jsonRpcErrorSchema = z
   .object({
-    code: z.number().int().finite(),
+    code: z.number().int(),
     message: z.string().max(16_384),
     data: z.json().optional(),
   })
@@ -374,7 +383,7 @@ const jsonRpcErrorSchema = z
 const jsonRpcSuccessSchema = z
   .object({
     jsonrpc: z.literal("2.0"),
-    id: z.union([z.string().max(512), z.number().finite()]),
+    id: z.union([z.string().max(512), z.number()]),
     result: z.json(),
   })
   .strict();
@@ -411,7 +420,7 @@ const mcpContentBlockSchema: z.ZodType<unknown> = z.lazy(() =>
       .object({
         type: z.literal("tool_result"),
         toolUseId: z.string().min(1),
-        content: z.array(mcpContentBlockSchema),
+        content: z.array(mcpContentBlockSchema).max(1_024),
         isError: z.boolean().optional(),
       })
       .strict(),
@@ -432,32 +441,46 @@ const elicitationResultSchema = z
 const samplingResultSchema = z
   .object({
     role: z.literal("assistant"),
-    content: z.union([mcpContentBlockSchema, z.array(mcpContentBlockSchema).min(1)]),
+    content: z.union([mcpContentBlockSchema, z.array(mcpContentBlockSchema).min(1).max(1_024)]),
     model: z.string().max(512),
     stopReason: z.string().max(128).optional(),
   })
   .strict();
+const jsonRpcResponseParser = parser(z.union([jsonRpcErrorResponseSchema, jsonRpcSuccessSchema]));
+const jsonRpcMessageEnvelopeParser = parser(
+  z.union([
+    jsonRpcErrorResponseSchema,
+    jsonRpcSuccessSchema,
+    jsonRpcRequestEnvelopeSchema,
+    jsonRpcNotificationEnvelopeSchema,
+  ]),
+);
+const toolCallParamsParser = parser(toolCallParamsSchema);
+const elicitationResultParser = parser(elicitationResultSchema);
+const samplingResultParser = parser(samplingResultSchema);
 
 function parseJsonRpcResponse(value: unknown): JsonRpcResponse | undefined {
-  const error = jsonRpcErrorResponseSchema.safeParse(value);
-  if (error.success) return error.data as JsonRpcResponse;
-  const success = jsonRpcSuccessSchema.safeParse(value);
-  return success.success ? (success.data as JsonRpcResponse) : undefined;
+  const parsed = jsonRpcResponseParser.parse(value);
+  return parsed.ok ? (parsed.value as JsonRpcResponse) : undefined;
 }
 
 function parseToolCallRequest(
   value: z.infer<typeof jsonRpcRequestEnvelopeSchema>,
 ): JsonRpcRequest<"tools/call", McpToolCallParams> | undefined {
-  if (value.method !== "tools/call") return undefined;
-  const params = toolCallParamsSchema.safeParse(value.params);
-  if (!params.success) return undefined;
+  if (value.method !== "tools/call") {
+    return undefined;
+  }
+  const params = toolCallParamsParser.parse(value.params);
+  if (!params.ok) {
+    return undefined;
+  }
   return {
     jsonrpc: "2.0",
     id: value.id,
     method: "tools/call",
     params: {
-      name: params.data.name,
-      ...(params.data.arguments !== undefined ? { arguments: params.data.arguments } : {}),
+      name: params.value.name,
+      ...(params.value.arguments !== undefined ? { arguments: params.value.arguments } : {}),
     },
   };
 }
@@ -466,12 +489,18 @@ function parseElicitationResponse(
   value: unknown,
 ): JsonRpcResponse<McpElicitationResult> | undefined {
   const response = parseJsonRpcResponse(value);
-  if (!response) return undefined;
-  if (isJsonRpcError(response)) return response as JsonRpcResponse<McpElicitationResult>;
-  if (!isJsonRpcSuccess(response)) return undefined;
-  const result = elicitationResultSchema.safeParse(response.result);
-  return result.success
-    ? ({ ...response, result: result.data } as JsonRpcResponse<McpElicitationResult>)
+  if (!response) {
+    return undefined;
+  }
+  if (isJsonRpcError(response)) {
+    return response as JsonRpcResponse<McpElicitationResult>;
+  }
+  if (!isJsonRpcSuccess(response)) {
+    return undefined;
+  }
+  const result = elicitationResultParser.parse(response.result);
+  return result.ok
+    ? ({ ...response, result: result.value } as JsonRpcResponse<McpElicitationResult>)
     : undefined;
 }
 
@@ -479,11 +508,17 @@ function parseSamplingResponse(
   value: unknown,
 ): JsonRpcResponse<McpCreateMessageResult> | undefined {
   const response = parseJsonRpcResponse(value);
-  if (!response) return undefined;
-  if (isJsonRpcError(response)) return response as JsonRpcResponse<McpCreateMessageResult>;
-  if (!isJsonRpcSuccess(response)) return undefined;
-  const result = samplingResultSchema.safeParse(response.result);
-  return result.success
-    ? ({ ...response, result: result.data } as JsonRpcResponse<McpCreateMessageResult>)
+  if (!response) {
+    return undefined;
+  }
+  if (isJsonRpcError(response)) {
+    return response as JsonRpcResponse<McpCreateMessageResult>;
+  }
+  if (!isJsonRpcSuccess(response)) {
+    return undefined;
+  }
+  const result = samplingResultParser.parse(response.result);
+  return result.ok
+    ? ({ ...response, result: result.value } as JsonRpcResponse<McpCreateMessageResult>)
     : undefined;
 }

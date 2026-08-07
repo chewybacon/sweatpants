@@ -14,6 +14,7 @@
  * @packageDocumentation
  */
 import { createContext, type Operation } from "effection";
+import { parser } from "@sweatpants/foundation";
 import { z } from "zod";
 import type { ToolSessionRegistry } from "../../contract.ts";
 import type {
@@ -22,37 +23,39 @@ import type {
   ElicitExchangeCompletion,
   SampleExchangeCompletionBase,
 } from "@sweatpants/agent-sdk";
-import type {
-  McpSessionState,
-  PendingElicitation,
-  PendingSample,
-  McpToolsCallRequest,
-  McpElicitResponse,
-  McpSampleResponse,
+import {
+  MCP_HANDLER_ERRORS,
+  McpHandlerError,
+  type McpSessionState,
+  type PendingElicitation,
+  type PendingSample,
+  type McpToolsCallRequest,
+  type McpElicitResponse,
+  type McpSampleResponse,
 } from "./types.ts";
-import { McpHandlerError, MCP_HANDLER_ERRORS } from "./types.ts";
 import type { JsonRpcId } from "../protocol/types.ts";
 
-const textContentBlockSchema = z
-  .object({ type: z.literal("text"), text: z.string() })
-  .passthrough();
-const contentArraySchema = z.array(z.unknown());
+const textContentBlockSchema = z.looseObject({
+  type: z.literal("text"),
+  text: z.string().max(1024 * 1024),
+});
+const contentArrayParser = parser(z.array(z.unknown()).max(1_024));
+const textContentBlockParser = parser(textContentBlockSchema);
 
 function sampleTextFromContent(content: unknown): string {
-  if (typeof content === "string") return content;
-  const array = contentArraySchema.safeParse(content);
-  if (array.success) {
-    return array.data
-      .map((block) => textContentBlockSchema.safeParse(block))
-      .filter(
-        (result): result is { success: true; data: { type: "text"; text: string } } =>
-          result.success,
-      )
-      .map((result) => result.data.text)
+  if (typeof content === "string") {
+    return content;
+  }
+  const array = contentArrayParser.parse(content);
+  if (array.ok) {
+    return array.value
+      .map((block) => textContentBlockParser.parse(block))
+      .filter((result) => result.ok)
+      .map((result) => result.value.text)
       .join("");
   }
-  const block = textContentBlockSchema.safeParse(content);
-  return block.success ? block.data.text : JSON.stringify(content);
+  const block = textContentBlockParser.parse(content);
+  return block.ok ? block.value.text : JSON.stringify(content);
 }
 
 // =============================================================================

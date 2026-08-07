@@ -54,7 +54,7 @@ const peerProfileParamsSchema = z.strictObject({
   terminalEvidenceKeyId: z.string().optional(),
 });
 const extensionContainerSchema = z.looseObject({
-  capabilities: z.looseObject({ extensions: z.array(z.unknown()) }),
+  capabilities: z.looseObject({ extensions: z.array(z.unknown()).max(128) }),
 });
 const extensionDeclarationSchema = z.looseObject({ uri: z.string(), params: z.json().optional() });
 const peerTaskMetadataParser = parser(z.record(z.string(), z.json()));

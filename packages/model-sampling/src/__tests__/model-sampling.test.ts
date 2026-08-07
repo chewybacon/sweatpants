@@ -52,6 +52,23 @@ describe("durable model sampling", () => {
     expect(modelSampleRequestParser.parse({ ...request, unknown: true }).ok).toBe(false);
   });
 
+  it("rejects oversized ingress collections", () => {
+    expect(
+      modelSampleRequestParser.parse({
+        ...request,
+        invocation: {
+          context: {
+            messages: Array.from({ length: 4_097 }, () => ({
+              role: "user",
+              content: "bounded",
+            })),
+            tools: [],
+          },
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
   it("rejects the removed loose request and unknown message roles", async () => {
     const schema = validator(MODEL_SAMPLE_EFFECT.inputSchema.digest)["~standard"];
     expect(await schema.validate({ messages: [{ role: "user", content: "old" }] })).toHaveProperty(

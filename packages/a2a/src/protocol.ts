@@ -19,6 +19,7 @@ import type {
   ProgramStep,
   ReplayEntry,
 } from "@sweatpants/durable-execution";
+import { assertBoundedA2AJson } from "./json-bounds.ts";
 import {
   A2A_MAX_ERROR_TEXT_BYTES,
   A2A_MAX_FRAME_BYTES,
@@ -728,7 +729,9 @@ function parseCanonicalFrame(frame: string | Uint8Array): Json {
   try {
     text =
       typeof frame === "string" ? frame : new TextDecoder("utf-8", { fatal: true }).decode(frame);
-    value = assertJson(JSON.parse(text));
+    const decoded: unknown = JSON.parse(text);
+    assertBoundedA2AJson(decoded);
+    value = assertJson(decoded);
   } catch (error) {
     throw a2aError("program_protocol_error", "Malformed canonical JSON", error);
   }

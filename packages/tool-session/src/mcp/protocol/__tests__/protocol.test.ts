@@ -15,6 +15,7 @@ import {
   // Decoder
   decodeElicitationResponse,
   decodeSamplingResponse,
+  MCP_MAX_MESSAGE_BYTES,
   parseJsonRpcMessage,
   createDecoderContext,
   decodeResponse,
@@ -358,6 +359,11 @@ describe("MCP Protocol", () => {
         );
 
         expect(parsed.type).toBe("invalid");
+      });
+
+      it("rejects oversized messages before JSON parsing", () => {
+        const parsed = parseJsonRpcMessage(" ".repeat(MCP_MAX_MESSAGE_BYTES + 1));
+        expect(parsed).toMatchObject({ type: "invalid", error: "Message exceeds 2 MiB" });
       });
 
       it("should handle invalid JSON", () => {

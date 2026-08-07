@@ -1,6 +1,18 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { parser, type Parser } from "@sweatpants/foundation";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { z } from "zod";
+
+export const DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
+const MAX_SNAPSHOT_DEPTH = 128;
+const MAX_SNAPSHOT_NODES = 2_000_000;
+const MAX_SNAPSHOT_TASKS = 10_000;
+const MAX_SNAPSHOT_COLLECTIONS = 10_000;
+const MAX_RECORDS_PER_SESSION = 100_000;
+const MAX_ACTIONS_PER_TASK = 100_000;
+const MAX_ATTEMPTS_PER_PULL = 10_000;
+const MAX_CHILDREN_PER_OPERATION = 10_000;
+const MAX_MANIFEST_ENTRIES = 10_000;
 
 const jsonRecordSchema = z.record(z.string(), z.unknown());
 const jsonValueSchema: z.ZodType = z.lazy(() =>
@@ -76,8 +88,14 @@ const durableOperationDescriptorSchema = z.union([
     ),
   z.strictObject({ kind: z.literal("invoke"), child: childSnapshotSchema }),
   z.strictObject({ kind: z.literal("spawn"), child: childSnapshotSchema }),
-  z.strictObject({ kind: z.literal("all"), children: z.array(childSnapshotSchema) }),
-  z.strictObject({ kind: z.literal("race"), children: z.array(childSnapshotSchema) }),
+  z.strictObject({
+    kind: z.literal("all"),
+    children: z.array(childSnapshotSchema).max(MAX_CHILDREN_PER_OPERATION),
+  }),
+  z.strictObject({
+    kind: z.literal("race"),
+    children: z.array(childSnapshotSchema).max(MAX_CHILDREN_PER_OPERATION),
+  }),
   z.strictObject({
     kind: z.literal("join"),
     handle: z.strictObject({ __durableTask: z.string(), owner: z.string() }),
@@ -103,8 +121,12 @@ const durableProgramManifestSchema = z.strictObject({
   digest: digestSchema,
   inputSchema: portableSchemaDescriptorSchema,
   outputSchema: portableSchemaDescriptorSchema,
-  elicits: z.record(z.string(), programElicitDeclarationSchema),
-  effects: z.record(z.string(), effectDefinitionSchema),
+  elicits: z
+    .record(z.string(), programElicitDeclarationSchema)
+    .refine((value) => Object.keys(value).length <= MAX_MANIFEST_ENTRIES),
+  effects: z
+    .record(z.string(), effectDefinitionSchema)
+    .refine((value) => Object.keys(value).length <= MAX_MANIFEST_ENTRIES),
   capabilities: z.strictObject({
     durableEmissions: z.boolean(),
     structuredChildren: z.boolean(),
@@ -150,7 +172,7 @@ const indexedPullSchema = z.tuple([
     resultSchemaDigest: z.string(),
     audience: z.string(),
     maxOutcomeBytes: nonNegativeIntegerSchema,
-    attempts: z.array(attemptSnapshotSchema),
+    attempts: z.array(attemptSnapshotSchema).max(MAX_ATTEMPTS_PER_PULL),
     revoked: z.boolean(),
     capability: z.string().optional(),
     outcome: operationOutcomeSchema.optional(),
@@ -202,7 +224,7 @@ const cancellationStateSchema = z.union([
   z.strictObject({
     type: z.literal("cancelling_children"),
     commandId: z.string(),
-    childTaskIds: z.array(z.string()),
+    childTaskIds: z.array(z.string()).max(MAX_CHILDREN_PER_OPERATION),
     reason: z.string().optional(),
     frontier: cancellationFrontierSchema,
   }),
@@ -227,8 +249,8 @@ const taskSnapshotSchema = z.strictObject({
   nextActionIndex: nonNegativeIntegerSchema,
   nextPullIndex: nonNegativeIntegerSchema,
   nextEmissionIndex: nonNegativeIntegerSchema,
-  pullsByAction: z.array(indexedPullSchema),
-  emissionsByAction: z.array(indexedEmissionSchema),
+  pullsByAction: z.array(indexedPullSchema).max(MAX_ACTIONS_PER_TASK),
+  emissionsByAction: z.array(indexedEmissionSchema).max(MAX_ACTIONS_PER_TASK),
   status: z.enum(["active", "closed", "cancelled", "orphaned"]),
   cancellation: cancellationStateSchema,
   close: taskCloseSchema.optional(),
@@ -367,7 +389,10 @@ const semanticRecordSchema = z.strictObject({
   ownerEpoch: nonNegativeIntegerSchema.optional(),
   payload: semanticPayloadSchema,
 });
-const recordCollectionSchema = z.tuple([z.string(), z.array(semanticRecordSchema)]);
+const recordCollectionSchema = z.tuple([
+  z.string(),
+  z.array(semanticRecordSchema).max(MAX_RECORDS_PER_SESSION),
+]);
 const activationLeaseSchema = z.tuple([
   z.string(),
   z.strictObject({
@@ -383,20 +408,64 @@ const activationLeaseSchema = z.tuple([
 ]);
 const durableAuthoritySnapshotStructureSchema = z.strictObject({
   version: z.literal(4),
-  tasks: z.array(taskSnapshotSchema),
-  records: z.array(recordCollectionSchema),
-  runnable: z.array(z.string()),
+  tasks: z.array(taskSnapshotSchema).max(MAX_SNAPSHOT_TASKS),
+  records: z.array(recordCollectionSchema).max(MAX_SNAPSHOT_COLLECTIONS),
+  runnable: z.array(z.string()).max(MAX_SNAPSHOT_TASKS),
   nonce: nonNegativeIntegerSchema,
-  activationLeases: z.array(activationLeaseSchema),
-  lastActivationEpochBySession: z.array(z.tuple([z.string(), nonNegativeIntegerSchema])),
-  taskRevisions: z.array(z.tuple([z.string(), nonNegativeIntegerSchema])),
-  restoreNonces: z.array(z.tuple([z.string(), z.string()])),
-  restoreFrontierDigests: z.array(z.tuple([z.string(), z.string()])),
-  consecutiveRestoreStales: z.array(z.tuple([z.string(), nonNegativeIntegerSchema])),
-  activationNotBeforeMs: z.array(z.tuple([z.string(), nonNegativeIntegerSchema])),
+  activationLeases: z.array(activationLeaseSchema).max(MAX_SNAPSHOT_TASKS),
+  lastActivationEpochBySession: z
+    .array(z.tuple([z.string(), nonNegativeIntegerSchema]))
+    .max(MAX_SNAPSHOT_TASKS),
+  taskRevisions: z.array(z.tuple([z.string(), nonNegativeIntegerSchema])).max(MAX_SNAPSHOT_TASKS),
+  restoreNonces: z.array(z.tuple([z.string(), z.string()])).max(MAX_SNAPSHOT_TASKS),
+  restoreFrontierDigests: z.array(z.tuple([z.string(), z.string()])).max(MAX_SNAPSHOT_TASKS),
+  consecutiveRestoreStales: z
+    .array(z.tuple([z.string(), nonNegativeIntegerSchema]))
+    .max(MAX_SNAPSHOT_TASKS),
+  activationNotBeforeMs: z
+    .array(z.tuple([z.string(), nonNegativeIntegerSchema]))
+    .max(MAX_SNAPSHOT_TASKS),
 });
 
-/** Private structural parser for the exact current Journal Authority snapshot. */
+const boundedSnapshotValueSchema: StandardSchemaV1<unknown, unknown> = {
+  "~standard": {
+    version: 1,
+    vendor: "sweatpants",
+    validate(value) {
+      try {
+        const seen = new WeakSet();
+        const pending: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
+        let nodes = 0;
+        while (pending.length > 0) {
+          const current = pending.pop()!;
+          nodes += 1;
+          if (nodes > MAX_SNAPSHOT_NODES) {
+            return { issues: [{ message: "snapshot node count exceeds limit" }] };
+          }
+          if (current.depth > MAX_SNAPSHOT_DEPTH) {
+            return { issues: [{ message: "snapshot depth exceeds limit" }] };
+          }
+          if (current.value === null || typeof current.value !== "object") {
+            continue;
+          }
+          if (seen.has(current.value)) {
+            return { issues: [{ message: "snapshot contains a cycle" }] };
+          }
+          seen.add(current.value);
+          for (const child of Object.values(current.value)) {
+            pending.push({ value: child, depth: current.depth + 1 });
+          }
+        }
+        return { value };
+      } catch {
+        return { issues: [{ message: "snapshot cannot be inspected safely" }] };
+      }
+    },
+  },
+};
+const durableAuthoritySnapshotShapeParser = parser(durableAuthoritySnapshotStructureSchema);
+
+/** Private bounded structural parser for the exact current Journal Authority snapshot. */
 export const durableAuthoritySnapshotStructureParser: Parser<unknown> = parser(
-  durableAuthoritySnapshotStructureSchema,
-);
+  boundedSnapshotValueSchema,
+).andThen((value) => durableAuthoritySnapshotShapeParser.parse(value));

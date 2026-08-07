@@ -159,6 +159,12 @@ describe("persisted boundary parsing", () => {
     expect(
       durableAuthoritySnapshotParser.parse({
         ...snapshot,
+        runnable: Array.from({ length: 10_001 }, (_, index) => `session-${index}`),
+      }).ok,
+    ).toBe(false);
+    expect(
+      durableAuthoritySnapshotParser.parse({
+        ...snapshot,
         activationLeases: [
           [
             "session-1",

@@ -29,7 +29,6 @@ import type {
 import {
   createInvocationAgentCorePlacement,
   parseAgentCoreTaskPlacement,
-  verifyAgentCoreRuntimeRelease,
 } from "./durable-placement.ts";
 
 const jsonRecordParser = parser(z.record(z.string(), z.json()));
@@ -281,7 +280,7 @@ function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
   if (!result) {
     throw new CrankError("placement_unavailable", "Missing AgentCore private placement");
   }
-  const release = verifyAgentCoreRuntimeRelease(result.release);
+  const release = result.release;
   if (
     result.taskId !== request.taskId ||
     result.program.id !== request.program.id ||

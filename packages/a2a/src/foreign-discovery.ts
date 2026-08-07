@@ -18,6 +18,7 @@ import {
   type A2AHttpClient,
 } from "./http-client.ts";
 import { normalizedTransportOrigin, verifyA2AUrl, type A2AUrlPolicy } from "./url-policy.ts";
+import { assertBoundedA2AJson } from "./json-bounds.ts";
 import {
   DURABLE_INVOCATION_EXTENSION_URI,
   type DurableInvocationExtensionParamsV1,
@@ -44,11 +45,11 @@ const extensionDeclarationSchema = z.looseObject({
 const foreignAgentCardSchema = z.looseObject({
   name: z.string().min(1),
   version: z.string().min(1),
-  skills: z.array(z.looseObject({ id: z.string().min(1) })),
-  supportedInterfaces: z.array(interfaceSchema),
-  securityRequirements: z.array(securityRequirementSchema).optional(),
+  skills: z.array(z.looseObject({ id: z.string().min(1) })).max(1_024),
+  supportedInterfaces: z.array(interfaceSchema).max(128),
+  securityRequirements: z.array(securityRequirementSchema).max(128).optional(),
   capabilities: z
-    .looseObject({ extensions: z.array(extensionDeclarationSchema).optional() })
+    .looseObject({ extensions: z.array(extensionDeclarationSchema).max(128).optional() })
     .optional(),
 });
 const durableInvocationParamsSchema = z.strictObject({
@@ -148,7 +149,15 @@ export async function discoverForeignA2AAgent(
   if (!cardOrigin) {
     throw new CrankError("unsafe_url", "Explicit Agent Card requires its origin");
   }
-  const card = canonicalSnapshot(assertJson(value)).value;
+  let card: Json;
+  try {
+    assertBoundedA2AJson(value);
+    card = canonicalSnapshot(assertJson(value)).value;
+  } catch (error) {
+    throw new CrankError("agent_card_invalid", "Invalid A2A Agent Card JSON", undefined, {
+      cause: error,
+    });
+  }
   const parsedCard = foreignAgentCardParser.parse(card);
   if (!parsedCard.ok) {
     throw new CrankError("agent_card_invalid", "Invalid A2A Agent Card identity");

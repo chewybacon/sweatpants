@@ -1,4 +1,4 @@
-import { assertJson, type Json } from "@sweatpants/foundation";
+import { assertJson, parser, type Json } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   type PortableSchemaDescriptor,
@@ -45,6 +45,8 @@ const foreignContinueSchema = z.strictObject({
     value: z.json(),
   }),
 });
+const foreignStartParser = parser(foreignStartSchema);
+const foreignContinueParser = parser(foreignContinueSchema);
 
 function builtinDescriptor(
   identity: string,
@@ -177,12 +179,10 @@ export const FOREIGN_INPUT_CONTEXT_DESCRIPTOR = builtinDescriptor(
 );
 
 const foreignStartGuard = (value: unknown): string | undefined =>
-  foreignStartSchema.safeParse(value).success ? undefined : "foreign start request is invalid";
+  foreignStartParser.parse(value).ok ? undefined : "foreign start request is invalid";
 
 const foreignContinueGuard = (value: unknown): string | undefined =>
-  foreignContinueSchema.safeParse(value).success
-    ? undefined
-    : "foreign continue request is invalid";
+  foreignContinueParser.parse(value).ok ? undefined : "foreign continue request is invalid";
 
 /** Runtime validator entries for every built-in foreign adapter descriptor. */
 export function foreignToolSchemaEntries(): Array<{
