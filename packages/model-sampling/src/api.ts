@@ -1,12 +1,7 @@
 import { createContext, type Operation } from "effection";
 import { createApi } from "effection/experimental";
-import type { DurableEffectDisposition } from "@sweatpants/durable-effects/contract";
 import type { ProgramPlacementContextValue } from "@sweatpants/durable-effects";
-import type {
-  ModelSampleCancellationPartial,
-  ModelSampleRequest,
-  ModelSampleResult,
-} from "./contract.ts";
+import type { ModelSampleRequest, ModelSampleDisposition } from "./contract.ts";
 
 export interface ModelSampleAttempt {
   /** Durable routing outcome that selected the current service. */
@@ -19,11 +14,6 @@ export interface ModelSampleAttempt {
   readonly effectContractDigest: string;
   readonly cancellation: AbortSignal;
 }
-
-export type ModelSampleDisposition = DurableEffectDisposition<
-  ModelSampleResult,
-  ModelSampleCancellationPartial
->;
 
 export interface ModelSamplingService {
   sample(

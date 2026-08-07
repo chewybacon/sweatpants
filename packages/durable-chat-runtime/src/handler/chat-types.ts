@@ -1,6 +1,7 @@
 import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import type { Message as ChatMessage, ChatSessionStreamEvent } from "@sweatpants/chat-core";
+import type { AGUIEvent } from "@ag-ui/core";
+import type { ChatHistoryEntry } from "@sweatpants/chat-core";
 import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ToolExecutionRef } from "@sweatpants/tool-runtime";
 import type { ResumeEntry } from "./types.ts";
@@ -45,7 +46,7 @@ export interface ChatRequestBody {
   context?: Array<{ description: string; value: string }>;
   forwardedProps?: unknown;
   resume?: ResumeEntry[];
-  messages: ChatMessage[];
+  messages: readonly ChatHistoryEntry[];
   systemPrompt?: string;
   persona?: string;
   personaConfig?: unknown;
@@ -60,7 +61,7 @@ export interface ChatRequestBody {
 
 export interface DurableStreamEvent {
   lsn: number;
-  event: ChatSessionStreamEvent;
+  event: AGUIEvent;
 }
 
 export interface DurableStreamParams {

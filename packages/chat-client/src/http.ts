@@ -1,9 +1,9 @@
 import { call, ensure, resource, type Operation, type Stream } from "effection";
 import {
-  decodeChatStreamEvent,
+  decodeAGUIEvent,
   type ChatReconnectRequest,
-  type ChatSendRequest,
-  type ChatStreamEvent,
+  type ChatTransportRequest,
+  type AGUIEvent,
   type ChatTransportContract,
 } from "@sweatpants/chat-core";
 import { ChatClientError } from "./errors.ts";
@@ -65,7 +65,7 @@ function responseError(response: Response): Operation<never> {
   })();
 }
 
-function parseLine(line: string, onCursor?: (cursor: number) => void): ChatStreamEvent | undefined {
+function parseLine(line: string, onCursor?: (cursor: number) => void): AGUIEvent | undefined {
   const trimmed = line.trim();
   if (!trimmed) {
     return undefined;
@@ -78,7 +78,7 @@ function parseLine(line: string, onCursor?: (cursor: number) => void): ChatStrea
         onCursor?.(cursor);
       }
     }
-    return decodeChatStreamEvent(value);
+    return decodeAGUIEvent(value);
   } catch (error) {
     if (error instanceof ChatClientError) {
       throw error;
@@ -92,10 +92,7 @@ function parseLine(line: string, onCursor?: (cursor: number) => void): ChatStrea
   }
 }
 
-function parseSseBlock(
-  block: string,
-  onCursor?: (cursor: number) => void,
-): ChatStreamEvent | undefined {
+function parseSseBlock(block: string, onCursor?: (cursor: number) => void): AGUIEvent | undefined {
   const data: string[] = [];
   for (const line of block.split(/\r?\n/)) {
     if (line.startsWith("data:")) {
@@ -117,7 +114,7 @@ function parseSseBlock(
         onCursor?.(cursor);
       }
     }
-    return decodeChatStreamEvent(value);
+    return decodeAGUIEvent(value);
   } catch (error) {
     const code = (error as { code?: unknown }).code;
     throw new ChatClientError(
@@ -134,7 +131,7 @@ export function parseChatResponseStream(
   signal: AbortSignal,
   contentType = "application/x-ndjson",
   onCursor?: (cursor: number) => void,
-): Stream<ChatStreamEvent, void> {
+): Stream<AGUIEvent, void> {
   const sse = contentType.includes("text/event-stream");
   return resource(function* (provide) {
     const reader = readable.getReader();
@@ -150,7 +147,7 @@ export function parseChatResponseStream(
     });
 
     yield* provide({
-      *next(): Operation<IteratorResult<ChatStreamEvent, void>> {
+      *next(): Operation<IteratorResult<AGUIEvent, void>> {
         while (true) {
           if (signal.aborted) {
             return { done: true, value: undefined };
@@ -212,7 +209,7 @@ function responseStream(
   response: Response,
   signal: AbortSignal,
   onCursor?: (cursor: number) => void,
-): Stream<ChatStreamEvent, void> {
+): Stream<AGUIEvent, void> {
   if (!response.body) {
     throw new ChatClientError("chat_transport_failed", "Chat API response has no body");
   }
@@ -221,15 +218,6 @@ function responseStream(
     signal,
     response.headers.get("content-type") ?? "application/x-ndjson",
     onCursor,
-  );
-}
-
-function isEmptyJsonObject(value: unknown): boolean {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === 0
   );
 }
 
@@ -260,41 +248,32 @@ export function createHttpTransport(options: HttpTransportOptions = {}): ChatTra
 
   return {
     *sendMessages(
-      request: ChatSendRequest,
+      request: ChatTransportRequest,
       signal: AbortSignal,
-    ): Operation<Stream<ChatStreamEvent, void>> {
+    ): Operation<Stream<AGUIEvent, void>> {
       const body = JSON.stringify({
+        input: request.input,
         trigger: request.trigger,
         clientId: request.clientId,
-        threadId: request.threadId,
-        conversationId: request.threadId,
-        runId: request.runId,
-        messages: request.messages,
-        state: request.state,
-        context: request.context,
-        ...(isEmptyJsonObject(request.forwardedProps)
+        ...(request.conversationId === undefined ? {} : { conversationId: request.conversationId }),
+        ...(request.messageId === undefined ? {} : { messageId: request.messageId }),
+        ...(request.cancellationReason === undefined
           ? {}
-          : { forwardedProps: request.forwardedProps }),
-        ...(request.parentRunId !== undefined ? { parentRunId: request.parentRunId } : {}),
-        ...(request.messageId !== undefined ? { messageId: request.messageId } : {}),
-        ...(request.resume !== undefined ? { resume: request.resume } : {}),
-        ...(request.cancellationReason !== undefined
-          ? { pluginAbort: { reason: request.cancellationReason } }
-          : {}),
+          : { pluginAbort: { reason: request.cancellationReason } }),
       });
       const response = yield* call(() => chatFetch(api, fetchInit(options, signal, body)));
       if (!response.ok) {
         return yield* responseError(response);
       }
       return responseStream(response, signal, (nextCursor) => {
-        recordCursor(request.threadId, nextCursor);
+        recordCursor(request.input.threadId, nextCursor);
       });
     },
 
     *reconnectToStream(
       request: ChatReconnectRequest,
       signal: AbortSignal,
-    ): Operation<Stream<ChatStreamEvent, void> | null> {
+    ): Operation<Stream<AGUIEvent, void> | null> {
       const url = joinUrl(
         api,
         request.threadId,

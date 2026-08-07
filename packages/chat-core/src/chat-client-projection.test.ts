@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   ChatProjectionError,
   createChatProjection,
-  decodeChatStreamEvent,
-  foldChatStreamEvent,
+  decodeAGUIEvent,
+  foldAGUIEvent,
   materializeChatMessages,
-  projectChatMessagesToWire,
+  projectChatMessagesToAGUI,
   transitionChatProjection,
 } from "./index.ts";
 
@@ -19,7 +19,7 @@ function activity(input: {
   state: string;
   publicData?: Record<string, unknown>;
 }) {
-  return decodeChatStreamEvent({
+  return decodeAGUIEvent({
     type: "ACTIVITY_SNAPSHOT",
     messageId: input.messageId,
     activityType: "sweatpants:public-execution",
@@ -42,7 +42,7 @@ describe("headless nested projection", () => {
   it("preserves chronological root message order when turn-local sequences repeat", () => {
     let state = createChatProjection();
     for (const messageId of ["user-1", "assistant-1", "user-2", "assistant-2"]) {
-      state = foldChatStreamEvent(
+      state = foldAGUIEvent(
         state,
         activity({
           messageId: `record:${messageId}`,
@@ -67,8 +67,66 @@ describe("headless nested projection", () => {
     ]);
   });
 
+  it("preserves a settled tool result when placement activity follows a history snapshot", () => {
+    let state = createChatProjection();
+    state = foldAGUIEvent(
+      state,
+      decodeAGUIEvent({
+        type: EventType.MESSAGES_SNAPSHOT,
+        messages: [
+          {
+            id: "assistant",
+            role: "assistant",
+            toolCalls: [
+              {
+                id: "call-1",
+                type: "function",
+                function: { name: "lookup", arguments: "{}" },
+              },
+            ],
+          },
+          {
+            id: "tool-result",
+            role: "tool",
+            toolCallId: "call-1",
+            content: '{"answer":42}',
+          },
+        ],
+      }),
+    );
+    state = foldAGUIEvent(
+      state,
+      activity({
+        messageId: "execution:call-1",
+        nodeId: "execution:call-1",
+        parentNodeId: "message:assistant",
+        sequence: 0,
+        kind: "tool-call",
+        state: "input-available",
+        publicData: {
+          kind: "tool-call",
+          callId: "call-1",
+          name: "lookup",
+          input: {},
+          rawInput: "{}",
+        },
+      }),
+    );
+
+    const wire = projectChatMessagesToAGUI(materializeChatMessages(state));
+    expect(wire).toContainEqual(
+      expect.objectContaining({
+        role: "tool",
+        toolCallId: "call-1",
+        name: "lookup",
+        content: '{"answer":42}',
+        isError: false,
+      }),
+    );
+  });
+
   it("returns client-local actions beside the pure projection", () => {
-    const started = foldChatStreamEvent(createChatProjection(), {
+    const started = foldAGUIEvent(createChatProjection(), {
       type: EventType.TEXT_MESSAGE_START,
       messageId: "assistant",
       role: "assistant",
@@ -95,21 +153,21 @@ describe("headless nested projection", () => {
 
   it("projects structured output deltas into one typed message part", () => {
     let state = createChatProjection();
-    state = foldChatStreamEvent(
+    state = foldAGUIEvent(
       state,
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.CUSTOM,
         name: "structured-output.start",
         value: { messageId: "assistant-structured" },
       }),
     );
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TEXT_MESSAGE_START,
       messageId: "assistant-structured",
       role: "assistant",
     });
     expect(materializeChatMessages(state)[0]?.parts).toHaveLength(1);
-    const delta = decodeChatStreamEvent({
+    const delta = decodeAGUIEvent({
       type: EventType.TEXT_MESSAGE_CONTENT,
       messageId: "assistant-structured",
       delta: '{"title":"Ada",',
@@ -117,7 +175,7 @@ describe("headless nested projection", () => {
     const transition = transitionChatProjection(state, delta);
     expect(transition.actions).toEqual([]);
     state = transition.projection;
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TEXT_MESSAGE_CONTENT,
       messageId: "assistant-structured",
       delta: '"count": 1}',
@@ -131,9 +189,9 @@ describe("headless nested projection", () => {
       partial: { title: "Ada", count: 1 },
     });
 
-    state = foldChatStreamEvent(
+    state = foldAGUIEvent(
       state,
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.CUSTOM,
         name: "structured-output.complete",
         value: {
@@ -159,17 +217,17 @@ describe("headless nested projection", () => {
       ["assistant-1", "first"],
       ["assistant-2", "second"],
     ] as const) {
-      state = foldChatStreamEvent(
+      state = foldAGUIEvent(
         state,
-        decodeChatStreamEvent({
+        decodeAGUIEvent({
           type: EventType.CUSTOM,
           name: "structured-output.start",
           value: { messageId },
         }),
       );
-      state = foldChatStreamEvent(
+      state = foldAGUIEvent(
         state,
-        decodeChatStreamEvent({
+        decodeAGUIEvent({
           type: EventType.CUSTOM,
           name: "structured-output.complete",
           value: {
@@ -191,22 +249,22 @@ describe("headless nested projection", () => {
   });
 
   it("marks an incomplete structured output as an error at run termination", () => {
-    let state = foldChatStreamEvent(
+    let state = foldAGUIEvent(
       createChatProjection(),
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.CUSTOM,
         name: "structured-output.start",
         value: { messageId: "assistant-error" },
       }),
     );
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TEXT_MESSAGE_CONTENT,
       messageId: "assistant-error",
       delta: '{"title":"truncated"',
     });
-    state = foldChatStreamEvent(
+    state = foldAGUIEvent(
       state,
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.RUN_FINISHED,
         threadId: "thread",
         runId: "run",
@@ -222,9 +280,9 @@ describe("headless nested projection", () => {
   });
 
   it("includes structured output raw JSON in provider history", () => {
-    let state = foldChatStreamEvent(
+    let state = foldAGUIEvent(
       createChatProjection(),
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.CUSTOM,
         name: "structured-output.complete",
         value: {
@@ -236,7 +294,7 @@ describe("headless nested projection", () => {
     );
     const messages = materializeChatMessages(state);
     expect(messages[0]?.parts[0]?.type).toBe("structured-output");
-    expect(messages[0] && projectChatMessagesToWire(messages)[0]).toMatchObject({
+    expect(messages[0] && projectChatMessagesToAGUI(messages)[0]).toMatchObject({
       role: "assistant",
       content: '{"title":"history"}',
     });
@@ -244,7 +302,7 @@ describe("headless nested projection", () => {
 
   it("buffers child placement and materializes Option B nested messages", () => {
     let state = createChatProjection();
-    state = foldChatStreamEvent(
+    state = foldAGUIEvent(
       state,
       activity({
         messageId: "nested-message-record",
@@ -256,7 +314,7 @@ describe("headless nested projection", () => {
         publicData: { kind: "message", messageId: "nested-message", role: "assistant" },
       }),
     );
-    state = foldChatStreamEvent(
+    state = foldAGUIEvent(
       state,
       activity({
         messageId: "root-message-record",
@@ -268,7 +326,7 @@ describe("headless nested projection", () => {
         publicData: { kind: "message", messageId: "root-message", role: "assistant" },
       }),
     );
-    state = foldChatStreamEvent(
+    state = foldAGUIEvent(
       state,
       activity({
         messageId: "tool-record",
@@ -280,17 +338,17 @@ describe("headless nested projection", () => {
         publicData: { kind: "tool-call", callId: "call-1", name: "delegate", input: {} },
       }),
     );
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TEXT_MESSAGE_START,
       messageId: "nested-message",
       role: "assistant",
     });
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TEXT_MESSAGE_CONTENT,
       messageId: "nested-message",
       delta: "private-safe result",
     });
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TEXT_MESSAGE_END,
       messageId: "nested-message",
     });
@@ -319,7 +377,7 @@ describe("headless nested projection", () => {
 
   it("keeps provisional message children when authoritative placement arrives", () => {
     let state = createChatProjection();
-    state = foldChatStreamEvent(
+    state = foldAGUIEvent(
       state,
       activity({
         messageId: "root-record",
@@ -331,7 +389,7 @@ describe("headless nested projection", () => {
         publicData: { kind: "message", messageId: "root", role: "assistant" },
       }),
     );
-    state = foldChatStreamEvent(
+    state = foldAGUIEvent(
       state,
       activity({
         messageId: "delegate-record",
@@ -343,32 +401,32 @@ describe("headless nested projection", () => {
         publicData: { kind: "tool-call", callId: "delegate-call", name: "delegate", input: {} },
       }),
     );
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TEXT_MESSAGE_START,
       messageId: "nested",
       role: "assistant",
     });
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TEXT_MESSAGE_CONTENT,
       messageId: "nested",
       delta: "working",
     });
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TOOL_CALL_START,
       toolCallId: "nested-tool-call",
       toolCallName: "nested-tool",
       parentMessageId: "nested",
     });
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TOOL_CALL_ARGS,
       toolCallId: "nested-tool-call",
       delta: "{}",
     });
-    state = foldChatStreamEvent(state, {
+    state = foldAGUIEvent(state, {
       type: EventType.TOOL_CALL_END,
       toolCallId: "nested-tool-call",
     });
-    state = foldChatStreamEvent(
+    state = foldAGUIEvent(
       state,
       activity({
         messageId: "nested-record",
@@ -406,11 +464,11 @@ describe("headless nested projection", () => {
       state: "streaming",
       publicData: { kind: "message", messageId: "message", role: "assistant" },
     });
-    let state = foldChatStreamEvent(createChatProjection(), event);
-    state = foldChatStreamEvent(state, event);
+    let state = foldAGUIEvent(createChatProjection(), event);
+    state = foldAGUIEvent(state, event);
     expect(materializeChatMessages(state)).toHaveLength(1);
     expect(() =>
-      foldChatStreamEvent(
+      foldAGUIEvent(
         state,
         activity({
           ...event,
@@ -427,7 +485,7 @@ describe("headless nested projection", () => {
   });
 
   it("applies only mutable activity patches", () => {
-    let state = foldChatStreamEvent(
+    let state = foldAGUIEvent(
       createChatProjection(),
       activity({
         messageId: "activity-record",
@@ -439,9 +497,9 @@ describe("headless nested projection", () => {
         publicData: { kind: "activity", activityType: "opaque-execution" },
       }),
     );
-    state = foldChatStreamEvent(
+    state = foldAGUIEvent(
       state,
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: "ACTIVITY_DELTA",
         messageId: "activity-record",
         activityType: "sweatpants:public-execution",
@@ -450,7 +508,7 @@ describe("headless nested projection", () => {
     );
     expect(materializeChatMessages(state)).toEqual([]);
     expect(() =>
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: "ACTIVITY_DELTA",
         messageId: "activity-record",
         activityType: "sweatpants:public-execution",

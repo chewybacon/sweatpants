@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import type { ReactChatMessage, ReactRenderPart, ReactChatPart } from "@sweatpants/react-chat";
+import type { ReactChatUIMessage, ReactRenderPart, ReactChatUIPart } from "@sweatpants/react-chat";
 
-export type AppChatPart = ReactChatPart;
+export type AppChatPart = ReactChatUIPart;
 export type AppLocalPart = ReactRenderPart;
 
 /** Application-owned recursive renderer for prepared local parts. */
@@ -20,6 +20,6 @@ export function renderNestedParts(parts: readonly AppChatPart[]): ReactNode[] {
   });
 }
 
-function renderMessageParts(message: ReactChatMessage): ReactNode[] {
+function renderMessageParts(message: ReactChatUIMessage): ReactNode[] {
   return renderNestedParts(message.parts);
 }

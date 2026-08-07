@@ -1,10 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  useChat,
-  type ChatMessage,
-  type ChatPart,
-  type ChatToolCall,
-} from "@sweatpants/react-chat";
+import { useChat, type ReactChatUIMessage, type ReactChatUIPart } from "@sweatpants/react-chat";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
@@ -48,7 +43,7 @@ function compactTarget(value: unknown): string {
     : text;
 }
 
-function ToolCallGroup({ part }: { part: ChatToolCall }) {
+function ToolCallGroup({ part }: { part: Extract<ReactChatUIPart, { type: "tool-call" }> }) {
   const item: ChatToolCallItem = {
     key: part.id,
     name: part.name,
@@ -82,7 +77,13 @@ function ToolCallGroup({ part }: { part: ChatToolCall }) {
   );
 }
 
-function Part({ part, role = "assistant" }: { part: ChatPart; role?: ChatMessage["role"] }) {
+function Part({
+  part,
+  role = "assistant",
+}: {
+  part: ReactChatUIPart;
+  role?: ReactChatUIMessage["role"];
+}) {
   switch (part.type) {
     case "text":
       return (
@@ -110,10 +111,12 @@ function Part({ part, role = "assistant" }: { part: ChatPart; role?: ChatMessage
       return part.parts.map((child) => <Part key={child.id} part={child} />);
     case "render":
       return <>{part.node}</>;
+    default:
+      return null;
   }
 }
 
-function Message({ message }: { message: ChatMessage }) {
+function Message({ message }: { message: ReactChatUIMessage }) {
   return (
     <AstryxChatMessage sender={message.role}>
       {message.parts.map((part) => (
@@ -138,7 +141,7 @@ function DurableChat({ conversationId }: { conversationId: string }) {
     if (value.trim().length === 0 || busy) {
       return;
     }
-    sendMessage({ text: value.trim() });
+    sendMessage(value.trim());
     setTask("");
   }
 

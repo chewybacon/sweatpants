@@ -9,6 +9,9 @@
             "path": "./packages/foundation"
         },
         {
+            "path": "./packages/chat-contract"
+        },
+        {
             "path": "./packages/durable-effects"
         },
         {

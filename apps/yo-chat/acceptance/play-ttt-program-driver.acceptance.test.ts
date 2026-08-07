@@ -1,4 +1,8 @@
-import { MODEL_SAMPLE_EFFECT, type ModelSampleResult } from "@sweatpants/model-sampling";
+import {
+  MODEL_SAMPLE_EFFECT,
+  encodeModelSampleResult,
+  type ModelSampleResult,
+} from "@sweatpants/model-sampling";
 import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 // @vitest-environment node
 import { run } from "effection";
@@ -39,15 +43,22 @@ describe("journal-native play_ttt through ProgramRuntime", () => {
           modelSamples += 1;
           const value: ModelSampleResult = {
             message: {
-              role: "assistant",
-              content: [{ type: "text", text: "first legal cell" }],
+              message: {
+                role: "assistant",
+                content: [{ type: "text", text: "first legal cell" }],
+              },
+              source: null,
+              usage: null,
+              stopReason: "stop",
+              responseId: null,
+              errorMessage: null,
             },
             output: {
               type: "json",
               value: { cell: firstEmptyPosition(request.invocation.context.messages) },
             },
           };
-          return { status: "ok", value };
+          return { status: "ok", value: encodeModelSampleResult(value) };
         },
       ),
     ]);

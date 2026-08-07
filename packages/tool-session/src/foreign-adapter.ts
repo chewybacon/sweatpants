@@ -1,4 +1,11 @@
-import { MODEL_SAMPLE_EFFECT } from "@sweatpants/model-sampling";
+import {
+  MODEL_SAMPLE_EFFECT,
+  decodeModelSampleRequest,
+  encodeModelSampleResult,
+  sampleDurableModel,
+  type ModelSampleRequest,
+  type ModelSampleResult,
+} from "@sweatpants/model-sampling";
 import type { Operation } from "effection";
 
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
@@ -15,7 +22,6 @@ import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
 } from "./foreign-contract.ts";
-import type { ModelSampleRequest, ModelSampleResult } from "@sweatpants/model-sampling";
 import { projectModelSampleCompletion } from "@sweatpants/agent-sdk";
 import { CrankError } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
@@ -29,19 +35,11 @@ import type { ForeignToolRequest } from "@sweatpants/durable-execution";
  */
 export const TOOL_OWNED_SAMPLE_CLASSIFICATION = "sweatpants.tool-owned-sample";
 
-function isRecord(value: Json): value is Record<string, Json> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function classifyToolOwnedSample(payload: Json): Json {
-  if (!isRecord(payload)) {
-    return payload;
-  }
-  const existing = Array.isArray(payload["classifications"]) ? payload["classifications"] : [];
-  if (existing.includes(TOOL_OWNED_SAMPLE_CLASSIFICATION)) {
-    return payload;
-  }
-  return { ...payload, classifications: [...existing, TOOL_OWNED_SAMPLE_CLASSIFICATION] };
+function classifyToolOwnedSample(payload: Json): ModelSampleRequest {
+  const request = decodeModelSampleRequest(payload);
+  const existing = request.classifications ?? [];
+  if (existing.includes(TOOL_OWNED_SAMPLE_CLASSIFICATION)) return request;
+  return { ...request, classifications: [...existing, TOOL_OWNED_SAMPLE_CLASSIFICATION] };
 }
 
 /** Validated manifest for the built-in foreign adapter child program. */
@@ -86,12 +84,10 @@ const adapterTool = createPinnedDurableProgram(
         const response =
           disposition.request.kind === "sample"
             ? projectModelSampleCompletion(
-                yield* context.effect(
-                  MODEL_SAMPLE_EFFECT,
+                yield* sampleDurableModel(
+                  context,
                   classifyToolOwnedSample(disposition.request.payload),
-                  {
-                    audience: "model-runtime",
-                  },
+                  { audience: "model-runtime" },
                 ),
               )
             : yield* context.elicit<Json>(
@@ -169,8 +165,10 @@ export const foreignToolAdapter: ForeignToolAdapter = Object.freeze({
     return createDurableEffectRegistration(
       MODEL_SAMPLE_EFFECT,
       MODEL_SAMPLE_EFFECT.retrySafety,
-      function* (request) {
-        return { status: "ok", value: yield* handler(request) };
+      function* (wireRequest) {
+        const request = decodeModelSampleRequest(wireRequest);
+        const result = yield* handler(request);
+        return { status: "ok", value: encodeModelSampleResult(result) };
       },
     );
   },

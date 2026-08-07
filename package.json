@@ -5,7 +5,7 @@
     "license": "MIT",
     "scripts": {
         "dev": "pnpm run -r --parallel --aggregate-output dev",
-        "dev:yo-chat": "DEFAULT_CHAT_MODEL_PROVIDER=${DEFAULT_CHAT_MODEL_PROVIDER:-github-copilot} DEFAULT_CHAT_MODEL_ID=${DEFAULT_CHAT_MODEL_ID:-gpt-5.5} pnpm -C apps/yo-chat dev",
+        "dev:yo-chat": "tsx scripts/dev-yo-chat.ts",
         "dev:yo-chat:local": "DEFAULT_CHAT_MODEL_PROVIDER=${DEFAULT_CHAT_MODEL_PROVIDER:-ollama} DEFAULT_CHAT_MODEL_ID=${DEFAULT_CHAT_MODEL_ID:-gemma4:12b-mlx} MCP_TOOL_RUNTIME=local pnpm -C apps/yo-chat dev",
         "dev:yo-chat:agentcore": "DEFAULT_CHAT_MODEL_PROVIDER=${DEFAULT_CHAT_MODEL_PROVIDER:-amazon-bedrock} DEFAULT_CHAT_MODEL_ID=${DEFAULT_CHAT_MODEL_ID:-zai.glm-5} AWS_REGION=${AWS_REGION:-us-east-1} MCP_TOOL_RUNTIME=agentcore pnpm -C apps/yo-chat dev",
         "dev:yo-chat:agentcore:auto": "./scripts/launch-yo-chat-agentcore.sh",
@@ -56,7 +56,7 @@
         "effection": "catalog:"
     },
     "devDependencies": {
-        "@earendil-works/pi-ai": "0.80.1",
+        "@earendil-works/pi-ai": "0.84.0",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/execution-store-redis": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
@@ -79,9 +79,6 @@
             "@effectionx/signals": "^0.5.3",
             "@effectionx/timebox": "^0.4.3",
             "effection": "4.1.0-alpha.9"
-        },
-        "patchedDependencies": {
-            "@earendil-works/pi-ai@0.80.1": "patches/@earendil-works__pi-ai@0.80.1.patch"
         }
     }
 }

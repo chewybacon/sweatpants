@@ -1,22 +1,23 @@
 import { createContext, type Operation, type Stream } from "effection";
 import { definePort } from "@sweatpants/foundation/port";
-import type { Context, Model, StreamEvent, StreamOptions, AssistantMessage } from "./types.ts";
+import type { Model, StreamOptions } from "./types.ts";
+import type { ModelContext, ModelResponse, ModelStreamEvent } from "./model.ts";
 
 export interface ModelProviderStreamRequest {
   model: Model;
-  context: Context;
+  context: ModelContext;
   options?: StreamOptions;
 }
 
 export interface ModelProviderSampleRequest {
   model: Model;
-  context: Context;
+  context: ModelContext;
   options?: StreamOptions;
 }
 
 export interface ModelProviderDriver {
-  stream(request: ModelProviderStreamRequest): Operation<Stream<StreamEvent, AssistantMessage>>;
-  sample(request: ModelProviderSampleRequest): Operation<AssistantMessage>;
+  stream(request: ModelProviderStreamRequest): Operation<Stream<ModelStreamEvent, ModelResponse>>;
+  sample(request: ModelProviderSampleRequest): Operation<ModelResponse>;
 }
 
 export class ModelProviderUnavailable extends Error {
@@ -34,10 +35,12 @@ export class ModelProviderUnavailable extends Error {
  * inject latency, faults, and request assertions without touching call sites.
  */
 export const ModelProviderPort = definePort<ModelProviderDriver>("model-provider", {
-  *stream(_request: ModelProviderStreamRequest): Operation<Stream<StreamEvent, AssistantMessage>> {
+  *stream(
+    _request: ModelProviderStreamRequest,
+  ): Operation<Stream<ModelStreamEvent, ModelResponse>> {
     throw new ModelProviderUnavailable();
   },
-  *sample(_request: ModelProviderSampleRequest): Operation<AssistantMessage> {
+  *sample(_request: ModelProviderSampleRequest): Operation<ModelResponse> {
     throw new ModelProviderUnavailable();
   },
 });

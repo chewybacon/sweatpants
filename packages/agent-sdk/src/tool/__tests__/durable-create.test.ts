@@ -204,7 +204,14 @@ describe("createDurableTool fluent builder", () => {
       {
         status: "ok",
         value: {
-          message: { role: "assistant", content: [{ type: "text", text: "bad" }] },
+          message: {
+            message: { role: "assistant", content: [{ type: "text", text: "bad" }] },
+            source: null,
+            usage: null,
+            stopReason: null,
+            responseId: null,
+            errorMessage: null,
+          },
           output: { type: "json", value: { value: "bad" } },
         },
       },
@@ -212,8 +219,15 @@ describe("createDurableTool fluent builder", () => {
         status: "ok",
         value: {
           message: {
-            role: "assistant",
-            content: [{ type: "text", text: '{"value": 7}' }],
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: '{"value": 7}' }],
+            },
+            source: null,
+            usage: null,
+            stopReason: null,
+            responseId: null,
+            errorMessage: null,
           },
           output: { type: "json", value: { value: 7 } },
         },

@@ -1,27 +1,12 @@
-import type { AGUIEvent, MessagesSnapshotEvent, RunStartedEvent } from "@ag-ui/core";
+import type { AGUIEvent, RunStartedEvent } from "@ag-ui/core";
 import type { Json } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
-import type { ToolCallInfo, ServerToolResult } from "../core-types.ts";
 import type { PublicActivityPlacement } from "../chat-client-types.ts";
 
 type TreePlacement = Omit<PublicActivityPlacement, "presentation">;
 
 /** Producer facts retained by internal checkpoint and execution contracts. */
 export type AgUiRunMetadata = Pick<RunStartedEvent, "threadId" | "runId" | "parentRunId">;
-
-export type AgUiMessagesSnapshot = Pick<MessagesSnapshotEvent, "messages">;
-
-export interface AgUiStateSnapshot {
-  assistantContent: string;
-  toolCalls: ToolCallInfo[];
-  serverToolResults: ServerToolResult[];
-}
-
-export interface AgUiCheckpoint {
-  run: AgUiRunMetadata;
-  messages: AgUiMessagesSnapshot;
-  state: AgUiStateSnapshot;
-}
 
 export interface AgUiCustomState {
   pendingClientActions?: Array<{
@@ -59,9 +44,7 @@ export interface ElicitRequestStreamEvent {
 }
 
 /** Standard protocol events are the official AG-UI union, without handwritten duplicates. */
-export type StreamEvent = AGUIEvent;
-
 export interface DurableFrame {
   readonly lsn: number;
-  readonly event: StreamEvent;
+  readonly event: AGUIEvent;
 }

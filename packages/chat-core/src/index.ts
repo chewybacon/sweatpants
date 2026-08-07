@@ -10,31 +10,87 @@
  * own HTTP hosting, CAS persistence, or MCP server mechanics.
  */
 
-// Core message types
-export type { Message, ChatEvent, ChatResult, ChatMessageContent } from "./messages.ts";
-
-// Headless client protocol and nested message model. These names are aliased
-// here because the pre-release legacy message authoring types remain internal
-// to the old session implementation while the new client package owns the
-// public aliases.
+// Canonical Chat Content
+export {
+  DEFAULT_CHAT_CONTENT_LIMITS,
+  ChatContentDecodeError,
+  decodeChatContent,
+} from "./content.ts";
 export type {
-  ChatMessage as ClientChatMessage,
-  ChatPart as ClientChatPart,
+  ChatContent,
+  ChatContentPart,
+  ChatTextContentPart,
+  ChatImageContentPart,
+  ChatAudioContentPart,
+  ChatVideoContentPart,
+  ChatDocumentContentPart,
+  ChatContentSource,
+  ChatContentDataSource,
+  ChatContentUrlSource,
+  ChatContentLimits,
+  DecodeChatContentOptions,
+  ChatContentDecodeErrorCode,
+  ChatContentLimitViolation,
+} from "./content.ts";
+
+// Canonical first-party Chat semantics.
+export {
+  ChatMessageDecodeError,
+  decodeChatMessage,
+  decodeChatMessages,
+  decodeChatToolCall,
+  decodeChatToolDefinition,
+} from "@sweatpants/chat-contract";
+export type {
+  ChatMessage,
+  ChatUserMessage,
+  ChatAssistantMessage,
+  ChatSystemMessage,
+  ChatDeveloperMessage,
+  ChatToolResultMessage,
+  ChatMessagePart,
+  ChatReasoningPart,
+  ChatToolCall,
+  ChatToolCallPart,
+  ChatToolDefinition,
+  ChatMessageDecodeErrorCode,
+} from "@sweatpants/chat-contract";
+
+// Durable Chat History composes canonical messages.
+export {
+  ChatHistoryDecodeError,
+  decodeChatHistoryEntry,
+  decodeChatHistoryEntries,
+} from "./history.ts";
+export type {
+  ChatHistoryEntry,
+  ChatHistoryMessageEntry,
+  ChatHistoryActivityEntry,
+  ChatHistoryDecodeErrorCode,
+} from "./history.ts";
+
+// AG-UI standard event union remains owned by @ag-ui/core.
+export type { AGUIEvent } from "@ag-ui/core";
+
+// Client-safe Chat UI tree and transport contracts.
+export type {
+  ChatUIMessage,
+  ChatUIPart,
   ChatLocalPart,
-  TextPart as ClientTextPart,
-  ReasoningPart as ClientReasoningPart,
-  StructuredOutputPart as ClientStructuredOutputPart,
-  ImagePart as ClientImagePart,
-  AudioPart as ClientAudioPart,
-  VideoPart as ClientVideoPart,
-  DocumentPart as ClientDocumentPart,
-  MediaPart as ClientMediaPart,
+  ChatUITextPart,
+  ChatUIReasoningPart,
+  ChatUIStructuredOutputPart,
+  ChatUIImagePart,
+  ChatUIAudioPart,
+  ChatUIVideoPart,
+  ChatUIDocumentPart,
+  ChatUIMediaPart,
   StructuredOutputStartEvent,
   StructuredOutputCompleteEvent,
-  ToolCallPart as ClientToolCallPart,
-  NestedMessagePart as ClientNestedMessagePart,
-  ActivityPart as ClientActivityPart,
-  ElicitPart as ClientElicitPart,
+  ChatUIToolCallPart,
+  ChatUINestedMessagePart,
+  ChatUIActivityPart,
+  ChatUIElicitPart,
   ChatStatus,
   ChatConnectionStatus,
   ChatRenderStatus,
@@ -42,23 +98,16 @@ export type {
   ChatQueueOverflowPolicy,
   ChatQueueOptions,
   ChatQueueOption,
-  ChatSnapshot as ClientChatSnapshot,
+  ChatUISnapshot,
   QueuedUserMessage,
-  UserInputTextPart,
-  UserInputDataSource,
-  UserInputUrlSource,
-  UserInputSource,
-  UserInputMediaPart,
-  UserInputPart,
   UserMessageInput,
   SendMessageOptions,
   RegenerateOptions,
   ChatSendTrigger,
   ResumeEntry,
-  ChatSendRequest,
+  ChatTransportRequest,
   ChatReconnectRequest,
-  ChatWireMessage,
-  ChatRequestMessage,
+  ChatTransportRequestMessage,
   ChatTransportContract,
   ChatTransportSnapshot,
   ChatTransportControl,
@@ -92,14 +141,13 @@ export type {
   ToolCallResultEvent,
   RawEvent,
   CustomEvent,
-  ChatStreamEvent,
   FramePipeline,
   FramePipelineFactory,
 } from "./chat-client-types.ts";
 export {
   ChatProtocolError,
-  decodeChatStreamEvent,
-  encodeChatStreamEvent,
+  decodeAGUIEvent,
+  encodeAGUIEvent,
   decodePublicActivity,
   validateActivityPatch,
   decodeActivitySnapshotEvent,
@@ -109,11 +157,11 @@ export type { ChatProtocolErrorCode } from "./chat-client-codec.ts";
 export {
   ChatProjectionError,
   createChatProjection,
-  foldChatStreamEvent,
+  foldAGUIEvent,
   transitionChatProjection,
-  appendChatWireMessage,
+  appendAGUIMessage,
   materializeChatMessages,
-  projectChatMessagesToWire,
+  projectChatMessagesToAGUI,
   updateTextPartFrame,
   findElicitNode,
   findTextParts,
@@ -133,7 +181,6 @@ export type {
   RenderDelta,
   RevealHint,
   TokenUsage,
-  ToolCallInfo,
   ServerToolResult,
 } from "./core-types.ts";
 
@@ -173,15 +220,9 @@ export {
 
 // Framework-neutral AG-UI and provider-history projection.
 export {
-  buildAgUiCheckpoint,
   buildAgUiCustomState,
-  providerHistoryMessages,
+  providerHistoryEntries,
   toProviderHistorySnapshot,
-  internalMessageToAgUiMessage,
-  internalMessagesToAgUiMessages,
-  agUiMessageToInternalMessage,
-  agUiMessagesToInternalMessages,
-  isAgUiMessageArray,
   deriveTurnKeyFromToolCalls,
   turnKeyFromToolCalls,
   messageIdForUser,
@@ -190,15 +231,19 @@ export {
   messageIdForAssistantFinal,
   messageIdForSystem,
   assertMessageHasId,
+  ChatConversionError,
+  agUiMessageToChatHistoryEntry,
+  agUiMessagesToChatHistoryEntries,
+  chatHistoryEntryToAgUiMessage,
+  chatHistoryEntriesToAgUiMessages,
 } from "./ag-ui/index.ts";
 export type {
+  ChatConversionErrorCode,
+  ChatConversionDirection,
   DurableFrame,
-  AgUiCheckpoint,
   AgUiCustomState,
   AgUiRunMetadata,
   ElicitRequestStreamEvent,
-  StreamEvent as ChatSessionStreamEvent,
-  BuildAgUiCheckpointOptions,
 } from "./ag-ui/index.ts";
 
 // Durable chat authoring

@@ -303,7 +303,8 @@ describe("WorkerToolSession", () => {
           {
             id: "call-123",
             name: "get_weather",
-            arguments: { location: "New York" },
+            input: { location: "New York" },
+            thoughtSignature: null,
           },
         ],
       });

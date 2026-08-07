@@ -1,4 +1,5 @@
 import type { Operation, Stream } from "effection";
+import type { RunAgentInput } from "@ag-ui/core";
 import type {
   AGUIEvent,
   ActivityDeltaEvent,
@@ -27,8 +28,9 @@ import type {
   ToolCallResultEvent,
   ToolCallStartEvent,
 } from "@ag-ui/core";
-import type { Json } from "@sweatpants/foundation";
+import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
+import type { ChatContent, ChatContentSource } from "./content.ts";
 import type { Frame } from "./frame.ts";
 
 /** A generic local part supplied by a frontend adapter. */
@@ -37,25 +39,25 @@ export interface ChatLocalPart {
   readonly id: string;
 }
 
-export interface ChatMessage<TLocalPart extends ChatLocalPart = never> {
+export interface ChatUIMessage<TLocalPart extends ChatLocalPart = never> {
   readonly id: string;
   readonly role: "user" | "assistant" | "system";
-  readonly parts: readonly ChatPart<TLocalPart>[];
-  readonly metadata?: Readonly<Record<string, Json>>;
+  readonly parts: readonly ChatUIPart<TLocalPart>[];
+  readonly metadata: JsonObject;
 }
 
-export type ChatPart<TLocalPart extends ChatLocalPart = never> =
-  | TextPart
-  | ReasoningPart
-  | StructuredOutputPart
-  | MediaPart
-  | ToolCallPart<TLocalPart>
-  | NestedMessagePart<TLocalPart>
-  | ActivityPart<TLocalPart>
-  | ElicitPart<TLocalPart>
+export type ChatUIPart<TLocalPart extends ChatLocalPart = never> =
+  | ChatUITextPart
+  | ChatUIReasoningPart
+  | ChatUIStructuredOutputPart
+  | ChatUIMediaPart
+  | ChatUIToolCallPart<TLocalPart>
+  | ChatUINestedMessagePart<TLocalPart>
+  | ChatUIActivityPart<TLocalPart>
+  | ChatUIElicitPart<TLocalPart>
   | TLocalPart;
 
-export interface TextPart {
+export interface ChatUITextPart {
   readonly type: "text";
   readonly id: string;
   readonly text: string;
@@ -64,7 +66,7 @@ export interface TextPart {
   readonly rendered: string;
 }
 
-export interface ReasoningPart {
+export interface ChatUIReasoningPart {
   readonly type: "reasoning";
   readonly id: string;
   readonly text: string;
@@ -73,45 +75,63 @@ export interface ReasoningPart {
   readonly rendered: string;
 }
 
-export interface StructuredOutputPart {
+interface ChatUIStructuredOutputBase {
   readonly type: "structured-output";
   readonly id: string;
-  readonly status: "streaming" | "complete" | "error";
   readonly raw: string;
   readonly partial?: Json;
-  readonly data?: Json;
-  readonly errorText?: string;
 }
 
-export interface ImagePart {
+export type ChatUIStructuredOutputPart =
+  | (ChatUIStructuredOutputBase & {
+      readonly status: "streaming";
+      readonly data?: never;
+      readonly errorText?: never;
+    })
+  | (ChatUIStructuredOutputBase & {
+      readonly status: "complete";
+      readonly data: Json;
+      readonly errorText?: never;
+    })
+  | (ChatUIStructuredOutputBase & {
+      readonly status: "error";
+      readonly data?: never;
+      readonly errorText: string;
+    });
+
+export interface ChatUIImagePart {
   readonly type: "image";
   readonly id: string;
-  readonly source: UserInputSource;
-  readonly metadata?: Json;
+  readonly source: ChatContentSource;
+  readonly metadata?: JsonObject;
 }
 
-export interface AudioPart {
+export interface ChatUIAudioPart {
   readonly type: "audio";
   readonly id: string;
-  readonly source: UserInputSource;
-  readonly metadata?: Json;
+  readonly source: ChatContentSource;
+  readonly metadata?: JsonObject;
 }
 
-export interface VideoPart {
+export interface ChatUIVideoPart {
   readonly type: "video";
   readonly id: string;
-  readonly source: UserInputSource;
-  readonly metadata?: Json;
+  readonly source: ChatContentSource;
+  readonly metadata?: JsonObject;
 }
 
-export interface DocumentPart {
+export interface ChatUIDocumentPart {
   readonly type: "document";
   readonly id: string;
-  readonly source: UserInputSource;
-  readonly metadata?: Json;
+  readonly source: ChatContentSource;
+  readonly metadata?: JsonObject;
 }
 
-export type MediaPart = ImagePart | AudioPart | VideoPart | DocumentPart;
+export type ChatUIMediaPart =
+  | ChatUIImagePart
+  | ChatUIAudioPart
+  | ChatUIVideoPart
+  | ChatUIDocumentPart;
 
 export type StructuredOutputStartEvent = CustomEvent & {
   readonly name: "structured-output.start";
@@ -128,36 +148,62 @@ export type StructuredOutputCompleteEvent = CustomEvent & {
   };
 };
 
-export interface ToolCallPart<TLocalPart extends ChatLocalPart = never> {
+interface ChatUIToolCallPartBase<TLocalPart extends ChatLocalPart = never> {
   readonly type: "tool-call";
   readonly id: string;
   readonly callId: string;
   readonly name: string;
-  readonly state: "input-streaming" | "input-available" | "output-available" | "output-error";
-  readonly input?: Json;
   readonly rawInput?: string;
-  readonly output?: Json;
-  readonly errorText?: string;
-  readonly parts: readonly ChatPart<TLocalPart>[];
+  readonly parts: readonly ChatUIPart<TLocalPart>[];
 }
 
-export interface NestedMessagePart<TLocalPart extends ChatLocalPart = never> {
+export type ChatUIToolCallPart<TLocalPart extends ChatLocalPart = never> =
+  | (ChatUIToolCallPartBase<TLocalPart> & {
+      readonly state: "input-streaming";
+      readonly input?: never;
+      readonly output?: never;
+      readonly errorText?: never;
+    })
+  | (ChatUIToolCallPartBase<TLocalPart> & {
+      readonly state: "input-available";
+      readonly input: Json;
+      readonly output?: never;
+      readonly errorText?: never;
+    })
+  | (ChatUIToolCallPartBase<TLocalPart> & {
+      readonly state: "output-available";
+      readonly input: Json;
+      readonly output: Json;
+      readonly errorText?: never;
+    })
+  | (ChatUIToolCallPartBase<TLocalPart> & {
+      readonly state: "output-error";
+      readonly input?: Json;
+      readonly output?: never;
+      readonly errorText: string;
+    });
+
+export interface ChatUINestedMessagePart<TLocalPart extends ChatLocalPart = never> {
   readonly type: "message";
   readonly id: string;
-  readonly message: ChatMessage<TLocalPart>;
+  readonly message: ChatUIMessage<TLocalPart>;
 }
 
-export interface ActivityPart<TLocalPart extends ChatLocalPart = never> {
+interface ChatUIActivityPartBase<TLocalPart extends ChatLocalPart = never> {
   readonly type: "activity";
   readonly id: string;
   readonly activityType: string;
-  readonly state: "running" | "complete" | "error" | "cancelled";
-  readonly data?: Json;
   readonly presentation: "public" | "opaque";
-  readonly parts: readonly ChatPart<TLocalPart>[];
+  readonly parts: readonly ChatUIPart<TLocalPart>[];
 }
 
-export interface ElicitPart<TLocalPart extends ChatLocalPart = never> {
+export type ChatUIActivityPart<TLocalPart extends ChatLocalPart = never> =
+  | (ChatUIActivityPartBase<TLocalPart> & { readonly state: "running"; readonly data?: Json })
+  | (ChatUIActivityPartBase<TLocalPart> & { readonly state: "complete"; readonly data?: Json })
+  | (ChatUIActivityPartBase<TLocalPart> & { readonly state: "error"; readonly data?: Json })
+  | (ChatUIActivityPartBase<TLocalPart> & { readonly state: "cancelled"; readonly data?: Json });
+
+interface ChatUIElicitPartBase<TLocalPart extends ChatLocalPart = never> {
   readonly type: "elicit";
   readonly id: string;
   readonly elicitId: string;
@@ -165,10 +211,18 @@ export interface ElicitPart<TLocalPart extends ChatLocalPart = never> {
   readonly key: string;
   readonly message: string;
   readonly context?: Json;
-  readonly state: "pending" | "responded" | "cancelled";
-  readonly localState?: "running" | "submitting" | "failed";
-  readonly parts: readonly ChatPart<TLocalPart>[];
+  readonly parts: readonly ChatUIPart<TLocalPart>[];
 }
+
+export type ChatUIElicitPart<TLocalPart extends ChatLocalPart = never> =
+  | (ChatUIElicitPartBase<TLocalPart> & {
+      readonly state: "pending";
+      readonly localState?: "running" | "submitting" | "failed";
+    })
+  | (ChatUIElicitPartBase<TLocalPart> & {
+      readonly state: "responded" | "cancelled";
+      readonly localState?: never;
+    });
 
 export type ChatStatus = "ready" | "submitted" | "streaming" | "error";
 export type ChatConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -193,7 +247,7 @@ export interface QueuedUserMessage {
   readonly createdAt: number;
 }
 
-export interface ChatSnapshot<TMessage extends ChatMessage<ChatLocalPart> = ChatMessage> {
+export interface ChatUISnapshot<TMessage extends ChatUIMessage<ChatLocalPart> = ChatUIMessage> {
   readonly messages: readonly TMessage[];
   readonly status: ChatStatus;
   readonly connectionStatus: ChatConnectionStatus;
@@ -203,43 +257,12 @@ export interface ChatSnapshot<TMessage extends ChatMessage<ChatLocalPart> = Chat
   readonly queue: readonly QueuedUserMessage[];
 }
 
-export interface UserInputTextPart {
-  readonly type: "text";
-  readonly text: string;
-}
-
-export interface UserInputDataSource {
-  readonly type: "data";
-  readonly value: string;
-  readonly mimeType: string;
-}
-
-export interface UserInputUrlSource {
-  readonly type: "url";
-  readonly value: string;
-  readonly mimeType?: string;
-}
-
-export type UserInputSource = UserInputDataSource | UserInputUrlSource;
-
-export interface UserInputMediaPart {
-  readonly type: "image" | "audio" | "video" | "document";
-  readonly source: UserInputSource;
-  readonly metadata?: Json;
-}
-
-export type UserInputPart = UserInputTextPart | UserInputMediaPart;
-
 export type UserMessageInput =
+  | string
   | {
-      readonly text: string;
+      readonly content: ChatContent;
       readonly id?: string;
-      readonly metadata?: Readonly<Record<string, Json>>;
-    }
-  | {
-      readonly parts: readonly UserInputPart[];
-      readonly id?: string;
-      readonly metadata?: Readonly<Record<string, Json>>;
+      readonly metadata?: JsonObject;
     };
 
 export interface SendMessageOptions {
@@ -260,18 +283,18 @@ export interface ResumeEntry {
   readonly payload?: Json;
 }
 
-export interface ChatSendRequest {
+/**
+ * Sweatpants transport controls wrapped around the AG-UI-owned request input.
+ *
+ * `input` is the only location for `RunAgentInput` fields. Transport, trigger,
+ * and cancellation controls remain outside the protocol-owned object.
+ */
+export interface ChatTransportRequest {
+  readonly input: RunAgentInput;
   readonly trigger: ChatSendTrigger;
   readonly clientId: string;
-  readonly threadId: string;
-  readonly runId: string;
-  readonly parentRunId?: string;
+  readonly conversationId?: string;
   readonly messageId?: string;
-  readonly messages: readonly ChatRequestMessage[];
-  readonly state: Json;
-  readonly context: readonly { readonly description: string; readonly value: string }[];
-  readonly forwardedProps: Json;
-  readonly resume?: readonly ResumeEntry[];
   readonly cancellationReason?: string;
 }
 
@@ -284,13 +307,13 @@ export interface ChatReconnectRequest {
 /** The provider-facing, serializable message form used by transport. */
 export interface ChatTransportContract {
   sendMessages(
-    request: ChatSendRequest,
+    request: ChatTransportRequest,
     signal: AbortSignal,
-  ): Operation<Stream<ChatStreamEvent, void>>;
+  ): Operation<Stream<AGUIEvent, void>>;
   reconnectToStream(
     request: ChatReconnectRequest,
     signal: AbortSignal,
-  ): Operation<Stream<ChatStreamEvent, void> | null>;
+  ): Operation<Stream<AGUIEvent, void> | null>;
   disconnect(reason?: string): Operation<void>;
 }
 
@@ -319,7 +342,7 @@ export interface PublicMessageActivityNode extends PublicActivityPlacement {
   readonly publicData: {
     readonly kind: "message";
     readonly messageId: string;
-    readonly role: ChatMessage["role"];
+    readonly role: ChatUIMessage["role"];
   };
 }
 
@@ -404,15 +427,12 @@ export type JsonPatchOperation = {
   readonly value?: Json;
 };
 
-export type ChatWireMessage = Message;
-type ToolWireMessage = Extract<Message, { role: "tool" }>;
-export type ChatRequestMessage =
-  | Exclude<Message, ToolWireMessage>
-  | (ToolWireMessage & { readonly name: string; readonly isError: boolean });
+type ToolTransportMessage = Extract<Message, { role: "tool" }>;
+export type ChatTransportRequestMessage =
+  | Exclude<Message, ToolTransportMessage>
+  | (ToolTransportMessage & { readonly name: string; readonly isError: boolean });
 
 /** The transport and projection contract is the official AG-UI event union. */
-export type ChatStreamEvent = AGUIEvent;
-export type ChatEvent = ChatStreamEvent;
 
 export type {
   ActivityDeltaEvent,

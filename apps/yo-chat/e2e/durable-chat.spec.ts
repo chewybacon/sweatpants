@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { test, expect } from "@playwright/test";
 
 /**
@@ -21,6 +22,21 @@ const apiModel = {
   provider: process.env.DEFAULT_CHAT_MODEL_PROVIDER ?? "github-copilot",
   id: process.env.DEFAULT_CHAT_MODEL_ID ?? "claude-sonnet-4.5",
 };
+
+function directChatRequest(content: string) {
+  return {
+    model: apiModel,
+    input: {
+      threadId: `e2e:${randomUUID()}`,
+      runId: randomUUID(),
+      state: {},
+      messages: [{ id: randomUUID(), role: "user", content }],
+      tools: [],
+      context: [],
+      forwardedProps: {},
+    },
+  };
+}
 
 // =============================================================================
 // PARITY TESTS - These should pass just like /demo/chat tests
@@ -247,10 +263,7 @@ test.describe("Durable Chat - Tool Calling", () => {
 test.describe("Durable Chat - Session Features", () => {
   test("API returns X-Session-Id header", async ({ request }) => {
     const response = await request.post("/api/chat", {
-      data: {
-        messages: [{ role: "user", content: "Hi" }],
-        model: apiModel,
-      },
+      data: directChatRequest("Hi"),
     });
 
     expect(response.status()).toBe(200);
@@ -265,10 +278,7 @@ test.describe("Durable Chat - Session Features", () => {
 
   test("response format is NDJSON with LSN", async ({ request }) => {
     const response = await request.post("/api/chat", {
-      data: {
-        messages: [{ role: "user", content: "Say hi" }],
-        model: apiModel,
-      },
+      data: directChatRequest("Say hi"),
     });
 
     expect(response.status()).toBe(200);
@@ -299,10 +309,7 @@ test.describe("Durable Chat - Session Features", () => {
     // This test catches the field name mismatch bug where server sent
     // { type: 'text', text: '...' } but client expected { type: 'text', content: '...' }
     const response = await request.post("/api/chat", {
-      data: {
-        messages: [{ role: "user", content: "Say hello" }],
-        model: apiModel,
-      },
+      data: directChatRequest("Say hello"),
     });
 
     const body = await response.text();
@@ -335,10 +342,7 @@ test.describe("Durable Chat - Session Features", () => {
 
   test("LSN increases monotonically", async ({ request }) => {
     const response = await request.post("/api/chat", {
-      data: {
-        messages: [{ role: "user", content: "Count to 5" }],
-        model: apiModel,
-      },
+      data: directChatRequest("Count to 5"),
     });
 
     const body = await response.text();

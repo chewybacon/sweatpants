@@ -10,13 +10,14 @@ import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import { createClient } from "redis";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
+import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
 import {
   installModelProvider,
   ModelProviderModelContext,
-  type AssistantMessage,
   type Model,
   type ModelProviderDriver,
-  type StreamEvent,
+  type ModelResponse,
+  type ModelStreamEvent,
 } from "@sweatpants/model-provider";
 import {
   createInMemoryBufferStore,
@@ -63,41 +64,45 @@ describe.skipIf(!externalSubstrateEnabled)(
     it("journals elicits and sampling without tool.execute/tool.resume", async () => {
       let sampleIndex = 0;
       const driver: ModelProviderDriver = {
-        stream(): Stream<StreamEvent, AssistantMessage> {
+        stream(): Stream<ModelStreamEvent, ModelResponse> {
           sampleIndex += 1;
-          const message: AssistantMessage =
+          const message =
             sampleIndex === 1
-              ? {
-                  role: "assistant",
-                  content: [
-                    {
-                      type: "toolCall",
-                      toolCall: {
-                        id: "call-http-book-flight",
-                        type: "function",
-                        function: {
+              ? modelResponse(
+                  {
+                    role: "assistant",
+                    content: [
+                      {
+                        type: "tool-call",
+                        toolCall: {
+                          id: "call-http-book-flight",
                           name: bookFlightTool.name,
-                          arguments: { from: "NYC", destination: "LAX" },
+                          input: { from: "NYC", destination: "LAX" },
+                          thoughtSignature: null,
                         },
                       },
-                    },
-                  ],
-                  stopReason: "toolUse",
-                }
+                    ],
+                  },
+                  "toolUse",
+                )
               : sampleIndex === 2
-                ? {
-                    role: "assistant",
-                    content: [{ type: "text", text: "Travel light and arrive early." }],
-                    stopReason: "stop",
-                  }
-                : {
-                    role: "assistant",
-                    content: [{ type: "text", text: "Your flight is booked." }],
-                    stopReason: "stop",
-                  };
+                ? modelResponse(
+                    {
+                      role: "assistant",
+                      content: [{ type: "text", text: "Travel light and arrive early." }],
+                    },
+                    "stop",
+                  )
+                : modelResponse(
+                    {
+                      role: "assistant",
+                      content: [{ type: "text", text: "Your flight is booked." }],
+                    },
+                    "stop",
+                  );
           return completedStream(message);
         },
-        *sample(): Operation<AssistantMessage> {
+        *sample(): Operation<ModelResponse> {
           throw new Error("ProgramRuntime must use the streaming model seam");
         },
       };
@@ -221,14 +226,23 @@ describe.skipIf(!externalSubstrateEnabled)(
 type PublicEvent = { type: string; [key: string]: unknown };
 type ResumeInput = { interruptId: string; result: { action: string; content: unknown } };
 
-function completedStream(message: AssistantMessage): Stream<StreamEvent, AssistantMessage> {
+function modelResponse(message: ChatAssistantMessage, stopReason: string): ModelResponse {
+  return {
+    message,
+    source: null,
+    usage: null,
+    stopReason,
+    responseId: null,
+    errorMessage: null,
+  };
+}
+
+function completedStream(message: ModelResponse): Stream<ModelStreamEvent, ModelResponse> {
   return resource(function* (provide) {
     let done = false;
     yield* provide({
-      *next(): Operation<IteratorResult<StreamEvent, AssistantMessage>> {
-        if (done) {
-          return { done: true, value: message };
-        }
+      *next(): Operation<IteratorResult<ModelStreamEvent, ModelResponse>> {
+        if (done) return { done: true, value: message };
         done = true;
         return { done: true, value: message };
       },

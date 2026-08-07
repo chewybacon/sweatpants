@@ -1,7 +1,11 @@
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { ProgramPlacementContext } from "@sweatpants/durable-effects";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
-import { MODEL_SAMPLE_EFFECT } from "./contract.ts";
+import {
+  MODEL_SAMPLE_EFFECT,
+  decodeModelSampleRequest,
+  encodeModelSampleResult,
+} from "./contract.ts";
 import {
   ModelSamplingApi,
   ModelSamplingUnavailable,
@@ -18,7 +22,8 @@ export function createModelSamplingEffectRegistration(
   return createDurableEffectRegistration(
     definition,
     { mode: "repeatable" },
-    function* (request, effectContext) {
+    function* (wireRequest, effectContext) {
+      const request = decodeModelSampleRequest(wireRequest);
       const placement = yield* ProgramPlacementContext.get();
       if (!placement) {
         throw new ModelSamplingUnavailable("Model sampling placement context is unavailable");
@@ -33,12 +38,15 @@ export function createModelSamplingEffectRegistration(
         effectContractDigest: effectContractDigest(definition),
         cancellation: effectContext.cancellation,
       };
-      if (service) {
-        return yield* runWithModelSamplingService(service, function* () {
-          return yield* ModelSamplingApi.operations.sample(request, attempt);
-        });
+      const disposition = service
+        ? yield* runWithModelSamplingService(service, function* () {
+            return yield* ModelSamplingApi.operations.sample(request, attempt);
+          })
+        : yield* ModelSamplingApi.operations.sample(request, attempt);
+      if (disposition.status === "ok") {
+        return { status: "ok", value: encodeModelSampleResult(disposition.value) };
       }
-      return yield* ModelSamplingApi.operations.sample(request, attempt);
+      return disposition;
     },
   );
 }

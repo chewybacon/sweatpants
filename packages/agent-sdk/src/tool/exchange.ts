@@ -1,4 +1,9 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type {
+  ChatAssistantMessage,
+  ChatToolResultMessage,
+  ChatUserMessage,
+} from "@sweatpants/chat-contract";
 import type { Json } from "@sweatpants/foundation";
 import {
   assistantText,
@@ -20,7 +25,6 @@ import type {
   SampleResultWithParsed,
   SampleResultWithToolCalls,
   ToolElicitResult,
-  ToolMessage,
 } from "./types.ts";
 
 const elicitExchangeCompletionSchema = z.discriminatedUnion("action", [
@@ -49,12 +53,10 @@ export const SCHEMA_TOOL_NAME = "__schema__";
 export function projectModelSampleCompletion(result: ModelSampleResult): SampleExchangeCompletion {
   const base = {
     text: assistantText(result.message),
-    ...(result.message.source?.responseModel !== undefined
-      ? { model: result.message.source.responseModel }
-      : result.message.source?.model !== undefined
-        ? { model: result.message.source.model }
-        : {}),
-    ...(result.message.stopReason !== undefined ? { stopReason: result.message.stopReason } : {}),
+    ...(result.message.source === null
+      ? {}
+      : { model: result.message.source.responseModel ?? result.message.source.model }),
+    ...(result.message.stopReason !== null ? { stopReason: result.message.stopReason } : {}),
   };
   if (result.output.type === "json") {
     return { ...base, parsed: result.output.value };
@@ -66,11 +68,7 @@ export function projectModelSampleCompletion(result: ModelSampleResult): SampleE
   return calls.length > 0
     ? {
         ...base,
-        toolCalls: calls.map((call) => ({
-          id: call.id,
-          name: call.function.name,
-          arguments: call.function.arguments,
-        })),
+        toolCalls: calls,
       }
     : base;
 }
@@ -79,11 +77,11 @@ export function createRawSampleExchange(
   promptText: string,
   responseText: string,
 ): SampleExchange<undefined> {
-  const request: ToolMessage & { role: "user" } = {
+  const request: ChatUserMessage = {
     role: "user",
     content: [{ type: "text", text: promptText }],
   };
-  const response: ToolMessage & { role: "assistant" } = {
+  const response: ChatAssistantMessage = {
     role: "assistant",
     content: [{ type: "text", text: responseText }],
   };
@@ -95,18 +93,21 @@ export function createStructuredSampleExchange<T>(
   parsed: T,
   exchangeId: string,
 ): SampleExchange<T> {
-  const request: ToolMessage & { role: "user" } = {
+  const request: ChatUserMessage = {
     role: "user",
     content: [{ type: "text", text: promptText }],
   };
-  const toolUse: ToolMessage & { role: "assistant" } = {
+  const toolUse: ChatAssistantMessage = {
     role: "assistant",
     content: [
       {
-        type: "tool_use",
-        id: exchangeId,
-        name: SCHEMA_TOOL_NAME,
-        input: {},
+        type: "tool-call",
+        toolCall: {
+          id: exchangeId,
+          name: SCHEMA_TOOL_NAME,
+          input: {},
+          thoughtSignature: null,
+        },
       },
     ],
   };
@@ -114,15 +115,12 @@ export function createStructuredSampleExchange<T>(
   if (responseText === undefined) {
     throw new Error("Structured sample completion produced a non-serializable value");
   }
-  const toolResult: ToolMessage & { role: "user" } = {
-    role: "user",
-    content: [
-      {
-        type: "tool_result",
-        toolUseId: exchangeId,
-        content: [{ type: "text", text: responseText }],
-      },
-    ],
+  const toolResult: ChatToolResultMessage = {
+    role: "tool",
+    toolCallId: exchangeId,
+    name: SCHEMA_TOOL_NAME,
+    content: [{ type: "text", text: responseText }],
+    isError: false,
   };
   return {
     request,
@@ -222,43 +220,46 @@ export function* completeElicitExchange<TContext, TResponse>(
     );
   }
 
-  const request: ToolMessage & { role: "assistant" } = {
+  const request: ChatAssistantMessage = {
     role: "assistant",
     content: [
       { type: "text", text: options.message },
       {
-        type: "tool_use",
-        id: options.exchangeId,
-        name: options.key,
-        input: {},
+        type: "tool-call",
+        toolCall: {
+          id: options.exchangeId,
+          name: options.key,
+          input: {},
+          thoughtSignature: null,
+        },
       },
     ],
   };
-  const response: ToolMessage & { role: "user" } = {
-    role: "user",
-    content: [
-      {
-        type: "tool_result",
-        toolUseId: options.exchangeId,
-        content: [{ type: "text", text: responseText }],
-      },
-    ],
+  const response: ChatToolResultMessage = {
+    role: "tool",
+    toolCallId: options.exchangeId,
+    name: options.key,
+    content: [{ type: "text", text: responseText }],
+    isError: false,
   };
   const exchange: ElicitExchange<TContext> = {
     context: options.context,
     request,
     response,
     messages: [request, response],
-    withArguments(fn: (context: TContext) => Json): [ToolMessage, ToolMessage] {
-      const requestWithArguments: ToolMessage & { role: "assistant" } = {
+    withArguments(fn: (context: TContext) => Json): [ChatAssistantMessage, ChatToolResultMessage] {
+      const requestWithArguments: ChatAssistantMessage = {
         role: "assistant",
         content: [
           { type: "text", text: options.message },
           {
-            type: "tool_use",
-            id: options.exchangeId,
-            name: options.key,
-            input: fn(options.context),
+            type: "tool-call",
+            toolCall: {
+              id: options.exchangeId,
+              name: options.key,
+              input: fn(options.context),
+              thoughtSignature: null,
+            },
           },
         ],
       };

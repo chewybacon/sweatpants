@@ -29,6 +29,7 @@
  * @packageDocumentation
  */
 import { useAbortSignal, type Operation } from "effection";
+import type { ChatAssistantMessage, ChatToolResultMessage } from "@sweatpants/chat-contract";
 import type { Json } from "@sweatpants/foundation";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
@@ -379,19 +380,21 @@ function createCoreToolCtx(
       });
       if (response.action === "accept") {
         const toolUseId = `elicit_${key}`;
-        const requestMsg = {
-          role: "assistant" as const,
-          content: [{ type: "tool_use" as const, id: toolUseId, name: key, input: {} }],
-        };
-        const responseMsg = {
-          role: "user" as const,
+        const requestMsg: ChatAssistantMessage = {
+          role: "assistant",
           content: [
             {
-              type: "tool_result" as const,
-              toolUseId,
-              content: [{ type: "text" as const, text: JSON.stringify(response.content) }],
+              type: "tool-call",
+              toolCall: { id: toolUseId, name: key, input: {}, thoughtSignature: null },
             },
           ],
+        };
+        const responseMsg: ChatToolResultMessage = {
+          role: "tool",
+          toolCallId: toolUseId,
+          name: key,
+          content: [{ type: "text", text: JSON.stringify(response.content) }],
+          isError: false,
         };
         return {
           action: "accept",
@@ -405,8 +408,13 @@ function createCoreToolCtx(
               const args = fn(request.context);
               return [
                 {
-                  role: "assistant" as const,
-                  content: [{ type: "tool_use" as const, id: toolUseId, name: key, input: args }],
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "tool-call",
+                      toolCall: { id: toolUseId, name: key, input: args, thoughtSignature: null },
+                    },
+                  ],
                 },
                 responseMsg,
               ];

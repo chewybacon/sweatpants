@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { call, resource, type Operation, type Stream, type Subscription } from "effection";
 import { z } from "zod";
-import { createTool } from "@sweatpants/agent-sdk";
+import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
 import { createDevelopmentProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
@@ -26,11 +26,10 @@ import {
 import {
   installModelProvider,
   ModelProviderModelContext,
-  type AssistantMessage,
+  type ModelResponse,
   type Model,
   type ModelProviderDriver,
-  type StreamEvent as RuntimeStreamEvent,
-  type ToolCall,
+  type ModelStreamEvent as RuntimeStreamEvent,
 } from "@sweatpants/model-provider";
 import { createToolExecutionRef } from "@sweatpants/tool-runtime";
 import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
@@ -55,121 +54,86 @@ function createScriptedModelProvider(options: {
   toolCall?: { id: string; name: string; arguments: Record<string, string> };
 }): ModelProviderDriver {
   return {
-    *stream(): Operation<Stream<RuntimeStreamEvent, AssistantMessage>> {
+    *stream(): Operation<Stream<RuntimeStreamEvent, ModelResponse>> {
       return resource(function* (provide) {
-        const events: Array<
-          | { type: "text_delta"; contentIndex: number; delta: string; partial: AssistantMessage }
-          | {
-              type: "toolcall_end";
-              contentIndex: number;
-              toolCall: ToolCall;
-              partial: AssistantMessage;
-            }
-        > = [];
-
-        events.push({
-          type: "text_delta",
-          contentIndex: 0,
-          delta: options.text,
-          partial: {
-            role: "assistant",
-            content: [{ type: "text", text: options.text }],
-          },
-        });
-
-        if (options.toolCall) {
-          events.push({
-            type: "toolcall_end",
-            contentIndex: 1,
-            toolCall: {
-              id: options.toolCall.id,
-              type: "function",
-              function: {
-                name: options.toolCall.name,
-                arguments: options.toolCall.arguments,
-              },
-            },
-            partial: {
-              role: "assistant",
-              content: [
-                { type: "text", text: options.text },
+        const parts = [
+          { type: "text" as const, text: options.text },
+          ...(options.toolCall
+            ? [
                 {
-                  type: "toolCall",
+                  type: "tool-call" as const,
                   toolCall: {
                     id: options.toolCall.id,
-                    type: "function",
-                    function: {
-                      name: options.toolCall.name,
-                      arguments: options.toolCall.arguments,
-                    },
+                    name: options.toolCall.name,
+                    input: options.toolCall.arguments,
+                    thoughtSignature: null,
                   },
                 },
-              ],
-            },
-          });
-        }
-
-        let index = 0;
-        const finalMessage: AssistantMessage = {
-          role: "assistant",
-          content: [
-            { type: "text", text: options.text },
-            ...(options.toolCall
-              ? [
-                  {
-                    type: "toolCall" as const,
-                    toolCall: {
-                      id: options.toolCall.id,
-                      type: "function" as const,
-                      function: {
-                        name: options.toolCall.name,
-                        arguments: options.toolCall.arguments,
-                      },
-                    },
-                  },
-                ]
-              : []),
-          ],
+              ]
+            : []),
+        ];
+        const finalMessage: ModelResponse = {
+          message: { role: "assistant", content: parts },
+          source: null,
+          usage: { input: 1, output: 1, total: 2, cacheRead: null, cacheWrite: null, cost: null },
           stopReason: options.toolCall ? "toolUse" : "stop",
-          usage: { input: 1, output: 1, total: 2 },
+          responseId: null,
+          errorMessage: null,
         };
-
+        const events: RuntimeStreamEvent[] = [
+          {
+            type: "text-delta",
+            contentIndex: 0,
+            delta: options.text,
+            partial: { role: "assistant", content: [{ type: "text", text: options.text }] },
+          },
+          ...(options.toolCall
+            ? [
+                {
+                  type: "tool-call-end" as const,
+                  contentIndex: 1,
+                  toolCall: {
+                    id: options.toolCall.id,
+                    name: options.toolCall.name,
+                    input: options.toolCall.arguments,
+                    thoughtSignature: null,
+                  },
+                  partial: { role: "assistant" as const, content: parts },
+                },
+              ]
+            : []),
+        ];
+        let index = 0;
         yield* provide({
-          *next(): Operation<IteratorResult<RuntimeStreamEvent, AssistantMessage>> {
-            if (index < events.length) {
-              return { done: false, value: events[index++]! };
-            }
+          *next(): Operation<IteratorResult<RuntimeStreamEvent, ModelResponse>> {
+            if (index < events.length) return { done: false, value: events[index++]! };
             return { done: true, value: finalMessage };
           },
-        } as Subscription<RuntimeStreamEvent, AssistantMessage>);
+        } as Subscription<RuntimeStreamEvent, ModelResponse>);
       });
     },
-    *sample(request): Operation<AssistantMessage> {
+    *sample(request): Operation<ModelResponse> {
       const subscription = yield* yield* this.stream(request);
       while (true) {
         const next = yield* subscription.next();
-        if (next.done) {
-          return next.value;
-        }
+        if (next.done) return next.value;
       }
     },
   };
 }
 
-function createLocalToolRuntime(
-  tools: Array<{ name: string; parameters: unknown; description?: string }>,
-): ToolRuntime {
+function createLocalToolRuntime(tools: readonly RuntimeTool[]): ToolRuntime {
   const byName = new Map(tools.map((tool) => [tool.name, tool] as const));
   return {
     *runtimeId() {
       return "golden-path-local";
     },
     *execute(request) {
-      const tool = byName.get(request.call.function.name) as any;
+      const tool = byName.get(request.call.name);
       const ref = createToolExecutionRef({
         runtimeId: "golden-path-local",
         callId: request.call.id,
-        toolName: request.call.function.name,
+        toolName: request.call.name,
       });
       if (!tool) {
         return {
@@ -177,17 +141,18 @@ function createLocalToolRuntime(
           ref,
           error: {
             code: "TOOL_NOT_FOUND",
-            message: `Tool not found: ${request.call.function.name}`,
+            message: `Tool not found: ${request.call.name}`,
           },
         };
       }
       const params = yield* parseToolParameters({
         schema: tool.parameters,
-        params: request.call.function.arguments,
+        params: request.call.input,
         toolName: tool.name,
         callId: request.call.id,
       });
       const toolCtx = {
+        signal: new AbortController().signal,
         messages: [],
         notify: function* () {},
         log: function* () {},
@@ -258,7 +223,7 @@ describe("product facade golden path", () => {
           text: "Turn complete after echo",
         }).stream(request);
       },
-      *sample(request): Operation<AssistantMessage> {
+      *sample(request): Operation<ModelResponse> {
         const subscription = yield* yield* this.stream(request);
         while (true) {
           const next = yield* subscription.next();
@@ -276,7 +241,7 @@ describe("product facade golden path", () => {
           // The authored projection, not a second derivation of it.
           createToolInventory([createToolInventoryEntry(echo)]),
         );
-        yield* installToolRuntime(createLocalToolRuntime([echo as any]));
+        yield* installToolRuntime(createLocalToolRuntime([echo]));
       },
       handler: createChatHandler({
         programDriverJournalStore: createDevelopmentProgramDriverJournalStore({
@@ -297,16 +262,23 @@ describe("product facade golden path", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: [{ id: "user:1", role: "user", content: "Please echo hello-facade" }],
-            // Client plugin contracts are presentation metadata only. They do
-            // not add executable tools to the Host inventory.
-            tools: [
-              {
-                name: "client-plugin-contract",
-                description: "must not become executable",
-                parameters: { type: "object" },
-              },
-            ],
+            input: {
+              threadId: "golden-path",
+              runId: "golden-path-run",
+              state: {},
+              messages: [{ id: "user:1", role: "user", content: "Please echo hello-facade" }],
+              // Client plugin contracts are presentation metadata only. They do
+              // not add executable tools to the Host inventory.
+              tools: [
+                {
+                  name: "client-plugin-contract",
+                  description: "must not become executable",
+                  parameters: { type: "object" },
+                },
+              ],
+              context: [],
+              forwardedProps: {},
+            },
           }),
         }),
       );

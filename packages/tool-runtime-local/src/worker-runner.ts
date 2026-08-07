@@ -29,6 +29,7 @@ import {
   type WorkerMessage,
   type WorkerSampleResponse,
   type WorkerElicitResponse,
+  type WorkerContentBlock,
 } from "@sweatpants/agent-sdk/transport/worker";
 import {
   SampleValidationError,
@@ -51,94 +52,95 @@ import {
 } from "@sweatpants/agent-sdk";
 import type { JsonObject } from "@sweatpants/foundation";
 import type { Operation } from "effection";
-import type { WorkerTool, WorkerToolRegistry, WorkerToolContext } from "./worker-types.js";
 import {
-  isMcpMessage,
-  isToolCallMessage,
-  isToolResultMessage,
-  type ExtendedMessage,
-} from "@sweatpants/tool-session/messages";
+  type ChatContent,
+  type ChatContentPart,
+  type ChatMessage,
+  type ChatMessagePart,
+} from "@sweatpants/chat-contract";
+import { UnsupportedModelCapabilityError } from "@sweatpants/model-provider";
+import type { WorkerTool, WorkerToolRegistry, WorkerToolContext } from "./worker-types.js";
 import { toToolParameterJsonSchema } from "@sweatpants/tool-session/tool-parameters";
 
 // =============================================================================
 // TYPE CONVERSION HELPERS
 // =============================================================================
 
-/**
- * Convert framework Message/ExtendedMessage to core WorkerMessage.
- *
- * Handles all ExtendedMessage variants:
- * - Message (string content) → WorkerMessage with string content
- * - McpMessage (content blocks) → passthrough as WorkerMessage
- * - ToolCallMessage → WorkerMessage with tool_use content blocks
- * - ToolResultMessage → WorkerMessage with tool_result content block (role: 'user')
- */
-function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
-  // ToolCallMessage → assistant message with tool_use content blocks
-  if (isToolCallMessage(msg)) {
-    const contentBlocks: WorkerMessage["content"] = [];
+/** Encode canonical Chat messages at the worker protocol boundary. */
+function toWorkerMessage(message: ChatMessage): WorkerMessage {
+  switch (message.role) {
+    case "system":
+    case "developer":
+      throw new UnsupportedModelCapabilityError(
+        "$.message",
+        message.role,
+        "worker sampling carries system text through systemPrompt",
+      );
+    case "user":
+      return { role: "user", content: workerContent(message.content, "$.message.content") };
+    case "assistant":
+      return { role: "assistant", content: workerAssistantContent(message.content) };
+    case "tool":
+      return {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            toolUseId: message.toolCallId,
+            content: workerTextContent(message.content, "$.message.content"),
+            isError: message.isError,
+          },
+        ],
+      };
+  }
+}
 
-    // Preserve any text content alongside the tool calls
-    if (msg.content) {
-      contentBlocks.push({ type: "text" as const, text: msg.content });
+function workerContent(content: ChatContent, path: string): WorkerMessage["content"] {
+  if (typeof content === "string") return content;
+  return content.map((part, index) => workerContentPart(part, `${path}[${index}]`));
+}
+
+function workerContentPart(part: ChatContentPart, path: string): WorkerContentBlock {
+  if (part.type === "text") return { type: "text", text: part.text };
+  throw new UnsupportedModelCapabilityError(
+    path,
+    part.type,
+    `worker sampling cannot encode ${part.type}`,
+  );
+}
+
+function workerAssistantContent(parts: readonly ChatMessagePart[]): WorkerContentBlock[] {
+  return parts.map((part, index) => {
+    if (part.type === "text") return { type: "text", text: part.text };
+    if (part.type === "tool-call") {
+      return {
+        type: "tool_use",
+        id: part.toolCall.id,
+        name: part.toolCall.name,
+        input: part.toolCall.input,
+      };
     }
+    throw new UnsupportedModelCapabilityError(
+      `$.message.content[${index}]`,
+      part.type,
+      `worker sampling cannot encode ${part.type}`,
+    );
+  });
+}
 
-    // Convert each tool call to a tool_use content block
-    for (const call of msg.toolCalls) {
-      contentBlocks.push({
-        type: "tool_use" as const,
-        id: call.id,
-        name: call.function.name,
-        input: call.function.arguments,
-      });
-    }
-
-    return { role: "assistant", content: contentBlocks };
-  }
-
-  // ToolResultMessage → user message with tool_result content block
-  // MCP convention: tool results are sent as role 'user' with tool_result content blocks
-  if (isToolResultMessage(msg)) {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result" as const,
-          toolUseId: msg.tool_call_id,
-          content: [{ type: "text" as const, text: msg.content }],
-          isError: msg.isError,
-        },
-      ],
-    };
-  }
-
-  if (isMcpMessage(msg)) {
-    const blocks = Array.isArray(msg.content) ? msg.content : [msg.content];
-    return {
-      role: msg.role,
-      content: blocks.map((block) => {
-        switch (block.type) {
-          case "text":
-          case "tool_use":
-            return block;
-          case "tool_result":
-            return {
-              ...block,
-              content: block.content.flatMap((content) =>
-                content.type === "text" ? [content] : [],
-              ),
-            };
-          default:
-            throw new Error(`Worker sampling does not support MCP ${block.type} content`);
-        }
-      }),
-    };
-  }
-
-  if (msg.role === "system") {
-    throw new Error("Worker sample messages carry system text through systemPrompt");
-  }
-  return { role: msg.role, content: msg.content };
+function workerTextContent(
+  content: ChatContent,
+  path: string,
+): Array<{ type: "text"; text: string }> {
+  if (typeof content === "string") return [{ type: "text", text: content }];
+  return content.map((part, index) => {
+    if (part.type === "text") return { type: "text", text: part.text };
+    throw new UnsupportedModelCapabilityError(
+      path + `[${index}]`,
+      part.type,
+      "worker tool results support text only",
+    );
+  });
 }
 
 /** Converts a Standard Schema or explicit JSON Schema to bounded wire data. */
@@ -216,21 +218,26 @@ function createMcpWorkerContext(
   const generateToolCallId = () => `${sessionId}:tc:${++toolCallIdCounter}`;
 
   // Helper to extract prompt text for exchange construction
-  function extractPromptText(config: ToolSampleConfig<ExtendedMessage>): string {
+  function extractPromptText(config: ToolSampleConfig<ChatMessage>): string {
     if ("prompt" in config && config.prompt) {
       return config.prompt;
     }
     if ("messages" in config && config.messages) {
       const lastUserMsg = [...config.messages].reverse().find((m) => m.role === "user");
       if (lastUserMsg) {
-        return typeof lastUserMsg.content === "string" ? lastUserMsg.content : "[complex content]";
+        return typeof lastUserMsg.content === "string"
+          ? lastUserMsg.content
+          : lastUserMsg.content
+              .filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join("");
       }
     }
     return "";
   }
 
   // Helper to build messages for core sample
-  function buildMessages(config: ToolSampleConfig<ExtendedMessage>): WorkerMessage[] {
+  function buildMessages(config: ToolSampleConfig<ChatMessage>): WorkerMessage[] {
     if ("prompt" in config && config.prompt) {
       return [{ role: "user", content: config.prompt }];
     }
@@ -244,18 +251,18 @@ function createMcpWorkerContext(
   // signatures so schema/tools configs infer their result arm without casts.
   interface SampleTyped {
     <T>(
-      config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T, ExtendedMessage>,
+      config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T, ChatMessage>,
     ): Operation<SampleResultWithParsed<T>>;
     (
-      config: SampleConfigToolsPrompt | SampleConfigToolsMessages<ExtendedMessage>,
+      config: SampleConfigToolsPrompt | SampleConfigToolsMessages<ChatMessage>,
     ): Operation<SampleResultWithToolCalls>;
     (
-      config: ToolSampleConfig<ExtendedMessage>,
+      config: ToolSampleConfig<ChatMessage>,
     ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
   }
   const sampleTyped = sampleImpl as SampleTyped;
   function* sampleImpl(
-    config: ToolSampleConfig<ExtendedMessage>,
+    config: ToolSampleConfig<ChatMessage>,
   ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls> {
     const messages = buildMessages(config);
     const promptText = extractPromptText(config);
@@ -322,10 +329,10 @@ function createMcpWorkerContext(
     },
 
     // Sample - delegates to sampleImpl (overloads are defined in the interface)
-    sample: ((config: ToolSampleConfig<ExtendedMessage>) =>
+    sample: ((config: ToolSampleConfig<ChatMessage>) =>
       sampleImpl(config)) as WorkerToolContext["sample"],
 
-    *sampleTools(config: SampleToolsConfig<ExtendedMessage>): Operation<SampleToolsResult> {
+    *sampleTools(config: SampleToolsConfig<ChatMessage>): Operation<SampleToolsResult> {
       const retries = config.retries ?? 2;
       let lastResult:
         | SampleResultBase
@@ -335,7 +342,7 @@ function createMcpWorkerContext(
 
       for (let attempt = 0; attempt <= retries; attempt++) {
         // Build sample config with tools
-        const sampleConfig: SampleConfigToolsPrompt | SampleConfigToolsMessages<ExtendedMessage> =
+        const sampleConfig: SampleConfigToolsPrompt | SampleConfigToolsMessages<ChatMessage> =
           "prompt" in config
             ? {
                 prompt: config.prompt,
@@ -384,9 +391,7 @@ function createMcpWorkerContext(
       );
     },
 
-    *sampleSchema<T>(
-      config: SampleSchemaConfig<T, ExtendedMessage>,
-    ): Operation<SampleSchemaResult<T>> {
+    *sampleSchema<T>(config: SampleSchemaConfig<T, ChatMessage>): Operation<SampleSchemaResult<T>> {
       const retries = config.retries ?? 2;
       let lastResult: SampleResultWithParsed<T> | undefined;
 
@@ -394,7 +399,7 @@ function createMcpWorkerContext(
         // Build sample config with schema
         const sampleConfig:
           | SampleConfigSchemaPrompt<T>
-          | SampleConfigSchemaMessages<T, ExtendedMessage> =
+          | SampleConfigSchemaMessages<T, ChatMessage> =
           "prompt" in config
             ? {
                 prompt: config.prompt,

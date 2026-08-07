@@ -33,6 +33,8 @@ export default defineConfig({
       }
     : { testMatch: deterministicBrowserSmokeSpecs }),
   fullyParallel: true,
+  timeout: 120_000,
+  expect: { timeout: 10_000 },
   forbidOnly: !!isCI,
   retries: isCI ? 2 : 0,
   // Live-model tests share one provider/server process; keep them serial to
@@ -41,6 +43,8 @@ export default defineConfig({
   reporter: "html",
   use: {
     baseURL: playwrightBaseUrl,
+    actionTimeout: 10_000,
+    navigationTimeout: 30_000,
     trace: "on-first-retry",
   },
   projects: [

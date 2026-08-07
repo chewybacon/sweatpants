@@ -29,8 +29,6 @@ import type {
   McpToolCallResult,
   McpLogLevel,
   McpTextContent,
-  McpMessage,
-  McpRole,
   McpToolDefinition,
   McpToolChoice,
 } from "./types.ts";
@@ -46,6 +44,7 @@ import type {
 } from "../../contract.ts";
 import { SCHEMA_TOOL_NAME, type LogLevel as ToolLogLevel } from "@sweatpants/agent-sdk";
 import { encodeElicitContext } from "../../elicit-context/index.ts";
+import { chatMessagesToMcpMessages } from "../../messages.ts";
 
 // =============================================================================
 // LOG LEVEL MAPPING
@@ -174,22 +173,14 @@ export function encodeSamplingRequest(
   event: SampleRequestEvent,
   requestId: JsonRpcId,
 ): JsonRpcRequest<"sampling/createMessage", McpCreateMessageParams> {
-  // Convert internal messages to MCP messages
-  // Filter out system messages (MCP uses systemPrompt field instead)
-  const mcpMessages: McpMessage[] = event.messages
-    .filter((msg) => msg.role !== "system")
-    .map((msg) => ({
-      role: msg.role as McpRole,
-      content: {
-        type: "text",
-        text: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
-      } as McpTextContent,
-    }));
+  // Canonical Chat values are encoded once at this MCP boundary. System and
+  // developer messages reject rather than being silently dropped.
+  const mcpMessages = chatMessagesToMcpMessages(event.messages);
 
   // Build MCP tools from our tool definitions
   let mcpTools: McpToolDefinition[] | undefined = event.tools?.map((tool) => ({
     name: tool.name,
-    ...(tool.description !== undefined && { description: tool.description }),
+    ...(tool.description !== null && { description: tool.description }),
     inputSchema: tool.parameters,
   }));
 

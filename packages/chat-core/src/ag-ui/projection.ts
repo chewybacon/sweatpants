@@ -1,13 +1,15 @@
 import type { Message } from "@ag-ui/core";
-import type { Message as InternalMessage } from "../messages.ts";
-import { internalMessagesToAgUiMessages } from "./messages.ts";
+import { chatHistoryEntriesToAgUiMessages } from "./history.ts";
+import type { ChatHistoryEntry } from "../history.ts";
 
 /** Provider history excludes private activity records. */
-export function providerHistoryMessages(messages: InternalMessage[]): InternalMessage[] {
-  return messages.filter((message) => message.role !== "activity");
+export function providerHistoryEntries(
+  entries: readonly ChatHistoryEntry[],
+): readonly ChatHistoryEntry[] {
+  return entries.filter((entry) => entry.type !== "activity");
 }
 
-/** Project the public provider history without any frontend replay state. */
-export function toProviderHistorySnapshot(messages: InternalMessage[]): Message[] {
-  return internalMessagesToAgUiMessages(providerHistoryMessages(messages));
+/** Project semantic Chat History to the public AG-UI provider snapshot. */
+export function toProviderHistorySnapshot(entries: readonly ChatHistoryEntry[]): Message[] {
+  return [...chatHistoryEntriesToAgUiMessages(providerHistoryEntries(entries))];
 }

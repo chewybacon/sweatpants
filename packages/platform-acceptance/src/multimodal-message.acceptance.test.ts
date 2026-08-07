@@ -19,7 +19,7 @@ const multimodalParts = [
     type: "audio",
     source: {
       type: "data",
-      value: "BASE64_AUDIO_V1",
+      value: "QVVESU9fVjE=",
       mimeType: "audio/wav",
     },
   },
@@ -35,7 +35,7 @@ const multimodalParts = [
     type: "document",
     source: {
       type: "data",
-      value: "BASE64_DOCUMENT_V1",
+      value: "RE9DVU1FTlRfVjE=",
       mimeType: "application/pdf",
     },
   },
@@ -67,7 +67,7 @@ async function runMultimodalScenario(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ parts: multimodalParts });
+      yield* conversation.send({ content: multimodalParts });
 
       const started = yield* s.agui.event("RUN_STARTED");
       assertOrderedMultimodalContent(record(started)["input"]);
@@ -75,23 +75,18 @@ async function runMultimodalScenario(binding: Binding): Promise<void> {
       const snapshot = yield* s.agui.event("MESSAGES_SNAPSHOT");
       assertOrderedMultimodalContent(snapshot);
 
-      const modelRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
-      const serializedInput = JSON.stringify(modelRequest.body.input);
-      // The generic acceptance model is text-only. Provider capability
-      // mapping is separate; this test asserts that the Host's durable
-      // ingress/replay path retains the complete multimodal payload above.
-      expect(serializedInput).toContain("Inspect these media in order.");
-      yield* modelRequest.respond.text("MULTIMODAL_ACCEPTED_V1");
-      expect((yield* turn.settled()).text).toBe("MULTIMODAL_ACCEPTED_V1");
+      const finished = yield* s.agui.event("RUN_ERROR");
+      expect(JSON.stringify(finished)).toContain("unsupported_model_capability");
+      expect(s.model.requests()).toHaveLength(0);
 
       const reopened = yield* conversation.reopen();
       const replayed = JSON.stringify(reopened.snapshot().messages);
       const positions = [
         "Inspect these media in order.",
         "https://example.test/image.png",
-        "BASE64_AUDIO_V1",
+        "QVVESU9fVjE=",
         "https://example.test/video.mp4",
-        "BASE64_DOCUMENT_V1",
+        "RE9DVU1FTlRfVjE=",
       ].map((marker) => replayed.indexOf(marker));
       expect(positions.every((position) => position >= 0)).toBe(true);
       expect(positions).toEqual([...positions].sort((left, right) => left - right));

@@ -103,11 +103,9 @@ describe("yo-chat AgentCore runtime smoke", () => {
         entry,
         call: {
           id: "call-book-flight",
-          type: "function",
-          function: {
-            name: "book_flight",
-            arguments: { destination: "Paris" },
-          },
+          name: "book_flight",
+          input: { destination: "Paris" },
+          thoughtSignature: null,
         },
       });
 

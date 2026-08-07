@@ -1,3 +1,4 @@
+import type { ChatMessage, ChatToolCall, ChatToolDefinition } from "@sweatpants/chat-contract";
 import type { Operation } from "effection";
 import type { JsonObject } from "@sweatpants/foundation";
 import type {
@@ -6,49 +7,38 @@ import type {
   ParsedSampleExchangeCompletion,
   ToolCallSampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
-import { toModelMessages, type ExtendedMessage } from "@sweatpants/tool-session/messages";
 import {
   assistantText,
   parseStructuredSampleText,
   samplingToolCalls,
-  type ModelSampleToolCall,
 } from "@sweatpants/model-sampling";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import { createPiAiModelProviderDriver, resolvePiAiModel } from "@sweatpants/model-provider-pi-ai";
-import {
-  type AssistantMessage as ModelAssistantMessage,
-  type Context as ModelContext,
-  type PortableModelContextMessage,
-  type PortableModelTool,
-} from "@sweatpants/model-provider";
+import type { ModelContext } from "@sweatpants/model-provider";
 import { env } from "@/env";
 
 interface SamplingOptions {
   systemPrompt?: string;
   maxTokens?: number;
-  tools?: PortableModelTool[];
+  tools?: ChatToolDefinition[];
   toolChoice?: "auto" | "required" | "none";
   schema?: JsonObject;
 }
 
-function isSchemaToolCall(toolCall: ModelSampleToolCall): boolean {
+function isSchemaToolCall(toolCall: ChatToolCall): boolean {
   return toolCall.name === "__schema__" || toolCall.name === "schema__";
 }
 
-function modelContext(
-  messages: PortableModelContextMessage[],
-  options: SamplingOptions | undefined,
-): ModelContext {
-  const context: ModelContext = {
-    messages,
-    ...(options?.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
+function modelContext(messages: ChatMessage[], options: SamplingOptions | undefined): ModelContext {
+  return {
+    messages: [
+      ...(options?.systemPrompt
+        ? [{ role: "system" as const, content: options.systemPrompt }]
+        : []),
+      ...messages,
+    ],
+    tools: options?.tools ?? [],
   };
-
-  if (options?.tools) {
-    context.tools = options.tools;
-  }
-
-  return context;
 }
 
 export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
@@ -60,10 +50,10 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
 
   return {
     *sample(
-      messages: ExtendedMessage[],
+      messages: ChatMessage[],
       options: SamplingOptions | undefined,
     ): Operation<SampleExchangeCompletion> {
-      const modelMessages = toModelMessages(messages);
+      const modelMessages = messages;
 
       const assistant = yield* driver.sample({
         model,
@@ -88,7 +78,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
       if (options?.schema) {
         const schemaToolCall = toolCalls.find(isSchemaToolCall);
         if (schemaToolCall) {
-          const parsed = schemaToolCall.arguments;
+          const parsed = schemaToolCall.input;
           return {
             text: text || JSON.stringify(parsed),
             model: model.id,

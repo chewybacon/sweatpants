@@ -1,15 +1,8 @@
 import { createContext, type Operation } from "effection";
-import type { JsonObject } from "@sweatpants/foundation";
-import type { PortableToolDefinition, ToolInventoryEntry } from "@sweatpants/tool-runtime";
+import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
+import type { ChatToolDefinition } from "@sweatpants/chat-contract";
 
-export type ToolExposurePhase = "outer-chat" | "sample";
-
-export interface SamplingToolDefinitionLike {
-  name: string;
-  description?: string;
-  inputSchema?: JsonObject;
-  parameters?: JsonObject;
-}
+export type ToolExposurePhase = "outer-chat";
 
 export interface ToolExposureRequest {
   phase: ToolExposurePhase;
@@ -18,12 +11,11 @@ export interface ToolExposureRequest {
   persona?: unknown;
   /** Host-selected presentation subset; executable authorization comes from `entries`. */
   enabledTools?: true | string[];
-  sampleTools?: SamplingToolDefinitionLike[];
   metadata?: Record<string, unknown>;
 }
 
 export interface ToolExposurePolicy {
-  filter(request: ToolExposureRequest): Operation<PortableToolDefinition[]>;
+  filter(request: ToolExposureRequest): Operation<ChatToolDefinition[]>;
 }
 
 export class ToolExposureError extends Error {
@@ -36,32 +28,14 @@ export class ToolExposureError extends Error {
   }
 }
 
-function stripDefinition(definition: PortableToolDefinition): PortableToolDefinition {
-  return {
-    name: definition.name,
-    description: definition.description,
-    parameters: definition.parameters,
-    ...(definition.metadata ? { metadata: definition.metadata } : {}),
-  };
-}
-
-function sampleDefinition(tool: SamplingToolDefinitionLike): PortableToolDefinition {
-  return {
-    name: tool.name,
-    description: tool.description ?? "",
-    parameters: tool.parameters ??
-      tool.inputSchema ?? { type: "object", properties: {}, required: [] },
-  };
+function stripDefinition(definition: ChatToolDefinition): ChatToolDefinition {
+  return definition;
 }
 
 export const ToolExposurePolicyContext = createContext<ToolExposurePolicy>("ToolExposurePolicy");
 
 export const defaultToolExposurePolicy: ToolExposurePolicy = {
-  *filter(request: ToolExposureRequest): Operation<PortableToolDefinition[]> {
-    if (request.phase === "sample") {
-      return (request.sampleTools ?? []).map(sampleDefinition);
-    }
-
+  *filter(request: ToolExposureRequest): Operation<ChatToolDefinition[]> {
     const entries = request.entries ?? [];
     let selected = entries;
 
@@ -75,7 +49,7 @@ export const defaultToolExposurePolicy: ToolExposurePolicy = {
 };
 
 export const ToolExposureApi = {
-  *definitions(request: ToolExposureRequest): Operation<PortableToolDefinition[]> {
+  *definitions(request: ToolExposureRequest): Operation<ChatToolDefinition[]> {
     const policy = (yield* ToolExposurePolicyContext.get()) ?? defaultToolExposurePolicy;
     return yield* policy.filter(request);
   },

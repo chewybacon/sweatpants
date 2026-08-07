@@ -30,9 +30,7 @@ describe("model-sampling placement semantics", () => {
             ),
         },
         function* (s) {
-          const turn = yield* s
-            .conversation()
-            .send({ text: `PLACEMENT_${ownership.toUpperCase()}_V1` });
+          const turn = yield* s.conversation().send(`PLACEMENT_${ownership.toUpperCase()}_V1`);
           const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
           yield* request.respond.text(`PLACEMENT_${ownership.toUpperCase()}_COMPLETE`);
           expect((yield* turn.settled()).text).toBe(
@@ -83,7 +81,7 @@ describe("model-sampling placement semantics", () => {
           .conversation({
             initialToolChoice: "required",
           })
-          .send({ text: "Run the durable selection tool." });
+          .send("Run the durable selection tool.");
         const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
         yield* outer.respond.toolCalls([
           {
@@ -134,7 +132,7 @@ describe("model-sampling placement semantics", () => {
           ),
       },
       function* (s) {
-        const turn = yield* s.conversation().send({ text: "PLACEMENT_HTTP_EXECUTION_V1" });
+        const turn = yield* s.conversation().send("PLACEMENT_HTTP_EXECUTION_V1");
         const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
         yield* request.respond.text("PLACEMENT_HTTP_EXECUTION_COMPLETE");
         expect((yield* turn.settled()).text).toBe("PLACEMENT_HTTP_EXECUTION_COMPLETE");

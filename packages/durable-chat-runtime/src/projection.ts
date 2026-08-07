@@ -6,18 +6,17 @@
  * snapshot boundary extraction, checkpoint snapshot construction, and the
  * pending-resume consistency invariant.
  */
-import { EventType } from "@ag-ui/core";
+import { EventType, type AGUIEvent } from "@ag-ui/core";
 import { resource, type Operation, type Stream } from "effection";
 import type { StreamEvent } from "./handler/types.ts";
 import {
-  agUiMessagesToInternalMessages,
+  agUiMessagesToChatHistoryEntries,
   buildAgUiCustomState,
   createChatProjection,
-  foldChatStreamEvent,
+  foldAGUIEvent,
   materializeChatMessages,
-  projectChatMessagesToWire,
+  projectChatMessagesToAGUI,
   toProviderHistorySnapshot,
-  type ChatSessionStreamEvent as ChatStreamEvent,
   type DurableFrame,
   type ElicitRequestStreamEvent,
 } from "@sweatpants/chat-core";
@@ -58,7 +57,7 @@ function withPublicMetadata<T extends object>(
 }
 
 type RunFinishedInterrupt = Extract<
-  NonNullable<Extract<ChatStreamEvent, { type: EventType.RUN_FINISHED }>["outcome"]>,
+  NonNullable<Extract<AGUIEvent, { type: EventType.RUN_FINISHED }>["outcome"]>,
   { type: "interrupt" }
 >["interrupts"][number];
 
@@ -222,7 +221,7 @@ export function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnap
   nextIndex: number;
 } {
   const internalMessages = boundary.messages
-    ? agUiMessagesToInternalMessages(boundary.messages.messages)
+    ? agUiMessagesToChatHistoryEntries(boundary.messages.messages)
     : [];
   const messages = boundary.messages
     ? {
@@ -275,10 +274,10 @@ function providerHistoryFromFrames(frames: readonly DurableFrame[]) {
       frame.event.type !== EventType.ACTIVITY_SNAPSHOT &&
       frame.event.type !== EventType.ACTIVITY_DELTA
     ) {
-      projection = foldChatStreamEvent(projection, frame.event);
+      projection = foldAGUIEvent(projection, frame.event);
     }
   }
-  return projectChatMessagesToWire(materializeChatMessages(projection, { allowPending: true })).map(
+  return projectChatMessagesToAGUI(materializeChatMessages(projection, { allowPending: true })).map(
     (message) => {
       if (message.role !== "tool") {
         return message;

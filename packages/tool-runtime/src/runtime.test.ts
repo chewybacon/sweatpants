@@ -20,8 +20,9 @@ const entry: ToolInventoryEntry = {
 
 const call = {
   id: "call-1",
-  type: "function" as const,
-  function: { name: "echo", arguments: { message: "hello" } },
+  name: "echo",
+  input: { message: "hello" },
+  thoughtSignature: null,
 };
 
 describe("neutral tool runtime contracts", () => {
@@ -68,9 +69,9 @@ describe("neutral tool runtime contracts", () => {
               ref: createToolExecutionRef({
                 runtimeId: context.runtimeId,
                 callId: candidateCall.id,
-                toolName: candidateCall.function.name,
+                toolName: candidateCall.name,
               }),
-              result: candidateCall.function.arguments,
+              result: candidateCall.input,
             };
           },
         },

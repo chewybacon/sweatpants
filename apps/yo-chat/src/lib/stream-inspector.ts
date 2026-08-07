@@ -1,4 +1,4 @@
-import type { ChatStreamEvent, ChatTransportMiddleware } from "@sweatpants/chat-client";
+import type { AGUIEvent, ChatTransportMiddleware } from "@sweatpants/chat-client";
 import { resource, type Operation, type Stream } from "effection";
 
 export type InspectorEventPhase = "live" | "replay";
@@ -6,14 +6,14 @@ export type InspectorEventPhase = "live" | "replay";
 export interface InspectorEventEntry {
   readonly sequence: number;
   readonly phase: InspectorEventPhase;
-  readonly event: ChatStreamEvent;
+  readonly event: AGUIEvent;
   readonly receivedAt: number;
 }
 
 export interface StreamInspectorStore {
   snapshot(): readonly InspectorEventEntry[];
   subscribe(listener: () => void): () => void;
-  observe(event: ChatStreamEvent, phase: InspectorEventPhase): void;
+  observe(event: AGUIEvent, phase: InspectorEventPhase): void;
   clear(): void;
 }
 
@@ -75,14 +75,14 @@ export function createStreamInspectorStore(): StreamInspectorStore {
 }
 
 function observeStream(
-  source: Stream<ChatStreamEvent, void>,
+  source: Stream<AGUIEvent, void>,
   phase: InspectorEventPhase,
   store: StreamInspectorStore,
-): Stream<ChatStreamEvent, void> {
+): Stream<AGUIEvent, void> {
   return resource(function* (provide) {
     const subscription = yield* source;
     yield* provide({
-      *next(): Operation<IteratorResult<ChatStreamEvent, void>> {
+      *next(): Operation<IteratorResult<AGUIEvent, void>> {
         const result = yield* subscription.next();
         if (!result.done) {
           store.observe(result.value, phase);

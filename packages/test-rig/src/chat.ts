@@ -10,10 +10,11 @@ import {
   type ChatInteractionCompletion,
   type ChatInteractionRequest,
   type ChatInteractionRuntime,
-  type ChatSnapshot,
-  type ChatStreamEvent,
+  type ChatUISnapshot,
+  type AGUIEvent,
   type UserMessageInput,
 } from "@sweatpants/chat-client";
+export type { ChatUISnapshot } from "@sweatpants/chat-client";
 
 export type ChatFetch = FrameworkChatFetch;
 
@@ -77,14 +78,14 @@ export interface ElicitBarrier {
 }
 
 export interface TurnTranscript {
-  readonly events: readonly ChatStreamEvent[];
+  readonly events: readonly AGUIEvent[];
   readonly text: string;
   readonly outcome: "success" | "error" | "interrupt";
 }
 
 export interface ConversationTranscript {
   readonly conversationId: string;
-  readonly events: readonly ChatStreamEvent[];
+  readonly events: readonly AGUIEvent[];
   readonly text: string;
 }
 
@@ -93,15 +94,15 @@ export interface TurnHandle {
     expectation: string | RegExp | ((delta: string) => void),
   ): Promise<TextDeltaBarrier>;
   expectElicit(key: string): Promise<ElicitBarrier>;
-  snapshot(): ChatSnapshot;
-  expectSnapshot(predicate: (snapshot: ChatSnapshot) => boolean): Promise<ChatSnapshot>;
+  snapshot(): ChatUISnapshot;
+  expectSnapshot(predicate: (snapshot: ChatUISnapshot) => boolean): Promise<ChatUISnapshot>;
   cancel(): Promise<void>;
   complete(): Promise<TurnTranscript>;
 }
 
 export interface ConversationHandle {
   readonly conversationId: string;
-  snapshot(): ChatSnapshot;
+  snapshot(): ChatUISnapshot;
   /** Send one message using the exact ChatClient.sendMessage input contract. */
   send(message: UserMessageInput): TurnHandle;
   /** Cancel-on-send using the same ChatClient.sendMessage input contract. */
@@ -131,10 +132,10 @@ function matchesDelta(
   return true;
 }
 
-function textFromEvents(events: readonly ChatStreamEvent[]): string {
+function textFromEvents(events: readonly AGUIEvent[]): string {
   return events
     .filter(
-      (event): event is Extract<ChatStreamEvent, { type: EventType.TEXT_MESSAGE_CONTENT }> =>
+      (event): event is Extract<AGUIEvent, { type: EventType.TEXT_MESSAGE_CONTENT }> =>
         event.type === EventType.TEXT_MESSAGE_CONTENT,
     )
     .map((event) => event.delta)
@@ -173,7 +174,11 @@ function requestOptionsFetch(
     if ((init?.method === undefined || init.method === "POST") && typeof init?.body === "string") {
       try {
         const body = JSON.parse(init.body) as Record<string, unknown>;
-        body["threadId"] = conversationId;
+        const runInput = body["input"];
+        if (typeof runInput !== "object" || runInput === null || Array.isArray(runInput)) {
+          throw new Error("Chat transport request is missing its RunAgentInput envelope");
+        }
+        (runInput as Record<string, unknown>)["threadId"] = conversationId;
         body["conversationId"] = conversationId;
         if (options.systemPrompt !== undefined) {
           body["systemPrompt"] = options.systemPrompt;
@@ -204,9 +209,9 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         return existing.handle;
       }
 
-      const cumulativeEvents: ChatStreamEvent[] = [];
+      const cumulativeEvents: AGUIEvent[] = [];
       let activeTurn: { id: string; reject(error: unknown): void } | undefined;
-      let activeTurnEvents: ChatStreamEvent[] | undefined;
+      let activeTurnEvents: AGUIEvent[] | undefined;
       let turnSettled: Deferred<TurnTranscript> | undefined;
       let closed = false;
       const pendingDeltas: Array<{
@@ -215,8 +220,8 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
       }> = [];
       const pendingSnapshots: Array<{
         turnId: string;
-        predicate: (snapshot: ChatSnapshot) => boolean;
-        wait: Deferred<ChatSnapshot>;
+        predicate: (snapshot: ChatUISnapshot) => boolean;
+        wait: Deferred<ChatUISnapshot>;
       }> = [];
       const pendingElicits: ElicitBarrier[] = [];
       const elicitWaiters: Array<{ key: string; wait: Deferred<ElicitBarrier> }> = [];
@@ -325,7 +330,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         }
       }
 
-      function resolveSnapshotWaiters(snapshot: ChatSnapshot): void {
+      function resolveSnapshotWaiters(snapshot: ChatUISnapshot): void {
         for (let index = pendingSnapshots.length - 1; index >= 0; index -= 1) {
           const waiter = pendingSnapshots[index]!;
           try {
@@ -475,7 +480,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
       });
 
       function startTurn(
-        message: string | UserMessageInput,
+        message: UserMessageInput,
         supersede: boolean,
         sendMessage = true,
       ): TurnHandle {
@@ -507,7 +512,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
               }
             }
             if (sendMessage) {
-              await client.sendMessage(typeof message === "string" ? { text: message } : message);
+              await client.sendMessage(message);
             }
           } catch (error) {
             if (activeTurn?.id === turnId) {
@@ -551,7 +556,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
             if (predicate(current)) {
               return Promise.resolve(current);
             }
-            const wait = deferred<ChatSnapshot>();
+            const wait = deferred<ChatUISnapshot>();
             pendingSnapshots.push({ turnId, predicate, wait });
             return withBarrierTimeout(wait.promise, `snapshot for turn ${turnId}`);
           },

@@ -3,6 +3,7 @@ import type { UserMessageInput } from "@sweatpants/chat-client";
 import type { AgUiEvent, AgUiFrame } from "./ag-ui.ts";
 import type {
   ChatFetch,
+  ChatUISnapshot,
   ConversationHandle,
   ConversationOptions,
   ConversationTranscript,
@@ -35,7 +36,7 @@ import type { TestRig } from "./rig-types.ts";
  * ```ts
  * await scenario(rig, function* (s) {
  *   const conv = s.conversation();
- *   const turn = yield* conv.send({ text: "Book NYC to LAX." });
+ *   const turn = yield* conv.send("Book NYC to LAX.");
  *
  *   const first = yield* s.model.request();
  *   yield* first.respond.toolCalls([{ id, name, arguments: { ... } }]);
@@ -97,8 +98,6 @@ export interface ScriptElicitPlacement {
   readonly sequence: number;
 }
 
-export type ChatSnapshot = import("@sweatpants/chat-client").ChatSnapshot;
-
 export interface ScriptElicit {
   readonly key: string;
   readonly elicitId: string;
@@ -119,9 +118,9 @@ export interface ScriptTurn {
   /** Consume the next elicitation with this key (buffered or future). */
   elicit(key: string): Operation<ScriptElicit>;
   /** Return the authoritative generic snapshot at the current causal point. */
-  snapshot(): Operation<ChatSnapshot>;
+  snapshot(): Operation<ChatUISnapshot>;
   /** Wait for an authoritative snapshot matching the predicate. */
-  expectSnapshot(predicate: (snapshot: ChatSnapshot) => boolean): Operation<ChatSnapshot>;
+  expectSnapshot(predicate: (snapshot: ChatUISnapshot) => boolean): Operation<ChatUISnapshot>;
   /** Wait for a streamed text delta matching the expectation. */
   textDelta(expectation: string | RegExp | ((delta: string) => void)): Operation<TextDeltaBarrier>;
   /** Wait for the turn to settle successfully and return its transcript. */
@@ -134,7 +133,7 @@ export interface ScriptTurn {
 
 export interface ScriptConversation {
   readonly conversationId: string;
-  snapshot(): ChatSnapshot;
+  snapshot(): ChatUISnapshot;
   /** Send one message using the exact ChatClient.sendMessage input contract. */
   send(message: UserMessageInput): Operation<ScriptTurn>;
   /** Cancel-on-send using the same ChatClient.sendMessage input contract. */

@@ -76,7 +76,7 @@ describe("withTestRig lifecycle", () => {
         { ...baseOptions, scenarioTimeoutMs: 300, createApplication: idleApplication },
         async (rig) => {
           const conversation = rig.chat.conversation();
-          const turn = conversation.send({ text: "hello" });
+          const turn = conversation.send("hello");
           await turn.complete();
         },
       ),

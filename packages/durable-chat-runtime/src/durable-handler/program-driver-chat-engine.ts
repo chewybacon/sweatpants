@@ -1,4 +1,4 @@
-import { EventType } from "@ag-ui/core";
+import { EventType, type AGUIEvent } from "@ag-ui/core";
 import type {
   DurableEffectOutcomeAcknowledgement,
   DurableEffectRegistration,
@@ -7,6 +7,8 @@ import {
   assistantText,
   assistantToolCalls,
   createModelSamplingEffectRegistration,
+  sampleDurableModel,
+  type ModelSampleRequest,
   ExecutionModelSamplingServiceContext,
   MODEL_SAMPLE_EFFECT,
 } from "@sweatpants/model-sampling";
@@ -43,15 +45,18 @@ import { foreignToolAdapter, foreignToolAdapterChild } from "@sweatpants/tool-se
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import { computeClientElicitBindingId } from "@sweatpants/tool-session/mcp";
+import { type ChatMessage } from "@sweatpants/chat-contract";
+import { decodeChatHistoryEntries } from "@sweatpants/chat-core";
 
 import { runWithRenewedActivationLease } from "../host/activation-lease-coordinator.ts";
 import type {
-  ChatSessionStreamEvent as StreamEvent,
   ActivityDeltaEvent,
   ActivitySnapshotEvent,
   PublicActivityNode,
   PublicGenericActivityNode,
 } from "@sweatpants/chat-core";
+
+type StreamEvent = AGUIEvent;
 import {
   nativeProgramIdentities,
   requiresFencedActivation,
@@ -62,6 +67,7 @@ import { runLocalProgramActivation } from "./local-program-host.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ElicitResponse, ProgramRuntimeChatEngineParams } from "./types.ts";
 import { projectChatHistory } from "./model-sampling/history.ts";
+import { encodeChatHistoryEntriesForProgramInput } from "./program-driver-history.ts";
 import { createHostModelSamplingService } from "./model-sampling/service.ts";
 import { runWithTurnEventWriter } from "./model-sampling/turn-event-api.ts";
 
@@ -84,7 +90,7 @@ type ChatCall = {
   id: string;
   target: string;
   input: Json;
-  thoughtSignature?: string;
+  thoughtSignature: string | null;
 };
 
 type ProgramDriverChatEngineParams = ProgramRuntimeChatEngineParams & {
@@ -107,44 +113,48 @@ import {
 // Root tool owns the deterministic sample/tool loop and its durable continuation semantics.
 // fallow-ignore-next-line complexity
 const rootTool = createPinnedDurableProgram(manifest, function* (input, context) {
-  const messages = [...input.messages];
+  const historyEntries = decodeChatHistoryEntries(input.messages, "$.messages");
+  const messages: ChatMessage[] = projectChatHistory(historyEntries);
   const hasPriorAssistantOrTool = messages.some(
     (message) => message.role === "assistant" || message.role === "tool",
   );
   const completedCallIds = new Set<string>();
   for (let iteration = 0; iteration < input.maxIterations; iteration += 1) {
-    const sampled = yield* context.effect(
-      modelSample,
-      {
-        invocation: {
-          context: {
-            messages,
-            ...(input.systemPrompt !== undefined ? { systemPrompt: input.systemPrompt } : {}),
-          },
-          ...(iteration === 0 && !hasPriorAssistantOrTool && input.toolChoice !== undefined
-            ? { options: { toolChoice: input.toolChoice } }
-            : {}),
+    const sampleRequest: ModelSampleRequest = {
+      invocation: {
+        context: {
+          messages: [
+            ...(input.systemPrompt
+              ? [{ role: "system" as const, content: input.systemPrompt }]
+              : []),
+            ...messages,
+          ],
+          tools: [],
         },
-        tools: {
-          type: "embedded",
-          tools: Object.values(input.catalog.entries).map((entry) => entry.model),
-        },
-        response: { type: "message" },
-        classifications: [],
+        ...(iteration === 0 && !hasPriorAssistantOrTool && input.toolChoice !== undefined
+          ? { options: { toolChoice: input.toolChoice } }
+          : {}),
       },
-      { audience: "model-runtime" },
-    );
+      tools: {
+        type: "embedded",
+        tools: Object.values(input.catalog.entries).map((entry) => entry.model),
+      },
+      response: { type: "message" },
+    };
+    const sampled = yield* sampleDurableModel(context, sampleRequest, {
+      audience: "model-runtime",
+    });
     const text = assistantText(sampled.message);
     const calls: ChatCall[] = assistantToolCalls(sampled.message)
       .filter((call) => !completedCallIds.has(call.id))
       .map((call) => ({
         id: call.id,
         target: resolveOuterToolTarget(
-          call.function.name,
+          call.name,
           Object.keys(input.catalog.entries).map((name) => ({ name })),
         ),
-        input: call.function.arguments,
-        ...(call.thoughtSignature !== undefined ? { thoughtSignature: call.thoughtSignature } : {}),
+        input: call.input,
+        thoughtSignature: call.thoughtSignature,
       }));
     if (calls.length === 0) {
       yield* context.emit("assistant_text", { text });
@@ -153,7 +163,7 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
     for (const call of calls) {
       completedCallIds.add(call.id);
     }
-    messages.push({ role: "assistant", content: sampled.message.content });
+    messages.push(sampled.message.message);
     for (const call of calls) {
       yield* context.emit("tool_started", {
         callId: call.id,
@@ -173,7 +183,7 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
       });
       messages.push({
         role: "tool",
-        tool_call_id: call.id,
+        toolCallId: call.id,
         name: call.target,
         content: JSON.stringify(outcome.result),
         isError: outcome.failed,
@@ -297,7 +307,7 @@ function* activateProgramDriverChatEngine(
   let before = yield* journal.readJournal(params.conversationId, taskId);
   const foreignDriver = scopedForeignEffects ? "tool-session" : "chat-tool-runtime";
   const requestedInput: ChatProgramInput = {
-    messages: projectChatHistory(params.messages),
+    messages: encodeChatHistoryEntriesForProgramInput(params.messages),
     maxIterations: params.maxIterations,
     catalog: createChatToolCatalog(params, foreignDriver),
     ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),

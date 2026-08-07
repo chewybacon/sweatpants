@@ -28,7 +28,7 @@ async function supersedeParkedOrdinaryTool(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation();
-      const oldTurn = yield* conversation.send({ text: "SUPERSEDE_ORDINARY_OLD_V1" });
+      const oldTurn = yield* conversation.send("SUPERSEDE_ORDINARY_OLD_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {
@@ -39,7 +39,7 @@ async function supersedeParkedOrdinaryTool(binding: Binding): Promise<void> {
       ]);
       yield* oldTurn.elicit("pickFlight");
 
-      const replacement = yield* conversation.supersede({ text: "SUPERSEDE_ORDINARY_NEW_V1" });
+      const replacement = yield* conversation.supersede("SUPERSEDE_ORDINARY_NEW_V1");
       yield* oldTurn.failure(/turn_superseded/);
       const replacementRequest = yield* s.model.request((request) => {
         const input = JSON.stringify(request.body.input);
@@ -76,7 +76,7 @@ async function supersedeParkedDurableTool(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation();
-      const oldTurn = yield* conversation.send({ text: "SUPERSEDE_DURABLE_OLD_V1" });
+      const oldTurn = yield* conversation.send("SUPERSEDE_DURABLE_OLD_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {
@@ -91,7 +91,7 @@ async function supersedeParkedDurableTool(binding: Binding): Promise<void> {
       yield* nested.respond.text("durable nested response");
       yield* oldTurn.elicit("chooseOption");
 
-      const replacement = yield* conversation.supersede({ text: "SUPERSEDE_DURABLE_NEW_V1" });
+      const replacement = yield* conversation.supersede("SUPERSEDE_DURABLE_NEW_V1");
       yield* oldTurn.failure(/turn_superseded/);
       const replacementRequest = yield* s.model.request((request) => {
         const input = JSON.stringify(request.body.input);
@@ -116,7 +116,7 @@ async function cancelDurableNestedSample(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: "CANCEL_DURABLE_SAMPLE_V1" });
+      const turn = yield* conversation.send("CANCEL_DURABLE_SAMPLE_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {
@@ -136,7 +136,7 @@ async function cancelDurableNestedSample(binding: Binding): Promise<void> {
 
       const recovered = yield* conversation.reopen();
       expect(recovered.conversationId).toBe(conversation.conversationId);
-      const recoveryTurn = yield* recovered.send({ text: "RECOVER_AFTER_DURABLE_CANCEL_V1" });
+      const recoveryTurn = yield* recovered.send("RECOVER_AFTER_DURABLE_CANCEL_V1");
       const recovery = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* recovery.respond.text("DURABLE_CANCEL_RECOVERED_V1");
       expect((yield* recoveryTurn.settled()).text).toBe("DURABLE_CANCEL_RECOVERED_V1");

@@ -93,8 +93,9 @@ describe("@sweatpants/tool-runtime-agentcore strict parameter acceptance", () =>
           entry: createToolInventoryEntry(remoteTool),
           call: {
             id: "call-invalid-agentcore",
-            type: "function",
-            function: { name: "remote_echo", arguments: {} },
+            name: "remote_echo",
+            input: {},
+            thoughtSignature: null,
           },
         });
         throw new Error("expected validation failure");
@@ -110,8 +111,9 @@ describe("@sweatpants/tool-runtime-agentcore strict parameter acceptance", () =>
         entry: createToolInventoryEntry(remoteTool),
         call: {
           id: "call-valid-agentcore",
-          type: "function",
-          function: { name: "remote_echo", arguments: { message: "hello" } },
+          name: "remote_echo",
+          input: { message: "hello" },
+          thoughtSignature: null,
         },
       });
       expect(result).toMatchObject({ kind: "completed", result: { echoed: "hello" } });

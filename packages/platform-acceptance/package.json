@@ -15,6 +15,7 @@
         "@sweatpants/a2a": "workspace:*",
         "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/chat-contract": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",

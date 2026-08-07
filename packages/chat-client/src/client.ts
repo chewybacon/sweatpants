@@ -31,14 +31,16 @@ import {
 } from "./ports.ts";
 import { createHttpTransport, type ChatFetch, type HttpTransportOptions } from "./http.ts";
 import {
-  projectChatMessagesToWire as messagesToWire,
-  type ClientChatMessage as ChatMessage,
+  projectChatMessagesToAGUI as messagesToAGUI,
+  type ChatUIMessage,
+  type ChatContent,
+  type ChatContentPart,
   type ChatLocalPart,
-  type ClientChatPart as ChatPart,
-  type ChatSendRequest,
-  type ChatRequestMessage,
-  type ClientChatSnapshot as ChatSnapshot,
-  type ChatStreamEvent,
+  type ChatUIPart,
+  type ChatTransportRequest,
+  type ChatTransportRequestMessage,
+  type ChatUISnapshot,
+  type AGUIEvent,
   type ChatTransportContract,
   type ChatTransportControl,
   type ChatQueueOption,
@@ -142,19 +144,19 @@ export interface ChatClientControl<
 > {
   readonly id: string;
   readonly threadId: string;
-  getSnapshot(): ChatSnapshot<ChatMessage<TLocalPart>>;
+  getSnapshot(): ChatUISnapshot<ChatUIMessage<TLocalPart>>;
   reconnect(): Promise<void>;
 }
 
 export type ChatSchedulerDriver = ChatSchedulerContract;
 
-export interface ChatClient<TMessage extends ChatMessage<ChatLocalPart> = ChatMessage> {
+export interface ChatClient<TMessage extends ChatUIMessage<ChatLocalPart> = ChatUIMessage> {
   readonly id: string;
   readonly threadId: string;
   readonly initialized: Promise<void>;
   readonly transport: ChatTransportControl;
-  getSnapshot(): ChatSnapshot<TMessage>;
-  getServerSnapshot(): ChatSnapshot<TMessage>;
+  getSnapshot(): ChatUISnapshot<TMessage>;
+  getServerSnapshot(): ChatUISnapshot<TMessage>;
   subscribe(listener: () => void): () => void;
   sendMessage(input: UserMessageInput, options?: SendMessageOptions): Promise<void>;
   regenerate(options?: RegenerateOptions): Promise<void>;
@@ -188,8 +190,8 @@ function deepFreeze<T>(value: T, seen = new WeakSet()): T {
   return value;
 }
 
-function makeInitialSnapshot<TLocalPart extends ChatLocalPart = never>(): ChatSnapshot<
-  ChatMessage<TLocalPart>
+function makeInitialSnapshot<TLocalPart extends ChatLocalPart = never>(): ChatUISnapshot<
+  ChatUIMessage<TLocalPart>
 > {
   return deepFreeze({
     messages: Object.freeze([]),
@@ -240,7 +242,7 @@ function defaultPipelineFactory(
 }
 
 function lastRegeneratableMessageId<TLocalPart extends ChatLocalPart>(
-  messages: readonly ChatMessage<TLocalPart>[],
+  messages: readonly ChatUIMessage<TLocalPart>[],
 ): string | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
@@ -251,11 +253,55 @@ function lastRegeneratableMessageId<TLocalPart extends ChatLocalPart>(
   return undefined;
 }
 
-function createUserWire(input: UserMessageInput): Extract<ChatRequestMessage, { role: "user" }> {
+function createUserWire(
+  input: UserMessageInput,
+): Extract<ChatTransportRequestMessage, { role: "user" }> {
+  if (typeof input === "string") {
+    return { id: crypto.randomUUID(), role: "user", content: input };
+  }
   return {
     id: input.id ?? crypto.randomUUID(),
     role: "user",
-    content: "text" in input ? input.text : [...input.parts],
+    content: userContentToWire(input.content),
+  };
+}
+
+function userContentToWire(
+  content: ChatContent,
+): Extract<ChatTransportRequestMessage, { role: "user" }>["content"] {
+  if (typeof content === "string") return content;
+  return content.map((part: ChatContentPart) => {
+    if (part.type === "text") return { type: "text", text: part.text };
+    return part.metadata === null
+      ? { type: part.type, source: part.source }
+      : { type: part.type, source: part.source, metadata: part.metadata };
+  });
+}
+
+function runAgentInput(input: {
+  readonly threadId: string;
+  readonly runId: string;
+  readonly messages: readonly ChatTransportRequestMessage[];
+  readonly state: Json;
+  readonly context: readonly { readonly description: string; readonly value: string }[];
+  readonly forwardedProps: Json;
+  readonly parentRunId?: string;
+  readonly resume?: readonly {
+    readonly interruptId: string;
+    readonly status: "resolved" | "cancelled";
+    readonly payload?: Json;
+  }[];
+}): ChatTransportRequest["input"] {
+  return {
+    threadId: input.threadId,
+    runId: input.runId,
+    messages: [...input.messages],
+    state: input.state,
+    tools: [],
+    context: [...input.context],
+    forwardedProps: input.forwardedProps,
+    ...(input.parentRunId === undefined ? {} : { parentRunId: input.parentRunId }),
+    ...(input.resume === undefined ? {} : { resume: [...input.resume] }),
   };
 }
 
@@ -333,7 +379,7 @@ function installMiddleware<T extends object>(
 
 class ChatClientController<
   TLocalPart extends { readonly type: string; readonly id: string } = never,
-> implements ChatClient<ChatMessage<TLocalPart>> {
+> implements ChatClient<ChatUIMessage<TLocalPart>> {
   readonly id: string;
   readonly threadId: string;
   readonly initialized: Promise<void>;
@@ -351,18 +397,18 @@ class ChatClientController<
   private readonly commandQueue: CommandEntry[] = [];
   private readonly compactor: LiveChatCompactor;
   private readonly queueOptions: ResolvedQueueOptions;
-  private pendingPublicationChanges: Partial<ChatSnapshot<ChatMessage<TLocalPart>>> = {};
-  private snapshot: ChatSnapshot<ChatMessage<TLocalPart>> = makeInitialSnapshot<TLocalPart>();
-  private serverSnapshot: ChatSnapshot<ChatMessage<TLocalPart>> = this.snapshot;
-  private manualMessages: readonly ChatMessage<TLocalPart>[] | null = null;
+  private pendingPublicationChanges: Partial<ChatUISnapshot<ChatUIMessage<TLocalPart>>> = {};
+  private snapshot: ChatUISnapshot<ChatUIMessage<TLocalPart>> = makeInitialSnapshot<TLocalPart>();
+  private serverSnapshot: ChatUISnapshot<ChatUIMessage<TLocalPart>> = this.snapshot;
+  private manualMessages: readonly ChatUIMessage<TLocalPart>[] | null = null;
   private queued: readonly QueuedUserMessage[] = [];
   private readonly queuedCompletions: WithResolvers<void>[] = [];
   private clientScope: Scope | null = null;
   private commandScope: Scope | null = null;
   private destroyClientScope: (() => Promise<void>) | null = null;
   private bootstrapTask: Task<void> | null = null;
-  private activeTask: Task<ChatStreamEvent | null> | null = null;
-  private activeRequest: ChatSendRequest | null = null;
+  private activeTask: Task<AGUIEvent | null> | null = null;
+  private activeRequest: ChatTransportRequest | null = null;
   private readyForCommands = false;
   private initializedResolved = false;
   private closed = false;
@@ -416,11 +462,11 @@ class ChatClientController<
     this.bootstrapTask = bootstrapScope.run(() => this.bootstrap());
   }
 
-  getSnapshot(): ChatSnapshot<ChatMessage<TLocalPart>> {
+  getSnapshot(): ChatUISnapshot<ChatUIMessage<TLocalPart>> {
     return this.snapshot;
   }
 
-  getServerSnapshot(): ChatSnapshot<ChatMessage<TLocalPart>> {
+  getServerSnapshot(): ChatUISnapshot<ChatUIMessage<TLocalPart>> {
     return this.serverSnapshot;
   }
 
@@ -454,8 +500,8 @@ class ChatClientController<
 
   setMessages(
     update:
-      | readonly ChatMessage<TLocalPart>[]
-      | ((current: readonly ChatMessage<TLocalPart>[]) => readonly ChatMessage<TLocalPart>[]),
+      | readonly ChatUIMessage<TLocalPart>[]
+      | ((current: readonly ChatUIMessage<TLocalPart>[]) => readonly ChatUIMessage<TLocalPart>[]),
   ): void {
     if (this.closed) {
       throw new ChatClientError("chat_client_closed", "Chat client is closed");
@@ -697,8 +743,10 @@ class ChatClientController<
       setMessages: (update) =>
         this.setMessagesImpl(
           update as
-            | readonly ChatMessage<TLocalPart>[]
-            | ((current: readonly ChatMessage<TLocalPart>[]) => readonly ChatMessage<TLocalPart>[]),
+            | readonly ChatUIMessage<TLocalPart>[]
+            | ((
+                current: readonly ChatUIMessage<TLocalPart>[],
+              ) => readonly ChatUIMessage<TLocalPart>[]),
         ),
       clearError: () => this.clearErrorImpl(),
       close: () => this.closeImpl(),
@@ -714,7 +762,7 @@ class ChatClientController<
       }
       if (policy === "queue") {
         const queued: QueuedUserMessage = {
-          id: "id" in input && input.id ? input.id : crypto.randomUUID(),
+          id: typeof input === "string" ? crypto.randomUUID() : (input.id ?? crypto.randomUUID()),
           input,
           createdAt: Date.now(),
         };
@@ -750,15 +798,18 @@ class ChatClientController<
     this.compactor.append(wire);
     const runId = crypto.randomUUID();
     this.publishProjection({ status: "submitted", connectionStatus: "connecting", runId });
-    const request: ChatSendRequest = {
+    const request: ChatTransportRequest = {
       trigger: "submit-message",
       clientId: this.id,
-      threadId: this.threadId,
-      runId,
-      messages: [...messagesToWire(localBase), wire],
-      state: this.state,
-      context: this.context,
-      forwardedProps: options.forwardedProps ?? this.forwardedProps,
+      conversationId: this.threadId,
+      input: runAgentInput({
+        threadId: this.threadId,
+        runId,
+        messages: [...messagesToAGUI(localBase), wire],
+        state: this.state,
+        context: this.context,
+        forwardedProps: options.forwardedProps ?? this.forwardedProps,
+      }),
     };
     const terminal = yield* this.runRequest(request);
     yield* this.finishRequest(terminal);
@@ -782,16 +833,19 @@ class ChatClientController<
     }
     this.manualMessages = null;
     const runId = crypto.randomUUID();
-    const request: ChatSendRequest = {
+    const request: ChatTransportRequest = {
       trigger: "regenerate-message",
       clientId: this.id,
-      threadId: this.threadId,
-      runId,
-      ...(target !== undefined ? { messageId: target } : {}),
-      messages: messagesToWire(baseMessages),
-      state: this.state,
-      context: this.context,
-      forwardedProps: options.forwardedProps ?? this.forwardedProps,
+      conversationId: this.threadId,
+      ...(target === undefined ? {} : { messageId: target }),
+      input: runAgentInput({
+        threadId: this.threadId,
+        runId,
+        messages: messagesToAGUI(baseMessages),
+        state: this.state,
+        context: this.context,
+        forwardedProps: options.forwardedProps ?? this.forwardedProps,
+      }),
     };
     this.publish({ status: "submitted", connectionStatus: "connecting", runId });
     const terminal = yield* this.runRequest(request);
@@ -807,10 +861,9 @@ class ChatClientController<
     const request = this.activeRequest;
     if (request) {
       const signal = yield* useAbortSignal();
-      const cancellation: ChatSendRequest = {
+      const cancellation: ChatTransportRequest = {
         ...request,
         trigger: "cancel-run",
-        runId: request.runId,
         cancellationReason: reason,
       };
       try {
@@ -898,8 +951,8 @@ class ChatClientController<
 
   private *setMessagesImpl(
     update:
-      | readonly ChatMessage<TLocalPart>[]
-      | ((current: readonly ChatMessage<TLocalPart>[]) => readonly ChatMessage<TLocalPart>[]),
+      | readonly ChatUIMessage<TLocalPart>[]
+      | ((current: readonly ChatUIMessage<TLocalPart>[]) => readonly ChatUIMessage<TLocalPart>[]),
   ): Operation<void> {
     this.ensureOpen();
     const current = this.manualMessages ?? this.snapshot.messages;
@@ -924,7 +977,7 @@ class ChatClientController<
     }
   }
 
-  private *runRequest(request: ChatSendRequest): Operation<ChatStreamEvent | null> {
+  private *runRequest(request: ChatTransportRequest): Operation<AGUIEvent | null> {
     const task = yield* spawn(() => this.requestOperation(request));
     this.activeTask = task;
     this.activeRequest = request;
@@ -947,7 +1000,7 @@ class ChatClientController<
     }
   }
 
-  private *requestOperation(request: ChatSendRequest): Operation<ChatStreamEvent | null> {
+  private *requestOperation(request: ChatTransportRequest): Operation<AGUIEvent | null> {
     const signal = yield* useAbortSignal();
     try {
       const stream = yield* ChatTransportPort.api.operations.sendMessages(request, signal);
@@ -963,7 +1016,7 @@ class ChatClientController<
     }
   }
 
-  private *finishRequest(terminal: ChatStreamEvent | null): Operation<void> {
+  private *finishRequest(terminal: AGUIEvent | null): Operation<void> {
     const runError = terminal?.type === EventType.RUN_ERROR ? terminal : null;
     yield* this.flushPublication(
       {
@@ -979,11 +1032,11 @@ class ChatClientController<
   }
 
   private *consumeStream(
-    stream: Stream<ChatStreamEvent, void>,
+    stream: Stream<AGUIEvent, void>,
     requireTerminal: boolean,
-  ): Operation<ChatStreamEvent | null> {
+  ): Operation<AGUIEvent | null> {
     const clockInstalled = yield* ChatSchedulerPort.isInstalled();
-    let terminalEvent: ChatStreamEvent | null;
+    let terminalEvent: AGUIEvent | null;
     if (clockInstalled) {
       const pacedTerminal = yield* this.consumePacedStream(stream);
       terminalEvent = pacedTerminal;
@@ -1010,12 +1063,10 @@ class ChatClientController<
     return terminalEvent;
   }
 
-  private *consumePacedStream(
-    stream: Stream<ChatStreamEvent, void>,
-  ): Operation<ChatStreamEvent | null> {
+  private *consumePacedStream(stream: Stream<AGUIEvent, void>): Operation<AGUIEvent | null> {
     const events = yield* createEagerBuffer(stream);
     const clock = ChatSchedulerPort.api.operations.clock();
-    let terminalEvent: ChatStreamEvent | null = null;
+    let terminalEvent: AGUIEvent | null = null;
 
     for (const _tick of yield* each(clock)) {
       const batch = events.drain();
@@ -1037,11 +1088,9 @@ class ChatClientController<
     );
   }
 
-  private *consumeUnpacedStream(
-    stream: Stream<ChatStreamEvent, void>,
-  ): Operation<ChatStreamEvent | null> {
+  private *consumeUnpacedStream(stream: Stream<AGUIEvent, void>): Operation<AGUIEvent | null> {
     const subscription = yield* stream;
-    let terminalEvent: ChatStreamEvent | null = null;
+    let terminalEvent: AGUIEvent | null = null;
     let next = yield* subscription.next();
 
     while (!next.done) {
@@ -1052,8 +1101,8 @@ class ChatClientController<
     return terminalEvent;
   }
 
-  private *publishEventBatch(batch: readonly ChatStreamEvent[]): Operation<ChatStreamEvent | null> {
-    let terminalEvent: ChatStreamEvent | null = null;
+  private *publishEventBatch(batch: readonly AGUIEvent[]): Operation<AGUIEvent | null> {
+    let terminalEvent: AGUIEvent | null = null;
     for (const event of batch) {
       yield* ChatEventApi.operations.accept(event);
       if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) {
@@ -1073,7 +1122,7 @@ class ChatClientController<
     return terminalEvent;
   }
 
-  private *processEvent(event: ChatStreamEvent): Operation<void> {
+  private *processEvent(event: AGUIEvent): Operation<void> {
     try {
       for (const action of this.compactor.ingest(event)) {
         yield* this.interpretProjectionAction(action);
@@ -1135,32 +1184,35 @@ class ChatClientController<
                 : { payload: { action: "decline" as const } }),
             },
           ];
-    const transportRequest: ChatSendRequest = {
+    const transportRequest: ChatTransportRequest = {
       trigger: "submit-message",
       clientId: this.id,
-      threadId: this.threadId,
-      runId: crypto.randomUUID(),
-      messages: messagesToWire(this.snapshot.messages),
-      state: this.state,
-      context: this.context,
-      forwardedProps: this.forwardedProps,
-      resume,
+      conversationId: this.threadId,
+      input: runAgentInput({
+        threadId: this.threadId,
+        runId: crypto.randomUUID(),
+        messages: messagesToAGUI(this.snapshot.messages),
+        state: this.state,
+        context: this.context,
+        forwardedProps: this.forwardedProps,
+        resume,
+      }),
     };
     this.publish({ status: "submitted", connectionStatus: "connecting" });
     const terminal = yield* this.runRequest(transportRequest);
     yield* this.finishRequest(terminal);
   }
 
-  private currentPublicationStatus(): ChatSnapshot<ChatMessage<TLocalPart>>["status"] {
+  private currentPublicationStatus(): ChatUISnapshot<ChatUIMessage<TLocalPart>>["status"] {
     return this.pendingPublicationChanges.status ?? this.snapshot.status;
   }
 
-  private stagePublication(changes: Partial<ChatSnapshot<ChatMessage<TLocalPart>>>): void {
+  private stagePublication(changes: Partial<ChatUISnapshot<ChatUIMessage<TLocalPart>>>): void {
     this.pendingPublicationChanges = { ...this.pendingPublicationChanges, ...changes };
   }
 
   private *flushPublication(
-    changes: Partial<ChatSnapshot<ChatMessage<TLocalPart>>>,
+    changes: Partial<ChatUISnapshot<ChatUIMessage<TLocalPart>>>,
     finishPipelines: boolean,
   ): Operation<void> {
     if (finishPipelines) {
@@ -1216,8 +1268,8 @@ class ChatClientController<
     }
   }
 
-  private publishProjection(changes: Partial<ChatSnapshot<ChatMessage<TLocalPart>>>): void {
-    let messages: readonly ChatMessage<TLocalPart>[] = this.snapshot.messages;
+  private publishProjection(changes: Partial<ChatUISnapshot<ChatUIMessage<TLocalPart>>>): void {
+    let messages: readonly ChatUIMessage<TLocalPart>[] = this.snapshot.messages;
     try {
       messages = this.compactor.materialize<TLocalPart>();
     } catch (error) {
@@ -1242,7 +1294,7 @@ class ChatClientController<
   }
 
   private publish(
-    changes: Partial<ChatSnapshot<ChatMessage<TLocalPart>>>,
+    changes: Partial<ChatUISnapshot<ChatUIMessage<TLocalPart>>>,
     updateServer = true,
   ): void {
     const next = deepFreeze({
@@ -1254,7 +1306,7 @@ class ChatClientController<
     if (updateServer) {
       const serverChanges = Object.fromEntries(
         Object.entries(changes).filter(([key]) => key !== "messages"),
-      ) as Partial<ChatSnapshot<ChatMessage<TLocalPart>>>;
+      ) as Partial<ChatUISnapshot<ChatUIMessage<TLocalPart>>>;
       this.serverSnapshot = deepFreeze({
         ...this.serverSnapshot,
         ...serverChanges,
@@ -1307,23 +1359,23 @@ class ChatClientController<
   }
 }
 
-function containsNestedMessage(message: ChatMessage<ChatLocalPart>, targetId: string): boolean {
+function containsNestedMessage(message: ChatUIMessage<ChatLocalPart>, targetId: string): boolean {
   return message.parts.some((part) => {
     if (part.type === "message" && "message" in part) {
-      const nested = part as { readonly message: ChatMessage<ChatLocalPart> };
+      const nested = part as { readonly message: ChatUIMessage<ChatLocalPart> };
       return nested.message.id === targetId || containsNestedMessage(nested.message, targetId);
     }
     if (!("parts" in part) || !Array.isArray(part.parts)) {
       return false;
     }
-    const children = part.parts as readonly ChatPart<ChatLocalPart>[];
+    const children = part.parts as readonly ChatUIPart<ChatLocalPart>[];
     return children.some(
       (child) =>
         child.type === "message" &&
         "message" in child &&
-        ((child as { readonly message: ChatMessage<ChatLocalPart> }).message.id === targetId ||
+        ((child as { readonly message: ChatUIMessage<ChatLocalPart> }).message.id === targetId ||
           containsNestedMessage(
-            (child as { readonly message: ChatMessage<ChatLocalPart> }).message,
+            (child as { readonly message: ChatUIMessage<ChatLocalPart> }).message,
             targetId,
           )),
     );
@@ -1338,7 +1390,7 @@ function awaitDestroy(destroy: (() => Promise<void>) | null): void {
 
 export function createChatClient<
   TLocalPart extends { readonly type: string; readonly id: string } = never,
->(options: ChatClientOptions<TLocalPart>): ChatClient<ChatMessage<TLocalPart>> {
+>(options: ChatClientOptions<TLocalPart>): ChatClient<ChatUIMessage<TLocalPart>> {
   // Validate before allocating the owned root scope so malformed configuration
   // cannot leave a scope behind while the controller is being constructed.
   normalizeQueueOption(options.queue);
@@ -1364,7 +1416,7 @@ export function createClientFromRuntime<
 >(
   runtime: InternalRuntime,
   options: ChatClientOptions<TLocalPart>,
-): ChatClient<ChatMessage<TLocalPart>> {
+): ChatClient<ChatUIMessage<TLocalPart>> {
   const controller = new ChatClientController<TLocalPart>(
     runtime.bootstrapScope,
     runtime.initialized,

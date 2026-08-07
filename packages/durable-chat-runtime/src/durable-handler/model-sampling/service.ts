@@ -1,6 +1,11 @@
 import { EventType } from "@ag-ui/core";
 import { CrankError } from "@sweatpants/durable-execution";
-import { ModelProviderApi, type Model, type StreamOptions } from "@sweatpants/model-provider";
+import {
+  ModelProviderApi,
+  UnsupportedModelCapabilityError,
+  type Model,
+  type StreamOptions,
+} from "@sweatpants/model-provider";
 import {
   assistantToolCalls,
   settleModelSample,
@@ -80,7 +85,7 @@ export function createHostModelSamplingService(options: {
             }
             return { status: "ok", value: result };
           }
-          if (next.value.type === "text_delta") {
+          if (next.value.type === "text-delta") {
             if (partialText.length < MAX_PARTIAL_TEXT_LENGTH) {
               partialText += next.value.delta.slice(
                 0,
@@ -104,11 +109,7 @@ export function createHostModelSamplingService(options: {
             }
           }
           if (next.value.type === "error") {
-            const providerMessage = safeProviderErrorMessage(next.value.error.errorMessage);
-            throw new CrankError(
-              "model_runtime_failed",
-              providerMessage ? `Model runtime failed: ${providerMessage}` : "Model runtime failed",
-            );
+            throw new CrankError("model_runtime_failed", "Model runtime failed");
           }
         }
       } catch (error) {
@@ -119,6 +120,11 @@ export function createHostModelSamplingService(options: {
           };
         }
         if (error instanceof CrankError) throw error;
+        if (error instanceof UnsupportedModelCapabilityError) {
+          throw new CrankError("unsupported_model_capability", error.message, undefined, {
+            cause: error,
+          });
+        }
         throw new CrankError("model_runtime_failed", "Provider error", undefined, { cause: error });
       }
     },

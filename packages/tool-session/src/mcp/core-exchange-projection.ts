@@ -1,4 +1,5 @@
 import type { ElicitExchange, SampleExchange } from "@sweatpants/agent-sdk";
+import { chatMessagesToMcpMessages } from "../messages.ts";
 import type { McpMessage } from "./protocol/types.ts";
 
 type CoreExchange = ElicitExchange<unknown> | SampleExchange;
@@ -11,14 +12,14 @@ type CoreExchange = ElicitExchange<unknown> | SampleExchange;
 export function projectCoreElicitExchangeToMcpMessages(
   exchange: ElicitExchange<unknown>,
 ): McpMessage[] {
-  return exchange.messages as McpMessage[];
+  return chatMessagesToMcpMessages(exchange.messages);
 }
 
 /**
  * Project a sample exchange into MCP transcript messages.
  */
 export function projectCoreSampleExchangeToMcpMessages(exchange: SampleExchange): McpMessage[] {
-  return exchange.messages as McpMessage[];
+  return chatMessagesToMcpMessages(exchange.messages);
 }
 
 function isElicitExchange(exchange: CoreExchange): exchange is ElicitExchange<unknown> {

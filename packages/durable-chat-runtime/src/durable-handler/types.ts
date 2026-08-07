@@ -4,7 +4,7 @@ import type { Model, StreamOptions } from "@sweatpants/model-provider";
 import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
 import type { ToolRuntime } from "@sweatpants/tool-runtime";
 import type { HistoryPolicy } from "@sweatpants/chat-core";
-import type { StreamEvent, ChatMessage } from "../handler/types.ts";
+import type { StreamEvent, ChatHistoryEntry } from "../handler/types.ts";
 import type { AgUiRunMetadata } from "@sweatpants/chat-core";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
@@ -37,7 +37,7 @@ export interface ToolSchema {
 export type { McpToolRegistry } from "@sweatpants/chat-core";
 
 export interface ProgramRuntimeChatEngineParams {
-  messages: ChatMessage[];
+  messages: readonly ChatHistoryEntry[];
   systemPrompt?: string;
   toolSchemas: ToolSchema[];
   model: Model;

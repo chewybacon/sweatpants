@@ -1,6 +1,6 @@
 import { parseRuntimeToolParameters } from "@sweatpants/tool-session/tool-parameters";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
-import type { ToolCall } from "@sweatpants/model-provider";
+import type { ChatToolCall } from "@sweatpants/chat-contract";
 import { action, resource, spawn, type Operation, type Stream } from "effection";
 import {
   installToolRuntime,
@@ -74,7 +74,7 @@ function eventStreamFromSession(session: McpToolSession): Stream<ToolExecutionEv
 
 function mcpEventToExecution(
   runtimeId: string,
-  call: ToolCall,
+  call: ChatToolCall,
   session: McpToolSession,
   event: McpToolSessionEvent | null,
 ): ToolExecution {
@@ -160,7 +160,7 @@ function afterLsnFromElicitId(elicitId: string | undefined): number | undefined 
 
 function* nextMcpExecution(
   runtimeId: string,
-  call: ToolCall,
+  call: ChatToolCall,
   session: McpToolSession,
   samplingProvider: ToolSessionSamplingProvider,
   afterLSN?: number,
@@ -213,13 +213,13 @@ export function createLocalSessionToolExecutionStrategy(
     id: strategyId,
     toolNames: Object.freeze([...toolsByName.keys()]),
     canExecute(entry, call) {
-      return entry.definition.name === call.function.name && toolsByName.has(entry.definition.name);
+      return entry.definition.name === call.name && toolsByName.has(entry.definition.name);
     },
     *execute(entry, call, ctx: ToolExecutionContext): Operation<ToolExecution> {
-      if (entry.definition.name !== call.function.name) {
+      if (entry.definition.name !== call.name) {
         throw new ToolRuntimeError(
           "TOOL_CALL_ENTRY_MISMATCH",
-          `Tool inventory entry "${entry.definition.name}" does not match call target "${call.function.name}"`,
+          `Tool inventory entry "${entry.definition.name}" does not match call target "${call.name}"`,
         );
       }
       const tool = toolsByName.get(entry.definition.name);
@@ -229,7 +229,7 @@ export function createLocalSessionToolExecutionStrategy(
           `Local session strategy cannot execute tool: ${entry.definition.name}`,
         );
       }
-      const params = yield* parseRuntimeToolParameters(tool, call.function.arguments, call.id);
+      const params = yield* parseRuntimeToolParameters(tool, call.input, call.id);
       const session = yield* options.registry.create(tool, params, {
         sessionId: call.id,
         ...(ctx.signal ? { signal: ctx.signal } : {}),
@@ -271,8 +271,9 @@ export function createLocalSessionToolExecutionStrategy(
         ctx.runtimeId,
         {
           id: ref.callId,
-          type: "function",
-          function: { name: ref.toolName || session.toolName, arguments: {} },
+          name: ref.toolName || session.toolName,
+          input: {},
+          thoughtSignature: null,
         },
         session,
         options.samplingProvider,

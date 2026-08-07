@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ElicitExchange, SampleExchange, ToolMessage } from "@sweatpants/agent-sdk";
+import type { ElicitExchange, SampleExchange } from "@sweatpants/agent-sdk";
+import type {
+  ChatAssistantMessage,
+  ChatToolResultMessage,
+  ChatUserMessage,
+} from "@sweatpants/chat-contract";
 import {
   projectCoreElicitExchangeToMcpMessages,
   projectCoreInteractionExchangeToMcpMessages,
@@ -8,19 +13,26 @@ import {
 } from "../core-exchange-projection.ts";
 
 function elicitExchange(context: { flightId: string }): ElicitExchange<{ flightId: string }> {
-  const request: ToolMessage & { role: "assistant" } = {
+  const request: ChatAssistantMessage = {
     role: "assistant",
-    content: [{ type: "tool_use", id: "elicit:confirm", name: "confirm", input: {} }],
-  };
-  const response: ToolMessage & { role: "user" } = {
-    role: "user",
     content: [
       {
-        type: "tool_result",
-        toolUseId: "elicit:confirm",
-        content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+        type: "tool-call",
+        toolCall: {
+          id: "elicit:confirm",
+          name: "confirm",
+          input: {},
+          thoughtSignature: null,
+        },
       },
     ],
+  };
+  const response: ChatToolResultMessage = {
+    role: "tool",
+    toolCallId: "elicit:confirm",
+    name: "confirm",
+    content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+    isError: false,
   };
   return {
     context,
@@ -32,7 +44,17 @@ function elicitExchange(context: { flightId: string }): ElicitExchange<{ flightI
       return [
         {
           role: "assistant",
-          content: [{ type: "tool_use", id: "elicit:confirm", name: "confirm", input: args }],
+          content: [
+            {
+              type: "tool-call",
+              toolCall: {
+                id: "elicit:confirm",
+                name: "confirm",
+                input: args,
+                thoughtSignature: null,
+              },
+            },
+          ],
         },
         response,
       ];
@@ -41,11 +63,11 @@ function elicitExchange(context: { flightId: string }): ElicitExchange<{ flightI
 }
 
 function sampleExchange(): SampleExchange {
-  const request: ToolMessage & { role: "user" } = {
+  const request: ChatUserMessage = {
     role: "user",
     content: [{ type: "text", text: "Summarize this" }],
   };
-  const response: ToolMessage & { role: "assistant" } = {
+  const response: ChatAssistantMessage = {
     role: "assistant",
     content: [{ type: "text", text: "Summary" }],
   };
@@ -64,7 +86,7 @@ describe("core exchange to MCP projection", () => {
     });
     expect(messages[1]).toMatchObject({
       role: "user",
-      content: [{ type: "tool_result", toolUseId: "elicit:confirm" }],
+      content: { type: "tool_result", toolUseId: "elicit:confirm" },
     });
     // projection must not mutate the exchange
     expect(exchange.context).toEqual({ flightId: "FL001" });

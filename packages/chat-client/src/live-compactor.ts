@@ -1,17 +1,17 @@
+import type { Message } from "@ag-ui/core";
 import type { Operation } from "effection";
 import {
-  appendChatWireMessage,
+  appendAGUIMessage,
   createChatProjection,
   findTextParts,
   materializeChatMessages,
   transitionChatProjection,
   updateTextPartFrame,
   type ChatLocalPart,
-  type ClientChatMessage as ChatMessage,
+  type ChatUIMessage,
   type ChatProjectionAction,
   type ChatProjectionState,
-  type ChatStreamEvent,
-  type ChatWireMessage,
+  type AGUIEvent,
   type Frame,
   type FramePipeline,
   type FramePipelineFactory,
@@ -50,7 +50,7 @@ export class LiveChatCompactor {
     return this.current.error;
   }
 
-  ingest(event: ChatStreamEvent): readonly LiveCompactorAction[] {
+  ingest(event: AGUIEvent): readonly LiveCompactorAction[] {
     const transition = transitionChatProjection(this.current, event);
     this.current = transition.projection;
     const actions: LiveCompactorAction[] = [];
@@ -64,8 +64,8 @@ export class LiveChatCompactor {
     return actions;
   }
 
-  append(message: ChatWireMessage): void {
-    this.current = appendChatWireMessage(this.current, message);
+  append(message: Message): void {
+    this.current = appendAGUIMessage(this.current, message);
   }
 
   reset(): void {
@@ -78,7 +78,7 @@ export class LiveChatCompactor {
     this.current = { ...this.current, error };
   }
 
-  materialize<TLocalPart extends ChatLocalPart = never>(): readonly ChatMessage<TLocalPart>[] {
+  materialize<TLocalPart extends ChatLocalPart = never>(): readonly ChatUIMessage<TLocalPart>[] {
     return materializeChatMessages<TLocalPart>(this.current, { allowPending: true });
   }
 

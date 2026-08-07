@@ -1,19 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
-import {
-  installModelProvider,
-  ModelProviderApi,
-  ModelProviderPort,
-  type Message,
-} from "./index.ts";
+import { installModelProvider, ModelProviderApi, ModelProviderPort } from "./index.ts";
 
-describe("model-provider contract", () => {
-  it("owns protocol-neutral model messages", () => {
-    const message: Message = { role: "user", content: "hello" };
-    expect(message).toEqual({ role: "user", content: "hello" });
-  });
-
-  it("fails closed until a provider is installed and dispatches after installation", async () => {
+describe("model-provider operation port", () => {
+  it("fails closed until a provider is installed and dispatches canonical responses", async () => {
     await expect(
       run(function* () {
         yield* ModelProviderApi.operations.sample({
@@ -27,7 +17,7 @@ describe("model-provider contract", () => {
             contextWindow: 1,
             maxTokens: 1,
           },
-          context: { messages: [] },
+          context: { messages: [], tools: [] },
         });
       }),
     ).rejects.toThrow("Model provider not configured");
@@ -39,7 +29,15 @@ describe("model-provider contract", () => {
             throw new Error("unused");
           },
           *sample() {
-            return { role: "assistant", content: [{ type: "text", text: "installed" }] };
+            return {
+              role: "assistant",
+              message: { role: "assistant", content: [{ type: "text", text: "installed" }] },
+              source: null,
+              usage: null,
+              stopReason: null,
+              responseId: null,
+              errorMessage: null,
+            };
           },
         });
         return yield* ModelProviderApi.operations.sample({
@@ -53,10 +51,10 @@ describe("model-provider contract", () => {
             contextWindow: 1,
             maxTokens: 1,
           },
-          context: { messages: [] },
+          context: { messages: [], tools: [] },
         });
       }),
-    ).resolves.toMatchObject({ content: [{ text: "installed" }] });
+    ).resolves.toMatchObject({ message: { content: [{ text: "installed" }] } });
     expect(ModelProviderPort).toBeDefined();
   });
 });

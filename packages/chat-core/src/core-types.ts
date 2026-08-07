@@ -12,7 +12,6 @@
  * - handler (server handler)
  * - react/chat (React hooks and components)
  */
-import type { Json } from "@sweatpants/foundation";
 
 // =============================================================================
 // CAPABILITIES
@@ -97,20 +96,6 @@ export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
-}
-
-// =============================================================================
-// TOOL CALL INFO
-// =============================================================================
-
-/**
- * Information about a tool call (normalized format).
- */
-export interface ToolCallInfo {
-  id: string;
-  name: string;
-  /** Open until the authored tool's parameter schema narrows it at `execute`. */
-  arguments: Json;
 }
 
 /**

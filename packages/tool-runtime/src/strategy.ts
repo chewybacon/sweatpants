@@ -90,7 +90,7 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
 
       throw new ToolRuntimeError(
         "NO_MATCHING_TOOL_STRATEGY",
-        `No tool execution strategy can execute tool: ${request.call.function.name}`,
+        `No tool execution strategy can execute tool: ${request.call.name}`,
       );
     },
 

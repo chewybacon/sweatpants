@@ -407,8 +407,12 @@ describe("LocalProgramHost", () => {
           status: "ok",
           value: {
             message: {
-              role: "assistant",
-              content: [{ type: "text", text: "sampled" }],
+              message: { role: "assistant", content: [{ type: "text", text: "sampled" }] },
+              source: null,
+              usage: null,
+              stopReason: null,
+              responseId: null,
+              errorMessage: null,
             },
             output: { type: "message" },
           },

@@ -61,8 +61,8 @@ describe("__schema__ meta-tool encoding", () => {
       messages: [{ role: "user", content: "Pick a strategy" }],
       schema: { type: "object", properties: { choice: { type: "string" } } },
       tools: [
-        { name: "offensive", parameters: { type: "object" } },
-        { name: "defensive", parameters: { type: "object" } },
+        { name: "offensive", description: null, parameters: { type: "object" } },
+        { name: "defensive", description: null, parameters: { type: "object" } },
       ],
     };
 
@@ -97,7 +97,7 @@ describe("__schema__ meta-tool encoding", () => {
       timestamp: Date.now(),
       sampleId: "sample_1",
       messages: [{ role: "user", content: "Pick" }],
-      tools: [{ name: "pick", parameters: { type: "object" } }],
+      tools: [{ name: "pick", description: null, parameters: { type: "object" } }],
       toolChoice: "auto",
     };
 
@@ -163,27 +163,29 @@ describe("SampleExchange helpers", () => {
       expect(exchange.request.role).toBe("user");
       expect(exchange.request.content).toEqual([{ type: "text", text: "Pick a cell (0-8)" }]);
 
-      // Response should be assistant with tool_use
+      // Response should be assistant with a canonical tool-call part
       expect(exchange.response.role).toBe("assistant");
       expect(exchange.response.content).toEqual([
         {
-          type: "tool_use",
-          id: "call_abc123",
-          name: "__schema__",
-          input: {},
+          type: "tool-call",
+          toolCall: {
+            id: "call_abc123",
+            name: "__schema__",
+            input: {},
+            thoughtSignature: null,
+          },
         },
       ]);
 
-      // Third message should be tool_result with echoed parsed data
+      // Third message should be a canonical tool result with echoed parsed data
       const toolResult = exchange.messages[2];
-      expect(toolResult?.role).toBe("user");
-      expect(toolResult?.content).toEqual([
-        {
-          type: "tool_result",
-          toolUseId: "call_abc123",
-          content: [{ type: "text", text: JSON.stringify(parsed) }],
-        },
-      ]);
+      expect(toolResult?.role).toBe("tool");
+      expect(toolResult?.content).toEqual([{ type: "text", text: JSON.stringify(parsed) }]);
+      expect(toolResult).toMatchObject({
+        toolCallId: "call_abc123",
+        name: "__schema__",
+        isError: false,
+      });
 
       // Parsed should be the typed data
       expect(exchange.parsed).toEqual(parsed);
@@ -198,10 +200,10 @@ describe("SampleExchange helpers", () => {
 
       expect(exchange.parsed).toEqual(parsed);
       // The input in tool_use should be blank
-      const content = exchange.response.content;
-      const toolUse = Array.isArray(content) ? content[0] : content;
-      expect(toolUse).toHaveProperty("input");
-      expect((toolUse as { input: Record<string, unknown> }).input).toEqual({});
+      const toolUse = exchange.response.content[0];
+      expect(toolUse).toMatchObject({ type: "tool-call" });
+      if (toolUse?.type !== "tool-call") throw new Error("expected a tool-call part");
+      expect(toolUse.toolCall.input).toEqual({});
     });
 
     it("should handle null parsed value", () => {
@@ -211,13 +213,9 @@ describe("SampleExchange helpers", () => {
       expect(exchange.messages).toHaveLength(3);
 
       const toolResult = exchange.messages[2];
-      const toolResultContent = Array.isArray(toolResult?.content)
-        ? toolResult?.content[0]
-        : toolResult?.content;
-      expect(toolResultContent).toHaveProperty("content");
-      expect((toolResultContent as { content: Array<{ text: string }> }).content[0]?.text).toBe(
-        "null",
-      );
+      expect(toolResult?.role).toBe("tool");
+      const toolResultContent = toolResult?.content;
+      expect(toolResultContent).toEqual([{ type: "text", text: "null" }]);
     });
   });
 });
@@ -330,7 +328,7 @@ describe("Exchange message count consistency", () => {
       expect(exchange.messages).toHaveLength(3);
       expect(exchange.messages[0]?.role).toBe("user");
       expect(exchange.messages[1]?.role).toBe("assistant");
-      expect(exchange.messages[2]?.role).toBe("user"); // tool_result is in user message
+      expect(exchange.messages[2]?.role).toBe("tool");
     }
   });
 
@@ -342,18 +340,18 @@ describe("Exchange message count consistency", () => {
     );
 
     // Get tool_use id from response
-    const responseContent = exchange.response.content;
-    const toolUse = Array.isArray(responseContent) ? responseContent[0] : responseContent;
-    expect(toolUse).toHaveProperty("id", "unique_call_id_123");
+    const toolUse = exchange.response.content[0];
+    expect(toolUse).toMatchObject({ type: "tool-call" });
+    if (toolUse?.type !== "tool-call") throw new Error("expected a tool-call part");
+    expect(toolUse.toolCall.id).toBe("unique_call_id_123");
 
-    // Get tool_result toolUseId from third message
+    // Get tool result call identity from third message
     const thirdMsg = exchange.messages[2];
-    const thirdMsgContent = thirdMsg?.content;
-    const toolResult = Array.isArray(thirdMsgContent) ? thirdMsgContent[0] : thirdMsgContent;
-    expect(toolResult).toHaveProperty("toolUseId", "unique_call_id_123");
+    expect(thirdMsg?.role).toBe("tool");
+    if (thirdMsg?.role !== "tool") throw new Error("expected a tool result");
+    expect(thirdMsg.toolCallId).toBe("unique_call_id_123");
 
-    // Tool_result content should echo parsed data
-    const toolResultContent = (toolResult as { content: Array<{ text: string }> }).content[0];
-    expect(toolResultContent?.text).toBe(JSON.stringify({ cell: 4 }));
+    // Tool result content should echo parsed data
+    expect(thirdMsg.content).toEqual([{ type: "text", text: JSON.stringify({ cell: 4 }) }]);
   });
 });

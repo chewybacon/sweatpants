@@ -1,30 +1,28 @@
-import { EventType } from "@ag-ui/core";
+import { EventType, type AGUIEvent, type Message } from "@ag-ui/core";
 import { parse as parsePartialJson } from "partial-json";
 import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
+import { decodeChatContent, type ChatContentPart } from "./content.ts";
 import { emptyFrame, type Frame } from "./frame.ts";
 import type {
   ActivityDeltaEvent,
-  ActivityPart,
+  ChatUIActivityPart,
   ActivitySnapshotEvent,
-  ChatMessage,
+  ChatUIMessage,
   ChatLocalPart,
-  ChatPart,
-  ChatRequestMessage,
-  ChatWireMessage,
-  ChatStreamEvent,
+  ChatUIPart,
+  ChatTransportRequestMessage,
   ClientElicitFact,
-  ElicitPart,
-  NestedMessagePart,
+  ChatUIElicitPart,
+  ChatUINestedMessagePart,
   PublicActivityData,
   PublicActivityNode,
   PublicElicitActivityNode,
   PublicToolActivityNode,
-  ReasoningPart,
-  StructuredOutputPart,
-  MediaPart,
-  TextPart,
-  UserInputPart,
-  ToolCallPart,
+  ChatUIReasoningPart,
+  ChatUIStructuredOutputPart,
+  ChatUIMediaPart,
+  ChatUITextPart,
+  ChatUIToolCallPart,
 } from "./chat-client-types.ts";
 import { decodePublicActivity } from "./chat-client-codec.ts";
 
@@ -54,22 +52,36 @@ interface InternalTextPart {
   readonly sequence: number;
 }
 
-interface InternalStructuredOutputPart {
+interface InternalStructuredOutputPartBase {
   readonly kind: "structured-output";
   readonly id: string;
-  readonly status: StructuredOutputPart["status"];
   readonly raw: string;
   readonly partial?: Json;
-  readonly data?: Json;
-  readonly errorText?: string;
   readonly sequence: number;
 }
+
+type InternalStructuredOutputPart =
+  | (InternalStructuredOutputPartBase & {
+      readonly status: "streaming";
+      readonly data?: never;
+      readonly errorText?: never;
+    })
+  | (InternalStructuredOutputPartBase & {
+      readonly status: "complete";
+      readonly data: Json;
+      readonly errorText?: never;
+    })
+  | (InternalStructuredOutputPartBase & {
+      readonly status: "error";
+      readonly data?: never;
+      readonly errorText: string;
+    });
 
 interface InternalMediaPart {
   readonly kind: "media";
   readonly id: string;
-  readonly media: MediaPart["type"];
-  readonly source: MediaPart["source"];
+  readonly media: ChatUIMediaPart["type"];
+  readonly source: ChatUIMediaPart["source"];
   readonly metadata?: Json;
   readonly sequence: number;
 }
@@ -78,7 +90,7 @@ type InternalMessagePart = InternalTextPart | InternalStructuredOutputPart | Int
 
 interface InternalMessage {
   readonly id: string;
-  readonly role: ChatMessage["role"];
+  readonly role: ChatUIMessage["role"];
   readonly metadata?: Readonly<Record<string, Json>>;
   readonly nodeId: string;
   readonly parts: readonly InternalMessagePart[];
@@ -352,6 +364,31 @@ function assertSiblingSequence(
   }
 }
 
+function preserveSettledToolResult(
+  previous: PublicActivityNode,
+  incoming: PublicActivityNode,
+): PublicActivityNode {
+  if (
+    previous.kind !== "tool-call" ||
+    incoming.kind !== "tool-call" ||
+    (previous.state !== "output-available" && previous.state !== "output-error") ||
+    previous.publicData?.kind !== "tool-call" ||
+    incoming.publicData?.kind !== "tool-call"
+  ) {
+    return incoming;
+  }
+  const prior = previous.publicData;
+  return {
+    ...incoming,
+    state: previous.state,
+    publicData: {
+      ...incoming.publicData,
+      ...(prior.output !== undefined ? { output: prior.output } : {}),
+      ...(prior.errorText !== undefined ? { errorText: prior.errorText } : {}),
+    },
+  };
+}
+
 function addGraphNode(
   state: ChatProjectionState,
   node: PublicActivityNode,
@@ -376,7 +413,10 @@ function addGraphNode(
     const nodes = mapCopy(state.nodes);
     nodes.set(node.nodeId, {
       ...existing,
-      node: existing.synthetic && !synthetic ? node : cloneNodeWithMutable(existing.node, node),
+      node:
+        existing.synthetic && !synthetic
+          ? preserveSettledToolResult(existing.node, node)
+          : cloneNodeWithMutable(existing.node, node),
       synthetic: existing.synthetic && synthetic,
     });
     return {
@@ -428,7 +468,7 @@ function addGraphNode(
 function ensureMessage(
   state: ChatProjectionState,
   messageId: string,
-  role: ChatMessage["role"],
+  role: ChatUIMessage["role"],
 ): ChatProjectionState {
   const existing = state.messageById.get(messageId);
   if (existing) {
@@ -500,7 +540,7 @@ function ensureMessageFromActivity(
 
 function latestMessageId(
   state: ChatProjectionState,
-  role?: ChatMessage["role"],
+  role?: ChatUIMessage["role"],
 ): string | undefined {
   for (let index = state.messageOrder.length - 1; index >= 0; index -= 1) {
     const id = state.messageOrder[index]!;
@@ -1038,48 +1078,20 @@ function activityDelta(state: ChatProjectionState, event: ActivityDeltaEvent): C
   return { ...state, nodes };
 }
 
-function wireMediaPart(value: unknown): UserInputPart | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+function wireMediaPart(value: unknown): ChatContentPart | undefined {
+  try {
+    const decoded = decodeChatContent([value]);
+    if (typeof decoded === "string") return undefined;
+    return decoded[0];
+  } catch {
     return undefined;
   }
-  const part = value as Record<string, unknown>;
-  if (part["type"] === "text" && typeof part["text"] === "string") {
-    return { type: "text", text: part["text"] };
-  }
-  if (
-    (part["type"] !== "image" &&
-      part["type"] !== "audio" &&
-      part["type"] !== "video" &&
-      part["type"] !== "document") ||
-    part["source"] === null ||
-    typeof part["source"] !== "object" ||
-    Array.isArray(part["source"])
-  ) {
-    return undefined;
-  }
-  const source = part["source"] as Record<string, unknown>;
-  if (
-    (source["type"] !== "data" && source["type"] !== "url") ||
-    typeof source["value"] !== "string" ||
-    (source["type"] === "data" && typeof source["mimeType"] !== "string")
-  ) {
-    return undefined;
-  }
-  return {
-    type: part["type"],
-    source: {
-      type: source["type"],
-      value: source["value"],
-      ...(typeof source["mimeType"] === "string" ? { mimeType: source["mimeType"] } : {}),
-    },
-    ...(part["metadata"] !== undefined ? { metadata: assertJson(part["metadata"]) } : {}),
-  } as UserInputPart;
 }
 
 function appendMediaPart(
   state: ChatProjectionState,
   messageId: string,
-  input: Exclude<UserInputPart, { readonly type: "text" }>,
+  input: Exclude<ChatContentPart, { readonly type: "text" }>,
 ): ChatProjectionState {
   let next = ensureMessage(state, messageId, "user");
   const message = next.messageById.get(messageId)!;
@@ -1089,7 +1101,7 @@ function appendMediaPart(
       canonicalJson({
         type: part.media,
         source: part.source,
-        ...(part.metadata !== undefined ? { metadata: part.metadata } : {}),
+        metadata: part.metadata ?? null,
       }) === canonicalJson(input),
   );
   if (duplicate) {
@@ -1100,7 +1112,7 @@ function appendMediaPart(
     id: `${messageId}:${input.type}:${next.nextSequence}`,
     media: input.type,
     source: input.source,
-    ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+    ...(input.metadata !== null ? { metadata: input.metadata } : {}),
     sequence: next.nextSequence,
   };
   next = { ...next, nextSequence: next.nextSequence + 1 };
@@ -1110,7 +1122,7 @@ function appendMediaPart(
 function appendWireContent(
   state: ChatProjectionState,
   messageId: string,
-  role: ChatMessage["role"],
+  role: ChatUIMessage["role"],
   value: unknown,
 ): ChatProjectionState {
   if (!Array.isArray(value)) {
@@ -1163,7 +1175,7 @@ function wireContent(value: unknown): string | undefined {
   return undefined;
 }
 
-function chatRole(role: ChatWireMessage["role"]): ChatMessage["role"] | undefined {
+function chatRole(role: Message["role"]): ChatUIMessage["role"] | undefined {
   if (role === "user" || role === "assistant" || role === "system") {
     return role;
   }
@@ -1174,22 +1186,22 @@ function chatRole(role: ChatWireMessage["role"]): ChatMessage["role"] | undefine
 }
 
 function messageToWire<TLocalPart extends ChatLocalPart>(
-  message: ChatMessage<TLocalPart>,
-): ChatRequestMessage {
+  message: ChatUIMessage<TLocalPart>,
+): ChatTransportRequestMessage {
   const text = message.parts
     .flatMap((part) => {
       if (part.type === "text") {
-        return [(part as TextPart).text];
+        return [(part as ChatUITextPart).text];
       }
       if (part.type === "structured-output") {
-        return [(part as StructuredOutputPart).raw];
+        return [(part as ChatUIStructuredOutputPart).raw];
       }
       return [];
     })
     .join("");
-  const contentParts: UserInputPart[] = message.parts.flatMap((part): UserInputPart[] => {
+  const contentParts: ChatContentPart[] = message.parts.flatMap((part): ChatContentPart[] => {
     if (part.type === "text") {
-      return [{ type: "text", text: (part as TextPart).text }];
+      return [{ type: "text", text: (part as ChatUITextPart).text }];
     }
     if (
       (part.type === "image" ||
@@ -1202,7 +1214,7 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
         {
           type: part.type,
           source: part.source,
-          ...(part.metadata !== undefined ? { metadata: part.metadata } : {}),
+          metadata: part.metadata ?? null,
         },
       ];
     }
@@ -1211,7 +1223,8 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
   const hasMedia = contentParts.some((part) => part.type !== "text");
   const toolCalls = message.parts
     .filter(
-      (part): part is ToolCallPart<TLocalPart> => part.type === "tool-call" && "callId" in part,
+      (part): part is ChatUIToolCallPart<TLocalPart> =>
+        part.type === "tool-call" && "callId" in part,
     )
     .map((part) => ({
       id: part.callId,
@@ -1226,7 +1239,7 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
       id: message.id,
       role: message.role,
       content: message.role === "user" && hasMedia ? contentParts : text,
-    } as Extract<ChatRequestMessage, { role: "user" | "system" }>;
+    } as Extract<ChatTransportRequestMessage, { role: "user" | "system" }>;
   }
   return {
     id: message.id,
@@ -1237,57 +1250,59 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
 }
 
 /** Project public root messages back to provider-facing AG-UI history. */
-export function projectChatMessagesToWire<TLocalPart extends ChatLocalPart>(
-  messages: readonly ChatMessage<TLocalPart>[],
-): readonly ChatRequestMessage[] {
+export function projectChatMessagesToAGUI<TLocalPart extends ChatLocalPart>(
+  messages: readonly ChatUIMessage<TLocalPart>[],
+): readonly ChatTransportRequestMessage[] {
   return messages.flatMap((message) => {
     const wire = messageToWire(message);
     if (message.role !== "assistant") {
       return [wire];
     }
-    const results: ChatRequestMessage[] = message.parts.flatMap((part): ChatRequestMessage[] => {
-      if (part.type !== "tool-call" || !("callId" in part)) {
+    const results: ChatTransportRequestMessage[] = message.parts.flatMap(
+      (part): ChatTransportRequestMessage[] => {
+        if (part.type !== "tool-call" || !("callId" in part)) {
+          return [];
+        }
+        const toolCall = part;
+        if (toolCall.state === "output-available") {
+          const content =
+            typeof toolCall.output === "string"
+              ? toolCall.output
+              : JSON.stringify(toolCall.output ?? null);
+          return [
+            {
+              id: `tool-result:${toolCall.callId}`,
+              role: "tool" as const,
+              toolCallId: toolCall.callId,
+              name: toolCall.name,
+              content,
+              isError: false,
+            },
+          ];
+        }
+        if (toolCall.state === "output-error") {
+          return [
+            {
+              id: `tool-result:${toolCall.callId}`,
+              role: "tool" as const,
+              toolCallId: toolCall.callId,
+              name: toolCall.name,
+              content: toolCall.errorText ?? "Tool execution failed",
+              isError: true,
+              error: toolCall.errorText ?? "Tool execution failed",
+            },
+          ];
+        }
         return [];
-      }
-      const toolCall = part;
-      if (toolCall.state === "output-available") {
-        const content =
-          typeof toolCall.output === "string"
-            ? toolCall.output
-            : JSON.stringify(toolCall.output ?? null);
-        return [
-          {
-            id: `tool-result:${toolCall.callId}`,
-            role: "tool" as const,
-            toolCallId: toolCall.callId,
-            name: toolCall.name,
-            content,
-            isError: false,
-          },
-        ];
-      }
-      if (toolCall.state === "output-error") {
-        return [
-          {
-            id: `tool-result:${toolCall.callId}`,
-            role: "tool" as const,
-            toolCallId: toolCall.callId,
-            name: toolCall.name,
-            content: toolCall.errorText ?? "Tool execution failed",
-            isError: true,
-            error: toolCall.errorText ?? "Tool execution failed",
-          },
-        ];
-      }
-      return [];
-    });
+      },
+    );
     return [wire, ...results];
   });
 }
 
-export function appendChatWireMessage(
+export function appendAGUIMessage(
   state: ChatProjectionState,
-  message: ChatWireMessage,
+  message: Message,
 ): ChatProjectionState {
   if (message.role === "tool") {
     const nodeId = state.toolNodeByCallId.get(message.toolCallId);
@@ -1342,15 +1357,15 @@ function parseJsonOrString(value: string): Json {
   }
 }
 
-export function foldChatStreamEvent(
+export function foldAGUIEvent(
   state: ChatProjectionState,
-  event: ChatStreamEvent,
+  event: AGUIEvent,
 ): ChatProjectionState {
   switch (event.type) {
     case EventType.MESSAGES_SNAPSHOT: {
       let next = state;
       for (const message of event.messages) {
-        next = appendChatWireMessage(next, message);
+        next = appendAGUIMessage(next, message);
       }
       return next;
     }
@@ -1483,9 +1498,9 @@ function elicitFact(node: PublicElicitActivityNode): ClientElicitFact {
 /** Fold one validated host event and describe the client-local effects it exposes. */
 export function transitionChatProjection(
   state: ChatProjectionState,
-  event: ChatStreamEvent,
+  event: AGUIEvent,
 ): ChatProjectionTransition {
-  const projection = foldChatStreamEvent(state, event);
+  const projection = foldAGUIEvent(state, event);
   const actions: ChatProjectionAction[] = [];
 
   if (event.type === EventType.MESSAGES_SNAPSHOT) {
@@ -1605,10 +1620,51 @@ function nodeChildren(state: ChatProjectionState, nodeId: string): readonly Inte
   return children;
 }
 
+function materializeToolCallPart<TLocalPart extends { readonly type: string; readonly id: string }>(
+  node: PublicToolActivityNode,
+  data: Extract<PublicActivityData, { kind: "tool-call" }>,
+  children: readonly InternalNode[],
+  state: ChatProjectionState,
+): ChatUIToolCallPart<TLocalPart> | null {
+  const parts = children.flatMap((child) => {
+    const value = materializeNode<TLocalPart>(state, child.node.nodeId);
+    return value ? [value] : [];
+  });
+  const base = {
+    type: "tool-call" as const,
+    id: node.nodeId,
+    callId: data.callId,
+    name: data.name,
+    ...(data.rawInput !== undefined ? { rawInput: data.rawInput } : {}),
+    parts,
+  };
+  switch (node.state) {
+    case "input-streaming":
+      return { ...base, state: "input-streaming" };
+    case "input-available":
+      return data.input === undefined
+        ? null
+        : { ...base, state: "input-available", input: data.input };
+    case "output-available":
+      return data.input === undefined || data.output === undefined
+        ? null
+        : { ...base, state: "output-available", input: data.input, output: data.output };
+    case "output-error":
+      return data.errorText === undefined
+        ? null
+        : {
+            ...base,
+            state: "output-error",
+            ...(data.input === undefined ? {} : { input: data.input }),
+            errorText: data.errorText,
+          };
+  }
+}
+
 function materializeNode<TLocalPart extends { readonly type: string; readonly id: string }>(
   state: ChatProjectionState,
   nodeId: string,
-): ChatPart<TLocalPart> | null {
+): ChatUIPart<TLocalPart> | null {
   const entry = state.nodes.get(nodeId);
   if (!entry) {
     return null;
@@ -1624,7 +1680,7 @@ function materializeNode<TLocalPart extends { readonly type: string; readonly id
     if (!message) {
       return null;
     }
-    const nested: NestedMessagePart<TLocalPart> = {
+    const nested: ChatUINestedMessagePart<TLocalPart> = {
       type: "message",
       id: node.nodeId,
       message: materializeMessage<TLocalPart>(state, message),
@@ -1635,29 +1691,7 @@ function materializeNode<TLocalPart extends { readonly type: string; readonly id
     if (!data || data.kind !== "tool-call") {
       return null;
     }
-    const part: ToolCallPart<TLocalPart> = {
-      type: "tool-call",
-      id: node.nodeId,
-      callId: data.callId,
-      name: data.name,
-      state:
-        node.state === "output-error"
-          ? "output-error"
-          : node.state === "output-available"
-            ? "output-available"
-            : node.state === "input-available"
-              ? "input-available"
-              : "input-streaming",
-      ...(data.rawInput !== undefined ? { rawInput: data.rawInput } : {}),
-      ...(data.input !== undefined ? { input: data.input } : {}),
-      ...(data.output !== undefined ? { output: data.output } : {}),
-      ...(data.errorText !== undefined ? { errorText: data.errorText } : {}),
-      parts: children.flatMap((child) => {
-        const value = materializeNode<TLocalPart>(state, child.node.nodeId);
-        return value ? [value] : [];
-      }),
-    };
-    return part;
+    return materializeToolCallPart(node, data, children, state);
   }
   if (node.kind === "activity") {
     const activity = data?.kind === "activity" ? data : undefined;
@@ -1665,7 +1699,7 @@ function materializeNode<TLocalPart extends { readonly type: string; readonly id
       node.state === "complete" || node.state === "error" || node.state === "cancelled"
         ? node.state
         : "running";
-    const part: ActivityPart<TLocalPart> = {
+    const part: ChatUIActivityPart<TLocalPart> = {
       type: "activity",
       id: node.nodeId,
       activityType: activity?.activityType ?? "opaque-execution",
@@ -1684,7 +1718,7 @@ function materializeNode<TLocalPart extends { readonly type: string; readonly id
   }
   const elicitState =
     node.state === "responded" ? "responded" : node.state === "cancelled" ? "cancelled" : "pending";
-  const part: ElicitPart<TLocalPart> = {
+  const part: ChatUIElicitPart<TLocalPart> = {
     type: "elicit",
     id: node.nodeId,
     elicitId: data.elicitId,
@@ -1701,10 +1735,29 @@ function materializeNode<TLocalPart extends { readonly type: string; readonly id
   return part;
 }
 
+function materializeStructuredOutputPart(
+  part: InternalStructuredOutputPart,
+): ChatUIStructuredOutputPart {
+  const base = {
+    type: "structured-output" as const,
+    id: part.id,
+    raw: part.raw,
+    ...(part.partial !== undefined ? { partial: part.partial } : {}),
+  };
+  switch (part.status) {
+    case "streaming":
+      return { ...base, status: "streaming" };
+    case "complete":
+      return { ...base, status: "complete", data: part.data };
+    case "error":
+      return { ...base, status: "error", errorText: part.errorText };
+  }
+}
+
 function materializeMessage<TLocalPart extends { readonly type: string; readonly id: string }>(
   state: ChatProjectionState,
   message: InternalMessage,
-): ChatMessage<TLocalPart> {
+): ChatUIMessage<TLocalPart> {
   const nodeParts = nodeChildren(state, message.nodeId).flatMap((child) => {
     const value = materializeNode<TLocalPart>(state, child.node.nodeId);
     return value ? [{ value, sequence: child.node.sequence }] : [];
@@ -1713,22 +1766,14 @@ function materializeMessage<TLocalPart extends { readonly type: string; readonly
     ...message.parts.map((part) => ({
       value:
         part.kind === "structured-output"
-          ? ({
-              type: "structured-output" as const,
-              id: part.id,
-              status: part.status,
-              raw: part.raw,
-              ...(part.partial !== undefined ? { partial: part.partial } : {}),
-              ...(part.data !== undefined ? { data: part.data } : {}),
-              ...(part.errorText !== undefined ? { errorText: part.errorText } : {}),
-            } satisfies StructuredOutputPart)
+          ? materializeStructuredOutputPart(part)
           : part.kind === "media"
             ? ({
                 type: part.media,
                 id: part.id,
                 source: part.source,
                 ...(part.metadata !== undefined ? { metadata: part.metadata } : {}),
-              } as MediaPart)
+              } as ChatUIMediaPart)
             : part.kind === "text"
               ? ({
                   type: "text" as const,
@@ -1737,7 +1782,7 @@ function materializeMessage<TLocalPart extends { readonly type: string; readonly
                   state: part.state,
                   frame: part.frame,
                   rendered: part.rendered,
-                } satisfies TextPart)
+                } satisfies ChatUITextPart)
               : ({
                   type: "reasoning" as const,
                   id: part.id,
@@ -1745,7 +1790,7 @@ function materializeMessage<TLocalPart extends { readonly type: string; readonly
                   state: part.state,
                   frame: part.frame,
                   rendered: part.rendered,
-                } satisfies ReasoningPart),
+                } satisfies ChatUIReasoningPart),
       sequence: part.sequence,
     })),
     ...nodeParts,
@@ -1755,6 +1800,7 @@ function materializeMessage<TLocalPart extends { readonly type: string; readonly
     id: message.id,
     role: message.role,
     parts: Object.freeze(parts.map((part) => part.value)),
+    metadata: Object.freeze({}),
   });
 }
 
@@ -1763,7 +1809,7 @@ export function materializeChatMessages<
 >(
   state: ChatProjectionState,
   options: { readonly allowPending?: boolean } = {},
-): readonly ChatMessage<TLocalPart>[] {
+): readonly ChatUIMessage<TLocalPart>[] {
   if (state.pendingChildren.size > 0 && options.allowPending !== true) {
     const parents = [...state.pendingChildren.keys()].join(", ");
     throw new ChatProjectionError(

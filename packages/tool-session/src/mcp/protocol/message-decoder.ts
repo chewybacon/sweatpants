@@ -16,6 +16,7 @@
  */
 import { z } from "zod";
 import type { Json } from "@sweatpants/foundation";
+import type { ChatToolCall } from "@sweatpants/chat-contract";
 import type {
   JsonRpcResponse,
   JsonRpcRequest,
@@ -31,7 +32,6 @@ import type {
   SampleExchangeCompletionBase,
   ParsedSampleExchangeCompletion,
   ToolCallSampleExchangeCompletion,
-  SamplingToolCall,
 } from "@sweatpants/agent-sdk";
 
 // =============================================================================
@@ -127,15 +127,14 @@ function extractTextFromContent(content: McpContentBlock | McpContentBlock[]): s
 /**
  * Extract tool calls from MCP content blocks.
  */
-function extractToolCallsFromContent(
-  content: McpContentBlock | McpContentBlock[],
-): SamplingToolCall[] {
+function extractToolCallsFromContent(content: McpContentBlock | McpContentBlock[]): ChatToolCall[] {
   const blocks = Array.isArray(content) ? content : [content];
   const toolUseBlocks = blocks.filter(isToolUseContent);
   return toolUseBlocks.map((block) => ({
     id: block.id,
     name: block.name,
-    arguments: block.input,
+    input: block.input,
+    thoughtSignature: null,
   }));
 }
 

@@ -1,249 +1,51 @@
 /**
- * Durable chat request normalization.
+ * Durable chat transport ingress.
  *
- * Converts loosely-shaped incoming JSON into the canonical `ChatRequestBody`
- * message forms, and maps public AG-UI resume entries onto internal elicit
- * responses. Pure functions; no I/O, no contexts.
+ * The public request is a Sweatpants control envelope around AG-UI's owned
+ * `RunAgentInput`. This module validates that boundary once, converts AG-UI
+ * messages through Chat Core's codec, and leaves no compatibility message or
+ * tool-call readers behind.
  */
+import { RunAgentInputSchema, type RunAgentInput } from "@ag-ui/core";
 import { z } from "zod";
 import { CrankError } from "@sweatpants/durable-execution";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
-import type { ChatMessageContent } from "@sweatpants/chat-core";
+import { assertJson } from "@sweatpants/foundation";
+import { agUiMessagesToChatHistoryEntries } from "@sweatpants/chat-core/ag-ui";
+import type { ResumeEntry } from "@sweatpants/chat-core";
+import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
-import type { Json } from "@sweatpants/foundation";
 import type { OpenInterruptRecord } from "../interrupts/index.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * Clients may replay tool arguments either decoded or as the provider's JSON
- * string. Decoding the string is this ingress's job; judging the decoded shape
- * belongs to the authored tool at `execute`, so undecodable text survives.
- */
-function parseToolArguments(value: Json | string): Json {
-  if (typeof value !== "string") {
-    return value;
+/** Reject deleted OpenAI-compatible spellings before AG-UI's permissive parser can strip them. */
+function rejectLegacyMessageFields(
+  value: unknown,
+  path = "$.input",
+  seen = new WeakSet<object>(),
+): void {
+  if (value === null || typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => rejectLegacyMessageFields(item, `${path}[${index}]`, seen));
+    return;
   }
-  try {
-    return JSON.parse(value) as Json;
-  } catch {
-    return value;
-  }
-}
-
-function isMultimodalPart(value: unknown): boolean {
-  if (!isRecord(value) || typeof value["type"] !== "string") {
-    return false;
-  }
-  if (value["type"] === "text") {
-    return typeof value["text"] === "string";
-  }
-  if (!["image", "audio", "video", "document"].includes(value["type"])) {
-    return false;
-  }
-  const source = value["source"];
-  if (
-    !isRecord(source) ||
-    typeof source["type"] !== "string" ||
-    typeof source["value"] !== "string"
-  ) {
-    return false;
-  }
-  if (source["type"] === "data" && typeof source["mimeType"] !== "string") {
-    return false;
-  }
-  if (source["type"] !== "data" && source["type"] !== "url") {
-    return false;
-  }
-  return value["metadata"] === undefined || z.json().safeParse(value["metadata"]).success;
-}
-
-function normalizeTextContent(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  return value === undefined ? "" : JSON.stringify(value);
-}
-
-function normalizeUserContent(value: unknown): ChatMessageContent {
-  if (typeof value === "string" || value === undefined) {
-    return value ?? "";
-  }
-  if (!Array.isArray(value)) {
-    return JSON.stringify(value);
-  }
-  if (value.length > 64 || !value.every(isMultimodalPart)) {
-    throw new Error("Invalid multimodal user message content");
-  }
-  return value as ChatMessageContent;
-}
-
-function normalizeIncomingMessages(
-  messages: readonly z.infer<typeof rawMessageSchema>[],
-): ChatRequestBody["messages"] {
-  const normalized: ChatRequestBody["messages"] = [];
-  const toolNames = new Map<string, string>();
-  for (const message of messages) {
-    for (const toolCall of message.tool_calls ?? message.toolCalls ?? []) {
-      toolNames.set(toolCall.id, toolCall.function.name);
+  const record = value as Record<string, unknown>;
+  for (const key of ["tool_calls", "tool_call_id"]) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) {
+      throw new Error(`${path}.${key} is a removed compatibility field`);
     }
   }
-
-  for (let index = 0; index < messages.length; index++) {
-    const message = messages[index]!;
-    const role = message.role;
-    const id = message.id && message.id.length > 0 ? message.id : `${role}:${index}`;
-    const content =
-      role === "user"
-        ? normalizeUserContent(message.content)
-        : normalizeTextContent(message.content);
-
-    if (role === "assistant") {
-      const toolCalls = message.tool_calls ?? message.toolCalls ?? [];
-      normalized.push({
-        id,
-        role: "assistant" as const,
-        content,
-        ...(toolCalls.length > 0
-          ? {
-              tool_calls: toolCalls.map((toolCall) => ({
-                id: toolCall.id,
-                type: "function" as const,
-                function: {
-                  name: toolCall.function.name,
-                  arguments: parseToolArguments(toolCall.function.arguments),
-                },
-              })),
-            }
-          : {}),
-      });
-      continue;
-    }
-
-    if (role === "tool") {
-      const toolCallId = message["tool_call_id"] ?? message["toolCallId"];
-      const toolName = message["name"] ?? (toolCallId ? toolNames.get(toolCallId) : undefined);
-      const isError = message["isError"] ?? message["error"] !== undefined;
-      if (!toolCallId || !toolName) {
-        throw new Error("Parsed tool message is missing settled result facts");
-      }
-      normalized.push({
-        id,
-        role: "tool" as const,
-        content,
-        tool_call_id: toolCallId,
-        name: toolName,
-        isError,
-      });
-      continue;
-    }
-
-    if (role === "activity") {
-      const activityType =
-        typeof message["activityType"] === "string"
-          ? message["activityType"]
-          : "sweatpants:activity";
-      normalized.push({ id, role: "activity" as const, activityType, content });
-      continue;
-    }
-
-    if (role === "developer") {
-      normalized.push({ id, role: "developer" as const, content });
-    } else if (role === "system") {
-      normalized.push({ id, role: "system" as const, content });
-    } else if (role === "reasoning") {
-      normalized.push({ id, role: "reasoning" as const, content });
-    } else if (role === "user") {
-      normalized.push({ id, role: "user" as const, content });
-    }
+  for (const [key, item] of Object.entries(record)) {
+    rejectLegacyMessageFields(item, `${path}.${key}`, seen);
   }
-
-  return normalized;
 }
 
 const jsonValueSchema = z.json();
-const rawToolCallSchema = z
-  .object({
-    id: z.string().min(1).max(512),
-    type: z.literal("function"),
-    function: z
-      .object({
-        name: z.string().min(1).max(512),
-        arguments: z.union([
-          z.record(z.string(), jsonValueSchema),
-          z
-            .string()
-            .max(256 * 1024)
-            .refine((text) => {
-              try {
-                const parsed: unknown = JSON.parse(text);
-                return isRecord(parsed);
-              } catch {
-                return false;
-              }
-            }),
-        ]),
-      })
-      .strict(),
-  })
-  .strict();
-const rawMessageSchema = z
-  .object({
-    id: z.string().max(512).optional(),
-    role: z.enum(["assistant", "tool", "activity", "developer", "system", "reasoning", "user"]),
-    content: jsonValueSchema.optional(),
-    partial: z.boolean().optional(),
-    tool_calls: z.array(rawToolCallSchema).max(128).optional(),
-    toolCalls: z.array(rawToolCallSchema).max(128).optional(),
-    tool_call_id: z.string().max(512).optional(),
-    toolCallId: z.string().max(512).optional(),
-    name: z.string().max(512).optional(),
-    isError: z.boolean().optional(),
-    error: z.string().max(16_384).optional(),
-    activityType: z.string().max(512).optional(),
-  })
-  .strict()
-  .superRefine((message, context) => {
-    if (
-      message.role === "tool" &&
-      !(
-        (typeof message.tool_call_id === "string" && message.tool_call_id.length > 0) ||
-        (typeof message.toolCallId === "string" && message.toolCallId.length > 0)
-      )
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["tool_call_id"],
-        message: "tool messages require a non-empty tool call id",
-      });
-    }
-    if (message.role === "tool" && !(typeof message.name === "string" && message.name.length > 0)) {
-      context.addIssue({
-        code: "custom",
-        path: ["name"],
-        message: "tool messages require a settled tool name",
-      });
-    }
-    if (message.role === "tool" && message.isError === undefined) {
-      context.addIssue({
-        code: "custom",
-        path: ["isError"],
-        message: "tool messages require explicit failure state",
-      });
-    }
-    if (
-      message.role === "activity" &&
-      !(typeof message.activityType === "string" && message.activityType.length > 0)
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["activityType"],
-        message: "activity messages require an activity type",
-      });
-    }
-  });
 const resumeEntrySchema = z
   .object({
     interruptId: z.string().min(1).max(512),
@@ -279,7 +81,7 @@ const elicitResponseSchema = z
 const streamOptionsSchema = z
   .object({
     apiKey: z.string().max(4_096).nullable().optional(),
-    env: z.record(z.string(), z.string().nullable()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
     sessionId: z.string().max(512).optional(),
     toolChoice: z.enum(["auto", "none", "required"]).optional(),
     maxTokens: z.number().int().positive().max(16_000).optional(),
@@ -307,26 +109,15 @@ const streamOptionsSchema = z
     providerOptions: z.record(z.string(), jsonValueSchema).optional(),
   })
   .strict();
-const chatRequestBodySchema = z
+
+/** Sweatpants-owned controls; `input` remains AG-UI's owned RunAgentInput. */
+const chatTransportRequestSchema = z
   .object({
+    input: z.unknown(),
     trigger: z.enum(["submit-message", "regenerate-message", "cancel-run"]).optional(),
     clientId: z.string().max(512).optional(),
-    messageId: z.string().max(512).optional(),
     conversationId: z.string().max(512).optional(),
-    threadId: z.string().max(512).optional(),
-    runId: z.string().max(512).optional(),
-    parentRunId: z.string().max(512).optional(),
-    state: jsonValueSchema.optional(),
-    tools: z.array(jsonValueSchema).max(256).optional(),
-    context: z
-      .array(
-        z.object({ description: z.string().max(16_384), value: z.string().max(16_384) }).strict(),
-      )
-      .max(256)
-      .optional(),
-    forwardedProps: jsonValueSchema.optional(),
-    resume: z.array(resumeEntrySchema).max(256).optional(),
-    messages: z.array(rawMessageSchema).max(256),
+    messageId: z.string().max(512).optional(),
     systemPrompt: z
       .string()
       .max(64 * 1024)
@@ -352,24 +143,171 @@ const chatRequestBodySchema = z
   })
   .strict();
 
+type DecodedStreamOptions = z.infer<typeof streamOptionsSchema>;
+
+function decodeRunAgentInput(value: unknown): RunAgentInput {
+  return RunAgentInputSchema.strict().parse(value);
+}
+
+function decodeResumeEntries(value: RunAgentInput["resume"]): ResumeEntry[] | undefined {
+  if (value === undefined) return undefined;
+  return value.map((entry, index) => {
+    const parsed = resumeEntrySchema.parse(entry);
+    return {
+      interruptId: parsed.interruptId,
+      status: parsed.status,
+      ...(parsed.payload === undefined
+        ? {}
+        : { payload: assertJson(parsed.payload, `$.input.resume[${index}].payload`) }),
+    };
+  });
+}
+
+/** Configuration remains optional; this boundary converts the validated DTO once. */
+function decodeStreamOptions(value: DecodedStreamOptions | undefined): StreamOptions | undefined {
+  if (value === undefined) return undefined;
+  const thinkingBudgets = value.thinkingBudgets;
+  const responseFormat = value.responseFormat;
+  return {
+    ...(value.apiKey === undefined ? {} : { apiKey: value.apiKey }),
+    ...(value.env === undefined ? {} : { env: value.env }),
+    ...(value.sessionId === undefined ? {} : { sessionId: value.sessionId }),
+    ...(value.toolChoice === undefined ? {} : { toolChoice: value.toolChoice }),
+    ...(value.maxTokens === undefined ? {} : { maxTokens: value.maxTokens }),
+    ...(value.temperature === undefined ? {} : { temperature: value.temperature }),
+    ...(value.topP === undefined ? {} : { topP: value.topP }),
+    ...(value.topK === undefined ? {} : { topK: value.topK }),
+    ...(value.thinking === undefined ? {} : { thinking: value.thinking }),
+    ...(thinkingBudgets === undefined
+      ? {}
+      : {
+          thinkingBudgets: {
+            ...(thinkingBudgets.minimal === undefined ? {} : { minimal: thinkingBudgets.minimal }),
+            ...(thinkingBudgets.low === undefined ? {} : { low: thinkingBudgets.low }),
+            ...(thinkingBudgets.medium === undefined ? {} : { medium: thinkingBudgets.medium }),
+            ...(thinkingBudgets.high === undefined ? {} : { high: thinkingBudgets.high }),
+          },
+        }),
+    ...(responseFormat === undefined
+      ? {}
+      : {
+          responseFormat: {
+            type: responseFormat.type,
+            schema: responseFormat.schema,
+            ...(responseFormat.name === undefined ? {} : { name: responseFormat.name }),
+          },
+        }),
+    ...(value.providerOptions === undefined ? {} : { providerOptions: value.providerOptions }),
+  };
+}
+
+type DecodedElicitResponse = z.infer<typeof elicitResponseSchema>;
+
+function decodeElicitResponse(value: DecodedElicitResponse, index: number): ElicitResponse {
+  const completion = value.completion;
+  const completionValue =
+    completion.action === "accept"
+      ? (() => {
+          if (completion.content === undefined) {
+            throw new Error(
+              `$.elicitResponses[${index}].completion.content is required for accept`,
+            );
+          }
+          return { action: "accept" as const, content: assertJson(completion.content) };
+        })()
+      : completion.action === "decline"
+        ? {
+            action: "decline" as const,
+            ...(completion.reason === undefined ? {} : { reason: completion.reason }),
+          }
+        : {
+            action: "cancel" as const,
+            ...(completion.reason === undefined ? {} : { reason: completion.reason }),
+          };
+  return {
+    sessionId: value.sessionId,
+    callId: value.callId,
+    ...(value.toolName === undefined ? {} : { toolName: value.toolName }),
+    ...(value.ref === undefined
+      ? {}
+      : {
+          ref: {
+            runtimeId: value.ref.runtimeId,
+            executionId: value.ref.executionId,
+            callId: value.ref.callId,
+            toolName: value.ref.toolName,
+            ...(value.ref.sessionId === undefined ? {} : { sessionId: value.ref.sessionId }),
+          },
+        }),
+    elicitId: value.elicitId,
+    completion: completionValue,
+  };
+}
+
+function decodePluginAbort(
+  value: z.infer<typeof chatTransportRequestSchema>["pluginAbort"],
+): ChatRequestBody["pluginAbort"] {
+  if (value === undefined) return undefined;
+  return {
+    ...(value.sessionId === undefined ? {} : { sessionId: value.sessionId }),
+    ...(value.reason === undefined ? {} : { reason: value.reason }),
+  };
+}
+
+/**
+ * Validates a `ChatTransportRequest` and converts only its AG-UI input through
+ * the owner codec before any semantic acceptance, provider work, or writes.
+ */
 export function parseChatRequestBody(value: unknown): ChatRequestBody {
   try {
-    const parsed = chatRequestBodySchema.parse(value);
-    // SAFETY: Zod has already proved every field and nested value. The cast only
-    // removes Zod's `undefined` markers from optional properties under
-    // `exactOptionalPropertyTypes`; no external value crosses this boundary.
+    const controls = chatTransportRequestSchema.parse(value);
+    rejectLegacyMessageFields(controls.input);
+    const input = decodeRunAgentInput(controls.input);
+    const resume = decodeResumeEntries(input.resume);
+    const messages = agUiMessagesToChatHistoryEntries(input.messages);
+    const streamOptions = decodeStreamOptions(controls.streamOptions);
+    const pluginAbort = decodePluginAbort(controls.pluginAbort);
     return {
-      ...parsed,
-      messages: normalizeIncomingMessages(parsed.messages),
-    } as unknown as ChatRequestBody;
+      ...(controls.trigger === undefined ? {} : { trigger: controls.trigger }),
+      ...(controls.clientId === undefined ? {} : { clientId: controls.clientId }),
+      ...(controls.conversationId === undefined ? {} : { conversationId: controls.conversationId }),
+      ...(controls.messageId === undefined ? {} : { messageId: controls.messageId }),
+      threadId: input.threadId,
+      runId: input.runId,
+      ...(input.parentRunId === undefined ? {} : { parentRunId: input.parentRunId }),
+      state: input.state,
+      tools: input.tools,
+      context: input.context,
+      forwardedProps: input.forwardedProps,
+      ...(resume === undefined ? {} : { resume }),
+      messages,
+      ...(controls.systemPrompt === undefined ? {} : { systemPrompt: controls.systemPrompt }),
+      ...(controls.persona === undefined ? {} : { persona: controls.persona }),
+      ...(controls.personaConfig === undefined ? {} : { personaConfig: controls.personaConfig }),
+      ...(controls.enableOptionalTools === undefined
+        ? {}
+        : { enableOptionalTools: controls.enableOptionalTools }),
+      ...(controls.effort === undefined ? {} : { effort: controls.effort }),
+      ...(streamOptions === undefined ? {} : { streamOptions }),
+      ...(controls.initialToolChoice === undefined
+        ? {}
+        : { initialToolChoice: controls.initialToolChoice }),
+      ...(controls.model === undefined ? {} : { model: controls.model }),
+      ...(controls.elicitResponses === undefined
+        ? {}
+        : { elicitResponses: controls.elicitResponses.map(decodeElicitResponse) }),
+      ...(pluginAbort === undefined ? {} : { pluginAbort }),
+    };
   } catch (error) {
     const message =
       error instanceof z.ZodError
         ? `Chat request shape is invalid: ${safeSchemaIssues(error.issues)
             .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
             .join("; ")}`
-        : "Chat request could not be parsed";
-    throw new CrankError("invalid_chat_request", message);
+        : error instanceof Error
+          ? `Chat request could not be parsed: ${error.message}`
+          : "Chat request could not be parsed";
+    throw new CrankError("invalid_chat_request", message, undefined, { cause: error });
   }
 }
 
@@ -389,24 +327,20 @@ export function mapResumeEntriesToElicitResponses(
   runtimeId: string,
 ): ElicitResponse[] {
   const resume = body.resume ?? [];
-  if (resume.length === 0) {
-    return [];
-  }
+  if (resume.length === 0) return [];
 
   const recordsByInterruptId = new Map(records.map((record) => [record.interruptId, record]));
   const mapped: ElicitResponse[] = [];
 
   for (const entry of resume) {
     const record = recordsByInterruptId.get(entry.interruptId);
-    if (!record?.toolCallId) {
-      continue;
-    }
+    if (!record?.toolCallId) continue;
     const completion =
       entry.status === "cancelled"
         ? { action: "cancel" as const }
         : mapResolvedResumePayload(entry.payload);
     const sessionId = record.sessionId ?? record.executionId ?? record.toolCallId;
-    const response: ElicitResponse = {
+    mapped.push({
       sessionId,
       callId: record.toolCallId,
       ...(record.toolName
@@ -423,8 +357,7 @@ export function mapResumeEntriesToElicitResponses(
         : {}),
       elicitId: entry.interruptId,
       completion,
-    };
-    mapped.push(response);
+    });
   }
 
   return mapped;

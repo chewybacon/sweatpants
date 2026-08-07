@@ -229,15 +229,22 @@ export function createStreamTransportHandle(
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
           body: JSON.stringify({
-            threadId: options.conversationId,
             conversationId: options.conversationId,
-            messages: [
-              {
-                id: `user:${crypto.randomUUID()}`,
-                role: "user",
-                content: options.message,
-              },
-            ],
+            input: {
+              threadId: options.conversationId,
+              runId: crypto.randomUUID(),
+              state: {},
+              messages: [
+                {
+                  id: `user:${crypto.randomUUID()}`,
+                  role: "user",
+                  content: options.message,
+                },
+              ],
+              tools: [],
+              context: [],
+              forwardedProps: {},
+            },
           }),
         }),
       );

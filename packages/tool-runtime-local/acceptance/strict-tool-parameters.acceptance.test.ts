@@ -53,11 +53,7 @@ describe("@sweatpants/tool-runtime-local strict parameter acceptance", () => {
       try {
         yield* driver.execute({
           entry: createToolInventoryEntry(strictTool),
-          call: {
-            id: "call-invalid-mcp",
-            type: "function",
-            function: { name: "strict_echo", arguments: {} },
-          },
+          call: { id: "call-invalid-mcp", name: "strict_echo", input: {}, thoughtSignature: null },
         });
         throw new Error("expected validation failure");
       } catch (error) {
@@ -70,8 +66,9 @@ describe("@sweatpants/tool-runtime-local strict parameter acceptance", () => {
         entry: createToolInventoryEntry(strictTool),
         call: {
           id: "call-valid-mcp",
-          type: "function",
-          function: { name: "strict_echo", arguments: { message: "hello" } },
+          name: "strict_echo",
+          input: { message: "hello" },
+          thoughtSignature: null,
         },
       });
       expect(result).toMatchObject({ kind: "completed", result: { echoed: "hello" } });

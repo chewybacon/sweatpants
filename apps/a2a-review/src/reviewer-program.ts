@@ -1,4 +1,4 @@
-import { MODEL_SAMPLE_EFFECT } from "@sweatpants/model-sampling";
+import { MODEL_SAMPLE_EFFECT, sampleDurableModel } from "@sweatpants/model-sampling";
 import { type EffectDefinition } from "@sweatpants/durable-effects";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -6,7 +6,7 @@ import {
   createPinnedDurableProgram,
   type DurableProgramContext,
 } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 import { createPortableSchemaDescriptor, type SchemaBinding } from "@sweatpants/foundation/schema";
 
@@ -93,8 +93,8 @@ function* reviewerGenerator(
   context: DurableProgramContext,
   askParentEffect: EffectDefinition<Json, Json, Json>,
 ) {
-  const questionSample = yield* context.effect(
-    MODEL_SAMPLE_EFFECT,
+  const questionSample = yield* sampleDurableModel(
+    context,
     {
       invocation: {
         context: {
@@ -105,6 +105,7 @@ function* reviewerGenerator(
             },
             { role: "user", content: `Rubric:\n${input.rubric}\n\nDesign:\n${input.design}` },
           ],
+          tools: [],
         },
       },
       tools: { type: "none" },
@@ -131,8 +132,8 @@ function* reviewerGenerator(
   const answer = yield* context.effect(askParentEffect, question, {
     audience: "caller:reference-review",
   });
-  const review = yield* context.effect(
-    MODEL_SAMPLE_EFFECT,
+  const review = yield* sampleDurableModel(
+    context,
     {
       invocation: {
         context: {
@@ -151,6 +152,7 @@ function* reviewerGenerator(
               content: `Recorded answer: ${canonicalSnapshot(answer).canonical}`,
             },
           ],
+          tools: [],
         },
       },
       tools: { type: "none" },
@@ -158,7 +160,7 @@ function* reviewerGenerator(
     },
     { audience: "caller:model" },
   );
-  return { review: review.message };
+  return { review: assertJson(review.message.message) };
 }
 
 function extractQuestion(value: Json): AskParentInput {

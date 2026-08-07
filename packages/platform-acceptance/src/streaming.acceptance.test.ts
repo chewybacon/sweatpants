@@ -24,7 +24,7 @@ async function runStreamingScenario(binding: Binding): Promise<void> {
     function* (s) {
       const order: string[] = [];
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: "Stream a deterministic greeting" });
+      const turn = yield* conversation.send("Stream a deterministic greeting");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID, stream: true });
       expect(request.pullId).not.toBe("");
       const stream = yield* request.respond.textStream(["hello", " world"]);

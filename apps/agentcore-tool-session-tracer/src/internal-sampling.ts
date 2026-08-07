@@ -8,13 +8,11 @@ import type {
   ToolCallSampleExchangeCompletion,
   SamplingToolDefinition,
 } from "@sweatpants/agent-sdk";
-import { toModelMessages, type ExtendedMessage } from "@sweatpants/tool-session/messages";
 import {
   assistantText,
   parseStructuredSampleText,
   projectSamplingTools,
   samplingToolCalls,
-  type ModelSampleToolCall,
 } from "@sweatpants/model-sampling";
 import {
   createPiAiModelProviderDriver,
@@ -22,11 +20,8 @@ import {
   resolvePiAiModel,
   type ModelSelection,
 } from "../../../packages/model-provider-pi-ai/src/index.ts";
-import type {
-  AssistantMessage as ModelAssistantMessage,
-  Context as ModelContext,
-  PortableModelContextMessage,
-} from "@sweatpants/model-provider";
+import type { ModelResponse, ModelContext } from "@sweatpants/model-provider";
+import type { ChatMessage, ChatToolCall } from "@sweatpants/chat-contract";
 
 export type AgentCoreToolSampleMode = "host" | "internal";
 
@@ -37,7 +32,7 @@ export interface AgentCoreToolSampleConfig {
 
 export interface InternalSampleRequest {
   inheritedModel?: ModelSelection | undefined;
-  messages: ExtendedMessage[];
+  messages: ChatMessage[];
   systemPrompt?: string | undefined;
   maxTokens?: number | undefined;
   tools?: unknown[] | undefined;
@@ -96,31 +91,26 @@ function assertAgentCoreUsableModel(selection: ModelSelection): void {
   }
 }
 
-function isSchemaToolCall(toolCall: ModelSampleToolCall): boolean {
+function isSchemaToolCall(toolCall: ChatToolCall): boolean {
   return toolCall.name === "__schema__" || toolCall.name === "schema__";
 }
 
-function modelContext(
-  messages: PortableModelContextMessage[],
-  request: InternalSampleRequest,
-): ModelContext {
-  const context: ModelContext = {
-    messages,
-    ...(request.systemPrompt ? { systemPrompt: request.systemPrompt } : {}),
-  };
-
+function modelContext(messages: ChatMessage[], request: InternalSampleRequest): ModelContext {
   const tools = projectSamplingTools(
     request.tools as SamplingToolDefinition[] | undefined,
     (tool) => toToolParameterJsonSchema(tool.inputSchema),
   );
-  if (tools) {
-    context.tools = tools;
-  }
-  return context;
+  return {
+    messages: [
+      ...(request.systemPrompt ? [{ role: "system" as const, content: request.systemPrompt }] : []),
+      ...messages,
+    ],
+    tools: tools ?? [],
+  };
 }
 
 function rawResultFromAssistant(
-  assistant: ModelAssistantMessage,
+  assistant: ModelResponse,
   model: ModelSelection,
   request: InternalSampleRequest,
 ): SampleExchangeCompletion {
@@ -131,7 +121,7 @@ function rawResultFromAssistant(
   if (request.schema) {
     const schemaToolCall = toolCalls.find(isSchemaToolCall);
     if (schemaToolCall) {
-      const parsed = schemaToolCall.arguments;
+      const parsed = schemaToolCall.input;
       return {
         text: text || JSON.stringify(parsed),
         model: modelName,
@@ -197,7 +187,7 @@ export async function sampleInsideAgentCore(
   const assistant = await run(function* () {
     return yield* driver.sample({
       model,
-      context: modelContext(toModelMessages(request.messages), request),
+      context: modelContext(request.messages, request),
       options: {
         ...(request.maxTokens !== undefined ? { maxTokens: request.maxTokens } : {}),
         ...(request.toolChoice === "auto" ||

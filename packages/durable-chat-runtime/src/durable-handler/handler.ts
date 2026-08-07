@@ -39,12 +39,8 @@ import {
 import { MaxIterationsContext, PersonaResolverContext } from "../contexts.ts";
 import { createChatTurnCompletedFact, projectChatTurnFacts } from "@sweatpants/chat-core";
 import { useModel, useStreamOptions } from "@sweatpants/model-provider";
-import {
-  ToolInventoryApi,
-  ToolRuntimeApi,
-  ToolRuntimePort,
-  type PortableToolDefinition,
-} from "@sweatpants/tool-runtime";
+import { ToolInventoryApi, ToolRuntimeApi, ToolRuntimePort } from "@sweatpants/tool-runtime";
+import type { ChatToolDefinition } from "@sweatpants/chat-contract";
 import { ToolExposureApi } from "@sweatpants/chat-core";
 import { HistoryPolicyContext } from "@sweatpants/chat-core";
 import { useLogger } from "../logger/index.ts";
@@ -130,10 +126,10 @@ const durableParamsBinder = bindModel({
 // HELPER FUNCTIONS
 // =============================================================================
 
-function definitionToToolSchema(definition: PortableToolDefinition): ToolSchema {
+function definitionToToolSchema(definition: ChatToolDefinition): ToolSchema {
   return {
     name: definition.name,
-    description: definition.description,
+    description: definition.description ?? "",
     parameters: definition.parameters,
   };
 }

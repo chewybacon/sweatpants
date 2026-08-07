@@ -23,7 +23,7 @@ export interface NotifyInvocation {
   response: NotifyResponse;
 }
 
-export interface Message {
+export interface AgentConversationMessage {
   id: string;
   parentId: string | null;
   role: "user" | "assistant";
@@ -32,7 +32,7 @@ export interface Message {
   createdAt: number;
 }
 
-export interface Conversation {
+export interface AgentConversation {
   id: string;
-  messages: Message[];
+  messages: AgentConversationMessage[];
 }

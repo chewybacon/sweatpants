@@ -6,6 +6,7 @@ import {
   type ProgramAttachment,
 } from "@sweatpants/durable-execution";
 import { sha256 } from "@sweatpants/foundation";
+import { encodeModelSampleResult } from "@sweatpants/model-sampling";
 import {
   ASK_PARENT_EFFECT,
   REFERENCE_ASK_PARENT_TOOL,
@@ -211,16 +212,23 @@ describe("reference authored consultation application", () => {
         actionIndex: first.actionIndex,
         outcome: {
           status: "ok",
-          value: {
+          value: encodeModelSampleResult({
             message: {
-              role: "assistant",
-              content: [{ type: "text", text: '{"question":"Why this authority model?"}' }],
+              message: {
+                role: "assistant",
+                content: [{ type: "text", text: '{"question":"Why this authority model?"}' }],
+              },
+              source: null,
+              usage: null,
+              stopReason: "stop",
+              responseId: null,
+              errorMessage: null,
             },
             output: {
               type: "json",
               value: { question: "Why this authority model?" },
             },
-          },
+          }),
         },
         receipt: receipt(first.actionIndex),
         replayed: false,
