@@ -151,6 +151,8 @@ export {
   deriveForeignA2AContinuationMessageId,
   deriveForeignA2AIdentity,
   discoverForeignA2AAgent,
+  durableInvocationParamsParser,
+  foreignA2AInvocationPinParser,
   parseDurableInvocationParams,
   prepareForeignA2AInvocation,
   verifyForeignA2AInvocationPin,
@@ -236,6 +238,8 @@ export {
   finalizeGrantSet,
   negotiatePeerGrantSet,
   parsePeerRequirementManifest,
+  peerEffectContractParser,
+  peerRequirementManifestParser,
   peerContractAsEffectDefinition,
 } from "./peer-contracts.ts";
 export {
@@ -269,6 +273,7 @@ export {
   createPeerStartRequest,
   discoverSweatpantsPeer,
   parsePeerProfileParams,
+  peerProfileParamsParser,
   verifyPeerTaskEcho,
   type SweatpantsPeerDiscoveryOptions,
 } from "./peer-discovery.ts";

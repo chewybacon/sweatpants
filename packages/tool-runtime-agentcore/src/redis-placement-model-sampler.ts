@@ -94,9 +94,9 @@ const remoteSampleRecordSchema = z
     streamId: z.string().min(1).max(512),
     state: z.enum(["starting", "streaming", "completed", "cancelled", "failed", "orphaned"]),
     producerOwnerId: z.string().min(1).max(512),
-    producerEpoch: z.number().int().nonnegative().safe(),
+    producerEpoch: z.number().int().nonnegative(),
     producerLeaseExpiresAt: z.string().datetime({ offset: true }),
-    terminalLsn: z.number().int().nonnegative().safe().optional(),
+    terminalLsn: z.number().int().nonnegative().optional(),
     disposition: z.json().optional(),
     dispositionDigest: z
       .string()

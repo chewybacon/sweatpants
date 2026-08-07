@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ChatHistoryDecodeError,
+  chatHistoryEntryParser,
   decodeChatHistoryEntries,
   decodeChatHistoryEntry,
 } from "./history.ts";
@@ -114,6 +115,7 @@ describe("canonical Chat History composition", () => {
       message: { role: "user", content: "hello" },
     });
     expect(entry.metadata).toEqual({});
+    expect(chatHistoryEntryParser.parse(entry)).toEqual({ ok: true, value: entry });
     expect(Object.isFrozen(entry)).toBe(true);
     expect(Object.isFrozen(entry.metadata)).toBe(true);
     if (entry.type !== "message") throw new Error("expected message entry");

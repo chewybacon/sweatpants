@@ -20,6 +20,7 @@ import {
   parseResourcePackageManifest,
   parseResourceUri,
   readResource,
+  resourcePackageManifestParser,
   resolveAuthorizedResource,
   searchResources,
   textResource,
@@ -58,6 +59,13 @@ describe("resource identity golden vectors", () => {
     expect(pkg.manifest.digest).toBe(
       "d83a9d601b1b07b0b793ced7dd3a5da6a085f04e2367db23473387b5710c9ce2",
     );
+    expect(resourcePackageManifestParser.parse(pkg.manifest)).toEqual({
+      ok: true,
+      value: pkg.manifest,
+    });
+    expect(
+      resourcePackageManifestParser.parse({ ...pkg.manifest, digest: "0".repeat(64) }).ok,
+    ).toBe(false);
   });
 
   it("round-trips generated base64 bindings exactly", () => {

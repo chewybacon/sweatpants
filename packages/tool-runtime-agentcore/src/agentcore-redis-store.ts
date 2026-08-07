@@ -6,9 +6,9 @@ import type {
   ToolSessionEventStore,
 } from "./agentcore-types.ts";
 import {
-  parseAgentCoreEventDedupRecord,
-  parseAgentCoreToolEvent,
-  parseAgentCoreToolSessionHandle,
+  agentCoreEventDedupRecordParser,
+  agentCoreToolEventParser,
+  agentCoreToolSessionHandleParser,
 } from "./agentcore-boundary-parsers.ts";
 
 interface RedisStreamEntry {
@@ -49,10 +49,14 @@ function isExpired(handle: AgentCoreToolSessionHandle): boolean {
 function parseHandle(raw: string): AgentCoreToolSessionHandle {
   try {
     const value: unknown = JSON.parse(raw);
-    return parseAgentCoreToolSessionHandle(value);
+    const parsed = agentCoreToolSessionHandleParser.parse(value);
+    if (parsed.ok) {
+      return parsed.value;
+    }
   } catch {
-    throw new Error("Redis AgentCore tool-session handle is invalid");
+    // The Redis boundary maps malformed JSON and structural failure identically.
   }
+  throw new Error("Redis AgentCore tool-session handle is invalid");
 }
 
 function isTerminalEvent(event: AgentCoreToolEvent): boolean {
@@ -204,7 +208,11 @@ export function createRedisAgentCoreToolSessionEventStore(
       throw new Error("Redis event entry has an invalid LSN");
     }
     const value: unknown = JSON.parse(raw);
-    return { lsn, event: parseAgentCoreToolEvent(value) };
+    const parsed = agentCoreToolEventParser.parse(value);
+    if (!parsed.ok) {
+      throw new Error("Redis event entry has an invalid event");
+    }
+    return { lsn, event: parsed.value };
   }
 
   function* markTerminalValue(sessionId: string): Operation<void> {
@@ -240,12 +248,15 @@ export function createRedisAgentCoreToolSessionEventStore(
       const existing = yield* call(() => client.get(dkey));
       if (existing) {
         const value: unknown = JSON.parse(existing);
-        const parsed = parseAgentCoreEventDedupRecord(value);
+        const parsed = agentCoreEventDedupRecordParser.parse(value);
+        if (!parsed.ok) {
+          throw new Error("Redis AgentCore event dedup record is invalid");
+        }
         const same =
-          parsed.runtimeEventId === runtimeEventId &&
-          JSON.stringify(parsed.event) === JSON.stringify(event);
+          parsed.value.runtimeEventId === runtimeEventId &&
+          JSON.stringify(parsed.value.event) === JSON.stringify(event);
         if (same) {
-          return parsed.lsn;
+          return parsed.value.lsn;
         }
         // Some AgentCore/runtime replay paths can resend the same runtime event
         // id with a changed payload during coroutine resume. Preserve forward

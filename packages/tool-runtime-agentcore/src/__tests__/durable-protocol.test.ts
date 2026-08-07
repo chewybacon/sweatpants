@@ -8,6 +8,7 @@ import {
   computeReplayChainSeed,
   createInvocationAgentCorePlacement,
   encodeAgentCoreProgramMessage,
+  hostProgramMessageParser,
   linkReplayEntry,
   parseHostProgramMessage,
   parseAgentCoreRuntimeRelease,
@@ -98,6 +99,8 @@ describe("AgentCore durable placement and protocol", () => {
     } as const;
     const encoded = encodeAgentCoreProgramMessage(message);
     expect(parseHostProgramMessage(encoded)).toEqual(message);
+    expect(hostProgramMessageParser.parse(message)).toEqual({ ok: true, value: message });
+    expect(hostProgramMessageParser.parse({ ...message, protocolVersion: 2 }).ok).toBe(false);
     expect(() =>
       parseHostProgramMessage(JSON.stringify({ ...message, secretControl: true })),
     ).toThrow(/closed/);

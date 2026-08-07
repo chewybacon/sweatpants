@@ -1,5 +1,14 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { assertJson, requireJsonObject, type Json, type JsonObject } from "@sweatpants/foundation";
+import {
+  assertJson,
+  failure,
+  parser,
+  success,
+  type Json,
+  type JsonObject,
+  type ParseIssue,
+  type Parser,
+} from "@sweatpants/foundation";
 import { createPortableSchemaDescriptor, type SchemaBinding } from "@sweatpants/foundation/schema";
 import type {
   EffectDefinition,
@@ -7,14 +16,15 @@ import type {
   EffectSchemaRole,
   SerializedEffectError,
 } from "@sweatpants/durable-effects/contract";
-import { decodeChatToolDefinition, type ChatToolDefinition } from "@sweatpants/chat-contract";
+import { chatToolDefinitionParser, type ChatToolDefinition } from "@sweatpants/chat-contract";
 import {
-  decodeModelContext,
-  decodeModelResponse,
+  modelContextParser,
+  modelResponseParser,
   type ModelContext,
   type ModelGenerationOptions,
   type ModelResponse,
 } from "@sweatpants/model-provider";
+import { z } from "zod";
 
 export type ModelToolSource =
   | { type: "none" }
@@ -62,6 +72,169 @@ export type ModelSampleDisposition =
 type ModelSampleWireRequest = JsonObject;
 type ModelSampleWireResult = JsonObject;
 
+const optionsSchema = z.strictObject({
+  toolChoice: z.enum(["auto", "none", "required"]).optional(),
+  maxTokens: z.number().optional(),
+  temperature: z.number().optional(),
+  topP: z.number().optional(),
+  topK: z.number().optional(),
+  thinking: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
+});
+const toolSourceSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("none") }),
+  z.strictObject({ type: z.literal("embedded"), tools: z.array(z.json()) }),
+  z.strictObject({ type: z.literal("catalog"), digest: z.string().min(1) }),
+]);
+const responseModeSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("message") }),
+  z.strictObject({
+    type: z.literal("json"),
+    schema: z.record(z.string(), z.json()),
+    name: z.string().optional(),
+  }),
+]);
+const modelSampleRequestSchema = z.strictObject({
+  invocation: z.strictObject({ context: z.json(), options: optionsSchema.optional() }),
+  tools: toolSourceSchema,
+  response: responseModeSchema,
+  modelPreferences: z.json().optional(),
+  classifications: z.array(z.json()).optional(),
+});
+const modelSampleOutputSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("message") }),
+  z.strictObject({ type: z.literal("json"), value: z.json() }),
+  z.strictObject({
+    type: z.literal("json-invalid"),
+    error: z.strictObject({ message: z.string().min(1), rawText: z.string().min(1) }),
+  }),
+]);
+const modelSampleResultSchema = z.strictObject({
+  message: z.json(),
+  output: modelSampleOutputSchema,
+});
+const modelSampleCancellationPartialSchema = z.strictObject({
+  text: z.string().min(1),
+  interrupted: z.literal(true),
+});
+
+const modelSampleRequestStructureParser = parser(modelSampleRequestSchema);
+const modelSampleResultStructureParser = parser(modelSampleResultSchema);
+
+/** Result-oriented parser for one model-sampling request. */
+export const modelSampleRequestParser: Parser<ModelSampleRequest> =
+  modelSampleRequestStructureParser.andThen((value) => {
+    const context = modelContextParser.parse(value.invocation.context);
+    if (!context.ok) {
+      return prefixFailure(context.issues, ["invocation", "context"]);
+    }
+
+    let tools: ModelToolSource;
+    if (value.tools.type === "embedded") {
+      const parsedTools: ChatToolDefinition[] = [];
+      for (const [index, tool] of value.tools.tools.entries()) {
+        const parsedTool = chatToolDefinitionParser.parse(tool);
+        if (!parsedTool.ok) {
+          return prefixFailure(parsedTool.issues, ["tools", "tools", index]);
+        }
+        parsedTools.push(parsedTool.value);
+      }
+      tools = { type: "embedded", tools: parsedTools };
+    } else {
+      tools = value.tools;
+    }
+
+    return success({
+      invocation: {
+        context: context.value,
+        ...(value.invocation.options === undefined
+          ? {}
+          : { options: normalizeOptions(value.invocation.options) }),
+      },
+      tools,
+      response: value.response as ModelResponseMode,
+      ...(value.modelPreferences === undefined ? {} : { modelPreferences: value.modelPreferences }),
+      ...(value.classifications === undefined ? {} : { classifications: value.classifications }),
+    });
+  });
+
+/** Result-oriented parser for one model-sampling result. */
+export const modelSampleResultParser: Parser<ModelSampleResult> =
+  modelSampleResultStructureParser.andThen((value) => {
+    const message = modelResponseParser.parse(value.message);
+    if (!message.ok) {
+      return prefixFailure(message.issues, ["message"]);
+    }
+    return success({ message: message.value, output: value.output });
+  });
+
+/** Result-oriented parser for one model-sampling cancellation partial. */
+export const modelSampleCancellationPartialParser: Parser<ModelSampleCancellationPartial> = parser(
+  modelSampleCancellationPartialSchema,
+).map((value) => value as ModelSampleCancellationPartial);
+
+export function decodeModelSampleRequest(value: unknown): ModelSampleRequest {
+  return requireParsed(modelSampleRequestParser, value, "$", "invalid model sampling request");
+}
+
+export function encodeModelSampleRequest(request: ModelSampleRequest): ModelSampleWireRequest {
+  return assertJson({
+    invocation: {
+      context: request.invocation.context,
+      ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
+    },
+    tools: request.tools,
+    response: request.response,
+    ...(request.modelPreferences === undefined
+      ? {}
+      : { modelPreferences: request.modelPreferences }),
+    ...(request.classifications === undefined ? {} : { classifications: request.classifications }),
+  }) as JsonObject;
+}
+
+export function decodeModelSampleResult(value: unknown): ModelSampleResult {
+  return requireParsed(modelSampleResultParser, value, "$", "invalid model sampling result");
+}
+
+export function encodeModelSampleResult(result: ModelSampleResult): ModelSampleWireResult {
+  return assertJson({ message: result.message, output: result.output }) as JsonObject;
+}
+
+function normalizeOptions(value: z.output<typeof optionsSchema>): ModelSampleInvocationOptions {
+  return {
+    ...(value.toolChoice === undefined ? {} : { toolChoice: value.toolChoice }),
+    ...(value.maxTokens === undefined ? {} : { maxTokens: value.maxTokens }),
+    ...(value.temperature === undefined ? {} : { temperature: value.temperature }),
+    ...(value.topP === undefined ? {} : { topP: value.topP }),
+    ...(value.topK === undefined ? {} : { topK: value.topK }),
+    ...(value.thinking === undefined ? {} : { thinking: value.thinking }),
+  };
+}
+
+function requireParsed<T>(
+  valueParser: Parser<T>,
+  value: unknown,
+  path: string,
+  fallback: string,
+): T {
+  const parsed = valueParser.parse(value);
+  if (!parsed.ok) {
+    throw new TypeError(`${path}: ${parsed.issues[0]?.message ?? fallback}`);
+  }
+  return parsed.value;
+}
+
+function prefixFailure<T = never>(
+  issues: readonly ParseIssue[],
+  prefix: readonly (string | number)[],
+) {
+  return failure<T>(
+    issues.map((issue) => ({
+      ...issue,
+      path: [...prefix, ...issue.path],
+    })),
+  );
+}
+
 const schemaEntries: SchemaBinding[] = [];
 
 function descriptor(
@@ -80,232 +253,40 @@ function descriptor(
   });
 }
 
-function bindSchema(
+function bindSchema<T>(
   identity: string,
   role: EffectSchemaRole,
   projection: Json,
-  validator: StandardSchemaV1<unknown, Json>,
+  valueParser: Parser<T>,
+  encode: (value: T) => Json,
 ): EffectSchemaDescriptor {
   const value = descriptor(identity, role, projection);
-  schemaEntries.push({ descriptor: value, schema: validator });
+  schemaEntries.push({ descriptor: value, schema: parserStandardSchema(valueParser, encode) });
   return value;
 }
 
-function standardSchema(normalize: (value: unknown) => Json): StandardSchemaV1<unknown, Json> {
+function parserStandardSchema<T>(
+  valueParser: Parser<T>,
+  encode: (value: T) => Json,
+): StandardSchemaV1<unknown, Json> {
   return {
     "~standard": {
       version: 1,
       vendor: "sweatpants",
       validate(value) {
-        try {
-          return { value: normalize(value) };
-        } catch (error) {
+        const parsed = valueParser.parse(value);
+        if (!parsed.ok) {
           return {
-            issues: [
-              {
-                message: error instanceof Error ? error.message : "invalid model sampling value",
-              },
-            ],
+            issues: parsed.issues.map((issue) => ({
+              message: issue.message,
+              path: issue.path,
+            })),
           };
         }
+        return { value: encode(parsed.value) };
       },
     },
   };
-}
-
-export function decodeModelSampleRequest(value: unknown): ModelSampleRequest {
-  const input = object(value, "$");
-  const invocation = object(input["invocation"], "$.invocation");
-  const context = decodeModelContext(invocation["context"], "$.invocation.context");
-  const options = decodeOptions(invocation["options"], "$.invocation.options");
-  const tools = decodeToolSource(input["tools"], "$.tools");
-  const response = decodeResponseMode(input["response"], "$.response");
-  const modelPreferences = hasOwn(input, "modelPreferences")
-    ? assertJson(input["modelPreferences"], "$.modelPreferences")
-    : undefined;
-  const classifications = hasOwn(input, "classifications")
-    ? array(input["classifications"], "$.classifications").map((entry, index) =>
-        assertJson(entry, `$.classifications[${index}]`),
-      )
-    : undefined;
-  return {
-    invocation: {
-      context,
-      ...(options === undefined ? {} : { options }),
-    },
-    tools,
-    response,
-    ...(modelPreferences === undefined ? {} : { modelPreferences }),
-    ...(classifications === undefined ? {} : { classifications }),
-  };
-}
-
-export function encodeModelSampleRequest(request: ModelSampleRequest): ModelSampleWireRequest {
-  return object(
-    assertJson({
-      invocation: {
-        context: request.invocation.context,
-        ...(request.invocation.options === undefined
-          ? {}
-          : { options: request.invocation.options }),
-      },
-      tools: request.tools,
-      response: request.response,
-      ...(request.modelPreferences === undefined
-        ? {}
-        : { modelPreferences: request.modelPreferences }),
-      ...(request.classifications === undefined
-        ? {}
-        : { classifications: request.classifications }),
-    }),
-    "$",
-  );
-}
-
-export function decodeModelSampleResult(value: unknown): ModelSampleResult {
-  const input = object(value, "$");
-  const output = decodeOutput(input["output"], "$.output");
-  return { message: decodeModelResponse(input["message"], "$.message"), output };
-}
-
-export function encodeModelSampleResult(result: ModelSampleResult): ModelSampleWireResult {
-  return object(assertJson({ message: result.message, output: result.output }), "$");
-}
-
-function decodeOptions(value: unknown, path: string): ModelSampleInvocationOptions | undefined {
-  if (value === undefined) return undefined;
-  const input = object(value, path);
-  assertKeys(input, ["toolChoice", "maxTokens", "temperature", "topP", "topK", "thinking"], path);
-  const output: {
-    -readonly [Key in keyof ModelSampleInvocationOptions]?: ModelSampleInvocationOptions[Key];
-  } = {};
-  const toolChoice = input["toolChoice"];
-  if (toolChoice !== undefined) {
-    if (toolChoice !== "auto" && toolChoice !== "none" && toolChoice !== "required") {
-      throw new TypeError(`${path}.toolChoice is invalid`);
-    }
-    output.toolChoice = toolChoice;
-  }
-  for (const key of ["maxTokens", "temperature", "topP", "topK"] as const) {
-    const item = input[key];
-    if (item !== undefined) {
-      if (typeof item !== "number" || !Number.isFinite(item))
-        throw new TypeError(`${path}.${key} is invalid`);
-      output[key] = item;
-    }
-  }
-  const thinking = input["thinking"];
-  if (thinking !== undefined) {
-    if (
-      thinking !== "off" &&
-      thinking !== "minimal" &&
-      thinking !== "low" &&
-      thinking !== "medium" &&
-      thinking !== "high" &&
-      thinking !== "xhigh"
-    ) {
-      throw new TypeError(`${path}.thinking is invalid`);
-    }
-    output.thinking = thinking;
-  }
-  return output;
-}
-
-function decodeToolSource(value: unknown, path: string): ModelToolSource {
-  const input = object(value, path);
-  const type = requiredString(input, "type", path);
-  switch (type) {
-    case "none":
-      assertKeys(input, ["type"], path);
-      return { type };
-    case "embedded": {
-      assertKeys(input, ["type", "tools"], path);
-      return {
-        type,
-        tools: array(input["tools"], `${path}.tools`).map((entry, index) =>
-          decodeChatToolDefinition(entry, `${path}.tools[${index}]`),
-        ),
-      };
-    }
-    case "catalog":
-      assertKeys(input, ["type", "digest"], path);
-      return { type, digest: requiredString(input, "digest", path) };
-    default:
-      throw new TypeError(`${path}.type is invalid`);
-  }
-}
-
-function decodeResponseMode(value: unknown, path: string): ModelResponseMode {
-  const input = object(value, path);
-  const type = requiredString(input, "type", path);
-  if (type === "message") {
-    assertKeys(input, ["type"], path);
-    return { type };
-  }
-  if (type === "json") {
-    assertKeys(input, ["type", "schema", "name"], path);
-    const schema = object(input["schema"], `${path}.schema`);
-    const name = input["name"];
-    if (name !== undefined && typeof name !== "string")
-      throw new TypeError(`${path}.name is invalid`);
-    return name === undefined ? { type, schema } : { type, schema, name };
-  }
-  throw new TypeError(`${path}.type is invalid`);
-}
-
-function decodeOutput(value: unknown, path: string): ModelSampleOutput {
-  const input = object(value, path);
-  const type = requiredString(input, "type", path);
-  switch (type) {
-    case "message":
-      assertKeys(input, ["type"], path);
-      return { type };
-    case "json":
-      assertKeys(input, ["type", "value"], path);
-      return { type, value: assertJson(input["value"], `${path}.value`) };
-    case "json-invalid": {
-      assertKeys(input, ["type", "error"], path);
-      const error = object(input["error"], `${path}.error`);
-      assertKeys(error, ["message", "rawText"], `${path}.error`);
-      return {
-        type,
-        error: {
-          message: requiredString(error, "message", `${path}.error`),
-          rawText: requiredString(error, "rawText", `${path}.error`),
-        },
-      };
-    }
-    default:
-      throw new TypeError(`${path}.type is invalid`);
-  }
-}
-
-function object(value: unknown, path: string): JsonObject {
-  return requireJsonObject(assertJson(value, path), path);
-}
-
-function array(value: unknown, path: string): Json[] {
-  const parsed = assertJson(value, path);
-  if (!Array.isArray(parsed)) throw new TypeError(`${path} must be an array`);
-  return parsed;
-}
-
-function requiredString(input: JsonObject, key: string, path: string): string {
-  if (!hasOwn(input, key) || typeof input[key] !== "string" || input[key].length === 0) {
-    throw new TypeError(`${path}.${key} must be a non-empty string`);
-  }
-  return input[key] as string;
-}
-
-function assertKeys(input: JsonObject, allowed: readonly string[], path: string): void {
-  const set = new Set(allowed);
-  for (const key of Object.keys(input)) {
-    if (!set.has(key)) throw new TypeError(`${path}.${key} is unknown`);
-  }
-}
-
-function hasOwn(input: JsonObject, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(input, key);
 }
 
 const objectProjection = { type: "object" } as const;
@@ -314,14 +295,16 @@ export const MODEL_SAMPLE_INPUT_DESCRIPTOR = bindSchema(
   "sweatpants.model-sample/input",
   "effect_input",
   objectProjection,
-  standardSchema((value) => assertJson(encodeModelSampleRequest(decodeModelSampleRequest(value)))),
+  modelSampleRequestParser,
+  (value) => encodeModelSampleRequest(value),
 );
 
 export const MODEL_SAMPLE_OUTPUT_DESCRIPTOR = bindSchema(
   "sweatpants.model-sample/output",
   "effect_output",
   objectProjection,
-  standardSchema((value) => assertJson(encodeModelSampleResult(decodeModelSampleResult(value)))),
+  modelSampleResultParser,
+  (value) => encodeModelSampleResult(value),
 );
 
 const modelSamplePartialProjection = { type: "object", required: ["text", "interrupted"] };
@@ -329,12 +312,8 @@ export const MODEL_SAMPLE_PARTIAL_DESCRIPTOR = bindSchema(
   "sweatpants.model-sample/cancellation-partial",
   "effect_cancellation_partial",
   modelSamplePartialProjection,
-  standardSchema((value) => {
-    const input = object(value, "$");
-    assertKeys(input, ["text", "interrupted"], "$");
-    if (input["interrupted"] !== true) throw new TypeError("$.interrupted must be true");
-    return assertJson({ text: requiredString(input, "text", "$"), interrupted: true });
-  }),
+  modelSampleCancellationPartialParser,
+  (value) => assertJson(value),
 );
 
 export const MODEL_SAMPLE_EFFECT: EffectDefinition<

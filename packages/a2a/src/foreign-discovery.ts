@@ -1,7 +1,16 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { z } from "zod";
 import { createHmac } from "node:crypto";
-import { assertJson, canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import {
+  assertJson,
+  canonicalJson,
+  canonicalSnapshot,
+  failure,
+  parser,
+  success,
+  type Json,
+  type Parser,
+} from "@sweatpants/foundation";
 import {
   createSecureA2AHttpClient,
   parseA2AJsonResponse,
@@ -18,6 +27,56 @@ import {
   type ForeignA2AInterfacePin,
   type ForeignA2AInvocationPin,
 } from "./foreign-task-types.ts";
+
+const interfaceSchema = z.looseObject({
+  url: z.string(),
+  protocolBinding: z.enum(["HTTP+JSON", "JSONRPC", "GRPC"]),
+  protocolVersion: z.string().regex(/^1(?:\.\d+){0,2}$/u),
+  tenant: z.string().optional(),
+});
+const securityRequirementSchema = z.looseObject({
+  schemes: z.record(z.string(), z.json()),
+});
+const extensionDeclarationSchema = z.looseObject({
+  uri: z.string(),
+  params: z.json().optional(),
+});
+const foreignAgentCardSchema = z.looseObject({
+  name: z.string().min(1),
+  version: z.string().min(1),
+  skills: z.array(z.looseObject({ id: z.string().min(1) })),
+  supportedInterfaces: z.array(interfaceSchema),
+  securityRequirements: z.array(securityRequirementSchema).optional(),
+  capabilities: z
+    .looseObject({ extensions: z.array(extensionDeclarationSchema).optional() })
+    .optional(),
+});
+const durableInvocationParamsSchema = z.strictObject({
+  protocolVersion: z.literal(1),
+  resolveEndpoint: z.string(),
+  abortEndpoint: z.string(),
+  retention: z.strictObject({
+    invocationBindingSeconds: z.number().int().positive(),
+    abortTombstoneSeconds: z.number().int().positive(),
+    messageIdempotencySeconds: z.number().int().positive(),
+    taskSeconds: z.number().int().positive(),
+    terminalResultSeconds: z.number().int().positive(),
+    clockSkewSeconds: z.number().int().nonnegative(),
+  }),
+  messageIdempotency: z.literal(true),
+});
+const foreignAgentCardParser = parser(foreignAgentCardSchema);
+export const durableInvocationParamsParser: Parser<DurableInvocationExtensionParamsV1> = parser(
+  durableInvocationParamsSchema,
+).map((value) => ({
+  protocolVersion: 1,
+  resolveEndpoint: value.resolveEndpoint,
+  abortEndpoint: value.abortEndpoint,
+  retention: Object.freeze(value.retention),
+  messageIdempotency: true,
+}));
+
+type ForeignAgentCard = z.output<typeof foreignAgentCardSchema>;
 
 export interface ForeignA2ADiscoveryOptions {
   readonly source:
@@ -90,25 +149,25 @@ export async function discoverForeignA2AAgent(
     throw new CrankError("unsafe_url", "Explicit Agent Card requires its origin");
   }
   const card = canonicalSnapshot(assertJson(value)).value;
-  if (!record(card) || !nonempty(card["name"]) || !nonempty(card["version"])) {
+  const parsedCard = foreignAgentCardParser.parse(card);
+  if (!parsedCard.ok) {
     throw new CrankError("agent_card_invalid", "Invalid A2A Agent Card identity");
   }
-  const skills = card["skills"];
-  if (
-    !Array.isArray(skills) ||
-    !skills.some((skill) => record(skill) && skill["id"] === options.skillId)
-  ) {
+  if (!parsedCard.value.skills.some((skill) => skill.id === options.skillId)) {
     throw new CrankError("agent_card_invalid", "Selected A2A skill is not advertised");
   }
-  const selectedInterface = selectInterface(card, options.bindingPreference);
+  const selectedInterface = selectInterface(parsedCard.value, options.bindingPreference);
   await verifyA2AUrl(selectedInterface.url, {
     purpose: "manifest",
     ...(options.urlPolicy ? { policy: options.urlPolicy } : {}),
     cardOrigin,
   });
-  const securityRequirement = selectSecurityRequirement(card, options.supportedAuthSchemes ?? []);
-  const extensions = extensionDeclarations(card);
-  const extensionUris = Object.freeze(extensions.map((extension) => String(extension["uri"])));
+  const securityRequirement = selectSecurityRequirement(
+    parsedCard.value,
+    options.supportedAuthSchemes ?? [],
+  );
+  const extensions = extensionDeclarations(parsedCard.value);
+  const extensionUris = Object.freeze(extensions.map((extension) => extension.uri));
   const now = options.now ?? new Date();
   const guarantee = negotiateGuarantee({
     extensions,
@@ -134,7 +193,7 @@ export async function discoverForeignA2AAgent(
     card,
     cardDigest: canonicalSnapshot(card).sha,
     cardOrigin,
-    agentName: card["name"],
+    agentName: parsedCard.value.name,
     skillId: options.skillId,
     interface: selectedInterface,
     extensionUris,
@@ -224,14 +283,34 @@ const invocationPinShapeSchema = z
     tenantId: pinTextSchema.optional(),
   })
   .loose();
+const invocationPinStructureParser = parser(invocationPinShapeSchema);
+export const foreignA2AInvocationPinParser: Parser<ForeignA2AInvocationPin> =
+  invocationPinStructureParser.andThen((value) => {
+    try {
+      verifyInvocationPinSemantics(value as ForeignA2AInvocationPin);
+      return success(value as ForeignA2AInvocationPin);
+    } catch (error) {
+      if (error instanceof CrankError) {
+        return failure({ path: [], message: error.message, code: error.code });
+      }
+      throw error;
+    }
+  });
 
 export function verifyForeignA2AInvocationPin(
   pin: unknown,
 ): asserts pin is ForeignA2AInvocationPin {
-  if (!invocationPinShapeSchema.safeParse(pin).success) {
-    throw new CrankError("a2a_pin_invalid", "Foreign A2A invocation pin identity is invalid");
+  const parsed = foreignA2AInvocationPinParser.parse(pin);
+  if (!parsed.ok) {
+    const issue = parsed.issues[0];
+    throw new CrankError(
+      issue?.code?.startsWith("a2a_") ? issue.code : "a2a_pin_invalid",
+      issue?.message ?? "Foreign A2A invocation pin identity is invalid",
+    );
   }
-  const candidate = pin as ForeignA2AInvocationPin;
+}
+
+function verifyInvocationPinSemantics(candidate: ForeignA2AInvocationPin): void {
   if (!Number.isFinite(Date.parse(candidate.requestExpiresAt))) {
     throw new CrankError("a2a_pin_invalid", "Foreign A2A invocation pin identity is invalid");
   }
@@ -298,72 +377,45 @@ export function deriveForeignA2AContinuationMessageId(
 }
 
 function selectInterface(
-  card: Record<string, Json>,
+  card: ForeignAgentCard,
   preference: readonly ForeignA2AInterfacePin["protocolBinding"][] = [
     "HTTP+JSON",
     "JSONRPC",
     "GRPC",
   ],
 ): ForeignA2AInterfacePin {
-  const interfaces = card["supportedInterfaces"];
-  if (!Array.isArray(interfaces)) {
-    throw new CrankError("agent_card_invalid", "Agent Card has no interfaces");
-  }
   for (const binding of preference) {
-    const selected = interfaces.find(
-      (candidate) =>
-        record(candidate) &&
-        candidate["protocolBinding"] === binding &&
-        typeof candidate["url"] === "string" &&
-        typeof candidate["protocolVersion"] === "string" &&
-        /^1(?:\.\d+){0,2}$/.test(candidate["protocolVersion"]),
+    const selected = card.supportedInterfaces.find(
+      (candidate) => candidate.protocolBinding === binding,
     );
-    if (record(selected)) {
-      if (selected["tenant"] !== undefined && typeof selected["tenant"] !== "string") {
-        throw new CrankError("agent_card_invalid", "Selected A2A interface tenant is invalid");
-      }
+    if (selected) {
       return Object.freeze({
-        url: String(selected["url"]),
+        url: selected.url,
         protocolBinding: binding,
-        protocolVersion: String(selected["protocolVersion"]),
-        ...(typeof selected["tenant"] === "string" ? { tenant: selected["tenant"] } : {}),
+        protocolVersion: selected.protocolVersion,
+        ...(selected.tenant === undefined ? {} : { tenant: selected.tenant }),
       });
     }
   }
   throw new CrankError("protocol_version_unsupported", "No supported A2A 1.x interface");
 }
-function selectSecurityRequirement(card: Record<string, Json>, supported: readonly string[]): Json {
-  const requirements = card["securityRequirements"];
-  if (requirements === undefined) {
+function selectSecurityRequirement(card: ForeignAgentCard, supported: readonly string[]): Json {
+  const requirements = card.securityRequirements;
+  if (!requirements || requirements.length === 0) {
     return {};
   }
-  if (!Array.isArray(requirements)) {
-    throw new CrankError("agent_card_invalid", "Invalid security requirements");
-  }
-  if (requirements.length === 0) {
-    return {};
-  }
-  const selected = requirements.find((requirement) => {
-    if (!record(requirement) || !record(requirement["schemes"])) {
-      return false;
-    }
-    return Object.keys(requirement["schemes"]).every((scheme) => supported.includes(scheme));
-  });
+  const selected = requirements.find((requirement) =>
+    Object.keys(requirement.schemes).every((scheme) => supported.includes(scheme)),
+  );
   if (!selected) {
     throw new CrankError("authentication_failed", "No satisfiable Agent Card security requirement");
   }
-  return selected;
+  return selected as Json;
 }
-function extensionDeclarations(card: Record<string, Json>): Record<string, Json>[] {
-  const capabilities = card["capabilities"];
-  const extensions = record(capabilities) ? capabilities["extensions"] : undefined;
-  if (extensions === undefined) {
-    return [];
-  }
-  if (!Array.isArray(extensions) || !extensions.every(record)) {
-    throw new CrankError("agent_card_invalid", "Invalid Agent Card extension declarations");
-  }
-  return extensions;
+function extensionDeclarations(
+  card: ForeignAgentCard,
+): Array<Record<string, Json> & { uri: string }> {
+  return (card.capabilities?.extensions ?? []) as Array<Record<string, Json> & { uri: string }>;
 }
 function negotiateGuarantee(input: {
   extensions: readonly Record<string, Json>[];
@@ -416,47 +468,11 @@ function negotiateGuarantee(input: {
   return Object.freeze(pin);
 }
 export function parseDurableInvocationParams(value: unknown): DurableInvocationExtensionParamsV1 {
-  if (
-    !record(value) ||
-    !exactKeys(value, [
-      "protocolVersion",
-      "resolveEndpoint",
-      "abortEndpoint",
-      "retention",
-      "messageIdempotency",
-    ]) ||
-    value["protocolVersion"] !== 1 ||
-    value["messageIdempotency"] !== true ||
-    typeof value["resolveEndpoint"] !== "string" ||
-    typeof value["abortEndpoint"] !== "string" ||
-    !record(value["retention"])
-  ) {
+  const parsed = durableInvocationParamsParser.parse(value);
+  if (!parsed.ok) {
     throw new CrankError("agent_card_invalid", "Invalid durable-invocation extension parameters");
   }
-  const retention = value["retention"];
-  const keys = [
-    "invocationBindingSeconds",
-    "abortTombstoneSeconds",
-    "messageIdempotencySeconds",
-    "taskSeconds",
-    "terminalResultSeconds",
-    "clockSkewSeconds",
-  ];
-  if (!exactKeys(retention, keys)) {
-    throw new CrankError("agent_card_invalid", "Invalid durable-invocation retention");
-  }
-  for (const key of keys) {
-    requirePositive(retention[key], key, key === "clockSkewSeconds");
-  }
-  return Object.freeze({
-    protocolVersion: 1,
-    resolveEndpoint: value["resolveEndpoint"],
-    abortEndpoint: value["abortEndpoint"],
-    retention: Object.freeze(
-      retention,
-    ) as unknown as DurableInvocationExtensionParamsV1["retention"],
-    messageIdempotency: true,
-  });
+  return Object.freeze(parsed.value);
 }
 function guaranteeRank(value: ForeignA2AGuarantee): number {
   return { best_effort: 0, task_handle_only: 1, idempotent_messages: 2, reconciled: 3 }[value];
@@ -479,13 +495,4 @@ function requirePositive(
       `${field} must be ${allowZero ? "nonnegative" : "positive"}`,
     );
   }
-}
-function record(value: unknown): value is Record<string, Json> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-function nonempty(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-function exactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
 }

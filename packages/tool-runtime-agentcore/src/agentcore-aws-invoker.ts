@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { call, resource, type Operation, type Stream, type Subscription } from "effection";
+import { parser } from "@sweatpants/foundation";
 import { z } from "zod";
 import {
   BedrockAgentCoreClient,
@@ -9,7 +10,7 @@ import {
   type BedrockAgentCoreClientConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { AgentCoreToolRuntimeResponse } from "./agentcore-types.ts";
-import { parseAgentCoreToolRuntimeResponse } from "./agentcore-boundary-parsers.ts";
+import { agentCoreToolRuntimeResponseParser } from "./agentcore-boundary-parsers.ts";
 import type { AgentCoreInvokeInput, AgentCoreInvoker } from "./agentcore-runtime-client.ts";
 
 export interface AwsSdkAgentCoreInvokerOptions {
@@ -18,7 +19,7 @@ export interface AwsSdkAgentCoreInvokerOptions {
 }
 
 type LogLevel = "silent" | "debug" | "info" | "warn" | "error";
-const sseDataEnvelopeSchema = z.object({ data: z.json() }).passthrough();
+const sseDataEnvelopeParser = parser(z.looseObject({ data: z.json() }));
 
 const LOG_LEVEL_ORDER: Record<Exclude<LogLevel, "silent">, number> = {
   debug: 10,
@@ -117,25 +118,31 @@ export function parseAgentCoreSseResponses(raw: string): AgentCoreToolRuntimeRes
       continue;
     }
     let text = dataLines.join("\n");
-    if (text === "[DONE]") continue;
+    if (text === "[DONE]") {
+      continue;
+    }
     let value: unknown;
     try {
       value = JSON.parse(text) as unknown;
       if (typeof value === "string") {
         text = value.startsWith("data:") ? value.slice(5).trim() : value;
-        if (text === "[DONE]") continue;
+        if (text === "[DONE]") {
+          continue;
+        }
         value = JSON.parse(text) as unknown;
       }
     } catch {
       throw new Error("AgentCore returned malformed JSON SSE data");
     }
-    const dataEnvelope = sseDataEnvelopeSchema.safeParse(value);
-    if (dataEnvelope.success) value = dataEnvelope.data.data;
-    try {
-      responses.push(parseAgentCoreToolRuntimeResponse(value));
-    } catch {
+    const dataEnvelope = sseDataEnvelopeParser.parse(value);
+    if (dataEnvelope.ok) {
+      value = dataEnvelope.value.data;
+    }
+    const parsed = agentCoreToolRuntimeResponseParser.parse(value);
+    if (!parsed.ok) {
       throw new Error("AgentCore returned a malformed tool-runtime response");
     }
+    responses.push(parsed.value);
   }
   return responses;
 }

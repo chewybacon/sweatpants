@@ -39,7 +39,7 @@ const pinnedProgramSchema = z.strictObject({
   digest: z.string().regex(/^[0-9a-f]{64}$/u),
 });
 const manifestDocumentSchema = z.strictObject({
-  protocolVersion: z.number().int().safe(),
+  protocolVersion: z.number().int(),
   extensionUri: z.string().max(512),
   program: pinnedProgramSchema,
   manifest: z.json(),

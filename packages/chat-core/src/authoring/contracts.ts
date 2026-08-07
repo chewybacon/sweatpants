@@ -1,12 +1,21 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, type Json, type JsonObject } from "@sweatpants/foundation";
+import {
+  canonicalSnapshot,
+  failure,
+  parser,
+  success,
+  type Json,
+  type JsonObject,
+  type Parser,
+} from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   standardSchemaOf,
-  type SchemaBinding,
   type PortableSchemaDescriptor,
+  type SchemaBinding,
 } from "@sweatpants/foundation/schema";
 import { sortedResourceValues, type DataClassification } from "@sweatpants/agent-sdk";
+import { z } from "zod";
 
 export type AuthoredChatContentPart = {
   value: Json;
@@ -71,6 +80,100 @@ export type AuthoredChatModelSampleResult = {
   artifacts: AuthoredChatArtifact[];
 } & JsonObject;
 
+const textEncoder = new TextEncoder();
+const classificationSchema = z.enum(["public", "internal", "confidential", "restricted"]);
+const digestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
+const boundedTextSchema = (maxBytes: number) =>
+  z
+    .string()
+    .min(1)
+    .refine((value) => textEncoder.encode(value).byteLength <= maxBytes);
+const opaqueIdSchema = boundedTextSchema(512);
+const provenanceSchema = z.strictObject({
+  classifications: z.array(classificationSchema),
+  sourceDigests: z.array(digestSchema),
+});
+const authoredPartSchema = z.strictObject({ value: z.json(), provenance: provenanceSchema });
+const authoredMessageSchema = z.strictObject({
+  id: opaqueIdSchema,
+  role: z.enum(["user", "assistant", "system", "tool"]),
+  parts: z.array(authoredPartSchema),
+});
+const referencedTaskSchema = z.strictObject({
+  taskId: opaqueIdSchema,
+  summary: authoredMessageSchema,
+});
+const authoredContextSchema = z.strictObject({
+  policyDigest: digestSchema,
+  frontier: opaqueIdSchema,
+  referenceTaskIds: z.array(opaqueIdSchema),
+  referencedTasks: z.array(referencedTaskSchema),
+  messages: z.array(authoredMessageSchema),
+  truncation: z.strictObject({
+    omittedMessages: z.number().int().nonnegative(),
+    omittedReferencedTasks: z.number().int().nonnegative(),
+  }),
+});
+const authoredArtifactSchema = z.strictObject({
+  id: opaqueIdSchema,
+  name: boundedTextSchema(512).optional(),
+  description: boundedTextSchema(4_096).optional(),
+  parts: z.array(authoredPartSchema),
+});
+const authoredTurnInputSchema = z.strictObject({
+  message: authoredMessageSchema,
+  context: authoredContextSchema,
+});
+const authoredTurnResultSchema = z.strictObject({
+  message: authoredMessageSchema,
+  artifacts: z.array(authoredArtifactSchema),
+});
+const modelToolCallSchema = z.strictObject({
+  id: opaqueIdSchema,
+  target: opaqueIdSchema,
+  input: z.json(),
+});
+const authoredModelSampleRequestSchema = z.strictObject({
+  messages: z.array(authoredMessageSchema),
+  systemPrompt: authoredPartSchema,
+  tools: z.array(z.json()),
+  classifications: z.array(classificationSchema),
+  sampling: z.json(),
+});
+const authoredModelSampleResultSchema = z.strictObject({
+  message: authoredMessageSchema,
+  calls: z.array(modelToolCallSchema),
+  artifacts: z.array(authoredArtifactSchema),
+});
+
+type StructuralPart = z.output<typeof authoredPartSchema>;
+type StructuralMessage = z.output<typeof authoredMessageSchema>;
+type StructuralContext = z.output<typeof authoredContextSchema>;
+type StructuralArtifact = z.output<typeof authoredArtifactSchema>;
+type StructuralTurnInput = z.output<typeof authoredTurnInputSchema>;
+type StructuralTurnResult = z.output<typeof authoredTurnResultSchema>;
+type StructuralModelRequest = z.output<typeof authoredModelSampleRequestSchema>;
+type StructuralModelResult = z.output<typeof authoredModelSampleResultSchema>;
+
+export const authoredChatContentPartParser: Parser<AuthoredChatContentPart> = parser(
+  authoredPartSchema,
+).andThen((value) => semanticResult(() => normalizePart(value)));
+export const authoredChatMessageParser: Parser<AuthoredChatMessage> = parser(
+  authoredMessageSchema,
+).andThen((value) => semanticResult(() => normalizeMessage(value)));
+export const authoredChatTurnInputParser: Parser<AuthoredChatTurnInput> = parser(
+  authoredTurnInputSchema,
+).andThen((value) => semanticResult(() => normalizeTurnInput(value)));
+export const authoredChatTurnResultParser: Parser<AuthoredChatTurnResult> = parser(
+  authoredTurnResultSchema,
+).andThen((value) => semanticResult(() => normalizeTurnResult(value)));
+export const authoredChatModelSampleRequestParser: Parser<AuthoredChatModelSampleRequest> = parser(
+  authoredModelSampleRequestSchema,
+).andThen((value) => semanticResult(() => normalizeModelSampleRequest(value)));
+export const authoredChatModelSampleResultParser: Parser<AuthoredChatModelSampleResult> = parser(
+  authoredModelSampleResultSchema,
+).andThen((value) => semanticResult(() => normalizeModelSampleResult(value)));
+
 const inputDescriptor = descriptor("sweatpants.chat-turn/input", "program_input", {
   type: "object",
   required: ["message", "context"],
@@ -107,209 +210,127 @@ export const AUTHORED_MODEL_SAMPLE_INPUT_DESCRIPTOR = authoredModelSampleInputDe
 export const AUTHORED_MODEL_SAMPLE_OUTPUT_DESCRIPTOR = authoredModelSampleOutputDescriptor;
 
 export const CHAT_CONTRACT_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze([
-  entry(inputDescriptor, (value) => parseAuthoredChatTurnInput(value)),
-  entry(resultDescriptor, (value) => parseAuthoredChatTurnResult(value)),
-  entry(authoredModelSampleInputDescriptor, (value) => parseAuthoredChatModelSampleRequest(value)),
-  entry(authoredModelSampleOutputDescriptor, (value) => parseAuthoredChatModelSampleResult(value)),
+  entry(inputDescriptor, authoredChatTurnInputParser),
+  entry(resultDescriptor, authoredChatTurnResultParser),
+  entry(authoredModelSampleInputDescriptor, authoredChatModelSampleRequestParser),
+  entry(authoredModelSampleOutputDescriptor, authoredChatModelSampleResultParser),
 ]);
 
 export function parseAuthoredChatTurnInput(value: unknown): AuthoredChatTurnInput {
-  const input = exactRecord(value, ["message", "context"], "chat turn input");
-  return snapshot({
-    message: parseAuthoredChatMessage(input["message"]),
-    context: parseAuthoredChatContext(input["context"]),
-  });
+  return requireParsed(authoredChatTurnInputParser, value, "invalid chat turn input");
+}
+export function parseAuthoredChatTurnResult(value: unknown): AuthoredChatTurnResult {
+  return requireParsed(authoredChatTurnResultParser, value, "invalid chat turn result");
+}
+export function parseAuthoredChatMessage(value: unknown): AuthoredChatMessage {
+  return requireParsed(authoredChatMessageParser, value, "invalid chat message");
+}
+export function parseAuthoredContentPart(value: unknown): AuthoredChatContentPart {
+  return requireParsed(authoredChatContentPartParser, value, "invalid content part");
+}
+export function parseAuthoredChatModelSampleRequest(
+  value: unknown,
+): AuthoredChatModelSampleRequest {
+  return requireParsed(authoredChatModelSampleRequestParser, value, "invalid model sample input");
+}
+export function parseAuthoredChatModelSampleResult(value: unknown): AuthoredChatModelSampleResult {
+  return requireParsed(authoredChatModelSampleResultParser, value, "invalid model sample output");
 }
 
-export function parseAuthoredChatTurnResult(value: unknown): AuthoredChatTurnResult {
-  const result = exactRecord(value, ["message", "artifacts"], "chat turn result");
-  if (!Array.isArray(result["artifacts"])) {
-    invalid("invalid chat result");
-  }
+function normalizeTurnInput(input: StructuralTurnInput): AuthoredChatTurnInput {
+  return snapshot({
+    message: normalizeMessage(input.message),
+    context: normalizeContext(input.context),
+  });
+}
+function normalizeTurnResult(result: StructuralTurnResult): AuthoredChatTurnResult {
   const ids = new Set<string>();
-  const artifacts = result["artifacts"].map((artifact) => {
-    const parsed = parseAuthoredChatArtifact(artifact);
+  const artifacts = result.artifacts.map((artifact) => {
+    const parsed = normalizeArtifact(artifact);
     if (ids.has(parsed.id)) {
       invalid("duplicate artifact ID");
     }
     ids.add(parsed.id);
     return parsed;
   });
+  return snapshot({ message: normalizeMessage(result.message), artifacts });
+}
+function normalizeMessage(message: StructuralMessage): AuthoredChatMessage {
   return snapshot({
-    message: parseAuthoredChatMessage(result["message"]),
-    artifacts,
+    id: message.id,
+    role: message.role,
+    parts: message.parts.map(normalizePart),
   });
 }
-
-export function parseAuthoredChatMessage(value: unknown): AuthoredChatMessage {
-  const message = exactRecord(value, ["id", "role", "parts"], "chat message");
-  const role = message["role"];
-  if (
-    !["user", "assistant", "system", "tool"].includes(String(role)) ||
-    !Array.isArray(message["parts"])
-  ) {
-    invalid("invalid chat message");
-  }
-  return snapshot({
-    id: opaqueId(message["id"], "message ID"),
-    role: role as AuthoredChatMessage["role"],
-    parts: message["parts"].map(parseAuthoredPart),
-  });
-}
-
-export function parseAuthoredContentPart(value: unknown): AuthoredChatContentPart {
-  return parseAuthoredPart(value);
-}
-
-function parseAuthoredChatContext(value: unknown): AuthoredChatContextView {
-  const context = exactRecord(
-    value,
-    ["policyDigest", "frontier", "referenceTaskIds", "referencedTasks", "messages", "truncation"],
-    "chat context",
-  );
-  if (
-    !Array.isArray(context["referenceTaskIds"]) ||
-    !Array.isArray(context["referencedTasks"]) ||
-    !Array.isArray(context["messages"])
-  ) {
-    invalid("invalid context arrays");
-  }
+function normalizeContext(context: StructuralContext): AuthoredChatContextView {
   const references: string[] = [];
   const seen = new Set<string>();
-  for (const raw of context["referenceTaskIds"]) {
-    const id = opaqueId(raw, "reference task ID");
+  for (const id of context.referenceTaskIds) {
     if (!seen.has(id)) {
       seen.add(id);
       references.push(id);
     }
   }
-  const truncation = exactRecord(
-    context["truncation"],
-    ["omittedMessages", "omittedReferencedTasks"],
-    "truncation",
-  );
   return snapshot({
-    policyDigest: digest(context["policyDigest"], "policy digest"),
-    frontier: opaqueId(context["frontier"], "context frontier"),
+    policyDigest: context.policyDigest,
+    frontier: context.frontier,
     referenceTaskIds: references,
-    referencedTasks: context["referencedTasks"].map((item) => {
-      const task = exactRecord(item, ["taskId", "summary"], "referenced task");
-      return {
-        taskId: opaqueId(task["taskId"], "task ID"),
-        summary: parseAuthoredChatMessage(task["summary"]),
-      };
-    }),
-    messages: context["messages"].map(parseAuthoredChatMessage),
-    truncation: {
-      omittedMessages: nonnegative(truncation["omittedMessages"], "omitted messages"),
-      omittedReferencedTasks: nonnegative(truncation["omittedReferencedTasks"], "omitted tasks"),
-    },
+    referencedTasks: context.referencedTasks.map((task) => ({
+      taskId: task.taskId,
+      summary: normalizeMessage(task.summary),
+    })),
+    messages: context.messages.map(normalizeMessage),
+    truncation: context.truncation,
   });
 }
-
-function parseAuthoredChatArtifact(value: unknown): AuthoredChatArtifact {
-  const artifact = optionalRecord(value, ["id", "parts"], ["name", "description"], "artifact");
-  if (!Array.isArray(artifact["parts"])) {
-    invalid("artifact parts must be an array");
-  }
+function normalizeArtifact(artifact: StructuralArtifact): AuthoredChatArtifact {
   return snapshot({
-    id: opaqueId(artifact["id"], "artifact ID"),
-    ...(artifact["name"] !== undefined
-      ? { name: boundedText(artifact["name"], 512, "artifact name") }
-      : {}),
-    ...(artifact["description"] !== undefined
-      ? { description: boundedText(artifact["description"], 4096, "artifact description") }
-      : {}),
-    parts: artifact["parts"].map(parseAuthoredPart),
+    id: artifact.id,
+    ...(artifact.name === undefined ? {} : { name: artifact.name }),
+    ...(artifact.description === undefined ? {} : { description: artifact.description }),
+    parts: artifact.parts.map(normalizePart),
   });
 }
-
-function parseAuthoredPart(value: unknown): AuthoredChatContentPart {
-  const part = exactRecord(value, ["value", "provenance"], "content part");
-  const provenance = exactRecord(
-    part["provenance"],
-    ["classifications", "sourceDigests"],
-    "provenance",
-  );
+function normalizePart(part: StructuralPart): AuthoredChatContentPart {
+  const classifications = uniqueSorted(part.provenance.classifications);
+  const sourceDigests = uniqueSorted(part.provenance.sourceDigests);
   if (
-    !Array.isArray(provenance["classifications"]) ||
-    !Array.isArray(provenance["sourceDigests"])
+    classifications.length !== part.provenance.classifications.length ||
+    sourceDigests.length !== part.provenance.sourceDigests.length ||
+    classifications.some((value, index) => value !== part.provenance.classifications[index]) ||
+    sourceDigests.some((value, index) => value !== part.provenance.sourceDigests[index])
   ) {
-    invalid("invalid provenance");
-  }
-  const classifications = uniqueSorted(provenance["classifications"].map(classification));
-  const sourceDigests = uniqueSorted(
-    provenance["sourceDigests"].map((item) => digest(item, "source digest")),
-  );
-  if (
-    classifications.length !== provenance["classifications"].length ||
-    sourceDigests.length !== provenance["sourceDigests"].length
-  ) {
-    invalid("provenance must already be sorted and duplicate-free");
-  }
-  for (let index = 0; index < classifications.length; index += 1) {
-    if (classifications[index] !== provenance["classifications"][index]) {
-      invalid("classifications must be sorted");
-    }
-  }
-  for (let index = 0; index < sourceDigests.length; index += 1) {
-    if (sourceDigests[index] !== provenance["sourceDigests"][index]) {
-      invalid("source digests must be sorted");
-    }
+    invalid("provenance must be sorted and duplicate-free");
   }
   return snapshot({
-    value: canonicalSnapshot(part["value"] as Json).value,
+    value: canonicalSnapshot(part.value).value,
     provenance: { classifications, sourceDigests },
   });
 }
-
-export function parseAuthoredChatModelSampleRequest(
-  value: unknown,
+function normalizeModelSampleRequest(
+  input: StructuralModelRequest,
 ): AuthoredChatModelSampleRequest {
-  const input = exactRecord(
-    value,
-    ["messages", "systemPrompt", "tools", "classifications", "sampling"],
-    "model sample input",
-  );
-  if (
-    !Array.isArray(input["messages"]) ||
-    !Array.isArray(input["tools"]) ||
-    !Array.isArray(input["classifications"])
-  ) {
-    invalid("invalid model sample input");
-  }
   return snapshot({
-    messages: input["messages"].map(parseAuthoredChatMessage),
-    systemPrompt: parseAuthoredContentPart(input["systemPrompt"]),
-    tools: input["tools"].map((tool) => canonicalSnapshot(tool as Json).value),
-    classifications: input["classifications"].map(classification),
-    sampling: canonicalSnapshot(input["sampling"] as Json).value,
+    messages: input.messages.map(normalizeMessage),
+    systemPrompt: normalizePart(input.systemPrompt),
+    tools: input.tools.map((tool) => canonicalSnapshot(tool).value),
+    classifications: input.classifications,
+    sampling: canonicalSnapshot(input.sampling).value,
   });
 }
-
-export function parseAuthoredChatModelSampleResult(value: unknown): AuthoredChatModelSampleResult {
-  const output = exactRecord(value, ["message", "calls", "artifacts"], "model sample output");
-  if (!Array.isArray(output["calls"]) || !Array.isArray(output["artifacts"])) {
-    invalid("invalid model sample output");
-  }
+function normalizeModelSampleResult(output: StructuralModelResult): AuthoredChatModelSampleResult {
   const callIds = new Set<string>();
-  const calls = output["calls"].map((item) => {
-    const call = exactRecord(item, ["id", "target", "input"], "model tool call");
-    const id = opaqueId(call["id"], "tool call ID");
-    if (callIds.has(id)) {
+  const calls = output.calls.map((call) => {
+    if (callIds.has(call.id)) {
       invalid("duplicate model tool call ID");
     }
-    callIds.add(id);
-    return {
-      id,
-      target: opaqueId(call["target"], "tool target"),
-      input: canonicalSnapshot(call["input"] as Json).value,
-    };
+    callIds.add(call.id);
+    return { id: call.id, target: call.target, input: canonicalSnapshot(call.input).value };
   });
   return snapshot({
-    message: parseAuthoredChatMessage(output["message"]),
+    message: normalizeMessage(output.message),
     calls,
-    artifacts: output["artifacts"].map(parseAuthoredChatArtifact),
+    artifacts: output.artifacts.map(normalizeArtifact),
   });
 }
 
@@ -328,88 +349,38 @@ function descriptor(
     fidelity: { input: "explicit", output: "explicit" },
   });
 }
-function entry(
+function entry<T>(
   descriptorValue: PortableSchemaDescriptor,
-  parse: (value: unknown) => Json,
+  valueParser: Parser<T>,
 ): SchemaBinding {
   return {
     descriptor: descriptorValue,
     schema: standardSchemaOf("sweatpants", (value) => {
-      try {
-        return { value: parse(value) };
-      } catch (error) {
-        return { issues: [{ message: error instanceof Error ? error.message : "invalid value" }] };
-      }
+      const parsed = valueParser.parse(value);
+      return parsed.ok
+        ? { value: parsed.value as unknown as Json }
+        : { issues: parsed.issues.map((issue) => ({ message: issue.message, path: issue.path })) };
     }),
   };
 }
-function exactRecord(
-  value: unknown,
-  keys: readonly string[],
-  field: string,
-): Record<string, unknown> {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    Object.keys(value).length !== keys.length ||
-    !keys.every((key) => key in value)
-  ) {
-    invalid(`invalid ${field}`);
+function requireParsed<T>(valueParser: Parser<T>, value: unknown, fallback: string): T {
+  const parsed = valueParser.parse(value);
+  if (!parsed.ok) {
+    invalid(parsed.issues[0]?.message ?? fallback);
   }
-  return value as Record<string, unknown>;
+  return parsed.value;
 }
-function optionalRecord(
-  value: unknown,
-  required: readonly string[],
-  optional: readonly string[],
-  field: string,
-): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    invalid(`invalid ${field}`);
+function semanticResult<T>(operation: () => T) {
+  try {
+    return success(operation());
+  } catch (error) {
+    if (error instanceof CrankError) {
+      return failure<T>({ path: [], message: error.message, code: error.code });
+    }
+    throw error;
   }
-  const record = value as Record<string, unknown>;
-  const allowed = new Set([...required, ...optional]);
-  if (
-    !required.every((key) => key in record) ||
-    Object.keys(record).some((key) => !allowed.has(key))
-  ) {
-    invalid(`invalid ${field}`);
-  }
-  return record;
 }
-function classification(value: unknown): DataClassification {
-  if (!["public", "internal", "confidential", "restricted"].includes(String(value))) {
-    invalid("invalid classification");
-  }
-  return value as DataClassification;
-}
-function opaqueId(value: unknown, field: string): string {
-  return boundedText(value, 512, field);
-}
-function boundedText(value: unknown, maxBytes: number, field: string): string {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    new TextEncoder().encode(value).byteLength > maxBytes
-  ) {
-    invalid(`invalid ${field}`);
-  }
-  return value;
-}
-function digest(value: unknown, field: string): string {
-  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
-    invalid(`invalid ${field}`);
-  }
-  return value;
-}
-function nonnegative(value: unknown, field: string): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 0) {
-    invalid(`invalid ${field}`);
-  }
-  return Number(value);
-}
-function uniqueSorted<T extends string>(values: T[]): T[] {
+function uniqueSorted<T extends string>(values: readonly T[]): T[] {
   return sortedResourceValues(new Set(values), (a, b) => a.localeCompare(b));
 }
 function snapshot<T>(value: T): T {

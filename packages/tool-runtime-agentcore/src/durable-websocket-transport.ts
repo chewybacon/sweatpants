@@ -1,9 +1,9 @@
-import { CrankError } from "@sweatpants/durable-execution";
 import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
 import { call, useAbortSignal, type Operation } from "effection";
 import { z } from "zod";
 
 import {
+  CrankError,
   type AttachProgramRequest,
   type ProgramAttachment,
   type ProgramCommand,
@@ -12,7 +12,7 @@ import {
   type ReplayEntry,
   type RestoredProgramAttachment,
 } from "@sweatpants/durable-execution";
-import { assertJson, canonicalSnapshot } from "@sweatpants/foundation";
+import { assertJson, canonicalSnapshot, parser } from "@sweatpants/foundation";
 import type { AgentCoreDurableProgramTransport } from "./durable-driver.ts";
 import {
   computeFrontierDigest,
@@ -31,6 +31,8 @@ import {
   parseAgentCoreTaskPlacement,
   verifyAgentCoreRuntimeRelease,
 } from "./durable-placement.ts";
+
+const jsonRecordParser = parser(z.record(z.string(), z.json()));
 
 export type AgentCoreDurableProgramRoute =
   | {
@@ -257,14 +259,14 @@ function* openAndBegin(
 }
 
 function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
-  const route = z.record(z.string(), z.json()).safeParse(request.route);
-  if (!route.success) {
+  const route = jsonRecordParser.parse(request.route);
+  if (!route.ok) {
     throw new CrankError("placement_unavailable", "Missing AgentCore placement route");
   }
-  const placement = route.data["placement"];
-  const development = route.data["development"];
-  const deploymentRelease = route.data["release"];
-  const journalId = route.data["journalId"];
+  const placement = route.value["placement"];
+  const development = route.value["development"];
+  const deploymentRelease = route.value["release"];
+  const journalId = route.value["journalId"];
   const result =
     placement !== undefined
       ? parseAgentCoreTaskPlacement(placement)
@@ -293,10 +295,10 @@ function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
     );
   }
   const normalizedResult = { ...result, release };
-  const developmentObject = z.record(z.string(), z.json()).safeParse(development);
-  if (developmentObject.success) {
+  const developmentObject = jsonRecordParser.parse(development);
+  if (developmentObject.ok) {
     return Object.assign(normalizedResult, {
-      development: canonicalSnapshot(developmentObject.data).value,
+      development: canonicalSnapshot(developmentObject.value).value,
     });
   }
   return normalizedResult;
