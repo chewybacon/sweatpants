@@ -4,6 +4,6 @@ export {
   type UseChatOptions,
   type UseChatResult,
   type ReactChatClient,
-  type ReactChatMessage,
+  type ReactChatUIMessage,
   type ReactRenderPart,
 } from "./headless.tsx";

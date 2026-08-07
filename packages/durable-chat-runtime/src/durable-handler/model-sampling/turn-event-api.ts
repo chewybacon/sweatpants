@@ -1,6 +1,6 @@
 import { createContext, type Operation } from "effection";
 import { createApi } from "effection/experimental";
-import type { ChatSessionStreamEvent as StreamEvent } from "@sweatpants/chat-core";
+import type { AGUIEvent as StreamEvent } from "@ag-ui/core";
 
 export interface TurnEventWriter {
   emit(event: StreamEvent): Operation<void>;

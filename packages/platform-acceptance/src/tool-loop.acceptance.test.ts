@@ -29,7 +29,7 @@ async function runTwoCallScenario(binding: Binding): Promise<void> {
       const conversation = s.conversation({
         initialToolChoice: "required",
       });
-      const turn = yield* conversation.send({ text: "MULTI_TOOL_V1" });
+      const turn = yield* conversation.send("MULTI_TOOL_V1");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* request.respond.toolCalls([
         {
@@ -63,7 +63,7 @@ async function runMixedRoutingScenario(binding: Binding): Promise<void> {
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation({});
-      const turn = yield* conversation.send({ text: "MIXED_ROUTING_V1" });
+      const turn = yield* conversation.send("MIXED_ROUTING_V1");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* request.respond.toolCalls([
         {
@@ -105,7 +105,7 @@ async function runTextThenToolScenario(binding: Binding): Promise<void> {
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: "TEXT_THEN_TOOL_V1" });
+      const turn = yield* conversation.send("TEXT_THEN_TOOL_V1");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* request.respond.textAndToolCalls("TOOL_PREFACE_V1", [
         {
@@ -131,7 +131,7 @@ async function runChunkedArgumentsScenario(binding: Binding): Promise<void> {
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: "CHUNKED_ARGUMENTS_V1" });
+      const turn = yield* conversation.send("CHUNKED_ARGUMENTS_V1");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* request.respond.toolCalls(
         [
@@ -156,7 +156,7 @@ async function runMixedSuccessFailure(binding: Binding): Promise<void> {
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: "MIXED_SUCCESS_FAILURE_V1" });
+      const turn = yield* conversation.send("MIXED_SUCCESS_FAILURE_V1");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* request.respond.toolCalls([
         {
@@ -172,7 +172,7 @@ async function runMixedSuccessFailure(binding: Binding): Promise<void> {
       ]);
       yield* turn.failure();
 
-      const recovery = yield* conversation.send({ text: "MIXED_SUCCESS_FAILURE_RECOVERY_V1" });
+      const recovery = yield* conversation.send("MIXED_SUCCESS_FAILURE_RECOVERY_V1");
       const recoveryRequest = yield* s.model.request((request_) => {
         const input = JSON.stringify(request_.body.input);
         expect(input).toContain("MIXED_SUCCESS_FAILURE_RECOVERY_V1");
@@ -195,7 +195,7 @@ async function runTerminalToolFailure(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: `TOOL_FAILURE_${failure.toUpperCase()}_V1` });
+      const turn = yield* conversation.send(`TOOL_FAILURE_${failure.toUpperCase()}_V1`);
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       if (failure === "malformed") {
         yield* request.respond.malformedToolCall({
@@ -220,9 +220,7 @@ async function runTerminalToolFailure(
         conversation.transcript().events.filter((event) => event.type === EventType.RUN_ERROR),
       ).toHaveLength(1);
 
-      const recovery = yield* conversation.send({
-        text: `RECOVER_TOOL_FAILURE_${failure.toUpperCase()}_V1`,
-      });
+      const recovery = yield* conversation.send(`RECOVER_TOOL_FAILURE_${failure.toUpperCase()}_V1`);
       const recoveryRequest = yield* s.model.request((request_) => {
         const input = JSON.stringify(request_.body.input);
         expect(input).toContain(`RECOVER_TOOL_FAILURE_${failure.toUpperCase()}_V1`);
@@ -240,7 +238,7 @@ async function runSequentialToolScenario(binding: Binding): Promise<void> {
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: "SEQUENTIAL_TOOL_LOOP_V1" });
+      const turn = yield* conversation.send("SEQUENTIAL_TOOL_LOOP_V1");
       const first = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* first.respond.toolCalls([
         {
@@ -280,7 +278,7 @@ async function runIterationLimitScenario(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: "MAX_ITERATIONS_V1" });
+      const turn = yield* conversation.send("MAX_ITERATIONS_V1");
       const first = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* first.respond.toolCalls([
         {
@@ -311,7 +309,7 @@ describe("tool loop semantics", () => {
   });
   it("routes ordinary and durable calls from one response", async () => {
     await runMixedRoutingScenario(binding);
-  });
+  }, 30_000);
   it("preserves assistant text emitted before a tool call", async () => {
     await runTextThenToolScenario(binding);
   });

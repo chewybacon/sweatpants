@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
  * so the LLM can call tools again.
  *
  * The bug we're testing for: After first tool call completes,
- * the history wasn't being updated with tool_calls and tool results,
+ * the history wasn't being updated with toolCalls and tool results,
  * causing the LLM to not call tools on subsequent turns.
  */
 
@@ -129,7 +129,7 @@ test.describe("multi-turn tool calling", () => {
     }
   });
 
-  test("history should include tool_calls after first turn", async ({ page }) => {
+  test("history should include toolCalls after first turn", async ({ page }) => {
     // This test uses console logs to verify the message format
     // We intercept console.log to check what's being sent to the server
 
@@ -182,19 +182,19 @@ test.describe("multi-turn tool calling", () => {
     expect(serverRequests.length).toBeGreaterThanOrEqual(2);
 
     const secondRequest = serverRequests[serverRequests.length - 1];
-    const messages = secondRequest.messages;
+    const messages = secondRequest.input.messages;
 
-    // Find assistant message with tool_calls
+    // Find assistant message with AG-UI toolCalls
     const assistantWithToolCalls = messages.find(
-      (m: any) => m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0,
+      (m: any) => m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0,
     );
 
     expect(assistantWithToolCalls).toBeDefined();
-    expect(assistantWithToolCalls.tool_calls[0].function).toBeDefined();
-    expect(assistantWithToolCalls.tool_calls[0].function.name).toBe("pick_card");
+    expect(assistantWithToolCalls.toolCalls[0].function).toBeDefined();
+    expect(assistantWithToolCalls.toolCalls[0].function.name).toBe("pick_card");
 
     // Find tool result message
-    const toolResult = messages.find((m: any) => m.role === "tool" && m.tool_call_id);
+    const toolResult = messages.find((m: any) => m.role === "tool" && m.toolCallId);
 
     expect(toolResult).toBeDefined();
     expect(typeof toolResult.content).toBe("string");

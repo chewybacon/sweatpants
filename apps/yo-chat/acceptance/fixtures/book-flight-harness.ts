@@ -10,11 +10,11 @@ import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import {
   installModelProvider,
   ModelProviderModelContext,
-  type AssistantMessage,
   type Model,
   type ModelProviderDriver,
   type ModelProviderStreamRequest,
-  type StreamEvent,
+  type ModelResponse,
+  type ModelStreamEvent,
 } from "@sweatpants/model-provider";
 import {
   createInMemoryBufferStore,
@@ -35,6 +35,7 @@ import {
   createToolSessionRegistry,
 } from "@sweatpants/tool-runtime-local";
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
+import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
 import { bookFlightTool } from "../../src/tools/book-flight/tool.ts";
 
 /** Public AG-UI frame projected from one durable response line. */
@@ -89,11 +90,11 @@ export async function createBookFlightSubstrate(options: {
 }): Promise<BookFlightSubstrate> {
   let sampleIndex = 0;
   const driver: ModelProviderDriver = {
-    *stream(request): Operation<Stream<StreamEvent, AssistantMessage>> {
+    *stream(request): Operation<Stream<ModelStreamEvent, ModelResponse>> {
       sampleIndex += 1;
       return completedStream(sampleMessage(request, sampleIndex));
     },
-    *sample(): Operation<AssistantMessage> {
+    *sample(): Operation<ModelResponse> {
       throw new Error("ProgramRuntime must use the streaming model seam");
     },
   };
@@ -168,7 +169,7 @@ export async function createBookFlightSubstrate(options: {
  * surfacing a foreign-tool failure as an ordinary result — the conversation
  * decides what to do about it.
  */
-function sampleMessage(request: ModelProviderStreamRequest, sequence: number): AssistantMessage {
+function sampleMessage(request: ModelProviderStreamRequest, sequence: number): ModelResponse {
   if (lastToolResultFailed(request)) {
     return bookFlightCall(`call-retry-${sequence}`);
   }
@@ -176,37 +177,35 @@ function sampleMessage(request: ModelProviderStreamRequest, sequence: number): A
     return bookFlightCall("call-http-book-flight");
   }
   if (sequence === 2) {
-    return {
-      role: "assistant",
-      content: [{ type: "text", text: "Travel light and arrive early." }],
-      stopReason: "stop",
-    };
+    return modelResponse(
+      { role: "assistant", content: [{ type: "text", text: "Travel light and arrive early." }] },
+      "stop",
+    );
   }
-  return {
-    role: "assistant",
-    content: [{ type: "text", text: "Your flight is booked." }],
-    stopReason: "stop",
-  };
+  return modelResponse(
+    { role: "assistant", content: [{ type: "text", text: "Your flight is booked." }] },
+    "stop",
+  );
 }
 
-function bookFlightCall(id: string): AssistantMessage {
-  return {
-    role: "assistant",
-    content: [
-      {
-        type: "toolCall",
-        toolCall: {
-          id,
-          type: "function",
-          function: {
+function bookFlightCall(id: string): ModelResponse {
+  return modelResponse(
+    {
+      role: "assistant",
+      content: [
+        {
+          type: "tool-call",
+          toolCall: {
+            id,
             name: bookFlightTool.name,
-            arguments: { from: "NYC", destination: "LAX" },
+            input: { from: "NYC", destination: "LAX" },
+            thoughtSignature: null,
           },
         },
-      },
-    ],
-    stopReason: "toolUse",
-  };
+      ],
+    },
+    "toolUse",
+  );
 }
 
 /** True when the most recent tool result carries an error status. */
@@ -215,18 +214,27 @@ function lastToolResultFailed(request: ModelProviderStreamRequest): boolean {
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message?.role !== "toolResult" && message?.role !== "tool") {
-      continue;
-    }
-    return (message as { isError?: boolean }).isError === true;
+    if (message?.role !== "tool") continue;
+    return message.isError;
   }
   return false;
 }
 
-function completedStream(message: AssistantMessage): Stream<StreamEvent, AssistantMessage> {
+function modelResponse(message: ChatAssistantMessage, stopReason: string): ModelResponse {
+  return {
+    message,
+    source: null,
+    usage: null,
+    stopReason,
+    responseId: null,
+    errorMessage: null,
+  };
+}
+
+function completedStream(message: ModelResponse): Stream<ModelStreamEvent, ModelResponse> {
   return resource(function* (provide) {
     yield* provide({
-      *next(): Operation<IteratorResult<StreamEvent, AssistantMessage>> {
+      *next(): Operation<IteratorResult<ModelStreamEvent, ModelResponse>> {
         return { done: true, value: message };
       },
     });
@@ -244,12 +252,24 @@ function buildChatRequest(
     headers: { "Content-Type": "application/json" },
     ...(signal ? { signal } : {}),
     body: JSON.stringify({
-      messages,
+      input: {
+        threadId: conversationId,
+        runId: crypto.randomUUID(),
+        state: {},
+        messages,
+        tools: [],
+        context: [],
+        forwardedProps: {},
+        ...(resume
+          ? {
+              resume: [
+                { interruptId: resume.interruptId, status: "resolved", payload: resume.result },
+              ],
+            }
+          : {}),
+      },
       ...(resume
         ? {
-            resume: [
-              { interruptId: resume.interruptId, status: "resolved", payload: resume.result },
-            ],
             elicitResponses: [
               {
                 sessionId: resume.callId,

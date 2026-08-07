@@ -8,6 +8,7 @@ import {
   createLocalProgramDriver,
   type ProgramStep,
 } from "@sweatpants/durable-execution";
+import { encodeModelSampleResult } from "@sweatpants/model-sampling";
 import {
   createWorkspaceService,
   installLocalWorkspaceFilesProvider,
@@ -91,13 +92,20 @@ describe("yo-studio play_ttt capability", () => {
           } else if (step.descriptor.kind === "effect" && step.descriptor.name === "model.sample") {
             outcome = {
               status: "ok" as const,
-              value: {
+              value: encodeModelSampleResult({
                 message: {
-                  role: "assistant",
-                  content: [{ type: "text", text: '{"position":8}' }],
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: '{"position":8}' }],
+                  },
+                  source: null,
+                  usage: null,
+                  stopReason: "stop",
+                  responseId: null,
+                  errorMessage: null,
                 },
                 output: { type: "json", value: { position: 8 } },
-              },
+              }),
             };
           } else if (step.descriptor.kind === "elicit") {
             const gameOver = containsGameOver(step.descriptor.context);

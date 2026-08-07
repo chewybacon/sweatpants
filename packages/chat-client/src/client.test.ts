@@ -8,16 +8,16 @@ import {
   type ChatInteractionCompletion,
   type ChatInteractionRequest,
   type ChatInteractionRuntime,
-  type ChatSendRequest,
-  type ChatStreamEvent,
+  type ChatTransportRequest,
+  type AGUIEvent,
   type ChatTransportContract,
 } from "./index.ts";
 
-function streamOf(events: readonly ChatStreamEvent[]): Stream<ChatStreamEvent, void> {
+function streamOf(events: readonly AGUIEvent[]): Stream<AGUIEvent, void> {
   return (function* () {
     let index = 0;
     return {
-      next(): Operation<IteratorResult<ChatStreamEvent, void>> {
+      next(): Operation<IteratorResult<AGUIEvent, void>> {
         return (function* () {
           if (index >= events.length) {
             return { done: true, value: undefined };
@@ -42,15 +42,12 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
-function gatedStream(
-  events: readonly ChatStreamEvent[],
-  gate: Promise<void>,
-): Stream<ChatStreamEvent, void> {
+function gatedStream(events: readonly AGUIEvent[], gate: Promise<void>): Stream<AGUIEvent, void> {
   return resource(function* (provide) {
     let released = false;
     let index = 0;
     yield* provide({
-      *next(): Operation<IteratorResult<ChatStreamEvent, void>> {
+      *next(): Operation<IteratorResult<AGUIEvent, void>> {
         if (!released) {
           released = true;
           yield* call(() => gate);
@@ -82,7 +79,7 @@ function waitForQueue(
   });
 }
 
-function transport(events: readonly ChatStreamEvent[]): ChatTransportContract {
+function transport(events: readonly AGUIEvent[]): ChatTransportContract {
   return {
     *sendMessages() {
       return streamOf(events);
@@ -136,7 +133,7 @@ describe("headless ChatClient", () => {
       ]),
     });
     await client.initialized;
-    await client.sendMessage({ text: "Hi" });
+    await client.sendMessage("Hi");
     const snapshot = client.getSnapshot();
     expect(snapshot.runId).toBeNull();
     expect(snapshot.status).toBe("ready");
@@ -178,13 +175,16 @@ describe("headless ChatClient", () => {
       },
     });
     await client.initialized;
-    await client.sendMessage({ text: "hello" });
+    await client.sendMessage("hello");
     expect(requestBody).toMatchObject({
-      threadId: "fetcher-thread",
       conversationId: "fetcher-thread",
-      state: { draft: "local-state" },
-      context: [{ description: "tenant", value: "test" }],
-      forwardedProps: { mode: "preview" },
+      input: {
+        threadId: "fetcher-thread",
+        state: { draft: "local-state" },
+        context: [{ description: "tenant", value: "test" }],
+        forwardedProps: { mode: "preview" },
+        tools: [],
+      },
     });
     expect(client.threadId).toBe("fetcher-thread");
     await client.close();
@@ -196,7 +196,7 @@ describe("headless ChatClient", () => {
       fetcher: async () => new Response("upstream unavailable", { status: 500 }),
     });
     await failedTransport.initialized;
-    await expect(failedTransport.sendMessage({ text: "fail" })).rejects.toMatchObject({
+    await expect(failedTransport.sendMessage("fail")).rejects.toMatchObject({
       code: "chat_transport_failed",
     });
     await failedTransport.close();
@@ -209,7 +209,7 @@ describe("headless ChatClient", () => {
         }),
     });
     await malformedTransport.initialized;
-    await expect(malformedTransport.sendMessage({ text: "malformed" })).rejects.toMatchObject({
+    await expect(malformedTransport.sendMessage("malformed")).rejects.toMatchObject({
       code: "chat_event_invalid",
     });
     await malformedTransport.close();
@@ -239,18 +239,22 @@ describe("headless ChatClient", () => {
         if (typeof init?.body !== "string") {
           throw new Error("expected a JSON request body");
         }
-        const body = JSON.parse(init.body) as { threadId: string };
-        const start = body.threadId === "thread-a" ? 10 : 20;
+        const body = JSON.parse(init.body) as { input: { threadId: string } };
+        const start = body.input.threadId === "thread-a" ? 10 : 20;
         const events = [
           {
             lsn: start,
-            event: { type: EventType.RUN_STARTED, threadId: body.threadId, runId: `run-${start}` },
+            event: {
+              type: EventType.RUN_STARTED,
+              threadId: body.input.threadId,
+              runId: `run-${start}`,
+            },
           },
           {
             lsn: start + 1,
             event: {
               type: EventType.RUN_FINISHED,
-              threadId: body.threadId,
+              threadId: body.input.threadId,
               runId: `run-${start}`,
               outcome: { type: "success" },
             },
@@ -286,8 +290,8 @@ describe("headless ChatClient", () => {
     const second = runtime.createClient({ threadId: "thread-b" });
     await Promise.all([runtime.initialized, first.initialized, second.initialized]);
 
-    await first.sendMessage({ text: "first" });
-    await second.sendMessage({ text: "second" });
+    await first.sendMessage("first");
+    await second.sendMessage("second");
     await first.reconnect();
     await second.reconnect();
 
@@ -309,16 +313,32 @@ describe("headless ChatClient", () => {
       *sendMessages(request) {
         if (!first) {
           return streamOf([
-            { type: EventType.RUN_STARTED, threadId: request.threadId, runId: request.runId },
-            { type: EventType.RUN_FINISHED, threadId: request.threadId, runId: request.runId },
+            {
+              type: EventType.RUN_STARTED,
+              threadId: request.input.threadId,
+              runId: request.input.runId,
+            },
+            {
+              type: EventType.RUN_FINISHED,
+              threadId: request.input.threadId,
+              runId: request.input.runId,
+            },
           ]);
         }
         first = false;
-        started.resolve(request.runId);
+        started.resolve(request.input.runId);
         return gatedStream(
           [
-            { type: EventType.RUN_STARTED, threadId: request.threadId, runId: request.runId },
-            { type: EventType.RUN_FINISHED, threadId: request.threadId, runId: request.runId },
+            {
+              type: EventType.RUN_STARTED,
+              threadId: request.input.threadId,
+              runId: request.input.runId,
+            },
+            {
+              type: EventType.RUN_FINISHED,
+              threadId: request.input.threadId,
+              runId: request.input.runId,
+            },
           ],
           release.promise,
         );
@@ -337,14 +357,14 @@ describe("headless ChatClient", () => {
     });
     await client.initialized;
 
-    const firstTurn = client.sendMessage({ text: "first" });
+    const firstTurn = client.sendMessage("first");
     const activeRunId = await started.promise;
     expect(client.getSnapshot().runId).toBe(activeRunId);
 
-    const queuedTurn = client.sendMessage({ text: "second" });
+    const queuedTurn = client.sendMessage("second");
     await waitForQueue(client, 1);
     const queuedId = client.getSnapshot().queue[0].id;
-    await expect(client.sendMessage({ text: "third" })).rejects.toMatchObject({
+    await expect(client.sendMessage("third")).rejects.toMatchObject({
       code: "chat_queue_full",
     });
 
@@ -366,16 +386,32 @@ describe("headless ChatClient", () => {
       *sendMessages(request) {
         if (!first) {
           return streamOf([
-            { type: EventType.RUN_STARTED, threadId: request.threadId, runId: request.runId },
-            { type: EventType.RUN_FINISHED, threadId: request.threadId, runId: request.runId },
+            {
+              type: EventType.RUN_STARTED,
+              threadId: request.input.threadId,
+              runId: request.input.runId,
+            },
+            {
+              type: EventType.RUN_FINISHED,
+              threadId: request.input.threadId,
+              runId: request.input.runId,
+            },
           ]);
         }
         first = false;
         started.resolve(undefined);
         return gatedStream(
           [
-            { type: EventType.RUN_STARTED, threadId: request.threadId, runId: request.runId },
-            { type: EventType.RUN_FINISHED, threadId: request.threadId, runId: request.runId },
+            {
+              type: EventType.RUN_STARTED,
+              threadId: request.input.threadId,
+              runId: request.input.runId,
+            },
+            {
+              type: EventType.RUN_FINISHED,
+              threadId: request.input.threadId,
+              runId: request.input.runId,
+            },
           ],
           release.promise,
         );
@@ -394,11 +430,11 @@ describe("headless ChatClient", () => {
     });
     await client.initialized;
 
-    const firstTurn = client.sendMessage({ text: "first" });
+    const firstTurn = client.sendMessage("first");
     await started.promise;
-    const droppedTurn = client.sendMessage({ text: "second" });
+    const droppedTurn = client.sendMessage("second");
     await waitForQueue(client, 1);
-    const replacementTurn = client.sendMessage({ text: "third" });
+    const replacementTurn = client.sendMessage("third");
 
     await expect(droppedTurn).rejects.toMatchObject({ code: "chat_queue_dropped" });
     release.resolve();
@@ -420,11 +456,15 @@ describe("headless ChatClient", () => {
         requestCount += 1;
         if (requestCount === 1) {
           return streamOf([
-            { type: EventType.RUN_STARTED, threadId: request.threadId, runId: request.runId },
+            {
+              type: EventType.RUN_STARTED,
+              threadId: request.input.threadId,
+              runId: request.input.runId,
+            },
             {
               type: EventType.RUN_FINISHED,
-              threadId: request.threadId,
-              runId: request.runId,
+              threadId: request.input.threadId,
+              runId: request.input.runId,
               outcome: { type: "interrupt" },
             },
           ]);
@@ -433,11 +473,15 @@ describe("headless ChatClient", () => {
           resumeStarted.resolve(undefined);
           return gatedStream(
             [
-              { type: EventType.RUN_STARTED, threadId: request.threadId, runId: request.runId },
+              {
+                type: EventType.RUN_STARTED,
+                threadId: request.input.threadId,
+                runId: request.input.runId,
+              },
               {
                 type: EventType.RUN_FINISHED,
-                threadId: request.threadId,
-                runId: request.runId,
+                threadId: request.input.threadId,
+                runId: request.input.runId,
                 outcome: { type: "success" },
               },
             ],
@@ -446,11 +490,15 @@ describe("headless ChatClient", () => {
         }
         thirdStarted.resolve(undefined);
         return streamOf([
-          { type: EventType.RUN_STARTED, threadId: request.threadId, runId: request.runId },
+          {
+            type: EventType.RUN_STARTED,
+            threadId: request.input.threadId,
+            runId: request.input.runId,
+          },
           {
             type: EventType.RUN_FINISHED,
-            threadId: request.threadId,
-            runId: request.runId,
+            threadId: request.input.threadId,
+            runId: request.input.runId,
             outcome: { type: "success" },
           },
         ]);
@@ -479,12 +527,12 @@ describe("headless ChatClient", () => {
       connection: driver,
     });
     await client.initialized;
-    await client.sendMessage({ text: "initial" });
+    await client.sendMessage("initial");
     expect(completionHandler).toBeDefined();
 
     completionHandler!({} as ChatInteractionRequest, { action: "accept", content: {} });
     await resumeStarted.promise;
-    const queued = client.sendMessage({ text: "queued during resume" });
+    const queued = client.sendMessage("queued during resume");
     await waitForQueue(client, 1);
     releaseResume.resolve();
     await thirdStarted.promise;
@@ -508,7 +556,7 @@ describe("headless ChatClient", () => {
   });
 
   it("carries settled tool history into the next provider request", async () => {
-    const requests: ChatSendRequest[] = [];
+    const requests: ChatTransportRequest[] = [];
     const driver: ChatTransportContract = {
       *sendMessages(request) {
         requests.push(request);
@@ -551,10 +599,10 @@ describe("headless ChatClient", () => {
       transport: { driver },
     });
     await client.initialized;
-    await client.sendMessage({ text: "lookup" });
-    await client.sendMessage({ text: "again" });
+    await client.sendMessage("lookup");
+    await client.sendMessage("again");
 
-    expect(requests[1]?.messages).toEqual(
+    expect(requests[1]?.input.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           role: "tool",

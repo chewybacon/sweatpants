@@ -19,7 +19,7 @@ describe("graceful Host shutdown", () => {
         },
       },
       function* (s) {
-        const turn = yield* s.conversation().send({ text: "GRACEFUL_SHUTDOWN_V1" });
+        const turn = yield* s.conversation().send("GRACEFUL_SHUTDOWN_V1");
         const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
         const response = yield* request.respond.textStream([
           "SHUTDOWN_FIRST_V1",

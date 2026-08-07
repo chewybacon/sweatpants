@@ -80,7 +80,7 @@ export interface WorkerPrincipalOptions<TInitData = WorkerInitData> {
 
   /**
    * Initialization data passed to the worker.
-   * Generic so runtimes can carry richer init payloads (e.g. ExtendedMessage parents).
+   * Generic so runtimes can carry richer initialization payloads.
    */
   initData: TInitData;
 
@@ -139,18 +139,21 @@ export function* createWorkerPrincipal<T = unknown, TInitData = WorkerInitData>(
     // TRecv = never (host doesn't receive responses to its sends)
     // TReturn = WorkerResult<T> (final return value from worker)
     // TData = WorkerInitData (init data)
+    // Pass execArgv to enable TypeScript loaders in worker threads. It is a
+    // node:worker_threads option that web-worker passes through but does not
+    // declare on its DOM-shaped WorkerOptions, so it is widened here explicitly.
+    // This flows through: useWorker -> web-worker -> node:worker_threads
+    const workerOptions: WorkerOptions & { data: TInitData; execArgv?: string[] } = {
+      type: "module",
+      data: initData,
+      ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
+    };
     const worker: WorkerResource<never, never, WorkerResult<T>> = yield* useWorker<
       never,
       never,
       WorkerResult<T>,
       TInitData
-    >(workerUrl, {
-      type: "module",
-      data: initData,
-      // Pass execArgv to enable TypeScript loaders in worker threads.
-      // This flows through: useWorker -> web-worker -> node:worker_threads
-      ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
-    } as any);
+    >(workerUrl, workerOptions);
 
     // Spawn the forEach handler to process worker requests
     // This runs in the background and handles all requests from the worker

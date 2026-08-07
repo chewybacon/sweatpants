@@ -14,9 +14,9 @@ import {
   type ChatClient as HeadlessChatClient,
   type ChatClientOptions as HeadlessChatClientOptions,
   type ChatRuntimeOptions as HeadlessChatRuntimeOptions,
-  type ChatSnapshot,
-  type ChatMessage,
-  type ChatPart,
+  type ChatUISnapshot,
+  type ChatUIMessage,
+  type ChatUIPart,
   type ChatTransportOptions,
   type ChatFetch,
   type ChatQueueOption,
@@ -35,9 +35,9 @@ import type { ReactRenderPart } from "./react-types.ts";
 
 export type { ReactRenderPart } from "./react-types.ts";
 
-export type ReactChatPart = ChatPart<ReactRenderPart>;
-export type ReactChatMessage = ChatMessage<ReactRenderPart>;
-export type ReactChatClient = HeadlessChatClient<ReactChatMessage>;
+export type ReactChatUIPart = ChatUIPart<ReactRenderPart>;
+export type ReactChatUIMessage = ChatUIMessage<ReactRenderPart>;
+export type ReactChatClient = HeadlessChatClient<ReactChatUIMessage>;
 export interface ReactChatRuntime {
   readonly initialized: Promise<void>;
   createClient(options: CreateReactChatClientOptions): ReactChatClient;
@@ -168,13 +168,13 @@ export type UseChatOptions =
     };
 
 export interface UseChatResult {
-  readonly messages: readonly ReactChatMessage[];
-  readonly status: ChatSnapshot<ReactChatMessage>["status"];
-  readonly connectionStatus: ChatSnapshot<ReactChatMessage>["connectionStatus"];
-  readonly renderStatus: ChatSnapshot<ReactChatMessage>["renderStatus"];
+  readonly messages: readonly ReactChatUIMessage[];
+  readonly status: ChatUISnapshot<ReactChatUIMessage>["status"];
+  readonly connectionStatus: ChatUISnapshot<ReactChatUIMessage>["connectionStatus"];
+  readonly renderStatus: ChatUISnapshot<ReactChatUIMessage>["renderStatus"];
   readonly error: Error | null;
-  readonly runId: ChatSnapshot<ReactChatMessage>["runId"];
-  readonly queue: ChatSnapshot<ReactChatMessage>["queue"];
+  readonly runId: ChatUISnapshot<ReactChatUIMessage>["runId"];
+  readonly queue: ChatUISnapshot<ReactChatUIMessage>["queue"];
   readonly client: ReactChatClient;
   readonly sendMessage: ReactChatClient["sendMessage"];
   readonly regenerate: ReactChatClient["regenerate"];
@@ -201,8 +201,8 @@ interface PendingOwnedChat {
 
 function createPendingOwnedChat(options: OwnedUseChatOptions): PendingOwnedChat {
   const clientId = crypto.randomUUID();
-  const pendingSnapshot: ChatSnapshot<ReactChatMessage> = Object.freeze({
-    messages: Object.freeze([]) as readonly ReactChatMessage[],
+  const pendingSnapshot: ChatUISnapshot<ReactChatUIMessage> = Object.freeze({
+    messages: Object.freeze([]) as readonly ReactChatUIMessage[],
     status: "ready",
     connectionStatus: "disconnected",
     renderStatus: "loading",

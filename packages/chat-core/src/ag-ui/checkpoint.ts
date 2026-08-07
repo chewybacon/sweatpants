@@ -1,41 +1,4 @@
-import type { ToolCall } from "@sweatpants/model-provider";
-import type { AgUiCheckpoint, AgUiCustomState, ElicitRequestStreamEvent } from "./types.ts";
-import type { ServerToolResult } from "../core-types.ts";
-
-export interface BuildAgUiCheckpointOptions {
-  threadId: string;
-  runId: string;
-  parentRunId?: string;
-  messages: AgUiCheckpoint["messages"]["messages"];
-  assistantContent: string;
-  toolCalls: ToolCall[];
-  serverToolResults: ServerToolResult[];
-}
-
-export function buildAgUiCheckpoint(options: BuildAgUiCheckpointOptions): AgUiCheckpoint {
-  const { threadId, runId, parentRunId, messages, assistantContent, toolCalls, serverToolResults } =
-    options;
-
-  return {
-    run: {
-      threadId,
-      runId,
-      ...(parentRunId ? { parentRunId } : {}),
-    },
-    messages: {
-      messages,
-    },
-    state: {
-      assistantContent,
-      toolCalls: toolCalls.map((toolCall) => ({
-        id: toolCall.id,
-        name: toolCall.function.name,
-        arguments: toolCall.function.arguments,
-      })),
-      serverToolResults,
-    },
-  };
-}
+import type { AgUiCustomState, ElicitRequestStreamEvent } from "./types.ts";
 
 export function buildAgUiCustomState(options: {
   elicits?: ElicitRequestStreamEvent[];

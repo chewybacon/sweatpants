@@ -103,6 +103,7 @@
     "dependencies": {
         "@standard-schema/spec": "catalog:",
         "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/chat-contract": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",

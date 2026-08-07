@@ -9,7 +9,6 @@ import {
   type SampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
 import type { ToolSession, ToolSessionEvent, ToolSessionRegistry } from "@sweatpants/tool-session";
-import { toModelMessages } from "@sweatpants/tool-session/messages";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   type ForeignContinuation,
@@ -50,7 +49,8 @@ type ToolSessionContinuationState = z.infer<typeof continuationStateSchema>;
 const samplingToolCallSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
-  arguments: z.record(z.string(), z.json()),
+  input: z.json(),
+  thoughtSignature: z.string().nullable(),
 });
 
 const sampleBaseFields = {
@@ -337,7 +337,7 @@ function eventDisposition(
           payload: foreignJson({
             invocation: {
               context: {
-                messages: toModelMessages(event.messages),
+                messages: event.messages,
                 ...(event.systemPrompt !== undefined ? { systemPrompt: event.systemPrompt } : {}),
               },
               ...(event.maxTokens !== undefined || event.toolChoice !== undefined

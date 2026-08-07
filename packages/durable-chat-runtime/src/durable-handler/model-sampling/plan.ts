@@ -1,12 +1,12 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { applyHistoryPolicy, type HistoryPolicy } from "@sweatpants/chat-core";
 import type {
-  Context,
   Model,
+  ModelContext,
   ModelProviderStreamRequest,
   StreamOptions,
-  Tool,
 } from "@sweatpants/model-provider";
+import type { ChatToolDefinition } from "@sweatpants/chat-contract";
 import type {
   ModelResponseMode,
   ModelSampleRequest,
@@ -46,18 +46,12 @@ function callerEvidence(attempt: ModelSampleAttempt): ModelCallerEvidence {
 function resolveTools(
   request: ModelSampleRequest,
   catalog: ChatToolCatalog | undefined,
-): { tools?: Tool[]; decision?: ModelInvocationDecision } {
+): { tools?: ChatToolDefinition[]; decision?: ModelInvocationDecision } {
   switch (request.tools.type) {
     case "none":
       return {};
     case "embedded":
-      return {
-        tools: request.tools.tools.map((tool) => ({
-          name: tool.name,
-          ...(tool.description !== undefined ? { description: tool.description } : {}),
-          parameters: tool.parameters,
-        })),
-      };
+      return { tools: request.tools.tools };
     case "catalog":
       if (!catalog || request.tools.digest !== catalog.digest) {
         throw new CrankError(
@@ -66,13 +60,7 @@ function resolveTools(
         );
       }
       return {
-        tools: Object.values(catalog.entries).map((entry) => ({
-          name: entry.model.name,
-          ...(entry.model.description !== undefined
-            ? { description: entry.model.description }
-            : {}),
-          parameters: entry.model.parameters,
-        })),
+        tools: Object.values(catalog.entries).map((entry) => entry.model),
         decision: { type: "tool-catalog-bound", digest: catalog.digest },
       };
   }
@@ -89,12 +77,9 @@ export function planModelInvocation(input: {
 }): ModelInvocationPlan {
   const caller = callerEvidence(input.attempt);
   const resolvedTools = resolveTools(input.request, input.catalog);
-  const providerContext: Context = {
+  const providerContext: ModelContext = {
     messages: input.request.invocation.context.messages,
-    ...(input.request.invocation.context.systemPrompt !== undefined
-      ? { systemPrompt: input.request.invocation.context.systemPrompt }
-      : {}),
-    ...(resolvedTools.tools ? { tools: resolvedTools.tools } : {}),
+    tools: resolvedTools.tools ?? input.request.invocation.context.tools,
   };
   const history =
     caller.type === "chat-root"

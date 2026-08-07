@@ -1,10 +1,6 @@
 import { createPiAiModelProviderDriver, resolvePiAiModel } from "@sweatpants/model-provider-pi-ai";
-import {
-  type AssistantMessage,
-  type Context,
-  type PortableModelContextMessage,
-  type PortableModelTool,
-} from "@sweatpants/model-provider";
+import type { ModelContext, ModelResponse } from "@sweatpants/model-provider";
+import type { ChatMessage, ChatToolDefinition } from "@sweatpants/chat-contract";
 import {
   createChatModelEffectRegistration,
   type AuthoredChatMessage,
@@ -55,14 +51,16 @@ export const realModelRegistration = createChatModelEffectRegistration({
 
 export const selectedModel = Object.freeze(selection);
 
-function modelContext(request: AuthoredChatModelSampleRequest): Context {
+function modelContext(request: AuthoredChatModelSampleRequest): ModelContext {
   return {
-    systemPrompt: String(request.systemPrompt.value),
-    messages: request.messages.flatMap(toProviderMessages),
+    messages: [
+      { role: "system", content: String(request.systemPrompt.value) },
+      ...request.messages.flatMap(toChatMessages),
+    ],
     tools: request.tools.map(toProviderTool),
   };
 }
-function toProviderMessages(message: AuthoredChatMessage): PortableModelContextMessage[] {
+function toChatMessages(message: AuthoredChatMessage): ChatMessage[] {
   const text = message.parts.map((part) => valueText(part.value)).join("\n");
   if (message.role === "user") {
     return [{ role: "user", content: text }];
@@ -87,25 +85,26 @@ function toProviderMessages(message: AuthoredChatMessage): PortableModelContextM
       role: "assistant",
       content: [
         {
-          type: "toolCall",
+          type: "tool-call",
           toolCall: {
             id: callId,
-            type: "function",
-            function: { name: providerToolName(target), arguments: {} },
+            name: providerToolName(target),
+            input: {},
+            thoughtSignature: null,
           },
         },
       ],
     },
     {
       role: "tool",
-      tool_call_id: callId,
+      toolCallId: callId,
       name: providerToolName(target),
       content: valueText(tool["result"] as Json),
       isError: false,
     },
   ];
 }
-function toProviderTool(value: Json): PortableModelTool {
+function toProviderTool(value: Json): ChatToolDefinition {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Authored model tool inventory is invalid");
   }
@@ -115,25 +114,25 @@ function toProviderTool(value: Json): PortableModelTool {
   }
   return {
     name: providerToolName(String(value["name"])),
-    ...(typeof value["description"] === "string" ? { description: value["description"] } : {}),
+    description: typeof value["description"] === "string" ? value["description"] : null,
     parameters: inputSchema,
   };
 }
-function modelOutput(assistant: AssistantMessage, pullId: string): AuthoredChatModelSampleResult {
-  const text = assistant.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
+function modelOutput(response: ModelResponse, pullId: string): AuthoredChatModelSampleResult {
+  const text = response.message.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
     .join("\n");
-  const calls = assistant.content
-    .filter((block) => block.type === "toolCall")
-    .map((block) => ({
-      id: block.toolCall.id,
-      target: authoredToolName(block.toolCall.function.name),
-      input: block.toolCall.function.arguments,
+  const calls = response.message.content
+    .filter((part) => part.type === "tool-call")
+    .map((part) => ({
+      id: part.toolCall.id,
+      target: authoredToolName(part.toolCall.name),
+      input: part.toolCall.input,
     }));
   return {
     message: {
-      id: assistant.responseId ?? `model-${pullId}`,
+      id: response.responseId ?? `model-${pullId}`,
       role: "assistant",
       parts: [
         {

@@ -1,5 +1,4 @@
-import type { ToolCall } from "@sweatpants/model-provider";
-import type { Message } from "../messages.ts";
+import type { Message, ToolCall } from "@ag-ui/core";
 
 function sortedUnique(values: string[]): string[] {
   // eslint-disable-next-line unicorn/no-array-sort -- The array is a fresh copy created solely for canonical ordering.
@@ -32,7 +31,7 @@ export function messageIdForAssistantTools(toolCallIds: string[]): string {
 
 export function messageIdForTool(toolCallId: string): string {
   if (!toolCallId) {
-    throw new Error("Cannot create tool message id without tool_call_id");
+    throw new Error("Cannot create tool message id without toolCallId");
   }
   return `tool:${toolCallId}`;
 }

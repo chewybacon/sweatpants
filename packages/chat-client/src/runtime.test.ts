@@ -3,15 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   createChatClient,
   createChatRuntime,
-  type ChatStreamEvent,
+  type AGUIEvent,
   type ChatTransportContract,
 } from "./index.ts";
 
-function stream(events: readonly ChatStreamEvent[]): Stream<ChatStreamEvent, void> {
+function stream(events: readonly AGUIEvent[]): Stream<AGUIEvent, void> {
   return (function* () {
     let index = 0;
     return {
-      next(): Operation<IteratorResult<ChatStreamEvent, void>> {
+      next(): Operation<IteratorResult<AGUIEvent, void>> {
         return (function* () {
           return index < events.length
             ? { done: false, value: events[index++] }
@@ -27,10 +27,10 @@ describe("ChatRuntime composition", () => {
     const trace: string[] = [];
     const driver: ChatTransportContract = {
       *sendMessages(request) {
-        trace.push(`driver:${request.threadId}`);
+        trace.push(`driver:${request.input.threadId}`);
         return stream([
-          { type: "RUN_STARTED", threadId: request.threadId, runId: request.runId },
-          { type: "RUN_FINISHED", threadId: request.threadId, runId: request.runId },
+          { type: "RUN_STARTED", threadId: request.input.threadId, runId: request.input.runId },
+          { type: "RUN_FINISHED", threadId: request.input.threadId, runId: request.input.runId },
         ]);
       },
       *reconnectToStream() {
@@ -56,8 +56,8 @@ describe("ChatRuntime composition", () => {
     const first = runtime.createClient({ threadId: "first" });
     const second = runtime.createClient({ threadId: "second" });
     await Promise.all([first.initialized, second.initialized]);
-    await first.sendMessage({ text: "one" });
-    await second.sendMessage({ text: "two" });
+    await first.sendMessage("one");
+    await second.sendMessage("two");
     expect(trace).toEqual([
       "runtime:enter",
       "driver:first",
@@ -74,10 +74,10 @@ describe("ChatRuntime composition", () => {
     const calls: string[] = [];
     const make = (label: string): ChatTransportContract => ({
       *sendMessages(request) {
-        calls.push(`${label}:${request.threadId}`);
+        calls.push(`${label}:${request.input.threadId}`);
         return stream([
-          { type: "RUN_STARTED", threadId: request.threadId, runId: request.runId },
-          { type: "RUN_FINISHED", threadId: request.threadId, runId: request.runId },
+          { type: "RUN_STARTED", threadId: request.input.threadId, runId: request.input.runId },
+          { type: "RUN_FINISHED", threadId: request.input.threadId, runId: request.input.runId },
         ]);
       },
       *reconnectToStream() {
@@ -93,7 +93,7 @@ describe("ChatRuntime composition", () => {
       transport: { driver: make("child") },
     });
     await client.initialized;
-    await client.sendMessage({ text: "hello" });
+    await client.sendMessage("hello");
     expect(calls).toEqual(["child:child"]);
     await runtime.close();
   });
@@ -124,8 +124,12 @@ describe("ChatRuntime composition", () => {
           *sendMessages(request) {
             trace.push("driver");
             return stream([
-              { type: "RUN_STARTED", threadId: request.threadId, runId: request.runId },
-              { type: "RUN_FINISHED", threadId: request.threadId, runId: request.runId },
+              { type: "RUN_STARTED", threadId: request.input.threadId, runId: request.input.runId },
+              {
+                type: "RUN_FINISHED",
+                threadId: request.input.threadId,
+                runId: request.input.runId,
+              },
             ]);
           },
           *reconnectToStream() {
@@ -139,7 +143,7 @@ describe("ChatRuntime composition", () => {
     });
     const client = runtime.createClient({ threadId: "middleware-order" });
     await client.initialized;
-    await client.sendMessage({ text: "hello" });
+    await client.sendMessage("hello");
     expect(trace).toEqual(["a:enter", "b:enter", "driver", "b:exit", "a:exit"]);
     await runtime.close();
   });
@@ -160,8 +164,12 @@ describe("ChatRuntime composition", () => {
         driver: {
           *sendMessages(request) {
             return stream([
-              { type: "RUN_STARTED", threadId: request.threadId, runId: request.runId },
-              { type: "RUN_FINISHED", threadId: request.threadId, runId: request.runId },
+              { type: "RUN_STARTED", threadId: request.input.threadId, runId: request.input.runId },
+              {
+                type: "RUN_FINISHED",
+                threadId: request.input.threadId,
+                runId: request.input.runId,
+              },
             ]);
           },
           *reconnectToStream() {
@@ -186,7 +194,7 @@ describe("ChatRuntime composition", () => {
       ],
     });
     await client.initialized;
-    await client.sendMessage({ text: "hello" });
+    await client.sendMessage("hello");
     expect(trace).toEqual([
       "runtime:enter:RUN_STARTED",
       "client:enter:RUN_STARTED",

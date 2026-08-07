@@ -10,11 +10,11 @@ import { action, resource, run, type Operation, type Stream } from "effection";
 import {
   installModelProvider,
   ModelProviderModelContext,
-  type AssistantMessage,
   type Model,
   type ModelProviderDriver,
   type ModelProviderStreamRequest,
-  type StreamEvent,
+  type ModelResponse,
+  type ModelStreamEvent,
 } from "@sweatpants/model-provider";
 import {
   createInMemoryBufferStore,
@@ -31,6 +31,7 @@ import {
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { type DurableSemanticRecord } from "@sweatpants/journal-authority";
+import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
@@ -67,43 +68,47 @@ describe("an indeterminate unsafe effect reaches the model", () => {
     const driver: ModelProviderDriver = {
       *stream(
         request: ModelProviderStreamRequest,
-      ): Operation<Stream<StreamEvent, AssistantMessage>> {
+      ): Operation<Stream<ModelStreamEvent, ModelResponse>> {
         sampleIndex += 1;
         const serialized = JSON.stringify(request.context.messages);
         if (serialized.includes("effect_outcome_indeterminate")) {
           sawIndeterminate = true;
-          return completed({
-            role: "assistant",
-            content: [{ type: "text", text: "I could not confirm the booking." }],
-            stopReason: "stop",
-          });
+          return completed(
+            modelResponse(
+              {
+                role: "assistant",
+                content: [{ type: "text", text: "I could not confirm the booking." }],
+              },
+              "stop",
+            ),
+          );
         }
         if (sampleIndex === 1) {
-          return completed({
-            role: "assistant",
-            content: [
+          return completed(
+            modelResponse(
               {
-                type: "toolCall",
-                toolCall: {
-                  id: "call-indeterminate",
-                  type: "function",
-                  function: {
-                    name: bookFlightTool.name,
-                    arguments: { from: "NYC", destination: "LAX" },
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool-call",
+                    toolCall: {
+                      id: "call-indeterminate",
+                      name: bookFlightTool.name,
+                      input: { from: "NYC", destination: "LAX" },
+                      thoughtSignature: null,
+                    },
                   },
-                },
+                ],
               },
-            ],
-            stopReason: "toolUse",
-          });
+              "toolUse",
+            ),
+          );
         }
-        return completed({
-          role: "assistant",
-          content: [{ type: "text", text: "Done." }],
-          stopReason: "stop",
-        });
+        return completed(
+          modelResponse({ role: "assistant", content: [{ type: "text", text: "Done." }] }, "stop"),
+        );
       },
-      *sample(): Operation<AssistantMessage> {
+      *sample(): Operation<ModelResponse> {
         throw new Error("stream seam only");
       },
     };
@@ -212,10 +217,21 @@ describe("an indeterminate unsafe effect reaches the model", () => {
   }, 30_000);
 });
 
-function completed(message: AssistantMessage): Stream<StreamEvent, AssistantMessage> {
+function modelResponse(message: ChatAssistantMessage, stopReason: string): ModelResponse {
+  return {
+    message,
+    source: null,
+    usage: null,
+    stopReason,
+    responseId: null,
+    errorMessage: null,
+  };
+}
+
+function completed(message: ModelResponse): Stream<ModelStreamEvent, ModelResponse> {
   return resource(function* (provide) {
     yield* provide({
-      *next(): Operation<IteratorResult<StreamEvent, AssistantMessage>> {
+      *next(): Operation<IteratorResult<ModelStreamEvent, ModelResponse>> {
         return { done: true, value: message };
       },
     });
@@ -227,7 +243,15 @@ function chatRequest(): Request {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      messages: [{ id: "u1", role: "user", content: "Book NYC to LAX" }],
+      input: {
+        threadId: conversationId,
+        runId: crypto.randomUUID(),
+        state: {},
+        messages: [{ id: "u1", role: "user", content: "Book NYC to LAX" }],
+        tools: [],
+        context: [],
+        forwardedProps: {},
+      },
     }),
   });
 }

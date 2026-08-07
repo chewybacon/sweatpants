@@ -2,35 +2,35 @@ import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import {
   ChatProtocolError,
-  decodeChatStreamEvent,
-  encodeChatStreamEvent,
+  decodeAGUIEvent,
+  encodeAGUIEvent,
 } from "./chat-client-codec.ts";
 
 describe("official AG-UI chat codec", () => {
   it("accepts official message, reasoning, raw, and custom events", () => {
     expect(
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.MESSAGES_SNAPSHOT,
         messages: [{ id: "user-1", role: "user", content: "hello" }],
       }),
     ).toMatchObject({ type: EventType.MESSAGES_SNAPSHOT });
     expect(
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.REASONING_MESSAGE_CONTENT,
         messageId: "reasoning-1",
         delta: "because",
       }),
     ).toMatchObject({ type: EventType.REASONING_MESSAGE_CONTENT });
     expect(
-      decodeChatStreamEvent({ type: EventType.RAW, event: { provider: "simulator" } }),
+      decodeAGUIEvent({ type: EventType.RAW, event: { provider: "simulator" } }),
     ).toMatchObject({ type: EventType.RAW, event: { provider: "simulator" } });
     expect(
-      decodeChatStreamEvent({ type: EventType.CUSTOM, name: "diagnostic", value: { ok: true } }),
+      decodeAGUIEvent({ type: EventType.CUSTOM, name: "diagnostic", value: { ok: true } }),
     ).toMatchObject({ type: EventType.CUSTOM, name: "diagnostic" });
   });
 
   it("validates structured-output lifecycle events", () => {
-    const start = decodeChatStreamEvent({
+    const start = decodeAGUIEvent({
       type: EventType.CUSTOM,
       name: "structured-output.start",
       value: { messageId: "assistant-1" },
@@ -41,7 +41,7 @@ describe("official AG-UI chat codec", () => {
       value: { messageId: "assistant-1" },
     });
 
-    const complete = decodeChatStreamEvent({
+    const complete = decodeAGUIEvent({
       type: EventType.CUSTOM,
       name: "structured-output.complete",
       value: {
@@ -61,7 +61,7 @@ describe("official AG-UI chat codec", () => {
         reasoning: "validated output",
       },
     });
-    expect(JSON.parse(encodeChatStreamEvent(complete))).toEqual(complete);
+    expect(JSON.parse(encodeAGUIEvent(complete))).toEqual(complete);
   });
 
   it.each([
@@ -71,7 +71,7 @@ describe("official AG-UI chat codec", () => {
     ["structured-output.complete", { value: { object: {}, raw: "{}", extra: true } }],
     ["structured-output.complete", { value: { raw: "{}" } }],
   ] as const)("rejects malformed %s events", (name, fields) => {
-    expect(() => decodeChatStreamEvent({ type: EventType.CUSTOM, name, ...fields })).toThrow(
+    expect(() => decodeAGUIEvent({ type: EventType.CUSTOM, name, ...fields })).toThrow(
       ChatProtocolError,
     );
   });
@@ -84,13 +84,13 @@ describe("official AG-UI chat codec", () => {
       { type: "HOST_TREE_SNAPSHOT", snapshot: {} },
       { type: "sweatpants:plugin-replay", content: {} },
     ]) {
-      expect(() => decodeChatStreamEvent(event)).toThrow(ChatProtocolError);
+      expect(() => decodeAGUIEvent(event)).toThrow(ChatProtocolError);
     }
   });
 
   it("strictly validates public activity content and mutable patches", () => {
     expect(() =>
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.ACTIVITY_SNAPSHOT,
         messageId: "activity-1",
         activityType: "sweatpants:public-execution",
@@ -111,7 +111,7 @@ describe("official AG-UI chat codec", () => {
     ).toThrow(/chat_activity_invalid/);
 
     expect(() =>
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.ACTIVITY_DELTA,
         messageId: "activity-1",
         activityType: "sweatpants:public-execution",
@@ -120,7 +120,7 @@ describe("official AG-UI chat codec", () => {
     ).toThrow(/chat_activity_patch_invalid/);
 
     expect(
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.ACTIVITY_SNAPSHOT,
         messageId: "activity-1",
         activityType: "other:activity",
@@ -150,7 +150,7 @@ describe("official AG-UI chat codec", () => {
     ],
   ])("rejects %s nodes with state %s", (kind, state, publicData) => {
     expect(() =>
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.ACTIVITY_SNAPSHOT,
         messageId: `record-${kind}`,
         activityType: "sweatpants:public-execution",
@@ -172,7 +172,7 @@ describe("official AG-UI chat codec", () => {
 
   it("rejects tool lifecycle data that contradicts its state", () => {
     expect(() =>
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: EventType.ACTIVITY_SNAPSHOT,
         messageId: "tool-record",
         activityType: "sweatpants:public-execution",
@@ -198,9 +198,9 @@ describe("official AG-UI chat codec", () => {
       messageId: "message-1",
       delta: "hello",
     } as const;
-    expect(JSON.parse(encodeChatStreamEvent(event))).toMatchObject(event);
+    expect(JSON.parse(encodeAGUIEvent(event))).toMatchObject(event);
     expect(() =>
-      encodeChatStreamEvent({
+      encodeAGUIEvent({
         type: "THINKING_START",
       } as never),
     ).toThrow(/chat_event_invalid/);

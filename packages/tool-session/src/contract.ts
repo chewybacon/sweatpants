@@ -28,8 +28,7 @@
 import type { Operation, Stream } from "effection";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
-import type { ExtendedMessage } from "./messages.ts";
-import type { PortableModelTool } from "@sweatpants/model-provider";
+import type { ChatMessage, ChatToolDefinition } from "@sweatpants/chat-contract";
 import type {
   ElicitsMap,
   LogLevel,
@@ -101,7 +100,7 @@ export interface ElicitRequestEvent extends ToolSessionEventBase {
   elicitId: string;
   /** Elicitation key (matches tool's .elicits() declaration) */
   key: string;
-  /** Message to display to user */
+  /** Human-readable message to display to the user */
   message: string;
   /** JSON Schema for the expected response */
   schema: JsonObject;
@@ -125,7 +124,7 @@ export interface SampleRequestEvent extends ToolSessionEventBase {
   /** Unique ID for this sample request (for correlation) */
   sampleId: string;
   /** Messages to send to LLM (supports tool call/result messages) */
-  messages: ExtendedMessage[];
+  messages: ChatMessage[];
   /** Optional system prompt */
   systemPrompt?: string;
   /** Maximum tokens to generate */
@@ -133,7 +132,7 @@ export interface SampleRequestEvent extends ToolSessionEventBase {
   /** Model preferences for the client */
   modelPreferences?: ModelPreferences;
   /** Retained portable tool definitions for tool calling. */
-  tools?: PortableModelTool[];
+  tools?: ChatToolDefinition[];
   /** How the model should choose tools */
   toolChoice?: SamplingToolChoice;
   /** JSON Schema projection for structured output. */
@@ -428,7 +427,7 @@ export interface ToolSessionSamplingProvider {
    * @returns The LLM response (raw result without exchange)
    */
   sample(
-    messages: ExtendedMessage[],
+    messages: ChatMessage[],
     options?: ToolSessionSamplingOptions,
   ): Operation<
     | SampleExchangeCompletionBase
@@ -446,23 +445,9 @@ export interface ToolSessionSamplingOptions {
   /** Maximum tokens to generate */
   maxTokens?: number;
   /** Retained portable tool definitions for tool calling. */
-  tools?: PortableModelTool[];
+  tools?: ChatToolDefinition[];
   /** How the model should choose tools */
   toolChoice?: SamplingToolChoice;
   /** JSON Schema projection for structured output. */
   schema?: JsonObject;
 }
-
-// =============================================================================
-// TYPE HELPERS
-// =============================================================================
-
-/**
- * Extract the result type from a tool.
- */
-export type InferToolSessionResult<T> = T extends ToolSession<infer R> ? R : never;
-
-/**
- * Any tool session (for arrays/registries).
- */
-export type AnyToolSession = ToolSession<unknown>;

@@ -2,9 +2,9 @@ import { createContext, type Around, type Operation, type Stream } from "effecti
 import { createApi } from "effection/experimental";
 import { definePort } from "@sweatpants/foundation/port";
 import type {
-  ChatSendRequest,
+  ChatTransportRequest,
   ChatReconnectRequest,
-  ChatStreamEvent,
+  AGUIEvent,
   ChatTransportContract,
   UserMessageInput,
   SendMessageOptions,
@@ -13,7 +13,7 @@ import type {
 import { ChatClientError } from "./errors.ts";
 
 export const ChatTransportPort = definePort<ChatTransportContract>("sweatpants:chat-transport", {
-  *sendMessages(_request: ChatSendRequest, _signal: AbortSignal) {
+  *sendMessages(_request: ChatTransportRequest, _signal: AbortSignal) {
     throw new ChatClientError(
       "chat_transport_unavailable",
       "No chat transport driver is installed",
@@ -76,7 +76,7 @@ const ChatCommandContext = createContext<ChatCommandImplementation>(
 );
 
 export interface ChatEventContract {
-  accept(event: ChatStreamEvent): Operation<void>;
+  accept(event: AGUIEvent): Operation<void>;
 }
 
 const ChatEventContext = createContext<ChatEventContract>("sweatpants:chat-event-implementation");
@@ -86,7 +86,7 @@ const ChatEventContext = createContext<ChatEventContract>("sweatpants:chat-event
  * or inject faults around acceptance, but it cannot replace the event.
  */
 export const ChatEventApi = createApi<ChatEventContract>("sweatpants:chat-event-api", {
-  *accept(event: ChatStreamEvent) {
+  *accept(event: AGUIEvent) {
     return yield* (yield* ChatEventContext.expect()).accept(event);
   },
 });

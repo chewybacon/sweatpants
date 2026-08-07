@@ -235,7 +235,7 @@ export async function runChatFlow(
           settled,
           leaveInterrupted: false,
         };
-        void client.sendMessage({ text: turn.message }).catch((error) => settled.reject(error));
+        void client.sendMessage(turn.message).catch((error) => settled.reject(error));
         await settled.promise;
         transcript = collector.build(active.outcome ?? "success");
         active = undefined;

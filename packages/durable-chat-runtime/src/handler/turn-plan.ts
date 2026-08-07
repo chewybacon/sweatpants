@@ -53,7 +53,7 @@ export function planTurn(params: {
     body.resume === undefined &&
     body.elicitResponses === undefined &&
     body.pluginAbort === undefined &&
-    body.messages.some((message) => message.role === "user");
+    body.messages.some((entry) => entry.type === "message" && entry.message.role === "user");
 
   const effectivePluginAbort =
     body.pluginAbort ??

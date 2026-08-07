@@ -83,8 +83,9 @@ describe("portable tool contract projection (F4)", () => {
         entry: createToolInventoryEntry(projection),
         call: {
           id: "call-projected",
-          type: "function",
-          function: { name: "echo", arguments: { message: "hello projection" } },
+          name: "echo",
+          input: { message: "hello projection" },
+          thoughtSignature: null,
         },
         signal: new AbortController().signal,
       });

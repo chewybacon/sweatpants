@@ -2,13 +2,13 @@
 import type { Operation, Channel } from 'effection';
 import { main, createChannel, spawn, sleep, each } from 'effection';
 
-interface ChatMessage {
+interface HydraChatMessage {
   user: string;
   text: string;
   timestamp: Date;
 }
 
-const chatChannel: Channel<ChatMessage, void> = createChannel<ChatMessage, void>();
+const chatChannel: Channel<HydraChatMessage, void> = createChannel<HydraChatMessage, void>();
 
 function* chatClient(username: string): Operation<void> {
   console.log(`${username} joined the chat`);

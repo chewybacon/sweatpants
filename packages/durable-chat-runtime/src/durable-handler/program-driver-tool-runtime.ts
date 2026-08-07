@@ -84,8 +84,9 @@ export function createToolRuntimeForeignEffectRegistrations(
           entry,
           call: {
             id: request.route ?? `${context.taskId}:${context.pullId}`,
-            type: "function",
-            function: { name: request.tool, arguments: request.input },
+            name: request.tool,
+            input: request.input,
+            thoughtSignature: null,
           },
           signal: context.cancellation,
           metadata: effectMetadata(options, context),

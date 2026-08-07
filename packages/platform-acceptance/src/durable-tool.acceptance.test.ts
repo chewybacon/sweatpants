@@ -55,7 +55,7 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
       const conversation = s.conversation({
         initialToolChoice: "required",
       });
-      const turn = yield* conversation.send({ text: "Run the durable selection tool for trains." });
+      const turn = yield* conversation.send("Run the durable selection tool for trains.");
       const outerRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outerRequest.respond.toolCalls([
         {
@@ -146,9 +146,7 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
       expect(JSON.stringify(journal)).not.toContain("function* ()");
       expect(JSON.stringify(journal)).not.toContain("foreign.tool.start");
 
-      const followUpTurn = yield* conversation.send({
-        text: "DURABLE_FOLLOW_UP_V1 What did I select?",
-      });
+      const followUpTurn = yield* conversation.send("DURABLE_FOLLOW_UP_V1 What did I select?");
       const followUpRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       const history = normalizeResponsesHistory(followUpRequest.body.input);
       expect(
@@ -187,7 +185,7 @@ async function runDurableElicitOutcome(
     },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: `DURABLE_${action.toUpperCase()}_V1` });
+      const turn = yield* conversation.send(`DURABLE_${action.toUpperCase()}_V1`);
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {
@@ -231,7 +229,7 @@ async function runDurableEffectFailure(binding: Binding): Promise<void> {
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: "DURABLE_EFFECT_FAILURE_V1" });
+      const turn = yield* conversation.send("DURABLE_EFFECT_FAILURE_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {
@@ -242,7 +240,7 @@ async function runDurableEffectFailure(binding: Binding): Promise<void> {
       ]);
       yield* turn.failure();
 
-      const recovery = yield* conversation.send({ text: "DURABLE_EFFECT_RECOVERY_V1" });
+      const recovery = yield* conversation.send("DURABLE_EFFECT_RECOVERY_V1");
       const recoveryRequest = yield* race([
         s.model.request((request) => {
           const input = JSON.stringify(request.body.input);
@@ -273,6 +271,7 @@ describe("crank-native durable tool semantics", () => {
     async (action) => {
       await runDurableElicitOutcome(binding, action);
     },
+    30_000,
   );
 
   it("records a host-effect failure and recovers on the next turn", async () => {

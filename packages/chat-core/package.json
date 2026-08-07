@@ -19,6 +19,39 @@
                 "default": "./dist/index.js"
             },
             "default": "./src/index.ts"
+        },
+        "./content": {
+            "development": {
+                "import": "./src/content.ts",
+                "types": "./src/content.ts"
+            },
+            "import": {
+                "types": "./dist/content.d.ts",
+                "default": "./dist/content.js"
+            },
+            "default": "./src/content.ts"
+        },
+        "./ag-ui": {
+            "development": {
+                "import": "./src/ag-ui/index.ts",
+                "types": "./src/ag-ui/index.ts"
+            },
+            "import": {
+                "types": "./dist/ag-ui/index.d.ts",
+                "default": "./dist/ag-ui.js"
+            },
+            "default": "./src/ag-ui/index.ts"
+        },
+        "./client": {
+            "development": {
+                "import": "./src/client.ts",
+                "types": "./src/client.ts"
+            },
+            "import": {
+                "types": "./dist/client.d.ts",
+                "default": "./dist/client.js"
+            },
+            "default": "./src/client.ts"
         }
     },
     "scripts": {
@@ -28,6 +61,7 @@
     },
     "dependencies": {
         "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/chat-contract": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",

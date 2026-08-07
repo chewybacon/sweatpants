@@ -1,15 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { type Operation, type Subscription } from "effection";
-import {
-  getModel as getPiAiRegistryModel,
-  type Model as PiAiRegistryModel,
-} from "@earendil-works/pi-ai/compat";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import type * as PiAi from "@earendil-works/pi-ai";
 import type {
-  AssistantMessage,
   Model,
+  ModelResponse,
+  ModelStreamEvent,
   Runtime,
-  StreamEvent,
   StreamOptions,
 } from "@sweatpants/model-provider";
 import { createOllamaModel, createOpenAiResponsesModel, piAiRuntime } from "./runtime/index.ts";
@@ -181,7 +179,19 @@ export function resolveModelSelection(input: ResolveModelSelectionInput): ModelS
   return selected;
 }
 
-function fromPiAiModel(model: PiAiRegistryModel<string>): Model {
+function fromPiThinkingLevelMap(
+  value: PiAi.ThinkingLevelMap | undefined,
+): Model["thinkingLevelMap"] | undefined {
+  if (value === undefined) return undefined;
+  const { max, ...shared } = value;
+  return {
+    ...shared,
+    ...(max === undefined ? {} : { xhigh: max }),
+  };
+}
+
+function fromPiAiModel(model: PiAi.Model<string>): Model {
+  const thinkingLevelMap = fromPiThinkingLevelMap(model.thinkingLevelMap);
   return {
     id: model.id,
     name: model.name,
@@ -190,7 +200,7 @@ function fromPiAiModel(model: PiAiRegistryModel<string>): Model {
     ...(model.baseUrl ? { baseUrl: model.baseUrl } : {}),
     ...(model.headers ? { headers: model.headers } : {}),
     reasoning: model.reasoning,
-    ...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
+    ...(thinkingLevelMap !== undefined ? { thinkingLevelMap } : {}),
     input: model.input,
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
@@ -200,12 +210,10 @@ function fromPiAiModel(model: PiAiRegistryModel<string>): Model {
   };
 }
 
+const registryModels = builtinModels();
+
 function registryLookup(selection: ModelSelection): Model | undefined {
-  const lookup = getPiAiRegistryModel as unknown as (
-    provider: string,
-    modelId: string,
-  ) => PiAiRegistryModel<string> | undefined;
-  const model = lookup(selection.provider, selection.id);
+  const model = registryModels.getModel(selection.provider, selection.id);
   return model ? fromPiAiModel(model) : undefined;
 }
 
@@ -304,9 +312,9 @@ export function createPiAiModelProviderDriver(runtime: Runtime = piAiRuntime): M
     *stream(request) {
       return runtime.stream(request.model, request.context, request.options);
     },
-    *sample(request): Operation<AssistantMessage> {
-      const hasTools = (request.context.tools?.length ?? 0) > 0;
-      const subscription: Subscription<StreamEvent, AssistantMessage> = yield* runtime.stream(
+    *sample(request): Operation<ModelResponse> {
+      const hasTools = request.context.tools.length > 0;
+      const subscription: Subscription<ModelStreamEvent, ModelResponse> = yield* runtime.stream(
         request.model,
         request.context,
         {

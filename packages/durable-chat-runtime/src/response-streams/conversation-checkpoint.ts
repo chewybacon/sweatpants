@@ -1,8 +1,7 @@
 import { EventSchemas, EventType, MessageSchema, type AGUIEvent } from "@ag-ui/core";
-import {
-  decodeChatStreamEvent,
-  type ChatSessionStreamEvent as StreamEvent,
-} from "@sweatpants/chat-core";
+import { decodeAGUIEvent } from "@sweatpants/chat-core";
+
+type StreamEvent = AGUIEvent;
 
 const MAX_CHECKPOINT_EVENTS = 100_000;
 const MAX_CHECKPOINT_BYTES = 8 * 1024 * 1024;
@@ -183,7 +182,7 @@ function validateCheckpointEvent(value: unknown): StreamEvent {
   } else if (input["type"] === EventType.RUN_FINISHED && input["outcome"] !== undefined) {
     assertBoundedOutcome(input["outcome"]);
   }
-  return decodeChatStreamEvent(input);
+  return decodeAGUIEvent(input);
 }
 
 function assertCheckpointSize(encoded: string): void {

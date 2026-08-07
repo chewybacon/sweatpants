@@ -31,7 +31,9 @@ const identity = {
   pullId: "pull-1",
 };
 const request: ModelSampleRequest = {
-  invocation: { context: { messages: [{ role: "user", content: "hello" }] } },
+  invocation: {
+    context: { messages: [{ role: "user", content: "hello" }], tools: [] },
+  },
   tools: { type: "none" },
   response: { type: "message" },
   classifications: ["private"],
@@ -39,7 +41,14 @@ const request: ModelSampleRequest = {
 
 function sampled(text: string): ModelSampleResult {
   return {
-    message: { role: "assistant", content: [{ type: "text", text }] },
+    message: {
+      message: { role: "assistant", content: [{ type: "text", text }] },
+      source: null,
+      usage: null,
+      stopReason: null,
+      responseId: null,
+      errorMessage: null,
+    },
     output: { type: "message" },
   };
 }
@@ -119,7 +128,7 @@ describe("in-memory placement model sampler", () => {
       });
       expect(disposition).toMatchObject({
         status: "ok",
-        value: { message: { content: [{ text: "ab" }] } },
+        value: { message: { message: { content: [{ text: "ab" }] } } },
       });
       expect(yield* sampler.read({ version: 1, attachment: attached, afterLsn: 0 })).toMatchObject({
         lsn: 2,
@@ -206,7 +215,7 @@ describe("in-memory placement model sampler", () => {
           });
           expect(disposition).toMatchObject({
             status: "ok",
-            value: { message: { content: [{ text: "done" }] } },
+            value: { message: { message: { content: [{ text: "done" }] } } },
           });
           expect(relayed).toHaveLength(1);
           expect(relayed[0]).toMatchObject({

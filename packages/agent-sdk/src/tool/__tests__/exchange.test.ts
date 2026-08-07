@@ -35,18 +35,23 @@ describe("authored elicitation exchange completion", () => {
         role: "assistant",
         content: [
           { type: "text", text: "Confirm this choice" },
-          { type: "tool_use", id: "elicit:call-1:1", name: "confirm", input: {} },
+          {
+            type: "tool-call",
+            toolCall: {
+              id: "elicit:call-1:1",
+              name: "confirm",
+              input: {},
+              thoughtSignature: null,
+            },
+          },
         ],
       },
       {
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            toolUseId: "elicit:call-1:1",
-            content: [{ type: "text", text: '{"answer":"yes","confirmed":true}' }],
-          },
-        ],
+        role: "tool",
+        toolCallId: "elicit:call-1:1",
+        name: "confirm",
+        content: [{ type: "text", text: '{"answer":"yes","confirmed":true}' }],
+        isError: false,
       },
     ]);
     expect(
@@ -56,10 +61,13 @@ describe("authored elicitation exchange completion", () => {
       content: [
         { type: "text", text: "Confirm this choice" },
         {
-          type: "tool_use",
-          id: "elicit:call-1:1",
-          name: "confirm",
-          input: { choice: "yes" },
+          type: "tool-call",
+          toolCall: {
+            id: "elicit:call-1:1",
+            name: "confirm",
+            input: { choice: "yes" },
+            thoughtSignature: null,
+          },
         },
       ],
     });
@@ -142,8 +150,16 @@ describe("authored elicitation exchange completion", () => {
         parsed: { choice: "a" },
         messages: [
           { role: "user" },
-          { role: "assistant", content: [{ type: "tool_use", id: "sample:call-1:1" }] },
-          { role: "user" },
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "tool-call",
+                toolCall: { id: "sample:call-1:1", name: "__schema__" },
+              },
+            ],
+          },
+          { role: "tool" },
         ],
       },
     });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
-import { decodeChatStreamEvent, parseChatResponseStream } from "./index.ts";
+import { decodeAGUIEvent, parseChatResponseStream } from "./index.ts";
 
 function readable(chunks: readonly string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -39,11 +39,11 @@ describe("headless transport ingress", () => {
   });
 
   it("rejects custom host-tree events and forbidden patch paths", () => {
-    expect(() => decodeChatStreamEvent({ type: "HOST_TREE_DELTA", delta: {} })).toThrow(
+    expect(() => decodeAGUIEvent({ type: "HOST_TREE_DELTA", delta: {} })).toThrow(
       /chat_event_invalid/,
     );
     expect(() =>
-      decodeChatStreamEvent({
+      decodeAGUIEvent({
         type: "ACTIVITY_DELTA",
         messageId: "a",
         activityType: "sweatpants:public-execution",

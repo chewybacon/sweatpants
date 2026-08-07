@@ -1,8 +1,4 @@
-import type {
-  ChatLocalPart,
-  ClientChatMessage as ChatMessage,
-  ClientChatPart as ChatPart,
-} from "@sweatpants/chat-core";
+import type { ChatLocalPart, ChatUIMessage, ChatUIPart } from "@sweatpants/chat-core";
 
 function sequenceOf(part: ChatLocalPart): number {
   if ("sequence" in part && typeof part.sequence === "number") {
@@ -12,10 +8,10 @@ function sequenceOf(part: ChatLocalPart): number {
 }
 
 export function overlayLocalParts<TLocalPart extends ChatLocalPart>(
-  messages: readonly ChatMessage<TLocalPart>[],
+  messages: readonly ChatUIMessage<TLocalPart>[],
   localParts: ReadonlyMap<string, readonly TLocalPart[]>,
-): readonly ChatMessage<TLocalPart>[] {
-  const parts = (values: readonly ChatPart<TLocalPart>[]): readonly ChatPart<TLocalPart>[] =>
+): readonly ChatUIMessage<TLocalPart>[] {
+  const parts = (values: readonly ChatUIPart<TLocalPart>[]): readonly ChatUIPart<TLocalPart>[] =>
     values.flatMap((part) => {
       if (part.type === "message" && "message" in part) {
         return [{ ...part, message: message(part.message) }];
@@ -32,7 +28,7 @@ export function overlayLocalParts<TLocalPart extends ChatLocalPart>(
           : [];
       return [{ ...part, parts: Object.freeze([...children, ...local]) }];
     });
-  const message = (value: ChatMessage<TLocalPart>): ChatMessage<TLocalPart> =>
+  const message = (value: ChatUIMessage<TLocalPart>): ChatUIMessage<TLocalPart> =>
     Object.freeze({ ...value, parts: Object.freeze(parts(value.parts)) });
   return Object.freeze(messages.map(message));
 }

@@ -1,62 +1,33 @@
-import type {
-  AssistantMessage,
-  PortableAssistantMessage,
-  PortableModelTool,
-  PortableToolCall,
-} from "@sweatpants/model-provider";
-import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { ChatToolCall } from "@sweatpants/chat-contract";
+import type { ModelResponse } from "@sweatpants/model-provider";
+import type { ChatToolDefinition } from "@sweatpants/chat-contract";
+import type { JsonObject } from "@sweatpants/foundation";
 
 export function projectSamplingTools<T extends { name: string; description?: string }>(
   tools: readonly T[] | undefined,
   project: (tool: T) => JsonObject,
-): PortableModelTool[] | undefined {
+): ChatToolDefinition[] | undefined {
   return tools?.map((tool) => ({
     name: tool.name,
-    ...(tool.description !== undefined ? { description: tool.description } : {}),
+    description: tool.description ?? null,
     parameters: project(tool),
   }));
 }
 
-export type ModelSampleToolCall = {
-  id: string;
-  name: string;
-  arguments: Json;
-} & JsonObject;
-
-export function assistantText(message: AssistantMessage | PortableAssistantMessage): string {
-  return message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
+export function assistantText(response: ModelResponse): string {
+  return response.message.content
+    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .join("");
 }
 
-export function assistantToolCalls(
-  message: AssistantMessage | PortableAssistantMessage,
-): PortableToolCall[] {
-  return message.content.flatMap((block) =>
-    block.type === "toolCall"
-      ? [
-          {
-            id: block.toolCall.id,
-            type: "function" as const,
-            function: {
-              name: block.toolCall.function.name,
-              arguments: block.toolCall.function.arguments,
-            },
-            ...(block.toolCall.thoughtSignature !== undefined
-              ? { thoughtSignature: block.toolCall.thoughtSignature }
-              : {}),
-          },
-        ]
-      : [],
+export function assistantToolCalls(response: ModelResponse): ChatToolCall[] {
+  return response.message.content.flatMap((part) =>
+    part.type === "tool-call" ? [part.toolCall] : [],
   );
 }
 
-export function samplingToolCalls(
-  message: AssistantMessage | PortableAssistantMessage,
-): ModelSampleToolCall[] {
-  return assistantToolCalls(message).map((call) => ({
-    id: call.id,
-    name: call.function.name,
-    arguments: call.function.arguments,
-  }));
+export function samplingToolCalls(response: ModelResponse): ChatToolCall[] {
+  return assistantToolCalls(response);
 }
 
 /** Provider-independent structured text recovery used by sampling adapters. */

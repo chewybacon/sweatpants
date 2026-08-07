@@ -1,9 +1,8 @@
 import { MessageCirclePlus, PanelLeftOpen, RefreshCcw, Terminal } from "lucide-react";
 import {
   useChat,
-  type ChatMessage,
-  type ChatPart,
-  type ChatToolCall,
+  type ReactChatUIMessage,
+  type ReactChatUIPart,
   type UseChatOptions,
 } from "@sweatpants/react-chat";
 import type { ReactNode } from "react";
@@ -42,7 +41,7 @@ function shortThreadId(threadId: string): string {
   return threadId.split(":").at(-1)?.slice(0, 8) ?? threadId.slice(0, 8);
 }
 
-function getMessagePlainText(message: ChatMessage): string {
+function getMessagePlainText(message: ReactChatUIMessage): string {
   return message.parts
     .map((part) => {
       if (part.type === "text" || part.type === "reasoning") {
@@ -57,7 +56,7 @@ function getMessagePlainText(message: ChatMessage): string {
 }
 
 function summarizeThread(
-  messages: readonly ChatMessage[],
+  messages: readonly ReactChatUIMessage[],
 ): Pick<ThreadSummary, "title" | "lastMessagePreview" | "messageCount"> {
   const visibleMessages = messages.filter(
     (message) => message.role === "user" || message.role === "assistant",
@@ -85,7 +84,11 @@ function formatToolResult(result: unknown): string {
   return typeof record["message"] === "string" ? record["message"] : JSON.stringify(result);
 }
 
-function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
+function ToolCallBlock({
+  toolCall,
+}: {
+  toolCall: Extract<ReactChatUIPart, { type: "tool-call" }>;
+}) {
   const hasRenderedChildren = toolCall.parts.length > 0;
   const resultText = toolCall.state === "output-available" ? formatToolResult(toolCall.output) : "";
 
@@ -115,7 +118,7 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
   );
 }
 
-function renderPart(part: ChatPart): ReactNode {
+function renderPart(part: ReactChatUIPart): ReactNode {
   switch (part.type) {
     case "text":
       return (
@@ -173,7 +176,7 @@ function renderPart(part: ChatPart): ReactNode {
   }
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message }: { message: ReactChatUIMessage }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const busy = message.parts.some(
@@ -185,12 +188,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       className={`flex ${isUser ? "justify-end" : "justify-start"}`}
       data-testid={`message-${message.role}`}
     >
-      <div
-        className={`max-w-3xl rounded-[24px] px-5 py-4 shadow-lg ${isUser ? "bg-amber-300 text-slate-950 shadow-amber-500/10" : "border border-slate-800 bg-slate-900/90 text-slate-100 shadow-black/20"}`}
-      >
-        <div
-          className={`mb-2 text-[11px] uppercase tracking-[0.28em] ${isUser ? "text-slate-800/70" : "text-sky-300/70"}`}
-        >
+      <div className="max-w-3xl rounded-[24px] border border-slate-800 bg-slate-900/90 px-5 py-4 text-slate-100 shadow-black/20">
+        <div className="mb-2 text-[11px] uppercase tracking-[0.28em] text-sky-300/70">
           {isUser ? "You" : isSystem ? "System" : "Assistant"}
           {busy ? " - streaming" : ""}
         </div>
@@ -295,7 +294,7 @@ function DemoThreadPanel({
       if (!content || busy) {
         return;
       }
-      sendMessage({ text: content });
+      sendMessage(content);
       setDraft("");
     },
     [busy, draft, sendMessage],

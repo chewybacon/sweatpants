@@ -1,7 +1,14 @@
 import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
-import type { PortableModelContextMessage, PortableModelTool } from "@sweatpants/model-provider";
+import { decodeChatHistoryEntries } from "@sweatpants/chat-core";
+import type { ChatToolDefinition } from "@sweatpants/chat-contract";
 import { defineDurableProgramManifest } from "@sweatpants/durable-execution";
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import {
+  assertJson,
+  canonicalSnapshot,
+  requireJsonObject,
+  type Json,
+  type JsonObject,
+} from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   standardSchemaOf,
@@ -12,7 +19,7 @@ import type { NativeProgramIdentity as NativeIdentity } from "../program-driver/
 import { z } from "zod";
 
 export type ChatToolCatalogEntry = {
-  model: PortableModelTool;
+  model: ChatToolDefinition;
   execution:
     | { kind: "program"; target: string; program: NativeIdentity }
     | {
@@ -32,12 +39,12 @@ export type ChatToolCatalog = {
 };
 
 export type ChatProgramInput = {
-  messages: PortableModelContextMessage[];
+  messages: Json[];
   systemPrompt?: string;
   toolChoice?: "auto" | "none" | "required";
   maxIterations: number;
   catalog: ChatToolCatalog;
-} & Json;
+} & JsonObject;
 
 const chatEngineSchemaEntries: SchemaBinding[] = [];
 const schemaText = z.string().min(1).max(4_096);
@@ -90,6 +97,7 @@ function chatEngineSchema(
   role: string,
   projection: Json,
   guard: (value: unknown) => string | undefined,
+  decode: (value: unknown) => Json = (value) => assertJson(value),
 ): PortableSchemaDescriptor {
   const descriptor = createPortableSchemaDescriptor({
     identity,
@@ -103,14 +111,15 @@ function chatEngineSchema(
   chatEngineSchemaEntries.push({
     descriptor,
     schema: standardSchemaOf("sweatpants", (value) => {
-      const message = guard(value);
-      if (message !== undefined) {
-        return { issues: [{ message }] };
-      }
       try {
-        return { value: assertJson(value) };
+        const decoded = decode(value);
+        const message = guard(decoded);
+        if (message !== undefined) {
+          return { issues: [{ message }] };
+        }
+        return { value: decoded };
       } catch {
-        return { issues: [{ message: "value must be canonical JSON" }] };
+        return { issues: [{ message: "value could not be decoded" }] };
       }
     }),
   });
@@ -199,6 +208,14 @@ const chatRootInputDescriptor = chatEngineSchema(
     }
     return undefined;
   },
+  (value) => {
+    const input = requireJsonObject(assertJson(value), "$");
+    const messages = decodeChatHistoryEntries(input["messages"], "$.messages");
+    return {
+      ...input,
+      messages: messages.map((entry) => assertJson(entry)),
+    };
+  },
 );
 
 const chatRootOutputDescriptor = chatEngineSchema(
@@ -210,8 +227,8 @@ const chatRootOutputDescriptor = chatEngineSchema(
 
 export const manifest = defineDurableProgramManifest<ChatProgramInput, string>({
   programId: "sweatpants.chat-root",
-  version: "1.3.0",
-  digest: "369baa36085e1eca147422c1e88325de0a7440dd1ced4dc1d1183c89d7475cd0",
+  version: "1.4.0",
+  digest: "9c9ef3577a2d1190d46f49d230c06554291d663019dbae7b85cdf457b4f5b047",
   inputSchema: chatRootInputDescriptor,
   outputSchema: chatRootOutputDescriptor,
   elicits: {},

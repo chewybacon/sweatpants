@@ -8,11 +8,11 @@ import { createClient, type RedisClientType } from "redis";
 import {
   installModelProvider,
   ModelProviderModelContext,
-  type AssistantMessage,
   type Model,
   type ModelProviderDriver,
   type ModelProviderStreamRequest,
-  type StreamEvent,
+  type ModelResponse,
+  type ModelStreamEvent,
 } from "@sweatpants/model-provider";
 import {
   createInMemoryBufferStore,
@@ -29,6 +29,7 @@ import {
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
+import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
 import type { Json } from "@sweatpants/foundation";
 import { createRedisProgramDriverJournalStore } from "../../src/server/program-driver-journal.ts";
 import { playTttTool } from "../../src/tools/play-ttt/tool.ts";
@@ -77,11 +78,11 @@ export async function createPlayTttSubstrate(options: {
 }): Promise<PlayTttSubstrate> {
   let sampleCount = 0;
   const driver: ModelProviderDriver = {
-    *stream(request): Operation<Stream<StreamEvent, AssistantMessage>> {
+    *stream(request): Operation<Stream<ModelStreamEvent, ModelResponse>> {
       sampleCount += 1;
       return completedStream(sampleMessage(request, sampleCount));
     },
-    *sample(): Operation<AssistantMessage> {
+    *sample(): Operation<ModelResponse> {
       throw new Error("ProgramRuntime must use the streaming model seam");
     },
   };
@@ -164,57 +165,58 @@ function createApplication(
   });
 }
 
-function sampleMessage(request: ModelProviderStreamRequest, sequence: number): AssistantMessage {
+function sampleMessage(request: ModelProviderStreamRequest, sequence: number): ModelResponse {
   const toolNames = request.context.tools?.map((tool) => tool.name) ?? [];
   if (toolNames.includes("play_offensive")) {
-    return {
-      role: "assistant",
-      content: [
-        {
-          type: "toolCall",
-          toolCall: {
-            id: `strategy-${sequence}`,
-            type: "function",
-            function: {
+    return modelResponse(
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCall: {
+              id: `strategy-${sequence}`,
               name: "play_offensive",
-              arguments: { reasoning: "Use the first available position" },
+              input: { reasoning: "Use the first available position" },
+              thoughtSignature: null,
             },
           },
-        },
-      ],
-      stopReason: "toolUse",
-    };
+        ],
+      },
+      "toolUse",
+    );
   }
   if (request.options?.responseFormat) {
     const parsed = { cell: firstEmptyPosition(request) };
-    return {
-      role: "assistant",
-      content: [{ type: "text", text: JSON.stringify(parsed) }],
-      stopReason: "stop",
-    };
+    return modelResponse(
+      { role: "assistant", content: [{ type: "text", text: JSON.stringify(parsed) }] },
+      "stop",
+    );
   }
   const hasToolResult = request.context.messages.some((message) => message.role === "tool");
   if (!hasToolResult) {
-    return {
-      role: "assistant",
-      content: [
-        {
-          type: "toolCall",
-          toolCall: {
-            id: "call-http-play-ttt",
-            type: "function",
-            function: { name: playTttTool.name, arguments: {} },
+    return modelResponse(
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCall: {
+              id: "call-http-play-ttt",
+              name: playTttTool.name,
+              input: {},
+              thoughtSignature: null,
+            },
           },
-        },
-      ],
-      stopReason: "toolUse",
-    };
+        ],
+      },
+      "toolUse",
+    );
   }
-  return {
-    role: "assistant",
-    content: [{ type: "text", text: "Game complete." }],
-    stopReason: "stop",
-  };
+  return modelResponse(
+    { role: "assistant", content: [{ type: "text", text: "Game complete." }] },
+    "stop",
+  );
 }
 
 function firstEmptyPosition(request: ModelProviderStreamRequest): number {
@@ -224,10 +226,21 @@ function firstEmptyPosition(request: ModelProviderStreamRequest): number {
   return first === undefined ? 0 : Number(first);
 }
 
-function completedStream(message: AssistantMessage): Stream<StreamEvent, AssistantMessage> {
+function modelResponse(message: ChatAssistantMessage, stopReason: string): ModelResponse {
+  return {
+    message,
+    source: null,
+    usage: null,
+    stopReason,
+    responseId: null,
+    errorMessage: null,
+  };
+}
+
+function completedStream(message: ModelResponse): Stream<ModelStreamEvent, ModelResponse> {
   return resource(function* (provide) {
     yield* provide({
-      *next(): Operation<IteratorResult<StreamEvent, AssistantMessage>> {
+      *next(): Operation<IteratorResult<ModelStreamEvent, ModelResponse>> {
         return { done: true, value: message };
       },
     });
@@ -241,35 +254,7 @@ export async function post(
   messages: Array<{ id: string; role: string; content: string }>,
   resume?: ResumeInput,
 ): Promise<PublicEvent[]> {
-  const response = await handler(
-    new Request(`http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages,
-        ...(resume
-          ? {
-              resume: [
-                {
-                  interruptId: resume.interruptId,
-                  status: "resolved",
-                  payload: { action: "accept", content: { position: resume.position } },
-                },
-              ],
-              elicitResponses: [
-                {
-                  sessionId: "call-http-play-ttt",
-                  callId: "call-http-play-ttt",
-                  toolName: playTttTool.name,
-                  elicitId: resume.interruptId,
-                  completion: { action: "accept", content: { position: resume.position } },
-                },
-              ],
-            }
-          : {}),
-      }),
-    }),
-  );
+  const response = await handler(buildChatRequest(conversationId, messages, resume));
   return (await response.text()).split("\n").filter(Boolean).map(parsePublicFrame);
 }
 
@@ -337,16 +322,28 @@ function buildChatRequest(
     headers: { "Content-Type": "application/json" },
     ...(signal ? { signal } : {}),
     body: JSON.stringify({
-      messages,
+      input: {
+        threadId: conversationId,
+        runId: crypto.randomUUID(),
+        state: {},
+        messages,
+        tools: [],
+        context: [],
+        forwardedProps: {},
+        ...(resume
+          ? {
+              resume: [
+                {
+                  interruptId: resume.interruptId,
+                  status: "resolved",
+                  payload: { action: "accept", content: { position: resume.position } },
+                },
+              ],
+            }
+          : {}),
+      },
       ...(resume
         ? {
-            resume: [
-              {
-                interruptId: resume.interruptId,
-                status: "resolved",
-                payload: { action: "accept", content: { position: resume.position } },
-              },
-            ],
             elicitResponses: [
               {
                 sessionId: "call-http-play-ttt",

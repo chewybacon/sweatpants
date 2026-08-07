@@ -4,7 +4,7 @@ import type { ScenarioContext } from "@sweatpants/test-rig";
 import {
   createChatClient,
   useChat,
-  type ChatMessage,
+  type ReactChatUIMessage,
   type ReactChatClient,
   type ReactRenderPart,
   type UseChatOptions,
@@ -19,13 +19,13 @@ interface Waiter<T> {
 }
 
 export interface ReactMessageExpectation {
-  role?: ChatMessage["role"];
+  role?: ReactChatUIMessage["role"];
   containing?: string;
 }
 
 export interface ReactMessageHandle {
-  readonly message: ChatMessage;
-  readonly role: ChatMessage["role"];
+  readonly message: ReactChatUIMessage;
+  readonly role: ReactChatUIMessage["role"];
   readonly text: string;
   readonly html: string;
 }
@@ -81,9 +81,10 @@ function getClient(scenario: ScenarioContext, options: UseChatOptions): ReactCha
   return created;
 }
 
-function projectedMessage(message: ChatMessage): ReactMessageHandle {
+function projectedMessage(message: ReactChatUIMessage): ReactMessageHandle {
   const textParts = message.parts.filter(
-    (part): part is Extract<ChatMessage["parts"][number], { type: "text" }> => part.type === "text",
+    (part): part is Extract<ReactChatUIMessage["parts"][number], { type: "text" }> =>
+      part.type === "text",
   );
   return {
     message,
@@ -95,9 +96,9 @@ function projectedMessage(message: ChatMessage): ReactMessageHandle {
   };
 }
 
-function allRenderParts(messages: readonly ChatMessage[]): ReactRenderPart[] {
+function allRenderParts(messages: readonly ReactChatUIMessage[]): ReactRenderPart[] {
   const output: ReactRenderPart[] = [];
-  const visit = (parts: readonly ChatMessage["parts"][number][]): void => {
+  const visit = (parts: readonly ReactChatUIMessage["parts"][number][]): void => {
     for (const part of parts) {
       if (part.type === "render") output.push(part);
       else if (part.type === "message") visit(part.message.parts);
@@ -110,11 +111,11 @@ function allRenderParts(messages: readonly ChatMessage[]): ReactRenderPart[] {
 }
 
 function findElicit(
-  messages: readonly ChatMessage[],
+  messages: readonly ReactChatUIMessage[],
   elicitId: string,
-): Extract<ChatMessage["parts"][number], { type: "elicit" }> | undefined {
-  let found: Extract<ChatMessage["parts"][number], { type: "elicit" }> | undefined;
-  const visit = (parts: readonly ChatMessage["parts"][number][]): void => {
+): Extract<ReactChatUIMessage["parts"][number], { type: "elicit" }> | undefined {
+  let found: Extract<ReactChatUIMessage["parts"][number], { type: "elicit" }> | undefined;
+  const visit = (parts: readonly ReactChatUIMessage["parts"][number][]): void => {
     for (const part of parts) {
       if (part.type === "elicit" && part.elicitId === elicitId) found = part;
       else if (part.type === "message") visit(part.message.parts);
@@ -209,7 +210,7 @@ export function mountReactChat(
         assertOpen();
         yield* call(() =>
           act(() => {
-            void rendered!.result.current.sendMessage({ text: content });
+            void rendered!.result.current.sendMessage(content);
           }),
         );
         yield* call(() =>

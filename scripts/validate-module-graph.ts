@@ -34,6 +34,7 @@ const baselinePath = join(repoRoot, "scripts", "module-graph-baseline.json");
 /** Consumer -> allowed workspace dependencies for the final target graph. */
 const targetEdges: Readonly<Record<string, readonly string[]>> = {
   "@sweatpants/foundation": [],
+  "@sweatpants/chat-contract": ["@sweatpants/foundation"],
   "@sweatpants/durable-effects": ["@sweatpants/foundation"],
   "@sweatpants/durable-execution": ["@sweatpants/durable-effects", "@sweatpants/foundation"],
   "@sweatpants/journal-authority": [
@@ -42,22 +43,25 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/foundation",
   ],
   "@sweatpants/history-store": ["@sweatpants/foundation"],
-  "@sweatpants/model-provider": ["@sweatpants/foundation"],
+  "@sweatpants/model-provider": ["@sweatpants/chat-contract", "@sweatpants/foundation"],
   "@sweatpants/model-sampling": [
     "@sweatpants/durable-effects",
     "@sweatpants/foundation",
+    "@sweatpants/chat-contract",
     "@sweatpants/model-provider",
   ],
   "@sweatpants/agent-sdk": [
     "@sweatpants/durable-effects",
     "@sweatpants/durable-execution",
     "@sweatpants/foundation",
+    "@sweatpants/chat-contract",
     "@sweatpants/model-provider",
     "@sweatpants/model-sampling",
   ],
   "@sweatpants/tool-runtime": [
     "@sweatpants/agent-sdk",
     "@sweatpants/foundation",
+    "@sweatpants/chat-contract",
     "@sweatpants/model-provider",
   ],
   "@sweatpants/tool-session": [
@@ -65,11 +69,13 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/durable-effects",
     "@sweatpants/durable-execution",
     "@sweatpants/foundation",
+    "@sweatpants/chat-contract",
     "@sweatpants/model-provider",
     "@sweatpants/model-sampling",
   ],
   "@sweatpants/chat-core": [
     "@sweatpants/agent-sdk",
+    "@sweatpants/chat-contract",
     "@sweatpants/durable-effects",
     "@sweatpants/durable-execution",
     "@sweatpants/history-store",
@@ -79,6 +85,7 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
   ],
   "@sweatpants/durable-chat-runtime": [
     "@sweatpants/agent-sdk",
+    "@sweatpants/chat-contract",
     "@sweatpants/chat-core",
     "@sweatpants/durable-effects",
     "@sweatpants/foundation",

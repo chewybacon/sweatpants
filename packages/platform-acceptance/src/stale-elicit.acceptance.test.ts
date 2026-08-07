@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { call } from "effection";
-import { projectChatMessagesToWire } from "@sweatpants/chat-core";
+import { projectChatMessagesToAGUI } from "@sweatpants/chat-core";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import {
   ACCEPTANCE_DURABLE_TOOL_NAME,
@@ -85,9 +85,7 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
     },
     function* (s) {
       const conversation = s.conversation({ initialToolChoice: "required" });
-      const turn = yield* conversation.send({
-        text: `STALE_ELICIT_${settlement.toUpperCase()}_V1`,
-      });
+      const turn = yield* conversation.send(`STALE_ELICIT_${settlement.toUpperCase()}_V1`);
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {
@@ -103,7 +101,7 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
 
       const pending = yield* turn.elicit("chooseOption");
       const pendingSnapshot = yield* turn.snapshot();
-      const staleMessages = projectChatMessagesToWire(pendingSnapshot.messages);
+      const staleMessages = projectChatMessagesToAGUI(pendingSnapshot.messages);
       const acceptedResume = settledResume(pending.elicitId, settlement);
       const staleConflict = conflictingResume(pending.elicitId);
 
@@ -135,11 +133,17 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
             headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
             body: JSON.stringify({
               trigger: "submit-message",
-              threadId: conversation.conversationId,
               conversationId: conversation.conversationId,
-              runId: `stale-client-run:${settlement}:${label}`,
-              messages: staleMessages,
-              resume: [entry],
+              input: {
+                threadId: conversation.conversationId,
+                runId: `stale-client-run:${settlement}:${label}`,
+                state: {},
+                messages: staleMessages,
+                tools: [],
+                context: [],
+                forwardedProps: {},
+                resume: [entry],
+              },
             }),
           }),
         );

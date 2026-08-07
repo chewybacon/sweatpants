@@ -25,12 +25,12 @@ import {
   ModelSamplingApi,
 } from "@sweatpants/model-sampling";
 import { createToolInventory, installToolInventory } from "@sweatpants/tool-runtime";
-import { toModelMessages } from "@sweatpants/tool-session/messages";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
-import type { Context as ModelContext } from "@sweatpants/model-provider";
+import type { ModelContext } from "@sweatpants/model-provider";
+import type { ChatMessage } from "@sweatpants/chat-contract";
 import {
   createDurableToolRegistry,
   type ProgramDriver,
@@ -96,10 +96,15 @@ function createSamplingProvider(
   const driver = createPiAiModelProviderDriver();
   return {
     *sample(messages, options) {
-      const modelMessages = toModelMessages(messages);
+      const modelMessages: ChatMessage[] = messages;
       const modelContext: ModelContext = {
-        messages: modelMessages,
-        ...(options?.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
+        messages: [
+          ...(options?.systemPrompt
+            ? [{ role: "system" as const, content: options.systemPrompt }]
+            : []),
+          ...modelMessages,
+        ],
+        tools: [],
       };
       const assistant = yield* driver.sample({
         model: context.model.model,

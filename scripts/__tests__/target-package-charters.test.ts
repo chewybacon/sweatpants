@@ -70,6 +70,30 @@ describe("target package charters", () => {
     expect(productionSource("model-provider-pi-ai")).not.toMatch(/from ["']@sweatpants\/chat-core/);
   });
 
+  it("uses direct Pi-AI model collections without the compat entrypoint or a Pi-AI patch", () => {
+    const source = productionSource("model-provider-pi-ai");
+    expect(source).not.toMatch(/@earendil-works\/pi-ai\/compat/);
+    expect(source).toMatch(/@earendil-works\/pi-ai\/providers\/all/);
+    const manifest = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
+      devDependencies?: Record<string, string>;
+      pnpm?: { patchedDependencies?: Record<string, string> };
+    };
+    expect(manifest.devDependencies?.["@earendil-works/pi-ai"]).toBe("0.84.0");
+    expect(manifest.pnpm?.patchedDependencies?.["@earendil-works/pi-ai@0.80.1"]).toBeUndefined();
+    expect(existsSync(resolve(root, "patches/@earendil-works__pi-ai@0.80.1.patch"))).toBe(false);
+  });
+
+  it("keeps handwritten provider and Pi semantic graphs out of production sources", () => {
+    const mirrorDeclaration =
+      /^(?:export\s+)?(?:interface|type|class)\s+(?:Provider(?:Message|UserMessage|SystemMessage|AssistantMessage|ToolResultMessage|ContentBlock|TextBlock|ThinkingBlock|ToolCall|ToolCallBlock|ImageBlock|StreamEvent)|Pi[A-Z][A-Za-z0-9_]*)\b/m;
+    for (const packageName of readdirSync(resolve(root, "packages"))) {
+      const sourceRoot = resolve(root, "packages", packageName, "src");
+      if (existsSync(sourceRoot)) {
+        expect(productionSource(packageName), packageName).not.toMatch(mirrorDeclaration);
+      }
+    }
+  });
+
   it("keeps Tool Runtime neutral and under one contract owner", () => {
     expectNoMatches(productionSource("tool-runtime"), [
       /from ["']@sweatpants\/(?:chat-core|tool-session|durable-chat-runtime)/,
@@ -78,11 +102,8 @@ describe("target package charters", () => {
 
     const declarations = new Map(
       [
-        "PortableToolDefinition",
         "ToolInventoryEntry",
         "ToolRuntime",
-        "ToolCall",
-        "ToolResultMessage",
         "ElicitExchangeCompletion",
         "SampleExchangeCompletion",
       ].map((name) => [name, [] as string[]]),
@@ -115,15 +136,10 @@ describe("target package charters", () => {
       visit(sourceRoot);
     }
 
-    expect(declarations.get("PortableToolDefinition")).toEqual([
-      "packages/tool-runtime/src/contract.ts",
-    ]);
     expect(declarations.get("ToolInventoryEntry")).toEqual([
       "packages/tool-runtime/src/contract.ts",
     ]);
     expect(declarations.get("ToolRuntime")).toEqual(["packages/tool-runtime/src/contract.ts"]);
-    expect(declarations.get("ToolCall")).toEqual(["packages/model-provider/src/types.ts"]);
-    expect(declarations.get("ToolResultMessage")).toEqual(["packages/model-provider/src/types.ts"]);
     expect(declarations.get("ElicitExchangeCompletion")).toEqual([
       "packages/agent-sdk/src/tool/types.ts",
     ]);
@@ -191,7 +207,7 @@ describe("target package charters", () => {
     );
   });
 
-  it("keeps Tool Session sampling messages under one canonical owner", () => {
+  it("keeps Tool Session sampling messages under the canonical Chat owner", () => {
     const declarations: string[] = [];
     const visit = (directory: string): void => {
       for (const entry of readdirSync(directory)) {
@@ -200,18 +216,22 @@ describe("target package charters", () => {
           if (entry !== "dist" && entry !== "node_modules") visit(path);
         } else if (path.endsWith(".ts") && !path.endsWith(".test.ts")) {
           const source = readFileSync(path, "utf8");
-          if (/export type ExtendedMessage\b/.test(source)) {
+          if (
+            /export (?:type|interface) (?:ToolSessionMessage|ToolSessionTextMessage|ToolSessionToolCallMessage|ToolSessionPendingToolResult)\b/.test(
+              source,
+            )
+          ) {
             declarations.push(path.replace(`${root}/`, ""));
           }
           expect(source, path).not.toMatch(
-            /function (?:providerMessageToModelMessage|extendedToProviderMessage)\b/,
+            /function (?:providerMessageToModelMessage|extendedToProviderMessage|workerMessageToExtended)\b/,
           );
         }
       }
     };
     visit(resolve(root, "packages"));
     visit(resolve(root, "apps"));
-    expect(declarations).toEqual(["packages/tool-session/src/messages.ts"]);
+    expect(declarations).toEqual([]);
     expect(
       existsSync(
         resolve(root, "packages/durable-chat-runtime/src/tool-session/message-conversion.ts"),

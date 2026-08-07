@@ -1,78 +1,94 @@
 import { describe, expect, it } from "vitest";
 import type { ToolSampleConfig } from "@sweatpants/agent-sdk";
-import { toModelMessages, type ExtendedMessage } from "./messages.ts";
+import type { ChatMessage } from "@sweatpants/chat-contract";
+import { mcpMessagesToChatMessages } from "./messages.ts";
 
 describe("Tool Session model history projection", () => {
-  it("specializes the Agent SDK sampling contract to canonical session history", () => {
+  it("specializes Agent SDK sampling directly to canonical Chat history", () => {
     const config = {
       messages: [
         {
           role: "assistant",
-          content: "Calling",
-          toolCalls: [
+          content: [
             {
-              id: "c1",
-              type: "function",
-              function: { name: "lookup", arguments: null },
+              type: "tool-call",
+              toolCall: {
+                id: "c1",
+                name: "lookup",
+                input: null,
+                thoughtSignature: null,
+              },
             },
           ],
         },
-        { role: "tool", content: "not found", tool_call_id: "c1", isError: true },
+        {
+          role: "tool",
+          toolCallId: "c1",
+          name: "lookup",
+          content: "not found",
+          isError: true,
+        },
       ],
-    } satisfies ToolSampleConfig<ExtendedMessage>;
+    } satisfies ToolSampleConfig<ChatMessage>;
 
     expect(config.messages).toHaveLength(2);
 
-    const invalid: ToolSampleConfig<ExtendedMessage> = {
+    const invalid: ToolSampleConfig<ChatMessage> = {
       messages: [
-        // @ts-expect-error Tool Session specialization rejects foreign message roles.
+        // @ts-expect-error Canonical Chat messages reject foreign message roles.
         { role: "foreign", content: "x" },
       ],
     };
     void invalid;
   });
 
-  it("preserves causal call identity, arguments, result, and failure", () => {
-    const messages: ExtendedMessage[] = [
-      { role: "user", content: "Book it" },
-      {
-        role: "assistant",
-        content: "Calling",
-        toolCalls: [
-          {
-            id: "call-1",
-            type: "function",
-            function: { name: "book_flight", arguments: { destination: "NYC" } },
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: "the provider declined",
-        tool_call_id: "call-1",
-        isError: true,
-      },
-    ];
-
-    expect(toModelMessages(messages)).toEqual([
+  it("preserves canonical causal call identity, arguments, result, and failure", () => {
+    const messages: ChatMessage[] = [
       { role: "user", content: "Book it" },
       {
         role: "assistant",
         content: [
           { type: "text", text: "Calling" },
           {
-            type: "toolCall",
+            type: "tool-call",
             toolCall: {
               id: "call-1",
-              type: "function",
-              function: { name: "book_flight", arguments: { destination: "NYC" } },
+              name: "book_flight",
+              input: { destination: "NYC" },
+              thoughtSignature: null,
             },
           },
         ],
       },
       {
         role: "tool",
-        tool_call_id: "call-1",
+        toolCallId: "call-1",
+        name: "book_flight",
+        content: "the provider declined",
+        isError: true,
+      },
+    ];
+
+    expect(messages).toEqual([
+      { role: "user", content: "Book it" },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Calling" },
+          {
+            type: "tool-call",
+            toolCall: {
+              id: "call-1",
+              name: "book_flight",
+              input: { destination: "NYC" },
+              thoughtSignature: null,
+            },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        toolCallId: "call-1",
         name: "book_flight",
         content: "the provider declined",
         isError: true,
@@ -80,44 +96,45 @@ describe("Tool Session model history projection", () => {
     ]);
   });
 
-  it("projects MCP blocks through the same causal identity path", () => {
-    const messages: ExtendedMessage[] = [
-      {
-        role: "assistant",
-        content: {
-          type: "tool_use",
-          id: "call-2",
-          name: "weather",
-          input: { city: "Paris" },
+  it("decodes MCP blocks through one explicit boundary conversion", () => {
+    expect(
+      mcpMessagesToChatMessages([
+        {
+          role: "assistant",
+          content: {
+            type: "tool_use",
+            id: "call-2",
+            name: "weather",
+            input: { city: "Paris" },
+          },
         },
-      },
-      {
-        role: "user",
-        content: {
-          type: "tool_result",
-          toolUseId: "call-2",
-          content: [{ type: "text", text: "sunny" }],
+        {
+          role: "user",
+          content: {
+            type: "tool_result",
+            toolUseId: "call-2",
+            content: [{ type: "text", text: "sunny" }],
+          },
         },
-      },
-    ];
-
-    expect(toModelMessages(messages)).toEqual([
+      ]),
+    ).toEqual([
       {
         role: "assistant",
         content: [
           {
-            type: "toolCall",
+            type: "tool-call",
             toolCall: {
               id: "call-2",
-              type: "function",
-              function: { name: "weather", arguments: { city: "Paris" } },
+              name: "weather",
+              input: { city: "Paris" },
+              thoughtSignature: null,
             },
           },
         ],
       },
       {
         role: "tool",
-        tool_call_id: "call-2",
+        toolCallId: "call-2",
         name: "weather",
         content: [{ type: "text", text: "sunny" }],
         isError: false,
@@ -125,16 +142,29 @@ describe("Tool Session model history projection", () => {
     ]);
   });
 
-  it("rejects orphan results instead of fabricating empty identity", () => {
+  it("rejects orphan MCP results instead of fabricating call identity", () => {
     expect(() =>
-      toModelMessages([
+      mcpMessagesToChatMessages([
         {
-          role: "tool",
-          content: "orphan",
-          tool_call_id: "missing",
-          isError: false,
+          role: "user",
+          content: {
+            type: "tool_result",
+            toolUseId: "missing",
+            content: [{ type: "text", text: "orphan" }],
+          },
         },
       ]),
-    ).toThrow('Tool result "missing" has no preceding tool call identity');
+    ).toThrow(/no preceding tool call identity/);
+  });
+
+  it("rejects unsupported MCP modalities instead of dropping them", () => {
+    expect(() =>
+      mcpMessagesToChatMessages([
+        {
+          role: "assistant",
+          content: { type: "audio", data: "AAAA", mimeType: "audio/wav" },
+        },
+      ]),
+    ).toThrow(/unsupported-model-capability/);
   });
 });

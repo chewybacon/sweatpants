@@ -4,11 +4,12 @@ import {
   installToolInventory,
 } from "@sweatpants/tool-runtime";
 import { resource, type Operation, type Stream } from "effection";
-import {
-  type AssistantMessage,
-  type Model,
-  type ModelProviderDriver,
-  type ModelProviderStreamRequest,
+import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
+import type {
+  Model,
+  ModelProviderDriver,
+  ModelProviderStreamRequest,
+  ModelResponse,
 } from "@sweatpants/model-provider";
 import {
   createInMemoryBufferStore,
@@ -153,86 +154,102 @@ function scriptedDriver(currentWorkspaceVersion: () => string): ModelProviderDri
     *stream(request) {
       return completedStream(scriptedMessage(request, currentWorkspaceVersion()));
     },
-    *sample(): Operation<AssistantMessage> {
+    *sample(): Operation<ModelResponse> {
       throw new Error("durable chat must use the streaming model seam");
     },
+  };
+}
+
+function assistantResponse(message: ChatAssistantMessage, stopReason: string): ModelResponse {
+  return {
+    message,
+    source: null,
+    usage: null,
+    stopReason,
+    responseId: null,
+    errorMessage: null,
   };
 }
 
 function scriptedMessage(
   request: ModelProviderStreamRequest,
   workspaceRevision: string,
-): AssistantMessage {
+): ModelResponse {
   const toolResults = request.context.messages.filter((message) => message.role === "tool");
   if (toolResults.length === 0) {
-    return {
-      role: "assistant",
-      content: [
-        {
-          type: "toolCall",
-          toolCall: {
-            id: "studio-inspect",
-            type: "function",
-            function: { name: "workspace_inspect", arguments: {} },
+    return assistantResponse(
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCall: {
+              id: "studio-inspect",
+              name: "workspace_inspect",
+              input: {},
+              thoughtSignature: null,
+            },
           },
-        },
-      ],
-      stopReason: "toolUse",
-    };
+        ],
+      },
+      "toolUse",
+    );
   }
   if (toolResults.length === 1) {
-    return {
-      role: "assistant",
-      content: [
-        {
-          type: "toolCall",
-          toolCall: {
-            id: "studio-write",
-            type: "function",
-            function: {
+    return assistantResponse(
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCall: {
+              id: "studio-write",
               name: "workspace_write",
-              arguments: {
+              input: {
                 path: "demo.txt",
                 contents: "hello from durable yo-studio\n",
                 expectedWorkspaceRevision: workspaceRevision,
               },
+              thoughtSignature: null,
             },
           },
-        },
-      ],
-      stopReason: "toolUse",
-    };
+        ],
+      },
+      "toolUse",
+    );
   }
   if (toolResults.length === 2) {
-    return {
-      role: "assistant",
-      content: [
-        {
-          type: "toolCall",
-          toolCall: {
-            id: "studio-test",
-            type: "function",
-            function: {
+    return assistantResponse(
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCall: {
+              id: "studio-test",
               name: "workspace_test",
-              arguments: { script: "test", expectedWorkspaceRevision: workspaceRevision },
+              input: { script: "test", expectedWorkspaceRevision: workspaceRevision },
+              thoughtSignature: null,
             },
           },
-        },
-      ],
-      stopReason: "toolUse",
-    };
+        ],
+      },
+      "toolUse",
+    );
   }
-  return {
-    role: "assistant",
-    content: [{ type: "text", text: "Created demo.txt and the declared test script passed." }],
-    stopReason: "stop",
-  };
+  return assistantResponse(
+    {
+      role: "assistant",
+      content: [{ type: "text", text: "Created demo.txt and the declared test script passed." }],
+    },
+    "stop",
+  );
 }
 
-function completedStream(message: AssistantMessage): Stream<never, AssistantMessage> {
+function completedStream(message: ModelResponse): Stream<never, ModelResponse> {
   return resource(function* (provide) {
     yield* provide({
-      *next(): Operation<IteratorResult<never, AssistantMessage>> {
+      *next(): Operation<IteratorResult<never, ModelResponse>> {
         return { done: true, value: message };
       },
     });

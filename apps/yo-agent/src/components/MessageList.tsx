@@ -1,12 +1,12 @@
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
-import type { ChatMessage, ChatPart } from "@sweatpants/chat-client";
+import type { ChatUIMessage, ChatUIPart } from "@sweatpants/chat-client";
 import type { TerminalPromptPart } from "../terminal/interaction.ts";
 import { FrameRenderer } from "../pipeline/index.ts";
 import { Scrollable } from "./Scrollable.tsx";
 
 interface MessageListProps {
-  readonly messages: readonly ChatMessage<TerminalPromptPart>[];
+  readonly messages: readonly ChatUIMessage<TerminalPromptPart>[];
   readonly busy?: boolean;
   readonly height?: number;
 }
@@ -18,7 +18,7 @@ function printable(value: unknown): string | null {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
-function PartView({ part }: { readonly part: ChatPart<TerminalPromptPart> }) {
+function PartView({ part }: { readonly part: ChatUIPart<TerminalPromptPart> }) {
   switch (part.type) {
     case "text":
     case "reasoning":
@@ -71,10 +71,12 @@ function PartView({ part }: { readonly part: ChatPart<TerminalPromptPart> }) {
           {part.response ? ` — ${part.response}` : ""}
         </Text>
       );
+    default:
+      return null;
   }
 }
 
-function PartList({ parts }: { readonly parts: readonly ChatPart<TerminalPromptPart>[] }) {
+function PartList({ parts }: { readonly parts: readonly ChatUIPart<TerminalPromptPart>[] }) {
   return (
     <Box flexDirection="column">
       {parts.map((part) => (
@@ -84,7 +86,7 @@ function PartList({ parts }: { readonly parts: readonly ChatPart<TerminalPromptP
   );
 }
 
-function MessageView({ message }: { readonly message: ChatMessage<TerminalPromptPart> }) {
+function MessageView({ message }: { readonly message: ChatUIMessage<TerminalPromptPart> }) {
   const label =
     message.role === "user" ? "You" : message.role === "assistant" ? "Assistant" : "System";
   const color = message.role === "user" ? "green" : message.role === "assistant" ? "cyan" : "gray";

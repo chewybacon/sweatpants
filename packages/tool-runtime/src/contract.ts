@@ -1,17 +1,9 @@
 import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
-import type { ToolCall } from "@sweatpants/model-provider";
+import type { ChatToolCall, ChatToolDefinition } from "@sweatpants/chat-contract";
 import { definePort } from "@sweatpants/foundation/port";
 import type { Operation, Stream } from "effection";
-
-/** Portable, execution-neutral projection of an authored tool definition. */
-export interface PortableToolDefinition {
-  name: string;
-  description: string;
-  parameters: JsonObject;
-  metadata?: Record<string, unknown>;
-}
 
 export interface ToolCapabilities {
   inline?: boolean;
@@ -21,7 +13,7 @@ export interface ToolCapabilities {
 }
 
 export interface ToolInventoryEntry {
-  definition: PortableToolDefinition;
+  definition: ChatToolDefinition;
   capabilities?: ToolCapabilities;
   metadata?: Record<string, unknown>;
   interfaceDigest?: string;
@@ -46,7 +38,7 @@ export interface ToolExecutionRef {
 
 export interface ToolExecuteRequest {
   entry: ToolInventoryEntry;
-  call: ToolCall;
+  call: ChatToolCall;
   request?: unknown;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
@@ -176,12 +168,12 @@ export interface ToolExecutionStrategy {
   readonly toolNames?: readonly string[];
   canExecute(
     entry: ToolInventoryEntry,
-    call: ToolCall,
+    call: ChatToolCall,
     ctx: ToolExecutionContext,
   ): boolean | Operation<boolean>;
   execute(
     entry: ToolInventoryEntry,
-    call: ToolCall,
+    call: ChatToolCall,
     ctx: ToolExecutionContext,
   ): Operation<ToolExecution>;
   resume?(

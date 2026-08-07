@@ -13,7 +13,7 @@ import type {
   ChatInteractionRuntime,
   ChatLocalPart,
   ChatClient,
-  ChatMessage,
+  ChatUIMessage,
 } from "@sweatpants/chat-client";
 
 export type TerminalPromptResult =
@@ -34,7 +34,7 @@ export interface TerminalPromptPart extends ChatLocalPart {
   readonly response?: string;
 }
 
-export type TerminalChatClient = ChatClient<ChatMessage<TerminalPromptPart>>;
+export type TerminalChatClient = ChatClient<ChatUIMessage<TerminalPromptPart>>;
 
 export interface TerminalInteractionOptions {
   readonly plugins?: readonly ClientPlugin<TerminalElicitCapabilities>[];

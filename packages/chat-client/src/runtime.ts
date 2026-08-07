@@ -17,7 +17,7 @@ import {
   type ChatRuntimeControl,
   type InternalRuntime,
 } from "./client.ts";
-import type { ClientChatMessage as ChatMessage } from "@sweatpants/chat-core";
+import type { ChatUIMessage } from "@sweatpants/chat-core";
 
 function* installMiddleware<T extends object>(
   api: { around(middleware: Partial<Around<T>>): Operation<void> },
@@ -39,7 +39,7 @@ export interface ChatRuntime {
   readonly initialized: Promise<void>;
   createClient<TLocalPart extends { readonly type: string; readonly id: string } = never>(
     options: ChatClientOptions<TLocalPart>,
-  ): ChatClient<ChatMessage<TLocalPart>>;
+  ): ChatClient<ChatUIMessage<TLocalPart>>;
   close(): Promise<void>;
 }
 

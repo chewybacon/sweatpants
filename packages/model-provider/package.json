@@ -27,6 +27,7 @@
         "test": "vitest run --passWithNoTests"
     },
     "dependencies": {
+        "@sweatpants/chat-contract": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "effection": "catalog:"
     },

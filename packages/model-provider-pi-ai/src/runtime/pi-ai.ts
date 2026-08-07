@@ -1,43 +1,33 @@
 import { call, resource, useAbortSignal, type Operation } from "effection";
+import { builtinImagesModels, builtinModels } from "@earendil-works/pi-ai/providers/all";
+import type * as PiAi from "@earendil-works/pi-ai";
 import {
-  generateImages as piGenerateImages,
-  streamSimple as piStreamSimple,
-} from "@earendil-works/pi-ai/compat";
-import type {
-  AssistantImages as PiAssistantImages,
-  AssistantMessage as PiAssistantMessage,
-  AssistantMessageEvent as PiAssistantMessageEvent,
-  Context as PiContext,
-  ImagesContext as PiImagesContext,
-  ImagesModel as PiImagesModel,
-  Model as PiModel,
-  ProviderImagesOptions as PiProviderImagesOptions,
-  SimpleStreamOptions as PiSimpleStreamOptions,
-  ToolCall as PiToolCall,
-  Usage as PiUsage,
-} from "@earendil-works/pi-ai/compat";
-import type {
-  AssistantImages,
-  AssistantMessage,
-  ContentBlock,
-  Context,
-  ImageGenerationContext,
-  ImageGenerationOptions,
-  ImageModel,
-  Model,
-  Message,
-  Runtime,
-  StreamEvent,
-  StreamOptions,
-  ThinkingLevel,
-  ToolCall,
-  Usage,
+  UnsupportedModelCapabilityError,
+  type ImageGenerationOptions,
+  type ImageModel,
+  type Model,
+  type ModelContext,
+  type ModelResponse,
+  type ModelStreamEvent,
+  type Runtime,
+  type StreamOptions,
+  type ThinkingLevel,
 } from "@sweatpants/model-provider";
-
-const SCHEMA_TOOL_NAME = "__schema__";
+import {
+  STRUCTURED_RESPONSE_TOOL_NAME,
+  appendPiStructuredResponseTool,
+  decodePiImages,
+  decodePiModelResponse,
+  decodePiModelStreamEvent,
+  encodePiContext,
+  encodePiToolChoice,
+  encodePiImageContext,
+  projectStructuredModelResponse,
+  projectStructuredModelStreamEvent,
+} from "./canonical.ts";
 
 interface CombinedAbortController {
-  controller: AbortController;
+  readonly controller: AbortController;
   cleanup(): void;
 }
 
@@ -47,17 +37,12 @@ function combineAbortSignals(
 ): CombinedAbortController {
   const controller = new AbortController();
   const abort = () => {
-    if (!controller.signal.aborted) {
-      controller.abort();
-    }
+    if (!controller.signal.aborted) controller.abort();
   };
 
   scopeSignal.addEventListener("abort", abort, { once: true });
   callerSignal?.addEventListener("abort", abort, { once: true });
-
-  if (scopeSignal.aborted || callerSignal?.aborted) {
-    abort();
-  }
+  if (scopeSignal.aborted || callerSignal?.aborted) abort();
 
   return {
     controller,
@@ -68,357 +53,7 @@ function combineAbortSignals(
   };
 }
 
-function toPiUsage(usage: Usage | undefined): PiUsage {
-  return {
-    input: usage?.input ?? 0,
-    output: usage?.output ?? 0,
-    cacheRead: usage?.cacheRead ?? 0,
-    cacheWrite: usage?.cacheWrite ?? 0,
-    totalTokens: usage?.total ?? (usage?.input ?? 0) + (usage?.output ?? 0),
-    cost: {
-      input: usage?.cost?.input ?? 0,
-      output: usage?.cost?.output ?? 0,
-      cacheRead: usage?.cost?.cacheRead ?? 0,
-      cacheWrite: usage?.cost?.cacheWrite ?? 0,
-      total: usage?.cost?.total ?? 0,
-    },
-  };
-}
-
-function fromPiUsage(usage: PiUsage | undefined): Usage | undefined {
-  if (!usage) {
-    return undefined;
-  }
-  return {
-    input: usage.input,
-    output: usage.output,
-    total: usage.totalTokens,
-    cacheRead: usage.cacheRead,
-    cacheWrite: usage.cacheWrite,
-    cost: usage.cost,
-  };
-}
-
-function toPiContentBlock(block: ContentBlock): unknown {
-  switch (block.type) {
-    case "thinking":
-      return {
-        type: "thinking",
-        thinking: block.text,
-        ...(block.thinkingSignature ? { thinkingSignature: block.thinkingSignature } : {}),
-        ...(block.redacted !== undefined ? { redacted: block.redacted } : {}),
-      };
-    case "toolCall":
-      // This is framework egress: `arguments` is already trusted `Json` and is
-      // transported without parsing, cloning, or re-projection.
-      return {
-        type: "toolCall",
-        id: block.toolCall.id,
-        name: block.toolCall.function.name,
-        arguments: block.toolCall.function.arguments,
-        ...(block.toolCall.thoughtSignature
-          ? { thoughtSignature: block.toolCall.thoughtSignature }
-          : {}),
-      };
-    default:
-      return block;
-  }
-}
-
-/**
- * pi-ai owns wire decoding and supplies this discriminated union. We translate
- * thinking text and wrap settled flat pi-ai calls in Model Provider's decoded
- * OpenAI-compatible call carrier. Arguments pass through as pi-ai's best-effort
- * decoded JSON and remain open until the authored Standard Schema executes.
- */
-function fromPiContentBlock(
-  block: PiAssistantMessage["content"][number],
-  settled: boolean,
-): ContentBlock {
-  switch (block.type) {
-    case "thinking":
-      return {
-        type: "thinking",
-        text: block.thinking,
-        ...(block.thinkingSignature ? { thinkingSignature: block.thinkingSignature } : {}),
-        ...(block.redacted !== undefined ? { redacted: block.redacted } : {}),
-      };
-    case "text":
-      return block;
-    case "toolCall":
-      // A settled tool call without identity cannot be executed or correlated.
-      // Partial snapshots retain pi-ai's honest in-flight empty strings.
-      if (settled && block.id.length === 0) {
-        throw new Error("Provider returned a tool call without an id");
-      }
-      if (settled && block.name.length === 0) {
-        throw new Error(`Provider returned tool call "${block.id}" without a name`);
-      }
-      return {
-        type: "toolCall",
-        toolCall: fromPiToolCall(block),
-      };
-  }
-}
-
-function contentBlockHasProviderPayload(block: ContentBlock): boolean {
-  if (block.type === "text" || block.type === "thinking") {
-    return block.text.trim().length > 0;
-  }
-  if (block.type === "image") {
-    return block.data.length > 0;
-  }
-  if (block.type === "toolCall") {
-    return block.toolCall.function.name.trim().length > 0;
-  }
-  return false;
-}
-
-function providerMessageHasPayload(message: Message): boolean {
-  if (message.role === "assistant") {
-    return message.content.some(contentBlockHasProviderPayload);
-  }
-  if (message.role === "tool") {
-    return typeof message.content === "string"
-      ? message.content.trim().length > 0
-      : message.content.some(contentBlockHasProviderPayload);
-  }
-  return true;
-}
-
-/**
- * Provider-boundary safety normalization.
- *
- * Completed historical tool call/result pairs are semantic causal records and
- * are preserved exactly as projected by the client session (REQ-038). The
- * boundary only repairs wire-invalid shapes it cannot send:
- *
- * - a hanging assistant toolCall with no result anywhere after it (the
- *   Responses API rejects a function_call without a function_call_output), and
- * - an orphan toolResult whose call id never appears in an earlier assistant
- *   message (un-referencable on the wire).
- *
- * Both repairs drop only the unresolvable side. History compaction is
- * deliberately NOT performed here; that is client/application policy.
- */
-function normalizeProviderMessages(messages: Message[]): Message[] {
-  const filtered = messages.filter(providerMessageHasPayload);
-
-  const callIds = new Set<string>();
-  const resultIds = new Set<string>();
-  for (const message of filtered) {
-    if (message.role === "assistant") {
-      for (const block of message.content) {
-        if (block.type === "toolCall" && contentBlockHasProviderPayload(block)) {
-          callIds.add(block.toolCall.id);
-        }
-      }
-    }
-    if (message.role === "tool") {
-      resultIds.add(message.tool_call_id);
-    }
-  }
-
-  const normalized: Message[] = [];
-  for (const message of filtered) {
-    if (message.role === "tool") {
-      if (!callIds.has(message.tool_call_id)) {
-        continue; // orphan result: no referencable call
-      }
-      normalized.push(message);
-      continue;
-    }
-    if (message.role !== "assistant") {
-      normalized.push(message);
-      continue;
-    }
-    const content = message.content.filter(
-      (block) => block.type !== "toolCall" || resultIds.has(block.toolCall.id),
-    );
-    if (content.length === message.content.length) {
-      normalized.push(message);
-      continue;
-    }
-    if (content.some(contentBlockHasProviderPayload)) {
-      normalized.push({ ...message, content });
-    }
-    // An assistant message consisting solely of hanging tool calls is dropped:
-    // nothing wire-valid remains.
-  }
-  return normalized;
-}
-
-function safeErrorMessage(message: string | undefined): string | undefined {
-  if (!message) {
-    return undefined;
-  }
-  return message
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/sk-[A-Za-z0-9_-]{12,}/g, "sk-[redacted]")
-    .replace(/arn:aws:[^\s"']+/g, "[redacted-aws-arn]")
-    .replace(/\b\d{12}\b/g, "[redacted-account-id]")
-    .slice(0, 2000);
-}
-
-function fromPiToolCall(toolCall: PiToolCall): ToolCall {
-  return {
-    id: toolCall.id,
-    type: "function",
-    function: { name: toolCall.name, arguments: toolCall.arguments },
-    ...(toolCall.thoughtSignature ? { thoughtSignature: toolCall.thoughtSignature } : {}),
-  };
-}
-
-function toPiAssistantMessage(message: AssistantMessage, selectedModel: Model): PiAssistantMessage {
-  const errorMessage = safeErrorMessage(message.errorMessage);
-  const source = message.source ?? {
-    api: selectedModel.api,
-    provider: selectedModel.provider,
-    model: selectedModel.id,
-  };
-  return {
-    role: "assistant",
-    content: message.content
-      .filter((block) => block.type !== "image")
-      .map(toPiContentBlock) as PiAssistantMessage["content"],
-    api: source.api,
-    provider: source.provider,
-    model: source.model,
-    ...(source.responseModel ? { responseModel: source.responseModel } : {}),
-    ...(message.responseId ? { responseId: message.responseId } : {}),
-    usage: toPiUsage(message.usage),
-    stopReason: (message.stopReason ?? "stop") as PiAssistantMessage["stopReason"],
-    ...(errorMessage ? { errorMessage } : {}),
-    timestamp: message.timestamp ?? Date.now(),
-  };
-}
-
-function fromPiAssistantMessage(message: PiAssistantMessage, settled = true): AssistantMessage {
-  const usage = fromPiUsage(message.usage);
-  const errorMessage = safeErrorMessage(message.errorMessage);
-  return {
-    role: "assistant",
-    content: message.content.map((block) => fromPiContentBlock(block, settled)),
-    ...(usage ? { usage } : {}),
-    stopReason: message.stopReason,
-    ...(message.responseId ? { responseId: message.responseId } : {}),
-    ...(errorMessage ? { errorMessage } : {}),
-    timestamp: message.timestamp,
-    source: {
-      api: message.api,
-      provider: message.provider,
-      model: message.model,
-      ...(message.responseModel ? { responseModel: message.responseModel } : {}),
-    },
-  };
-}
-
-function unwrapSchemaResponseMessage(message: AssistantMessage): AssistantMessage {
-  let consumedSchemaTool = false;
-  const content: ContentBlock[] = [];
-
-  for (const block of message.content) {
-    if (block.type === "toolCall" && block.toolCall.function.name === SCHEMA_TOOL_NAME) {
-      consumedSchemaTool = true;
-      content.push({ type: "text", text: JSON.stringify(block.toolCall.function.arguments) });
-      continue;
-    }
-    content.push(block);
-  }
-
-  if (!consumedSchemaTool) {
-    return message;
-  }
-  const { stopReason: currentStopReason, ...rest } = message;
-  const stopReason = currentStopReason === "toolUse" ? "stop" : currentStopReason;
-  return {
-    ...rest,
-    content,
-    ...(stopReason !== undefined ? { stopReason } : {}),
-  };
-}
-
-function fromPiAssistantMessageForOptions(
-  message: PiAssistantMessage,
-  options: StreamOptions | undefined,
-): AssistantMessage {
-  const assistant = fromPiAssistantMessage(message);
-  return options?.responseFormat ? unwrapSchemaResponseMessage(assistant) : assistant;
-}
-
-function toPiContext(context: Context, selectedModel: Model): PiContext {
-  const messages: PiContext["messages"] = [];
-  const systemMessages = context.messages
-    .filter((message) => message.role === "system")
-    .map((message) => message.content);
-
-  for (const message of normalizeProviderMessages(context.messages)) {
-    if (message.role === "system") {
-      continue;
-    }
-
-    if (message.role === "user") {
-      messages.push({
-        role: "user",
-        content: Array.isArray(message.content)
-          ? (message.content
-              .filter((block) => block.type === "text" || block.type === "image")
-              .map(toPiContentBlock) as Array<
-              { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
-            >)
-          : message.content,
-        timestamp: message.timestamp ?? Date.now(),
-      });
-      continue;
-    }
-
-    if (message.role === "assistant") {
-      if (message.content.some(contentBlockHasProviderPayload)) {
-        messages.push(toPiAssistantMessage(message, selectedModel));
-      }
-      continue;
-    }
-
-    const toolResultContent = (
-      typeof message.content === "string"
-        ? [{ type: "text" as const, text: message.content }]
-        : message.content.filter(
-            (block) =>
-              (block.type === "text" || block.type === "image") &&
-              contentBlockHasProviderPayload(block),
-          )
-    ).map(toPiContentBlock) as Array<
-      { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
-    >;
-
-    if (toolResultContent.length === 0) {
-      continue;
-    }
-
-    messages.push({
-      role: "toolResult",
-      toolCallId: message.tool_call_id,
-      toolName: message.name,
-      content: toolResultContent,
-      isError: message.isError,
-      timestamp: message.timestamp ?? Date.now(),
-    });
-  }
-
-  const systemPrompt = [context.systemPrompt, ...systemMessages].filter(Boolean).join("\n\n");
-  const piContext: PiContext = {
-    ...(systemPrompt ? { systemPrompt } : {}),
-    messages,
-  };
-  if (context.tools) {
-    // Tool parameters arrive as the projection authored upstream. The provider
-    // transports it; re-deriving would answer a settled question a second time.
-    piContext.tools = context.tools as NonNullable<PiContext["tools"]>;
-  }
-  return piContext;
-}
-
-function toPiModel(model: Model): PiModel<string> {
+function toPiModel(model: Model): PiAi.Model<string> {
   return {
     id: model.id,
     name: model.name,
@@ -438,7 +73,7 @@ function toPiModel(model: Model): PiModel<string> {
   };
 }
 
-function toPiImageModel(model: ImageModel): PiImagesModel<string> {
+function toPiImageModel(model: ImageModel): PiAi.ImagesModel<string> {
   return {
     id: model.id,
     name: model.name,
@@ -462,14 +97,14 @@ function toPiReasoning(options: StreamOptions | undefined): ThinkingLevel | unde
 }
 
 function assertResponseFormatToolPolicy(
-  context: Context,
+  context: ModelContext,
   options: StreamOptions | undefined,
 ): void {
-  if (!options?.responseFormat || !context.tools?.length) {
-    return;
-  }
-  if (context.tools.some((tool) => tool.name === SCHEMA_TOOL_NAME)) {
-    throw new Error(`Tool name "${SCHEMA_TOOL_NAME}" is reserved for structured response output`);
+  if (!options?.responseFormat || context.tools.length === 0) return;
+  if (context.tools.some((tool) => tool.name === STRUCTURED_RESPONSE_TOOL_NAME)) {
+    throw new Error(
+      `Tool name "${STRUCTURED_RESPONSE_TOOL_NAME}" is reserved for structured response output`,
+    );
   }
   throw new Error(
     "responseFormat cannot be combined with application tools in a single provider request",
@@ -477,34 +112,69 @@ function assertResponseFormatToolPolicy(
 }
 
 function toPiContextWithResponseFormat(
-  context: Context,
+  context: ModelContext,
   model: Model,
   options: StreamOptions | undefined,
-): PiContext {
-  const piContext = toPiContext(context, model);
-  if (!options?.responseFormat) {
-    return piContext;
+): PiAi.Context {
+  const piContext = encodePiContext(context, model);
+  return options?.responseFormat === undefined
+    ? piContext
+    : appendPiStructuredResponseTool(piContext, options.responseFormat.schema);
+}
+
+function usesDirectPiStream(options: StreamOptions | undefined): boolean {
+  return options?.toolChoice !== undefined || options?.responseFormat !== undefined;
+}
+
+function assertDirectPiStreamCapabilities(model: Model, options: StreamOptions | undefined): void {
+  if (
+    !usesDirectPiStream(options) ||
+    options?.thinking === undefined ||
+    options.thinking === "off"
+  ) {
+    return;
   }
-
-  const schemaTool = {
-    name: SCHEMA_TOOL_NAME,
-    description: "Respond with structured data matching this schema.",
-    parameters: options.responseFormat.schema,
-  };
-
-  return {
-    ...piContext,
-    tools: [schemaTool, ...(piContext.tools ?? [])] as NonNullable<PiContext["tools"]>,
-  };
+  switch (model.api) {
+    case "openai-completions":
+    case "openai-responses":
+    case "openai-codex-responses":
+    case "azure-openai-responses":
+    case "bedrock-converse-stream":
+    case "pi-messages":
+      return;
+    default:
+      throw new UnsupportedModelCapabilityError(
+        "$.options.thinking",
+        "thinking-with-tool-choice",
+        `Pi-AI ${model.api} cannot combine canonical thinking with an explicit tool choice`,
+        model.provider,
+        model.id,
+      );
+  }
 }
 
 function toPiStreamOptions(
   model: Model,
   options: StreamOptions | undefined,
   signal: AbortSignal,
-): PiSimpleStreamOptions & Record<string, unknown> {
+  direct: boolean,
+): PiAi.SimpleStreamOptions & Record<string, unknown> {
   const apiKey = options?.apiKey ?? (model.provider === "ollama" ? "ollama" : undefined);
   const reasoning = toPiReasoning(options);
+  const toolChoice = options?.responseFormat
+    ? encodePiToolChoice(model, "required")
+    : options?.toolChoice === undefined
+      ? undefined
+      : encodePiToolChoice(model, options.toolChoice);
+  const reasoningEffort =
+    direct &&
+    reasoning !== undefined &&
+    (model.api === "openai-completions" ||
+      model.api === "openai-responses" ||
+      model.api === "openai-codex-responses" ||
+      model.api === "azure-openai-responses")
+      ? reasoning
+      : undefined;
   return {
     ...options?.providerOptions,
     signal,
@@ -518,12 +188,9 @@ function toPiStreamOptions(
     ...(options?.onPayload
       ? { onPayload: (payload: unknown) => options.onPayload?.(payload) }
       : {}),
-    ...(options?.responseFormat
-      ? { toolChoice: "required" }
-      : options?.toolChoice
-        ? { toolChoice: options.toolChoice }
-        : {}),
-    ...(reasoning ? { reasoning } : {}),
+    ...(toolChoice !== undefined ? { toolChoice } : {}),
+    ...(reasoning !== undefined ? { reasoning } : {}),
+    ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
     ...(options?.thinkingBudgets ? { thinkingBudgets: options.thinkingBudgets } : {}),
   };
 }
@@ -531,7 +198,7 @@ function toPiStreamOptions(
 function toPiImageOptions(
   options: ImageGenerationOptions | undefined,
   signal: AbortSignal,
-): PiProviderImagesOptions {
+): PiAi.ImagesOptions & Record<string, unknown> {
   return {
     ...options?.providerOptions,
     signal,
@@ -546,146 +213,69 @@ function toPiImageOptions(
   };
 }
 
-function fromPiEvent(event: PiAssistantMessageEvent): StreamEvent {
-  switch (event.type) {
-    case "toolcall_end":
-      return {
-        type: "toolcall_end",
-        contentIndex: event.contentIndex,
-        toolCall: fromPiToolCall(event.toolCall),
-        partial: fromPiAssistantMessage(event.partial, false),
-      };
-    case "done":
-      return {
-        type: "done",
-        reason: event.reason,
-        message: fromPiAssistantMessage(event.message),
-      };
-    case "error":
-      return {
-        type: "error",
-        reason: event.reason,
-        error: fromPiAssistantMessage(event.error, false),
-      };
-    case "text_end":
-    case "thinking_end":
-      return {
-        type: event.type,
-        contentIndex: event.contentIndex,
-        content: event.content,
-        partial: fromPiAssistantMessage(event.partial, false),
-      };
-    case "text_delta":
-    case "thinking_delta":
-    case "toolcall_delta":
-      return {
-        type: event.type,
-        contentIndex: event.contentIndex,
-        delta: event.delta,
-        partial: fromPiAssistantMessage(event.partial, false),
-      };
-    case "start":
-      return {
-        type: "start",
-        partial: fromPiAssistantMessage(event.partial, false),
-      };
-    default:
-      return {
-        type: event.type,
-        contentIndex: event.contentIndex,
-        partial: fromPiAssistantMessage(event.partial, false),
-      };
-  }
-}
-
-function unwrapSchemaResponseEvent(event: StreamEvent): StreamEvent {
-  switch (event.type) {
-    case "done": {
-      const message = unwrapSchemaResponseMessage(event.message);
-      return { ...event, reason: message.stopReason ?? event.reason, message };
-    }
-    case "error":
-      return { ...event, error: unwrapSchemaResponseMessage(event.error) };
-    case "start":
-    case "text_start":
-    case "text_delta":
-    case "text_end":
-    case "thinking_start":
-    case "thinking_delta":
-    case "thinking_end":
-    case "toolcall_start":
-    case "toolcall_delta":
-    case "toolcall_end":
-      return { ...event, partial: unwrapSchemaResponseMessage(event.partial) };
-  }
-}
-
-function fromPiEventForOptions(
-  event: PiAssistantMessageEvent,
+function decodeStreamEvent(
+  event: PiAi.AssistantMessageEvent,
   options: StreamOptions | undefined,
-): StreamEvent | undefined {
+): ModelStreamEvent | undefined {
   if (options?.responseFormat && event.type.startsWith("toolcall_")) {
+    // The synthetic schema call is represented by the terminal canonical text
+    // response rather than by ordinary application tool lifecycle events.
     return undefined;
   }
-  const converted = fromPiEvent(event);
-  return options?.responseFormat ? unwrapSchemaResponseEvent(converted) : converted;
+  const decoded = decodePiModelStreamEvent(event);
+  return options?.responseFormat ? projectStructuredModelStreamEvent(decoded) : decoded;
 }
 
-function toPiImagesContext(context: ImageGenerationContext): PiImagesContext {
-  return {
-    input: context.input.map(toPiContentBlock) as PiImagesContext["input"],
-  };
+export interface AdapterRuntimeOptions {
+  /** Non-compat Pi-AI model collection; injection keeps provider ownership explicit. */
+  readonly models?: PiAi.Models;
+  /** Non-compat Pi-AI image-model collection. */
+  readonly images?: PiAi.ImagesModels;
 }
 
-function fromPiAssistantImages(images: PiAssistantImages): AssistantImages {
-  const usage = fromPiUsage(images.usage);
-  const errorMessage = safeErrorMessage(images.errorMessage);
-  return {
-    // pi-ai image output is already structurally identical to the neutral contract.
-    output: images.output,
-    ...(usage ? { usage } : {}),
-    stopReason: images.stopReason,
-    ...(images.responseId ? { responseId: images.responseId } : {}),
-    ...(errorMessage ? { errorMessage } : {}),
-    metadata: {
-      api: images.api,
-      provider: images.provider,
-      model: images.model,
-      timestamp: images.timestamp,
-    },
-  };
-}
+const defaultPiModels = builtinModels();
+const defaultPiImages = builtinImagesModels();
 
-export function createPiAiRuntime(): Runtime {
+export function createPiAiRuntime(options: AdapterRuntimeOptions = {}): Runtime {
+  const models = options.models ?? defaultPiModels;
+  const images = options.images ?? defaultPiImages;
   return {
-    stream(model, context, options) {
+    stream(model, context, streamOptions) {
       return resource(function* (provide) {
-        assertResponseFormatToolPolicy(context, options);
+        assertResponseFormatToolPolicy(context, streamOptions);
+        assertDirectPiStreamCapabilities(model, streamOptions);
         const scopeSignal = yield* useAbortSignal();
-        const combined = combineAbortSignals(scopeSignal, options?.signal);
-        const stream = piStreamSimple(
-          toPiModel(model),
-          toPiContextWithResponseFormat(context, model, options),
-          toPiStreamOptions(model, options, combined.controller.signal),
+        const combined = combineAbortSignals(scopeSignal, streamOptions?.signal);
+        const piModel = toPiModel(model);
+        const piContext = toPiContextWithResponseFormat(context, model, streamOptions);
+        const direct = usesDirectPiStream(streamOptions);
+        const piOptions = toPiStreamOptions(
+          model,
+          streamOptions,
+          combined.controller.signal,
+          direct,
         );
+        const stream = direct
+          ? models.stream(piModel, piContext, piOptions)
+          : models.streamSimple(piModel, piContext, piOptions);
         const iterator = stream[Symbol.asyncIterator]();
 
         try {
           yield* provide({
-            *next(): Operation<IteratorResult<StreamEvent, AssistantMessage>> {
+            *next(): Operation<IteratorResult<ModelStreamEvent, ModelResponse>> {
               while (true) {
                 const next = yield* call(() => iterator.next());
                 if (!next.done) {
-                  const event = fromPiEventForOptions(next.value, options);
-                  if (event) {
-                    return { done: false, value: event };
-                  }
+                  const event = decodeStreamEvent(next.value, streamOptions);
+                  if (event !== undefined) return { done: false, value: event };
                   continue;
                 }
-                const finalMessage = yield* call(() => stream.result());
+                const response = decodePiModelResponse(yield* call(() => stream.result()));
                 return {
                   done: true,
-                  value: fromPiAssistantMessageForOptions(finalMessage, options),
+                  value: streamOptions?.responseFormat
+                    ? projectStructuredModelResponse(response)
+                    : response,
                 };
               }
             },
@@ -700,19 +290,19 @@ export function createPiAiRuntime(): Runtime {
       });
     },
 
-    generateImages(model, context, options) {
+    generateImages(model, context, imageOptions) {
       return resource(function* (provide) {
         const scopeSignal = yield* useAbortSignal();
-        const combined = combineAbortSignals(scopeSignal, options?.signal);
+        const combined = combineAbortSignals(scopeSignal, imageOptions?.signal);
         try {
           const result = yield* call(() =>
-            piGenerateImages(
+            images.generateImages(
               toPiImageModel(model),
-              toPiImagesContext(context),
-              toPiImageOptions(options, combined.controller.signal),
+              encodePiImageContext(context),
+              toPiImageOptions(imageOptions, combined.controller.signal),
             ),
           );
-          yield* provide(fromPiAssistantImages(result));
+          yield* provide(decodePiImages(result));
         } finally {
           combined.controller.abort();
           combined.cleanup();

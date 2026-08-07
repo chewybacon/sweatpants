@@ -27,6 +27,7 @@
         "@opentelemetry/sdk-node": "^0.219.0",
         "@opentelemetry/semantic-conventions": "^1.41.1",
         "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/chat-contract": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
@@ -36,6 +37,7 @@
         "@sweatpants/tool-runtime-agentcore": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "bedrock-agentcore": "^0.2.0",
+        "configliere": "^0.4.0",
         "effection": "catalog:",
         "zod": "catalog:"
     },

@@ -105,9 +105,9 @@ async function runStaleForeignElicit(settlement: Settlement): Promise<void> {
     const conflict = await post(runtime.handle, substrate.conversationId, substrate.messages, {
       ...captured,
       result:
-        settlement === "accept"
+        settlement === "accept" || settlement === "decline"
           ? { action: "accept", content: { flightId: "FL002" } }
-          : { action: settlement === "decline" ? "accept" : "decline" },
+          : { action: "decline" },
     });
     expect(runErrorCode(conflict)).toBe("RESUME_CONFLICT");
 

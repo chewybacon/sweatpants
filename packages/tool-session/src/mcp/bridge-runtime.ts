@@ -21,7 +21,7 @@
  */
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { JsonObject } from "@sweatpants/foundation";
-import type { PortableModelTool } from "@sweatpants/model-provider";
+import type { ChatToolDefinition } from "@sweatpants/chat-contract";
 import {
   type Operation,
   type Channel,
@@ -36,7 +36,7 @@ import {
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
 import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
 import { parseToolParameters, toToolParameterJsonSchema } from "../tool-parameters.ts";
-import type { Message, ExtendedMessage } from "../messages.ts";
+import type { ChatContent, ChatMessage, ChatMessagePart } from "@sweatpants/chat-contract";
 import type {
   McpToolContextWithElicits,
   McpToolLimits,
@@ -243,7 +243,7 @@ export interface SampleResponse {
 export interface BridgeSampleOptions {
   systemPrompt?: string;
   maxTokens?: number;
-  tools?: PortableModelTool[];
+  tools?: ChatToolDefinition[];
   toolChoice?: SamplingToolChoice;
   schema?: JsonObject;
 }
@@ -263,13 +263,11 @@ function createBridgeSampleOptions(
   }
   if (tools !== undefined) {
     options.tools = tools.map((tool) => {
-      const definition: PortableModelTool = {
+      const definition: ChatToolDefinition = {
         name: tool.name,
+        description: tool.description ?? null,
         parameters: toToolParameterJsonSchema(tool.inputSchema),
       };
-      if (tool.description !== undefined) {
-        definition.description = tool.description;
-      }
       return definition;
     });
   }
@@ -285,7 +283,7 @@ export type BridgeEvent =
   | { type: "notify"; message: string; progress?: number }
   | {
       type: "sample";
-      messages: ExtendedMessage[];
+      messages: ChatMessage[];
       options?: BridgeSampleOptions;
       responseSignal: Signal<SampleResponse, void>;
     };
@@ -298,7 +296,7 @@ export type BridgeEvent =
  */
 export interface BridgeSamplingProvider {
   sample(
-    messages: ExtendedMessage[],
+    messages: ChatMessage[],
     options?: BridgeSampleOptions,
   ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
 }
@@ -369,39 +367,79 @@ function estimateTokensFromText(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-/**
- * Extract text content from a message for token estimation.
- * Handles both simple string content and MCP content blocks.
- */
-function getMessageTextContent(msg: ExtendedMessage): string {
-  if (typeof msg.content === "string") {
-    return msg.content;
-  }
-  if (msg.content === null || msg.content === undefined) {
-    return "";
-  }
-  // MCP content blocks
-  const blocks = Array.isArray(msg.content) ? msg.content : [msg.content];
-  return blocks
-    .map((block) => {
-      if (block.type === "text") {
-        return block.text;
+/** Extract text-like facts for token estimation without changing message authority. */
+function getContentText(content: ChatContent): string {
+  if (typeof content === "string") return content;
+  return content
+    .map((part) => {
+      switch (part.type) {
+        case "text":
+          return part.text;
+        case "image":
+        case "audio":
+        case "video":
+        case "document":
+          return JSON.stringify(part.source);
       }
-      if (block.type === "tool_use") {
-        return JSON.stringify(block.input);
-      }
-      if (block.type === "tool_result") {
-        const innerBlocks = Array.isArray(block.content) ? block.content : [block.content];
-        return innerBlocks.map((b) => (b.type === "text" ? b.text : "")).join("");
-      }
-      return "";
     })
     .join("");
 }
 
+function getMessageTextContent(message: ChatMessage): string {
+  switch (message.role) {
+    case "user":
+    case "tool":
+      return getContentText(message.content);
+    case "system":
+    case "developer":
+      return message.content;
+    case "assistant":
+      return message.content
+        .map((part: ChatMessagePart) => {
+          switch (part.type) {
+            case "text":
+            case "reasoning":
+              return part.text;
+            case "tool-call":
+              return JSON.stringify(part.toolCall.input);
+            case "image":
+            case "audio":
+            case "video":
+            case "document":
+              return JSON.stringify(part.source);
+          }
+        })
+        .join("");
+  }
+}
+
+function appendRetryText(message: ChatMessage, suffix: string): ChatMessage | undefined {
+  switch (message.role) {
+    case "user":
+      return {
+        ...message,
+        content:
+          typeof message.content === "string"
+            ? message.content + suffix
+            : [...message.content, { type: "text", text: suffix }],
+      };
+    case "assistant":
+      return { ...message, content: [...message.content, { type: "text", text: suffix }] };
+    case "system":
+    case "developer":
+      return { ...message, content: message.content + suffix };
+    case "tool":
+      return undefined;
+  }
+}
+
+function textUserMessage(text: string): ChatMessage {
+  return { role: "user", content: [{ type: "text", text }] };
+}
+
 function estimateTokensFromConversation(options: {
   systemPrompt?: string;
-  messages: ExtendedMessage[];
+  messages: ChatMessage[];
   completion: string;
 }): number {
   const system = options.systemPrompt ? estimateTokensFromText(options.systemPrompt) : 0;
@@ -428,7 +466,7 @@ function addTokens(tracker: TokenTracker, tokens: number): void {
 
 interface BridgeExecutionState<TElicits extends ElicitsMap> {
   readonly signal: AbortSignal;
-  messages: Message[];
+  messages: ChatMessage[];
   systemPrompt?: string;
   limits: McpToolLimits;
   tokenTracker: TokenTracker;
@@ -466,19 +504,19 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
     // Current tool execution state
     get messages() {
-      return state.messages as readonly Message[];
+      return state.messages as readonly ChatMessage[];
     },
 
     // LLM backchannel
     // Using type assertion because the implementation handles all overload variants,
     // but TypeScript can't verify this without conditional types at the implementation level.
-    sample: ((config: ToolSampleConfig<ExtendedMessage>) => {
+    sample: ((config: ToolSampleConfig<ChatMessage>) => {
       return {
         *[Symbol.iterator]() {
-          let messages: ExtendedMessage[];
+          let messages: ChatMessage[];
 
           if ("prompt" in config && config.prompt) {
-            const userMessage: Message = { role: "user", content: config.prompt };
+            const userMessage = textUserMessage(config.prompt);
             messages = [...state.messages, userMessage];
           } else if ("messages" in config && config.messages) {
             messages = [...config.messages];
@@ -528,7 +566,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           if ("prompt" in config && config.prompt) {
             state.messages.push(
               { role: "user", content: config.prompt },
-              { role: "assistant", content: result.text },
+              { role: "assistant", content: [{ type: "text", text: result.text }] },
             );
           }
 
@@ -546,9 +584,8 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           const promptText =
             "prompt" in config && config.prompt
               ? config.prompt
-              : (messages[messages.length - 1]?.content ?? "");
-          const promptTextStr =
-            typeof promptText === "string" ? promptText : JSON.stringify(promptText);
+              : getMessageTextContent(messages[messages.length - 1] ?? textUserMessage(""));
+          const promptTextStr = promptText;
 
           // If schema was provided, parse the response and add parsed/parseError
           if ("schema" in config && config.schema) {
@@ -618,7 +655,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     }) as McpToolContextWithElicits<TElicits>["sample"],
 
     // Sample with guaranteed tool calls
-    sampleTools(config: SampleToolsConfig<ExtendedMessage>): Operation<SampleToolsResult> {
+    sampleTools(config: SampleToolsConfig<ChatMessage>): Operation<SampleToolsResult> {
       const maxRetries = config.retries ?? 2;
       const toolChoice = config.toolChoice ?? "required";
 
@@ -628,39 +665,24 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
           for (let attempt = 0; attempt <= maxRetries; attempt++) {
             // Build messages for this attempt
-            let messages: ExtendedMessage[];
+            let messages: ChatMessage[];
 
             if ("prompt" in config && config.prompt) {
               const retryHint =
                 attempt > 0
                   ? `\n\n[IMPORTANT: You must call one of the available tools. Your previous response did not include a tool call.]`
                   : "";
-              const userMessage: Message = { role: "user", content: config.prompt + retryHint };
+              const userMessage = textUserMessage(config.prompt + retryHint);
               messages = [...state.messages, userMessage];
             } else if ("messages" in config && config.messages) {
               // Messages mode - add retry hint to last message if retrying
               if (attempt > 0 && config.messages.length > 0) {
+                const retryText = "\n\n[IMPORTANT: You must call one of the available tools.]";
                 const lastMsg = config.messages[config.messages.length - 1]!;
-                if (typeof lastMsg.content === "string") {
-                  messages = [
-                    ...config.messages.slice(0, -1),
-                    {
-                      ...lastMsg,
-                      content:
-                        lastMsg.content +
-                        "\n\n[IMPORTANT: You must call one of the available tools.]",
-                    } as ExtendedMessage,
-                  ];
-                } else {
-                  // Non-string content (MCP/tool call messages) — append retry as new user message
-                  messages = [
-                    ...config.messages,
-                    {
-                      role: "user",
-                      content: "[IMPORTANT: You must call one of the available tools.]",
-                    },
-                  ];
-                }
+                const updated = appendRetryText(lastMsg, retryText);
+                messages = updated
+                  ? [...config.messages.slice(0, -1), updated]
+                  : [...config.messages, textUserMessage(retryText)];
               } else {
                 messages = [...config.messages];
               }
@@ -698,9 +720,8 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             const promptText =
               "prompt" in config && config.prompt
                 ? config.prompt
-                : (messages[messages.length - 1]?.content ?? "");
-            const promptTextStr =
-              typeof promptText === "string" ? promptText : JSON.stringify(promptText);
+                : getMessageTextContent(messages[messages.length - 1] ?? textUserMessage(""));
+            const promptTextStr = promptText;
 
             // Create exchange for this result
             const exchange = createRawSampleExchange(promptTextStr, result.text);
@@ -727,7 +748,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               if ("prompt" in config && config.prompt) {
                 state.messages.push(
                   { role: "user", content: config.prompt },
-                  { role: "assistant", content: result.text },
+                  { role: "assistant", content: [{ type: "text", text: result.text }] },
                 );
               }
 
@@ -753,9 +774,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     },
 
     // Sample with guaranteed parsed schema
-    sampleSchema<T>(
-      config: SampleSchemaConfig<T, ExtendedMessage>,
-    ): Operation<SampleSchemaResult<T>> {
+    sampleSchema<T>(config: SampleSchemaConfig<T, ChatMessage>): Operation<SampleSchemaResult<T>> {
       const maxRetries = config.retries ?? 2;
 
       return {
@@ -765,39 +784,24 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
           for (let attempt = 0; attempt <= maxRetries; attempt++) {
             // Build messages for this attempt
-            let messages: ExtendedMessage[];
+            let messages: ChatMessage[];
 
             if ("prompt" in config && config.prompt) {
               const retryHint =
                 attempt > 0 && lastError
                   ? `\n\n[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON matching the schema.]`
                   : "";
-              const userMessage: Message = { role: "user", content: config.prompt + retryHint };
+              const userMessage = textUserMessage(config.prompt + retryHint);
               messages = [...state.messages, userMessage];
             } else if ("messages" in config && config.messages) {
               // Messages mode - add retry hint to last message if retrying
               if (attempt > 0 && config.messages.length > 0 && lastError) {
+                const retryText = `\n\n[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON.]`;
                 const lastMsg = config.messages[config.messages.length - 1]!;
-                if (typeof lastMsg.content === "string") {
-                  messages = [
-                    ...config.messages.slice(0, -1),
-                    {
-                      ...lastMsg,
-                      content:
-                        lastMsg.content +
-                        `\n\n[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON.]`,
-                    } as ExtendedMessage,
-                  ];
-                } else {
-                  // Non-string content (MCP/tool call messages) — append retry as new user message
-                  messages = [
-                    ...config.messages,
-                    {
-                      role: "user",
-                      content: `[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON.]`,
-                    },
-                  ];
-                }
+                const updated = appendRetryText(lastMsg, retryText);
+                messages = updated
+                  ? [...config.messages.slice(0, -1), updated]
+                  : [...config.messages, textUserMessage(retryText)];
               } else {
                 messages = [...config.messages];
               }
@@ -841,9 +845,8 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             const promptText =
               "prompt" in config && config.prompt
                 ? config.prompt
-                : (messages[messages.length - 1]?.content ?? "");
-            const promptTextStr =
-              typeof promptText === "string" ? promptText : JSON.stringify(promptText);
+                : getMessageTextContent(messages[messages.length - 1] ?? textUserMessage(""));
+            const promptTextStr = promptText;
 
             // Parse schema
             const schema = config.schema;
@@ -855,7 +858,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 if ("prompt" in config && config.prompt) {
                   state.messages.push(
                     { role: "user", content: config.prompt },
-                    { role: "assistant", content: result.text },
+                    { role: "assistant", content: [{ type: "text", text: result.text }] },
                   );
                 }
 
@@ -1209,7 +1212,7 @@ export function runBridgeTool<
   onLog?: (level: LogLevel, message: string) => void;
   onNotify?: (message: string, progress?: number) => void;
   onSample?: (
-    messages: ExtendedMessage[],
+    messages: ChatMessage[],
     options?: { systemPrompt?: string; maxTokens?: number },
   ) => void;
 }): Operation<TResult> {

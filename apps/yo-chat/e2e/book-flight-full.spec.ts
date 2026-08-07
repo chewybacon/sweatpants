@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * Full book_flight flow E2E test.
@@ -10,7 +10,17 @@ import { test, expect } from "@playwright/test";
  * 4. Booking confirmation with ticket number
  */
 
-test.setTimeout(360000); // 6 minutes for slow local LLMs
+test.setTimeout(120000);
+
+async function sendChatMessage(page: Page, message: string): Promise<void> {
+  const input = page.getByPlaceholder("Type a message...");
+  await expect(input).toBeEnabled({ timeout: 10000 });
+  await input.click();
+  await input.fill(message);
+  const send = page.getByRole("button", { name: "Send" });
+  await expect(send).toBeEnabled({ timeout: 5000 });
+  await send.click({ timeout: 5000 });
+}
 
 test("book_flight full flow: flight → seat → confirmation", async ({ page }) => {
   // Debug logging
@@ -58,13 +68,10 @@ test("book_flight full flow: flight → seat → confirmation", async ({ page })
   await page.getByTestId("thread-create").click();
   await expect(page.getByPlaceholder("Type a message...")).toBeEnabled({ timeout: 15000 });
 
-  const input = page.getByPlaceholder("Type a message...");
-  await input.click(); // Ensure hydration
-  await input.pressSequentially(
+  await sendChatMessage(
+    page,
     "Use the available flight booking tool to book a flight from NYC to LAX. Do not answer directly.",
-    { delay: 5 },
   );
-  await page.getByRole("button", { name: "Send" }).click();
 
   // === STEP 1: Wait for FlightList ===
   console.log("Step 1: Waiting for FlightList...");

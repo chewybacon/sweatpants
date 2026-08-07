@@ -16,7 +16,7 @@ async function runNestedFailure(binding: Binding, failure: NestedFailure): Promi
     function* (s) {
       const conversation = s.conversation();
       const callId = `nested-failure-${failure}`;
-      const turn = yield* conversation.send({ text: `NESTED_FAILURE_${failure.toUpperCase()}_V1` });
+      const turn = yield* conversation.send(`NESTED_FAILURE_${failure.toUpperCase()}_V1`);
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {
@@ -46,9 +46,7 @@ async function runNestedFailure(binding: Binding, failure: NestedFailure): Promi
       }
 
       yield* turn.failure();
-      const recovery = yield* conversation.send({
-        text: `RECOVER_NESTED_${failure.toUpperCase()}_V1`,
-      });
+      const recovery = yield* conversation.send(`RECOVER_NESTED_${failure.toUpperCase()}_V1`);
       const recoveryRequest = yield* s.model.request((request) => {
         const input = JSON.stringify(request.body.input);
         expect(input).toContain(`RECOVER_NESTED_${failure.toUpperCase()}_V1`);
@@ -69,7 +67,7 @@ async function runFinalSampleFailure(binding: Binding): Promise<void> {
     function* (s) {
       const conversation = s.conversation();
       const callId = "final-sample-failure-call";
-      const turn = yield* conversation.send({ text: "FINAL_SAMPLE_FAILURE_V1" });
+      const turn = yield* conversation.send("FINAL_SAMPLE_FAILURE_V1");
       const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* outer.respond.toolCalls([
         {
@@ -94,7 +92,7 @@ async function runFinalSampleFailure(binding: Binding): Promise<void> {
       });
       yield* turn.failure();
 
-      const recovery = yield* conversation.send({ text: "RECOVER_FINAL_SAMPLE_FAILURE_V1" });
+      const recovery = yield* conversation.send("RECOVER_FINAL_SAMPLE_FAILURE_V1");
       const recoveryRequest = yield* s.model.request((request) => {
         const input = JSON.stringify(request.body.input);
         expect(input).toContain("RECOVER_FINAL_SAMPLE_FAILURE_V1");

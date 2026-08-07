@@ -178,8 +178,12 @@ describe("ToolSession foreign-tool durability boundary", () => {
         foreignToolAdapter.modelSampleRegistration(function* () {
           return {
             message: {
-              role: "assistant",
-              content: [{ type: "text", text: "suggestion-0" }],
+              message: { role: "assistant", content: [{ type: "text", text: "suggestion-0" }] },
+              source: null,
+              usage: null,
+              stopReason: null,
+              responseId: null,
+              errorMessage: null,
             },
             output: { type: "message" },
           };

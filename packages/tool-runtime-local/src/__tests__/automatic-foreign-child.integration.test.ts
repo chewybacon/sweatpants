@@ -182,8 +182,15 @@ describe("automatic foreign adapter child orchestration", () => {
           durableSamples += 1;
           return {
             message: {
-              role: "assistant",
-              content: [{ type: "text", text: `suggestion-${round}` }],
+              message: {
+                role: "assistant",
+                content: [{ type: "text", text: `suggestion-${round}` }],
+              },
+              source: null,
+              usage: null,
+              stopReason: null,
+              responseId: null,
+              errorMessage: null,
             },
             output: { type: "message" },
           };

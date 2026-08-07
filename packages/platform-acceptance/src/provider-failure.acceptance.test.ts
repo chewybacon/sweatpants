@@ -16,7 +16,7 @@ async function recoverConversation(binding: Binding, kind: FailureKind): Promise
     },
     function* (s) {
       const conversation = s.conversation();
-      const failedTurn = yield* conversation.send({ text: `FAILURE_${kind.toUpperCase()}_V1` });
+      const failedTurn = yield* conversation.send(`FAILURE_${kind.toUpperCase()}_V1`);
       const failedRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
 
       if (kind === "error") {
@@ -44,9 +44,7 @@ async function recoverConversation(binding: Binding, kind: FailureKind): Promise
         expect(conversation.transcript().text).toContain("PARTIAL_V1");
       }
 
-      const recoveryTurn = yield* conversation.send({
-        text: `RECOVERY_AFTER_${kind.toUpperCase()}_V1`,
-      });
+      const recoveryTurn = yield* conversation.send(`RECOVERY_AFTER_${kind.toUpperCase()}_V1`);
       const recoveryRequest = yield* s.model.request((request) => {
         const input = JSON.stringify(request.body.input);
         expect(input).toContain(`RECOVERY_AFTER_${kind.toUpperCase()}_V1`);
@@ -67,14 +65,14 @@ async function completeEmptyAssistant(binding: Binding): Promise<void> {
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
     function* (s) {
       const conversation = s.conversation();
-      const turn = yield* conversation.send({ text: "EMPTY_ASSISTANT_V1" });
+      const turn = yield* conversation.send("EMPTY_ASSISTANT_V1");
       const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* request.respond.text("");
       const transcript = yield* turn.settled();
       expect(transcript.outcome).toBe("success");
       expect(transcript.text).toBe("");
 
-      const recoveryTurn = yield* conversation.send({ text: "RECOVERY_AFTER_EMPTY_ASSISTANT_V1" });
+      const recoveryTurn = yield* conversation.send("RECOVERY_AFTER_EMPTY_ASSISTANT_V1");
       const recoveryRequest = yield* s.model.request((next) => {
         const input = JSON.stringify(next.body.input);
         expect(input).toContain("EMPTY_ASSISTANT_V1");
@@ -97,7 +95,7 @@ describe("provider failure recovery", () => {
       },
       function* (s) {
         const conversation = s.conversation();
-        const turn = yield* conversation.send({ text: "HEAD_PARTIAL_TRUNCATION_V1" });
+        const turn = yield* conversation.send("HEAD_PARTIAL_TRUNCATION_V1");
         const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
         const head = "H".repeat(32_768);
         const stream = yield* request.respond.textStream([head, "TAIL_PARTIAL_SENTINEL"]);

@@ -2,6 +2,13 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import type { Json } from "@sweatpants/foundation";
 import type { SchemaBinding, PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
+import type {
+  ChatAssistantMessage,
+  ChatMessage,
+  ChatToolCall,
+  ChatToolResultMessage,
+  ChatUserMessage,
+} from "@sweatpants/chat-contract";
 
 /** Portable descriptors for one declared elicitation (content-schema semantics). */
 export interface SchemaProjectionOptions {
@@ -50,41 +57,9 @@ export interface PerCallInterruptOptions {
 }
 
 // -----------------------------------------------------------------------------
-// Message data types (plain data; no runtime deps)
+// Message values are canonical Chat contracts. Protocol-owned worker/MCP
+// messages are decoded at their adapters before reaching authored sampling.
 // -----------------------------------------------------------------------------
-
-export type ToolRole = "user" | "assistant";
-
-export interface ToolTextContent {
-  type: "text";
-  text: string;
-}
-
-export interface ToolUseContent {
-  type: "tool_use";
-  id: string;
-  name: string;
-  /** Model-authored arguments, carried verbatim; narrowed only at `execute`. */
-  input: Json;
-}
-
-export interface ToolResultContent {
-  type: "tool_result";
-  toolUseId: string;
-  content: ToolContentBlock[];
-}
-
-export type ToolContentBlock = ToolTextContent | ToolUseContent | ToolResultContent;
-
-export interface ToolMessage {
-  role: ToolRole;
-  content: ToolContentBlock | ToolContentBlock[];
-}
-
-/** Authored sampling-history carrier independent of any session or provider package. */
-export type ToolSamplingMessage =
-  | ToolMessage
-  | { role: "system" | "user" | "assistant"; content: string };
 
 // -----------------------------------------------------------------------------
 // Elicit definitions (response-first)
@@ -191,10 +166,10 @@ export type NormalizedSamplesMap<TSamples extends SamplesMap = SamplesMap> = {
  */
 export interface ElicitExchange<TContext> {
   context: TContext;
-  request: ToolMessage & { role: "assistant" };
-  response: ToolMessage & { role: "user" };
-  messages: [ToolMessage, ToolMessage];
-  withArguments(fn: (context: TContext) => Json): [ToolMessage, ToolMessage];
+  request: ChatAssistantMessage;
+  response: ChatToolResultMessage;
+  messages: [ChatAssistantMessage, ChatToolResultMessage];
+  withArguments(fn: (context: TContext) => Json): [ChatAssistantMessage, ChatToolResultMessage];
 }
 
 /**
@@ -203,11 +178,11 @@ export interface ElicitExchange<TContext> {
  */
 export interface SampleExchange<TParsed = undefined> {
   /** The request message sent to the model (user, text content). */
-  request: ToolMessage & { role: "user" };
-  /** The assistant's response (text, or tool_use for structured output). */
-  response: ToolMessage & { role: "assistant" };
+  request: ChatUserMessage;
+  /** The assistant's response (text, or a tool call for structured output). */
+  response: ChatAssistantMessage;
   /** All messages for history accumulation (2 raw / 3 structured). */
-  messages: ToolMessage[];
+  messages: ChatMessage[];
   /** Parsed structured data — present only on structured-output exchanges. */
   parsed?: TParsed;
 }
@@ -244,7 +219,7 @@ export interface SampleRequestOptions {
 
 export interface SampleRequest {
   readonly prompt?: string;
-  readonly messages?: readonly ToolSamplingMessage[];
+  readonly messages?: readonly ChatMessage[];
   readonly exchanges?: readonly (ElicitExchange<unknown> | SampleExchange)[];
   readonly options?: SampleRequestOptions;
 }
@@ -265,18 +240,11 @@ export interface SampleResultWithParsed<T> {
   readonly exchange: SampleExchange<T | null>;
 }
 
-export interface SamplingToolCall {
-  id: string;
-  name: string;
-  /** Open until the authored tool's parameter schema narrows it at `execute`. */
-  arguments: Json;
-}
-
 export interface SampleResultWithToolCalls {
   readonly text: string;
   readonly model?: string;
   readonly stopReason?: "endTurn" | "maxTokens" | "toolUse" | string;
-  readonly toolCalls: SamplingToolCall[];
+  readonly toolCalls: ChatToolCall[];
   readonly exchange: SampleExchange<undefined>;
 }
 
@@ -302,7 +270,7 @@ export interface ParsedSampleExchangeCompletion<T> extends SampleExchangeComplet
 }
 
 export interface ToolCallSampleExchangeCompletion extends SampleExchangeCompletionBase {
-  toolCalls: SamplingToolCall[];
+  toolCalls: ChatToolCall[];
 }
 
 export type SampleExchangeCompletion =
@@ -399,7 +367,7 @@ export interface SampleToolsResult {
   text: string;
   model?: string;
   stopReason: "toolUse";
-  toolCalls: [SamplingToolCall, ...SamplingToolCall[]];
+  toolCalls: [ChatToolCall, ...ChatToolCall[]];
   exchange: SampleExchange<undefined>;
 }
 
@@ -436,7 +404,7 @@ export class SampleValidationError extends Error {
 }
 
 /** Canonical authored sampling surface specialized by a domain message carrier. */
-export interface ToolSamplingCtx<TMessage = unknown> {
+export interface ToolSamplingCtx<TMessage = ChatMessage> {
   sample(
     config: SampleConfigPlainPrompt | SampleConfigPlainMessages<TMessage>,
   ): Operation<SampleResultBase>;
@@ -461,7 +429,7 @@ export interface BaseToolCtx {
   /** Scope-owned live cancellation bridge. Never persist or serialize it. */
   readonly signal: AbortSignal;
   /** Conversation messages visible to the current tool invocation. */
-  readonly messages: readonly ToolMessage[];
+  readonly messages: readonly ChatMessage[];
   notify(message: string, progress?: number, level?: LogLevel): Operation<void>;
   log(level: LogLevel, message: string): Operation<void>;
 }
@@ -484,7 +452,7 @@ export interface ToolElicitCtx<TElicits extends ElicitsMap> {
   >;
 }
 
-export type ToolGenericSampleCtx = ToolSamplingCtx<ToolSamplingMessage> & {
+export type ToolGenericSampleCtx = ToolSamplingCtx<ChatMessage> & {
   /** Generic request form used by named sample declarations. */
   sample(request: SampleRequest): Operation<NamedSampleResult>;
 };
@@ -496,14 +464,13 @@ type SampleParsed<TSamples extends SamplesMap, K extends keyof TSamples> =
       : InferSchema<TOutputSchema>
     : unknown;
 
-export type ToolNamedSampleCtx<TSamples extends SamplesMap> =
-  ToolSamplingCtx<ToolSamplingMessage> & {
-    sample(request: SampleRequest): Operation<NamedSampleResult>;
-    sample<K extends keyof TSamples & string>(
-      key: K,
-      request: SampleRequest,
-    ): Operation<NamedSampleResult<SampleParsed<TSamples, K>>>;
-  };
+export type ToolNamedSampleCtx<TSamples extends SamplesMap> = ToolSamplingCtx<ChatMessage> & {
+  sample(request: SampleRequest): Operation<NamedSampleResult>;
+  sample<K extends keyof TSamples & string>(
+    key: K,
+    request: SampleRequest,
+  ): Operation<NamedSampleResult<SampleParsed<TSamples, K>>>;
+};
 
 /** Detects the `any` type (used so RuntimeTool stays a universal sink). */
 type IsAny<T> = 0 extends 1 & T ? true : false;

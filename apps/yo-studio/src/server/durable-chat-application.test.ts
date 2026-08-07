@@ -36,7 +36,15 @@ describe("yo-studio durable chat HTTP projection", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             conversationId: "yo-studio-test",
-            messages: [{ id: "user-1", role: "user", content: "Create demo.txt and test it" }],
+            input: {
+              threadId: "yo-studio-test",
+              runId: "run-yo-studio-test",
+              state: {},
+              messages: [{ id: "user-1", role: "user", content: "Create demo.txt and test it" }],
+              tools: [],
+              context: [],
+              forwardedProps: {},
+            },
           }),
         }),
       );
@@ -83,7 +91,15 @@ describe("yo-studio durable chat HTTP projection", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             conversationId: "shared-workspace-conversation",
-            messages: [{ id: "user-1", role: "user", content: "Create demo.txt and test it" }],
+            input: {
+              threadId: "shared-workspace-conversation",
+              runId: "run-shared-workspace-conversation",
+              state: {},
+              messages: [{ id: "user-1", role: "user", content: "Create demo.txt and test it" }],
+              tools: [],
+              context: [],
+              forwardedProps: {},
+            },
           }),
         }),
       );

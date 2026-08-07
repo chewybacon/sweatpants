@@ -1,13 +1,14 @@
 import type { Operation, Stream } from "effection";
-import type { Json, JsonObject } from "@sweatpants/foundation";
-import type { PortableModelContextMessage, PortableModelTool } from "./portable.ts";
+import type { JsonObject } from "@sweatpants/foundation";
+import type { ChatContent } from "@sweatpants/chat-contract";
+import type { ModelContext, ModelResponse, ModelStreamEvent, ModelUsage } from "./model.ts";
 
 export interface Runtime {
   stream(
     model: Model,
-    context: Context,
+    context: ModelContext,
     options?: StreamOptions,
-  ): Stream<StreamEvent, AssistantMessage>;
+  ): Stream<ModelStreamEvent, ModelResponse>;
   generateImages(
     model: ImageModel,
     context: ImageGenerationContext,
@@ -61,183 +62,17 @@ export interface ImageModel {
 export type InputModality = "text" | "image" | "audio";
 export type OutputModality = "text" | "image";
 
-export interface Context {
-  systemPrompt?: string;
-  messages: PortableModelContextMessage[];
-  tools?: PortableModelTool[];
-}
-
-export type Tool = PortableModelTool;
-
-export type Message = UserMessage | SystemMessage | AssistantMessage | ToolResultMessage;
-
-export interface UserMessage {
-  role: "user";
-  content: string | ContentBlock[];
-  timestamp?: number;
-}
-
-export interface SystemMessage {
-  role: "system";
-  content: string;
-  timestamp?: number;
-}
-
-export interface ModelResponseSource {
-  api: string;
-  provider: string;
-  model: string;
-  responseModel?: string;
-}
-
-export interface AssistantMessage {
-  role: "assistant";
-  content: ContentBlock[];
-  /** Producer-owned model provenance; never reconstructed from loose metadata. */
-  source?: ModelResponseSource;
-  usage?: Usage;
-  stopReason?: StopReason;
-  responseId?: string;
-  errorMessage?: string;
-  timestamp?: number;
-  metadata?: Record<string, unknown>;
-}
-
-/** Settled OpenAI-compatible tool result correlated to a settled ToolCall. */
-export interface ToolResultMessage {
-  role: "tool";
-  tool_call_id: string;
-  /** Explicit producer-known call target; never reconstructed from result text. */
-  name: string;
-  content: string | ContentBlock[];
-  isError: boolean;
-  timestamp?: number;
-}
-
-export type ContentBlock = TextBlock | ThinkingBlock | ToolCallBlock | ImageBlock;
-
-export interface TextBlock {
-  type: "text";
-  text: string;
-  /** Opaque provider replay signature, preserved but never interpreted by Sweatpants. */
-  textSignature?: string;
-}
-
-export interface ThinkingBlock {
-  type: "thinking";
-  text: string;
-  format?: string;
-  /** Opaque provider replay signature, preserved but never interpreted by Sweatpants. */
-  thinkingSignature?: string;
-  /** Whether the provider marked this reasoning block as redacted. */
-  redacted?: boolean;
-}
-
-/** Settled, decoded OpenAI-compatible function call produced by a model. */
-export interface ToolCall {
-  id: string;
-  type: "function";
-  function: {
-    name: string;
-    /** Remains open until the authored tool schema narrows it at `execute`. */
-    arguments: Json;
-  };
-  /** Opaque provider replay signature associated with this tool call. */
-  thoughtSignature?: string;
-}
-
-export interface ToolCallBlock {
-  type: "toolCall";
-  toolCall: ToolCall;
-}
-
-export interface ImageBlock {
-  type: "image";
-  data: string;
-  mimeType: string;
-}
-
-export type StreamEvent =
-  | { type: "start"; partial: AssistantMessage; metadata?: EventMetadata }
-  | {
-      type: "text_start";
-      contentIndex: number;
-      partial: AssistantMessage;
-      metadata?: EventMetadata;
-    }
-  | {
-      type: "text_delta";
-      contentIndex: number;
-      delta: string;
-      partial: AssistantMessage;
-      metadata?: EventMetadata;
-    }
-  | {
-      type: "text_end";
-      contentIndex: number;
-      content: string;
-      partial: AssistantMessage;
-      metadata?: EventMetadata;
-    }
-  | {
-      type: "thinking_start";
-      contentIndex: number;
-      partial: AssistantMessage;
-      metadata?: EventMetadata;
-    }
-  | {
-      type: "thinking_delta";
-      contentIndex: number;
-      delta: string;
-      partial: AssistantMessage;
-      metadata?: EventMetadata;
-    }
-  | {
-      type: "thinking_end";
-      contentIndex: number;
-      content: string;
-      partial: AssistantMessage;
-      metadata?: EventMetadata;
-    }
-  | {
-      type: "toolcall_start";
-      contentIndex: number;
-      partial: AssistantMessage;
-      metadata?: EventMetadata;
-    }
-  | {
-      type: "toolcall_delta";
-      contentIndex: number;
-      delta: string;
-      partial: AssistantMessage;
-      metadata?: EventMetadata;
-    }
-  | {
-      type: "toolcall_end";
-      contentIndex: number;
-      toolCall: ToolCall;
-      partial: AssistantMessage;
-      metadata?: EventMetadata;
-    }
-  | { type: "done"; reason: StopReason; message: AssistantMessage; metadata?: EventMetadata }
-  | {
-      type: "error";
-      reason: "error" | "aborted";
-      error: AssistantMessage;
-      metadata?: EventMetadata;
-    };
-
 export interface ImageGenerationContext {
-  input: Array<TextBlock | ImageBlock>;
+  readonly input: ChatContent;
 }
 
 export interface AssistantImages {
-  output: Array<TextBlock | ImageBlock>;
-  usage?: Usage;
-  stopReason?: StopReason;
-  responseId?: string;
-  errorMessage?: string;
-  metadata?: Record<string, unknown>;
+  readonly output: ChatContent;
+  readonly usage: ModelUsage | null;
+  readonly stopReason: string | null;
+  readonly responseId: string | null;
+  readonly errorMessage: string | null;
+  readonly metadata: JsonObject;
 }
 
 export interface StreamOptions {
@@ -268,29 +103,9 @@ export interface ImageGenerationOptions {
   onResponse?: (response: unknown) => void;
 }
 
-export interface Usage {
-  input: number;
-  output: number;
-  total?: number;
-  cacheRead?: number;
-  cacheWrite?: number;
-  cost?: Partial<Cost> & { total?: number };
-}
-
-export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted" | string;
-
 export interface Cost {
   input: number;
   output: number;
   cacheRead: number;
   cacheWrite: number;
-}
-
-export interface EventMetadata {
-  provider?: string;
-  model?: string;
-  api?: string;
-  rawType?: string;
-  raw?: unknown;
-  [key: string]: unknown;
 }

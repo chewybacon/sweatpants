@@ -1,4 +1,8 @@
-import { MODEL_SAMPLE_EFFECT, type ModelSampleResult } from "@sweatpants/model-sampling";
+import {
+  MODEL_SAMPLE_EFFECT,
+  decodeModelSampleRequest,
+  encodeModelSampleResult,
+} from "@sweatpants/model-sampling";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -121,19 +125,27 @@ async function main(): Promise<void> {
     createDurableEffectRegistration(
       MODEL_SAMPLE_EFFECT,
       MODEL_SAMPLE_EFFECT.retrySafety,
-      function* (request) {
+      function* (wireRequest) {
         modelSamples += 1;
-        const value: ModelSampleResult = {
+        const request = decodeModelSampleRequest(wireRequest);
+        const value = {
           message: {
-            role: "assistant",
-            content: [{ type: "text", text: "first legal cell" }],
+            message: {
+              role: "assistant" as const,
+              content: [{ type: "text" as const, text: "first legal cell" }],
+            },
+            source: null,
+            usage: null,
+            stopReason: null,
+            responseId: null,
+            errorMessage: null,
           },
           output: {
-            type: "json",
+            type: "json" as const,
             value: { cell: firstEmptyPosition(request.invocation.context.messages) },
           },
         };
-        return { status: "ok" as const, value };
+        return { status: "ok" as const, value: encodeModelSampleResult(value) };
       },
     ),
   ]);
@@ -260,7 +272,7 @@ async function main(): Promise<void> {
   console.log(JSON.stringify(evidence));
 }
 
-function firstEmptyPosition(messages: Json[]): number {
+function firstEmptyPosition(messages: unknown): number {
   const match = /Empty positions:\s*([0-8](?:,\s*[0-8])*)/u.exec(JSON.stringify(messages));
   return Number(match?.[1]?.split(",")[0] ?? 0);
 }

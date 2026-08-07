@@ -36,7 +36,7 @@
 import type { Operation } from "effection";
 import type { ElicitExchangeCompletion, LogLevel, ToolSamplingCtx } from "@sweatpants/agent-sdk";
 import type { JsonObject } from "@sweatpants/foundation";
-import type { ExtendedMessage } from "@sweatpants/tool-session/messages";
+import type { ChatMessage } from "@sweatpants/chat-contract";
 
 // =============================================================================
 // WORKER INIT DATA
@@ -107,7 +107,7 @@ export type WorkerElicitCompletion = ElicitExchangeCompletion<unknown> & {
   readonly exchangeId: string;
 };
 
-export interface WorkerToolContext extends ToolSamplingCtx<ExtendedMessage> {
+export interface WorkerToolContext extends ToolSamplingCtx<ChatMessage> {
   /** Scope-owned cancellation signal inherited from the worker invocation. */
   readonly signal: AbortSignal;
 
@@ -122,7 +122,7 @@ export interface WorkerToolContext extends ToolSamplingCtx<ExtendedMessage> {
   notify(message: string, progress?: number, level?: LogLevel): Operation<void>;
 
   // ---------------------------------------------------------------------------
-  // Authored sampling is inherited from Agent SDK and specialized to ExtendedMessage.
+  // Authored sampling is inherited from Agent SDK and specialized to canonical ChatMessage.
 
   // Elicitation
   // ---------------------------------------------------------------------------

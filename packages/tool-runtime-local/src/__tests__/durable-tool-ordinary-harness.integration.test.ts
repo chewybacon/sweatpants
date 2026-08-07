@@ -203,8 +203,15 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
           outerModelSamples += 1;
           return {
             message: {
-              role: "assistant",
-              content: [{ type: "text", text: `suggestion-${round}` }],
+              message: {
+                role: "assistant",
+                content: [{ type: "text", text: `suggestion-${round}` }],
+              },
+              source: null,
+              usage: null,
+              stopReason: null,
+              responseId: null,
+              errorMessage: null,
             },
             output: { type: "message" },
           };

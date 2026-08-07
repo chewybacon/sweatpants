@@ -1,6 +1,11 @@
 import type { ModelSampleRequest } from "@sweatpants/model-sampling";
-import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
-import type { PortableModelContextMessage, PortableModelTool } from "@sweatpants/model-provider";
+import {
+  MODEL_SAMPLE_EFFECT,
+  MODEL_SAMPLE_SCHEMA_ENTRIES,
+  sampleDurableModel,
+} from "@sweatpants/model-sampling";
+import type { ChatMessage, ChatToolDefinition } from "@sweatpants/chat-contract";
+import type { ModelContext } from "@sweatpants/model-provider";
 import { type EffectDefinition } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
@@ -85,7 +90,7 @@ type SamplingTool = {
 };
 type SamplingRequestBase = {
   readonly prompt?: string;
-  readonly messages?: readonly PortableModelContextMessage[];
+  readonly messages?: readonly ChatMessage[];
   readonly systemPrompt?: string;
   readonly maxTokens?: number;
   readonly modelPreferences?: Json;
@@ -635,7 +640,7 @@ function contextForDeclarations(
               ...request,
               tools: request.tools.map((tool) => ({
                 name: tool.name,
-                ...(tool.description ? { description: tool.description } : {}),
+                description: tool.description ?? null,
                 parameters: portableSamplingSchema(tool.inputSchema),
               })),
             });
@@ -677,7 +682,7 @@ function contextForDeclarations(
 // fallow-ignore-next-line complexity
 function createCanonicalModelSampleRequest(
   request: SamplingRequestBase & {
-    tools?: PortableModelTool[];
+    tools?: ChatToolDefinition[];
     toolChoice?: "auto" | "none" | "required";
     schema?: JsonObject;
   },
@@ -694,14 +699,17 @@ function createCanonicalModelSampleRequest(
     toolChoice,
   } = request;
   assertSamplingRequest(prompt, messages, request.retries);
-  const contextMessages: PortableModelContextMessage[] =
-    prompt === undefined ? [...messages!] : [{ role: "user", content: prompt }];
+  const contextMessages: ChatMessage[] = [
+    ...(systemPrompt !== undefined ? [{ role: "system" as const, content: systemPrompt }] : []),
+    ...(prompt === undefined ? [...messages!] : [{ role: "user" as const, content: prompt }]),
+  ];
+  const context: ModelContext = {
+    messages: contextMessages,
+    tools: tools ?? [],
+  };
   return {
     invocation: {
-      context: {
-        messages: contextMessages,
-        ...(systemPrompt !== undefined ? { systemPrompt } : {}),
-      },
+      context,
       ...(maxTokens !== undefined || toolChoice !== undefined
         ? {
             options: {
@@ -721,16 +729,15 @@ function createCanonicalModelSampleRequest(
 function* sampleModel(
   context: DurableProgramContext,
   request: SamplingRequestBase & {
-    tools?: PortableModelTool[];
+    tools?: ChatToolDefinition[];
     toolChoice?: "auto" | "none" | "required";
     schema?: JsonObject;
   },
 ): Operation<SampleExchangeCompletion> {
   const canonicalRequest = createCanonicalModelSampleRequest(request);
-  const result = yield* context.effect(MODEL_SAMPLE_EFFECT, canonicalRequest, {
-    audience: "model-runtime",
-  });
-  return projectModelSampleCompletion(result);
+  return projectModelSampleCompletion(
+    yield* sampleDurableModel(context, canonicalRequest, { audience: "model-runtime" }),
+  );
 }
 
 function* sampleStructured<T>(
@@ -776,7 +783,7 @@ function* sampleStructured<T>(
 
 function assertSamplingRequest(
   prompt: string | undefined,
-  messages: readonly PortableModelContextMessage[] | undefined,
+  messages: readonly ChatMessage[] | undefined,
   retries = 0,
 ): void {
   if ((prompt === undefined) === (messages === undefined)) {

@@ -1,5 +1,4 @@
-export type { Capabilities, Message, TokenUsage } from "@sweatpants/chat-core";
-export type { Message as ChatMessage } from "@sweatpants/chat-core";
+export type { Capabilities, TokenUsage, ChatHistoryEntry } from "@sweatpants/chat-core";
 
 export interface ResumeEntry {
   interruptId: string;
@@ -7,7 +6,5 @@ export interface ResumeEntry {
   payload?: unknown;
 }
 
-export type {
-  ChatSessionStreamEvent as StreamEvent,
-  ElicitRequestStreamEvent,
-} from "@sweatpants/chat-core";
+export type { AGUIEvent as StreamEvent } from "@ag-ui/core";
+export type { ElicitRequestStreamEvent } from "@sweatpants/chat-core";

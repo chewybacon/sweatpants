@@ -15,74 +15,97 @@ import type {
   WorkerSampleResponse,
 } from "@sweatpants/agent-sdk/transport/worker";
 import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
-import type { ExtendedMessage, ToolCallMessage } from "@sweatpants/tool-session/messages";
+import {
+  decodeChatMessage,
+  type ChatMessage,
+  type ChatMessagePart,
+} from "@sweatpants/chat-contract";
 import { WorkerSessionStateContext } from "./worker-session-context.ts";
 
-/**
- * Convert a WorkerMessage to an ExtendedMessage.
- *
- * Preserves tool call structure instead of flattening to strings:
- * - String content → Message
- * - Content blocks with tool_use → ToolCallMessage (OpenAI format)
- * - Content blocks with tool_result → ToolResultMessage (OpenAI format)
- * - Text-only content blocks → Message (joined text)
- */
-function workerMessageToExtended(message: WorkerMessage): ExtendedMessage {
-  // Simple string content → plain Message
-  if (typeof message.content === "string") {
-    return { role: message.role, content: message.content };
+/** Decode worker-owned message values into canonical Chat messages once. */
+function workerMessagesToChatMessages(messages: readonly WorkerMessage[]): ChatMessage[] {
+  const toolNames = new Map<string, string>();
+  const output: ChatMessage[] = [];
+
+  for (const [index, message] of messages.entries()) {
+    const path = `$.messages[${index}]`;
+    if (typeof message.content === "string") {
+      output.push(
+        decodeChatMessage(
+          message.role === "user"
+            ? { role: "user", content: message.content }
+            : { role: "assistant", content: [{ type: "text", text: message.content }] },
+          path,
+        ),
+      );
+      continue;
+    }
+
+    const blocks = message.content;
+    const toolUses = blocks.filter((block) => block.type === "tool_use");
+    for (const call of toolUses) toolNames.set(call.id, call.name);
+    const toolResults = blocks.filter((block) => block.type === "tool_result");
+    if (message.role === "user" && toolUses.length > 0 && toolResults.length === 0) {
+      throw new Error(`${path}: worker tool calls must be in an assistant message`);
+    }
+    if (toolResults.length > 0) {
+      if (message.role !== "user" || toolResults.length !== blocks.length) {
+        throw new Error(
+          `${path}: worker tool results must be the complete content of a user message`,
+        );
+      }
+      for (const [resultIndex, result] of toolResults.entries()) {
+        const name = toolNames.get(result.toolUseId);
+        if (!name) {
+          throw new Error(
+            `${path}.content[${resultIndex}]: worker tool result has no preceding call identity`,
+          );
+        }
+        output.push(
+          decodeChatMessage(
+            {
+              role: "tool",
+              toolCallId: result.toolUseId,
+              name,
+              content: result.content.map((content) => ({ type: "text", text: content.text })),
+              isError: result.isError === true,
+            },
+            `${path}.content[${resultIndex}]`,
+          ),
+        );
+      }
+      continue;
+    }
+
+    const parts: ChatMessagePart[] = [];
+    for (const [blockIndex, block] of blocks.entries()) {
+      if (block.type === "text") {
+        parts.push({ type: "text", text: block.text });
+      } else if (block.type === "tool_use") {
+        parts.push({
+          type: "tool-call",
+          toolCall: {
+            id: block.id,
+            name: block.name,
+            input: block.input,
+            thoughtSignature: null,
+          },
+        });
+      } else {
+        throw new Error(`${path}.content[${blockIndex}]: unsupported worker content block`);
+      }
+    }
+    output.push(
+      decodeChatMessage(
+        message.role === "user"
+          ? { role: "user", content: parts }
+          : { role: "assistant", content: parts },
+        path,
+      ),
+    );
   }
 
-  const blocks = message.content;
-
-  // Check for tool_use content blocks → ToolCallMessage
-  const toolUseBlocks = blocks.filter((b) => b.type === "tool_use");
-  if (toolUseBlocks.length > 0) {
-    const textContent = blocks
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-    const toolCalls: ToolCallMessage["toolCalls"] = [
-      {
-        id: toolUseBlocks[0]!.id,
-        type: "function",
-        function: {
-          name: toolUseBlocks[0]!.name,
-          arguments: toolUseBlocks[0]!.input,
-        },
-      },
-      ...toolUseBlocks.slice(1).map((block) => ({
-        id: block.id,
-        type: "function" as const,
-        function: { name: block.name, arguments: block.input },
-      })),
-    ];
-    return {
-      role: "assistant",
-      content: textContent,
-      toolCalls,
-    };
-  }
-
-  // Check for tool_result content blocks → ToolResultMessage
-  const toolResultBlocks = blocks.filter((b) => b.type === "tool_result");
-  if (toolResultBlocks.length > 0 && toolResultBlocks[0]) {
-    const firstResult = toolResultBlocks[0];
-    const resultText = firstResult.content.map((c) => c.text).join("");
-    return {
-      role: "tool",
-      content: resultText,
-      tool_call_id: firstResult.toolUseId,
-      isError: firstResult.isError === true,
-    };
-  }
-
-  // Text-only content blocks → plain Message
-  const textContent = blocks
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("");
-  return { role: message.role, content: textContent };
+  return output;
 }
 
 export const WorkerSessionApi = createApi("worker-session", {
@@ -129,7 +152,7 @@ export const WorkerSessionApi = createApi("worker-session", {
     const queue = createQueue<SampleExchangeCompletion, void>();
     state.pendingSampleChannels.set(sampleId, queue);
 
-    const messages: ExtendedMessage[] = request.messages.map(workerMessageToExtended);
+    const messages = workerMessagesToChatMessages(request.messages);
 
     yield* state.emitEvent({
       type: "sample_request",

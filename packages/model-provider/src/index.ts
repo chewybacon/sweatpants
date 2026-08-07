@@ -1,4 +1,4 @@
+export * from "./model.ts";
+export * from "./model-shared.ts";
 export * from "./types.ts";
-export * from "./portable.ts";
-export * from "./portable-projection.ts";
 export * from "./port.ts";

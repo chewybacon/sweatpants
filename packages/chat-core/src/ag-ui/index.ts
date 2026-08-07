@@ -1,16 +1,16 @@
+export { buildAgUiCustomState } from "./checkpoint.ts";
+export { providerHistoryEntries, toProviderHistorySnapshot } from "./projection.ts";
 export {
-  buildAgUiCheckpoint,
-  buildAgUiCustomState,
-  type BuildAgUiCheckpointOptions,
-} from "./checkpoint.ts";
-export { providerHistoryMessages, toProviderHistorySnapshot } from "./projection.ts";
+  ChatConversionError,
+  type ChatConversionErrorCode,
+  type ChatConversionDirection,
+} from "./conversion.ts";
 export {
-  internalMessageToAgUiMessage,
-  internalMessagesToAgUiMessages,
-  agUiMessageToInternalMessage,
-  agUiMessagesToInternalMessages,
-  isAgUiMessageArray,
-} from "./messages.ts";
+  agUiMessageToChatHistoryEntry,
+  agUiMessagesToChatHistoryEntries,
+  chatHistoryEntryToAgUiMessage,
+  chatHistoryEntriesToAgUiMessages,
+} from "./history.ts";
 export {
   deriveTurnKeyFromToolCalls,
   turnKeyFromToolCalls,
@@ -22,10 +22,8 @@ export {
   assertMessageHasId,
 } from "./message-identity.ts";
 export type {
-  AgUiCheckpoint,
   AgUiCustomState,
   AgUiRunMetadata,
   DurableFrame,
   ElicitRequestStreamEvent,
-  StreamEvent,
 } from "./types.ts";

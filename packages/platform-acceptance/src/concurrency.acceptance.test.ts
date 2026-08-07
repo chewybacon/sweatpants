@@ -15,7 +15,7 @@ async function runConcurrentIsolation(binding: Binding, failA: boolean): Promise
       const conversationA = s.conversation({ conversationId: "isolation-a" });
       const conversationB = s.conversation({ conversationId: "isolation-b" });
 
-      const turnA = yield* conversationA.send({ text: "CONVERSATION_A_V1" });
+      const turnA = yield* conversationA.send("CONVERSATION_A_V1");
       const requestA = yield* s.model.request((request) => {
         expect(JSON.stringify(request.body.input)).toContain("CONVERSATION_A_V1");
       });
@@ -24,7 +24,7 @@ async function runConcurrentIsolation(binding: Binding, failA: boolean): Promise
       yield* turnA.textDelta("A1");
 
       // A remains active while B starts and receives its own provider stream.
-      const turnB = yield* conversationB.send({ text: "CONVERSATION_B_V1" });
+      const turnB = yield* conversationB.send("CONVERSATION_B_V1");
       const requestB = yield* s.model.request((request) => {
         expect(JSON.stringify(request.body.input)).toContain("CONVERSATION_B_V1");
       });

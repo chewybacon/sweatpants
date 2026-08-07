@@ -1,4 +1,4 @@
-import { EventSchemas, EventType } from "@ag-ui/core";
+import { EventSchemas, EventType, type AGUIEvent } from "@ag-ui/core";
 import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
 import {
   parsePortableSchemaDescriptor,
@@ -7,7 +7,6 @@ import {
 import type {
   ActivityDeltaEvent,
   ActivitySnapshotEvent,
-  ChatStreamEvent,
   JsonPatchOperation,
   PublicActivityData,
   PublicActivityNode,
@@ -157,7 +156,7 @@ function assertEventKeys(
 }
 
 function decodeStructuredOutputStart(
-  base: ChatStreamEvent,
+  base: AGUIEvent,
   input: Record<string, unknown>,
 ): StructuredOutputStartEvent {
   const value = record(input["value"], "$.value");
@@ -171,7 +170,7 @@ function decodeStructuredOutputStart(
 }
 
 function decodeStructuredOutputComplete(
-  base: ChatStreamEvent,
+  base: AGUIEvent,
   input: Record<string, unknown>,
 ): StructuredOutputCompleteEvent {
   const value = record(input["value"], "$.value");
@@ -485,7 +484,7 @@ function decodeActivityDelta(input: Record<string, unknown>): ActivityDeltaEvent
 }
 
 /** Parse and validate one serialized AG-UI event at a transport/checkpoint boundary. */
-export function decodeChatStreamEvent(value: unknown): ChatStreamEvent {
+export function decodeAGUIEvent(value: unknown): AGUIEvent {
   const envelope = record(value, "$");
   const input =
     envelope["type"] === undefined &&
@@ -523,9 +522,9 @@ export function decodeChatStreamEvent(value: unknown): ChatStreamEvent {
   return parsed.data;
 }
 
-export function encodeChatStreamEvent(event: ChatStreamEvent): string {
+export function encodeAGUIEvent(event: AGUIEvent): string {
   try {
-    return canonicalJson(decodeChatStreamEvent(event));
+    return canonicalJson(decodeAGUIEvent(event));
   } catch (error) {
     throw new ChatProtocolError(
       "chat_event_invalid",

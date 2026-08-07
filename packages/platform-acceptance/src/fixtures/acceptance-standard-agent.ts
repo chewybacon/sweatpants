@@ -9,11 +9,8 @@ import {
 } from "@sweatpants/chat-core";
 import { createStandardA2AHost, serveAgent, standardA2A } from "@sweatpants/agent-host/server";
 import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
-import type {
-  AssistantMessage,
-  Context,
-  PortableModelContextMessage,
-} from "@sweatpants/model-provider";
+import type { ModelContext, ModelResponse } from "@sweatpants/model-provider";
+import type { ChatMessage } from "@sweatpants/chat-contract";
 import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants/test-rig";
 
 export const ACCEPTANCE_AGENT_MODEL_ID = "a2a-agent-acceptance";
@@ -47,7 +44,7 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value ?? "");
 }
 
-function toModelMessages(request: AuthoredChatModelSampleRequest): PortableModelContextMessage[] {
+function toChatMessages(request: AuthoredChatModelSampleRequest): ChatMessage[] {
   return request.messages.map((message) => {
     const content = message.parts.map((part) => text(part.value)).join("");
     if (message.role === "system") {
@@ -60,12 +57,9 @@ function toModelMessages(request: AuthoredChatModelSampleRequest): PortableModel
   });
 }
 
-function assistantText(message: AssistantMessage): string {
-  return message.content
-    .filter(
-      (part): part is Extract<AssistantMessage["content"][number], { type: "text" }> =>
-        part.type === "text",
-    )
+function assistantText(response: ModelResponse): string {
+  return response.message.content
+    .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("");
 }
@@ -77,9 +71,12 @@ export function createAcceptanceStandardAgent(
   const model = createChatModelEffectRegistration({
     allowedClassifications: ["public"],
     *sample(request): Operation<AuthoredChatModelSampleResult> {
-      const modelContext: Context = {
-        messages: toModelMessages(request),
-        systemPrompt: text(request.systemPrompt.value),
+      const modelContext: ModelContext = {
+        messages: [
+          { role: "system", content: text(request.systemPrompt.value) },
+          ...toChatMessages(request),
+        ],
+        tools: [],
       };
       const assistant = yield* driver.sample({
         model: context.model.model,

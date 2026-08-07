@@ -153,8 +153,9 @@ describe("AgentCore ToolRuntimeDriver", () => {
         entry: createToolInventoryEntry(remoteTool),
         call: {
           id: "call-remote",
-          type: "function",
-          function: { name: "remote_echo", arguments: { message: "hello" } },
+          name: "remote_echo",
+          input: { message: "hello" },
+          thoughtSignature: null,
         },
       });
 
@@ -186,8 +187,9 @@ describe("AgentCore ToolRuntimeDriver", () => {
           },
           call: {
             id: "call-mismatch",
-            type: "function",
-            function: { name: "remote_echo", arguments: { message: "hello" } },
+            name: "remote_echo",
+            input: { message: "hello" },
+            thoughtSignature: null,
           },
         });
         throw new Error("expected strategy mismatch");
@@ -226,8 +228,9 @@ describe("AgentCore ToolRuntimeDriver", () => {
           entry: createToolInventoryEntry(remoteTool),
           call: {
             id: "call-invalid-agentcore",
-            type: "function",
-            function: { name: "remote_echo", arguments: {} },
+            name: "remote_echo",
+            input: {},
+            thoughtSignature: null,
           },
         });
         throw new Error("expected validation failure");
@@ -265,11 +268,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
 
       const initial = yield* driver.execute({
         entry,
-        call: {
-          id: "call-elicit",
-          type: "function",
-          function: { name: "remote_elicit", arguments: {} },
-        },
+        call: { id: "call-elicit", name: "remote_elicit", input: {}, thoughtSignature: null },
       });
       expect(initial).toMatchObject({ kind: "awaiting_elicit" });
       if (initial.kind !== "awaiting_elicit") {
@@ -310,8 +309,9 @@ describe("AgentCore ToolRuntimeDriver", () => {
         entry,
         call: {
           id: "call-model-context",
-          type: "function",
-          function: { name: "remote_echo", arguments: { message: "hello" } },
+          name: "remote_echo",
+          input: { message: "hello" },
+          thoughtSignature: null,
         },
         metadata: { model: { provider: "amazon-bedrock", id: "zai.glm-5" } },
       });
@@ -350,11 +350,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
 
       const result = yield* driver.execute({
         entry,
-        call: {
-          id: "call-sample",
-          type: "function",
-          function: { name: "remote_sample", arguments: {} },
-        },
+        call: { id: "call-sample", name: "remote_sample", input: {}, thoughtSignature: null },
       });
 
       expect(result).toMatchObject({
@@ -386,8 +382,9 @@ describe("AgentCore ToolRuntimeDriver", () => {
         entry,
         call: {
           id: "call-remote",
-          type: "function",
-          function: { name: "remote_echo", arguments: { message: "hello" } },
+          name: "remote_echo",
+          input: { message: "hello" },
+          thoughtSignature: null,
         },
       });
       expect(result).toMatchObject({ kind: "completed", result: { ok: true } });
@@ -401,11 +398,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
       try {
         yield* driver.execute({
           entry: { definition: { name: "unsupported", description: "nope", parameters: {} } },
-          call: {
-            id: "call-bad",
-            type: "function",
-            function: { name: "unsupported", arguments: {} },
-          },
+          call: { id: "call-bad", name: "unsupported", input: {}, thoughtSignature: null },
         });
         throw new Error("expected unsupported tool");
       } catch (error) {
@@ -445,7 +438,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
       expect(
         strategy.canExecute(
           entry,
-          { id: "call-remote", type: "function", function: { name: "remote_echo", arguments: {} } },
+          { id: "call-remote", name: "remote_echo", input: {}, thoughtSignature: null },
           { runtimeId: "agentcore" },
         ),
       ).toBe(true);
@@ -453,8 +446,9 @@ describe("AgentCore ToolRuntimeDriver", () => {
         entry,
         {
           id: "call-remote",
-          type: "function",
-          function: { name: "remote_echo", arguments: { message: "hello" } },
+          name: "remote_echo",
+          input: { message: "hello" },
+          thoughtSignature: null,
         },
         { runtimeId: "agentcore" },
       );
@@ -473,8 +467,9 @@ describe("AgentCore ToolRuntimeDriver", () => {
         entry: createToolInventoryEntry(remoteTool),
         call: {
           id: "call-installed-agentcore",
-          type: "function",
-          function: { name: "remote_echo", arguments: { message: "hello" } },
+          name: "remote_echo",
+          input: { message: "hello" },
+          thoughtSignature: null,
         },
       });
       expect(result).toMatchObject({ kind: "completed", result: { ok: true } });

@@ -94,8 +94,9 @@ describe("local ToolRuntimeDriver", () => {
         entry: createToolInventoryEntry(echoTool),
         call: {
           id: "call-echo",
-          type: "function",
-          function: { name: "echo", arguments: { message: "hello" } },
+          name: "echo",
+          input: { message: "hello" },
+          thoughtSignature: null,
         },
       });
 
@@ -131,8 +132,9 @@ describe("local ToolRuntimeDriver", () => {
           },
           call: {
             id: "call-mismatch",
-            type: "function",
-            function: { name: "echo", arguments: { message: "hello" } },
+            name: "echo",
+            input: { message: "hello" },
+            thoughtSignature: null,
           },
         });
         throw new Error("expected strategy mismatch");
@@ -167,8 +169,9 @@ describe("local ToolRuntimeDriver", () => {
           entry: createToolInventoryEntry(strictTool),
           call: {
             id: "call-invalid-session",
-            type: "function",
-            function: { name: "strict_echo", arguments: {} },
+            name: "strict_echo",
+            input: {},
+            thoughtSignature: null,
           },
         });
         throw new Error("expected validation failure");
@@ -240,8 +243,9 @@ describe("local ToolRuntimeDriver", () => {
         entry: createToolInventoryEntry(echoTool),
         call: {
           id: "call-installed",
-          type: "function",
-          function: { name: "echo", arguments: { message: "hello" } },
+          name: "echo",
+          input: { message: "hello" },
+          thoughtSignature: null,
         },
       });
       expect(result).toMatchObject({ kind: "completed", result: { echoed: "hello" } });

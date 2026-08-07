@@ -31,7 +31,6 @@ catalog:
     "@types/ws": ^8.18.1
     "@vitejs/plugin-react": ^5.0.4
     acorn: ^8.14.0
-    citty: ^0.1.6
     compression: ^1.8.1
     effection: 4.1.0-alpha.9
     express: ^5.2.1

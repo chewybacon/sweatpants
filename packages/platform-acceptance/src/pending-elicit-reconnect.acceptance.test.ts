@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import {
@@ -19,7 +20,7 @@ async function runPendingElicitReconnect(binding: Binding): Promise<void> {
     },
     function* (s) {
       const conversation = s.conversation({ initialToolChoice: "required" });
-      const turn = yield* conversation.send({ text: "PENDING_ELICIT_RECONNECT_V1" });
+      const turn = yield* conversation.send("PENDING_ELICIT_RECONNECT_V1");
 
       const initial = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* initial.respond.toolCalls([
@@ -55,7 +56,9 @@ async function runPendingElicitReconnect(binding: Binding): Promise<void> {
 
       const settled = yield* resumed.settled();
       expect(settled.text).toContain("PENDING_ELICIT_RECONNECT_COMPLETE_V1");
-      expect(settled.events.filter((event) => event.type === "RUN_FINISHED")).toHaveLength(1);
+      expect(settled.events.filter((event) => event.type === EventType.RUN_FINISHED)).toHaveLength(
+        1,
+      );
       expect(s.model.requests()).toHaveLength(3);
 
       const complete = reconnected.snapshot();

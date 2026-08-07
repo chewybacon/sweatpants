@@ -47,7 +47,7 @@ import type {
   ToolSamplingCtx,
   ToolElicitResult,
 } from "@sweatpants/agent-sdk";
-import type { ExtendedMessage, Message } from "../messages.ts";
+import type { ChatMessage } from "@sweatpants/chat-contract";
 
 // Re-export MCP types for convenience
 export type {
@@ -97,7 +97,7 @@ export type {
  * Handler-layer configuration for an unkeyed elicitation request.
  */
 export interface ClientElicitConfig<T> {
-  /** Message to display to the user */
+  /** Human-readable message to display to the user */
   message: string;
 
   /**
@@ -220,9 +220,9 @@ export interface ElicitRequest<
   seq: number;
 
   /**
-   * Message to display to the user.
+   * Human-readable message to display to the user.
    *
-   * Message authored by the producer; context is carried separately.
+   * Human-readable message authored by the producer; context is carried separately.
    */
   message: string;
 
@@ -285,7 +285,7 @@ export interface McpToolLimits {
  *   })
  * ```
  */
-export interface McpToolContext extends ToolSamplingCtx<ExtendedMessage> {
+export interface McpToolContext extends ToolSamplingCtx<ChatMessage> {
   // ---------------------------------------------------------------------------
   // Current tool-local state
   // ---------------------------------------------------------------------------
@@ -298,10 +298,10 @@ export interface McpToolContext extends ToolSamplingCtx<ExtendedMessage> {
    * Auto-updated when using `sample({ prompt })` form.
    * Read-only view - use sample/elicit to modify.
    */
-  readonly messages: readonly Message[];
+  readonly messages: readonly ChatMessage[];
 
   // ---------------------------------------------------------------------------
-  // Authored sampling is inherited from Agent SDK and specialized to ExtendedMessage.
+  // Authored sampling is inherited from Agent SDK and specialized to canonical ChatMessage.
 
   // User backchannel
   // ---------------------------------------------------------------------------
@@ -376,17 +376,17 @@ export interface McpToolContext extends ToolSamplingCtx<ExtendedMessage> {
  */
 export interface McpToolContextWithElicits<
   TElicits extends ElicitsMap,
-> extends ToolSamplingCtx<ExtendedMessage> {
+> extends ToolSamplingCtx<ChatMessage> {
   // ---------------------------------------------------------------------------
   // Current tool-local state - same as McpToolContext
   // ---------------------------------------------------------------------------
 
   /** Scope-owned cancellation signal for abort-aware external APIs. */
   readonly signal: AbortSignal;
-  readonly messages: readonly Message[];
+  readonly messages: readonly ChatMessage[];
 
   // ---------------------------------------------------------------------------
-  // Authored sampling is inherited from Agent SDK and specialized to ExtendedMessage.
+  // Authored sampling is inherited from Agent SDK and specialized to canonical ChatMessage.
 
   // User backchannel - KEYED elicitation
   // ---------------------------------------------------------------------------

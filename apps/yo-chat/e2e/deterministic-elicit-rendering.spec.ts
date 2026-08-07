@@ -58,7 +58,11 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
     const postData = request.postData();
     const parsed = postData ? JSON.parse(postData) : {};
     seenRequests.push(parsed);
-    const hasResume = Array.isArray(parsed.resume) && parsed.resume.length > 0;
+    const hasResume =
+      typeof parsed.input === "object" &&
+      parsed.input !== null &&
+      Array.isArray(parsed.input.resume) &&
+      parsed.input.resume.length > 0;
 
     await route.fulfill({
       status: 200,
@@ -224,7 +228,9 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
   await expect(page.getByPlaceholder("Type a message...")).toBeEnabled({ timeout: 10000 });
 
   await page.getByPlaceholder("Type a message...").fill("book a flight");
-  await page.getByRole("button", { name: "Send" }).click();
+  const send = page.getByRole("button", { name: "Send" });
+  await expect(send).toBeEnabled({ timeout: 5000 });
+  await send.click({ timeout: 5000 });
 
   await expect.poll(() => seenRequests.length, { timeout: 5000 }).toBe(1);
   expect(seenRequests[0]).not.toHaveProperty("enabledPlugins");
@@ -240,18 +246,20 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
 
   await expect.poll(() => seenRequests.length, { timeout: 5000 }).toBe(2);
   expect(seenRequests[1]).toMatchObject({
-    resume: [
-      {
-        interruptId: "elicit-pick-flight-1",
-        status: "resolved",
-        payload: {
-          action: "accept",
-          content: { flightId: "FL001" },
+    input: {
+      resume: [
+        {
+          interruptId: "elicit-pick-flight-1",
+          status: "resolved",
+          payload: {
+            action: "accept",
+            content: { flightId: "FL001" },
+          },
         },
-      },
-    ],
+      ],
+    },
   });
-  expect(seenRequests[1]).not.toHaveProperty("forwardedProps");
+  expect(seenRequests[1]).not.toHaveProperty("enabledPlugins");
 
   await expect(page.getByText(/Selected FL001/)).toBeVisible({ timeout: 5000 });
 });

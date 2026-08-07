@@ -4,17 +4,18 @@ import { describe, expect, it } from "vitest";
 import { run, type Operation } from "effection";
 import { startModelSimulator, type PendingModelRequest } from "@sweatpants/test-rig";
 import { createOpenAiResponsesModel, createPiAiRuntime } from "@sweatpants/model-provider-pi-ai";
-import {
-  type AssistantMessage,
-  type Context,
-  type Model,
-  type StreamEvent,
-  type StreamOptions,
+import type {
+  ModelContext,
+  ModelResponse,
+  Model,
+  ModelStreamEvent,
+  StreamOptions,
 } from "@sweatpants/model-provider";
+import type { ChatMessage, ChatToolDefinition } from "@sweatpants/chat-contract";
 
-type ProviderRun = {
-  events: StreamEvent[];
-  message: AssistantMessage;
+type ModelRun = {
+  events: ModelStreamEvent[];
+  message: ModelResponse;
 };
 
 const toolSchema = {
@@ -28,15 +29,16 @@ const toolSchema = {
 
 function startProvider(
   model: Model,
-  context: Context,
+  context: { messages: ChatMessage[]; tools?: ChatToolDefinition[] },
   options?: StreamOptions,
-): Promise<ProviderRun> {
-  return run(function* (): Operation<ProviderRun> {
-    const subscription = yield* createPiAiRuntime().stream(model, context, {
+): Promise<ModelRun> {
+  const canonicalContext: ModelContext = { messages: context.messages, tools: context.tools ?? [] };
+  return run(function* (): Operation<ModelRun> {
+    const subscription = yield* createPiAiRuntime().stream(model, canonicalContext, {
       apiKey: "sk-sweatpants-test-only",
       ...options,
     });
-    const events: StreamEvent[] = [];
+    const events: ModelStreamEvent[] = [];
     let next = yield* subscription.next();
     while (!next.done) {
       events.push(next.value);
@@ -81,9 +83,9 @@ describe("pi-ai provider over the simulated Responses wire", () => {
           name: "book_flight",
           description: "Book a flight",
           parameters: toolSchema,
-          strict: false,
         },
       ]);
+      expect(request.body.tools).not.toMatchObject([{ strict: expect.anything() }]);
       expect(() => structuredClone(request.body)).not.toThrow();
       await answerText(request);
       await stream;
@@ -123,7 +125,7 @@ describe("pi-ai provider over the simulated Responses wire", () => {
 
       const result = await stream;
       expect(result.message).toMatchObject({
-        content: [{ type: "text", text: '{"cell":4}' }],
+        message: { content: [{ type: "text", text: '{"cell":4}' }] },
         stopReason: "stop",
       });
     } finally {
@@ -131,7 +133,7 @@ describe("pi-ai provider over the simulated Responses wire", () => {
     }
   });
 
-  it("preserves causal tool history and drops unresolved protocol fragments", async () => {
+  it("preserves completed causal tool history in wire order", async () => {
     const { simulator, model } = await setupProvider();
     try {
       const stream = startProvider(model, {
@@ -141,18 +143,19 @@ describe("pi-ai provider over the simulated Responses wire", () => {
             role: "assistant",
             content: [
               {
-                type: "toolCall",
+                type: "tool-call",
                 toolCall: {
                   id: "call-complete",
-                  type: "function",
-                  function: { name: "book_flight", arguments: {} },
+                  name: "book_flight",
+                  input: {},
+                  thoughtSignature: null,
                 },
               },
             ],
           },
           {
             role: "tool",
-            tool_call_id: "call-complete",
+            toolCallId: "call-complete",
             name: "book_flight",
             content: [{ type: "text", text: '{"success":true}' }],
             isError: false,
@@ -177,6 +180,39 @@ describe("pi-ai provider over the simulated Responses wire", () => {
     }
   });
 
+  it("rejects an unsettled historical tool call instead of silently dropping it", async () => {
+    const { simulator, model } = await setupProvider();
+    try {
+      await expect(
+        startProvider(model, {
+          messages: [
+            { role: "user", content: "Book it" },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool-call",
+                  toolCall: {
+                    id: "call-abandoned",
+                    name: "book",
+                    input: {},
+                    thoughtSignature: null,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        code: "unsupported-model-capability",
+        modality: "unsettled-tool-call",
+      });
+      expect(simulator.model.requests()).toHaveLength(0);
+    } finally {
+      await simulator.close();
+    }
+  });
+
   it("keeps completed tool/result messages in wire order", async () => {
     const { simulator, model } = await setupProvider();
     try {
@@ -187,18 +223,19 @@ describe("pi-ai provider over the simulated Responses wire", () => {
             role: "assistant",
             content: [
               {
-                type: "toolCall",
+                type: "tool-call",
                 toolCall: {
                   id: "call-1",
-                  type: "function",
-                  function: { name: "book", arguments: {} },
+                  name: "book",
+                  input: {},
+                  thoughtSignature: null,
                 },
               },
             ],
           },
           {
             role: "tool",
-            tool_call_id: "call-1",
+            toolCallId: "call-1",
             name: "book",
             content: [{ type: "text", text: "confirmed" }],
             isError: false,
@@ -247,21 +284,21 @@ describe("pi-ai provider over the simulated Responses wire", () => {
       );
 
       const result = await stream;
-      expect(result.events.some((event) => event.type === "toolcall_delta")).toBe(true);
+      expect(result.events.some((event) => event.type === "tool-call-delta")).toBe(true);
       expect(result.message.source).toEqual({
         api: "openai-responses",
         provider: "openai",
         model: "sim-model",
+        responseModel: null,
       });
-      expect(result.message.content).toContainEqual(
+      expect(result.message.message.content).toContainEqual(
         expect.objectContaining({
-          type: "toolCall",
+          type: "tool-call",
           toolCall: expect.objectContaining({
-            type: "function",
-            function: {
-              name: "book_flight",
-              arguments: { origin: "NYC", destination: "LA" },
-            },
+            id: expect.stringContaining("call-1"),
+            name: "book_flight",
+            input: { origin: "NYC", destination: "LA" },
+            thoughtSignature: null,
           }),
         }),
       );
@@ -286,11 +323,10 @@ describe("pi-ai provider over the simulated Responses wire", () => {
         });
 
         const result = await stream;
-        expect(result.message.content).toContainEqual(
+        expect(result.message.message.content).toContainEqual(
           expect.objectContaining({
-            toolCall: expect.objectContaining({
-              function: expect.objectContaining({ arguments: expected }),
-            }),
+            type: "tool-call",
+            toolCall: expect.objectContaining({ input: expected }),
           }),
         );
       } finally {
@@ -351,7 +387,7 @@ describe("pi-ai provider over the simulated Responses wire", () => {
         expect.objectContaining({
           type: "error",
           reason: "error",
-          error: expect.objectContaining({ stopReason: "error" }),
+          error: expect.objectContaining({ role: "assistant", content: [] }),
         }),
       );
     } finally {

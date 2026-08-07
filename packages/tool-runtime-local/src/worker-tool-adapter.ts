@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { completeElicitExchange, type RuntimeTool } from "@sweatpants/agent-sdk";
+import type { ChatMessage } from "@sweatpants/chat-contract";
 import { parseJsonObject, requireJsonObject, type JsonObject } from "@sweatpants/foundation";
 import type {
   LogLevel,
@@ -12,8 +13,6 @@ import type {
   SampleSchemaResult,
   SampleToolsConfig,
   SampleToolsResult,
-  ToolMessage,
-  ToolSamplingMessage,
   ToolSampleConfig,
   ToolElicitResult,
   PerCallInterruptOptions,
@@ -64,21 +63,19 @@ function createCanonicalWorkerContext(
   worker: WorkerToolContext,
   elicitSchemas: Readonly<Record<string, JsonObject>>,
 ): CanonicalRuntimeContext {
-  const messages: ToolMessage[] = [];
+  const messages: ChatMessage[] = [];
 
-  function track(exchange: { messages: ToolMessage[] }, automatic: boolean): void {
+  function track(exchange: { messages: ChatMessage[] }, automatic: boolean): void {
     if (automatic) {
       messages.push(...exchange.messages);
     }
   }
 
-  function canonicalSample(
-    config: ToolSampleConfig<ToolSamplingMessage>,
-  ): Operation<CanonicalSampleResult>;
+  function canonicalSample(config: ToolSampleConfig<ChatMessage>): Operation<CanonicalSampleResult>;
   function canonicalSample(request: SampleRequest): Operation<NamedSampleResult>;
   function canonicalSample(key: string, request: SampleRequest): Operation<NamedSampleResult>;
   function canonicalSample(
-    keyOrRequest: string | ToolSampleConfig<ToolSamplingMessage> | SampleRequest,
+    keyOrRequest: string | ToolSampleConfig<ChatMessage> | SampleRequest,
     namedRequest?: SampleRequest,
   ): Operation<CanonicalSampleResult | NamedSampleResult> {
     const named = typeof keyOrRequest === "string";
@@ -129,14 +126,12 @@ function createCanonicalWorkerContext(
       return worker.log(level, message);
     },
     sample,
-    *sampleTools(config: SampleToolsConfig<ToolSamplingMessage>): Operation<SampleToolsResult> {
+    *sampleTools(config: SampleToolsConfig<ChatMessage>): Operation<SampleToolsResult> {
       const result = yield* worker.sampleTools(config);
       track(result.exchange, "prompt" in config);
       return result;
     },
-    *sampleSchema<T>(
-      config: SampleSchemaConfig<T, ToolSamplingMessage>,
-    ): Operation<SampleSchemaResult<T>> {
+    *sampleSchema<T>(config: SampleSchemaConfig<T, ChatMessage>): Operation<SampleSchemaResult<T>> {
       const result = yield* worker.sampleSchema<T>(config);
       track(result.exchange, "prompt" in config);
       return result;
@@ -186,15 +181,15 @@ function namedSampleOutput(tool: RuntimeTool, key: string): StandardSchemaV1 | u
 }
 
 function isToolSampleConfig(
-  value: ToolSampleConfig<ToolSamplingMessage> | SampleRequest,
-): value is ToolSampleConfig<ToolSamplingMessage> {
+  value: ToolSampleConfig<ChatMessage> | SampleRequest,
+): value is ToolSampleConfig<ChatMessage> {
   return "prompt" in value || "messages" in value;
 }
 
 function sampleRequestToConfig(
   request: SampleRequest,
   output: StandardSchemaV1 | undefined,
-): ToolSampleConfig<ToolSamplingMessage> {
+): ToolSampleConfig<ChatMessage> {
   const options = request.options ?? {};
   const history = request.exchanges?.flatMap((exchange) => [...exchange.messages]) ?? [];
   if (request.prompt !== undefined && history.length === 0) {
@@ -202,7 +197,7 @@ function sampleRequestToConfig(
       ? { prompt: request.prompt, ...options, schema: output }
       : { prompt: request.prompt, ...options };
   }
-  const messages: ToolSamplingMessage[] = [
+  const messages: ChatMessage[] = [
     ...history,
     ...(request.messages ?? []),
     ...(request.prompt !== undefined

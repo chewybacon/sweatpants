@@ -23,7 +23,7 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
 
 // Reasonable timeout for LLM responses - fail fast if things are broken.
 // The repeated-flow regression test drives two complete tool flows.
-test.setTimeout(180000); // 3 minutes per test max
+test.setTimeout(120000);
 
 const TOOL_ERROR_PATTERN =
   /^Error:|tool execution failed|is not iterable|undefined is not|SESSION_NOT_FOUND/i;
@@ -35,7 +35,7 @@ async function sendChatMessage(page: Page, message: string) {
   await input.fill("");
   await input.pressSequentially(message, { delay: 5 });
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled({ timeout: 5000 });
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send" }).click({ timeout: 5000 });
 }
 
 async function assertNoToolErrors(page: Page) {
@@ -183,7 +183,9 @@ test.describe("book_flight Plugin Tool", () => {
       { delay: 5 },
     );
 
-    await page.getByRole("button", { name: "Send" }).click();
+    const send = page.getByRole("button", { name: "Send" });
+    await expect(send).toBeEnabled({ timeout: 5000 });
+    await send.click({ timeout: 5000 });
 
     // Wait for streaming to start
     await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 30000 });
@@ -236,7 +238,9 @@ test.describe("book_flight Plugin Tool", () => {
       { delay: 5 },
     );
 
-    await page.getByRole("button", { name: "Send" }).click();
+    const send = page.getByRole("button", { name: "Send" });
+    await expect(send).toBeEnabled({ timeout: 5000 });
+    await send.click({ timeout: 5000 });
 
     // Wait for FlightList to appear
     const flightCard = page.locator("button").filter({ hasText: /\$\d+/ }).first();
@@ -277,7 +281,9 @@ test.describe("book_flight Plugin Tool", () => {
       { delay: 5 },
     );
 
-    await page.getByRole("button", { name: "Send" }).click();
+    const send = page.getByRole("button", { name: "Send" });
+    await expect(send).toBeEnabled({ timeout: 5000 });
+    await send.click({ timeout: 5000 });
 
     // === STEP 1: Wait for FlightList ===
     console.log("Step 1: Waiting for FlightList...");
@@ -387,7 +393,9 @@ test.describe("book_flight Plugin Tool", () => {
       { delay: 5 },
     );
 
-    await page.getByRole("button", { name: "Send" }).click();
+    const send = page.getByRole("button", { name: "Send" });
+    await expect(send).toBeEnabled({ timeout: 5000 });
+    await send.click({ timeout: 5000 });
 
     // Wait for FlightList
     const flightCard = page.locator("button").filter({ hasText: /\$\d+/ }).first();
@@ -436,7 +444,9 @@ test.describe("book_flight Plugin Tool", () => {
       { delay: 5 },
     );
 
-    await page.getByRole("button", { name: "Send" }).click();
+    const send = page.getByRole("button", { name: "Send" });
+    await expect(send).toBeEnabled({ timeout: 5000 });
+    await send.click({ timeout: 5000 });
 
     // Wait for FlightList and select
     const flightCard = page.locator("button").filter({ hasText: /\$\d+/ }).first();

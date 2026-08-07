@@ -1,3 +1,6 @@
+import { field, object } from "configliere";
+import { z } from "zod";
+
 import {
   BedrockAgentCoreControlClient,
   GetAgentRuntimeEndpointCommand,
@@ -5,40 +8,39 @@ import {
   type AgentRuntime,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 
-function parseArgs(argv: string[]) {
-  const result: {
-    name?: string;
-    region?: string;
-    endpointName?: string;
-    format?: "text" | "json" | "env";
-  } = {};
+const argsParser = object({
+  name: field(z.string().min(1), field.default("sweatpants_tool_session_tracer")),
+  region: field(z.string().min(1), field.default("us-east-1")),
+  endpointName: {
+    aliases: ["--endpoint"],
+    ...field(z.string().min(1), field.default("DEFAULT")),
+  },
+  format: field(z.enum(["text", "json", "env"]), field.default("env")),
+});
 
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--name") {
-      const value = argv[++i];
-      if (value !== undefined) {
-        result.name = value;
-      }
-    } else if (arg === "--region") {
-      const value = argv[++i];
-      if (value !== undefined) {
-        result.region = value;
-      }
-    } else if (arg === "--endpoint") {
-      const value = argv[++i];
-      if (value !== undefined) {
-        result.endpointName = value;
-      }
-    } else if (arg === "--format") {
-      const value = argv[++i];
-      if (value === "text" || value === "json" || value === "env") {
-        result.format = value;
-      }
-    }
+function environmentValues(): Record<string, string> {
+  const values: Record<string, string> = {};
+  const name = process.env["AGENTCORE_RUNTIME_NAME"];
+  const region = process.env["AWS_REGION"] ?? process.env["AWS_DEFAULT_REGION"];
+  const endpointName = process.env["AGENTCORE_ENDPOINT_NAME"];
+  if (name !== undefined) values["name"] = name;
+  if (region !== undefined) values["region"] = region;
+  if (endpointName !== undefined) values["endpointName"] = endpointName;
+  return values;
+}
+
+function parseConfiguration() {
+  const result = argsParser.parse({
+    args: process.argv.slice(2),
+    values: [{ name: "environment", value: environmentValues() }],
+  });
+  if (!result.ok) {
+    throw new Error(result.error.message);
   }
-
-  return result;
+  if (result.remainder.args && result.remainder.args.length > 0) {
+    throw new Error(`Unexpected arguments: ${result.remainder.args.join(" ")}`);
+  }
+  return result.value;
 }
 
 async function findRuntime(
@@ -60,13 +62,7 @@ async function findRuntime(
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-  const runtimeName =
-    args.name ?? process.env["AGENTCORE_RUNTIME_NAME"] ?? "sweatpants_tool_session_tracer";
-  const region =
-    args.region ?? process.env["AWS_REGION"] ?? process.env["AWS_DEFAULT_REGION"] ?? "us-east-1";
-  const endpointName = args.endpointName ?? process.env["AGENTCORE_ENDPOINT_NAME"] ?? "DEFAULT";
-  const format = args.format ?? "env";
+  const { name: runtimeName, region, endpointName, format } = parseConfiguration();
 
   const client = new BedrockAgentCoreControlClient({ region });
   const runtime = await findRuntime(client, runtimeName);
