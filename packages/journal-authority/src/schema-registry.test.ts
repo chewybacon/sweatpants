@@ -20,7 +20,7 @@ function descriptor(identity: string) {
 }
 
 describe("authority runtime schema registry", () => {
-  it("awaits async validation and canonicalizes output", async () => {
+  it("rejects asynchronous validation without running an async operation", async () => {
     const schemaDescriptor = descriptor("test/async-default-transform");
     const registry = createDurableSchemaRegistry([
       {
@@ -41,15 +41,15 @@ describe("authority runtime schema registry", () => {
     ]);
     await expect(
       run(function* () {
-        return yield* parseRegisteredSchema(registry, schemaDescriptor.digest, "  okay ");
+        return parseRegisteredSchema(registry, schemaDescriptor.digest, "  okay ");
       }),
-    ).resolves.toEqual({ status: "ok", value: "OKAY" });
+    ).resolves.toEqual({ status: "schema-error", reason: "async-unsupported" });
   });
 
   it("returns unavailable for an absent retained validator", async () => {
     await expect(
       run(function* () {
-        return yield* parseRegisteredSchema(createDurableSchemaRegistry(), "f".repeat(64), {});
+        return parseRegisteredSchema(createDurableSchemaRegistry(), "f".repeat(64), {});
       }),
     ).resolves.toEqual({ status: "unavailable", digest: "f".repeat(64) });
   });
@@ -70,7 +70,7 @@ describe("authority runtime schema registry", () => {
     ]);
     await expect(
       run(function* () {
-        return yield* parseRegisteredSchema(registry, schemaDescriptor.digest, "date");
+        return parseRegisteredSchema(registry, schemaDescriptor.digest, "date");
       }),
     ).resolves.toEqual({
       status: "invalid",

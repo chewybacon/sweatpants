@@ -1,10 +1,6 @@
 import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
-import {
-  ChatProtocolError,
-  decodeAGUIEvent,
-  encodeAGUIEvent,
-} from "./chat-client-codec.ts";
+import { ChatProtocolError, decodeAGUIEvent, encodeAGUIEvent } from "./chat-client-codec.ts";
 
 describe("official AG-UI chat codec", () => {
   it("accepts official message, reasoning, raw, and custom events", () => {

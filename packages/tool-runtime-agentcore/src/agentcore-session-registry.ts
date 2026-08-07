@@ -5,7 +5,10 @@ import type {
   ToolSessionRegistry,
   ToolSessionOptions,
 } from "@sweatpants/tool-session";
-import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
+import {
+  parseToolParameters,
+  requireToolParameterResult,
+} from "@sweatpants/tool-session/tool-parameters";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   type AgentCoreToolEvent,
@@ -213,12 +216,15 @@ export function createAgentCoreToolSessionRegistry(
       const sessionId =
         sessionOptions?.sessionId ??
         `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-      const validatedParams = yield* parseToolParameters<TParams>({
-        schema: tool.parameters,
-        params,
-        toolName: tool.name,
-        callId: sessionId,
-      });
+      const validatedParams = requireToolParameterResult(
+        parseToolParameters<TParams>({
+          schema: tool.parameters,
+          params,
+          toolName: tool.name,
+          callId: sessionId,
+        }),
+        { toolName: tool.name, callId: sessionId },
+      );
       const profile = selectProfile(tool.name);
       const startedAt = now();
       const expiresAt = new Date(startedAt.getTime() + profile.maxSessionTtlMs);

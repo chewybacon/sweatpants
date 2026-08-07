@@ -13,7 +13,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import { z } from "zod";
 import { canonicalJson, sha256, sortStrings } from "@sweatpants/foundation";
-import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
+import { safeSchemaIssues, validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import { type Json, type JsonObject } from "@sweatpants/foundation";
 import {
@@ -753,14 +753,12 @@ function* sampleStructured<T>(
       schema: portableSamplingSchema(schema),
     });
     const candidate = "parsed" in result ? result.parsed : result.text;
-    let validated: StandardSchemaV1.Result<T>;
-    try {
-      validated = yield* validateStandardSchema(schema, candidate);
-    } catch {
-      lastMessage = "validator threw while checking model output";
+    const validated = validateAuthoredSchema<T>(schema, candidate);
+    if (validated.status === "schema-error") {
+      lastMessage = `schema ${validated.reason} while checking model output`;
       continue;
     }
-    if (validated.issues === undefined) {
+    if (validated.status === "ok") {
       return {
         text: result.text,
         ...(result.model !== undefined ? { model: result.model } : {}),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExecutionTreeSnapshot, TaskControlState } from "./contract.ts";
-import { completeChild, completeRoot, parseTerminalCapsule } from "./transitions.ts";
+import { completeChild, completeRoot, terminalCapsuleParser } from "./transitions.ts";
 
 const program = { id: "program", version: "1", digest: "a".repeat(64) };
 const inline = { storage: "inline" as const, value: null };
@@ -117,11 +117,13 @@ describe("pure durable execution transitions", () => {
       finalRevision: 1,
       completedAt: 2,
     }).next;
-    expect(parseTerminalCapsule(valid)).toEqual(valid);
-    expect(() => parseTerminalCapsule({ ...valid, finalRevision: -1 })).toThrow();
-    expect(() => parseTerminalCapsule({ ...valid, tasks: [] })).toThrow();
-    const capsule = parseTerminalCapsule(valid);
-    const { outcome: _outcome, ...missingOutcome } = capsule;
-    expect(() => parseTerminalCapsule(missingOutcome)).toThrow();
+    expect(terminalCapsuleParser.parse(valid)).toEqual({ ok: true, value: valid });
+    expect(terminalCapsuleParser.parse({ ...valid, finalRevision: -1 }).ok).toBe(false);
+    expect(terminalCapsuleParser.parse({ ...valid, tasks: [] }).ok).toBe(false);
+    const parsed = terminalCapsuleParser.parse(valid);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const { outcome: _outcome, ...missingOutcome } = parsed.value;
+    expect(terminalCapsuleParser.parse(missingOutcome).ok).toBe(false);
   });
 });

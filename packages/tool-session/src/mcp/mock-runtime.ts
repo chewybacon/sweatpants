@@ -32,8 +32,7 @@ import { useAbortSignal, type Operation } from "effection";
 import type { ChatAssistantMessage, ChatToolResultMessage } from "@sweatpants/chat-contract";
 import type { Json } from "@sweatpants/foundation";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
-import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
+import { safeSchemaIssues, validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import type {
   ToolCtx,
   ToolDefinition,
@@ -321,9 +320,12 @@ export function runMCPTool<
         );
       }
 
-      // Validate params through the Standard Schema interface (DR-007).
-      const parseResult = yield* validateStandardSchema(tool.parameters, params);
-      if (parseResult.issues !== undefined) {
+      // Validate params through the synchronous authored Standard Schema contract.
+      const parseResult = validateAuthoredSchema(tool.parameters, params);
+      if (parseResult.status === "schema-error") {
+        throw new Error(`Tool "${tool.name}" schema implementation failed`);
+      }
+      if (parseResult.status === "invalid") {
         throw new Error(
           `Invalid params for tool "${tool.name}": ${safeSchemaIssues(parseResult.issues)
             .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))

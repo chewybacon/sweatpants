@@ -28,7 +28,10 @@ import {
   type ToolContract,
 } from "@sweatpants/agent-sdk";
 import { installToolSessionStore, ToolSessionStorePort } from "./session-store-port.ts";
-import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
+import {
+  parseToolParameters,
+  requireToolParameterResult,
+} from "@sweatpants/tool-session/tool-parameters";
 import { createToolSession } from "./tool-session.ts";
 import { createWorkerToolSession } from "./worker-tool-session.ts";
 
@@ -196,12 +199,16 @@ export function createToolSessionRegistry(
           ...(defaultTimeout !== undefined && { timeout: defaultTimeout }),
         };
 
-        const validatedParams = yield* parseToolParameters<TParams>({
-          schema: tool.parameters,
-          params,
-          toolName: tool.name,
-          callId: mergedOptions.sessionId ?? tool.name,
-        });
+        const callId = mergedOptions.sessionId ?? tool.name;
+        const validatedParams = requireToolParameterResult(
+          parseToolParameters<TParams>({
+            schema: tool.parameters,
+            params,
+            toolName: tool.name,
+            callId,
+          }),
+          { toolName: tool.name, callId },
+        );
 
         // Use a queue to receive the session from the spawned background task.
         // This handoff crosses detached scopes, so it must be buffered: an

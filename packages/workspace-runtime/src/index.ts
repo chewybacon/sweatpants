@@ -7,6 +7,7 @@ import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
+  parser,
   sha256,
   sortStrings,
   type Json,
@@ -191,6 +192,17 @@ const workspaceResponseSchema = z.discriminatedUnion("type", [
     workspaceVersion: workspaceDigestSchema,
   }),
 ]);
+
+/** Result-oriented structural parsers for the closed workspace protocol. */
+export const workspaceFenceParser = parser(workspaceFenceSchema).map(
+  (value): WorkspaceFence => value,
+);
+
+export const workspaceRequestParser = parser(workspaceRequestSchema).map(normalizeWorkspaceRequest);
+
+export const workspaceResponseParser = parser(workspaceResponseSchema).map(
+  normalizeWorkspaceResponse,
+);
 
 export interface WorkspaceConnector {
   request(request: WorkspaceRequest): Operation<WorkspaceResponse>;
@@ -852,11 +864,30 @@ export function createHttpWorkspaceConnector(options: {
 }
 
 export function parseWorkspaceRequest(value: unknown): WorkspaceRequest {
-  const result = workspaceRequestSchema.safeParse(value);
-  if (!result.success) {
+  const parsed = workspaceRequestParser.parse(value);
+  if (!parsed.ok) {
     throw new CrankError("invalid_mcp_request", "workspace request shape is invalid");
   }
-  const input = result.data;
+  return parsed.value;
+}
+
+export function parseWorkspaceResponse(value: unknown): WorkspaceResponse {
+  const parsed = workspaceResponseParser.parse(value);
+  if (!parsed.ok) {
+    const hasEntryIssue = parsed.issues.some((issue) => issue.path[0] === "entries");
+    throw new CrankError(
+      "invalid_mcp_request",
+      hasEntryIssue
+        ? "workspace entries must be a bounded string list"
+        : "workspace response shape is invalid",
+    );
+  }
+  return parsed.value;
+}
+
+function normalizeWorkspaceRequest(
+  input: z.infer<typeof workspaceRequestSchema>,
+): WorkspaceRequest {
   if (input.type === "read") {
     return {
       protocolVersion: 1,
@@ -873,18 +904,9 @@ export function parseWorkspaceRequest(value: unknown): WorkspaceRequest {
   return input;
 }
 
-export function parseWorkspaceResponse(value: unknown): WorkspaceResponse {
-  const result = workspaceResponseSchema.safeParse(value);
-  if (!result.success) {
-    if (result.error.issues.some((issue) => issue.path[0] === "entries")) {
-      throw new CrankError(
-        "invalid_mcp_request",
-        "workspace entries must be a bounded string list",
-      );
-    }
-    throw new CrankError("invalid_mcp_request", "workspace response shape is invalid");
-  }
-  const input = result.data;
+function normalizeWorkspaceResponse(
+  input: z.infer<typeof workspaceResponseSchema>,
+): WorkspaceResponse {
   if (input.type === "list-result") {
     if (Buffer.byteLength(JSON.stringify(input.entries)) > MAX_OUTPUT_BYTES) {
       throw new CrankError("invalid_mcp_request", "workspace entries exceed the output bound");
@@ -918,11 +940,11 @@ function assertWorkspaceFence(fence: WorkspaceFence): void {
 }
 
 function parseFence(value: unknown): WorkspaceFence {
-  const parsed = workspaceFenceSchema.safeParse(value);
-  if (!parsed.success) {
+  const parsed = workspaceFenceParser.parse(value);
+  if (!parsed.ok) {
     throw new CrankError("invalid_mcp_request", "workspace fence shape is invalid");
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 function assertFence(expected: WorkspaceFence | undefined, received: WorkspaceFence): void {

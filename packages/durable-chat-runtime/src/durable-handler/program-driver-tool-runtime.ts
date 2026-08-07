@@ -126,15 +126,14 @@ export function createToolRuntimeForeignEffectRegistrations(
       if (request.response.kind !== "elicit") {
         return failure("foreign_response_kind_mismatch", "Foreign response kind is invalid");
       }
-      let completion;
-      try {
-        completion = parseElicitExchangeCompletion(request.response.value);
-      } catch {
+      const parsedCompletion = parseElicitExchangeCompletion(request.response.value);
+      if (!parsedCompletion.ok) {
         return failure(
           "foreign_elicit_response_invalid",
           "Foreign elicitation response is invalid",
         );
       }
+      const completion = parsedCompletion.value;
       try {
         const execution = yield* options.runtime.resume({
           ref: parsed.ref,

@@ -1,5 +1,5 @@
 import { run, type Operation, type Task } from "effection";
-import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
+import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import {
   type ClientElicitBinding,
@@ -90,8 +90,8 @@ export function* executeClientElicitHandler<TCapabilities>(
       if (!contextSchema) {
         throw new Error("declared context schema is unavailable");
       }
-      const result = yield* validateStandardSchema(contextSchema, request.context);
-      if (result.issues !== undefined) {
+      const result = validateAuthoredSchema(contextSchema, request.context);
+      if (result.status !== "ok") {
         throw new Error("context validation reported issues");
       }
       context = result.value;

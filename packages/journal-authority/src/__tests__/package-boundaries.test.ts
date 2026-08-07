@@ -9,8 +9,9 @@ describe("journal-authority package boundaries", () => {
     const packageJson = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
     };
-    // Journal Authority may depend on domain contracts and portable signing
-    // primitives. No Host, tool-runtime, Zod, or Redis dependency is permitted.
+    // Journal Authority may depend on domain contracts, portable signing
+    // primitives, and private Zod schemas. No Host, tool-runtime, or Redis
+    // dependency is permitted.
     expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual([
       "@noble/hashes",
       "@standard-schema/spec",
@@ -18,6 +19,7 @@ describe("journal-authority package boundaries", () => {
       "@sweatpants/durable-execution",
       "@sweatpants/foundation",
       "effection",
+      "zod",
     ]);
 
     // Authority semantics remain independent of concrete storage and hosting adapters.
@@ -27,7 +29,6 @@ describe("journal-authority package boundaries", () => {
       expect(source, file).not.toContain(["@sweatpants", "framework"].join("/"));
       expect(source, file).not.toContain("@sweatpants/tool-runtime");
       expect(source, file).not.toContain(' from "redis"');
-      expect(source, file).not.toContain(' from "zod"');
     }
   });
 });

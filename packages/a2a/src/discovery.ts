@@ -1,4 +1,11 @@
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import {
+  assertJson,
+  canonicalSnapshot,
+  failure,
+  parser,
+  success,
+  type Json,
+} from "@sweatpants/foundation";
 import { z } from "zod";
 import type { PinnedProgram } from "@sweatpants/durable-execution";
 import {
@@ -159,35 +166,58 @@ export async function discoverCallerAuthoritativeProgram(
   });
 }
 
+export const pinnedProgramParser = parser(pinnedProgramSchema).map(
+  (value): PinnedProgram => Object.freeze(value),
+);
+
+export const callerAuthoritativeExtensionParamsParser = parser(
+  callerAuthoritativeParamsSchema,
+).andThen((value) => {
+  const skills = new Set<string>();
+  const programs = value.programs.map((mapping, index) => {
+    if (skills.has(mapping.skillId)) {
+      return failure<never>({
+        path: ["programs", index, "skillId"],
+        message: "Duplicate A2A skill mapping",
+      });
+    }
+    skills.add(mapping.skillId);
+    return success({
+      skillId: mapping.skillId,
+      program: Object.freeze(mapping.program),
+    });
+  });
+  const invalid = programs.find((entry) => !entry.ok);
+  if (invalid && !invalid.ok) return invalid;
+  return success(
+    Object.freeze({
+      protocolVersion: 1 as const,
+      manifestEndpoint: value.manifestEndpoint,
+      driverEndpoint: value.driverEndpoint,
+      programs: programs.map((entry) => (entry.ok ? Object.freeze(entry.value) : undefined)) as {
+        skillId: string;
+        program: PinnedProgram;
+      }[],
+    }),
+  );
+});
+
 export function parseCallerAuthoritativeExtensionParams(
   value: unknown,
 ): CallerAuthoritativeProgramExtensionParamsV1 {
-  const parsed = callerAuthoritativeParamsSchema.safeParse(value);
-  if (!parsed.success) {
+  const parsed = callerAuthoritativeExtensionParamsParser.parse(value);
+  if (!parsed.ok) {
     throw a2aError("agent_card_invalid", "Invalid caller-authoritative extension parameters");
   }
-  const skills = new Set<string>();
-  const programs = parsed.data.programs.map((mapping) => {
-    if (skills.has(mapping.skillId)) {
-      throw a2aError("agent_card_invalid", "Duplicate A2A skill mapping");
-    }
-    skills.add(mapping.skillId);
-    return Object.freeze({ skillId: mapping.skillId, program: Object.freeze(mapping.program) });
-  });
-  return Object.freeze({
-    protocolVersion: 1,
-    manifestEndpoint: parsed.data.manifestEndpoint,
-    driverEndpoint: parsed.data.driverEndpoint,
-    programs,
-  });
+  return parsed.value;
 }
 
 export function parsePinnedProgram(value: unknown): PinnedProgram {
-  const parsed = pinnedProgramSchema.safeParse(value);
-  if (!parsed.success) {
+  const parsed = pinnedProgramParser.parse(value);
+  if (!parsed.ok) {
     throw a2aError("agent_card_invalid", "Invalid pinned A2A program identity");
   }
-  return Object.freeze(parsed.data);
+  return parsed.value;
 }
 
 function assertAgentCardCore(card: Record<string, Json>): void {

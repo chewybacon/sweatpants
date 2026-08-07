@@ -85,6 +85,17 @@
                 "default": "./dist/schema-validation.js"
             },
             "default": "./src/schema-validation.ts"
+        },
+        "./parser": {
+            "development": {
+                "import": "./src/parser.ts",
+                "types": "./src/parser.ts"
+            },
+            "import": {
+                "types": "./dist/parser.d.ts",
+                "default": "./dist/parser.js"
+            },
+            "default": "./src/parser.ts"
         }
     },
     "scripts": {

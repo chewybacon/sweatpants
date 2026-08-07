@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, parser, type Json } from "@sweatpants/foundation";
 import type { DurableReference, ExecutionId } from "@sweatpants/durable-execution";
 import type {
   AppendReplayRequest,
@@ -76,39 +76,44 @@ const storedReplaySchema = z
   })
   .strict();
 
+const versionedExecutionParser = parser(versionedExecutionSchema).map(
+  (value): VersionedExecution => value as unknown as VersionedExecution,
+);
+const storedPayloadParser = parser(storedPayloadSchema);
+const storedReplayParser = parser(storedReplaySchema).map(
+  (value): StoredReplay => ({
+    version: 1,
+    executionId: value.executionId,
+    taskId: value.taskId,
+    previous: value.previous,
+    entries: value.entries,
+  }),
+);
+
 function parseStoredVersionedExecution(value: unknown): VersionedExecution {
-  try {
-    const parsed = versionedExecutionSchema.parse(value);
-    return parsed as unknown as VersionedExecution;
-  } catch {
+  const parsed = versionedExecutionParser.parse(value);
+  if (!parsed.ok) {
     throw new Error("Redis execution control record is invalid");
   }
+  return parsed.value;
 }
 
 function parseStoredPayload(value: unknown): StoredPayload {
-  try {
-    const parsed = storedPayloadSchema.parse(value);
-    return parsed.kind === "json"
-      ? { version: 1, kind: parsed.kind, value: parsed.value }
-      : { version: 1, kind: parsed.kind, base64: parsed.base64 };
-  } catch {
+  const parsed = storedPayloadParser.parse(value);
+  if (!parsed.ok) {
     throw new Error("Redis execution payload is invalid");
   }
+  return parsed.value.kind === "json"
+    ? { version: 1, kind: parsed.value.kind, value: parsed.value.value }
+    : { version: 1, kind: parsed.value.kind, base64: parsed.value.base64 };
 }
 
 function parseStoredReplay(value: unknown): StoredReplay {
-  try {
-    const parsed = storedReplaySchema.parse(value);
-    return {
-      version: 1,
-      executionId: parsed.executionId,
-      taskId: parsed.taskId,
-      previous: parsed.previous,
-      entries: parsed.entries,
-    };
-  } catch {
+  const parsed = storedReplayParser.parse(value);
+  if (!parsed.ok) {
     throw new Error("Redis replay object is invalid");
   }
+  return parsed.value;
 }
 
 const CAS_EXECUTION = `

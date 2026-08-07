@@ -1,6 +1,10 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
-import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
+import {
+  safeSchemaIssues,
+  validateAuthoredSchema,
+  type ParseIssue,
+} from "@sweatpants/foundation/parser";
 
 import { buildToolSchemaArtifacts } from "./artifacts.ts";
 import { computeToolInterfaceDigest } from "./contract.ts";
@@ -178,18 +182,11 @@ function finalizeCoreUnifiedTool(options: {
       *[Symbol.iterator]() {
         const invoke = (input: unknown): Operation<unknown> =>
           (function* (): Operation<unknown> {
-            // Validation flows through the Standard Schema interface; sync or
-            // Promise-returning validators compose as Effection operations.
-            let parsed: StandardSchemaV1.Result<unknown>;
-            try {
-              if (!isStandardSchema(options.parameters)) {
-                throw new Error("parameters schema authority is unavailable");
-              }
-              parsed = yield* validateStandardSchema(options.parameters, input);
-            } catch {
-              throw codedToolError("invalid_tool_input", "Tool input validation failed");
+            const parsed = validateAuthoredSchema(options.parameters, input);
+            if (parsed.status === "schema-error") {
+              throw codedToolError("invalid_tool_input", "Tool input schema implementation failed");
             }
-            if (parsed.issues !== undefined) {
+            if (parsed.status === "invalid") {
               throw codedToolError(
                 "invalid_tool_input",
                 `Invalid input for tool "${options.name}": ${describeIssues(parsed.issues)}`,
@@ -197,16 +194,14 @@ function finalizeCoreUnifiedTool(options: {
             }
             const result = yield* options.impl(parsed.value, ctx);
             if (options.output) {
-              let parsedOutput: StandardSchemaV1.Result<unknown>;
-              try {
-                if (!isStandardSchema(options.output)) {
-                  throw new Error("output schema authority is unavailable");
-                }
-                parsedOutput = yield* validateStandardSchema(options.output, result);
-              } catch {
-                throw codedToolError("invalid_tool_output", "Tool output validation failed");
+              const parsedOutput = validateAuthoredSchema(options.output, result);
+              if (parsedOutput.status === "schema-error") {
+                throw codedToolError(
+                  "invalid_tool_output",
+                  "Tool output schema implementation failed",
+                );
               }
-              if (parsedOutput.issues !== undefined) {
+              if (parsedOutput.status === "invalid") {
                 throw codedToolError(
                   "invalid_tool_output",
                   `Invalid output for tool "${options.name}": ${describeIssues(parsedOutput.issues)}`,
@@ -295,8 +290,8 @@ function finalizeCoreUnifiedTool(options: {
   return factory as unknown as ToolDefinition;
 }
 
-function describeIssues(issues: readonly StandardSchemaV1.Issue[] | undefined): string {
-  if (!issues || issues.length === 0) {
+function describeIssues(issues: readonly ParseIssue[]): string {
+  if (issues.length === 0) {
     return "validation failed";
   }
   return safeSchemaIssues(issues)

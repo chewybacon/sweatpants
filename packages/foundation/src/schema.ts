@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { parser, type Parser } from "./parser.ts";
 import { assertJson, canonicalJson, canonicalSnapshot, sha256 } from "./json.ts";
 import type { Json } from "./json.ts";
 export class SchemaDescriptorError extends Error {
@@ -131,7 +132,7 @@ export function createPortableSchemaDescriptor<Role extends string>(
  * Boundary parser for persisted descriptors. Rejects structural drift and any
  * digest that does not recommit to the descriptor's own fields.
  */
-export function parsePortableSchemaDescriptor(value: unknown): PortableSchemaDescriptor {
+function parsePortableSchemaDescriptorValue(value: unknown): PortableSchemaDescriptor {
   if (!isRecord(value)) {
     throw invalidDescriptor("descriptor must be an object");
   }
@@ -176,6 +177,34 @@ export function parsePortableSchemaDescriptor(value: unknown): PortableSchemaDes
     throw invalidDescriptor("descriptor digest does not commit to its fields");
   }
   return descriptor;
+}
+
+const portableSchemaDescriptorSchema: StandardSchemaV1<unknown, PortableSchemaDescriptor> = {
+  "~standard": {
+    version: 1,
+    vendor: "sweatpants",
+    validate(value) {
+      try {
+        return { value: parsePortableSchemaDescriptorValue(value) };
+      } catch {
+        return { issues: [{ path: [], message: "invalid schema descriptor" }] };
+      }
+    },
+  },
+};
+
+/** Result-oriented parser for persisted portable schema descriptors. */
+export const portableSchemaDescriptorParser: Parser<PortableSchemaDescriptor> = parser(
+  portableSchemaDescriptorSchema,
+);
+
+/** Caller-owned throwing mapping for descriptor construction and restoration. */
+export function parsePortableSchemaDescriptor(value: unknown): PortableSchemaDescriptor {
+  const parsed = portableSchemaDescriptorParser.parse(value);
+  if (!parsed.ok) {
+    throw invalidDescriptor("descriptor shape is invalid");
+  }
+  return parsed.value;
 }
 
 function isFidelityValue(value: unknown): value is "lossless" | "explicit" {

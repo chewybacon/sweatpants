@@ -356,7 +356,7 @@ export interface McpToolContext extends ToolSamplingCtx<ChatMessage> {
  * Used when a tool declares `.elicits({...})` to enable exhaustive
  * UI bridging with type safety.
  *
- * @template TElicits - Map of elicitation keys to their Zod schemas
+ * @template TElicits - Map of elicitation keys to their Standard Schema values
  *
  * @example
  * ```typescript

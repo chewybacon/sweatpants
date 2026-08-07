@@ -2,9 +2,11 @@ import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
+  parser,
   sha256,
   sha256Bytes,
 } from "@sweatpants/foundation";
+import { z } from "zod";
 
 import {
   DEFAULT_RESOURCE_LIMITS,
@@ -29,6 +31,41 @@ const PACKAGE_ID_RE = /^[a-z][a-z0-9._-]{0,127}$/;
 const MEDIA_TYPE_RE =
   /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:\s*;\s*[A-Za-z0-9!#$&^_.+-]+=(?:[A-Za-z0-9!#$&^_.+-]+|"[^"]*"))*$/;
 const LIMIT_KEYS = Object.keys(DEFAULT_RESOURCE_LIMITS) as Array<keyof ResourceLimits>;
+const resourceFileDeclarationSchema = z.strictObject({
+  kind: z.enum(["text", "json", "binary"]),
+  mediaType: z.string(),
+});
+const resourceFileManifestSchema = z.strictObject({
+  digest: z.string().regex(SHA256_RE),
+  mediaType: z.string(),
+  size: z.number().int().nonnegative().safe(),
+});
+const resourcePackageManifestSchema = z.strictObject({
+  format: z.literal(RESOURCE_PACKAGE_FORMAT),
+  id: z.string(),
+  version: z.string(),
+  digest: z.string().regex(SHA256_RE),
+  files: z.record(z.string(), resourceFileManifestSchema),
+});
+const resourceLimitsSchema = z.strictObject({
+  maxFiles: z.number().int().positive().safe().optional(),
+  maxFileBytes: z.number().int().positive().safe().optional(),
+  maxPackageBytes: z.number().int().positive().safe().optional(),
+  maxPathBytes: z.number().int().positive().safe().optional(),
+  maxReadBytes: z.number().int().positive().safe().optional(),
+  maxListEntries: z.number().int().positive().safe().optional(),
+  maxSearchMatches: z.number().int().positive().safe().optional(),
+});
+const resourcePackageOptionsSchema = z.strictObject({
+  id: z.string(),
+  version: z.string(),
+  files: z.record(z.string(), z.unknown()),
+  limits: resourceLimitsSchema.optional(),
+});
+const resourcePackageOptionsParser = parser(resourcePackageOptionsSchema);
+const resourceFileDeclarationParser = parser(resourceFileDeclarationSchema);
+const resourcePackageManifestParser = parser(resourcePackageManifestSchema);
+const resourceLimitsParser = parser(resourceLimitsSchema);
 
 export interface DefineResourcePackageOptions {
   readonly id: string;
@@ -145,7 +182,7 @@ function decodeResourceBase64(encoded: string): Uint8Array {
 
 /** Builds an immutable package and copies every caller-owned byte buffer. */
 export function defineResourcePackage(options: DefineResourcePackageOptions): ResourcePackage {
-  if (!isPlainRecord(options) || !hasOnlyKeys(options, ["id", "version", "files", "limits"])) {
+  if (!resourcePackageOptionsParser.parse(options).ok) {
     invalidManifest();
   }
   requirePackageId(options.id);
@@ -183,49 +220,36 @@ export function defineResourcePackage(options: DefineResourcePackageOptions): Re
 /** Parses the closed v1 manifest shape and verifies its package digest. */
 export function parseResourcePackageManifest(value: unknown): ResourcePackageManifestV1 {
   try {
-    if (
-      !isPlainRecord(value) ||
-      !hasExactKeys(value, ["format", "id", "version", "digest", "files"])
-    ) {
-      invalidManifest();
-    }
-    if (value["format"] !== RESOURCE_PACKAGE_FORMAT) {
-      invalidManifest();
-    }
-    requirePackageId(value["id"]);
-    requireVersion(value["version"]);
-    requireDigest(value["digest"]);
-    if (!isPlainRecord(value["files"])) {
-      invalidManifest();
-    }
+    const parsed = resourcePackageManifestParser.parse(value);
+    if (!parsed.ok) invalidManifest();
+    requirePackageId(parsed.value.id);
+    requireVersion(parsed.value.version);
+    requireDigest(parsed.value.digest);
     const files: Record<string, ResourceFileManifestV1> = {};
     const collisions = new Map<string, string>();
-    for (const [rawPath, rawFile] of Object.entries(value["files"])) {
+    for (const [rawPath, rawFile] of Object.entries(parsed.value.files)) {
       const path = normalizeResourcePath(rawPath, DEFAULT_RESOURCE_LIMITS);
       assertPathCollision(collisions, rawPath, path);
-      if (!isPlainRecord(rawFile) || !hasExactKeys(rawFile, ["digest", "mediaType", "size"])) {
-        invalidManifest();
-      }
-      requireDigest(rawFile["digest"]);
-      requireSize(rawFile["size"]);
-      requireMediaType(rawFile["mediaType"]);
+      requireDigest(rawFile.digest);
+      requireSize(rawFile.size);
+      requireMediaType(rawFile.mediaType);
       files[path] = {
-        digest: rawFile["digest"],
-        size: rawFile["size"],
-        mediaType: rawFile["mediaType"],
+        digest: rawFile.digest,
+        size: rawFile.size,
+        mediaType: rawFile.mediaType,
       };
     }
     const projection = {
       format: RESOURCE_PACKAGE_FORMAT,
-      id: value["id"],
-      version: value["version"],
+      id: parsed.value.id,
+      version: parsed.value.version,
       files,
     };
-    if (sha256(RESOURCE_PACKAGE_DOMAIN + canonicalJson(projection)) !== value["digest"]) {
+    if (sha256(RESOURCE_PACKAGE_DOMAIN + canonicalJson(projection)) !== parsed.value.digest) {
       throw new ResourceError("resource_digest_mismatch", "Resource package digest mismatch");
     }
     return deepFreeze(
-      canonicalSnapshot({ ...projection, digest: value["digest"] })
+      canonicalSnapshot({ ...projection, digest: parsed.value.digest })
         .value as ResourcePackageManifestV1,
     );
   } catch (error) {
@@ -269,7 +293,7 @@ export function bindResourcePackage(
 
 /** Validates and freezes one limits object used consistently at every layer. */
 export function resolveResourceLimits(value?: Partial<ResourceLimits>): ResourceLimits {
-  if (value !== undefined && (!isPlainRecord(value) || !hasOnlyKeys(value, LIMIT_KEYS))) {
+  if (value !== undefined && !resourceLimitsParser.parse(value).ok) {
     throw new ResourceError("invalid_resource_manifest", "Invalid resource limits");
   }
   const limits = { ...DEFAULT_RESOURCE_LIMITS, ...value } as ResourceLimits;
@@ -390,13 +414,11 @@ function normalizeFileDeclarations(
   for (const [rawPath, source] of entries) {
     const path = normalizeResourcePath(rawPath, limits);
     assertPathCollision(collisions, rawPath, path);
-    if (!isPlainRecord(source) || !hasExactKeys(source, ["kind", "mediaType"])) {
+    const declarationResult = resourceFileDeclarationParser.parse(source);
+    if (!declarationResult.ok) {
       invalidManifest();
     }
-    if (!(["text", "json", "binary"] as unknown[]).includes(source.kind)) {
-      invalidManifest();
-    }
-    requireMediaType(source.mediaType);
+    requireMediaType(declarationResult.value.mediaType);
     const stored = declarationBytes.get(source);
     if (!stored) {
       invalidManifest();

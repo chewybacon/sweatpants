@@ -39,18 +39,22 @@ export {
   computeA2ACommandId,
   computeA2AFrontierDigest,
   computeA2AReplayChainSeed,
+  clientProgramMessageParser,
   encodeA2AProgramMessage,
   linkA2AReplayEntry,
   parseClientProgramMessage,
   parseExecutorHello,
   parseServerProgramMessage,
   projectProgramCommand,
+  serverProgramMessageParser,
   verifyA2AReplayEntry,
 } from "./protocol.ts";
 export {
+  callerAuthoritativeExtensionParamsParser,
   discoverCallerAuthoritativeProgram,
   parseCallerAuthoritativeExtensionParams,
   parsePinnedProgram,
+  pinnedProgramParser,
   type A2AAgentCardSource,
   type DiscoverA2AProgramOptions,
 } from "./discovery.ts";

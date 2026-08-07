@@ -5,6 +5,7 @@ import {
 } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
+import { z } from "zod";
 
 import {
   parsePortableSchemaDescriptor,
@@ -32,8 +33,12 @@ import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
+  failure,
+  parser,
   sha256,
   stableOpaqueId,
+  success,
+  type ParseResult,
 } from "@sweatpants/foundation";
 import { type Json } from "@sweatpants/foundation";
 import {
@@ -486,8 +491,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       request.input,
       "invalid_descriptor",
     );
-    // Async validation re-entry: reject if a competing open won while the
-    // registry validator awaited.
+    // Re-check the authority state after registry validation before mutation.
     if (this.#tasks.has(key)) {
       throw new CrankError("invalid_journal", "Task already exists");
     }
@@ -752,8 +756,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       );
       effectiveDescriptor = { ...descriptor, context: parsedContext };
     }
-    // Registry validators may await; re-verify authentication, task state, and
-    // cursors immediately before the append.
+    // Re-verify authentication, task state, and cursors before the append.
     verifyReservable();
     const restoredFrontierConsumed = request.restoredFrontier !== undefined;
     if (request.restoredFrontier) {
@@ -886,7 +889,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       if (!definition?.cancellation) {
         reason = "schema_validation_failed";
       } else {
-        const validated = yield* parseRegisteredSchema(
+        const validated = parseRegisteredSchema(
           this.#schemas,
           definition.cancellation.partialSchema.digest,
           outcome.partial,
@@ -952,7 +955,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
           return { status: "rejected", code: "schema_validation_failed" };
         }
         if (envelope.action === "accept") {
-          const validated = yield* parseRegisteredSchema(
+          const validated = parseRegisteredSchema(
             this.#schemas,
             pull.resultSchemaDigest,
             envelope.content,
@@ -960,7 +963,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
           if (validated.status === "unavailable") {
             return { status: "rejected", code: "schema_version_unavailable" };
           }
-          if (validated.status === "invalid") {
+          if (validated.status === "invalid" || validated.status === "schema-error") {
             return { status: "rejected", code: "schema_validation_failed" };
           }
           outcome = { status: "ok", value: { action: "accept", content: validated.value } };
@@ -974,7 +977,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
           };
         }
       } else {
-        const validated = yield* parseRegisteredSchema(
+        const validated = parseRegisteredSchema(
           this.#schemas,
           pull.resultSchemaDigest,
           outcome.value,
@@ -982,14 +985,14 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         if (validated.status === "unavailable") {
           return { status: "rejected", code: "schema_version_unavailable" };
         }
-        if (validated.status === "invalid") {
+        if (validated.status === "invalid" || validated.status === "schema-error") {
           return { status: "rejected", code: "schema_validation_failed" };
         }
         outcome = { status: "ok", value: validated.value };
       }
     }
-    // Registry validators may await; re-verify capability revocation, task
-    // state, and digest binding immediately before the append.
+    // Re-verify capability revocation, task state, and digest binding before
+    // the append.
     const postRejection = verifyResolvable();
     if (postRejection) {
       return postRejection;
@@ -1149,7 +1152,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
           "schema_validation_failed",
         ),
       };
-      // Registry validators may await; re-verify authority state before append.
+      // Re-verify authority state before append.
       this.#assertProgram(request.programCapability, task);
       if (task.cancellation.type === "unwinding") {
         outcome = { status: "cancelled" };
@@ -2271,16 +2274,17 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
 
   /** Validates through the digest-selected registry validator, throwing on failure. */
   *#parseRegisteredSchemaValue(digest: string, value: unknown, errorCode: string): Operation<Json> {
-    const validated: RegistrySchemaValidation = yield* parseRegisteredSchema(
-      this.#schemas,
-      digest,
-      value,
-    );
+    const validated: RegistrySchemaValidation = parseRegisteredSchema(this.#schemas, digest, value);
     if (validated.status === "unavailable") {
       throw new CrankError(
         "schema_version_unavailable",
         `No retained validator bundle for schema digest ${digest}`,
       );
+    }
+    if (validated.status === "schema-error") {
+      throw new CrankError(errorCode, "Schema validator implementation failed", {
+        reason: validated.reason,
+      });
     }
     if (validated.status === "invalid") {
       throw new CrankError(errorCode, "Schema validation failed", {
@@ -2411,22 +2415,50 @@ export function createInMemoryDurableJournalAuthority(
   return new InMemoryDurableJournalAuthority(options);
 }
 
+const durableAuthoritySnapshotStructureSchema = z.strictObject({
+  version: z.literal(4),
+  tasks: z.array(z.unknown()),
+  records: z.array(z.unknown()),
+  runnable: z.array(z.string()),
+  nonce: z.number().int().nonnegative().safe(),
+  activationLeases: z.array(z.unknown()),
+  lastActivationEpochBySession: z.array(z.unknown()),
+  taskRevisions: z.array(z.unknown()),
+  restoreNonces: z.array(z.unknown()),
+  restoreFrontierDigests: z.array(z.unknown()),
+  consecutiveRestoreStales: z.array(z.unknown()),
+  activationNotBeforeMs: z.array(z.unknown()),
+});
+
+/** Result-oriented parser for the exact current Journal Authority snapshot. */
+export const durableAuthoritySnapshotParser = parser(
+  durableAuthoritySnapshotStructureSchema,
+).andThen(verifyDurableAuthoritySnapshot);
+
+function verifyDurableAuthoritySnapshot(value: unknown): ParseResult<DurableAuthoritySnapshot> {
+  if (!isDurableAuthoritySnapshot(value)) {
+    return failure({ path: [], message: "invalid durable authority snapshot" });
+  }
+  return success(value);
+}
+
 /**
- * Parses a serialized authority snapshot into canonical JSON and rejects malformed
- * nested collections before they can enter authority state.
+ * Parses a serialized authority snapshot and maps every failure to the durable
+ * restoration boundary error owned by Journal Authority.
  */
 export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthoritySnapshot {
   try {
     const value = assertJson(JSON.parse(serialized));
-    if (!isDurableAuthoritySnapshot(value)) {
+    const parsed = durableAuthoritySnapshotParser.parse(value);
+    if (!parsed.ok) {
       throw invalidSnapshot();
     }
-    return value;
+    return parsed.value;
   } catch (error) {
     if (error instanceof CrankError && error.code === "invalid_journal") {
       throw error;
     }
-    throw invalidSnapshot(error);
+    throw invalidSnapshot();
   }
 }
 
@@ -3202,67 +3234,56 @@ function sanitizeCancellationReason(reason: string | undefined): string | undefi
   return normalized.slice(0, 512);
 }
 
+const restoreTicketClaimsSchema = z.strictObject({
+  version: z.literal(1),
+  journalId: z.string().min(1),
+  journalIncarnation: z.string().min(1),
+  sessionId: z.string().min(1),
+  taskId: z.string().min(1),
+  ownerId: z.string().min(1),
+  activationEpoch: z.number().int().nonnegative().safe(),
+  releaseId: z.string().min(1).optional(),
+  sandboxSessionId: z.string().min(1).optional(),
+  replayDomain: z.string().min(1).optional(),
+  frontierDomain: z.string().min(1).optional(),
+  taskRevision: z.number().int().nonnegative().safe(),
+  journalHeadDigest: z.string().min(1),
+  replayedThroughActionIndex: z.number().int().safe().min(-1),
+  replayChainDigest: z.string().min(1),
+  restoreNonce: z.string().min(1),
+});
+
+export const restoreTicketClaimsParser = parser(restoreTicketClaimsSchema).map(
+  (value): RestoreTicketClaims => ({
+    version: value.version,
+    journalId: value.journalId,
+    journalIncarnation: value.journalIncarnation,
+    sessionId: value.sessionId,
+    taskId: value.taskId,
+    ownerId: value.ownerId,
+    activationEpoch: value.activationEpoch,
+    ...(value.releaseId === undefined ? {} : { releaseId: value.releaseId }),
+    ...(value.sandboxSessionId === undefined ? {} : { sandboxSessionId: value.sandboxSessionId }),
+    ...(value.replayDomain === undefined ? {} : { replayDomain: value.replayDomain }),
+    ...(value.frontierDomain === undefined ? {} : { frontierDomain: value.frontierDomain }),
+    taskRevision: value.taskRevision,
+    journalHeadDigest: value.journalHeadDigest,
+    replayedThroughActionIndex: value.replayedThroughActionIndex,
+    replayChainDigest: value.replayChainDigest,
+    restoreNonce: value.restoreNonce,
+  }),
+);
+
 function parseRestoreTicketClaims(value: unknown): RestoreTicketClaims {
-  if (
-    !isJsonRecord(value) ||
-    !hasOnlyKeys(
-      value,
-      [
-        "version",
-        "journalId",
-        "journalIncarnation",
-        "sessionId",
-        "taskId",
-        "ownerId",
-        "activationEpoch",
-        "taskRevision",
-        "journalHeadDigest",
-        "replayedThroughActionIndex",
-        "replayChainDigest",
-        "restoreNonce",
-      ],
-      ["releaseId", "sandboxSessionId", "replayDomain", "frontierDomain"],
-    )
-  ) {
+  const parsed = restoreTicketClaimsParser.parse(value);
+  if (!parsed.ok) {
     throw new CrankError("restore_stale");
   }
-  const stringFields = [
-    "journalId",
-    "journalIncarnation",
-    "sessionId",
-    "taskId",
-    "ownerId",
-    "journalHeadDigest",
-    "replayChainDigest",
-    "restoreNonce",
-  ];
-  const optionalStrings = ["releaseId", "sandboxSessionId", "replayDomain", "frontierDomain"];
-  if (
-    value["version"] !== 1 ||
-    !stringFields.every((field) => typeof value[field] === "string") ||
-    !optionalStrings.every(
-      (field) => value[field] === undefined || typeof value[field] === "string",
-    ) ||
-    !isNonNegativeInteger(value["activationEpoch"]) ||
-    !isNonNegativeInteger(value["taskRevision"]) ||
-    !(
-      typeof value["replayedThroughActionIndex"] === "number" &&
-      Number.isSafeInteger(value["replayedThroughActionIndex"]) &&
-      value["replayedThroughActionIndex"] >= -1
-    )
-  ) {
-    throw new CrankError("restore_stale");
-  }
-  // SAFETY: every field RestoreTicketClaims declares is checked immediately
-  // above and the guard throws restore_stale on any mismatch, so this point is
-  // unreachable for a shape the claims type does not describe.
-  return value as unknown as RestoreTicketClaims;
+  return parsed.value;
 }
 
-function invalidSnapshot(cause?: unknown): CrankError {
-  return new CrankError("invalid_journal", "Invalid durable authority snapshot", undefined, {
-    cause,
-  });
+function invalidSnapshot(): CrankError {
+  return new CrankError("invalid_journal", "Invalid durable authority snapshot");
 }
 
 function effectContractKey(name: string, version: string): string {
@@ -3300,16 +3321,24 @@ function normalizeEmissionPolicy(
   return structuredClone(policy);
 }
 
+const emissionPolicySchema = z.strictObject({
+  maxEmissionsPerTask: z.number().int().nonnegative().safe().optional(),
+  maxCumulativeEmissionBytes: z.number().int().nonnegative().safe().optional(),
+});
+
+export const emissionPolicyParser = parser(emissionPolicySchema).map(
+  (value): SemanticEmissionPolicy => ({
+    ...(value.maxEmissionsPerTask === undefined
+      ? {}
+      : { maxEmissionsPerTask: value.maxEmissionsPerTask }),
+    ...(value.maxCumulativeEmissionBytes === undefined
+      ? {}
+      : { maxCumulativeEmissionBytes: value.maxCumulativeEmissionBytes }),
+  }),
+);
+
 function isEmissionPolicyValue(value: unknown): value is SemanticEmissionPolicy {
-  if (!isJsonRecord(value)) {
-    return false;
-  }
-  if (!hasOnlyKeys(value, [], ["maxEmissionsPerTask", "maxCumulativeEmissionBytes"])) {
-    return false;
-  }
-  return [value["maxEmissionsPerTask"], value["maxCumulativeEmissionBytes"]].every(
-    (limit) => limit === undefined || isNonNegativeInteger(limit),
-  );
+  return emissionPolicyParser.parse(value).ok;
 }
 
 function operationPolicy(
@@ -3406,35 +3435,27 @@ function installedOrRecordedDescriptor(
   return descriptor;
 }
 
+const programElicitResultSchema = z.discriminatedUnion("action", [
+  z.strictObject({ action: z.literal("accept"), content: z.json() }),
+  z.strictObject({ action: z.literal("decline"), reason: z.string().optional() }),
+  z.strictObject({ action: z.literal("cancel"), reason: z.string().optional() }),
+]);
+
+export const programElicitResultParser = parser(programElicitResultSchema).map(
+  (value) =>
+    value as
+      | { action: "accept"; content: Json }
+      | { action: "decline" | "cancel"; reason?: string },
+);
+
 function parseProgramElicitResult(
   value: Json,
 ):
   | { action: "accept"; content: Json }
   | { action: "decline" | "cancel"; reason?: string }
   | undefined {
-  if (!isJsonRecord(value) || typeof value["action"] !== "string") {
-    return undefined;
-  }
-  if (value["action"] === "accept") {
-    if (!("content" in value) || !hasOnlyKeys(value, ["action", "content"], [])) {
-      return undefined;
-    }
-    return { action: "accept", content: value["content"] as Json };
-  }
-  if (value["action"] === "decline" || value["action"] === "cancel") {
-    if (!hasOnlyKeys(value, ["action"], ["reason"])) {
-      return undefined;
-    }
-    const reason = value["reason"];
-    if (reason !== undefined && typeof reason !== "string") {
-      return undefined;
-    }
-    return {
-      action: value["action"],
-      ...(typeof reason === "string" ? { reason } : {}),
-    };
-  }
-  return undefined;
+  const parsed = programElicitResultParser.parse(value);
+  return parsed.ok ? parsed.value : undefined;
 }
 
 function snapshotDescriptor(descriptor: DurableOperationDescriptor): DurableOperationDescriptor {

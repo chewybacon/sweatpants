@@ -1,6 +1,16 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { z } from "zod";
-import { assertJson, canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import {
+  assertJson,
+  canonicalJson,
+  canonicalSnapshot,
+  failure,
+  parser,
+  sha256,
+  success,
+  type ParseResult,
+  type Parser,
+} from "@sweatpants/foundation";
 
 import type { Json } from "@sweatpants/foundation";
 import type {
@@ -34,20 +44,6 @@ const programSchema = z
     digest: digestSchema,
   })
   .strict();
-const envelopeSchema = z
-  .object({
-    protocolVersion: z.number().int().safe(),
-    extensionUri: z.string().max(512),
-    executionId: protocolIdentifierSchema,
-    program: programSchema,
-    executionEpoch: z.number().int().positive().safe(),
-    type: z.string().min(1).max(128),
-    payload: z.record(z.string(), z.json()),
-    attachmentId: protocolIdentifierSchema.optional(),
-    actionIndex: z.number().int().nonnegative().safe().optional(),
-    commandId: protocolIdentifierSchema.optional(),
-  })
-  .strict();
 const executorHelloSchema = z
   .object({
     type: z.literal("hello"),
@@ -58,6 +54,267 @@ const executorHelloSchema = z
     capabilities: z.object({ streamedRestore: z.boolean() }).strict(),
   })
   .strict();
+
+const affinitySchema = z.strictObject({
+  kind: z.enum(["invocation", "conversation", "workspace"]),
+  key: protocolIdentifierSchema,
+});
+const retrySafetySchema = z.discriminatedUnion("mode", [
+  z.strictObject({ mode: z.literal("repeatable") }),
+  z.strictObject({ mode: z.literal("unsafe") }),
+  z.strictObject({ mode: z.literal("idempotent"), mechanism: z.enum(["pull_id_key", "inherent"]) }),
+]);
+const childSchema = z.strictObject({
+  id: protocolIdentifierSchema,
+  version: protocolIdentifierSchema,
+  digest: digestSchema,
+  input: z.json(),
+});
+const resolverSchema = z.strictObject({
+  audience: protocolIdentifierSchema,
+  route: protocolIdentifierSchema.optional(),
+});
+const operationDescriptorSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("record"),
+    key: z.string().min(1).max(128),
+    retrySafety: retrySafetySchema,
+  }),
+  z.strictObject({
+    kind: z.literal("effect"),
+    name: protocolIdentifierSchema,
+    version: protocolIdentifierSchema,
+    input: z.json(),
+    resolver: resolverSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("elicit"),
+    key: protocolIdentifierSchema,
+    message: z.string(),
+    response: z.json(),
+    context: z.json().optional(),
+    contextContract: z.json().optional(),
+  }),
+  z
+    .strictObject({
+      kind: z.literal("wait"),
+      key: protocolIdentifierSchema,
+      notBefore: z.string().optional(),
+      durationMs: z.number().int().nonnegative().safe().optional(),
+    })
+    .refine((value) => (value.notBefore === undefined) !== (value.durationMs === undefined)),
+  z.strictObject({ kind: z.literal("invoke"), child: childSchema }),
+  z.strictObject({ kind: z.literal("spawn"), child: childSchema }),
+  z.strictObject({ kind: z.literal("join"), handle: z.json() }),
+  z.strictObject({ kind: z.enum(["all", "race"]), children: z.array(childSchema) }),
+]);
+const applicationErrorSchema = z.strictObject({
+  code: protocolIdentifierSchema,
+  message: z.string(),
+  details: z.json().optional(),
+});
+const outcomeSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("ok"), value: z.json() }),
+  z.strictObject({ status: z.literal("error"), error: applicationErrorSchema }),
+  z.strictObject({ status: z.literal("cancelled"), partial: z.json().optional() }),
+]);
+const receiptSchema = z.strictObject({
+  sessionId: protocolIdentifierSchema,
+  taskId: protocolIdentifierSchema,
+  pullId: protocolIdentifierSchema,
+  resolutionOffset: protocolIdentifierSchema,
+  outcomeDigest: digestSchema,
+  status: z.enum(["accepted", "duplicate"]),
+});
+const commandSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("start"), input: z.json() }),
+  z.strictObject({
+    type: z.literal("resume"),
+    actionIndex: z.number().int().nonnegative().safe(),
+    outcome: outcomeSchema,
+    receipt: receiptSchema,
+    replayed: z.boolean(),
+  }),
+  z.strictObject({
+    type: z.literal("authorize"),
+    actionIndex: z.number().int().nonnegative().safe(),
+    pullId: protocolIdentifierSchema,
+    attemptId: protocolIdentifierSchema,
+    descriptor: operationDescriptorSchema.optional(),
+    effectContractDigest: digestSchema.optional(),
+  }),
+  z.strictObject({
+    type: z.literal("ack_emission"),
+    actionIndex: z.number().int().nonnegative().safe(),
+    offset: protocolIdentifierSchema,
+  }),
+  z.strictObject({ type: z.literal("cancel"), reason: z.string().optional() }),
+]);
+const stepSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("operation"),
+    actionIndex: z.number().int().nonnegative().safe(),
+    descriptor: operationDescriptorSchema,
+    authorizedOutcome: outcomeSchema.optional(),
+  }),
+  z.strictObject({
+    type: z.literal("emission"),
+    actionIndex: z.number().int().nonnegative().safe(),
+    descriptor: z.strictObject({ eventType: protocolIdentifierSchema, payload: z.json() }),
+  }),
+  z.strictObject({
+    type: z.literal("completed"),
+    actionIndex: z.number().int().nonnegative().safe(),
+    value: z.json(),
+  }),
+  z.strictObject({
+    type: z.literal("failed"),
+    actionIndex: z.number().int().nonnegative().safe(),
+    error: applicationErrorSchema,
+  }),
+]);
+const replayOperationSchema = z.strictObject({
+  type: z.literal("operation"),
+  actionIndex: z.number().int().nonnegative().safe(),
+  descriptorKind: protocolIdentifierSchema,
+  descriptorDigest: digestSchema,
+  previousEntryDigest: digestSchema,
+  entryDigest: digestSchema,
+  outcome: outcomeSchema,
+  receipt: receiptSchema,
+});
+const replayEmissionSchema = z.strictObject({
+  type: z.literal("emission"),
+  actionIndex: z.number().int().nonnegative().safe(),
+  descriptorKind: protocolIdentifierSchema,
+  descriptorDigest: digestSchema,
+  previousEntryDigest: digestSchema,
+  entryDigest: digestSchema,
+  offset: protocolIdentifierSchema,
+});
+const envelopeBaseShape = {
+  protocolVersion: z.number().int().safe(),
+  extensionUri: z.string().max(512),
+  executionId: protocolIdentifierSchema,
+  program: programSchema,
+  executionEpoch: z.number().int().positive().safe(),
+  attachmentId: protocolIdentifierSchema.optional(),
+  actionIndex: z.number().int().nonnegative().safe().optional(),
+  commandId: protocolIdentifierSchema.optional(),
+};
+const clientEnvelopeSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("attach_begin"),
+    payload: z.strictObject({
+      input: z.json(),
+      inputDigest: digestSchema,
+      affinity: affinitySchema,
+    }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("command"),
+    payload: z.strictObject({ command: commandSchema }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("shutdown"),
+    payload: z.strictObject({
+      reason: z.enum([
+        "parked",
+        "completed",
+        "failed",
+        "cancelled",
+        "transport_lost",
+        "scope_exit",
+      ]),
+    }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("restore_begin"),
+    payload: z.strictObject({
+      input: z.json(),
+      inputDigest: digestSchema,
+      replayedThroughActionIndex: z.number().int().safe().min(-1),
+      replayChainSeed: digestSchema,
+      affinity: affinitySchema,
+    }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("replay_operation"),
+    payload: replayOperationSchema,
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("replay_emission"),
+    payload: replayEmissionSchema,
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("replay_end"),
+    payload: z.strictObject({
+      entryCount: z.number().int().nonnegative().safe(),
+      replayChainDigest: digestSchema,
+    }),
+  }),
+]);
+const serverEnvelopeSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("attachment_ready"),
+    payload: z.strictObject({
+      attachmentId: protocolIdentifierSchema,
+      computeGeneration: protocolIdentifierSchema,
+    }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("step"),
+    payload: z.strictObject({ step: stepSchema }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("shutdown_complete"),
+    payload: z.strictObject({}),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("restore_ready"),
+    payload: z.strictObject({
+      attachmentId: protocolIdentifierSchema,
+      computeGeneration: protocolIdentifierSchema,
+    }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("frontier"),
+    payload: z.strictObject({
+      step: stepSchema,
+      replayedThroughActionIndex: z.number().int().safe().min(-1),
+      replayChainDigest: digestSchema,
+      frontierDigest: digestSchema,
+    }),
+  }),
+  z.strictObject({
+    ...envelopeBaseShape,
+    type: z.literal("rejected"),
+    payload: z.strictObject({ code: z.string(), message: z.string() }),
+  }),
+]);
+
+const clientEnvelopeParser = parser(clientEnvelopeSchema);
+const serverEnvelopeParser = parser(serverEnvelopeSchema);
+const executorHelloParser = parser(executorHelloSchema);
+
+export const clientProgramMessageParser = clientEnvelopeParser.andThen((value) =>
+  verifyEnvelopeResult(value, clientTypes, assertA2AClientPayload),
+) as Parser<ClientProgramMessageV1>;
+export const serverProgramMessageParser = serverEnvelopeParser.andThen((value) =>
+  verifyEnvelopeResult(value, serverTypes, assertA2AServerPayload),
+) as Parser<ServerProgramMessageV1>;
 
 const clientTypes = new Set([
   "attach_begin",
@@ -113,28 +370,25 @@ export function encodeA2AProgramMessage(
 }
 
 export function parseExecutorHello(frame: string | Uint8Array): ExecutorHelloV1 {
-  const value = parseCanonicalFrame(frame);
-  let parsed: ExecutorHelloV1;
-  try {
-    parsed = executorHelloSchema.parse(value) as ExecutorHelloV1;
-  } catch {
+  const parsed = executorHelloParser.parse(parseCanonicalFrame(frame));
+  if (!parsed.ok) {
     throw a2aError("extension_echo_mismatch", "Expected a closed executor hello frame");
   }
   if (
-    parsed.protocolVersion !== A2A_PROTOCOL_VERSION ||
-    parsed.extensionUri !== CALLER_AUTHORITATIVE_EXTENSION_URI
+    parsed.value.protocolVersion !== A2A_PROTOCOL_VERSION ||
+    parsed.value.extensionUri !== CALLER_AUTHORITATIVE_EXTENSION_URI
   ) {
     throw a2aError("extension_echo_mismatch", "Executor extension identity does not match");
   }
-  return canonicalSnapshot(parsed).value as unknown as ExecutorHelloV1;
+  return canonicalSnapshot(parsed.value).value as unknown as ExecutorHelloV1;
 }
 
 export function parseClientProgramMessage(frame: string | Uint8Array): ClientProgramMessageV1 {
-  return parseEnvelope(frame, clientTypes, assertA2AClientPayload) as ClientProgramMessageV1;
+  return parseEnvelope(frame, clientTypes) as ClientProgramMessageV1;
 }
 
 export function parseServerProgramMessage(frame: string | Uint8Array): ServerProgramMessageV1 {
-  return parseEnvelope(frame, serverTypes, assertA2AServerPayload) as ServerProgramMessageV1;
+  return parseEnvelope(frame, serverTypes) as ServerProgramMessageV1;
 }
 
 /**
@@ -256,104 +510,78 @@ export function assertEnvelopeIdentity(
 function parseEnvelope(
   frame: string | Uint8Array,
   allowedTypes: ReadonlySet<string>,
-  parsePayload: (type: string, envelope: Record<string, Json>) => void,
 ): ClientProgramMessageV1 | ServerProgramMessageV1 {
   const value = parseCanonicalFrame(frame);
-  let envelope: Record<string, Json>;
+  const parsed =
+    allowedTypes === clientTypes
+      ? clientProgramMessageParser.parse(value)
+      : serverProgramMessageParser.parse(value);
+  if (!parsed.ok) {
+    const issue = parsed.issues[0];
+    const code =
+      issue?.code && errorCodes.has(issue.code as A2AProgramErrorCode)
+        ? (issue.code as A2AProgramErrorCode)
+        : "program_protocol_error";
+    throw a2aError(code, issue?.message ?? "Invalid A2A program protocol payload");
+  }
+  return parsed.value;
+}
+
+function verifyEnvelopeResult(
+  value: unknown,
+  allowedTypes: ReadonlySet<string>,
+  parsePayload: (type: string, envelope: Record<string, Json>) => void,
+): ParseResult<ClientProgramMessageV1 | ServerProgramMessageV1> {
   try {
-    envelope = envelopeSchema.parse(value) as unknown as Record<string, Json>;
-  } catch {
-    throw protocol("Envelope fields are not closed");
+    const envelope = value as Record<string, Json>;
+    if (envelope["protocolVersion"] !== 1) {
+      throw a2aError("protocol_version_unsupported", "Unsupported A2A program protocol version");
+    }
+    if (envelope["extensionUri"] !== CALLER_AUTHORITATIVE_EXTENSION_URI) {
+      throw a2aError("extension_echo_mismatch", "A2A extension identity mismatch");
+    }
+    const type = envelope["type"];
+    if (typeof type !== "string" || !allowedTypes.has(type)) {
+      throw protocol("Unknown message type");
+    }
+    parsePayload(type, envelope);
+    return success(
+      canonicalSnapshot(envelope).value as unknown as
+        | ClientProgramMessageV1
+        | ServerProgramMessageV1,
+    );
+  } catch (error) {
+    if (error instanceof CrankError) {
+      return failure({ path: [], message: error.message, code: error.code });
+    }
+    throw error;
   }
-  if (envelope["protocolVersion"] !== 1) {
-    throw a2aError("protocol_version_unsupported", "Unsupported A2A program protocol version");
-  }
-  if (envelope["extensionUri"] !== CALLER_AUTHORITATIVE_EXTENSION_URI) {
-    throw a2aError("extension_echo_mismatch", "A2A extension identity mismatch");
-  }
-  assertA2AProgram(envelope["program"]);
-  const type = envelope["type"];
-  if (typeof type !== "string" || !allowedTypes.has(type)) {
-    throw protocol("Unknown message type");
-  }
-  parsePayload(type, envelope);
-  return canonicalSnapshot(envelope).value as unknown as
-    | ClientProgramMessageV1
-    | ServerProgramMessageV1;
 }
 
 function assertA2AClientPayload(type: string, envelope: Record<string, Json>): void {
   const payload = envelope["payload"] as Record<string, Json>;
   switch (type) {
     case "attach_begin":
-      if (
-        !exactKeys(payload, ["input", "inputDigest", "affinity"]) ||
-        !digest(payload["inputDigest"]) ||
-        !affinity(payload["affinity"])
-      ) {
-        fail();
-      }
-      requireNoScope(envelope);
-      break;
     case "restore_begin":
-      if (
-        !exactKeys(payload, [
-          "input",
-          "inputDigest",
-          "replayedThroughActionIndex",
-          "replayChainSeed",
-          "affinity",
-        ]) ||
-        !digest(payload["inputDigest"]) ||
-        !affinity(payload["affinity"]) ||
-        !replayPosition(payload["replayedThroughActionIndex"]) ||
-        !digest(payload["replayChainSeed"])
-      ) {
-        fail();
-      }
       requireNoScope(envelope);
       break;
-    case "command": {
-      if (!exactKeys(payload, ["command"]) || !record(payload["command"])) {
-        fail();
-      }
+    case "command":
       requireAttachmentAndCommand(envelope);
       assertA2ACommand(payload["command"] as Record<string, Json>, envelope);
       break;
-    }
     case "shutdown":
-      if (
-        !exactKeys(payload, ["reason"]) ||
-        !["parked", "completed", "failed", "cancelled", "transport_lost", "scope_exit"].includes(
-          String(payload["reason"]),
-        )
-      ) {
-        fail();
-      }
       requireAttachmentAndCommand(envelope);
       break;
     case "replay_operation":
     case "replay_emission":
       requireAttachment(envelope);
-      if (envelope["commandId"] !== undefined) {
-        fail();
-      }
+      if (envelope["commandId"] !== undefined) fail();
       assertA2AReplayEntry(payload, type === "replay_operation" ? "operation" : "emission");
-      if (envelope["actionIndex"] !== payload["actionIndex"]) {
-        fail();
-      }
+      if (envelope["actionIndex"] !== payload["actionIndex"]) fail();
       break;
     case "replay_end":
       requireAttachment(envelope);
-      if (
-        envelope["actionIndex"] !== undefined ||
-        envelope["commandId"] !== undefined ||
-        !exactKeys(payload, ["entryCount", "replayChainDigest"]) ||
-        !nonnegativeInteger(payload["entryCount"]) ||
-        !digest(payload["replayChainDigest"])
-      ) {
-        fail();
-      }
+      if (envelope["actionIndex"] !== undefined || envelope["commandId"] !== undefined) fail();
       break;
     default:
       fail();
@@ -366,62 +594,37 @@ function assertA2AServerPayload(type: string, envelope: Record<string, Json>): v
     case "attachment_ready":
     case "restore_ready":
       if (
-        !exactKeys(payload, ["attachmentId", "computeGeneration"]) ||
-        !identifier(payload["attachmentId"]) ||
-        !identifier(payload["computeGeneration"]) ||
         envelope["attachmentId"] !== payload["attachmentId"] ||
         envelope["actionIndex"] !== undefined ||
         envelope["commandId"] !== undefined
-      ) {
+      )
         fail();
-      }
       break;
     case "step":
       requireAttachmentAndCommand(envelope);
-      if (!exactKeys(payload, ["step"])) {
-        fail();
-      }
       assertA2AStep(payload["step"]);
-      if (record(payload["step"]) && envelope["actionIndex"] !== payload["step"]["actionIndex"]) {
+      if (envelope["actionIndex"] !== (payload["step"] as Record<string, Json>)["actionIndex"]) {
         fail();
       }
       break;
     case "shutdown_complete":
       requireAttachmentAndCommand(envelope);
-      if (!exactKeys(payload, []) || envelope["actionIndex"] !== undefined) {
-        fail();
-      }
+      if (envelope["actionIndex"] !== undefined) fail();
       break;
     case "frontier":
       requireAttachment(envelope);
-      if (
-        envelope["commandId"] !== undefined ||
-        !exactKeys(payload, [
-          "step",
-          "replayedThroughActionIndex",
-          "replayChainDigest",
-          "frontierDigest",
-        ]) ||
-        !replayPosition(payload["replayedThroughActionIndex"]) ||
-        !digest(payload["replayChainDigest"]) ||
-        !digest(payload["frontierDigest"])
-      ) {
-        fail();
-      }
+      if (envelope["commandId"] !== undefined) fail();
       assertA2AStep(payload["step"]);
-      if (record(payload["step"]) && envelope["actionIndex"] !== payload["step"]["actionIndex"]) {
+      if (envelope["actionIndex"] !== (payload["step"] as Record<string, Json>)["actionIndex"]) {
         fail();
       }
       break;
     case "rejected":
       if (
-        !exactKeys(payload, ["code", "message"]) ||
         !errorCodes.has(payload["code"] as A2AProgramErrorCode) ||
-        typeof payload["message"] !== "string" ||
-        encoder.encode(payload["message"]).byteLength > A2A_MAX_ERROR_TEXT_BYTES
-      ) {
+        encoder.encode(String(payload["message"])).byteLength > A2A_MAX_ERROR_TEXT_BYTES
+      )
         fail();
-      }
       break;
     default:
       fail();
@@ -431,103 +634,40 @@ function assertA2AServerPayload(type: string, envelope: Record<string, Json>): v
 function assertA2ACommand(command: Record<string, Json>, envelope: Record<string, Json>): void {
   switch (command["type"]) {
     case "start":
-      if (!exactKeys(command, ["type", "input"]) || envelope["actionIndex"] !== undefined) {
-        fail();
-      }
+      if (envelope["actionIndex"] !== undefined) fail();
       break;
     case "resume":
-      if (
-        !exactKeys(command, ["type", "actionIndex", "outcome", "receipt", "replayed"]) ||
-        typeof command["replayed"] !== "boolean"
-      ) {
-        fail();
-      }
       assertA2AOutcome(command["outcome"]);
       assertA2AReceipt(command["receipt"]);
       requireMatchingAction(command, envelope);
       break;
     case "authorize":
-      if (
-        !onlyKeys(
-          command,
-          ["type", "actionIndex", "pullId", "attemptId"],
-          ["descriptor", "effectContractDigest"],
-        )
-      ) {
-        fail();
-      }
-      if (!identifier(command["pullId"]) || !identifier(command["attemptId"])) {
-        fail();
-      }
-      if (command["descriptor"] !== undefined) {
-        assertA2AOperationDescriptor(command["descriptor"]);
-      }
-      if (
-        command["effectContractDigest"] !== undefined &&
-        !digest(command["effectContractDigest"])
-      ) {
-        fail();
-      }
+      if (command["descriptor"] !== undefined) assertA2AOperationDescriptor(command["descriptor"]);
       requireMatchingAction(command, envelope);
       break;
     case "ack_emission":
-      if (
-        !exactKeys(command, ["type", "actionIndex", "offset"]) ||
-        !identifier(command["offset"])
-      ) {
-        fail();
-      }
       requireMatchingAction(command, envelope);
       break;
     case "cancel":
-      if (!onlyKeys(command, ["type"], ["reason"]) || envelope["actionIndex"] !== undefined) {
-        fail();
-      }
-      if (command["reason"] !== undefined && typeof command["reason"] !== "string") {
-        fail();
-      }
+      if (envelope["actionIndex"] !== undefined) fail();
       break;
     default:
       fail();
   }
 }
 
-function assertA2AStep(value: Json | undefined): asserts value is Json {
-  if (!record(value) || !nonnegativeInteger(value["actionIndex"])) {
-    fail();
-  }
-  switch (value["type"]) {
+function assertA2AStep(value: Json | undefined): void {
+  const step = value as Record<string, Json>;
+  switch (step["type"]) {
     case "operation":
-      if (!onlyKeys(value, ["type", "actionIndex", "descriptor"], ["authorizedOutcome"])) {
-        fail();
-      }
-      assertA2AOperationDescriptor(value["descriptor"]);
-      if (value["authorizedOutcome"] !== undefined) {
-        assertA2AOutcome(value["authorizedOutcome"]);
-      }
+      assertA2AOperationDescriptor(step["descriptor"]);
+      if (step["authorizedOutcome"] !== undefined) assertA2AOutcome(step["authorizedOutcome"]);
       break;
     case "emission":
-      if (!exactKeys(value, ["type", "actionIndex", "descriptor"])) {
-        fail();
-      }
-      if (
-        !record(value["descriptor"]) ||
-        !exactKeys(value["descriptor"], ["eventType", "payload"]) ||
-        !identifier(value["descriptor"]["eventType"])
-      ) {
-        fail();
-      }
-      break;
     case "completed":
-      if (!exactKeys(value, ["type", "actionIndex", "value"])) {
-        fail();
-      }
       break;
     case "failed":
-      if (!exactKeys(value, ["type", "actionIndex", "error"])) {
-        fail();
-      }
-      assertA2AApplicationError(value["error"]);
+      assertA2AApplicationError(step["error"]);
       break;
     default:
       fail();
@@ -535,115 +675,26 @@ function assertA2AStep(value: Json | undefined): asserts value is Json {
 }
 
 function assertA2AOperationDescriptor(value: Json | undefined): void {
-  if (!record(value)) {
-    fail();
-  }
-  switch (value["kind"]) {
-    case "record": {
-      if (!exactKeys(value, ["kind", "key", "retrySafety"])) {
-        fail();
-      }
-      if (
-        typeof value["key"] !== "string" ||
-        value["key"].length === 0 ||
-        new TextEncoder().encode(value["key"]).byteLength > 128
-      ) {
-        fail();
-      }
-      const safety = value["retrySafety"];
-      if (!record(safety)) {
-        fail();
-      }
-      if (safety["mode"] === "repeatable") {
-        if (!exactKeys(safety, ["mode"])) {
-          fail();
-        }
-      } else if (safety["mode"] === "idempotent") {
-        if (
-          !exactKeys(safety, ["mode", "mechanism"]) ||
-          (safety["mechanism"] !== "pull_id_key" && safety["mechanism"] !== "inherent")
-        ) {
-          fail();
-        }
-      } else if (safety["mode"] === "unsafe") {
-        if (!exactKeys(safety, ["mode"])) {
-          fail();
-        }
-      } else {
-        fail();
-      }
+  const descriptor = value as Record<string, Json>;
+  switch (descriptor["kind"]) {
+    case "record":
+      if (new TextEncoder().encode(String(descriptor["key"])).byteLength > 128) fail();
       break;
-    }
     case "effect":
-      if (!exactKeys(value, ["kind", "name", "version", "input", "resolver"])) {
-        fail();
-      }
-      if (
-        !identifier(value["name"]) ||
-        !identifier(value["version"]) ||
-        !record(value["resolver"])
-      ) {
-        fail();
-      }
-      if (!onlyKeys(value["resolver"], ["audience"], ["route"])) {
-        fail();
-      }
-      if (!identifier(value["resolver"]["audience"])) {
-        fail();
-      }
-      if (
-        value["resolver"]["route"] !== undefined &&
-        typeof value["resolver"]["route"] !== "string"
-      ) {
-        fail();
-      }
-      break;
     case "elicit":
-      if (
-        !onlyKeys(value, ["kind", "key", "message", "response"], ["context", "contextContract"])
-      ) {
-        fail();
-      }
-      if (
-        !identifier(value["key"]) ||
-        typeof value["message"] !== "string" ||
-        !record(value["response"]) ||
-        (value["contextContract"] !== undefined && !record(value["contextContract"]))
-      ) {
-        fail();
-      }
       break;
-    case "wait": {
-      if (!onlyKeys(value, ["kind", "key"], ["notBefore", "durationMs"])) {
+    case "wait":
+      if (
+        descriptor["notBefore"] !== undefined &&
+        !Number.isFinite(Date.parse(String(descriptor["notBefore"])))
+      )
         fail();
-      }
-      if (!identifier(value["key"])) {
-        fail();
-      }
-      const absolute = typeof value["notBefore"] === "string";
-      const relative = nonnegativeInteger(value["durationMs"]);
-      if (absolute === relative) {
-        fail();
-      }
       break;
-    }
     case "invoke":
-      if (!exactKeys(value, ["kind", "child"])) {
-        fail();
-      }
-      assertA2AChild(value["child"]);
-      break;
     case "all":
     case "race":
-      if (!exactKeys(value, ["kind", "children"]) || !Array.isArray(value["children"])) {
-        fail();
-      }
-      for (const child of value["children"] as Json[]) {
-        assertA2AChild(child);
-      }
       break;
     case "spawn":
-      // The wire remains provider-neutral, but caller-authoritative v1 routes only joined invoke.
       throw protocol("Remote spawn is not supported by caller-authoritative v1");
     case "join":
       throw protocol("Remote join handles are not supported by caller-authoritative v1");
@@ -652,102 +703,18 @@ function assertA2AOperationDescriptor(value: Json | undefined): void {
   }
 }
 
-function assertA2AChild(value: Json | undefined): void {
-  if (!record(value) || !exactKeys(value, ["id", "version", "digest", "input"])) {
-    fail();
-  }
-  if (!identifier(value["id"]) || !identifier(value["version"]) || !digest(value["digest"])) {
-    fail();
-  }
-}
-
-function assertA2AOutcome(value: Json | undefined): void {
-  if (!record(value)) {
-    fail();
-  }
-  if (value["status"] === "ok") {
-    if (!exactKeys(value, ["status", "value"])) {
-      fail();
-    }
-  } else if (value["status"] === "error") {
-    if (!exactKeys(value, ["status", "error"])) {
-      fail();
-    }
-    assertA2AApplicationError(value["error"]);
-  } else if (value["status"] === "cancelled") {
-    if (!onlyKeys(value, ["status"], ["partial"])) {
-      fail();
-    }
-  } else {
-    fail();
-  }
-}
-
-function assertA2AApplicationError(value: Json | undefined): void {
-  if (!record(value) || !onlyKeys(value, ["code", "message"], ["details"])) {
-    fail();
-  }
-  if (!identifier(value["code"]) || typeof value["message"] !== "string") {
-    fail();
-  }
-}
-
-function assertA2AReceipt(value: Json | undefined): void {
-  if (
-    !record(value) ||
-    !exactKeys(value, [
-      "sessionId",
-      "taskId",
-      "pullId",
-      "resolutionOffset",
-      "outcomeDigest",
-      "status",
-    ])
-  ) {
-    fail();
-  }
-  for (const key of ["sessionId", "taskId", "pullId", "resolutionOffset"]) {
-    if (!identifier(value[key])) {
-      fail();
-    }
-  }
-  if (
-    !digest(value["outcomeDigest"]) ||
-    !["accepted", "duplicate"].includes(String(value["status"]))
-  ) {
-    fail();
-  }
-}
+function assertA2AOutcome(_value: Json | undefined): void {}
+function assertA2AApplicationError(_value: Json | undefined): void {}
+function assertA2AReceipt(_value: Json | undefined): void {}
 
 function assertA2AReplayEntry(
   payload: Record<string, Json>,
   expected: "operation" | "emission",
 ): void {
-  const common = [
-    "type",
-    "actionIndex",
-    "descriptorKind",
-    "descriptorDigest",
-    "previousEntryDigest",
-    "entryDigest",
-  ];
-  const variant = expected === "operation" ? ["outcome", "receipt"] : ["offset"];
-  if (
-    !exactKeys(payload, [...common, ...variant]) ||
-    payload["type"] !== expected ||
-    !nonnegativeInteger(payload["actionIndex"]) ||
-    !identifier(payload["descriptorKind"]) ||
-    !digest(payload["descriptorDigest"]) ||
-    !digest(payload["previousEntryDigest"]) ||
-    !digest(payload["entryDigest"])
-  ) {
-    fail();
-  }
+  if (payload["type"] !== expected) fail();
   if (expected === "operation") {
     assertA2AOutcome(payload["outcome"]);
     assertA2AReceipt(payload["receipt"]);
-  } else if (!identifier(payload["offset"])) {
-    fail();
   }
 }
 
@@ -771,14 +738,6 @@ function parseCanonicalFrame(frame: string | Uint8Array): Json {
   return value;
 }
 
-function assertA2AProgram(value: Json | undefined): asserts value is Json {
-  if (!record(value) || !exactKeys(value, ["id", "version", "digest"])) {
-    fail();
-  }
-  if (!identifier(value["id"]) || !identifier(value["version"]) || !digest(value["digest"])) {
-    fail();
-  }
-}
 function requireNoScope(envelope: Record<string, Json>): void {
   if (
     envelope["attachmentId"] !== undefined ||
@@ -804,7 +763,9 @@ function requireMatchingAction(
   envelope: Record<string, Json>,
 ): void {
   if (
-    !nonnegativeInteger(command["actionIndex"]) ||
+    typeof command["actionIndex"] !== "number" ||
+    !Number.isSafeInteger(command["actionIndex"]) ||
+    command["actionIndex"] < 0 ||
     command["actionIndex"] !== envelope["actionIndex"]
   ) {
     fail();
@@ -815,41 +776,11 @@ function requireDigest(value: unknown): asserts value is string {
     fail();
   }
 }
-function record(value: unknown): value is Record<string, Json> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
 function identifier(value: unknown): value is string {
   return typeof value === "string" && ID.test(value);
 }
 function digest(value: unknown): value is string {
   return typeof value === "string" && DIGEST.test(value);
-}
-function affinity(value: unknown): boolean {
-  return Boolean(
-    record(value) &&
-    exactKeys(value, ["kind", "key"]) &&
-    ["invocation", "conversation", "workspace"].includes(String(value["kind"])) &&
-    identifier(value["key"]),
-  );
-}
-function nonnegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-function replayPosition(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= -1;
-}
-function exactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
-}
-function onlyKeys(
-  value: Record<string, Json>,
-  required: readonly string[],
-  optional: readonly string[],
-): boolean {
-  const allowed = new Set([...required, ...optional]);
-  return (
-    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
-  );
 }
 function fail(): never {
   throw protocol("Invalid A2A program protocol payload");

@@ -32,7 +32,10 @@ import {
   type ModelStreamEvent as RuntimeStreamEvent,
 } from "@sweatpants/model-provider";
 import { createToolExecutionRef } from "@sweatpants/tool-runtime";
-import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
+import {
+  parseToolParameters,
+  requireToolParameterResult,
+} from "@sweatpants/tool-session/tool-parameters";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { eventsOfType, readDurableEvents } from "./ndjson.ts";
 
@@ -145,12 +148,15 @@ function createLocalToolRuntime(tools: readonly RuntimeTool[]): ToolRuntime {
           },
         };
       }
-      const params = yield* parseToolParameters({
-        schema: tool.parameters,
-        params: request.call.input,
-        toolName: tool.name,
-        callId: request.call.id,
-      });
+      const params = requireToolParameterResult(
+        parseToolParameters({
+          schema: tool.parameters,
+          params: request.call.input,
+          toolName: tool.name,
+          callId: request.call.id,
+        }),
+        { toolName: tool.name, callId: request.call.id },
+      );
       const toolCtx = {
         signal: new AbortController().signal,
         messages: [],
@@ -161,6 +167,12 @@ function createLocalToolRuntime(tools: readonly RuntimeTool[]): ToolRuntime {
         },
         sample: function* (): Operation<never> {
           throw new Error("sample not used in golden path");
+        },
+        sampleTools: function* (): Operation<never> {
+          throw new Error("sampleTools not used in golden path");
+        },
+        sampleSchema: function* (): Operation<never> {
+          throw new Error("sampleSchema not used in golden path");
         },
       };
       try {

@@ -171,6 +171,7 @@ describe("Pi-AI canonical boundary codec", () => {
             {
               type: "document",
               source: { type: "data", value: "YWJj", mimeType: "application/pdf" },
+              metadata: null,
             },
           ],
         },

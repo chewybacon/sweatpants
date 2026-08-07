@@ -2,8 +2,10 @@ import { CrankError } from "@sweatpants/durable-execution";
 import {
   canonicalJson,
   compareUnicodeCodePoints,
+  parser,
   sha256,
   sortStrings,
+  type ParseIssue,
 } from "@sweatpants/foundation";
 import { type Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
@@ -123,17 +125,21 @@ export class InMemoryDurableIdempotencyStore<T> implements DurableIdempotencySto
   }
 }
 
+export const durableInvocationMetaParser = parser(durableInvocationMetaSchema).map(
+  (value): DurableInvocationMeta => value,
+);
+
 export function parseDurableInvocationMeta(value: unknown): DurableInvocationMeta {
-  const parsed = durableInvocationMetaSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new CrankError("invalid_mcp_request", durableInvocationMetaFailure(parsed.error));
+  const parsed = durableInvocationMetaParser.parse(value);
+  if (!parsed.ok) {
+    throw new CrankError("invalid_mcp_request", durableInvocationMetaFailure(parsed.issues));
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 /** Callers depend on the specific diagnostic, so issues map back to named causes. */
-function durableInvocationMetaFailure(error: z.ZodError): string {
-  for (const issue of error.issues) {
+function durableInvocationMetaFailure(issues: readonly ParseIssue[]): string {
+  for (const issue of issues) {
     const field = issue.path[0];
     if (field === "format") {
       return "Unsupported durable invocation metadata format";

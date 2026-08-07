@@ -1,9 +1,12 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
-import type { Operation } from "effection";
 import type { JsonObject } from "@sweatpants/foundation";
 import { z } from "zod";
-import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/foundation/schema-validation";
+import {
+  safeSchemaIssues,
+  validateAuthoredSchema,
+  type AuthoredValidationResult,
+} from "@sweatpants/foundation/parser";
 
 export {
   TOOL_PARAMETER_VALIDATION_FAILED,
@@ -149,39 +152,37 @@ export function getToolParameterValidationErrorPayload(
   };
 }
 
-export function* parseToolParameters<T = unknown>(input: {
+export function parseToolParameters<T = unknown>(input: {
   schema: StandardSchemaV1<unknown, T>;
   params: unknown;
   toolName: string;
   callId: string;
-}): Operation<T> {
-  const { schema, params, toolName, callId } = input;
-  if (!isStandardSchema(schema)) {
-    throw createToolParameterValidationError({ toolName, callId });
-  }
-  try {
-    const result = yield* validateStandardSchema(schema, params);
-    if (result.issues !== undefined) {
-      throw createToolParameterValidationError({ toolName, callId, cause: result.issues });
-    }
-    // A successful Standard Schema result may legitimately contain undefined.
-    return result.value;
-  } catch (cause) {
-    if (cause instanceof ToolParameterValidationError) throw cause;
-    throw createToolParameterValidationError({ toolName, callId, cause });
-  }
+}): AuthoredValidationResult<T> {
+  return validateAuthoredSchema<T>(input.schema, input.params);
 }
 
-export function* parseRuntimeToolParameters<T = unknown>(
+export function parseRuntimeToolParameters<T = unknown>(
   tool: Pick<AnyToolContract, "name" | "parameters">,
   params: unknown,
   callId: string,
-): Operation<T> {
-  return yield* parseToolParameters<T>({
+): AuthoredValidationResult<T> {
+  return parseToolParameters<T>({
     schema: tool.parameters,
     params,
     toolName: tool.name,
     callId,
+  });
+}
+
+/** Maps an authored validation failure to the tool-session boundary contract. */
+export function requireToolParameterResult<T>(
+  result: AuthoredValidationResult<T>,
+  input: { readonly toolName: string; readonly callId: string },
+): T {
+  if (result.status === "ok") return result.value;
+  throw createToolParameterValidationError({
+    ...input,
+    ...(result.status === "invalid" ? { cause: result.issues } : {}),
   });
 }
 

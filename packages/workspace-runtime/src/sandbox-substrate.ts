@@ -1,5 +1,11 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalJson, canonicalSnapshot, sha256, sha256Bytes } from "@sweatpants/foundation";
+import {
+  canonicalJson,
+  canonicalSnapshot,
+  parser,
+  sha256,
+  sha256Bytes,
+} from "@sweatpants/foundation";
 import { type Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import { z } from "zod";
@@ -194,19 +200,24 @@ export class InMemoryImmutableObjectStore implements ImmutableObjectStore {
   }
 }
 
+export const sandboxCapabilitiesParser = parser(sandboxCapabilitiesSchema).map(
+  (capabilities): SandboxCapabilities => {
+    if (
+      capabilities.workspacePersistence === "checkpoint_restore" &&
+      !capabilities.checkpointRestore
+    ) {
+      throw new CrankError("sandbox_unavailable", "checkpoint_restore requires checkpointRestore");
+    }
+    return capabilities;
+  },
+);
+
 export function parseSandboxCapabilities(value: unknown): SandboxCapabilities {
-  const parsed = sandboxCapabilitiesSchema.safeParse(value);
-  if (!parsed.success) {
+  const parsed = sandboxCapabilitiesParser.parse(value);
+  if (!parsed.ok) {
     throw new CrankError("sandbox_unavailable", "Sandbox capability shape is invalid");
   }
-  const capabilities = parsed.data;
-  if (
-    capabilities.workspacePersistence === "checkpoint_restore" &&
-    !capabilities.checkpointRestore
-  ) {
-    throw new CrankError("sandbox_unavailable", "checkpoint_restore requires checkpointRestore");
-  }
-  return capabilities;
+  return parsed.value;
 }
 
 export function sandboxInstanceKey(input: SandboxInstanceKeyInput): string {

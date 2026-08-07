@@ -29,7 +29,10 @@ import type {
   ElicitExchangeCompletion,
   SampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
-import { parseToolParameters } from "@sweatpants/tool-session/tool-parameters";
+import {
+  parseToolParameters,
+  requireToolParameterResult,
+} from "@sweatpants/tool-session/tool-parameters";
 import { createBridgeHost, type ElicitId, type ElicitResponse } from "@sweatpants/tool-session/mcp";
 import { createToolSessionEventLog, isTerminalToolSessionStatus } from "@sweatpants/tool-session";
 
@@ -97,12 +100,15 @@ export function createToolSession<
     let pendingElicit: PendingElicit | null = null;
     let pendingSample: PendingSample | null = null;
 
-    const validatedParams = yield* parseToolParameters<TParams>({
-      schema: tool.parameters,
-      params,
-      toolName: tool.name,
-      callId: sessionId,
-    });
+    const validatedParams = requireToolParameterResult(
+      parseToolParameters<TParams>({
+        schema: tool.parameters,
+        params,
+        toolName: tool.name,
+        callId: sessionId,
+      }),
+      { toolName: tool.name, callId: sessionId },
+    );
 
     // Create the bridge host
     const hostConfig = {

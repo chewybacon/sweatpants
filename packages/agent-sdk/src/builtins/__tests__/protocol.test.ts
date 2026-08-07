@@ -2,14 +2,18 @@ import { describe, it, expect } from "@effectionx/vitest";
 import { spawn, sleep, resource } from "effection";
 import { z } from "zod";
 import { elicit, notify, sample } from "../api.ts";
-import { SweatpantsProtocol } from "../protocol.ts";
+import {
+  SweatpantsProtocol,
+  type BuiltinElicitResult,
+  type BuiltinNotifyResult,
+  type BuiltinSampleResult,
+} from "../protocol.ts";
 import { createTransportPair } from "../../transport/pair.ts";
 import { createCorrelation } from "../../transport/correlation.ts";
 import { TransportContext } from "../../context/transport.ts";
 import { createImplementation } from "../../protocol/create.ts";
 import { serveProtocol } from "../../protocol/serve.ts";
 import type { Stream } from "effection";
-import type { z as zod } from "zod";
 
 describe("SweatpantsProtocol", () => {
   describe("with serveProtocol", () => {
@@ -21,9 +25,7 @@ describe("SweatpantsProtocol", () => {
       // Create protocol implementation
       const inspector = createImplementation(SweatpantsProtocol, function* () {
         return {
-          elicit(
-            payload,
-          ): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.elicit.output>> {
+          elicit(payload): Stream<never, BuiltinElicitResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -39,9 +41,7 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          notify(
-            _payload,
-          ): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.notify.output>> {
+          notify(_payload): Stream<never, BuiltinNotifyResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -50,9 +50,7 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          sample(
-            payload,
-          ): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.sample.output>> {
+          sample(payload): Stream<never, BuiltinSampleResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -101,7 +99,7 @@ describe("SweatpantsProtocol", () => {
 
       const inspector = createImplementation(SweatpantsProtocol, function* () {
         return {
-          elicit(): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.elicit.output>> {
+          elicit(): Stream<never, BuiltinElicitResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -110,9 +108,7 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          notify(
-            payload,
-          ): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.notify.output>> {
+          notify(payload): Stream<never, BuiltinNotifyResult> {
             return resource(function* (provide) {
               notifications.push(payload.message);
               yield* provide({
@@ -122,7 +118,7 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          sample(): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.sample.output>> {
+          sample(): Stream<never, BuiltinSampleResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -157,7 +153,7 @@ describe("SweatpantsProtocol", () => {
 
       const inspector = createImplementation(SweatpantsProtocol, function* () {
         return {
-          elicit(): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.elicit.output>> {
+          elicit(): Stream<never, BuiltinElicitResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -166,7 +162,7 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          notify(): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.notify.output>> {
+          notify(): Stream<never, BuiltinNotifyResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -175,9 +171,7 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          sample(
-            _payload,
-          ): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.sample.output>> {
+          sample(_payload): Stream<never, BuiltinSampleResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -220,7 +214,7 @@ describe("SweatpantsProtocol", () => {
 
       const inspector = createImplementation(SweatpantsProtocol, function* () {
         return {
-          elicit(): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.elicit.output>> {
+          elicit(): Stream<never, BuiltinElicitResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -229,7 +223,7 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          notify(): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.notify.output>> {
+          notify(): Stream<never, BuiltinNotifyResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
@@ -238,7 +232,7 @@ describe("SweatpantsProtocol", () => {
               });
             });
           },
-          sample(): Stream<never, zod.infer<typeof SweatpantsProtocol.methods.sample.output>> {
+          sample(): Stream<never, BuiltinSampleResult> {
             return resource(function* (provide) {
               yield* provide({
                 *next() {

@@ -33,11 +33,7 @@ describe("Zod Standard Schema adapter", () => {
       version: "2",
       outputProjection: { type: "string" },
     });
-    await expect(
-      run(function* () {
-        return yield* validateStandardSchema(lowered.entry.schema, "  hello ");
-      }),
-    ).resolves.toEqual({ value: "HELLO" });
+    expect(validateStandardSchema(lowered.entry.schema, "  hello ")).toEqual({ value: "HELLO" });
     expect(lowered.descriptor.fidelity.output).toBe("explicit");
   });
 

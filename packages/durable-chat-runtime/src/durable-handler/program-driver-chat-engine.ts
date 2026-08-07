@@ -43,7 +43,7 @@ import {
 } from "@sweatpants/foundation";
 import { foreignToolAdapter, foreignToolAdapterChild } from "@sweatpants/tool-session/foreign";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
-import { validateStandardSchema } from "@sweatpants/foundation/schema-validation";
+import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { computeClientElicitBindingId } from "@sweatpants/tool-session/mcp";
 import { type ChatMessage } from "@sweatpants/chat-contract";
 import { decodeChatHistoryEntries } from "@sweatpants/chat-core";
@@ -638,8 +638,8 @@ function* normalizeNativeElicitCompletion(
   if (!schema) {
     return completion;
   }
-  const parsed = yield* validateStandardSchema(schema, completion.content);
-  if (parsed.issues !== undefined) {
+  const parsed = validateAuthoredSchema(schema, completion.content);
+  if (parsed.status !== "ok") {
     throw new CrankError(
       "elicit_response_invalid",
       `Elicitation response validation failed for key "${pending.descriptor.key}"`,

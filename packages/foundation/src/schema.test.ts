@@ -3,6 +3,7 @@ import {
   SchemaDescriptorError,
   createPortableSchemaDescriptor,
   parsePortableSchemaDescriptor,
+  portableSchemaDescriptorParser,
   standardSchemaOf,
   type SchemaBinding,
 } from "./schema.ts";
@@ -22,6 +23,11 @@ describe("portable schema descriptor mechanics", () => {
     const descriptor = createPortableSchemaDescriptor(fields);
     expect(descriptor.role).toBe("domain_custom_role");
     expect(parsePortableSchemaDescriptor(descriptor)).toEqual(descriptor);
+    expect(portableSchemaDescriptorParser.parse(descriptor)).toEqual({
+      ok: true,
+      value: descriptor,
+    });
+    expect(portableSchemaDescriptorParser.parse({ ...descriptor, extra: true }).ok).toBe(false);
 
     const binding: SchemaBinding<typeof descriptor> = {
       descriptor,

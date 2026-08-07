@@ -1,4 +1,13 @@
-import { assertJson, requireJsonObject, type JsonObject } from "@sweatpants/foundation";
+import {
+  failure,
+  parser,
+  success,
+  type Json,
+  type JsonObject,
+  type ParseIssue,
+  type ParseResult,
+  type Parser,
+} from "@sweatpants/foundation";
 import {
   decodeChatAssistantMessage,
   decodeChatMessages,
@@ -8,6 +17,7 @@ import {
   type ChatMessage,
   type ChatToolDefinition,
 } from "@sweatpants/chat-contract";
+import { z } from "zod";
 import type { ModelResponseSource } from "./model-shared.ts";
 
 export interface ModelContext {
@@ -163,15 +173,160 @@ export class ModelDecodeError extends TypeError {
   }
 }
 
+const modelContextSchema = z.strictObject({
+  messages: z.array(z.json()),
+  tools: z.array(z.json()).optional(),
+});
+
+const modelSourceSchema = z.strictObject({
+  api: z.string().min(1),
+  provider: z.string().min(1),
+  model: z.string().min(1),
+  responseModel: z.string().nullable().optional(),
+});
+
+const modelCostSchema = z.strictObject({
+  input: z.number().finite().nullable().optional(),
+  output: z.number().finite().nullable().optional(),
+  cacheRead: z.number().finite().nullable().optional(),
+  cacheWrite: z.number().finite().nullable().optional(),
+  total: z.number().finite().nullable().optional(),
+});
+
+const modelUsageSchema = z.strictObject({
+  input: z.number().finite().nullable().optional(),
+  output: z.number().finite().nullable().optional(),
+  total: z.number().finite().nullable().optional(),
+  cacheRead: z.number().finite().nullable().optional(),
+  cacheWrite: z.number().finite().nullable().optional(),
+  cost: modelCostSchema.nullable().optional(),
+});
+
+const modelResponseSchema = z.strictObject({
+  message: z.json(),
+  source: modelSourceSchema.nullable().optional(),
+  usage: modelUsageSchema.nullable().optional(),
+  stopReason: z.string().nullable().optional(),
+  responseId: z.string().nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
+});
+
+const modelStreamEventSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("start"), partial: z.json() }),
+  z.strictObject({
+    type: z.literal("text-start"),
+    contentIndex: z.number().int().nonnegative().safe(),
+    partial: z.json(),
+  }),
+  z.strictObject({
+    type: z.literal("text-delta"),
+    contentIndex: z.number().int().nonnegative().safe(),
+    delta: z.string(),
+    partial: z.json(),
+  }),
+  z.strictObject({
+    type: z.literal("text-end"),
+    contentIndex: z.number().int().nonnegative().safe(),
+    content: z.string(),
+    partial: z.json(),
+  }),
+  z.strictObject({
+    type: z.literal("reasoning-start"),
+    contentIndex: z.number().int().nonnegative().safe(),
+    partial: z.json(),
+  }),
+  z.strictObject({
+    type: z.literal("reasoning-delta"),
+    contentIndex: z.number().int().nonnegative().safe(),
+    delta: z.string(),
+    partial: z.json(),
+  }),
+  z.strictObject({
+    type: z.literal("reasoning-end"),
+    contentIndex: z.number().int().nonnegative().safe(),
+    content: z.string(),
+    partial: z.json(),
+  }),
+  z.strictObject({
+    type: z.literal("tool-call-start"),
+    contentIndex: z.number().int().nonnegative().safe(),
+    partial: z.json(),
+  }),
+  z.strictObject({
+    type: z.literal("tool-call-delta"),
+    contentIndex: z.number().int().nonnegative().safe(),
+    delta: z.string(),
+    partial: z.json(),
+  }),
+  z.strictObject({
+    type: z.literal("tool-call-end"),
+    contentIndex: z.number().int().nonnegative().safe(),
+    toolCall: z.json(),
+    partial: z.json(),
+  }),
+  z.strictObject({ type: z.literal("done"), reason: z.string(), message: z.json() }),
+  z.strictObject({
+    type: z.literal("error"),
+    reason: z.enum(["error", "aborted"]),
+    error: z.json(),
+  }),
+]);
+
+type StructuralModelContext = z.infer<typeof modelContextSchema>;
+type StructuralModelResponse = z.infer<typeof modelResponseSchema>;
+type StructuralModelStreamEvent = z.infer<typeof modelStreamEventSchema>;
+
+const modelContextStructureParser = parser(modelContextSchema);
+const modelResponseStructureParser = parser(modelResponseSchema);
+const modelStreamEventStructureParser = parser(modelStreamEventSchema);
+
+/** Result-oriented parser for the model context contract. */
+export const modelContextParser: Parser<ModelContext> = modelContextStructureParser.andThen(
+  (value) => normalizeResult(() => normalizeModelContext(value, "$"), "context"),
+);
+
+/** Result-oriented parser for the model response contract. */
+export const modelResponseParser: Parser<ModelResponse> = modelResponseStructureParser.andThen(
+  (value) => normalizeResult(() => normalizeModelResponse(value, "$"), "response"),
+);
+
+/** Result-oriented parser for model stream events. */
+export const modelStreamEventParser: Parser<ModelStreamEvent> =
+  modelStreamEventStructureParser.andThen((value) =>
+    normalizeResult(() => normalizeModelStreamEvent(value, "$"), "stream-event"),
+  );
+
 export function decodeModelContext(value: unknown, path = "$"): ModelContext {
-  const input = record(value, path);
-  assertKeys(input, ["messages", "tools"], path);
-  if (!hasOwn(input, "messages")) {
-    throw new ModelDecodeError("missing-field", `${path}.messages`, "messages are required");
-  }
+  const parsed = modelContextStructureParser.parse(value);
+  if (!parsed.ok) throw modelErrorFromIssues(parsed.issues, path, "context");
+  return requireModel(
+    normalizeResult(() => normalizeModelContext(parsed.value, path), "context"),
+    path,
+  );
+}
+
+export function decodeModelResponse(value: unknown, path = "$"): ModelResponse {
+  const parsed = modelResponseStructureParser.parse(value);
+  if (!parsed.ok) throw modelErrorFromIssues(parsed.issues, path, "response");
+  return requireModel(
+    normalizeResult(() => normalizeModelResponse(parsed.value, path), "response"),
+    path,
+  );
+}
+
+export function decodeModelStreamEvent(value: unknown, path = "$"): ModelStreamEvent {
+  const parsed = modelStreamEventStructureParser.parse(value);
+  if (!parsed.ok) throw modelErrorFromIssues(parsed.issues, path, "stream-event");
+  return requireModel(
+    normalizeResult(() => normalizeModelStreamEvent(parsed.value, path), "stream-event"),
+    path,
+  );
+}
+
+function normalizeModelContext(value: StructuralModelContext, path: string): ModelContext {
   let messages: readonly ChatMessage[];
   try {
-    messages = decodeChatMessages(input["messages"], `${path}.messages`);
+    messages = decodeChatMessages(value.messages, `${path}.messages`);
   } catch (error) {
     throw new ModelDecodeError(
       "invalid-context",
@@ -179,20 +334,24 @@ export function decodeModelContext(value: unknown, path = "$"): ModelContext {
       error instanceof Error ? error.message : "invalid Chat messages",
     );
   }
-  const tools = decodeTools(input["tools"], `${path}.tools`);
+  const tools = (value.tools ?? []).map((entry, index) => {
+    try {
+      return decodeChatToolDefinition(entry, `${path}.tools.${index}`);
+    } catch (error) {
+      throw new ModelDecodeError(
+        "invalid-context",
+        `${path}.tools.${index}`,
+        error instanceof Error ? error.message : "invalid Chat tool definition",
+      );
+    }
+  });
   return freeze({ messages, tools });
 }
 
-export function decodeModelResponse(value: unknown, path = "$"): ModelResponse {
-  const input = record(value, path);
-  assertKeys(
-    input,
-    ["message", "source", "usage", "stopReason", "responseId", "errorMessage"],
-    path,
-  );
+function normalizeModelResponse(value: StructuralModelResponse, path: string): ModelResponse {
   let message: ChatAssistantMessage;
   try {
-    message = decodeChatAssistantMessage(input["message"], `${path}.message`);
+    message = decodeChatAssistantMessage(value.message, `${path}.message`);
   } catch (error) {
     throw new ModelDecodeError(
       "invalid-response",
@@ -202,148 +361,103 @@ export function decodeModelResponse(value: unknown, path = "$"): ModelResponse {
   }
   return freeze({
     message,
-    source: decodeSourceOrNull(input["source"], `${path}.source`),
-    usage: decodeUsageOrNull(input["usage"], `${path}.usage`),
-    stopReason: nullableString(input["stopReason"], `${path}.stopReason`),
-    responseId: nullableString(input["responseId"], `${path}.responseId`),
-    errorMessage: nullableString(input["errorMessage"], `${path}.errorMessage`),
+    source: normalizeSource(value.source),
+    usage: normalizeUsage(value.usage),
+    stopReason: value.stopReason ?? null,
+    responseId: value.responseId ?? null,
+    errorMessage: value.errorMessage ?? null,
   });
 }
 
-export function decodeModelStreamEvent(value: unknown, path = "$"): ModelStreamEvent {
-  const input = record(value, path);
-  const type = requiredString(input, "type", path);
-  switch (type) {
+function normalizeModelStreamEvent(
+  value: StructuralModelStreamEvent,
+  path: string,
+): ModelStreamEvent {
+  switch (value.type) {
     case "start":
-      assertKeys(input, ["type", "partial"], path);
-      return freeze({ type, partial: assistantMessage(input["partial"], `${path}.partial`) });
+      return freeze({
+        type: value.type,
+        partial: assistantMessage(value.partial, `${path}.partial`),
+      });
     case "text-start":
     case "reasoning-start":
     case "tool-call-start":
-      assertKeys(input, ["type", "contentIndex", "partial"], path);
       return freeze({
-        type,
-        contentIndex: indexField(input, "contentIndex", path),
-        partial: assistantMessage(input["partial"], `${path}.partial`),
+        type: value.type,
+        contentIndex: value.contentIndex,
+        partial: assistantMessage(value.partial, `${path}.partial`),
       });
     case "text-delta":
     case "reasoning-delta":
     case "tool-call-delta":
-      assertKeys(input, ["type", "contentIndex", "delta", "partial"], path);
       return freeze({
-        type,
-        contentIndex: indexField(input, "contentIndex", path),
-        delta: stringValue(input["delta"], `${path}.delta`),
-        partial: assistantMessage(input["partial"], `${path}.partial`),
+        type: value.type,
+        contentIndex: value.contentIndex,
+        delta: value.delta,
+        partial: assistantMessage(value.partial, `${path}.partial`),
       });
     case "text-end":
     case "reasoning-end":
-      assertKeys(input, ["type", "contentIndex", "content", "partial"], path);
       return freeze({
-        type,
-        contentIndex: indexField(input, "contentIndex", path),
-        content: stringValue(input["content"], `${path}.content`),
-        partial: assistantMessage(input["partial"], `${path}.partial`),
+        type: value.type,
+        contentIndex: value.contentIndex,
+        content: value.content,
+        partial: assistantMessage(value.partial, `${path}.partial`),
       });
     case "tool-call-end":
-      assertKeys(input, ["type", "contentIndex", "toolCall", "partial"], path);
-      try {
-        return freeze({
-          type,
-          contentIndex: indexField(input, "contentIndex", path),
-          toolCall: decodeChatToolCall(input["toolCall"], `${path}.toolCall`),
-          partial: assistantMessage(input["partial"], `${path}.partial`),
-        });
-      } catch (error) {
-        throw new ModelDecodeError(
-          "invalid-stream-event",
-          `${path}.toolCall`,
-          error instanceof Error ? error.message : "invalid settled tool call",
-        );
-      }
-    case "done":
-      assertKeys(input, ["type", "reason", "message"], path);
       return freeze({
-        type,
-        reason: stringValue(input["reason"], `${path}.reason`),
-        message: assistantMessage(input["message"], `${path}.message`),
+        type: value.type,
+        contentIndex: value.contentIndex,
+        toolCall: decodeChatToolCall(value.toolCall, `${path}.toolCall`),
+        partial: assistantMessage(value.partial, `${path}.partial`),
+      });
+    case "done":
+      return freeze({
+        type: value.type,
+        reason: value.reason,
+        message: assistantMessage(value.message, `${path}.message`),
       });
     case "error":
-      assertKeys(input, ["type", "reason", "error"], path);
       return freeze({
-        type,
-        reason: errorReason(input, path),
-        error: assistantMessage(input["error"], `${path}.error`),
+        type: value.type,
+        reason: value.reason,
+        error: assistantMessage(value.error, `${path}.error`),
       });
-    default:
-      throw new ModelDecodeError(
-        "invalid-stream-event",
-        `${path}.type`,
-        `unsupported stream event ${type}`,
-      );
   }
 }
 
-function decodeTools(value: unknown, path: string): readonly ChatToolDefinition[] {
-  if (value === undefined) return Object.freeze([]);
-  if (!Array.isArray(value)) {
-    throw new ModelDecodeError("invalid-context", path, "tools must be an array");
-  }
-  return freeze(
-    value.map((entry, index) => {
-      try {
-        return decodeChatToolDefinition(entry, `${path}[${index}]`);
-      } catch (error) {
-        throw new ModelDecodeError(
-          "invalid-context",
-          `${path}[${index}]`,
-          error instanceof Error ? error.message : "invalid Chat tool definition",
-        );
-      }
-    }),
-  );
-}
-
-function decodeSourceOrNull(value: unknown, path: string): ModelResponseSource | null {
+function normalizeSource(value: StructuralModelResponse["source"]): ModelResponseSource | null {
   if (value === undefined || value === null) return null;
-  const input = record(value, path);
-  assertKeys(input, ["api", "provider", "model", "responseModel"], path);
   return freeze({
-    api: requiredString(input, "api", path),
-    provider: requiredString(input, "provider", path),
-    model: requiredString(input, "model", path),
-    responseModel: nullableString(input["responseModel"], `${path}.responseModel`),
+    api: value.api,
+    provider: value.provider,
+    model: value.model,
+    responseModel: value.responseModel ?? null,
   });
 }
 
-function decodeUsageOrNull(value: unknown, path: string): ModelUsage | null {
+function normalizeUsage(value: StructuralModelResponse["usage"]): ModelUsage | null {
   if (value === undefined || value === null) return null;
-  const input = record(value, path);
-  assertKeys(input, ["input", "output", "total", "cacheRead", "cacheWrite", "cost"], path);
   return freeze({
-    input: nullableNumber(input["input"], `${path}.input`),
-    output: nullableNumber(input["output"], `${path}.output`),
-    total: nullableNumber(input["total"], `${path}.total`),
-    cacheRead: nullableNumber(input["cacheRead"], `${path}.cacheRead`),
-    cacheWrite: nullableNumber(input["cacheWrite"], `${path}.cacheWrite`),
-    cost: decodeCostOrNull(input["cost"], `${path}.cost`),
+    input: value.input ?? null,
+    output: value.output ?? null,
+    total: value.total ?? null,
+    cacheRead: value.cacheRead ?? null,
+    cacheWrite: value.cacheWrite ?? null,
+    cost:
+      value.cost === undefined || value.cost === null
+        ? null
+        : freeze({
+            input: value.cost.input ?? null,
+            output: value.cost.output ?? null,
+            cacheRead: value.cost.cacheRead ?? null,
+            cacheWrite: value.cost.cacheWrite ?? null,
+            total: value.cost.total ?? null,
+          }),
   });
 }
 
-function decodeCostOrNull(value: unknown, path: string): ModelCost | null {
-  if (value === undefined || value === null) return null;
-  const input = record(value, path);
-  assertKeys(input, ["input", "output", "cacheRead", "cacheWrite", "total"], path);
-  return freeze({
-    input: nullableNumber(input["input"], `${path}.input`),
-    output: nullableNumber(input["output"], `${path}.output`),
-    cacheRead: nullableNumber(input["cacheRead"], `${path}.cacheRead`),
-    cacheWrite: nullableNumber(input["cacheWrite"], `${path}.cacheWrite`),
-    total: nullableNumber(input["total"], `${path}.total`),
-  });
-}
-
-function assistantMessage(value: unknown, path: string): ChatAssistantMessage {
+function assistantMessage(value: Json, path: string): ChatAssistantMessage {
   try {
     return decodeChatAssistantMessage(value, path);
   } catch (error) {
@@ -355,87 +469,55 @@ function assistantMessage(value: unknown, path: string): ChatAssistantMessage {
   }
 }
 
-function errorReason(input: JsonObject, path: string): "error" | "aborted" {
-  const reason = requiredString(input, "reason", path);
-  if (reason !== "error" && reason !== "aborted") {
-    throw new ModelDecodeError(
-      "invalid-stream-event",
-      `${path}.reason`,
-      "expected error or aborted",
-    );
-  }
-  return reason;
-}
-
-function record(value: unknown, path: string): JsonObject {
+function normalizeResult<T>(
+  operation: () => T,
+  context: "context" | "response" | "stream-event",
+): ParseResult<T> {
+  void context;
   try {
-    return requireJsonObject(assertJson(value, path), path);
+    return success(operation());
   } catch (error) {
-    throw new ModelDecodeError(
-      "invalid-value",
-      path,
-      error instanceof Error ? error.message : "expected a JSON object",
-    );
+    if (error instanceof ModelDecodeError) return failure(issueFromModelError(error));
+    throw error;
   }
 }
 
-function requiredString(input: JsonObject, key: string, path: string): string {
-  if (!hasOwn(input, key) || typeof input[key] !== "string" || input[key].length === 0) {
-    throw new ModelDecodeError(
-      "missing-field",
-      `${path}.${key}`,
-      `${key} must be a non-empty string`,
-    );
-  }
-  return input[key] as string;
+function requireModel<T>(result: ParseResult<T>, path: string): T {
+  if (result.ok) return result.value;
+  throw modelErrorFromIssues(result.issues, path, "value");
 }
 
-function stringValue(value: unknown, path: string): string {
-  if (typeof value !== "string") {
-    throw new ModelDecodeError("invalid-value", path, "expected a string");
-  }
-  return value;
+function modelErrorFromIssues(
+  issues: readonly ParseIssue[],
+  basePath: string,
+  context: "context" | "response" | "stream-event" | "value",
+): ModelDecodeError {
+  const issue = issues[0] ?? { path: [], message: "invalid value" };
+  const relative = issue.path.map(String).join(".");
+  const path = relative.length === 0 ? basePath : `${basePath}.${relative}`;
+  let code: ModelDecodeErrorCode = "invalid-value";
+  if (issue.code === "unrecognized_keys") code = "unknown-field";
+  else if (context === "context") code = "invalid-context";
+  else if (context === "response") code = "invalid-response";
+  else if (context === "stream-event") code = "invalid-stream-event";
+  return new ModelDecodeError(code, path, issue.message);
 }
 
-function nullableString(value: unknown, path: string): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string") {
-    throw new ModelDecodeError("invalid-value", path, "expected a string or null");
-  }
-  return value;
+function issueFromModelError(error: ModelDecodeError): ParseIssue {
+  return {
+    path: decodePath(error.path),
+    message: error.message,
+    code: error.code,
+  };
 }
 
-function nullableNumber(value: unknown, path: string): number | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new ModelDecodeError("invalid-value", path, "expected a finite number or null");
-  }
-  return value;
-}
-
-function indexField(input: JsonObject, key: string, path: string): number {
-  const value = input[key];
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    throw new ModelDecodeError(
-      "invalid-stream-event",
-      `${path}.${key}`,
-      "expected a non-negative safe integer",
-    );
-  }
-  return value;
-}
-
-function assertKeys(input: JsonObject, allowed: readonly string[], path: string): void {
-  const allowedKeys = new Set(allowed);
-  for (const key of Object.keys(input)) {
-    if (!allowedKeys.has(key)) {
-      throw new ModelDecodeError("unknown-field", `${path}.${key}`, `unknown field ${key}`);
-    }
-  }
-}
-
-function hasOwn(input: JsonObject, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(input, key);
+function decodePath(path: string): Array<string | number> {
+  if (path === "$" || path.length === 0) return [];
+  return path
+    .replace(/^\$\.?/u, "")
+    .split(/[.[\]]+/u)
+    .filter(Boolean)
+    .map((part) => (/^\d+$/u.test(part) ? Number(part) : part));
 }
 
 function freeze<T>(value: T): T {
