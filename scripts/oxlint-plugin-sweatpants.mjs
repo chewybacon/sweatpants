@@ -11,6 +11,7 @@
  *   documented-scope-crossing
  *                     pinning a port to a foreign scope must say why the work
  *                     is not a child of the scope that configured it
+ *   no-nested-yield   effectful intermediate values must have names
  *
  * Both are syntax-only. Oxlint JS plugins do not yet have type information, so
  * anything requiring types belongs in the built-in typescript-eslint rules
@@ -260,11 +261,68 @@ const documentedScopeCrossing = {
     },
 };
 
+function containsNestedYield(value) {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+    if (value.type === "YieldExpression") {
+        return true;
+    }
+    if (
+        value.type === "FunctionDeclaration" ||
+        value.type === "FunctionExpression" ||
+        value.type === "ArrowFunctionExpression"
+    ) {
+        // A function body executes later in its own operation. Yields inside it
+        // are not operands of the outer yield expression.
+        return false;
+    }
+    for (const [key, child] of Object.entries(value)) {
+        if (key === "parent" || key === "loc" || key === "range") {
+            continue;
+        }
+        if (Array.isArray(child)) {
+            if (child.some(containsNestedYield)) {
+                return true;
+            }
+        } else if (containsNestedYield(child)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const noNestedYield = {
+    meta: {
+        type: "problem",
+        docs: {
+            description: "effectful intermediate values must be assigned before use",
+        },
+        schema: [],
+    },
+    create(context) {
+        return {
+            YieldExpression(node) {
+                if (!containsNestedYield(node.argument)) {
+                    return;
+                }
+                context.report({
+                    node,
+                    message:
+                        "Do not nest `yield*` expressions. Assign the inner operation result to a " +
+                        "named variable, then use that variable in the outer operation.",
+                });
+            },
+        };
+    },
+};
+
 export default {
     meta: { name: "sweatpants" },
     rules: {
         "layered-imports": layeredImports,
         "documented-weld": documentedWeld,
         "documented-scope-crossing": documentedScopeCrossing,
+        "no-nested-yield": noNestedYield,
     },
 };

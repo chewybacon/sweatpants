@@ -228,12 +228,8 @@ function* runFacadeProgram<I extends Json, O extends Json>(
     snapshot = yield* authority.exportSnapshot();
     yield* options.stateStore.save(invocationId, snapshot);
     if (options.onActivation) {
-      yield* options.onActivation({
-        invocationId,
-        activation,
-        outcome,
-        journal: yield* authority.readJournal(invocationId),
-      });
+      const journal = yield* authority.readJournal(invocationId);
+      yield* options.onActivation({ invocationId, activation, outcome, journal });
     }
 
     if (outcome.state === "completed") {
@@ -246,7 +242,8 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       throw new DurableToolFacadeError("program_cancelled", "Durable tool was cancelled");
     }
 
-    const request = pendingElicit(yield* authority.readJournal(invocationId), outcome.pullId);
+    const journal = yield* authority.readJournal(invocationId);
+    const request = pendingElicit(journal, outcome.pullId);
     if (!request) {
       throw new DurableToolFacadeError(
         "unsupported_park",

@@ -344,7 +344,8 @@ export function createRedisPlacementModelSampler(options: {
       if (record.streamId !== requested.streamId) {
         throw new CrankError("remote_sample_conflict", "Remote stream identity conflicts");
       }
-      const page = yield* (yield* requireBuffer(record.streamId)).read(afterLsn);
+      const buffer = yield* requireBuffer(record.streamId);
+      const page = yield* buffer.read(afterLsn);
       return {
         events: page.tokens,
         lsn: page.lsn,
@@ -378,12 +379,14 @@ export function createRedisPlacementModelSampler(options: {
         ownerId: `cancel:${requested.identity.pullId}`,
         producerEpoch: record.producerEpoch + 1,
       };
+      const buffer = yield* requireBuffer(record.streamId);
+      const terminalPage = yield* buffer.read(0);
       const next: RemoteSampleRecord = {
         ...record,
         state: "cancelled",
         producerOwnerId: cancelFence.ownerId,
         producerEpoch: cancelFence.producerEpoch,
-        terminalLsn: (yield* (yield* requireBuffer(record.streamId)).read(0)).lsn,
+        terminalLsn: terminalPage.lsn,
         disposition,
         dispositionDigest: canonicalSnapshot(disposition).sha,
       };
@@ -395,7 +398,7 @@ export function createRedisPlacementModelSampler(options: {
         },
         next,
       );
-      const writer = yield* (yield* requireBuffer(record.streamId)).claimWriter({
+      const writer = yield* buffer.claimWriter({
         ownerId: cancelFence.ownerId,
         activationEpoch: cancelFence.producerEpoch,
       });
@@ -436,7 +439,8 @@ export function createRedisPlacementModelSampler(options: {
         { ownerId: record.producerOwnerId, producerEpoch: record.producerEpoch },
         next,
       );
-      yield* (yield* requireBuffer(record.streamId)).claimWriter({
+      const buffer = yield* requireBuffer(record.streamId);
+      yield* buffer.claimWriter({
         ownerId: request.ownerId,
         activationEpoch: request.producerEpoch,
       });

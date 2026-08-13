@@ -20,8 +20,9 @@ describe("yo-chat tool wiring", () => {
     const { setupYoChatDurableStreams } = await import("../server/durable-streams");
 
     await run(function* () {
+      const scope = yield* useScope();
       yield* installDurableStreamsOwner({
-        scope: yield* useScope(),
+        scope,
         register: () => undefined,
       });
       yield* setupYoChatDurableStreams();

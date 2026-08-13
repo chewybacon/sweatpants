@@ -101,18 +101,18 @@ async function invokeStandardAgent(binding: Binding, posture: AgentPosture): Pro
       },
     },
     function* (s) {
-      const agent =
-        posture === "remote-http"
-          ? yield* connectRemoteStandardAgent(
-              s,
-              yield* call(() => {
-                if (!remoteOrigin) {
-                  throw new Error("remote A2A origin was not installed");
-                }
-                return remoteOrigin;
-              }),
-            )
-          : yield* connectStandardAgent(s);
+      let agent;
+      if (posture === "remote-http") {
+        const origin = yield* call(() => {
+          if (!remoteOrigin) {
+            throw new Error("remote A2A origin was not installed");
+          }
+          return remoteOrigin;
+        });
+        agent = yield* connectRemoteStandardAgent(s, origin);
+      } else {
+        agent = yield* connectStandardAgent(s);
+      }
       expect(agent.card).toMatchObject({ name: "acceptance-standard-agent", version: "1" });
 
       const turn = yield* agent.send({

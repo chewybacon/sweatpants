@@ -200,7 +200,8 @@ function* acknowledgeDurableEffect(
 /** Structured runtime API that drives programs and their child topology to a durable boundary. */
 const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
   *run(request: ProgramRunRequest): Operation<ProgramRunResult> {
-    yield* ProgramExecutionScopeContext.set(yield* useScope());
+    const executionScope = yield* useScope();
+    yield* ProgramExecutionScopeContext.set(executionScope);
     let attachment: ProgramAttachment | undefined;
     let authority: DurableJournalAuthorityService | undefined;
     let shutdownReason: ProgramShutdownReason = "scope_exit";

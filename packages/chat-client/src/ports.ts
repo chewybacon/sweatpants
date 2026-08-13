@@ -87,7 +87,8 @@ const ChatEventContext = createContext<ChatEventContract>("sweatpants:chat-event
  */
 export const ChatEventApi = createApi<ChatEventContract>("sweatpants:chat-event-api", {
   *accept(event: AGUIEvent) {
-    return yield* (yield* ChatEventContext.expect()).accept(event);
+    const events = yield* ChatEventContext.expect();
+    return yield* events.accept(event);
   },
 });
 
@@ -98,28 +99,36 @@ export const ChatEventApi = createApi<ChatEventContract>("sweatpants:chat-event-
  */
 export const ChatClientApi = createApi<ChatClientCommandContract>("sweatpants:chat-client-api", {
   *sendMessage(input: UserMessageInput, options?: SendMessageOptions) {
-    return yield* (yield* ChatCommandContext.expect()).sendMessage(input, options);
+    const commands = yield* ChatCommandContext.expect();
+    return yield* commands.sendMessage(input, options);
   },
   *stop() {
-    return yield* (yield* ChatCommandContext.expect()).stop();
+    const commands = yield* ChatCommandContext.expect();
+    return yield* commands.stop();
   },
   *regenerate(options?: RegenerateOptions) {
-    return yield* (yield* ChatCommandContext.expect()).regenerate(options);
+    const commands = yield* ChatCommandContext.expect();
+    return yield* commands.regenerate(options);
   },
   *reconnect() {
-    return yield* (yield* ChatCommandContext.expect()).reconnect();
+    const commands = yield* ChatCommandContext.expect();
+    return yield* commands.reconnect();
   },
   *cancelQueued(id: string) {
-    return yield* (yield* ChatCommandContext.expect()).cancelQueued(id);
+    const commands = yield* ChatCommandContext.expect();
+    return yield* commands.cancelQueued(id);
   },
   *setMessages(update: unknown) {
-    return yield* (yield* ChatCommandContext.expect()).setMessages(update);
+    const commands = yield* ChatCommandContext.expect();
+    return yield* commands.setMessages(update);
   },
   *clearError() {
-    return yield* (yield* ChatCommandContext.expect()).clearError();
+    const commands = yield* ChatCommandContext.expect();
+    return yield* commands.clearError();
   },
   *close() {
-    return yield* (yield* ChatCommandContext.expect()).close();
+    const commands = yield* ChatCommandContext.expect();
+    return yield* commands.close();
   },
 });
 
