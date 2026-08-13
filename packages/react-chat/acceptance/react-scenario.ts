@@ -73,12 +73,32 @@ function getClient(scenario: ScenarioContext, options: UseChatOptions): ReactCha
   const created = createChatClient({
     threadId,
     transport: { http: { fetch: scenario.transport.fetch } },
+    *initialize(control): Operation<void> {
+      yield* call(() => control.reconnect());
+    },
     ...(options.pipeline !== undefined ? { pipeline: options.pipeline } : {}),
     ...(options.scheduler !== undefined ? { scheduler: options.scheduler } : {}),
     ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
+    ...(options.queue !== undefined ? { queue: options.queue } : {}),
   });
   clients.set(threadId, created);
   return created;
+}
+
+export function* discardReactChatClient(
+  scenario: ScenarioContext,
+  threadId: string,
+): Operation<void> {
+  const clients = clientsByScenario.get(scenario as object);
+  if (!clients) {
+    return;
+  }
+  const client = clients.get(threadId);
+  if (!client) {
+    return;
+  }
+  clients.delete(threadId);
+  yield* call(() => client.close());
 }
 
 function projectedMessage(message: ReactChatUIMessage): ReactMessageHandle {
