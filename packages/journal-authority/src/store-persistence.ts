@@ -99,7 +99,9 @@ export function decodeExecutionControl(value: Uint8Array): ExecutionControl {
 export function decodeAuthorityControl(value: StoredAuthorityRecord): ExecutionControl {
   const control = decodeExecutionControl(value.value);
   if (control.controlRevision !== value.revision || control.ownerFence !== value.fence) {
-    return invalid(`Execution control ${control.executionId} disagrees with its authority envelope`);
+    return invalid(
+      `Execution control ${control.executionId} disagrees with its authority envelope`,
+    );
   }
   return control;
 }
@@ -221,7 +223,10 @@ function encodeBase64(bytes: Uint8Array): string {
 }
 
 function decodeBase64(value: string): Uint8Array {
-  if (value.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+  if (
+    value.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+  ) {
     return invalid("execution object binary body is not canonical base64");
   }
   const bytes: number[] = [];
@@ -320,11 +325,7 @@ export function decodeExecutionObject(value: Uint8Array): StoredExecutionObject 
 export const executionKeys = Object.freeze({
   control: (executionId: string) => durableKey(executionId),
   segment: (segmentId: string) => durableKey(segmentId),
-  taskRange: (
-    executionId: string,
-    taskId: string,
-    firstSequence: string,
-    lastSequence: string,
-  ) => durableKey(executionId, taskId, firstSequence, lastSequence),
+  taskRange: (executionId: string, taskId: string, firstSequence: string, lastSequence: string) =>
+    durableKey(executionId, taskId, firstSequence, lastSequence),
   object: (objectId: string) => durableKey(objectId),
 });

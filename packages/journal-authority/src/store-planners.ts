@@ -83,10 +83,7 @@ export function planExecutionCommit(input: {
   if (!Number.isSafeInteger(request.updatedAt) || request.updatedAt < 0) {
     throw new Error("execution updatedAt must be a non-negative safe integer");
   }
-  for (const segment of [
-    ...(request.journalSegments ?? []),
-    ...(request.replaySegments ?? []),
-  ]) {
+  for (const segment of [...(request.journalSegments ?? []), ...(request.replaySegments ?? [])]) {
     if (segment.executionId !== request.executionId) {
       throw new Error("private segment is outside the committed execution");
     }

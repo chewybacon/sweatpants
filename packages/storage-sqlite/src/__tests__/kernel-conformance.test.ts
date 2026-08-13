@@ -1,15 +1,6 @@
-import {
-  DurableCollections,
-  durableKey,
-} from "@sweatpants/durable-storage-kernel";
-import {
-  encodeCommandReceipt,
-  encodeConversationHead,
-} from "@sweatpants/history-store";
-import {
-  encodeExecutionControl,
-  encodeExecutionObject,
-} from "@sweatpants/journal-authority";
+import { DurableCollections, durableKey } from "@sweatpants/durable-storage-kernel";
+import { encodeCommandReceipt, encodeConversationHead } from "@sweatpants/history-store";
+import { encodeExecutionControl, encodeExecutionObject } from "@sweatpants/journal-authority";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,7 +18,9 @@ async function databasePath(): Promise<string> {
 }
 
 afterEach(async () => {
-  await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  await Promise.all(
+    directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
 });
 
 const control = {

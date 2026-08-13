@@ -941,7 +941,26 @@ class ChatClientController<
       this.compactor.reset();
       this.manualMessages = null;
       this.publish({ connectionStatus: "connected" });
-      const terminal = yield* this.consumeStream(stream, false);
+      let terminal = yield* this.consumeStream(stream, false);
+      if (terminal === null) {
+        // An incomplete response-session replay can contain a valid snapshot
+        // without the terminal frame that proves conversation authority is
+        // ready. Discard its cursor and perform one authoritative reload before
+        // exposing an idle composer.
+        const restarted = yield* ChatTransportPort.api.operations.reconnectToStream(
+          {
+            clientId: this.id,
+            threadId: this.threadId,
+            restart: true,
+          },
+          signal,
+        );
+        if (restarted !== null) {
+          this.compactor.reset();
+          this.manualMessages = null;
+          terminal = yield* this.consumeStream(restarted, false);
+        }
+      }
       const parked =
         terminal?.type === EventType.RUN_FINISHED && terminal.outcome?.type === "interrupt";
       yield* this.flushPublication(

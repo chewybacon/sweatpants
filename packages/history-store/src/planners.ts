@@ -131,7 +131,8 @@ export function planHeadCommit(input: {
   if (
     current === null
       ? input.expectedRevision !== null || input.expectedOwnerEpoch !== null
-      : current.revision !== input.expectedRevision || current.ownerEpoch !== input.expectedOwnerEpoch
+      : current.revision !== input.expectedRevision ||
+        current.ownerEpoch !== input.expectedOwnerEpoch
   ) {
     return { kind: "complete", result: { status: "head_conflict", current } };
   }

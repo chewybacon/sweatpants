@@ -90,14 +90,19 @@ export function validateMutationStructure(mutation: DurableMutation): void {
   if (mutation.authority) {
     validateName(mutation.authority.name, names);
     if (!isAuthorityCollection(mutation.authority.collection)) {
-      throw new DurableMutationInvalid(`Unknown authority collection ${mutation.authority.collection}`);
+      throw new DurableMutationInvalid(
+        `Unknown authority collection ${mutation.authority.collection}`,
+      );
     }
     decodeDurableKey(mutation.authority.key);
     parseCounter(mutation.authority.next.revision, "next revision");
     if (mutation.authority.expected.revision !== null) {
       parseCounter(mutation.authority.expected.revision, "expected revision");
     }
-    if (mutation.authority.expected.fence !== undefined && mutation.authority.expected.fence !== null) {
+    if (
+      mutation.authority.expected.fence !== undefined &&
+      mutation.authority.expected.fence !== null
+    ) {
       parseCounter(mutation.authority.expected.fence, "expected fence");
     }
     if (mutation.authority.next.fence !== undefined && mutation.authority.next.fence !== null) {
@@ -114,7 +119,9 @@ export function validateMutationStructure(mutation: DurableMutation): void {
   }
 
   if (!mutation.claim && mutation.ensures.length === 0 && !mutation.authority) {
-    throw new DurableMutationInvalid("Mutation must contain a claim, ensure, or authority replacement");
+    throw new DurableMutationInvalid(
+      "Mutation must contain a claim, ensure, or authority replacement",
+    );
   }
   if (bytes > DURABLE_MUTATION_MAX_BYTES) {
     throw new DurableMutationInvalid(
@@ -148,7 +155,9 @@ export function authorityMismatch(
   }
   const nextRevision = parseCounter(replacement.next.revision, "next revision");
   if (nextRevision !== parseCounter(current.revision, "current revision") + 1n) {
-    throw new DurableMutationInvalid("Next authority revision must increment current revision by one");
+    throw new DurableMutationInvalid(
+      "Next authority revision must increment current revision by one",
+    );
   }
   const nextFence = replacement.next.fence;
   if (nextFence !== undefined && nextFence !== null && current.fence !== null) {

@@ -152,6 +152,8 @@ async function runHookProjection(binding: Binding): Promise<void> {
       expect(completedConfirmation.id).toBe(confirmation.id);
 
       const final = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      const awaitingFinal = yield* ui.snapshot();
+      expect(["submitted", "streaming"]).toContain(awaitingFinal.status);
       const finalRun = s.agui.mark();
       const serialized = JSON.stringify(final.body.input);
       expect(serialized).toContain("react-booking-call-1");
@@ -250,6 +252,8 @@ async function runRemountProjection(binding: Binding): Promise<void> {
       yield* resumedConfirmation.respond({ confirmed: true });
 
       const final = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      const awaitingFinal = yield* resumedUi.snapshot();
+      expect(["submitted", "streaming"]).toContain(awaitingFinal.status);
       const finalRun = s.agui.mark();
       expect(JSON.stringify(final.body.input)).toContain("FL-REACT-2");
       yield* final.respond.text("Remounted React session completed.");
@@ -355,6 +359,8 @@ async function runCompletedSuccessor(binding: Binding): Promise<void> {
       });
       yield* confirmation.respond({ confirmed: true });
       const final = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      const awaitingFinal = yield* ui.snapshot();
+      expect(["submitted", "streaming"]).toContain(awaitingFinal.status);
       yield* final.respond.text("First booking completed.");
       yield* ui.message({ role: "assistant", containing: "First booking completed" });
       yield* ui.settled();
