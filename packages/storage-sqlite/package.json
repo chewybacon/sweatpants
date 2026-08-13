@@ -107,6 +107,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@sweatpants/durable-storage-kernel": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/history-store": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",

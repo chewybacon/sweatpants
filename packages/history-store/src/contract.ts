@@ -85,6 +85,26 @@ export type HeadCommitResult =
   | { readonly status: "committed"; readonly head: ConversationHead }
   | { readonly status: "head_conflict"; readonly current: ConversationHead | null };
 
+export interface CommitConversationRequest {
+  readonly conversationId: string;
+  readonly expectedRevision: DurableCounter | null;
+  readonly expectedOwnerEpoch: DurableCounter | null;
+  readonly proposal: ConversationHeadProposal;
+  readonly publicArchiveSegments?: readonly StoredPublicArchiveSegment[];
+  readonly checkpoint?: StoredCheckpoint;
+  readonly terminalHistorySegment?: StoredTerminalSegment;
+  readonly updatedAt?: Milliseconds;
+}
+
+export type CommitConversationResult =
+  | {
+      readonly status: "committed";
+      readonly head: ConversationHead;
+      readonly checkpoint?: CheckpointPointer;
+      readonly terminalHistory?: HistoryPointer;
+    }
+  | { readonly status: "head_conflict"; readonly current: ConversationHead | null };
+
 export interface StoredCheckpoint {
   readonly checkpointId: string;
   readonly conversationId: string;
@@ -181,16 +201,21 @@ export interface ConversationStore {
     expectedOwnerEpoch: DurableCounter | null,
     proposal: ConversationHeadProposal,
   ): Operation<HeadCommitResult>;
+  /** Atomically ensures bounded side records and replaces conversation authority. */
+  commitConversation(request: CommitConversationRequest): Operation<CommitConversationResult>;
   admitCommand(request: CommandAdmissionRequest): Operation<CommandAdmissionResult>;
   getCommandReceipt(conversationId: string, commandId: string): Operation<CommandReceipt | null>;
+  /** Optional immutable staging; commitConversation re-ensures selected content. */
   putCheckpoint(checkpoint: StoredCheckpoint): Operation<CheckpointPointer>;
   getCheckpoint(pointer: CheckpointPointer): Operation<StoredCheckpoint | null>;
+  /** Optional immutable staging; a checkpoint frontier selects authoritative content. */
   putPublicArchiveSegment(segment: StoredPublicArchiveSegment): Operation<PublicArchivePointer>;
   readPublicArchivePage(
     conversationId: string,
     cursor?: string,
     limit?: number,
   ): Operation<PublicArchivePage>;
+  /** Optional immutable staging; a conversation head selects authoritative content. */
   putTerminalHistorySegment(segment: StoredTerminalSegment): Operation<HistoryPointer>;
   readTerminalHistoryPage(
     conversationId: string,

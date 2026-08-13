@@ -5,6 +5,8 @@ import type {
   CommandAdmissionRequest,
   CommandAdmissionResult,
   CommandReceipt,
+  CommitConversationRequest,
+  CommitConversationResult,
   ConversationHead,
   ConversationStore,
   DurableCounter,
@@ -42,6 +44,11 @@ export const ConversationStorePort = definePort<ConversationStore>("conversation
     _expectedOwnerEpoch: DurableCounter | null,
     _proposal: ConversationHeadProposal,
   ): Operation<HeadCommitResult> {
+    return unavailable();
+  },
+  *commitConversation(
+    _request: CommitConversationRequest,
+  ): Operation<CommitConversationResult> {
     return unavailable();
   },
   *admitCommand(_request: CommandAdmissionRequest): Operation<CommandAdmissionResult> {

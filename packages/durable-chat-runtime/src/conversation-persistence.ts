@@ -14,6 +14,8 @@ import type {
   ConversationStore,
   PublicArchivePointer,
   StoredCheckpoint,
+  StoredPublicArchiveSegment,
+  StoredTerminalSegment,
 } from "@sweatpants/history-store/contract";
 import type { Operation } from "effection";
 
@@ -39,6 +41,7 @@ export interface ConversationCheckpointRequest {
     readonly terminalHistory?: ConversationHead["terminalHistory"];
   };
   readonly createdAt: number;
+  readonly terminalHistorySegment?: StoredTerminalSegment;
   readonly targets?: CheckpointPublicationTargets;
   /** Expected authority identity for an owner-authored publication. */
   readonly expectedRevision?: string;
@@ -54,25 +57,29 @@ export interface ConversationCheckpointResult {
 }
 
 function counter(value: string): bigint {
-  if (!/^\d+$/.test(value)) throw new Error(`Invalid durable counter ${value}`);
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`Invalid durable counter ${value}`);
+  }
   return BigInt(value);
 }
 
-function* writeArchiveSegments(
-  store: ConversationStore,
+function planArchiveSegments(
   conversationId: string,
   previous: PublicArchivePointer | null,
   roots: readonly Json[],
   createdAt: number,
   targets: CheckpointPublicationTargets,
-): Operation<PublicArchivePointer | null> {
-  if (roots.length === 0) return previous;
+): {
+  readonly archiveHead: PublicArchivePointer | null;
+  readonly segments: readonly StoredPublicArchiveSegment[];
+} {
   let archiveHead = previous;
   let nextPosition = archiveHead ? counter(archiveHead.lastPosition) + 1n : 0n;
+  const segments: StoredPublicArchiveSegment[] = [];
   for (const batch of segmentValues(roots, targets.segment)) {
     const lastPosition = nextPosition + BigInt(Math.max(0, batch.entries.length - 1));
     const encoded = canonicalSnapshot(batch.entries);
-    archiveHead = yield* store.putPublicArchiveSegment({
+    const segment: StoredPublicArchiveSegment = {
       segmentId: stableTupleHash([
         conversationId,
         nextPosition.toString(10),
@@ -87,10 +94,12 @@ function* writeArchiveSegments(
       contentHash: encoded.sha,
       encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
       createdAt,
-    });
+    };
+    segments.push(segment);
+    archiveHead = { segmentId: segment.segmentId, lastPosition: segment.lastPosition };
     nextPosition = lastPosition + 1n;
   }
-  return archiveHead;
+  return { archiveHead, segments };
 }
 
 /** Persists only the new roots, spilling previously hot sealed roots into archive segments. */
@@ -100,7 +109,9 @@ export function* persistConversationCheckpoint(
 ): Operation<ConversationCheckpointResult> {
   const targets = request.targets ?? DEFAULT_CHECKPOINT_TARGETS;
   const head = yield* store.loadHead(request.conversationId);
-  if (!head) throw new Error(`Conversation ${request.conversationId} has no admitted head`);
+  if (!head) {
+    throw new Error(`Conversation ${request.conversationId} has no admitted head`);
+  }
   if (
     (request.expectedRevision !== undefined && head.revision !== request.expectedRevision) ||
     (request.expectedOwnerEpoch !== undefined && head.ownerEpoch !== request.expectedOwnerEpoch) ||
@@ -129,8 +140,7 @@ export function* persistConversationCheckpoint(
   }
   const { spilled, hotRoots } = spillUntilWithinTarget(combined, sealedRootCount, targets.spill);
   const hotSealedRootCount = Math.max(0, sealedRootCount - spilled.length);
-  const archiveHead = yield* writeArchiveSegments(
-    store,
+  const { archiveHead, segments: publicArchiveSegments } = planArchiveSegments(
     request.conversationId,
     previousCheckpoint?.archiveHead ?? null,
     spilled,
@@ -152,19 +162,24 @@ export function* persistConversationCheckpoint(
     encodedBytes: new TextEncoder().encode(payload.canonical).byteLength,
     createdAt: request.createdAt,
   };
-  const pointer = yield* store.putCheckpoint(checkpoint);
   const proposal: ConversationHeadProposal = {
     ...request.proposal,
-    checkpoint: pointer,
+    checkpoint: { checkpointId: checkpoint.checkpointId },
     terminalHistory: request.proposal.terminalHistory ?? head.terminalHistory,
     ownerTransition: request.proposal.ownerTransition ?? { kind: "preserve" },
   };
-  const committed = yield* store.compareAndSwapHead(
-    request.conversationId,
-    request.expectedRevision ?? head.revision,
-    request.expectedOwnerEpoch ?? head.ownerEpoch,
+  const committed = yield* store.commitConversation({
+    conversationId: request.conversationId,
+    expectedRevision: request.expectedRevision ?? head.revision,
+    expectedOwnerEpoch: request.expectedOwnerEpoch ?? head.ownerEpoch,
     proposal,
-  );
+    publicArchiveSegments,
+    checkpoint,
+    ...(request.terminalHistorySegment
+      ? { terminalHistorySegment: request.terminalHistorySegment }
+      : {}),
+    updatedAt: request.createdAt,
+  });
   if (committed.status !== "committed") {
     throw new ConversationCheckpointConflictError(
       `Conversation ${request.conversationId} checkpoint head CAS lost`,
@@ -180,7 +195,9 @@ export function* hydratePublicRoots(
   checkpoint: StoredCheckpoint,
 ): Operation<readonly Json[]> {
   const hotRoots = checkpointHotRoots(checkpoint.payload);
-  if (checkpoint.archiveHead === null) return hotRoots;
+  if (checkpoint.archiveHead === null) {
+    return hotRoots;
+  }
   const needed = counter(checkpoint.archiveThroughPosition) + 1n;
   const archived: Json[] = [];
   let cursor: string | undefined;
@@ -189,7 +206,9 @@ export function* hydratePublicRoots(
     const limit = remaining > 100n ? 100 : Number(remaining);
     const page = yield* store.readPublicArchivePage(conversationId, cursor, limit);
     archived.push(...page.roots);
-    if (page.nextCursor === null) break;
+    if (page.nextCursor === null) {
+      break;
+    }
     cursor = page.nextCursor;
   }
   return [...archived.slice(0, Number(needed)), ...hotRoots];

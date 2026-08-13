@@ -52,6 +52,28 @@
                 "default": "./dist/contract.js"
             },
             "default": "./src/contract.ts"
+        },
+        "./persistence": {
+            "development": {
+                "import": "./src/persistence.ts",
+                "types": "./src/persistence.ts"
+            },
+            "import": {
+                "types": "./dist/persistence.d.ts",
+                "default": "./dist/persistence.js"
+            },
+            "default": "./src/persistence.ts"
+        },
+        "./repository": {
+            "development": {
+                "import": "./src/repository.ts",
+                "types": "./src/repository.ts"
+            },
+            "import": {
+                "types": "./dist/repository.d.ts",
+                "default": "./dist/repository.js"
+            },
+            "default": "./src/repository.ts"
         }
     },
     "scripts": {
@@ -60,6 +82,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@sweatpants/durable-storage-kernel": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "effection": "catalog:"
     },

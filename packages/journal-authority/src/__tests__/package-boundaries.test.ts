@@ -10,13 +10,14 @@ describe("journal-authority package boundaries", () => {
       dependencies?: Record<string, string>;
     };
     // Journal Authority may depend on domain contracts, portable signing
-    // primitives, and private Zod schemas. No Host, tool-runtime, or Redis
-    // dependency is permitted.
+    // primitives, the domain-agnostic durable storage kernel, and private Zod
+    // schemas. No Host, tool-runtime, or Redis dependency is permitted.
     expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual([
       "@noble/hashes",
       "@standard-schema/spec",
       "@sweatpants/durable-effects",
       "@sweatpants/durable-execution",
+      "@sweatpants/durable-storage-kernel",
       "@sweatpants/foundation",
       "effection",
       "zod",

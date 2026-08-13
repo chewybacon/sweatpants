@@ -69,7 +69,9 @@ export interface ExecutionStore {
   commitExecution(request: CommitExecutionRequest): Operation<CommitExecutionResult>;
   putObject(object: StoredExecutionObject): Operation<ExecutionObjectPointer>;
   getObject(pointer: ExecutionObjectPointer): Operation<StoredExecutionObject | null>;
+  /** Optional staging; only fenced control publication makes the segment authoritative. */
   appendJournalSegment(segment: StoredPrivateSegment): Operation<PrivateSegmentPointer>;
+  /** Optional staging; only fenced control publication makes the segment authoritative. */
   appendReplaySegment(segment: StoredPrivateSegment): Operation<PrivateSegmentPointer>;
   readJournal(task: {
     readonly executionId: string;

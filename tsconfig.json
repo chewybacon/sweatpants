@@ -9,6 +9,9 @@
             "path": "./packages/foundation"
         },
         {
+            "path": "./packages/durable-storage-kernel"
+        },
+        {
             "path": "./packages/storage-sqlite"
         },
         {

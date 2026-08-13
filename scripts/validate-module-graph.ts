@@ -34,15 +34,20 @@ const baselinePath = join(repoRoot, "scripts", "module-graph-baseline.json");
 /** Consumer -> allowed workspace dependencies for the final target graph. */
 const targetEdges: Readonly<Record<string, readonly string[]>> = {
   "@sweatpants/foundation": [],
+  "@sweatpants/durable-storage-kernel": ["@sweatpants/foundation"],
   "@sweatpants/chat-contract": ["@sweatpants/foundation"],
   "@sweatpants/durable-effects": ["@sweatpants/foundation"],
   "@sweatpants/durable-execution": ["@sweatpants/durable-effects", "@sweatpants/foundation"],
   "@sweatpants/journal-authority": [
     "@sweatpants/durable-execution",
     "@sweatpants/durable-effects",
+    "@sweatpants/durable-storage-kernel",
     "@sweatpants/foundation",
   ],
-  "@sweatpants/history-store": ["@sweatpants/foundation"],
+  "@sweatpants/history-store": [
+    "@sweatpants/durable-storage-kernel",
+    "@sweatpants/foundation",
+  ],
   "@sweatpants/model-provider": ["@sweatpants/chat-contract", "@sweatpants/foundation"],
   "@sweatpants/model-sampling": [
     "@sweatpants/durable-effects",

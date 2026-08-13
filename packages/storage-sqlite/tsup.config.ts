@@ -6,6 +6,7 @@ export default defineConfig({
     contract: "src/contract.ts",
     schema: "src/schema.ts",
     repository: "src/repository.ts",
+    "sqlite-kernel": "src/sqlite-kernel.ts",
     "better-sqlite3": "src/better-sqlite3.ts",
     migrations: "src/migrations.ts",
     inspection: "src/inspection.ts",

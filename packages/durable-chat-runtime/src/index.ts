@@ -57,7 +57,9 @@ export function publicationKey(capsule: TerminalCapsule): string {
 }
 
 function counter(value: string): bigint {
-  if (!/^\d+$/.test(value)) throw new Error(`Invalid durable counter ${value}`);
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`Invalid durable counter ${value}`);
+  }
   return BigInt(value);
 }
 
@@ -100,9 +102,9 @@ function idleProposal(head: ConversationHead | null): ConversationHeadProposal {
 }
 
 /**
- * Publishes one terminal Turn: immutable terminal content is written before
- * the ConversationStore head CAS, so an interrupted publication is resumable
- * and a repeated publication cannot duplicate a Turn.
+ * Publishes one terminal Turn through a bounded conversation commit. A staged
+ * segment from an older interrupted attempt remains reusable, but staging is
+ * not required for correctness.
  */
 export function* publishTurn<Entry extends Json = Json>(
   request: PublishTurnRequest<Entry>,
@@ -127,7 +129,7 @@ export function* publishTurn<Entry extends Json = Json>(
   assertAcceptedProjectionFacts(capsule, facts);
   const entries = request.project(facts);
   const segment = terminalSegment(capsule, previous, entries);
-  const pointer = yield* conversation.putTerminalHistorySegment(segment);
+  const pointer = { segmentId: segment.segmentId, lastPosition: segment.lastPosition };
   const publicRoots = facts.flatMap((fact) => {
     if (!fact.payload || typeof fact.payload !== "object" || Array.isArray(fact.payload)) {
       return [];
@@ -157,6 +159,7 @@ export function* publishTurn<Entry extends Json = Json>(
         ownerTransition: { kind: "clear" },
       },
       createdAt: capsule.completedAt,
+      terminalHistorySegment: segment,
       targets: request.targets ?? DEFAULT_CHECKPOINT_TARGETS,
       expectedRevision: head.revision,
       expectedOwnerEpoch: head.ownerEpoch,
@@ -229,8 +232,11 @@ export function* beginTurnPublication(
         head.ownerEpoch,
         idleProposal(head),
       );
-      if (repaired.status === "committed") head = repaired.head;
-      else if (repaired.current) head = repaired.current;
+      if (repaired.status === "committed") {
+        head = repaired.head;
+      } else if (repaired.current) {
+        head = repaired.current;
+      }
     } else if (
       request.admission === "join-active" &&
       existing.format !== "sweatpants.terminal-execution.v1"
@@ -378,7 +384,9 @@ export function* recoverTerminalPublication<Entry extends Json = Json>(
 ): Operation<RecoveredTurnPublication | null> {
   const head = yield* ConversationStoreApi.operations.loadHead(sessionId);
   const executionId = head?.activeExecutionId ?? head?.latestCompletedExecutionId;
-  if (!executionId) return null;
+  if (!executionId) {
+    return null;
+  }
   const record = yield* TurnJournalAuthority.operations.read(executionId);
   if (
     !record ||
@@ -413,7 +421,9 @@ function* publishAuthorityCapsule<Entry extends Json>(
         yield* TurnJournalAuthority.operations.markPublished(capsule.executionId);
       },
     });
-    if (result.status !== "conflict") return result;
+    if (result.status !== "conflict") {
+      return result;
+    }
   }
   throw new CrankError(
     "cas_contention",

@@ -2,7 +2,8 @@ import Database from "better-sqlite3";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { call, type Operation } from "effection";
-import { createSqliteRepositories, type SqliteStorage } from "./repository.ts";
+import type { DurableKernel } from "@sweatpants/durable-storage-kernel";
+import { createSqliteStorageComposition, type SqliteStorage } from "./repository.ts";
 import { StorageError } from "./contract.ts";
 import { sqliteMigrationFolder } from "./migrations.ts";
 import { sqliteSchema, type SqliteSchema } from "./schema.ts";
@@ -28,11 +29,16 @@ export interface BetterSqliteStorageHandle {
   close(): Operation<void>;
 }
 
+export interface BetterSqliteStorageTestHandle extends BetterSqliteStorageHandle {
+  /** Test-only access for backend kernel conformance. */
+  readonly kernel: DurableKernel;
+}
+
 function* openBetterSqliteStorageInternal(
   path: string,
   options: BetterSqliteStorageOptions,
   faultInjection?: SqliteFaultPoint,
-): Operation<BetterSqliteStorageHandle> {
+): Operation<BetterSqliteStorageTestHandle> {
   const client = new Database(path);
   client.defaultSafeIntegers(true);
   client.pragma("foreign_keys = ON");
@@ -51,7 +57,7 @@ function* openBetterSqliteStorageInternal(
   // all callbacks before issuing BEGIN IMMEDIATE on its one client.
   let writeQueue = Promise.resolve();
   let armedFault = faultInjection;
-  const storage = createSqliteRepositories({
+  const composition = createSqliteStorageComposition({
     database,
     faultInjection: (point) => {
       if (armedFault === point) {
@@ -104,7 +110,8 @@ function* openBetterSqliteStorageInternal(
   });
 
   return {
-    storage,
+    storage: composition.storage,
+    kernel: composition.kernel,
     database,
     *close(): Operation<void> {
       client.close();
@@ -116,13 +123,20 @@ export function* openBetterSqliteStorage(
   path: string,
   options: BetterSqliteStorageOptions = {},
 ): Operation<BetterSqliteStorageHandle> {
-  return yield* openBetterSqliteStorageInternal(path, options);
+  const handle = yield* openBetterSqliteStorageInternal(path, options);
+  return {
+    storage: handle.storage,
+    database: handle.database,
+    *close(): Operation<void> {
+      yield* handle.close();
+    },
+  };
 }
 
 /** Test-only fault-injection composition. Not exported from the package root. */
 export function* openBetterSqliteStorageForTest(
   path: string,
   options: BetterSqliteStorageTestOptions = {},
-): Operation<BetterSqliteStorageHandle> {
+): Operation<BetterSqliteStorageTestHandle> {
   return yield* openBetterSqliteStorageInternal(path, options, options.faultInjection);
 }

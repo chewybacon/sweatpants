@@ -1,3 +1,4 @@
+import { canonicalSnapshot } from "@sweatpants/foundation";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { ConversationStoreError, type ConversationHeadProposal } from "./contract.ts";
@@ -19,6 +20,7 @@ const idle: ConversationHeadProposal = {
 describe("memory conversation store", () => {
   it("writes immutable terminal content before a head CAS and pages by cursor", async () => {
     const store = createMemoryConversationStore();
+    const contentHash = canonicalSnapshot([{ turn: "one" }, { turn: "two" }]).sha;
     await run(function* () {
       const initial = yield* store.compareAndSwapHead("conversation", null, null, idle);
       expect(initial.status).toBe("committed");
@@ -32,7 +34,7 @@ describe("memory conversation store", () => {
         firstPosition: "0",
         lastPosition: "1",
         entries: [{ turn: "one" }, { turn: "two" }],
-        contentHash: "hash-1",
+        contentHash,
         createdAt: 1,
       });
       expect(
@@ -46,7 +48,7 @@ describe("memory conversation store", () => {
           firstPosition: "0",
           lastPosition: "1",
           entries: [{ turn: "one" }, { turn: "two" }],
-          contentHash: "hash-1",
+          contentHash,
           createdAt: 1,
         }),
       ).toEqual(pointer);
