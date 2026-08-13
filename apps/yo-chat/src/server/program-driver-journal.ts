@@ -49,28 +49,36 @@ export function createYoChatExecutionStore(): ExecutionStore {
 
   return {
     *loadControl(executionId) {
-      return yield* (yield* store()).loadControl(executionId);
+      const execution = yield* store();
+      return yield* execution.loadControl(executionId);
     },
     *commitExecution(request) {
-      return yield* (yield* store()).commitExecution(request);
+      const execution = yield* store();
+      return yield* execution.commitExecution(request);
     },
     *putObject(object) {
-      return yield* (yield* store()).putObject(object);
+      const execution = yield* store();
+      return yield* execution.putObject(object);
     },
     *getObject(pointer) {
-      return yield* (yield* store()).getObject(pointer);
+      const execution = yield* store();
+      return yield* execution.getObject(pointer);
     },
     *appendJournalSegment(segment) {
-      return yield* (yield* store()).appendJournalSegment(segment);
+      const execution = yield* store();
+      return yield* execution.appendJournalSegment(segment);
     },
     *appendReplaySegment(segment) {
-      return yield* (yield* store()).appendReplaySegment(segment);
+      const execution = yield* store();
+      return yield* execution.appendReplaySegment(segment);
     },
     *readJournal(task) {
-      return yield* (yield* store()).readJournal(task);
+      const execution = yield* store();
+      return yield* execution.readJournal(task);
     },
     *readReplay(task) {
-      return yield* (yield* store()).readReplay(task);
+      const execution = yield* store();
+      return yield* execution.readReplay(task);
     },
   };
 }

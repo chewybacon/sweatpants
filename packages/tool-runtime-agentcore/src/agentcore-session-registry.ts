@@ -173,7 +173,8 @@ export function createAgentCoreToolSessionRegistry(
       }
       const stream = yield* runtimeClient.drainEvents(current, current.lastRuntimeEventSeq ?? 0);
       const drained = yield* ingestStream(current, stream);
-      return yield* ingest(drained, yield* runtimeClient.inspect(drained));
+      const inspected = yield* runtimeClient.inspect(drained);
+      return yield* ingest(drained, inspected);
     }
 
     return handle;

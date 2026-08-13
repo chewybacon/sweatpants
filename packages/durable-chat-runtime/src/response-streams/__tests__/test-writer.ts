@@ -6,13 +6,16 @@ export function* testWriter<T>(buffer: TokenBuffer<T>): Operation<TokenBufferWri
 }
 
 export function* appendTestTokens<T>(buffer: TokenBuffer<T>, tokens: T[]): Operation<number> {
-  return yield* (yield* testWriter(buffer)).append(tokens);
+  const writer = yield* testWriter(buffer);
+  return yield* writer.append(tokens);
 }
 
 export function* completeTestBuffer<T>(buffer: TokenBuffer<T>): Operation<void> {
-  yield* (yield* testWriter(buffer)).complete();
+  const writer = yield* testWriter(buffer);
+  yield* writer.complete();
 }
 
 export function* failTestBuffer<T>(buffer: TokenBuffer<T>, error: Error): Operation<void> {
-  yield* (yield* testWriter(buffer)).fail(error);
+  const writer = yield* testWriter(buffer);
+  yield* writer.fail(error);
 }

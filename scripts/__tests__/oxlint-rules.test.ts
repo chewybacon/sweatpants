@@ -33,6 +33,7 @@ function lint(source: string, filename = "fixture.ts"): string {
       rules: {
         "sweatpants/documented-scope-crossing": "error",
         "sweatpants/documented-weld": "error",
+        "sweatpants/no-nested-yield": "error",
       },
     }),
   );
@@ -128,6 +129,29 @@ describe("sweatpants/documented-scope-crossing", () => {
       declare function useScope(): unknown;
       export function* build() {
         return ModelProviderPort.bind(yield* useScope());
+      }
+    `);
+    expect(output).toBe("");
+  });
+});
+
+describe("sweatpants/no-nested-yield", () => {
+  it("reports an operation nested inside another yield expression", () => {
+    const output = lint(`
+      declare function driver(): Generator<unknown, { load(): Generator<unknown, string> }>;
+      export function* load() {
+        return yield* (yield* driver()).load();
+      }
+    `);
+    expect(output).toContain("no-nested-yield");
+  });
+
+  it("accepts a named effectful intermediate value", () => {
+    const output = lint(`
+      declare function driver(): Generator<unknown, { load(): Generator<unknown, string> }>;
+      export function* load() {
+        const selected = yield* driver();
+        return yield* selected.load();
       }
     `);
     expect(output).toBe("");

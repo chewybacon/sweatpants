@@ -176,7 +176,8 @@ export function createAgentCoreToolSession(
         response.event.type === "cancelled"
       ) {
         yield* stores.events.markTerminal(sessionId);
-        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: yield* getHandle() });
+        const terminalHandle = yield* getHandle();
+        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: terminalHandle });
       }
       return;
     }
@@ -206,7 +207,8 @@ export function createAgentCoreToolSession(
         yield* markOrphan(
           `AgentCore runtime session did not contain tool session ${response.toolSessionId}`,
         );
-        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: yield* getHandle() });
+        const orphaned = yield* getHandle();
+        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: orphaned });
       }
       return;
     }
@@ -242,7 +244,8 @@ export function createAgentCoreToolSession(
     }
     const stream = yield* runtimeClient.drainEvents(handle, handle.lastRuntimeEventSeq ?? 0);
     yield* ingestStream(stream);
-    const inspected = yield* runtimeClient.inspect(yield* getHandle());
+    const current = yield* getHandle();
+    const inspected = yield* runtimeClient.inspect(current);
     yield* ingestResponse(inspected);
   }
 

@@ -44,10 +44,12 @@ function* driver(): Operation<ExecutionStoreC> {
 
 export const StoreApiC = createApi("style-c-execution-store", {
   *load(executionId: string): Operation<ExecutionRecord | null> {
-    return yield* (yield* driver()).load(executionId);
+    const selected = yield* driver();
+    return yield* selected.load(executionId);
   },
   *commit(record: ExecutionRecord, expectedRevision: number | null): Operation<CommitResult> {
-    return yield* (yield* driver()).commit(record, expectedRevision);
+    const selected = yield* driver();
+    return yield* selected.commit(record, expectedRevision);
   },
 });
 

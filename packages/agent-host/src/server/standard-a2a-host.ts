@@ -669,8 +669,9 @@ function bindStandardHost(
           effects,
         });
       });
+      const acceptedJournal = yield* readJournal(journal, sessionId);
       return yield* hostedProjection(
-        yield* readJournal(journal, sessionId),
+        acceptedJournal,
         taskId,
         contextId,
         options.limits.maxHistoryLength,
@@ -901,8 +902,9 @@ function bindStandardHost(
           });
         });
       }
+      const acceptedJournal = yield* readJournal(journal, sessionId);
       return yield* hostedProjection(
-        yield* readJournal(journal, sessionId),
+        acceptedJournal,
         taskId,
         contextId,
         options.limits.maxHistoryLength,
@@ -946,8 +948,9 @@ function bindStandardHost(
         effects,
       });
     });
+    const acceptedJournal = yield* readJournal(journal, sessionId);
     return yield* hostedProjection(
-      yield* readJournal(journal, sessionId),
+      acceptedJournal,
       taskId,
       contextId,
       options.limits.maxHistoryLength,

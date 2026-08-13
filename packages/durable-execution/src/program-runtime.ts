@@ -25,7 +25,8 @@ export const ProgramPeer = createApi("durable-execution:program-peer", {
     return yield* driver.attach(request);
   },
   *step(attachment: ProgramAttachment, command: ProgramCommand): Operation<ProgramStep> {
-    return yield* (yield* driverFor(attachment.driverKind)).step(attachment, command);
+    const driver = yield* driverFor(attachment.driverKind);
+    return yield* driver.step(attachment, command);
   },
   *restore(request: ProgramRestoreRequest) {
     const driver = yield* driverFor(driverKind(request.attach.route));
@@ -35,7 +36,8 @@ export const ProgramPeer = createApi("durable-execution:program-peer", {
     return yield* driver.restore(request);
   },
   *shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void> {
-    yield* (yield* driverFor(attachment.driverKind)).shutdown(attachment, reason);
+    const driver = yield* driverFor(attachment.driverKind);
+    yield* driver.shutdown(attachment, reason);
   },
   *manifest(route: ProgramRoute, program: PinnedProgram): Operation<DurableProgramManifest> {
     const driver = yield* driverFor(driverKind(route));

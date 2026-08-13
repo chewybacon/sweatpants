@@ -74,6 +74,7 @@
         "vitest/warn-todo": "warn",
         "sweatpants/layered-imports": "error",
         "sweatpants/documented-scope-crossing": "error",
+        "sweatpants/no-nested-yield": "error",
         "typescript/no-deprecated": "warn",
         "typescript/no-unsafe-type-assertion": "off",
         "typescript/no-floating-promises": "off",

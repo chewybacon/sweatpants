@@ -1144,7 +1144,8 @@ function* activationLeaseFencing(
 
   // A second host, unaware of the first, must be refused rather than given a
   // second lease. `busy` also has to carry usable backoff.
-  const competing = yield* (yield* open()).claimActivation({
+  const competitor = yield* open();
+  const competing = yield* competitor.claimActivation({
     sessionId,
     ownerId: "owner-b",
     leaseDurationMs: 30_000,
@@ -1181,7 +1182,8 @@ function* activationLeaseExpiry(
   // on the lease elapsing in authority time.
   clock.advance(30_001);
 
-  const reclaimed = yield* (yield* open()).claimActivation({
+  const replacement = yield* open();
+  const reclaimed = yield* replacement.claimActivation({
     sessionId,
     ownerId: "owner-b",
     leaseDurationMs: 30_000,
@@ -1227,7 +1229,8 @@ function* staleActivationEpoch(
   );
 
   clock.advance(30_001);
-  const reclaimed = yield* (yield* open()).claimActivation({
+  const replacement = yield* open();
+  const reclaimed = yield* replacement.claimActivation({
     sessionId,
     ownerId: "owner-b",
     leaseDurationMs: 30_000,

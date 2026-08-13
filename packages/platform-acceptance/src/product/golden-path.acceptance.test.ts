@@ -116,7 +116,8 @@ function createScriptedModelProvider(options: {
       });
     },
     *sample(request): Operation<ModelResponse> {
-      const subscription = yield* yield* this.stream(request);
+      const stream = yield* this.stream(request);
+      const subscription = yield* stream;
       while (true) {
         const next = yield* subscription.next();
         if (next.done) return next.value;
@@ -236,7 +237,8 @@ describe("product facade golden path", () => {
         }).stream(request);
       },
       *sample(request): Operation<ModelResponse> {
-        const subscription = yield* yield* this.stream(request);
+        const stream = yield* this.stream(request);
+        const subscription = yield* stream;
         while (true) {
           const next = yield* subscription.next();
           if (next.done) {

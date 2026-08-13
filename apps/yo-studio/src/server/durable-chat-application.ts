@@ -100,7 +100,8 @@ export function createStudioDurableChatApplication(options: {
     } else {
       yield* installRemoteWorkspaceFilesProvider({
         resolve: function* () {
-          return yield* resolveWorkspace(yield* useProgramExecution());
+          const execution = yield* useProgramExecution();
+          return yield* resolveWorkspace(execution);
         },
       });
     }
