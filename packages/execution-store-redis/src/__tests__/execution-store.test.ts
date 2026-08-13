@@ -1,31 +1,58 @@
-import { all, call, run, type Operation } from "effection";
+import { call, run } from "effection";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { canonicalSnapshot, sha256, sha256Bytes, type Json } from "@sweatpants/foundation";
 import type { RedisClientType } from "redis";
-import type { DurableReference, ExecutionTreeSnapshot } from "@sweatpants/durable-execution";
-
 import { createRedisExecutionStore } from "../execution-store.ts";
 import { cleanupRedisBackend, connectRedisBackend, type RedisBackend } from "./redis-backend.ts";
+import type {
+  CommitExecutionRequest,
+  StoredPrivateSegment,
+} from "@sweatpants/journal-authority/store";
 
 const keyPrefix = `test:${process.pid}:execution-store:`;
 let backend: RedisBackend;
 let client: RedisClientType;
 
-function record(executionId: string): ExecutionTreeSnapshot {
+function initial(executionId: string): CommitExecutionRequest {
   return {
-    format: "sweatpants.execution-tree.v1",
     executionId,
-    sessionId: `session:${executionId}`,
-    turnId: `turn:${executionId}`,
-    rootTaskId: "root",
-    rootProgram: { id: "program", version: "1", digest: "digest" },
-    tasks: [],
-    runnableTaskIds: [],
-    checkpoint: null,
-    unpublishedProjection: { throughSequence: 0, facts: null },
+    expectedControlRevision: null,
+    expectedOwnerFence: "0",
+    nextControl: {
+      executionId,
+      ownerFence: "0",
+      status: "active",
+      rootTaskId: "root",
+      stopGeneration: "0",
+      requestedDisposition: null,
+      control: { executionId },
+    },
+    updatedAt: 1,
   };
 }
 
-describe("Redis Execution Store v1", () => {
+function segment(
+  segmentId: string,
+  previous: StoredPrivateSegment["previous"],
+  entries: readonly Json[],
+): StoredPrivateSegment {
+  const encoded = canonicalSnapshot(entries);
+  const firstSequence = previous ? (BigInt(previous.lastSequence) + 1n).toString(10) : "1";
+  return {
+    segmentId,
+    executionId: "one",
+    taskId: "root",
+    previous,
+    firstSequence,
+    lastSequence: (BigInt(firstSequence) + BigInt(entries.length - 1)).toString(10),
+    entries,
+    contentHash: sha256(encoded.canonical),
+    encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
+    createdAt: 1,
+  };
+}
+
+describe("Redis Execution Store", () => {
   beforeAll(async () => {
     backend = await connectRedisBackend();
     client = backend.client;
@@ -39,125 +66,124 @@ describe("Redis Execution Store v1", () => {
     console.info(`[execution-store-redis] execution-store backend: ${backend.label}`);
   });
 
-  it("CAS-isolates executions and atomically stores private records", async () => {
+  it("CAS-isolates executions and atomically stores private segments", async () => {
     const store = createRedisExecutionStore(client, { keyPrefix });
     await run(function* () {
-      expect(
-        yield* store.commitExecution({
-          executionId: "one",
-          expectedRevision: null,
-          next: record("one"),
-          privateRecords: [{ secret: "one" }],
-        }),
-      ).toEqual({ status: "accepted", revision: 0 });
-      expect(
-        yield* store.commitExecution({
-          executionId: "two",
-          expectedRevision: null,
-          next: record("two"),
-          privateRecords: [{ secret: "two" }],
-        }),
-      ).toEqual({ status: "accepted", revision: 0 });
-      expect(
-        yield* store.commitExecution({
-          executionId: "one",
-          expectedRevision: null,
-          next: record("one"),
-          privateRecords: [],
-        }),
-      ).toEqual({ status: "conflict", actualRevision: 0 });
-      expect((yield* store.loadExecution("two"))?.record.executionId).toBe("two");
-    });
-
-    expect(await client.get(`${keyPrefix}execution:{one}:private:0`)).toBe('[{"secret":"one"}]');
-    expect(await client.get(`${keyPrefix}execution:{two}:private:0`)).toBe('[{"secret":"two"}]');
-  });
-
-  it("lets exactly one concurrent writer win one expected revision", async () => {
-    const store = createRedisExecutionStore(client, { keyPrefix });
-    await run(function* () {
-      expect(
-        yield* store.commitExecution({
-          executionId: "contended",
-          expectedRevision: null,
-          next: record("contended"),
-          privateRecords: [],
-        }),
-      ).toEqual({ status: "accepted", revision: 0 });
-
-      const results = yield* all([
-        store.commitExecution({
-          executionId: "contended",
-          expectedRevision: 0,
-          next: { ...record("contended"), turnId: "winner-a" },
-          privateRecords: [],
-        }),
-        store.commitExecution({
-          executionId: "contended",
-          expectedRevision: 0,
-          next: { ...record("contended"), turnId: "winner-b" },
-          privateRecords: [],
-        }),
-      ]);
-      expect(results.filter((result) => result.status === "accepted")).toHaveLength(1);
-      expect(results.filter((result) => result.status === "conflict")).toHaveLength(1);
-    });
-  });
-
-  it("round-trips content-addressed JSON and byte payloads", async () => {
-    const store = createRedisExecutionStore(client, { keyPrefix });
-    await run(function* () {
-      const json = yield* store.putPayload({ nested: [true, null, "value"] });
-      const jsonDuplicate = yield* store.putPayload({ nested: [true, null, "value"] });
-      expect(jsonDuplicate).toEqual(json);
-      expect(yield* store.getPayload(json)).toEqual({ nested: [true, null, "value"] });
-
-      const bytes = yield* store.putPayload(new Uint8Array([0, 1, 254, 255]));
-      expect(yield* store.getPayload(bytes)).toEqual(new Uint8Array([0, 1, 254, 255]));
-      expect(
-        yield* store.getPayload({
-          id: "payload:missing",
-          integrity: { algorithm: "sha256", value: "0".repeat(64) },
-        }),
-      ).toBeNull();
-    });
-  });
-
-  it("appends an immutable replay chain without rewriting prior objects", async () => {
-    const store = createRedisExecutionStore(client, { keyPrefix });
-    await run(function* () {
-      const first = yield* store.appendReplay({
-        executionId: "replay",
-        taskId: "root",
-        previous: null,
-        entries: [{ outcome: "first" }],
+      expect(yield* store.commitExecution(initial("one"))).toMatchObject({
+        status: "committed",
+        control: { controlRevision: "0" },
       });
-      const firstRaw = yield* getRaw(first);
-      const second = yield* store.appendReplay({
-        executionId: "replay",
-        taskId: "root",
-        previous: first,
-        entries: [{ outcome: "second" }],
+      expect(yield* store.commitExecution(initial("two"))).toMatchObject({
+        status: "committed",
+        control: { controlRevision: "0" },
       });
-
-      expect(yield* store.readReplay(first)).toEqual([{ outcome: "first" }]);
-      expect(yield* store.readReplay(second)).toEqual([
-        { outcome: "first" },
-        { outcome: "second" },
-      ]);
-      expect(yield* getRaw(first)).toBe(firstRaw);
+      expect(
+        yield* store.commitExecution({
+          ...initial("one"),
+          nextControl: { ...initial("one").nextControl, control: { stale: true } },
+        }),
+      ).toMatchObject({ status: "control_conflict" });
+      expect((yield* store.loadControl("two"))?.executionId).toBe("two");
     });
-
-    function* getRaw(reference: DurableReference): Operation<string | null> {
-      return yield* call(() => client.get(`${keyPrefix}${reference.id}`));
-    }
   });
 
-  it("creates no obsolete journal-wide snapshot key", async () => {
-    const keys = await client.keys(`${keyPrefix}*`);
-    expect(keys.some((key) => key.includes(["durable", "authority:"].join("-")))).toBe(false);
-    expect(keys.some((key) => key.includes(":control"))).toBe(true);
-    expect(keys.some((key) => key.includes("payload:"))).toBe(true);
-    expect(keys.some((key) => key.includes("replay:"))).toBe(true);
+  it("round-trips immutable JSON and binary execution objects", async () => {
+    const store = createRedisExecutionStore(client, { keyPrefix });
+    await run(function* () {
+      const jsonBody = { nested: [true, null, "value"] };
+      const jsonEncoded = canonicalSnapshot(jsonBody);
+      const json = {
+        objectId: "json-object",
+        lifetimeScope: "execution" as const,
+        scopeOwnerId: "one",
+        objectKind: "test-json",
+        contentHash: jsonEncoded.sha,
+        byteLength: new TextEncoder().encode(jsonEncoded.canonical).byteLength,
+        body: jsonBody,
+        createdAt: 1,
+      };
+      const jsonPointer = yield* store.putObject(json);
+      expect(yield* store.getObject(jsonPointer)).toEqual(json);
+      const bytesBody = new Uint8Array([0, 1, 254, 255]);
+      const bytes = {
+        objectId: "bytes-object",
+        lifetimeScope: "conversation" as const,
+        scopeOwnerId: "conversation",
+        objectKind: "test-bytes",
+        contentHash: sha256Bytes(bytesBody),
+        byteLength: bytesBody.byteLength,
+        body: bytesBody,
+        createdAt: 1,
+      };
+      const bytesPointer = yield* store.putObject(bytes);
+      expect(yield* store.getObject(bytesPointer)).toMatchObject({
+        objectId: "bytes-object",
+        body: new Uint8Array([0, 1, 254, 255]),
+      });
+    });
+  });
+
+  it("rejects malformed persisted control instead of accepting a partial shape", async () => {
+    const store = createRedisExecutionStore(client, { keyPrefix });
+    await client.set(
+      `${keyPrefix}execution:{malformed}:control`,
+      JSON.stringify({ executionId: "malformed", controlRevision: "0", ownerFence: "0" }),
+    );
+    await run(function* () {
+      let error: unknown;
+      try {
+        yield* store.loadControl("malformed");
+      } catch (cause) {
+        error = cause;
+      }
+      expect(error).toMatchObject({ code: "persisted_data_invalid" });
+    });
+  });
+
+  it("rejects an execution BLOB whose hash does not match its exact bytes", async () => {
+    const store = createRedisExecutionStore(client, { keyPrefix });
+    const body = new Uint8Array([0, 255, 1, 128]);
+    const wrongBody = new Uint8Array([0, 255, 1, 129]);
+    await run(function* () {
+      let error: unknown;
+      try {
+        yield* store.putObject({
+          objectId: "tampered-blob",
+          lifetimeScope: "execution",
+          scopeOwnerId: "one",
+          objectKind: "artifact",
+          contentHash: sha256Bytes(wrongBody),
+          byteLength: body.byteLength,
+          body,
+          createdAt: 1,
+        });
+      } catch (cause) {
+        error = cause;
+      }
+      expect(error).toMatchObject({ code: "persisted_data_invalid" });
+    });
+  });
+
+  it("streams an immutable replay chain without rewriting prior segments", async () => {
+    const store = createRedisExecutionStore(client, { keyPrefix });
+    await run(function* () {
+      const first = segment("replay-one", null, [{ outcome: "first" }]);
+      const firstPointer = yield* store.appendReplaySegment(first);
+      const second = segment("replay-two", firstPointer, [{ outcome: "second" }]);
+      const secondPointer = yield* store.appendReplaySegment(second);
+      const stream = yield* store.readReplay({
+        executionId: "one",
+        taskId: "root",
+        head: secondPointer,
+      });
+      const values = yield* call(async () => {
+        const result: Json[] = [];
+        for await (const entries of stream) {
+          result.push(...entries);
+        }
+        return result;
+      });
+      expect(values).toEqual([{ outcome: "first" }, { outcome: "second" }]);
+    });
   });
 });

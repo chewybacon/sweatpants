@@ -1,5 +1,9 @@
-import { type DurableToolRegistry } from "@sweatpants/durable-execution";
-import { CrankError, REPLAY_CHECKPOINT_CAPABILITIES } from "@sweatpants/durable-execution";
+import {
+  CrankError,
+  exactProgramKey,
+  REPLAY_CHECKPOINT_CAPABILITIES,
+  type DurableToolRegistry,
+} from "@sweatpants/durable-execution";
 import { useWorker, type WorkerResource } from "@effectionx/worker";
 import { type ProgramAttachment, type ProgramDriver } from "@sweatpants/durable-execution";
 
@@ -104,7 +108,7 @@ export function createLocalWorkerDurableProgramDriver(
     },
 
     *manifest(program) {
-      const tool = options.registry?.get(`${program.id}@${program.version}#${program.digest}`);
+      const tool = options.registry?.get(exactProgramKey(program));
       if (!tool) {
         throw new CrankError(
           "program_version_unavailable",

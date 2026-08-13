@@ -1,4 +1,5 @@
 import {
+  durableEffectKey,
   durableEffectRuntimeSchemas,
   type DurableEffectRegistry,
   type EffectDefinition,
@@ -329,7 +330,7 @@ function preflightCallerContract(
   contract: PeerEffectContract,
   registry: DurableEffectRegistry,
 ): void {
-  const registration = registry.get(`${contract.name}@${contract.version}`);
+  const registration = registry.get(durableEffectKey(contract.name, contract.version));
   if (!registration) {
     throw new CrankError("peer_required_effect_unavailable", "Caller effect handler is missing");
   }

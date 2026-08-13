@@ -1,59 +1,83 @@
-import { run } from "effection";
+import { call, run } from "effection";
 import { describe, expect, it } from "vitest";
+import type { Json } from "@sweatpants/foundation";
 import { createMemoryExecutionStore } from "./memory.ts";
+import type { CommitExecutionRequest, StoredPrivateSegment } from "./store.ts";
 
-const record = {
-  format: "sweatpants.execution-tree.v1" as const,
-  executionId: "execution-1",
-  sessionId: "session-1",
-  turnId: "turn-1",
-  rootTaskId: "root",
-  rootProgram: { id: "program", version: "1", digest: "digest" },
-  tasks: [],
-  runnableTaskIds: [],
-  checkpoint: null,
-  unpublishedProjection: { throughSequence: 0, facts: null },
-};
+function initial(executionId: string, control: Json = { state: "open" }): CommitExecutionRequest {
+  return {
+    executionId,
+    expectedControlRevision: null,
+    expectedOwnerFence: "0",
+    nextControl: {
+      executionId,
+      ownerFence: "0",
+      status: "active",
+      rootTaskId: "root",
+      stopGeneration: "0",
+      requestedDisposition: null,
+      control,
+    },
+    updatedAt: 1,
+  };
+}
+
+function segment(
+  segmentId: string,
+  previous: StoredPrivateSegment["previous"],
+  entries: readonly Json[],
+): StoredPrivateSegment {
+  return {
+    segmentId,
+    executionId: "execution-1",
+    taskId: "root",
+    previous,
+    firstSequence: previous ? "2" : "1",
+    lastSequence: previous ? "2" : "1",
+    entries,
+    contentHash: segmentId,
+    encodedBytes: JSON.stringify(entries).length,
+    createdAt: 1,
+  };
+}
 
 describe("memory execution store", () => {
-  it("uses per-execution CAS and preserves prior immutable replay objects", async () => {
+  it("uses per-execution CAS and preserves prior immutable replay segments", async () => {
     const store = createMemoryExecutionStore();
     await run(function* () {
-      expect(yield* store.loadExecution("execution-1")).toBeNull();
-      expect(
-        yield* store.commitExecution({
-          executionId: "execution-1",
-          expectedRevision: null,
-          next: record,
-          privateRecords: [],
-        }),
-      ).toEqual({ status: "accepted", revision: 0 });
-      expect(
-        yield* store.commitExecution({
-          executionId: "execution-1",
-          expectedRevision: null,
-          next: record,
-          privateRecords: [],
-        }),
-      ).toEqual({ status: "conflict", actualRevision: 0 });
+      expect(yield* store.loadControl("execution-1")).toBeNull();
+      expect(yield* store.commitExecution(initial("execution-1"))).toMatchObject({
+        status: "committed",
+        control: { controlRevision: "0" },
+      });
+      expect(yield* store.commitExecution(initial("execution-2"))).toMatchObject({
+        status: "committed",
+        control: { controlRevision: "0" },
+      });
 
-      const first = yield* store.appendReplay({
+      const first = segment("replay-1", null, [{ outcome: "first" }]);
+      const firstPointer = yield* store.appendReplaySegment(first);
+      const second = segment("replay-2", firstPointer, [{ outcome: "second" }]);
+      const secondPointer = yield* store.appendReplaySegment(second);
+      const stream = yield* store.readReplay({
         executionId: "execution-1",
         taskId: "root",
-        previous: null,
-        entries: [{ outcome: "first" }],
+        head: secondPointer,
       });
-      const second = yield* store.appendReplay({
-        executionId: "execution-1",
-        taskId: "root",
-        previous: first,
-        entries: [{ outcome: "second" }],
+      const chunks = yield* call(async () => {
+        const values: Json[] = [];
+        for await (const chunk of stream) values.push(...chunk);
+        return values;
       });
-      expect(yield* store.readReplay(first)).toEqual([{ outcome: "first" }]);
-      expect(yield* store.readReplay(second)).toEqual([
-        { outcome: "first" },
-        { outcome: "second" },
-      ]);
+      expect(chunks).toEqual([{ outcome: "first" }, { outcome: "second" }]);
+
+      const stale = yield* store.commitExecution({
+        ...initial("execution-1"),
+        expectedControlRevision: null,
+        nextControl: { ...initial("execution-1").nextControl, control: { state: "stale" } },
+      });
+      expect(stale.status).toBe("control_conflict");
+      expect((yield* store.loadControl("execution-2"))?.executionId).toBe("execution-2");
     });
   });
 });

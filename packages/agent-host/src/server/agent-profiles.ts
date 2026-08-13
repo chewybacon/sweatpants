@@ -1,9 +1,21 @@
-import { type DurableEffectRegistration, type EffectDefinition } from "@sweatpants/durable-effects";
+import {
+  durableEffectKey,
+  type DurableEffectRegistration,
+  type EffectDefinition,
+} from "@sweatpants/durable-effects";
 
-import { type DurableToolRegistry } from "@sweatpants/durable-execution";
-import { CrankError } from "@sweatpants/durable-execution";
-import { createDurableToolRegistry } from "@sweatpants/durable-execution";
-import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import {
+  CrankError,
+  createDurableToolRegistry,
+  exactProgramKey,
+  type DurableToolRegistry,
+} from "@sweatpants/durable-execution";
+import {
+  canonicalJson,
+  canonicalSnapshot,
+  stableTupleHash,
+  type Json,
+} from "@sweatpants/foundation";
 import {
   DELEGATED_EFFECTS_EXTENSION_URI,
   DURABLE_INVOCATION_EXTENSION_URI,
@@ -229,15 +241,10 @@ function compileRemote(
       );
       const checks = ["agent-card", "caller-authoritative-extension", "program-manifests"];
       const manifestPins = new Set(
-        Object.values(manifests).map(
-          (document) =>
-            `${document.program.id}@${document.program.version}#${document.program.digest}`,
-        ),
+        Object.values(manifests).map((document) => exactProgramKey(document.program)),
       );
       const ok = parsed.programs.every((mapping) =>
-        manifestPins.has(
-          `${mapping.program.id}@${mapping.program.version}#${mapping.program.digest}`,
-        ),
+        manifestPins.has(exactProgramKey(mapping.program)),
       );
       return Object.freeze({ ok, checks: Object.freeze(checks) });
     },
@@ -499,13 +506,13 @@ function preflightLocalEffects(
 ): void {
   const map = new Map(
     handlers.map((handler) => [
-      `${handler.definition.name}@${handler.definition.version}`,
+      durableEffectKey(handler.definition.name, handler.definition.version),
       handler,
     ]),
   );
   for (const binding of bindings) {
     for (const definition of Object.values(binding.program.manifest.effects)) {
-      const handler = map.get(`${definition.name}@${definition.version}`);
+      const handler = map.get(durableEffectKey(definition.name, definition.version));
       if (!handler) {
         fail("effect_route_missing", "Standard profile effect handler is missing");
       }
@@ -529,7 +536,10 @@ function assertHandlerCompatible(
 }
 function uniqueRegistrations(values: DurableEffectRegistration[]): DurableEffectRegistration[] {
   const map = new Map(
-    values.map((value) => [`${value.definition.name}@${value.definition.version}`, value]),
+    values.map((value) => [
+      durableEffectKey(value.definition.name, value.definition.version),
+      value,
+    ]),
   );
   return [...map.values()];
 }
@@ -550,7 +560,7 @@ function pin(binding: AgentProgramBinding) {
 }
 function programKey(binding: AgentProgramBinding) {
   const value = pin(binding);
-  return `${value.id}@${value.version}#${value.digest}`;
+  return stableTupleHash([value.id, value.version, value.digest]);
 }
 function cardInterfaces(card: Json): readonly Json[] {
   return Object.freeze(

@@ -403,6 +403,8 @@ test.describe("Math Assistant", () => {
 
     // Should show empty state
     await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
-    await expect(page.getByText("0 messages")).toBeVisible();
+    await expect(
+      page.locator('[data-testid="thread-item"][aria-pressed="true"]').getByText("0 messages"),
+    ).toBeVisible();
   });
 });

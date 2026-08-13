@@ -1,85 +1,162 @@
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
-import type { DurableReference, ExecutionId } from "@sweatpants/durable-execution";
+import type { Json } from "@sweatpants/foundation";
 import { call, type Operation } from "effection";
-import type {
-  AppendReplayRequest,
-  CommitExecutionRequest,
-  CommitExecutionResult,
-  ExecutionStore,
-  VersionedExecution,
+import {
+  ExecutionStoreError,
+  type CommitExecutionRequest,
+  type CommitExecutionResult,
+  type ExecutionControl,
+  type ExecutionObjectPointer,
+  type ExecutionStore,
+  type PrivateSegmentPointer,
+  type StoredExecutionObject,
+  type StoredPrivateSegment,
 } from "./store.ts";
 
-/** In-memory persistence driver. It stores opaque records and makes no transition decisions. */
 export function createMemoryExecutionStore(): ExecutionStore {
-  const executions = new Map<ExecutionId, VersionedExecution>();
-  const payloads = new Map<string, Json | Uint8Array>();
-  const replays = new Map<
-    string,
-    { readonly previous: DurableReference | null; readonly entries: readonly Json[] }
-  >();
-  let sequence = 0;
+  const controls = new Map<string, ExecutionControl>();
+  const journal = new Map<string, StoredPrivateSegment>();
+  const replay = new Map<string, StoredPrivateSegment>();
+  const objects = new Map<string, StoredExecutionObject>();
 
-  function reference(prefix: string, value: Json | Uint8Array): DurableReference {
-    sequence += 1;
-    const id = `${prefix}-${sequence}`;
-    payloads.set(id, value);
-    return {
-      id,
-      byteLength:
-        value instanceof Uint8Array ? value.byteLength : canonicalSnapshot(value).canonical.length,
+  function clone<T>(value: T): T {
+    return structuredClone(value);
+  }
+
+  function counter(value: string): bigint {
+    if (!/^\d+$/.test(value)) throw new Error(`Invalid durable counter: ${value}`);
+    return BigInt(value);
+  }
+
+  function next(value: string): string {
+    return (counter(value) + 1n).toString(10);
+  }
+
+  function immutableSegment(
+    target: Map<string, StoredPrivateSegment>,
+    segment: StoredPrivateSegment,
+  ): PrivateSegmentPointer {
+    const existing = target.get(segment.segmentId);
+    if (existing !== undefined) {
+      if (existing.contentHash !== segment.contentHash) {
+        throw new ExecutionStoreError(
+          "immutable_object_conflict",
+          `Segment ${segment.segmentId} has another content hash`,
+        );
+      }
+      return { segmentId: existing.segmentId, lastSequence: existing.lastSequence };
+    }
+    target.set(segment.segmentId, clone(segment));
+    return { segmentId: segment.segmentId, lastSequence: segment.lastSequence };
+  }
+
+  function putControl(request: CommitExecutionRequest): CommitExecutionResult {
+    const current = controls.get(request.executionId) ?? null;
+    if (current === null) {
+      if (request.expectedControlRevision !== null || request.expectedOwnerFence !== "0") {
+        return { status: "control_conflict", current: null };
+      }
+      for (const segment of request.journalSegments ?? []) immutableSegment(journal, segment);
+      for (const segment of request.replaySegments ?? []) immutableSegment(replay, segment);
+      const control: ExecutionControl = {
+        ...clone(request.nextControl),
+        controlRevision: "0",
+        updatedAt: request.updatedAt,
+      };
+      controls.set(request.executionId, control);
+      return { status: "committed", control: clone(control) };
+    }
+    if (current.ownerFence !== request.expectedOwnerFence) {
+      return { status: "stale_owner", current: clone(current) };
+    }
+    if (current.controlRevision !== request.expectedControlRevision) {
+      return { status: "control_conflict", current: clone(current) };
+    }
+    for (const segment of request.journalSegments ?? []) immutableSegment(journal, segment);
+    for (const segment of request.replaySegments ?? []) immutableSegment(replay, segment);
+    const control: ExecutionControl = {
+      ...clone(request.nextControl),
+      controlRevision: next(current.controlRevision),
+      updatedAt: request.updatedAt,
     };
+    controls.set(request.executionId, control);
+    return { status: "committed", control: clone(control) };
+  }
+
+  function putObject(object: StoredExecutionObject): ExecutionObjectPointer {
+    const existing = objects.get(object.objectId);
+    if (existing !== undefined) {
+      if (existing.contentHash !== object.contentHash) {
+        throw new ExecutionStoreError(
+          "immutable_object_conflict",
+          `Object ${object.objectId} has another content hash`,
+        );
+      }
+      return { objectId: existing.objectId };
+    }
+    objects.set(object.objectId, clone(object));
+    return { objectId: object.objectId };
+  }
+
+  function chain(
+    target: Map<string, StoredPrivateSegment>,
+    task: { executionId: string; taskId: string; head: PrivateSegmentPointer | null },
+  ): AsyncIterable<readonly Json[]> {
+    return (async function* () {
+      const ids: string[] = [];
+      const seen = new Set<string>();
+      let cursor = task.head;
+      while (cursor !== null) {
+        if (seen.has(cursor.segmentId)) {
+          throw new ExecutionStoreError(
+            "persisted_data_invalid",
+            `Segment cycle ${cursor.segmentId}`,
+          );
+        }
+        seen.add(cursor.segmentId);
+        const segment = target.get(cursor.segmentId);
+        if (
+          segment === undefined ||
+          segment.executionId !== task.executionId ||
+          segment.taskId !== task.taskId
+        ) {
+          throw new ExecutionStoreError(
+            "persisted_data_invalid",
+            `Segment ${cursor.segmentId} is outside task scope`,
+          );
+        }
+        ids.push(segment.segmentId);
+        cursor = segment.previous;
+      }
+      for (let index = ids.length - 1; index >= 0; index -= 1) {
+        yield clone(target.get(ids[index]!)!.entries);
+      }
+    })();
   }
 
   return {
-    *loadExecution(executionId): Operation<VersionedExecution | null> {
-      return yield* call(() => executions.get(executionId) ?? null);
+    *loadControl(executionId): Operation<ExecutionControl | null> {
+      return yield* call(() => clone(controls.get(executionId) ?? null));
     },
-    *commitExecution(request: CommitExecutionRequest): Operation<CommitExecutionResult> {
-      return yield* call<CommitExecutionResult>(() => {
-        const current = executions.get(request.executionId) ?? null;
-        const actualRevision = current?.revision ?? null;
-        if (actualRevision !== request.expectedRevision)
-          return { status: "conflict" as const, actualRevision };
-        const revision = (actualRevision ?? -1) + 1;
-        executions.set(request.executionId, { revision, record: request.next });
-        return { status: "accepted" as const, revision };
-      });
+    *commitExecution(request): Operation<CommitExecutionResult> {
+      return yield* call(() => putControl(request));
     },
-    *putPayload(value): Operation<DurableReference> {
-      return yield* call(() => reference("payload", value));
+    *putObject(object): Operation<ExecutionObjectPointer> {
+      return yield* call(() => putObject(object));
     },
-    *getPayload(reference): Operation<Json | Uint8Array | null> {
-      return yield* call(() => payloads.get(reference.id) ?? null);
+    *getObject(pointer): Operation<StoredExecutionObject | null> {
+      return yield* call(() => clone(objects.get(pointer.objectId) ?? null));
     },
-    *appendReplay(request: AppendReplayRequest): Operation<DurableReference> {
-      return yield* call(() => {
-        const ref = reference("replay", { entries: [...request.entries] });
-        replays.set(ref.id, { previous: request.previous, entries: request.entries });
-        return ref;
-      });
+    *appendJournalSegment(segment): Operation<PrivateSegmentPointer> {
+      return yield* call(() => immutableSegment(journal, segment));
     },
-    *readReplay(head): Operation<readonly Json[]> {
-      return yield* call(() => {
-        if (!head) {
-          return [];
-        }
-        const chunks: (readonly Json[])[] = [];
-        const seen = new Set<string>();
-        let cursor: DurableReference | null = head;
-        while (cursor) {
-          if (seen.has(cursor.id)) {
-            throw new Error(`Replay chain contains a cycle: ${cursor.id}`);
-          }
-          seen.add(cursor.id);
-          const chunk = replays.get(cursor.id);
-          if (!chunk) {
-            throw new Error(`Replay object is missing: ${cursor.id}`);
-          }
-          chunks.push(chunk.entries);
-          cursor = chunk.previous;
-        }
-        return chunks.reverse().flatMap((entries) => [...entries]);
-      });
+    *appendReplaySegment(segment): Operation<PrivateSegmentPointer> {
+      return yield* call(() => immutableSegment(replay, segment));
+    },
+    *readJournal(task): Operation<AsyncIterable<readonly Json[]>> {
+      return chain(journal, task);
+    },
+    *readReplay(task): Operation<AsyncIterable<readonly Json[]>> {
+      return chain(replay, task);
     },
   };
 }

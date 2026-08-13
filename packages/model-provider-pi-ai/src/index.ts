@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { stableTupleHash } from "@sweatpants/foundation";
 import { type Operation, type Subscription } from "effection";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type * as PiAi from "@earendil-works/pi-ai";
@@ -60,7 +61,7 @@ export function normalizeOllamaBaseUrl(value: string): string {
 }
 
 export function modelSelectionKey(selection: ModelSelection): string {
-  return `${selection.provider}/${selection.id}`;
+  return stableTupleHash([selection.provider, selection.id]);
 }
 
 function sanitizeIdentifier(value: string): string {

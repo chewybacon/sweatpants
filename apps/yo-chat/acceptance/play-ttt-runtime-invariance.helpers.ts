@@ -36,6 +36,7 @@ async function playToCompletion(substrate: PlayTttSubstrate): Promise<PlayOutcom
       events = await post(runtime.handle, conversationId, messages, {
         interruptId: pending.id,
         position: responsePosition(journal),
+        ...(pending.parentRunId ? { parentRunId: pending.parentRunId } : {}),
       });
     }
     return await summarize(substrate, events, 1);
@@ -92,6 +93,7 @@ async function playThroughAbandonedTurn(
       events = await post(runtime.handle, conversationId, messages, {
         interruptId: pending.id,
         position,
+        ...(pending.parentRunId ? { parentRunId: pending.parentRunId } : {}),
       });
     }
     return await summarize(substrate, events, generations);

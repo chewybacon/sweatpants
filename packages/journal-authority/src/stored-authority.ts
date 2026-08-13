@@ -1,13 +1,25 @@
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
-  CrankError,
-  type DurableReference,
-  type ExecutionTreeSnapshot,
-} from "@sweatpants/durable-execution";
-import type { Operation } from "effection";
+  assertJson,
+  canonicalSnapshot,
+  sha256,
+  stableTupleHash,
+  type Json,
+} from "@sweatpants/foundation";
+import { CrankError, type DurableReference } from "@sweatpants/durable-execution";
+import { call, type Operation } from "effection";
 import type { DurableSchemaRegistry } from "./schema-registry.ts";
-import type { ExecutionStore, VersionedExecution } from "./store.ts";
+import type {
+  ExecutionControl,
+  ExecutionStore,
+  PrivateSegmentPointer,
+  StoredPrivateSegment,
+} from "./store.ts";
 import { runExecutionCommitLoop } from "./commit-loop.ts";
+import {
+  DEFAULT_PRIVATE_SEGMENT_TARGET,
+  segmentPrivateEntries,
+  type PrivateSegmentTarget,
+} from "./segmentation.ts";
 import {
   InMemoryDurableJournalAuthority,
   parseDurableAuthoritySnapshot,
@@ -60,6 +72,8 @@ export interface StoredDurableJournalAuthorityOptions {
   readonly schemaRegistry?: DurableSchemaRegistry;
   /** Test/import boundary for an already parsed current-format snapshot. */
   readonly initialSnapshot?: DurableAuthoritySnapshot;
+  /** Private journal/replay segment targets. */
+  readonly privateSegmentTarget?: PrivateSegmentTarget;
 }
 
 export interface StoredDurableJournalAuthority {
@@ -205,60 +219,188 @@ export function createStoredDurableJournalAuthority(
     });
   }
 
-  function* load(
-    supplied?: VersionedExecution | null,
-  ): Operation<{ revision: number | null; snapshot: DurableAuthoritySnapshot }> {
-    const current = supplied === undefined ? yield* store.loadExecution(executionId) : supplied;
-    if (!current) return { revision: null, snapshot: options.initialSnapshot ?? empty };
-    if (current.record.format !== "sweatpants.execution-tree.v1" || !current.record.checkpoint) {
-      throw new CrankError("invalid_journal", "Stored authority control record is invalid");
-    }
-    const payload = yield* store.getPayload(current.record.checkpoint);
-    if (payload === null || payload instanceof Uint8Array) {
-      throw new CrankError("invalid_journal", "Stored authority snapshot payload is unavailable");
+  interface AuthorityControl {
+    readonly kind: "authority-control";
+    readonly snapshot: DurableReference;
+    readonly journalHead: PrivateSegmentPointer | null;
+    readonly replayHead: PrivateSegmentPointer | null;
+  }
+
+  interface LoadedAuthority {
+    readonly control: ExecutionControl | null;
+    readonly snapshot: DurableAuthoritySnapshot;
+    readonly authorityControl: AuthorityControl | null;
+  }
+
+  function parsePrivatePointer(value: unknown): PrivateSegmentPointer | null {
+    if (value === null) return null;
+    if (
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      typeof (value as Record<string, unknown>)["segmentId"] !== "string" ||
+      typeof (value as Record<string, unknown>)["lastSequence"] !== "string"
+    ) {
+      throw new CrankError("invalid_journal", "Stored authority private pointer is invalid");
     }
     return {
-      revision: current.revision,
-      snapshot: parseDurableAuthoritySnapshot(JSON.stringify(payload)),
+      segmentId: (value as Record<string, string>)["segmentId"]!,
+      lastSequence: (value as Record<string, string>)["lastSequence"]!,
     };
   }
 
-  function archiveHead(current: VersionedExecution | null): DurableReference | null {
-    return current?.record.format === "sweatpants.execution-tree.v1"
-      ? (current.record.tasks[0]?.replayHead ?? null)
+  function parseAuthorityControl(value: Json): AuthorityControl {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new CrankError("invalid_journal", "Stored authority control record is invalid");
+    }
+    const candidate = value as Record<string, unknown>;
+    if (
+      candidate["kind"] !== "authority-control" ||
+      candidate["snapshot"] === null ||
+      typeof candidate["snapshot"] !== "object"
+    ) {
+      throw new CrankError("invalid_journal", "Stored authority control record is invalid");
+    }
+    const snapshot = candidate["snapshot"] as Record<string, unknown>;
+    if (typeof snapshot["id"] !== "string") {
+      throw new CrankError("invalid_journal", "Stored authority snapshot pointer is invalid");
+    }
+    return {
+      kind: "authority-control",
+      snapshot: snapshot as unknown as DurableReference,
+      journalHead: parsePrivatePointer(candidate["journalHead"]),
+      replayHead: parsePrivatePointer(candidate["replayHead"]),
+    };
+  }
+
+  function parseJournalCollections(
+    entries: readonly Json[],
+  ): Array<[string, DurableSemanticRecord[]]> {
+    const grouped = new Map<string, Json[]>();
+    for (const entry of entries) {
+      if (
+        entry === null ||
+        typeof entry !== "object" ||
+        Array.isArray(entry) ||
+        typeof entry["sessionId"] !== "string"
+      ) {
+        throw new CrankError("invalid_journal", "Stored authority journal entry is invalid");
+      }
+      const sessionId = entry["sessionId"];
+      const sessionEntries = grouped.get(sessionId) ?? [];
+      sessionEntries.push(entry);
+      grouped.set(sessionId, sessionEntries);
+    }
+    return [...grouped.entries()].map(([sessionId, sessionEntries]) => {
+      const parsed = parseDurableAuthoritySnapshot(
+        JSON.stringify({ ...empty, records: [[sessionId, sessionEntries]] }),
+      );
+      return parsed.records[0] ?? [sessionId, []];
+    });
+  }
+
+  function* load(supplied?: ExecutionControl | null): Operation<LoadedAuthority> {
+    const current = supplied === undefined ? yield* store.loadControl(executionId) : supplied;
+    if (!current) {
+      return {
+        control: null,
+        snapshot: options.initialSnapshot ?? empty,
+        authorityControl: null,
+      };
+    }
+    const authorityControl = parseAuthorityControl(current.control);
+    const payload = yield* store.getObject({ objectId: authorityControl.snapshot.id });
+    if (!payload || payload.body instanceof Uint8Array) {
+      throw new CrankError("invalid_journal", "Stored authority snapshot payload is unavailable");
+    }
+    if (payload.lifetimeScope === "execution" && payload.scopeOwnerId !== executionId) {
+      throw new CrankError(
+        "invalid_journal",
+        "Stored authority snapshot is outside execution scope",
+      );
+    }
+    if (payload.body === null || typeof payload.body !== "object" || Array.isArray(payload.body)) {
+      throw new CrankError("invalid_journal", "Stored authority snapshot payload is invalid");
+    }
+    // The mutable authority object stores topology and frontiers only. The
+    // complete semantic record collection is reconstructed from immutable
+    // journal segments before the authority is handed to the in-memory engine.
+    const base = parseDurableAuthoritySnapshot(JSON.stringify({ ...payload.body, records: [] }));
+    const journal = authorityControl.journalHead
+      ? yield* store.readJournal({
+          executionId,
+          taskId: "authority",
+          head: authorityControl.journalHead,
+        })
       : null;
+    const entries = journal
+      ? yield* call(async () => {
+          const values: Json[] = [];
+          for await (const chunk of journal) values.push(...chunk);
+          return values;
+        })
+      : [];
+    return {
+      control: current,
+      authorityControl,
+      snapshot: {
+        ...base,
+        records: parseJournalCollections(entries),
+      },
+    };
   }
 
   function control(
-    checkpoint: DurableReference,
-    replayHead: DurableReference | null,
-  ): ExecutionTreeSnapshot {
-    const authorityProgram = { id: "journal-authority", version: "1", digest: "0".repeat(64) };
+    snapshot: DurableReference,
+    journalHead: PrivateSegmentPointer | null,
+    replayHead: PrivateSegmentPointer | null,
+  ): Omit<ExecutionControl, "controlRevision" | "updatedAt"> {
     return {
-      format: "sweatpants.execution-tree.v1",
       executionId,
-      sessionId: options.journalId,
-      turnId: "authority",
+      ownerFence: "0",
+      status: "parked",
       rootTaskId: "authority",
-      rootProgram: authorityProgram,
-      tasks: [
-        {
-          taskId: "authority",
-          program: authorityProgram,
-          input: { storage: "inline", value: null },
-          route: {},
-          status: "parked",
-          actionIndex: 0,
-          pullIndex: 0,
-          emissionIndex: 0,
-          replayHead,
-          pending: null,
-        },
-      ],
-      runnableTaskIds: [],
-      checkpoint,
-      unpublishedProjection: { throughSequence: 0, facts: null },
+      stopGeneration: "0",
+      requestedDisposition: null,
+      control: assertJson({
+        kind: "authority-control",
+        snapshot,
+        journalHead,
+        replayHead,
+      }),
     };
+  }
+
+  function makeSegments(
+    taskId: string,
+    previous: PrivateSegmentPointer | null,
+    entries: readonly Json[],
+    createdAt: number,
+  ): StoredPrivateSegment[] {
+    if (entries.length === 0) return [];
+    const target = options.privateSegmentTarget ?? DEFAULT_PRIVATE_SEGMENT_TARGET;
+    const segments: StoredPrivateSegment[] = [];
+    let cursor = previous;
+    for (const batch of segmentPrivateEntries(entries, target)) {
+      const encoded = canonicalSnapshot(batch.entries);
+      const first = cursor === null ? 1n : BigInt(cursor.lastSequence) + 1n;
+      const last = first + BigInt(batch.entries.length - 1);
+      const contentHash = sha256(encoded.canonical);
+      const segment: StoredPrivateSegment = {
+        segmentId: stableTupleHash([executionId, taskId, first.toString(10), contentHash]),
+        executionId,
+        taskId,
+        previous: cursor,
+        firstSequence: first.toString(10),
+        lastSequence: last.toString(10),
+        entries: batch.entries,
+        contentHash,
+        encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
+        createdAt,
+      };
+      segments.push(segment);
+      cursor = { segmentId: segment.segmentId, lastSequence: segment.lastSequence };
+    }
+    return segments;
   }
 
   function* mutate<T>(
@@ -270,27 +412,74 @@ export function createStoredDurableJournalAuthority(
       const result = yield* operation(value);
       const exported = value.exportSnapshot();
       const compacted = compactAuthoritySnapshot(exported);
+      if (canonicalSnapshot(compacted).sha === canonicalSnapshot(loaded.snapshot).sha) {
+        return { status: "return", result };
+      }
+      const priorEventIds = loaded.authorityControl
+        ? new Set(
+            loaded.snapshot.records.flatMap(([, records]) =>
+              records.map((record) => record.eventId),
+            ),
+          )
+        : new Set<string>();
+      const appended = exported.records.flatMap(([, records]) =>
+        records.filter((record) => !priorEventIds.has(record.eventId)),
+      );
       const retainedEventIds = new Set(
         compacted.records.flatMap(([, records]) => records.map((record) => record.eventId)),
       );
       const evicted = exported.records.flatMap(([, records]) =>
         records.filter((record) => !retainedEventIds.has(record.eventId)),
       );
-      let replayHead = archiveHead(current);
-      if (evicted.length > 0) {
-        replayHead = yield* store.appendReplay({
-          executionId,
-          taskId: "authority-archive",
-          previous: replayHead,
-          entries: evicted.map((record) => assertJson(record)),
-        });
-      }
-      const snapshot = assertJson(canonicalSnapshot(compacted).value);
-      const checkpoint = yield* store.putPayload(snapshot);
+      const journal = makeSegments(
+        "authority",
+        loaded.authorityControl?.journalHead ?? null,
+        appended.map((record) => assertJson(record)),
+        options.now?.() ?? Date.now(),
+      );
+      const replay = makeSegments(
+        "authority-archive",
+        loaded.authorityControl?.replayHead ?? null,
+        evicted.map((record) => assertJson(record)),
+        options.now?.() ?? Date.now(),
+      );
+      const snapshot = assertJson({ ...compacted, records: [] });
+      const encoded = canonicalSnapshot(snapshot);
+      const snapshotId = stableTupleHash([executionId, "authority-snapshot", encoded.sha]);
+      yield* store.putObject({
+        objectId: snapshotId,
+        lifetimeScope: "execution",
+        scopeOwnerId: executionId,
+        objectKind: "authority-snapshot",
+        contentHash: encoded.sha,
+        byteLength: new TextEncoder().encode(encoded.canonical).byteLength,
+        body: encoded.value,
+        createdAt: options.now?.() ?? Date.now(),
+      });
       return {
         status: "commit",
-        next: control(checkpoint, replayHead),
-        privateRecords: [],
+        next: control(
+          {
+            id: snapshotId,
+            byteLength: new TextEncoder().encode(encoded.canonical).byteLength,
+            version: "1",
+            integrity: { algorithm: "sha256", value: encoded.sha },
+          },
+          journal.at(-1)
+            ? {
+                segmentId: journal.at(-1)!.segmentId,
+                lastSequence: journal.at(-1)!.lastSequence,
+              }
+            : (loaded.authorityControl?.journalHead ?? null),
+          replay.at(-1)
+            ? {
+                segmentId: replay.at(-1)!.segmentId,
+                lastSequence: replay.at(-1)!.lastSequence,
+              }
+            : (loaded.authorityControl?.replayHead ?? null),
+        ),
+        ...(journal.length > 0 ? { journalSegments: journal } : {}),
+        ...(replay.length > 0 ? { replaySegments: replay } : {}),
         result,
       };
     });
@@ -301,11 +490,7 @@ export function createStoredDurableJournalAuthority(
     return select(authority(loaded.snapshot));
   }
 
-  function* readArchived(sessionId: string): Operation<DurableSemanticRecord[]> {
-    const current = yield* store.loadExecution(executionId);
-    const head = archiveHead(current);
-    if (!head) return [];
-    const entries = yield* store.readReplay(head);
+  function parseRecords(sessionId: string, entries: readonly Json[]): DurableSemanticRecord[] {
     const records = entries.filter(
       (entry) =>
         typeof entry === "object" &&
@@ -317,6 +502,29 @@ export function createStoredDurableJournalAuthority(
       JSON.stringify({ ...empty, records: [[sessionId, records]] }),
     );
     return parsed.records[0]?.[1] ?? [];
+  }
+
+  function* readJournalRecords(sessionId: string): Operation<DurableSemanticRecord[]> {
+    const loaded = yield* load();
+    const current = loaded.authorityControl?.journalHead
+      ? yield* store.readJournal({
+          executionId,
+          taskId: "authority",
+          head: loaded.authorityControl.journalHead,
+        })
+      : null;
+    const currentEntries = current
+      ? yield* call(async () => {
+          const values: Json[] = [];
+          for await (const chunk of current) values.push(...chunk);
+          return values;
+        })
+      : [];
+    const journalRecords = parseRecords(sessionId, currentEntries);
+    if (journalRecords.length > 0) return journalRecords;
+    return (
+      loaded.snapshot.records.find(([storedSessionId]) => storedSessionId === sessionId)?.[1] ?? []
+    );
   }
 
   return {
@@ -429,12 +637,27 @@ export function createStoredDurableJournalAuthority(
       return yield* read((value) => value.resolutionCapability(sessionId, taskId, pullId));
     },
     *readJournal(sessionId) {
-      const archived = yield* readArchived(sessionId);
-      const current = yield* read((value) => value.readJournal(sessionId));
-      return [...archived, ...current];
+      return yield* readJournalRecords(sessionId);
     },
     *readTaskJournal(sessionId, rootTaskId) {
-      return yield* read((value) => value.readTaskJournal(sessionId, rootTaskId));
+      const records = yield* readJournalRecords(sessionId);
+      const taskIds = new Set([rootTaskId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const record of records) {
+          if (
+            record.payload.type === "TaskOpened" &&
+            record.payload.parentTaskId &&
+            taskIds.has(record.payload.parentTaskId) &&
+            !taskIds.has(record.payload.taskId)
+          ) {
+            taskIds.add(record.payload.taskId);
+            changed = true;
+          }
+        }
+      }
+      return records.filter((record) => taskIds.has(record.payload.taskId));
     },
     *runnableSessions() {
       return yield* read((value) => value.runnableSessions());

@@ -69,6 +69,7 @@ async function settle(
       interruptId: pending.id,
       result: answerFor(pending.message),
       callId,
+      ...(pending.parentRunId ? { parentRunId: pending.parentRunId } : {}),
     });
     callId = latestToolCallId(current) ?? callId;
   }

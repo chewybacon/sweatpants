@@ -1,4 +1,4 @@
-import { type DurableEffectRegistry } from "@sweatpants/durable-effects";
+import { durableEffectKey, type DurableEffectRegistry } from "@sweatpants/durable-effects";
 
 import { canonicalJson, canonicalSnapshot, parser } from "@sweatpants/foundation";
 import { durableEffectRuntimeSchemas } from "@sweatpants/durable-effects";
@@ -151,7 +151,7 @@ export function preflightRemoteEffectHandlers(
   registry: DurableEffectRegistry,
 ): void {
   for (const definition of Object.values(manifest.effects)) {
-    const registration = registry.get(`${definition.name}@${definition.version}`);
+    const registration = registry.get(durableEffectKey(definition.name, definition.version));
     if (!registration) {
       throw a2aError(
         "effect_handler_missing",

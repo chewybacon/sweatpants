@@ -1,36 +1,100 @@
 import type { Json } from "@sweatpants/foundation";
-import type {
-  DurableReference,
-  ExecutionId,
-  ExecutionTreeSnapshot,
-  TerminalCapsule,
-} from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 
-export interface VersionedExecution {
-  readonly revision: number;
-  readonly record: ExecutionTreeSnapshot | TerminalCapsule;
+export type DurableCounter = string;
+export type Milliseconds = number;
+
+export interface PrivateSegmentPointer {
+  readonly segmentId: string;
+  readonly lastSequence: DurableCounter;
 }
-export interface CommitExecutionRequest {
-  readonly executionId: ExecutionId;
-  readonly expectedRevision: number | null;
-  readonly next: ExecutionTreeSnapshot | TerminalCapsule;
-  readonly privateRecords: readonly Json[];
+
+export interface ExecutionObjectPointer {
+  readonly objectId: string;
 }
-export type CommitExecutionResult =
-  | { readonly status: "accepted"; readonly revision: number }
-  | { readonly status: "conflict"; readonly actualRevision: number | null };
-export interface AppendReplayRequest {
-  readonly executionId: ExecutionId;
+
+export interface ExecutionControl {
+  readonly executionId: string;
+  readonly controlRevision: DurableCounter;
+  readonly ownerFence: DurableCounter;
+  readonly status: "active" | "parked" | "cancelling" | "terminal";
+  readonly rootTaskId: string;
+  readonly stopGeneration: DurableCounter;
+  readonly requestedDisposition: "cancelled" | "superseded" | null;
+  readonly control: Json;
+  readonly updatedAt: Milliseconds;
+}
+
+export interface StoredPrivateSegment {
+  readonly segmentId: string;
+  readonly executionId: string;
   readonly taskId: string;
-  readonly previous: DurableReference | null;
+  readonly previous: PrivateSegmentPointer | null;
+  readonly firstSequence: DurableCounter;
+  readonly lastSequence: DurableCounter;
   readonly entries: readonly Json[];
+  readonly contentHash: string;
+  readonly encodedBytes: number;
+  readonly createdAt: Milliseconds;
 }
+
+export interface StoredExecutionObject {
+  readonly objectId: string;
+  readonly lifetimeScope: "execution" | "conversation";
+  readonly scopeOwnerId: string;
+  readonly objectKind: string;
+  readonly contentHash: string;
+  readonly byteLength: number;
+  readonly body: Json | Uint8Array;
+  readonly createdAt: Milliseconds;
+}
+
+export interface CommitExecutionRequest {
+  readonly executionId: string;
+  readonly expectedControlRevision: DurableCounter | null;
+  readonly expectedOwnerFence: DurableCounter;
+  readonly nextControl: Omit<ExecutionControl, "controlRevision" | "updatedAt">;
+  readonly journalSegments?: readonly StoredPrivateSegment[];
+  readonly replaySegments?: readonly StoredPrivateSegment[];
+  readonly updatedAt: Milliseconds;
+}
+
+export type CommitExecutionResult =
+  | { readonly status: "committed"; readonly control: ExecutionControl }
+  | { readonly status: "control_conflict"; readonly current: ExecutionControl | null }
+  | { readonly status: "stale_owner"; readonly current: ExecutionControl };
+
 export interface ExecutionStore {
-  loadExecution(executionId: ExecutionId): Operation<VersionedExecution | null>;
+  loadControl(executionId: string): Operation<ExecutionControl | null>;
   commitExecution(request: CommitExecutionRequest): Operation<CommitExecutionResult>;
-  putPayload(value: Json | Uint8Array): Operation<DurableReference>;
-  getPayload(reference: DurableReference): Operation<Json | Uint8Array | null>;
-  appendReplay(request: AppendReplayRequest): Operation<DurableReference>;
-  readReplay(head: DurableReference | null): Operation<readonly Json[]>;
+  putObject(object: StoredExecutionObject): Operation<ExecutionObjectPointer>;
+  getObject(pointer: ExecutionObjectPointer): Operation<StoredExecutionObject | null>;
+  appendJournalSegment(segment: StoredPrivateSegment): Operation<PrivateSegmentPointer>;
+  appendReplaySegment(segment: StoredPrivateSegment): Operation<PrivateSegmentPointer>;
+  readJournal(task: {
+    readonly executionId: string;
+    readonly taskId: string;
+    readonly head: PrivateSegmentPointer | null;
+  }): Operation<AsyncIterable<readonly Json[]>>;
+  readReplay(task: {
+    readonly executionId: string;
+    readonly taskId: string;
+    readonly head: PrivateSegmentPointer | null;
+  }): Operation<AsyncIterable<readonly Json[]>>;
+}
+
+export type ExecutionStoreErrorCode =
+  | "immutable_object_conflict"
+  | "persisted_data_invalid"
+  | "segment_entry_too_large";
+
+export class ExecutionStoreError extends Error {
+  constructor(
+    readonly code: ExecutionStoreErrorCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "ExecutionStoreError";
+  }
 }

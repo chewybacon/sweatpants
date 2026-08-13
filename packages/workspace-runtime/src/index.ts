@@ -7,9 +7,11 @@ import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
+  hasControlCharacter,
   parser,
   sha256,
   sortStrings,
+  stableTupleHash,
   type Json,
 } from "@sweatpants/foundation";
 
@@ -229,9 +231,10 @@ interface CommittedOperation {
  */
 export function createWorkspaceService(options: WorkspaceServiceOptions): WorkspaceService {
   const root = resolve(options.root);
-  const initialWorkspaceVersion = sha256(
-    `sweatpants.workspace.initial.v1\0${canonicalJson({ workspaceId: options.workspaceId })}`,
-  );
+  const initialWorkspaceVersion = stableTupleHash([
+    "sweatpants.workspace.initial.v1",
+    options.workspaceId,
+  ]);
   let workspaceVersion = initialWorkspaceVersion;
   let activeFence: WorkspaceFence | undefined;
   let scripts = normalizeScripts(options.scripts);
@@ -954,14 +957,17 @@ function assertFence(expected: WorkspaceFence | undefined, received: WorkspaceFe
 }
 
 function nextWorkspaceVersion(parent: string, operationDigest: string, mutation: Json): string {
-  return sha256(
-    `sweatpants.workspace-mutation-version.v1\0${canonicalJson({ parent, operationDigest, mutation })}`,
-  );
+  return stableTupleHash([
+    "sweatpants.workspace-mutation-version.v1",
+    parent,
+    operationDigest,
+    mutation,
+  ]);
 }
 
 function safeRelativePath(value: unknown): string {
   const path = text(value, "workspace path");
-  if (path.startsWith("/") || path.includes("\0") || path.split(/[\\/]/).includes("..")) {
+  if (path.startsWith("/") || hasControlCharacter(path) || path.split(/[\\/]/).includes("..")) {
     throw new CrankError("network_policy_denied", "path must stay within workspace");
   }
   return path;

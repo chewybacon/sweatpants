@@ -96,6 +96,8 @@ export interface ProgramDriverJournalStoreOptions {
   schemaRegistry?: DurableSchemaRegistry;
   /** Bounded persistence shared by every authority opened through this composition. */
   executionStore?: ExecutionStore;
+  /** Optional private journal/replay segment targets. */
+  privateSegmentTarget?: import("@sweatpants/journal-authority").PrivateSegmentTarget;
 }
 
 /**
@@ -127,6 +129,9 @@ export function createProgramDriverJournalStore(
         journalIncarnation: "1",
         keyring: options.keyring,
         ...(options.now ? { now: options.now } : {}),
+        ...(options.privateSegmentTarget
+          ? { privateSegmentTarget: options.privateSegmentTarget }
+          : {}),
         schemaRegistry: options.schemaRegistry ?? programDriverSchemaRegistry(),
       });
       return {

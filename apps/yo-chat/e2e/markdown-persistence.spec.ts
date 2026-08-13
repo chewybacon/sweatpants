@@ -122,7 +122,9 @@ test.describe("Markdown rendering persistence", () => {
     await sendMessageAndWait(page, "Tell me about quantum computing");
 
     // Should have 2 messages (user + assistant)
-    await expect(page.getByText("2 messages")).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.locator('[data-testid="thread-item"][aria-pressed="true"]').getByText("2 messages"),
+    ).toBeVisible({ timeout: 5000 });
 
     // Get the assistant message
     const assistantMessages = getAssistantMessages(page);

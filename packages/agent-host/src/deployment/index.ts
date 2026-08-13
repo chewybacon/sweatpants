@@ -1,4 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
+import { hasControlCharacter } from "@sweatpants/foundation";
 import { type SandboxCapabilities, type WorkspacePersistence } from "@sweatpants/workspace-runtime";
 import { canonicalSnapshot, sortStrings, type Json } from "@sweatpants/foundation";
 
@@ -516,7 +517,7 @@ function boundedCommand(value: string, label: string): string {
 
 function safeRelativePath(value: string, label: string): string {
   const path = boundedText(value, 1_024, label);
-  if (path.startsWith("/") || path.includes("\0") || path.split(/[\\/]/).includes("..")) {
+  if (path.startsWith("/") || hasControlCharacter(path) || path.split(/[\\/]/).includes("..")) {
     invalid(`${label} must stay relative to the workspace`);
   }
   return path;

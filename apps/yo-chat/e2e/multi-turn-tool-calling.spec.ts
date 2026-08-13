@@ -17,8 +17,22 @@ test.setTimeout(180000);
 test.describe("multi-turn tool calling", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chat/cards/", { waitUntil: "networkidle" });
-    // Wait for pipeline to be ready
+    // Wait for pipeline readiness, then isolate tool semantics from retained
+    // thread-selection behavior using the authored thread API.
     await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 15000 });
+    const threadId = `cards:e2e-${crypto.randomUUID()}`;
+    const created = await page.request.post("/api/threaded-chat/threads", {
+      data: { namespace: "cards", id: threadId },
+    });
+    expect(created.ok()).toBe(true);
+    await page.evaluate(({ key, value }) => window.localStorage.setItem(key, value), {
+      key: "yo-chat:cards:selected-thread-id",
+      value: threadId,
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    const activeThread = page.locator('[data-testid="thread-item"][aria-pressed="true"]');
+    await expect(activeThread).toHaveAttribute("data-thread-id", threadId, { timeout: 15000 });
+    await expect(page.getByPlaceholder("Type a message...")).toBeEnabled({ timeout: 15000 });
     // Click input to ensure React is hydrated
     await page.getByPlaceholder("Type a message...").click();
   });
@@ -32,7 +46,7 @@ test.describe("multi-turn tool calling", () => {
     // Wait for card picker to appear (cards are rendered as buttons)
     // The CardPicker component renders card buttons
     const cardButton = page
-      .locator("button")
+      .locator("main button")
       .filter({ hasText: /[AKQJ2-9]|10/ })
       .first();
     await expect(cardButton).toBeVisible({ timeout: 30000 });
@@ -45,7 +59,7 @@ test.describe("multi-turn tool calling", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for card picker
-    const cardButtons = page.locator("button").filter({ hasText: /[♠♥♦♣]/ });
+    const cardButtons = page.locator("main button").filter({ hasText: /[♠♥♦♣]/ });
     await expect(cardButtons.first()).toBeVisible({ timeout: 30000 });
 
     // Pick a card
@@ -65,7 +79,7 @@ test.describe("multi-turn tool calling", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for card picker and pick a card
-    const cardButtons = page.locator("button").filter({ hasText: /[♠♥♦♣]/ });
+    const cardButtons = page.locator("main button").filter({ hasText: /[♠♥♦♣]/ });
     await expect(cardButtons.first()).toBeVisible({ timeout: 30000 });
     await cardButtons.first().click();
 
@@ -77,7 +91,10 @@ test.describe("multi-turn tool calling", () => {
     // Wait for streaming to complete. Local live models sometimes never reach
     // the final product boundary after a valid card pick; treat that as
     // provider-inconclusive unless an actual tool/runtime error is shown.
-    const completed = await input.isEnabled({ timeout: 30000 }).catch(() => false);
+    const completed = await expect(input)
+      .toBeEnabled({ timeout: 30000 })
+      .then(() => true)
+      .catch(() => false);
     if (!completed) {
       const errorLocator = page.locator("text=/^Error:/");
       if ((await errorLocator.count()) > 0) {
@@ -117,7 +134,9 @@ test.describe("multi-turn tool calling", () => {
 
     // Verify the second card picker has interactive buttons
     // Wait longer since the LLM response may still be streaming
-    const interactiveButtons = page.locator("button:not([disabled])").filter({ hasText: /[♠♥♦♣]/ });
+    const interactiveButtons = page
+      .locator("main button:not([disabled])")
+      .filter({ hasText: /[♠♥♦♣]/ });
     const interactiveAppeared = await interactiveButtons
       .first()
       .waitFor({ state: "visible", timeout: 30000 })
@@ -149,7 +168,7 @@ test.describe("multi-turn tool calling", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     // Wait for card picker
-    const cardButtons = page.locator("button").filter({ hasText: /[♠♥♦♣]/ });
+    const cardButtons = page.locator("main button").filter({ hasText: /[♠♥♦♣]/ });
     await expect(cardButtons.first()).toBeVisible({ timeout: 30000 });
 
     // Pick a card

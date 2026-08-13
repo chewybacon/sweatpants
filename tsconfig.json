@@ -9,6 +9,9 @@
             "path": "./packages/foundation"
         },
         {
+            "path": "./packages/storage-sqlite"
+        },
+        {
             "path": "./packages/chat-contract"
         },
         {

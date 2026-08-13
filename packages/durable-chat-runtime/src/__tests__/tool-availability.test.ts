@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createDurableTool, createTool } from "@sweatpants/agent-sdk";
 import { sha256 } from "@sweatpants/foundation";
+import { exactProgramKey } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 
 import { projectAvailableToolContracts } from "../tool-inventory.ts";
@@ -23,7 +24,11 @@ const durable = createDurableTool("durable")
     return value;
   });
 
-const exactProgram = `${durable.manifest.programId}@${durable.manifest.version}#${durable.manifest.digest}`;
+const exactProgram = exactProgramKey({
+  id: durable.manifest.programId,
+  version: durable.manifest.version,
+  digest: durable.manifest.digest,
+});
 
 function readiness(overrides: Partial<Parameters<typeof projectAvailableToolContracts>[1]> = {}) {
   return {

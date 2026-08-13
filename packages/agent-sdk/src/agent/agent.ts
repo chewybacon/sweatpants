@@ -1,7 +1,13 @@
 import { type EffectDefinition } from "@sweatpants/durable-effects";
 
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
+import {
+  canonicalJson,
+  canonicalSnapshot,
+  sha256,
+  stableTupleHash,
+  type Json,
+} from "@sweatpants/foundation";
 import {
   verifyProgramIdentityProvenance,
   type ProgramIdentityProvenanceV1,
@@ -290,7 +296,7 @@ function assertIdentityConflicts(bindings: readonly AgentProgramBinding[]): void
   const byIdVersion = new Map<string, string>();
   for (const binding of bindings) {
     const manifest = binding.program.manifest;
-    const key = `${manifest.programId}@${manifest.version}`;
+    const key = stableTupleHash([manifest.programId, manifest.version]);
     const current = byIdVersion.get(key);
     if (current && current !== manifest.digest) {
       invalidAgent("conflicting pinned program identities");

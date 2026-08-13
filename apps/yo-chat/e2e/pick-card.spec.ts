@@ -9,6 +9,25 @@ import { test, expect } from "@playwright/test";
  */
 
 test.describe("chat page basics", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/chat/cards/", { waitUntil: "networkidle" });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
+    const threadId = `cards:e2e-basics-${crypto.randomUUID()}`;
+    const created = await page.request.post("/api/threaded-chat/threads", {
+      data: { namespace: "cards", id: threadId },
+    });
+    expect(created.ok()).toBe(true);
+    await page.evaluate(({ key, value }) => window.localStorage.setItem(key, value), {
+      key: "yo-chat:cards:selected-thread-id",
+      value: threadId,
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.locator('[data-testid="thread-item"][aria-pressed="true"]')).toHaveAttribute(
+      "data-thread-id",
+      threadId,
+      { timeout: 15000 },
+    );
+  });
   test("loads correctly", async ({ page }) => {
     await page.goto("/chat/cards/");
 

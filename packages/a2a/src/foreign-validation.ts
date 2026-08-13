@@ -1,5 +1,11 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import {
+  assertJson,
+  canonicalSnapshot,
+  hasControlCharacter,
+  stableTupleHash,
+  type Json,
+} from "@sweatpants/foundation";
 import { z } from "zod";
 
 import type {
@@ -40,7 +46,7 @@ const identitySchema = z
   .string()
   .min(1)
   .max(512)
-  .refine((value) => !/[\u0000-\u001f]/u.test(value));
+  .refine((value) => !hasControlCharacter(value));
 const partSchema = z
   .strictObject({
     text: z.string().optional(),
@@ -206,8 +212,10 @@ export type ForeignA2AArtifactChunk = {
 };
 
 /** Bounded stream assembler; reconnect recovery replaces it from GetTask snapshots. */
+type StoredArtifact = { readonly taskId: string; readonly artifact: ForeignA2AArtifact };
+
 export class ForeignA2AArtifactStreamAssembler {
-  readonly #artifacts = new Map<string, ForeignA2AArtifact>();
+  readonly #artifacts = new Map<string, StoredArtifact>();
   readonly #updates = new Map<string, string>();
   constructor(readonly maxPartsPerArtifact = 1_024) {
     if (!Number.isSafeInteger(maxPartsPerArtifact) || maxPartsPerArtifact <= 0) {
@@ -215,7 +223,7 @@ export class ForeignA2AArtifactStreamAssembler {
     }
   }
   apply(chunk: ForeignA2AArtifactChunk): ForeignA2AArtifact {
-    const key = `${chunk.taskId}\u0000${chunk.updateId}`;
+    const key = stableTupleHash([chunk.taskId, chunk.updateId]);
     const digest = canonicalSnapshot(chunk).sha;
     const previousDigest = this.#updates.get(key);
     if (previousDigest && previousDigest !== digest) {
@@ -224,8 +232,9 @@ export class ForeignA2AArtifactStreamAssembler {
         "Artifact update identity was reused with conflicting content",
       );
     }
-    const artifactKey = `${chunk.taskId}\u0000${chunk.artifact.artifactId}`;
-    const previous = this.#artifacts.get(artifactKey);
+    const artifactKey = stableTupleHash([chunk.taskId, chunk.artifact.artifactId]);
+    const previousRecord = this.#artifacts.get(artifactKey);
+    const previous = previousRecord?.artifact;
     if (previousDigest && previous) {
       return previous;
     }
@@ -237,24 +246,24 @@ export class ForeignA2AArtifactStreamAssembler {
       throw new CrankError("payload_too_large", "Assembled A2A artifact exceeds its part bound");
     }
     this.#updates.set(key, digest);
-    this.#artifacts.set(artifactKey, next);
+    this.#artifacts.set(artifactKey, { taskId: chunk.taskId, artifact: next });
     return next;
   }
   reconcile(task: ForeignA2ATask): void {
-    for (const key of [...this.#artifacts.keys()]) {
-      if (key.startsWith(`${task.id}\u0000`)) {
+    for (const [key, record] of this.#artifacts) {
+      if (record.taskId === task.id) {
         this.#artifacts.delete(key);
       }
     }
     for (const artifact of task.artifacts) {
-      this.#artifacts.set(`${task.id}\u0000${artifact.artifactId}`, {
-        ...artifact,
-        parts: [...artifact.parts],
+      this.#artifacts.set(stableTupleHash([task.id, artifact.artifactId]), {
+        taskId: task.id,
+        artifact: { ...artifact, parts: [...artifact.parts] },
       });
     }
   }
   artifact(taskId: string, artifactId: string): ForeignA2AArtifact | undefined {
-    return this.#artifacts.get(`${taskId}\u0000${artifactId}`);
+    return this.#artifacts.get(stableTupleHash([taskId, artifactId]))?.artifact;
   }
 }
 

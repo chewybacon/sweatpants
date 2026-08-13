@@ -66,8 +66,10 @@ test.describe("Durable Chat - Feature Parity", () => {
     // Should have user message (use first() to avoid strict mode if LLM quotes it)
     await expect(page.getByText("Say exactly: Hello World").first()).toBeVisible();
 
-    // Should show 2 messages (user + assistant)
-    await expect(page.getByText("2 messages")).toBeVisible({ timeout: 5000 });
+    // Should show 2 messages (user + assistant) on the active thread.
+    await expect(
+      page.locator('[data-testid="thread-item"][aria-pressed="true"]').getByText("2 messages"),
+    ).toBeVisible({ timeout: 5000 });
 
     // CRITICAL: Verify assistant message actually has content rendered
     // This catches bugs where the message bubble appears but content is empty/undefined
@@ -106,8 +108,12 @@ test.describe("Durable Chat - Feature Parity", () => {
     // Streaming should stop
     await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 10000 });
 
-    // Should show messages were received
-    await expect(page.locator("text=/[12] messages/")).toBeVisible({ timeout: 5000 });
+    // Should show messages were received on the active thread.
+    await expect(
+      page
+        .locator('[data-testid="thread-item"][aria-pressed="true"]')
+        .locator("text=/[12] messages/"),
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("thinking/reasoning content renders without undefined", async ({ page }) => {
@@ -150,14 +156,18 @@ test.describe("Durable Chat - Feature Parity", () => {
     // Wait for response
     await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
     await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 120000 });
-    await expect(page.getByText("2 messages")).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.locator('[data-testid="thread-item"][aria-pressed="true"]').getByText("2 messages"),
+    ).toBeVisible({ timeout: 5000 });
 
     // Reset the conversation
     await page.getByTestId("thread-create").click();
 
     // Should show empty state
     await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
-    await expect(page.getByText("0 messages")).toBeVisible();
+    await expect(
+      page.locator('[data-testid="thread-item"][aria-pressed="true"]').getByText("0 messages"),
+    ).toBeVisible();
   });
 });
 
@@ -405,7 +415,9 @@ test.describe("Durable Chat - Reconnection", () => {
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 60000 });
     await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 120000 });
-    await expect(page.getByText("2 messages")).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.locator('[data-testid="thread-item"][aria-pressed="true"]').getByText("2 messages"),
+    ).toBeVisible({ timeout: 5000 });
 
     // Clear history
     await page.getByTestId("thread-create").click();

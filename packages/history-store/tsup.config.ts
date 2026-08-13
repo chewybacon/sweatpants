@@ -5,6 +5,8 @@ export default defineConfig({
     contract: "src/contract.ts",
     memory: "src/memory.ts",
     port: "src/port.ts",
+    segmentation: "src/segmentation.ts",
+    "checkpoint-payload": "src/checkpoint-payload.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

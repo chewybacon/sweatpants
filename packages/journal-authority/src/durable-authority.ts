@@ -38,7 +38,7 @@ import {
   failure,
   parser,
   sha256,
-  stableOpaqueId,
+  stableTupleHash,
   success,
   type Json,
   type ParseResult,
@@ -769,7 +769,8 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         task,
       );
     }
-    const pullId = stableOpaqueId("pull", [
+    const pullId = stableTupleHash([
+      "pull",
       request.sessionId,
       request.turnId,
       request.taskId,
@@ -1199,7 +1200,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       const commandId =
         task.cancellation.type !== "none" && task.cancellation.type !== "orphaned"
           ? task.cancellation.commandId
-          : stableOpaqueId("cancel-command", [task.sessionId, task.taskId]);
+          : stableTupleHash(["cancel-command", task.sessionId, task.taskId]);
       task.cancellation = { type: "cancelled", commandId };
     }
     return receipt;
@@ -1210,7 +1211,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     sessionId: string,
     taskId: string,
     reason?: string,
-    commandId = stableOpaqueId("cancel-command", [sessionId, taskId]),
+    commandId = stableTupleHash(["cancel-command", sessionId, taskId]),
   ): Operation<CancellationAcknowledgement> {
     const task = this.#task(sessionId, taskId);
     const existing = (this.#records.get(sessionId) ?? []).find(
@@ -2407,7 +2408,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
 
   #nextNonce(): string {
     this.#nonce += 1;
-    return stableOpaqueId("nonce", [this.#options.journalId, this.#nonce]);
+    return stableTupleHash(["nonce", this.#options.journalId, this.#nonce]);
   }
 }
 
@@ -2615,7 +2616,7 @@ function invalidSnapshot(): CrankError {
 }
 
 function effectContractKey(name: string, version: string): string {
-  return `${name}\u0000${version}`;
+  return stableTupleHash([name, version]);
 }
 
 function effectDigestForPull(task: Task, pull: Pull): string {
@@ -2805,7 +2806,7 @@ function pendingReason(descriptor: DurableOperationDescriptor): "elicit" | "wait
 }
 
 function taskKey(sessionId: string, taskId: string): string {
-  return `${sessionId}\u0000${taskId}`;
+  return stableTupleHash([sessionId, taskId]);
 }
 
 function manifestSchemaDigests(manifest: DurableProgramManifest): string[] {

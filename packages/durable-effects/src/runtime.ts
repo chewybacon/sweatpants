@@ -1,4 +1,4 @@
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { assertJson, canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
 import { createContext, type Operation } from "effection";
 import { createApi } from "effection/experimental";
@@ -39,7 +39,7 @@ export const DurableEffectRegistryContext = createContext<DurableEffectRegistry 
 );
 
 export function durableEffectKey(name: string, version: string): string {
-  return `${name}@${version}`;
+  return stableTupleHash([name, version]);
 }
 
 /** Validates exact authored contracts against their selected handlers. */
@@ -252,11 +252,18 @@ export const DurableEffectRouting = createApi<{
   },
 });
 
-type LiveEffectCancellation = { readonly cancel: (reason?: string) => void };
-const liveEffects = new Map<string, LiveEffectCancellation>();
+interface LiveEffectRegistration {
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly pullId: string;
+  readonly attemptId: string;
+  readonly cancel: (reason?: string) => void;
+}
+
+const liveEffects = new Map<string, LiveEffectRegistration>();
 
 function effectKey(sessionId: string, taskId: string, pullId: string, attemptId: string): string {
-  return `${sessionId}\u0000${taskId}\u0000${pullId}\u0000${attemptId}`;
+  return stableTupleHash([sessionId, taskId, pullId, attemptId]);
 }
 
 /** Registers an activation-local cancellation bridge; this state is never durable. */
@@ -268,7 +275,13 @@ export function registerLiveDurableEffect(
   cancel: (reason?: string) => void,
 ): () => void {
   const key = effectKey(sessionId, taskId, pullId, attemptId);
-  const registration = { cancel };
+  const registration: LiveEffectRegistration = {
+    sessionId,
+    taskId,
+    pullId,
+    attemptId,
+    cancel,
+  };
   liveEffects.set(key, registration);
   return () => {
     if (liveEffects.get(key) === registration) {
@@ -284,10 +297,13 @@ export function signalLiveDurableEffect(
   pullId: string,
   reason?: string,
 ): boolean {
-  const prefix = `${sessionId}\u0000${taskId}\u0000${pullId}\u0000`;
   let signalled = false;
-  for (const [key, registration] of liveEffects) {
-    if (key.startsWith(prefix)) {
+  for (const registration of liveEffects.values()) {
+    if (
+      registration.sessionId === sessionId &&
+      registration.taskId === taskId &&
+      registration.pullId === pullId
+    ) {
       signalled = true;
       registration.cancel(reason);
     }
@@ -297,6 +313,10 @@ export function signalLiveDurableEffect(
 
 /** Runtime-only settleability probe used while cancellation is accepted locally. */
 export function hasLiveDurableEffect(sessionId: string, taskId: string, pullId: string): boolean {
-  const prefix = `${sessionId}\u0000${taskId}\u0000${pullId}\u0000`;
-  return [...liveEffects.keys()].some((key) => key.startsWith(prefix));
+  return [...liveEffects.values()].some(
+    (registration) =>
+      registration.sessionId === sessionId &&
+      registration.taskId === taskId &&
+      registration.pullId === pullId,
+  );
 }

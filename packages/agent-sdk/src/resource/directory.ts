@@ -300,8 +300,31 @@ export async function watchResourceDirectory(
   const fs = (await loadNodeModule("node:fs")) as WatchPort;
   let closed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let rebuilding = false;
+  let rebuildRequested = false;
   let lastDigest = (await compileResourceDirectory({ ...options, mode: "write" })).package.manifest
     .digest;
+
+  const rebuild = async (): Promise<void> => {
+    if (rebuilding) {
+      rebuildRequested = true;
+      return;
+    }
+    rebuilding = true;
+    try {
+      do {
+        rebuildRequested = false;
+        const result = await compileResourceDirectory({ ...options, mode: "write" });
+        if (!closed && result.package.manifest.digest !== lastDigest) {
+          lastDigest = result.package.manifest.digest;
+          await onChange(result);
+        }
+      } while (!closed && rebuildRequested);
+    } finally {
+      rebuilding = false;
+    }
+  };
+
   const watcher = fs.watch(options.root, { recursive: true }, () => {
     if (closed) {
       return;
@@ -310,14 +333,7 @@ export async function watchResourceDirectory(
       clearTimeout(timer);
     }
     timer = setTimeout(() => {
-      void (async () => {
-        const result = await compileResourceDirectory({ ...options, mode: "write" });
-        if (closed || result.package.manifest.digest === lastDigest) {
-          return;
-        }
-        lastDigest = result.package.manifest.digest;
-        await onChange(result);
-      })();
+      void rebuild();
     }, 50);
   });
   return Object.freeze({

@@ -33,6 +33,21 @@ test.describe("play_ttt Agentic Tool", () => {
     await page.goto("/chat/play-ttt/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Agentic Tic-Tac-Toe" })).toBeVisible();
     await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
+    const threadId = `play-ttt:e2e-${crypto.randomUUID()}`;
+    const created = await page.request.post("/api/threaded-chat/threads", {
+      data: { namespace: "play-ttt", id: threadId },
+    });
+    expect(created.ok()).toBe(true);
+    await page.evaluate(({ key, value }) => window.localStorage.setItem(key, value), {
+      key: "yo-chat:play-ttt:selected-thread-id",
+      value: threadId,
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.locator('[data-testid="thread-item"][aria-pressed="true"]')).toHaveAttribute(
+      "data-thread-id",
+      threadId,
+      { timeout: 15000 },
+    );
   });
 
   // =============================================================================

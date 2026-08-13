@@ -3,11 +3,11 @@ import {
   canonicalJson,
   compareUnicodeCodePoints,
   parser,
-  sha256,
   sortStrings,
+  stableTupleHash,
   type ParseIssue,
 } from "@sweatpants/foundation";
-import { type Json } from "@sweatpants/foundation";
+import type { Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import { z } from "zod";
 
@@ -175,7 +175,10 @@ export function createMcpInventory(input: McpInventoryInput): McpInventoryGenera
     evaluatorAbi: input.evaluatorAbi,
     tools: sortedTools,
   };
-  return { ...document, digest: sha256(`sweatpants.mcp-inventory.v1\0${canonicalJson(document)}`) };
+  return {
+    ...document,
+    digest: stableTupleHash(["sweatpants.mcp-inventory.v1", document]),
+  };
 }
 
 export function createDurableInvocationIdentity(input: {
@@ -199,10 +202,11 @@ export function createDurableInvocationIdentity(input: {
     callerHash: requireSha(input.callerHash, "callerHash"),
     toolName: input.toolName,
     inventoryGeneration: input.inventory.digest,
-    idempotencyKeyHash: sha256(
-      `sweatpants.mcp-idempotency-key.v1\0${input.metadata.idempotencyKey}`,
-    ),
-    argumentDigest: sha256(`sweatpants.mcp-arguments.v1\0${canonicalJson(input.arguments)}`),
+    idempotencyKeyHash: stableTupleHash([
+      "sweatpants.mcp-idempotency-key.v1",
+      input.metadata.idempotencyKey,
+    ]),
+    argumentDigest: stableTupleHash(["sweatpants.mcp-arguments.v1", input.arguments]),
     exactProgram: { id: tool.programId, version: tool.version, digest: tool.programDigest },
   };
 }

@@ -8,6 +8,7 @@ export default defineConfig({
     testing: "src/testing.ts",
     "turn-authority": "src/turn-authority.ts",
     "schema-registry": "src/schema-registry.ts",
+    segmentation: "src/segmentation.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

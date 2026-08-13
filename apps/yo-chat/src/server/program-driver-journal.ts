@@ -48,23 +48,29 @@ export function createYoChatExecutionStore(): ExecutionStore {
   }
 
   return {
-    *loadExecution(executionId) {
-      return yield* (yield* store()).loadExecution(executionId);
+    *loadControl(executionId) {
+      return yield* (yield* store()).loadControl(executionId);
     },
     *commitExecution(request) {
       return yield* (yield* store()).commitExecution(request);
     },
-    *putPayload(value) {
-      return yield* (yield* store()).putPayload(value);
+    *putObject(object) {
+      return yield* (yield* store()).putObject(object);
     },
-    *getPayload(reference) {
-      return yield* (yield* store()).getPayload(reference);
+    *getObject(pointer) {
+      return yield* (yield* store()).getObject(pointer);
     },
-    *appendReplay(request) {
-      return yield* (yield* store()).appendReplay(request);
+    *appendJournalSegment(segment) {
+      return yield* (yield* store()).appendJournalSegment(segment);
     },
-    *readReplay(head) {
-      return yield* (yield* store()).readReplay(head);
+    *appendReplaySegment(segment) {
+      return yield* (yield* store()).appendReplaySegment(segment);
+    },
+    *readJournal(task) {
+      return yield* (yield* store()).readJournal(task);
+    },
+    *readReplay(task) {
+      return yield* (yield* store()).readReplay(task);
     },
   };
 }

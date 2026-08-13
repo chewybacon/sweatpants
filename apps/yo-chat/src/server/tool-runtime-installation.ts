@@ -24,6 +24,7 @@ import {
   type ProgramRoute,
 } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
+import { durableEffectKey } from "@sweatpants/durable-effects";
 import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createLocalWorkerDurableProgramDriver,
@@ -146,7 +147,9 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
     programs: new Set(readyPrograms.map((tool) => programIdentities.get(tool.name)!)),
     effects: new Set(
       readyPrograms.flatMap((tool) =>
-        Object.values(tool.manifest.effects).map((effect) => `${effect.name}@${effect.version}`),
+        Object.values(tool.manifest.effects).map((effect) =>
+          durableEffectKey(effect.name, effect.version),
+        ),
       ),
     ),
     schemas: schemaRegistry,

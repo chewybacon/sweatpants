@@ -21,6 +21,11 @@ import {
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import { createChatApplication } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
+import type { ExecutionStore } from "@sweatpants/journal-authority/store";
+import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
+import type { ConversationStore } from "@sweatpants/history-store/contract";
+import { createRedisExecutionStore } from "@sweatpants/execution-store-redis";
 import {
   createDurableChatHandler,
   createProgramDriverJournalStore,
@@ -31,14 +36,13 @@ import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtim
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
 import type { Json } from "@sweatpants/foundation";
-import { createRedisProgramDriverJournalStore } from "../../src/server/program-driver-journal.ts";
 import { playTttTool } from "../../src/tools/play-ttt/tool.ts";
 
 /** Public AG-UI frame projected from one durable response line. */
 export type PublicEvent = { type: string; [key: string]: unknown };
 
 /** Resume coordinates for one pending elicitation. */
-export type ResumeInput = { interruptId: string; position: number };
+export type ResumeInput = { interruptId: string; position: number; parentRunId?: string };
 
 const model: Model = {
   id: "play-ttt-program-driver-http",
@@ -94,12 +98,18 @@ export async function createPlayTttSubstrate(options: {
     redisClient = createClient({ url: requiredRedisUrl() }) as RedisClientType;
     await redisClient.connect();
   }
-  const journalStore = redisClient
-    ? createRedisProgramDriverJournalStore(redisClient, keyring)
-    : createProgramDriverJournalStore({
-        keyring,
-        schemaRegistry: programDriverSchemaRegistry(playTttTool.artifacts.catalog),
-      });
+  const executionStore: ExecutionStore = redisClient
+    ? createRedisExecutionStore(redisClient, {
+        keyPrefix: "sweatpants:execution-store:v1:",
+      })
+    : createMemoryExecutionStore();
+  const conversationStore = createMemoryConversationStore();
+  const journalStore = createProgramDriverJournalStore({
+    keyring,
+    journalPrefix: "yo-chat-program-driver",
+    schemaRegistry: programDriverSchemaRegistry(playTttTool.artifacts.catalog),
+    executionStore,
+  });
 
   // Durable stream state belongs to the substrate, not to one runtime
   // generation. A real deployment shares these stores across hosts; keeping
@@ -113,7 +123,14 @@ export async function createPlayTttSubstrate(options: {
     messages: [{ id: "user:http-ttt", role: "user", content: "Play tic-tac-toe" }],
     sampleCount: () => sampleCount,
     createRuntime() {
-      const application = createApplication(driver, journalStore, bufferStore, registryStore);
+      const application = createApplication(
+        driver,
+        journalStore,
+        executionStore,
+        conversationStore,
+        bufferStore,
+        registryStore,
+      );
       return {
         handle: (request: Request) => application.handle(request),
         close: () => application.close(),
@@ -131,11 +148,15 @@ export async function createPlayTttSubstrate(options: {
 function createApplication(
   driver: ModelProviderDriver,
   journalStore: ProgramDriverJournalStore,
+  executionStore: ExecutionStore,
+  conversationStore: ConversationStore,
   bufferStore: ReturnType<typeof createInMemoryBufferStore<string>>,
   registryStore: ReturnType<typeof createInMemoryRegistryStore>,
 ) {
   const handler = createDurableChatHandler({
     programDriverJournalStore: journalStore,
+    executionStore,
+    conversationStore,
     maxToolIterations: 5,
     setup: function* () {
       yield* installModelProvider(driver);
@@ -330,6 +351,7 @@ function buildChatRequest(
         tools: [],
         context: [],
         forwardedProps: {},
+        ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
         ...(resume
           ? {
               resume: [
@@ -389,7 +411,9 @@ function parsePublicFrame(line: string): PublicEvent {
 }
 
 /** Extracts the first pending public interrupt from one response batch. */
-export function publicInterrupt(events: PublicEvent[]): { id: string } | undefined {
+export function publicInterrupt(
+  events: PublicEvent[],
+): { id: string; parentRunId?: string } | undefined {
   for (const event of events) {
     if (event.type !== "RUN_FINISHED" || !isUnknownRecord(event["outcome"])) {
       continue;
@@ -400,7 +424,8 @@ export function publicInterrupt(events: PublicEvent[]): { id: string } | undefin
     }
     const id = interrupts[0]["id"];
     if (typeof id === "string") {
-      return { id };
+      const runId = event["runId"];
+      return { id, ...(typeof runId === "string" ? { parentRunId: runId } : {}) };
     }
   }
   return undefined;

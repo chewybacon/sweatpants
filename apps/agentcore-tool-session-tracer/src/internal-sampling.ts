@@ -16,7 +16,6 @@ import {
 } from "@sweatpants/model-sampling";
 import {
   createPiAiModelProviderDriver,
-  modelSelectionKey,
   resolvePiAiModel,
   type ModelSelection,
 } from "../../../packages/model-provider-pi-ai/src/index.ts";
@@ -82,11 +81,17 @@ export function selectInternalSampleModel(
   );
 }
 
+function modelSelectionLabel(selection: ModelSelection): string {
+  const provider = selection.provider.replace(/[\r\n\t]/g, " ").slice(0, 200);
+  const id = selection.id.replace(/[\r\n\t]/g, " ").slice(0, 200);
+  return `${provider}/${id}`;
+}
+
 function assertAgentCoreUsableModel(selection: ModelSelection): void {
   const appOnlyProviders = new Set(["ollama", "github-copilot"]);
   if (appOnlyProviders.has(selection.provider)) {
     throw new Error(
-      `AgentCore internal sampling cannot use app-local model ${modelSelectionKey(selection)}; configure AGENTCORE_TOOL_SAMPLE_MODE=host or set AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER/ID to an AgentCore-reachable model`,
+      `AgentCore internal sampling cannot use app-local model ${modelSelectionLabel(selection)}; configure AGENTCORE_TOOL_SAMPLE_MODE=host or set AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER/ID to an AgentCore-reachable model`,
     );
   }
 }
@@ -116,7 +121,7 @@ function rawResultFromAssistant(
 ): SampleExchangeCompletion {
   const text = assistantText(assistant);
   const toolCalls = samplingToolCalls(assistant);
-  const modelName = modelSelectionKey(model);
+  const modelName = modelSelectionLabel(model);
 
   if (request.schema) {
     const schemaToolCall = toolCalls.find(isSchemaToolCall);

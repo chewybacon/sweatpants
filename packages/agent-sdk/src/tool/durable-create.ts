@@ -12,7 +12,7 @@ import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import { z } from "zod";
-import { canonicalJson, sha256, sortStrings } from "@sweatpants/foundation";
+import { sha256, sortStrings, stableTupleHash } from "@sweatpants/foundation";
 import { safeSchemaIssues, validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import { type Json, type JsonObject } from "@sweatpants/foundation";
@@ -509,12 +509,10 @@ function builder(state: BuilderState): unknown {
       const bindExtensions = (baseDigest: string) =>
         extensionIdentity.length === 0
           ? baseDigest
-          : sha256(
-              `sweatpants.durable-extension-program.v1\0${canonicalJson({
-                baseDigest,
-                extensions: extensionIdentity,
-              })}`,
-            );
+          : stableTupleHash([
+              "sweatpants.durable-extension-program.v1",
+              { baseDigest, extensions: extensionIdentity },
+            ]);
       const generatedIdentity = (implementationArtifactDigest: string) =>
         generateProgramArtifactIdentity({
           format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,

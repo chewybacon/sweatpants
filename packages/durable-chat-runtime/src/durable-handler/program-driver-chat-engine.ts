@@ -37,7 +37,7 @@ import {
   canonicalJson,
   canonicalSnapshot,
   sha256,
-  stableOpaqueId,
+  stableTupleHash,
   type Json,
   type JsonObject,
 } from "@sweatpants/foundation";
@@ -274,20 +274,28 @@ export function createProgramDriverChatEngine(
   return resource(function* (provide) {
     let events: StreamEvent[] | undefined;
     let cursor = 0;
-    yield* provide({
-      *next(): Operation<IteratorResult<StreamEvent, void>> {
-        events ??= yield* runWithTurnEventWriter(
-          params.liveEvent ? { emit: params.liveEvent } : undefined,
-          () => activateProgramDriverChatEngine(params),
-        );
-        const event = events[cursor];
-        if (!event) {
-          return { done: true, value: undefined };
-        }
-        cursor += 1;
-        return { done: false, value: event };
-      },
-    });
+    let failure: Error | undefined;
+    try {
+      yield* provide({
+        *next(): Operation<IteratorResult<StreamEvent, void>> {
+          events ??= yield* runWithTurnEventWriter(
+            params.liveEvent ? { emit: params.liveEvent } : undefined,
+            () => activateProgramDriverChatEngine(params),
+          );
+          const event = events[cursor];
+          if (!event) {
+            return { done: true, value: undefined };
+          }
+          cursor += 1;
+          return { done: false, value: event };
+        },
+      });
+    } catch (error) {
+      failure = error instanceof Error ? error : new Error(String(error));
+      throw error;
+    } finally {
+      params.onLiveActivationSettled?.(failure);
+    }
   });
 }
 
@@ -316,6 +324,8 @@ function* activateProgramDriverChatEngine(
   // Replay of the accepted canonical input never reruns schema code (DR-023).
   const replacementQueued =
     active !== undefined &&
+    params.pluginAbort === undefined &&
+    params.recoveryOnly !== true &&
     (params.elicitResponses?.length ?? 0) === 0 &&
     canonicalJson(active.input) !== canonicalJson(requestedInput);
   const input = active
@@ -357,6 +367,7 @@ function* activateProgramDriverChatEngine(
     }
     before = yield* journal.readJournal(params.conversationId, taskId);
   }
+  params.onLiveTaskReady?.(taskId);
 
   if (active && (params.pluginAbort || replacementQueued)) {
     const reason = params.pluginAbort?.reason ?? "active turn superseded by a new message";
@@ -449,39 +460,59 @@ function* activateProgramDriverChatEngine(
     ],
     ...(params.nativeTools?.drivers ?? []),
   ]);
-  const outcome = yield* runLocalProgramActivation(
-    {
-      authority: journal.authority,
-      drivers,
-      effects,
-      modelSamplingService,
-      ...(effectOutcomeAcknowledger ? { effectOutcomeAcknowledger } : {}),
-      routeResolver: function* (program, parentRoute) {
-        const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
-          (candidate) =>
-            candidate.tool.manifest.programId === program.id &&
-            candidate.tool.manifest.version === program.version &&
-            candidate.tool.manifest.digest === program.digest,
-        );
-        return binding?.route ?? parentRoute;
+  let cancellationFenceLost = false;
+  let outcome: ProgramRunResult;
+  try {
+    outcome = yield* runLocalProgramActivation(
+      {
+        authority: journal.authority,
+        drivers,
+        effects,
+        modelSamplingService,
+        ...(effectOutcomeAcknowledger ? { effectOutcomeAcknowledger } : {}),
+        routeResolver: function* (program, parentRoute) {
+          const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
+            (candidate) =>
+              candidate.tool.manifest.programId === program.id &&
+              candidate.tool.manifest.version === program.version &&
+              candidate.tool.manifest.digest === program.digest,
+          );
+          return binding?.route ?? parentRoute;
+        },
       },
-    },
-    function* () {
-      return yield* runFencedActivation(
+      function* () {
+        return yield* runFencedActivation(
+          journal.authority,
+          params.conversationId,
+          attach.executionEpoch,
+          requiresFencedActivation(params.nativeTools),
+          function* (executionEpoch, activationOwnerId) {
+            return yield* ProgramRuntime.operations.run({
+              attach: { ...attach, executionEpoch },
+              executeHostEffects: true,
+              ...(activationOwnerId ? { activationOwnerId } : {}),
+            });
+          },
+        );
+      },
+    );
+  } catch (error) {
+    if (
+      !(yield* isExpectedCancellationFenceLoss(
         journal.authority,
         params.conversationId,
-        attach.executionEpoch,
-        requiresFencedActivation(params.nativeTools),
-        function* (executionEpoch, activationOwnerId) {
-          return yield* ProgramRuntime.operations.run({
-            attach: { ...attach, executionEpoch },
-            executeHostEffects: true,
-            ...(activationOwnerId ? { activationOwnerId } : {}),
-          });
-        },
-      );
-    },
-  );
+        taskId,
+        error,
+      ))
+    ) {
+      throw error;
+    }
+    // A concurrent explicit stop owns journal terminalization. This activation
+    // still owes its response consumer a valid terminal AG-UI outcome and must
+    // help publish the idempotent authority capsule before returning.
+    cancellationFenceLost = true;
+    outcome = { state: "cancelled" };
+  }
   const after = yield* journal.readJournal(params.conversationId, taskId);
   const events: StreamEvent[] = [];
   const projected = projectRecords(after.slice(before.length), after);
@@ -496,11 +527,16 @@ function* activateProgramDriverChatEngine(
       : projected),
   );
   if (outcome.state === "completed") {
-    events.push({ type: EventType.RUN_FINISHED, ...params.agUiRun, outcome: { type: "success" } });
+    const terminalEvent: StreamEvent = {
+      type: EventType.RUN_FINISHED,
+      ...params.agUiRun,
+      outcome: { type: "success" },
+    };
+    events.push(terminalEvent);
     yield* params.publishTerminal({
       outcome: outcome.value,
       disposition: "completed",
-      events,
+      events: [...projected, terminalEvent],
     });
   } else if (outcome.state === "parked") {
     const pending = pendingElicit(after, outcome.pullId);
@@ -519,8 +555,23 @@ function* activateProgramDriverChatEngine(
         message: "Program parked without a public input request",
       });
     }
+    if (params.publishCheckpoint) {
+      yield* params.publishCheckpoint({ events });
+    }
   } else if (outcome.state === "cancelled") {
-    if (params.continueAfterCancellation || replacementQueued) {
+    if (cancellationFenceLost) {
+      const terminalEvent: StreamEvent = {
+        type: EventType.RUN_ERROR,
+        code: "PROGRAM_CANCELLED",
+        message: "Program was cancelled",
+      };
+      events.push(terminalEvent);
+      yield* params.publishTerminal({
+        outcome: { code: "PROGRAM_CANCELLED", message: "Program was cancelled" },
+        disposition: "cancelled",
+        events: [...projected, terminalEvent],
+      });
+    } else if (params.continueAfterCancellation || replacementQueued) {
       const {
         pluginAbort: _pluginAbort,
         continueAfterCancellation: _continueAfterCancellation,
@@ -854,7 +905,7 @@ function publicActivityElicitSnapshots(
     return [];
   }
   const snapshots: ActivitySnapshotEvent[] = [];
-  if (placement.parentNodeId?.startsWith("execution-opaque")) {
+  if (placement.parentNodeId === stableTupleHash(["execution-opaque", pending.taskId])) {
     const opaqueNodes = opaqueAncestryForTask(records, pending.taskId, placement.sequence);
     const first = opaqueNodes[0];
     if (!first) {
@@ -1003,7 +1054,7 @@ function opaqueAncestryForTask(
       ? []
       : opaqueAncestryForTask(records, openedPayload.parentTaskId, 0, leafTaskId);
   const parentNodeId = publicParent ?? parentNodes.at(-1)?.placement.nodeId ?? null;
-  const nodeId = stableOpaqueId("execution-opaque", taskId);
+  const nodeId = stableTupleHash(["execution-opaque", taskId]);
   const node: RecursiveExecutionNode = {
     type: "execution",
     placement: {
@@ -1419,7 +1470,7 @@ function placementForPending(
   const parentNodeId =
     callId && publicExecution
       ? `execution:${callId}`
-      : stableOpaqueId("execution-opaque", pending.taskId);
+      : stableTupleHash(["execution-opaque", pending.taskId]);
   const sequence = pending.pullIndex;
   return {
     nodeId: `elicit:${pending.pullId}`,
@@ -1507,6 +1558,27 @@ function foreignElicitId(
 
 let activationOwnerCounter = 0;
 
+function* isExpectedCancellationFenceLoss(
+  authority: DurableJournalAuthorityService,
+  sessionId: string,
+  taskId: string,
+  error: unknown,
+): Operation<boolean> {
+  if (
+    !(error instanceof CrankError) ||
+    !["stale_program_capability", "stale_activation", "unknown_target", "task_terminal"].includes(
+      error.code,
+    )
+  ) {
+    return false;
+  }
+  try {
+    return (yield* authority.cancellationState(sessionId, taskId)).type !== "none";
+  } catch {
+    return false;
+  }
+}
+
 /** Fences only deployments whose native bindings declare fenced activation. */
 function* runFencedActivation(
   authority: DurableJournalAuthorityService,
@@ -1519,7 +1591,8 @@ function* runFencedActivation(
     return yield* activate(fallbackEpoch);
   }
   activationOwnerCounter += 1;
-  const ownerId = stableOpaqueId("host-activation", [
+  const ownerId = stableTupleHash([
+    "host-activation",
     process.pid,
     Date.now(),
     activationOwnerCounter,

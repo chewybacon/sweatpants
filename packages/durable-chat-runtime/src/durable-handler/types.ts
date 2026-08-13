@@ -8,7 +8,7 @@ import type { StreamEvent, ChatHistoryEntry } from "../handler/types.ts";
 import type { AgUiRunMetadata } from "@sweatpants/chat-core";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
-import type { HistoryStore } from "@sweatpants/history-store/contract";
+import type { ConversationStore } from "@sweatpants/history-store/contract";
 import type { Json } from "@sweatpants/foundation";
 
 import type {
@@ -65,10 +65,18 @@ export interface ProgramRuntimeChatEngineParams {
    */
   conversationId: string;
   agUiRun: AgUiRunMetadata;
+  /** Reattach existing canonical input without interpreting an empty GET body as replacement. */
+  recoveryOnly?: boolean;
+  /** Signals when the journal-native root can accept process-local cancellation. */
+  onLiveTaskReady?: (taskId: string) => void;
+  /** Releases process-local Host ownership after the engine resource settles. */
+  onLiveActivationSettled?: (error?: Error) => void;
   elicitResponses?: ElicitResponse[];
   /** Called only after all resume commands are durably accepted. */
   onResumeAccepted?: () => Operation<void>;
   pluginAbort?: PluginAbortRequest;
+  /** Publishes a bounded nonterminal checkpoint for a parked execution. */
+  publishCheckpoint?: (request: { events: readonly StreamEvent[] }) => Operation<void>;
   /** Commits accepted terminal authority output and publishes Session History. */
   publishTerminal(request: {
     outcome: Json;
@@ -87,10 +95,12 @@ export interface DurableChatHandlerConfig {
   setup?: ChatHandlerSetup;
   maxToolIterations?: number;
   programDriverJournalStore: ProgramDriverJournalStore;
-  /** Bounded terminal/publication authority persistence; shared for Host replacement. */
+  /** Bounded private execution authority persistence; shared for Host replacement. */
   executionStore?: ExecutionStore;
-  /** Session History persistence; shared for Host replacement. */
-  historyStore?: HistoryStore<Json>;
+  /** Authoritative conversation persistence; shared for Host replacement. */
+  conversationStore?: ConversationStore;
+  /** Lowers spill/segment targets for the durability walking skeleton. */
+  storageProfile?: "low" | "default";
   /** Non-fatal persistence observation; test harnesses may fail on any callback. */
   onCheckpointError?: (error: unknown) => void;
 }

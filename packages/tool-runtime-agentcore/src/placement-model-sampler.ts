@@ -10,7 +10,7 @@ import {
   type ModelSamplingService,
   type ProgramDeliveryEnvelope,
 } from "@sweatpants/model-sampling";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
 
 export const AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION = 1 as const;
 
@@ -168,13 +168,13 @@ function identityFor(context: ModelSampleAttempt): RemoteSampleIdentity {
 }
 
 function sampleKey(identity: RemoteSampleIdentity): string {
-  return [
+  return stableTupleHash([
     identity.journalId,
     identity.journalIncarnation,
     identity.sessionId,
     identity.taskId,
     identity.pullId,
-  ].join("\u0000");
+  ]);
 }
 
 /**

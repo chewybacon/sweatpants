@@ -409,6 +409,8 @@ class ChatClientController<
   private bootstrapTask: Task<void> | null = null;
   private activeTask: Task<AGUIEvent | null> | null = null;
   private activeRequest: ChatTransportRequest | null = null;
+  /** Last request whose authoritative Turn is parked rather than terminal. */
+  private parkedRequest: ChatTransportRequest | null = null;
   private readyForCommands = false;
   private initializedResolved = false;
   private closed = false;
@@ -755,7 +757,7 @@ class ChatClientController<
 
   private *sendMessageImpl(input: UserMessageInput, options: SendMessageOptions): Operation<void> {
     this.ensureOpen();
-    if (this.activeTask) {
+    if (this.activeTask || this.parkedRequest) {
       const policy = options.whenBusy ?? this.queueOptions.whenBusy;
       if (policy === "drop") {
         return;
@@ -812,12 +814,13 @@ class ChatClientController<
       }),
     };
     const terminal = yield* this.runRequest(request);
+    this.rememberParkedRequest(request, terminal);
     yield* this.finishRequest(terminal);
   }
 
   private *regenerateImpl(options: RegenerateOptions): Operation<void> {
     this.ensureOpen();
-    if (this.activeTask) {
+    if (this.activeTask || this.parkedRequest) {
       yield* this.stopImpl("regenerate");
     }
     const baseMessages = this.manualMessages ?? this.snapshot.messages;
@@ -849,6 +852,7 @@ class ChatClientController<
     };
     this.publish({ status: "submitted", connectionStatus: "connecting", runId });
     const terminal = yield* this.runRequest(request);
+    this.rememberParkedRequest(request, terminal);
     yield* this.finishRequest(terminal);
   }
 
@@ -858,28 +862,58 @@ class ChatClientController<
       this.rejectQueued(new ChatClientError("chat_busy_dropped", "Queued messages were stopped"));
     }
     const active = this.activeTask;
-    const request = this.activeRequest;
+    const request = this.activeRequest ?? this.parkedRequest;
     if (request) {
       const signal = yield* useAbortSignal();
+      const cancellationRunId = crypto.randomUUID();
       const cancellation: ChatTransportRequest = {
         ...request,
+        // Cancellation is its own identity-targeted command. Reusing the
+        // active send's run/message identity with a different digest is an
+        // idempotency conflict and can poison the Host before structured
+        // unwind begins.
         trigger: "cancel-run",
+        messageId: cancellationRunId,
+        input: { ...request.input, runId: cancellationRunId },
         cancellationReason: reason,
       };
       try {
         const stream = yield* ChatTransportPort.api.operations.sendMessages(cancellation, signal);
-        yield* this.consumeStream(stream, false);
+        const terminal = yield* this.consumeStream(stream, true);
+        if (terminal?.type !== EventType.RUN_ERROR || terminal.code !== "PROGRAM_CANCELLED") {
+          throw new ChatClientError(
+            "chat_cancel_not_terminal",
+            "Host cancellation did not reach authoritative terminal cancellation",
+          );
+        }
+        this.parkedRequest = null;
         yield* this.flushPublication({}, true);
       } catch (error) {
-        this.publish({
-          error: asChatClientError(error, "chat_transport_failed", "Host cancellation failed"),
-        });
+        const failure = asChatClientError(
+          error,
+          "chat_transport_failed",
+          "Host cancellation failed",
+        );
+        this.publish({ error: failure });
+        throw failure;
       }
     }
     if (active) {
-      yield* active.halt();
-      this.activeTask = null;
-      this.activeRequest = null;
+      try {
+        // The cancellation response above is the authoritative terminal
+        // boundary. Only now may the client detach its obsolete consumer; the
+        // Host-owned writer and Turn tree remain independently supervised.
+        yield* active.halt();
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "halted") {
+          throw error;
+        }
+      } finally {
+        if (this.activeTask === active) {
+          this.activeTask = null;
+          this.activeRequest = null;
+        }
+      }
     }
     this.publish({ connectionStatus: "disconnected", status: "ready", runId: null });
   }
@@ -908,6 +942,8 @@ class ChatClientController<
       this.manualMessages = null;
       this.publish({ connectionStatus: "connected" });
       const terminal = yield* this.consumeStream(stream, false);
+      const parked =
+        terminal?.type === EventType.RUN_FINISHED && terminal.outcome?.type === "interrupt";
       yield* this.flushPublication(
         {
           connectionStatus: "disconnected",
@@ -915,7 +951,9 @@ class ChatClientController<
           runId: null,
         },
         true,
+        !parked,
       );
+      this.parkedRequest = parked ? this.createHydratedControlRequest() : null;
     } catch (error) {
       const failure = asChatClientError(error, "chat_transport_failed", "Chat reconnect failed");
       this.publish({ connectionStatus: "error", status: "error", error: failure });
@@ -1016,8 +1054,33 @@ class ChatClientController<
     }
   }
 
+  private rememberParkedRequest(request: ChatTransportRequest, terminal: AGUIEvent | null): void {
+    this.parkedRequest =
+      terminal?.type === EventType.RUN_FINISHED && terminal.outcome?.type === "interrupt"
+        ? request
+        : null;
+  }
+
+  private createHydratedControlRequest(): ChatTransportRequest {
+    return {
+      trigger: "submit-message",
+      clientId: this.id,
+      conversationId: this.threadId,
+      input: runAgentInput({
+        threadId: this.threadId,
+        runId: crypto.randomUUID(),
+        messages: messagesToAGUI(this.snapshot.messages),
+        state: this.state,
+        context: this.context,
+        forwardedProps: this.forwardedProps,
+      }),
+    };
+  }
+
   private *finishRequest(terminal: AGUIEvent | null): Operation<void> {
     const runError = terminal?.type === EventType.RUN_ERROR ? terminal : null;
+    const parked =
+      terminal?.type === EventType.RUN_FINISHED && terminal.outcome?.type === "interrupt";
     yield* this.flushPublication(
       {
         status: runError ? "error" : "ready",
@@ -1028,6 +1091,7 @@ class ChatClientController<
           : {}),
       },
       true,
+      !parked,
     );
   }
 
@@ -1155,9 +1219,14 @@ class ChatClientController<
 
   private *interpretProjectionAction(action: LiveCompactorAction): Operation<void> {
     switch (action.type) {
-      case "elicit-observed":
-        this.interaction?.observe(action.request);
+      case "elicit-observed": {
+        const parentRunId = this.pendingPublicationChanges.runId ?? this.snapshot.runId;
+        this.interaction?.observe({
+          ...action.request,
+          ...(parentRunId ? { parentRunId } : {}),
+        });
         return;
+      }
       case "elicit-settled":
         this.interaction?.settled(action.elicitId);
         return;
@@ -1172,6 +1241,13 @@ class ChatClientController<
     completion: ChatInteractionCompletion,
   ): Operation<void> {
     this.ensureOpen();
+    const active = this.activeTask;
+    if (active) {
+      // Activity projection can render an elicitation before the parked
+      // RUN_FINISHED frame is consumed. Retain the local completion and join
+      // that response task before opening the resume transport.
+      yield* active;
+    }
     const resume =
       completion.action === "cancel"
         ? [{ interruptId: request.elicitId, status: "cancelled" as const }]
@@ -1195,11 +1271,14 @@ class ChatClientController<
         state: this.state,
         context: this.context,
         forwardedProps: this.forwardedProps,
+        ...(request.parentRunId ? { parentRunId: request.parentRunId } : {}),
         resume,
       }),
     };
+    this.parkedRequest = null;
     this.publish({ status: "submitted", connectionStatus: "connecting" });
     const terminal = yield* this.runRequest(transportRequest);
+    this.rememberParkedRequest(transportRequest, terminal);
     yield* this.finishRequest(terminal);
   }
 
@@ -1214,6 +1293,7 @@ class ChatClientController<
   private *flushPublication(
     changes: Partial<ChatUISnapshot<ChatUIMessage<TLocalPart>>>,
     finishPipelines: boolean,
+    drainQueued = true,
   ): Operation<void> {
     if (finishPipelines) {
       try {
@@ -1226,7 +1306,9 @@ class ChatClientController<
     const finalChanges = this.pendingPublicationChanges;
     this.pendingPublicationChanges = {};
     this.publishProjection(finalChanges);
-    yield* this.drainQueue();
+    if (drainQueued) {
+      yield* this.drainQueue();
+    }
   }
 
   private recordPipelineFailure(error: unknown): void {
@@ -1289,7 +1371,8 @@ class ChatClientController<
       ...this.serverSnapshot,
       ...changes,
       messages: serverMessages,
-      queue: changes.queue ?? this.queued,
+      // Busy-send queues are local UX state, never authoritative server state.
+      queue: [],
     });
   }
 
@@ -1310,7 +1393,8 @@ class ChatClientController<
       this.serverSnapshot = deepFreeze({
         ...this.serverSnapshot,
         ...serverChanges,
-        queue: changes.queue ?? this.queued,
+        // Do not leak a local successor queue through the authoritative view.
+        queue: [],
       });
     }
     // eslint-disable-next-line unicorn/no-useless-spread -- Publish to the listener snapshot that existed when this update began.

@@ -1,5 +1,7 @@
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
+import { exactProgramKey } from "@sweatpants/durable-execution";
 import type { DurableTool } from "@sweatpants/durable-execution";
+import { durableEffectKey } from "@sweatpants/durable-effects";
 import type { DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 
 /** Deployment-scoped exact placement readiness used before model exposure. */
@@ -41,11 +43,19 @@ export function projectAvailableToolContracts(
     if (!driver || !readiness.drivers.has(driver)) {
       return false;
     }
-    if (!readiness.programs.has(`${manifest.programId}@${manifest.version}#${manifest.digest}`)) {
+    if (
+      !readiness.programs.has(
+        exactProgramKey({
+          id: manifest.programId,
+          version: manifest.version,
+          digest: manifest.digest,
+        }),
+      )
+    ) {
       return false;
     }
     for (const effect of Object.values(manifest.effects)) {
-      if (!readiness.effects.has(`${effect.name}@${effect.version}`)) {
+      if (!readiness.effects.has(durableEffectKey(effect.name, effect.version))) {
         return false;
       }
     }
