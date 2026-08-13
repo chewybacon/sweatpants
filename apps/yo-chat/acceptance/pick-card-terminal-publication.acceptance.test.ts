@@ -17,7 +17,11 @@ import {
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 import { projectAvailableToolContracts } from "@sweatpants/durable-chat-runtime/tool-inventory";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
-import { createToolInventory, createToolInventoryEntry, installToolInventory } from "@sweatpants/tool-runtime";
+import {
+  createToolInventory,
+  createToolInventoryEntry,
+  installToolInventory,
+} from "@sweatpants/tool-runtime";
 import { exactProgramKey } from "@sweatpants/tool-runtime-agentcore";
 import {
   withTestScenario,

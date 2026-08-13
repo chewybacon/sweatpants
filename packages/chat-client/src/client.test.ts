@@ -8,6 +8,7 @@ import {
   type ChatInteractionCompletion,
   type ChatInteractionRequest,
   type ChatInteractionRuntime,
+  type ChatReconnectRequest,
   type ChatTransportRequest,
   type AGUIEvent,
   type ChatTransportContract,
@@ -303,6 +304,113 @@ describe("headless ChatClient", () => {
     await first.close();
     await second.close();
     await runtime.close();
+  });
+
+  it("drops the HTTP cursor when terminal-free replay requires authoritative hydration", async () => {
+    const requests: Array<{ readonly url: string; readonly method: string }> = [];
+    let reconnectCount = 0;
+    const fetcher = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      requests.push({ url, method });
+      if (method === "POST") {
+        return new Response(
+          [
+            JSON.stringify({
+              lsn: 10,
+              event: { type: EventType.RUN_STARTED, threadId: "restart", runId: "initial" },
+            }),
+            JSON.stringify({
+              lsn: 11,
+              event: {
+                type: EventType.RUN_FINISHED,
+                threadId: "restart",
+                runId: "initial",
+                outcome: { type: "success" },
+              },
+            }),
+          ].join("\n") + "\n",
+          { headers: { "content-type": "application/x-ndjson" } },
+        );
+      }
+      reconnectCount += 1;
+      const events =
+        reconnectCount === 1
+          ? [{ lsn: 12, event: { type: EventType.STATE_SNAPSHOT, snapshot: {} } }]
+          : [
+              { lsn: 1, event: { type: EventType.STATE_SNAPSHOT, snapshot: {} } },
+              {
+                lsn: 2,
+                event: {
+                  type: EventType.RUN_FINISHED,
+                  threadId: "restart",
+                  runId: "authoritative",
+                  outcome: { type: "success" },
+                },
+              },
+            ];
+      return new Response(`${events.map((event) => JSON.stringify(event)).join("\n")}\n`, {
+        headers: { "content-type": "application/x-ndjson" },
+      });
+    };
+    const runtime = createChatRuntime({ api: "http://localhost/chat", fetcher });
+    const client = runtime.createClient({ threadId: "restart" });
+    await Promise.all([runtime.initialized, client.initialized]);
+    await client.sendMessage("seed cursor");
+    await client.reconnect();
+
+    const reconnects = requests.filter((request) => request.method === "GET");
+    expect(reconnects).toHaveLength(2);
+    expect(new URL(reconnects[0]!.url).searchParams.get("offset")).toBe("11");
+    expect(new URL(reconnects[1]!.url).searchParams.has("offset")).toBe(false);
+    await client.close();
+    await runtime.close();
+  });
+
+  it("restarts authoritative hydration when a replay ends without a terminal frame", async () => {
+    const reconnects: ChatReconnectRequest[] = [];
+    const driver: ChatTransportContract = {
+      *sendMessages() {
+        return streamOf([]);
+      },
+      *reconnectToStream(request) {
+        reconnects.push(request);
+        if (!request.restart) {
+          return streamOf([
+            { type: EventType.MESSAGES_SNAPSHOT, messages: [] },
+            { type: EventType.STATE_SNAPSHOT, snapshot: {} },
+          ]);
+        }
+        return streamOf([
+          { type: EventType.MESSAGES_SNAPSHOT, messages: [] },
+          { type: EventType.STATE_SNAPSHOT, snapshot: {} },
+          {
+            type: EventType.RUN_FINISHED,
+            threadId: request.threadId,
+            runId: "authoritative-restart",
+            outcome: { type: "success" },
+          },
+        ]);
+      },
+      *disconnect() {
+        return;
+      },
+    };
+    const client = createChatClient({
+      threadId: "terminal-free-reconnect",
+      connection: driver,
+    });
+    await client.initialized;
+    await client.reconnect();
+
+    expect(reconnects).toHaveLength(2);
+    expect(reconnects[0]?.restart).toBeUndefined();
+    expect(reconnects[1]?.restart).toBe(true);
+    expect(client.getSnapshot()).toMatchObject({
+      status: "ready",
+      connectionStatus: "disconnected",
+    });
+    await client.close();
   });
 
   it("exposes the active run and bounds/cancels queued sends", async () => {

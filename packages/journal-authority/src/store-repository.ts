@@ -62,7 +62,10 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
       kind === "journal"
         ? DurableCollections.executionJournalSegments
         : DurableCollections.executionReplaySegments;
-    const existing = yield* kernel.readImmutable(collection, executionKeys.segment(segment.segmentId));
+    const existing = yield* kernel.readImmutable(
+      collection,
+      executionKeys.segment(segment.segmentId),
+    );
     if (existing !== null) {
       if (existing.fingerprint !== segment.contentHash) {
         throw new ExecutionStoreError(

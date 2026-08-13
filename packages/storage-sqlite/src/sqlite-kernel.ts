@@ -46,23 +46,8 @@ import {
   encodePrivateSegmentEnvelopeFromCanonical,
   executionKeys,
 } from "@sweatpants/journal-authority/store-persistence";
-import type {
-  ExecutionControl,
-  StoredExecutionObject,
-} from "@sweatpants/journal-authority/store";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  gt,
-  gte,
-  inArray,
-  lt,
-  lte,
-  or,
-  type SQL,
-} from "drizzle-orm";
+import type { ExecutionControl, StoredExecutionObject } from "@sweatpants/journal-authority/store";
+import { and, asc, desc, eq, gt, gte, inArray, lt, lte, or, type SQL } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { call, sleep, type Operation } from "effection";
 import { StorageError } from "./contract.ts";
@@ -126,7 +111,10 @@ function requireKey(key: string, lengths: readonly number[]): readonly string[] 
   return parts;
 }
 
-async function selectHead(database: Database, conversationId: string): Promise<HeadRow | undefined> {
+async function selectHead(
+  database: Database,
+  conversationId: string,
+): Promise<HeadRow | undefined> {
   return await resolved(
     database
       .select()
@@ -136,7 +124,10 @@ async function selectHead(database: Database, conversationId: string): Promise<H
   );
 }
 
-async function selectTerminal(database: Database, segmentId: string): Promise<TerminalRow | undefined> {
+async function selectTerminal(
+  database: Database,
+  segmentId: string,
+): Promise<TerminalRow | undefined> {
   return await resolved(
     database
       .select()
@@ -148,7 +139,9 @@ async function selectTerminal(database: Database, segmentId: string): Promise<Te
 
 async function headFromRow(database: Database, row: HeadRow): Promise<ConversationHead> {
   const terminal =
-    row.terminalSegmentId === null ? undefined : await selectTerminal(database, row.terminalSegmentId);
+    row.terminalSegmentId === null
+      ? undefined
+      : await selectTerminal(database, row.terminalSegmentId);
   if (row.terminalSegmentId !== null && terminal === undefined) {
     return invalid(`Head ${row.conversationId} points to missing terminal segment`);
   }
@@ -175,7 +168,10 @@ async function headFromRow(database: Database, row: HeadRow): Promise<Conversati
   );
 }
 
-async function selectControl(database: Database, executionId: string): Promise<ControlRow | undefined> {
+async function selectControl(
+  database: Database,
+  executionId: string,
+): Promise<ControlRow | undefined> {
   return await resolved(
     database
       .select()
@@ -213,14 +209,26 @@ async function readAuthorityIn(
       return null;
     }
     const head = await headFromRow(database, row);
-    return { collection, key, revision: head.revision, fence: head.ownerEpoch, value: encodeConversationHead(head) };
+    return {
+      collection,
+      key,
+      revision: head.revision,
+      fence: head.ownerEpoch,
+      value: encodeConversationHead(head),
+    };
   }
   const row = await selectControl(database, id!);
   if (!row) {
     return null;
   }
   const control = controlFromRow(row);
-  return { collection, key, revision: control.controlRevision, fence: control.ownerFence, value: encodeExecutionControl(control) };
+  return {
+    collection,
+    key,
+    revision: control.controlRevision,
+    fence: control.ownerFence,
+    value: encodeExecutionControl(control),
+  };
 }
 
 function receiptFromRow(row: ReceiptRow): CommandReceipt {
@@ -357,65 +365,140 @@ async function readImmutableIn(
   switch (collection) {
     case DurableCollections.conversationCommandReceipts: {
       const [conversationId, commandId] = requireKey(key, [2]);
-      const row = await resolved(database.select().from(spConversationCommandReceipts).where(and(eq(spConversationCommandReceipts.conversationId, conversationId!), eq(spConversationCommandReceipts.commandId, commandId!))).get() as ReceiptRow | undefined | Promise<ReceiptRow | undefined>);
+      const row = await resolved(
+        database
+          .select()
+          .from(spConversationCommandReceipts)
+          .where(
+            and(
+              eq(spConversationCommandReceipts.conversationId, conversationId!),
+              eq(spConversationCommandReceipts.commandId, commandId!),
+            ),
+          )
+          .get() as ReceiptRow | undefined | Promise<ReceiptRow | undefined>,
+      );
       if (!row) {
         return null;
       }
       const value = receiptFromRow(row);
-      return immutableRecord(collection, conversationKeys.receipt(value.conversationId, value.commandId), value.commandDigest, encodeCommandReceipt(value));
+      return immutableRecord(
+        collection,
+        conversationKeys.receipt(value.conversationId, value.commandId),
+        value.commandDigest,
+        encodeCommandReceipt(value),
+      );
     }
     case DurableCollections.conversationCheckpoints: {
       const row = await resolved(
         (parts.length === 1
-          ? database.select().from(spConversationCheckpoints).where(eq(spConversationCheckpoints.checkpointId, parts[0]!))
-          : database.select().from(spConversationCheckpoints).where(and(eq(spConversationCheckpoints.conversationId, parts[0]!), eq(spConversationCheckpoints.causeKey, parts[1]!))))
-          .get() as CheckpointRow | undefined | Promise<CheckpointRow | undefined>,
+          ? database
+              .select()
+              .from(spConversationCheckpoints)
+              .where(eq(spConversationCheckpoints.checkpointId, parts[0]!))
+          : database
+              .select()
+              .from(spConversationCheckpoints)
+              .where(
+                and(
+                  eq(spConversationCheckpoints.conversationId, parts[0]!),
+                  eq(spConversationCheckpoints.causeKey, parts[1]!),
+                ),
+              )
+        ).get() as CheckpointRow | undefined | Promise<CheckpointRow | undefined>,
       );
       if (!row) {
         return null;
       }
       const value = checkpointFromRow(row);
-      return immutableRecord(collection, conversationKeys.checkpoint(value.checkpointId), value.contentHash, encodeCheckpoint(value));
+      return immutableRecord(
+        collection,
+        conversationKeys.checkpoint(value.checkpointId),
+        value.contentHash,
+        encodeCheckpoint(value),
+      );
     }
     case DurableCollections.conversationPublicSegments: {
       const row = await resolved(
         (parts.length === 1
-          ? database.select().from(spConversationPublicSegments).where(eq(spConversationPublicSegments.segmentId, parts[0]!))
-          : database.select().from(spConversationPublicSegments).where(and(eq(spConversationPublicSegments.conversationId, parts[0]!), eq(spConversationPublicSegments.firstPosition, parts[1]!), eq(spConversationPublicSegments.segmentId, parts[2]!))))
-          .get() as PublicRow | undefined | Promise<PublicRow | undefined>,
+          ? database
+              .select()
+              .from(spConversationPublicSegments)
+              .where(eq(spConversationPublicSegments.segmentId, parts[0]!))
+          : database
+              .select()
+              .from(spConversationPublicSegments)
+              .where(
+                and(
+                  eq(spConversationPublicSegments.conversationId, parts[0]!),
+                  eq(spConversationPublicSegments.firstPosition, parts[1]!),
+                  eq(spConversationPublicSegments.segmentId, parts[2]!),
+                ),
+              )
+        ).get() as PublicRow | undefined | Promise<PublicRow | undefined>,
       );
       if (!row) {
         return null;
       }
       const value = publicFromRow(row);
-      return immutableRecord(collection, conversationKeys.publicSegment(value.segmentId), value.contentHash, encodePublicSegment(value));
+      return immutableRecord(
+        collection,
+        conversationKeys.publicSegment(value.segmentId),
+        value.contentHash,
+        encodePublicSegment(value),
+      );
     }
     case DurableCollections.conversationTerminalSegments: {
       const where =
         parts.length === 1
           ? eq(spConversationTerminalSegments.segmentId, parts[0]!)
           : parts.length === 2
-            ? and(eq(spConversationTerminalSegments.conversationId, parts[0]!), eq(spConversationTerminalSegments.publicationKey, parts[1]!))
-            : and(eq(spConversationTerminalSegments.conversationId, parts[0]!), eq(spConversationTerminalSegments.firstPosition, parts[1]!), eq(spConversationTerminalSegments.segmentId, parts[2]!));
-      const row = await resolved(database.select().from(spConversationTerminalSegments).where(where).get() as TerminalRow | undefined | Promise<TerminalRow | undefined>);
+            ? and(
+                eq(spConversationTerminalSegments.conversationId, parts[0]!),
+                eq(spConversationTerminalSegments.publicationKey, parts[1]!),
+              )
+            : and(
+                eq(spConversationTerminalSegments.conversationId, parts[0]!),
+                eq(spConversationTerminalSegments.firstPosition, parts[1]!),
+                eq(spConversationTerminalSegments.segmentId, parts[2]!),
+              );
+      const row = await resolved(
+        database.select().from(spConversationTerminalSegments).where(where).get() as
+          | TerminalRow
+          | undefined
+          | Promise<TerminalRow | undefined>,
+      );
       if (!row) {
         return null;
       }
       const value = terminalFromRow(row);
-      return immutableRecord(collection, conversationKeys.terminalSegment(value.segmentId), value.contentHash, encodeTerminalSegment(value));
+      return immutableRecord(
+        collection,
+        conversationKeys.terminalSegment(value.segmentId),
+        value.contentHash,
+        encodeTerminalSegment(value),
+      );
     }
     case DurableCollections.executionJournalSegments:
     case DurableCollections.executionReplaySegments: {
-      const table = collection === DurableCollections.executionJournalSegments ? spExecutionJournalSegments : spExecutionReplaySegments;
-      const where = parts.length === 1
-        ? eq(table.segmentId, parts[0]!)
-        : and(
-            eq(table.executionId, parts[0]!),
-            eq(table.taskId, parts[1]!),
-            eq(table.firstSequence, parts[2]!),
-            eq(table.lastSequence, parts[3]!),
-          );
-      const row = await resolved(database.select().from(table).where(where).get() as PrivateRow | undefined | Promise<PrivateRow | undefined>);
+      const table =
+        collection === DurableCollections.executionJournalSegments
+          ? spExecutionJournalSegments
+          : spExecutionReplaySegments;
+      const where =
+        parts.length === 1
+          ? eq(table.segmentId, parts[0]!)
+          : and(
+              eq(table.executionId, parts[0]!),
+              eq(table.taskId, parts[1]!),
+              eq(table.firstSequence, parts[2]!),
+              eq(table.lastSequence, parts[3]!),
+            );
+      const row = await resolved(
+        database.select().from(table).where(where).get() as
+          | PrivateRow
+          | undefined
+          | Promise<PrivateRow | undefined>,
+      );
       if (!row) {
         return null;
       }
@@ -428,7 +511,13 @@ async function readImmutableIn(
     }
     case DurableCollections.executionObjects: {
       const [objectId] = requireKey(key, [1]);
-      const row = await resolved(database.select().from(spExecutionObjects).where(eq(spExecutionObjects.objectId, objectId!)).get() as ObjectRow | undefined | Promise<ObjectRow | undefined>);
+      const row = await resolved(
+        database
+          .select()
+          .from(spExecutionObjects)
+          .where(eq(spExecutionObjects.objectId, objectId!))
+          .get() as ObjectRow | undefined | Promise<ObjectRow | undefined>,
+      );
       if (!row) {
         return null;
       }
@@ -443,48 +532,93 @@ async function readImmutableIn(
   }
 }
 
-async function insertImmutable(database: Database, record: { collection: ImmutableCollectionId; value: Uint8Array }): Promise<void> {
+async function insertImmutable(
+  database: Database,
+  record: { collection: ImmutableCollectionId; value: Uint8Array },
+): Promise<void> {
   switch (record.collection) {
     case DurableCollections.conversationCommandReceipts: {
       const value = decodeCommandReceipt(record.value);
-      await resolved(database.insert(spConversationCommandReceipts).values({
-        conversationId: value.conversationId, commandId: value.commandId, commandDigest: value.commandDigest,
-        participantId: value.participantId, acceptedAt: value.acceptedAt, retainUntil: value.retainUntil,
-        admittedRevision: value.admittedRevision, resultingRevision: value.resultingRevision,
-        logicalTurnId: value.logicalTurnId ?? null, executionId: value.executionId ?? null,
-      }).run());
+      await resolved(
+        database
+          .insert(spConversationCommandReceipts)
+          .values({
+            conversationId: value.conversationId,
+            commandId: value.commandId,
+            commandDigest: value.commandDigest,
+            participantId: value.participantId,
+            acceptedAt: value.acceptedAt,
+            retainUntil: value.retainUntil,
+            admittedRevision: value.admittedRevision,
+            resultingRevision: value.resultingRevision,
+            logicalTurnId: value.logicalTurnId ?? null,
+            executionId: value.executionId ?? null,
+          })
+          .run(),
+      );
       return;
     }
     case DurableCollections.conversationCheckpoints: {
       const value = decodeCheckpoint(record.value);
-      await resolved(database.insert(spConversationCheckpoints).values({
-        checkpointId: value.checkpointId, conversationId: value.conversationId, causeKey: value.causeKey,
-        causeJson: canonicalJson(value.cause), contentHash: value.contentHash,
-        archiveHeadSegmentId: value.archiveHead?.segmentId ?? null,
-        archiveThroughPosition: value.archiveThroughPosition, payloadJson: canonicalJson(value.payload),
-        encodedBytes: value.encodedBytes, createdAt: value.createdAt,
-      }).run());
+      await resolved(
+        database
+          .insert(spConversationCheckpoints)
+          .values({
+            checkpointId: value.checkpointId,
+            conversationId: value.conversationId,
+            causeKey: value.causeKey,
+            causeJson: canonicalJson(value.cause),
+            contentHash: value.contentHash,
+            archiveHeadSegmentId: value.archiveHead?.segmentId ?? null,
+            archiveThroughPosition: value.archiveThroughPosition,
+            payloadJson: canonicalJson(value.payload),
+            encodedBytes: value.encodedBytes,
+            createdAt: value.createdAt,
+          })
+          .run(),
+      );
       return;
     }
     case DurableCollections.conversationPublicSegments: {
       const value = decodePublicSegment(record.value);
-      await resolved(database.insert(spConversationPublicSegments).values({
-        segmentId: value.segmentId, conversationId: value.conversationId,
-        previousSegmentId: value.previous?.segmentId ?? null, firstPosition: value.firstPosition,
-        lastPosition: value.lastPosition, rootsJson: canonicalJson(value.roots), contentHash: value.contentHash,
-        encodedBytes: value.encodedBytes, createdAt: value.createdAt,
-      }).run());
+      await resolved(
+        database
+          .insert(spConversationPublicSegments)
+          .values({
+            segmentId: value.segmentId,
+            conversationId: value.conversationId,
+            previousSegmentId: value.previous?.segmentId ?? null,
+            firstPosition: value.firstPosition,
+            lastPosition: value.lastPosition,
+            rootsJson: canonicalJson(value.roots),
+            contentHash: value.contentHash,
+            encodedBytes: value.encodedBytes,
+            createdAt: value.createdAt,
+          })
+          .run(),
+      );
       return;
     }
     case DurableCollections.conversationTerminalSegments: {
       const value = decodeTerminalSegment(record.value);
-      await resolved(database.insert(spConversationTerminalSegments).values({
-        segmentId: value.segmentId, conversationId: value.conversationId, logicalTurnId: value.logicalTurnId,
-        executionId: value.executionId, publicationKey: value.publicationKey,
-        previousSegmentId: value.previous?.segmentId ?? null, firstPosition: value.firstPosition,
-        lastPosition: value.lastPosition, entriesJson: canonicalJson(value.entries), contentHash: value.contentHash,
-        createdAt: value.createdAt,
-      }).run());
+      await resolved(
+        database
+          .insert(spConversationTerminalSegments)
+          .values({
+            segmentId: value.segmentId,
+            conversationId: value.conversationId,
+            logicalTurnId: value.logicalTurnId,
+            executionId: value.executionId,
+            publicationKey: value.publicationKey,
+            previousSegmentId: value.previous?.segmentId ?? null,
+            firstPosition: value.firstPosition,
+            lastPosition: value.lastPosition,
+            entriesJson: canonicalJson(value.entries),
+            contentHash: value.contentHash,
+            createdAt: value.createdAt,
+          })
+          .run(),
+      );
       return;
     }
     case DurableCollections.executionJournalSegments:
@@ -493,13 +627,27 @@ async function insertImmutable(database: Database, record: { collection: Immutab
       // checked hashes, ranges, byte counts, and entry bounds. The SQLite
       // binding only needs the canonical envelope fields for insertion.
       const value = decodePrivateSegment(record.value);
-      const table = record.collection === DurableCollections.executionJournalSegments ? spExecutionJournalSegments : spExecutionReplaySegments;
-      await resolved(database.insert(table).values({
-        segmentId: value.segmentId, executionId: value.executionId, taskId: value.taskId,
-        previousSegmentId: value.previous?.segmentId ?? null, firstSequence: value.firstSequence,
-        lastSequence: value.lastSequence, entriesJson: canonicalJson(value.entries), contentHash: value.contentHash,
-        encodedBytes: value.encodedBytes, createdAt: value.createdAt,
-      }).run());
+      const table =
+        record.collection === DurableCollections.executionJournalSegments
+          ? spExecutionJournalSegments
+          : spExecutionReplaySegments;
+      await resolved(
+        database
+          .insert(table)
+          .values({
+            segmentId: value.segmentId,
+            executionId: value.executionId,
+            taskId: value.taskId,
+            previousSegmentId: value.previous?.segmentId ?? null,
+            firstSequence: value.firstSequence,
+            lastSequence: value.lastSequence,
+            entriesJson: canonicalJson(value.entries),
+            contentHash: value.contentHash,
+            encodedBytes: value.encodedBytes,
+            createdAt: value.createdAt,
+          })
+          .run(),
+      );
       return;
     }
     case DurableCollections.executionObjects: {
@@ -520,29 +668,47 @@ async function insertImmutable(database: Database, record: { collection: Immutab
             } as StoredExecutionObject)
           : decodeExecutionObject(record.value);
       const binary = value.body instanceof Uint8Array;
-      await resolved(database.insert(spExecutionObjects).values({
-        objectId: value.objectId, lifetimeScope: value.lifetimeScope, scopeOwnerId: value.scopeOwnerId,
-        objectKind: value.objectKind, contentHash: value.contentHash, byteLength: value.byteLength,
-        jsonBody: binary ? null : canonicalJson(value.body), blobBody: binary ? value.body : null,
-        createdAt: value.createdAt,
-      }).run());
+      await resolved(
+        database
+          .insert(spExecutionObjects)
+          .values({
+            objectId: value.objectId,
+            lifetimeScope: value.lifetimeScope,
+            scopeOwnerId: value.scopeOwnerId,
+            objectKind: value.objectKind,
+            contentHash: value.contentHash,
+            byteLength: value.byteLength,
+            jsonBody: binary ? null : canonicalJson(value.body),
+            blobBody: binary ? value.body : null,
+            createdAt: value.createdAt,
+          })
+          .run(),
+      );
     }
   }
 }
 
-async function replaceAuthority(database: Database, next: StoredAuthorityRecord, current: StoredAuthorityRecord | null): Promise<void> {
+async function replaceAuthority(
+  database: Database,
+  next: StoredAuthorityRecord,
+  current: StoredAuthorityRecord | null,
+): Promise<void> {
   if (next.collection === DurableCollections.conversationHeads) {
     const value = decodeConversationHead(next.value);
     const row = {
-      revision: value.revision, ownerEpoch: value.ownerEpoch,
-      ownerRouteJson: value.ownerRoute === null ? null : canonicalJson(value.ownerRoute), state: value.state,
+      revision: value.revision,
+      ownerEpoch: value.ownerEpoch,
+      ownerRouteJson: value.ownerRoute === null ? null : canonicalJson(value.ownerRoute),
+      state: value.state,
       checkpointId: value.checkpoint?.checkpointId ?? null,
       terminalSegmentId: value.terminalHistory?.segmentId ?? null,
-      activeLogicalTurnId: value.activeLogicalTurnId, activeExecutionId: value.activeExecutionId,
+      activeLogicalTurnId: value.activeLogicalTurnId,
+      activeExecutionId: value.activeExecutionId,
       latestCompletedExecutionId: value.latestCompletedExecutionId,
       activeSegmentJson: value.activeSegment === null ? null : canonicalJson(value.activeSegment),
       activeCommandJson: value.activeCommand === null ? null : canonicalJson(value.activeCommand),
-      deletedAt: value.deletedAt, updatedAt: value.updatedAt,
+      deletedAt: value.deletedAt,
+      updatedAt: value.updatedAt,
     };
     if (current === null) {
       await resolved(
@@ -564,9 +730,14 @@ async function replaceAuthority(database: Database, next: StoredAuthorityRecord,
   }
   const value = decodeExecutionControl(next.value);
   const row = {
-    controlRevision: value.controlRevision, ownerFence: value.ownerFence, status: value.status,
-    rootTaskId: value.rootTaskId, stopGeneration: value.stopGeneration,
-    requestedDisposition: value.requestedDisposition, controlJson: canonicalJson(value.control), updatedAt: value.updatedAt,
+    controlRevision: value.controlRevision,
+    ownerFence: value.ownerFence,
+    status: value.status,
+    rootTaskId: value.rootTaskId,
+    stopGeneration: value.stopGeneration,
+    requestedDisposition: value.requestedDisposition,
+    controlJson: canonicalJson(value.control),
+    updatedAt: value.updatedAt,
   };
   if (current === null) {
     await resolved(
@@ -613,9 +784,7 @@ async function prefetchPrivateCandidates(
     if (selected.length < 4) {
       continue;
     }
-    const ranges = selected.map((ensure) =>
-      requireKey(ensure.alternateKeys?.[0] ?? "", [4]),
-    );
+    const ranges = selected.map((ensure) => requireKey(ensure.alternateKeys?.[0] ?? "", [4]));
     const segmentIds = selected.map((ensure) => requireKey(ensure.key, [1])[0]!);
     const executionIds = [...new Set(ranges.map((range) => range[0]!))];
     const taskIds = [...new Set(ranges.map((range) => range[1]!))];
@@ -645,12 +814,7 @@ async function prefetchPrivateCandidates(
     const byId = new Map(rows.map((row) => [row.segmentId, row]));
     const byRange = new Map(
       rows.map((row) => [
-        executionKeys.taskRange(
-          row.executionId,
-          row.taskId,
-          row.firstSequence,
-          row.lastSequence,
-        ),
+        executionKeys.taskRange(row.executionId, row.taskId, row.firstSequence, row.lastSequence),
         row,
       ]),
     );
@@ -758,7 +922,11 @@ async function readEnsureCandidates(
   return candidates;
 }
 
-async function applyIn(database: Database, mutation: DurableMutation, faultInjection?: (point: string) => void): Promise<DurableMutationOutcome> {
+async function applyIn(
+  database: Database,
+  mutation: DurableMutation,
+  faultInjection?: (point: string) => void,
+): Promise<DurableMutationOutcome> {
   validateMutationStructure(mutation);
   if (mutation.claim) {
     const existing = await readImmutableIn(database, mutation.claim.collection, mutation.claim.key);
@@ -768,7 +936,11 @@ async function applyIn(database: Database, mutation: DurableMutation, faultInjec
   }
   let current: StoredAuthorityRecord | null = null;
   if (mutation.authority) {
-    current = await readAuthorityIn(database, mutation.authority.collection, mutation.authority.key);
+    current = await readAuthorityIn(
+      database,
+      mutation.authority.collection,
+      mutation.authority.key,
+    );
     const mismatch = authorityMismatch(mutation.authority, current);
     if (mismatch) {
       return {
@@ -783,8 +955,7 @@ async function applyIn(database: Database, mutation: DurableMutation, faultInjec
   const prefetchedPrivate = await prefetchPrivateCandidates(database, mutation.ensures);
   for (const ensure of mutation.ensures) {
     const candidates =
-      prefetchedPrivate.get(ensure.name) ??
-      (await readEnsureCandidates(database, ensure));
+      prefetchedPrivate.get(ensure.name) ?? (await readEnsureCandidates(database, ensure));
     if (candidates.length > 1) {
       return {
         status: "immutable_conflict",
@@ -829,12 +1000,7 @@ async function applyIn(database: Database, mutation: DurableMutation, faultInjec
     }
     resolvedRecords.set(
       ensure.name,
-      immutableRecord(
-        ensure.collection,
-        ensure.key,
-        ensure.fingerprint,
-        ensure.value,
-      ),
+      immutableRecord(ensure.collection, ensure.key, ensure.fingerprint, ensure.value),
     );
   }
   if (
@@ -846,15 +1012,14 @@ async function applyIn(database: Database, mutation: DurableMutation, faultInjec
   let authority: StoredAuthorityRecord | null = null;
   if (mutation.authority) {
     authority = {
-      collection: mutation.authority.collection, key: mutation.authority.key,
-      revision: mutation.authority.next.revision, fence: mutation.authority.next.fence ?? current?.fence ?? null,
+      collection: mutation.authority.collection,
+      key: mutation.authority.key,
+      revision: mutation.authority.next.revision,
+      fence: mutation.authority.next.fence ?? current?.fence ?? null,
       value: mutation.authority.next.value,
     };
     await replaceAuthority(database, authority, current);
-    if (
-      mutation.authority.collection === DurableCollections.conversationHeads &&
-      mutation.claim
-    ) {
+    if (mutation.authority.collection === DurableCollections.conversationHeads && mutation.claim) {
       faultInjection?.("command-before-commit");
     }
     if (mutation.authority.collection === DurableCollections.executionControls) {
@@ -895,14 +1060,10 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
         .from(table)
         .where(and(...conditions))
         .orderBy(
-          request.direction === "forward"
-            ? asc(table.firstPosition)
-            : desc(table.firstPosition),
+          request.direction === "forward" ? asc(table.firstPosition) : desc(table.firstPosition),
         )
         .limit(request.maxRecords + 1)
-        .all() as
-        | Array<PublicRow | TerminalRow>
-        | Promise<Array<PublicRow | TerminalRow>>,
+        .all() as Array<PublicRow | TerminalRow> | Promise<Array<PublicRow | TerminalRow>>,
     );
   } else {
     const [executionId, taskId] = scope;
@@ -910,10 +1071,7 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
       request.collection === DurableCollections.executionJournalSegments
         ? spExecutionJournalSegments
         : spExecutionReplaySegments;
-    const conditions: SQL[] = [
-      eq(table.executionId, executionId!),
-      eq(table.taskId, taskId!),
-    ];
+    const conditions: SQL[] = [eq(table.executionId, executionId!), eq(table.taskId, taskId!)];
     if (request.after !== null) {
       conditions.push(
         request.direction === "forward"
@@ -934,9 +1092,7 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
         .from(table)
         .where(and(...conditions))
         .orderBy(
-          request.direction === "forward"
-            ? asc(table.firstSequence)
-            : desc(table.firstSequence),
+          request.direction === "forward" ? asc(table.firstSequence) : desc(table.firstSequence),
         )
         .limit(request.maxRecords + 1)
         .all() as PrivateRow[] | Promise<PrivateRow[]>,
@@ -950,10 +1106,7 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
   for (const row of rows) {
     const position = "firstPosition" in row ? row.firstPosition : row.firstSequence;
     const numeric = BigInt(position);
-    if (
-      after !== null &&
-      (request.direction === "forward" ? numeric <= after : numeric >= after)
-    ) {
+    if (after !== null && (request.direction === "forward" ? numeric <= after : numeric >= after)) {
       continue;
     }
     if (
@@ -964,23 +1117,42 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
     }
     const record =
       request.collection === DurableCollections.conversationPublicSegments
-        ? immutableRecord(request.collection, conversationKeys.publicSegment(row.segmentId), row.contentHash, encodePublicSegment(publicFromRow(row as PublicRow)))
+        ? immutableRecord(
+            request.collection,
+            conversationKeys.publicSegment(row.segmentId),
+            row.contentHash,
+            encodePublicSegment(publicFromRow(row as PublicRow)),
+          )
         : request.collection === DurableCollections.conversationTerminalSegments
-          ? immutableRecord(request.collection, conversationKeys.terminalSegment(row.segmentId), row.contentHash, encodeTerminalSegment(terminalFromRow(row as TerminalRow)))
+          ? immutableRecord(
+              request.collection,
+              conversationKeys.terminalSegment(row.segmentId),
+              row.contentHash,
+              encodeTerminalSegment(terminalFromRow(row as TerminalRow)),
+            )
           : immutableRecord(
               request.collection,
               executionKeys.segment(row.segmentId),
               row.contentHash,
               privateEnvelopeFromRow(row as PrivateRow),
             );
-    if (records.length >= request.maxRecords || bytes + record.value.byteLength > request.maxStoredBytes) { more = true; break; }
+    if (
+      records.length >= request.maxRecords ||
+      bytes + record.value.byteLength > request.maxStoredBytes
+    ) {
+      more = true;
+      break;
+    }
     records.push({ ...record, position, storedBytes: record.value.byteLength });
     bytes += record.value.byteLength;
   }
   return { records, nextCursor: more && records.length > 0 ? records.at(-1)!.position : null };
 }
 
-export function createSqliteDurableKernel<TResultKind extends SQLiteResultKind, TRunResult>(options: {
+export function createSqliteDurableKernel<
+  TResultKind extends SQLiteResultKind,
+  TRunResult,
+>(options: {
   database: SweatpantsSqliteDatabase<TResultKind, TRunResult>;
   transactions: SqliteImmediateTransactions<SweatpantsSqliteDatabase<TResultKind, TRunResult>>;
   faultInjection?: (point: string) => void;
@@ -1000,7 +1172,9 @@ export function createSqliteDurableKernel<TResultKind extends SQLiteResultKind, 
     *waitForChange(request): Operation<void> {
       const deadline = Date.now() + Math.max(0, request.timeoutMs);
       while (Date.now() < deadline) {
-        const current = yield* call(() => readAuthorityIn(database, request.collection, request.key));
+        const current = yield* call(() =>
+          readAuthorityIn(database, request.collection, request.key),
+        );
         if (current && BigInt(current.revision) > BigInt(request.afterRevision)) {
           return;
         }
@@ -1009,7 +1183,9 @@ export function createSqliteDurableKernel<TResultKind extends SQLiteResultKind, 
     },
     *apply(mutation): Operation<DurableMutationOutcome> {
       validateMutationStructure(mutation);
-      return yield* transactions.immediate((transaction) => applyIn(transaction, mutation, options.faultInjection));
+      return yield* transactions.immediate((transaction) =>
+        applyIn(transaction, mutation, options.faultInjection),
+      );
     },
   };
 }

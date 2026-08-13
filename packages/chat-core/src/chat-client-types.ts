@@ -302,6 +302,8 @@ export interface ChatReconnectRequest {
   readonly clientId: string;
   readonly threadId: string;
   readonly cursor?: number;
+  /** Discard a stale response cursor and reload authoritative conversation state. */
+  readonly restart?: boolean;
 }
 
 /** The provider-facing, serializable message form used by transport. */

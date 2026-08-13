@@ -9,7 +9,12 @@ import type {
   StoredScanPage,
 } from "./contract.ts";
 import { decodeDurableKey } from "./codec.ts";
-import { authorityMismatch, parseCounter, validateMutationStructure, validateScan } from "./validation.ts";
+import {
+  authorityMismatch,
+  parseCounter,
+  validateMutationStructure,
+  validateScan,
+} from "./validation.ts";
 
 interface ImmutableEntry {
   readonly record: StoredImmutableRecord;
@@ -172,7 +177,9 @@ export function createMemoryDurableKernel(): DurableKernel {
       records.push({ record: entry.record, position });
     }
     records.sort((left, right) => {
-      const order = parseCounter(left.position, "scan position") - parseCounter(right.position, "scan position");
+      const order =
+        parseCounter(left.position, "scan position") -
+        parseCounter(right.position, "scan position");
       if (order === 0n) {
         return left.record.key.localeCompare(right.record.key);
       }
@@ -183,7 +190,8 @@ export function createMemoryDurableKernel(): DurableKernel {
     }
 
     const after = request.after === null ? null : parseCounter(request.after, "scan cursor");
-    const through = request.through === undefined ? null : parseCounter(request.through, "scan frontier");
+    const through =
+      request.through === undefined ? null : parseCounter(request.through, "scan frontier");
     const selected = [];
     let bytes = 0;
     let hasMore = false;
@@ -204,7 +212,11 @@ export function createMemoryDurableKernel(): DurableKernel {
         hasMore = true;
         break;
       }
-      selected.push({ ...cloneImmutable(candidate.record), position: candidate.position, storedBytes });
+      selected.push({
+        ...cloneImmutable(candidate.record),
+        position: candidate.position,
+        storedBytes,
+      });
       bytes += storedBytes;
     }
     return {

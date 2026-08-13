@@ -274,12 +274,13 @@ export function createHttpTransport(options: HttpTransportOptions = {}): ChatTra
       request: ChatReconnectRequest,
       signal: AbortSignal,
     ): Operation<Stream<AGUIEvent, void> | null> {
-      const url = joinUrl(
-        api,
-        request.threadId,
-        request.cursor ?? cursors.get(request.threadId),
-        request.clientId,
-      );
+      if (request.restart) {
+        cursors.delete(request.threadId);
+      }
+      const cursor = request.restart
+        ? undefined
+        : (request.cursor ?? cursors.get(request.threadId));
+      const url = joinUrl(api, request.threadId, cursor, request.clientId);
       const headers = requestHeaders(options);
       headers.delete("Content-Type");
       const response = yield* call(() =>

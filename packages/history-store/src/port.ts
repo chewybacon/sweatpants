@@ -46,9 +46,7 @@ export const ConversationStorePort = definePort<ConversationStore>("conversation
   ): Operation<HeadCommitResult> {
     return unavailable();
   },
-  *commitConversation(
-    _request: CommitConversationRequest,
-  ): Operation<CommitConversationResult> {
+  *commitConversation(_request: CommitConversationRequest): Operation<CommitConversationResult> {
     return unavailable();
   },
   *admitCommand(_request: CommandAdmissionRequest): Operation<CommandAdmissionResult> {

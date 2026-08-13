@@ -45,7 +45,9 @@ import {
   decodeTerminalSegment,
 } from "./persistence.ts";
 
-function immutableConflict(outcome: Extract<DurableMutationOutcome, { status: "immutable_conflict" }>): never {
+function immutableConflict(
+  outcome: Extract<DurableMutationOutcome, { status: "immutable_conflict" }>,
+): never {
   throw new ConversationStoreError(
     "immutable_object_conflict",
     `Immutable conversation write ${outcome.write} conflicts with ${outcome.existing.key}`,
@@ -177,7 +179,10 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         );
       }
       const segment = decodePublicSegment(record.value);
-      if (segment.conversationId !== conversationId || segment.lastPosition !== pointer.lastPosition) {
+      if (
+        segment.conversationId !== conversationId ||
+        segment.lastPosition !== pointer.lastPosition
+      ) {
         throw new ConversationStoreError(
           "persisted_data_invalid",
           `Public archive segment ${pointer.segmentId} is outside its selected frontier`,
@@ -215,7 +220,10 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         );
       }
       const segment = decodeTerminalSegment(record.value);
-      if (segment.conversationId !== conversationId || segment.lastPosition !== pointer.lastPosition) {
+      if (
+        segment.conversationId !== conversationId ||
+        segment.lastPosition !== pointer.lastPosition
+      ) {
         throw new ConversationStoreError(
           "persisted_data_invalid",
           `Terminal segment ${pointer.segmentId} is outside its selected frontier`,
@@ -255,7 +263,8 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       expected = last + 1n;
       values.push(...body);
     }
-    const first = segments.length === 0 ? 0n : counter(segments[0]!.firstPosition, "first position");
+    const first =
+      segments.length === 0 ? 0n : counter(segments[0]!.firstPosition, "first position");
     const start = cursor === undefined ? first : counter(cursor, "page cursor");
     const end = first + BigInt(values.length);
     if (start < first || start > end) {
@@ -463,11 +472,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       const stored = ensureOutcome(outcome, ensure.name, decodePublicSegment);
       return { segmentId: stored.segmentId, lastPosition: stored.lastPosition };
     },
-    *readPublicArchivePage(
-      conversationId,
-      cursor,
-      limit = 50,
-    ): Operation<PublicArchivePage> {
+    *readPublicArchivePage(conversationId, cursor, limit = 50): Operation<PublicArchivePage> {
       const head = yield* loadHead(conversationId);
       let segments: readonly StoredPublicArchiveSegment[];
       let archiveHead: PublicArchivePointer | null;
@@ -492,9 +497,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         })();
         segments = records.map((record) => decodePublicSegment(record.value));
         const last = segments.at(-1);
-        archiveHead = last
-          ? { segmentId: last.segmentId, lastPosition: last.lastPosition }
-          : null;
+        archiveHead = last ? { segmentId: last.segmentId, lastPosition: last.lastPosition } : null;
       } else if (head.checkpoint === null) {
         segments = [];
         archiveHead = null;
@@ -503,7 +506,8 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
           DurableCollections.conversationCheckpoints,
           conversationKeys.checkpoint(head.checkpoint.checkpointId),
         );
-        const checkpoint = checkpointRecord === null ? null : decodeCheckpoint(checkpointRecord.value);
+        const checkpoint =
+          checkpointRecord === null ? null : decodeCheckpoint(checkpointRecord.value);
         if (checkpoint === null) {
           throw new ConversationStoreError(
             "persisted_data_invalid",
@@ -511,8 +515,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
           );
         }
         archiveHead = checkpoint.archiveHead;
-        segments =
-          archiveHead === null ? [] : (yield* readPublicChain(conversationId, archiveHead));
+        segments = archiveHead === null ? [] : yield* readPublicChain(conversationId, archiveHead);
       }
       const result = page(segments, cursor, limit, (segment) => segment.roots);
       return { roots: result.values, nextCursor: result.nextCursor, head: archiveHead };
@@ -542,11 +545,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       const stored = ensureOutcome(outcome, ensure.name, decodeTerminalSegment);
       return { segmentId: stored.segmentId, lastPosition: stored.lastPosition };
     },
-    *readTerminalHistoryPage(
-      conversationId,
-      cursor,
-      limit = 50,
-    ): Operation<TerminalHistoryPage> {
+    *readTerminalHistoryPage(conversationId, cursor, limit = 50): Operation<TerminalHistoryPage> {
       const head = yield* loadHead(conversationId);
       let segments: readonly StoredTerminalSegment[];
       let historyHead: HistoryPointer | null;
@@ -568,20 +567,21 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         } while (after !== null);
         segments = result.map((record) => decodeTerminalSegment(record.value));
         const last = segments.at(-1);
-        historyHead = last
-          ? { segmentId: last.segmentId, lastPosition: last.lastPosition }
-          : null;
+        historyHead = last ? { segmentId: last.segmentId, lastPosition: last.lastPosition } : null;
       } else {
         historyHead = head.terminalHistory;
         segments =
-          historyHead === null ? [] : (yield* readTerminalChain(conversationId, historyHead));
+          historyHead === null ? [] : yield* readTerminalChain(conversationId, historyHead);
       }
       const result = page(segments, cursor, limit, (segment) => segment.entries);
       return { entries: result.values, nextCursor: result.nextCursor, head: historyHead };
     },
     *watchHead(conversationId, afterRevision, timeoutMs): Operation<ConversationHead | null> {
       const current = yield* loadHead(conversationId);
-      if (current && counter(current.revision, "head revision") > counter(afterRevision, "wait revision")) {
+      if (
+        current &&
+        counter(current.revision, "head revision") > counter(afterRevision, "wait revision")
+      ) {
         return current;
       }
       yield* kernel.waitForChange({
@@ -591,7 +591,8 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         timeoutMs,
       });
       const changed = yield* loadHead(conversationId);
-      return changed && counter(changed.revision, "head revision") > counter(afterRevision, "wait revision")
+      return changed &&
+        counter(changed.revision, "head revision") > counter(afterRevision, "wait revision")
         ? changed
         : null;
     },

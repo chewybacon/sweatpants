@@ -97,7 +97,8 @@ export function decodeConversationHead(value: Uint8Array): ConversationHead {
   if (!(["idle", "running", "parked", "recovering", "deleted"] as const).includes(state as never)) {
     return invalid(`Unknown conversation state ${state}`);
   }
-  const deletedAt = object["deletedAt"] === null ? null : natural(object["deletedAt"], "head.deletedAt");
+  const deletedAt =
+    object["deletedAt"] === null ? null : natural(object["deletedAt"], "head.deletedAt");
   if ((state === "deleted") !== (deletedAt !== null)) {
     return invalid("Conversation deleted state and deletedAt disagree");
   }
@@ -125,7 +126,9 @@ export function decodeConversationHead(value: Uint8Array): ConversationHead {
 export function decodeAuthorityHead(recordValue: StoredAuthorityRecord): ConversationHead {
   const head = decodeConversationHead(recordValue.value);
   if (head.revision !== recordValue.revision || head.ownerEpoch !== recordValue.fence) {
-    return invalid(`Conversation head ${head.conversationId} disagrees with its authority envelope`);
+    return invalid(
+      `Conversation head ${head.conversationId} disagrees with its authority envelope`,
+    );
   }
   return head;
 }
@@ -172,7 +175,9 @@ function validateCheckpointBounds(payload: Json, encodedBytes: number): void {
     openInterrupts: Array.isArray(openInterrupts) ? openInterrupts.length : 0,
     largestInlineRootBytes: Math.max(
       0,
-      ...roots.map((root) => new TextEncoder().encode(canonicalSnapshot(root).canonical).byteLength),
+      ...roots.map(
+        (root) => new TextEncoder().encode(canonicalSnapshot(root).canonical).byteLength,
+      ),
     ),
   });
 }
