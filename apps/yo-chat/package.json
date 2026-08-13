@@ -86,6 +86,7 @@
         "@interactors/html": "^1.0.1",
         "@playwright/test": "^1.57.0",
         "@sweatpants/cli": "workspace:*",
+        "@sweatpants/test-rig": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@tailwindcss/typography": "0.5.0-alpha.3",
         "@tanstack/devtools-vite": "catalog:",

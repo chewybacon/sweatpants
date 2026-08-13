@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { EventType } from "@ag-ui/core";
-import { call, createQueue, resource, type Operation } from "effection";
+import { call, createQueue, resource, spawn, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import { type ReactSchedulerDriver } from "../src/index.ts";
-import { mountReactChat } from "./react-scenario.ts";
+import { discardReactChatClient, mountReactChat } from "./react-scenario.ts";
 import {
   REACT_BOOKING_RESULT_MARKER,
   REACT_BOOKING_TOOL_NAME,
@@ -227,6 +227,7 @@ async function runRemountProjection(binding: Binding): Promise<void> {
         status: "pending",
       });
       yield* firstUi.unmount();
+      yield* discardReactChatClient(s, options.threadId);
       try {
         yield* staleRender.respond({ flightId: "FL-REACT-1" });
         throw new Error("stale React render responder unexpectedly succeeded");
@@ -261,9 +262,131 @@ async function runRemountProjection(binding: Binding): Promise<void> {
       expect(JSON.stringify(settled.messages)).not.toContain('"state":"pending"');
       yield* s.agui.event("RUN_FINISHED", { after: finalRun });
       s.agui.assertConformant({ after: aguiStart });
+
+      const successor = yield* spawn(() => resumedUi.send("Book again after remount"));
+      const next = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      expect(JSON.stringify(next.body.input)).toContain("Book again after remount");
+      yield* next.respond.text("Post-remount booking started.");
+      yield* resumedUi.message({ role: "assistant", containing: "Post-remount booking started" });
+      yield* successor;
+      yield* resumedUi.unmount();
     },
   );
 }
+
+async function runParkedInterruptSuccessor(binding: Binding): Promise<void> {
+  await withTestScenario(
+    {
+      binding,
+      modelId: REACT_ACCEPTANCE_MODEL_ID,
+      createApplication: createReactAcceptanceApplication,
+      scenarioTimeoutMs: 15_000,
+      barrierTimeoutMs: 5_000,
+    },
+    function* (s) {
+      const ui = yield* mountReactChat(s, {
+        threadId: "react-parked-interrupt-successor",
+        plugins: [reactBookingPlugin],
+        pipeline: "markdown",
+        queue: "interrupt",
+      });
+      yield* ui.send("Book before replacing the parked turn");
+      const outer = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      yield* outer.respond.toolCalls([
+        {
+          id: "react-parked-interrupt-call",
+          name: REACT_BOOKING_TOOL_NAME,
+          arguments: { route: "SFO-SEA" },
+        },
+      ]);
+      yield* ui.render({ componentKey: "FlightChoice", status: "pending" });
+
+      const cancellationStart = s.agui.mark();
+      // Real overlap: the replacement stays local while the interrupt policy
+      // terminalizes the authoritative parked Turn.
+      const successor = yield* spawn(() => ui.send("Start a replacement booking"));
+      const cancellation = yield* s.agui.event(EventType.RUN_ERROR, {
+        after: cancellationStart,
+      });
+      expect(cancellation).toMatchObject({ code: "PROGRAM_CANCELLED" });
+      expect(JSON.stringify(s.agui.events(cancellationStart))).not.toContain(
+        "Start a replacement booking",
+      );
+
+      const replacement = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      expect(JSON.stringify(replacement.body.input)).toContain("Start a replacement booking");
+      yield* replacement.respond.text("Replacement booking started.");
+      yield* ui.message({ role: "assistant", containing: "Replacement booking started" });
+      yield* successor;
+      yield* ui.unmount();
+    },
+  );
+}
+
+async function runCompletedSuccessor(binding: Binding): Promise<void> {
+  await withTestScenario(
+    {
+      binding,
+      modelId: REACT_ACCEPTANCE_MODEL_ID,
+      createApplication: createReactAcceptanceApplication,
+      scenarioTimeoutMs: 15_000,
+      barrierTimeoutMs: 5_000,
+    },
+    function* (s) {
+      const ui = yield* mountReactChat(s, {
+        threadId: "react-completed-successor",
+        plugins: [reactBookingPlugin],
+        pipeline: "markdown",
+      });
+      yield* ui.send("Book before starting another turn");
+      const outer = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      yield* outer.respond.toolCalls([
+        {
+          id: "react-completed-successor-call",
+          name: REACT_BOOKING_TOOL_NAME,
+          arguments: { route: "SFO-SEA" },
+        },
+      ]);
+      const flight = yield* ui.render({ componentKey: "FlightChoice", status: "pending" });
+      yield* flight.respond({ flightId: "FL-REACT-2" });
+      const confirmation = yield* ui.render({
+        componentKey: "ConfirmationChoice",
+        status: "pending",
+      });
+      yield* confirmation.respond({ confirmed: true });
+      const final = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      yield* final.respond.text("First booking completed.");
+      yield* ui.message({ role: "assistant", containing: "First booking completed" });
+      yield* ui.settled();
+
+      const successor = yield* spawn(() => ui.send("Start another booking"));
+      const next = yield* s.model.request({ model: REACT_ACCEPTANCE_MODEL_ID });
+      expect(JSON.stringify(next.body.input)).toContain("Start another booking");
+      yield* next.respond.text("Second booking started.");
+      yield* ui.message({ role: "assistant", containing: "Second booking started" });
+      yield* successor;
+      yield* ui.unmount();
+    },
+  );
+}
+
+describe.each<Binding>(["in-process", "http"])(
+  "completed successor through the %s binding",
+  (binding) => {
+    it("accepts a new message after an elicited tool turn completes", async () => {
+      await runCompletedSuccessor(binding);
+    }, 20_000);
+  },
+);
+
+describe.each<Binding>(["in-process", "http"])(
+  "parked interrupt successor through the %s binding",
+  (binding) => {
+    it("terminalizes the parked turn before submitting the local successor", async () => {
+      await runParkedInterruptSuccessor(binding);
+    }, 20_000);
+  },
+);
 
 describe("React client live compaction", () => {
   it("buffers simulator tokens until one controlled client pull", async () => {
@@ -332,7 +455,7 @@ describe.each<Binding>(["in-process", "http"])(
       await runHookProjection(binding);
     }, 30_000);
 
-    it("restores a parked local render after remount without retaining a stale responder", async () => {
+    it("restores a parked render in a fresh client without retaining a stale responder", async () => {
       await runRemountProjection(binding);
     }, 30_000);
   },

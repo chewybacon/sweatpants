@@ -912,6 +912,9 @@ importers:
       '@sweatpants/cli':
         specifier: workspace:*
         version: link:../../packages/cli
+      '@sweatpants/test-rig':
+        specifier: workspace:*
+        version: link:../../packages/test-rig
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../../packages/ts-config
