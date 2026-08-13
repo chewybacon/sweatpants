@@ -3,6 +3,8 @@ export type {
   CommandAdmissionRequest,
   CommandAdmissionResult,
   CommandReceipt,
+  CommitConversationRequest,
+  CommitConversationResult,
   ConversationHead,
   ConversationHeadProposal,
   ConversationState,

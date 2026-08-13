@@ -42,6 +42,39 @@
             },
             "default": "./src/memory.ts"
         },
+        "./store-persistence": {
+            "development": {
+                "import": "./src/store-persistence.ts",
+                "types": "./src/store-persistence.ts"
+            },
+            "import": {
+                "types": "./dist/store-persistence.d.ts",
+                "default": "./dist/store-persistence.js"
+            },
+            "default": "./src/store-persistence.ts"
+        },
+        "./store-planners": {
+            "development": {
+                "import": "./src/store-planners.ts",
+                "types": "./src/store-planners.ts"
+            },
+            "import": {
+                "types": "./dist/store-planners.d.ts",
+                "default": "./dist/store-planners.js"
+            },
+            "default": "./src/store-planners.ts"
+        },
+        "./store-repository": {
+            "development": {
+                "import": "./src/store-repository.ts",
+                "types": "./src/store-repository.ts"
+            },
+            "import": {
+                "types": "./dist/store-repository.d.ts",
+                "default": "./dist/store-repository.js"
+            },
+            "default": "./src/store-repository.ts"
+        },
         "./testing": {
             "development": {
                 "import": "./src/testing.ts",
@@ -96,6 +129,7 @@
         "@noble/hashes": "^2.2.0",
         "@standard-schema/spec": "catalog:",
         "@sweatpants/durable-effects": "workspace:*",
+        "@sweatpants/durable-storage-kernel": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "effection": "catalog:",
