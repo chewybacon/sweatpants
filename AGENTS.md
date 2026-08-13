@@ -158,14 +158,14 @@ type, the runtime operation list, and the fail-closed default. No Context is
 exported, so callers cannot reach around the seam to an installed driver.
 
 ```ts
-export const ExecutionStorePort = definePort<ExecutionStore>("journal-authority-execution-store", {
-    *loadExecution(_executionId): Operation<VersionedExecution | null> {
+export const ExecutionStorePort = definePort<ExecutionStore>("execution-store", {
+    *loadControl(_executionId): Operation<ExecutionControl | null> {
         return unavailable();
     },
 });
 
 yield * ExecutionStorePort.installDriver(createMemoryExecutionStore());
-yield * ExecutionStorePort.api.operations.loadExecution(id);
+yield * ExecutionStorePort.api.operations.loadControl(id);
 ```
 
 Rules:

@@ -6,6 +6,22 @@ test.describe("play_ttt Multiple Games", () => {
     // 1. Navigate to the page
     await page.goto("/chat/play-ttt/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Agentic Tic-Tac-Toe" })).toBeVisible();
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
+    const threadId = `play-ttt:e2e-twice-${crypto.randomUUID()}`;
+    const created = await page.request.post("/api/threaded-chat/threads", {
+      data: { namespace: "play-ttt", id: threadId },
+    });
+    expect(created.ok()).toBe(true);
+    await page.evaluate(({ key, value }) => window.localStorage.setItem(key, value), {
+      key: "yo-chat:play-ttt:selected-thread-id",
+      value: threadId,
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.locator('[data-testid="thread-item"][aria-pressed="true"]')).toHaveAttribute(
+      "data-thread-id",
+      threadId,
+      { timeout: 15000 },
+    );
 
     // 2. Start the first game
     await page.getByRole("button", { name: "Start Game" }).click();
@@ -56,7 +72,7 @@ test.describe("play_ttt Multiple Games", () => {
     // The "Stop" button in the input area aborts the stream.
 
     // Let's try to ask for a new game directly.
-    const input = page.locator('input[type="text"]');
+    const input = page.getByPlaceholder("Type a message...");
 
     // If the game is still "running" (waiting for input), we might need to "finish" it or cancel it.
     // The `play_ttt` tool loop handles cancellation if the user declines.

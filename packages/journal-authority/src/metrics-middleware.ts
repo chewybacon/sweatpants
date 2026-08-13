@@ -22,12 +22,7 @@ function size(value: unknown): number {
   return JSON.stringify(value ?? null)?.length ?? 0;
 }
 
-/**
- * Installs observation-only metrics middleware for the calling scope.
- *
- * The middleware records evidence and delegates every call unchanged, so
- * removing it cannot alter an accepted storage result.
- */
+/** Observation-only middleware for the direct ExecutionStore contract. */
 export function* installStorageMetrics(): Operation<StorageMetricsRecorder> {
   let executionReads = 0;
   let executionCommits = 0;
@@ -40,44 +35,51 @@ export function* installStorageMetrics(): Operation<StorageMetricsRecorder> {
   const replayObjects = new Set<string>();
 
   yield* ExecutionStoreApi.around({
-    *loadExecution([executionId], next) {
+    *loadControl([executionId], next) {
       executionReads += 1;
       executionsTouched.add(executionId);
-      const record = yield* next(executionId);
-      resumeBytes += size(record);
-      return record;
+      const control = yield* next(executionId);
+      resumeBytes += size(control);
+      return control;
     },
     *commitExecution([request], next) {
       executionCommits += 1;
       executionsTouched.add(request.executionId);
-      mutationBytes += size(request.next);
+      mutationBytes += size({
+        control: request.nextControl,
+        journalSegments: request.journalSegments,
+        replaySegments: request.replaySegments,
+      });
       return yield* next(request);
     },
-    *putPayload([value], next) {
-      mutationBytes += size(value);
-      return yield* next(value);
+    *putObject([object], next) {
+      mutationBytes += object.byteLength;
+      const pointer = yield* next(object);
+      return pointer;
     },
-    *getPayload([reference], next) {
-      const value = yield* next(reference);
-      resumeBytes += size(value);
-      return value;
+    *getObject([pointer], next) {
+      const object = yield* next(pointer);
+      resumeBytes += size(object);
+      return object;
     },
-    *appendReplay([request], next) {
+    *appendReplaySegment([segment], next) {
       replayAppends += 1;
-      executionsTouched.add(request.executionId);
-      mutationBytes += size(request.entries);
-      const reference = yield* next(request);
-      if (replayObjects.has(reference.id)) {
-        replayObjectsRewritten += 1;
-      }
-      replayObjects.add(reference.id);
-      return reference;
+      executionsTouched.add(segment.executionId);
+      mutationBytes += segment.encodedBytes;
+      const pointer = yield* next(segment);
+      if (replayObjects.has(pointer.segmentId)) replayObjectsRewritten += 1;
+      replayObjects.add(pointer.segmentId);
+      return pointer;
     },
-    *readReplay([head], next) {
+    *readReplay([task], next) {
       replayReads += 1;
-      const entries = yield* next(head);
-      resumeBytes += size(entries);
-      return entries;
+      const stream = yield* next(task);
+      return (async function* () {
+        for await (const entries of stream) {
+          resumeBytes += size(entries);
+          yield entries;
+        }
+      })();
     },
   });
 
@@ -103,6 +105,7 @@ export function* installStorageMetrics(): Operation<StorageMetricsRecorder> {
       mutationBytes = 0;
       resumeBytes = 0;
       executionsTouched.clear();
+      replayObjects.clear();
     },
   };
 }

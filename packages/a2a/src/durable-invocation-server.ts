@@ -1,4 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
+import { stableTupleHash } from "@sweatpants/foundation";
 
 import type {
   AbortForeignInvocationResult,
@@ -162,7 +163,7 @@ export class InMemoryDurableInvocationService {
         "Continuation task/context differs from the invocation binding",
       );
     }
-    const key = `${invocationKey(request)}\u0000${request.messageId}`;
+    const key = stableTupleHash([invocationKey(request), request.messageId]);
     const previous = this.#messages.get(key);
     if (previous) {
       assertDigest(previous.digest, request.messageDigest);
@@ -211,7 +212,7 @@ function invocationKey(request: {
   if (!request.principalId || !request.invocationId) {
     throw new CrankError("a2a_protocol_error", "Invocation identity is incomplete");
   }
-  return `${request.principalId}\u0000${request.tenantId ?? ""}\u0000${request.invocationId}`;
+  return stableTupleHash([request.principalId, request.tenantId ?? null, request.invocationId]);
 }
 function assertDigest(expected: string, actual: string): void {
   if (expected !== actual) {

@@ -250,6 +250,8 @@ function DemoThreadPanel({
   inspectorStore,
   onInspectorToggle,
   onMetadata,
+  draft,
+  onDraftChange,
 }: {
   readonly definition: ChatDemoDefinition;
   readonly threadId: string;
@@ -260,8 +262,9 @@ function DemoThreadPanel({
     threadId: string,
     summary: Pick<ThreadSummary, "title" | "lastMessagePreview" | "messageCount">,
   ) => void;
+  readonly draft: string;
+  readonly onDraftChange: (value: string) => void;
 }) {
-  const [draft, setDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inspectorTransport = useMemo(
     () => ({
@@ -274,6 +277,7 @@ function DemoThreadPanel({
     pipeline: definition.pipeline ?? "full",
     plugins: definition.plugins ?? [],
     threadId,
+    queue: "interrupt",
     transport: inspectorTransport,
   });
   const busy = status === "submitted" || status === "streaming";
@@ -295,9 +299,9 @@ function DemoThreadPanel({
         return;
       }
       sendMessage(content);
-      setDraft("");
+      onDraftChange("");
     },
-    [busy, draft, sendMessage],
+    [busy, draft, onDraftChange, sendMessage],
   );
 
   return (
@@ -340,7 +344,7 @@ function DemoThreadPanel({
                 <button
                   key={suggestion.label}
                   type="button"
-                  onClick={() => setDraft(suggestion.message)}
+                  onClick={() => onDraftChange(suggestion.message)}
                   disabled={busy}
                   className="rounded-full border border-slate-700 bg-slate-900/80 px-4 py-2 text-xs text-slate-300 transition hover:border-sky-400 hover:text-sky-200 disabled:opacity-50"
                 >
@@ -368,7 +372,7 @@ function DemoThreadPanel({
         <form onSubmit={handleSubmit} className="flex flex-col gap-3 md:flex-row">
           <Input
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => onDraftChange(event.target.value)}
             placeholder="Type a message..."
             disabled={busy}
             className="h-14 rounded-2xl border-slate-700 bg-slate-900/90 px-5 text-base"
@@ -399,6 +403,7 @@ function DemoThreadPanel({
 export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDefinition }) {
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -406,6 +411,9 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
   const [sessionMountKey, setSessionMountKey] = useState(0);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorStore] = useState(() => createStreamInspectorStore());
+  const hydrationRef = useRef<Promise<void> | null>(null);
+  const hydratedOnceRef = useRef(false);
+  const selectionGenerationRef = useRef(0);
   const storageKey = `yo-chat:${definition.namespace}:selected-thread-id`;
 
   const persistSelection = useCallback(
@@ -422,32 +430,59 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
     [storageKey],
   );
 
-  const hydrate = useCallback(async () => {
-    inspectorStore.clear();
-    setLoading(true);
-    setError(null);
-    try {
-      let nextThreads = await listThreads(definition.namespace);
-      let nextSelected =
-        typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
-      if (nextThreads.length === 0) {
-        const created = await createThread(definition.namespace);
-        nextThreads = [created];
-        nextSelected = created.id;
+  const hydrate = useCallback(
+    (force = false): Promise<void> => {
+      if (hydrationRef.current) {
+        return hydrationRef.current;
       }
-      if (!nextSelected || !nextThreads.some((thread) => thread.id === nextSelected)) {
-        nextSelected = nextThreads[0]?.id ?? null;
+      if (!force && hydratedOnceRef.current) {
+        return Promise.resolve();
       }
-      setThreads(nextThreads);
-      setSelectedThreadId(nextSelected);
-      persistSelection(nextSelected);
-      setSessionMountKey((current) => current + 1);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setLoading(false);
-    }
-  }, [definition.namespace, inspectorStore, persistSelection, storageKey]);
+      hydratedOnceRef.current = true;
+      const generation = selectionGenerationRef.current;
+      const operation = (async () => {
+        inspectorStore.clear();
+        setLoading(true);
+        setError(null);
+        try {
+          let nextThreads = await listThreads(definition.namespace);
+          let nextSelected =
+            typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
+          if (nextThreads.length === 0) {
+            const created = await createThread(definition.namespace);
+            nextThreads = [created];
+            nextSelected = created.id;
+          }
+          if (!nextSelected || !nextThreads.some((thread) => thread.id === nextSelected)) {
+            nextSelected = nextThreads[0]?.id ?? null;
+          }
+          if (selectionGenerationRef.current !== generation) {
+            return;
+          }
+          setThreads(nextThreads);
+          setSelectedThreadId(nextSelected);
+          persistSelection(nextSelected);
+          setSessionMountKey((current) => current + 1);
+        } catch (cause) {
+          if (selectionGenerationRef.current === generation) {
+            setError(cause instanceof Error ? cause.message : String(cause));
+          }
+        } finally {
+          if (selectionGenerationRef.current === generation) {
+            setLoading(false);
+          }
+        }
+      })();
+      hydrationRef.current = operation;
+      void operation.finally(() => {
+        if (hydrationRef.current === operation) {
+          hydrationRef.current = null;
+        }
+      });
+      return operation;
+    },
+    [definition.namespace, inspectorStore, persistSelection, storageKey],
+  );
 
   useEffect(() => {
     setHydrated(true);
@@ -455,21 +490,38 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
   }, [hydrate]);
 
   const handleNewThread = useCallback(async () => {
+    const generation = selectionGenerationRef.current + 1;
+    selectionGenerationRef.current = generation;
+    const previousThreadId = selectedThreadId;
+    setSelectedThreadId(null);
+    setLoading(true);
     try {
       setError(null);
       inspectorStore.clear();
       const created = await createThread(definition.namespace);
+      if (selectionGenerationRef.current !== generation) {
+        return;
+      }
       setThreads((previous) => [created, ...previous]);
       setSelectedThreadId(created.id);
       persistSelection(created.id);
       setSessionMountKey((current) => current + 1);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      if (selectionGenerationRef.current === generation) {
+        setSelectedThreadId(previousThreadId);
+        persistSelection(previousThreadId);
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    } finally {
+      if (selectionGenerationRef.current === generation) {
+        setLoading(false);
+      }
     }
-  }, [definition.namespace, inspectorStore, persistSelection]);
+  }, [definition.namespace, inspectorStore, persistSelection, selectedThreadId]);
 
   const handleSelectThread = useCallback(
     (threadId: string) => {
+      selectionGenerationRef.current += 1;
       inspectorStore.clear();
       setSelectedThreadId(threadId);
       persistSelection(threadId);
@@ -517,6 +569,10 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
     [definition.namespace],
   );
 
+  const handleDraftChange = useCallback((threadId: string, value: string) => {
+    setDrafts((current) => ({ ...current, [threadId]: value }));
+  }, []);
+
   const handleInspectorToggle = useCallback(() => {
     setInspectorOpen((open) => !open);
   }, []);
@@ -548,6 +604,7 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
           <div className="mb-4 flex gap-2">
             <Button
               onClick={() => void handleNewThread()}
+              disabled={loading}
               className="flex-1 bg-amber-400 text-slate-950 hover:bg-amber-300"
             >
               <span data-testid="thread-create" className="contents">
@@ -555,7 +612,7 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
                 New thread
               </span>
             </Button>
-            <Button variant="outline" size="icon" onClick={() => void hydrate()}>
+            <Button variant="outline" size="icon" onClick={() => void hydrate(true)}>
               <RefreshCcw className="size-4" />
             </Button>
           </div>
@@ -611,6 +668,8 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
               inspectorStore={inspectorStore}
               onInspectorToggle={handleInspectorToggle}
               onMetadata={handleMetadata}
+              draft={drafts[selectedThreadId] ?? ""}
+              onDraftChange={(value) => handleDraftChange(selectedThreadId, value)}
             />
           )}
 

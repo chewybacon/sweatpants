@@ -43,8 +43,23 @@ export function planTurn(params: {
 }): TurnPlan {
   const { body, method, threadId, runId, openInterrupts, toolRuntimeId } = params;
 
-  const requestedResumeScopeId = deriveResumeScopeId(threadId, body.parentRunId);
   const resumeScopeFromEntries = deriveResumeScopeFromEntries(body.resume);
+  const resumeEntryIds = new Set(body.resume?.map((entry) => entry.interruptId) ?? []);
+  const matchingOpenScopes = new Set(
+    openInterrupts
+      .filter((record) => resumeEntryIds.has(record.interruptId))
+      .map((record) => record.scopeId),
+  );
+  const resumeScopeFromOpenRecords =
+    resumeEntryIds.size > 0 &&
+    body.resume?.every((entry) =>
+      openInterrupts.some((record) => record.interruptId === entry.interruptId),
+    ) &&
+    matchingOpenScopes.size === 1
+      ? [...matchingOpenScopes][0]
+      : undefined;
+  const requestedResumeScopeId =
+    deriveResumeScopeId(threadId, body.parentRunId) ?? resumeScopeFromOpenRecords;
   const hasOpenInterrupts = openInterrupts.length > 0;
 
   const supersedeOpenProgramTurn =
@@ -79,7 +94,7 @@ export function planTurn(params: {
             code: "INVALID_RESUME",
             message: "Unable to determine resume scope",
           } as const)
-      : hasOpenInterrupts && requestedResumeScopeId
+      : method === "POST" && hasOpenInterrupts && requestedResumeScopeId
         ? verifyResumeEntries({
             threadId,
             scopeId: requestedResumeScopeId,

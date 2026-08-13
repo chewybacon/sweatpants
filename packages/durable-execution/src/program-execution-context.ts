@@ -1,5 +1,5 @@
 import { createContext, type Operation } from "effection";
-import { canonicalSnapshot, stableOpaqueId } from "@sweatpants/foundation";
+import { canonicalSnapshot, stableTupleHash } from "@sweatpants/foundation";
 import { CrankError } from "./errors.ts";
 import type { AttachProgramRequest, ProgramRoute } from "./program-driver-contract.ts";
 import type { PinnedProgram, SandboxAffinity } from "./program-contract.ts";
@@ -64,7 +64,8 @@ export function createProgramExecutionValue(
     operationId(namespace: string) {
       const acceptedNamespace = boundedNamespace(namespace);
       callIndex += 1;
-      return stableOpaqueId("program-operation-attempt-v1", [
+      return stableTupleHash([
+        "program-operation-attempt-v1",
         identity.sessionId,
         identity.taskId,
         identity.program.id,

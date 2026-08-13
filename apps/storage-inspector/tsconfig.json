@@ -1,0 +1,14 @@
+{
+    "extends": "@sweatpants/ts-config/tsconfig.app.json",
+    "compilerOptions": {
+        "customConditions": ["development"],
+        "noPropertyAccessFromIndexSignature": false
+    },
+    "include": ["src/**/*"],
+    "exclude": ["node_modules", "dist"],
+    "references": [
+        {
+            "path": "../../packages/storage-sqlite/tsconfig.json"
+        }
+    ]
+}

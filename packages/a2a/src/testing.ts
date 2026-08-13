@@ -1,4 +1,4 @@
-import { type DurableToolRegistry } from "@sweatpants/durable-execution";
+import { exactProgramKey, type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { call, type Operation } from "effection";
 import type { ForeignA2AClientPort } from "./foreign-client.ts";
 import type {
@@ -189,7 +189,7 @@ export function createRegistryManifestProvider(
   streamedRestore = true,
 ): (program: PinnedProgram) => Promise<ReturnType<typeof createRemoteProgramManifestDocument>> {
   return async (program) => {
-    const tool = registry.get(`${program.id}@${program.version}#${program.digest}`);
+    const tool = registry.get(exactProgramKey(program));
     if (!tool) {
       throw a2aError("program_version_unavailable", "Exact remote program is unavailable");
     }

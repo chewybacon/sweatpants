@@ -2,7 +2,7 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { createSignal, race, sleep, spawn, type Operation, type Signal } from "effection";
 import { StaleTokenWriterError } from "@sweatpants/durable-streams";
 import { type ModelSampleDisposition } from "@sweatpants/model-sampling";
-import { canonicalSnapshot, stableOpaqueId, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
 
 import {
   AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
@@ -47,13 +47,13 @@ type MutableSample = {
 };
 
 function identityKey(identity: RemoteSampleIdentity): string {
-  return [
+  return stableTupleHash([
     identity.journalId,
     identity.journalIncarnation,
     identity.sessionId,
     identity.taskId,
     identity.pullId,
-  ].join("\u0000");
+  ]);
 }
 
 function attachment(sample: MutableSample): RemoteSampleAttachment {
@@ -176,7 +176,7 @@ export function createInMemoryPlacementModelSampler(options: {
         return attachment(existing);
       }
 
-      const streamId = stableOpaqueId("remote-sample", [key, request.releaseId]);
+      const streamId = stableTupleHash(["remote-sample", key, request.releaseId]);
       const created: MutableSample = {
         record: {
           version: 1,

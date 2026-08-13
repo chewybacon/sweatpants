@@ -4,11 +4,13 @@ import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
+  hasControlCharacter,
   parseJsonText,
   parseJsonObject,
   requireJsonObject,
   sha256,
-  stableOpaqueId,
+  stableTupleHash,
+  replaceControlCharacters,
 } from "./json.ts";
 
 describe("foundation canonical JSON", () => {
@@ -18,7 +20,11 @@ describe("foundation canonical JSON", () => {
     expect(snapshot.canonical).toBe('{"a":{"y":"value"},"z":[true,0]}');
     expect(snapshot.value).toEqual({ a: { y: "value" }, z: [true, 0] });
     expect(snapshot.sha).toBe(sha256(snapshot.canonical));
-    expect(stableOpaqueId("payload", { a: 1 })).toBe(stableOpaqueId("payload", { a: 1 }));
+    expect(stableTupleHash(["a", "b"])).not.toBe(stableTupleHash(["a|b"]));
+    expect(stableTupleHash(["a", "b"])).toMatch(/^[0-9a-f]{64}$/);
+    expect(hasControlCharacter("safe")).toBe(false);
+    expect(hasControlCharacter(`bad${String.fromCharCode(0)}`)).toBe(true);
+    expect(replaceControlCharacters(`bad${String.fromCharCode(0)}value`)).toBe("bad value");
   });
 
   it("rejects non-portable JSON without durable-domain error policy", () => {

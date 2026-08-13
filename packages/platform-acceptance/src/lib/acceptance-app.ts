@@ -10,7 +10,11 @@ import {
   createDurableEffectRegistry,
   DurableEffectRouting,
 } from "@sweatpants/durable-effects/runtime";
-import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import { createCapabilityKeyring, LOW_PRIVATE_SEGMENT_TARGET } from "@sweatpants/journal-authority";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
+import type { ExecutionStore } from "@sweatpants/journal-authority/store";
+import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
+import type { ConversationStore } from "@sweatpants/history-store/contract";
 import {
   createProgramDriverJournalStore,
   programDriverSchemaRegistry,
@@ -142,6 +146,12 @@ export interface AcceptanceApplicationOptions {
   retainResponseStreams?: boolean;
   /** Shared durable substrate used when a test-rig scenario replaces a Host generation. */
   journalStore?: ProgramDriverJournalStore;
+  /** Direct ConversationStore installed into the runtime composition. */
+  conversationStore?: ConversationStore;
+  /** Direct ExecutionStore shared by terminal authority and program journal. */
+  executionStore?: ExecutionStore;
+  /** Lowers checkpoint spill and private segment targets for the SQLite spine. */
+  storageProfile?: "low" | "default";
   durableDriverKind?: string;
   durableRoute?: ProgramRoute;
   createDurableDriver?(
@@ -174,6 +184,8 @@ export function createAcceptanceApplication(
   let toolSessionRegistry: ToolSessionRegistry | undefined;
   let toolSessionStore: ReturnType<typeof createInMemoryToolSessionStoreWithDebug> | undefined;
   let sessionDrain: ToolSessionDrainObserver | undefined;
+  const executionStore = options.executionStore ?? createMemoryExecutionStore();
+  const conversationStore = options.conversationStore ?? createMemoryConversationStore();
   const journalStore =
     options.journalStore ??
     createProgramDriverJournalStore({
@@ -184,6 +196,10 @@ export function createAcceptanceApplication(
         },
       ]),
       schemaRegistry: programDriverSchemaRegistry(acceptanceDurableTool.artifacts.catalog),
+      executionStore,
+      ...(options.storageProfile === "low"
+        ? { privateSegmentTarget: LOW_PRIVATE_SEGMENT_TARGET }
+        : {}),
     });
   inspect?.({
     journalStore,
@@ -336,6 +352,9 @@ export function createAcceptanceApplication(
     },
     handler: createChatHandler({
       programDriverJournalStore: journalStore,
+      executionStore,
+      conversationStore,
+      ...(options.storageProfile ? { storageProfile: options.storageProfile } : {}),
       setup: function* (): Operation<void> {
         yield* context.model.install();
       },

@@ -16,7 +16,7 @@ import {
   type OpenDurableTaskRequest,
   type ResolveOperationResult,
 } from "@sweatpants/journal-authority";
-import { sha256, type Json } from "@sweatpants/foundation";
+import { sha256, stableTupleHash, type Json } from "@sweatpants/foundation";
 import { type DurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   programDriverSchemaRegistry,
@@ -248,7 +248,7 @@ export function createFileStandardA2ATaskDirectory(path: string): StandardA2ATas
     *bindContinuation(binding) {
       return yield* call(() =>
         mutate((current) => {
-          const key = `${binding.taskId}\0${binding.messageId}`;
+          const key = stableTupleHash([binding.taskId, binding.messageId]);
           const existing = current.continuations[key];
           if (existing) {
             if (JSON.stringify(existing) !== JSON.stringify(binding)) {
@@ -263,7 +263,9 @@ export function createFileStandardA2ATaskDirectory(path: string): StandardA2ATas
     },
     *lookupContinuation(taskId, messageId) {
       yield* call(() => mutation);
-      return structuredClone((yield* call(() => load())).continuations[`${taskId}\0${messageId}`]);
+      return structuredClone(
+        (yield* call(() => load())).continuations[stableTupleHash([taskId, messageId])],
+      );
     },
     *continuationsForTask(taskId) {
       yield* call(() => mutation);
@@ -274,7 +276,7 @@ export function createFileStandardA2ATaskDirectory(path: string): StandardA2ATas
     *bindContent(binding) {
       return yield* call(() =>
         mutate((current) => {
-          const key = `${binding.taskId}\0${binding.artifactId}\0${binding.partIndex}`;
+          const key = stableTupleHash([binding.taskId, binding.artifactId, binding.partIndex]);
           const existing = current.content[key];
           if (existing) {
             if (JSON.stringify(existing) !== JSON.stringify(binding)) {

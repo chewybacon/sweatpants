@@ -506,11 +506,11 @@ Callers invoke scoped operations, for example `yield* JournalAuthority.operation
 
 One effectful boundary declared once with `definePort`, whose declaration is simultaneously the contract type, the runtime operation list, and the fail-closed default when nothing is installed.
 
-A Port is a module-level identity with a per-scope implementation. It exports no Context, so callers cannot reach around the seam to an installed Driver; the only entry point is `installDriver`. Ports are the standard shape for Execution Store, History Store, tool-session storage, and other infrastructure boundaries.
+A Port is a module-level identity with a per-scope implementation. It exports no Context, so callers cannot reach around the seam to an installed Driver; the only entry point is `installDriver`. Ports are the standard shape for Execution Store, Conversation Store, tool-session storage, and other infrastructure boundaries.
 
 ```ts
-export const ExecutionStorePort = definePort<ExecutionStore>("journal-authority-execution-store", {
-  *loadExecution(_executionId) { return unavailable(); },
+export const ExecutionStorePort = definePort<ExecutionStore>("execution-store", {
+  *loadControl(_executionId) { return unavailable(); },
   // ...
 });
 ```

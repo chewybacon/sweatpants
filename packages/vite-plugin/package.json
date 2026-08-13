@@ -33,6 +33,7 @@
     },
     "dependencies": {
         "@babel/core": "^7.24.0",
+        "@sweatpants/foundation": "workspace:*",
         "@sweatpants/tool-runtime-local": "workspace:*",
         "fast-glob": "^3.3.2",
         "magic-string": "catalog:"

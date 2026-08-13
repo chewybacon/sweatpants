@@ -1,0 +1,127 @@
+{
+    "name": "@sweatpants/storage-sqlite",
+    "version": "0.1.0",
+    "description": "SQLite conversation and execution durability spine",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src",
+        "drizzle"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "default": "./src/index.ts"
+        },
+        "./schema": {
+            "development": {
+                "import": "./src/schema.ts",
+                "types": "./src/schema.ts"
+            },
+            "import": {
+                "types": "./dist/schema.d.ts",
+                "default": "./dist/schema.js"
+            },
+            "default": "./src/schema.ts"
+        },
+        "./repository": {
+            "development": {
+                "import": "./src/repository.ts",
+                "types": "./src/repository.ts"
+            },
+            "import": {
+                "types": "./dist/repository.d.ts",
+                "default": "./dist/repository.js"
+            },
+            "default": "./src/repository.ts"
+        },
+        "./better-sqlite3": {
+            "development": {
+                "import": "./src/better-sqlite3.ts",
+                "types": "./src/better-sqlite3.ts"
+            },
+            "import": {
+                "types": "./dist/better-sqlite3.d.ts",
+                "default": "./dist/better-sqlite3.js"
+            },
+            "default": "./src/better-sqlite3.ts"
+        },
+        "./migrations": {
+            "development": {
+                "import": "./src/migrations.ts",
+                "types": "./src/migrations.ts"
+            },
+            "import": {
+                "types": "./dist/migrations.d.ts",
+                "default": "./dist/migrations.js"
+            },
+            "default": "./src/migrations.ts"
+        },
+        "./inspection": {
+            "development": {
+                "import": "./src/inspection.ts",
+                "types": "./src/inspection.ts"
+            },
+            "import": {
+                "types": "./dist/inspection.d.ts",
+                "default": "./dist/inspection.js"
+            },
+            "default": "./src/inspection.ts"
+        },
+        "./testing": {
+            "development": {
+                "import": "./src/testing.ts",
+                "types": "./src/testing.ts"
+            },
+            "import": {
+                "types": "./dist/testing.d.ts",
+                "default": "./dist/testing.js"
+            },
+            "default": "./src/testing.ts"
+        },
+        "./metrics": {
+            "development": {
+                "import": "./src/metrics.ts",
+                "types": "./src/metrics.ts"
+            },
+            "import": {
+                "types": "./dist/metrics.d.ts",
+                "default": "./dist/metrics.js"
+            },
+            "default": "./src/metrics.ts"
+        }
+    },
+    "scripts": {
+        "build": "tsup",
+        "check": "tsc -b",
+        "typecheck": "tsc -b",
+        "lint": "oxlint src",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/history-store": "workspace:*",
+        "@sweatpants/journal-authority": "workspace:*",
+        "better-sqlite3": "catalog:",
+        "drizzle-orm": "catalog:",
+        "effection": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/durable-chat-runtime": "workspace:*",
+        "@sweatpants/ts-config": "workspace:*",
+        "@types/better-sqlite3": "catalog:",
+        "@types/node": "catalog:",
+        "drizzle-kit": "catalog:",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    }
+}

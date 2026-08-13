@@ -1,3 +1,4 @@
+import { stableTupleHash } from "@sweatpants/foundation";
 import { resource, type Operation, type Stream, type Subscription } from "effection";
 import type { ToolSession, ToolSessionEvent, ToolSessionStatus } from "@sweatpants/tool-session";
 import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
@@ -15,8 +16,7 @@ function stableCommandId(
   sessionId: string,
   id?: string,
 ): string {
-  const parts = [operation, sessionId, id].filter((part): part is string => part !== undefined);
-  return parts.map((part) => encodeURIComponent(part)).join(":");
+  return stableTupleHash([operation, sessionId, id ?? null]);
 }
 
 export function isTerminalStatus(status: AgentCoreToolSessionHandle["status"]): boolean {

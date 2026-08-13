@@ -1,6 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalSnapshot } from "@sweatpants/foundation";
-import { type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
 import type { ResolutionReceipt } from "@sweatpants/durable-execution";
 
 /** MCP extension identifier for durable effect authorization and commit. */
@@ -206,7 +205,7 @@ export function recoverMcpRequestState<T>(options: {
 }
 
 function binding(invocationId: string, callerId: string): string {
-  return `${MCP_DURABLE_EFFECTS_EXTENSION}\u0000${invocationId}\u0000${callerId}`;
+  return stableTupleHash([MCP_DURABLE_EFFECTS_EXTENSION, invocationId, callerId]);
 }
 
 function requireIdentity(value: string, name: string): void {

@@ -96,11 +96,13 @@ export function* createDurableTurnOwner(
       sealed = true;
       finishing = true;
       if (active.size === 0) {
+        // Setup failure is an ordered teardown boundary. Do not report the
+        // owner done while its child scope is still being destroyed: a
+        // successor request may otherwise begin under the Host while stale
+        // setup work is still unwinding.
+        yield* call(() => destroyScope());
         done = true;
         resolveDone();
-        void host.scope.run(function* () {
-          yield* call(() => destroyScope());
-        });
         return;
       }
       yield* call(() => destroyScope());

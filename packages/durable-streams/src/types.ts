@@ -49,6 +49,9 @@ export interface TokenBufferStore<T> {
   delete(id: string): Operation<void>;
 }
 
+/** Runtime response-delivery port; it is intentionally not a durability authority. */
+export interface ResponseTailStore<T> extends TokenBufferStore<T> {}
+
 export interface CreateSessionOptions<T> {
   /**
    * The sole eager source consumed by the session writer. A factory receives
@@ -60,6 +63,12 @@ export interface CreateSessionOptions<T> {
     | ((buffer: TokenBuffer<T>, writer: TokenBufferWriter<T>) => Stream<T, void>);
   /** Host activation identity used to fence the sole source writer. */
   writer?: { ownerId: string; activationEpoch: number };
+  /**
+   * Reclaim an incomplete buffer only when this registry generation has no
+   * local writer for it. Used by replacement Hosts; ordinary reconnects leave
+   * the existing writer untouched.
+   */
+  recoverIfDetached?: boolean;
   timeoutMs?: number;
 }
 

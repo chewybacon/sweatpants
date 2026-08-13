@@ -23,6 +23,8 @@ import {
 } from "@sweatpants/durable-chat-runtime/response-streams";
 import { createChatApplication } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
+import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
 import {
   createDurableChatHandler,
   createProgramDriverJournalStore,
@@ -47,6 +49,7 @@ export type ResumeInput = {
   result: { action: string; content?: unknown };
   /** Tool call the elicitation belongs to; retries allocate a new call id. */
   callId: string;
+  parentRunId?: string;
 };
 
 const model: Model = {
@@ -101,7 +104,9 @@ export async function createBookFlightSubstrate(options: {
   const keyring = createCapabilityKeyring("book-flight-foreign", [
     { keyId: "test-v1", secret: "book-flight-foreign-program-driver-key" },
   ]);
-  const journalStore = createProgramDriverJournalStore({ keyring });
+  const executionStore = createMemoryExecutionStore();
+  const conversationStore = createMemoryConversationStore();
+  const journalStore = createProgramDriverJournalStore({ keyring, executionStore });
 
   // Shared durable state: journal, stream buffers, and foreign ToolSession
   // continuations all outlive any single runtime generation.
@@ -129,6 +134,8 @@ export async function createBookFlightSubstrate(options: {
     createRuntime() {
       const handler = createDurableChatHandler({
         programDriverJournalStore: journalStore,
+        executionStore,
+        conversationStore,
         maxToolIterations: 5,
         setup: function* () {
           yield* installModelProvider(driver);
@@ -260,6 +267,7 @@ function buildChatRequest(
         tools: [],
         context: [],
         forwardedProps: {},
+        ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
         ...(resume
           ? {
               resume: [
@@ -370,7 +378,7 @@ function parsePublicFrame(line: string): PublicEvent {
 /** Extracts the first pending public interrupt from one response batch. */
 export function publicInterrupt(
   events: PublicEvent[],
-): { id: string; message: string } | undefined {
+): { id: string; message: string; parentRunId?: string } | undefined {
   for (const event of events) {
     if (event.type !== "RUN_FINISHED" || !isRecord(event["outcome"])) {
       continue;
@@ -382,7 +390,12 @@ export function publicInterrupt(
     const id = interrupts[0]["id"];
     const message = interrupts[0]["message"];
     if (typeof id === "string" && typeof message === "string") {
-      return { id, message };
+      const runId = event["runId"];
+      return {
+        id,
+        message,
+        ...(typeof runId === "string" ? { parentRunId: runId } : {}),
+      };
     }
   }
   return undefined;

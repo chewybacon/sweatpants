@@ -13,7 +13,7 @@ import {
   canonicalSnapshot,
   failure,
   parser,
-  stableOpaqueId,
+  stableTupleHash,
   success,
   type Json,
   type ParseResult,
@@ -292,7 +292,7 @@ export function createRedisPlacementModelSampler(options: {
         }
         return attachment(existing);
       }
-      const streamId = stableOpaqueId("remote-sample", [key, request.releaseId]);
+      const streamId = stableTupleHash(["remote-sample", key, request.releaseId]);
       let buffer = yield* options.buffers.get(streamId);
       if (!buffer) {
         try {

@@ -654,6 +654,7 @@ async function writeAgentCoreDurableRegistryFile(
  *
  * DO NOT EDIT. This artifact intentionally imports no ordinary ToolSession tool.
  */
+import { stableTupleHash } from "@sweatpants/foundation";
 ${imports.join("\n")}
 
 export const agentCoreDurableDefinitions = {
@@ -662,7 +663,11 @@ ${entries.join("\n")}
 
 export const agentCoreDurablePrograms = new Map(
   Object.values(agentCoreDurableDefinitions).map((tool) => [
-    \`${"${tool.manifest.programId}"}@${"${tool.manifest.version}"}#${"${tool.manifest.digest}"}\`,
+    stableTupleHash([
+      tool.manifest.programId,
+      tool.manifest.version,
+      tool.manifest.digest,
+    ]),
     tool,
   ] as const)
 )
@@ -741,6 +746,7 @@ export function generateRegistryContent(
  * Regenerate by modifying files in ${options.dir}/
  */
 
+import { stableTupleHash } from "@sweatpants/foundation";
 ${imports.join("\n")}
 
 /**
@@ -768,11 +774,15 @@ ${durableEntries.join("\n")}
 
 /**
  * Exact AgentCore evaluator registry, deliberately separate from ordinary
- * ToolSession worker output. Runtime images look up only id@version#digest.
+ * ToolSession worker output. Runtime images look up only the canonical program tuple hash.
  */
 export const agentCoreDurablePrograms = new Map(
   Object.values(durablePrograms).map((tool) => [
-    \`${"${tool.manifest.programId}"}@${"${tool.manifest.version}"}#${"${tool.manifest.digest}"}\`,
+    stableTupleHash([
+      tool.manifest.programId,
+      tool.manifest.version,
+      tool.manifest.digest,
+    ]),
     tool,
   ] as const)
 )

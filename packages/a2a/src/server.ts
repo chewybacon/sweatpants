@@ -1,5 +1,9 @@
-import { type DurableToolRegistry } from "@sweatpants/durable-execution";
-import { type DurableProgramManifest, type PinnedProgram } from "@sweatpants/durable-execution";
+import {
+  exactProgramKey,
+  type DurableProgramManifest,
+  type DurableToolRegistry,
+  type PinnedProgram,
+} from "@sweatpants/durable-execution";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   A2A_EXTENSIONS_HEADER,
@@ -106,7 +110,7 @@ export function createA2AManifestService(options: {
     if (!program || !options.authorize(request.principal, program)) {
       return errorResponse(404, "manifest_not_found");
     }
-    const tool = options.registry.get(`${program.id}@${program.version}#${program.digest}`);
+    const tool = options.registry.get(exactProgramKey(program));
     if (!tool) {
       return errorResponse(404, "manifest_not_found");
     }

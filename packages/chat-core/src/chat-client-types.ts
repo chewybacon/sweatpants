@@ -394,6 +394,8 @@ export interface PublicElicitActivityNode extends PublicActivityPlacement {
 
 export interface ClientElicitFact {
   readonly elicitId: string;
+  /** AG-UI run whose durable interrupt scope owns this response. */
+  readonly parentRunId?: string;
   readonly bindingId: string;
   readonly toolName: string;
   readonly key: string;

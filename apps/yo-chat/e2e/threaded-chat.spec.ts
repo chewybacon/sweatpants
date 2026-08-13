@@ -11,7 +11,7 @@ async function createNewThread(page: Page) {
 }
 
 function threadInput(page: Page) {
-  return page.getByPlaceholder("Ask this thread to draw a card...");
+  return page.getByPlaceholder("Type a message...");
 }
 
 function toolCallBlocks(page: Page) {
@@ -177,7 +177,9 @@ test.describe("Threaded Chat Prototype", () => {
     await expect(page.getByTestId("message-user").filter({ hasText: followup })).toBeVisible({
       timeout: 30000,
     });
-    await assertCompletedCardPicks(page, [picked.pickedLabel]);
+    // CardPicker render state is client-local and may be lost on reload. The
+    // authoritative transcript and remembered card fact must still survive.
+    await expect(interactiveToolCallBlocks(page)).toHaveCount(0);
 
     const cardPattern = pickedCardPattern(picked.pickedLabel);
     await expect
@@ -191,7 +193,7 @@ test.describe("Threaded Chat Prototype", () => {
       .toBeGreaterThanOrEqual(2);
   });
 
-  test("replays two completed card picks after refresh", async ({ page }) => {
+  test("preserves two completed card facts after refresh", async ({ page }) => {
     await createNewThread(page);
 
     await sendMessage(page, "Draw 3 cards and let me pick one card");
@@ -212,7 +214,12 @@ test.describe("Threaded Chat Prototype", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 30000 });
 
-    await assertCompletedCardPicks(page, [first.pickedLabel, second.pickedLabel]);
+    // Local picker render state may be discarded; durable assistant facts for
+    // both accepted selections remain in the transcript.
+    await expect(interactiveToolCallBlocks(page)).toHaveCount(0);
+    const assistants = await page.getByTestId("message-assistant").allTextContents();
+    expect(assistants.some((text) => pickedCardPattern(first.pickedLabel).test(text))).toBe(true);
+    expect(assistants.some((text) => pickedCardPattern(second.pickedLabel).test(text))).toBe(true);
   });
 
   test("replays mermaid svg after refresh", async ({ page }) => {

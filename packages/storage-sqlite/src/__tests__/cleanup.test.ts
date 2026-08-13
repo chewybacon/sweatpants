@@ -1,0 +1,77 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import { run } from "effection";
+import { openBetterSqliteStorage } from "../better-sqlite3.ts";
+import { cleanupCheckpointOrphans } from "../inspection.ts";
+
+const databases: string[] = [];
+
+async function temporaryDatabase(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "sweatpants-storage-sqlite-"));
+  databases.push(directory);
+  return join(directory, "spine.sqlite");
+}
+
+function checkpoint(id: string, conversationId: string, createdAt: number) {
+  const payload = canonicalSnapshot({ public: { hotRoots: [{ id }] } });
+  return {
+    checkpointId: id,
+    conversationId,
+    causeKey: `cause-${id}`,
+    cause: { kind: "test", id },
+    contentHash: sha256(payload.canonical),
+    archiveHead: null,
+    archiveThroughPosition: "0",
+    payload: payload.value,
+    encodedBytes: new TextEncoder().encode(payload.canonical).byteLength,
+    createdAt,
+  } as const;
+}
+
+afterEach(async () => {
+  await Promise.all(databases.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+});
+
+describe("checkpoint orphan cleanup", () => {
+  it("removes only expired unreferenced checkpoints", async () => {
+    const path = await temporaryDatabase();
+    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+
+    try {
+      const orphan = checkpoint("orphan", "conversation-1", 10);
+      const referenced = checkpoint("referenced", "conversation-1", 10);
+      await run(() => handle.storage.conversationStore.putCheckpoint(orphan));
+      const referencedPointer = await run(() =>
+        handle.storage.conversationStore.putCheckpoint(referenced),
+      );
+      await run(() =>
+        handle.storage.conversationStore.compareAndSwapHead("conversation-1", null, null, {
+          state: "idle",
+          checkpoint: referencedPointer,
+          terminalHistory: null,
+          activeLogicalTurnId: null,
+          activeExecutionId: null,
+          latestCompletedExecutionId: null,
+          activeSegment: null,
+          activeCommand: null,
+          deletedAt: null,
+          ownerTransition: { kind: "preserve" },
+        }),
+      );
+
+      expect(cleanupCheckpointOrphans(handle.database, 10)).toBe(0);
+      expect(cleanupCheckpointOrphans(handle.database, 11)).toBe(1);
+      expect(
+        await run(() => handle.storage.conversationStore.getCheckpoint({ checkpointId: "orphan" })),
+      ).toBeNull();
+      expect(
+        await run(() => handle.storage.conversationStore.getCheckpoint(referencedPointer)),
+      ).not.toBeNull();
+    } finally {
+      await run(() => handle.close());
+    }
+  });
+});

@@ -378,6 +378,139 @@ describe("headless ChatClient", () => {
     await client.close();
   });
 
+  it("keeps a parked queue client-local and may discard it on close", async () => {
+    const requests: ChatTransportRequest[] = [];
+    const driver: ChatTransportContract = {
+      *sendMessages(request) {
+        requests.push(request);
+        return streamOf([
+          {
+            type: EventType.RUN_STARTED,
+            threadId: request.input.threadId,
+            runId: request.input.runId,
+          },
+          {
+            type: EventType.RUN_FINISHED,
+            threadId: request.input.threadId,
+            runId: request.input.runId,
+            outcome: { type: "interrupt" },
+          },
+        ]);
+      },
+      *reconnectToStream() {
+        return null;
+      },
+      *disconnect() {
+        return;
+      },
+    };
+    const client = createChatClient({
+      threadId: "parked-local-queue-thread",
+      queue: "queue",
+      connection: driver,
+    });
+    await client.initialized;
+    await client.sendMessage("park");
+
+    const queued = client.sendMessage("local successor");
+    await waitForQueue(client, 1);
+    expect(requests).toHaveLength(1);
+    expect(client.getServerSnapshot().queue).toHaveLength(0);
+
+    await client.close();
+    await expect(queued).rejects.toMatchObject({ code: "chat_client_closed" });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("keeps an interrupt replacement local until terminal cancellation", async () => {
+    const activeStarted = deferred<void>();
+    const terminalCancellation = deferred<void>();
+    const replacementStarted = deferred<void>();
+    const requests: ChatTransportRequest[] = [];
+    const driver: ChatTransportContract = {
+      *sendMessages(request) {
+        requests.push(request);
+        if (request.trigger === "cancel-run") {
+          return gatedStream(
+            [
+              {
+                type: EventType.RUN_ERROR,
+                code: "PROGRAM_CANCELLED",
+                message: "Program was cancelled",
+              },
+            ],
+            terminalCancellation.promise,
+          );
+        }
+        if (requests.filter((candidate) => candidate.trigger === "submit-message").length === 1) {
+          activeStarted.resolve(undefined);
+          return gatedStream(
+            [
+              {
+                type: EventType.RUN_ERROR,
+                code: "PROGRAM_CANCELLED",
+                message: "Program was cancelled",
+              },
+            ],
+            terminalCancellation.promise,
+          );
+        }
+        replacementStarted.resolve(undefined);
+        return streamOf([
+          {
+            type: EventType.RUN_STARTED,
+            threadId: request.input.threadId,
+            runId: request.input.runId,
+          },
+          {
+            type: EventType.RUN_FINISHED,
+            threadId: request.input.threadId,
+            runId: request.input.runId,
+          },
+        ]);
+      },
+      *reconnectToStream() {
+        return null;
+      },
+      *disconnect() {
+        return;
+      },
+    };
+    const client = createChatClient({
+      threadId: "interrupt-terminal-thread",
+      queue: "interrupt",
+      connection: driver,
+    });
+    await client.initialized;
+
+    const active = client.sendMessage("active");
+    await activeStarted.promise;
+    const replacement = client.sendMessage("replacement");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(requests).toHaveLength(2);
+    const original = requests[0]!;
+    const cancellation = requests[1]!;
+    expect(cancellation.trigger).toBe("cancel-run");
+    expect(cancellation.input.runId).not.toBe(original.input.runId);
+    expect(cancellation.messageId).toBe(cancellation.input.runId);
+    expect(
+      requests.some((request) =>
+        request.input.messages.some(
+          (message) => message.role === "user" && message.content === "replacement",
+        ),
+      ),
+    ).toBe(false);
+
+    terminalCancellation.resolve(undefined);
+    await replacementStarted.promise;
+    await Promise.all([active, replacement]);
+    expect(requests).toHaveLength(3);
+    expect(requests[2]?.trigger).toBe("submit-message");
+    await client.close();
+  });
+
   it("reports the message dropped by drop-oldest overflow", async () => {
     const started = deferred<void>();
     const release = deferred<void>();

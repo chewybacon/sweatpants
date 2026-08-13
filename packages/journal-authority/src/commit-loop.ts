@@ -1,43 +1,65 @@
-import { CrankError, type ExecutionId } from "@sweatpants/durable-execution";
+import { CrankError } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
-import type { ExecutionStore, VersionedExecution } from "./store.ts";
+import type { ExecutionControl, ExecutionStore, StoredPrivateSegment } from "./store.ts";
 
 export type ExecutionCommitDecision<Result> =
   | { readonly status: "return"; readonly result: Result }
   | {
       readonly status: "commit";
-      readonly next: Parameters<ExecutionStore["commitExecution"]>[0]["next"];
-      readonly privateRecords: readonly Json[];
+      readonly next: Omit<ExecutionControl, "controlRevision" | "updatedAt">;
+      readonly journalSegments?: readonly StoredPrivateSegment[];
+      readonly replaySegments?: readonly StoredPrivateSegment[];
       readonly result: Result;
     };
 
-/**
- * The sole authority CAS loop.
- *
- * Domain evaluation is rerun only after an explicit storage conflict. Adapter
- * failures propagate unchanged, and Effection cancellation stops the loop.
- */
+/** The sole bounded execution-control CAS loop. */
 export function* runExecutionCommitLoop<Result>(
-  store: Pick<ExecutionStore, "loadExecution" | "commitExecution">,
-  executionId: ExecutionId,
-  evaluate: (current: VersionedExecution | null) => Operation<ExecutionCommitDecision<Result>>,
+  store: Pick<ExecutionStore, "loadControl" | "commitExecution">,
+  executionId: string,
+  evaluate: (current: ExecutionControl | null) => Operation<ExecutionCommitDecision<Result>>,
   maximumAttempts = 64,
 ): Operation<Result> {
   for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
-    const current = yield* store.loadExecution(executionId);
+    const current = yield* store.loadControl(executionId);
     const decision = yield* evaluate(current);
     if (decision.status === "return") return decision.result;
     const committed = yield* store.commitExecution({
       executionId,
-      expectedRevision: current?.revision ?? null,
-      next: decision.next,
-      privateRecords: decision.privateRecords,
+      expectedControlRevision: current?.controlRevision ?? null,
+      expectedOwnerFence: current?.ownerFence ?? "0",
+      nextControl: decision.next,
+      ...(decision.journalSegments ? { journalSegments: decision.journalSegments } : {}),
+      ...(decision.replaySegments ? { replaySegments: decision.replaySegments } : {}),
+      updatedAt: Date.now(),
     });
-    if (committed.status === "accepted") return decision.result;
+    if (committed.status === "committed") return decision.result;
+    if (committed.status === "stale_owner") {
+      throw new CrankError("stale_owner", `Execution ${executionId} lost its owner fence`);
+    }
   }
   throw new CrankError(
     "cas_contention",
     "Execution Store contention exceeded the authority retry budget",
   );
+}
+
+export function inlineControl(
+  executionId: string,
+  rootTaskId: string,
+  status: ExecutionControl["status"],
+  control: Json,
+  ownerFence: string,
+  stopGeneration = "0",
+  requestedDisposition: ExecutionControl["requestedDisposition"] = null,
+): Omit<ExecutionControl, "controlRevision" | "updatedAt"> {
+  return {
+    executionId,
+    ownerFence,
+    status,
+    rootTaskId,
+    stopGeneration,
+    requestedDisposition,
+    control,
+  };
 }

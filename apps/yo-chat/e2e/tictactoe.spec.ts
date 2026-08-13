@@ -33,6 +33,21 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     await page.goto("/chat/tictactoe/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Tic-Tac-Toe" })).toBeVisible();
     await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
+    const threadId = `tictactoe:e2e-${crypto.randomUUID()}`;
+    const created = await page.request.post("/api/threaded-chat/threads", {
+      data: { namespace: "tictactoe", id: threadId },
+    });
+    expect(created.ok()).toBe(true);
+    await page.evaluate(({ key, value }) => window.localStorage.setItem(key, value), {
+      key: "yo-chat:tictactoe:selected-thread-id",
+      value: threadId,
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.locator('[data-testid="thread-item"][aria-pressed="true"]')).toHaveAttribute(
+      "data-thread-id",
+      threadId,
+      { timeout: 15000 },
+    );
   });
 
   // =============================================================================
@@ -577,7 +592,9 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
 
     await expect(openInterruptError).toHaveCount(0, { timeout: 20000 });
     await expect(page.locator("text=/^Error:/")).toHaveCount(0, { timeout: 5000 });
-    await expect(page.getByText("why did you launch a game?")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("main").getByText("why did you launch a game?")).toBeVisible({
+      timeout: 10000,
+    });
 
     // If the interrupted game later completes on its own, that is fine; the
     // hard assertion is that free-form chat was not blocked by open interrupts.

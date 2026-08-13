@@ -1,5 +1,5 @@
 import type { ResumeEntry } from "../handler/types.ts";
-import { assertJson, type Json } from "@sweatpants/foundation";
+import { assertJson, stableTupleHash, type Json } from "@sweatpants/foundation";
 import {
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,
@@ -57,11 +57,11 @@ export type ResumeValidationResult = ResumeValidationSuccess | ResumeValidationF
 const recordsByKey = new Map<string, OpenInterruptRecord>();
 
 export function scopeIdForInterruptRun(threadId: string, interruptedRunId: string): string {
-  return `${threadId}:${interruptedRunId}`;
+  return stableTupleHash([threadId, interruptedRunId]);
 }
 
 function keyFor(threadId: string, scopeId: string, interruptId: string): string {
-  return `${threadId}\u0000${scopeId}\u0000${interruptId}`;
+  return stableTupleHash([threadId, scopeId, interruptId]);
 }
 
 function canonicalJson(value: unknown): string {
@@ -234,6 +234,18 @@ export function registerInterruptsFromRunFinished(event: unknown): void {
     if (!candidate || typeof candidate["id"] !== "string") {
       continue;
     }
+    // Pull/interrupt IDs are stable within a conversation. Recovery may
+    // project the same pending interrupt under a fresh transport runId; keep
+    // its original scope so a stale replay cannot rebind resume authority.
+    const existingOpen = [...recordsByKey.values()].find(
+      (record) =>
+        record.threadId === threadId &&
+        record.interruptId === candidate["id"] &&
+        record.status === "open",
+    );
+    if (existingOpen) {
+      continue;
+    }
     const metadata = asRecord(candidate["metadata"]) ?? {};
     const elicitationFacts = asRecord(metadata["sweatpants/elicitation"]) ?? {};
     const toolCallId =
@@ -313,6 +325,16 @@ export function resetInterruptRegistry(): void {
 
 export function openInterruptsForThread(threadId: string): OpenInterruptRecord[] {
   return interruptRecordsForThread(threadId).filter((record) => record.status === "open");
+}
+
+/** Marks every open interrupt on a thread cancelled after stop or supersession. */
+export function cancelOpenInterruptsForThread(threadId: string): void {
+  upsertInterruptRecords(
+    openInterruptsForThread(threadId).map((record) => ({
+      ...record,
+      status: "cancelled" as const,
+    })),
+  );
 }
 
 export function deriveResumeScopeId(

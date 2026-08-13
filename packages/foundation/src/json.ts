@@ -42,9 +42,28 @@ export function sha256Bytes(value: Uint8Array): string {
   return bytesToHex(hashSha256(value));
 }
 
-/** Derives a stable, payload-hiding identifier from canonical JSON. */
-export function stableOpaqueId(prefix: string, value: unknown): string {
-  return `${prefix}_${sha256(canonicalJson(value)).slice(0, 32)}`;
+/** Hashes a canonical tuple without serializing its components with a delimiter. */
+export function stableTupleHash(values: readonly unknown[]): string {
+  return sha256(canonicalJson(values));
+}
+
+export function hasControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function replaceControlCharacters(value: string, replacement = " "): string {
+  let result = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    result += code <= 0x1f || code === 0x7f ? replacement : value[index];
+  }
+  return result;
 }
 
 /** Unicode code-point ordering used by protocol-visible string sets. */

@@ -1,4 +1,4 @@
-import { canonicalJson, sha256 } from "@sweatpants/foundation";
+import { stableTupleHash } from "@sweatpants/foundation";
 import type { DurableSemanticRecord } from "../durable-authority.ts";
 import type { Json } from "@sweatpants/foundation";
 
@@ -17,9 +17,10 @@ export function normalizeSemanticJournal(records: readonly DurableSemanticRecord
 
 /** Domain-separated digest of the normalized real authority journal. */
 export function normalizedSemanticJournalDigest(records: readonly DurableSemanticRecord[]): string {
-  return sha256(
-    `sweatpants.semantic-journal-normalizer.v1\0${canonicalJson(normalizeSemanticJournal(records))}`,
-  );
+  return stableTupleHash([
+    "sweatpants.semantic-journal-normalizer.v1",
+    normalizeSemanticJournal(records),
+  ]);
 }
 
 function normalizePayload(payload: DurableSemanticRecord["payload"]): Json {

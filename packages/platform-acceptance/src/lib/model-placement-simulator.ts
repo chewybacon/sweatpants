@@ -1,3 +1,4 @@
+import { stableTupleHash } from "@sweatpants/foundation";
 import { spawn } from "effection";
 import type { Model, StreamOptions } from "@sweatpants/model-provider";
 import { createHostModelSamplingService } from "@sweatpants/durable-chat-runtime/durable-handler";
@@ -17,13 +18,13 @@ import {
 } from "@sweatpants/tool-runtime-agentcore";
 
 function identityKey(identity: RemoteSampleIdentity): string {
-  return [
+  return stableTupleHash([
     identity.journalId,
     identity.journalIncarnation,
     identity.sessionId,
     identity.taskId,
     identity.pullId,
-  ].join("\u0000");
+  ]);
 }
 
 /**

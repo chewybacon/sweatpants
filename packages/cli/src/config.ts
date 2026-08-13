@@ -61,7 +61,7 @@ function normalizeSourceModule(value: unknown, publicKey: string): string {
     typeof value !== "string" ||
     !value ||
     value.includes("\\") ||
-    value.includes("\0") ||
+    hasControlCharacter(value) ||
     value.startsWith("/") ||
     /%2e|%2f|%5c/iu.test(value)
   ) {

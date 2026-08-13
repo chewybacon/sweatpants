@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
+import { durableEffectKey } from "@sweatpants/durable-effects";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   CrankError,
@@ -12,7 +13,7 @@ import {
   canonicalSnapshot,
   failure,
   parser,
-  stableOpaqueId,
+  stableTupleHash,
   success,
   type ParseIssue,
   type ParseResult,
@@ -188,7 +189,7 @@ export function createInvocationAgentCorePlacement(
   const affinity = parseSandboxAffinity({ kind: "invocation", key: request.rootTaskId });
   const runtimeSessionId =
     request.mintRuntimeSessionId?.(request.rootTaskId) ??
-    stableOpaqueId("sp-ac", [request.journalId, request.rootTaskId, release.releaseId]);
+    stableTupleHash(["sp-ac", request.journalId, request.rootTaskId, release.releaseId]);
   if (!runtimeSessionId || runtimeSessionId.length > 256) {
     throw new CrankError("placement_unavailable", "Placement minted an invalid runtime session");
   }
@@ -260,7 +261,7 @@ export function reconcileAgentCoreDurableReadiness(
     missing.add("driver");
   }
   for (const effect of Object.values(input.manifest.effects)) {
-    if (!input.effectKeys.has(`${effect.name}@${effect.version}`)) {
+    if (!input.effectKeys.has(durableEffectKey(effect.name, effect.version))) {
       missing.add("effect");
     }
   }

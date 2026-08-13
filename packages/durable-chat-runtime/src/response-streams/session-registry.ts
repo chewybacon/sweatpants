@@ -251,14 +251,47 @@ export function* createSessionRegistry<T>(
       if (existing) {
         yield* clearRetentionTask(sessionId);
 
-        // Increment refCount and return existing handle
-        yield* registryStore.updateRefCount(sessionId, 1);
-
         const buffer = yield* bufferStore.get(sessionId);
         if (!buffer) {
           throw new Error(`Session ${sessionId} metadata exists but buffer missing`);
         }
 
+        const localWriter = sessionTasks.get(sessionId)?.get(TASK_KEYS.WRITER);
+        if (
+          options?.recoverIfDetached === true &&
+          options.source &&
+          (!localWriter || localWriter.isDone()) &&
+          !(yield* buffer.isComplete())
+        ) {
+          if (!options.writer) {
+            throw new Error("Detached session recovery requires an explicit writer fence");
+          }
+          // Claim before constructing the source. A competing replacement Host
+          // therefore cannot turn ProgramRuntime unless it owns the response
+          // mutation lane.
+          const writer = yield* buffer.claimWriter(options.writer);
+          const state: MutableSessionState = { status: "streaming" };
+          sessionStates.set(sessionId, state);
+          const source =
+            typeof options.source === "function" ? options.source(buffer, writer) : options.source;
+          const invocationOwner = (yield* useDurableStreamsOwner()) ?? undefined;
+          if (invocationOwner) sessionOwners.set(sessionId, invocationOwner);
+          const recoveredWriter = yield* startWriterTask(
+            sessionId,
+            source,
+            writer,
+            state,
+            `writer-recovery:${sessionId}:${options.writer.activationEpoch}`,
+            invocationOwner,
+          );
+          const tasks = new Map<string, OwnedTaskHandle<void>>();
+          tasks.set(TASK_KEYS.WRITER, recoveredWriter);
+          sessionTasks.set(sessionId, tasks);
+        }
+
+        // Increment only after a requested recovery fence and writer start have
+        // succeeded, so a failed competing Host does not leak references.
+        yield* registryStore.updateRefCount(sessionId, 1);
         log.debug({ sessionId }, "returning existing session");
         return createHandle(sessionId, buffer);
       }

@@ -1,7 +1,7 @@
 import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
 import { z } from "zod";
 
-import { CrankError } from "@sweatpants/durable-execution";
+import { CrankError, exactProgramKey } from "@sweatpants/durable-execution";
 import { randomUUID } from "node:crypto";
 import {
   call,
@@ -38,6 +38,7 @@ import {
   canonicalJson,
   canonicalSnapshot,
   sha256,
+  stableTupleHash,
   type Json,
   type SerializedApplicationError,
 } from "@sweatpants/foundation";
@@ -289,7 +290,7 @@ export function createInMemoryStandardA2ATaskDirectory(): StandardA2ATaskDirecto
       return entry ? Object.freeze({ ...entry }) : undefined;
     },
     *bindContinuation(binding) {
-      const key = `${binding.taskId}\0${binding.messageId}`;
+      const key = stableTupleHash([binding.taskId, binding.messageId]);
       const existing = continuations.get(key);
       if (existing) {
         if (canonicalJson(existing) !== canonicalJson(binding)) {
@@ -301,14 +302,14 @@ export function createInMemoryStandardA2ATaskDirectory(): StandardA2ATaskDirecto
       return "bound";
     },
     *lookupContinuation(taskId, messageId) {
-      const binding = continuations.get(`${taskId}\0${messageId}`);
+      const binding = continuations.get(stableTupleHash([taskId, messageId]));
       return binding ? Object.freeze({ ...binding }) : undefined;
     },
     *continuationsForTask(taskId) {
       return [...continuations.values()].filter((binding) => binding.taskId === taskId);
     },
     *bindContent(binding) {
-      const key = `${binding.taskId}\0${binding.artifactId}\0${binding.partIndex}`;
+      const key = stableTupleHash([binding.taskId, binding.artifactId, binding.partIndex]);
       const existing = content.get(key);
       if (existing) {
         if (canonicalJson(existing) !== canonicalJson(binding)) {
@@ -1048,10 +1049,11 @@ function* runExisting(input: RuntimeInput): Operation<ProgramRunResult> {
             return parentRoute;
           },
           function* () {
-            return yield* ProgramRuntime.operations.run({
+            const result = yield* ProgramRuntime.operations.run({
               attach: attachment(input),
               executeHostEffects: true,
             });
+            return result;
           },
         );
       });
@@ -1085,7 +1087,11 @@ function allPrograms(root: AgentProgramBinding): AgentProgramBinding[] {
   while (pending.length > 0) {
     const binding = pending.shift()!;
     const manifest = binding.program.manifest;
-    const key = `${manifest.programId}@${manifest.version}#${manifest.digest}`;
+    const key = exactProgramKey({
+      id: manifest.programId,
+      version: manifest.version,
+      digest: manifest.digest,
+    });
     if (found.has(key)) {
       continue;
     }
@@ -1287,14 +1293,16 @@ function* custodyTaskArtifacts(
     throw hostError("standard_profile_incompatible", "External content threshold is invalid");
   }
   const existing = yield* options.taskDirectory.contentForTask(taskId);
-  const known = new Set(existing.map((binding) => `${binding.artifactId}\0${binding.partIndex}`));
+  const known = new Set(
+    existing.map((binding) => stableTupleHash([binding.artifactId, binding.partIndex])),
+  );
   const result = completedResult(taskClose(records, taskId));
   if (!result) {
     return existing;
   }
   for (const artifact of result.artifacts) {
     for (let partIndex = 0; partIndex < artifact.parts.length; partIndex += 1) {
-      const key = `${artifact.id}\0${partIndex}`;
+      const key = stableTupleHash([artifact.id, partIndex]);
       if (known.has(key)) {
         continue;
       }
@@ -1337,14 +1345,14 @@ function externalizeTask(
     return task;
   }
   const byPart = new Map(
-    bindings.map((binding) => [`${binding.artifactId}\0${binding.partIndex}`, binding]),
+    bindings.map((binding) => [stableTupleHash([binding.artifactId, binding.partIndex]), binding]),
   );
   return {
     ...task,
     artifacts: task.artifacts.map((artifact) => ({
       ...artifact,
       parts: artifact.parts.map((part, partIndex) => {
-        const binding = byPart.get(`${artifact.artifactId}\0${partIndex}`);
+        const binding = byPart.get(stableTupleHash([artifact.artifactId, partIndex]));
         if (!binding) {
           return part;
         }

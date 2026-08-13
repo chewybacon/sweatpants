@@ -10,7 +10,12 @@ import {
   verifyProgramIdentityProvenance,
   type DurableProgramManifest,
 } from "@sweatpants/durable-execution";
-import { canonicalJson, sha256, sha256Bytes as hashBytes } from "@sweatpants/foundation";
+import {
+  canonicalJson,
+  sha256,
+  sha256Bytes as hashBytes,
+  stableTupleHash,
+} from "@sweatpants/foundation";
 
 import type { ConfiguredDurableTool } from "../config.ts";
 
@@ -153,7 +158,11 @@ export function buildDevelopmentCollection(
       implementationArtifactDigest,
       resourceDigests,
     );
-    const pin = `${releaseProgram.manifest.programId}@${releaseProgram.manifest.version}#${releaseProgram.manifest.digest}`;
+    const pin = stableTupleHash([
+      releaseProgram.manifest.programId,
+      releaseProgram.manifest.version,
+      releaseProgram.manifest.digest,
+    ]);
     if (pins.has(pin)) {
       fail("invalid_collection_manifest", `Duplicate program pin for ${bundle.publicKey}`);
     }
@@ -308,7 +317,7 @@ function verifyDevelopmentCollectionManifest(
       fail("invalid_collection_manifest", `Duplicate entrypoint ${entrypoint}`);
     }
     entrypoints.add(entrypoint);
-    const pin = `${entry["programId"]}@${entry["version"]}#${entry["manifestDigest"]}`;
+    const pin = stableTupleHash([entry["programId"], entry["version"], entry["manifestDigest"]]);
     if (pins.has(pin)) {
       fail("invalid_collection_manifest", `Duplicate program pin for ${publicKey}`);
     }
@@ -556,7 +565,7 @@ function normalizeRelativePath(value: unknown): string {
     typeof value !== "string" ||
     !value ||
     value.includes("\\") ||
-    value.includes("\0") ||
+    hasControlCharacter(value) ||
     value.startsWith("/") ||
     /(?:^|\/)\.{1,2}(?:\/|$)/u.test(value) ||
     /%2e|%2f|%5c/iu.test(value)

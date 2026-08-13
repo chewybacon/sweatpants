@@ -10,7 +10,9 @@ export {
   sha256,
   sha256Bytes,
   sortStrings,
-  stableOpaqueId,
+  stableTupleHash,
+  hasControlCharacter,
+  replaceControlCharacters,
   type Json,
   type JsonObject,
 } from "./json.ts";

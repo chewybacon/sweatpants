@@ -1,4 +1,4 @@
-import { type DurableToolRegistry } from "@sweatpants/durable-execution";
+import { exactProgramKey, type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
@@ -154,7 +154,11 @@ describe("AgentCore crank-native ProgramDriver integration", () => {
           const transport = createReplacingAgentCoreTransport(registry).transport;
           const manifests = new Map(
             [...registry.values()].map((tool) => [
-              `${tool.manifest.programId}@${tool.manifest.version}#${tool.manifest.digest}`,
+              exactProgramKey({
+                id: tool.manifest.programId,
+                version: tool.manifest.version,
+                digest: tool.manifest.digest,
+              }),
               tool.manifest,
             ]),
           );

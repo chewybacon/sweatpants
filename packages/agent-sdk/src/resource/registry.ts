@@ -1,4 +1,4 @@
-import { canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import { canonicalJson, canonicalSnapshot, sha256, stableTupleHash } from "@sweatpants/foundation";
 import { type PinnedProgram } from "@sweatpants/durable-execution";
 
 import {
@@ -390,7 +390,7 @@ function sameProgram(left: PinnedProgram, right: PinnedProgram): boolean {
 }
 
 function programKey(program: PinnedProgram): string {
-  return `${program.id}@${program.version}#${program.digest}`;
+  return stableTupleHash([program.id, program.version, program.digest]);
 }
 
 function isTextMediaType(mediaType: string): boolean {

@@ -3,8 +3,8 @@ import {
   canonicalJson,
   canonicalSnapshot,
   parser,
-  sha256,
   sha256Bytes,
+  stableTupleHash,
 } from "@sweatpants/foundation";
 import { type Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
@@ -221,7 +221,7 @@ export function parseSandboxCapabilities(value: unknown): SandboxCapabilities {
 }
 
 export function sandboxInstanceKey(input: SandboxInstanceKeyInput): string {
-  return `sandbox_${sha256(`sweatpants.sandbox-instance.v1\0${canonicalJson(input)}`)}`;
+  return stableTupleHash(["sweatpants.sandbox-instance.v1", input]);
 }
 
 export function assertSandboxFence(
@@ -300,15 +300,16 @@ export function* createWorkspaceVersion(input: {
     createdAt: input.createdAt,
   };
   const parentDigest = input.parent?.versionDigest;
-  const versionDigest = sha256(
-    `sweatpants.workspace-version.v1\0${canonicalJson({
+  const versionDigest = stableTupleHash([
+    "sweatpants.workspace-version.v1",
+    {
       workspaceId: input.workspaceId,
       parentDigest: parentDigest ?? null,
       kind: input.kind,
       contentDigest: object.digest,
       bytes: object.bytes,
-    })}`,
-  );
+    },
+  ]);
   return {
     format: "sweatpants.workspace-version.v1",
     workspaceId: input.workspaceId,
@@ -373,11 +374,11 @@ export const DEFAULT_REPLAY_PAGE_ENTRIES = 1024;
 export const DEFAULT_RESTORE_LIFETIME_MS = 5 * 60 * 1000;
 
 export function replayPageDigest(input: Omit<ReplayPage, "pageDigest">): Sha256 {
-  return sha256(`sweatpants.replay-page.v1\0${canonicalJson(input)}`);
+  return stableTupleHash(["sweatpants.replay-page.v1", input]);
 }
 
 export function replayChainDigest(seed: Sha256, pageDigests: readonly Sha256[]): Sha256 {
-  return sha256(`sweatpants.replay-chain.v1\0${canonicalJson({ seed, pages: pageDigests })}`);
+  return stableTupleHash(["sweatpants.replay-chain.v1", seed, pageDigests]);
 }
 
 /** Finite digest-chained restore state machine. Attachments are deliberately outside this authority. */
@@ -397,7 +398,7 @@ export class FiniteHttpRestoreProtocol {
     if (request.protocolVersion !== 1 || request.activationEpoch < 1) {
       throw new CrankError("restore_page_mismatch", "Invalid restore binding");
     }
-    const restoreId = `restore_${sha256(`sweatpants.restore.v1\0${canonicalJson(request)}`).slice(0, 32)}`;
+    const restoreId = stableTupleHash(["sweatpants.restore.v1", request]).slice(0, 32);
     const existing = this.restores.get(restoreId);
     if (existing && existing.expiresAt > this.now()) {
       if (canonicalJson(existing.create) !== canonicalJson(request)) {

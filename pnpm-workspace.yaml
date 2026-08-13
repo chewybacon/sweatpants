@@ -22,6 +22,7 @@ catalog:
     "@tanstack/router-plugin": ^1.132.0
     "@testing-library/dom": ^10.4.0
     "@testing-library/react": 16.3.0
+    "@types/better-sqlite3": 9.6.0
     "@types/compression": ^1.8.1
     "@types/express": ^5.0.6
     "@types/morgan": ^1.9.10
@@ -31,7 +32,10 @@ catalog:
     "@types/ws": ^8.18.1
     "@vitejs/plugin-react": ^5.0.4
     acorn: ^8.14.0
+    better-sqlite3: 13.0.3
     compression: ^1.8.1
+    drizzle-kit: 0.31.10
+    drizzle-orm: 0.45.2
     effection: 4.1.0-alpha.9
     express: ^5.2.1
     jsdom: ^27.0.0
@@ -55,6 +59,7 @@ catalog:
 
 onlyBuiltDependencies:
     - esbuild
+    - better-sqlite3
 
 syncInjectedDepsAfterScripts:
     - build

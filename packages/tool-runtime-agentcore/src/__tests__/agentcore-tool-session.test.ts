@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import { run } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
+import { stableTupleHash } from "@sweatpants/foundation";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   FakeAgentCoreRemoteToolRuntimeClient,
@@ -476,9 +477,11 @@ describe("AgentCore ToolSession facade", () => {
       const request = {
         op: "respond_to_elicit",
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
-        commandId: ["respond_to_elicit", "duplicate_recover", "duplicate_recover:req:1"]
-          .map(encodeURIComponent)
-          .join(":"),
+        commandId: stableTupleHash([
+          "respond_to_elicit",
+          "duplicate_recover",
+          "duplicate_recover:req:1",
+        ]),
         toolSessionId: "duplicate_recover",
         elicitId: "duplicate_recover:req:1",
         response: { action: "accept", content: { ok: true } },

@@ -17,7 +17,8 @@ import {
   serializeDurableError,
   DurableProgramCancellation,
 } from "./program-context.ts";
-import { canonicalSnapshot, stableOpaqueId, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
+import { durableEffectKey } from "@sweatpants/durable-effects";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import type { DurableEffectRegistry } from "@sweatpants/durable-effects/authoring";
 import { ProgramPlacementContext } from "@sweatpants/durable-effects";
@@ -307,7 +308,7 @@ function* authorizePending(
           "Execution effect implementation is unavailable",
         );
       }
-      const registration = registry.get(`${descriptor.name}@${descriptor.version}`);
+      const registration = registry.get(durableEffectKey(descriptor.name, descriptor.version));
       if (
         !registration ||
         effectContractDigest(registration.definition) !== command.effectContractDigest
@@ -469,12 +470,13 @@ function protocol(message: string): CrankError {
 
 /** Canonical exact-key format shared by program registries and Hosts. */
 export function exactProgramKey(program: PinnedProgram): string {
-  return `${program.id}@${program.version}#${program.digest}`;
+  return stableTupleHash([program.id, program.version, program.digest]);
 }
 
 /** Derives a stable attachment identifier from pinned program and task identity. */
 export function stableProgramAttachmentId(request: AttachProgramRequest): string {
-  return stableOpaqueId("attachment-seed", [
+  return stableTupleHash([
+    "attachment-seed",
     request.sessionId,
     request.taskId,
     request.executionEpoch,
@@ -487,7 +489,8 @@ export function stableProgramAttachmentId(request: AttachProgramRequest): string
 let attachmentCounter = 0;
 function nextProgramAttachmentId(request: AttachProgramRequest): string {
   attachmentCounter += 1;
-  return stableOpaqueId("attachment", [
+  return stableTupleHash([
+    "attachment",
     request.sessionId,
     request.taskId,
     request.executionEpoch,
