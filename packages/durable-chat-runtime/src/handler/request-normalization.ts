@@ -6,7 +6,7 @@
  * messages through Chat Core's codec, and leaves no compatibility message or
  * tool-call readers behind.
  */
-import { RunAgentInputSchema, type RunAgentInput } from "@ag-ui/core";
+import { RunAgentInputSchema } from "@ag-ui/core";
 import { z } from "zod";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
@@ -19,7 +19,7 @@ import {
   type Parser,
 } from "@sweatpants/foundation";
 import { agUiMessagesToChatHistoryEntries } from "@sweatpants/chat-core/ag-ui";
-import type { ResumeEntry } from "@sweatpants/chat-core";
+import type { ConversationCommand, ResumeEntry } from "@sweatpants/chat-core";
 import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
 import type { OpenInterruptRecord } from "../interrupts/index.ts";
@@ -59,13 +59,6 @@ function rejectLegacyMessageFields(value: unknown, path = "$.input", seen = new 
 
 const jsonValueSchema = z.json();
 const runAgentInputParser = parser(RunAgentInputSchema.strict());
-const resumeEntrySchema = z
-  .object({
-    interruptId: z.string().min(1).max(512),
-    status: z.enum(["resolved", "cancelled"]),
-    payload: jsonValueSchema.optional(),
-  })
-  .strict();
 const elicitResponseSchema = z
   .object({
     sessionId: z.string().min(1).max(512),
@@ -123,14 +116,66 @@ const streamOptionsSchema = z
   })
   .strict();
 
-/** Sweatpants-owned controls; `input` remains AG-UI's owned RunAgentInput. */
+const canonicalUuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const canonicalCounter = /^(0|[1-9]\d*)$/;
+const durableCounterSchema = z
+  .string()
+  .regex(canonicalCounter)
+  .refine((value) => BigInt(value) <= 18_446_744_073_709_551_615n, {
+    message: "counter exceeds durable 64-bit range",
+  });
+
+const commandBaseSchema = {
+  commandId: z.string().regex(canonicalUuidV4),
+  issuedAt: z.number().int().nonnegative(),
+  expiresAt: z.number().int().positive(),
+  basisRevision: durableCounterSchema.nullable(),
+};
+
+const conversationCommandSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      ...commandBaseSchema,
+      type: z.literal("send-message"),
+      messageId: z.string().min(1).max(512),
+    })
+    .strict(),
+  z
+    .object({
+      ...commandBaseSchema,
+      type: z.literal("regenerate"),
+      targetMessageId: z.string().min(1).max(512).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...commandBaseSchema,
+      type: z.literal("respond-to-elicit"),
+      logicalTurnId: z.string().min(1).max(512),
+      executionId: z.string().min(1).max(1_024),
+      interruptId: z.string().min(1).max(512),
+      status: z.enum(["resolved", "cancelled"]),
+      payload: jsonValueSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...commandBaseSchema,
+      type: z.literal("interrupt-turn"),
+      logicalTurnId: z.string().min(1).max(512),
+      executionId: z.string().min(1).max(1_024),
+      reason: z.string().min(1).max(4_096),
+    })
+    .strict(),
+]);
+
+/** Sweatpants-owned command; `input` remains AG-UI presentation/model input. */
 const chatTransportRequestSchema = z
   .object({
+    command: conversationCommandSchema,
     input: z.unknown(),
-    trigger: z.enum(["submit-message", "regenerate-message", "cancel-run"]).optional(),
-    clientId: z.string().max(512).optional(),
-    conversationId: z.string().max(512).optional(),
-    messageId: z.string().max(512).optional(),
+    clientId: z.string().min(1).max(512),
+    conversationId: z.string().min(1).max(512),
     systemPrompt: z
       .string()
       .max(64 * 1024)
@@ -146,40 +191,46 @@ const chatTransportRequestSchema = z
       .strict()
       .optional(),
     elicitResponses: z.array(elicitResponseSchema).max(256).optional(),
-    pluginAbort: z
-      .object({
-        sessionId: z.string().max(512).optional(),
-        reason: z.string().max(4_096).optional(),
-      })
-      .strict()
-      .optional(),
   })
   .strict();
 
 const chatTransportRequestStructureParser = parser(chatTransportRequestSchema);
-const resumeEntriesParser = parser(z.array(resumeEntrySchema));
 
+type DecodedCommand = z.infer<typeof conversationCommandSchema>;
 type DecodedStreamOptions = z.infer<typeof streamOptionsSchema>;
 
-function decodeResumeEntries(
-  value: RunAgentInput["resume"],
-): ParseResult<ResumeEntry[] | undefined> {
-  if (value === undefined) {
-    return success(undefined);
+function decodeConversationCommand(command: DecodedCommand): ConversationCommand {
+  switch (command.type) {
+    case "send-message":
+    case "interrupt-turn":
+      return command;
+    case "regenerate":
+      return {
+        type: command.type,
+        commandId: command.commandId,
+        issuedAt: command.issuedAt,
+        expiresAt: command.expiresAt,
+        basisRevision: command.basisRevision,
+        ...(command.targetMessageId === undefined
+          ? {}
+          : { targetMessageId: command.targetMessageId }),
+      };
+    case "respond-to-elicit":
+      return {
+        type: command.type,
+        commandId: command.commandId,
+        issuedAt: command.issuedAt,
+        expiresAt: command.expiresAt,
+        basisRevision: command.basisRevision,
+        logicalTurnId: command.logicalTurnId,
+        executionId: command.executionId,
+        interruptId: command.interruptId,
+        status: command.status,
+        ...(command.payload === undefined
+          ? {}
+          : { payload: assertJson(command.payload, "$.command.payload") }),
+      };
   }
-  const parsed = resumeEntriesParser.parse(value);
-  if (!parsed.ok) {
-    return prefixFailure(parsed.issues, ["input", "resume"]);
-  }
-  return success(
-    parsed.value.map((entry, index) => ({
-      interruptId: entry.interruptId,
-      status: entry.status,
-      ...(entry.payload === undefined
-        ? {}
-        : { payload: assertJson(entry.payload, `$.input.resume[${index}].payload`) }),
-    })),
-  );
 }
 
 /** Configuration remains optional; this boundary converts the validated DTO once. */
@@ -265,18 +316,6 @@ function decodeElicitResponse(value: DecodedElicitResponse, index: number): Elic
   };
 }
 
-function decodePluginAbort(
-  value: z.infer<typeof chatTransportRequestSchema>["pluginAbort"],
-): ChatRequestBody["pluginAbort"] {
-  if (value === undefined) {
-    return undefined;
-  }
-  return {
-    ...(value.sessionId === undefined ? {} : { sessionId: value.sessionId }),
-    ...(value.reason === undefined ? {} : { reason: value.reason }),
-  };
-}
-
 /** Result-oriented ingress parser for one complete durable Chat request. */
 export const chatRequestBodyParser: Parser<ChatRequestBody> =
   chatTransportRequestStructureParser.andThen(normalizeChatRequestBody);
@@ -294,18 +333,44 @@ function normalizeChatRequestBody(
     if (!input.ok) {
       return prefixFailure(input.issues, ["input"]);
     }
-    const resume = decodeResumeEntries(input.value.resume);
-    if (!resume.ok) {
-      return resume;
+    if (input.value.resume !== undefined) {
+      return failure({
+        path: ["input", "resume"],
+        message: "resume belongs to the respond-to-elicit command",
+        code: "invalid_chat_request",
+      });
     }
+    const command = decodeConversationCommand(controls.command);
+    if (command.expiresAt <= command.issuedAt) {
+      return failure({
+        path: ["command", "expiresAt"],
+        message: "command expiry must be later than issue time",
+        code: "invalid_chat_request",
+      });
+    }
+    const resume: ResumeEntry[] | undefined =
+      command.type === "respond-to-elicit"
+        ? [
+            {
+              interruptId: command.interruptId,
+              status: command.status,
+              ...(command.payload === undefined
+                ? {}
+                : { payload: assertJson(command.payload, "$.command.payload") }),
+            },
+          ]
+        : undefined;
     const messages = agUiMessagesToChatHistoryEntries(input.value.messages);
     const streamOptions = decodeStreamOptions(controls.streamOptions);
-    const pluginAbort = decodePluginAbort(controls.pluginAbort);
+    const pluginAbort =
+      command.type === "interrupt-turn"
+        ? { reason: command.reason, commandId: command.commandId }
+        : undefined;
     return success({
-      ...(controls.trigger === undefined ? {} : { trigger: controls.trigger }),
-      ...(controls.clientId === undefined ? {} : { clientId: controls.clientId }),
-      ...(controls.conversationId === undefined ? {} : { conversationId: controls.conversationId }),
-      ...(controls.messageId === undefined ? {} : { messageId: controls.messageId }),
+      command,
+      clientId: controls.clientId,
+      conversationId: controls.conversationId,
+      messageId: command.commandId,
       threadId: input.value.threadId,
       runId: input.value.runId,
       ...(input.value.parentRunId === undefined ? {} : { parentRunId: input.value.parentRunId }),
@@ -313,7 +378,7 @@ function normalizeChatRequestBody(
       tools: input.value.tools,
       context: input.value.context,
       forwardedProps: input.value.forwardedProps,
-      ...(resume.value === undefined ? {} : { resume: resume.value }),
+      ...(resume === undefined ? {} : { resume }),
       messages,
       ...(controls.systemPrompt === undefined ? {} : { systemPrompt: controls.systemPrompt }),
       ...(controls.persona === undefined ? {} : { persona: controls.persona }),

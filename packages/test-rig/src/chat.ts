@@ -457,6 +457,7 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         fetcher: requestOptionsFetch(options.fetch, conversationId, conversationOptions),
         eventMiddleware: [eventMiddleware],
         interaction,
+        ...(!conversationOptions.reconnectOnOpen ? { initialConversation: "new" as const } : {}),
         ...(conversationOptions.reconnectOnOpen
           ? {
               initialize: function* (control): Operation<void> {

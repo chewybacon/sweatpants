@@ -1,4 +1,4 @@
-import { spawn } from "effection";
+import { race, spawn } from "effection";
 import { describe, expect, it } from "vitest";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import {
@@ -41,13 +41,19 @@ async function supersedeParkedOrdinaryTool(binding: Binding): Promise<void> {
 
       const replacement = yield* conversation.supersede("SUPERSEDE_ORDINARY_NEW_V1");
       yield* oldTurn.failure(/turn_superseded/);
-      const replacementRequest = yield* s.model.request((request) => {
-        const input = JSON.stringify(request.body.input);
-        expect(input).toContain("SUPERSEDE_ORDINARY_NEW_V1");
-        expect(input).toContain("supersede-ordinary-call");
-        expect(input).toMatch(/cancel/i);
-        expect(input).not.toContain(NESTED_SAMPLE_PROMPT_MARKER);
-      });
+      const replacementRequest = yield* race([
+        s.model.request((request) => {
+          const input = JSON.stringify(request.body.input);
+          expect(input).toContain("SUPERSEDE_ORDINARY_NEW_V1");
+          expect(input).toContain("supersede-ordinary-call");
+          expect(input).toMatch(/cancel/i);
+          expect(input).not.toContain(NESTED_SAMPLE_PROMPT_MARKER);
+        }),
+        (function* () {
+          const failure = yield* replacement.failure();
+          throw new Error(`ordinary replacement failed: ${failure.message}`);
+        })(),
+      ]);
       yield* replacementRequest.respond.text("SUPERSEDE_ORDINARY_RECOVERED_V1");
       expect((yield* replacement.settled()).text).toBe("SUPERSEDE_ORDINARY_RECOVERED_V1");
 
@@ -93,13 +99,19 @@ async function supersedeParkedDurableTool(binding: Binding): Promise<void> {
 
       const replacement = yield* conversation.supersede("SUPERSEDE_DURABLE_NEW_V1");
       yield* oldTurn.failure(/turn_superseded/);
-      const replacementRequest = yield* s.model.request((request) => {
-        const input = JSON.stringify(request.body.input);
-        expect(input).toContain("SUPERSEDE_DURABLE_NEW_V1");
-        expect(input).toContain("supersede-durable-call");
-        expect(input).toMatch(/cancel/i);
-        expect(input).not.toContain(DURABLE_SAMPLE_PROMPT_MARKER);
-      });
+      const replacementRequest = yield* race([
+        s.model.request((request) => {
+          const input = JSON.stringify(request.body.input);
+          expect(input).toContain("SUPERSEDE_DURABLE_NEW_V1");
+          expect(input).toContain("supersede-durable-call");
+          expect(input).toMatch(/cancel/i);
+          expect(input).not.toContain(DURABLE_SAMPLE_PROMPT_MARKER);
+        }),
+        (function* () {
+          const failure = yield* replacement.failure();
+          throw new Error(`durable replacement failed: ${failure.message}`);
+        })(),
+      ]);
       yield* replacementRequest.respond.text("SUPERSEDE_DURABLE_RECOVERED_V1");
       expect((yield* replacement.settled()).text).toBe("SUPERSEDE_DURABLE_RECOVERED_V1");
     },

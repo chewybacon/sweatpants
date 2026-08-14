@@ -66,7 +66,12 @@ export interface ProgramDriverJournal {
   /** Reads a parsed defensive semantic journal snapshot. */
   readJournal(sessionId: string, rootTaskId?: string): Operation<DurableSemanticRecord[]>;
   /** Idempotently records logical cancellation before pending work is resolved. */
-  requestCancellation(sessionId: string, taskId: string, reason?: string): Operation<void>;
+  requestCancellation(
+    sessionId: string,
+    taskId: string,
+    reason?: string,
+    commandId?: string,
+  ): Operation<void>;
   /** Resolves an existing pull without exposing its private capability token. */
   resolvePending(request: {
     sessionId: string;
@@ -165,8 +170,8 @@ export function createProgramDriverJournalStore(
             ? yield* selected.readTaskJournal(sessionId, rootTaskId)
             : yield* selected.readJournal(sessionId);
         },
-        *requestCancellation(sessionId, taskId, reason): Operation<void> {
-          yield* selected.requestCancellation(sessionId, taskId, reason);
+        *requestCancellation(sessionId, taskId, reason, commandId): Operation<void> {
+          yield* selected.requestCancellation(sessionId, taskId, reason, commandId);
         },
         *resolvePending(request): Operation<ResolveOperationResult> {
           const capability = yield* selected.resolutionCapability(

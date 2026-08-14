@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { chatRequestBodyParser, parseChatRequestBody } from "../request-normalization.ts";
 
+const issuedAt = Date.now();
+const expiresAt = issuedAt + 60_000;
+
 function request(input: Record<string, unknown>, controls: Record<string, unknown> = {}) {
   return {
     input: {
@@ -14,6 +17,16 @@ function request(input: Record<string, unknown>, controls: Record<string, unknow
       forwardedProps: {},
       ...input,
     },
+    command: {
+      type: "send-message",
+      commandId: "00000000-0000-4000-8000-000000000001",
+      issuedAt,
+      expiresAt,
+      basisRevision: null,
+      messageId: "user:1",
+    },
+    clientId: "client-1",
+    conversationId: "conversation-1",
     ...controls,
   };
 }
@@ -25,16 +38,22 @@ describe("parseChatRequestBody", () => {
         {
           messages: [{ id: "user:1", role: "user", content: "hello" }],
           tools: [{ name: "client-plugin-contract", description: "client", parameters: {} }],
-          resume: [{ interruptId: "interrupt:1", status: "cancelled" }],
           state: { step: 1 },
           forwardedProps: { source: "test" },
         },
         {
-          trigger: "submit-message",
-          clientId: "client-1",
-          conversationId: "conversation-1",
+          command: {
+            type: "respond-to-elicit",
+            commandId: "00000000-0000-4000-8000-000000000002",
+            issuedAt,
+            expiresAt,
+            basisRevision: "2",
+            logicalTurnId: "turn-1",
+            executionId: "execution-1",
+            interruptId: "interrupt:1",
+            status: "cancelled",
+          },
           model: { provider: "test", id: "model" },
-          pluginAbort: { sessionId: "tool:1", reason: "user_cancelled" },
           streamOptions: { toolChoice: "auto", maxTokens: 128 },
         },
       ),

@@ -273,15 +273,32 @@ function DemoThreadPanel({
     }),
     [inspectorStore],
   );
-  const { messages, status, renderStatus, sendMessage, stop, error } = useChat({
-    pipeline: definition.pipeline ?? "full",
-    plugins: definition.plugins ?? [],
-    threadId,
-    queue: "interrupt",
-    transport: inspectorTransport,
-  });
+  const { messages, authority, status, renderStatus, canSendMessage, sendMessage, stop, error } =
+    useChat({
+      pipeline: definition.pipeline ?? "full",
+      plugins: definition.plugins ?? [],
+      threadId,
+      transport: inspectorTransport,
+    });
   const busy = status === "submitted" || status === "streaming";
+  const turnActive =
+    authority?.state === "running" ||
+    authority?.state === "parked" ||
+    authority?.state === "recovering";
   const renderReady = renderStatus === "ready";
+  const lifecycleLabel = !renderReady
+    ? "Loading renderer"
+    : authority === null
+      ? "Hydrating thread"
+      : authority.state === "idle"
+        ? "Thread ready"
+        : authority.state === "parked"
+          ? "Waiting for your response"
+          : authority.state === "recovering"
+            ? "Recovering thread"
+            : authority.state === "deleted"
+              ? "Thread deleted"
+              : "Thread running";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -295,13 +312,13 @@ function DemoThreadPanel({
     (event: React.FormEvent) => {
       event.preventDefault();
       const content = draft.trim();
-      if (!content || busy) {
+      if (!content || !canSendMessage) {
         return;
       }
       sendMessage(content);
       onDraftChange("");
     },
-    [busy, draft, onDraftChange, sendMessage],
+    [canSendMessage, draft, onDraftChange, sendMessage],
   );
 
   return (
@@ -309,9 +326,7 @@ function DemoThreadPanel({
       <div className="flex items-center justify-between border-b border-slate-800/80 px-5 py-4">
         <div>
           <div className="text-xs uppercase tracking-[0.3em] text-sky-300/70">Durable Threads</div>
-          <div className="font-serif text-xl text-slate-100">
-            {renderReady ? "Thread ready" : "Loading thread"}
-          </div>
+          <div className="font-serif text-xl text-slate-100">{lifecycleLabel}</div>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -345,7 +360,7 @@ function DemoThreadPanel({
                   key={suggestion.label}
                   type="button"
                   onClick={() => onDraftChange(suggestion.message)}
-                  disabled={busy}
+                  disabled={!canSendMessage}
                   className="rounded-full border border-slate-700 bg-slate-900/80 px-4 py-2 text-xs text-slate-300 transition hover:border-sky-400 hover:text-sky-200 disabled:opacity-50"
                 >
                   {suggestion.label}
@@ -374,21 +389,21 @@ function DemoThreadPanel({
             value={draft}
             onChange={(event) => onDraftChange(event.target.value)}
             placeholder="Type a message..."
-            disabled={busy}
+            disabled={!canSendMessage}
             className="h-14 rounded-2xl border-slate-700 bg-slate-900/90 px-5 text-base"
           />
-          {busy ? (
+          {turnActive ? (
             <Button
               type="button"
               onClick={stop}
               className="h-14 rounded-2xl bg-red-500 px-6 text-white hover:bg-red-400"
             >
-              Stop
+              {busy ? "Stop" : "Cancel turn"}
             </Button>
           ) : (
             <Button
               type="submit"
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || !canSendMessage}
               className="h-14 rounded-2xl bg-sky-500 px-6 text-white hover:bg-sky-400"
             >
               Send

@@ -66,8 +66,12 @@ async function settle(
       break;
     }
     current = await post(runtime.handle, substrate.conversationId, substrate.messages, {
+      commandId: crypto.randomUUID(),
       interruptId: pending.id,
       result: answerFor(pending.message),
+      basisRevision: pending.basisRevision,
+      logicalTurnId: pending.logicalTurnId,
+      executionId: pending.executionId,
       callId,
       ...(pending.parentRunId ? { parentRunId: pending.parentRunId } : {}),
     });

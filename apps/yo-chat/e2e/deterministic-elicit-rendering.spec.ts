@@ -58,11 +58,10 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
     const postData = request.postData();
     const parsed = postData ? JSON.parse(postData) : {};
     seenRequests.push(parsed);
-    const hasResume =
-      typeof parsed.input === "object" &&
-      parsed.input !== null &&
-      Array.isArray(parsed.input.resume) &&
-      parsed.input.resume.length > 0;
+    const hasResume = parsed.command?.type === "respond-to-elicit";
+    const threadId = String(parsed.conversationId ?? parsed.input?.threadId);
+    const currentRunId = String(parsed.input?.runId);
+    const logicalTurnId = String(parsed.command?.logicalTurnId ?? currentRunId);
 
     await route.fulfill({
       status: 200,
@@ -70,6 +69,17 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
       body: ndjson(
         hasResume
           ? [
+              {
+                type: "sweatpants.conversation-authority.v1",
+                authority: {
+                  conversationId: threadId,
+                  revision: "3",
+                  state: "running",
+                  activeLogicalTurnId: logicalTurnId,
+                  activeExecutionId: "execution-1",
+                  latestCompletedExecutionId: null,
+                },
+              },
               {
                 type: "ACTIVITY_DELTA",
                 messageId: elicitRecord,
@@ -97,14 +107,36 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
                 role: "tool",
               },
               {
+                type: "sweatpants.conversation-authority.v1",
+                authority: {
+                  conversationId: threadId,
+                  revision: "4",
+                  state: "idle",
+                  activeLogicalTurnId: null,
+                  activeExecutionId: null,
+                  latestCompletedExecutionId: "execution-1",
+                },
+              },
+              {
                 type: "RUN_FINISHED",
-                threadId: "thread-1",
-                runId: "run-2",
+                threadId,
+                runId: currentRunId,
                 outcome: { type: "success" },
               },
             ]
           : [
-              { type: "RUN_STARTED", threadId: "thread-1", runId: "run-1" },
+              {
+                type: "sweatpants.conversation-authority.v1",
+                authority: {
+                  conversationId: threadId,
+                  revision: "1",
+                  state: "running",
+                  activeLogicalTurnId: logicalTurnId,
+                  activeExecutionId: "execution-1",
+                  latestCompletedExecutionId: null,
+                },
+              },
+              { type: "RUN_STARTED", threadId, runId: currentRunId },
               {
                 type: "TOOL_CALL_START",
                 toolCallId: "call-book-flight-1",
@@ -196,9 +228,20 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
                 },
               }),
               {
+                type: "sweatpants.conversation-authority.v1",
+                authority: {
+                  conversationId: threadId,
+                  revision: "2",
+                  state: "parked",
+                  activeLogicalTurnId: logicalTurnId,
+                  activeExecutionId: "execution-1",
+                  latestCompletedExecutionId: null,
+                },
+              },
+              {
                 type: "RUN_FINISHED",
-                threadId: "thread-1",
-                runId: "run-1",
+                threadId,
+                runId: currentRunId,
                 outcome: {
                   type: "interrupt",
                   interrupts: [
@@ -246,17 +289,17 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
 
   await expect.poll(() => seenRequests.length, { timeout: 5000 }).toBe(2);
   expect(seenRequests[1]).toMatchObject({
-    input: {
-      resume: [
-        {
-          interruptId: "elicit-pick-flight-1",
-          status: "resolved",
-          payload: {
-            action: "accept",
-            content: { flightId: "FL001" },
-          },
-        },
-      ],
+    command: {
+      type: "respond-to-elicit",
+      basisRevision: "2",
+      logicalTurnId: expect.any(String),
+      executionId: "execution-1",
+      interruptId: "elicit-pick-flight-1",
+      status: "resolved",
+      payload: {
+        action: "accept",
+        content: { flightId: "FL001" },
+      },
     },
   });
   expect(seenRequests[1]).not.toHaveProperty("enabledPlugins");

@@ -100,7 +100,13 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
       yield* sample.respond.text(`STALE_ELICIT_${settlement.toUpperCase()}_SAMPLE_V1`);
 
       const pending = yield* turn.elicit("chooseOption");
-      const pendingSnapshot = yield* turn.snapshot();
+      const pendingSnapshot = yield* turn.expectSnapshot(
+        (snapshot) => snapshot.authority?.state === "parked",
+      );
+      const pendingAuthority = pendingSnapshot.authority;
+      if (pendingAuthority?.state !== "parked") {
+        throw new Error("Pending elicitation did not publish parked authority");
+      }
       const staleMessages = projectChatMessagesToAGUI(pendingSnapshot.messages);
       const acceptedResume = settledResume(pending.elicitId, settlement);
       const staleConflict = conflictingResume(pending.elicitId);
@@ -127,12 +133,25 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
       expect(reconstructedText).toContain(`"state":"${expectedState}"`);
 
       const postCapturedResume = function* (entry: ResumeEntry, label: string) {
+        const commandId = crypto.randomUUID();
         const response = yield* call(() =>
           s.transport.fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
             body: JSON.stringify({
-              trigger: "submit-message",
+              command: {
+                type: "respond-to-elicit",
+                commandId,
+                issuedAt: Date.now(),
+                expiresAt: Date.now() + 60_000,
+                basisRevision: pendingAuthority.revision,
+                logicalTurnId: pendingAuthority.activeLogicalTurnId,
+                executionId: pendingAuthority.activeExecutionId,
+                interruptId: entry.interruptId,
+                status: entry.status,
+                ...(entry.payload === undefined ? {} : { payload: entry.payload }),
+              },
+              clientId: "stale-elicit-client",
               conversationId: conversation.conversationId,
               input: {
                 threadId: conversation.conversationId,
@@ -142,7 +161,6 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
                 tools: [],
                 context: [],
                 forwardedProps: {},
-                resume: [entry],
               },
             }),
           }),

@@ -45,11 +45,15 @@ export type PublicEvent = { type: string; [key: string]: unknown };
 
 /** Resume coordinates plus the elicitation answer being submitted. */
 export type ResumeInput = {
+  commandId: string;
   interruptId: string;
   result: { action: string; content?: unknown };
   /** Tool call the elicitation belongs to; retries allocate a new call id. */
   callId: string;
   parentRunId?: string;
+  basisRevision: string;
+  logicalTurnId: string;
+  executionId: string;
 };
 
 const model: Model = {
@@ -254,27 +258,44 @@ function buildChatRequest(
   resume: ResumeInput | undefined,
   signal?: AbortSignal,
 ): Request {
+  const runId = crypto.randomUUID();
   return new Request(`http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     ...(signal ? { signal } : {}),
     body: JSON.stringify({
+      command: resume
+        ? {
+            type: "respond-to-elicit",
+            commandId: resume.commandId,
+            issuedAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+            basisRevision: resume.basisRevision,
+            logicalTurnId: resume.logicalTurnId,
+            executionId: resume.executionId,
+            interruptId: resume.interruptId,
+            status: "resolved",
+            payload: resume.result,
+          }
+        : {
+            type: "send-message",
+            commandId: runId,
+            issuedAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+            basisRevision: null,
+            messageId: messages.at(-1)?.id ?? runId,
+          },
+      clientId: "book-flight-acceptance",
+      conversationId,
       input: {
         threadId: conversationId,
-        runId: crypto.randomUUID(),
+        runId,
         state: {},
         messages,
         tools: [],
         context: [],
         forwardedProps: {},
         ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
-        ...(resume
-          ? {
-              resume: [
-                { interruptId: resume.interruptId, status: "resolved", payload: resume.result },
-              ],
-            }
-          : {}),
       },
       ...(resume
         ? {
@@ -376,9 +397,33 @@ function parsePublicFrame(line: string): PublicEvent {
 }
 
 /** Extracts the first pending public interrupt from one response batch. */
-export function publicInterrupt(
-  events: PublicEvent[],
-): { id: string; message: string; parentRunId?: string } | undefined {
+export function publicInterrupt(events: PublicEvent[]):
+  | {
+      id: string;
+      message: string;
+      parentRunId?: string;
+      basisRevision: string;
+      logicalTurnId: string;
+      executionId: string;
+    }
+  | undefined {
+  const authority = events.findLast(
+    (event) => event.type === "sweatpants.conversation-authority.v1",
+  )?.["authority"];
+  if (!isRecord(authority)) {
+    return undefined;
+  }
+  const basisRevision = authority["revision"];
+  const logicalTurnId = authority["activeLogicalTurnId"];
+  const executionId = authority["activeExecutionId"];
+  if (
+    authority["state"] !== "parked" ||
+    typeof basisRevision !== "string" ||
+    typeof logicalTurnId !== "string" ||
+    typeof executionId !== "string"
+  ) {
+    return undefined;
+  }
   for (const event of events) {
     if (event.type !== "RUN_FINISHED" || !isRecord(event["outcome"])) {
       continue;
@@ -394,6 +439,9 @@ export function publicInterrupt(
       return {
         id,
         message,
+        basisRevision,
+        logicalTurnId,
+        executionId,
         ...(typeof runId === "string" ? { parentRunId: runId } : {}),
       };
     }

@@ -52,9 +52,13 @@ async function settle(
       return current;
     }
     current = await post(runtime.handle, substrate.conversationId, substrate.messages, {
+      commandId: crypto.randomUUID(),
       interruptId: pending.id,
       result: answerFor(pending.message),
       callId,
+      basisRevision: pending.basisRevision,
+      logicalTurnId: pending.logicalTurnId,
+      executionId: pending.executionId,
     });
     callId = latestToolCallId(current) ?? callId;
   }
@@ -74,9 +78,13 @@ async function runStaleForeignElicit(settlement: Settlement): Promise<void> {
     expect(callId).toBeDefined();
 
     const captured = {
+      commandId: crypto.randomUUID(),
       interruptId: pending!.id,
       result: settlementResult(settlement),
       callId: callId!,
+      basisRevision: pending!.basisRevision,
+      logicalTurnId: pending!.logicalTurnId,
+      executionId: pending!.executionId,
     };
 
     const settled = await settle(

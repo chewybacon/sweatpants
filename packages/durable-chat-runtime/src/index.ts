@@ -2,6 +2,7 @@ import { canonicalSnapshot, sha256, stableTupleHash, type Json } from "@sweatpan
 import type { Operation } from "effection";
 import {
   CrankError,
+  type ExecutionTreeSnapshot,
   type ProgramIdentity,
   type ProjectionFactEnvelope,
   type ProjectionFrontier,
@@ -200,78 +201,138 @@ export interface BeginTurnPublicationRequest {
   readonly participantId: string;
   readonly acceptedAt: number;
   readonly retainUntil: number;
-  /** send-message admits only while idle. join-active resumes the head's execution. */
-  readonly admission?: "send-message" | "join-active";
+  /** Revision on which the caller formed this state-derived command. */
+  readonly expectedRevision: string | null;
+  readonly admission: "send-message" | "respond-to-elicit";
+  readonly expectedLogicalTurnId?: string;
+  readonly expectedExecutionId?: string;
+  /** Store-classified exact retry; callers must attach/reconcile, never rerun work. */
+  readonly idempotent?: boolean;
 }
 
-/** Opens bounded authority state and admits this execution as the active Turn. */
+function commandConflict(code: string, message: string): CrankError {
+  return new CrankError(code, message);
+}
+
+function isPristineConversationHead(head: ConversationHead): boolean {
+  return (
+    head.revision === "0" &&
+    head.ownerEpoch === "0" &&
+    head.state === "idle" &&
+    head.checkpoint === null &&
+    head.terminalHistory === null &&
+    head.activeLogicalTurnId === null &&
+    head.activeExecutionId === null &&
+    head.latestCompletedExecutionId === null &&
+    head.activeSegment === null &&
+    head.activeCommand === null
+  );
+}
+
+/** Atomically admits one state-derived command before any ProgramRuntime work starts. */
 export function* beginTurnPublication(
   request: BeginTurnPublicationRequest,
 ): Operation<BeginTurnPublicationRequest> {
   const conversation = ConversationStoreApi.operations;
+  const observedReceipt = yield* conversation.getCommandReceipt(
+    request.sessionId,
+    request.commandId,
+  );
   let head = yield* conversation.loadHead(request.sessionId);
+
+  // A command formed against an absent head may initialize exactly that absent
+  // conversation. Losing this CAS is a stale-command conflict, never an
+  // invitation to rebase onto the winner's revision.
   if (head === null) {
+    if (request.admission !== "send-message" || request.expectedRevision !== null) {
+      throw commandConflict(
+        "conversation_state_changed",
+        `Conversation ${request.sessionId} does not match the command basis`,
+      );
+    }
     const initialized = yield* conversation.compareAndSwapHead(
       request.sessionId,
       null,
       null,
       idleProposal(null),
     );
-    if (initialized.status !== "committed") {
-      throw new Error("Conversation head initialization lost a race");
+    if (initialized.status === "committed") {
+      head = initialized.head;
+    } else if (initialized.current && isPristineConversationHead(initialized.current)) {
+      head = initialized.current;
+    } else {
+      throw commandConflict(
+        "conversation_state_changed",
+        `Conversation ${request.sessionId} was created by another command`,
+      );
     }
-    head = initialized.head;
+  } else if (
+    observedReceipt === null &&
+    !(
+      request.admission === "send-message" &&
+      request.expectedRevision === null &&
+      isPristineConversationHead(head)
+    ) &&
+    head.revision !== request.expectedRevision
+  ) {
+    throw commandConflict(
+      "conversation_state_changed",
+      `Conversation ${request.sessionId} changed after revision ${String(request.expectedRevision)}`,
+    );
   }
 
-  if (head.activeExecutionId) {
-    const existing = yield* TurnJournalAuthority.operations.read(head.activeExecutionId);
-    if (!existing) {
-      const repaired = yield* conversation.compareAndSwapHead(
-        request.sessionId,
-        head.revision,
-        head.ownerEpoch,
-        idleProposal(head),
-      );
-      if (repaired.status === "committed") {
-        head = repaired.head;
-      } else if (repaired.current) {
-        head = repaired.current;
-      }
-    } else if (
-      request.admission === "join-active" &&
-      existing.format !== "sweatpants.terminal-execution.v1"
+  let admittedRequest = request;
+  let existingActive: ExecutionTreeSnapshot | TerminalCapsule | null = null;
+  if (request.admission === "respond-to-elicit") {
+    if (
+      head.activeLogicalTurnId !== request.expectedLogicalTurnId ||
+      head.activeExecutionId !== request.expectedExecutionId
     ) {
-      return {
-        ...request,
-        executionId: existing.executionId,
-        sessionId: existing.sessionId,
-        turnId: existing.turnId,
-        rootTaskId: existing.rootTaskId,
-        rootProgram: existing.rootProgram,
-      };
-    } else if (request.admission === "join-active") {
-      throw new Error(`Conversation ${request.sessionId} has an invalid active execution`);
+      throw commandConflict(
+        "active_turn_changed",
+        `Conversation ${request.sessionId} active Turn changed`,
+      );
     }
+    existingActive = head.activeExecutionId
+      ? yield* TurnJournalAuthority.operations.read(head.activeExecutionId)
+      : null;
+    if (!existingActive || existingActive.format === "sweatpants.terminal-execution.v1") {
+      throw commandConflict(
+        "active_turn_changed",
+        `Conversation ${request.sessionId} has no resumable active Turn`,
+      );
+    }
+    admittedRequest = {
+      ...request,
+      executionId: existingActive.executionId,
+      sessionId: existingActive.sessionId,
+      turnId: existingActive.turnId,
+      rootTaskId: existingActive.rootTaskId,
+      rootProgram: existingActive.rootProgram,
+    };
   }
 
   const proposal: ConversationHeadProposal = {
     state: "running",
     checkpoint: head.checkpoint,
     terminalHistory: head.terminalHistory,
-    activeLogicalTurnId: request.turnId,
-    activeExecutionId: request.executionId,
+    activeLogicalTurnId: admittedRequest.turnId,
+    activeExecutionId: admittedRequest.executionId,
     latestCompletedExecutionId: head.latestCompletedExecutionId,
     activeSegment: null,
     activeCommand: {
-      kind: "send-message",
+      kind: request.admission,
       commandId: request.commandId,
-      logicalTurnId: request.turnId,
-      executionId: request.executionId,
+      logicalTurnId: admittedRequest.turnId,
+      executionId: admittedRequest.executionId,
     },
     deletedAt: null,
     ownerTransition: {
       kind: "assign",
-      ownerRoute: { executionId: request.executionId, taskId: request.rootTaskId },
+      ownerRoute: {
+        executionId: admittedRequest.executionId,
+        taskId: admittedRequest.rootTaskId,
+      },
     },
   };
   const admission: CommandAdmissionResult = yield* conversation.admitCommand({
@@ -281,78 +342,79 @@ export function* beginTurnPublication(
     participantId: request.participantId,
     acceptedAt: request.acceptedAt,
     retainUntil: request.retainUntil,
-    expectedRevision: head.revision,
-    logicalTurnId: request.turnId,
-    executionId: request.executionId,
+    expectedRevision: observedReceipt?.admittedRevision ?? head.revision,
+    requiredState: request.admission === "send-message" ? "idle" : "parked",
+    logicalTurnId: admittedRequest.turnId,
+    executionId: admittedRequest.executionId,
     proposal,
   });
   if (admission.status === "head_conflict") {
-    throw new Error(`Conversation ${request.sessionId} changed during command admission`);
+    throw commandConflict(
+      "conversation_state_changed",
+      `Conversation ${request.sessionId} changed during command admission`,
+    );
   }
   if (admission.status === "state_conflict") {
-    throw new Error(`Conversation ${request.sessionId} is not idle`);
+    throw commandConflict(
+      request.admission === "send-message" ? "conversation_not_idle" : "active_turn_changed",
+      request.admission === "send-message"
+        ? `Conversation ${request.sessionId} is not idle`
+        : `Conversation ${request.sessionId} is no longer parked on that Turn`,
+    );
   }
   if (admission.status === "command_identity_conflict") {
-    throw new Error(`Command ${request.commandId} has conflicting identity`);
+    throw commandConflict(
+      "command_identity_conflict",
+      `Command ${request.commandId} has conflicting identity`,
+    );
+  }
+  if (
+    admission.receipt.executionId !== admittedRequest.executionId ||
+    admission.receipt.logicalTurnId !== admittedRequest.turnId
+  ) {
+    throw commandConflict(
+      "command_identity_conflict",
+      `Command ${request.commandId} has conflicting execution identity`,
+    );
   }
   if (
     admission.status === "idempotent" &&
-    (admission.receipt.executionId !== request.executionId ||
-      admission.receipt.logicalTurnId !== request.turnId)
+    admission.head.activeExecutionId !== admittedRequest.executionId
   ) {
-    throw new Error(`Command ${request.commandId} has conflicting execution identity`);
-  }
-
-  let accepted = admission.head;
-  if (accepted.activeExecutionId === null) {
-    if (request.admission === "join-active" || admission.status !== "idempotent") {
-      throw new Error(`Command ${request.commandId} was admitted without an active execution`);
-    }
-    const revived = yield* conversation.compareAndSwapHead(
-      request.sessionId,
-      accepted.revision,
-      accepted.ownerEpoch,
-      proposal,
+    throw commandConflict(
+      "command_already_terminal",
+      `Command ${request.commandId} already reached terminal conversation state`,
     );
-    if (revived.status !== "committed") {
-      throw new Error(
-        `Conversation ${request.sessionId} changed while recovering command admission`,
-      );
-    }
-    accepted = revived.head;
   }
-  if (accepted.activeExecutionId !== request.executionId) {
+  if (admission.head.activeExecutionId !== admittedRequest.executionId) {
     throw new Error(`Command ${request.commandId} admitted another execution`);
   }
-  try {
-    yield* TurnJournalAuthority.operations.open({
-      executionId: request.executionId,
-      sessionId: request.sessionId,
-      turnId: request.turnId,
-      rootTaskId: request.rootTaskId,
-      rootProgram: request.rootProgram,
-    });
-  } catch (error) {
-    // Admission and execution-authority opening are separate stores. If the
-    // authority open fails after the receipt/head transaction committed, make
-    // the public head idle again. The receipt remains as a durable retry key;
-    // a retry with the same command identity can revive the head and rerun the
-    // idempotent authority open without admitting a second command.
-    const repaired = yield* conversation.compareAndSwapHead(
-      request.sessionId,
-      accepted.revision,
-      accepted.ownerEpoch,
-      idleProposal(accepted),
-    );
-    if (repaired.status !== "committed") {
-      throw new Error(
-        `Command ${request.commandId} failed to open its authority and its head changed during recovery`,
-        { cause: error },
-      );
-    }
-    throw error;
+
+  if (request.admission === "respond-to-elicit") {
+    return {
+      ...admittedRequest,
+      ...(admission.status === "idempotent" ? { idempotent: true } : {}),
+    };
   }
-  return request;
+  if (admission.status === "idempotent") {
+    const existing = yield* TurnJournalAuthority.operations.read(admittedRequest.executionId);
+    if (existing !== null) {
+      return { ...admittedRequest, idempotent: true };
+    }
+  }
+
+  // The admitted running head and receipt are deliberate recovery evidence.
+  // If opening private authority fails, do not lie by moving the public head
+  // back to idle: an exact retry reuses the receipt and idempotently opens the
+  // same deterministic execution, while other state-derived commands reject.
+  yield* TurnJournalAuthority.operations.open({
+    executionId: admittedRequest.executionId,
+    sessionId: admittedRequest.sessionId,
+    turnId: admittedRequest.turnId,
+    rootTaskId: admittedRequest.rootTaskId,
+    rootProgram: admittedRequest.rootProgram,
+  });
+  return admittedRequest;
 }
 
 export interface CompleteAndPublishTurnRequest<Entry extends Json = Json> {

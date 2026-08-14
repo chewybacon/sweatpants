@@ -56,7 +56,7 @@ export type {
   UserMessageInput,
   SendMessageOptions,
   RegenerateOptions,
-  ChatSendTrigger,
+  ConversationCommand,
   ResumeEntry,
   ChatReconnectRequest,
   ChatTransportSnapshot,

@@ -6,11 +6,11 @@
  * RUN_FINISHED markers, and persists conversation checkpoints and interrupt
  * state as frames are consumed.
  */
-import { EventType } from "@ag-ui/core";
+import { EventType, type AGUIEvent } from "@ag-ui/core";
 import { resource, type Operation, type Stream } from "effection";
 import type { TokenBufferStore, TokenBufferWriter } from "@sweatpants/durable-streams";
 import type { StreamEvent } from "../handler/types.ts";
-import type { DurableFrame } from "@sweatpants/chat-core";
+import { isConversationAuthorityFrame, type DurableFrame } from "@sweatpants/chat-core";
 import {
   readLatestConversationCheckpoint,
   recordConversationCheckpoint,
@@ -75,13 +75,16 @@ export function createSerializedEventStream(
           ...emittedFrames,
         ];
         const checkpointEvents = yield* buildCheckpointSnapshotEventsFromFrames(checkpointFrames);
-        if (checkpointEvents.length === 0) {
+        const presentationEvents = checkpointEvents.filter(
+          (event): event is AGUIEvent => !isConversationAuthorityFrame(event),
+        );
+        if (presentationEvents.length === 0) {
           return;
         }
         yield* recordConversationCheckpoint(
           options.checkpointStore,
           options.conversationId,
-          encodeConversationCheckpoint(checkpointEvents),
+          encodeConversationCheckpoint(presentationEvents),
         );
       } catch (error) {
         try {

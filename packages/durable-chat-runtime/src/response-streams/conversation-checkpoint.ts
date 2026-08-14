@@ -1,5 +1,9 @@
 import { EventType, type AGUIEvent } from "@ag-ui/core";
-import { aguiEventParser } from "@sweatpants/chat-core";
+import {
+  aguiEventParser,
+  isConversationAuthorityFrame,
+  type ConversationStreamEvent,
+} from "@sweatpants/chat-core";
 
 type StreamEvent = AGUIEvent;
 
@@ -195,12 +199,17 @@ export class ConversationCheckpointError extends Error {
 /** Compile-time drift tripwire: checkpoint events are the official AG-UI union. */
 export type _DecodeDrift = AGUIEvent extends StreamEvent ? true : never;
 
-export function encodeConversationCheckpoint(events: readonly StreamEvent[]): string {
+export function encodeConversationCheckpoint(events: readonly ConversationStreamEvent[]): string {
   try {
     if (events.length > MAX_CHECKPOINT_EVENTS) {
       throw checkpointError("Conversation checkpoint contains too many events");
     }
-    const validated = events.map((event) => validateCheckpointEvent(event));
+    const validated = events.map((event) => {
+      if (isConversationAuthorityFrame(event)) {
+        throw checkpointError("Conversation authority is not persisted as presentation history");
+      }
+      return validateCheckpointEvent(event);
+    });
     const encoded = JSON.stringify({ version: 1, events: JSON.parse(JSON.stringify(validated)) });
     assertCheckpointSize(encoded);
     return encoded;

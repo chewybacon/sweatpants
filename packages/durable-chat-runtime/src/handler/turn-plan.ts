@@ -1,11 +1,9 @@
 /**
  * Durable chat turn plan.
  *
- * Pure decision logic for one POST turn: whether an open interrupted program
- * turn is superseded by a free-form user message, which pluginAbort applies,
- * whether public resume entries validate, and which elicit responses the
- * engine receives. No I/O; interrupt state commits happen elsewhere only
- * after the crank durably accepts the respond commands.
+ * Pure decision logic for one typed command: which explicit interrupt applies,
+ * whether public resume entries validate, and which elicit responses the engine
+ * receives. Ordinary messages never imply supersession.
  */
 import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
 import {
@@ -21,9 +19,7 @@ export type ResumeValidation = ReturnType<typeof verifyResumeEntries>;
 export interface TurnPlan {
   /** Open interrupts for the thread at planning time. */
   openInterrupts: OpenInterruptRecord[];
-  /** A free-form user message supersedes the open interrupted program turn. */
-  supersedeOpenProgramTurn: boolean;
-  /** The pluginAbort the engine receives (explicit or supersession-derived). */
+  /** The explicit interrupt command projected for the engine. */
   effectivePluginAbort: ChatRequestBody["pluginAbort"];
   /** Outcome of public resume validation, or null when not applicable. */
   resumeValidation: ResumeValidation | null;
@@ -62,22 +58,7 @@ export function planTurn(params: {
     deriveResumeScopeId(threadId, body.parentRunId) ?? resumeScopeFromOpenRecords;
   const hasOpenInterrupts = openInterrupts.length > 0;
 
-  const supersedeOpenProgramTurn =
-    method === "POST" &&
-    hasOpenInterrupts &&
-    body.resume === undefined &&
-    body.elicitResponses === undefined &&
-    body.pluginAbort === undefined &&
-    body.messages.some((entry) => entry.type === "message" && entry.message.role === "user");
-
-  const effectivePluginAbort =
-    body.pluginAbort ??
-    (supersedeOpenProgramTurn
-      ? {
-          sessionId: openInterrupts[0]?.toolCallId ?? openInterrupts[0]?.interruptId ?? runId,
-          reason: "superseded_by_user_message",
-        }
-      : undefined);
+  const effectivePluginAbort = body.pluginAbort;
 
   const resumeValidation = effectivePluginAbort
     ? null
@@ -112,7 +93,6 @@ export function planTurn(params: {
 
   return {
     openInterrupts,
-    supersedeOpenProgramTurn,
     effectivePluginAbort,
     resumeValidation,
     effectiveElicitResponses,

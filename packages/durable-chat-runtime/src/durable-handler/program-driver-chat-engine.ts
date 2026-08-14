@@ -46,7 +46,11 @@ import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { computeClientElicitBindingId } from "@sweatpants/tool-session/mcp";
 import { type ChatMessage } from "@sweatpants/chat-contract";
-import { decodeChatHistoryEntries } from "@sweatpants/chat-core";
+import {
+  CONVERSATION_AUTHORITY_FRAME_TYPE,
+  decodeChatHistoryEntries,
+  type ConversationStreamEvent,
+} from "@sweatpants/chat-core";
 
 import { runWithRenewedActivationLease } from "../host/activation-lease-coordinator.ts";
 import type {
@@ -56,7 +60,7 @@ import type {
   PublicGenericActivityNode,
 } from "@sweatpants/chat-core";
 
-type StreamEvent = AGUIEvent;
+type StreamEvent = ConversationStreamEvent;
 import {
   nativeProgramIdentities,
   requiresFencedActivation,
@@ -371,7 +375,12 @@ function* activateProgramDriverChatEngine(
 
   if (active && (params.pluginAbort || replacementQueued)) {
     const reason = params.pluginAbort?.reason ?? "active turn superseded by a new message";
-    yield* journal.requestCancellation(params.conversationId, active.taskId, reason);
+    yield* journal.requestCancellation(
+      params.conversationId,
+      active.taskId,
+      reason,
+      params.pluginAbort?.commandId,
+    );
     yield* cancelPendingElicits(journal, before, params.conversationId);
   }
   const accepted =
@@ -527,17 +536,17 @@ function* activateProgramDriverChatEngine(
       : projected),
   );
   if (outcome.state === "completed") {
-    const terminalEvent: StreamEvent = {
+    const terminalEvent: AGUIEvent = {
       type: EventType.RUN_FINISHED,
       ...params.agUiRun,
       outcome: { type: "success" },
     };
-    events.push(terminalEvent);
-    yield* params.publishTerminal({
+    const authority = yield* params.publishTerminal({
       outcome: outcome.value,
       disposition: "completed",
       events: [...projected, terminalEvent],
     });
+    events.push({ type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority }, terminalEvent);
   } else if (outcome.state === "parked") {
     const pending = pendingElicit(after, outcome.pullId);
     if (pending) {
@@ -556,7 +565,12 @@ function* activateProgramDriverChatEngine(
       });
     }
     if (params.publishCheckpoint) {
-      yield* params.publishCheckpoint({ events });
+      const authority = yield* params.publishCheckpoint({ events });
+      const terminalIndex = Math.max(0, events.length - 1);
+      events.splice(terminalIndex, 0, {
+        type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+        authority,
+      });
     }
   } else if (outcome.state === "cancelled") {
     if (cancellationFenceLost) {
@@ -565,12 +579,12 @@ function* activateProgramDriverChatEngine(
         code: "PROGRAM_CANCELLED",
         message: "Program was cancelled",
       };
-      events.push(terminalEvent);
-      yield* params.publishTerminal({
+      const authority = yield* params.publishTerminal({
         outcome: { code: "PROGRAM_CANCELLED", message: "Program was cancelled" },
         disposition: "cancelled",
         events: [...projected, terminalEvent],
       });
+      events.push({ type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority }, terminalEvent);
     } else if (params.continueAfterCancellation || replacementQueued) {
       const {
         pluginAbort: _pluginAbort,
@@ -586,31 +600,33 @@ function* activateProgramDriverChatEngine(
         events.push(next.value);
       }
     } else {
-      events.push({
+      const terminalEvent: AGUIEvent = {
         type: EventType.RUN_ERROR,
         code: "PROGRAM_CANCELLED",
         message: params.pluginAbort?.reason ?? "Program was cancelled",
-      });
-      yield* params.publishTerminal({
+      };
+      const authority = yield* params.publishTerminal({
         outcome: {
           code: "PROGRAM_CANCELLED",
           message: params.pluginAbort?.reason ?? "Program was cancelled",
         },
         disposition: "cancelled",
-        events,
+        events: [...projected, terminalEvent],
       });
+      events.push({ type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority }, terminalEvent);
     }
   } else {
-    events.push({
+    const terminalEvent: AGUIEvent = {
       type: EventType.RUN_ERROR,
       code: outcome.error.code,
       message: outcome.error.message,
-    });
-    yield* params.publishTerminal({
+    };
+    const authority = yield* params.publishTerminal({
       outcome: assertJson(outcome.error),
       disposition: "failed",
-      events,
+      events: [...projected, terminalEvent],
     });
+    events.push({ type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority }, terminalEvent);
   }
 
   return events;

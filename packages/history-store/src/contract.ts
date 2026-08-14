@@ -165,6 +165,8 @@ export interface CommandAdmissionRequest {
   readonly acceptedAt: Milliseconds;
   readonly retainUntil: Milliseconds;
   readonly expectedRevision: DurableCounter;
+  /** Exact state in which this command was formed. Never inferred from the proposal. */
+  readonly requiredState: "idle" | "parked";
   readonly logicalTurnId: string;
   readonly executionId: string;
   readonly proposal: ConversationHeadProposal;

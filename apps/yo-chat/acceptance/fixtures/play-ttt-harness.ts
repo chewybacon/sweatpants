@@ -42,7 +42,15 @@ import { playTttTool } from "../../src/tools/play-ttt/tool.ts";
 export type PublicEvent = { type: string; [key: string]: unknown };
 
 /** Resume coordinates for one pending elicitation. */
-export type ResumeInput = { interruptId: string; position: number; parentRunId?: string };
+export type ResumeInput = {
+  commandId: string;
+  interruptId: string;
+  position: number;
+  parentRunId?: string;
+  basisRevision: string;
+  logicalTurnId: string;
+  executionId: string;
+};
 
 const model: Model = {
   id: "play-ttt-program-driver-http",
@@ -338,31 +346,44 @@ function buildChatRequest(
   resume: ResumeInput | undefined,
   signal?: AbortSignal,
 ): Request {
+  const runId = crypto.randomUUID();
   return new Request(`http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     ...(signal ? { signal } : {}),
     body: JSON.stringify({
+      command: resume
+        ? {
+            type: "respond-to-elicit",
+            commandId: resume.commandId,
+            issuedAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+            basisRevision: resume.basisRevision,
+            logicalTurnId: resume.logicalTurnId,
+            executionId: resume.executionId,
+            interruptId: resume.interruptId,
+            status: "resolved",
+            payload: { action: "accept", content: { position: resume.position } },
+          }
+        : {
+            type: "send-message",
+            commandId: runId,
+            issuedAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+            basisRevision: null,
+            messageId: messages.at(-1)?.id ?? runId,
+          },
+      clientId: "play-ttt-acceptance",
+      conversationId,
       input: {
         threadId: conversationId,
-        runId: crypto.randomUUID(),
+        runId,
         state: {},
         messages,
         tools: [],
         context: [],
         forwardedProps: {},
         ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
-        ...(resume
-          ? {
-              resume: [
-                {
-                  interruptId: resume.interruptId,
-                  status: "resolved",
-                  payload: { action: "accept", content: { position: resume.position } },
-                },
-              ],
-            }
-          : {}),
       },
       ...(resume
         ? {
@@ -411,9 +432,32 @@ function parsePublicFrame(line: string): PublicEvent {
 }
 
 /** Extracts the first pending public interrupt from one response batch. */
-export function publicInterrupt(
-  events: PublicEvent[],
-): { id: string; parentRunId?: string } | undefined {
+export function publicInterrupt(events: PublicEvent[]):
+  | {
+      id: string;
+      parentRunId?: string;
+      basisRevision: string;
+      logicalTurnId: string;
+      executionId: string;
+    }
+  | undefined {
+  const authority = events.findLast(
+    (event) => event.type === "sweatpants.conversation-authority.v1",
+  )?.["authority"];
+  if (!isUnknownRecord(authority)) {
+    return undefined;
+  }
+  const basisRevision = authority["revision"];
+  const logicalTurnId = authority["activeLogicalTurnId"];
+  const executionId = authority["activeExecutionId"];
+  if (
+    authority["state"] !== "parked" ||
+    typeof basisRevision !== "string" ||
+    typeof logicalTurnId !== "string" ||
+    typeof executionId !== "string"
+  ) {
+    return undefined;
+  }
   for (const event of events) {
     if (event.type !== "RUN_FINISHED" || !isUnknownRecord(event["outcome"])) {
       continue;
@@ -425,7 +469,13 @@ export function publicInterrupt(
     const id = interrupts[0]["id"];
     if (typeof id === "string") {
       const runId = event["runId"];
-      return { id, ...(typeof runId === "string" ? { parentRunId: runId } : {}) };
+      return {
+        id,
+        basisRevision,
+        logicalTurnId,
+        executionId,
+        ...(typeof runId === "string" ? { parentRunId: runId } : {}),
+      };
     }
   }
   return undefined;

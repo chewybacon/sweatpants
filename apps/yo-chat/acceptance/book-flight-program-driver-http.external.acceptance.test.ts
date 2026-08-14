@@ -183,15 +183,23 @@ describe.skipIf(!externalSubstrateEnabled)(
         expect(firstInterrupt.message).toContain("flight");
 
         const second = await post(application.handle, conversationId, messages, {
+          commandId: crypto.randomUUID(),
           interruptId: firstInterrupt.id,
           result: { action: "accept", content: { flightId: "FL001" } },
+          basisRevision: firstInterrupt.basisRevision,
+          logicalTurnId: firstInterrupt.logicalTurnId,
+          executionId: firstInterrupt.executionId,
         });
         const secondInterrupt = interrupt(second);
         expect(secondInterrupt.message).toContain("seat");
 
         const third = await post(application.handle, conversationId, messages, {
+          commandId: crypto.randomUUID(),
           interruptId: secondInterrupt.id,
           result: { action: "accept", content: { row: 2, seat: "A" } },
+          basisRevision: secondInterrupt.basisRevision,
+          logicalTurnId: secondInterrupt.logicalTurnId,
+          executionId: secondInterrupt.executionId,
         });
         expect(third.some((event) => event.type === "TOOL_CALL_RESULT")).toBe(true);
         expect(
@@ -224,7 +232,14 @@ describe.skipIf(!externalSubstrateEnabled)(
 );
 
 type PublicEvent = { type: string; [key: string]: unknown };
-type ResumeInput = { interruptId: string; result: { action: string; content: unknown } };
+type ResumeInput = {
+  commandId: string;
+  interruptId: string;
+  result: { action: string; content: unknown };
+  basisRevision: string;
+  logicalTurnId: string;
+  executionId: string;
+};
 
 function modelResponse(message: ChatAssistantMessage, stopReason: string): ModelResponse {
   return {
@@ -256,17 +271,46 @@ async function post(
   messages: Array<{ id: string; role: string; content: string }>,
   resume?: ResumeInput,
 ): Promise<PublicEvent[]> {
+  const runId = crypto.randomUUID();
   const response = await handler(
     new Request(`http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        messages,
+        command: resume
+          ? {
+              type: "respond-to-elicit",
+              commandId: resume.commandId,
+              issuedAt: Date.now(),
+              expiresAt: Date.now() + 60_000,
+              basisRevision: resume.basisRevision,
+              logicalTurnId: resume.logicalTurnId,
+              executionId: resume.executionId,
+              interruptId: resume.interruptId,
+              status: "resolved",
+              payload: resume.result,
+            }
+          : {
+              type: "send-message",
+              commandId: runId,
+              issuedAt: Date.now(),
+              expiresAt: Date.now() + 60_000,
+              basisRevision: null,
+              messageId: messages.at(-1)?.id ?? runId,
+            },
+        clientId: "external-book-flight-acceptance",
+        conversationId,
+        input: {
+          threadId: conversationId,
+          runId,
+          state: {},
+          messages,
+          tools: [],
+          context: [],
+          forwardedProps: {},
+        },
         ...(resume
           ? {
-              resume: [
-                { interruptId: resume.interruptId, status: "resolved", payload: resume.result },
-              ],
               elicitResponses: [
                 {
                   sessionId: "call-http-book-flight",
@@ -296,7 +340,30 @@ function parsePublicFrame(line: string): PublicEvent {
   return value["event"];
 }
 
-function interrupt(events: PublicEvent[]): { id: string; message: string } {
+function interrupt(events: PublicEvent[]): {
+  id: string;
+  message: string;
+  basisRevision: string;
+  logicalTurnId: string;
+  executionId: string;
+} {
+  const authority = events.findLast(
+    (event) => event.type === "sweatpants.conversation-authority.v1",
+  )?.["authority"];
+  if (!isRecord(authority)) {
+    throw new Error("Missing parked conversation authority");
+  }
+  const basisRevision = authority["revision"];
+  const logicalTurnId = authority["activeLogicalTurnId"];
+  const executionId = authority["activeExecutionId"];
+  if (
+    authority["state"] !== "parked" ||
+    typeof basisRevision !== "string" ||
+    typeof logicalTurnId !== "string" ||
+    typeof executionId !== "string"
+  ) {
+    throw new Error("Invalid parked conversation authority");
+  }
   for (const event of events) {
     if (event.type !== "RUN_FINISHED" || !isRecord(event["outcome"])) {
       continue;
@@ -308,7 +375,7 @@ function interrupt(events: PublicEvent[]): { id: string; message: string } {
     const id = interrupts[0]["id"];
     const message = interrupts[0]["message"];
     if (typeof id === "string" && typeof message === "string") {
-      return { id, message };
+      return { id, message, basisRevision, logicalTurnId, executionId };
     }
   }
   throw new Error(`Expected a public interrupt: ${JSON.stringify(events)}`);

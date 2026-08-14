@@ -303,7 +303,7 @@ export function planCommandAdmission(input: {
   if (current === null || current.revision !== request.expectedRevision) {
     return { kind: "complete", result: { status: "head_conflict", current } };
   }
-  if (current.state !== "idle") {
+  if (current.state !== request.requiredState) {
     return { kind: "complete", result: { status: "state_conflict", current } };
   }
   const head = nextConversationHead(

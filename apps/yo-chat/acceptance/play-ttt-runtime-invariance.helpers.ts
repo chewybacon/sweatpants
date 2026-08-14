@@ -34,8 +34,12 @@ async function playToCompletion(substrate: PlayTttSubstrate): Promise<PlayOutcom
       }
       const journal = await readJournal(journalStore, conversationId);
       events = await post(runtime.handle, conversationId, messages, {
+        commandId: crypto.randomUUID(),
         interruptId: pending.id,
         position: responsePosition(journal),
+        basisRevision: pending.basisRevision,
+        logicalTurnId: pending.logicalTurnId,
+        executionId: pending.executionId,
         ...(pending.parentRunId ? { parentRunId: pending.parentRunId } : {}),
       });
     }
@@ -91,8 +95,12 @@ async function playThroughAbandonedTurn(
       runtime = substrate.createRuntime();
       generations += 1;
       events = await post(runtime.handle, conversationId, messages, {
+        commandId: crypto.randomUUID(),
         interruptId: pending.id,
         position,
+        basisRevision: pending.basisRevision,
+        logicalTurnId: pending.logicalTurnId,
+        executionId: pending.executionId,
         ...(pending.parentRunId ? { parentRunId: pending.parentRunId } : {}),
       });
     }

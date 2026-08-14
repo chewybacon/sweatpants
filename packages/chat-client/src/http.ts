@@ -1,9 +1,11 @@
 import { call, ensure, resource, type Operation, type Stream } from "effection";
 import {
+  CONVERSATION_AUTHORITY_FRAME_TYPE,
   decodeAGUIEvent,
+  decodeConversationAuthority,
   type ChatReconnectRequest,
   type ChatTransportRequest,
-  type AGUIEvent,
+  type ConversationStreamEvent,
   type ChatTransportContract,
 } from "@sweatpants/chat-core";
 import { ChatClientError } from "./errors.ts";
@@ -65,7 +67,31 @@ function responseError(response: Response): Operation<never> {
   })();
 }
 
-function parseLine(line: string, onCursor?: (cursor: number) => void): AGUIEvent | undefined {
+function decodeConversationStreamEvent(value: unknown): ConversationStreamEvent {
+  const envelope =
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  const candidate =
+    envelope?.["type"] === undefined && envelope?.["event"] !== undefined
+      ? envelope["event"]
+      : value;
+  if (candidate !== null && typeof candidate === "object" && !Array.isArray(candidate)) {
+    const frame = candidate as Record<string, unknown>;
+    if (frame["type"] === CONVERSATION_AUTHORITY_FRAME_TYPE) {
+      return {
+        type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+        authority: decodeConversationAuthority(frame["authority"]),
+      };
+    }
+  }
+  return decodeAGUIEvent(value);
+}
+
+function parseLine(
+  line: string,
+  onCursor?: (cursor: number) => void,
+): ConversationStreamEvent | undefined {
   const trimmed = line.trim();
   if (!trimmed) {
     return undefined;
@@ -78,7 +104,7 @@ function parseLine(line: string, onCursor?: (cursor: number) => void): AGUIEvent
         onCursor?.(cursor);
       }
     }
-    return decodeAGUIEvent(value);
+    return decodeConversationStreamEvent(value);
   } catch (error) {
     if (error instanceof ChatClientError) {
       throw error;
@@ -92,7 +118,10 @@ function parseLine(line: string, onCursor?: (cursor: number) => void): AGUIEvent
   }
 }
 
-function parseSseBlock(block: string, onCursor?: (cursor: number) => void): AGUIEvent | undefined {
+function parseSseBlock(
+  block: string,
+  onCursor?: (cursor: number) => void,
+): ConversationStreamEvent | undefined {
   const data: string[] = [];
   for (const line of block.split(/\r?\n/)) {
     if (line.startsWith("data:")) {
@@ -114,7 +143,7 @@ function parseSseBlock(block: string, onCursor?: (cursor: number) => void): AGUI
         onCursor?.(cursor);
       }
     }
-    return decodeAGUIEvent(value);
+    return decodeConversationStreamEvent(value);
   } catch (error) {
     const code = (error as { code?: unknown }).code;
     throw new ChatClientError(
@@ -131,7 +160,7 @@ export function parseChatResponseStream(
   signal: AbortSignal,
   contentType = "application/x-ndjson",
   onCursor?: (cursor: number) => void,
-): Stream<AGUIEvent, void> {
+): Stream<ConversationStreamEvent, void> {
   const sse = contentType.includes("text/event-stream");
   return resource(function* (provide) {
     const reader = readable.getReader();
@@ -147,7 +176,7 @@ export function parseChatResponseStream(
     });
 
     yield* provide({
-      *next(): Operation<IteratorResult<AGUIEvent, void>> {
+      *next(): Operation<IteratorResult<ConversationStreamEvent, void>> {
         while (true) {
           if (signal.aborted) {
             return { done: true, value: undefined };
@@ -209,7 +238,7 @@ function responseStream(
   response: Response,
   signal: AbortSignal,
   onCursor?: (cursor: number) => void,
-): Stream<AGUIEvent, void> {
+): Stream<ConversationStreamEvent, void> {
   if (!response.body) {
     throw new ChatClientError("chat_transport_failed", "Chat API response has no body");
   }
@@ -250,16 +279,12 @@ export function createHttpTransport(options: HttpTransportOptions = {}): ChatTra
     *sendMessages(
       request: ChatTransportRequest,
       signal: AbortSignal,
-    ): Operation<Stream<AGUIEvent, void>> {
+    ): Operation<Stream<ConversationStreamEvent, void>> {
       const body = JSON.stringify({
+        command: request.command,
         input: request.input,
-        trigger: request.trigger,
         clientId: request.clientId,
-        ...(request.conversationId === undefined ? {} : { conversationId: request.conversationId }),
-        ...(request.messageId === undefined ? {} : { messageId: request.messageId }),
-        ...(request.cancellationReason === undefined
-          ? {}
-          : { pluginAbort: { reason: request.cancellationReason } }),
+        conversationId: request.conversationId,
       });
       const response = yield* call(() => chatFetch(api, fetchInit(options, signal, body)));
       if (!response.ok) {
@@ -273,13 +298,8 @@ export function createHttpTransport(options: HttpTransportOptions = {}): ChatTra
     *reconnectToStream(
       request: ChatReconnectRequest,
       signal: AbortSignal,
-    ): Operation<Stream<AGUIEvent, void> | null> {
-      if (request.restart) {
-        cursors.delete(request.threadId);
-      }
-      const cursor = request.restart
-        ? undefined
-        : (request.cursor ?? cursors.get(request.threadId));
+    ): Operation<Stream<ConversationStreamEvent, void> | null> {
+      const cursor = request.cursor ?? cursors.get(request.threadId);
       const url = joinUrl(api, request.threadId, cursor, request.clientId);
       const headers = requestHeaders(options);
       headers.delete("Content-Type");

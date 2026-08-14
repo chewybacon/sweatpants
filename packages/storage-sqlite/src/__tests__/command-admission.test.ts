@@ -40,6 +40,7 @@ function runningRequest(commandDigest = "digest-1"): CommandAdmissionRequest {
     acceptedAt: 100,
     retainUntil: 200,
     expectedRevision: "0",
+    requiredState: "idle",
     logicalTurnId: "turn-1",
     executionId: "execution-1",
     proposal: {
