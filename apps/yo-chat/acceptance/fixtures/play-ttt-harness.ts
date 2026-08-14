@@ -385,19 +385,6 @@ function buildChatRequest(
         forwardedProps: {},
         ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
       },
-      ...(resume
-        ? {
-            elicitResponses: [
-              {
-                sessionId: "call-http-play-ttt",
-                callId: "call-http-play-ttt",
-                toolName: playTttTool.name,
-                elicitId: resume.interruptId,
-                completion: { action: "accept", content: { position: resume.position } },
-              },
-            ],
-          }
-        : {}),
     }),
   });
 }

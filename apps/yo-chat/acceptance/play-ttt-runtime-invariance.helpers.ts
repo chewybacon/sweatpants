@@ -121,9 +121,23 @@ async function summarize(
   );
   return {
     completed: events.some(
-      (event) => event.type === "TEXT_MESSAGE_CONTENT" && event["delta"] === "Game complete.",
+      (event) =>
+        (event.type === "TEXT_MESSAGE_CONTENT" && event["delta"] === "Game complete.") ||
+        (event.type === "MESSAGES_SNAPSHOT" && JSON.stringify(event).includes("Game complete.")),
     ),
-    toolResult: events.some((event) => event.type === "TOOL_CALL_RESULT"),
+    toolResult: events.some(
+      (event) =>
+        event.type === "TOOL_CALL_RESULT" ||
+        (event.type === "MESSAGES_SNAPSHOT" &&
+          Array.isArray(event["messages"]) &&
+          event["messages"].some(
+            (message) =>
+              message !== null &&
+              typeof message === "object" &&
+              !Array.isArray(message) &&
+              (message as Record<string, unknown>)["role"] === "tool",
+          )),
+    ),
     coinFlips: journal.filter(
       (entry) =>
         entry.payload.type === "PullRequested" &&

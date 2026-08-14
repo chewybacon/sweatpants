@@ -849,20 +849,30 @@ describe("headless ChatClient", () => {
               *next(): Operation<IteratorResult<ConversationStreamEvent, void>> {
                 index += 1;
                 if (index === 1) {
-                  activeStarted.resolve(undefined);
                   return {
                     done: false,
                     value: runningAuthorityFrame(request.input.threadId, "1", request.input.runId),
                   };
                 }
                 if (index === 2) {
+                  activeStarted.resolve(undefined);
+                  return {
+                    done: false,
+                    value: {
+                      type: EventType.RUN_STARTED,
+                      threadId: request.input.threadId,
+                      runId: request.input.runId,
+                    },
+                  };
+                }
+                if (index === 3) {
                   yield* call(() => terminalCancellation.promise);
                   return {
                     done: false,
                     value: idleAuthorityFrame(request.input.threadId, "2"),
                   };
                 }
-                if (index === 3) {
+                if (index === 4) {
                   return {
                     done: false,
                     value: {

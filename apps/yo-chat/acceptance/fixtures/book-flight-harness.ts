@@ -56,6 +56,16 @@ export type ResumeInput = {
   executionId: string;
 };
 
+const commandLifetimes = new Map<string, { issuedAt: number; expiresAt: number }>();
+function commandLifetime(commandId: string): { issuedAt: number; expiresAt: number } {
+  const existing = commandLifetimes.get(commandId);
+  if (existing) return existing;
+  const issuedAt = Date.now();
+  const created = { issuedAt, expiresAt: issuedAt + 60_000 };
+  commandLifetimes.set(commandId, created);
+  return created;
+}
+
 const model: Model = {
   id: "book-flight-foreign",
   name: "Book Flight foreign boundary",
@@ -268,20 +278,18 @@ function buildChatRequest(
         ? {
             type: "respond-to-elicit",
             commandId: resume.commandId,
-            issuedAt: Date.now(),
-            expiresAt: Date.now() + 60_000,
+            ...commandLifetime(resume.commandId),
             basisRevision: resume.basisRevision,
             logicalTurnId: resume.logicalTurnId,
             executionId: resume.executionId,
             interruptId: resume.interruptId,
-            status: "resolved",
+            status: resume.result.action === "cancel" ? "cancelled" : "resolved",
             payload: resume.result,
           }
         : {
             type: "send-message",
             commandId: runId,
-            issuedAt: Date.now(),
-            expiresAt: Date.now() + 60_000,
+            ...commandLifetime(runId),
             basisRevision: null,
             messageId: messages.at(-1)?.id ?? runId,
           },
@@ -297,19 +305,6 @@ function buildChatRequest(
         forwardedProps: {},
         ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
       },
-      ...(resume
-        ? {
-            elicitResponses: [
-              {
-                sessionId: resume.callId,
-                callId: resume.callId,
-                toolName: bookFlightTool.name,
-                elicitId: resume.interruptId,
-                completion: resume.result,
-              },
-            ],
-          }
-        : {}),
     }),
   });
 }

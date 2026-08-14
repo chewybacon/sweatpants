@@ -102,10 +102,19 @@ function assertLifecycle(events: readonly AgUiEvent[]): void {
   let terminal = false;
 
   for (const event of events) {
-    if (terminal && event.type !== EventType.RUN_STARTED) {
+    const snapshotPrelude =
+      event.type === EventType.MESSAGES_SNAPSHOT ||
+      event.type === EventType.STATE_SNAPSHOT ||
+      event.type === EventType.ACTIVITY_SNAPSHOT;
+    if (terminal && event.type !== EventType.RUN_STARTED && !snapshotPrelude) {
       throw new Error(`AG-UI event after terminal event: ${event.type}`);
     }
     switch (event.type) {
+      case EventType.MESSAGES_SNAPSHOT:
+        if (runActive) {
+          throw new Error("MESSAGES_SNAPSHOT must precede RUN_STARTED for its response segment");
+        }
+        break;
       case EventType.RUN_STARTED:
         runActive = true;
         terminal = false;

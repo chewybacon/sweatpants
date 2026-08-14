@@ -1,4 +1,4 @@
-import type { Message } from "@ag-ui/core";
+import { EventType, type Message } from "@ag-ui/core";
 import type { Operation } from "effection";
 import {
   appendAGUIMessage,
@@ -51,6 +51,10 @@ export class LiveChatCompactor {
   }
 
   ingest(event: AGUIEvent): readonly LiveCompactorAction[] {
+    if (event.type === EventType.MESSAGES_SNAPSHOT) {
+      this.pipelines.clear();
+      this.dirtyParts.clear();
+    }
     const transition = transitionChatProjection(this.current, event);
     this.current = transition.projection;
     const actions: LiveCompactorAction[] = [];

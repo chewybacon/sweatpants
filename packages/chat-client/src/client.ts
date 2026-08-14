@@ -196,6 +196,15 @@ function deepFreeze<T>(value: T, seen = new WeakSet()): T {
   return value;
 }
 
+function isSnapshotPreludeEvent(event: ConversationStreamEvent): boolean {
+  return (
+    isConversationAuthorityFrame(event) ||
+    event.type === EventType.MESSAGES_SNAPSHOT ||
+    event.type === EventType.STATE_SNAPSHOT ||
+    event.type === EventType.ACTIVITY_SNAPSHOT
+  );
+}
+
 function commandLifetime(): { readonly issuedAt: number; readonly expiresAt: number } {
   const issuedAt = Date.now();
   return { issuedAt, expiresAt: issuedAt + 5 * 60_000 };
@@ -1246,15 +1255,38 @@ class ChatClientController<
     const events = yield* createEagerBuffer(stream);
     const clock = ChatSchedulerPort.api.operations.clock();
     let terminalEvent: AGUIEvent | null = null;
+    let prelude: ConversationStreamEvent[] = [];
+    let segmentStarted = false;
 
     for (const _tick of yield* each(clock)) {
-      const batch = events.drain();
-      terminalEvent = (yield* this.publishEventBatch(batch)) ?? terminalEvent;
+      const publishable: ConversationStreamEvent[] = [];
+      for (const event of events.drain()) {
+        if (segmentStarted) {
+          publishable.push(event);
+          continue;
+        }
+        prelude.push(event);
+        if (
+          event.type === EventType.RUN_STARTED ||
+          event.type === EventType.RUN_ERROR ||
+          !isSnapshotPreludeEvent(event)
+        ) {
+          publishable.push(...prelude);
+          prelude = [];
+          segmentStarted = true;
+        }
+      }
+      if (publishable.length > 0) {
+        terminalEvent = (yield* this.publishEventBatch(publishable)) ?? terminalEvent;
+      }
 
       if (events.state.status === "error") {
         throw events.state.error;
       }
       if (events.state.status === "done") {
+        if (prelude.length > 0) {
+          terminalEvent = (yield* this.publishEventBatch(prelude)) ?? terminalEvent;
+        }
         return terminalEvent;
       }
 
@@ -1272,11 +1304,30 @@ class ChatClientController<
   ): Operation<AGUIEvent | null> {
     const subscription = yield* stream;
     let terminalEvent: AGUIEvent | null = null;
+    let prelude: ConversationStreamEvent[] = [];
+    let segmentStarted = false;
     let next = yield* subscription.next();
 
     while (!next.done) {
-      terminalEvent = (yield* this.publishEventBatch([next.value])) ?? terminalEvent;
+      const event = next.value;
+      if (segmentStarted) {
+        terminalEvent = (yield* this.publishEventBatch([event])) ?? terminalEvent;
+      } else {
+        prelude.push(event);
+        if (
+          event.type === EventType.RUN_STARTED ||
+          event.type === EventType.RUN_ERROR ||
+          !isSnapshotPreludeEvent(event)
+        ) {
+          terminalEvent = (yield* this.publishEventBatch(prelude)) ?? terminalEvent;
+          prelude = [];
+          segmentStarted = true;
+        }
+      }
       next = yield* subscription.next();
+    }
+    if (prelude.length > 0) {
+      terminalEvent = (yield* this.publishEventBatch(prelude)) ?? terminalEvent;
     }
 
     return terminalEvent;

@@ -241,6 +241,16 @@ type ResumeInput = {
   executionId: string;
 };
 
+const commandLifetimes = new Map<string, { issuedAt: number; expiresAt: number }>();
+function commandLifetime(commandId: string): { issuedAt: number; expiresAt: number } {
+  const existing = commandLifetimes.get(commandId);
+  if (existing) return existing;
+  const issuedAt = Date.now();
+  const created = { issuedAt, expiresAt: issuedAt + 60_000 };
+  commandLifetimes.set(commandId, created);
+  return created;
+}
+
 function modelResponse(message: ChatAssistantMessage, stopReason: string): ModelResponse {
   return {
     message,
@@ -281,20 +291,18 @@ async function post(
           ? {
               type: "respond-to-elicit",
               commandId: resume.commandId,
-              issuedAt: Date.now(),
-              expiresAt: Date.now() + 60_000,
+              ...commandLifetime(resume.commandId),
               basisRevision: resume.basisRevision,
               logicalTurnId: resume.logicalTurnId,
               executionId: resume.executionId,
               interruptId: resume.interruptId,
-              status: "resolved",
+              status: resume.result.action === "cancel" ? "cancelled" : "resolved",
               payload: resume.result,
             }
           : {
               type: "send-message",
               commandId: runId,
-              issuedAt: Date.now(),
-              expiresAt: Date.now() + 60_000,
+              ...commandLifetime(runId),
               basisRevision: null,
               messageId: messages.at(-1)?.id ?? runId,
             },
@@ -309,19 +317,6 @@ async function post(
           context: [],
           forwardedProps: {},
         },
-        ...(resume
-          ? {
-              elicitResponses: [
-                {
-                  sessionId: "call-http-book-flight",
-                  callId: "call-http-book-flight",
-                  toolName: bookFlightTool.name,
-                  elicitId: resume.interruptId,
-                  completion: resume.result,
-                },
-              ],
-            }
-          : {}),
       }),
     }),
   );

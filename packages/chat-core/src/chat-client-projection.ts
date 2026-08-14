@@ -1360,7 +1360,7 @@ function parseJsonOrString(value: string): Json {
 export function foldAGUIEvent(state: ChatProjectionState, event: AGUIEvent): ChatProjectionState {
   switch (event.type) {
     case EventType.MESSAGES_SNAPSHOT: {
-      let next = state;
+      let next = createChatProjection();
       for (const message of event.messages) {
         next = appendAGUIMessage(next, message);
       }

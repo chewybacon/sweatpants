@@ -169,22 +169,25 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
         return { response, frames: parseFrames(body) };
       };
 
-      // An exact retry is a durable no-op: it receives a finite replay response,
-      // but does not execute the tool or ask the provider for another turn.
+      // This is a new command formed from the stale parked revision, not an
+      // exact command-id retry. It must be rejected without rerunning work.
       const requestsBeforeRetry = s.model.requests().length;
       const retry = yield* postCapturedResume(acceptedResume, "retry");
       expect(retry.response.ok).toBe(true);
       expect(retry.frames).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            event: expect.objectContaining({ type: "RUN_FINISHED" }),
+            event: expect.objectContaining({
+              type: "RUN_ERROR",
+              code: "conversation_state_changed",
+            }),
           }),
         ]),
       );
       expect(s.model.requests()).toHaveLength(requestsBeforeRetry);
 
-      // A stale client with a different terminal response conflicts with the
-      // durable settlement and is rejected before any execution is resumed.
+      // A different response formed from the same stale revision is rejected
+      // at conversation admission before journal settlement is consulted.
       const requestsBeforeConflict = s.model.requests().length;
       const conflict = yield* postCapturedResume(staleConflict, "conflict");
       expect(conflict.response.ok).toBe(true);
@@ -193,7 +196,7 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
           expect.objectContaining({
             event: expect.objectContaining({
               type: "RUN_ERROR",
-              code: "RESUME_CONFLICT",
+              code: "conversation_state_changed",
             }),
           }),
         ]),

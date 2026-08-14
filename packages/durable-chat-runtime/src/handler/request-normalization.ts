@@ -59,31 +59,6 @@ function rejectLegacyMessageFields(value: unknown, path = "$.input", seen = new 
 
 const jsonValueSchema = z.json();
 const runAgentInputParser = parser(RunAgentInputSchema.strict());
-const elicitResponseSchema = z
-  .object({
-    sessionId: z.string().min(1).max(512),
-    callId: z.string().min(1).max(512),
-    toolName: z.string().max(512).optional(),
-    elicitId: z.string().min(1).max(512),
-    completion: z
-      .object({
-        action: z.enum(["accept", "decline", "cancel"]),
-        content: jsonValueSchema.optional(),
-        reason: z.string().max(2048).optional(),
-      })
-      .strict(),
-    ref: z
-      .object({
-        runtimeId: z.string().min(1).max(512),
-        executionId: z.string().min(1).max(512),
-        callId: z.string().min(1).max(512),
-        toolName: z.string().max(512),
-        sessionId: z.string().max(512).optional(),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict();
 const streamOptionsSchema = z
   .object({
     apiKey: z.string().max(4_096).nullable().optional(),
@@ -190,7 +165,6 @@ const chatTransportRequestSchema = z
       .object({ provider: z.string().min(1).max(512), id: z.string().min(1).max(512) })
       .strict()
       .optional(),
-    elicitResponses: z.array(elicitResponseSchema).max(256).optional(),
   })
   .strict();
 
@@ -273,49 +247,6 @@ function decodeStreamOptions(value: DecodedStreamOptions | undefined): StreamOpt
   };
 }
 
-type DecodedElicitResponse = z.infer<typeof elicitResponseSchema>;
-
-function decodeElicitResponse(value: DecodedElicitResponse, index: number): ElicitResponse {
-  const completion = value.completion;
-  const completionValue =
-    completion.action === "accept"
-      ? (() => {
-          if (completion.content === undefined) {
-            throw new Error(
-              `$.elicitResponses[${index}].completion.content is required for accept`,
-            );
-          }
-          return { action: "accept" as const, content: assertJson(completion.content) };
-        })()
-      : completion.action === "decline"
-        ? {
-            action: "decline" as const,
-            ...(completion.reason === undefined ? {} : { reason: completion.reason }),
-          }
-        : {
-            action: "cancel" as const,
-            ...(completion.reason === undefined ? {} : { reason: completion.reason }),
-          };
-  return {
-    sessionId: value.sessionId,
-    callId: value.callId,
-    ...(value.toolName === undefined ? {} : { toolName: value.toolName }),
-    ...(value.ref === undefined
-      ? {}
-      : {
-          ref: {
-            runtimeId: value.ref.runtimeId,
-            executionId: value.ref.executionId,
-            callId: value.ref.callId,
-            toolName: value.ref.toolName,
-            ...(value.ref.sessionId === undefined ? {} : { sessionId: value.ref.sessionId }),
-          },
-        }),
-    elicitId: value.elicitId,
-    completion: completionValue,
-  };
-}
-
 /** Result-oriented ingress parser for one complete durable Chat request. */
 export const chatRequestBodyParser: Parser<ChatRequestBody> =
   chatTransportRequestStructureParser.andThen(normalizeChatRequestBody);
@@ -360,6 +291,19 @@ function normalizeChatRequestBody(
             },
           ]
         : undefined;
+    const commandElicitResponses: ElicitResponse[] =
+      command.type === "respond-to-elicit"
+        ? [
+            {
+              sessionId: command.executionId,
+              elicitId: command.interruptId,
+              completion:
+                command.status === "cancelled"
+                  ? { action: "cancel" }
+                  : mapResolvedResumePayload(command.payload),
+            },
+          ]
+        : [];
     const messages = agUiMessagesToChatHistoryEntries(input.value.messages);
     const streamOptions = decodeStreamOptions(controls.streamOptions);
     const pluginAbort =
@@ -392,9 +336,7 @@ function normalizeChatRequestBody(
         ? {}
         : { initialToolChoice: controls.initialToolChoice }),
       ...(controls.model === undefined ? {} : { model: controls.model }),
-      ...(controls.elicitResponses === undefined
-        ? {}
-        : { elicitResponses: controls.elicitResponses.map(decodeElicitResponse) }),
+      ...(commandElicitResponses.length === 0 ? {} : { elicitResponses: commandElicitResponses }),
       ...(pluginAbort === undefined ? {} : { pluginAbort }),
     });
   } catch (error) {

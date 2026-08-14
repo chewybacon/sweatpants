@@ -399,7 +399,8 @@ function* activateProgramDriverChatEngine(
     ...[...(params.nativeTools?.bindings.values() ?? [])].map((binding) => binding.tool),
   ]);
   const executionModelSamplingService = yield* ExecutionModelSamplingServiceContext.get();
-  let streamedTerminal = false;
+  const liveMessageIds = new Set<string>();
+  const endedLiveMessageIds = new Set<string>();
   const boundForeignDriver = Object.values(input.catalog.entries).find(
     (
       entry,
@@ -423,8 +424,11 @@ function* activateProgramDriverChatEngine(
     ...(params.streamOptions ? { streamOptions: params.streamOptions } : {}),
     catalog: input.catalog,
     ...(params.historyPolicy ? { historyPolicy: params.historyPolicy } : {}),
-    onTerminalStreamed() {
-      streamedTerminal = true;
+    onLiveMessageStarted(messageId) {
+      liveMessageIds.add(messageId);
+    },
+    onLiveMessageEnded(messageId) {
+      endedLiveMessageIds.add(messageId);
     },
   });
   const effects = createDurableEffectRegistry(
@@ -526,14 +530,19 @@ function* activateProgramDriverChatEngine(
   const events: StreamEvent[] = [];
   const projected = projectRecords(after.slice(before.length), after);
   events.push(
-    ...(streamedTerminal
-      ? projected.filter(
-          (event) =>
-            event.type !== EventType.TEXT_MESSAGE_START &&
-            event.type !== EventType.TEXT_MESSAGE_CONTENT &&
-            event.type !== EventType.TEXT_MESSAGE_END,
-        )
-      : projected),
+    ...projected.filter((event) => {
+      if (
+        event.type !== EventType.TEXT_MESSAGE_START &&
+        event.type !== EventType.TEXT_MESSAGE_CONTENT &&
+        event.type !== EventType.TEXT_MESSAGE_END
+      ) {
+        return true;
+      }
+      if (!liveMessageIds.has(event.messageId)) {
+        return true;
+      }
+      return event.type === EventType.TEXT_MESSAGE_END && !endedLiveMessageIds.has(event.messageId);
+    }),
   );
   if (outcome.state === "completed") {
     const terminalEvent: AGUIEvent = {
@@ -779,7 +788,7 @@ function findPendingResponse(
     });
     const effectiveCallId = correlation.callId ?? payload.pullId;
     if (
-      effectiveCallId === response.callId &&
+      (response.callId === undefined || effectiveCallId === response.callId) &&
       (correlation.elicitId === response.elicitId || payload.pullId === response.elicitId)
     ) {
       return { ...payload, descriptor: payload.descriptor };
@@ -1086,6 +1095,26 @@ function opaqueAncestryForTask(
   return [...parentNodes, node];
 }
 
+function modelSampleMessageId(
+  records: readonly DurableSemanticRecord[],
+  record: DurableSemanticRecord,
+): string | null {
+  if (record.payload.type !== "DurableEmission") return null;
+  const recordIndex = records.indexOf(record);
+  for (let index = recordIndex - 1; index >= 0; index -= 1) {
+    const candidate = records[index]!.payload;
+    if (
+      candidate.type === "PullRequested" &&
+      candidate.taskId === record.payload.taskId &&
+      candidate.descriptor.kind === "effect" &&
+      candidate.descriptor.name === modelSample.name
+    ) {
+      return `assistant:stream:${candidate.taskId}:${candidate.pullId}`;
+    }
+  }
+  return null;
+}
+
 function projectRecords(
   records: DurableSemanticRecord[],
   allRecords: DurableSemanticRecord[],
@@ -1119,7 +1148,7 @@ function projectRecords(
         request?.descriptor.kind === "effect" &&
         request.descriptor.name === modelSample.name
       ) {
-        const messageId = `assistant:interrupted:${recordEntry.payload.taskId}:${recordEntry.payload.pullId}`;
+        const messageId = `assistant:stream:${recordEntry.payload.taskId}:${recordEntry.payload.pullId}`;
         events.push(
           { type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" },
           {
@@ -1128,6 +1157,29 @@ function projectRecords(
             delta: `${partial["text"]}\n\n[interrupted]`,
           },
           { type: EventType.TEXT_MESSAGE_END, messageId },
+        );
+      }
+      const errorDetails =
+        recordEntry.payload.outcome.status === "error"
+          ? jsonRecord(recordEntry.payload.outcome.error.details)
+          : undefined;
+      const failedPartial = jsonRecord(errorDetails?.["publicAssistantPartial"]);
+      const expectedMessageId = `assistant:stream:${recordEntry.payload.taskId}:${recordEntry.payload.pullId}`;
+      if (
+        request?.descriptor.kind === "effect" &&
+        request.descriptor.name === modelSample.name &&
+        failedPartial?.["messageId"] === expectedMessageId &&
+        typeof failedPartial["text"] === "string" &&
+        failedPartial["text"].length > 0
+      ) {
+        events.push(
+          { type: EventType.TEXT_MESSAGE_START, messageId: expectedMessageId, role: "assistant" },
+          {
+            type: EventType.TEXT_MESSAGE_CONTENT,
+            messageId: expectedMessageId,
+            delta: failedPartial["text"],
+          },
+          { type: EventType.TEXT_MESSAGE_END, messageId: expectedMessageId },
         );
       }
       continue;
@@ -1141,7 +1193,9 @@ function projectRecords(
       continue;
     }
     if (descriptor.eventType === "assistant_text" && typeof payload["text"] === "string") {
-      const messageId = `assistant:${recordEntry.payload.taskId}:${recordEntry.payload.emissionIndex}`;
+      const messageId =
+        modelSampleMessageId(allRecords, recordEntry) ??
+        `assistant:${recordEntry.payload.taskId}:${recordEntry.payload.emissionIndex}`;
       events.push(
         { type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" },
         { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: payload["text"] },
@@ -1196,20 +1250,6 @@ function projectRecords(
         content: JSON.stringify(payload["result"] ?? null),
         role: "tool",
       });
-      if (payload["failed"] === true) {
-        events.push({
-          type: EventType.MESSAGES_SNAPSHOT,
-          messages: [
-            {
-              id: `tool:${payload["callId"]}`,
-              role: "tool",
-              toolCallId: payload["callId"],
-              content: JSON.stringify(payload["result"] ?? null),
-              error: "Tool execution failed",
-            },
-          ],
-        });
-      }
     }
   }
 
@@ -1230,18 +1270,6 @@ function projectRecords(
         content: JSON.stringify({ status: "cancelled", ...(partial ? { partial } : {}) }),
         role: "tool",
       });
-      events.push({
-        type: EventType.MESSAGES_SNAPSHOT,
-        messages: [
-          {
-            id: `tool:${pending.callId}:cancelled`,
-            role: "tool",
-            toolCallId: pending.callId,
-            content: JSON.stringify({ status: "cancelled", ...(partial ? { partial } : {}) }),
-            error: "Tool execution cancelled",
-          },
-        ],
-      });
     }
   }
   const errored = Array.from(records)
@@ -1260,18 +1288,6 @@ function projectRecords(
         toolCallId: pending.callId,
         content: JSON.stringify({ status: "error", error: errored.payload.outcome.error }),
         role: "tool",
-      });
-      events.push({
-        type: EventType.MESSAGES_SNAPSHOT,
-        messages: [
-          {
-            id: `tool:${pending.callId}:error`,
-            role: "tool",
-            toolCallId: pending.callId,
-            content: JSON.stringify({ status: "error", error: errored.payload.outcome.error }),
-            error: "Tool execution failed",
-          },
-        ],
       });
     }
   }

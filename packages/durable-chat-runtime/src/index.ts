@@ -239,6 +239,26 @@ export function* beginTurnPublication(
     request.commandId,
   );
   let head = yield* conversation.loadHead(request.sessionId);
+  if (observedReceipt && observedReceipt.commandDigest !== request.commandDigest) {
+    throw commandConflict(
+      "command_identity_conflict",
+      `Command ${request.commandId} has conflicting identity`,
+    );
+  }
+  if (observedReceipt && head) {
+    const activeCommand =
+      head.activeCommand &&
+      typeof head.activeCommand === "object" &&
+      !Array.isArray(head.activeCommand)
+        ? head.activeCommand
+        : null;
+    if (activeCommand?.["commandId"] !== request.commandId) {
+      throw commandConflict(
+        "command_already_terminal",
+        `Command ${request.commandId} already left its active response segment`,
+      );
+    }
+  }
 
   // A command formed against an absent head may initialize exactly that absent
   // conversation. Losing this CAS is a stale-command conflict, never an

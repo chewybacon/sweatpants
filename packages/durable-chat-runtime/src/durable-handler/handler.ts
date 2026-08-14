@@ -68,7 +68,10 @@ import { useOptionalProgramDriverForeignEffects } from "../program-driver/effect
 import { useOptionalProgramDriverNativeTools } from "../program-driver/native-tools.ts";
 import { buildAgUiCustomState } from "@sweatpants/chat-core";
 import { toProviderHistorySnapshot } from "@sweatpants/chat-core";
-import { providerHistoryFromFrames } from "../projection.ts";
+import {
+  buildCheckpointSnapshotEventsFromFrames,
+  providerHistoryFromFrames,
+} from "../projection.ts";
 import {
   recordConversationSession,
   resolveLatestConversationSession,
@@ -92,7 +95,7 @@ import type {
 import {
   cancelOpenInterruptsForThread,
   interruptRecordsForThread,
-  openInterruptsForThread,
+  settleInterruptForThread,
   upsertInterruptRecords,
 } from "../interrupts/index.ts";
 import { resolvePrivateSystemPrompt } from "../model-context/index.ts";
@@ -101,7 +104,6 @@ import { readLatestThreadSystemPrompt, recordThreadSystemPrompt } from "../model
 import { parseChatRequestBody } from "../handler/request-normalization.ts";
 import { planTurn } from "../handler/turn-plan.ts";
 import {
-  createEmptyChatEngine,
   createSerializedEventStream,
   type ChatEngineSource,
   type TurnEventSink,
@@ -281,14 +283,20 @@ function* eventsFromCheckpoint(
   return roots.filter(publicRootIsEvent) as StreamEvent[];
 }
 
-function* authoritativeCommandHistory(params: {
+interface AuthoritativeCommandSnapshot {
+  readonly messages: readonly ChatHistoryEntry[];
+  readonly activities: readonly StreamEvent[];
+}
+
+function* authoritativeCommandSnapshot(params: {
   store: ConversationStore;
   conversationId: string;
   head: ConversationHead | null;
   command: ConversationCommand | undefined;
   submitted: readonly ChatHistoryEntry[];
-}): Operation<readonly ChatHistoryEntry[]> {
+}): Operation<AuthoritativeCommandSnapshot> {
   let base: readonly ChatHistoryEntry[] = [];
+  let activities: readonly StreamEvent[] = [];
   if (params.head?.checkpoint) {
     const checkpoint = yield* params.store.getCheckpoint(params.head.checkpoint);
     if (!checkpoint) {
@@ -300,11 +308,18 @@ function* authoritativeCommandHistory(params: {
     const events = yield* eventsFromCheckpoint(params.store, params.conversationId, checkpoint);
     const frames: DurableFrame[] = events.map((event, index) => ({ lsn: index + 1, event }));
     base = agUiMessagesToChatHistoryEntries(providerHistoryFromFrames(frames));
+    activities = (yield* buildCheckpointSnapshotEventsFromFrames(frames)).filter(
+      (event) => event.type === EventType.ACTIVITY_SNAPSHOT,
+    );
   }
 
+  const snapshot = (messages: readonly ChatHistoryEntry[]): AuthoritativeCommandSnapshot => ({
+    messages,
+    activities,
+  });
   const command = params.command;
   if (!command || command.type === "interrupt-turn" || command.type === "respond-to-elicit") {
-    return base;
+    return snapshot(base);
   }
   if (command.type === "send-message") {
     const accepted = params.submitted.filter(
@@ -325,9 +340,9 @@ function* authoritativeCommandHistory(params: {
           `Message ${accepted[0]!.id} conflicts with authoritative history`,
         );
       }
-      return base;
+      return snapshot(base);
     }
-    return [...base, accepted[0]!];
+    return snapshot([...base, accepted[0]!]);
   }
 
   const targetId = command.targetMessageId;
@@ -340,75 +355,16 @@ function* authoritativeCommandHistory(params: {
         break;
       }
     }
-    return lastAssistant < 0 ? base : base.slice(0, lastAssistant);
+    return snapshot(lastAssistant < 0 ? base : base.slice(0, lastAssistant));
   }
   const targetIndex = base.findIndex((entry) => entry.id === targetId);
   if (targetIndex < 0 || base[targetIndex]?.type !== "message") {
     throw new CrankError("invalid_chat_request", `Regenerate target ${targetId} does not exist`);
   }
   const target = base[targetIndex];
-  return target.message.role === "user"
-    ? base.slice(0, targetIndex + 1)
-    : base.slice(0, targetIndex);
-}
-
-function retainedLiveMessageId(event: StreamEvent): string | null {
-  switch (event.type) {
-    case EventType.TEXT_MESSAGE_START:
-    case EventType.TEXT_MESSAGE_CONTENT:
-    case EventType.TEXT_MESSAGE_END:
-    case EventType.REASONING_START:
-    case EventType.REASONING_MESSAGE_START:
-    case EventType.REASONING_MESSAGE_CONTENT:
-    case EventType.REASONING_MESSAGE_END:
-      return event.messageId;
-    default:
-      return null;
-  }
-}
-
-function terminalPresentationEvents(
-  live: readonly StreamEvent[],
-  terminal: readonly StreamEvent[],
-): StreamEvent[] {
-  const textByMessage = (events: readonly StreamEvent[]): Map<string, string> => {
-    const result = new Map<string, string>();
-    for (const event of events) {
-      if (
-        event.type === EventType.TEXT_MESSAGE_CONTENT ||
-        event.type === EventType.REASONING_MESSAGE_CONTENT
-      ) {
-        result.set(event.messageId, `${result.get(event.messageId) ?? ""}${event.delta}`);
-      }
-    }
-    return result;
-  };
-  const liveText = textByMessage(live);
-  const terminalText = textByMessage(terminal);
-  const liveMessageIds = new Set(
-    live.map(retainedLiveMessageId).filter((id): id is string => id !== null),
+  return snapshot(
+    target.message.role === "user" ? base.slice(0, targetIndex + 1) : base.slice(0, targetIndex),
   );
-  const duplicateTerminalIds = new Set(
-    [...terminalText].flatMap(([terminalId, text]) =>
-      text.length > 0 && [...liveText.values()].some((liveValue) => liveValue === text)
-        ? [terminalId]
-        : [],
-    ),
-  );
-
-  // Live identities have already been shown to connected clients. Persist
-  // those exact events and discard equivalent replay-projected message IDs;
-  // otherwise the next authoritative snapshot appears as a duplicate message.
-  return [
-    ...live.filter((event) => retainedLiveMessageId(event) !== null),
-    ...terminal.filter((event) => {
-      const messageId = retainedLiveMessageId(event);
-      return (
-        messageId === null ||
-        (!liveMessageIds.has(messageId) && !duplicateTerminalIds.has(messageId))
-      );
-    }),
-  ];
 }
 
 function definitionToToolSchema(definition: ChatToolDefinition): ToolSchema {
@@ -769,19 +725,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 const historyPolicy = yield* HistoryPolicyContext.get();
                 // Resume validation is pure. Interrupt state is committed only after the
                 // crank respond commands are durably accepted by the adapter.
-                const plan = planTurn({
-                  body,
-                  method,
-                  threadId: agUiThreadId,
-                  runId: agUiRunId,
-                  openInterrupts: openInterruptsForThread(agUiThreadId),
-                  toolRuntimeId: activeToolRuntime
-                    ? yield* activeToolRuntime.runtimeId()
-                    : "program-runtime",
-                });
-                let authoritativeMessages: readonly ChatHistoryEntry[];
+                const plan = planTurn(body);
+                let authoritativeSnapshot: AuthoritativeCommandSnapshot;
                 try {
-                  authoritativeMessages = yield* authoritativeCommandHistory({
+                  authoritativeSnapshot = yield* authoritativeCommandSnapshot({
                     store: conversationStore,
                     conversationId: requestedConversationId,
                     head: selectedHead,
@@ -798,6 +745,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   }
                   throw error;
                 }
+                const authoritativeMessages = authoritativeSnapshot.messages;
+                const authoritativeActivities = authoritativeSnapshot.activities;
                 const controlHead =
                   body.command?.type === "interrupt-turn"
                     ? yield* conversationStore.loadHead(requestedConversationId)
@@ -832,35 +781,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                         reason: cancelReason,
                       }
                     : null;
-
-                // An exact retry of an already-settled resume is a durable no-op.
-                // Replay the committed conversation checkpoint instead of creating
-                // another provider turn. Conflicting settled responses remain
-                // preflight errors below.
-                if (plan.resumeValidation?.ok && plan.resumeValidation.idempotent) {
-                  const idempotentHead = yield* conversationStore.loadHead(requestedConversationId);
-                  const idempotentCheckpoint = idempotentHead?.checkpoint
-                    ? yield* conversationStore.getCheckpoint(idempotentHead.checkpoint)
-                    : null;
-                  if (!idempotentCheckpoint) {
-                    throw new CrankError(
-                      "invalid_chat_request",
-                      "Settled resume cannot be replayed because its conversation checkpoint is missing",
-                    );
-                  }
-                  const checkpointEvents = yield* eventsFromCheckpoint(
-                    conversationStore,
-                    requestedConversationId,
-                    idempotentCheckpoint,
-                  );
-                  return yield* createStoredConversationCheckpointResponse({
-                    ctx,
-                    conversationId: requestedConversationId,
-                    checkpointEvents,
-                    parsedOffset,
-                    terminalRunId: agUiRunId,
-                  });
-                }
 
                 log.debug(
                   { provider: model.provider, model: model.id, api: model.api },
@@ -1016,14 +936,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     runId: agUiRunId,
                     ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
                   };
-                  const resumePreflightError =
-                    plan.resumeValidation && !plan.resumeValidation.ok
-                      ? plan.resumeValidation
-                      : null;
-                  const acceptedResume =
-                    plan.resumeValidation?.ok && !plan.resumeValidation.idempotent
-                      ? plan.resumeValidation
-                      : null;
                   const recoveredPublicationCandidate = yield* recoverTerminalPublication(
                     requestedConversationId,
                     projectChatTurnFacts,
@@ -1052,6 +964,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                       "Trusted participant identity must be a bounded non-empty string",
                     );
                   }
+                  const sendCommand = body.command?.type === "send-message" ? body.command : null;
+                  const acceptedCommandMessage = sendCommand
+                    ? (authoritativeMessages.find((entry) => entry.id === sendCommand.messageId) ??
+                      null)
+                    : null;
                   const proposedAuthorityTurn = {
                     executionId: `chat-turn:${requestedConversationId}:${agUiRunId}`,
                     sessionId: requestedConversationId,
@@ -1065,12 +982,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     commandId:
                       body.command?.commandId ??
                       body.runId?.trim() ??
-                      stableTupleHash([body.command?.type ?? "recover", authoritativeMessages]),
-                    commandDigest: stableTupleHash([
-                      body.command ?? null,
-                      authoritativeMessages,
-                      body.systemPrompt ?? null,
-                    ]),
+                      stableTupleHash([body.command?.type ?? "recover", agUiRunId]),
+                    commandDigest: stableTupleHash([body.command ?? null, acceptedCommandMessage]),
                     participantId,
                     acceptedAt: Date.now(),
                     retainUntil: body.command?.expiresAt ?? Date.now() + 30 * 24 * 60 * 60 * 1_000,
@@ -1091,7 +1004,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     body.command &&
                     body.command.type !== "interrupt-turn" &&
                     !recoveredPublication &&
-                    !resumePreflightError &&
                     !liveCancellation &&
                     !hostCancelParkedOrOrphaned
                   ) {
@@ -1248,7 +1160,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   // Create the chat engine. If public resume validation failed, use an
                   // empty engine and expose the failure as a schema-valid RUN_ERROR before
                   // any replay projection or runtime continuation can occur.
-                  const liveSemanticEvents: StreamEvent[] = [];
+                  const respondCommand =
+                    body.command?.type === "respond-to-elicit" ? body.command : null;
                   const engineParams: ProgramRuntimeChatEngineParams = {
                     messages: authoritativeMessages,
                     ...(systemPrompt !== undefined && { systemPrompt }),
@@ -1282,10 +1195,14 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     ...(plan.effectiveElicitResponses.length > 0 && {
                       elicitResponses: plan.effectiveElicitResponses,
                     }),
-                    ...(acceptedResume
+                    ...(respondCommand
                       ? {
                           onResumeAccepted: function* (): Operation<void> {
-                            upsertInterruptRecords(acceptedResume.records);
+                            settleInterruptForThread(
+                              agUiThreadId,
+                              respondCommand.interruptId,
+                              respondCommand.status,
+                            );
                             yield* recordThreadInterruptState(
                               bufferStore,
                               agUiThreadId,
@@ -1351,9 +1268,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                         sessionId: authorityTurn.sessionId,
                         turnId: authorityTurn.turnId,
                         outcome,
-                        events: terminalPresentationEvents(liveSemanticEvents, events).map(
-                          (event) => assertJson(event),
-                        ),
+                        events: events.map((event) => assertJson(event)),
                       });
                       yield* completeAndPublishTurn({
                         executionId: authorityTurn.executionId,
@@ -1383,96 +1298,74 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                       })
                     : recoveredPublication
                       ? recoveredPublicationEvents(recoveredPublication)
-                      : resumePreflightError
-                        ? createEmptyChatEngine()
-                        : (liveEvent: TurnEventSink) =>
-                            createProgramDriverChatEngine({
-                              ...engineParams,
-                              journalStore: config.programDriverJournalStore,
-                              liveEvent: function* (event): Operation<void> {
-                                if (retainedLiveMessageId(event) !== null) {
-                                  liveSemanticEvents.push(event);
-                                }
-                                yield* liveEvent(event);
-                              },
-                              ...(programDriverForeignEffects
-                                ? { foreignEffects: programDriverForeignEffects }
-                                : {}),
-                              ...(programDriverNativeTools
-                                ? { nativeTools: programDriverNativeTools }
-                                : {}),
-                            });
+                      : (liveEvent: TurnEventSink) =>
+                          createProgramDriverChatEngine({
+                            ...engineParams,
+                            journalStore: config.programDriverJournalStore,
+                            liveEvent,
+                            ...(programDriverForeignEffects
+                              ? { foreignEffects: programDriverForeignEffects }
+                              : {}),
+                            ...(programDriverNativeTools
+                              ? { nativeTools: programDriverNativeTools }
+                              : {}),
+                          });
                   log.debug({ sessionId }, "new session path: chat engine created");
 
-                  // Wrap engine to serialize events. A replacement Host must
-                  // seed a recovery stream from the authoritative checkpoint
-                  // before appending newly projected journal deltas; otherwise
-                  // reconnect consumers can observe tool/activity updates
-                  // without their registered parents.
-                  const recoveryCheckpointEvents =
-                    shouldResolveConversation && method === "GET" && storedConversationCheckpoint
-                      ? yield* eventsFromCheckpoint(
-                          conversationStore,
-                          requestedConversationId,
-                          storedConversationCheckpoint,
-                        )
-                      : null;
-                  const initialEvents: StreamEvent[] =
-                    recoveryCheckpointEvents ??
-                    (resumePreflightError
-                      ? [
-                          {
-                            type: EventType.RUN_ERROR,
-                            message: resumePreflightError.message,
-                            code: resumePreflightError.code,
-                          },
-                        ]
-                      : [
-                          {
-                            type: EventType.RUN_STARTED,
-                            ...agUiRun,
-                            input: {
-                              ...agUiRun,
-                              state: body.state ?? {},
-                              messages: toProviderHistorySnapshot(authoritativeMessages),
-                              tools: toolSchemas.map((tool) => ({
-                                name: tool.name,
-                                description: tool.description,
-                                parameters: tool.parameters,
-                              })),
-                              context: body.context ?? [],
-                              forwardedProps: body.forwardedProps ?? {},
-                              ...(body.resume ? { resume: body.resume } : {}),
-                            },
-                          },
-                          ...(authoritativeMessages.length > 0
-                            ? [
-                                {
-                                  type: EventType.MESSAGES_SNAPSHOT as const,
-                                  messages: toProviderHistorySnapshot(authoritativeMessages),
-                                },
-                              ]
-                            : []),
-                          {
-                            type: EventType.STATE_SNAPSHOT,
-                            snapshot: buildAgUiCustomState({}),
-                          },
-                        ]);
+                  // Every response segment establishes one complete server base
+                  // before its run events. The client replaces that base, then
+                  // folds only events produced by this segment.
+                  const snapshotPrelude: StreamEvent[] = [
+                    {
+                      type: EventType.MESSAGES_SNAPSHOT,
+                      messages: toProviderHistorySnapshot(authoritativeMessages),
+                    },
+                    ...authoritativeActivities,
+                    {
+                      type: EventType.STATE_SNAPSHOT,
+                      snapshot: buildAgUiCustomState({}),
+                    },
+                  ];
+                  const initialEvents: StreamEvent[] = [
+                    ...snapshotPrelude,
+                    {
+                      type: EventType.RUN_STARTED,
+                      ...agUiRun,
+                      input: {
+                        ...agUiRun,
+                        state: body.state ?? {},
+                        messages: toProviderHistorySnapshot(authoritativeMessages),
+                        tools: toolSchemas.map((tool) => ({
+                          name: tool.name,
+                          description: tool.description,
+                          parameters: tool.parameters,
+                        })),
+                        context: body.context ?? [],
+                        forwardedProps: body.forwardedProps ?? {},
+                        ...(body.resume ? { resume: body.resume } : {}),
+                      },
+                    },
+                  ];
 
                   if (
                     authorityTurn &&
                     authorityTurn.executionId === proposedAuthorityTurn.executionId &&
-                    !recoveredPublication &&
-                    !resumePreflightError
+                    !recoveredPublication
                   ) {
                     const runningHead = yield* conversationStore.loadHead(requestedConversationId);
                     if (runningHead) {
+                      // The full activity prelude is a delivery projection of
+                      // the selected checkpoint. Do not append those restored
+                      // nodes back into checkpoint authority as new roots.
+                      const admissionEvents = initialEvents.filter(
+                        (event) => event.type !== EventType.ACTIVITY_SNAPSHOT,
+                      );
                       yield* persistConversationCheckpoint(conversationStore, {
                         conversationId: requestedConversationId,
                         causeKey: stableTupleHash([
                           authorityTurn.executionId,
                           "nonterminal",
-                          initialEvents.map((event) => assertJson(event)),
+                          admissionEvents.map((event) => assertJson(event)),
                         ]),
                         cause: {
                           kind: "tail-cut",
@@ -1480,7 +1373,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                           executionId: authorityTurn.executionId,
                           logicalTurnId: authorityTurn.turnId,
                         },
-                        roots: initialEvents.map((event) => assertJson(event)),
+                        roots: admissionEvents.map((event) => assertJson(event)),
                         ...(checkpointTargets ? { targets: checkpointTargets } : {}),
                         expectedRevision: runningHead.revision,
                         expectedOwnerEpoch: runningHead.ownerEpoch,
@@ -1502,7 +1395,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   }
 
                   const authorityHead = yield* conversationStore.loadHead(requestedConversationId);
-                  initialEvents.unshift(
+                  const firstRunEvent = initialEvents.findIndex(
+                    (event) =>
+                      event.type === EventType.RUN_STARTED || event.type === EventType.RUN_ERROR,
+                  );
+                  initialEvents.splice(
+                    firstRunEvent < 0 ? initialEvents.length : firstRunEvent,
+                    0,
                     conversationAuthorityFrame(requestedConversationId, authorityHead),
                   );
 
