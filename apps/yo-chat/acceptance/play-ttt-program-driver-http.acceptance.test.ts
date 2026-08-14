@@ -25,8 +25,12 @@ describe("journal-native play_ttt through the HTTP ProgramRuntime", () => {
         const journal = await readJournal(journalStore, conversationId);
         const position = responsePosition(journal);
         events = await post(runtime.handle, conversationId, messages, {
+          commandId: crypto.randomUUID(),
           interruptId: pending.id,
           position,
+          basisRevision: pending.basisRevision,
+          logicalTurnId: pending.logicalTurnId,
+          executionId: pending.executionId,
         });
       }
 

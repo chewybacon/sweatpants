@@ -169,6 +169,8 @@ export type UseChatOptions =
 
 export interface UseChatResult {
   readonly messages: readonly ReactChatUIMessage[];
+  readonly authority: ChatUISnapshot<ReactChatUIMessage>["authority"];
+  readonly canSendMessage: boolean;
   readonly status: ChatUISnapshot<ReactChatUIMessage>["status"];
   readonly connectionStatus: ChatUISnapshot<ReactChatUIMessage>["connectionStatus"];
   readonly renderStatus: ChatUISnapshot<ReactChatUIMessage>["renderStatus"];
@@ -203,6 +205,8 @@ function createPendingOwnedChat(options: OwnedUseChatOptions): PendingOwnedChat 
   const clientId = crypto.randomUUID();
   const pendingSnapshot: ChatUISnapshot<ReactChatUIMessage> = Object.freeze({
     messages: Object.freeze([]) as readonly ReactChatUIMessage[],
+    authority: null,
+    canSendMessage: false,
     status: "ready",
     connectionStatus: "disconnected",
     renderStatus: "loading",

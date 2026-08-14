@@ -26,7 +26,10 @@ describe("HTTP response-stream reconnect", () => {
 
         yield* response.releaseNext();
         const first = yield* stream.event("TEXT_MESSAGE_CONTENT", (event) => {
-          expect(event["delta"]).toBe("RECONNECT_FIRST_V1");
+          if (event.type !== EventType.TEXT_MESSAGE_CONTENT) {
+            throw new Error("Expected text content event");
+          }
+          expect(event.delta).toBe("RECONNECT_FIRST_V1");
         });
         const checkpoint = stream.checkpoint();
         expect(checkpoint.offset).toBe(first.lsn);
@@ -35,9 +38,9 @@ describe("HTTP response-stream reconnect", () => {
         yield* response.finish();
         const resumed = yield* s.streams.reconnect(checkpoint);
         const frames = yield* resumed.complete();
-        const deltas = frames
-          .filter((frame) => frame.event.type === EventType.TEXT_MESSAGE_CONTENT)
-          .map((frame) => frame.event["delta"]);
+        const deltas = frames.flatMap((frame) =>
+          frame.event.type === EventType.TEXT_MESSAGE_CONTENT ? [frame.event.delta] : [],
+        );
         expect(deltas).toEqual(["RECONNECT_SECOND_V1"]);
         expect(frames.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
         expect(s.model.requests()).toHaveLength(1);

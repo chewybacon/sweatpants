@@ -24,13 +24,26 @@ const apiModel = {
 };
 
 function directChatRequest(content: string) {
+  const conversationId = `e2e:${randomUUID()}`;
+  const runId = randomUUID();
+  const messageId = randomUUID();
   return {
+    command: {
+      type: "send-message",
+      commandId: runId,
+      issuedAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      basisRevision: null,
+      messageId,
+    },
+    clientId: "durable-chat-e2e",
+    conversationId,
     model: apiModel,
     input: {
-      threadId: `e2e:${randomUUID()}`,
-      runId: randomUUID(),
+      threadId: conversationId,
+      runId,
       state: {},
-      messages: [{ id: randomUUID(), role: "user", content }],
+      messages: [{ id: messageId, role: "user", content }],
       tools: [],
       context: [],
       forwardedProps: {},

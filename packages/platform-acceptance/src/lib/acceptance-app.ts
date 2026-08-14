@@ -131,6 +131,8 @@ export interface DurableWorkerMetrics {
 
 export interface AcceptanceApplicationInspection {
   journalStore: ProgramDriverJournalStore;
+  conversationStore: ConversationStore;
+  executionStore: ExecutionStore;
   modelSamplingExecutors: string[];
   modelSamplingProtocol: string[];
   checkpointErrors: unknown[];
@@ -203,6 +205,8 @@ export function createAcceptanceApplication(
     });
   inspect?.({
     journalStore,
+    conversationStore,
+    executionStore,
     modelSamplingExecutors,
     modelSamplingProtocol,
     checkpointErrors,

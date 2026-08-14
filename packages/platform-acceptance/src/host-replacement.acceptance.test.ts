@@ -5,6 +5,8 @@ import {
   type TestRigOptions,
 } from "@sweatpants/test-rig";
 import type { ProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
+import type { ConversationStore } from "@sweatpants/history-store/contract";
+import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import {
   ACCEPTANCE_DURABLE_TOOL_NAME,
   ACCEPTANCE_MODEL_ID,
@@ -24,6 +26,8 @@ function createReplacementFactory(): {
   journalStore(): ProgramDriverJournalStore;
 } {
   let journalStore: ProgramDriverJournalStore | undefined;
+  let conversationStore: ConversationStore | undefined;
+  let executionStore: ExecutionStore | undefined;
   let generation = 0;
   return {
     createApplication(context) {
@@ -32,8 +36,12 @@ function createReplacementFactory(): {
         context,
         (inspection) => {
           journalStore ??= inspection.journalStore;
+          conversationStore ??= inspection.conversationStore;
+          executionStore ??= inspection.executionStore;
         },
-        ...(journalStore ? [{ journalStore }] : []),
+        ...(journalStore && conversationStore && executionStore
+          ? [{ journalStore, conversationStore, executionStore }]
+          : []),
       );
     },
     generations: () => generation,

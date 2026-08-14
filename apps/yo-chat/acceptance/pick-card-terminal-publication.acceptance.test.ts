@@ -189,6 +189,10 @@ async function runScenario(binding: Binding): Promise<void> {
       expect(JSON.stringify(final.body.input)).toContain("Card selection recorded");
       yield* final.respond.text(`You picked the ${selected.rank} of ${selected.suit}.`);
       expect((yield* resumed.settled()).text).toContain(`You picked the ${selected.rank}`);
+      expect(reconnected.snapshot()).toMatchObject({
+        canSendMessage: true,
+        authority: { state: "idle" },
+      });
       if (!conversationStore) {
         throw new Error("ConversationStore inspection was not installed");
       }

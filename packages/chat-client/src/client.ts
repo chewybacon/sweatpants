@@ -32,6 +32,10 @@ import {
 import { createHttpTransport, type ChatFetch, type HttpTransportOptions } from "./http.ts";
 import {
   projectChatMessagesToAGUI as messagesToAGUI,
+  advanceConversationAuthority,
+  isConversationAuthorityFrame,
+  type ConversationAuthority,
+  type ConversationStreamEvent,
   type ChatUIMessage,
   type ChatContent,
   type ChatContentPart,
@@ -98,6 +102,8 @@ export interface ChatClientOptions<
 > {
   readonly threadId: string;
   readonly clientId?: string;
+  /** Explicitly declare that no durable conversation head exists yet. */
+  readonly initialConversation?: "new";
   /** HTTP endpoint used with the fetcher convenience. */
   readonly api?: string;
   /** Custom request/reconnect boundary. */
@@ -190,11 +196,18 @@ function deepFreeze<T>(value: T, seen = new WeakSet()): T {
   return value;
 }
 
+function commandLifetime(): { readonly issuedAt: number; readonly expiresAt: number } {
+  const issuedAt = Date.now();
+  return { issuedAt, expiresAt: issuedAt + 5 * 60_000 };
+}
+
 function makeInitialSnapshot<TLocalPart extends ChatLocalPart = never>(): ChatUISnapshot<
   ChatUIMessage<TLocalPart>
 > {
   return deepFreeze({
     messages: Object.freeze([]),
+    authority: null,
+    canSendMessage: false,
     status: "ready" as const,
     connectionStatus: "disconnected" as const,
     renderStatus: "loading" as const,
@@ -408,9 +421,10 @@ class ChatClientController<
   private destroyClientScope: (() => Promise<void>) | null = null;
   private bootstrapTask: Task<void> | null = null;
   private activeTask: Task<AGUIEvent | null> | null = null;
-  private activeRequest: ChatTransportRequest | null = null;
-  /** Last request whose authoritative Turn is parked rather than terminal. */
-  private parkedRequest: ChatTransportRequest | null = null;
+  private readonly intentionallyInterruptedTasks = new WeakSet<Task<AGUIEvent | null>>();
+  /** Monotonic authority survives temporary UI synchronization uncertainty. */
+  private authorityBaseline: ConversationAuthority | null = null;
+  private lastStreamEventType: string | null = null;
   private readyForCommands = false;
   private initializedResolved = false;
   private closed = false;
@@ -433,6 +447,22 @@ class ChatClientController<
     this.interaction = options.interaction ?? null;
     this.id = options.clientId ?? crypto.randomUUID();
     this.threadId = options.threadId;
+    if (options.initialConversation === "new") {
+      this.snapshot = deepFreeze({
+        ...this.snapshot,
+        authority: {
+          conversationId: this.threadId,
+          revision: null,
+          state: "idle",
+          activeLogicalTurnId: null,
+          activeExecutionId: null,
+          latestCompletedExecutionId: null,
+        },
+        canSendMessage: true,
+      });
+      this.serverSnapshot = this.snapshot;
+      this.authorityBaseline = this.snapshot.authority;
+    }
     this.queueOptions = normalizeQueueOption(options.queue);
     this.initialized = bootstrapScope.run(() => this.initWaiter.operation);
     void this.initialized.catch(() => undefined);
@@ -721,6 +751,9 @@ class ChatClientController<
     if (this.options.initialize) {
       yield* this.options.initialize(this);
     }
+    if (this.snapshot.authority === null) {
+      yield* this.reconnectImpl();
+    }
     this.initializedResolved = true;
     this.initWaiter.resolve(undefined);
 
@@ -757,7 +790,11 @@ class ChatClientController<
 
   private *sendMessageImpl(input: UserMessageInput, options: SendMessageOptions): Operation<void> {
     this.ensureOpen();
-    if (this.activeTask || this.parkedRequest) {
+    const authority = this.snapshot.authority;
+    if (authority?.state === "deleted") {
+      throw new ChatClientError("chat_conversation_deleted", "Conversation is deleted");
+    }
+    if (this.activeTask || (authority !== null && authority.state !== "idle")) {
       const policy = options.whenBusy ?? this.queueOptions.whenBusy;
       if (policy === "drop") {
         return;
@@ -792,6 +829,19 @@ class ChatClientController<
         return;
       }
       yield* this.stopImpl("superseded");
+      if (this.snapshot.authority?.state !== "idle") {
+        throw new ChatClientError(
+          "chat_authority_not_idle",
+          "Conversation did not become idle after interruption",
+        );
+      }
+    }
+    const commandAuthority = this.snapshot.authority;
+    if (commandAuthority === null) {
+      throw new ChatClientError(
+        "chat_authority_unknown",
+        "Conversation authority must be hydrated before sending a message",
+      );
     }
 
     const wire = createUserWire(input);
@@ -799,9 +849,20 @@ class ChatClientController<
     this.manualMessages = null;
     this.compactor.append(wire);
     const runId = crypto.randomUUID();
-    this.publishProjection({ status: "submitted", connectionStatus: "connecting", runId });
+    this.publishProjection({
+      authority: null,
+      status: "submitted",
+      connectionStatus: "connecting",
+      runId,
+    });
     const request: ChatTransportRequest = {
-      trigger: "submit-message",
+      command: {
+        type: "send-message",
+        commandId: runId,
+        ...commandLifetime(),
+        basisRevision: commandAuthority.revision,
+        messageId: wire.id,
+      },
       clientId: this.id,
       conversationId: this.threadId,
       input: runAgentInput({
@@ -814,13 +875,12 @@ class ChatClientController<
       }),
     };
     const terminal = yield* this.runRequest(request);
-    this.rememberParkedRequest(request, terminal);
     yield* this.finishRequest(terminal);
   }
 
   private *regenerateImpl(options: RegenerateOptions): Operation<void> {
     this.ensureOpen();
-    if (this.activeTask || this.parkedRequest) {
+    if (this.activeTask || this.snapshot.authority?.state !== "idle") {
       yield* this.stopImpl("regenerate");
     }
     const baseMessages = this.manualMessages ?? this.snapshot.messages;
@@ -837,10 +897,15 @@ class ChatClientController<
     this.manualMessages = null;
     const runId = crypto.randomUUID();
     const request: ChatTransportRequest = {
-      trigger: "regenerate-message",
+      command: {
+        type: "regenerate",
+        commandId: runId,
+        ...commandLifetime(),
+        basisRevision: this.snapshot.authority?.revision ?? null,
+        ...(target === undefined ? {} : { targetMessageId: target }),
+      },
       clientId: this.id,
       conversationId: this.threadId,
-      ...(target === undefined ? {} : { messageId: target }),
       input: runAgentInput({
         threadId: this.threadId,
         runId,
@@ -850,9 +915,8 @@ class ChatClientController<
         forwardedProps: options.forwardedProps ?? this.forwardedProps,
       }),
     };
-    this.publish({ status: "submitted", connectionStatus: "connecting", runId });
+    this.publish({ authority: null, status: "submitted", connectionStatus: "connecting", runId });
     const terminal = yield* this.runRequest(request);
-    this.rememberParkedRequest(request, terminal);
     yield* this.finishRequest(terminal);
   }
 
@@ -862,31 +926,62 @@ class ChatClientController<
       this.rejectQueued(new ChatClientError("chat_busy_dropped", "Queued messages were stopped"));
     }
     const active = this.activeTask;
-    const request = this.activeRequest ?? this.parkedRequest;
-    if (request) {
+    const authority = this.snapshot.authority;
+    if (authority !== null && authority.state !== "idle" && authority.state !== "deleted") {
       const signal = yield* useAbortSignal();
       const cancellationRunId = crypto.randomUUID();
       const cancellation: ChatTransportRequest = {
-        ...request,
-        // Cancellation is its own identity-targeted command. Reusing the
-        // active send's run/message identity with a different digest is an
-        // idempotency conflict and can poison the Host before structured
-        // unwind begins.
-        trigger: "cancel-run",
-        messageId: cancellationRunId,
-        input: { ...request.input, runId: cancellationRunId },
-        cancellationReason: reason,
+        command: {
+          type: "interrupt-turn",
+          commandId: cancellationRunId,
+          ...commandLifetime(),
+          basisRevision: authority.revision,
+          logicalTurnId: authority.activeLogicalTurnId,
+          executionId: authority.activeExecutionId,
+          reason,
+        },
+        clientId: this.id,
+        conversationId: this.threadId,
+        input: runAgentInput({
+          threadId: this.threadId,
+          runId: cancellationRunId,
+          messages: messagesToAGUI(this.snapshot.messages),
+          state: this.state,
+          context: this.context,
+          forwardedProps: this.forwardedProps,
+        }),
       };
       try {
+        this.publish({ authority: null, connectionStatus: "connecting" });
         const stream = yield* ChatTransportPort.api.operations.sendMessages(cancellation, signal);
+        // Once the Host has accepted the explicit control request, the old
+        // response consumer is obsolete. Halt only that consumer; Host-owned
+        // ProgramRuntime, cleanup, writer, and terminal publication continue.
+        if (active) {
+          this.intentionallyInterruptedTasks.add(active);
+          try {
+            yield* active.halt();
+          } catch (error) {
+            if (!(error instanceof Error) || error.message !== "halted") {
+              throw error;
+            }
+          } finally {
+            if (this.activeTask === active) {
+              this.activeTask = null;
+            }
+          }
+        }
         const terminal = yield* this.consumeStream(stream, true);
-        if (terminal?.type !== EventType.RUN_ERROR || terminal.code !== "PROGRAM_CANCELLED") {
+        if (
+          terminal?.type !== EventType.RUN_ERROR ||
+          terminal.code !== "PROGRAM_CANCELLED" ||
+          this.snapshot.authority?.state !== "idle"
+        ) {
           throw new ChatClientError(
             "chat_cancel_not_terminal",
             "Host cancellation did not reach authoritative terminal cancellation",
           );
         }
-        this.parkedRequest = null;
         yield* this.flushPublication({}, true);
       } catch (error) {
         const failure = asChatClientError(
@@ -898,30 +993,16 @@ class ChatClientController<
         throw failure;
       }
     }
-    if (active) {
-      try {
-        // The cancellation response above is the authoritative terminal
-        // boundary. Only now may the client detach its obsolete consumer; the
-        // Host-owned writer and Turn tree remain independently supervised.
-        yield* active.halt();
-      } catch (error) {
-        if (!(error instanceof Error) || error.message !== "halted") {
-          throw error;
-        }
-      } finally {
-        if (this.activeTask === active) {
-          this.activeTask = null;
-          this.activeRequest = null;
-        }
-      }
-    }
     this.publish({ connectionStatus: "disconnected", status: "ready", runId: null });
+    if (authority !== null && authority.state !== "idle" && authority.state !== "deleted") {
+      yield* this.reconnectImpl();
+    }
   }
 
   private *reconnectImpl(): Operation<void> {
     this.ensureOpen();
     const signal = yield* useAbortSignal();
-    this.publish({ connectionStatus: "connecting" });
+    this.publish({ authority: null, connectionStatus: "connecting" });
     try {
       const stream = yield* ChatTransportPort.api.operations.reconnectToStream(
         {
@@ -931,7 +1012,16 @@ class ChatClientController<
         signal,
       );
       if (stream === null) {
+        this.acceptAuthority({
+          conversationId: this.threadId,
+          revision: null,
+          state: "idle",
+          activeLogicalTurnId: null,
+          activeExecutionId: null,
+          latestCompletedExecutionId: null,
+        });
         this.publish({
+          authority: this.authorityBaseline,
           connectionStatus: "disconnected",
           status: this.snapshot.status === "error" ? "ready" : this.snapshot.status,
           runId: null,
@@ -941,38 +1031,34 @@ class ChatClientController<
       this.compactor.reset();
       this.manualMessages = null;
       this.publish({ connectionStatus: "connected" });
-      let terminal = yield* this.consumeStream(stream, false);
-      if (terminal === null) {
-        // An incomplete response-session replay can contain a valid snapshot
-        // without the terminal frame that proves conversation authority is
-        // ready. Discard its cursor and perform one authoritative reload before
-        // exposing an idle composer.
-        const restarted = yield* ChatTransportPort.api.operations.reconnectToStream(
-          {
-            clientId: this.id,
-            threadId: this.threadId,
-            restart: true,
-          },
-          signal,
+      const terminal = yield* this.consumeStream(stream, false);
+      if (this.snapshot.authority === null) {
+        throw new ChatClientError(
+          "chat_authority_missing",
+          "Conversation hydration ended without authoritative lifecycle state",
         );
-        if (restarted !== null) {
-          this.compactor.reset();
-          this.manualMessages = null;
-          terminal = yield* this.consumeStream(restarted, false);
-        }
       }
       const parked =
-        terminal?.type === EventType.RUN_FINISHED && terminal.outcome?.type === "interrupt";
+        (terminal?.type === EventType.RUN_FINISHED && terminal.outcome?.type === "interrupt") ||
+        this.snapshot.authority.state === "parked";
+      const authorityActive =
+        this.snapshot.authority.state === "running" ||
+        this.snapshot.authority.state === "recovering";
       yield* this.flushPublication(
         {
           connectionStatus: "disconnected",
-          status: terminal?.type === EventType.RUN_ERROR ? "error" : "ready",
+          status:
+            terminal?.type === EventType.RUN_ERROR
+              ? "error"
+              : authorityActive
+                ? "streaming"
+                : "ready",
           runId: null,
         },
         true,
         !parked,
       );
-      this.parkedRequest = parked ? this.createHydratedControlRequest() : null;
+      // Parked authority itself controls sendability; no request object is retained.
     } catch (error) {
       const failure = asChatClientError(error, "chat_transport_failed", "Chat reconnect failed");
       this.publish({ connectionStatus: "error", status: "error", error: failure });
@@ -987,7 +1073,6 @@ class ChatClientController<
     if (active) {
       yield* active.halt();
       this.activeTask = null;
-      this.activeRequest = null;
     }
     this.publish({ connectionStatus: "disconnected", runId: null });
   }
@@ -1032,16 +1117,23 @@ class ChatClientController<
     for (const entry of this.commandQueue.splice(0)) {
       entry.reject(failure);
     }
+    this.publish({});
   }
 
   private *runRequest(request: ChatTransportRequest): Operation<AGUIEvent | null> {
     const task = yield* spawn(() => this.requestOperation(request));
     this.activeTask = task;
-    this.activeRequest = request;
     let failure: ChatClientError | null = null;
     try {
       return yield* task;
     } catch (error) {
+      if (
+        this.intentionallyInterruptedTasks.has(task) &&
+        error instanceof Error &&
+        error.message === "halted"
+      ) {
+        return null;
+      }
       if (error instanceof ChatClientError) {
         failure = error;
       }
@@ -1049,7 +1141,6 @@ class ChatClientController<
     } finally {
       if (this.activeTask === task) {
         this.activeTask = null;
-        this.activeRequest = null;
       }
       if (failure) {
         this.publish({ status: "error", connectionStatus: "error", error: failure, runId: null });
@@ -1073,49 +1164,31 @@ class ChatClientController<
     }
   }
 
-  private rememberParkedRequest(request: ChatTransportRequest, terminal: AGUIEvent | null): void {
-    this.parkedRequest =
-      terminal?.type === EventType.RUN_FINISHED && terminal.outcome?.type === "interrupt"
-        ? request
-        : null;
-  }
-
-  private createHydratedControlRequest(): ChatTransportRequest {
-    return {
-      trigger: "submit-message",
-      clientId: this.id,
-      conversationId: this.threadId,
-      input: runAgentInput({
-        threadId: this.threadId,
-        runId: crypto.randomUUID(),
-        messages: messagesToAGUI(this.snapshot.messages),
-        state: this.state,
-        context: this.context,
-        forwardedProps: this.forwardedProps,
-      }),
-    };
-  }
-
   private *finishRequest(terminal: AGUIEvent | null): Operation<void> {
     const runError = terminal?.type === EventType.RUN_ERROR ? terminal : null;
     const parked =
-      terminal?.type === EventType.RUN_FINISHED && terminal.outcome?.type === "interrupt";
+      (terminal?.type === EventType.RUN_FINISHED && terminal.outcome?.type === "interrupt") ||
+      this.snapshot.authority?.state === "parked";
+    const runFailure = runError
+      ? new ChatClientError(runError.code ?? "chat_run_error", runError.message)
+      : null;
+    if (runFailure) {
+      this.rejectQueued(runFailure);
+    }
     yield* this.flushPublication(
       {
         status: runError ? "error" : "ready",
         connectionStatus: "disconnected",
         runId: null,
-        ...(runError
-          ? { error: new ChatClientError(runError.code ?? "chat_run_error", runError.message) }
-          : {}),
+        ...(runFailure ? { error: runFailure } : {}),
       },
       true,
-      !parked,
+      !parked && runFailure === null,
     );
   }
 
   private *consumeStream(
-    stream: Stream<AGUIEvent, void>,
+    stream: Stream<ConversationStreamEvent, void>,
     requireTerminal: boolean,
   ): Operation<AGUIEvent | null> {
     const clockInstalled = yield* ChatSchedulerPort.isInstalled();
@@ -1128,10 +1201,31 @@ class ChatClientController<
       terminalEvent = unpacedTerminal;
     }
 
-    if (requireTerminal && terminalEvent === null) {
+    if (this.snapshot.authority === null) {
+      throw new ChatClientError(
+        "chat_authority_missing",
+        "Chat stream ended without authoritative lifecycle state",
+      );
+    }
+    if (requireTerminal && terminalEvent?.type === EventType.RUN_FINISHED) {
+      const expectedAuthorityState =
+        terminalEvent.outcome?.type === "interrupt" ? "parked" : "idle";
+      if (this.snapshot.authority.state !== expectedAuthorityState) {
+        throw new ChatClientError(
+          "chat_authority_terminal_mismatch",
+          `Terminal ${terminalEvent.type} requires ${expectedAuthorityState} authority, observed ${this.snapshot.authority.state}@${String(this.snapshot.authority.revision)}`,
+        );
+      }
+    }
+    if (
+      requireTerminal &&
+      terminalEvent === null &&
+      (this.snapshot.authority.state === "running" ||
+        this.snapshot.authority.state === "recovering")
+    ) {
       throw new ChatClientError(
         "chat_transport_truncated",
-        "Chat stream ended before a terminal AG-UI event",
+        `Chat stream ended while conversation authority remained ${this.snapshot.authority.state}@${String(this.snapshot.authority.revision)} (last frame: ${String(this.lastStreamEventType)})`,
       );
     }
     if (requireTerminal && this.compactor.pendingParents.length > 0) {
@@ -1146,7 +1240,9 @@ class ChatClientController<
     return terminalEvent;
   }
 
-  private *consumePacedStream(stream: Stream<AGUIEvent, void>): Operation<AGUIEvent | null> {
+  private *consumePacedStream(
+    stream: Stream<ConversationStreamEvent, void>,
+  ): Operation<AGUIEvent | null> {
     const events = yield* createEagerBuffer(stream);
     const clock = ChatSchedulerPort.api.operations.clock();
     let terminalEvent: AGUIEvent | null = null;
@@ -1171,7 +1267,9 @@ class ChatClientController<
     );
   }
 
-  private *consumeUnpacedStream(stream: Stream<AGUIEvent, void>): Operation<AGUIEvent | null> {
+  private *consumeUnpacedStream(
+    stream: Stream<ConversationStreamEvent, void>,
+  ): Operation<AGUIEvent | null> {
     const subscription = yield* stream;
     let terminalEvent: AGUIEvent | null = null;
     let next = yield* subscription.next();
@@ -1184,15 +1282,24 @@ class ChatClientController<
     return terminalEvent;
   }
 
-  private *publishEventBatch(batch: readonly AGUIEvent[]): Operation<AGUIEvent | null> {
+  private *publishEventBatch(
+    batch: readonly ConversationStreamEvent[],
+  ): Operation<AGUIEvent | null> {
     let terminalEvent: AGUIEvent | null = null;
+    let presentationCount = 0;
     for (const event of batch) {
+      this.lastStreamEventType = String(event.type);
+      if (isConversationAuthorityFrame(event)) {
+        this.acceptAuthority(event.authority);
+        continue;
+      }
+      presentationCount += 1;
       yield* ChatEventApi.operations.accept(event);
       if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) {
         terminalEvent = event;
       }
     }
-    if (batch.length > 0) {
+    if (presentationCount > 0) {
       try {
         yield* this.compactor.pull();
       } catch (error) {
@@ -1203,6 +1310,26 @@ class ChatClientController<
       this.publishProjection(changes);
     }
     return terminalEvent;
+  }
+
+  private acceptAuthority(authority: ConversationAuthority): void {
+    try {
+      const advanced = advanceConversationAuthority(
+        this.authorityBaseline,
+        authority,
+        this.threadId,
+      );
+      this.authorityBaseline = advanced;
+      if (advanced !== this.snapshot.authority) {
+        this.publish({ authority: advanced });
+      }
+    } catch (error) {
+      throw new ChatClientError(
+        "chat_authority_invalid",
+        error instanceof Error ? error.message : "Conversation authority is invalid",
+        error,
+      );
+    }
   }
 
   private *processEvent(event: AGUIEvent): Operation<void> {
@@ -1279,25 +1406,41 @@ class ChatClientController<
                 : { payload: { action: "decline" as const } }),
             },
           ];
+    const authority = this.snapshot.authority;
+    if (authority?.state !== "parked") {
+      throw new ChatClientError(
+        "chat_authority_not_parked",
+        "Elicitation response requires parked conversation authority",
+      );
+    }
+    const response = resume[0]!;
+    const runId = crypto.randomUUID();
     const transportRequest: ChatTransportRequest = {
-      trigger: "submit-message",
+      command: {
+        type: "respond-to-elicit",
+        commandId: runId,
+        ...commandLifetime(),
+        basisRevision: authority.revision,
+        logicalTurnId: authority.activeLogicalTurnId,
+        executionId: authority.activeExecutionId,
+        interruptId: response.interruptId,
+        status: response.status,
+        ...("payload" in response ? { payload: response.payload } : {}),
+      },
       clientId: this.id,
       conversationId: this.threadId,
       input: runAgentInput({
         threadId: this.threadId,
-        runId: crypto.randomUUID(),
+        runId,
         messages: messagesToAGUI(this.snapshot.messages),
         state: this.state,
         context: this.context,
         forwardedProps: this.forwardedProps,
         ...(request.parentRunId ? { parentRunId: request.parentRunId } : {}),
-        resume,
       }),
     };
-    this.parkedRequest = null;
-    this.publish({ status: "submitted", connectionStatus: "connecting" });
+    this.publish({ authority: null, status: "submitted", connectionStatus: "connecting" });
     const terminal = yield* this.runRequest(transportRequest);
-    this.rememberParkedRequest(transportRequest, terminal);
     yield* this.finishRequest(terminal);
   }
 
@@ -1385,23 +1528,35 @@ class ChatClientController<
     if (this.interaction) {
       messages = overlayLocalParts(messages, this.interaction.localParts());
     }
-    this.publish({ ...changes, messages }, false);
+    const serverAuthority = Object.prototype.hasOwnProperty.call(changes, "authority")
+      ? (changes.authority ?? null)
+      : this.serverSnapshot.authority;
+    // Publish the deterministic server view before notifying subscribers so a
+    // callback never observes the previous status with the new client view.
     this.serverSnapshot = deepFreeze({
       ...this.serverSnapshot,
       ...changes,
+      authority: serverAuthority,
+      canSendMessage: serverAuthority?.state === "idle" && this.activeTask === null && !this.closed,
       messages: serverMessages,
       // Busy-send queues are local UX state, never authoritative server state.
       queue: [],
     });
+    this.publish({ ...changes, messages }, false);
   }
 
   private publish(
     changes: Partial<ChatUISnapshot<ChatUIMessage<TLocalPart>>>,
     updateServer = true,
   ): void {
+    const authority = Object.prototype.hasOwnProperty.call(changes, "authority")
+      ? (changes.authority ?? null)
+      : this.snapshot.authority;
     const next = deepFreeze({
       ...this.snapshot,
       ...changes,
+      authority,
+      canSendMessage: authority?.state === "idle" && this.activeTask === null && !this.closed,
       queue: changes.queue ?? this.queued,
     });
     this.snapshot = next;
@@ -1409,9 +1564,15 @@ class ChatClientController<
       const serverChanges = Object.fromEntries(
         Object.entries(changes).filter(([key]) => key !== "messages"),
       ) as Partial<ChatUISnapshot<ChatUIMessage<TLocalPart>>>;
+      const serverAuthority = Object.prototype.hasOwnProperty.call(serverChanges, "authority")
+        ? (serverChanges.authority ?? null)
+        : this.serverSnapshot.authority;
       this.serverSnapshot = deepFreeze({
         ...this.serverSnapshot,
         ...serverChanges,
+        authority: serverAuthority,
+        canSendMessage:
+          serverAuthority?.state === "idle" && this.activeTask === null && !this.closed,
         // Do not leak a local successor queue through the authoritative view.
         queue: [],
       });

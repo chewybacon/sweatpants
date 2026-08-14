@@ -35,6 +35,15 @@ describe("yo-studio durable chat HTTP projection", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
+            command: {
+              type: "send-message",
+              commandId: "00000000-0000-4000-8000-000000000001",
+              issuedAt: Date.now(),
+              expiresAt: Date.now() + 60_000,
+              basisRevision: null,
+              messageId: "user-1",
+            },
+            clientId: "yo-studio-test-client",
             conversationId: "yo-studio-test",
             input: {
               threadId: "yo-studio-test",
@@ -90,6 +99,15 @@ describe("yo-studio durable chat HTTP projection", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
+            command: {
+              type: "send-message",
+              commandId: "00000000-0000-4000-8000-000000000002",
+              issuedAt: Date.now(),
+              expiresAt: Date.now() + 60_000,
+              basisRevision: null,
+              messageId: "user-1",
+            },
+            clientId: "yo-studio-affinity-client",
             conversationId: "shared-workspace-conversation",
             input: {
               threadId: "shared-workspace-conversation",

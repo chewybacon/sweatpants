@@ -1,7 +1,6 @@
 import type { Operation, Stream } from "effection";
 import type { RunAgentInput } from "@ag-ui/core";
 import type {
-  AGUIEvent,
   ActivityDeltaEvent,
   ActivitySnapshotEvent,
   CustomEvent,
@@ -29,6 +28,7 @@ import type {
   ToolCallStartEvent,
 } from "@ag-ui/core";
 import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { ConversationAuthority, ConversationStreamEvent } from "./conversation-protocol.ts";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { ChatContent, ChatContentSource } from "./content.ts";
 import type { Frame } from "./frame.ts";
@@ -249,6 +249,10 @@ export interface QueuedUserMessage {
 
 export interface ChatUISnapshot<TMessage extends ChatUIMessage<ChatLocalPart> = ChatUIMessage> {
   readonly messages: readonly TMessage[];
+  /** Latest durable admission authority; null while hydration is unresolved. */
+  readonly authority: ConversationAuthority | null;
+  /** Derived capability. It is never inferred from stream completion. */
+  readonly canSendMessage: boolean;
   readonly status: ChatStatus;
   readonly connectionStatus: ChatConnectionStatus;
   readonly renderStatus: ChatRenderStatus;
@@ -275,35 +279,58 @@ export interface RegenerateOptions {
   readonly forwardedProps?: Json;
 }
 
-export type ChatSendTrigger = "submit-message" | "regenerate-message" | "cancel-run";
-
 export interface ResumeEntry {
   readonly interruptId: string;
   readonly status: "resolved" | "cancelled";
   readonly payload?: Json;
 }
 
-/**
- * Sweatpants transport controls wrapped around the AG-UI-owned request input.
- *
- * `input` is the only location for `RunAgentInput` fields. Transport, trigger,
- * and cancellation controls remain outside the protocol-owned object.
- */
+interface ConversationCommandBase {
+  readonly commandId: string;
+  /** Client correlation time; the server records its own acceptance time. */
+  readonly issuedAt: number;
+  /** Bounded retry/admission horizon for this exact command identity. */
+  readonly expiresAt: number;
+  /** Durable head revision observed when the client formed this command. */
+  readonly basisRevision: string | null;
+}
+
+export type ConversationCommand =
+  | (ConversationCommandBase & {
+      readonly type: "send-message";
+      readonly messageId: string;
+    })
+  | (ConversationCommandBase & {
+      readonly type: "regenerate";
+      readonly targetMessageId?: string;
+    })
+  | (ConversationCommandBase & {
+      readonly type: "respond-to-elicit";
+      readonly logicalTurnId: string;
+      readonly executionId: string;
+      readonly interruptId: string;
+      readonly status: "resolved" | "cancelled";
+      readonly payload?: Json;
+    })
+  | (ConversationCommandBase & {
+      readonly type: "interrupt-turn";
+      readonly logicalTurnId: string;
+      readonly executionId: string;
+      readonly reason: string;
+    });
+
+/** Sweatpants command envelope carrying AG-UI presentation/model input. */
 export interface ChatTransportRequest {
+  readonly command: ConversationCommand;
   readonly input: RunAgentInput;
-  readonly trigger: ChatSendTrigger;
   readonly clientId: string;
-  readonly conversationId?: string;
-  readonly messageId?: string;
-  readonly cancellationReason?: string;
+  readonly conversationId: string;
 }
 
 export interface ChatReconnectRequest {
   readonly clientId: string;
   readonly threadId: string;
   readonly cursor?: number;
-  /** Discard a stale response cursor and reload authoritative conversation state. */
-  readonly restart?: boolean;
 }
 
 /** The provider-facing, serializable message form used by transport. */
@@ -311,11 +338,11 @@ export interface ChatTransportContract {
   sendMessages(
     request: ChatTransportRequest,
     signal: AbortSignal,
-  ): Operation<Stream<AGUIEvent, void>>;
+  ): Operation<Stream<ConversationStreamEvent, void>>;
   reconnectToStream(
     request: ChatReconnectRequest,
     signal: AbortSignal,
-  ): Operation<Stream<AGUIEvent, void> | null>;
+  ): Operation<Stream<ConversationStreamEvent, void> | null>;
   disconnect(reason?: string): Operation<void>;
 }
 

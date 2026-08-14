@@ -239,13 +239,24 @@ function completed(message: ModelResponse): Stream<ModelStreamEvent, ModelRespon
 }
 
 function chatRequest(): Request {
+  const runId = crypto.randomUUID();
   return new Request(`http://localhost/chat?conversationId=${conversationId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      command: {
+        type: "send-message",
+        commandId: runId,
+        issuedAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+        basisRevision: null,
+        messageId: "u1",
+      },
+      clientId: "indeterminate-effect-acceptance",
+      conversationId,
       input: {
         threadId: conversationId,
-        runId: crypto.randomUUID(),
+        runId,
         state: {},
         messages: [{ id: "u1", role: "user", content: "Book NYC to LAX" }],
         tools: [],

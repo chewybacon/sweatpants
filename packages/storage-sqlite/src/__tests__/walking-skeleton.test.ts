@@ -95,6 +95,7 @@ describe("SQLite durability spine walking skeleton", () => {
           acceptedAt: 1,
           retainUntil: 10_000,
           expectedRevision: "0",
+          requiredState: "idle",
           logicalTurnId: "logical_turn_001",
           executionId: "execution_001",
           proposal: {

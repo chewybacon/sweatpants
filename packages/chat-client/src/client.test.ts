@@ -2,6 +2,7 @@ import { EventType } from "@ag-ui/core";
 import { call, resource, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import {
+  CONVERSATION_AUTHORITY_FRAME_TYPE,
   ChatTransportPort,
   createChatClient,
   createChatRuntime,
@@ -11,23 +12,137 @@ import {
   type ChatReconnectRequest,
   type ChatTransportRequest,
   type AGUIEvent,
+  type ConversationStreamEvent,
   type ChatTransportContract,
 } from "./index.ts";
 
-function streamOf(events: readonly AGUIEvent[]): Stream<AGUIEvent, void> {
+const authorityRevisions = new Map<string, bigint>();
+
+function nextAuthorityRevision(conversationId: string): string {
+  const next = (authorityRevisions.get(conversationId) ?? 0n) + 1n;
+  authorityRevisions.set(conversationId, next);
+  return next.toString(10);
+}
+
+function observeAuthorityRevision(conversationId: string, revision: string | null): void {
+  if (revision === null) return;
+  const value = BigInt(revision);
+  if (value > (authorityRevisions.get(conversationId) ?? 0n)) {
+    authorityRevisions.set(conversationId, value);
+  }
+}
+
+function withAuthority(events: readonly AGUIEvent[]): readonly ConversationStreamEvent[] {
+  const run = events.find(
+    (event) => event.type === EventType.RUN_STARTED || event.type === EventType.RUN_FINISHED,
+  );
+  if (!run || !("threadId" in run)) {
+    return events;
+  }
+  const terminalIndex = events.findIndex(
+    (event) => event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR,
+  );
+  const running: ConversationStreamEvent = {
+    type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+    authority: {
+      conversationId: run.threadId,
+      revision: nextAuthorityRevision(run.threadId),
+      state: "running",
+      activeLogicalTurnId: run.runId,
+      activeExecutionId: `execution:${run.runId}`,
+      latestCompletedExecutionId: null,
+    },
+  };
+  if (terminalIndex < 0) {
+    return [running, ...events];
+  }
+  const terminal = events[terminalIndex]!;
+  const terminalAuthority: ConversationStreamEvent = {
+    type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+    authority:
+      terminal.type === EventType.RUN_FINISHED && terminal.outcome?.type === "interrupt"
+        ? {
+            conversationId: run.threadId,
+            revision: nextAuthorityRevision(run.threadId),
+            state: "parked",
+            activeLogicalTurnId: run.runId,
+            activeExecutionId: `execution:${run.runId}`,
+            latestCompletedExecutionId: null,
+          }
+        : {
+            conversationId: run.threadId,
+            revision: nextAuthorityRevision(run.threadId),
+            state: "idle",
+            activeLogicalTurnId: null,
+            activeExecutionId: null,
+            latestCompletedExecutionId: `execution:${run.runId}`,
+          },
+  };
+  return [
+    running,
+    ...events.slice(0, terminalIndex),
+    terminalAuthority,
+    ...events.slice(terminalIndex),
+  ];
+}
+
+function runningAuthorityFrame(
+  conversationId: string,
+  revision: string,
+  runId: string,
+): ConversationStreamEvent {
+  observeAuthorityRevision(conversationId, revision);
+  return {
+    type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+    authority: {
+      conversationId,
+      revision,
+      state: "running",
+      activeLogicalTurnId: runId,
+      activeExecutionId: `execution:${runId}`,
+      latestCompletedExecutionId: null,
+    },
+  };
+}
+
+function idleAuthorityFrame(
+  conversationId: string,
+  revision: string | null,
+): ConversationStreamEvent {
+  observeAuthorityRevision(conversationId, revision);
+  return {
+    type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+    authority: {
+      conversationId,
+      revision,
+      state: "idle",
+      activeLogicalTurnId: null,
+      activeExecutionId: null,
+      latestCompletedExecutionId: null,
+    },
+  };
+}
+
+function frameStream(
+  frames: readonly ConversationStreamEvent[],
+): Stream<ConversationStreamEvent, void> {
   return (function* () {
     let index = 0;
     return {
-      next(): Operation<IteratorResult<AGUIEvent, void>> {
+      next(): Operation<IteratorResult<ConversationStreamEvent, void>> {
         return (function* () {
-          if (index >= events.length) {
+          if (index >= frames.length) {
             return { done: true, value: undefined };
           }
-          return { done: false, value: events[index++] };
+          return { done: false, value: frames[index++] };
         })();
       },
     };
   })();
+}
+
+function streamOf(events: readonly AGUIEvent[]): Stream<ConversationStreamEvent, void> {
+  return frameStream(withAuthority(events));
 }
 
 interface Deferred<T> {
@@ -43,20 +158,46 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
-function gatedStream(events: readonly AGUIEvent[], gate: Promise<void>): Stream<AGUIEvent, void> {
+function gatedStream(
+  events: readonly AGUIEvent[],
+  gate: Promise<void>,
+): Stream<ConversationStreamEvent, void> {
+  const frames = withAuthority(events);
   return resource(function* (provide) {
     let released = false;
     let index = 0;
     yield* provide({
-      *next(): Operation<IteratorResult<AGUIEvent, void>> {
+      *next(): Operation<IteratorResult<ConversationStreamEvent, void>> {
         if (!released) {
           released = true;
           yield* call(() => gate);
         }
-        if (index >= events.length) {
+        if (index >= frames.length) {
           return { done: true, value: undefined };
         }
-        return { done: false, value: events[index++]! };
+        return { done: false, value: frames[index++]! };
+      },
+    });
+  });
+}
+
+function gatedFrames(
+  frames: readonly ConversationStreamEvent[],
+  gate: Promise<void>,
+): Stream<ConversationStreamEvent, void> {
+  return resource(function* (provide) {
+    let released = false;
+    let index = 0;
+    yield* provide({
+      *next(): Operation<IteratorResult<ConversationStreamEvent, void>> {
+        if (!released) {
+          released = true;
+          yield* call(() => gate);
+        }
+        if (index >= frames.length) {
+          return { done: true, value: undefined };
+        }
+        return { done: false, value: frames[index++]! };
       },
     });
   });
@@ -95,6 +236,46 @@ function transport(events: readonly AGUIEvent[]): ChatTransportContract {
 }
 
 describe("headless ChatClient", () => {
+  it("does not hydrate a conversation explicitly declared new", async () => {
+    let reconnects = 0;
+    const driver: ChatTransportContract = {
+      *sendMessages(request) {
+        return streamOf([
+          {
+            type: EventType.RUN_STARTED,
+            threadId: request.input.threadId,
+            runId: request.input.runId,
+          },
+          {
+            type: EventType.RUN_FINISHED,
+            threadId: request.input.threadId,
+            runId: request.input.runId,
+          },
+        ]);
+      },
+      *reconnectToStream() {
+        reconnects += 1;
+        return null;
+      },
+      *disconnect() {
+        return;
+      },
+    };
+    const client = createChatClient({
+      threadId: "explicit-new-conversation",
+      initialConversation: "new",
+      connection: driver,
+    });
+    await client.initialized;
+    expect(reconnects).toBe(0);
+    expect(client.getSnapshot()).toMatchObject({
+      canSendMessage: true,
+      authority: { state: "idle", revision: null },
+    });
+    await client.sendMessage("first command");
+    await client.close();
+  });
+
   it("keeps local render parts out of the server snapshot during status churn", async () => {
     type RenderPart = { readonly type: "render"; readonly id: string; readonly node: () => null };
     const client = createChatClient<RenderPart>({
@@ -162,14 +343,17 @@ describe("headless ChatClient", () => {
       context: [{ description: "tenant", value: "test" }],
       forwardedProps: { mode: "preview" },
       fetcher: async (_input, init) => {
+        if ((init?.method ?? "GET") === "GET") {
+          return new Response(null, { status: 404 });
+        }
         if (typeof init?.body !== "string") {
           throw new Error("expected JSON request body");
         }
         requestBody = JSON.parse(init.body) as Record<string, unknown>;
-        const events = [
+        const events = withAuthority([
           { type: EventType.RUN_STARTED, threadId: "fetcher-thread", runId: "run-fetcher" },
           { type: EventType.RUN_FINISHED, threadId: "fetcher-thread", runId: "run-fetcher" },
-        ];
+        ]);
         return new Response(`${events.map((event) => JSON.stringify(event)).join("\n")}\n`, {
           headers: { "content-type": "application/x-ndjson" },
         });
@@ -194,7 +378,10 @@ describe("headless ChatClient", () => {
   it("classifies transport failures separately from malformed events", async () => {
     const failedTransport = createChatClient({
       threadId: "transport-failure",
-      fetcher: async () => new Response("upstream unavailable", { status: 500 }),
+      fetcher: async (_input, init) =>
+        (init?.method ?? "GET") === "GET"
+          ? new Response(null, { status: 404 })
+          : new Response("upstream unavailable", { status: 500 }),
     });
     await failedTransport.initialized;
     await expect(failedTransport.sendMessage("fail")).rejects.toMatchObject({
@@ -204,10 +391,12 @@ describe("headless ChatClient", () => {
 
     const malformedTransport = createChatClient({
       threadId: "malformed-event",
-      fetcher: async () =>
-        new Response('{"type":"TEXT_MESSAGE_CONTENT"}\n', {
-          headers: { "content-type": "application/x-ndjson" },
-        }),
+      fetcher: async (_input, init) =>
+        (init?.method ?? "GET") === "GET"
+          ? new Response(null, { status: 404 })
+          : new Response('{"type":"TEXT_MESSAGE_CONTENT"}\n', {
+              headers: { "content-type": "application/x-ndjson" },
+            }),
     });
     await malformedTransport.initialized;
     await expect(malformedTransport.sendMessage("malformed")).rejects.toMatchObject({
@@ -253,6 +442,10 @@ describe("headless ChatClient", () => {
           },
           {
             lsn: start + 1,
+            event: idleAuthorityFrame(body.input.threadId, String(start + 1)),
+          },
+          {
+            lsn: start + 2,
             event: {
               type: EventType.RUN_FINISHED,
               threadId: body.input.threadId,
@@ -265,8 +458,12 @@ describe("headless ChatClient", () => {
           headers: { "content-type": "application/x-ndjson" },
         });
       }
-      const threadId = new URL(url).searchParams.get("conversationId") ?? "unknown";
-      const start = threadId === "thread-a" ? 12 : 22;
+      const parsedUrl = new URL(url);
+      const threadId = parsedUrl.searchParams.get("conversationId") ?? "unknown";
+      if (!parsedUrl.searchParams.has("offset")) {
+        return new Response(null, { status: 404 });
+      }
+      const start = threadId === "thread-a" ? 13 : 23;
       const events = [
         {
           lsn: start,
@@ -274,6 +471,10 @@ describe("headless ChatClient", () => {
         },
         {
           lsn: start + 1,
+          event: idleAuthorityFrame(threadId, String(start + 1)),
+        },
+        {
+          lsn: start + 2,
           event: {
             type: EventType.RUN_FINISHED,
             threadId,
@@ -298,15 +499,17 @@ describe("headless ChatClient", () => {
 
     const reconnects = requests.filter((request) => request.method === "GET");
     expect(reconnects.map((request) => new URL(request.url).searchParams.get("offset"))).toEqual([
-      "11",
-      "21",
+      null,
+      null,
+      "12",
+      "22",
     ]);
     await first.close();
     await second.close();
     await runtime.close();
   });
 
-  it("drops the HTTP cursor when terminal-free replay requires authoritative hydration", async () => {
+  it("accepts terminal-free HTTP hydration only when it carries authority", async () => {
     const requests: Array<{ readonly url: string; readonly method: string }> = [];
     let reconnectCount = 0;
     const fetcher = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -322,6 +525,10 @@ describe("headless ChatClient", () => {
             }),
             JSON.stringify({
               lsn: 11,
+              event: idleAuthorityFrame("restart", "11"),
+            }),
+            JSON.stringify({
+              lsn: 12,
               event: {
                 type: EventType.RUN_FINISHED,
                 threadId: "restart",
@@ -333,22 +540,14 @@ describe("headless ChatClient", () => {
           { headers: { "content-type": "application/x-ndjson" } },
         );
       }
+      if (!new URL(url).searchParams.has("offset")) {
+        return new Response(null, { status: 404 });
+      }
       reconnectCount += 1;
-      const events =
-        reconnectCount === 1
-          ? [{ lsn: 12, event: { type: EventType.STATE_SNAPSHOT, snapshot: {} } }]
-          : [
-              { lsn: 1, event: { type: EventType.STATE_SNAPSHOT, snapshot: {} } },
-              {
-                lsn: 2,
-                event: {
-                  type: EventType.RUN_FINISHED,
-                  threadId: "restart",
-                  runId: "authoritative",
-                  outcome: { type: "success" },
-                },
-              },
-            ];
+      const events = [
+        { lsn: 13, event: { type: EventType.STATE_SNAPSHOT, snapshot: {} } },
+        { lsn: 14, event: idleAuthorityFrame("restart", "14") },
+      ];
       return new Response(`${events.map((event) => JSON.stringify(event)).join("\n")}\n`, {
         headers: { "content-type": "application/x-ndjson" },
       });
@@ -360,14 +559,15 @@ describe("headless ChatClient", () => {
     await client.reconnect();
 
     const reconnects = requests.filter((request) => request.method === "GET");
+    expect(reconnectCount).toBe(1);
     expect(reconnects).toHaveLength(2);
-    expect(new URL(reconnects[0]!.url).searchParams.get("offset")).toBe("11");
-    expect(new URL(reconnects[1]!.url).searchParams.has("offset")).toBe(false);
+    expect(new URL(reconnects[0]!.url).searchParams.has("offset")).toBe(false);
+    expect(new URL(reconnects[1]!.url).searchParams.get("offset")).toBe("12");
     await client.close();
     await runtime.close();
   });
 
-  it("restarts authoritative hydration when a replay ends without a terminal frame", async () => {
+  it("accepts terminal-free replay when durable authority is explicit", async () => {
     const reconnects: ChatReconnectRequest[] = [];
     const driver: ChatTransportContract = {
       *sendMessages() {
@@ -375,21 +575,10 @@ describe("headless ChatClient", () => {
       },
       *reconnectToStream(request) {
         reconnects.push(request);
-        if (!request.restart) {
-          return streamOf([
-            { type: EventType.MESSAGES_SNAPSHOT, messages: [] },
-            { type: EventType.STATE_SNAPSHOT, snapshot: {} },
-          ]);
-        }
-        return streamOf([
+        return frameStream([
           { type: EventType.MESSAGES_SNAPSHOT, messages: [] },
           { type: EventType.STATE_SNAPSHOT, snapshot: {} },
-          {
-            type: EventType.RUN_FINISHED,
-            threadId: request.threadId,
-            runId: "authoritative-restart",
-            outcome: { type: "success" },
-          },
+          idleAuthorityFrame(request.threadId, "1"),
         ]);
       },
       *disconnect() {
@@ -404,12 +593,112 @@ describe("headless ChatClient", () => {
     await client.reconnect();
 
     expect(reconnects).toHaveLength(2);
-    expect(reconnects[0]?.restart).toBeUndefined();
-    expect(reconnects[1]?.restart).toBe(true);
     expect(client.getSnapshot()).toMatchObject({
       status: "ready",
       connectionStatus: "disconnected",
     });
+    await client.close();
+  });
+
+  it("applies typed admission conflict authority without exposing ready", async () => {
+    const driver: ChatTransportContract = {
+      *sendMessages(request) {
+        return frameStream([
+          runningAuthorityFrame(request.input.threadId, "2", "winning-run"),
+          {
+            type: EventType.RUN_ERROR,
+            code: "conversation_state_changed",
+            message: "Another participant admitted a Turn",
+          },
+        ]);
+      },
+      *reconnectToStream() {
+        return null;
+      },
+      *disconnect() {
+        return;
+      },
+    };
+    const client = createChatClient({ threadId: "admission-conflict", connection: driver });
+    await client.initialized;
+    await client.sendMessage("losing command");
+
+    expect(client.getSnapshot()).toMatchObject({
+      status: "error",
+      canSendMessage: false,
+      authority: { state: "running", revision: "2" },
+      error: { code: "conversation_state_changed" },
+    });
+    await client.close();
+  });
+
+  it("retains its monotonic authority baseline while a request is synchronizing", async () => {
+    const conversationId = "monotonic-authority-baseline";
+    const driver: ChatTransportContract = {
+      *sendMessages() {
+        return frameStream([
+          runningAuthorityFrame(conversationId, "4", "stale-run"),
+          {
+            type: EventType.RUN_ERROR,
+            code: "conversation_state_changed",
+            message: "stale command",
+          },
+        ]);
+      },
+      *reconnectToStream() {
+        return frameStream([idleAuthorityFrame(conversationId, "5")]);
+      },
+      *disconnect() {
+        return;
+      },
+    };
+    const client = createChatClient({ threadId: conversationId, connection: driver });
+    await client.initialized;
+    await client.sendMessage("must not regress");
+    expect(client.getSnapshot()).toMatchObject({
+      authority: { revision: "5", state: "idle" },
+      canSendMessage: true,
+      status: "error",
+    });
+    await client.close();
+  });
+
+  it("rejects RUN_FINISHED when durable authority remains active", async () => {
+    const driver: ChatTransportContract = {
+      *sendMessages(request) {
+        return frameStream([
+          runningAuthorityFrame(request.input.threadId, "1", request.input.runId),
+          {
+            type: EventType.RUN_STARTED,
+            threadId: request.input.threadId,
+            runId: request.input.runId,
+          },
+          {
+            type: EventType.RUN_FINISHED,
+            threadId: request.input.threadId,
+            runId: request.input.runId,
+            outcome: { type: "success" },
+          },
+        ]);
+      },
+      *reconnectToStream() {
+        return null;
+      },
+      *disconnect() {
+        return;
+      },
+    };
+    const client = createChatClient({
+      threadId: "terminal-authority-mismatch",
+      connection: driver,
+    });
+    await client.initialized;
+
+    await expect(client.sendMessage("must stay blocked")).rejects.toMatchObject({
+      code: "chat_authority_terminal_mismatch",
+    });
+    expect(client.getSnapshot().canSendMessage).toBe(false);
+    expect(client.getSnapshot().authority?.state).toBe("running");
     await client.close();
   });
 
@@ -538,9 +827,10 @@ describe("headless ChatClient", () => {
     const driver: ChatTransportContract = {
       *sendMessages(request) {
         requests.push(request);
-        if (request.trigger === "cancel-run") {
-          return gatedStream(
+        if (request.command.type === "interrupt-turn") {
+          return gatedFrames(
             [
+              idleAuthorityFrame(request.input.threadId, "3"),
               {
                 type: EventType.RUN_ERROR,
                 code: "PROGRAM_CANCELLED",
@@ -550,18 +840,42 @@ describe("headless ChatClient", () => {
             terminalCancellation.promise,
           );
         }
-        if (requests.filter((candidate) => candidate.trigger === "submit-message").length === 1) {
-          activeStarted.resolve(undefined);
-          return gatedStream(
-            [
-              {
-                type: EventType.RUN_ERROR,
-                code: "PROGRAM_CANCELLED",
-                message: "Program was cancelled",
+        if (
+          requests.filter((candidate) => candidate.command.type === "send-message").length === 1
+        ) {
+          return resource(function* (provide) {
+            let index = 0;
+            yield* provide({
+              *next(): Operation<IteratorResult<ConversationStreamEvent, void>> {
+                index += 1;
+                if (index === 1) {
+                  activeStarted.resolve(undefined);
+                  return {
+                    done: false,
+                    value: runningAuthorityFrame(request.input.threadId, "1", request.input.runId),
+                  };
+                }
+                if (index === 2) {
+                  yield* call(() => terminalCancellation.promise);
+                  return {
+                    done: false,
+                    value: idleAuthorityFrame(request.input.threadId, "2"),
+                  };
+                }
+                if (index === 3) {
+                  return {
+                    done: false,
+                    value: {
+                      type: EventType.RUN_ERROR,
+                      code: "PROGRAM_CANCELLED",
+                      message: "Program was cancelled",
+                    },
+                  };
+                }
+                return { done: true, value: undefined };
               },
-            ],
-            terminalCancellation.promise,
-          );
+            });
+          });
         }
         replacementStarted.resolve(undefined);
         return streamOf([
@@ -593,6 +907,7 @@ describe("headless ChatClient", () => {
 
     const active = client.sendMessage("active");
     await activeStarted.promise;
+    await Promise.resolve();
     const replacement = client.sendMessage("replacement");
     await Promise.resolve();
     await Promise.resolve();
@@ -600,9 +915,9 @@ describe("headless ChatClient", () => {
     expect(requests).toHaveLength(2);
     const original = requests[0]!;
     const cancellation = requests[1]!;
-    expect(cancellation.trigger).toBe("cancel-run");
+    expect(cancellation.command.type).toBe("interrupt-turn");
     expect(cancellation.input.runId).not.toBe(original.input.runId);
-    expect(cancellation.messageId).toBe(cancellation.input.runId);
+    expect(cancellation.command.commandId).toBe(cancellation.input.runId);
     expect(
       requests.some((request) =>
         request.input.messages.some(
@@ -615,7 +930,47 @@ describe("headless ChatClient", () => {
     await replacementStarted.promise;
     await Promise.all([active, replacement]);
     expect(requests).toHaveLength(3);
-    expect(requests[2]?.trigger).toBe("submit-message");
+    expect(requests[2]?.command.type).toBe("send-message");
+    await client.close();
+  });
+
+  it("rejects rather than drains queued sends after a run error", async () => {
+    const release = deferred<void>();
+    const driver: ChatTransportContract = {
+      *sendMessages(request) {
+        return gatedFrames(
+          [
+            runningAuthorityFrame(request.input.threadId, "1", request.input.runId),
+            idleAuthorityFrame(request.input.threadId, "2"),
+            {
+              type: EventType.RUN_ERROR,
+              code: "provider_failed",
+              message: "provider failed",
+            },
+          ],
+          release.promise,
+        );
+      },
+      *reconnectToStream() {
+        return null;
+      },
+      *disconnect() {
+        return;
+      },
+    };
+    const client = createChatClient({
+      threadId: "queue-run-error",
+      initialConversation: "new",
+      connection: driver,
+    });
+    await client.initialized;
+    const active = client.sendMessage("active");
+    await Promise.resolve();
+    const queued = client.sendMessage("must not run");
+    release.resolve(undefined);
+    await active;
+    await expect(queued).rejects.toMatchObject({ code: "provider_failed" });
+    expect(client.getSnapshot().queue).toEqual([]);
     await client.close();
   });
 

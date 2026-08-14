@@ -14,6 +14,7 @@ import {
   buildAgUiCustomState,
   createChatProjection,
   foldAGUIEvent,
+  isConversationAuthorityFrame,
   materializeChatMessages,
   projectChatMessagesToAGUI,
   toProviderHistorySnapshot,
@@ -267,10 +268,11 @@ function activityProjectionEventsFromFrames(frames: readonly DurableFrame[]): St
   return [...snapshots, ...deltas];
 }
 
-function providerHistoryFromFrames(frames: readonly DurableFrame[]) {
+export function providerHistoryFromFrames(frames: readonly DurableFrame[]) {
   let projection = createChatProjection();
   for (const frame of frames) {
     if (
+      !isConversationAuthorityFrame(frame.event) &&
       frame.event.type !== EventType.ACTIVITY_SNAPSHOT &&
       frame.event.type !== EventType.ACTIVITY_DELTA
     ) {

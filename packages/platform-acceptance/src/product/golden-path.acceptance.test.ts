@@ -276,6 +276,16 @@ describe("product facade golden path", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            command: {
+              type: "send-message",
+              commandId: "00000000-0000-4000-8000-000000000001",
+              issuedAt: Date.now(),
+              expiresAt: Date.now() + 60_000,
+              basisRevision: null,
+              messageId: "user:1",
+            },
+            clientId: "golden-path-client",
+            conversationId: "golden-path",
             input: {
               threadId: "golden-path",
               runId: "golden-path-run",

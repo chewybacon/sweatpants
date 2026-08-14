@@ -1,7 +1,10 @@
 import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import type { AGUIEvent } from "@ag-ui/core";
-import type { ChatHistoryEntry } from "@sweatpants/chat-core";
+import type {
+  ChatHistoryEntry,
+  ConversationCommand,
+  ConversationStreamEvent,
+} from "@sweatpants/chat-core";
 import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ToolExecutionRef } from "@sweatpants/tool-runtime";
 import type { ResumeEntry } from "./types.ts";
@@ -25,6 +28,7 @@ export interface ElicitResponse {
 export interface PluginAbortRequest {
   sessionId?: string;
   reason?: string;
+  commandId?: string;
 }
 
 export interface ModelSelection {
@@ -33,7 +37,8 @@ export interface ModelSelection {
 }
 
 export interface ChatRequestBody {
-  trigger?: "submit-message" | "regenerate-message" | "cancel-run";
+  /** Present on mutating chat commands; absent on GET/HEAD hydration. */
+  command?: ConversationCommand;
   clientId?: string;
   messageId?: string;
   conversationId?: string;
@@ -61,7 +66,7 @@ export interface ChatRequestBody {
 
 export interface DurableStreamEvent {
   lsn: number;
-  event: AGUIEvent;
+  event: ConversationStreamEvent;
 }
 
 export interface DurableStreamParams {

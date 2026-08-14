@@ -6,5 +6,5 @@ export interface ResumeEntry {
   payload?: unknown;
 }
 
-export type { AGUIEvent as StreamEvent } from "@ag-ui/core";
+export type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 export type { ElicitRequestStreamEvent } from "@sweatpants/chat-core";

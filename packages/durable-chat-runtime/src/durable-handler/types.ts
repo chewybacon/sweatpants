@@ -1,11 +1,10 @@
-import type { Operation } from "effection";
+import type { Operation, Stream } from "effection";
 import type { JsonObject } from "@sweatpants/foundation";
 import type { Model, StreamOptions } from "@sweatpants/model-provider";
 import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
 import type { ToolRuntime } from "@sweatpants/tool-runtime";
-import type { HistoryPolicy } from "@sweatpants/chat-core";
+import type { AgUiRunMetadata, ConversationAuthority, HistoryPolicy } from "@sweatpants/chat-core";
 import type { StreamEvent, ChatHistoryEntry } from "../handler/types.ts";
-import type { AgUiRunMetadata } from "@sweatpants/chat-core";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
@@ -76,16 +75,18 @@ export interface ProgramRuntimeChatEngineParams {
   onResumeAccepted?: () => Operation<void>;
   pluginAbort?: PluginAbortRequest;
   /** Publishes a bounded nonterminal checkpoint for a parked execution. */
-  publishCheckpoint?: (request: { events: readonly StreamEvent[] }) => Operation<void>;
+  publishCheckpoint?: (request: {
+    events: readonly StreamEvent[];
+  }) => Operation<ConversationAuthority>;
   /** Commits accepted terminal authority output and publishes Session History. */
   publishTerminal(request: {
     outcome: Json;
     disposition: "completed" | "failed" | "cancelled";
     events: readonly StreamEvent[];
-  }): Operation<void>;
+  }): Operation<ConversationAuthority>;
 }
 
-export type ProgramRuntimeChatEngine = import("effection").Stream<StreamEvent, void>;
+export type ProgramRuntimeChatEngine = Stream<StreamEvent, void>;
 
 /**
  * Durable handler configuration. ProgramRuntime is the sole execution engine,
@@ -94,6 +95,8 @@ export type ProgramRuntimeChatEngine = import("effection").Stream<StreamEvent, v
 export interface DurableChatHandlerConfig {
   setup?: ChatHandlerSetup;
   maxToolIterations?: number;
+  /** Trusted composition identity; wire clientId remains correlation only. */
+  resolveParticipantId?: (request: Request) => Operation<string>;
   programDriverJournalStore: ProgramDriverJournalStore;
   /** Bounded private execution authority persistence; shared for Host replacement. */
   executionStore?: ExecutionStore;

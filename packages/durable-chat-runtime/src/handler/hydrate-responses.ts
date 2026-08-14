@@ -21,6 +21,8 @@ import {
   sanitizeBoundarySnapshot,
 } from "../projection.ts";
 import { createEmptyStream, parseOffsetParam, toOffsetString } from "@sweatpants/durable-streams";
+import { ConversationStoreApi } from "@sweatpants/history-store/port";
+import { conversationAuthorityFrame } from "../conversation-authority.ts";
 
 type ParsedOffset = ReturnType<typeof parseOffsetParam>;
 
@@ -72,6 +74,24 @@ function storedCheckpointHydrateEvents(
   ];
 }
 
+export function* createConversationCommandErrorResponse(params: {
+  conversationId: string;
+  code: string;
+  message: string;
+}): Operation<HydrateResponse> {
+  const head = yield* ConversationStoreApi.operations.loadHead(params.conversationId);
+  const events: StreamEvent[] = [
+    conversationAuthorityFrame(params.conversationId, head),
+    {
+      type: EventType.RUN_ERROR,
+      code: params.code,
+      message: params.message,
+    },
+  ];
+  const subscription = yield* createSyntheticFrameStream(toFrames(events));
+  return { subscription };
+}
+
 export function* createStoredConversationCheckpointResponse(params: {
   ctx: { request: Request; headers: Headers; status?: number };
   conversationId: string;
@@ -82,21 +102,21 @@ export function* createStoredConversationCheckpointResponse(params: {
   const { ctx, conversationId, checkpointEvents, parsedOffset, terminalRunId } = params;
   const offsetRequested = new URL(ctx.request.url).searchParams.has("offset");
   const resetRequested = offsetRequested && !parsedOffset.isNow && parsedOffset.value !== 0;
-  const emptyRequested = offsetRequested && (parsedOffset.isNow || parsedOffset.value === 0);
-
   ctx.headers.set("Stream-Next-Offset", toOffsetString(0));
   ctx.headers.set("Stream-Up-To-Date", "true");
   if (resetRequested) {
     ctx.headers.set("Stream-Cursor-Reset", "true");
   }
 
-  if (ctx.request.method.toUpperCase() === "HEAD" || emptyRequested) {
+  if (ctx.request.method.toUpperCase() === "HEAD") {
     const subscription = yield* createEmptyStream();
     return { subscription };
   }
 
+  const head = yield* ConversationStoreApi.operations.loadHead(conversationId);
+  const events = storedCheckpointHydrateEvents(checkpointEvents, conversationId, terminalRunId);
   const subscription = yield* createSyntheticFrameStream(
-    toFrames(storedCheckpointHydrateEvents(checkpointEvents, conversationId, terminalRunId)),
+    toFrames([...events, conversationAuthorityFrame(conversationId, head)]),
   );
 
   return { subscription };
@@ -168,6 +188,8 @@ export function* createConversationHydrateResponse(params: {
     ctx.headers.set("Stream-Cursor-Reset", "true");
   }
 
+  const head = yield* ConversationStoreApi.operations.loadHead(conversationId);
+  syntheticEvents.push(conversationAuthorityFrame(conversationId, head));
   const subscription = yield* createSyntheticFrameStream(toFrames(syntheticEvents));
   return {
     subscription,

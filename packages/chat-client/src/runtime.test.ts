@@ -1,20 +1,52 @@
+import { EventType } from "@ag-ui/core";
 import type { Operation, Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import {
+  CONVERSATION_AUTHORITY_FRAME_TYPE,
   createChatClient,
   createChatRuntime,
   type AGUIEvent,
+  type ConversationStreamEvent,
   type ChatTransportContract,
 } from "./index.ts";
 
-function stream(events: readonly AGUIEvent[]): Stream<AGUIEvent, void> {
+function stream(events: readonly AGUIEvent[]): Stream<ConversationStreamEvent, void> {
+  const started = events.find((event) => event.type === EventType.RUN_STARTED);
+  const frames: readonly ConversationStreamEvent[] = started
+    ? [
+        {
+          type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+          authority: {
+            conversationId: started.threadId,
+            revision: "1",
+            state: "running",
+            activeLogicalTurnId: started.runId,
+            activeExecutionId: `execution:${started.runId}`,
+            latestCompletedExecutionId: null,
+          },
+        },
+        ...events.slice(0, -1),
+        {
+          type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+          authority: {
+            conversationId: started.threadId,
+            revision: "2",
+            state: "idle",
+            activeLogicalTurnId: null,
+            activeExecutionId: null,
+            latestCompletedExecutionId: `execution:${started.runId}`,
+          },
+        },
+        ...events.slice(-1),
+      ]
+    : events;
   return (function* () {
     let index = 0;
     return {
-      next(): Operation<IteratorResult<AGUIEvent, void>> {
+      next(): Operation<IteratorResult<ConversationStreamEvent, void>> {
         return (function* () {
-          return index < events.length
-            ? { done: false, value: events[index++] }
+          return index < frames.length
+            ? { done: false, value: frames[index++] }
             : { done: true, value: undefined };
         })();
       },
@@ -209,8 +241,19 @@ describe("ChatRuntime composition", () => {
   });
 
   it("has no implicit global client when using the standalone factory", async () => {
-    const first = createChatClient({ threadId: "one" });
-    const second = createChatClient({ threadId: "two" });
+    const connection: ChatTransportContract = {
+      *sendMessages() {
+        return stream([]);
+      },
+      *reconnectToStream() {
+        return null;
+      },
+      *disconnect() {
+        return;
+      },
+    };
+    const first = createChatClient({ threadId: "one", connection });
+    const second = createChatClient({ threadId: "two", connection });
     await Promise.all([first.initialized, second.initialized]);
     first.setMessages([]);
     expect(second.getSnapshot().messages).toHaveLength(0);

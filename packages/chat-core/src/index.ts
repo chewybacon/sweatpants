@@ -105,7 +105,7 @@ export type {
   UserMessageInput,
   SendMessageOptions,
   RegenerateOptions,
-  ChatSendTrigger,
+  ConversationCommand,
   ResumeEntry,
   ChatTransportRequest,
   ChatReconnectRequest,
@@ -159,6 +159,7 @@ export {
   decodeActivityDeltaEvent,
 } from "./chat-client-codec.ts";
 export type { ChatProtocolErrorCode } from "./chat-client-codec.ts";
+export * from "./conversation-protocol.ts";
 export {
   ChatProjectionError,
   createChatProjection,

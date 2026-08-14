@@ -79,6 +79,8 @@ function beginRequest() {
     participantId: "test-rig",
     acceptedAt: 1,
     retainUntil: 10_000,
+    expectedRevision: "0",
+    admission: "send-message",
   } as const;
 }
 
@@ -204,7 +206,7 @@ describe("terminal Turn publication", () => {
     });
   });
 
-  it("repairs an admitted head when authority open fails and retries idempotently", async () => {
+  it("retains admitted recovery evidence when authority open fails and retries idempotently", async () => {
     const conversation = createMemoryConversationStore();
     const execution = createMemoryExecutionStore();
     let failOpen = true;
@@ -229,8 +231,8 @@ describe("terminal Turn publication", () => {
       }
       expect(failure).toMatchObject({ message: "injected authority open failure" });
       expect(yield* ConversationStoreApi.operations.loadHead("session-1")).toMatchObject({
-        state: "idle",
-        activeExecutionId: null,
+        state: "running",
+        activeExecutionId: "execution-1",
       });
       expect(
         yield* ConversationStoreApi.operations.getCommandReceipt("session-1", "command-1"),
@@ -268,23 +270,111 @@ describe("terminal Turn publication", () => {
     });
   });
 
-  it("joins an active execution for resume without admitting a new send-message", async () => {
+  it("atomically resumes a parked execution without admitting a new Turn", async () => {
     const conversation = createMemoryConversationStore();
     const execution = createMemoryExecutionStore();
     await run(function* () {
       yield* installExecutionStore(execution);
       yield* installConversation(conversation);
       const first = yield* beginTurnPublication(beginRequest());
+      const runningHead = yield* ConversationStoreApi.operations.loadHead("session-1");
+      if (!runningHead) throw new Error("missing running head");
+      const parked = yield* ConversationStoreApi.operations.compareAndSwapHead(
+        "session-1",
+        runningHead.revision,
+        runningHead.ownerEpoch,
+        {
+          state: "parked",
+          checkpoint: runningHead.checkpoint,
+          terminalHistory: runningHead.terminalHistory,
+          activeLogicalTurnId: runningHead.activeLogicalTurnId,
+          activeExecutionId: runningHead.activeExecutionId,
+          latestCompletedExecutionId: runningHead.latestCompletedExecutionId,
+          activeSegment: null,
+          activeCommand: runningHead.activeCommand,
+          deletedAt: null,
+          ownerTransition: { kind: "clear" },
+        },
+      );
+      if (parked.status !== "committed") throw new Error("failed to park Turn");
       const joined = yield* beginTurnPublication({
         ...beginRequest(),
+        expectedRevision: parked.head.revision,
         executionId: "execution-2",
         commandId: "command-2",
         commandDigest: "command-digest-2",
-        admission: "join-active",
+        admission: "respond-to-elicit",
+        expectedLogicalTurnId: first.turnId,
+        expectedExecutionId: first.executionId,
       });
       expect(joined.executionId).toBe(first.executionId);
       expect((yield* ConversationStoreApi.operations.loadHead("session-1"))?.state).toBe("running");
     });
+  });
+
+  it("rejects an absent-head loser and never rebases it onto the winner", async () => {
+    const conversation = createMemoryConversationStore();
+    const execution = createMemoryExecutionStore();
+    let failure: unknown;
+    let secondRecord: unknown;
+    await run(function* () {
+      yield* installExecutionStore(execution);
+      yield* installConversationStore(conversation);
+      yield* beginTurnPublication({
+        ...beginRequest(),
+        expectedRevision: null,
+      });
+      try {
+        yield* beginTurnPublication({
+          ...beginRequest(),
+          executionId: "execution-2",
+          turnId: "turn-2",
+          commandId: "command-2",
+          commandDigest: "command-digest-2",
+          expectedRevision: null,
+        });
+      } catch (error) {
+        failure = error;
+      }
+      secondRecord = yield* TurnJournalAuthority.operations.read("execution-2");
+    });
+    expect(failure).toMatchObject({ code: "conversation_state_changed" });
+    expect(secondRecord).toBeNull();
+  });
+
+  it("rejects a stale idle command after another Turn completed", async () => {
+    const conversation = createMemoryConversationStore();
+    const execution = createMemoryExecutionStore();
+    let failure: unknown;
+    let secondRecord: unknown;
+    await run(function* () {
+      yield* installExecutionStore(execution);
+      yield* installConversation(conversation);
+      yield* beginTurnPublication(beginRequest());
+      yield* completeAndPublishTurn({
+        executionId: "execution-1",
+        outcome: { storage: "inline", value: "TERMINAL_V1" },
+        disposition: "completed",
+        completedAt: 100,
+        facts,
+        project,
+      });
+      try {
+        yield* beginTurnPublication({
+          ...beginRequest(),
+          executionId: "execution-2",
+          turnId: "turn-2",
+          commandId: "command-2",
+          commandDigest: "command-digest-2",
+          expectedRevision: "0",
+        });
+      } catch (error) {
+        failure = error;
+      }
+      secondRecord = yield* TurnJournalAuthority.operations.read("execution-2");
+    });
+    expect(failure).toMatchObject({ code: "conversation_state_changed" });
+    expect(secondRecord).toBeNull();
   });
 
   it("rejects a second send-message while the conversation is running", async () => {
@@ -306,7 +396,7 @@ describe("terminal Turn publication", () => {
         failure = error;
       }
     });
-    expect(String(failure)).toMatch(/is not idle/);
+    expect(String(failure)).toMatch(/changed after revision/);
   });
 
   it("rejects facts outside the capsule's accepted identity and sequence frontier", async () => {

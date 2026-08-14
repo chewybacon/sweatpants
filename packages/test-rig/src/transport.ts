@@ -1,9 +1,10 @@
-import { EventType, type AGUIEvent } from "@ag-ui/core";
+import { EventType } from "@ag-ui/core";
+import type { ConversationStreamEvent } from "@sweatpants/chat-client";
 import type { ChatFetch } from "./chat.ts";
 
 export interface StreamFrame {
   lsn: number;
-  event: AGUIEvent;
+  event: ConversationStreamEvent;
 }
 
 export interface StreamCheckpoint {
@@ -224,19 +225,30 @@ export function createStreamTransportHandle(
 
   return {
     openTurn(options) {
+      const runId = crypto.randomUUID();
+      const messageId = `user:${crypto.randomUUID()}`;
       return open(
         fetch(`/api/chat?conversationId=${encodeURIComponent(options.conversationId)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
           body: JSON.stringify({
+            command: {
+              type: "send-message",
+              commandId: runId,
+              issuedAt: Date.now(),
+              expiresAt: Date.now() + 60_000,
+              basisRevision: null,
+              messageId,
+            },
+            clientId: "test-rig-stream",
             conversationId: options.conversationId,
             input: {
               threadId: options.conversationId,
-              runId: crypto.randomUUID(),
+              runId,
               state: {},
               messages: [
                 {
-                  id: `user:${crypto.randomUUID()}`,
+                  id: messageId,
                   role: "user",
                   content: options.message,
                 },
