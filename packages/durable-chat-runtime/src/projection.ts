@@ -238,34 +238,36 @@ export function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnap
 }
 
 function activityProjectionEventsFromFrames(frames: readonly DurableFrame[]): StreamEvent[] {
-  const latest = new Map<
-    string,
-    { index: number; event: Extract<StreamEvent, { type: EventType.ACTIVITY_SNAPSHOT }> }
-  >();
-  for (let index = 0; index < frames.length; index += 1) {
-    const event = frames[index]!.event;
-    if (event.type === EventType.ACTIVITY_SNAPSHOT) {
-      latest.set(event.messageId, { index, event });
+  let projection = createChatProjection();
+  const order: string[] = [];
+  for (const frame of frames) {
+    const event = frame.event;
+    if (
+      isConversationAuthorityFrame(event) ||
+      (event.type !== EventType.ACTIVITY_SNAPSHOT && event.type !== EventType.ACTIVITY_DELTA)
+    ) {
+      continue;
     }
+    if (event.type === EventType.ACTIVITY_SNAPSHOT && !order.includes(event.messageId)) {
+      order.push(event.messageId);
+    }
+    projection = foldAGUIEvent(projection, event);
   }
 
-  const snapshots = [...latest.values()]
-    .sort((left, right) => left.index - right.index)
-    .map(({ event }) => event);
-  const deltas = frames
-    .filter(
-      (
-        frame,
-      ): frame is DurableFrame & {
-        event: Extract<StreamEvent, { type: EventType.ACTIVITY_DELTA }>;
-      } => frame.event.type === EventType.ACTIVITY_DELTA,
-    )
-    .filter((frame) => {
-      const snapshot = latest.get(frame.event.messageId);
-      return snapshot !== undefined && frames.indexOf(frame) > snapshot.index;
-    })
-    .map((frame) => frame.event);
-  return [...snapshots, ...deltas];
+  return order.flatMap((activityRecordId) => {
+    const nodeId = projection.activityNodeByRecordId.get(activityRecordId);
+    const projected = nodeId ? projection.nodes.get(nodeId) : undefined;
+    if (!projected || projected.synthetic) return [];
+    return [
+      {
+        type: EventType.ACTIVITY_SNAPSHOT,
+        messageId: activityRecordId,
+        activityType: "sweatpants:public-execution",
+        content: { version: 1 as const, node: projected.node },
+        replace: true,
+      },
+    ];
+  });
 }
 
 export function providerHistoryFromFrames(frames: readonly DurableFrame[]) {

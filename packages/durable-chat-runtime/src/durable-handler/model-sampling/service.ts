@@ -8,11 +8,7 @@ import {
   type Model,
   type StreamOptions,
 } from "@sweatpants/model-provider";
-import {
-  assistantToolCalls,
-  settleModelSample,
-  type ModelSamplingService,
-} from "@sweatpants/model-sampling";
+import { settleModelSample, type ModelSamplingService } from "@sweatpants/model-sampling";
 import type { HistoryPolicy } from "@sweatpants/chat-core";
 import { useLogger } from "../../logger/index.ts";
 import type { ChatToolCatalog } from "../program-driver-schema.ts";
@@ -38,7 +34,8 @@ export function createHostModelSamplingService(options: {
   historyPolicy?: HistoryPolicy;
   /** Execution-owned samples must use a relay, not the Host Turn event writer. */
   emitLiveEvents?: boolean;
-  onTerminalStreamed?: () => void;
+  onLiveMessageStarted?: (messageId: string) => void;
+  onLiveMessageEnded?: (messageId: string) => void;
 }): ModelSamplingService {
   return {
     // Provider streaming intentionally keeps plan, delivery, settlement, and cancellation in one pump.
@@ -68,6 +65,15 @@ export function createHostModelSamplingService(options: {
         (yield* TurnEventApi.operations.installed());
       let partialText = "";
       let streamStarted = false;
+      const publicFailureDetails = () =>
+        streamStarted && plan.delivery.type === "outer-assistant" && partialText.length > 0
+          ? {
+              publicAssistantPartial: {
+                messageId: plan.delivery.messageId,
+                text: partialText,
+              },
+            }
+          : undefined;
       return yield* race([
         (function* (): Operation<
           | { status: "ok"; value: ReturnType<typeof settleModelSample> }
@@ -85,9 +91,7 @@ export function createHostModelSamplingService(options: {
                     type: EventType.TEXT_MESSAGE_END,
                     messageId: plan.delivery.messageId,
                   });
-                  if (assistantToolCalls(result.message).length === 0) {
-                    options.onTerminalStreamed?.();
-                  }
+                  options.onLiveMessageEnded?.(plan.delivery.messageId);
                 }
                 return { status: "ok", value: result };
               }
@@ -101,6 +105,7 @@ export function createHostModelSamplingService(options: {
                 if (plan.delivery.type === "outer-assistant" && deliverOuter) {
                   if (!streamStarted) {
                     streamStarted = true;
+                    options.onLiveMessageStarted?.(plan.delivery.messageId);
                     yield* TurnEventApi.operations.emit({
                       type: EventType.TEXT_MESSAGE_START,
                       messageId: plan.delivery.messageId,
@@ -125,13 +130,20 @@ export function createHostModelSamplingService(options: {
                 partial: { text: partialText, interrupted: true },
               };
             }
-            if (error instanceof CrankError) throw error;
-            if (error instanceof UnsupportedModelCapabilityError) {
-              throw new CrankError("unsupported_model_capability", error.message, undefined, {
+            if (error instanceof CrankError) {
+              throw new CrankError(error.code, error.message, publicFailureDetails(), {
                 cause: error,
               });
             }
-            throw new CrankError("model_runtime_failed", "Provider error", undefined, {
+            if (error instanceof UnsupportedModelCapabilityError) {
+              throw new CrankError(
+                "unsupported_model_capability",
+                error.message,
+                publicFailureDetails(),
+                { cause: error },
+              );
+            }
+            throw new CrankError("model_runtime_failed", "Provider error", publicFailureDetails(), {
               cause: error,
             });
           }

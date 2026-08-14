@@ -39,6 +39,22 @@ function activity(input: {
 }
 
 describe("headless nested projection", () => {
+  it("replaces the server-derived base when a complete message snapshot arrives", () => {
+    let state = createChatProjection();
+    state = foldAGUIEvent(state, {
+      type: EventType.MESSAGES_SNAPSHOT,
+      messages: [{ id: "assistant-live", role: "assistant", content: "same answer" }],
+    });
+    state = foldAGUIEvent(state, {
+      type: EventType.MESSAGES_SNAPSHOT,
+      messages: [{ id: "assistant-snapshot", role: "assistant", content: "same answer" }],
+    });
+
+    expect(materializeChatMessages(state).map((message) => message.id)).toEqual([
+      "assistant-snapshot",
+    ]);
+  });
+
   it("preserves chronological root message order when turn-local sequences repeat", () => {
     let state = createChatProjection();
     for (const messageId of ["user-1", "assistant-1", "user-2", "assistant-2"]) {

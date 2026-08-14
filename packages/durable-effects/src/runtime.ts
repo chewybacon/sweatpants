@@ -114,6 +114,20 @@ export function* useDurableEffectRegistry(): Operation<DurableEffectRegistry> {
 }
 
 const MAX_INLINE_BYTES = 1024 * 1024;
+const MAX_ERROR_DETAILS_BYTES = 64 * 1024;
+
+function safeErrorDetails(error: unknown): Json | undefined {
+  if (error === null || typeof error !== "object" || !("details" in error)) return undefined;
+  try {
+    const details = canonicalSnapshot(assertJson(error.details)).value;
+    return new TextEncoder().encode(canonicalSnapshot(details).canonical).byteLength <=
+      MAX_ERROR_DETAILS_BYTES
+      ? details
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Canonical host-effect dispatch API. Authority orchestration resolves its returned outcome. */
 export const DurableEffects = createApi("durable-effects:execute", {
@@ -179,11 +193,13 @@ export const DurableEffects = createApi("durable-effects:execute", {
       return { status: "error", error: disposition.error };
     } catch (error) {
       if (controller.signal.aborted) return { status: "cancelled" };
+      const details = safeErrorDetails(error);
       return {
         status: "error",
         error: {
           code: errorCode(error),
           message: error instanceof Error ? error.message : "Durable effect failed",
+          ...(details === undefined ? {} : { details }),
         },
       };
     } finally {

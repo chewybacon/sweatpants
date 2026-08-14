@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { call } from "effection";
 import { describe, expect, it } from "vitest";
 import { projectChatMessagesToAGUI } from "@sweatpants/chat-core";
@@ -35,15 +36,39 @@ describe("ordinary message admission", () => {
       },
       function* (s) {
         const conversation = s.conversation();
+        const firstStart = s.agui.mark();
         const first = yield* conversation.send("IDENTITY_FIRST_USER_V1");
         const firstRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
         yield* firstRequest.respond.text("IDENTITY_FIRST_ASSISTANT_V1");
         yield* first.settled();
+        const firstTypes = s.agui.events(firstStart).map((event) => event.type);
+        expect(firstTypes.indexOf(EventType.MESSAGES_SNAPSHOT)).toBeLessThan(
+          firstTypes.indexOf(EventType.RUN_STARTED),
+        );
+        expect(firstTypes.indexOf(EventType.STATE_SNAPSHOT)).toBeLessThan(
+          firstTypes.indexOf(EventType.RUN_STARTED),
+        );
+        const firstAssistantId = conversation
+          .snapshot()
+          .messages.find(
+            (message) =>
+              message.role === "assistant" &&
+              JSON.stringify(message).includes("IDENTITY_FIRST_ASSISTANT_V1"),
+          )?.id;
+        expect(firstAssistantId).toBeTruthy();
 
+        const secondStart = s.agui.mark();
         const second = yield* conversation.send("IDENTITY_SECOND_USER_V1");
         const secondRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
         yield* secondRequest.respond.text("IDENTITY_SECOND_ASSISTANT_V1");
         yield* second.settled();
+        const secondTypes = s.agui.events(secondStart).map((event) => event.type);
+        expect(secondTypes.indexOf(EventType.MESSAGES_SNAPSHOT)).toBeLessThan(
+          secondTypes.indexOf(EventType.RUN_STARTED),
+        );
+        expect(secondTypes.indexOf(EventType.STATE_SNAPSHOT)).toBeLessThan(
+          secondTypes.indexOf(EventType.RUN_STARTED),
+        );
 
         const matching = conversation
           .snapshot()
@@ -53,6 +78,7 @@ describe("ordinary message admission", () => {
               JSON.stringify(message).includes("IDENTITY_FIRST_ASSISTANT_V1"),
           );
         expect(matching).toHaveLength(1);
+        expect(matching[0]?.id).toBe(firstAssistantId);
       },
     );
   }, 30_000);

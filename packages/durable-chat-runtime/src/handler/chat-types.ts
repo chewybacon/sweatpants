@@ -18,7 +18,7 @@ export type ChatHandlerSetup = (ctx: ChatHandlerSetupContext) => Operation<void>
 
 export interface ElicitResponse {
   sessionId: string;
-  callId: string;
+  callId?: string;
   toolName?: string;
   ref?: ToolExecutionRef;
   elicitId: string;

@@ -117,7 +117,7 @@ async function runStaleForeignElicit(settlement: Settlement): Promise<void> {
           ? { action: "accept", content: { flightId: "FL002" } }
           : { action: "decline" },
     });
-    expect(runErrorCode(conflict)).toBe("RESUME_CONFLICT");
+    expect(runErrorCode(conflict)).toBe("command_identity_conflict");
 
     const journalAfterConflict = await readJournal(
       substrate.journalStore,

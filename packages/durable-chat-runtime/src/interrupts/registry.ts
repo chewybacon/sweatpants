@@ -327,6 +327,19 @@ export function openInterruptsForThread(threadId: string): OpenInterruptRecord[]
   return interruptRecordsForThread(threadId).filter((record) => record.status === "open");
 }
 
+/** Mirrors an authority-accepted typed response into the process-local render index. */
+export function settleInterruptForThread(
+  threadId: string,
+  interruptId: string,
+  status: "resolved" | "cancelled",
+): void {
+  upsertInterruptRecords(
+    openInterruptsForThread(threadId)
+      .filter((record) => record.interruptId === interruptId)
+      .map((record) => ({ ...record, status })),
+  );
+}
+
 /** Marks every open interrupt on a thread cancelled after stop or supersession. */
 export function cancelOpenInterruptsForThread(threadId: string): void {
   upsertInterruptRecords(
