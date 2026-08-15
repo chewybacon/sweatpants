@@ -1,11 +1,12 @@
 import type { Operation } from "effection";
-import type { JsonObject } from "@sweatpants/foundation";
+import { assertJson, type JsonObject } from "@sweatpants/foundation";
 import {
   MODEL_SAMPLE_EFFECT,
   decodeModelSampleResult,
   encodeModelSampleRequest,
   type ModelSampleRequest,
   type ModelSampleResult,
+  type ModelSampleSourceRequest,
 } from "./contract.ts";
 
 /** The narrow durable capability required to issue the canonical model.sample effect. */
@@ -32,6 +33,20 @@ export function* sampleDurableModel(
   const wireResult = yield* caller.effect(
     MODEL_SAMPLE_EFFECT,
     encodeModelSampleRequest(request),
+    resolver,
+  );
+  return decodeModelSampleResult(wireResult);
+}
+
+/** Executes a bounded source-recipe model pull without embedding provider context. */
+export function* sampleDurableModelSource(
+  caller: ModelSampleEffectCaller,
+  request: ModelSampleSourceRequest,
+  resolver: { readonly audience: string; readonly route?: string },
+): Operation<ModelSampleResult> {
+  const wireResult = yield* caller.effect(
+    MODEL_SAMPLE_EFFECT,
+    assertJson(request) as JsonObject,
     resolver,
   );
   return decodeModelSampleResult(wireResult);

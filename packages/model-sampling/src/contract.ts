@@ -51,6 +51,7 @@ export type ModelContextSource =
       readonly executionId: string;
       readonly taskId: string;
       readonly taskJournalFrontier: string;
+      readonly systemPrompt?: string;
       readonly contextArtifact?: { readonly objectId: string };
     };
 
@@ -142,6 +143,10 @@ const modelContextSourceSchema = z.discriminatedUnion("type", [
     executionId: z.string().min(1).max(1024),
     taskId: z.string().min(1).max(512),
     taskJournalFrontier: z.string().min(1).max(512),
+    systemPrompt: z
+      .string()
+      .max(64 * 1024)
+      .optional(),
     contextArtifact: z.strictObject({ objectId: z.string().min(1).max(512) }).optional(),
   }),
 ]);
@@ -225,6 +230,9 @@ const modelSampleSourceRequestSchema = z.strictObject({
   modelPreferences: z.json().optional(),
   classifications: z.array(z.json()).max(MAX_MODEL_SAMPLE_CLASSIFICATIONS).optional(),
 });
+const modelContextSourceParser = parser(modelContextSourceSchema).map(
+  (value) => value as ModelContextSource,
+);
 const modelSampleSourceRequestParser = parser(modelSampleSourceRequestSchema).map(
   (value) => value as ModelSampleSourceRequest,
 );
@@ -298,6 +306,10 @@ export const modelSampleCancellationPartialParser: Parser<ModelSampleCancellatio
 
 export function decodeModelSampleRequest(value: unknown): ModelSampleRequest {
   return requireParsed(modelSampleRequestParser, value, "$", "invalid model sampling request");
+}
+
+export function decodeModelContextSource(value: unknown): ModelContextSource {
+  return requireParsed(modelContextSourceParser, value, "$", "invalid model context source");
 }
 
 export function decodeModelSampleSourceRequest(value: unknown): ModelSampleSourceRequest {

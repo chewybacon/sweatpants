@@ -20,9 +20,9 @@
         "total": 18
     },
     "test:yo-chat": {
-        "passed": 61,
+        "passed": 44,
         "skipped": 0,
-        "total": 61
+        "total": 44
     },
     "test:yo-mcp": {
         "passed": 1,

@@ -1398,8 +1398,76 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   // any replay projection or runtime continuation can occur.
                   const respondCommand =
                     body.command?.type === "respond-to-elicit" ? body.command : null;
+                  if (
+                    authorityTurn &&
+                    authorityTurn.executionId === proposedAuthorityTurn.executionId &&
+                    !recoveredPublication
+                  ) {
+                    const runningHead = yield* conversationStore.loadHead(requestedConversationId);
+                    if (runningHead) {
+                      const admissionFacts: Json[] = [
+                        ...toProviderHistorySnapshot(body.messages).map(acceptedPublicMessageFact),
+                        assertJson(runStartedEvent),
+                      ];
+                      yield* persistConversationCheckpoint(conversationStore, {
+                        conversationId: requestedConversationId,
+                        causeKey: stableTupleHash([
+                          authorityTurn.executionId,
+                          "nonterminal",
+                          admissionFacts,
+                        ]),
+                        cause: {
+                          kind: "tail-cut",
+                          cutKind: "rolling",
+                          executionId: authorityTurn.executionId,
+                          logicalTurnId: authorityTurn.turnId,
+                        },
+                        roots: admissionFacts,
+                        ...(checkpointTargets ? { targets: checkpointTargets } : {}),
+                        expectedRevision: runningHead.revision,
+                        expectedOwnerEpoch: runningHead.ownerEpoch,
+                        expectedExecutionId: authorityTurn.executionId,
+                        proposal: {
+                          state: runningHead.state,
+                          terminalHistory: runningHead.terminalHistory,
+                          activeLogicalTurnId: runningHead.activeLogicalTurnId,
+                          activeExecutionId: runningHead.activeExecutionId,
+                          latestCompletedExecutionId: runningHead.latestCompletedExecutionId,
+                          activeSegment: runningHead.activeSegment,
+                          activeCommand: runningHead.activeCommand,
+                          deletedAt: runningHead.deletedAt,
+                        },
+                        createdAt: Date.now(),
+                      });
+                    }
+                  }
+                  const contextHead = authorityTurn
+                    ? yield* conversationStore.loadHead(requestedConversationId)
+                    : resolvedHead;
+                  const sourceCheckpoint = contextHead?.checkpoint;
+                  const activeCommandId =
+                    contextHead?.activeCommand &&
+                    typeof contextHead.activeCommand === "object" &&
+                    !Array.isArray(contextHead.activeCommand) &&
+                    typeof contextHead.activeCommand["commandId"] === "string"
+                      ? contextHead.activeCommand["commandId"]
+                      : authorityTurn?.commandId;
                   const engineParams: ProgramRuntimeChatEngineParams = {
                     messages: authoritativeMessages,
+                    ...(sourceCheckpoint && authorityTurn && activeCommandId
+                      ? {
+                          modelContextSource: {
+                            type: "conversation" as const,
+                            conversationId: requestedConversationId,
+                            checkpoint: { checkpointId: sourceCheckpoint.checkpointId },
+                            acceptedCommandId: activeCommandId,
+                            executionId: authorityTurn.executionId,
+                            taskId: authorityTurn.rootTaskId,
+                            taskJournalFrontier: "current",
+                            ...(systemPrompt !== undefined ? { systemPrompt } : {}),
+                          },
+                        }
+                      : {}),
                     ...(systemPrompt !== undefined && { systemPrompt }),
                     toolSchemas,
                     model,
@@ -1587,50 +1655,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   // complete bounded ConversationWindow and running authority
                   // atomically establish its public base before incrementals.
                   const initialEvents: StreamEvent[] = [runStartedEvent];
-
-                  if (
-                    authorityTurn &&
-                    authorityTurn.executionId === proposedAuthorityTurn.executionId &&
-                    !recoveredPublication
-                  ) {
-                    const runningHead = yield* conversationStore.loadHead(requestedConversationId);
-                    if (runningHead) {
-                      const admissionFacts: Json[] = [
-                        ...toProviderHistorySnapshot(body.messages).map(acceptedPublicMessageFact),
-                        ...initialEvents.map((event) => assertJson(event)),
-                      ];
-                      yield* persistConversationCheckpoint(conversationStore, {
-                        conversationId: requestedConversationId,
-                        causeKey: stableTupleHash([
-                          authorityTurn.executionId,
-                          "nonterminal",
-                          admissionFacts,
-                        ]),
-                        cause: {
-                          kind: "tail-cut",
-                          cutKind: "rolling",
-                          executionId: authorityTurn.executionId,
-                          logicalTurnId: authorityTurn.turnId,
-                        },
-                        roots: admissionFacts,
-                        ...(checkpointTargets ? { targets: checkpointTargets } : {}),
-                        expectedRevision: runningHead.revision,
-                        expectedOwnerEpoch: runningHead.ownerEpoch,
-                        expectedExecutionId: authorityTurn.executionId,
-                        proposal: {
-                          state: runningHead.state,
-                          terminalHistory: runningHead.terminalHistory,
-                          activeLogicalTurnId: runningHead.activeLogicalTurnId,
-                          activeExecutionId: runningHead.activeExecutionId,
-                          latestCompletedExecutionId: runningHead.latestCompletedExecutionId,
-                          activeSegment: runningHead.activeSegment,
-                          activeCommand: runningHead.activeCommand,
-                          deletedAt: runningHead.deletedAt,
-                        },
-                        createdAt: Date.now(),
-                      });
-                    }
-                  }
 
                   const authorityHead = yield* conversationStore.loadHead(requestedConversationId);
                   if (!authorityHead) {

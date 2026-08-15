@@ -7,8 +7,9 @@ import {
   assistantText,
   assistantToolCalls,
   createModelSamplingEffectRegistration,
-  sampleDurableModel,
-  type ModelSampleRequest,
+  sampleDurableModelSource,
+  decodeModelContextSource,
+  type ModelSampleSourceRequest,
   ExecutionModelSamplingServiceContext,
   MODEL_SAMPLE_EFFECT,
 } from "@sweatpants/model-sampling";
@@ -45,10 +46,8 @@ import { foreignToolAdapter, foreignToolAdapterChild } from "@sweatpants/tool-se
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { computeClientElicitBindingId } from "@sweatpants/tool-session/mcp";
-import { type ChatMessage } from "@sweatpants/chat-contract";
 import {
   CONVERSATION_AUTHORITY_FRAME_TYPE,
-  decodeChatHistoryEntries,
   type ConversationStreamEvent,
 } from "@sweatpants/chat-core";
 
@@ -70,8 +69,6 @@ import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-
 import { runLocalProgramActivation } from "./local-program-host.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ElicitResponse, ProgramRuntimeChatEngineParams } from "./types.ts";
-import { projectChatHistory } from "./model-sampling/history.ts";
-import { encodeChatHistoryEntriesForProgramInput } from "./program-driver-history.ts";
 import {
   createHostModelSamplingService,
   prepareModelSampleEffectInput,
@@ -122,25 +119,13 @@ import {
 // Root tool owns the deterministic sample/tool loop and its durable continuation semantics.
 // fallow-ignore-next-line complexity
 const rootTool = createPinnedDurableProgram(manifest, function* (input, context) {
-  const historyEntries = decodeChatHistoryEntries(input.messages, "$.messages");
-  const messages: ChatMessage[] = projectChatHistory(historyEntries);
-  const hasPriorAssistantOrTool = messages.some(
-    (message) => message.role === "assistant" || message.role === "tool",
-  );
+  const contextSource = decodeModelContextSource(input.contextSource);
   const completedCallIds = new Set<string>();
   for (let iteration = 0; iteration < input.maxIterations; iteration += 1) {
-    const sampleRequest: ModelSampleRequest = {
+    const sampleRequest: ModelSampleSourceRequest = {
       invocation: {
-        context: {
-          messages: [
-            ...(input.systemPrompt
-              ? [{ role: "system" as const, content: input.systemPrompt }]
-              : []),
-            ...messages,
-          ],
-          tools: [],
-        },
-        ...(iteration === 0 && !hasPriorAssistantOrTool && input.toolChoice !== undefined
+        context: contextSource,
+        ...(iteration === 0 && input.toolChoice !== undefined
           ? { options: { toolChoice: input.toolChoice } }
           : {}),
       },
@@ -150,7 +135,7 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
       },
       response: { type: "message" },
     };
-    const sampled = yield* sampleDurableModel(context, sampleRequest, {
+    const sampled = yield* sampleDurableModelSource(context, sampleRequest, {
       audience: "model-runtime",
     });
     const text = assistantText(sampled.message);
@@ -172,7 +157,6 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
     for (const call of calls) {
       completedCallIds.add(call.id);
     }
-    messages.push(sampled.message.message);
     for (const call of calls) {
       yield* context.emit("tool_started", {
         callId: call.id,
@@ -189,13 +173,6 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
         tool: call.target,
         result: outcome.result,
         failed: outcome.failed,
-      });
-      messages.push({
-        role: "tool",
-        toolCallId: call.id,
-        name: call.target,
-        content: JSON.stringify(outcome.result),
-        isError: outcome.failed,
       });
     }
   }
@@ -339,8 +316,18 @@ function* activateProgramDriverChatEngine(
   const turnId = active?.turnId ?? `turn-${turnNumber}`;
   let before = yield* journal.readJournal(params.conversationId, taskId);
   const foreignDriver = scopedForeignEffects ? "tool-session" : "chat-tool-runtime";
+  if (!params.modelContextSource) {
+    throw new CrankError(
+      "model_context_source_invalid",
+      "Chat-root execution requires an authoritative conversation context source",
+    );
+  }
+  const modelContextSource = {
+    ...params.modelContextSource,
+    taskId,
+  };
   const requestedInput: ChatProgramInput = {
-    messages: encodeChatHistoryEntriesForProgramInput(params.messages),
+    contextSource: modelContextSource,
     maxIterations: params.maxIterations,
     catalog: createChatToolCatalog(params, foreignDriver),
     ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
@@ -516,6 +503,7 @@ function* activateProgramDriverChatEngine(
         modelContextSourceResolver: function* (source) {
           return yield* resolveModelContextSource(source, {
             conversationStore: params.conversationStore,
+            journal,
             maxCanonicalBytes: preparedModelContextByteLimit(params.model.contextWindow),
           });
         },

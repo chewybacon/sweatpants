@@ -1,10 +1,10 @@
 import type { Operation, Stream } from "effection";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { Model, StreamOptions } from "@sweatpants/model-provider";
-import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
-import type { ToolRuntime } from "@sweatpants/tool-runtime";
+import type { ToolInventoryEntry, ToolRuntime } from "@sweatpants/tool-runtime";
 import type { AgUiRunMetadata, ConversationAuthority, HistoryPolicy } from "@sweatpants/chat-core";
 import type { StreamEvent, ChatHistoryEntry } from "../handler/types.ts";
+import type { ModelContextSource } from "@sweatpants/model-sampling";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
@@ -35,6 +35,8 @@ export type { McpToolRegistry } from "@sweatpants/chat-core";
 
 export interface ProgramRuntimeChatEngineParams {
   messages: readonly ChatHistoryEntry[];
+  /** Durable source recipe used by the chat-root task instead of full history input. */
+  modelContextSource?: ModelContextSource;
   systemPrompt?: string;
   toolSchemas: ToolSchema[];
   model: Model;

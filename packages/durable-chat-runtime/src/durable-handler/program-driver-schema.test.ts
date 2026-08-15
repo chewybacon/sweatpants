@@ -22,21 +22,22 @@ function catalog(): { version: 1; digest: string; entries: Record<string, never>
 describe("chat-root durable semantic input", () => {
   it("accepts canonical ChatHistoryEntry composition", async () => {
     const result = await validateInput({
-      messages: [
-        {
-          type: "message",
-          id: "history-1",
-          message: { role: "user", content: "hello" },
-          metadata: {},
-        },
-      ],
+      contextSource: {
+        type: "conversation",
+        conversationId: "conversation-1",
+        checkpoint: { checkpointId: "checkpoint-1" },
+        acceptedCommandId: "command-1",
+        executionId: "execution-1",
+        taskId: "task-1",
+        taskJournalFrontier: "current",
+      },
       maxIterations: 1,
       catalog: catalog(),
     });
     expect(result).toHaveProperty("value");
   });
 
-  it("rejects broad old message records before durable execution", async () => {
+  it("rejects a full transcript task input before durable execution", async () => {
     const result = await validateInput({
       messages: [{ role: "user", content: "hello" }],
       maxIterations: 1,

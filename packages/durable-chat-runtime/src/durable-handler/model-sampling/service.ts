@@ -16,7 +16,10 @@ import {
 } from "@sweatpants/model-provider";
 import {
   decodeModelSampleRequest,
+  decodeModelSampleResult,
+  decodeModelSampleSourceRequest,
   encodeModelSampleSourceRequest,
+  MODEL_SAMPLE_EFFECT,
   settleModelSample,
   type ModelContextSource,
   type ModelSampleSourceRequest,
@@ -31,6 +34,7 @@ import {
 import { decodeModelContext, type ModelContext } from "@sweatpants/model-provider";
 import { ExecutionStoreApi } from "@sweatpants/journal-authority/api";
 import type {
+  DurableSemanticRecord,
   ModelContextPolicyDecision,
   ModelContextPreparedFact,
 } from "@sweatpants/journal-authority";
@@ -160,6 +164,22 @@ export function* prepareModelSampleEffectInput(
   input: Json,
   conversationId: string,
 ): Operation<Json> {
+  const rawInvocation =
+    input !== null && typeof input === "object" && !Array.isArray(input)
+      ? input["invocation"]
+      : undefined;
+  const rawContext =
+    rawInvocation !== null && typeof rawInvocation === "object" && !Array.isArray(rawInvocation)
+      ? rawInvocation["context"]
+      : undefined;
+  if (
+    rawContext !== null &&
+    typeof rawContext === "object" &&
+    !Array.isArray(rawContext) &&
+    (rawContext["type"] === "conversation" || rawContext["type"] === "object")
+  ) {
+    return encodeModelSampleSourceRequest(decodeModelSampleSourceRequest(input));
+  }
   const request = decodeModelSampleRequest(input);
   const context = canonicalSnapshot(request.invocation.context);
   const byteLength = new TextEncoder().encode(context.canonical).byteLength;
@@ -199,10 +219,59 @@ function modelContextMessagesFromRoots(roots: readonly Json[]): ModelContext["me
   return projectChatHistory(agUiMessagesToChatHistoryEntries(messages));
 }
 
+function taskModelMessages(records: readonly DurableSemanticRecord[]): ModelContext["messages"] {
+  const pulls = new Map(
+    records.flatMap((record) =>
+      record.payload.type === "PullRequested"
+        ? [[record.payload.pullId, record.payload] as const]
+        : [],
+    ),
+  );
+  const messages: Array<ModelContext["messages"][number]> = [];
+  for (const record of records) {
+    if (record.payload.type === "PullResolved") {
+      const request = pulls.get(record.payload.pullId);
+      if (
+        request?.descriptor.kind === "effect" &&
+        request.descriptor.name === MODEL_SAMPLE_EFFECT.name &&
+        record.payload.outcome.status === "ok"
+      ) {
+        const result = decodeModelSampleResult(record.payload.outcome.value);
+        messages.push(result.message.message);
+      }
+      continue;
+    }
+    if (record.payload.type !== "DurableEmission") {
+      continue;
+    }
+    if (record.payload.descriptor.eventType !== "tool_completed") {
+      continue;
+    }
+    const payload =
+      record.payload.descriptor.payload !== null &&
+      typeof record.payload.descriptor.payload === "object" &&
+      !Array.isArray(record.payload.descriptor.payload)
+        ? record.payload.descriptor.payload
+        : null;
+    if (!payload || typeof payload["callId"] !== "string" || typeof payload["tool"] !== "string") {
+      continue;
+    }
+    messages.push({
+      role: "tool",
+      toolCallId: payload["callId"],
+      name: payload["tool"],
+      content: JSON.stringify(payload["result"] ?? null),
+      isError: payload["failed"] === true,
+    });
+  }
+  return messages;
+}
+
 export function* resolveModelContextSource(
   source: ModelContextSource,
   options: {
     readonly conversationStore?: ConversationStore;
+    readonly journal?: ProgramDriverJournal;
     readonly maxCanonicalBytes?: number;
   } = {},
 ): Operation<ModelContext> {
@@ -220,12 +289,7 @@ export function* resolveModelContextSource(
       );
     }
     const head = yield* options.conversationStore.loadHead(source.conversationId);
-    if (
-      !head ||
-      !head.checkpoint ||
-      head.checkpoint.checkpointId !== source.checkpoint.checkpointId ||
-      head.activeExecutionId !== source.executionId
-    ) {
+    if (!head || head.activeExecutionId !== source.executionId) {
       throw new CrankError(
         "model_context_source_invalid",
         "Conversation context source no longer matches the authoritative head",
@@ -237,10 +301,10 @@ export function* resolveModelContextSource(
       !Array.isArray(head.activeCommand)
         ? head.activeCommand
         : null;
-    if (activeCommand?.["commandId"] !== source.acceptedCommandId) {
+    if (!activeCommand || typeof activeCommand["commandId"] !== "string") {
       throw new CrankError(
         "model_context_source_invalid",
-        "Conversation context source command identity is stale",
+        "Conversation context source has no active command",
       );
     }
     const checkpoint = yield* options.conversationStore.getCheckpoint(source.checkpoint);
@@ -256,7 +320,19 @@ export function* resolveModelContextSource(
       checkpoint,
       options.maxCanonicalBytes ?? MAX_PREPARED_CONTEXT_BYTES,
     );
-    return { messages: modelContextMessagesFromRoots(roots), tools: [] };
+    const taskRecords = options.journal
+      ? yield* options.journal.readJournal(source.conversationId, source.taskId)
+      : [];
+    const rootTaskRecords = taskRecords.filter((record) => record.payload.taskId === source.taskId);
+
+    return {
+      messages: [
+        ...(source.systemPrompt ? [{ role: "system" as const, content: source.systemPrompt }] : []),
+        ...modelContextMessagesFromRoots(roots),
+        ...taskModelMessages(rootTaskRecords),
+      ],
+      tools: [],
+    };
   }
   const stored = yield* ExecutionStoreApi.operations.getObject(source.object);
   if (
