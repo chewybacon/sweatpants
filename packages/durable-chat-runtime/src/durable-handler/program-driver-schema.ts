@@ -1,5 +1,8 @@
-import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
-import { decodeChatHistoryEntries } from "@sweatpants/chat-core";
+import {
+  MODEL_SAMPLE_EFFECT,
+  MODEL_SAMPLE_SCHEMA_ENTRIES,
+  type ModelContextSource,
+} from "@sweatpants/model-sampling";
 import type { ChatToolDefinition } from "@sweatpants/chat-contract";
 import { defineDurableProgramManifest } from "@sweatpants/durable-execution";
 import {
@@ -39,7 +42,7 @@ export type ChatToolCatalog = {
 };
 
 export type ChatProgramInput = {
-  messages: Json[];
+  contextSource: ModelContextSource;
   systemPrompt?: string;
   toolChoice?: "auto" | "none" | "required";
   maxIterations: number;
@@ -78,7 +81,20 @@ const chatToolCatalogEntrySchema = z.strictObject({
   execution: catalogExecutionSchema,
 });
 const chatProgramInputSchema = z.strictObject({
-  messages: z.array(z.json()).max(10_000),
+  contextSource: z.strictObject({
+    type: z.literal("conversation"),
+    conversationId: schemaText,
+    checkpoint: z.strictObject({ checkpointId: schemaText }),
+    acceptedCommandId: schemaText,
+    executionId: schemaText,
+    taskId: schemaText,
+    taskJournalFrontier: schemaText,
+    systemPrompt: z
+      .string()
+      .max(64 * 1024)
+      .optional(),
+    contextArtifact: z.strictObject({ objectId: schemaText }).optional(),
+  }),
   systemPrompt: z
     .string()
     .max(64 * 1024)
@@ -133,9 +149,32 @@ const chatRootInputDescriptor = chatEngineSchema(
   "program_input",
   {
     type: "object",
-    required: ["messages", "maxIterations", "catalog"],
+    required: ["contextSource", "maxIterations", "catalog"],
     properties: {
-      messages: { type: "array", items: true },
+      contextSource: {
+        type: "object",
+        required: [
+          "type",
+          "conversationId",
+          "checkpoint",
+          "acceptedCommandId",
+          "executionId",
+          "taskId",
+          "taskJournalFrontier",
+        ],
+        properties: {
+          type: { const: "conversation" },
+          conversationId: { type: "string" },
+          checkpoint: { type: "object" },
+          acceptedCommandId: { type: "string" },
+          executionId: { type: "string" },
+          taskId: { type: "string" },
+          taskJournalFrontier: { type: "string" },
+          systemPrompt: { type: "string" },
+          contextArtifact: { type: "object" },
+        },
+        additionalProperties: false,
+      },
       systemPrompt: { type: "string" },
       toolChoice: { enum: ["auto", "none", "required"] },
       maxIterations: { type: "integer", minimum: 1, maximum: 100 },
@@ -199,7 +238,9 @@ const chatRootInputDescriptor = chatEngineSchema(
   },
   (value) => {
     const parsed = chatProgramInputSchema.safeParse(value);
-    if (!parsed.success) return "chat program input structure is invalid";
+    if (!parsed.success) {
+      return "chat program input structure is invalid";
+    }
     if (
       parsed.data.catalog.digest !==
       canonicalSnapshot({ version: 1, entries: parsed.data.catalog.entries }).sha
@@ -210,10 +251,9 @@ const chatRootInputDescriptor = chatEngineSchema(
   },
   (value) => {
     const input = requireJsonObject(assertJson(value), "$");
-    const messages = decodeChatHistoryEntries(input["messages"], "$.messages");
     return {
       ...input,
-      messages: messages.map((entry) => assertJson(entry)),
+      contextSource: assertJson(input["contextSource"]),
     };
   },
 );

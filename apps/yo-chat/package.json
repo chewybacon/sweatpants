@@ -83,7 +83,6 @@
         "zod": "catalog:"
     },
     "devDependencies": {
-        "@interactors/html": "^1.0.1",
         "@playwright/test": "^1.57.0",
         "@sweatpants/cli": "workspace:*",
         "@sweatpants/test-rig": "workspace:*",

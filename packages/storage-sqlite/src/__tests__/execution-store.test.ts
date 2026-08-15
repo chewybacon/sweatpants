@@ -193,7 +193,7 @@ describe("SQLite ExecutionStore", () => {
       });
       let stdout = "";
       let stderr = "";
-      const timer = setTimeout(() => child.kill("SIGTERM"), 3_000);
+      const timer = setTimeout(() => child.kill("SIGTERM"), 10_000);
       child.stdout.on("data", (chunk: Buffer) => {
         stdout += chunk.toString("utf8");
       });

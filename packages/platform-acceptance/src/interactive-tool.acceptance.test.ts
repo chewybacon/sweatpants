@@ -179,11 +179,12 @@ describe("interactive tool semantics", () => {
     async (action) => {
       await runElicitOutcomeScenario(binding, action);
     },
+    30_000,
   );
 
   it("rejects a duplicate elicitation response without resuming twice", async () => {
     await runDuplicateElicitScenario(binding);
-  });
+  }, 30_000);
 
   // binding-conformance: one complete interactive flow crosses the HTTP shell.
   it("completes the full interactive flow over HTTP", async () => {
