@@ -1,57 +1,51 @@
 /**
  * Durable Chat Handler
  *
- * A pull-based chat handler that buffers all stream events for:
- * - Client reconnection from last LSN
- * - Multi-client fan-out
- * - Full session replay
+ * Finite native Chat response segments backed by a server-internal response
+ * tail. Public requests and responses never expose response sessions, LSNs,
+ * offsets, cursors, or Durable Streams delivery headers.
  *
- * Protocol:
- * - Request params: sessionId/stream id (query/path), offset (query)
- * - Response: NDJSON with LSN in each event, X-Session-Id + X-Conversation-Id headers
+ * Identity law:
+ * - conversationId: the only durable public conversation key
+ * - threadId: AG-UI alias of conversationId
+ * - runId: finite response-segment correlator
+ * - response-tail identity and position: server-internal only
  *
- * Identity law (kernel vs wire vs transport):
- * - conversationId: only durable chat key (crank journal / history / resume)
- * - threadId: AG-UI wire alias of conversationId (always equal on the wire)
- * - runId: ephemeral AG-UI turn correlator (never keys crank state)
- * - sessionId (X-Session-Id): response-stream / reconnect buffer id only
- *
- * This module is the request orchestrator only. The seams it composes:
- * - request-normalization.ts: body/message normalization, resume mapping
- * - turn-plan.ts: pure supersession/resume/elicit decision logic
- * - conversation-projection.ts: internal events -> public wire view
- * - session-event-stream.ts: engine -> Host-owned buffer with persistence
- * - hydrate-responses.ts: checkpoint/buffer replay read responses
+ * This module composes strict native request normalization, durable command
+ * admission, bounded ConversationWindow publication, internal response-tail
+ * delivery, and typed checkpoint/history authority.
  */
 import { EventType } from "@ag-ui/core";
 import {
   call,
   resource,
+  run,
   withResolvers,
   type Operation,
+  type Scope,
   type Stream,
   type Subscription,
   type WithResolvers,
 } from "effection";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
-  useSessionRegistryStore,
   useSessionRegistry,
-  useTokenBufferStore,
   createDurableTurnOwner,
   type DurableTurnOwner,
   type SessionHandle,
   type SessionRegistry,
-  type TokenBufferStore,
 } from "../response-streams/index.ts";
 import { MaxIterationsContext, PersonaResolverContext } from "../contexts.ts";
 import {
   agUiMessagesToChatHistoryEntries,
+  ConversationSegmentValidator,
   createChatTurnCompletedFact,
+  decodePublicProjectionRoot,
   projectChatTurnFacts,
+  toProviderHistorySnapshot,
+  type PublicProjectionRoot,
   type ChatHistoryEntry,
   type ConversationCommand,
-  type DurableFrame,
 } from "@sweatpants/chat-core";
 import { useModel, useStreamOptions } from "@sweatpants/model-provider";
 import { ToolInventoryApi, ToolRuntimeApi, ToolRuntimePort } from "@sweatpants/tool-runtime";
@@ -64,53 +58,26 @@ import { createStreamingHandler, HandlerContext, useHandlerContext } from "../ha
 import type { StreamEvent } from "../handler/types.ts";
 import { createProgramDriverChatEngine } from "./program-driver-chat-engine.ts";
 import { manifest as chatProgramManifest } from "./program-driver-schema.ts";
+import { preparedModelContextByteLimit } from "./model-sampling/service.ts";
 import { useOptionalProgramDriverForeignEffects } from "../program-driver/effects.ts";
 import { useOptionalProgramDriverNativeTools } from "../program-driver/native-tools.ts";
-import { buildAgUiCustomState } from "@sweatpants/chat-core";
-import { toProviderHistorySnapshot } from "@sweatpants/chat-core";
 import {
-  buildCheckpointSnapshotEventsFromFrames,
-  providerHistoryFromFrames,
-} from "../projection.ts";
-import {
-  recordConversationSession,
-  resolveLatestConversationSession,
+  createSerializedEventStream,
+  type ChatEngineSource,
+  type TurnEventSink,
 } from "../response-streams/index.ts";
-import {
-  createEmptyStream,
-  createHeadMetadataResponse,
-  createProtocolMutationResponse,
-  createProtocolReadResponse,
-  parseLiveMode,
-  parseOffsetParam,
-  parseSessionIdFromPath,
-  parseTimeoutMs,
-} from "@sweatpants/durable-streams";
 import type {
   ChatRequestBody,
   DurableChatHandlerConfig,
   ProgramRuntimeChatEngineParams,
   ToolSchema,
 } from "./types.ts";
-import {
-  cancelOpenInterruptsForThread,
-  interruptRecordsForThread,
-  settleInterruptForThread,
-  upsertInterruptRecords,
-} from "../interrupts/index.ts";
-import { resolvePrivateSystemPrompt } from "../model-context/index.ts";
-import { readLatestThreadInterruptState, recordThreadInterruptState } from "../interrupts/index.ts";
-import { readLatestThreadSystemPrompt, recordThreadSystemPrompt } from "../model-context/index.ts";
+import { cancelOpenInterruptsForThread, settleInterruptForThread } from "../interrupts/index.ts";
 import { parseChatRequestBody } from "../handler/request-normalization.ts";
 import { planTurn } from "../handler/turn-plan.ts";
-import {
-  createSerializedEventStream,
-  type ChatEngineSource,
-  type TurnEventSink,
-} from "../response-streams/index.ts";
+import { createEmptyStream, createPullStream } from "@sweatpants/durable-streams";
 import {
   createConversationCommandErrorResponse,
-  createConversationHydrateResponse,
   createStoredConversationCheckpointResponse,
 } from "../handler/hydrate-responses.ts";
 import { useHostScopeOwner } from "../host/host-scope.ts";
@@ -127,37 +94,196 @@ import {
 } from "../index.ts";
 import { TurnJournalAuthority } from "@sweatpants/journal-authority/turn-authority";
 import {
-  hydratePublicRoots,
+  acceptedPublicMessageFact,
+  buildConversationWindow,
+  ConversationCheckpointConflictError,
+  DEFAULT_HISTORY_PAGE_BYTE_LIMIT,
+  DEFAULT_HISTORY_PAGE_ROOT_LIMIT,
+  DEFAULT_PROJECTION_TOKEN_TTL_MS,
   persistConversationCheckpoint,
-  publicRootIsEvent,
+  preflightConversationCheckpoint,
+  readAllPublicRootsForModel,
 } from "../conversation-persistence.ts";
 import { LOW_CHECKPOINT_TARGETS } from "@sweatpants/history-store";
-import { assertJson, stableTupleHash } from "@sweatpants/foundation";
-import type {
-  ConversationHead,
-  ConversationStore,
-  StoredCheckpoint,
-} from "@sweatpants/history-store/contract";
+import { assertJson, stableTupleHash, type Json } from "@sweatpants/foundation";
+import type { ConversationHead, ConversationStore } from "@sweatpants/history-store/contract";
+import { ConversationStoreError } from "@sweatpants/history-store/contract";
 import { conversationAuthority, conversationAuthorityFrame } from "../conversation-authority.ts";
+import {
+  mintPublicHistoryCursor,
+  ProjectionTokenError,
+  verifyPublicHistoryCursor,
+} from "../projection-tokens.ts";
 
 const MAX_CHAT_REQUEST_BYTES = 2 * 1024 * 1024;
 let responseWriterEpoch = 1;
 
-function* prependAuthorityFrame(
-  subscription: Subscription<string, void>,
-  frame: StreamEvent,
-  lsn: number,
+function historyPageConversationId(pathname: string): string | null {
+  const match = /^\/api\/chat\/([^/]+)\/history:page\/?$/.exec(pathname);
+  if (!match) return null;
+  try {
+    const value = decodeURIComponent(match[1]!);
+    return value.length > 0 && value.length <= 512 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readHistoryCursorBody(request: Request): Promise<string> {
+  const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > 128 * 1024) {
+    throw new ProjectionTokenError(
+      "public_history_cursor_invalid",
+      "History page body exceeds 128 KiB",
+    );
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text) as unknown;
+  } catch {
+    throw new ProjectionTokenError(
+      "public_history_cursor_invalid",
+      "History page body must be valid JSON",
+    );
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== 1 ||
+    typeof (value as Record<string, unknown>)["cursor"] !== "string"
+  ) {
+    throw new ProjectionTokenError(
+      "public_history_cursor_invalid",
+      "History page body must contain exactly one cursor",
+    );
+  }
+  return (value as { cursor: string }).cursor;
+}
+
+async function createHistoryPageResponse(params: {
+  request: Request;
+  conversationId: string;
+  store: ConversationStore;
+  config: DurableChatHandlerConfig;
+  scope?: Scope;
+}): Promise<Response> {
+  const execute = <T>(operation: () => Operation<T>): Promise<T> =>
+    params.scope ? params.scope.run(operation) : run(operation);
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    "Cache-Control": "private, no-store",
+  });
+  const authorization = await execute(() =>
+    params.config.authorizeHistoryRead(params.request, params.conversationId),
+  );
+  if (authorization === "unauthenticated") {
+    return new Response(JSON.stringify({ error: "unauthenticated" }), { status: 401, headers });
+  }
+  if (authorization === "forbidden") {
+    return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers });
+  }
+  try {
+    const token = await readHistoryCursorBody(params.request);
+    const now = Date.now();
+    const cursor = await verifyPublicHistoryCursor(token, params.config.projectionTokens, now);
+    const head = await execute(() => params.store.loadHead(params.conversationId));
+    if (!head) {
+      return new Response(JSON.stringify({ error: "conversation_not_found" }), {
+        status: 404,
+        headers,
+      });
+    }
+    if (head.state === "deleted") {
+      return new Response(JSON.stringify({ error: "conversation_deleted" }), {
+        status: 410,
+        headers,
+      });
+    }
+    const checkpointPointer = head.checkpoint;
+    if (!checkpointPointer) {
+      return new Response(JSON.stringify({ error: "conversation_not_found" }), {
+        status: 404,
+        headers,
+      });
+    }
+    const checkpoint = await execute(() => params.store.getCheckpoint(checkpointPointer));
+    if (
+      !checkpoint ||
+      checkpoint.lineageId !== cursor.lineageId ||
+      BigInt(cursor.archiveFrontierOrdinal) > BigInt(checkpoint.archiveFrontierOrdinal) ||
+      BigInt(cursor.nextPublicPosition) > BigInt(checkpoint.nextPublicPosition)
+    ) {
+      return new Response(JSON.stringify({ error: "public_history_frontier_changed" }), {
+        status: 409,
+        headers,
+      });
+    }
+    const page = await execute(() =>
+      params.store.readPublicHistoryBefore({
+        conversationId: params.conversationId,
+        basis: cursor,
+        beforePosition: cursor.beforePosition,
+        maxRoots: DEFAULT_HISTORY_PAGE_ROOT_LIMIT,
+        maxBytes: DEFAULT_HISTORY_PAGE_BYTE_LIMIT,
+      }),
+    );
+    const roots = page.roots.map((root) => decodePublicProjectionRoot(root));
+    const nextOlderCursor = page.nextBeforePosition
+      ? await mintPublicHistoryCursor(
+          {
+            ...cursor,
+            beforePosition: page.nextBeforePosition,
+            issuedAt: now,
+            expiresAt:
+              now + (params.config.projectionTokenTtlMs ?? DEFAULT_PROJECTION_TOKEN_TTL_MS),
+          },
+          params.config.projectionTokens,
+        )
+      : null;
+    return new Response(JSON.stringify({ roots, nextOlderCursor }), { status: 200, headers });
+  } catch (error) {
+    if (error instanceof ProjectionTokenError) {
+      return new Response(JSON.stringify({ error: error.code }), {
+        status: error.code === "public_history_cursor_expired" ? 409 : 400,
+        headers,
+      });
+    }
+    if (error instanceof ConversationStoreError && error.code === "public_root_conflict") {
+      return new Response(JSON.stringify({ error: error.code }), { status: 409, headers });
+    }
+    throw error;
+  }
+}
+
+function* directChatSubscription(
+  session: SessionHandle<StreamEvent>,
+  prefix: readonly StreamEvent[] = [],
+  startLSN = 0,
 ): Operation<Subscription<string, void>> {
+  const source = createPullStream(session.buffer, startLSN);
+  const subscription = yield* source;
+  const validator = new ConversationSegmentValidator();
+  let prefixIndex = 0;
+  let finished = false;
   const stream: Stream<string, void> = resource(function* (provide) {
-    let pending = `${JSON.stringify({ lsn, event: frame })}\n`;
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
-        if (pending.length > 0) {
-          const value = pending;
-          pending = "";
-          return { done: false, value };
+        const next =
+          prefixIndex < prefix.length
+            ? { done: false as const, value: { token: prefix[prefixIndex++]!, lsn: 0 } }
+            : yield* subscription.next();
+        if (next.done) {
+          if (!finished) validator.finish();
+          return { done: true, value: undefined };
         }
-        return yield* subscription.next();
+        const event = next.value.token;
+        validator.push(event);
+        if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) {
+          validator.finish();
+          finished = true;
+        }
+        return { done: false, value: JSON.stringify(event) };
       },
     });
   });
@@ -199,7 +325,7 @@ function* claimDetachedTurnRecovery(
         ? head.activeCommand
         : null;
     if (
-      head.state === "recovering" &&
+      head.state === "running" &&
       activeCommand?.["kind"] === request.kind &&
       activeCommand["commandId"] === request.commandId
     ) {
@@ -210,7 +336,7 @@ function* claimDetachedTurnRecovery(
       head.revision,
       head.ownerEpoch,
       {
-        state: "recovering",
+        state: "running",
         checkpoint: head.checkpoint,
         terminalHistory: head.terminalHistory,
         activeLogicalTurnId: head.activeLogicalTurnId,
@@ -266,7 +392,6 @@ function nextResponseWriterFence(sessionId: string): {
  * Binder for durable stream protocol parameters.
  */
 const durableParamsBinder = bindModel({
-  sessionId: stringParam("x-unused-session-id", "sessionId"),
   conversationId: stringParam("x-conversation-id", "conversationId"),
 });
 
@@ -274,13 +399,19 @@ const durableParamsBinder = bindModel({
 // HELPER FUNCTIONS
 // =============================================================================
 
-function* eventsFromCheckpoint(
-  store: ConversationStore,
-  conversationId: string,
-  checkpoint: StoredCheckpoint,
-): Operation<StreamEvent[]> {
-  const roots = yield* hydratePublicRoots(store, conversationId, checkpoint);
-  return roots.filter(publicRootIsEvent) as StreamEvent[];
+function historyEntriesFromRoots(roots: readonly Json[]): readonly ChatHistoryEntry[] {
+  const messages = roots
+    .map((root) => decodePublicProjectionRoot(root))
+    .filter(
+      (root): root is Extract<PublicProjectionRoot, { kind: "message" }> => root.kind === "message",
+    )
+    .sort((left, right) => {
+      const a = BigInt(left.position);
+      const b = BigInt(right.position);
+      return a === b ? 0 : a < b ? -1 : 1;
+    })
+    .map((root) => root.message);
+  return agUiMessagesToChatHistoryEntries(messages);
 }
 
 interface AuthoritativeCommandSnapshot {
@@ -294,6 +425,7 @@ function* authoritativeCommandSnapshot(params: {
   head: ConversationHead | null;
   command: ConversationCommand | undefined;
   submitted: readonly ChatHistoryEntry[];
+  maxModelContextBytes: number;
 }): Operation<AuthoritativeCommandSnapshot> {
   let base: readonly ChatHistoryEntry[] = [];
   let activities: readonly StreamEvent[] = [];
@@ -305,12 +437,15 @@ function* authoritativeCommandSnapshot(params: {
         `Conversation ${params.conversationId} checkpoint is missing`,
       );
     }
-    const events = yield* eventsFromCheckpoint(params.store, params.conversationId, checkpoint);
-    const frames: DurableFrame[] = events.map((event, index) => ({ lsn: index + 1, event }));
-    base = agUiMessagesToChatHistoryEntries(providerHistoryFromFrames(frames));
-    activities = (yield* buildCheckpointSnapshotEventsFromFrames(frames)).filter(
-      (event) => event.type === EventType.ACTIVITY_SNAPSHOT,
+    base = historyEntriesFromRoots(
+      yield* readAllPublicRootsForModel(
+        params.store,
+        params.conversationId,
+        checkpoint,
+        params.maxModelContextBytes,
+      ),
     );
+    activities = [];
   }
 
   const snapshot = (messages: readonly ChatHistoryEntry[]): AuthoritativeCommandSnapshot => ({
@@ -459,20 +594,6 @@ function createLiveCancellationEngine(params: {
   });
 }
 
-function* restoreThreadInterruptStateIfNeeded(
-  bufferStore: TokenBufferStore<string>,
-  threadId: string | undefined,
-): Operation<void> {
-  if (!threadId) {
-    return;
-  }
-  const stored = yield* readLatestThreadInterruptState(bufferStore, threadId);
-  if (!stored || stored.length === 0) {
-    return;
-  }
-  upsertInterruptRecords(stored);
-}
-
 // =============================================================================
 // DURABLE CHAT HANDLER
 // =============================================================================
@@ -481,10 +602,10 @@ function* restoreThreadInterruptStateIfNeeded(
  * Create a durable chat handler.
  *
  * The handler:
- * 1. Binds protocol params from request (sessionId, offset)
- * 2. Runs request setup to set up DI contexts
- * 3. Either reconnects to existing session or creates new one
- * 4. Streams events from buffer to response with LSN
+ * 1. Normalizes a native command or cursor-free reconnect body.
+ * 2. Runs request setup in the Host-owned scope.
+ * 3. Selects durable conversation authority and an internal response tail.
+ * 4. Streams direct validated native values.
  *
  * @param config - Handler configuration
  * @returns Fetch handler function
@@ -495,35 +616,17 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
   const conversationStore = config.conversationStore ?? createMemoryConversationStore();
   const checkpointTargets = config.storageProfile === "low" ? LOW_CHECKPOINT_TARGETS : undefined;
   const liveProgramActivations = new Map<string, LiveProgramActivation>();
-
-  return createStreamingHandler(
+  const streamingHandler = createStreamingHandler(
     function* () {
       const ctx = yield* useHandlerContext();
       const request = ctx.request;
       const bindingSource = createBindingSource(request);
-      const pathSessionId = parseSessionIdFromPath(new URL(request.url).pathname);
-      const { sessionId: requestedSessionId, conversationId: requestedConversationIdParam } =
-        durableParamsBinder(bindingSource);
-      const parsedOffset = parseOffsetParam(bindingSource.searchParams.get("offset"));
-      const liveMode = parseLiveMode(bindingSource.searchParams.get("live"));
-      const timeoutMs = parseTimeoutMs(bindingSource.searchParams.get("timeout"));
+      const { conversationId: requestedConversationIdParam } = durableParamsBinder(bindingSource);
       const method = request.method.toUpperCase();
-      const isProtocolMutation =
-        pathSessionId !== undefined &&
-        (method === "PUT" || method === "POST" || method === "DELETE");
-
-      // Parse request body for mutating requests only.
       const body =
-        request.method === "POST" && !isProtocolMutation
+        method === "POST"
           ? parseChatRequestBody(yield* readBoundedChatRequest(request))
           : ({ messages: [] } as ChatRequestBody);
-
-      // Durable conversation identity resolution:
-      //   1. explicit conversationId (body)
-      //   2. conversationId query/header
-      //   3. AG-UI threadId as alias
-      //   4. server-minted id (returned via X-Conversation-Id)
-      // Divergent body.threadId never forks identity once conversationId is set.
       const clientConversationId =
         body.conversationId?.trim() ||
         requestedConversationIdParam?.trim() ||
@@ -555,52 +658,42 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           turnOwner.scope.run(function* () {
             try {
               const value = yield* (function* () {
-                const bufferStore = yield* useTokenBufferStore<string>();
-                yield* restoreThreadInterruptStateIfNeeded(bufferStore, requestedConversationId);
                 const shouldResolveConversation =
-                  requestedConversationId !== undefined &&
-                  pathSessionId === undefined &&
-                  requestedSessionId === undefined &&
-                  method !== "POST";
-                const resolvedConversationSessionId = shouldResolveConversation
-                  ? yield* resolveLatestConversationSession(bufferStore, requestedConversationId)
-                  : null;
-                const resolvedHead = shouldResolveConversation
-                  ? yield* conversationStore.loadHead(requestedConversationId)
-                  : null;
+                  requestedConversationId !== undefined && !body.command;
+                const resolvedHead = shouldResolveConversation ? selectedHead : null;
                 const storedConversationCheckpoint =
                   shouldResolveConversation && resolvedHead?.checkpoint
                     ? yield* conversationStore.getCheckpoint(resolvedHead.checkpoint)
                     : null;
                 if (
                   shouldResolveConversation &&
-                  !resolvedConversationSessionId &&
-                  !storedConversationCheckpoint
+                  !storedConversationCheckpoint &&
+                  !resolvedHead?.activeExecutionId
                 ) {
                   ctx.status = 404;
                   return yield* createEmptyStream();
                 }
 
-                // Response-stream id (transport reconnect buffer). Not durable chat state.
-                // Prefer path/query stream ids, then conversation→stream index, else mint.
-                const sessionId =
-                  pathSessionId ??
-                  requestedSessionId ??
-                  resolvedConversationSessionId ??
-                  (storedConversationCheckpoint ? requestedConversationId! : crypto.randomUUID());
+                const activeResponseTailId =
+                  resolvedHead?.activeCommand &&
+                  typeof resolvedHead.activeCommand === "object" &&
+                  !Array.isArray(resolvedHead.activeCommand) &&
+                  typeof resolvedHead.activeCommand["commandId"] === "string"
+                    ? resolvedHead.activeCommand["commandId"]
+                    : resolvedHead?.activeExecutionId;
+                const sessionId = stableTupleHash([
+                  "chat-response-tail",
+                  requestedConversationId,
+                  body.command?.commandId ??
+                    activeResponseTailId ??
+                    resolvedHead?.revision ??
+                    "hydrate",
+                ]);
                 const isReconnect =
-                  (pathSessionId !== undefined ||
-                    requestedSessionId !== undefined ||
-                    requestedConversationId !== undefined) &&
-                  (parsedOffset.value !== null || parsedOffset.isNow);
-                const startLSN = parsedOffset.value ?? 0;
+                  !body.command &&
+                  (resolvedHead?.state === "running" || resolvedHead?.state === "recovering");
 
-                // Set response headers
-                // X-Session-Id = response stream / reconnect buffer id (transport)
-                // X-Conversation-Id = durable conversation key (kernel)
-                ctx.headers.set("X-Session-Id", sessionId);
-                ctx.headers.set("X-Conversation-Id", requestedConversationId);
-                ctx.headers.set("Cache-Control", "no-store");
+                ctx.headers.set("Cache-Control", "private, no-store");
 
                 // Get logger after hooks run (so setupLogger has executed)
                 const log = yield* useLogger("handler:durable");
@@ -608,17 +701,18 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   {
                     sessionId,
                     conversationId: requestedConversationId,
-                    resolvedConversationSessionId,
                     method,
                     isReconnect,
-                    startLSN,
                     messageCount: body.messages.length,
                   },
                   "request received",
                 );
 
-                if (method === "POST" && !isProtocolMutation && !body.command) {
-                  throw new CrankError("invalid_chat_request", "Chat command is missing");
+                if (method === "POST" && !body.command && !clientConversationId) {
+                  throw new CrankError(
+                    "invalid_chat_request",
+                    "Hydration/reconnect requires conversationId",
+                  );
                 }
                 if (body.command) {
                   const now = Date.now();
@@ -669,35 +763,28 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   }
                 }
 
-                if (isProtocolMutation) {
-                  const registryStore = yield* useSessionRegistryStore();
-
-                  return yield* createProtocolMutationResponse({
-                    ctx,
-                    sessionId,
-                    method: method as "PUT" | "POST" | "DELETE",
-                    bufferStore,
-                    registryStore,
-                    log,
-                  });
-                }
-
                 if (
                   shouldResolveConversation &&
-                  !resolvedConversationSessionId &&
+                  resolvedHead &&
                   storedConversationCheckpoint &&
-                  !resolvedHead?.activeExecutionId
+                  resolvedHead.state !== "running" &&
+                  resolvedHead.state !== "recovering"
                 ) {
-                  const checkpointEvents = yield* eventsFromCheckpoint(
-                    conversationStore,
-                    requestedConversationId!,
-                    storedConversationCheckpoint,
-                  );
-                  return yield* createStoredConversationCheckpointResponse({
-                    ctx,
+                  const window = yield* buildConversationWindow({
+                    store: conversationStore,
                     conversationId: requestedConversationId!,
-                    checkpointEvents,
-                    parsedOffset,
+                    head: resolvedHead,
+                    checkpoint: storedConversationCheckpoint,
+                    keyring: config.projectionTokens,
+                    ...(body.knownWindowToken ? { knownWindowToken: body.knownWindowToken } : {}),
+                    ...(config.projectionTokenTtlMs === undefined
+                      ? {}
+                      : { tokenTtlMs: config.projectionTokenTtlMs }),
+                  });
+                  return yield* createStoredConversationCheckpointResponse({
+                    conversationId: requestedConversationId!,
+                    head: resolvedHead,
+                    window,
                   });
                 }
 
@@ -712,7 +799,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 // response-stream id (sessionId).
                 const durableConversationId = requestedConversationId;
                 const agUiThreadId = durableConversationId;
-                yield* restoreThreadInterruptStateIfNeeded(bufferStore, agUiThreadId);
                 const agUiRunId = body.runId?.trim() || crypto.randomUUID();
 
                 // The tool runtime seam is optional, so presence is probed here.
@@ -725,7 +811,69 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 const historyPolicy = yield* HistoryPolicyContext.get();
                 // Resume validation is pure. Interrupt state is committed only after the
                 // crank respond commands are durably accepted by the adapter.
+                const participantId = config.resolveParticipantId
+                  ? (yield* config.resolveParticipantId(request)).trim()
+                  : "anonymous";
+                if (!participantId || participantId.length > 512) {
+                  throw new CrankError(
+                    "invalid_participant",
+                    "Trusted participant identity must be a bounded non-empty string",
+                  );
+                }
                 const plan = planTurn(body);
+                if (
+                  body.command?.type === "respond-to-elicit" &&
+                  selectedCommandReceipt !== null &&
+                  selectedCommandReceipt.commandDigest !== stableTupleHash([body.command, null])
+                ) {
+                  return yield* createConversationCommandErrorResponse({
+                    conversationId: requestedConversationId,
+                    code: "command_identity_conflict",
+                    message: `Command ${body.command.commandId} has conflicting identity`,
+                  });
+                }
+                if (body.command?.type === "respond-to-elicit" && selectedCommandReceipt === null) {
+                  if (
+                    selectedHead?.state !== "parked" ||
+                    selectedHead.activeLogicalTurnId !== body.command.logicalTurnId ||
+                    selectedHead.activeExecutionId !== body.command.executionId
+                  ) {
+                    return yield* createConversationCommandErrorResponse({
+                      conversationId: requestedConversationId,
+                      code: "elicit_not_open",
+                      message: `Conversation ${requestedConversationId} is not parked on that elicitation Turn`,
+                    });
+                  }
+                  const response = plan.effectiveElicitResponses[0];
+                  if (!response || response.elicitId !== body.command.interruptId) {
+                    return yield* createConversationCommandErrorResponse({
+                      conversationId: requestedConversationId,
+                      code: "elicit_response_invalid",
+                      message: "Elicitation response does not identify the selected interrupt",
+                    });
+                  }
+                  const journal =
+                    yield* config.programDriverJournalStore.open(requestedConversationId);
+                  const validation = yield* journal.authority.validateElicitResponse({
+                    sessionId: requestedConversationId,
+                    pullId: body.command.interruptId,
+                    participantId,
+                    completion: assertJson(response.completion),
+                  });
+                  if (validation.status !== "valid") {
+                    const code =
+                      validation.status === "audience_invalid"
+                        ? "elicit_audience_forbidden"
+                        : validation.status === "not_pending" || validation.status === "expired"
+                          ? "elicit_not_open"
+                          : "elicit_response_invalid";
+                    return yield* createConversationCommandErrorResponse({
+                      conversationId: requestedConversationId,
+                      code,
+                      message: `Elicitation response preflight failed: ${validation.status}`,
+                    });
+                  }
+                }
                 let authoritativeSnapshot: AuthoritativeCommandSnapshot;
                 try {
                   authoritativeSnapshot = yield* authoritativeCommandSnapshot({
@@ -734,6 +882,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     head: selectedHead,
                     command: body.command,
                     submitted: body.messages,
+                    maxModelContextBytes: preparedModelContextByteLimit(model.contextWindow),
                   });
                 } catch (error) {
                   if (error instanceof CrankError) {
@@ -746,7 +895,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   throw error;
                 }
                 const authoritativeMessages = authoritativeSnapshot.messages;
-                const authoritativeActivities = authoritativeSnapshot.activities;
                 const controlHead =
                   body.command?.type === "interrupt-turn"
                     ? yield* conversationStore.loadHead(requestedConversationId)
@@ -846,18 +994,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   }
                 }
 
-                const storedSystemPrompt = yield* readLatestThreadSystemPrompt(
-                  bufferStore,
-                  agUiThreadId,
-                );
-                systemPrompt = resolvePrivateSystemPrompt(
-                  agUiThreadId,
-                  storedSystemPrompt ?? systemPrompt,
-                );
-                if (systemPrompt && storedSystemPrompt == null) {
-                  yield* recordThreadSystemPrompt(bufferStore, agUiThreadId, systemPrompt);
-                }
-
                 // Build model-facing tool schemas through server inventory + exposure policy.
                 // Client plugin registration never participates in executable selection.
                 const exposedDefinitions = yield* ToolExposureApi.definitions({
@@ -888,6 +1024,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
                 let session: SessionHandle<StreamEvent> | undefined;
                 let recoverDetachedSession = false;
+                let responsePrefix: readonly StreamEvent[] = [];
+                let responseStartLSN = 0;
 
                 // Debug: log which path we're taking and if we have elicit responses
                 log.debug(
@@ -901,8 +1039,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 );
 
                 if (method === "HEAD") {
-                  log.debug({ sessionId }, "head request");
-                  return yield* createHeadMetadataResponse(ctx, registry, sessionId, startLSN);
+                  ctx.status = 405;
+                  return yield* createEmptyStream();
                 }
 
                 if (isReconnect) {
@@ -910,7 +1048,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   // writer is detached while durable authority remains active,
                   // release this reader and offer the session a fenced recovery
                   // source instead of treating the incomplete buffer as truth.
-                  log.debug({ sessionId, startLSN }, "reconnect path: acquiring existing session");
+                  log.debug({ sessionId }, "reconnect path: acquiring existing session");
                   session = yield* registry.acquire(sessionId);
                   const responseComplete = yield* session.buffer.isComplete();
                   recoverDetachedSession =
@@ -923,6 +1061,62 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     log.debug({ sessionId }, "reconnect path: detached writer requires recovery");
                   } else {
                     log.debug({ sessionId }, "reconnect path: session acquired");
+                    const reconnectHead =
+                      yield* conversationStore.loadHead(requestedConversationId);
+                    const reconnectCheckpoint = reconnectHead?.checkpoint
+                      ? yield* conversationStore.getCheckpoint(reconnectHead.checkpoint)
+                      : null;
+                    if (
+                      !reconnectHead ||
+                      !reconnectCheckpoint ||
+                      !reconnectHead.activeLogicalTurnId
+                    ) {
+                      throw new CrankError(
+                        "conversation_state_changed",
+                        `Conversation ${requestedConversationId} lost its active reconnect state`,
+                      );
+                    }
+                    if (!session.buffer.readLatest) {
+                      throw new Error(
+                        "Response tail does not support bounded latest-position reads",
+                      );
+                    }
+                    responseStartLSN = (yield* session.buffer.readLatest()).lsn;
+                    responsePrefix = [
+                      {
+                        type: EventType.RUN_STARTED,
+                        threadId: agUiThreadId,
+                        runId: reconnectHead.activeLogicalTurnId,
+                        input: {
+                          threadId: agUiThreadId,
+                          runId: reconnectHead.activeLogicalTurnId,
+                          state: body.state ?? {},
+                          messages: [],
+                          tools: toolSchemas.map((tool) => ({
+                            name: tool.name,
+                            description: tool.description,
+                            parameters: tool.parameters,
+                          })),
+                          context: body.context ?? [],
+                          forwardedProps: body.forwardedProps ?? {},
+                          ...(body.resume ? { resume: body.resume } : {}),
+                        },
+                      },
+                      yield* buildConversationWindow({
+                        store: conversationStore,
+                        conversationId: requestedConversationId,
+                        head: reconnectHead,
+                        checkpoint: reconnectCheckpoint,
+                        keyring: config.projectionTokens,
+                        ...(body.knownWindowToken
+                          ? { knownWindowToken: body.knownWindowToken }
+                          : {}),
+                        ...(config.projectionTokenTtlMs === undefined
+                          ? {}
+                          : { tokenTtlMs: config.projectionTokenTtlMs }),
+                      }),
+                      conversationAuthorityFrame(requestedConversationId, reconnectHead),
+                    ];
                   }
                 }
 
@@ -955,20 +1149,28 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   ) {
                     throw new Error("Recovered publication differs from the selected active Turn");
                   }
-                  const participantId = config.resolveParticipantId
-                    ? (yield* config.resolveParticipantId(request)).trim()
-                    : "anonymous";
-                  if (!participantId || participantId.length > 512) {
-                    throw new CrankError(
-                      "invalid_participant",
-                      "Trusted participant identity must be a bounded non-empty string",
-                    );
-                  }
                   const sendCommand = body.command?.type === "send-message" ? body.command : null;
                   const acceptedCommandMessage = sendCommand
                     ? (authoritativeMessages.find((entry) => entry.id === sendCommand.messageId) ??
                       null)
                     : null;
+                  const runStartedEvent: StreamEvent = {
+                    type: EventType.RUN_STARTED,
+                    ...agUiRun,
+                    input: {
+                      ...agUiRun,
+                      state: body.state ?? {},
+                      messages: [],
+                      tools: toolSchemas.map((tool) => ({
+                        name: tool.name,
+                        description: tool.description,
+                        parameters: tool.parameters,
+                      })),
+                      context: body.context ?? [],
+                      forwardedProps: body.forwardedProps ?? {},
+                      ...(body.resume ? { resume: body.resume } : {}),
+                    },
+                  };
                   const proposedAuthorityTurn = {
                     executionId: `chat-turn:${requestedConversationId}:${agUiRunId}`,
                     sessionId: requestedConversationId,
@@ -992,6 +1194,29 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                       body.command?.type === "respond-to-elicit"
                         ? ("respond-to-elicit" as const)
                         : ("send-message" as const),
+                    preflight: function* (): Operation<void> {
+                      yield* preflightConversationCheckpoint({
+                        store: conversationStore,
+                        conversationId: requestedConversationId,
+                        roots: [
+                          ...toProviderHistorySnapshot(body.messages).map(
+                            acceptedPublicMessageFact,
+                          ),
+                          assertJson(runStartedEvent),
+                        ],
+                        logicalTurnId: selectedHead?.activeLogicalTurnId ?? agUiRunId,
+                        executionId:
+                          selectedHead?.activeExecutionId ??
+                          `chat-turn:${requestedConversationId}:${agUiRunId}`,
+                        ...(checkpointTargets ? { targets: checkpointTargets } : {}),
+                        expectedRevision:
+                          body.command?.basisRevision ?? selectedHead?.revision ?? null,
+                        ...(selectedHead?.ownerEpoch
+                          ? { expectedOwnerEpoch: selectedHead.ownerEpoch }
+                          : {}),
+                        expectedExecutionId: selectedHead?.activeExecutionId ?? null,
+                      });
+                    },
                     ...(body.command?.type === "respond-to-elicit"
                       ? {
                           expectedLogicalTurnId: body.command.logicalTurnId,
@@ -1026,32 +1251,43 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                         const retryCheckpoint = retryHead?.checkpoint
                           ? yield* conversationStore.getCheckpoint(retryHead.checkpoint)
                           : null;
-                        if (retryCheckpoint) {
-                          const retryEvents = yield* eventsFromCheckpoint(
-                            conversationStore,
-                            requestedConversationId,
-                            retryCheckpoint,
-                          );
-                          return yield* createStoredConversationCheckpointResponse({
-                            ctx,
+                        if (retryCheckpoint && retryHead) {
+                          const retryWindow = yield* buildConversationWindow({
+                            store: conversationStore,
                             conversationId: requestedConversationId,
-                            checkpointEvents: retryEvents,
-                            parsedOffset,
-                            terminalRunId: agUiRunId,
+                            head: retryHead,
+                            checkpoint: retryCheckpoint,
+                            keyring: config.projectionTokens,
+                            ...(body.knownWindowToken
+                              ? { knownWindowToken: body.knownWindowToken }
+                              : {}),
+                            ...(config.projectionTokenTtlMs === undefined
+                              ? {}
+                              : { tokenTtlMs: config.projectionTokenTtlMs }),
+                          });
+                          return yield* createStoredConversationCheckpointResponse({
+                            conversationId: requestedConversationId,
+                            head: retryHead,
+                            window: retryWindow,
                           });
                         }
                       }
                       if (
-                        error instanceof CrankError &&
-                        (error.code === "conversation_state_changed" ||
-                          error.code === "conversation_not_idle" ||
-                          error.code === "active_turn_changed" ||
-                          error.code === "command_identity_conflict" ||
-                          error.code === "command_already_terminal")
+                        error instanceof ConversationCheckpointConflictError ||
+                        (error instanceof CrankError &&
+                          (error.code === "conversation_state_changed" ||
+                            error.code === "conversation_not_idle" ||
+                            error.code === "active_turn_changed" ||
+                            error.code === "command_identity_conflict" ||
+                            error.code === "command_already_terminal" ||
+                            error.code === "checkpoint_bound_exceeded"))
                       ) {
                         return yield* createConversationCommandErrorResponse({
                           conversationId: requestedConversationId,
-                          code: error.code,
+                          code:
+                            error instanceof ConversationCheckpointConflictError
+                              ? "conversation_state_changed"
+                              : error.code,
                           message: error.message,
                         });
                       }
@@ -1059,7 +1295,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     }
                   }
                   if (
-                    method === "GET" &&
+                    !body.command &&
                     !authorityTurn &&
                     !recoveredPublication &&
                     resolvedHead?.activeExecutionId
@@ -1176,6 +1412,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     ...(historyPolicy ? { historyPolicy } : {}),
                     maxIterations,
                     conversationId: requestedConversationId,
+                    conversationStore,
+                    participantId,
                     agUiRun,
                     onLiveTaskReady(taskId): void {
                       liveActivation?.taskReady.resolve(taskId);
@@ -1189,9 +1427,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                         liveProgramActivations.delete(requestedConversationId);
                       }
                     },
-                    ...(shouldResolveConversation && method === "GET"
-                      ? { recoveryOnly: true }
-                      : {}),
+                    ...(shouldResolveConversation && !body.command ? { recoveryOnly: true } : {}),
                     ...(plan.effectiveElicitResponses.length > 0 && {
                       elicitResponses: plan.effectiveElicitResponses,
                     }),
@@ -1202,11 +1438,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                               agUiThreadId,
                               respondCommand.interruptId,
                               respondCommand.status,
-                            );
-                            yield* recordThreadInterruptState(
-                              bufferStore,
-                              agUiThreadId,
-                              interruptRecordsForThread(agUiThreadId),
                             );
                           },
                         }
@@ -1242,7 +1473,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                         expectedRevision: parkedHead.revision,
                         expectedOwnerEpoch: parkedHead.ownerEpoch,
                         expectedExecutionId: authorityTurn.executionId,
-                        sealedRootCount: encodedEvents.length,
                         proposal: {
                           state: "parked",
                           terminalHistory: parkedHead.terminalHistory,
@@ -1255,7 +1485,26 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                         },
                         createdAt: Date.now(),
                       });
-                      return conversationAuthority(requestedConversationId, persisted.head);
+                      return {
+                        authority: conversationAuthority(requestedConversationId, persisted.head),
+                        ...(config.projectionTokens
+                          ? {
+                              window: yield* buildConversationWindow({
+                                store: conversationStore,
+                                conversationId: requestedConversationId,
+                                head: persisted.head,
+                                checkpoint: persisted.checkpoint,
+                                keyring: config.projectionTokens,
+                                ...(body.knownWindowToken
+                                  ? { knownWindowToken: body.knownWindowToken }
+                                  : {}),
+                                ...(config.projectionTokenTtlMs === undefined
+                                  ? {}
+                                  : { tokenTtlMs: config.projectionTokenTtlMs }),
+                              }),
+                            }
+                          : {}),
+                      };
                     },
                     publishTerminal: function* ({ outcome, disposition, events }) {
                       if (!authorityTurn) {
@@ -1284,7 +1533,29 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                         cancelOpenInterruptsForThread(agUiThreadId);
                       }
                       liveActivation?.terminal.resolve(undefined);
-                      return conversationAuthority(requestedConversationId, terminalHead);
+                      const terminalCheckpoint = terminalHead?.checkpoint
+                        ? yield* conversationStore.getCheckpoint(terminalHead.checkpoint)
+                        : null;
+                      return {
+                        authority: conversationAuthority(requestedConversationId, terminalHead),
+                        ...(terminalHead && terminalCheckpoint
+                          ? {
+                              window: yield* buildConversationWindow({
+                                store: conversationStore,
+                                conversationId: requestedConversationId,
+                                head: terminalHead,
+                                checkpoint: terminalCheckpoint,
+                                keyring: config.projectionTokens,
+                                ...(body.knownWindowToken
+                                  ? { knownWindowToken: body.knownWindowToken }
+                                  : {}),
+                                ...(config.projectionTokenTtlMs === undefined
+                                  ? {}
+                                  : { tokenTtlMs: config.projectionTokenTtlMs }),
+                              }),
+                            }
+                          : {}),
+                      };
                     },
                   };
                   const engineSource: ChatEngineSource = liveCancellation
@@ -1312,40 +1583,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                           });
                   log.debug({ sessionId }, "new session path: chat engine created");
 
-                  // Every response segment establishes one complete server base
-                  // before its run events. The client replaces that base, then
-                  // folds only events produced by this segment.
-                  const snapshotPrelude: StreamEvent[] = [
-                    {
-                      type: EventType.MESSAGES_SNAPSHOT,
-                      messages: toProviderHistorySnapshot(authoritativeMessages),
-                    },
-                    ...authoritativeActivities,
-                    {
-                      type: EventType.STATE_SNAPSHOT,
-                      snapshot: buildAgUiCustomState({}),
-                    },
-                  ];
-                  const initialEvents: StreamEvent[] = [
-                    ...snapshotPrelude,
-                    {
-                      type: EventType.RUN_STARTED,
-                      ...agUiRun,
-                      input: {
-                        ...agUiRun,
-                        state: body.state ?? {},
-                        messages: toProviderHistorySnapshot(authoritativeMessages),
-                        tools: toolSchemas.map((tool) => ({
-                          name: tool.name,
-                          description: tool.description,
-                          parameters: tool.parameters,
-                        })),
-                        context: body.context ?? [],
-                        forwardedProps: body.forwardedProps ?? {},
-                        ...(body.resume ? { resume: body.resume } : {}),
-                      },
-                    },
-                  ];
+                  // An admitted native segment starts with RUN_STARTED. The
+                  // complete bounded ConversationWindow and running authority
+                  // atomically establish its public base before incrementals.
+                  const initialEvents: StreamEvent[] = [runStartedEvent];
 
                   if (
                     authorityTurn &&
@@ -1354,18 +1595,16 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   ) {
                     const runningHead = yield* conversationStore.loadHead(requestedConversationId);
                     if (runningHead) {
-                      // The full activity prelude is a delivery projection of
-                      // the selected checkpoint. Do not append those restored
-                      // nodes back into checkpoint authority as new roots.
-                      const admissionEvents = initialEvents.filter(
-                        (event) => event.type !== EventType.ACTIVITY_SNAPSHOT,
-                      );
+                      const admissionFacts: Json[] = [
+                        ...toProviderHistorySnapshot(body.messages).map(acceptedPublicMessageFact),
+                        ...initialEvents.map((event) => assertJson(event)),
+                      ];
                       yield* persistConversationCheckpoint(conversationStore, {
                         conversationId: requestedConversationId,
                         causeKey: stableTupleHash([
                           authorityTurn.executionId,
                           "nonterminal",
-                          admissionEvents.map((event) => assertJson(event)),
+                          admissionFacts,
                         ]),
                         cause: {
                           kind: "tail-cut",
@@ -1373,12 +1612,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                           executionId: authorityTurn.executionId,
                           logicalTurnId: authorityTurn.turnId,
                         },
-                        roots: admissionEvents.map((event) => assertJson(event)),
+                        roots: admissionFacts,
                         ...(checkpointTargets ? { targets: checkpointTargets } : {}),
                         expectedRevision: runningHead.revision,
                         expectedOwnerEpoch: runningHead.ownerEpoch,
                         expectedExecutionId: authorityTurn.executionId,
-                        sealedRootCount: 0,
                         proposal: {
                           state: runningHead.state,
                           terminalHistory: runningHead.terminalHistory,
@@ -1395,13 +1633,31 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   }
 
                   const authorityHead = yield* conversationStore.loadHead(requestedConversationId);
-                  const firstRunEvent = initialEvents.findIndex(
-                    (event) =>
-                      event.type === EventType.RUN_STARTED || event.type === EventType.RUN_ERROR,
+                  if (!authorityHead) {
+                    throw new Error(`Conversation ${requestedConversationId} has no admitted head`);
+                  }
+                  const authorityCheckpoint = authorityHead.checkpoint
+                    ? yield* conversationStore.getCheckpoint(authorityHead.checkpoint)
+                    : null;
+                  if (!authorityCheckpoint) {
+                    throw new Error(
+                      `Conversation ${requestedConversationId} running checkpoint is missing`,
+                    );
+                  }
+                  initialEvents.push(
+                    yield* buildConversationWindow({
+                      store: conversationStore,
+                      conversationId: requestedConversationId,
+                      head: authorityHead,
+                      checkpoint: authorityCheckpoint,
+                      keyring: config.projectionTokens,
+                      ...(body.knownWindowToken ? { knownWindowToken: body.knownWindowToken } : {}),
+                      ...(config.projectionTokenTtlMs === undefined
+                        ? {}
+                        : { tokenTtlMs: config.projectionTokenTtlMs }),
+                    }),
                   );
-                  initialEvents.splice(
-                    firstRunEvent < 0 ? initialEvents.length : firstRunEvent,
-                    0,
+                  initialEvents.push(
                     conversationAuthorityFrame(requestedConversationId, authorityHead),
                   );
 
@@ -1415,7 +1671,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     recoverIfDetached: shouldResolveConversation,
                     source: (_responseTokenBuffer, responseTokenWriter) =>
                       createSerializedEventStream(engineSource, initialEvents, {
-                        ...(clientConversationId ? { conversationId: durableConversationId } : {}),
                         responseTokenBuffer: responseTokenWriter,
                       }),
                   });
@@ -1426,55 +1681,17 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   throw new Error(`Conversation response session ${sessionId} was not acquired`);
                 }
 
-                // Only record the conversation session index when the client explicitly
-                // provided a conversationId. When the server minted one (client didn't
-                // send one), the index is recorded on the next request when the client
-                // sends the minted id back (received from the X-Conversation-Id header).
-                if (clientConversationId && method === "POST") {
-                  yield* recordConversationSession(bufferStore, durableConversationId, sessionId);
-                }
-
-                if (
-                  shouldResolveConversation &&
-                  method === "GET" &&
-                  liveMode === undefined &&
-                  !resolvedHead?.activeExecutionId
-                ) {
-                  return yield* createConversationHydrateResponse({
-                    ctx,
-                    registry,
-                    session,
-                    sessionId,
-                    conversationId: requestedConversationId!,
-                    parsedOffset,
-                  });
-                }
-
-                const response = yield* createProtocolReadResponse({
-                  ctx,
-                  registry,
+                const response = yield* directChatSubscription(
                   session,
-                  sessionId,
-                  startLSN,
-                  isReconnect,
-                  parsedOffset,
-                  liveMode,
-                  timeoutMs,
-                  log,
-                });
-                if (shouldResolveConversation && method === "GET") {
-                  const syncHead = yield* conversationStore.loadHead(requestedConversationId!);
-                  const syncFrame = conversationAuthorityFrame(requestedConversationId!, syncHead);
-                  const baseSubscription =
-                    "subscription" in response ? response.subscription : response;
-                  const subscription = yield* prependAuthorityFrame(
-                    baseSubscription,
-                    syncFrame,
-                    startLSN,
-                  );
-                  return "subscription" in response ? { ...response, subscription } : subscription;
-                }
-                return response;
+                  responsePrefix,
+                  responseStartLSN,
+                );
+                return {
+                  subscription: response,
+                  cleanup: function* () {
+                    yield* registry.release(sessionId);
+                  },
+                };
               })();
               return { ok: true as const, value };
             } catch (error) {
@@ -1501,14 +1718,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       },
       serialize: (v) => v + "\n",
       onSetupError: (error, ctx) => {
-        // Return NDJSON error event instead of plain JSON
+        // Setup failures are direct pre-admission rejection events.
         const errorEvent = {
-          lsn: 0,
-          event: {
-            type: EventType.RUN_ERROR,
-            message: error.message,
-            code: error instanceof CrankError ? error.code : "internal_error",
-          },
+          type: EventType.RUN_ERROR,
+          message: error.message,
+          code: error instanceof CrankError ? error.code : "internal_error",
         };
         const body = JSON.stringify(errorEvent) + "\n";
         return new Response(body, {
@@ -1518,6 +1732,39 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       },
     },
   );
+  const handler = (async (request: Request): Promise<Response> => {
+    const conversationId = historyPageConversationId(new URL(request.url).pathname);
+    if (conversationId !== null) {
+      if (request.method.toUpperCase() !== "POST") {
+        return new Response(null, { status: 405, headers: { Allow: "POST" } });
+      }
+      return await createHistoryPageResponse({
+        request,
+        conversationId,
+        store: conversationStore,
+        config,
+      });
+    }
+    return await streamingHandler(request);
+  }) as typeof streamingHandler;
+  handler.withScope = (scope) => {
+    const scoped = streamingHandler.withScope(scope);
+    return async (request: Request): Promise<Response> => {
+      const conversationId = historyPageConversationId(new URL(request.url).pathname);
+      if (conversationId === null) return await scoped(request);
+      if (request.method.toUpperCase() !== "POST") {
+        return new Response(null, { status: 405, headers: { Allow: "POST" } });
+      }
+      return await createHistoryPageResponse({
+        request,
+        conversationId,
+        store: conversationStore,
+        config,
+        scope,
+      });
+    };
+  };
+  return handler;
 }
 
 function* readBoundedChatRequest(request: Request): Operation<unknown> {

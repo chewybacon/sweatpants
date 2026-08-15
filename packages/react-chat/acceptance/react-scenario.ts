@@ -252,26 +252,45 @@ export function mountReactChat(
         yield* call(() => act(() => rendered!.result.current.setMessages([])));
       },
       *settled() {
-        let observedActive = false;
+        const active = (chat: UseChatResult): boolean =>
+          chat.status === "submitted" || chat.status === "streaming";
         const complete = (chat: UseChatResult): boolean =>
-          (observedActive &&
-            (chat.status === "ready" || chat.status === "error") &&
-            !JSON.stringify(chat.messages).includes('"type":"elicit"')) ||
-          (observedActive &&
-            (chat.status === "ready" || chat.status === "error") &&
-            !JSON.stringify(chat.messages).includes('"state":"pending"'));
-        for (const chat of snapshots) {
-          if (chat.status === "submitted" || chat.status === "streaming") observedActive = true;
-          else if (complete(chat)) return chat;
+          (chat.status === "ready" || chat.status === "error") &&
+          !JSON.stringify(chat.messages).includes('"state":"pending"');
+        let latestActiveIndex = -1;
+        for (let index = snapshots.length - 1; index >= 0; index -= 1) {
+          if (active(snapshots[index]!)) {
+            latestActiveIndex = index;
+            break;
+          }
         }
+        if (latestActiveIndex >= 0 && rendered !== undefined && complete(rendered.result.current)) {
+          return rendered.result.current;
+        }
+        if (latestActiveIndex >= 0) {
+          for (let index = snapshots.length - 1; index > latestActiveIndex; index -= 1) {
+            const chat = snapshots[index]!;
+            if (complete(chat)) return chat;
+          }
+        }
+        let observedActive = latestActiveIndex >= 0;
         return yield* call(() =>
-          waitFor("React run settlement", (chat) => {
-            if (chat.status === "submitted" || chat.status === "streaming") {
-              observedActive = true;
-              return undefined;
-            }
-            return complete(chat) ? chat : undefined;
-          }),
+          timeout(
+            new Promise<UseChatResult>((resolve, reject) => {
+              waiters.push({
+                select(chat) {
+                  if (active(chat)) {
+                    observedActive = true;
+                    return undefined;
+                  }
+                  return observedActive && complete(chat) ? chat : undefined;
+                },
+                resolve,
+                reject,
+              });
+            }),
+            "React run settlement",
+          ),
         );
       },
       *snapshot(assertion) {

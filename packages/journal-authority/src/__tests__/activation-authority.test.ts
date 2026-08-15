@@ -102,6 +102,37 @@ describe("activation leases and restore fencing", () => {
     });
   });
 
+  it("fences a replacement attachment after an expired activation lease", async () => {
+    let clock = 1_000;
+    const value = authority(() => clock);
+    await run(function* () {
+      yield* value.openTask({
+        sessionId: "expired-replacement",
+        turnId: "turn",
+        taskId: "task",
+        manifest,
+        input: {},
+        executionEpoch: 1,
+        attachmentId: "initial",
+        audience: "program-runtime",
+      });
+      expect(
+        yield* value.claimActivation({
+          sessionId: "expired-replacement",
+          ownerId: "dead",
+          leaseDurationMs: 1_000,
+        }),
+      ).toMatchObject({ status: "claimed", epoch: 1 });
+      clock = 2_000;
+      expect(
+        yield* value.replaceAttachment("expired-replacement", "task", "replacement"),
+      ).toMatchObject({ executionEpoch: 2 });
+      expect(
+        yield* value.claimActivation({ sessionId: "expired-replacement", ownerId: "replacement" }),
+      ).toMatchObject({ status: "claimed", epoch: 2 });
+    });
+  });
+
   it("binds the verified frontier digest to the exact first semantic transition", async () => {
     const value = authority(() => 2_000);
     await run(function* () {

@@ -9,10 +9,11 @@ import {
   type StoredImmutableRecord,
   type StoredScanPage,
 } from "@sweatpants/durable-storage-kernel";
-import type { Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import {
   ConversationStoreError,
+  type ArchivedPublicRootIndex,
   type CheckpointPointer,
   type CommandAdmissionResult,
   type CommandReceipt,
@@ -21,8 +22,9 @@ import {
   type ConversationStore,
   type HeadCommitResult,
   type HistoryPointer,
-  type PublicArchivePage,
   type PublicArchivePointer,
+  type PublicHistoryReadPage,
+  type ReadPublicHistoryBeforeRequest,
   type StoredCheckpoint,
   type StoredPublicArchiveSegment,
   type StoredTerminalSegment,
@@ -36,8 +38,10 @@ import {
   publicSegmentEnsure,
   terminalSegmentEnsure,
 } from "./planners.ts";
+import { HistoryStoreReadObservationContext } from "./observation.ts";
 import {
   conversationKeys,
+  decodeArchivedPublicRootIndex,
   decodeAuthorityHead,
   decodeCheckpoint,
   decodeCommandReceipt,
@@ -48,8 +52,9 @@ import {
 function immutableConflict(
   outcome: Extract<DurableMutationOutcome, { status: "immutable_conflict" }>,
 ): never {
+  const publicRoot = outcome.write.startsWith("public-root-");
   throw new ConversationStoreError(
-    "immutable_object_conflict",
+    publicRoot ? "public_root_conflict" : "immutable_object_conflict",
     `Immutable conversation write ${outcome.write} conflicts with ${outcome.existing.key}`,
   );
 }
@@ -151,47 +156,6 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       );
     }
     return unexpected(outcome);
-  }
-
-  function* readPublicChain(
-    conversationId: string,
-    head: PublicArchivePointer,
-  ): Operation<readonly StoredPublicArchiveSegment[]> {
-    const reverse: StoredPublicArchiveSegment[] = [];
-    const seen = new Set<string>();
-    let pointer: PublicArchivePointer | null = head;
-    while (pointer !== null) {
-      if (seen.has(pointer.segmentId)) {
-        throw new ConversationStoreError(
-          "persisted_data_invalid",
-          `Public archive chain contains a cycle at ${pointer.segmentId}`,
-        );
-      }
-      seen.add(pointer.segmentId);
-      const record = yield* kernel.readImmutable(
-        DurableCollections.conversationPublicSegments,
-        conversationKeys.publicSegment(pointer.segmentId),
-      );
-      if (record === null) {
-        throw new ConversationStoreError(
-          "persisted_data_invalid",
-          `Public archive chain points to missing segment ${pointer.segmentId}`,
-        );
-      }
-      const segment = decodePublicSegment(record.value);
-      if (
-        segment.conversationId !== conversationId ||
-        segment.lastPosition !== pointer.lastPosition
-      ) {
-        throw new ConversationStoreError(
-          "persisted_data_invalid",
-          `Public archive segment ${pointer.segmentId} is outside its selected frontier`,
-        );
-      }
-      reverse.push(segment);
-      pointer = segment.previous;
-    }
-    return reversedCopy(reverse);
   }
 
   function* readTerminalChain(
@@ -465,61 +429,175 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
           );
         }
         const stored = decodePublicSegment(existing.value);
-        return { segmentId: stored.segmentId, lastPosition: stored.lastPosition };
+        return { segmentId: stored.segmentId };
       }
       const ensure = publicSegmentEnsure(segment);
       const outcome = yield* kernel.apply({ ensures: [ensure] });
       const stored = ensureOutcome(outcome, ensure.name, decodePublicSegment);
-      return { segmentId: stored.segmentId, lastPosition: stored.lastPosition };
+      return { segmentId: stored.segmentId };
     },
-    *readPublicArchivePage(conversationId, cursor, limit = 50): Operation<PublicArchivePage> {
-      const head = yield* loadHead(conversationId);
-      let segments: readonly StoredPublicArchiveSegment[];
-      let archiveHead: PublicArchivePointer | null;
-      if (head === null) {
-        const records = yield* (function* (): Operation<readonly StoredImmutableRecord[]> {
-          const result: StoredImmutableRecord[] = [];
-          let after: string | null = null;
-          do {
-            const scan: StoredScanPage = yield* kernel.scan({
-              collection: DurableCollections.conversationPublicSegments,
-              index: DurableIndexes.conversationPosition,
-              scope: durableKey(conversationId),
-              direction: "forward",
-              after,
-              maxRecords: DURABLE_SCAN_MAX_RECORDS,
-              maxStoredBytes: DURABLE_SCAN_MAX_BYTES,
-            });
-            result.push(...scan.records);
-            after = scan.nextCursor;
-          } while (after !== null);
-          return result;
-        })();
-        segments = records.map((record) => decodePublicSegment(record.value));
-        const last = segments.at(-1);
-        archiveHead = last ? { segmentId: last.segmentId, lastPosition: last.lastPosition } : null;
-      } else if (head.checkpoint === null) {
-        segments = [];
-        archiveHead = null;
-      } else {
-        const checkpointRecord = yield* kernel.readImmutable(
-          DurableCollections.conversationCheckpoints,
-          conversationKeys.checkpoint(head.checkpoint.checkpointId),
+    *readPublicHistoryBefore(
+      request: ReadPublicHistoryBeforeRequest,
+    ): Operation<PublicHistoryReadPage> {
+      const observation = yield* HistoryStoreReadObservationContext.get();
+      validatePageLimit(request.maxRoots);
+      if (request.maxRoots > 256) {
+        throw new ConversationStoreError(
+          "persisted_data_invalid",
+          "Public history maxRoots exceeds 256",
         );
-        const checkpoint =
-          checkpointRecord === null ? null : decodeCheckpoint(checkpointRecord.value);
-        if (checkpoint === null) {
+      }
+      if (
+        !Number.isSafeInteger(request.maxBytes) ||
+        request.maxBytes <= 0 ||
+        request.maxBytes > 8 * 1024 * 1024
+      ) {
+        throw new ConversationStoreError(
+          "persisted_data_invalid",
+          "Invalid public history byte limit",
+        );
+      }
+      const before = counter(request.beforePosition, "history before position");
+      const lower =
+        request.atOrAfterPosition === undefined
+          ? 0n
+          : counter(request.atOrAfterPosition, "history lower position");
+      const nextPublic = counter(
+        request.basis.nextPublicPosition,
+        "history basis next public position",
+      );
+      const frontier = counter(
+        request.basis.archiveFrontierOrdinal,
+        "history basis archive frontier ordinal",
+      );
+      if (before > nextPublic || lower > before) {
+        throw new ConversationStoreError(
+          "persisted_data_invalid",
+          "Public history position bounds are inconsistent",
+        );
+      }
+      const hot = new Set<string>();
+      for (const position of request.basis.hotRootPositions) {
+        const parsed = counter(position, "history hot root position");
+        if (parsed >= nextPublic || hot.has(position)) {
           throw new ConversationStoreError(
             "persisted_data_invalid",
-            `Head points to missing checkpoint ${head.checkpoint.checkpointId}`,
+            "Public history hot positions are invalid",
           );
         }
-        archiveHead = checkpoint.archiveHead;
-        segments = archiveHead === null ? [] : yield* readPublicChain(conversationId, archiveHead);
+        hot.add(position);
       }
-      const result = page(segments, cursor, limit, (segment) => segment.roots);
-      return { roots: result.values, nextCursor: result.nextCursor, head: archiveHead };
+      if (hot.size > 256) {
+        throw new ConversationStoreError(
+          "persisted_data_invalid",
+          "Public history basis exceeds 256 hot positions",
+        );
+      }
+
+      const scan = yield* kernel.scan({
+        collection: DurableCollections.conversationPublicRootIndex,
+        index: DurableIndexes.conversationPosition,
+        scope: durableKey(request.conversationId),
+        direction: "backward",
+        after: request.beforePosition,
+        through: lower.toString(10),
+        maxRecords: Math.min(DURABLE_SCAN_MAX_RECORDS, request.maxRoots + hot.size + 1),
+        maxStoredBytes: DURABLE_SCAN_MAX_BYTES,
+      });
+      observation?.publicHistoryIndexPage(
+        scan.records.length,
+        scan.records.reduce((total, record) => total + record.storedBytes, 0),
+      );
+      const indexed: ArchivedPublicRootIndex[] = [];
+      for (const record of scan.records) {
+        const entry = decodeArchivedPublicRootIndex(record.value);
+        if (entry.conversationId !== request.conversationId || entry.position !== record.position) {
+          throw new ConversationStoreError(
+            "persisted_data_invalid",
+            "Public root index is outside its conversation or position",
+          );
+        }
+        if (
+          counter(entry.position, "public root position") >= nextPublic ||
+          counter(entry.archiveOrdinal, "public root archive ordinal") >= frontier ||
+          hot.has(entry.position)
+        ) {
+          continue;
+        }
+        indexed.push(entry);
+        if (indexed.length > request.maxRoots) {
+          break;
+        }
+      }
+
+      const segmentCache = new Map<string, StoredPublicArchiveSegment>();
+      const roots: Array<{ readonly position: string; readonly root: Json }> = [];
+      let payloadBytes = 0;
+      let hasMore = indexed.length > request.maxRoots || scan.nextCursor !== null;
+      for (const entry of indexed.slice(0, request.maxRoots)) {
+        if (entry.encodedBytes > 1024 * 1024) {
+          throw new ConversationStoreError(
+            "persisted_data_invalid",
+            `Archived public root ${entry.rootId} exceeds the inline root bound`,
+          );
+        }
+        if (roots.length > 0 && payloadBytes + entry.encodedBytes > request.maxBytes) {
+          hasMore = true;
+          break;
+        }
+        let segment = segmentCache.get(entry.segmentId);
+        if (!segment) {
+          const record = yield* kernel.readImmutable(
+            DurableCollections.conversationPublicSegments,
+            conversationKeys.publicSegment(entry.segmentId),
+          );
+          if (!record) {
+            throw new ConversationStoreError(
+              "persisted_data_invalid",
+              `Public root index points to missing segment ${entry.segmentId}`,
+            );
+          }
+          segment = decodePublicSegment(record.value);
+          observation?.publicHistorySegment(segment.encodedBytes);
+          segmentCache.set(entry.segmentId, segment);
+        }
+        const root = segment.roots[entry.segmentRootIndex];
+        if (root === undefined) {
+          throw new ConversationStoreError(
+            "persisted_data_invalid",
+            `Public root index points outside segment ${entry.segmentId}`,
+          );
+        }
+        const rootObject =
+          root !== null && typeof root === "object" && !Array.isArray(root) ? root : null;
+        const snapshot = canonicalSnapshot(root);
+        const bytes = new TextEncoder().encode(snapshot.canonical).byteLength;
+        if (
+          rootObject?.["rootId"] !== entry.rootId ||
+          rootObject?.["position"] !== entry.position ||
+          snapshot.sha !== entry.contentHash ||
+          bytes !== entry.encodedBytes
+        ) {
+          throw new ConversationStoreError(
+            "persisted_data_invalid",
+            `Public root index conflicts with segment root ${entry.rootId}`,
+          );
+        }
+        roots.push({ position: entry.position, root });
+        payloadBytes += bytes;
+      }
+      observation?.publicHistoryPageMaterialized(payloadBytes);
+      roots.sort((left, right) => {
+        const a = counter(left.position, "public root position");
+        const b = counter(right.position, "public root position");
+        return a === b ? 0 : a < b ? -1 : 1;
+      });
+      return {
+        roots: roots.map((entry) => entry.root),
+        nextBeforePosition: hasMore && roots.length > 0 ? roots[0]!.position : null,
+      };
     },
+
     *putTerminalHistorySegment(segment): Operation<HistoryPointer> {
       const sameId = yield* kernel.readImmutable(
         DurableCollections.conversationTerminalSegments,

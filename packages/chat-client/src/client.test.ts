@@ -3,6 +3,7 @@ import { call, resource, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_AUTHORITY_FRAME_TYPE,
+  CONVERSATION_WINDOW_FRAME_TYPE,
   ChatTransportPort,
   createChatClient,
   createChatRuntime,
@@ -10,6 +11,7 @@ import {
   type ChatInteractionRequest,
   type ChatInteractionRuntime,
   type ChatReconnectRequest,
+  type PublicHistoryPage,
   type ChatTransportRequest,
   type AGUIEvent,
   type ConversationStreamEvent,
@@ -32,7 +34,44 @@ function observeAuthorityRevision(conversationId: string, revision: string | nul
   }
 }
 
-function withAuthority(events: readonly AGUIEvent[]): readonly ConversationStreamEvent[] {
+function windowFrame(
+  conversationId: string,
+  revision: string,
+  userMessage?: ChatTransportRequest["userMessage"],
+): ConversationStreamEvent {
+  return {
+    type: CONVERSATION_WINDOW_FRAME_TYPE,
+    conversationId,
+    lineageId: `lineage:${conversationId}`,
+    basisRevision: revision,
+    windowToken: `window:${conversationId}:${revision}`,
+    windowMode: "reset",
+    archiveFrontierOrdinal: "0",
+    nextPublicPosition: userMessage ? "1" : "0",
+    hotRoots:
+      userMessage?.role === "user"
+        ? [
+            {
+              rootId: `message:${userMessage.id}`,
+              position: "0",
+              kind: "message",
+              state: "sealed",
+              attribution: {},
+              message: userMessage,
+              placement: { type: "root", sequence: 0 },
+            },
+          ]
+        : [],
+    sealedCatchupRoots: [],
+    applicationState: {},
+    olderHistoryCursor: null,
+  };
+}
+
+function withAuthority(
+  events: readonly AGUIEvent[],
+  userMessage?: ChatTransportRequest["userMessage"],
+): readonly ConversationStreamEvent[] {
   const run = events.find(
     (event) => event.type === EventType.RUN_STARTED || event.type === EventType.RUN_FINISHED,
   );
@@ -79,8 +118,10 @@ function withAuthority(events: readonly AGUIEvent[]): readonly ConversationStrea
           },
   };
   return [
+    events[0]!,
+    windowFrame(run.threadId, running.authority.revision, userMessage),
     running,
-    ...events.slice(0, terminalIndex),
+    ...events.slice(1, terminalIndex),
     terminalAuthority,
     ...events.slice(terminalIndex),
   ];
@@ -148,6 +189,16 @@ function streamOf(events: readonly AGUIEvent[]): Stream<ConversationStreamEvent,
 interface Deferred<T> {
   readonly promise: Promise<T>;
   resolve(value: T): void;
+}
+
+function isCommandRequest(init: RequestInit | undefined): boolean {
+  if (typeof init?.body !== "string") return false;
+  try {
+    const value = JSON.parse(init.body) as Record<string, unknown>;
+    return value["command"] !== undefined;
+  } catch {
+    return false;
+  }
 }
 
 function deferred<T>(): Deferred<T> {
@@ -223,8 +274,8 @@ function waitForQueue(
 
 function transport(events: readonly AGUIEvent[]): ChatTransportContract {
   return {
-    *sendMessages() {
-      return streamOf(events);
+    *sendMessages(request) {
+      return frameStream(withAuthority(events, request.userMessage));
     },
     *reconnectToStream() {
       return null;
@@ -243,13 +294,13 @@ describe("headless ChatClient", () => {
         return streamOf([
           {
             type: EventType.RUN_STARTED,
-            threadId: request.input.threadId,
-            runId: request.input.runId,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
           },
           {
             type: EventType.RUN_FINISHED,
-            threadId: request.input.threadId,
-            runId: request.input.runId,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
           },
         ]);
       },
@@ -273,6 +324,148 @@ describe("headless ChatClient", () => {
       authority: { state: "idle", revision: null },
     });
     await client.sendMessage("first command");
+    await client.close();
+  });
+
+  it("clears every loaded projection layer when authoritative state is deleted", async () => {
+    const conversationId = "deleted-conversation";
+    let reconnects = 0;
+    const driver: ChatTransportContract = {
+      *sendMessages() {
+        throw new Error("deleted conversation test does not send commands");
+      },
+      *reconnectToStream() {
+        reconnects += 1;
+        if (reconnects === 1) {
+          return frameStream([
+            windowFrame(conversationId, "1", {
+              id: "retained-before-delete",
+              role: "user",
+              content: "must disappear",
+            }),
+            {
+              type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+              authority: {
+                conversationId,
+                revision: "1",
+                state: "idle",
+                activeLogicalTurnId: null,
+                activeExecutionId: null,
+                latestCompletedExecutionId: null,
+              },
+            },
+          ]);
+        }
+        return frameStream([
+          windowFrame(conversationId, "2"),
+          {
+            type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+            authority: {
+              conversationId,
+              revision: "2",
+              state: "deleted",
+              activeLogicalTurnId: null,
+              activeExecutionId: null,
+              latestCompletedExecutionId: null,
+            },
+          },
+        ]);
+      },
+      *disconnect() {},
+    };
+    const client = createChatClient({ threadId: conversationId, connection: driver });
+    await client.initialized;
+    expect(client.getSnapshot().messages).toHaveLength(1);
+
+    await client.reconnect();
+
+    expect(client.getSnapshot()).toMatchObject({
+      authority: { state: "deleted" },
+      messages: [],
+      queue: [],
+      history: { hasOlder: false, loadingOlder: false, error: null },
+    });
+    await client.close();
+  });
+
+  it("does not let a stale history page overwrite a newer window generation", async () => {
+    const conversationId = "history-generation-race";
+    const pageRequested = deferred<void>();
+    const pageResult = deferred<PublicHistoryPage>();
+    let reconnects = 0;
+    const driver: ChatTransportContract = {
+      *sendMessages() {
+        throw new Error("history race test does not send commands");
+      },
+      *reconnectToStream() {
+        reconnects += 1;
+        return frameStream([
+          {
+            ...windowFrame(conversationId, String(reconnects)),
+            ...(reconnects === 1 ? { olderHistoryCursor: "cursor-1" } : {}),
+          },
+          idleAuthorityFrame(conversationId, String(reconnects)),
+        ]);
+      },
+      *loadHistoryPage() {
+        pageRequested.resolve(undefined);
+        return yield* call(() => pageResult.promise);
+      },
+      *disconnect() {},
+    };
+    const client = createChatClient({ threadId: conversationId, connection: driver });
+    await client.initialized;
+    expect(client.getSnapshot().history.hasOlder).toBe(true);
+
+    const loading = client.loadOlder();
+    await pageRequested.promise;
+    await client.reconnect();
+    pageResult.resolve({ roots: [], nextOlderCursor: null });
+    await loading;
+
+    expect(client.getSnapshot().history).toEqual({
+      hasOlder: false,
+      loadingOlder: false,
+      error: null,
+    });
+    expect(reconnects).toBe(2);
+    await client.close();
+  });
+
+  it("preserves same-lineage sealed pages across a reset reconnect window", async () => {
+    const conversationId = "same-lineage-reconnect";
+    const userMessage = { id: "sealed-user", role: "user" as const, content: "retained" };
+    let reconnects = 0;
+    const driver: ChatTransportContract = {
+      *sendMessages() {
+        throw new Error("same-lineage reconnect test does not send commands");
+      },
+      *reconnectToStream() {
+        reconnects += 1;
+        const first = windowFrame(conversationId, "1", userMessage);
+        return frameStream([
+          reconnects === 1
+            ? { ...first, olderHistoryCursor: "cursor-1" }
+            : windowFrame(conversationId, "2"),
+          idleAuthorityFrame(conversationId, String(reconnects)),
+        ]);
+      },
+      *loadHistoryPage() {
+        const first = windowFrame(conversationId, "1", userMessage);
+        return {
+          roots: first.hotRoots,
+          nextOlderCursor: null,
+        };
+      },
+      *disconnect() {},
+    };
+    const client = createChatClient({ threadId: conversationId, connection: driver });
+    await client.initialized;
+    await client.loadOlder();
+    expect(client.getSnapshot().messages).toHaveLength(1);
+    await client.reconnect();
+    expect(client.getSnapshot().messages).toHaveLength(1);
+    expect(client.getSnapshot().messages[0]?.id).toBe("sealed-user");
     await client.close();
   });
 
@@ -343,9 +536,7 @@ describe("headless ChatClient", () => {
       context: [{ description: "tenant", value: "test" }],
       forwardedProps: { mode: "preview" },
       fetcher: async (_input, init) => {
-        if ((init?.method ?? "GET") === "GET") {
-          return new Response(null, { status: 404 });
-        }
+        if (!isCommandRequest(init)) return new Response(null, { status: 404 });
         if (typeof init?.body !== "string") {
           throw new Error("expected JSON request body");
         }
@@ -363,13 +554,10 @@ describe("headless ChatClient", () => {
     await client.sendMessage("hello");
     expect(requestBody).toMatchObject({
       conversationId: "fetcher-thread",
-      input: {
-        threadId: "fetcher-thread",
-        state: { draft: "local-state" },
-        context: [{ description: "tenant", value: "test" }],
-        forwardedProps: { mode: "preview" },
-        tools: [],
-      },
+      state: { draft: "local-state" },
+      context: [{ description: "tenant", value: "test" }],
+      forwardedProps: { mode: "preview" },
+      userMessage: { role: "user", content: "hello" },
     });
     expect(client.threadId).toBe("fetcher-thread");
     await client.close();
@@ -379,7 +567,7 @@ describe("headless ChatClient", () => {
     const failedTransport = createChatClient({
       threadId: "transport-failure",
       fetcher: async (_input, init) =>
-        (init?.method ?? "GET") === "GET"
+        !isCommandRequest(init)
           ? new Response(null, { status: 404 })
           : new Response("upstream unavailable", { status: 500 }),
     });
@@ -387,12 +575,14 @@ describe("headless ChatClient", () => {
     await expect(failedTransport.sendMessage("fail")).rejects.toMatchObject({
       code: "chat_transport_failed",
     });
+    expect(failedTransport.getSnapshot().messages).toHaveLength(1);
+    expect(failedTransport.getServerSnapshot().messages).toHaveLength(0);
     await failedTransport.close();
 
     const malformedTransport = createChatClient({
       threadId: "malformed-event",
       fetcher: async (_input, init) =>
-        (init?.method ?? "GET") === "GET"
+        !isCommandRequest(init)
           ? new Response(null, { status: 404 })
           : new Response('{"type":"TEXT_MESSAGE_CONTENT"}\n', {
               headers: { "content-type": "application/x-ndjson" },
@@ -419,70 +609,35 @@ describe("headless ChatClient", () => {
     await client.close();
   });
 
-  it("keeps runtime-level HTTP reconnect cursors isolated by thread", async () => {
-    const requests: Array<{ readonly url: string; readonly method: string }> = [];
+  it("keeps cursor-free HTTP reconnect identity isolated by conversation", async () => {
+    const requests: Array<{
+      readonly url: string;
+      readonly method: string;
+      readonly body: Record<string, unknown>;
+    }> = [];
+    const completed = new Set<string>();
     const fetcher = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      requests.push({ url, method });
-      if (method === "POST") {
-        if (typeof init?.body !== "string") {
-          throw new Error("expected a JSON request body");
-        }
-        const body = JSON.parse(init.body) as { input: { threadId: string } };
-        const start = body.input.threadId === "thread-a" ? 10 : 20;
-        const events = [
-          {
-            lsn: start,
-            event: {
-              type: EventType.RUN_STARTED,
-              threadId: body.input.threadId,
-              runId: `run-${start}`,
-            },
-          },
-          {
-            lsn: start + 1,
-            event: idleAuthorityFrame(body.input.threadId, String(start + 1)),
-          },
-          {
-            lsn: start + 2,
-            event: {
-              type: EventType.RUN_FINISHED,
-              threadId: body.input.threadId,
-              runId: `run-${start}`,
-              outcome: { type: "success" },
-            },
-          },
-        ];
+      const body =
+        typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+      const conversationId = String(body["conversationId"] ?? "unknown");
+      requests.push({ url: String(input), method: init?.method ?? "GET", body });
+      if (!("command" in body)) {
+        if (!completed.has(conversationId)) return new Response(null, { status: 404 });
+        const events = [windowFrame(conversationId, "3"), idleAuthorityFrame(conversationId, "3")];
         return new Response(`${events.map((event) => JSON.stringify(event)).join("\n")}\n`, {
           headers: { "content-type": "application/x-ndjson" },
         });
       }
-      const parsedUrl = new URL(url);
-      const threadId = parsedUrl.searchParams.get("conversationId") ?? "unknown";
-      if (!parsedUrl.searchParams.has("offset")) {
-        return new Response(null, { status: 404 });
-      }
-      const start = threadId === "thread-a" ? 13 : 23;
-      const events = [
-        {
-          lsn: start,
-          event: { type: EventType.RUN_STARTED, threadId, runId: `reconnect-${start}` },
-        },
-        {
-          lsn: start + 1,
-          event: idleAuthorityFrame(threadId, String(start + 1)),
-        },
-        {
-          lsn: start + 2,
-          event: {
-            type: EventType.RUN_FINISHED,
-            threadId,
-            runId: `reconnect-${start}`,
-            outcome: { type: "success" },
-          },
-        },
-      ];
+      const command = body as unknown as ChatTransportRequest;
+      completed.add(conversationId);
+      const runId = command.runId ?? command.command.commandId;
+      const events = withAuthority(
+        [
+          { type: EventType.RUN_STARTED, threadId: conversationId, runId },
+          { type: EventType.RUN_FINISHED, threadId: conversationId, runId },
+        ],
+        command.userMessage,
+      );
       return new Response(`${events.map((event) => JSON.stringify(event)).join("\n")}\n`, {
         headers: { "content-type": "application/x-ndjson" },
       });
@@ -497,57 +652,43 @@ describe("headless ChatClient", () => {
     await first.reconnect();
     await second.reconnect();
 
-    const reconnects = requests.filter((request) => request.method === "GET");
-    expect(reconnects.map((request) => new URL(request.url).searchParams.get("offset"))).toEqual([
-      null,
-      null,
-      "12",
-      "22",
+    expect(requests.every((request) => request.method === "POST")).toBe(true);
+    expect(requests.every((request) => !request.url.includes("offset"))).toBe(true);
+    const reconnects = requests.filter((request) => !("command" in request.body));
+    expect(reconnects.map((request) => request.body["conversationId"])).toEqual([
+      "thread-a",
+      "thread-b",
+      "thread-a",
+      "thread-b",
     ]);
+    expect(reconnects.every((request) => !("cursor" in request.body))).toBe(true);
     await first.close();
     await second.close();
     await runtime.close();
   });
 
-  it("accepts terminal-free HTTP hydration only when it carries authority", async () => {
-    const requests: Array<{ readonly url: string; readonly method: string }> = [];
-    let reconnectCount = 0;
-    const fetcher = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      requests.push({ url, method });
-      if (method === "POST") {
-        return new Response(
-          [
-            JSON.stringify({
-              lsn: 10,
-              event: { type: EventType.RUN_STARTED, threadId: "restart", runId: "initial" },
-            }),
-            JSON.stringify({
-              lsn: 11,
-              event: idleAuthorityFrame("restart", "11"),
-            }),
-            JSON.stringify({
-              lsn: 12,
-              event: {
-                type: EventType.RUN_FINISHED,
-                threadId: "restart",
-                runId: "initial",
-                outcome: { type: "success" },
-              },
-            }),
-          ].join("\n") + "\n",
-          { headers: { "content-type": "application/x-ndjson" } },
-        );
+  it("accepts cursor-free terminal-free HTTP hydration with window authority", async () => {
+    let seeded = false;
+    const fetcher = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const body =
+        typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+      if (!("command" in body)) {
+        if (!seeded) return new Response(null, { status: 404 });
+        const events = [windowFrame("restart", "3"), idleAuthorityFrame("restart", "3")];
+        return new Response(`${events.map((event) => JSON.stringify(event)).join("\n")}\n`, {
+          headers: { "content-type": "application/x-ndjson" },
+        });
       }
-      if (!new URL(url).searchParams.has("offset")) {
-        return new Response(null, { status: 404 });
-      }
-      reconnectCount += 1;
-      const events = [
-        { lsn: 13, event: { type: EventType.STATE_SNAPSHOT, snapshot: {} } },
-        { lsn: 14, event: idleAuthorityFrame("restart", "14") },
-      ];
+      seeded = true;
+      const request = body as unknown as ChatTransportRequest;
+      const runId = request.runId ?? request.command.commandId;
+      const events = withAuthority(
+        [
+          { type: EventType.RUN_STARTED, threadId: "restart", runId },
+          { type: EventType.RUN_FINISHED, threadId: "restart", runId },
+        ],
+        request.userMessage,
+      );
       return new Response(`${events.map((event) => JSON.stringify(event)).join("\n")}\n`, {
         headers: { "content-type": "application/x-ndjson" },
       });
@@ -555,14 +696,12 @@ describe("headless ChatClient", () => {
     const runtime = createChatRuntime({ api: "http://localhost/chat", fetcher });
     const client = runtime.createClient({ threadId: "restart" });
     await Promise.all([runtime.initialized, client.initialized]);
-    await client.sendMessage("seed cursor");
+    await client.sendMessage("seed window");
     await client.reconnect();
-
-    const reconnects = requests.filter((request) => request.method === "GET");
-    expect(reconnectCount).toBe(1);
-    expect(reconnects).toHaveLength(2);
-    expect(new URL(reconnects[0]!.url).searchParams.has("offset")).toBe(false);
-    expect(new URL(reconnects[1]!.url).searchParams.get("offset")).toBe("12");
+    expect(client.getSnapshot()).toMatchObject({
+      authority: { state: "idle", revision: "3" },
+      status: "ready",
+    });
     await client.close();
     await runtime.close();
   });
@@ -576,9 +715,8 @@ describe("headless ChatClient", () => {
       *reconnectToStream(request) {
         reconnects.push(request);
         return frameStream([
-          { type: EventType.MESSAGES_SNAPSHOT, messages: [] },
-          { type: EventType.STATE_SNAPSHOT, snapshot: {} },
-          idleAuthorityFrame(request.threadId, "1"),
+          windowFrame(request.conversationId, "1"),
+          idleAuthorityFrame(request.conversationId, "1"),
         ]);
       },
       *disconnect() {
@@ -604,7 +742,7 @@ describe("headless ChatClient", () => {
     const driver: ChatTransportContract = {
       *sendMessages(request) {
         return frameStream([
-          runningAuthorityFrame(request.input.threadId, "2", "winning-run"),
+          runningAuthorityFrame(request.conversationId, "2", "winning-run"),
           {
             type: EventType.RUN_ERROR,
             code: "conversation_state_changed",
@@ -646,7 +784,10 @@ describe("headless ChatClient", () => {
         ]);
       },
       *reconnectToStream() {
-        return frameStream([idleAuthorityFrame(conversationId, "5")]);
+        return frameStream([
+          windowFrame(conversationId, "5"),
+          idleAuthorityFrame(conversationId, "5"),
+        ]);
       },
       *disconnect() {
         return;
@@ -667,16 +808,21 @@ describe("headless ChatClient", () => {
     const driver: ChatTransportContract = {
       *sendMessages(request) {
         return frameStream([
-          runningAuthorityFrame(request.input.threadId, "1", request.input.runId),
           {
             type: EventType.RUN_STARTED,
-            threadId: request.input.threadId,
-            runId: request.input.runId,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
           },
+          windowFrame(request.conversationId, "1", request.userMessage),
+          runningAuthorityFrame(
+            request.conversationId,
+            "1",
+            request.runId ?? request.command.commandId,
+          ),
           {
             type: EventType.RUN_FINISHED,
-            threadId: request.input.threadId,
-            runId: request.input.runId,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
             outcome: { type: "success" },
           },
         ]);
@@ -695,7 +841,7 @@ describe("headless ChatClient", () => {
     await client.initialized;
 
     await expect(client.sendMessage("must stay blocked")).rejects.toMatchObject({
-      code: "chat_authority_terminal_mismatch",
+      code: "chat_authority_missing",
     });
     expect(client.getSnapshot().canSendMessage).toBe(false);
     expect(client.getSnapshot().authority?.state).toBe("running");
@@ -712,29 +858,29 @@ describe("headless ChatClient", () => {
           return streamOf([
             {
               type: EventType.RUN_STARTED,
-              threadId: request.input.threadId,
-              runId: request.input.runId,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
             },
             {
               type: EventType.RUN_FINISHED,
-              threadId: request.input.threadId,
-              runId: request.input.runId,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
             },
           ]);
         }
         first = false;
-        started.resolve(request.input.runId);
+        started.resolve(request.runId ?? request.command.commandId);
         return gatedStream(
           [
             {
               type: EventType.RUN_STARTED,
-              threadId: request.input.threadId,
-              runId: request.input.runId,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
             },
             {
               type: EventType.RUN_FINISHED,
-              threadId: request.input.threadId,
-              runId: request.input.runId,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
             },
           ],
           release.promise,
@@ -783,13 +929,13 @@ describe("headless ChatClient", () => {
         return streamOf([
           {
             type: EventType.RUN_STARTED,
-            threadId: request.input.threadId,
-            runId: request.input.runId,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
           },
           {
             type: EventType.RUN_FINISHED,
-            threadId: request.input.threadId,
-            runId: request.input.runId,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
             outcome: { type: "interrupt" },
           },
         ]);
@@ -830,7 +976,7 @@ describe("headless ChatClient", () => {
         if (request.command.type === "interrupt-turn") {
           return gatedFrames(
             [
-              idleAuthorityFrame(request.input.threadId, "3"),
+              idleAuthorityFrame(request.conversationId, "3"),
               {
                 type: EventType.RUN_ERROR,
                 code: "PROGRAM_CANCELLED",
@@ -851,28 +997,38 @@ describe("headless ChatClient", () => {
                 if (index === 1) {
                   return {
                     done: false,
-                    value: runningAuthorityFrame(request.input.threadId, "1", request.input.runId),
-                  };
-                }
-                if (index === 2) {
-                  activeStarted.resolve(undefined);
-                  return {
-                    done: false,
                     value: {
                       type: EventType.RUN_STARTED,
-                      threadId: request.input.threadId,
-                      runId: request.input.runId,
+                      threadId: request.conversationId,
+                      runId: request.runId ?? request.command.commandId,
                     },
                   };
                 }
-                if (index === 3) {
-                  yield* call(() => terminalCancellation.promise);
+                if (index === 2) {
                   return {
                     done: false,
-                    value: idleAuthorityFrame(request.input.threadId, "2"),
+                    value: windowFrame(request.conversationId, "1", request.userMessage),
+                  };
+                }
+                if (index === 3) {
+                  activeStarted.resolve(undefined);
+                  return {
+                    done: false,
+                    value: runningAuthorityFrame(
+                      request.conversationId,
+                      "1",
+                      request.runId ?? request.command.commandId,
+                    ),
                   };
                 }
                 if (index === 4) {
+                  yield* call(() => terminalCancellation.promise);
+                  return {
+                    done: false,
+                    value: idleAuthorityFrame(request.conversationId, "2"),
+                  };
+                }
+                if (index === 5) {
                   return {
                     done: false,
                     value: {
@@ -891,13 +1047,13 @@ describe("headless ChatClient", () => {
         return streamOf([
           {
             type: EventType.RUN_STARTED,
-            threadId: request.input.threadId,
-            runId: request.input.runId,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
           },
           {
             type: EventType.RUN_FINISHED,
-            threadId: request.input.threadId,
-            runId: request.input.runId,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
           },
         ]);
       },
@@ -926,13 +1082,12 @@ describe("headless ChatClient", () => {
     const original = requests[0]!;
     const cancellation = requests[1]!;
     expect(cancellation.command.type).toBe("interrupt-turn");
-    expect(cancellation.input.runId).not.toBe(original.input.runId);
-    expect(cancellation.command.commandId).toBe(cancellation.input.runId);
+    expect(cancellation.runId).not.toBe(original.runId);
+    expect(cancellation.command.commandId).toBe(cancellation.runId);
     expect(
-      requests.some((request) =>
-        request.input.messages.some(
-          (message) => message.role === "user" && message.content === "replacement",
-        ),
+      requests.some(
+        (request) =>
+          request.userMessage?.role === "user" && request.userMessage.content === "replacement",
       ),
     ).toBe(false);
 
@@ -950,8 +1105,18 @@ describe("headless ChatClient", () => {
       *sendMessages(request) {
         return gatedFrames(
           [
-            runningAuthorityFrame(request.input.threadId, "1", request.input.runId),
-            idleAuthorityFrame(request.input.threadId, "2"),
+            {
+              type: EventType.RUN_STARTED,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
+            },
+            windowFrame(request.conversationId, "1", request.userMessage),
+            runningAuthorityFrame(
+              request.conversationId,
+              "1",
+              request.runId ?? request.command.commandId,
+            ),
+            idleAuthorityFrame(request.conversationId, "2"),
             {
               type: EventType.RUN_ERROR,
               code: "provider_failed",
@@ -994,13 +1159,13 @@ describe("headless ChatClient", () => {
           return streamOf([
             {
               type: EventType.RUN_STARTED,
-              threadId: request.input.threadId,
-              runId: request.input.runId,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
             },
             {
               type: EventType.RUN_FINISHED,
-              threadId: request.input.threadId,
-              runId: request.input.runId,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
             },
           ]);
         }
@@ -1010,13 +1175,13 @@ describe("headless ChatClient", () => {
           [
             {
               type: EventType.RUN_STARTED,
-              threadId: request.input.threadId,
-              runId: request.input.runId,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
             },
             {
               type: EventType.RUN_FINISHED,
-              threadId: request.input.threadId,
-              runId: request.input.runId,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
             },
           ],
           release.promise,
@@ -1064,13 +1229,13 @@ describe("headless ChatClient", () => {
           return streamOf([
             {
               type: EventType.RUN_STARTED,
-              threadId: request.input.threadId,
-              runId: request.input.runId,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
             },
             {
               type: EventType.RUN_FINISHED,
-              threadId: request.input.threadId,
-              runId: request.input.runId,
+              threadId: request.conversationId,
+              runId: request.runId ?? request.command.commandId,
               outcome: { type: "interrupt" },
             },
           ]);
@@ -1081,13 +1246,13 @@ describe("headless ChatClient", () => {
             [
               {
                 type: EventType.RUN_STARTED,
-                threadId: request.input.threadId,
-                runId: request.input.runId,
+                threadId: request.conversationId,
+                runId: request.runId ?? request.command.commandId,
               },
               {
                 type: EventType.RUN_FINISHED,
-                threadId: request.input.threadId,
-                runId: request.input.runId,
+                threadId: request.conversationId,
+                runId: request.runId ?? request.command.commandId,
                 outcome: { type: "success" },
               },
             ],
@@ -1098,13 +1263,13 @@ describe("headless ChatClient", () => {
         return streamOf([
           {
             type: EventType.RUN_STARTED,
-            threadId: request.input.threadId,
-            runId: request.input.runId,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
           },
           {
             type: EventType.RUN_FINISHED,
-            threadId: request.input.threadId,
-            runId: request.input.runId,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
             outcome: { type: "success" },
           },
         ]);
@@ -1161,7 +1326,7 @@ describe("headless ChatClient", () => {
     ).toThrow(/chat_queue_invalid/);
   });
 
-  it("carries settled tool history into the next provider request", async () => {
+  it("does not carry loaded tool history in the next native command", async () => {
     const requests: ChatTransportRequest[] = [];
     const driver: ChatTransportContract = {
       *sendMessages(request) {
@@ -1208,16 +1373,9 @@ describe("headless ChatClient", () => {
     await client.sendMessage("lookup");
     await client.sendMessage("again");
 
-    expect(requests[1]?.input.messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "tool",
-          toolCallId: "call-1",
-          name: "lookup",
-          isError: false,
-        }),
-      ]),
-    );
+    expect(requests[1]).not.toHaveProperty("input");
+    expect(requests[1]).not.toHaveProperty("messages");
+    expect(requests[1]?.userMessage).toMatchObject({ role: "user", content: "again" });
     await client.close();
   });
 

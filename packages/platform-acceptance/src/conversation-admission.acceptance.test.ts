@@ -1,7 +1,6 @@
 import { EventType } from "@ag-ui/core";
 import { call } from "effection";
 import { describe, expect, it } from "vitest";
-import { projectChatMessagesToAGUI } from "@sweatpants/chat-core";
 import { withTestScenario } from "@sweatpants/test-rig";
 import {
   ACCEPTANCE_MODEL_ID,
@@ -10,12 +9,9 @@ import {
 } from "./lib/acceptance-app.ts";
 
 type WireFrame = {
-  readonly lsn: number;
-  readonly event: {
-    readonly type: string;
-    readonly code?: string;
-    readonly authority?: { readonly state?: string; readonly revision?: string };
-  };
+  readonly type: string;
+  readonly code?: string;
+  readonly authority?: { readonly state?: string; readonly revision?: string };
 };
 
 function parseFrames(body: string): readonly WireFrame[] {
@@ -42,12 +38,9 @@ describe("ordinary message admission", () => {
         yield* firstRequest.respond.text("IDENTITY_FIRST_ASSISTANT_V1");
         yield* first.settled();
         const firstTypes = s.agui.events(firstStart).map((event) => event.type);
-        expect(firstTypes.indexOf(EventType.MESSAGES_SNAPSHOT)).toBeLessThan(
-          firstTypes.indexOf(EventType.RUN_STARTED),
-        );
-        expect(firstTypes.indexOf(EventType.STATE_SNAPSHOT)).toBeLessThan(
-          firstTypes.indexOf(EventType.RUN_STARTED),
-        );
+        expect(firstTypes[0]).toBe(EventType.RUN_STARTED);
+        expect(firstTypes).not.toContain(EventType.MESSAGES_SNAPSHOT);
+        expect(firstTypes).not.toContain(EventType.STATE_SNAPSHOT);
         const firstAssistantId = conversation
           .snapshot()
           .messages.find(
@@ -63,12 +56,9 @@ describe("ordinary message admission", () => {
         yield* secondRequest.respond.text("IDENTITY_SECOND_ASSISTANT_V1");
         yield* second.settled();
         const secondTypes = s.agui.events(secondStart).map((event) => event.type);
-        expect(secondTypes.indexOf(EventType.MESSAGES_SNAPSHOT)).toBeLessThan(
-          secondTypes.indexOf(EventType.RUN_STARTED),
-        );
-        expect(secondTypes.indexOf(EventType.STATE_SNAPSHOT)).toBeLessThan(
-          secondTypes.indexOf(EventType.RUN_STARTED),
-        );
+        expect(secondTypes[0]).toBe(EventType.RUN_STARTED);
+        expect(secondTypes).not.toContain(EventType.MESSAGES_SNAPSHOT);
+        expect(secondTypes).not.toContain(EventType.STATE_SNAPSHOT);
 
         const matching = conversation
           .snapshot()
@@ -128,22 +118,15 @@ describe("ordinary message admission", () => {
               },
               clientId: "admission-conflict-client",
               conversationId: conversation.conversationId,
-              input: {
-                threadId: conversation.conversationId,
-                runId,
-                state: {},
-                messages: [
-                  ...projectChatMessagesToAGUI(parked.messages),
-                  {
-                    id: "admission-conflict-user",
-                    role: "user",
-                    content: "MUST_NOT_BE_ADMITTED_V1",
-                  },
-                ],
-                tools: [],
-                context: [],
-                forwardedProps: {},
+              runId,
+              userMessage: {
+                id: "admission-conflict-user",
+                role: "user",
+                content: "MUST_NOT_BE_ADMITTED_V1",
               },
+              state: {},
+              context: [],
+              forwardedProps: {},
             }),
           }),
         );
@@ -151,16 +134,12 @@ describe("ordinary message admission", () => {
         expect(frames).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
-              event: expect.objectContaining({
-                type: "sweatpants.conversation-authority.v1",
-                authority: expect.objectContaining({ state: "parked" }),
-              }),
+              type: "sweatpants.conversation-authority.v1",
+              authority: expect.objectContaining({ state: "parked" }),
             }),
             expect.objectContaining({
-              event: expect.objectContaining({
-                type: "RUN_ERROR",
-                code: "conversation_not_idle",
-              }),
+              type: "RUN_ERROR",
+              code: "conversation_not_idle",
             }),
           ]),
         );

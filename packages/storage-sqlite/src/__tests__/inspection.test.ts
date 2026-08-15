@@ -26,7 +26,20 @@ describe("SQLite inspection", () => {
 
     try {
       const payload = canonicalSnapshot({
-        public: { hotRoots: [{ secret: "PRIVATE_MARKER" }] },
+        public: {
+          hotRoots: [
+            {
+              rootId: "root:secret",
+              position: "0",
+              kind: "message",
+              state: "sealed",
+              attribution: {},
+              message: { id: "secret", role: "user", content: "PRIVATE_MARKER" },
+              placement: { type: "root", sequence: 0 },
+            },
+          ],
+          applicationState: {},
+        },
       });
       await run(() =>
         handle.storage.conversationStore.putCheckpoint({
@@ -35,8 +48,10 @@ describe("SQLite inspection", () => {
           causeKey: "cause-1",
           cause: { kind: "test" },
           contentHash: sha256(payload.canonical),
+          lineageId: "lineage-1",
           archiveHead: null,
-          archiveThroughPosition: "0",
+          archiveFrontierOrdinal: "0",
+          nextPublicPosition: "1",
           payload: payload.value,
           encodedBytes: new TextEncoder().encode(payload.canonical).byteLength,
           createdAt: 100,

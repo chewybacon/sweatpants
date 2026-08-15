@@ -56,6 +56,12 @@ import {
   signalLiveDurableEffect,
 } from "@sweatpants/durable-effects/runtime";
 import type {
+  AcceptAssistantPartialRequest,
+  AcceptAssistantPartialResult,
+  AcceptPullPreparationRequest,
+  AcceptPullPreparationResult,
+  AuthorizeModelDispatchRequest,
+  AuthorizeModelDispatchResult,
   ActivationLeaseState,
   AppendEmissionRequest,
   BindRestoreFrontierRequest,
@@ -76,6 +82,7 @@ import type {
   EnsureChildTaskResult,
   IssueRestoreTicketRequest,
   IssueRestoreTicketResult,
+  ModelContextPreparedFact,
   PrepareProgramRestoreRequest,
   PreparedProgramRestore,
   RecoverableSession,
@@ -91,6 +98,8 @@ import type {
   ResolveOperationResult,
   RestoreTicketClaims,
   TaskCloseReceipt,
+  ValidateElicitResponseRequest,
+  ValidateElicitResponseResult,
 } from "./durable-authority-types.ts";
 /** Closed attempt-state algebra persisted by the authority. */
 export type DurableAttemptState = "started" | "detached" | "completed" | "revoked" | "superseded";
@@ -116,6 +125,7 @@ export type DurableSemanticRecord = {
         catalogDigest?: string;
         parentTaskId?: string;
         parentPullId?: string;
+        elicitAudience?: string;
       }
     | {
         type: "PullRequested";
@@ -126,6 +136,23 @@ export type DurableSemanticRecord = {
         pullId: string;
         descriptor: DurableOperationDescriptor;
         descriptorDigest: string;
+        publicMessageId?: string;
+      }
+    | {
+        type: "ModelContextPrepared";
+        taskId: string;
+        pullId: string;
+        attemptId: string;
+        fact: ModelContextPreparedFact;
+        preparationDigest: string;
+      }
+    | {
+        type: "AssistantPartialAccepted";
+        taskId: string;
+        pullId: string;
+        attemptId: string;
+        fact: import("./durable-authority-types.ts").AssistantPartialAcceptedFact;
+        factDigest: string;
       }
     | {
         type: "AttemptStarted";
@@ -224,6 +251,18 @@ type Attempt = {
   capability: string;
 };
 
+const MODEL_SAMPLE_EFFECT_NAME = "model.sample";
+const MODEL_SAMPLE_EFFECT_VERSION = "1";
+const MAX_OPEN_ELICITATIONS = 64;
+
+function isModelSampleDescriptor(descriptor: DurableOperationDescriptor): boolean {
+  return (
+    descriptor.kind === "effect" &&
+    descriptor.name === MODEL_SAMPLE_EFFECT_NAME &&
+    descriptor.version === MODEL_SAMPLE_EFFECT_VERSION
+  );
+}
+
 type Pull = {
   pullId: string;
   actionIndex: number;
@@ -234,12 +273,17 @@ type Pull = {
   resultDescriptor: PortableSchemaDescriptor;
   resultSchemaDigest: string;
   audience: string;
+  publicMessageId?: string;
   maxOutcomeBytes: number;
   attempts: Attempt[];
   capability?: string;
   outcome?: OperationOutcome;
   outcomeDigest?: string;
   receipt?: ResolutionReceipt;
+  preparation?: ModelContextPreparedFact;
+  preparationDigest?: string;
+  assistantPartial?: import("./durable-authority-types.ts").AssistantPartialAcceptedFact;
+  assistantPartialDigest?: string;
   revoked: boolean;
 };
 
@@ -257,6 +301,7 @@ type Task = {
   executionEpoch: number;
   attachmentId: string;
   audience: string;
+  elicitAudience?: string;
   nextActionIndex: number;
   nextPullIndex: number;
   nextEmissionIndex: number;
@@ -325,6 +370,8 @@ export interface OpenDurableTaskRequest {
   executionEpoch: number;
   attachmentId: string;
   audience: string;
+  /** Trusted audience identity used for elicitation responses. */
+  elicitAudience?: string;
   /** Exact Host-bound catalog and route retained independently of process memory. */
   catalog?: Json;
   catalogDigest?: string;
@@ -423,6 +470,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         activeTasks: active.map((task) => ({
           taskId: task.taskId,
           executionEpoch: task.executionEpoch,
+          attachmentId: task.attachmentId,
         })),
       };
     }
@@ -476,6 +524,18 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       audience: pull.audience,
       ...(pull.outcome !== undefined ? { outcome: structuredClone(pull.outcome) } : {}),
     };
+  }
+
+  *pullPreparation(
+    sessionId: string,
+    taskId: string,
+    pullId: string,
+  ): Operation<ModelContextPreparedFact | null> {
+    const task = this.#tasks.get(taskKey(sessionId, taskId));
+    const pull = task
+      ? [...task.pullsByAction.values()].find((candidate) => candidate.pullId === pullId)
+      : undefined;
+    return pull?.preparation ? structuredClone(pull.preparation) : null;
   }
 
   /** Opens one pinned task exactly once and returns attachment-bound authority. */
@@ -551,6 +611,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       ...(catalog ? { catalog, catalogDigest: request.catalogDigest! } : {}),
       ...(request.parentTaskId ? { parentTaskId: request.parentTaskId } : {}),
       ...(request.parentPullId ? { parentPullId: request.parentPullId } : {}),
+      ...(request.elicitAudience ? { elicitAudience: request.elicitAudience } : {}),
     });
     this.#runnable.add(request.sessionId);
     return { programCapability: this.#programCapability(task) };
@@ -628,6 +689,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       executionEpoch: request.executionEpoch,
       attachmentId: "unattached-child",
       audience: request.audience,
+      ...(parent.elicitAudience ? { elicitAudience: parent.elicitAudience } : {}),
       ...(parent.catalog ? { catalog: parent.catalog, catalogDigest: parent.catalogDigest! } : {}),
       ...(request.route !== undefined ? { route: request.route } : {}),
       parentTaskId: request.parentTaskId,
@@ -643,11 +705,19 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     attachmentId: string,
     audience?: string,
   ): Operation<{ executionEpoch: number; programCapability: string }> {
-    if (this.#activationLeases.has(sessionId)) {
-      throw new CrankError(
-        "stale_activation",
-        "replaceAttachment is not valid for a lease-managed session",
-      );
+    const lease = this.#activationLeases.get(sessionId);
+    if (lease) {
+      if (this.#options.now() < lease.expiresAtMs) {
+        throw new CrankError(
+          "stale_activation",
+          "replaceAttachment is not valid for an unexpired lease-managed session",
+        );
+      }
+      // A crashed owner can leave an expired lease behind. Recovery must first
+      // retire that lease and restore the runnable marker before the replacement
+      // attachment is fenced and the new activation claims ownership.
+      this.#activationLeases.delete(sessionId);
+      this.#runnable.add(sessionId);
     }
     const task = this.#task(sessionId, taskId);
     this.#assertActive(task);
@@ -733,6 +803,15 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       }
     };
     verifyReservable();
+    if (
+      descriptor.kind === "elicit" &&
+      this.#openElicitCount(request.sessionId) >= MAX_OPEN_ELICITATIONS
+    ) {
+      throw new CrankError(
+        "checkpoint_bound_exceeded",
+        `Conversation ${request.sessionId} would exceed the ${MAX_OPEN_ELICITATIONS}-interrupt bound`,
+      );
+    }
     const policy = operationPolicy(task.manifest, descriptor);
     let effectiveDescriptor = descriptor;
     if (descriptor.kind === "wait" && descriptor.durationMs !== undefined) {
@@ -776,6 +855,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       request.taskId,
       request.pullIndex,
     ]);
+    const publicMessageId = isModelSampleDescriptor(descriptor)
+      ? stableTupleHash(["sweatpants.public-assistant", pullId])
+      : undefined;
     const pull: Pull = {
       pullId,
       actionIndex: request.actionIndex,
@@ -785,7 +867,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       effectiveDescriptor,
       resultDescriptor: policy.resultDescriptor,
       resultSchemaDigest: policy.resultDescriptor.digest,
-      audience: policy.audience,
+      audience:
+        descriptor.kind === "elicit" ? (task.elicitAudience ?? policy.audience) : policy.audience,
+      ...(publicMessageId ? { publicMessageId } : {}),
       maxOutcomeBytes: this.#options.maxOutcomeBytes,
       attempts: [],
       revoked: false,
@@ -801,6 +885,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       pullId,
       descriptor: effectiveDescriptor,
       descriptorDigest,
+      ...(publicMessageId ? { publicMessageId } : {}),
     });
     if (descriptor.kind === "effect" || descriptor.kind === "record") {
       return {
@@ -1348,6 +1433,224 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     });
   }
 
+  /** Validates one exact pending elicitation without accepting or settling it. */
+  *validateElicitResponse(
+    request: ValidateElicitResponseRequest,
+  ): Operation<ValidateElicitResponseResult> {
+    const matches = [...this.#tasks.values()].flatMap((task) =>
+      [...task.pullsByAction.values()]
+        .filter((pull) => pull.pullId === request.pullId)
+        .map((pull) => ({ task, pull })),
+    );
+    if (matches.length !== 1) return { status: "not_pending" };
+    const { task, pull } = matches[0]!;
+    if (
+      task.sessionId !== request.sessionId ||
+      task.status !== "active" ||
+      pull.descriptor.kind !== "elicit" ||
+      pull.outcome ||
+      pull.revoked
+    ) {
+      return { status: "not_pending" };
+    }
+    const expectedAudience = pull.audience;
+    if (request.participantId !== expectedAudience) return { status: "audience_invalid" };
+    const context = pull.descriptor.context;
+    if (context !== null && typeof context === "object" && !Array.isArray(context)) {
+      const expiresAt = context["expiresAt"];
+      if (
+        typeof expiresAt === "string" &&
+        Number.isFinite(Date.parse(expiresAt)) &&
+        this.#options.now() >= Date.parse(expiresAt)
+      ) {
+        return { status: "expired" };
+      }
+    }
+    const envelope = parseProgramElicitResult(request.completion);
+    if (!envelope) return { status: "schema_validation_failed" };
+    let value: Json;
+    if (envelope.action === "accept") {
+      const validated = parseRegisteredSchema(
+        this.#schemas,
+        pull.resultSchemaDigest,
+        envelope.content,
+      );
+      if (validated.status === "unavailable") {
+        return { status: "schema_version_unavailable" };
+      }
+      if (validated.status === "invalid" || validated.status === "schema-error") {
+        return { status: "schema_validation_failed" };
+      }
+      value = { action: "accept", content: validated.value };
+    } else {
+      const reason = sanitizeCancellationReason(
+        typeof envelope.reason === "string" ? envelope.reason : undefined,
+      );
+      value = {
+        action: envelope.action,
+        ...(reason === undefined ? {} : { reason }),
+      };
+    }
+    const outcome: OperationOutcome = { status: "ok", value };
+    try {
+      assertInlineSize(outcome, pull.maxOutcomeBytes);
+    } catch {
+      return { status: "schema_validation_failed" };
+    }
+    return { status: "valid", taskId: task.taskId, audience: expectedAudience, outcome };
+  }
+
+  /** Accepts one immutable model preparation under the current attempt fence. */
+  *acceptPullPreparation(
+    request: AcceptPullPreparationRequest,
+  ): Operation<AcceptPullPreparationResult> {
+    if (
+      request.kind !== "model-context" ||
+      request.fact.type !== "ModelContextPrepared" ||
+      request.fact.taskId !== request.taskId ||
+      request.fact.pullId !== request.pullId
+    ) {
+      return { status: "identity_conflict" };
+    }
+    if (request.fact.executionId !== request.executionId) {
+      return { status: "identity_conflict" };
+    }
+    const candidates = [...this.#tasks.values()].filter(
+      (candidate) =>
+        candidate.taskId === request.taskId &&
+        [...candidate.pullsByAction.values()].some((pull) => pull.pullId === request.pullId),
+    );
+    const task = candidates.length === 1 ? candidates[0]! : undefined;
+    if (!task) {
+      return { status: "pull_not_pending" };
+    }
+    const pull = [...task.pullsByAction.values()].find(
+      (candidate) => candidate.pullId === request.pullId,
+    );
+    if (!pull || task.status !== "active" || pull.outcome || pull.revoked) {
+      return { status: "pull_not_pending" };
+    }
+    if (!isModelSampleDescriptor(pull.descriptor)) {
+      return { status: "identity_conflict" };
+    }
+    const currentAttempt = [...pull.attempts]
+      .filter((attempt) => attempt.state === "started")
+      .sort((left, right) => right.attemptIndex - left.attemptIndex)[0];
+    if (!currentAttempt || currentAttempt.attemptId !== request.expectedOwnerFence) {
+      return { status: "stale_owner" };
+    }
+    const preparationDigest = canonicalSnapshot(request.fact).sha;
+    if (pull.preparation) {
+      return pull.preparationDigest === preparationDigest
+        ? { status: "duplicate" }
+        : { status: "identity_conflict" };
+    }
+    pull.preparation = structuredClone(request.fact);
+    pull.preparationDigest = preparationDigest;
+    this.#append(task.sessionId, task.executionEpoch, {
+      type: "ModelContextPrepared",
+      taskId: request.taskId,
+      pullId: request.pullId,
+      attemptId: request.expectedOwnerFence,
+      fact: request.fact,
+      preparationDigest,
+    });
+    return { status: "accepted" };
+  }
+
+  /** Rechecks preparation identity and the live attempt immediately before provider I/O. */
+  *authorizeModelDispatch(
+    request: AuthorizeModelDispatchRequest,
+  ): Operation<AuthorizeModelDispatchResult> {
+    const candidates = [...this.#tasks.values()].filter(
+      (candidate) =>
+        candidate.taskId === request.taskId &&
+        [...candidate.pullsByAction.values()].some((pull) => pull.pullId === request.pullId),
+    );
+    const task = candidates.length === 1 ? candidates[0]! : undefined;
+    if (!task) return { status: "pull_not_pending" };
+    const pull = [...task.pullsByAction.values()].find(
+      (candidate) => candidate.pullId === request.pullId,
+    );
+    if (!pull || task.status !== "active" || pull.outcome || pull.revoked) {
+      return { status: "pull_not_pending" };
+    }
+    if (!isModelSampleDescriptor(pull.descriptor)) {
+      return { status: "identity_conflict" };
+    }
+    const currentAttempt = [...pull.attempts]
+      .filter((attempt) => attempt.state === "started")
+      .sort((left, right) => right.attemptIndex - left.attemptIndex)[0];
+    if (!currentAttempt || currentAttempt.attemptId !== request.expectedOwnerFence) {
+      return { status: "stale_owner" };
+    }
+    const preparation = pull.preparation;
+    if (!preparation) return { status: "not_prepared" };
+    if (
+      preparation.executionId !== request.executionId ||
+      preparation.invocationDigest !== request.invocationDigest
+    ) {
+      return { status: "identity_conflict" };
+    }
+    return { status: "authorized", fact: structuredClone(preparation) };
+  }
+
+  /** Accepts one typed public assistant partial under the preparation fence. */
+  *acceptAssistantPartial(
+    request: AcceptAssistantPartialRequest,
+  ): Operation<AcceptAssistantPartialResult> {
+    const candidates = [...this.#tasks.values()].filter(
+      (candidate) =>
+        candidate.taskId === request.taskId &&
+        [...candidate.pullsByAction.values()].some((pull) => pull.pullId === request.pullId),
+    );
+    const task = candidates.length === 1 ? candidates[0]! : undefined;
+    if (!task) return { status: "pull_not_pending" };
+    const pull = [...task.pullsByAction.values()].find(
+      (candidate) => candidate.pullId === request.pullId,
+    );
+    if (!pull || task.status !== "active" || pull.outcome || pull.revoked) {
+      return { status: "pull_not_pending" };
+    }
+    if (!isModelSampleDescriptor(pull.descriptor)) {
+      return { status: "identity_conflict" };
+    }
+    const currentAttempt = [...pull.attempts]
+      .filter((attempt) => attempt.state === "started")
+      .sort((left, right) => right.attemptIndex - left.attemptIndex)[0];
+    if (!currentAttempt || currentAttempt.attemptId !== request.expectedOwnerFence) {
+      return { status: "stale_owner" };
+    }
+    if (pull.preparation?.executionId !== request.executionId) {
+      return { status: "identity_conflict" };
+    }
+    if (
+      !pull.preparation ||
+      pull.preparation.publicMessageId !== request.fact.messageId ||
+      request.fact.text.length === 0 ||
+      request.fact.text.length > 32_768
+    ) {
+      return { status: "identity_conflict" };
+    }
+    const factDigest = canonicalSnapshot(request.fact).sha;
+    if (pull.assistantPartial) {
+      return pull.assistantPartialDigest === factDigest
+        ? { status: "duplicate" }
+        : { status: "identity_conflict" };
+    }
+    pull.assistantPartial = structuredClone(request.fact);
+    pull.assistantPartialDigest = factDigest;
+    this.#append(task.sessionId, task.executionEpoch, {
+      type: "AssistantPartialAccepted",
+      taskId: request.taskId,
+      pullId: request.pullId,
+      attemptId: request.expectedOwnerFence,
+      fact: request.fact,
+      factDigest,
+    });
+    return { status: "accepted" };
+  }
+
   /** Orphans a task whose pinned program cannot be recovered safely. */
   *forceOrphan(
     sessionId: string,
@@ -1441,6 +1744,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       executionEpoch: task.executionEpoch,
       attachmentId: task.attachmentId,
       audience: task.audience,
+      ...(task.elicitAudience ? { elicitAudience: task.elicitAudience } : {}),
       nextActionIndex: task.nextActionIndex,
       nextPullIndex: task.nextPullIndex,
       nextEmissionIndex: task.nextEmissionIndex,
@@ -1992,6 +2296,19 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       this.#activationNotBeforeMs.set(...entry);
     }
     this.#nonce = snapshot.nonce;
+  }
+
+  #openElicitCount(sessionId: string): number {
+    let count = 0;
+    for (const task of this.#tasks.values()) {
+      if (task.sessionId !== sessionId || task.status !== "active") continue;
+      for (const pull of task.pullsByAction.values()) {
+        if (pull.descriptor.kind === "elicit" && !pull.outcome && !pull.revoked) {
+          count += 1;
+        }
+      }
+    }
+    return count;
   }
 
   #authorizeExisting(task: Task, pull: Pull): ReserveOperationResult {

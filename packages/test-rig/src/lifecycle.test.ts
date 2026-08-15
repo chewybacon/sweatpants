@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { withTestRig, type TestApplication, type TestRigOptions } from "./index.ts";
+import {
+  createChatRuntime,
+  withTestRig,
+  type TestApplication,
+  type TestRigOptions,
+} from "./index.ts";
 
 /**
  * Lifecycle tests run the rig against a minimal fake application. They do not
@@ -9,7 +14,7 @@ import { withTestRig, type TestApplication, type TestRigOptions } from "./index.
 function idleApplication(): TestApplication {
   return {
     handle: async () =>
-      new Response(JSON.stringify({ lsn: 0, event: { type: "RUN_ERROR", message: "unused" } }), {
+      new Response(JSON.stringify({ type: "RUN_ERROR", message: "unused" }), {
         status: 200,
       }),
     close: async () => {},
@@ -100,6 +105,94 @@ describe("withTestRig lifecycle", () => {
         async () => "ok",
       ),
     ).rejects.toThrow(/Checkpoint persistence failed during scenario/);
+  });
+
+  it("injects scenario options into the strict native request without a legacy input envelope", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const runtime = createChatRuntime({
+      barrierTimeoutMs: 1_000,
+      fetch: async (_input, init) => {
+        captured = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const conversationId = String(captured["conversationId"]);
+        const runId = String(captured["runId"]);
+        const userMessage = captured["userMessage"] as {
+          id: string;
+          role: "user";
+          content: string;
+        };
+        const frames = [
+          { type: "RUN_STARTED", threadId: conversationId, runId },
+          {
+            type: "sweatpants.conversation-window.v1",
+            conversationId,
+            lineageId: `lineage:${conversationId}`,
+            basisRevision: "1",
+            windowToken: "window-token",
+            windowMode: "reset",
+            archiveFrontierOrdinal: "0",
+            nextPublicPosition: "1",
+            hotRoots: [
+              {
+                rootId: `message:${userMessage.id}`,
+                position: "0",
+                kind: "message",
+                state: "sealed",
+                attribution: {},
+                message: userMessage,
+                placement: { type: "root", sequence: 0 },
+              },
+            ],
+            sealedCatchupRoots: [],
+            applicationState: {},
+            olderHistoryCursor: null,
+          },
+          {
+            type: "sweatpants.conversation-authority.v1",
+            authority: {
+              conversationId,
+              revision: "1",
+              state: "running",
+              activeLogicalTurnId: runId,
+              activeExecutionId: `execution:${runId}`,
+              latestCompletedExecutionId: null,
+            },
+          },
+          {
+            type: "sweatpants.conversation-authority.v1",
+            authority: {
+              conversationId,
+              revision: "2",
+              state: "idle",
+              activeLogicalTurnId: null,
+              activeExecutionId: null,
+              latestCompletedExecutionId: `execution:${runId}`,
+            },
+          },
+          { type: "RUN_FINISHED", threadId: conversationId, runId },
+        ];
+        return new Response(`${frames.map((frame) => JSON.stringify(frame)).join("\n")}\n`, {
+          status: 200,
+          headers: { "content-type": "application/x-ndjson" },
+        });
+      },
+    });
+    const conversation = runtime.handle.conversation({
+      conversationId: "native-options",
+      systemPrompt: "scenario system prompt",
+      initialToolChoice: "required",
+      streamOptions: { temperature: 0.25 },
+    });
+    await conversation.send("hello").complete();
+
+    expect(captured).toMatchObject({
+      conversationId: "native-options",
+      systemPrompt: "scenario system prompt",
+      initialToolChoice: "required",
+      streamOptions: { temperature: 0.25 },
+    });
+    expect(captured).not.toHaveProperty("input");
+    runtime.verify();
+    await runtime.close();
   });
 
   it("closes cleanly when the body succeeds with no interactions", async () => {

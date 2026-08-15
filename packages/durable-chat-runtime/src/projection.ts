@@ -15,13 +15,18 @@ import {
   createChatProjection,
   foldAGUIEvent,
   isConversationAuthorityFrame,
+  isConversationWindowFrame,
   materializeChatMessages,
   projectChatMessagesToAGUI,
   toProviderHistorySnapshot,
-  type DurableFrame,
   type ElicitRequestStreamEvent,
 } from "@sweatpants/chat-core";
 import type { OpenInterruptRecord } from "./interrupts/index.ts";
+
+type ProjectionFrame = {
+  readonly lsn: number;
+  readonly event: StreamEvent;
+};
 
 // =============================================================================
 // PUBLIC METADATA SANITIZATION
@@ -170,11 +175,11 @@ export function elicitsForOpenInterrupts(
 // FRAME / SNAPSHOT PROJECTION
 // =============================================================================
 
-export function parseBufferedFrames(tokens: StreamEvent[]): DurableFrame[] {
+export function parseBufferedFrames(tokens: StreamEvent[]): ProjectionFrame[] {
   return tokens.map((event, index) => ({ lsn: index + 1, event }));
 }
 
-export function createSyntheticFrameStream(frames: DurableFrame[]): Stream<string, void> {
+export function createSyntheticFrameStream(frames: ProjectionFrame[]): Stream<string, void> {
   return resource(function* (provide) {
     let emitted = false;
     const chunk = frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n";
@@ -190,7 +195,7 @@ export function createSyntheticFrameStream(frames: DurableFrame[]): Stream<strin
   });
 }
 
-export function initialSnapshotBoundary(frames: DurableFrame[]): {
+export function initialSnapshotBoundary(frames: ProjectionFrame[]): {
   messages: Extract<StreamEvent, { type: EventType.MESSAGES_SNAPSHOT }> | null;
   state: Extract<StreamEvent, { type: EventType.STATE_SNAPSHOT }> | null;
   nextIndex: number;
@@ -237,13 +242,14 @@ export function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnap
   };
 }
 
-function activityProjectionEventsFromFrames(frames: readonly DurableFrame[]): StreamEvent[] {
+function activityProjectionEventsFromFrames(frames: readonly ProjectionFrame[]): StreamEvent[] {
   let projection = createChatProjection();
   const order: string[] = [];
   for (const frame of frames) {
     const event = frame.event;
     if (
       isConversationAuthorityFrame(event) ||
+      isConversationWindowFrame(event) ||
       (event.type !== EventType.ACTIVITY_SNAPSHOT && event.type !== EventType.ACTIVITY_DELTA)
     ) {
       continue;
@@ -270,11 +276,12 @@ function activityProjectionEventsFromFrames(frames: readonly DurableFrame[]): St
   });
 }
 
-export function providerHistoryFromFrames(frames: readonly DurableFrame[]) {
+export function providerHistoryFromFrames(frames: readonly ProjectionFrame[]) {
   let projection = createChatProjection();
   for (const frame of frames) {
     if (
       !isConversationAuthorityFrame(frame.event) &&
+      !isConversationWindowFrame(frame.event) &&
       frame.event.type !== EventType.ACTIVITY_SNAPSHOT &&
       frame.event.type !== EventType.ACTIVITY_DELTA
     ) {
@@ -293,7 +300,7 @@ export function providerHistoryFromFrames(frames: readonly DurableFrame[]) {
 }
 
 export function* buildCheckpointSnapshotEventsFromFrames(
-  frames: DurableFrame[],
+  frames: ProjectionFrame[],
 ): Operation<StreamEvent[]> {
   return [
     {
@@ -310,7 +317,7 @@ export function* buildCheckpointSnapshotEventsFromFrames(
  * interrupts remain open) a terminal RUN_FINISHED interrupt marker.
  */
 export function* completedConversationHydrateEvents(params: {
-  frames: DurableFrame[];
+  frames: ProjectionFrame[];
   conversationId: string;
   runId: string;
   openInterrupts: OpenInterruptRecord[];

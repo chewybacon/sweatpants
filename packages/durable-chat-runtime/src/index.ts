@@ -165,7 +165,6 @@ export function* publishTurn<Entry extends Json = Json>(
       expectedRevision: head.revision,
       expectedOwnerEpoch: head.ownerEpoch,
       expectedExecutionId: capsule.executionId,
-      sealedRootCount: publicRoots.length,
     });
     publishedHead = persisted.head;
   } catch (error) {
@@ -208,6 +207,8 @@ export interface BeginTurnPublicationRequest {
   readonly expectedExecutionId?: string;
   /** Store-classified exact retry; callers must attach/reconcile, never rerun work. */
   readonly idempotent?: boolean;
+  /** Runs before receipt/head mutation to prove command-owned continuation capacity. */
+  readonly preflight?: () => Operation<void>;
 }
 
 function commandConflict(code: string, message: string): CrankError {
@@ -238,6 +239,9 @@ export function* beginTurnPublication(
     request.sessionId,
     request.commandId,
   );
+  if (!observedReceipt && request.preflight) {
+    yield* request.preflight();
+  }
   let head = yield* conversation.loadHead(request.sessionId);
   if (observedReceipt && observedReceipt.commandDigest !== request.commandDigest) {
     throw commandConflict(
@@ -545,8 +549,11 @@ export function installConversationStore(store: ConversationStore): Operation<vo
   return ConversationStorePort.installDriver(store);
 }
 
+export * from "./projection-tokens.ts";
+
 export {
+  readAllPublicRootsForModel,
   hydratePublicRoots,
   persistConversationCheckpoint,
-  publicRootIsEvent,
+  preflightConversationCheckpoint,
 } from "./conversation-persistence.ts";

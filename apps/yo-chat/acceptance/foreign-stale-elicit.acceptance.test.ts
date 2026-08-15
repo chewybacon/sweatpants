@@ -105,7 +105,8 @@ async function runStaleForeignElicit(settlement: Settlement): Promise<void> {
       captured,
     );
     expect(hasRunError(retry)).toBe(false);
-    expect(hasRunFinished(retry)).toBe(true);
+    expect(hasRunFinished(retry)).toBe(false);
+    expect(retry.some((event) => event.type === "sweatpants.conversation-window.v1")).toBe(true);
 
     const journalAfterRetry = await readJournal(substrate.journalStore, substrate.conversationId);
     expect(foreignToolStarts(journalAfterRetry)).toBe(foreignStartsBeforeRetry);

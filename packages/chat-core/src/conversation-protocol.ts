@@ -1,4 +1,5 @@
 import type { AGUIEvent } from "@ag-ui/core";
+import type { ConversationWindowFrame } from "./conversation-window.ts";
 
 export const CONVERSATION_AUTHORITY_FRAME_TYPE = "sweatpants.conversation-authority.v1" as const;
 
@@ -41,8 +42,11 @@ export interface ConversationAuthorityFrame {
   readonly authority: ConversationAuthority;
 }
 
-/** Ordered chat transport protocol: presentation plus durable authority evidence. */
-export type ConversationStreamEvent = AGUIEvent | ConversationAuthorityFrame;
+/** Ordered chat transport protocol: presentation plus durable authority/window evidence. */
+export type ConversationStreamEvent =
+  | AGUIEvent
+  | ConversationAuthorityFrame
+  | ConversationWindowFrame;
 
 function protocolError(message: string): Error & { readonly code: string } {
   return Object.assign(new Error(message), { code: "chat_authority_invalid" });
@@ -53,6 +57,27 @@ function record(value: unknown, path: string): Record<string, unknown> {
     throw protocolError(`${path} must be an object`);
   }
   return value as Record<string, unknown>;
+}
+
+function exactAuthorityKeys(value: Record<string, unknown>, path: string): void {
+  const keys = new Set([
+    "conversationId",
+    "revision",
+    "state",
+    "activeLogicalTurnId",
+    "activeExecutionId",
+    "latestCompletedExecutionId",
+  ]);
+  for (const key of keys) {
+    if (!(key in value)) {
+      throw protocolError(`${path}.${key} is required`);
+    }
+  }
+  for (const key of Object.keys(value)) {
+    if (!keys.has(key)) {
+      throw protocolError(`${path}.${key} is not allowed`);
+    }
+  }
 }
 
 function boundedIdentity(value: unknown, path: string): string {
@@ -84,6 +109,7 @@ function nullableIdentity(value: unknown, path: string): string | null {
 /** Parse one complete authority value and enforce state/identity invariants. */
 export function decodeConversationAuthority(value: unknown): ConversationAuthority {
   const input = record(value, "authority");
+  exactAuthorityKeys(input, "authority");
   const conversationId = boundedIdentity(input["conversationId"], "authority.conversationId");
   const state = input["state"];
   const latestCompletedExecutionId = nullableIdentity(
@@ -134,6 +160,23 @@ export function decodeConversationAuthority(value: unknown): ConversationAuthori
   }
 
   throw protocolError(`authority.state is invalid: ${String(state)}`);
+}
+
+export function decodeConversationAuthorityFrame(value: unknown): ConversationAuthorityFrame {
+  const input = record(value, "authorityFrame");
+  const keys = Object.keys(input);
+  if (
+    keys.length !== 2 ||
+    !keys.includes("type") ||
+    !keys.includes("authority") ||
+    input["type"] !== CONVERSATION_AUTHORITY_FRAME_TYPE
+  ) {
+    throw protocolError("authorityFrame must contain exactly type and authority");
+  }
+  return {
+    type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+    authority: decodeConversationAuthority(input["authority"]),
+  };
 }
 
 export function isConversationAuthorityFrame(

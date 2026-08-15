@@ -2,10 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createAgUiProbe } from "./ag-ui.ts";
 
 function ndjson(events: unknown[]): Response {
-  return new Response(
-    events.map((event, index) => JSON.stringify({ lsn: index + 1, event })).join("\n") + "\n",
-    { headers: { "Content-Type": "application/x-ndjson" } },
-  );
+  return new Response(events.map((event) => JSON.stringify(event)).join("\n") + "\n", {
+    headers: { "Content-Type": "application/x-ndjson" },
+  });
 }
 
 describe("passive AG-UI conformance probe", () => {
@@ -33,7 +32,7 @@ describe("passive AG-UI conformance probe", () => {
       "TEXT_MESSAGE_END",
       "RUN_FINISHED",
     ]);
-    expect(probe.frames().map((frame) => frame.lsn)).toEqual([1, 2, 3, 4, 5]);
+    expect(probe.frames().map((frame) => frame.sequence)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("rejects obsolete output from the application", async () => {

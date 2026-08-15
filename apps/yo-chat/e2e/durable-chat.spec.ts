@@ -6,7 +6,7 @@ import { test, expect } from "@playwright/test";
  *
  * These tests verify:
  * 1. Feature parity with regular /api/chat (basic streaming, tools, markdown)
- * 2. Durable-specific features (session ID, reconnection, replay)
+ * 2. Native conversation protocol and reconnect behavior
  *
  * Tests require a configured chat model provider. The direct API assertions use
  * the same provider/model as the Playwright web server instead of hard-coding a
@@ -17,11 +17,6 @@ import { test, expect } from "@playwright/test";
 
 // Increase timeout for LLM responses
 test.setTimeout(240000);
-
-const apiModel = {
-  provider: process.env.DEFAULT_CHAT_MODEL_PROVIDER ?? "github-copilot",
-  id: process.env.DEFAULT_CHAT_MODEL_ID ?? "claude-sonnet-4.5",
-};
 
 function directChatRequest(content: string) {
   const conversationId = `e2e:${randomUUID()}`;
@@ -38,16 +33,10 @@ function directChatRequest(content: string) {
     },
     clientId: "durable-chat-e2e",
     conversationId,
-    model: apiModel,
-    input: {
-      threadId: conversationId,
-      runId,
-      state: {},
-      messages: [{ id: messageId, role: "user", content }],
-      tools: [],
-      context: [],
-      forwardedProps: {},
-    },
+    userMessage: { id: messageId, role: "user", content },
+    state: {},
+    context: [],
+    forwardedProps: {},
   };
 }
 
@@ -283,102 +272,66 @@ test.describe("Durable Chat - Tool Calling", () => {
 // DURABLE-SPECIFIC TESTS - Features unique to the durable handler
 // =============================================================================
 
-test.describe("Durable Chat - Session Features", () => {
-  test("API returns X-Session-Id header", async ({ request }) => {
+test.describe("Durable Chat - Native protocol", () => {
+  test("API emits native NDJSON without public session or offset metadata", async ({ request }) => {
     const response = await request.post("/api/chat", {
       data: directChatRequest("Hi"),
     });
 
     expect(response.status()).toBe(200);
-
-    // Check for session ID header
-    const sessionId = response.headers()["x-session-id"];
-    expect(sessionId).toBeTruthy();
-    expect(sessionId).toMatch(/^[0-9a-f-]{36}$/i); // UUID format
-
-    console.log("Session ID:", sessionId);
-  });
-
-  test("response format is NDJSON with LSN", async ({ request }) => {
-    const response = await request.post("/api/chat", {
-      data: directChatRequest("Say hi"),
-    });
-
-    expect(response.status()).toBe(200);
+    expect(response.headers()[["x", "session", "id"].join("-")]).toBeUndefined();
     expect(response.headers()["content-type"]).toContain("application/x-ndjson");
 
-    const body = await response.text();
-    const lines = body.trim().split("\n");
-
-    // Each line should be valid JSON with lsn and event
-    for (const line of lines.slice(0, 5)) {
-      const parsed = JSON.parse(line);
-      expect(parsed).toHaveProperty("lsn");
-      expect(parsed).toHaveProperty("event");
-      expect(typeof parsed.lsn).toBe("number");
-      expect(parsed.lsn).toBeGreaterThan(0);
-    }
-
-    // Strict public AG-UI streams start with RUN_STARTED and do not emit
-    // Sweatpants-only session_info data frames.
-    const parsedEvents = lines.map((line) => JSON.parse(line));
-    expect(parsedEvents.some((entry) => entry?.event?.type === "RUN_STARTED")).toBe(true);
-    expect(parsedEvents.some((entry) => entry?.event?.type === "session_info")).toBe(false);
-
-    console.log("First 3 events:", lines.slice(0, 3).join("\n"));
+    const events = (await response.text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(events[0]?.["type"]).toBe("RUN_STARTED");
+    expect(events[1]?.["type"]).toBe("sweatpants.conversation-window.v1");
+    expect(events[2]?.["type"]).toBe("sweatpants.conversation-authority.v1");
+    const forbiddenOffsetKey = ["l", "s", "n"].join("");
+    expect(events.every((event) => !(forbiddenOffsetKey in event) && !("event" in event))).toBe(
+      true,
+    );
+    expect(events.some((event) => event["type"] === "session_info")).toBe(false);
+    expect(events.at(-1)?.["type"]).toMatch(/^RUN_(FINISHED|ERROR)$/);
   });
 
-  test("text and thinking events have content field (not text)", async ({ request }) => {
-    // This test catches the field name mismatch bug where server sent
-    // { type: 'text', text: '...' } but client expected { type: 'text', content: '...' }
+  test("native text and reasoning events use AG-UI deltas", async ({ request }) => {
     const response = await request.post("/api/chat", {
       data: directChatRequest("Say hello"),
     });
 
-    const body = await response.text();
-    const lines = body.trim().split("\n");
-
-    for (const line of lines) {
-      const { event } = JSON.parse(line);
-
-      if (event.type === "text") {
-        // Should have 'content' field, NOT 'text' field
-        expect(event).toHaveProperty("content");
-        expect(event.content).toBeDefined();
-        expect(typeof event.content).toBe("string");
-        // Should NOT have old 'text' field
-        expect(event).not.toHaveProperty("text");
-      }
-
-      if (event.type === "thinking") {
-        // Should have 'content' field, NOT 'text' field
-        expect(event).toHaveProperty("content");
-        expect(event.content).toBeDefined();
-        expect(typeof event.content).toBe("string");
-        // Should NOT have old 'text' field
-        expect(event).not.toHaveProperty("text");
+    const events = (await response.text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    for (const event of events) {
+      if (
+        event["type"] === "TEXT_MESSAGE_CONTENT" ||
+        event["type"] === "REASONING_MESSAGE_CONTENT"
+      ) {
+        expect(typeof event["delta"]).toBe("string");
+        expect(event["text"]).toBeUndefined();
+        expect(event["content"]).toBeUndefined();
       }
     }
-
-    console.log("Verified all text/thinking events use content field");
   });
 
-  test("LSN increases monotonically", async ({ request }) => {
+  test("native response has a finite authority-terminated lifecycle", async ({ request }) => {
     const response = await request.post("/api/chat", {
       data: directChatRequest("Count to 5"),
     });
-
-    const body = await response.text();
-    const lines = body.trim().split("\n");
-
-    let previousLsn = 0;
-    for (const line of lines) {
-      const { lsn } = JSON.parse(line);
-      expect(lsn).toBeGreaterThan(previousLsn);
-      previousLsn = lsn;
-    }
-
-    console.log(`Total events: ${lines.length}, final LSN: ${previousLsn}`);
+    const events = (await response.text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const terminalIndex = events.findIndex((event) =>
+      /^RUN_(FINISHED|ERROR)$/.test(String(event["type"])),
+    );
+    expect(terminalIndex).toBeGreaterThanOrEqual(0);
+    expect(events[terminalIndex - 1]?.["type"]).toBe("sweatpants.conversation-authority.v1");
+    expect(events.slice(terminalIndex + 1)).toEqual([]);
   });
 });
 

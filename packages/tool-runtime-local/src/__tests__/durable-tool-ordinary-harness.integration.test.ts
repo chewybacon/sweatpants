@@ -33,6 +33,7 @@ import {
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { anyGuard, createSchemaFixture } from "@sweatpants/journal-authority/testing";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
+import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 
 import {
   createDurableToolSessionFacade,
@@ -320,7 +321,9 @@ function runProgram(
   return ProgramDriverRegistryContext.with(drivers, function* () {
     return yield* withJournalAuthority(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+        return yield* withModelSampleTestBoundary(() =>
+          ProgramRuntime.operations.run({ attach, executeHostEffects: true }),
+        );
       });
     });
   });

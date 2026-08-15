@@ -3,10 +3,12 @@ import { ProgramPlacementContext } from "@sweatpants/durable-effects";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {
   MODEL_SAMPLE_EFFECT,
-  decodeModelSampleRequest,
+  decodeModelSampleSourceRequest,
   encodeModelSampleResult,
+  resolveModelSampleSourceRequest,
 } from "./contract.ts";
 import {
+  ModelContextSourceResolverContext,
   ModelSamplingApi,
   ModelSamplingUnavailable,
   runWithModelSamplingService,
@@ -23,7 +25,15 @@ export function createModelSamplingEffectRegistration(
     definition,
     { mode: "repeatable" },
     function* (wireRequest, effectContext) {
-      const request = decodeModelSampleRequest(wireRequest);
+      const sourceRequest = decodeModelSampleSourceRequest(wireRequest);
+      const resolveContext = yield* ModelContextSourceResolverContext.get();
+      if (!resolveContext) {
+        throw new ModelSamplingUnavailable("Model context source resolver is unavailable");
+      }
+      const request = resolveModelSampleSourceRequest(
+        sourceRequest,
+        yield* resolveContext(sourceRequest.invocation.context),
+      );
       const placement = yield* ProgramPlacementContext.get();
       if (!placement) {
         throw new ModelSamplingUnavailable("Model sampling placement context is unavailable");

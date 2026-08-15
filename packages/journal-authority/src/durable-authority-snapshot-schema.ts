@@ -159,6 +159,66 @@ const attemptSnapshotSchema = z.strictObject({
   state: z.enum(["started", "detached", "completed", "revoked", "superseded"]),
   capability: z.string(),
 });
+const durablePositionSchema = z.string().regex(/^(0|[1-9]\d*)$/);
+const modelContextPolicyDecisionSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("include-range"),
+    fromPositionInclusive: durablePositionSchema,
+    beforePositionExclusive: durablePositionSchema,
+    reason: z.string().min(1),
+  }),
+  z.strictObject({
+    type: z.literal("use-artifact"),
+    artifactDigest: z.string().min(1),
+    firstUncoveredPosition: durablePositionSchema,
+    reason: z.string().min(1),
+  }),
+  z.strictObject({
+    type: z.literal("drop-causal-group"),
+    fromPositionInclusive: durablePositionSchema,
+    beforePositionExclusive: durablePositionSchema,
+    reason: z.string().min(1),
+  }),
+  z.strictObject({
+    type: z.literal("history-policy"),
+    policyId: z.string().min(1),
+    action: z.enum(["drop_turn", "drop_message"]),
+    reason: z.string().min(1),
+    roles: z.array(z.string()).max(64),
+    toolCallIds: z.array(z.string()).max(256),
+  }),
+]);
+const modelContextPreparedFactSchema = z.strictObject({
+  type: z.literal("ModelContextPrepared"),
+  executionId: z.string().min(1),
+  taskId: z.string().min(1),
+  pullId: z.string().min(1),
+  contextObject: z.strictObject({ objectId: z.string().min(1) }),
+  contextDigest: z.string().min(1),
+  invocationDigest: z.string().min(1),
+  responseModeDigest: z.string().min(1),
+  generationOptionsDigest: z.string().min(1),
+  sourceCheckpoint: z.strictObject({ checkpointId: z.string().min(1) }),
+  sourceArchiveHeadSegmentId: z.string().min(1).nullable(),
+  sourceArchiveFrontierOrdinal: durablePositionSchema,
+  sourceNextPublicPosition: durablePositionSchema,
+  acceptedCommandId: z.string().min(1),
+  policyId: z.string().min(1),
+  policyDecisions: z.array(modelContextPolicyDecisionSchema).max(1_024),
+  budgetId: z.string().min(1),
+  budgetDigest: z.string().min(1),
+  toolCatalogDigest: z.string().min(1),
+  model: z.strictObject({ provider: z.string().min(1), id: z.string().min(1) }),
+  publicMessageId: z.string().min(1),
+});
+
+const assistantPartialAcceptedFactSchema = z.strictObject({
+  type: z.literal("AssistantPartialAccepted"),
+  messageId: z.string().min(1),
+  text: z.string().min(1).max(32_768),
+  disposition: z.enum(["interrupted", "provider-error"]),
+});
+
 const indexedPullSchema = z.tuple([
   nonNegativeIntegerSchema,
   z.strictObject({
@@ -171,6 +231,7 @@ const indexedPullSchema = z.tuple([
     resultDescriptor: portableSchemaDescriptorSchema,
     resultSchemaDigest: z.string(),
     audience: z.string(),
+    publicMessageId: z.string().optional(),
     maxOutcomeBytes: nonNegativeIntegerSchema,
     attempts: z.array(attemptSnapshotSchema).max(MAX_ATTEMPTS_PER_PULL),
     revoked: z.boolean(),
@@ -178,6 +239,10 @@ const indexedPullSchema = z.tuple([
     outcome: operationOutcomeSchema.optional(),
     outcomeDigest: z.string().optional(),
     receipt: resolutionReceiptSchema.optional(),
+    preparation: modelContextPreparedFactSchema.optional(),
+    preparationDigest: z.string().min(1).optional(),
+    assistantPartial: assistantPartialAcceptedFactSchema.optional(),
+    assistantPartialDigest: z.string().min(1).optional(),
   }),
 ]);
 const indexedEmissionSchema = z.tuple([
@@ -246,6 +311,7 @@ const taskSnapshotSchema = z.strictObject({
   executionEpoch: nonNegativeIntegerSchema,
   attachmentId: z.string(),
   audience: z.string(),
+  elicitAudience: z.string().optional(),
   nextActionIndex: nonNegativeIntegerSchema,
   nextPullIndex: nonNegativeIntegerSchema,
   nextEmissionIndex: nonNegativeIntegerSchema,
@@ -277,6 +343,7 @@ const semanticPayloadSchema = z.union([
     catalogDigest: z.string().optional(),
     parentTaskId: z.string().optional(),
     parentPullId: z.string().optional(),
+    elicitAudience: z.string().optional(),
   }),
   z.strictObject({
     type: z.literal("PullRequested"),
@@ -287,6 +354,23 @@ const semanticPayloadSchema = z.union([
     pullId: z.string(),
     descriptor: durableOperationDescriptorSchema,
     descriptorDigest: z.string(),
+    publicMessageId: z.string().optional(),
+  }),
+  z.strictObject({
+    type: z.literal("ModelContextPrepared"),
+    taskId: z.string(),
+    pullId: z.string(),
+    attemptId: z.string(),
+    fact: modelContextPreparedFactSchema,
+    preparationDigest: z.string(),
+  }),
+  z.strictObject({
+    type: z.literal("AssistantPartialAccepted"),
+    taskId: z.string(),
+    pullId: z.string(),
+    attemptId: z.string(),
+    fact: assistantPartialAcceptedFactSchema,
+    factDigest: z.string(),
   }),
   z.strictObject({
     type: z.literal("AttemptStarted"),

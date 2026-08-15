@@ -29,7 +29,22 @@ describe("storage inspector privacy boundary", () => {
     );
     const secret = "INSPECTOR_PRIVATE_BODY_MARKER";
     try {
-      const payload = canonicalSnapshot({ public: { hotRoots: [{ secret }] } });
+      const payload = canonicalSnapshot({
+        public: {
+          hotRoots: [
+            {
+              rootId: "message:user-1",
+              position: "0",
+              kind: "message",
+              state: "sealed",
+              attribution: {},
+              message: { id: "user-1", role: "user", content: secret },
+              placement: { type: "root", sequence: 0 },
+            },
+          ],
+          applicationState: {},
+        },
+      });
       await seedCheckpoint(handle, payload.value, payload.canonical);
     } finally {
       await run(() => handle.close());
@@ -39,6 +54,17 @@ describe("storage inspector privacy boundary", () => {
     try {
       const body = await invoke(api, "/api/storage/conversations/conversation-1");
       expect(body).toMatchObject({ bodies: "redacted" });
+      expect(body.checkpoints).toEqual([
+        expect.objectContaining({
+          checkpoint_id: "checkpoint-1",
+          lineage_id: "lineage-1",
+          archive_frontier_ordinal: "0",
+          next_public_position: "1",
+        }),
+      ]);
+      expect(JSON.stringify(body)).not.toContain("archive_through_position");
+      expect(JSON.stringify(body)).not.toContain("first_position");
+      expect(JSON.stringify(body)).not.toContain("last_position");
       expect(JSON.stringify(body)).not.toContain(secret);
       expect(JSON.stringify(body)).not.toContain("payload_json");
     } finally {
@@ -56,11 +82,13 @@ async function seedCheckpoint(
     handle.storage.conversationStore.putCheckpoint({
       checkpointId: "checkpoint-1",
       conversationId: "conversation-1",
+      lineageId: "lineage-1",
       causeKey: "cause-1",
       cause: { kind: "inspector-test" },
       contentHash: sha256(canonical),
       archiveHead: null,
-      archiveThroughPosition: "0",
+      archiveFrontierOrdinal: "0",
+      nextPublicPosition: "1",
       payload,
       encodedBytes: new TextEncoder().encode(canonical).byteLength,
       createdAt: 1,

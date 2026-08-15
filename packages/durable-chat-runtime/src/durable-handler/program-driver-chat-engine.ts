@@ -72,7 +72,12 @@ import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-to
 import type { ElicitResponse, ProgramRuntimeChatEngineParams } from "./types.ts";
 import { projectChatHistory } from "./model-sampling/history.ts";
 import { encodeChatHistoryEntriesForProgramInput } from "./program-driver-history.ts";
-import { createHostModelSamplingService } from "./model-sampling/service.ts";
+import {
+  createHostModelSamplingService,
+  prepareModelSampleEffectInput,
+  preparedModelContextByteLimit,
+  resolveModelContextSource,
+} from "./model-sampling/service.ts";
 import { runWithTurnEventWriter } from "./model-sampling/turn-event-api.ts";
 
 type TreePlacement = {
@@ -218,6 +223,7 @@ type CatalogToolCall = ChatCall;
 const RECOVERABLE_FOREIGN_FAILURES: ReadonlySet<string> = new Set([
   "foreign_session_ended",
   "foreign_tool_start_failed",
+  "foreign_tool_error",
   "effect_outcome_indeterminate",
 ]);
 
@@ -258,7 +264,11 @@ function* invokeCatalogTool(
       throw error;
     }
     const { code, message, details } = error.applicationError;
-    if (!RECOVERABLE_FOREIGN_FAILURES.has(code)) {
+    if (
+      !RECOVERABLE_FOREIGN_FAILURES.has(code) ||
+      (code === "foreign_tool_error" &&
+        (entry.kind !== "foreign-tool" || entry.driver !== "tool-session"))
+    ) {
       throw error;
     }
     return {
@@ -313,6 +323,17 @@ function* activateProgramDriverChatEngine(
     recovery.status === "active"
       ? { taskId: recovery.taskId, turnId: recovery.turnId, input: recovery.input }
       : undefined;
+  let recoveredExecutionEpoch = 1;
+  if (recovery.status === "active") {
+    for (const task of recovery.activeTasks) {
+      const replaced = yield* journal.replaceAttachment(
+        params.conversationId,
+        task.taskId,
+        task.attachmentId,
+      );
+      if (task.taskId === recovery.taskId) recoveredExecutionEpoch = replaced.executionEpoch;
+    }
+  }
   const turnNumber = yield* journal.rootTaskCount(params.conversationId);
   const taskId = active?.taskId ?? `turn-${turnNumber}/root`;
   const turnId = active?.turnId ?? `turn-${turnNumber}`;
@@ -341,7 +362,7 @@ function* activateProgramDriverChatEngine(
     program: { id: manifest.programId, version: manifest.version, digest: manifest.digest },
     input,
     route: { driverKind: "program" },
-    executionEpoch: 1,
+    executionEpoch: recoveredExecutionEpoch,
     affinity: { kind: "conversation" as const, key: params.conversationId },
   };
   if (!active) {
@@ -355,6 +376,7 @@ function* activateProgramDriverChatEngine(
         executionEpoch: 1,
         attachmentId: stableProgramAttachmentId(attach),
         audience: "program-runtime",
+        elicitAudience: params.participantId,
       });
     } catch (error) {
       if (!(error instanceof CrankError) || error.code !== "invalid_journal") {
@@ -381,7 +403,7 @@ function* activateProgramDriverChatEngine(
       reason,
       params.pluginAbort?.commandId,
     );
-    yield* cancelPendingElicits(journal, before, params.conversationId);
+    yield* cancelPendingElicits(journal, before, params.conversationId, params.participantId);
   }
   const accepted =
     params.pluginAbort || replacementQueued
@@ -421,6 +443,9 @@ function* activateProgramDriverChatEngine(
         : [];
   const modelSamplingService = createHostModelSamplingService({
     model: params.model,
+    journal,
+    conversationStore: params.conversationStore,
+    conversationId: params.conversationId,
     ...(params.streamOptions ? { streamOptions: params.streamOptions } : {}),
     catalog: input.catalog,
     ...(params.historyPolicy ? { historyPolicy: params.historyPolicy } : {}),
@@ -482,6 +507,18 @@ function* activateProgramDriverChatEngine(
         drivers,
         effects,
         modelSamplingService,
+        effectInputPreparer: function* (request) {
+          if (request.name !== modelSample.name || request.version !== modelSample.version) {
+            return request.input;
+          }
+          return yield* prepareModelSampleEffectInput(request.input, params.conversationId);
+        },
+        modelContextSourceResolver: function* (source) {
+          return yield* resolveModelContextSource(source, {
+            conversationStore: params.conversationStore,
+            maxCanonicalBytes: preparedModelContextByteLimit(params.model.contextWindow),
+          });
+        },
         ...(effectOutcomeAcknowledger ? { effectOutcomeAcknowledger } : {}),
         routeResolver: function* (program, parentRoute) {
           const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
@@ -550,12 +587,16 @@ function* activateProgramDriverChatEngine(
       ...params.agUiRun,
       outcome: { type: "success" },
     };
-    const authority = yield* params.publishTerminal({
+    const published = yield* params.publishTerminal({
       outcome: outcome.value,
       disposition: "completed",
       events: [...projected, terminalEvent],
     });
-    events.push({ type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority }, terminalEvent);
+    events.push(
+      ...(published.window ? [published.window] : []),
+      { type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority: published.authority },
+      terminalEvent,
+    );
   } else if (outcome.state === "parked") {
     const pending = pendingElicit(after, outcome.pullId);
     if (pending) {
@@ -574,11 +615,11 @@ function* activateProgramDriverChatEngine(
       });
     }
     if (params.publishCheckpoint) {
-      const authority = yield* params.publishCheckpoint({ events });
+      const published = yield* params.publishCheckpoint({ events });
       const terminalIndex = Math.max(0, events.length - 1);
-      events.splice(terminalIndex, 0, {
+      events.splice(terminalIndex, 0, ...(published.window ? [published.window] : []), {
         type: CONVERSATION_AUTHORITY_FRAME_TYPE,
-        authority,
+        authority: published.authority,
       });
     }
   } else if (outcome.state === "cancelled") {
@@ -588,12 +629,16 @@ function* activateProgramDriverChatEngine(
         code: "PROGRAM_CANCELLED",
         message: "Program was cancelled",
       };
-      const authority = yield* params.publishTerminal({
+      const published = yield* params.publishTerminal({
         outcome: { code: "PROGRAM_CANCELLED", message: "Program was cancelled" },
         disposition: "cancelled",
         events: [...projected, terminalEvent],
       });
-      events.push({ type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority }, terminalEvent);
+      events.push(
+        ...(published.window ? [published.window] : []),
+        { type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority: published.authority },
+        terminalEvent,
+      );
     } else if (params.continueAfterCancellation || replacementQueued) {
       const {
         pluginAbort: _pluginAbort,
@@ -614,7 +659,7 @@ function* activateProgramDriverChatEngine(
         code: "PROGRAM_CANCELLED",
         message: params.pluginAbort?.reason ?? "Program was cancelled",
       };
-      const authority = yield* params.publishTerminal({
+      const published = yield* params.publishTerminal({
         outcome: {
           code: "PROGRAM_CANCELLED",
           message: params.pluginAbort?.reason ?? "Program was cancelled",
@@ -622,7 +667,11 @@ function* activateProgramDriverChatEngine(
         disposition: "cancelled",
         events: [...projected, terminalEvent],
       });
-      events.push({ type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority }, terminalEvent);
+      events.push(
+        ...(published.window ? [published.window] : []),
+        { type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority: published.authority },
+        terminalEvent,
+      );
     }
   } else {
     const terminalEvent: AGUIEvent = {
@@ -630,12 +679,16 @@ function* activateProgramDriverChatEngine(
       code: outcome.error.code,
       message: outcome.error.message,
     };
-    const authority = yield* params.publishTerminal({
+    const published = yield* params.publishTerminal({
       outcome: assertJson(outcome.error),
       disposition: "failed",
       events: [...projected, terminalEvent],
     });
-    events.push({ type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority }, terminalEvent);
+    events.push(
+      ...(published.window ? [published.window] : []),
+      { type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority: published.authority },
+      terminalEvent,
+    );
   }
 
   return events;
@@ -645,6 +698,7 @@ function* cancelPendingElicits(
   journal: ProgramDriverJournal,
   records: DurableSemanticRecord[],
   sessionId: string,
+  participantId: string,
 ): Operation<void> {
   const resolved = new Set(
     records.flatMap((entry) =>
@@ -664,7 +718,7 @@ function* cancelPendingElicits(
       sessionId,
       taskId: payload.taskId,
       pullId: payload.pullId,
-      audience: `user:${payload.descriptor.key}`,
+      audience: participantId,
       outcome: { status: "cancelled" },
     });
     if (
@@ -754,7 +808,7 @@ function* resolveElicitResponses(
       sessionId: params.conversationId,
       taskId: pending.taskId,
       pullId: pending.pullId,
-      audience: `user:${pending.descriptor.key}`,
+      audience: params.participantId,
       outcome: { status: "ok", value: assertJson(completion) },
     });
     if (result.status === "accepted" || result.status === "duplicate") {
@@ -1099,7 +1153,9 @@ function modelSampleMessageId(
   records: readonly DurableSemanticRecord[],
   record: DurableSemanticRecord,
 ): string | null {
-  if (record.payload.type !== "DurableEmission") return null;
+  if (record.payload.type !== "DurableEmission") {
+    return null;
+  }
   const recordIndex = records.indexOf(record);
   for (let index = recordIndex - 1; index >= 0; index -= 1) {
     const candidate = records[index]!.payload;
@@ -1107,9 +1163,22 @@ function modelSampleMessageId(
       candidate.type === "PullRequested" &&
       candidate.taskId === record.payload.taskId &&
       candidate.descriptor.kind === "effect" &&
-      candidate.descriptor.name === modelSample.name
+      candidate.descriptor.name === modelSample.name &&
+      candidate.descriptor.version === modelSample.version
     ) {
-      return `assistant:stream:${candidate.taskId}:${candidate.pullId}`;
+      const preparation = records.find(
+        (entry) =>
+          entry.payload.type === "ModelContextPrepared" &&
+          entry.payload.taskId === candidate.taskId &&
+          entry.payload.pullId === candidate.pullId,
+      );
+      if (preparation?.payload.type === "ModelContextPrepared") {
+        return preparation.payload.fact.publicMessageId;
+      }
+      if (candidate.publicMessageId) {
+        return candidate.publicMessageId;
+      }
+      return null;
     }
   }
   return null;
@@ -1122,11 +1191,20 @@ function projectRecords(
   const events: StreamEvent[] = [];
   const activeToolCalls = new Set<string>();
   for (const recordEntry of records) {
+    if (recordEntry.payload.type === "AssistantPartialAccepted") {
+      const fact = recordEntry.payload.fact;
+      events.push(
+        { type: EventType.TEXT_MESSAGE_START, messageId: fact.messageId, role: "assistant" },
+        {
+          type: EventType.TEXT_MESSAGE_CONTENT,
+          messageId: fact.messageId,
+          delta: fact.disposition === "interrupted" ? `${fact.text}\n\n[interrupted]` : fact.text,
+        },
+        { type: EventType.TEXT_MESSAGE_END, messageId: fact.messageId },
+      );
+      continue;
+    }
     if (recordEntry.payload.type === "PullResolved") {
-      const partial =
-        recordEntry.payload.outcome.status === "cancelled"
-          ? jsonRecord(recordEntry.payload.outcome.partial)
-          : undefined;
       const request = pullRequest(allRecords, recordEntry.payload.pullId);
       if (request?.descriptor.kind === "elicit") {
         const completion =
@@ -1142,46 +1220,6 @@ function projectRecords(
           ),
         );
       }
-      if (
-        partial?.["interrupted"] === true &&
-        typeof partial["text"] === "string" &&
-        request?.descriptor.kind === "effect" &&
-        request.descriptor.name === modelSample.name
-      ) {
-        const messageId = `assistant:stream:${recordEntry.payload.taskId}:${recordEntry.payload.pullId}`;
-        events.push(
-          { type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" },
-          {
-            type: EventType.TEXT_MESSAGE_CONTENT,
-            messageId,
-            delta: `${partial["text"]}\n\n[interrupted]`,
-          },
-          { type: EventType.TEXT_MESSAGE_END, messageId },
-        );
-      }
-      const errorDetails =
-        recordEntry.payload.outcome.status === "error"
-          ? jsonRecord(recordEntry.payload.outcome.error.details)
-          : undefined;
-      const failedPartial = jsonRecord(errorDetails?.["publicAssistantPartial"]);
-      const expectedMessageId = `assistant:stream:${recordEntry.payload.taskId}:${recordEntry.payload.pullId}`;
-      if (
-        request?.descriptor.kind === "effect" &&
-        request.descriptor.name === modelSample.name &&
-        failedPartial?.["messageId"] === expectedMessageId &&
-        typeof failedPartial["text"] === "string" &&
-        failedPartial["text"].length > 0
-      ) {
-        events.push(
-          { type: EventType.TEXT_MESSAGE_START, messageId: expectedMessageId, role: "assistant" },
-          {
-            type: EventType.TEXT_MESSAGE_CONTENT,
-            messageId: expectedMessageId,
-            delta: failedPartial["text"],
-          },
-          { type: EventType.TEXT_MESSAGE_END, messageId: expectedMessageId },
-        );
-      }
       continue;
     }
     if (recordEntry.payload.type !== "DurableEmission") {
@@ -1193,9 +1231,8 @@ function projectRecords(
       continue;
     }
     if (descriptor.eventType === "assistant_text" && typeof payload["text"] === "string") {
-      const messageId =
-        modelSampleMessageId(allRecords, recordEntry) ??
-        `assistant:${recordEntry.payload.taskId}:${recordEntry.payload.emissionIndex}`;
+      const messageId = modelSampleMessageId(allRecords, recordEntry);
+      if (!messageId) continue;
       events.push(
         { type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" },
         { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: payload["text"] },
@@ -1243,11 +1280,26 @@ function projectRecords(
           { type: EventType.TOOL_CALL_END, toolCallId: payload["callId"] },
         );
       }
+      const failed = payload["failed"] === true;
+      const result = payload["result"] ?? null;
       events.push({
         type: EventType.TOOL_CALL_RESULT,
         messageId: `tool:${payload["callId"]}`,
         toolCallId: payload["callId"],
-        content: JSON.stringify(payload["result"] ?? null),
+        content: JSON.stringify(
+          failed
+            ? {
+                status: "error",
+                errorText:
+                  typeof (jsonRecord(result)?.["error"] as Record<string, Json> | undefined)?.[
+                    "message"
+                  ] === "string"
+                    ? (jsonRecord(result)?.["error"] as Record<string, Json>)["message"]
+                    : "Tool execution failed",
+                detail: result,
+              }
+            : { status: "ok", output: result },
+        ),
         role: "tool",
       });
     }
@@ -1267,7 +1319,10 @@ function projectRecords(
         type: EventType.TOOL_CALL_RESULT,
         messageId: `tool:${pending.callId}:cancelled`,
         toolCallId: pending.callId,
-        content: JSON.stringify({ status: "cancelled", ...(partial ? { partial } : {}) }),
+        content: JSON.stringify({
+          status: "cancelled",
+          ...(partial ? { partial } : {}),
+        }),
         role: "tool",
       });
     }
@@ -1286,7 +1341,11 @@ function projectRecords(
         type: EventType.TOOL_CALL_RESULT,
         messageId: `tool:${pending.callId}:error`,
         toolCallId: pending.callId,
-        content: JSON.stringify({ status: "error", error: errored.payload.outcome.error }),
+        content: JSON.stringify({
+          status: "interrupted",
+          outcome: "unknown",
+          error: errored.payload.outcome.error,
+        }),
         role: "tool",
       });
     }

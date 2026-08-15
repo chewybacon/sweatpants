@@ -306,14 +306,6 @@ describe("target package charters", () => {
     expect(durableTests).not.toMatch(
       /storedCheckpointEventsSchema|parseStoredCheckpointEvents|as unknown as StreamEvent\[\]/,
     );
-    expect(
-      existsSync(
-        resolve(
-          root,
-          "packages/durable-chat-runtime/src/response-streams/conversation-checkpoint.ts",
-        ),
-      ),
-    ).toBe(true);
     expect(sourceTree(resolve(root, "packages/platform-acceptance/src"))).not.toMatch(
       /describe\.each<Binding>\(\["in-process", "http"\]\)/,
     );

@@ -43,11 +43,24 @@ const request: ModelSampleRequest = {
 };
 
 describe("durable model sampling", () => {
-  it("decodes the canonical command once while retaining open tool input", async () => {
+  it("keeps the semantic command local and journals only a bounded context source", async () => {
+    const sourceRequest = {
+      ...request,
+      invocation: {
+        context: {
+          type: "object",
+          object: { objectId: "context-object-1" },
+          digest: "context-digest-1",
+        },
+      },
+    };
     const parsed = await validator(MODEL_SAMPLE_EFFECT.inputSchema.digest)["~standard"].validate(
-      request,
+      sourceRequest,
     );
     expect(parsed).toHaveProperty("value");
+    expect(
+      await validator(MODEL_SAMPLE_EFFECT.inputSchema.digest)["~standard"].validate(request),
+    ).toHaveProperty("issues");
     expect(modelSampleRequestParser.parse(request)).toEqual({ ok: true, value: request });
     expect(modelSampleRequestParser.parse({ ...request, unknown: true }).ok).toBe(false);
   });

@@ -1,7 +1,7 @@
 {
     "version": "6",
     "dialect": "sqlite",
-    "id": "6307553d-fe9e-42c3-9ffc-3205ba4537b4",
+    "id": "e8cd52a6-5996-47c2-8339-67dd32555cd6",
     "prevId": "00000000-0000-0000-0000-000000000000",
     "tables": {
         "sp_conversation_checkpoints": {
@@ -42,6 +42,13 @@
                     "notNull": true,
                     "autoincrement": false
                 },
+                "lineage_id": {
+                    "name": "lineage_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
                 "archive_head_segment_id": {
                     "name": "archive_head_segment_id",
                     "type": "text",
@@ -49,8 +56,15 @@
                     "notNull": false,
                     "autoincrement": false
                 },
-                "archive_through_position": {
-                    "name": "archive_through_position",
+                "archive_frontier_ordinal": {
+                    "name": "archive_frontier_ordinal",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "next_public_position": {
+                    "name": "next_public_position",
                     "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
@@ -94,9 +108,13 @@
             "compositePrimaryKeys": {},
             "uniqueConstraints": {},
             "checkConstraints": {
-                "sp_checkpoint_archive_position": {
-                    "name": "sp_checkpoint_archive_position",
-                    "value": "\"sp_conversation_checkpoints\".\"archive_through_position\" >= 0"
+                "sp_checkpoint_archive_frontier": {
+                    "name": "sp_checkpoint_archive_frontier",
+                    "value": "\"sp_conversation_checkpoints\".\"archive_frontier_ordinal\" >= 0"
+                },
+                "sp_checkpoint_next_public_position": {
+                    "name": "sp_checkpoint_next_public_position",
+                    "value": "\"sp_conversation_checkpoints\".\"next_public_position\" >= 0"
                 },
                 "sp_checkpoint_encoded_bytes": {
                     "name": "sp_checkpoint_encoded_bytes",
@@ -333,6 +351,110 @@
                 }
             }
         },
+        "sp_conversation_public_root_index": {
+            "name": "sp_conversation_public_root_index",
+            "columns": {
+                "conversation_id": {
+                    "name": "conversation_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "position": {
+                    "name": "position",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "root_id": {
+                    "name": "root_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "segment_id": {
+                    "name": "segment_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "segment_root_index": {
+                    "name": "segment_root_index",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "archive_ordinal": {
+                    "name": "archive_ordinal",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "content_hash": {
+                    "name": "content_hash",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "encoded_bytes": {
+                    "name": "encoded_bytes",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                }
+            },
+            "indexes": {
+                "sp_public_root_identity": {
+                    "name": "sp_public_root_identity",
+                    "columns": ["conversation_id", "root_id"],
+                    "isUnique": true
+                },
+                "sp_public_root_archive_ordinal": {
+                    "name": "sp_public_root_archive_ordinal",
+                    "columns": ["conversation_id", "archive_ordinal"],
+                    "isUnique": true
+                },
+                "sp_public_root_segment": {
+                    "name": "sp_public_root_segment",
+                    "columns": ["segment_id", "segment_root_index"],
+                    "isUnique": false
+                }
+            },
+            "foreignKeys": {},
+            "compositePrimaryKeys": {
+                "sp_conversation_public_root_index_conversation_id_position_pk": {
+                    "columns": ["conversation_id", "position"],
+                    "name": "sp_conversation_public_root_index_conversation_id_position_pk"
+                }
+            },
+            "uniqueConstraints": {},
+            "checkConstraints": {
+                "sp_public_root_position": {
+                    "name": "sp_public_root_position",
+                    "value": "\"sp_conversation_public_root_index\".\"position\" >= 0"
+                },
+                "sp_public_root_segment_index": {
+                    "name": "sp_public_root_segment_index",
+                    "value": "\"sp_conversation_public_root_index\".\"segment_root_index\" >= 0"
+                },
+                "sp_public_root_archive_ordinal_check": {
+                    "name": "sp_public_root_archive_ordinal_check",
+                    "value": "\"sp_conversation_public_root_index\".\"archive_ordinal\" >= 0"
+                },
+                "sp_public_root_bytes": {
+                    "name": "sp_public_root_bytes",
+                    "value": "\"sp_conversation_public_root_index\".\"encoded_bytes\" >= 0"
+                }
+            }
+        },
         "sp_conversation_public_segments": {
             "name": "sp_conversation_public_segments",
             "columns": {
@@ -357,15 +479,15 @@
                     "notNull": false,
                     "autoincrement": false
                 },
-                "first_position": {
-                    "name": "first_position",
+                "min_position": {
+                    "name": "min_position",
                     "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
                     "autoincrement": false
                 },
-                "last_position": {
-                    "name": "last_position",
+                "max_position": {
+                    "name": "max_position",
                     "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
@@ -403,7 +525,7 @@
             "indexes": {
                 "sp_public_segment_conversation_position": {
                     "name": "sp_public_segment_conversation_position",
-                    "columns": ["conversation_id", "first_position", "last_position"],
+                    "columns": ["conversation_id", "min_position", "max_position"],
                     "isUnique": false
                 }
             },
@@ -411,13 +533,13 @@
             "compositePrimaryKeys": {},
             "uniqueConstraints": {},
             "checkConstraints": {
-                "sp_public_segment_first_position": {
-                    "name": "sp_public_segment_first_position",
-                    "value": "\"sp_conversation_public_segments\".\"first_position\" >= 0"
+                "sp_public_segment_min_position": {
+                    "name": "sp_public_segment_min_position",
+                    "value": "\"sp_conversation_public_segments\".\"min_position\" >= 0"
                 },
                 "sp_public_segment_positions": {
                     "name": "sp_public_segment_positions",
-                    "value": "\"sp_conversation_public_segments\".\"last_position\" >= \"sp_conversation_public_segments\".\"first_position\""
+                    "value": "\"sp_conversation_public_segments\".\"max_position\" >= \"sp_conversation_public_segments\".\"min_position\""
                 },
                 "sp_public_segment_bytes": {
                     "name": "sp_public_segment_bytes",

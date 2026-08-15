@@ -5,11 +5,14 @@ import { createDurableTool } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createModelSamplingEffectRegistration,
+  decodeModelSampleRequest,
+  encodeModelSampleSourceRequest,
   type ModelSamplingService,
 } from "@sweatpants/model-sampling";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
-import { sha256 } from "@sweatpants/foundation";
+import { canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import type { ModelContext } from "@sweatpants/model-provider";
 import { z } from "zod";
 
 import { createLocalProgramHost, createPinnedProgramCatalog } from "../local-program-host.ts";
@@ -419,7 +422,40 @@ describe("LocalProgramHost", () => {
         };
       },
     };
+    let storedContext: ModelContext | undefined;
+    let storedDigest = "";
     const host = createLocalProgramHost({
+      *effectInputPreparer(request) {
+        if (request.name !== "model.sample") return request.input;
+        const semantic = decodeModelSampleRequest(request.input);
+        const snapshot = canonicalSnapshot(semantic.invocation.context);
+        storedContext = semantic.invocation.context;
+        storedDigest = snapshot.sha;
+        return encodeModelSampleSourceRequest({
+          ...semantic,
+          invocation: {
+            context: {
+              type: "object",
+              object: { objectId: "local-host-context" },
+              digest: snapshot.sha,
+            },
+            ...(semantic.invocation.options === undefined
+              ? {}
+              : { options: semantic.invocation.options }),
+          },
+        });
+      },
+      *modelContextSourceResolver(source) {
+        if (
+          source.type !== "object" ||
+          source.object.objectId !== "local-host-context" ||
+          source.digest !== storedDigest ||
+          !storedContext
+        ) {
+          throw new Error("unexpected model context source");
+        }
+        return storedContext;
+      },
       journalStore: createProgramDriverJournalStore({
         keyring: createCapabilityKeyring("local-host-sample-test", [
           { keyId: "active", secret: "local-host-sample-test-secret-32!!" },
@@ -453,9 +489,20 @@ describe("LocalProgramHost", () => {
       });
       expect(yield* opened.result).toEqual({ state: "completed", value: "sampled" });
       expect(observed).toEqual(["route:program", "provider", "acknowledged"]);
-      expect(
-        (yield* host.trace(opened.sessionId)).tasks[0]?.operations[0]?.descriptor,
-      ).toMatchObject({ kind: "effect", name: "model.sample" });
+      const descriptor = (yield* host.trace(opened.sessionId)).tasks[0]?.operations[0]?.descriptor;
+      expect(descriptor).toMatchObject({
+        kind: "effect",
+        name: "model.sample",
+        input: {
+          invocation: {
+            context: {
+              type: "object",
+              object: { objectId: "local-host-context" },
+            },
+          },
+        },
+      });
+      expect(JSON.stringify(descriptor)).not.toContain('"messages"');
     });
   });
 

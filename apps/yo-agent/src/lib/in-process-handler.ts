@@ -2,6 +2,7 @@ import { createChatHandler } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createProgramDriverJournalStore,
+  createProjectionTokenKeyring,
   type ChatHandlerSetupContext,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
@@ -77,6 +78,12 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
       yield* setupMaxIterations(ctx);
     },
     maxToolIterations: maxIterations,
+    projectionTokens: createProjectionTokenKeyring(
+      "yo-agent-in-process-projection-token-key-material",
+    ),
+    *authorizeHistoryRead() {
+      return "authorized" as const;
+    },
     programDriverJournalStore: createProgramDriverJournalStore({
       keyring: createCapabilityKeyring("yo-agent-in-process", [
         { keyId: "local", secret: "yo-agent-in-process-local-key-material" },
@@ -87,8 +94,11 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
   async function inProcessFetch(input: string | Request, init?: RequestInit): Promise<Response> {
     const request = typeof input === "string" ? new Request(input, init) : input;
 
-    const url = request.url;
-    if (url.endsWith("/api/chat") && request.method === "POST") {
+    const pathname = new URL(request.url).pathname;
+    if (
+      request.method === "POST" &&
+      (pathname === "/api/chat" || /^\/api\/chat\/[^/]+\/history:page\/?$/.test(pathname))
+    ) {
       return handler(request);
     }
 

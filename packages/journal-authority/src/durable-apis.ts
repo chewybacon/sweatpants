@@ -7,6 +7,7 @@ import { canonicalSnapshot } from "@sweatpants/foundation";
 import { CrankError } from "@sweatpants/durable-execution";
 import { DurableEffects, DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import {
+  DurableEffectInputPreparationContext,
   ProgramDriverRegistryContext,
   ProgramExecutionScopeContext,
   ProgramPeer,
@@ -46,6 +47,29 @@ function authorityUnavailableSync(): never {
   throw new CrankError("unknown_target", "No journal authority is installed");
 }
 
+function* prepareOperationStep(
+  step: Extract<ProgramStep, { type: "operation" }>,
+): Operation<Extract<ProgramStep, { type: "operation" }>> {
+  if (step.descriptor.kind !== "effect") return step;
+  const prepare = yield* DurableEffectInputPreparationContext.get();
+  if (!prepare) return step;
+  const descriptor = step.descriptor;
+  return {
+    ...step,
+    descriptor: {
+      ...descriptor,
+      input: canonicalSnapshot(
+        yield* prepare({
+          name: descriptor.name,
+          version: descriptor.version,
+          input: descriptor.input,
+          resolver: descriptor.resolver,
+        }),
+      ).value,
+    },
+  };
+}
+
 /**
  * Journal authority as a port.
  *
@@ -63,6 +87,8 @@ export const JournalAuthorityPort = definePort<DurableJournalAuthorityService>(
     taskRecoveryState: authorityUnavailable,
     rootTaskCount: authorityUnavailable,
     operationState: authorityUnavailable,
+    pullPreparation: authorityUnavailable,
+    validateElicitResponse: authorityUnavailable,
     nonterminalSchemaDigests: authorityUnavailable,
     recoverableSessions: authorityUnavailable,
     claimActivation: authorityUnavailable,
@@ -77,6 +103,9 @@ export const JournalAuthorityPort = definePort<DurableJournalAuthorityService>(
     bindProgramAttachment: authorityUnavailable,
     ensureChildTask: authorityUnavailable,
     reserve: authorityUnavailable,
+    acceptPullPreparation: authorityUnavailable,
+    authorizeModelDispatch: authorityUnavailable,
+    acceptAssistantPartial: authorityUnavailable,
     resolve: authorityUnavailable,
     emit: authorityUnavailable,
     complete: authorityUnavailable,
@@ -150,13 +179,14 @@ function* resumeResolvedOperation(
   programCapability: string,
   replayError: string,
 ): Operation<{ step: ProgramStep; pullIndex: number }> {
+  const preparedStep = yield* prepareOperationStep(step);
   const replayed = yield* authority.reserve({
     sessionId: request.attach.sessionId,
     turnId: turnIdFor(request.attach.taskId),
     taskId: request.attach.taskId,
     actionIndex: step.actionIndex,
     pullIndex,
-    descriptor: step.descriptor,
+    descriptor: preparedStep.descriptor,
     programCapability,
   });
   if (replayed.status !== "resolved") {
@@ -412,15 +442,17 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           continue;
         }
         const proof = frontierProof;
+        const preparedStep = yield* prepareOperationStep(step);
+        const descriptor = preparedStep.descriptor;
         const reservation = yield* JournalAuthority.operations.reserve({
           sessionId: request.attach.sessionId,
           turnId: turnIdFor(request.attach.taskId),
           taskId: request.attach.taskId,
           actionIndex: step.actionIndex,
           pullIndex,
-          descriptor: step.descriptor,
+          descriptor,
           programCapability,
-          ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
+          ...(proof ? { restoredFrontier: proof, restoredFrontierStep: preparedStep } : {}),
         });
         if (reservation.restoredFrontierConsumed) {
           frontierProof = undefined;
@@ -451,8 +483,8 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           });
           continue;
         }
-        if (reservation.status === "pending" && step.descriptor.kind === "invoke") {
-          const child = step.descriptor.child;
+        if (reservation.status === "pending" && descriptor.kind === "invoke") {
+          const child = descriptor.child;
           const routeResolver = yield* ProgramRouteResolverContext.get();
           const childRoute = routeResolver
             ? yield* routeResolver(child, request.attach.route)
@@ -520,7 +552,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           });
           continue;
         }
-        if (reservation.status === "authorized" && step.descriptor.kind === "record") {
+        if (reservation.status === "authorized" && descriptor.kind === "record") {
           const authorized = yield* ProgramPeer.operations.step(attachment, {
             type: "authorize",
             actionIndex: step.actionIndex,
@@ -571,7 +603,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
         }
         if (
           reservation.status === "authorized" &&
-          step.descriptor.kind === "effect" &&
+          descriptor.kind === "effect" &&
           request.executeHostEffects
         ) {
           if (reservation.descriptor.kind !== "effect" || !reservation.effectContractDigest) {
@@ -597,7 +629,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
             throw new CrankError("effect_placement_unavailable", "Effect route is invalid");
           }
           const journal = authority.journalIdentity();
-          const effectResolver = step.descriptor.resolver;
+          const effectResolver = descriptor.resolver;
           const authorization: DurableEffectAuthorization = {
             sessionId: request.attach.sessionId,
             taskId: request.attach.taskId,

@@ -1,4 +1,4 @@
-import type { Operation } from "effection";
+import { createContext, type Operation } from "effection";
 import {
   canonicalSnapshot,
   type Json,
@@ -28,6 +28,22 @@ import { DEFAULT_MAX_INLINE_BYTES } from "./program-authoring-runtime.ts";
 import { z } from "zod";
 
 type EffectResolver = { audience: string; route?: string };
+
+export interface DurableEffectInputPreparation {
+  readonly name: string;
+  readonly version: string;
+  readonly input: Json;
+  readonly resolver: EffectResolver;
+}
+
+export type DurableEffectInputPreparer = (
+  request: DurableEffectInputPreparation,
+) => Operation<Json>;
+
+/** Host-private pre-reservation rewrite; output is what durable authority validates and journals. */
+export const DurableEffectInputPreparationContext = createContext<
+  DurableEffectInputPreparer | undefined
+>("durable-execution:effect-input-preparation", undefined);
 
 const operationOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ok"), value: z.json() }),
@@ -95,8 +111,8 @@ export function createDurableProgramContext(
     if (definition) {
       assertEffectDefinition(definition);
     }
-    const name = definition?.name ?? definitionOrName;
-    const version = definition?.version ?? versionOrInput;
+    const name = definition ? definition.name : (definitionOrName as string);
+    const version = definition ? definition.version : versionOrInput;
     const input = definition ? versionOrInput : inputOrResolver;
     const resolver = definition ? inputOrResolver : explicitResolver;
     if (typeof version !== "string" || input === undefined || !isEffectResolver(resolver)) {

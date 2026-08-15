@@ -17,6 +17,7 @@ import { createMemoryConversationStore } from "@sweatpants/history-store/memory"
 import type { ConversationStore } from "@sweatpants/history-store/contract";
 import {
   createProgramDriverJournalStore,
+  createProjectionTokenKeyring,
   programDriverSchemaRegistry,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
@@ -358,14 +359,15 @@ export function createAcceptanceApplication(
       programDriverJournalStore: journalStore,
       executionStore,
       conversationStore,
+      projectionTokens: createProjectionTokenKeyring("platform-acceptance-windowed-projection-key"),
+      *authorizeHistoryRead() {
+        return "authorized" as const;
+      },
       ...(options.storageProfile ? { storageProfile: options.storageProfile } : {}),
       setup: function* (): Operation<void> {
         yield* context.model.install();
       },
       maxToolIterations: options.maxToolIterations ?? 4,
-      onCheckpointError(error) {
-        checkpointErrors.push(error);
-      },
     }),
   });
   return {

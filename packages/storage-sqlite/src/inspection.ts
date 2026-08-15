@@ -19,8 +19,19 @@ export interface StorageReport {
   readonly journalByTask: readonly TaskStorageReport[];
   readonly replayByTask: readonly TaskStorageReport[];
   readonly checkpointWriteBytes: number;
+  readonly runtimeMetricsCaptured: boolean;
   readonly hydrationReads: number;
+  readonly hydrationReadBytes: number;
   readonly archivePageReads: number;
+  readonly publicHistoryIndexRows: number;
+  readonly publicHistoryIndexBytes: number;
+  readonly publicHistorySegmentReads: number;
+  readonly publicHistorySegmentReadBytes: number;
+  readonly peakPublicHistoryPageBytes: number;
+  readonly preparedContextReads: number;
+  readonly preparedContextReadBytes: number;
+  readonly preparedContextObjectBytes: number;
+  readonly totalRetainedArchiveBytes: number;
   readonly totalRetainedReplayBytes: number;
   readonly peakMaterializedReplayBytes: number;
 }
@@ -86,10 +97,7 @@ function taskAggregates(
 /** Read-only physical storage evidence. This function does not mutate the database. */
 export function readStorageReport(
   database: SweatpantsSqliteDatabase,
-  metrics?: Pick<
-    StorageReadMetricsSnapshot,
-    "headReads" | "checkpointReads" | "archivePageReads" | "peakMaterializedReplayBytes"
-  >,
+  metrics?: StorageReadMetricsSnapshot,
 ): StorageReport {
   const tables = {
     sp_conversation_heads: {
@@ -104,6 +112,7 @@ export function readStorageReport(
     },
     sp_conversation_checkpoints: aggregate(database, "sp_conversation_checkpoints"),
     sp_conversation_public_segments: aggregate(database, "sp_conversation_public_segments"),
+    sp_conversation_public_root_index: aggregate(database, "sp_conversation_public_root_index"),
     sp_conversation_terminal_segments: expressionAggregate(
       database,
       "sp_conversation_terminal_segments",
@@ -130,13 +139,28 @@ export function readStorageReport(
   } satisfies Readonly<Record<string, StorageTableReport>>;
   const journalByTask = taskAggregates(database, "sp_execution_journal_segments");
   const replayByTask = taskAggregates(database, "sp_execution_replay_segments");
+  const preparedContextObjects = database.get(
+    sql`SELECT COUNT(*) AS rows, COALESCE(SUM(byte_length), 0) AS encoded_bytes
+        FROM sp_execution_objects WHERE object_kind = 'prepared-model-context.v1'`,
+  ) as AggregateRow;
   return {
     tables,
     journalByTask,
     replayByTask,
     checkpointWriteBytes: tables.sp_conversation_checkpoints.encodedBytes,
+    runtimeMetricsCaptured: metrics !== undefined,
     hydrationReads: metrics ? safeNumber(metrics.headReads + metrics.checkpointReads) : 0,
+    hydrationReadBytes: metrics ? safeNumber(metrics.checkpointReadBytes) : 0,
     archivePageReads: metrics ? safeNumber(metrics.archivePageReads) : 0,
+    publicHistoryIndexRows: metrics ? safeNumber(metrics.publicHistoryIndexRows) : 0,
+    publicHistoryIndexBytes: metrics ? safeNumber(metrics.publicHistoryIndexBytes) : 0,
+    publicHistorySegmentReads: metrics ? safeNumber(metrics.publicHistorySegmentReads) : 0,
+    publicHistorySegmentReadBytes: metrics ? safeNumber(metrics.publicHistorySegmentReadBytes) : 0,
+    peakPublicHistoryPageBytes: metrics ? safeNumber(metrics.peakPublicHistoryPageBytes) : 0,
+    preparedContextReads: metrics ? safeNumber(metrics.preparedContextReads) : 0,
+    preparedContextReadBytes: metrics ? safeNumber(metrics.preparedContextReadBytes) : 0,
+    preparedContextObjectBytes: safeNumber(preparedContextObjects.encoded_bytes),
+    totalRetainedArchiveBytes: tables.sp_conversation_public_segments.encodedBytes,
     totalRetainedReplayBytes: tables.sp_execution_replay_segments.encodedBytes,
     peakMaterializedReplayBytes: metrics ? safeNumber(metrics.peakMaterializedReplayBytes) : 0,
   };
@@ -162,14 +186,14 @@ export const inspectionSql = Object.freeze({
        active_execution_id, latest_completed_execution_id
 FROM sp_conversation_heads WHERE conversation_id = ?`,
   checkpoints: `SELECT checkpoint_id, cause_key, content_hash,
-       archive_head_segment_id, archive_through_position,
+       archive_head_segment_id, archive_frontier_ordinal, next_public_position,
        encoded_bytes, created_at
 FROM sp_conversation_checkpoints
 WHERE conversation_id = ? ORDER BY created_at, checkpoint_id`,
-  publicArchive: `SELECT segment_id, previous_segment_id, first_position, last_position,
+  publicArchive: `SELECT segment_id, previous_segment_id, min_position, max_position,
        encoded_bytes, content_hash
 FROM sp_conversation_public_segments
-WHERE conversation_id = ? ORDER BY first_position, segment_id`,
+WHERE conversation_id = ? ORDER BY min_position, segment_id`,
   terminalHistory: `SELECT segment_id, previous_segment_id, first_position, last_position,
        content_hash, created_at
 FROM sp_conversation_terminal_segments

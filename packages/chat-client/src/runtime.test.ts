@@ -3,6 +3,7 @@ import type { Operation, Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_AUTHORITY_FRAME_TYPE,
+  CONVERSATION_WINDOW_FRAME_TYPE,
   createChatClient,
   createChatRuntime,
   type AGUIEvent,
@@ -10,10 +11,29 @@ import {
   type ChatTransportContract,
 } from "./index.ts";
 
+function window(conversationId: string, basisRevision: string): ConversationStreamEvent {
+  return {
+    type: CONVERSATION_WINDOW_FRAME_TYPE,
+    conversationId,
+    lineageId: `lineage:${conversationId}`,
+    basisRevision,
+    windowToken: `window:${conversationId}:${basisRevision}`,
+    windowMode: "reset",
+    archiveFrontierOrdinal: "0",
+    nextPublicPosition: "0",
+    hotRoots: [],
+    sealedCatchupRoots: [],
+    applicationState: {},
+    olderHistoryCursor: null,
+  };
+}
+
 function stream(events: readonly AGUIEvent[]): Stream<ConversationStreamEvent, void> {
   const started = events.find((event) => event.type === EventType.RUN_STARTED);
   const frames: readonly ConversationStreamEvent[] = started
     ? [
+        events[0]!,
+        window(started.threadId, "1"),
         {
           type: CONVERSATION_AUTHORITY_FRAME_TYPE,
           authority: {
@@ -25,7 +45,7 @@ function stream(events: readonly AGUIEvent[]): Stream<ConversationStreamEvent, v
             latestCompletedExecutionId: null,
           },
         },
-        ...events.slice(0, -1),
+        ...events.slice(1, -1),
         {
           type: CONVERSATION_AUTHORITY_FRAME_TYPE,
           authority: {
@@ -59,10 +79,11 @@ describe("ChatRuntime composition", () => {
     const trace: string[] = [];
     const driver: ChatTransportContract = {
       *sendMessages(request) {
-        trace.push(`driver:${request.input.threadId}`);
+        trace.push(`driver:${request.conversationId}`);
+        const runId = request.runId ?? request.command.commandId;
         return stream([
-          { type: "RUN_STARTED", threadId: request.input.threadId, runId: request.input.runId },
-          { type: "RUN_FINISHED", threadId: request.input.threadId, runId: request.input.runId },
+          { type: "RUN_STARTED", threadId: request.conversationId, runId },
+          { type: "RUN_FINISHED", threadId: request.conversationId, runId },
         ]);
       },
       *reconnectToStream() {
@@ -98,7 +119,8 @@ describe("ChatRuntime composition", () => {
       "driver:second",
       "runtime:exit",
     ]);
-    expect(first.getSnapshot().messages).not.toEqual(second.getSnapshot().messages);
+    expect(first.getSnapshot().authority?.conversationId).toBe("first");
+    expect(second.getSnapshot().authority?.conversationId).toBe("second");
     await runtime.close();
   });
 
@@ -106,10 +128,11 @@ describe("ChatRuntime composition", () => {
     const calls: string[] = [];
     const make = (label: string): ChatTransportContract => ({
       *sendMessages(request) {
-        calls.push(`${label}:${request.input.threadId}`);
+        calls.push(`${label}:${request.conversationId}`);
+        const runId = request.runId ?? request.command.commandId;
         return stream([
-          { type: "RUN_STARTED", threadId: request.input.threadId, runId: request.input.runId },
-          { type: "RUN_FINISHED", threadId: request.input.threadId, runId: request.input.runId },
+          { type: "RUN_STARTED", threadId: request.conversationId, runId },
+          { type: "RUN_FINISHED", threadId: request.conversationId, runId },
         ]);
       },
       *reconnectToStream() {
@@ -155,12 +178,13 @@ describe("ChatRuntime composition", () => {
         driver: {
           *sendMessages(request) {
             trace.push("driver");
+            const runId = request.runId ?? request.command.commandId;
             return stream([
-              { type: "RUN_STARTED", threadId: request.input.threadId, runId: request.input.runId },
+              { type: "RUN_STARTED", threadId: request.conversationId, runId },
               {
                 type: "RUN_FINISHED",
-                threadId: request.input.threadId,
-                runId: request.input.runId,
+                threadId: request.conversationId,
+                runId,
               },
             ]);
           },
@@ -195,12 +219,13 @@ describe("ChatRuntime composition", () => {
       transport: {
         driver: {
           *sendMessages(request) {
+            const runId = request.runId ?? request.command.commandId;
             return stream([
-              { type: "RUN_STARTED", threadId: request.input.threadId, runId: request.input.runId },
+              { type: "RUN_STARTED", threadId: request.conversationId, runId },
               {
                 type: "RUN_FINISHED",
-                threadId: request.input.threadId,
-                runId: request.input.runId,
+                threadId: request.conversationId,
+                runId,
               },
             ]);
           },

@@ -120,6 +120,13 @@ const manifest: DurableProgramManifest = {
       outputSchema: mutateOutput.descriptor,
       retrySafety: { mode: "unsafe" },
     },
+    "model.sample": {
+      name: "model.sample",
+      version: "1",
+      inputSchema: echoInput.descriptor,
+      outputSchema: echoOutput.descriptor,
+      retrySafety: { mode: "repeatable" },
+    },
   },
   capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
 };
@@ -310,6 +317,197 @@ function createAuthority(sessionId = "session-1", now: () => number = () => 1_00
 }
 
 describe("crank-native durable runtime", () => {
+  it("accepts one closed model preparation before provider settlement", async () => {
+    const { authority, attach } = createAuthority("model-preparation");
+    await run(function* () {
+      const opened = yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: attach.executionEpoch,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const reserved = yield* authority.reserve({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        actionIndex: 0,
+        pullIndex: 0,
+        descriptor: {
+          kind: "effect",
+          name: "model.sample",
+          version: "1",
+          input: "hello",
+          resolver: { audience: "host-effects" },
+        },
+        programCapability: opened.programCapability,
+      });
+      if (reserved.status !== "authorized") throw new Error("model sample was not authorized");
+      const fact = {
+        type: "ModelContextPrepared" as const,
+        executionId: "execution-1",
+        taskId: attach.taskId,
+        pullId: reserved.pullId,
+        contextObject: { objectId: "context-object-1" },
+        contextDigest: "context-digest",
+        invocationDigest: "invocation-digest",
+        responseModeDigest: "response-digest",
+        generationOptionsDigest: "options-digest",
+        sourceCheckpoint: { checkpointId: "checkpoint-1" },
+        sourceArchiveHeadSegmentId: null,
+        sourceArchiveFrontierOrdinal: "0",
+        sourceNextPublicPosition: "1",
+        acceptedCommandId: "command-1",
+        policyId: "default",
+        policyDecisions: [],
+        budgetId: "budget-1",
+        budgetDigest: "budget-digest",
+        toolCatalogDigest: "catalog-digest",
+        model: { provider: "test", id: "model" },
+        publicMessageId: "assistant-1",
+      };
+      const request = {
+        executionId: "execution-1",
+        taskId: attach.taskId,
+        pullId: reserved.pullId,
+        expectedOwnerFence: reserved.attemptId,
+        kind: "model-context" as const,
+        fact,
+      };
+      expect(yield* authority.acceptPullPreparation(request)).toEqual({ status: "accepted" });
+      const partial = {
+        executionId: "execution-1",
+        taskId: attach.taskId,
+        pullId: reserved.pullId,
+        expectedOwnerFence: reserved.attemptId,
+        fact: {
+          type: "AssistantPartialAccepted" as const,
+          messageId: "assistant-1",
+          text: "bounded partial",
+          disposition: "provider-error" as const,
+        },
+      };
+      expect(yield* authority.acceptAssistantPartial(partial)).toEqual({ status: "accepted" });
+      expect(yield* authority.acceptAssistantPartial(partial)).toEqual({ status: "duplicate" });
+      expect(
+        yield* authority.acceptAssistantPartial({
+          ...partial,
+          fact: { ...partial.fact, text: "different" },
+        }),
+      ).toEqual({ status: "identity_conflict" });
+      expect(yield* authority.acceptPullPreparation(request)).toEqual({ status: "duplicate" });
+      expect(
+        yield* authority.acceptPullPreparation({
+          ...request,
+          fact: { ...fact, invocationDigest: "different" },
+        }),
+      ).toEqual({ status: "identity_conflict" });
+      expect(authority.readJournal(attach.sessionId).map((record) => record.payload.type)).toEqual(
+        expect.arrayContaining(["ModelContextPrepared", "AssistantPartialAccepted"]),
+      );
+      yield* authority.resolve({
+        capability: reserved.resolutionCapability,
+        audience: "host-effects",
+        outcome: { status: "ok", value: "hello" },
+      });
+      expect(yield* authority.acceptPullPreparation(request)).toEqual({
+        status: "pull_not_pending",
+      });
+
+      const unrelated = yield* authority.reserve({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        actionIndex: 1,
+        pullIndex: 1,
+        descriptor: {
+          kind: "effect",
+          name: "echo",
+          version: "1",
+          input: "ordinary effect",
+          resolver: { audience: "host-effects" },
+        },
+        programCapability: opened.programCapability,
+      });
+      if (unrelated.status !== "authorized") throw new Error("unrelated effect was not authorized");
+      expect(
+        yield* authority.acceptPullPreparation({
+          ...request,
+          pullId: unrelated.pullId,
+          expectedOwnerFence: unrelated.attemptId,
+          fact: { ...fact, pullId: unrelated.pullId },
+        }),
+      ).toEqual({ status: "identity_conflict" });
+    });
+  });
+
+  it("rejects the 65th open elicitation before recording a pull", async () => {
+    const { authority } = createAuthority("interrupt-bound");
+    await run(function* () {
+      const opened: Array<{ taskId: string; programCapability: string }> = [];
+      for (let index = 0; index < 65; index += 1) {
+        const taskId = `task-${index}`;
+        const task = yield* authority.openTask({
+          sessionId: "interrupt-bound",
+          turnId: "turn",
+          taskId,
+          manifest,
+          input: "hello",
+          executionEpoch: 1,
+          attachmentId: `attachment-${index}`,
+          audience: "program-runtime",
+        });
+        opened.push({ taskId, programCapability: task.programCapability });
+        if (index < 64) {
+          const reserved = yield* authority.reserve({
+            sessionId: "interrupt-bound",
+            turnId: "turn",
+            taskId,
+            actionIndex: 0,
+            pullIndex: 0,
+            descriptor: {
+              kind: "elicit",
+              key: "approval",
+              message: "Approve",
+              response: approvalResponse.descriptor,
+            },
+            programCapability: task.programCapability,
+          });
+          expect(reserved).toMatchObject({ status: "pending", reason: "elicit" });
+        }
+      }
+      let error: unknown;
+      try {
+        const task = opened[64]!;
+        yield* authority.reserve({
+          sessionId: "interrupt-bound",
+          turnId: "turn",
+          taskId: task.taskId,
+          actionIndex: 0,
+          pullIndex: 0,
+          descriptor: {
+            kind: "elicit",
+            key: "approval",
+            message: "Reject",
+            response: approvalResponse.descriptor,
+          },
+          programCapability: task.programCapability,
+        });
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toMatchObject({ code: "checkpoint_bound_exceeded" });
+      expect(
+        authority
+          .readJournal("interrupt-bound")
+          .filter((record) => record.payload.type === "PullRequested"),
+      ).toHaveLength(64);
+    });
+  });
+
   it("rejects noncanonical and oversized terminal values before driver transport", async () => {
     const terminalManifest: DurableProgramManifest = {
       ...manifest,
@@ -938,6 +1136,35 @@ describe("crank-native durable runtime", () => {
       if (!pending || pending.payload.type !== "PullRequested") {
         throw new Error("elicitation was not recorded");
       }
+      expect(
+        yield* authority.validateElicitResponse({
+          sessionId: attach.sessionId,
+          pullId: pending.payload.pullId,
+          participantId: "untrusted-participant",
+          completion: { action: "accept", content: true },
+        }),
+      ).toEqual({ status: "audience_invalid" });
+      expect(
+        yield* authority.validateElicitResponse({
+          sessionId: attach.sessionId,
+          pullId: pending.payload.pullId,
+          participantId: "user:approval",
+          completion: { action: "accept", content: true },
+        }),
+      ).toMatchObject({
+        status: "valid",
+        taskId: attach.taskId,
+        audience: "user:approval",
+        outcome: { status: "ok", value: { action: "accept", content: true } },
+      });
+      expect(
+        yield* authority.validateElicitResponse({
+          sessionId: attach.sessionId,
+          pullId: pending.payload.pullId,
+          participantId: "user:approval",
+          completion: { action: "accept", content: "wrong" },
+        }),
+      ).toEqual({ status: "schema_validation_failed" });
       const capability = authority.resolutionCapability(
         attach.sessionId,
         attach.taskId,
@@ -950,6 +1177,14 @@ describe("crank-native durable runtime", () => {
           outcome: { status: "ok", value: { action: "accept", content: true } },
         }),
       ).toMatchObject({ status: "accepted" });
+      expect(
+        yield* authority.validateElicitResponse({
+          sessionId: attach.sessionId,
+          pullId: pending.payload.pullId,
+          participantId: "user:approval",
+          completion: { action: "accept", content: true },
+        }),
+      ).toEqual({ status: "not_pending" });
       expect(yield* activate()).toEqual({
         state: "completed",
         value: "ordinary-2:recorded-1:accept",

@@ -31,9 +31,13 @@ import {
 } from "./ports.ts";
 import { createHttpTransport, type ChatFetch, type HttpTransportOptions } from "./http.ts";
 import {
-  projectChatMessagesToAGUI as messagesToAGUI,
   advanceConversationAuthority,
+  appendAGUIMessage,
+  ConversationSegmentValidator,
+  createChatProjection,
   isConversationAuthorityFrame,
+  isConversationWindowFrame,
+  materializeChatMessages,
   type ConversationAuthority,
   type ConversationStreamEvent,
   type ChatUIMessage,
@@ -168,6 +172,7 @@ export interface ChatClient<TMessage extends ChatUIMessage<ChatLocalPart> = Chat
   regenerate(options?: RegenerateOptions): Promise<void>;
   stop(): Promise<void>;
   reconnect(): Promise<void>;
+  loadOlder(): Promise<void>;
   cancelQueued(id: string): Promise<void>;
   setMessages(
     update: readonly TMessage[] | ((current: readonly TMessage[]) => readonly TMessage[]),
@@ -196,12 +201,25 @@ function deepFreeze<T>(value: T, seen = new WeakSet()): T {
   return value;
 }
 
-function isSnapshotPreludeEvent(event: ConversationStreamEvent): boolean {
+function initialPreludeComplete(events: readonly ConversationStreamEvent[]): boolean {
+  if (events[0]?.type === EventType.RUN_ERROR) return true;
+  if (isConversationAuthorityFrame(events[0]!) && events[1]?.type === EventType.RUN_ERROR) {
+    return true;
+  }
+  if (events[0]?.type === EventType.RUN_STARTED) {
+    return (
+      events[1] !== undefined &&
+      events[2] !== undefined &&
+      isConversationWindowFrame(events[1]) &&
+      isConversationAuthorityFrame(events[2]) &&
+      events[2].authority.state === "running"
+    );
+  }
   return (
-    isConversationAuthorityFrame(event) ||
-    event.type === EventType.MESSAGES_SNAPSHOT ||
-    event.type === EventType.STATE_SNAPSHOT ||
-    event.type === EventType.ACTIVITY_SNAPSHOT
+    events[0] !== undefined &&
+    events[1] !== undefined &&
+    isConversationWindowFrame(events[0]) &&
+    isConversationAuthorityFrame(events[1])
   );
 }
 
@@ -215,6 +233,8 @@ function makeInitialSnapshot<TLocalPart extends ChatLocalPart = never>(): ChatUI
 > {
   return deepFreeze({
     messages: Object.freeze([]),
+    history: Object.freeze({ hasOlder: false, loadingOlder: false, error: null }),
+    applicationState: Object.freeze({}),
     authority: null,
     canSendMessage: false,
     status: "ready" as const,
@@ -288,6 +308,15 @@ function createUserWire(
   };
 }
 
+function pendingUserMessage<TLocalPart extends ChatLocalPart = never>(
+  message: Extract<ChatTransportRequestMessage, { role: "user" }>,
+): ChatUIMessage<TLocalPart> | null {
+  return (
+    materializeChatMessages<TLocalPart>(appendAGUIMessage(createChatProjection(), message))[0] ??
+    null
+  );
+}
+
 function userContentToWire(
   content: ChatContent,
 ): Extract<ChatTransportRequestMessage, { role: "user" }>["content"] {
@@ -298,33 +327,6 @@ function userContentToWire(
       ? { type: part.type, source: part.source }
       : { type: part.type, source: part.source, metadata: part.metadata };
   });
-}
-
-function runAgentInput(input: {
-  readonly threadId: string;
-  readonly runId: string;
-  readonly messages: readonly ChatTransportRequestMessage[];
-  readonly state: Json;
-  readonly context: readonly { readonly description: string; readonly value: string }[];
-  readonly forwardedProps: Json;
-  readonly parentRunId?: string;
-  readonly resume?: readonly {
-    readonly interruptId: string;
-    readonly status: "resolved" | "cancelled";
-    readonly payload?: Json;
-  }[];
-}): ChatTransportRequest["input"] {
-  return {
-    threadId: input.threadId,
-    runId: input.runId,
-    messages: [...input.messages],
-    state: input.state,
-    tools: [],
-    context: [...input.context],
-    forwardedProps: input.forwardedProps,
-    ...(input.parentRunId === undefined ? {} : { parentRunId: input.parentRunId }),
-    ...(input.resume === undefined ? {} : { resume: [...input.resume] }),
-  };
 }
 
 interface ResolvedQueueOptions {
@@ -425,6 +427,7 @@ class ChatClientController<
   private manualMessages: readonly ChatUIMessage<TLocalPart>[] | null = null;
   private queued: readonly QueuedUserMessage[] = [];
   private readonly queuedCompletions: WithResolvers<void>[] = [];
+  private readonly pendingUserMessages = new Map<string, ChatUIMessage<TLocalPart>>();
   private clientScope: Scope | null = null;
   private commandScope: Scope | null = null;
   private destroyClientScope: (() => Promise<void>) | null = null;
@@ -434,6 +437,10 @@ class ChatClientController<
   /** Monotonic authority survives temporary UI synchronization uncertainty. */
   private authorityBaseline: ConversationAuthority | null = null;
   private lastStreamEventType: string | null = null;
+  private olderHistoryCursor: string | null = null;
+  private knownWindowToken: string | null = null;
+  private historyGeneration = 0;
+  private historyLoadPromise: Promise<void> | null = null;
   private readyForCommands = false;
   private initializedResolved = false;
   private closed = false;
@@ -533,6 +540,20 @@ class ChatClientController<
 
   reconnect(): Promise<void> {
     return this.enqueueCommand(() => ChatClientApi.operations.reconnect());
+  }
+
+  loadOlder(): Promise<void> {
+    if (this.historyLoadPromise) {
+      return this.historyLoadPromise;
+    }
+    const pending = this.enqueueCommand(() => ChatClientApi.operations.loadOlder());
+    const tracked = pending.finally(() => {
+      if (this.historyLoadPromise === tracked) {
+        this.historyLoadPromise = null;
+      }
+    });
+    this.historyLoadPromise = tracked;
+    return tracked;
   }
 
   cancelQueued(id: string): Promise<void> {
@@ -783,6 +804,7 @@ class ChatClientController<
       stop: () => this.stopImpl("user"),
       regenerate: (options) => this.regenerateImpl(options ?? {}),
       reconnect: () => this.reconnectImpl(),
+      loadOlder: () => this.loadOlderImpl(),
       cancelQueued: (id) => this.cancelQueuedImpl(id),
       setMessages: (update) =>
         this.setMessagesImpl(
@@ -794,6 +816,17 @@ class ChatClientController<
         ),
       clearError: () => this.clearErrorImpl(),
       close: () => this.closeImpl(),
+    };
+  }
+
+  private transportIdentity(): Pick<
+    ChatTransportRequest,
+    "clientId" | "conversationId" | "knownWindowToken"
+  > {
+    return {
+      clientId: this.id,
+      conversationId: this.threadId,
+      ...(this.knownWindowToken === null ? {} : { knownWindowToken: this.knownWindowToken }),
     };
   }
 
@@ -854,9 +887,15 @@ class ChatClientController<
     }
 
     const wire = createUserWire(input);
-    const localBase = this.manualMessages ?? this.snapshot.messages;
     this.manualMessages = null;
-    this.compactor.append(wire);
+    const pending = pendingUserMessage<TLocalPart>(wire);
+    if (!pending) {
+      throw new ChatClientError(
+        "chat_event_invalid",
+        `Unable to materialize pending user message ${wire.id}`,
+      );
+    }
+    this.pendingUserMessages.set(wire.id, pending);
     const runId = crypto.randomUUID();
     this.publishProjection({
       authority: null,
@@ -872,16 +911,12 @@ class ChatClientController<
         basisRevision: commandAuthority.revision,
         messageId: wire.id,
       },
-      clientId: this.id,
-      conversationId: this.threadId,
-      input: runAgentInput({
-        threadId: this.threadId,
-        runId,
-        messages: [...messagesToAGUI(localBase), wire],
-        state: this.state,
-        context: this.context,
-        forwardedProps: options.forwardedProps ?? this.forwardedProps,
-      }),
+      ...this.transportIdentity(),
+      userMessage: wire,
+      runId,
+      state: this.state,
+      context: this.context,
+      forwardedProps: options.forwardedProps ?? this.forwardedProps,
     };
     const terminal = yield* this.runRequest(request);
     yield* this.finishRequest(terminal);
@@ -913,16 +948,11 @@ class ChatClientController<
         basisRevision: this.snapshot.authority?.revision ?? null,
         ...(target === undefined ? {} : { targetMessageId: target }),
       },
-      clientId: this.id,
-      conversationId: this.threadId,
-      input: runAgentInput({
-        threadId: this.threadId,
-        runId,
-        messages: messagesToAGUI(baseMessages),
-        state: this.state,
-        context: this.context,
-        forwardedProps: options.forwardedProps ?? this.forwardedProps,
-      }),
+      ...this.transportIdentity(),
+      runId,
+      state: this.state,
+      context: this.context,
+      forwardedProps: options.forwardedProps ?? this.forwardedProps,
     };
     this.publish({ authority: null, status: "submitted", connectionStatus: "connecting", runId });
     const terminal = yield* this.runRequest(request);
@@ -949,16 +979,11 @@ class ChatClientController<
           executionId: authority.activeExecutionId,
           reason,
         },
-        clientId: this.id,
-        conversationId: this.threadId,
-        input: runAgentInput({
-          threadId: this.threadId,
-          runId: cancellationRunId,
-          messages: messagesToAGUI(this.snapshot.messages),
-          state: this.state,
-          context: this.context,
-          forwardedProps: this.forwardedProps,
-        }),
+        ...this.transportIdentity(),
+        runId: cancellationRunId,
+        state: this.state,
+        context: this.context,
+        forwardedProps: this.forwardedProps,
       };
       try {
         this.publish({ authority: null, connectionStatus: "connecting" });
@@ -1014,10 +1039,7 @@ class ChatClientController<
     this.publish({ authority: null, connectionStatus: "connecting" });
     try {
       const stream = yield* ChatTransportPort.api.operations.reconnectToStream(
-        {
-          clientId: this.id,
-          threadId: this.threadId,
-        },
+        this.transportIdentity(),
         signal,
       );
       if (stream === null) {
@@ -1037,7 +1059,9 @@ class ChatClientController<
         });
         return;
       }
-      this.compactor.reset();
+      // ConversationWindow.applyWindow owns reset/continue semantics. Keep
+      // same-lineage sealed pages available so a reset window can preserve
+      // already loaded history while replacing only hot/live state.
       this.manualMessages = null;
       this.publish({ connectionStatus: "connected" });
       const terminal = yield* this.consumeStream(stream, false);
@@ -1072,6 +1096,80 @@ class ChatClientController<
       const failure = asChatClientError(error, "chat_transport_failed", "Chat reconnect failed");
       this.publish({ connectionStatus: "error", status: "error", error: failure });
       throw failure;
+    }
+  }
+
+  private *loadOlderImpl(): Operation<void> {
+    this.ensureOpen();
+    const cursor = this.olderHistoryCursor;
+    if (cursor === null) {
+      return;
+    }
+    const generation = this.historyGeneration;
+    const signal = yield* useAbortSignal();
+    this.publish({
+      history: { ...this.snapshot.history, loadingOlder: true, error: null },
+    });
+    try {
+      const load = ChatTransportPort.api.operations.loadHistoryPage as
+        | undefined
+        | ((
+            conversationId: string,
+            pageCursor: string,
+            abortSignal: AbortSignal,
+          ) => Operation<import("@sweatpants/chat-core").PublicHistoryPage>);
+      if (!load) {
+        throw new ChatClientError(
+          "chat_transport_unavailable",
+          "The chat transport does not support history paging",
+        );
+      }
+      const page = yield* load(this.threadId, cursor, signal);
+      if (generation !== this.historyGeneration || cursor !== this.olderHistoryCursor) {
+        return;
+      }
+      this.compactor.applyHistoryPage(page);
+      this.olderHistoryCursor = page.nextOlderCursor;
+      this.publishProjection({
+        history: {
+          hasOlder: this.olderHistoryCursor !== null,
+          loadingOlder: false,
+          error: null,
+        },
+      });
+    } catch (error) {
+      if (generation !== this.historyGeneration || cursor !== this.olderHistoryCursor) {
+        throw error;
+      }
+      const rawCode =
+        error instanceof Error && typeof (error as Error & { code?: unknown }).code === "string"
+          ? (error as Error & { code: string }).code
+          : "public_history_cursor_invalid";
+      const allowed = new Set([
+        "public_history_cursor_invalid",
+        "public_history_cursor_expired",
+        "public_history_frontier_changed",
+        "public_root_conflict",
+        "public_history_parent_missing",
+      ]);
+      const historyError = Object.assign(
+        error instanceof Error ? error : new Error("Public history page failed"),
+        { code: allowed.has(rawCode) ? rawCode : "public_history_cursor_invalid" },
+      ) as ChatUISnapshot["history"]["error"];
+      this.publish({
+        history: { ...this.snapshot.history, loadingOlder: false, error: historyError },
+      });
+      throw error;
+    } finally {
+      if (
+        generation === this.historyGeneration &&
+        cursor === this.olderHistoryCursor &&
+        this.snapshot.history.loadingOlder
+      ) {
+        this.publish({
+          history: { ...this.snapshot.history, loadingOlder: false },
+        });
+      }
     }
   }
 
@@ -1200,16 +1298,20 @@ class ChatClientController<
     stream: Stream<ConversationStreamEvent, void>,
     requireTerminal: boolean,
   ): Operation<AGUIEvent | null> {
+    const validator = new ConversationSegmentValidator();
     const clockInstalled = yield* ChatSchedulerPort.isInstalled();
     let terminalEvent: AGUIEvent | null;
     if (clockInstalled) {
-      const pacedTerminal = yield* this.consumePacedStream(stream);
+      const pacedTerminal = yield* this.consumePacedStream(stream, validator);
       terminalEvent = pacedTerminal;
     } else {
-      const unpacedTerminal = yield* this.consumeUnpacedStream(stream);
+      const unpacedTerminal = yield* this.consumeUnpacedStream(stream, validator);
       terminalEvent = unpacedTerminal;
     }
 
+    if (this.closed) {
+      return terminalEvent;
+    }
     if (this.snapshot.authority === null) {
       throw new ChatClientError(
         "chat_authority_missing",
@@ -1251,26 +1353,39 @@ class ChatClientController<
 
   private *consumePacedStream(
     stream: Stream<ConversationStreamEvent, void>,
+    validator: ConversationSegmentValidator,
   ): Operation<AGUIEvent | null> {
     const events = yield* createEagerBuffer(stream);
     const clock = ChatSchedulerPort.api.operations.clock();
     let terminalEvent: AGUIEvent | null = null;
     let prelude: ConversationStreamEvent[] = [];
+    let rollingWindow: ConversationStreamEvent[] = [];
     let segmentStarted = false;
 
     for (const _tick of yield* each(clock)) {
+      // A clock release and the transport reader can settle in the same turn.
+      // Yield once so the eager reader's atomic buffer includes all values that
+      // causally preceded this presentation tick.
+      yield* call(() => Promise.resolve());
       const publishable: ConversationStreamEvent[] = [];
       for (const event of events.drain()) {
+        validator.push(event);
         if (segmentStarted) {
-          publishable.push(event);
+          if (rollingWindow.length > 0) {
+            rollingWindow.push(event);
+            if (isConversationAuthorityFrame(event)) {
+              publishable.push(...rollingWindow);
+              rollingWindow = [];
+            }
+          } else if (isConversationWindowFrame(event)) {
+            rollingWindow = [event];
+          } else {
+            publishable.push(event);
+          }
           continue;
         }
         prelude.push(event);
-        if (
-          event.type === EventType.RUN_STARTED ||
-          event.type === EventType.RUN_ERROR ||
-          !isSnapshotPreludeEvent(event)
-        ) {
+        if (initialPreludeComplete(prelude)) {
           publishable.push(...prelude);
           prelude = [];
           segmentStarted = true;
@@ -1280,10 +1395,21 @@ class ChatClientController<
         terminalEvent = (yield* this.publishEventBatch(publishable)) ?? terminalEvent;
       }
 
+      if (terminalEvent !== null) {
+        while (events.state.status === "open") {
+          yield* call(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+        }
+        for (const trailing of events.drain()) validator.push(trailing);
+        if (events.state.status === "error") throw events.state.error;
+        if (!this.closed) validator.finish();
+        return terminalEvent;
+      }
+
       if (events.state.status === "error") {
         throw events.state.error;
       }
       if (events.state.status === "done") {
+        if (!this.closed) validator.finish();
         if (prelude.length > 0) {
           terminalEvent = (yield* this.publishEventBatch(prelude)) ?? terminalEvent;
         }
@@ -1301,24 +1427,33 @@ class ChatClientController<
 
   private *consumeUnpacedStream(
     stream: Stream<ConversationStreamEvent, void>,
+    validator: ConversationSegmentValidator,
   ): Operation<AGUIEvent | null> {
     const subscription = yield* stream;
     let terminalEvent: AGUIEvent | null = null;
     let prelude: ConversationStreamEvent[] = [];
+    let rollingWindow: ConversationStreamEvent[] = [];
     let segmentStarted = false;
     let next = yield* subscription.next();
 
     while (!next.done) {
       const event = next.value;
+      validator.push(event);
       if (segmentStarted) {
-        terminalEvent = (yield* this.publishEventBatch([event])) ?? terminalEvent;
+        if (rollingWindow.length > 0) {
+          rollingWindow.push(event);
+          if (isConversationAuthorityFrame(event)) {
+            terminalEvent = (yield* this.publishEventBatch(rollingWindow)) ?? terminalEvent;
+            rollingWindow = [];
+          }
+        } else if (isConversationWindowFrame(event)) {
+          rollingWindow = [event];
+        } else {
+          terminalEvent = (yield* this.publishEventBatch([event])) ?? terminalEvent;
+        }
       } else {
         prelude.push(event);
-        if (
-          event.type === EventType.RUN_STARTED ||
-          event.type === EventType.RUN_ERROR ||
-          !isSnapshotPreludeEvent(event)
-        ) {
+        if (initialPreludeComplete(prelude)) {
           terminalEvent = (yield* this.publishEventBatch(prelude)) ?? terminalEvent;
           prelude = [];
           segmentStarted = true;
@@ -1326,6 +1461,7 @@ class ChatClientController<
       }
       next = yield* subscription.next();
     }
+    if (!this.closed) validator.finish();
     if (prelude.length > 0) {
       terminalEvent = (yield* this.publishEventBatch(prelude)) ?? terminalEvent;
     }
@@ -1344,13 +1480,38 @@ class ChatClientController<
         this.acceptAuthority(event.authority);
         continue;
       }
+      if (isConversationWindowFrame(event)) {
+        if (event.conversationId !== this.threadId) {
+          throw new ChatClientError(
+            "conversation_window_invalid",
+            `Window for ${event.conversationId} cannot control ${this.threadId}`,
+          );
+        }
+        const actions = this.compactor.applyWindow(event);
+        for (const action of actions) {
+          yield* this.interpretProjectionAction(action);
+        }
+        this.knownWindowToken = event.windowToken;
+        this.olderHistoryCursor = event.olderHistoryCursor;
+        this.historyGeneration += 1;
+        this.stagePublication({
+          applicationState: event.applicationState,
+          history: {
+            hasOlder: event.olderHistoryCursor !== null,
+            loadingOlder: false,
+            error: null,
+          },
+        });
+        presentationCount += 1;
+        continue;
+      }
       presentationCount += 1;
       yield* ChatEventApi.operations.accept(event);
       if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) {
         terminalEvent = event;
       }
     }
-    if (presentationCount > 0) {
+    if (presentationCount > 0 || Object.keys(this.pendingPublicationChanges).length > 0) {
       try {
         yield* this.compactor.pull();
       } catch (error) {
@@ -1371,8 +1532,25 @@ class ChatClientController<
         this.threadId,
       );
       this.authorityBaseline = advanced;
+      if (advanced.state === "deleted") {
+        this.compactor.reset();
+        this.manualMessages = null;
+        this.pendingUserMessages.clear();
+        this.knownWindowToken = null;
+        this.olderHistoryCursor = null;
+        this.historyGeneration += 1;
+        this.interaction?.dispose();
+        const failure = new ChatClientError("chat_conversation_deleted", "Conversation is deleted");
+        const completions = this.queuedCompletions.splice(0);
+        this.queued = [];
+        for (const completion of completions) completion.reject(failure);
+        this.stagePublication({
+          history: { hasOlder: false, loadingOlder: false, error: null },
+          queue: [],
+        });
+      }
       if (advanced !== this.snapshot.authority) {
-        this.publish({ authority: advanced });
+        this.stagePublication({ authority: advanced });
       }
     } catch (error) {
       throw new ChatClientError(
@@ -1478,17 +1656,12 @@ class ChatClientController<
         status: response.status,
         ...("payload" in response ? { payload: response.payload } : {}),
       },
-      clientId: this.id,
-      conversationId: this.threadId,
-      input: runAgentInput({
-        threadId: this.threadId,
-        runId,
-        messages: messagesToAGUI(this.snapshot.messages),
-        state: this.state,
-        context: this.context,
-        forwardedProps: this.forwardedProps,
-        ...(request.parentRunId ? { parentRunId: request.parentRunId } : {}),
-      }),
+      ...this.transportIdentity(),
+      runId,
+      state: this.state,
+      context: this.context,
+      forwardedProps: this.forwardedProps,
+      ...(request.parentRunId ? { parentRunId: request.parentRunId } : {}),
     };
     this.publish({ authority: null, status: "submitted", connectionStatus: "connecting" });
     const terminal = yield* this.runRequest(transportRequest);
@@ -1576,6 +1749,14 @@ class ChatClientController<
       changes = { ...changes, status: "error", error: failure };
     }
     const serverMessages = messages;
+    for (const id of this.pendingUserMessages.keys()) {
+      if (serverMessages.some((message) => message.id === id)) {
+        this.pendingUserMessages.delete(id);
+      }
+    }
+    if (this.pendingUserMessages.size > 0) {
+      messages = [...serverMessages, ...this.pendingUserMessages.values()];
+    }
     if (this.interaction) {
       messages = overlayLocalParts(messages, this.interaction.localParts());
     }

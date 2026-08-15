@@ -1,5 +1,4 @@
 import type { Operation, Stream } from "effection";
-import type { RunAgentInput } from "@ag-ui/core";
 import type {
   ActivityDeltaEvent,
   ActivitySnapshotEvent,
@@ -29,6 +28,23 @@ import type {
 } from "@ag-ui/core";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { ConversationAuthority, ConversationStreamEvent } from "./conversation-protocol.ts";
+import type { PublicActivityPlacement } from "./public-activity.ts";
+export type {
+  JsonPatchOperation,
+  StructuredOutputCompleteEvent,
+  StructuredOutputStartEvent,
+} from "./chat-protocol-types.ts";
+export type {
+  PublicActivityData,
+  PublicActivityNode,
+  PublicActivityPlacement,
+  PublicElicitActivityNode,
+  PublicGenericActivityNode,
+  PublicMessageActivityNode,
+  PublicToolActivityNode,
+  PublicToolActivityData,
+  SweatpantsPublicActivity,
+} from "./public-activity.ts";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { ChatContent, ChatContentSource } from "./content.ts";
 import type { Frame } from "./frame.ts";
@@ -133,21 +149,6 @@ export type ChatUIMediaPart =
   | ChatUIVideoPart
   | ChatUIDocumentPart;
 
-export type StructuredOutputStartEvent = CustomEvent & {
-  readonly name: "structured-output.start";
-  readonly value: { readonly messageId: string };
-};
-
-export type StructuredOutputCompleteEvent = CustomEvent & {
-  readonly name: "structured-output.complete";
-  readonly value: {
-    readonly messageId?: string;
-    readonly object: Json;
-    readonly raw: string;
-    readonly reasoning?: string;
-  };
-};
-
 interface ChatUIToolCallPartBase<TLocalPart extends ChatLocalPart = never> {
   readonly type: "tool-call";
   readonly id: string;
@@ -247,8 +248,26 @@ export interface QueuedUserMessage {
   readonly createdAt: number;
 }
 
+export interface ChatHistoryError extends Error {
+  readonly code:
+    | "public_history_cursor_invalid"
+    | "public_history_cursor_expired"
+    | "public_history_frontier_changed"
+    | "public_root_conflict"
+    | "public_history_parent_missing";
+}
+
+export interface ChatHistoryStatus {
+  readonly hasOlder: boolean;
+  readonly loadingOlder: boolean;
+  readonly error: ChatHistoryError | null;
+}
+
 export interface ChatUISnapshot<TMessage extends ChatUIMessage<ChatLocalPart> = ChatUIMessage> {
   readonly messages: readonly TMessage[];
+  readonly history: ChatHistoryStatus;
+  /** Complete public application state from the latest native window. */
+  readonly applicationState: Json;
   /** Latest durable admission authority; null while hydration is unresolved. */
   readonly authority: ConversationAuthority | null;
   /** Derived capability. It is never inferred from stream completion. */
@@ -319,18 +338,24 @@ export type ConversationCommand =
       readonly reason: string;
     });
 
-/** Sweatpants command envelope carrying AG-UI presentation/model input. */
+/** Native command request; it never carries the loaded transcript. */
 export interface ChatTransportRequest {
   readonly command: ConversationCommand;
-  readonly input: RunAgentInput;
   readonly clientId: string;
   readonly conversationId: string;
+  readonly knownWindowToken?: import("./conversation-window.ts").WindowBasisToken;
+  readonly userMessage?: ChatTransportRequestMessage;
+  readonly runId?: string;
+  readonly parentRunId?: string;
+  readonly state?: Json;
+  readonly context?: readonly { readonly description: string; readonly value: string }[];
+  readonly forwardedProps?: Json;
 }
 
 export interface ChatReconnectRequest {
   readonly clientId: string;
-  readonly threadId: string;
-  readonly cursor?: number;
+  readonly conversationId: string;
+  readonly knownWindowToken?: import("./conversation-window.ts").WindowBasisToken;
 }
 
 /** The provider-facing, serializable message form used by transport. */
@@ -343,6 +368,11 @@ export interface ChatTransportContract {
     request: ChatReconnectRequest,
     signal: AbortSignal,
   ): Operation<Stream<ConversationStreamEvent, void> | null>;
+  loadHistoryPage?(
+    conversationId: string,
+    cursor: string,
+    signal: AbortSignal,
+  ): Operation<import("./conversation-window.ts").PublicHistoryPage>;
   disconnect(reason?: string): Operation<void>;
 }
 
@@ -356,69 +386,6 @@ export interface ChatTransportControl {
   subscribe(listener: () => void): () => void;
   reconnect(): Promise<void>;
   disconnect(reason?: string): Promise<void>;
-}
-
-export interface PublicActivityPlacement {
-  readonly nodeId: string;
-  readonly parentNodeId: string | null;
-  readonly sequence: number;
-  readonly presentation: "public" | "opaque";
-}
-
-export interface PublicMessageActivityNode extends PublicActivityPlacement {
-  readonly kind: "message";
-  readonly state: "streaming" | "done";
-  readonly publicData: {
-    readonly kind: "message";
-    readonly messageId: string;
-    readonly role: ChatUIMessage["role"];
-  };
-}
-
-export interface PublicToolActivityData {
-  readonly kind: "tool-call";
-  readonly callId: string;
-  readonly name: string;
-  readonly rawInput?: string;
-  readonly input?: Json;
-  readonly output?: Json;
-  readonly errorText?: string;
-}
-
-export interface PublicToolActivityNode extends PublicActivityPlacement {
-  readonly kind: "tool-call";
-  readonly state: "input-streaming" | "input-available" | "output-available" | "output-error";
-  readonly publicData: PublicToolActivityData;
-}
-
-export interface PublicGenericActivityNode extends PublicActivityPlacement {
-  readonly kind: "activity";
-  readonly state: "running" | "complete" | "error" | "cancelled";
-  readonly publicData?: {
-    readonly kind: "activity";
-    readonly activityType: string;
-    readonly data?: Json;
-  };
-}
-
-export interface PublicElicitActivityData {
-  readonly kind: "elicit";
-  readonly elicitId: string;
-  readonly bindingId: string;
-  readonly key: string;
-  readonly message: string;
-  readonly context?: Json;
-  readonly responseContract: PortableSchemaDescriptor;
-  readonly contextContract?: PortableSchemaDescriptor;
-  readonly toolName: string;
-  readonly callId: string;
-  readonly producerSequence: number;
-}
-
-export interface PublicElicitActivityNode extends PublicActivityPlacement {
-  readonly kind: "elicit";
-  readonly state: "pending" | "responded" | "cancelled";
-  readonly publicData: PublicElicitActivityData;
 }
 
 export interface ClientElicitFact {
@@ -436,27 +403,6 @@ export interface ClientElicitFact {
   readonly contextContract?: PortableSchemaDescriptor;
   readonly placement: Omit<PublicActivityPlacement, "presentation">;
 }
-
-/** A parsed public node is legal by construction: each kind owns its states and data. */
-export type PublicActivityNode =
-  | PublicMessageActivityNode
-  | PublicToolActivityNode
-  | PublicGenericActivityNode
-  | PublicElicitActivityNode;
-
-export type PublicActivityData = NonNullable<PublicActivityNode["publicData"]>;
-
-export interface SweatpantsPublicActivity {
-  readonly version: 1;
-  readonly node: PublicActivityNode;
-}
-
-export type JsonPatchOperation = {
-  readonly op: "add" | "remove" | "replace" | "move" | "copy" | "test";
-  readonly path: string;
-  readonly from?: string;
-  readonly value?: Json;
-};
 
 type ToolTransportMessage = Extract<Message, { role: "tool" }>;
 export type ChatTransportRequestMessage =

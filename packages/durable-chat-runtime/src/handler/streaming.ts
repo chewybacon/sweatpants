@@ -86,7 +86,7 @@ export interface ScopedFetchHandler extends FetchHandler {
  * const handler = createStreamingHandler(function* () {
  *   const ctx = yield* useHandlerContext()
  *   const body = yield* call(() => ctx.request.json())
- *   ctx.headers.set('X-Session-Id', sessionId)
+ *   ctx.headers.set('X-Request-Trace', traceId)
  *   return yield* createPullStream(buffer, 0)
  * })
  * ```
@@ -120,7 +120,7 @@ export function* useHandlerContext(): Operation<HandlerContext> {
  *   const body = yield* call(() => ctx.request.json())
  *
  *   // Set response headers
- *   ctx.headers.set('X-Session-Id', crypto.randomUUID())
+ *   ctx.headers.set('X-Request-Trace', crypto.randomUUID())
  *
  *   // Setup and return subscription
  *   const buffer = yield* acquireBuffer()

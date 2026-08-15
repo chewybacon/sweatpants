@@ -61,12 +61,37 @@ describe("database-backed durability spine producer/verifier", () => {
     expect(verified.stdout).toContain('"mode":"verifier"');
     const expected = JSON.parse(await readFile(expectedPath, "utf8")) as {
       verifierProfile: string;
-      report: { hydrationReads: number; archivePageReads: number };
+      report: {
+        hydrationReads: number;
+        hydrationReadBytes: number;
+        archivePageReads: number;
+        publicHistoryIndexRows: number;
+        publicHistoryIndexBytes: number;
+        publicHistorySegmentReads: number;
+        publicHistorySegmentReadBytes: number;
+        peakPublicHistoryPageBytes: number;
+        preparedContextReads: number;
+        preparedContextReadBytes: number;
+        preparedContextObjectBytes: number;
+        checkpointWriteBytes: number;
+        totalRetainedArchiveBytes: number;
+      };
       privateEvidence: { journalSegments: number; replaySegments: number };
     };
     expect(expected.verifierProfile).toBe("low");
     expect(expected.report.hydrationReads).toBe(2);
+    expect(expected.report.hydrationReadBytes).toBeGreaterThan(0);
     expect(expected.report.archivePageReads).toBeGreaterThan(0);
+    expect(expected.report.publicHistoryIndexRows).toBeGreaterThan(0);
+    expect(expected.report.publicHistoryIndexBytes).toBeGreaterThan(0);
+    expect(expected.report.publicHistorySegmentReads).toBeGreaterThan(0);
+    expect(expected.report.publicHistorySegmentReadBytes).toBeGreaterThan(0);
+    expect(expected.report.peakPublicHistoryPageBytes).toBeLessThanOrEqual(1024 * 1024);
+    expect(expected.report.preparedContextReads).toBeGreaterThan(0);
+    expect(expected.report.preparedContextReadBytes).toBeGreaterThan(0);
+    expect(expected.report.preparedContextObjectBytes).toBeGreaterThan(0);
+    expect(expected.report.checkpointWriteBytes).toBeGreaterThan(0);
+    expect(expected.report.totalRetainedArchiveBytes).toBeGreaterThan(0);
     expect(expected.privateEvidence.journalSegments).toBeGreaterThanOrEqual(3);
     expect(expected.privateEvidence.replaySegments).toBeGreaterThanOrEqual(3);
   }, 120_000);

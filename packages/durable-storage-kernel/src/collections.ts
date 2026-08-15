@@ -3,6 +3,7 @@ export const DurableCollections = Object.freeze({
   conversationCommandReceipts: "conversation-command-receipts",
   conversationCheckpoints: "conversation-checkpoints",
   conversationPublicSegments: "conversation-public-segments",
+  conversationPublicRootIndex: "conversation-public-root-index",
   conversationTerminalSegments: "conversation-terminal-segments",
   executionControls: "execution-controls",
   executionJournalSegments: "execution-journal-segments",
@@ -21,6 +22,7 @@ export type ImmutableCollectionId = Exclude<
 
 export type OrderedCollectionId =
   | typeof DurableCollections.conversationPublicSegments
+  | typeof DurableCollections.conversationPublicRootIndex
   | typeof DurableCollections.conversationTerminalSegments
   | typeof DurableCollections.executionJournalSegments
   | typeof DurableCollections.executionReplaySegments;
@@ -40,6 +42,7 @@ const immutableCollections = new Set<string>([
   DurableCollections.conversationCommandReceipts,
   DurableCollections.conversationCheckpoints,
   DurableCollections.conversationPublicSegments,
+  DurableCollections.conversationPublicRootIndex,
   DurableCollections.conversationTerminalSegments,
   DurableCollections.executionJournalSegments,
   DurableCollections.executionReplaySegments,

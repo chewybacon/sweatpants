@@ -1,13 +1,19 @@
 import { type DurableEffectRegistry, type OperationOutcome } from "@sweatpants/durable-effects";
 
-import { CrankError } from "@sweatpants/durable-execution";
+import {
+  CrankError,
+  DurableEffectInputPreparationContext,
+  type DurableEffectInputPreparer,
+} from "@sweatpants/durable-execution";
 import { type Operation } from "effection";
 import { withJournalAuthority, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import { ProgramRouteResolverContext } from "@sweatpants/durable-execution";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
+  ModelContextSourceResolverContext,
   runWithModelSamplingService,
   runWithProgramDeliveryWriter,
+  type ModelContextSource,
   type ModelSamplingService,
   type ProgramDeliveryWriter,
 } from "@sweatpants/model-sampling";
@@ -103,6 +109,10 @@ export interface LocalProgramHostOptions {
   modelSamplingService?: ModelSamplingService;
   effectOutcomeAcknowledger?: DurableEffectOutcomeAcknowledger;
   deliveryWriter?: ProgramDeliveryWriter;
+  effectInputPreparer?: DurableEffectInputPreparer;
+  modelContextSourceResolver?: (
+    source: ModelContextSource,
+  ) => Operation<import("@sweatpants/model-provider").ModelContext>;
 }
 
 export interface OpenLocalProgramRequest {
@@ -150,6 +160,10 @@ export interface LocalProgramActivationScope {
   modelSamplingService?: ModelSamplingService;
   effectOutcomeAcknowledger?: DurableEffectOutcomeAcknowledger;
   deliveryWriter?: ProgramDeliveryWriter;
+  effectInputPreparer?: DurableEffectInputPreparer;
+  modelContextSourceResolver?: (
+    source: ModelContextSource,
+  ) => Operation<import("@sweatpants/model-provider").ModelContext>;
 }
 
 /** Installs the protocol-neutral authority scope shared by LocalProgramHost and applications. */
@@ -165,7 +179,17 @@ export function* runLocalProgramActivation<T>(
             return yield* ProgramRouteResolverContext.with(scope.routeResolver, function* () {
               return yield* DurableEffectOutcomeAcknowledgerContext.with(
                 scope.effectOutcomeAcknowledger,
-                operation,
+                function* () {
+                  return yield* DurableEffectInputPreparationContext.with(
+                    scope.effectInputPreparer,
+                    function* () {
+                      return yield* ModelContextSourceResolverContext.with(
+                        scope.modelContextSourceResolver,
+                        operation,
+                      );
+                    },
+                  );
+                },
               );
             });
           });
@@ -242,6 +266,12 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
           ? { effectOutcomeAcknowledger: options.effectOutcomeAcknowledger }
           : {}),
         ...(options.deliveryWriter ? { deliveryWriter: options.deliveryWriter } : {}),
+        ...(options.effectInputPreparer
+          ? { effectInputPreparer: options.effectInputPreparer }
+          : {}),
+        ...(options.modelContextSourceResolver
+          ? { modelContextSourceResolver: options.modelContextSourceResolver }
+          : {}),
       },
       function* () {
         return yield* ProgramRuntime.operations.run({

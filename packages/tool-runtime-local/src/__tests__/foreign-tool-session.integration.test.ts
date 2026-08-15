@@ -36,6 +36,7 @@ import {
   createToolSessionForeignEffectRegistrations,
   createToolSessionRegistry,
 } from "../index.ts";
+import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 
 describe("ToolSession foreign-tool durability boundary", () => {
   it("returns malformed continuation responses as expected failure values", async () => {
@@ -265,7 +266,9 @@ function runProgram(
   return ProgramDriverRegistryContext.with(drivers, function* () {
     return yield* withJournalAuthority(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+        return yield* withModelSampleTestBoundary(() =>
+          ProgramRuntime.operations.run({ attach, executeHostEffects: true }),
+        );
       });
     });
   });

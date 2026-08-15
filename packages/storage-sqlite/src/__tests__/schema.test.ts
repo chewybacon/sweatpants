@@ -36,6 +36,9 @@ describe("SQLite spine schema", () => {
         "sp_execution_object_scope_index",
         "sp_journal_task_range",
         "sp_journal_task_sequence",
+        "sp_public_root_archive_ordinal",
+        "sp_public_root_identity",
+        "sp_public_root_segment",
         "sp_public_segment_conversation_position",
         "sp_receipt_retain_until",
         "sp_replay_task_range",
@@ -48,7 +51,7 @@ describe("SQLite spine schema", () => {
         sql`SELECT name, sql FROM sqlite_master
             WHERE type = 'table' AND name LIKE 'sp_%' ORDER BY name`,
       ) as Array<{ name: string; sql: string }>;
-      expect(domainSql).toHaveLength(9);
+      expect(domainSql).toHaveLength(10);
       expect(domainSql.every((table) => !/format.?version|version.?field/i.test(table.sql))).toBe(
         true,
       );

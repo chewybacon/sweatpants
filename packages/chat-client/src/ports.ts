@@ -25,6 +25,12 @@ export const ChatTransportPort = definePort<ChatTransportContract>("sweatpants:c
       "No chat transport driver is installed",
     );
   },
+  *loadHistoryPage(_conversationId: string, _cursor: string, _signal: AbortSignal) {
+    throw new ChatClientError(
+      "chat_transport_unavailable",
+      "The chat transport does not support history paging",
+    );
+  },
   *disconnect(_reason?: string) {
     throw new ChatClientError(
       "chat_transport_unavailable",
@@ -54,6 +60,7 @@ export interface ChatClientCommandContract {
   stop(): Operation<void>;
   regenerate(options?: RegenerateOptions): Operation<void>;
   reconnect(): Operation<void>;
+  loadOlder(): Operation<void>;
   cancelQueued(id: string): Operation<void>;
   setMessages(update: unknown): Operation<void>;
   clearError(): Operation<void>;
@@ -65,6 +72,7 @@ interface ChatCommandImplementation {
   stop(): Operation<void>;
   regenerate(options?: RegenerateOptions): Operation<void>;
   reconnect(): Operation<void>;
+  loadOlder(): Operation<void>;
   cancelQueued(id: string): Operation<void>;
   setMessages(update: unknown): Operation<void>;
   clearError(): Operation<void>;
@@ -113,6 +121,10 @@ export const ChatClientApi = createApi<ChatClientCommandContract>("sweatpants:ch
   *reconnect() {
     const commands = yield* ChatCommandContext.expect();
     return yield* commands.reconnect();
+  },
+  *loadOlder() {
+    const commands = yield* ChatCommandContext.expect();
+    return yield* commands.loadOlder();
   },
   *cancelQueued(id: string) {
     const commands = yield* ChatCommandContext.expect();

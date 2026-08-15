@@ -1117,7 +1117,7 @@ function* recoveryQuery(
   assertEqual(
     caseName,
     recovery.activeTasks,
-    [{ taskId, executionEpoch: 1 }],
+    [{ taskId, executionEpoch: 1, attachmentId: "recovery-query" }],
     "recovery must return the exact active tree fence",
   );
 }

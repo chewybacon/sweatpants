@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
 import { ConversationStoreApi, installConversationStore } from "@sweatpants/history-store/port";
 import type { ConversationHeadProposal } from "@sweatpants/history-store/contract";
-import type { TerminalCapsule } from "@sweatpants/durable-execution";
+import { CrankError, type TerminalCapsule } from "@sweatpants/durable-execution";
 import { ExecutionStoreApi, installExecutionStore } from "@sweatpants/journal-authority/api";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { TurnJournalAuthority } from "@sweatpants/journal-authority/turn-authority";
@@ -96,6 +96,33 @@ function* installConversation(store: ReturnType<typeof createMemoryConversationS
 }
 
 describe("terminal Turn publication", () => {
+  it("runs admission preflight before receipt, head, or private task mutation", async () => {
+    const conversation = createMemoryConversationStore();
+    const execution = createMemoryExecutionStore();
+    await run(function* () {
+      yield* installExecutionStore(execution);
+      yield* installConversationStore(conversation);
+      let failure: unknown;
+      try {
+        yield* beginTurnPublication({
+          ...beginRequest(),
+          expectedRevision: null,
+          preflight: function* () {
+            throw new CrankError("checkpoint_bound_exceeded", "preflight rejected");
+          },
+        });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toMatchObject({ code: "checkpoint_bound_exceeded" });
+      expect(yield* ConversationStoreApi.operations.loadHead("session-1")).toBeNull();
+      expect(
+        yield* ConversationStoreApi.operations.getCommandReceipt("session-1", "command-1"),
+      ).toBeNull();
+      expect(yield* TurnJournalAuthority.operations.read("execution-1")).toBeNull();
+    });
+  });
+
   it("writes terminal content before head CAS and publishes once", async () => {
     const conversation = createMemoryConversationStore();
     const marked: string[] = [];

@@ -100,7 +100,7 @@ export interface ChatApplicationSetupContext {
 /** Fetch application whose root Effection scope is owned until close completes. */
 export interface ChatApplication {
   handle(request: Request): Promise<Response>;
-  close(options?: { mode?: "graceful" | "catastrophic" }): Promise<void>;
+  close(): Promise<void>;
 }
 
 /** Handler and optional scoped setup operation installed at composition. */
@@ -221,21 +221,19 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
         );
       }
     },
-    async close(closeOptions: { mode?: "graceful" | "catastrophic" } = {}): Promise<void> {
+    async close(): Promise<void> {
       if (closed) {
         return;
       }
       closed = true;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        if (closeOptions.mode !== "catastrophic") {
-          await Promise.race([
-            rootScope.run(() => hostOwner.drain()),
-            new Promise<void>((resolve) => {
-              timeout = setTimeout(resolve, shutdownDeadlineMs);
-            }),
-          ]);
-        }
+        await Promise.race([
+          rootScope.run(() => hostOwner.drain()),
+          new Promise<void>((resolve) => {
+            timeout = setTimeout(resolve, shutdownDeadlineMs);
+          }),
+        ]);
       } finally {
         if (timeout) {
           clearTimeout(timeout);

@@ -2300,6 +2300,9 @@ importers:
       '@sweatpants/model-provider':
         specifier: workspace:*
         version: link:../model-provider
+      '@sweatpants/model-sampling':
+        specifier: workspace:*
+        version: link:../model-sampling
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../tool-runtime

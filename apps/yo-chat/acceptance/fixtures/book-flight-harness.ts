@@ -28,6 +28,7 @@ import { createMemoryConversationStore } from "@sweatpants/history-store/memory"
 import {
   createDurableChatHandler,
   createProgramDriverJournalStore,
+  createProjectionTokenKeyring,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
@@ -85,7 +86,7 @@ const model: Model = {
  *
  * Every store lives on the substrate rather than on a runtime generation,
  * exactly as a deployment shares Redis across hosts. A runtime may therefore be
- * discarded and rebuilt to model host loss without losing durable state.
+ * gracefully replaced without losing durable state.
  */
 export interface BookFlightSubstrate {
   readonly journalStore: ProgramDriverJournalStore;
@@ -150,6 +151,10 @@ export async function createBookFlightSubstrate(options: {
         programDriverJournalStore: journalStore,
         executionStore,
         conversationStore,
+        projectionTokens: createProjectionTokenKeyring("book-flight-harness-window-projection-key"),
+        *authorizeHistoryRead() {
+          return "authorized" as const;
+        },
         maxToolIterations: 5,
         setup: function* () {
           yield* installModelProvider(driver);
@@ -295,16 +300,12 @@ function buildChatRequest(
           },
       clientId: "book-flight-acceptance",
       conversationId,
-      input: {
-        threadId: conversationId,
-        runId,
-        state: {},
-        messages,
-        tools: [],
-        context: [],
-        forwardedProps: {},
-        ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
-      },
+      runId,
+      ...(!resume && messages.at(-1) ? { userMessage: messages.at(-1) } : {}),
+      state: {},
+      context: [],
+      forwardedProps: {},
+      ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
     }),
   });
 }
@@ -320,8 +321,8 @@ export async function post(
   return (await response.text()).split("\n").filter(Boolean).map(parsePublicFrame);
 }
 
-/** Posts a request and abandons its response stream after `frameBudget` frames. */
-export async function postAndAbandon(
+/** Posts a request and disconnects its response stream after `frameBudget` frames. */
+export async function postAndDisconnect(
   handler: (request: Request) => Promise<Response>,
   conversationId: string,
   messages: Array<{ id: string; role: string; content: string }>,
@@ -376,8 +377,10 @@ export async function reattach(
   conversationId: string,
 ): Promise<PublicEvent[]> {
   const response = await handler(
-    new Request(`http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`, {
-      method: "GET",
+    new Request("http://localhost/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: "book-flight-acceptance", conversationId }),
     }),
   );
   return (await response.text()).split("\n").filter(Boolean).map(parsePublicFrame);
@@ -385,10 +388,10 @@ export async function reattach(
 
 function parsePublicFrame(line: string): PublicEvent {
   const value: unknown = JSON.parse(line);
-  if (!isRecord(value) || !isRecord(value["event"]) || typeof value["event"]["type"] !== "string") {
+  if (!isRecord(value) || typeof value["type"] !== "string") {
     throw new Error("Invalid durable response frame");
   }
-  return value["event"] as PublicEvent;
+  return value as PublicEvent;
 }
 
 /** Extracts the first pending public interrupt from one response batch. */
@@ -419,7 +422,47 @@ export function publicInterrupt(events: PublicEvent[]):
   ) {
     return undefined;
   }
+  const latestWindow = events.findLast(
+    (event) => event.type === "sweatpants.conversation-window.v1",
+  );
   for (const event of events) {
+    if (
+      event === latestWindow &&
+      event.type === "sweatpants.conversation-window.v1" &&
+      Array.isArray(event["hotRoots"])
+    ) {
+      for (const root of [...event["hotRoots"]].reverse()) {
+        if (
+          !isRecord(root) ||
+          root["kind"] !== "activity-subtree" ||
+          !Array.isArray(root["nodes"])
+        ) {
+          continue;
+        }
+        for (const snapshot of [...root["nodes"]].reverse()) {
+          const activity = isRecord(snapshot) ? snapshot["event"] : undefined;
+          const content = isRecord(activity) ? activity["content"] : undefined;
+          const node = isRecord(content) ? content["node"] : undefined;
+          const data = isRecord(node) ? node["publicData"] : undefined;
+          if (
+            isRecord(node) &&
+            node["kind"] === "elicit" &&
+            node["state"] === "pending" &&
+            isRecord(data) &&
+            typeof data["elicitId"] === "string" &&
+            typeof data["message"] === "string"
+          ) {
+            return {
+              id: data["elicitId"],
+              message: data["message"],
+              basisRevision,
+              logicalTurnId,
+              executionId,
+            };
+          }
+        }
+      }
+    }
     if (event.type !== "RUN_FINISHED" || !isRecord(event["outcome"])) {
       continue;
     }

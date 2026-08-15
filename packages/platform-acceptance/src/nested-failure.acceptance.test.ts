@@ -45,7 +45,17 @@ async function runNestedFailure(binding: Binding, failure: NestedFailure): Promi
         });
       }
 
-      yield* turn.failure();
+      if (failure === "throw_after_resume") {
+        const afterFailure = yield* s.model.request((request) => {
+          const input = JSON.stringify(request.body.input);
+          expect(input).toContain(callId);
+          expect(input).toMatch(/error|fail/i);
+        });
+        yield* afterFailure.respond.text("NESTED_THROW_AFTER_RESUME_TERMINAL_V1");
+        expect((yield* turn.settled()).text).toBe("NESTED_THROW_AFTER_RESUME_TERMINAL_V1");
+      } else {
+        yield* turn.failure();
+      }
       const recovery = yield* conversation.send(`RECOVER_NESTED_${failure.toUpperCase()}_V1`);
       const recoveryRequest = yield* s.model.request((request) => {
         const input = JSON.stringify(request.body.input);

@@ -27,7 +27,7 @@ describe("owned React Chat lifecycle", () => {
     );
 
     await waitFor(() => expect(requests).toHaveLength(1));
-    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.method).toBe("POST");
 
     mounted.unmount();
     await new Promise<void>((resolve) => queueMicrotask(resolve));

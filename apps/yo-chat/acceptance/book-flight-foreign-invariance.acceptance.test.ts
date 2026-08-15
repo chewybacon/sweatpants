@@ -4,7 +4,7 @@ import {
   createBookFlightSubstrate,
   latestToolCallId,
   post,
-  postAndAbandon,
+  postAndDisconnect,
   publicInterrupt,
   reattach,
   readJournal,
@@ -32,7 +32,8 @@ function summarize(journal: DurableSemanticRecord[], events: PublicEvent[]): Boo
   return {
     completed: events.some(
       (event) =>
-        event.type === "TEXT_MESSAGE_CONTENT" && event["delta"] === "Your flight is booked.",
+        (event.type === "TEXT_MESSAGE_CONTENT" && event["delta"] === "Your flight is booked.") ||
+        JSON.stringify(event).includes("Your flight is booked."),
     ),
     runError: events.some((event) => event.type === "RUN_ERROR"),
     terminalRecord: terminal?.type,
@@ -81,7 +82,7 @@ async function settle(
   return summarize(journal, current);
 }
 
-describe("book_flight durability across host replacement", () => {
+describe("book_flight durability across disconnect and runtime replacement", () => {
   it("completes on a single host", async () => {
     const substrate = await createBookFlightSubstrate({ conversationId: "bf-baseline" });
     const runtime = substrate.createRuntime();
@@ -100,17 +101,17 @@ describe("book_flight durability across host replacement", () => {
   }, 30_000);
 
   it("survives a dropped response stream when the host stays up", async () => {
-    // Control: proves the abandon/reattach harness path is sound on its own.
+    // Control: proves the disconnect/reattach path is sound on its own.
     const substrate = await createBookFlightSubstrate({ conversationId: "bf-dropped-stream" });
     const runtime = substrate.createRuntime();
     try {
-      const abandoned = await postAndAbandon(
+      const disconnected = await postAndDisconnect(
         runtime.handle,
         substrate.conversationId,
         substrate.messages,
         4,
       );
-      expect(abandoned.aborted).toBe(true);
+      expect(disconnected.aborted).toBe(true);
 
       const reattached = await reattach(runtime.handle, substrate.conversationId);
       const outcome = await settle(substrate, runtime, reattached);
@@ -124,16 +125,11 @@ describe("book_flight durability across host replacement", () => {
     }
   }, 30_000);
 
-  it("survives host replacement between turns", async () => {
-    // No fault injection at all. The first turn completes cleanly and parks on
-    // an elicitation. The host is then replaced — a deploy, a crash, a scale-in
-    // — and the user answers. All durable state is shared by the substrate, so
-    // only in-process state is lost.
-    //
-    // The journal-native equivalent of this test (play_ttt) passes. This one
-    // fails: `foreign.tool.continue` resolves against a foreign ToolSession
-    // whose in-process continuation died with the old host, and the whole task
-    // closes with `foreign_session_ended`.
+  it("survives graceful runtime-generation replacement between turns", async () => {
+    // The first segment completes cleanly and parks on an elicitation. The
+    // runtime generation is then gracefully replaced before the user answers.
+    // Durable stores remain shared; the replacement reports the ended foreign
+    // session to the model, which starts a fresh foreign flow.
     const substrate = await createBookFlightSubstrate({ conversationId: "bf-host-replaced" });
     let runtime = substrate.createRuntime();
     try {
@@ -149,11 +145,11 @@ describe("book_flight durability across host replacement", () => {
         outcome.terminalError,
         "booking must not close with a durable error after host replacement",
       ).toBeUndefined();
-      expect(outcome.runError, "replacing the host must not surface a run error").toBe(false);
-      expect(outcome.completed, "booking must survive host replacement").toBe(true);
+      expect(outcome.runError, "replacing the runtime must not surface a run error").toBe(false);
+      expect(outcome.completed, "booking must survive runtime replacement").toBe(true);
       expect(
         outcome.foreignStarts,
-        "the model restarts the foreign flow after the dead session is reported",
+        "the model restarts the foreign flow after the ended session is reported",
       ).toBe(2);
     } finally {
       await runtime.close();

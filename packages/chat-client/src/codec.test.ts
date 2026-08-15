@@ -17,9 +17,9 @@ function readable(chunks: readonly string[]): ReadableStream<Uint8Array> {
 }
 
 describe("headless transport ingress", () => {
-  it("parses split NDJSON envelopes and validates activity content", async () => {
+  it("parses split direct NDJSON values and validates activity content", async () => {
     const body = readable([
-      '{"lsn":1,"event":{"type":"RUN_STARTED","threadId":"t","runId":"r"}}\n{"lsn":2,"event":{"type":"ACTIVITY_SNAPSHOT","messageId":"a","activityType":"sweatpants:public-execution","content":{"version":1,"node":{"nodeId":"n","parentNodeId":null,"sequence":0,"kind":"activity","state":"running","presentation":"opaque","publicData":{"kind":"activity","activityType":"opaque-execution"}}}}}',
+      '{"type":"RUN_STARTED","threadId":"t","runId":"r"}\n{"type":"ACTIVITY_SNAPSHOT","messageId":"a","activityType":"sweatpants:public-execution","content":{"version":1,"node":{"nodeId":"n","parentNodeId":null,"sequence":0,"kind":"activity","state":"running","presentation":"opaque","publicData":{"kind":"activity","activityType":"opaque-execution"}}}}',
       "\n",
     ]);
     const events = await run(function* () {

@@ -113,8 +113,10 @@ export const spConversationCheckpoints = sqliteTable(
     causeKey: text("cause_key").notNull(),
     causeJson: text("cause_json").notNull(),
     contentHash: text("content_hash").notNull(),
+    lineageId: text("lineage_id").notNull(),
     archiveHeadSegmentId: text("archive_head_segment_id"),
-    archiveThroughPosition: durableCounter("archive_through_position").notNull(),
+    archiveFrontierOrdinal: durableCounter("archive_frontier_ordinal").notNull(),
+    nextPublicPosition: durableCounter("next_public_position").notNull(),
     payloadJson: text("payload_json").notNull(),
     encodedBytes: integer("encoded_bytes").notNull(),
     createdAt: integer("created_at").notNull(),
@@ -122,7 +124,8 @@ export const spConversationCheckpoints = sqliteTable(
   (table) => [
     uniqueIndex("sp_checkpoint_conversation_cause").on(table.conversationId, table.causeKey),
     index("sp_checkpoint_conversation_created").on(table.conversationId, table.createdAt),
-    check("sp_checkpoint_archive_position", sql`${table.archiveThroughPosition} >= 0`),
+    check("sp_checkpoint_archive_frontier", sql`${table.archiveFrontierOrdinal} >= 0`),
+    check("sp_checkpoint_next_public_position", sql`${table.nextPublicPosition} >= 0`),
     check("sp_checkpoint_encoded_bytes", sql`${table.encodedBytes} >= 0`),
   ],
 );
@@ -133,8 +136,8 @@ export const spConversationPublicSegments = sqliteTable(
     segmentId: text("segment_id").primaryKey().notNull(),
     conversationId: text("conversation_id").notNull(),
     previousSegmentId: text("previous_segment_id"),
-    firstPosition: durableCounter("first_position").notNull(),
-    lastPosition: durableCounter("last_position").notNull(),
+    minPosition: durableCounter("min_position").notNull(),
+    maxPosition: durableCounter("max_position").notNull(),
     rootsJson: text("roots_json").notNull(),
     contentHash: text("content_hash").notNull(),
     encodedBytes: integer("encoded_bytes").notNull(),
@@ -143,12 +146,36 @@ export const spConversationPublicSegments = sqliteTable(
   (table) => [
     index("sp_public_segment_conversation_position").on(
       table.conversationId,
-      table.firstPosition,
-      table.lastPosition,
+      table.minPosition,
+      table.maxPosition,
     ),
-    check("sp_public_segment_first_position", sql`${table.firstPosition} >= 0`),
-    check("sp_public_segment_positions", sql`${table.lastPosition} >= ${table.firstPosition}`),
+    check("sp_public_segment_min_position", sql`${table.minPosition} >= 0`),
+    check("sp_public_segment_positions", sql`${table.maxPosition} >= ${table.minPosition}`),
     check("sp_public_segment_bytes", sql`${table.encodedBytes} >= 0`),
+  ],
+);
+
+export const spConversationPublicRootIndex = sqliteTable(
+  "sp_conversation_public_root_index",
+  {
+    conversationId: text("conversation_id").notNull(),
+    position: durableCounter("position").notNull(),
+    rootId: text("root_id").notNull(),
+    segmentId: text("segment_id").notNull(),
+    segmentRootIndex: integer("segment_root_index").notNull(),
+    archiveOrdinal: durableCounter("archive_ordinal").notNull(),
+    contentHash: text("content_hash").notNull(),
+    encodedBytes: integer("encoded_bytes").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.conversationId, table.position] }),
+    uniqueIndex("sp_public_root_identity").on(table.conversationId, table.rootId),
+    uniqueIndex("sp_public_root_archive_ordinal").on(table.conversationId, table.archiveOrdinal),
+    index("sp_public_root_segment").on(table.segmentId, table.segmentRootIndex),
+    check("sp_public_root_position", sql`${table.position} >= 0`),
+    check("sp_public_root_segment_index", sql`${table.segmentRootIndex} >= 0`),
+    check("sp_public_root_archive_ordinal_check", sql`${table.archiveOrdinal} >= 0`),
+    check("sp_public_root_bytes", sql`${table.encodedBytes} >= 0`),
   ],
 );
 
@@ -315,6 +342,7 @@ export const sqliteSchema = {
   spConversationHeads,
   spConversationCheckpoints,
   spConversationPublicSegments,
+  spConversationPublicRootIndex,
   spConversationTerminalSegments,
   spConversationCommandReceipts,
   spExecutionControl,
@@ -327,6 +355,7 @@ export type SqliteSchema = typeof sqliteSchema;
 export type ConversationHeadRow = typeof spConversationHeads.$inferSelect;
 export type CheckpointRow = typeof spConversationCheckpoints.$inferSelect;
 export type PublicSegmentRow = typeof spConversationPublicSegments.$inferSelect;
+export type PublicRootIndexRow = typeof spConversationPublicRootIndex.$inferSelect;
 export type TerminalSegmentRow = typeof spConversationTerminalSegments.$inferSelect;
 export type CommandReceiptRow = typeof spConversationCommandReceipts.$inferSelect;
 export type ExecutionControlRow = typeof spExecutionControl.$inferSelect;

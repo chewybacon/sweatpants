@@ -21,9 +21,4 @@ export {
   messageIdForSystem,
   assertMessageHasId,
 } from "./message-identity.ts";
-export type {
-  AgUiCustomState,
-  AgUiRunMetadata,
-  DurableFrame,
-  ElicitRequestStreamEvent,
-} from "./types.ts";
+export type { AgUiCustomState, AgUiRunMetadata, ElicitRequestStreamEvent } from "./types.ts";

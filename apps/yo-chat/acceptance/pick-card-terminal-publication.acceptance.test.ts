@@ -12,6 +12,7 @@ import { createMemoryConversationStore } from "@sweatpants/history-store/memory"
 import type { ConversationStore } from "@sweatpants/history-store/contract";
 import {
   createProgramDriverJournalStore,
+  createProjectionTokenKeyring,
   programDriverSchemaRegistry,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
@@ -121,6 +122,10 @@ function createPickCardApplication(
       executionStore,
       conversationStore,
       programDriverJournalStore: journalStore,
+      projectionTokens: createProjectionTokenKeyring("yo-chat-pick-card-window-projection-key"),
+      *authorizeHistoryRead() {
+        return "authorized" as const;
+      },
       setup: function* (): Operation<void> {
         yield* context.model.install();
       },

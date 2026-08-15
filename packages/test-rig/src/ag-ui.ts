@@ -3,7 +3,8 @@ import { EventSchemas, EventType, type AGUIEvent } from "@ag-ui/core";
 export type AgUiEvent = AGUIEvent;
 
 export interface AgUiFrame {
-  readonly lsn?: number;
+  /** Client-local observation sequence; not a public response position. */
+  readonly sequence: number;
   readonly event: AgUiEvent;
 }
 
@@ -51,15 +52,12 @@ export interface AgUiProbe {
   close(error?: unknown): void;
 }
 
-function frameFromJson(value: unknown): AgUiFrame | undefined {
+function frameFromJson(value: unknown, sequence: number): AgUiFrame | undefined {
   if (typeof value !== "object" || value === null) {
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  const candidate =
-    record["type"] === undefined && typeof record["event"] === "object" && record["event"] !== null
-      ? record["event"]
-      : record;
+  const candidate = record;
   const type = (candidate as Record<string, unknown>)["type"];
   if (typeof type !== "string") {
     return undefined;
@@ -85,11 +83,7 @@ function frameFromJson(value: unknown): AgUiFrame | undefined {
   if (!event) {
     return undefined;
   }
-  const lsn =
-    typeof record["lsn"] === "number" && Number.isSafeInteger(record["lsn"]) && record["lsn"] >= 0
-      ? record["lsn"]
-      : undefined;
-  return { ...(lsn === undefined ? {} : { lsn }), event };
+  return { sequence, event };
 }
 
 function assertLifecycle(events: readonly AgUiEvent[]): void {
@@ -102,17 +96,14 @@ function assertLifecycle(events: readonly AgUiEvent[]): void {
   let terminal = false;
 
   for (const event of events) {
-    const snapshotPrelude =
-      event.type === EventType.MESSAGES_SNAPSHOT ||
-      event.type === EventType.STATE_SNAPSHOT ||
-      event.type === EventType.ACTIVITY_SNAPSHOT;
+    const snapshotPrelude = false;
     if (terminal && event.type !== EventType.RUN_STARTED && !snapshotPrelude) {
       throw new Error(`AG-UI event after terminal event: ${event.type}`);
     }
     switch (event.type) {
       case EventType.MESSAGES_SNAPSHOT:
-        if (runActive) {
-          throw new Error("MESSAGES_SNAPSHOT must precede RUN_STARTED for its response segment");
+        if (!runActive) {
+          throw new Error("MESSAGES_SNAPSHOT must follow RUN_STARTED for its response segment");
         }
         break;
       case EventType.RUN_STARTED:
@@ -188,7 +179,7 @@ export function createAgUiProbe(onError: (error: Error) => void): AgUiProbe {
   };
 
   const publish = (value: unknown, includeEvent = true): void => {
-    const frame = frameFromJson(value);
+    const frame = frameFromJson(value, frames.length + 1);
     if (!frame) {
       return;
     }

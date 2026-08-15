@@ -148,9 +148,9 @@ test.describe("multi-turn tool calling", () => {
     }
   });
 
-  test("history should include toolCalls after first turn", async ({ page }) => {
-    // This test uses console logs to verify the message format
-    // We intercept console.log to check what's being sent to the server
+  test("native commands do not send a client transcript after a tool turn", async ({ page }) => {
+    // The server reconstructs retained tool history authoritatively. The
+    // second native command carries only its matching user message.
 
     const serverRequests: any[] = [];
 
@@ -197,25 +197,16 @@ test.describe("multi-turn tool calling", () => {
     // Wait a moment for request to be sent
     await page.waitForTimeout(2000);
 
-    // Check the second request's messages
     expect(serverRequests.length).toBeGreaterThanOrEqual(2);
 
-    const secondRequest = serverRequests[serverRequests.length - 1];
-    const messages = secondRequest.input.messages;
-
-    // Find assistant message with AG-UI toolCalls
-    const assistantWithToolCalls = messages.find(
-      (m: any) => m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0,
-    );
-
-    expect(assistantWithToolCalls).toBeDefined();
-    expect(assistantWithToolCalls.toolCalls[0].function).toBeDefined();
-    expect(assistantWithToolCalls.toolCalls[0].function.name).toBe("pick_card");
-
-    // Find tool result message
-    const toolResult = messages.find((m: any) => m.role === "tool" && m.toolCallId);
-
-    expect(toolResult).toBeDefined();
-    expect(typeof toolResult.content).toBe("string");
+    const secondRequest = serverRequests[serverRequests.length - 1] as Record<string, any>;
+    expect(secondRequest.command?.type).toBe("send-message");
+    expect(secondRequest.userMessage).toMatchObject({
+      role: "user",
+      content: "draw 2 more cards",
+      id: secondRequest.command.messageId,
+    });
+    expect(secondRequest.input).toBeUndefined();
+    expect(secondRequest.messages).toBeUndefined();
   });
 });

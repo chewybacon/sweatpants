@@ -109,4 +109,4 @@ export { ChatConversionError } from "./ag-ui/conversion.ts";
 export type { ChatConversionErrorCode, ChatConversionDirection } from "./ag-ui/conversion.ts";
 
 export { EventType } from "@ag-ui/core";
-export type { AGUIEvent, InputContentPart, Message, RunAgentInput } from "@ag-ui/core";
+export type { AGUIEvent, InputContentPart, Message } from "@ag-ui/core";
