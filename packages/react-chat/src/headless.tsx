@@ -169,6 +169,8 @@ export type UseChatOptions =
 
 export interface UseChatResult {
   readonly messages: readonly ReactChatUIMessage[];
+  readonly history: ChatUISnapshot<ReactChatUIMessage>["history"];
+  readonly applicationState: Json;
   readonly authority: ChatUISnapshot<ReactChatUIMessage>["authority"];
   readonly canSendMessage: boolean;
   readonly status: ChatUISnapshot<ReactChatUIMessage>["status"];
@@ -182,6 +184,7 @@ export interface UseChatResult {
   readonly regenerate: ReactChatClient["regenerate"];
   readonly stop: ReactChatClient["stop"];
   readonly reconnect: ReactChatClient["reconnect"];
+  readonly loadOlder: ReactChatClient["loadOlder"];
   readonly cancelQueued: ReactChatClient["cancelQueued"];
   readonly setMessages: ReactChatClient["setMessages"];
   readonly clearError: ReactChatClient["clearError"];
@@ -205,6 +208,8 @@ function createPendingOwnedChat(options: OwnedUseChatOptions): PendingOwnedChat 
   const clientId = crypto.randomUUID();
   const pendingSnapshot: ChatUISnapshot<ReactChatUIMessage> = Object.freeze({
     messages: Object.freeze([]) as readonly ReactChatUIMessage[],
+    history: Object.freeze({ hasOlder: false, loadingOlder: false, error: null }),
+    applicationState: Object.freeze({}),
     authority: null,
     canSendMessage: false,
     status: "ready",
@@ -340,6 +345,7 @@ function createPendingOwnedChat(options: OwnedUseChatOptions): PendingOwnedChat 
       invoke((owned) => owned.regenerate(regenerateOptions)),
     stop: () => invoke((owned) => owned.stop()),
     reconnect: () => invoke((owned) => owned.reconnect()),
+    loadOlder: () => invoke((owned) => owned.loadOlder()),
     cancelQueued: (id: string) => invoke((owned) => owned.cancelQueued(id)),
     setMessages(update: Parameters<ReactChatClient["setMessages"]>[0]): void {
       if (actual) {
@@ -486,6 +492,7 @@ export function useHeadlessChat(options: UseChatOptions): UseChatResult {
     regenerate: client.regenerate.bind(client),
     stop: client.stop.bind(client),
     reconnect: client.reconnect.bind(client),
+    loadOlder: client.loadOlder.bind(client),
     cancelQueued: client.cancelQueued.bind(client),
     setMessages: client.setMessages.bind(client),
     clearError: client.clearError.bind(client),

@@ -171,11 +171,7 @@ async function runDurableSelectionOrder(binding: Binding): Promise<void> {
       const firstFinal = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       yield* firstFinal.respond.text("DURABLE_ORDER_TURN_1_COMPLETE");
       yield* firstTurn.settled();
-      const durableReplayFrameMark = s.agui.frames().length;
       const durableReopened = yield* conversation.reopen();
-      expect(s.agui.frames(durableReplayFrameMark).map((frame) => frame.event.type)).toContain(
-        "ACTIVITY_SNAPSHOT",
-      );
       const durableRefreshed = durableReopened.snapshot();
       assertFirstTurnOrder(durableRefreshed, firstPrompt, "DURABLE_ORDER_TURN_1_COMPLETE");
       expect(latestElicit(durableRefreshed, "chooseOption").state).toBe("responded");
@@ -263,10 +259,7 @@ async function runOrdinaryBookingOrder(binding: Binding): Promise<void> {
       expect(latestElicit(afterFirst, "pickFlight").state).toBe("responded");
       expect(latestElicit(afterFirst, "pickSeat").state).toBe("responded");
 
-      const replayFrameMark = s.agui.frames().length;
       const reopened = yield* conversation.reopen();
-      const replayFrames = s.agui.frames(replayFrameMark);
-      expect(replayFrames.map((frame) => frame.event.type)).toContain("ACTIVITY_SNAPSHOT");
       const refreshed = reopened.snapshot();
       assertFirstTurnOrder(refreshed, firstPrompt, "ORDER_TURN_1_COMPLETE");
       expect(latestElicit(refreshed, "pickFlight").state).toBe("responded");
@@ -310,7 +303,9 @@ async function runOrdinaryBookingOrder(binding: Binding): Promise<void> {
       expect(latestElicit(complete, "pickSeat").state).toBe("responded");
       const frames = s.agui.frames();
       expect(frames.length).toBeGreaterThan(0);
-      expect(frames.every((frame) => frame.lsn !== undefined)).toBe(true);
+      expect(frames.map((frame) => frame.sequence)).toEqual(
+        Array.from({ length: frames.length }, (_, index) => index + 1),
+      );
       expect(frames.map((frame) => frame.event.type)).toContain("ACTIVITY_SNAPSHOT");
     },
   );

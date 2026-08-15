@@ -7,7 +7,6 @@ import type { StreamTransportHandle } from "./transport.ts";
 export interface ScenarioLifecycleControls {
   gracefulShutdown(options: { graceMs: number }): Promise<void>;
   replace(): Promise<void>;
-  abandon(): Promise<void>;
   armFault(point: string): Promise<void>;
   waitForFault(point: string): Promise<void>;
   readHistory(sessionId: string, cursor?: string): Promise<unknown>;

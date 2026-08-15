@@ -38,8 +38,8 @@ interface PublicSegmentRow {
   readonly segment_id: string;
   readonly conversation_id: string;
   readonly previous_segment_id: string | null;
-  readonly first_position: number | bigint | string;
-  readonly last_position: number | bigint | string;
+  readonly min_position: number | bigint | string;
+  readonly max_position: number | bigint | string;
   readonly roots_json: string;
   readonly content_hash: string;
   readonly encoded_bytes: number | bigint;
@@ -145,18 +145,25 @@ function* completeImmediateTurn(
 }
 
 function publicOrphanAfter(row: PublicSegmentRow): StoredPublicArchiveSegment {
-  const roots: readonly Json[] = [{ type: "ORPHAN_PUBLIC_ROOT", marker: "not-authoritative" }];
+  const position = BigInt(row.max_position) + 1n;
+  const roots: readonly Json[] = [
+    {
+      rootId: "orphan-public-root",
+      position: position.toString(10),
+      kind: "message",
+      state: "sealed",
+      attribution: {},
+      message: { id: "orphan-public", role: "user", content: "not-authoritative" },
+      placement: { type: "root", sequence: Number(position) },
+    },
+  ];
   const encoded = canonicalSnapshot(roots);
-  const firstPosition = BigInt(row.last_position) + 1n;
   return {
     segmentId: "orphan-public-segment",
     conversationId: row.conversation_id,
-    previous: {
-      segmentId: row.segment_id,
-      lastPosition: decimal(row.last_position),
-    },
-    firstPosition: firstPosition.toString(10),
-    lastPosition: firstPosition.toString(10),
+    previous: { segmentId: row.segment_id },
+    minPosition: position.toString(10),
+    maxPosition: position.toString(10),
     roots,
     contentHash: sha256(encoded.canonical),
     encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
@@ -268,18 +275,30 @@ describe("database-backed durability-spine regression probes", () => {
       yield* completeImmediateTurn(scenario, conversation, 2);
 
       const store = handle.storage.conversationStore;
-      const before = yield* store.readPublicArchivePage(
-        conversation.conversationId,
-        undefined,
-        10_000,
-      );
+      const head = yield* store.loadHead(conversation.conversationId);
+      const checkpoint = head?.checkpoint ? yield* store.getCheckpoint(head.checkpoint) : null;
+      if (!checkpoint) throw new Error("missing selected checkpoint");
+      const basis = {
+        lineageId: checkpoint.lineageId,
+        basisRevision: head!.revision,
+        archiveFrontierOrdinal: checkpoint.archiveFrontierOrdinal,
+        nextPublicPosition: checkpoint.nextPublicPosition,
+        hotRootPositions: [],
+      };
+      const before = yield* store.readPublicHistoryBefore({
+        conversationId: conversation.conversationId,
+        basis,
+        beforePosition: checkpoint.nextPublicPosition,
+        maxRoots: 256,
+        maxBytes: 8 * 1024 * 1024,
+      });
       const rows = handle.database.all(
         sql`SELECT segment_id, conversation_id, previous_segment_id,
-                   first_position, last_position, roots_json, content_hash,
+                   min_position, max_position, roots_json, content_hash,
                    encoded_bytes, created_at
             FROM sp_conversation_public_segments
             WHERE conversation_id = ${conversation.conversationId}
-            ORDER BY last_position DESC
+            ORDER BY created_at DESC
             LIMIT 1`,
       ) as PublicSegmentRow[];
       const latest = rows[0];
@@ -290,11 +309,13 @@ describe("database-backed durability-spine regression probes", () => {
       // This is intentional orphan fault injection: it simulates immutable
       // publication succeeding before the subsequent head CAS loses a race.
       yield* store.putPublicArchiveSegment(publicOrphanAfter(latest));
-      const after = yield* store.readPublicArchivePage(
-        conversation.conversationId,
-        undefined,
-        10_000,
-      );
+      const after = yield* store.readPublicHistoryBefore({
+        conversationId: conversation.conversationId,
+        basis,
+        beforePosition: checkpoint.nextPublicPosition,
+        maxRoots: 256,
+        maxBytes: 8 * 1024 * 1024,
+      });
       expect(after.roots).toEqual(before.roots);
     });
   }, 30_000);
@@ -425,7 +446,6 @@ describe("database-backed durability-spine regression probes", () => {
         expectedRevision: current.revision,
         expectedOwnerEpoch: current.ownerEpoch,
         expectedExecutionId: current.activeExecutionId,
-        sealedRootCount: 0,
         targets: {
           spill: { maxRoots: 1, maxEncodedBytes: 1024 * 1024 },
           segment: { maxEntries: 4, maxEncodedBytes: 1024 * 1024 },

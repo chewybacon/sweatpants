@@ -2,7 +2,6 @@ import type { RunStartedEvent } from "@ag-ui/core";
 import type { Json } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { PublicActivityPlacement } from "../chat-client-types.ts";
-import type { ConversationStreamEvent } from "../conversation-protocol.ts";
 
 type TreePlacement = Omit<PublicActivityPlacement, "presentation">;
 
@@ -42,10 +41,4 @@ export interface ElicitRequestStreamEvent {
   responseContract?: PortableSchemaDescriptor;
   contextContract?: PortableSchemaDescriptor;
   placement?: TreePlacement;
-}
-
-/** Standard protocol events are the official AG-UI union, without handwritten duplicates. */
-export interface DurableFrame {
-  readonly lsn: number;
-  readonly event: ConversationStreamEvent;
 }

@@ -27,8 +27,6 @@ import { scenario, type ScenarioContext } from "./scenario.ts";
 export interface TestApplicationScenario {
   /** Graceful, composition-owned shutdown of the active Host generation. */
   gracefulShutdown?(options: { graceMs: number }): Promise<void>;
-  /** Catastrophic test hook; the application must discard scopes without finalization claims. */
-  abandon?(): Promise<void>;
   armFault?(point: string): Promise<void>;
   waitForFault?(point: string): Promise<void>;
   readHistory?(sessionId: string, cursor?: string): Promise<unknown>;
@@ -258,24 +256,14 @@ export async function withTestRig<T>(
           : await createHttpBinding(application);
     };
 
-    const replaceApplicationGeneration = async (catastrophic: boolean) => {
+    const replaceApplicationGeneration = async () => {
       const retiringApplication = application;
       const retiringBinding = binding;
       if (!retiringApplication || !retiringBinding) {
         throw new Error("Test rig cannot replace an application before it is installed");
       }
-      if (catastrophic) {
-        if (!retiringApplication.scenario?.abandon) {
-          throw new Error("Scenario host abandonment requires TestApplication.scenario.abandon()");
-        }
-        await retiringApplication.scenario.abandon();
-        // The application-owned hook disposes the catastrophic scope. The rig
-        // only closes its HTTP shell and deliberately does not invoke close().
-        await retiringBinding.close();
-      } else {
-        await retiringBinding.close();
-        await retiringApplication.close();
-      }
+      await retiringBinding.close();
+      await retiringApplication.close();
       await createApplicationGeneration();
     };
 
@@ -398,8 +386,7 @@ export async function withTestRig<T>(
         }
         await shutdown(shutdownOptions);
       },
-      replace: () => replaceApplicationGeneration(false),
-      abandon: () => replaceApplicationGeneration(true),
+      replace: () => replaceApplicationGeneration(),
       async armFault(point) {
         const armFault = application?.scenario?.armFault;
         if (!armFault) {

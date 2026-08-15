@@ -1,10 +1,6 @@
 import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import type {
-  ChatHistoryEntry,
-  ConversationCommand,
-  ConversationStreamEvent,
-} from "@sweatpants/chat-core";
+import type { ChatHistoryEntry, ConversationCommand } from "@sweatpants/chat-core";
 import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ToolExecutionRef } from "@sweatpants/tool-runtime";
 import type { ResumeEntry } from "./types.ts";
@@ -37,8 +33,9 @@ export interface ModelSelection {
 }
 
 export interface ChatRequestBody {
-  /** Present on mutating chat commands; absent on GET/HEAD hydration. */
+  /** Present on mutating chat commands; absent on hydration/reconnect. */
   command?: ConversationCommand;
+  knownWindowToken?: string;
   clientId?: string;
   messageId?: string;
   conversationId?: string;
@@ -62,14 +59,4 @@ export interface ChatRequestBody {
   model?: ModelSelection;
   elicitResponses?: ElicitResponse[];
   pluginAbort?: PluginAbortRequest;
-}
-
-export interface DurableStreamEvent {
-  lsn: number;
-  event: ConversationStreamEvent;
-}
-
-export interface DurableStreamParams {
-  sessionId?: string;
-  lastLSN?: number;
 }

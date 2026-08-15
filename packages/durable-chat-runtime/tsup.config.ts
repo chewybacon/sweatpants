@@ -12,7 +12,6 @@ export default defineConfig({
     "handler/request-normalization": "src/handler/request-normalization.ts",
     "handler/turn-plan": "src/handler/turn-plan.ts",
     "interrupts/index": "src/interrupts/index.ts",
-    "model-context/index": "src/model-context/index.ts",
     "program-driver/effects": "src/program-driver/effects.ts",
     "program-driver/native-tools": "src/program-driver/native-tools.ts",
     projection: "src/projection.ts",

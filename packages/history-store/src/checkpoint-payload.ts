@@ -11,52 +11,72 @@ export class CheckpointPayloadError extends Error {
 
 export interface CheckpointPublicProjection {
   readonly hotRoots: readonly Json[];
-  /** Number of hot roots that are sealed and eligible for archival spill. */
-  readonly sealedRootCount?: number;
+  readonly applicationState: Json;
 }
 
 export interface ConversationCheckpointPayload {
   readonly public: CheckpointPublicProjection;
 }
 
+function record(value: Json, path: string): Readonly<Record<string, Json>> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new CheckpointPayloadError(`${path} must be an object`);
+  }
+  return value;
+}
+
+function exactKeys(
+  value: Readonly<Record<string, Json>>,
+  expected: readonly string[],
+  path: string,
+): void {
+  if (
+    Object.keys(value).length !== expected.length ||
+    Object.keys(value).some((key) => !expected.includes(key))
+  ) {
+    throw new CheckpointPayloadError(`${path} has an invalid persisted shape`);
+  }
+}
+
+function validateRoot(root: Json, index: number): void {
+  const value = record(root, `checkpoint.public.hotRoots[${index}]`);
+  if (
+    typeof value["rootId"] !== "string" ||
+    typeof value["position"] !== "string" ||
+    !/^(0|[1-9]\d*)$/.test(value["position"]) ||
+    !(value["kind"] === "message" || value["kind"] === "activity-subtree") ||
+    !(value["state"] === "mutable" || value["state"] === "sealed")
+  ) {
+    throw new CheckpointPayloadError(
+      `checkpoint.public.hotRoots[${index}] is not a typed positioned public root`,
+    );
+  }
+}
+
 export function isConversationCheckpointPayload(
   value: Json,
 ): value is Json & ConversationCheckpointPayload {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  try {
+    assertCheckpointPayload(value);
+    return true;
+  } catch {
     return false;
   }
-  if ("version" in value) {
-    return false;
-  }
-  const projection = value["public"];
-  if (projection === null || typeof projection !== "object" || Array.isArray(projection)) {
-    return false;
-  }
-  if (!Array.isArray(projection["hotRoots"])) {
-    return false;
-  }
-  const sealedRootCount = projection["sealedRootCount"];
-  return (
-    sealedRootCount === undefined ||
-    (typeof sealedRootCount === "number" &&
-      Number.isSafeInteger(sealedRootCount) &&
-      sealedRootCount >= 0 &&
-      sealedRootCount <= projection["hotRoots"].length)
-  );
 }
 
 export function assertCheckpointPayload(value: Json): ConversationCheckpointPayload {
-  if (value !== null && typeof value === "object" && !Array.isArray(value) && "version" in value) {
-    throw new CheckpointPayloadError(
-      "Persisted checkpoint envelopes must not contain a version field",
-    );
+  const envelope = record(value, "checkpoint");
+  exactKeys(envelope, ["public"], "checkpoint");
+  const projection = record(envelope["public"]!, "checkpoint.public");
+  exactKeys(projection, ["hotRoots", "applicationState"], "checkpoint.public");
+  if (!Array.isArray(projection["hotRoots"])) {
+    throw new CheckpointPayloadError("checkpoint.public.hotRoots must be an array");
   }
-  if (!isConversationCheckpointPayload(value)) {
-    throw new CheckpointPayloadError(
-      "Checkpoint payload must be { public: { hotRoots } } without a growing events envelope",
-    );
+  projection["hotRoots"].forEach(validateRoot);
+  if (projection["applicationState"] === undefined) {
+    throw new CheckpointPayloadError("checkpoint.public.applicationState is required");
   }
-  return value;
+  return value as Json & ConversationCheckpointPayload;
 }
 
 export function checkpointHotRoots(value: Json): readonly Json[] {
@@ -64,21 +84,29 @@ export function checkpointHotRoots(value: Json): readonly Json[] {
 }
 
 export function checkpointHotSealedRootCount(value: Json): number {
-  return assertCheckpointPayload(value).public.sealedRootCount ?? 0;
+  return checkpointHotRoots(value).filter(
+    (root) =>
+      root !== null &&
+      typeof root === "object" &&
+      !Array.isArray(root) &&
+      root["state"] === "sealed",
+  ).length;
+}
+
+export function checkpointPublicApplicationState(value: Json): Json {
+  return assertCheckpointPayload(value).public.applicationState;
 }
 
 export function checkpointPayloadFromHotRoots(
   hotRoots: readonly Json[],
-  sealedRootCount = 0,
+  applicationState: Json = {},
 ): Json {
-  if (
-    !Number.isSafeInteger(sealedRootCount) ||
-    sealedRootCount < 0 ||
-    sealedRootCount > hotRoots.length
-  ) {
-    throw new CheckpointPayloadError("Checkpoint sealed root count is invalid");
-  }
-  return sealedRootCount === 0
-    ? { public: { hotRoots: [...hotRoots] } }
-    : { public: { hotRoots: [...hotRoots], sealedRootCount } };
+  const payload: Json = {
+    public: {
+      hotRoots: [...hotRoots],
+      applicationState,
+    },
+  };
+  assertCheckpointPayload(payload);
+  return payload;
 }

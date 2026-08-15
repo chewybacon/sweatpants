@@ -7,6 +7,7 @@ import { createChatApplication, createChatHandler } from "@sweatpants/agent-host
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createProgramDriverJournalStore,
+  createProjectionTokenKeyring,
   programDriverSchemaRegistry,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { createToolInventory, installToolInventory } from "@sweatpants/tool-runtime";
@@ -75,6 +76,10 @@ export function createReactAcceptanceApplication(
     },
     handler: createChatHandler({
       programDriverJournalStore: journalStore,
+      projectionTokens: createProjectionTokenKeyring("react-acceptance-windowed-projection-key"),
+      *authorizeHistoryRead() {
+        return "authorized" as const;
+      },
       setup: function* (): Operation<void> {
         yield* context.model.install();
       },

@@ -170,7 +170,15 @@ async function runMixedSuccessFailure(binding: Binding): Promise<void> {
           arguments: { value: "failure-after-success", behavior: "throw" },
         },
       ]);
-      yield* turn.failure();
+      const afterFailure = yield* s.model.request((request_) => {
+        const input = JSON.stringify(request_.body.input);
+        expect(input).toContain("mixed-success-call");
+        expect(input).toContain("mixed-failure-call");
+        expect(input).toContain(IMMEDIATE_RESULT_MARKER);
+        expect(input).toMatch(/error|fail/i);
+      });
+      yield* afterFailure.respond.text("MIXED_SUCCESS_FAILURE_TERMINAL_V1");
+      expect((yield* turn.settled()).text).toBe("MIXED_SUCCESS_FAILURE_TERMINAL_V1");
 
       const recovery = yield* conversation.send("MIXED_SUCCESS_FAILURE_RECOVERY_V1");
       const recoveryRequest = yield* s.model.request((request_) => {
@@ -215,10 +223,23 @@ async function runTerminalToolFailure(
           },
         ]);
       }
-      yield* turn.failure();
-      expect(
-        conversation.transcript().events.filter((event) => event.type === EventType.RUN_ERROR),
-      ).toHaveLength(1);
+      const ordinaryForeignFailure = failure === "throw" || failure === "invalid_output";
+      if (ordinaryForeignFailure) {
+        const afterFailure = yield* s.model.request((request_) => {
+          const input = JSON.stringify(request_.body.input);
+          expect(input).toContain("failure-call");
+          expect(input).toMatch(/error|fail|invalid/i);
+        });
+        yield* afterFailure.respond.text(`TOOL_FAILURE_${failure.toUpperCase()}_TERMINAL_V1`);
+        expect((yield* turn.settled()).text).toBe(
+          `TOOL_FAILURE_${failure.toUpperCase()}_TERMINAL_V1`,
+        );
+      } else {
+        yield* turn.failure();
+        expect(
+          conversation.transcript().events.filter((event) => event.type === EventType.RUN_ERROR),
+        ).toHaveLength(1);
+      }
 
       const recovery = yield* conversation.send(`RECOVER_TOOL_FAILURE_${failure.toUpperCase()}_V1`);
       const recoveryRequest = yield* s.model.request((request_) => {

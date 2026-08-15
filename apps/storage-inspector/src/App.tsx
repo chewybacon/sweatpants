@@ -10,8 +10,19 @@ type StorageReport = {
   journalByTask: Array<{ executionId: string; taskId: string; rows: number; encodedBytes: number }>;
   replayByTask: Array<{ executionId: string; taskId: string; rows: number; encodedBytes: number }>;
   checkpointWriteBytes: number;
+  runtimeMetricsCaptured: boolean;
   hydrationReads: number;
+  hydrationReadBytes: number;
   archivePageReads: number;
+  publicHistoryIndexRows: number;
+  publicHistoryIndexBytes: number;
+  publicHistorySegmentReads: number;
+  publicHistorySegmentReadBytes: number;
+  peakPublicHistoryPageBytes: number;
+  preparedContextReads: number;
+  preparedContextReadBytes: number;
+  preparedContextObjectBytes: number;
+  totalRetainedArchiveBytes: number;
   totalRetainedReplayBytes: number;
   peakMaterializedReplayBytes: number;
 };
@@ -29,6 +40,7 @@ type ConversationDetail = {
   head: Row | null;
   checkpoints: Row[];
   publicSegments: Row[];
+  publicRootIndex: Row[];
   terminalSegments: Row[];
   commandReceipts: Row[];
 };
@@ -144,9 +156,11 @@ function SegmentTable({
                 {shortId(row.previous_segment_id ?? "—", 16)}
               </td>
               <td className="mono">
-                {kind === "public" || kind === "terminal"
-                  ? `${row.first_position} → ${row.last_position}`
-                  : `${row.task_id ?? "—"} · ${row.first_sequence} → ${row.last_sequence}`}
+                {kind === "public"
+                  ? `${row.min_position} → ${row.max_position}`
+                  : kind === "terminal"
+                    ? `${row.first_position} → ${row.last_position}`
+                    : `${row.task_id ?? "—"} · ${row.first_sequence} → ${row.last_sequence}`}
               </td>
               <td>{formatBytes(row.encoded_bytes)}</td>
               <td className="mono" title={String(row.content_hash)}>
@@ -191,8 +205,41 @@ function Overview({
           />
           <Metric
             label="Hydration reads"
-            value={numberFormat.format(report.hydrationReads)}
-            detail={`${report.archivePageReads} archive page read(s)`}
+            value={report.runtimeMetricsCaptured ? numberFormat.format(report.hydrationReads) : "—"}
+            detail={
+              report.runtimeMetricsCaptured
+                ? `${formatBytes(report.hydrationReadBytes)} checkpoint payload`
+                : "not captured by the read-only inspector"
+            }
+          />
+          <Metric
+            label="History page I/O"
+            value={
+              report.runtimeMetricsCaptured ? `${report.publicHistoryIndexRows} index row(s)` : "—"
+            }
+            detail={
+              report.runtimeMetricsCaptured
+                ? `${report.publicHistorySegmentReads} segment read(s), ${formatBytes(report.publicHistorySegmentReadBytes)}`
+                : "run the storage-spine verifier for read evidence"
+            }
+          />
+          <Metric
+            label="History page memory"
+            value={
+              report.runtimeMetricsCaptured ? formatBytes(report.peakPublicHistoryPageBytes) : "—"
+            }
+            detail={`${formatBytes(report.totalRetainedArchiveBytes)} retained archive`}
+          />
+          <Metric
+            label="Prepared context"
+            value={
+              report.runtimeMetricsCaptured ? formatBytes(report.preparedContextReadBytes) : "—"
+            }
+            detail={
+              report.runtimeMetricsCaptured
+                ? `${report.preparedContextReads} read(s), ${formatBytes(report.preparedContextObjectBytes)} retained`
+                : `${formatBytes(report.preparedContextObjectBytes)} retained object bytes`
+            }
           />
           <Metric
             label="Replay memory"
@@ -354,8 +401,9 @@ function ConversationView({ detail }: { detail: ConversationDetail }) {
                   <span>{formatBytes(checkpoint.encoded_bytes)}</span>
                 </div>
                 <div className="muted">
-                  cause {shortId(checkpoint.cause_key, 22)} · archive through{" "}
-                  {String(checkpoint.archive_through_position)} · body withheld
+                  cause {shortId(checkpoint.cause_key, 22)} · archive frontier{" "}
+                  {String(checkpoint.archive_frontier_ordinal)} · next position{" "}
+                  {String(checkpoint.next_public_position)} · body withheld
                 </div>
               </div>
             </div>
@@ -364,6 +412,41 @@ function ConversationView({ detail }: { detail: ConversationDetail }) {
       </Section>
       <Section title="Public archive" subtitle="Immutable root metadata; root bodies withheld">
         <SegmentTable rows={detail.publicSegments} kind="public" />
+      </Section>
+      <Section
+        title="Accepted root index"
+        subtitle="Position membership and archive locations; bodies withheld"
+      >
+        {detail.publicRootIndex.length === 0 ? (
+          <div className="empty">No accepted public root-index rows.</div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Position</th>
+                  <th>Root</th>
+                  <th>Segment</th>
+                  <th>Archive ordinal</th>
+                  <th>Bytes</th>
+                  <th>Hash</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.publicRootIndex.map((row, index) => (
+                  <tr key={`${String(row.root_id)}-${index}`}>
+                    <td className="mono">{String(row.position)}</td>
+                    <td className="mono">{shortId(row.root_id, 18)}</td>
+                    <td className="mono">{shortId(row.segment_id, 18)}</td>
+                    <td className="mono">{String(row.archive_ordinal)}</td>
+                    <td>{formatBytes(row.encoded_bytes)}</td>
+                    <td className="mono">{shortId(row.content_hash, 16)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Section>
       <Section
         title="Terminal history"

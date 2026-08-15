@@ -1,4 +1,10 @@
-import { EventSchemas, EventType, type AGUIEvent } from "@ag-ui/core";
+import {
+  EventSchemas,
+  EventType,
+  type ActivityDeltaEvent,
+  type ActivitySnapshotEvent,
+  type AGUIEvent,
+} from "@ag-ui/core";
 import {
   assertJson,
   canonicalJson,
@@ -15,15 +21,15 @@ import {
 } from "@sweatpants/foundation/schema";
 import { z } from "zod";
 import type {
-  ActivityDeltaEvent,
-  ActivitySnapshotEvent,
   JsonPatchOperation,
-  PublicActivityData,
-  PublicActivityNode,
   StructuredOutputCompleteEvent,
   StructuredOutputStartEvent,
+} from "./chat-protocol-types.ts";
+import type {
+  PublicActivityData,
+  PublicActivityNode,
   SweatpantsPublicActivity,
-} from "./chat-client-types.ts";
+} from "./public-activity.ts";
 
 export type ChatProtocolErrorCode =
   | "chat_event_invalid"

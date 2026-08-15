@@ -16,15 +16,32 @@ async function temporaryDatabase(): Promise<string> {
 }
 
 function checkpoint(id: string, conversationId: string, createdAt: number) {
-  const payload = canonicalSnapshot({ public: { hotRoots: [{ id }] } });
+  const payload = canonicalSnapshot({
+    public: {
+      hotRoots: [
+        {
+          rootId: `root:${id}`,
+          position: "0",
+          kind: "message",
+          state: "sealed",
+          attribution: {},
+          message: { id, role: "user", content: id },
+          placement: { type: "root", sequence: 0 },
+        },
+      ],
+      applicationState: {},
+    },
+  });
   return {
     checkpointId: id,
     conversationId,
     causeKey: `cause-${id}`,
     cause: { kind: "test", id },
     contentHash: sha256(payload.canonical),
+    lineageId: `lineage-${conversationId}`,
     archiveHead: null,
-    archiveThroughPosition: "0",
+    archiveFrontierOrdinal: "0",
+    nextPublicPosition: "1",
     payload: payload.value,
     encodedBytes: new TextEncoder().encode(payload.canonical).byteLength,
     createdAt,

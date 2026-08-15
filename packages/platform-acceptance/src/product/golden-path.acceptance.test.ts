@@ -15,7 +15,10 @@ import { call, resource, type Operation, type Stream, type Subscription } from "
 import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
-import { createDevelopmentProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
+import {
+  createDevelopmentProgramDriverJournalStore,
+  createProjectionTokenKeyring,
+} from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
   createToolInventory,
   createToolInventoryEntry,
@@ -262,6 +265,10 @@ describe("product facade golden path", () => {
           audience: "golden-path-program-runtime",
           secret: "golden-path-program-runtime-secret",
         }),
+        projectionTokens: createProjectionTokenKeyring("golden-path-windowed-projection-key"),
+        *authorizeHistoryRead() {
+          return "authorized" as const;
+        },
         setup: function* () {
           yield* installModelProvider(provider);
           yield* ModelProviderModelContext.set(mockModel());
@@ -286,23 +293,15 @@ describe("product facade golden path", () => {
             },
             clientId: "golden-path-client",
             conversationId: "golden-path",
-            input: {
-              threadId: "golden-path",
-              runId: "golden-path-run",
-              state: {},
-              messages: [{ id: "user:1", role: "user", content: "Please echo hello-facade" }],
-              // Client plugin contracts are presentation metadata only. They do
-              // not add executable tools to the Host inventory.
-              tools: [
-                {
-                  name: "client-plugin-contract",
-                  description: "must not become executable",
-                  parameters: { type: "object" },
-                },
-              ],
-              context: [],
-              forwardedProps: {},
+            runId: "golden-path-run",
+            userMessage: {
+              id: "user:1",
+              role: "user",
+              content: "Please echo hello-facade",
             },
+            state: {},
+            context: [],
+            forwardedProps: {},
           }),
         }),
       );

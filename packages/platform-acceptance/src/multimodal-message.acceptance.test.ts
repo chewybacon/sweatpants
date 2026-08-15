@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import { ACCEPTANCE_MODEL_ID, createAcceptanceApplication } from "./lib/acceptance-app.ts";
@@ -71,14 +72,35 @@ async function runMultimodalScenario(binding: Binding): Promise<void> {
       yield* conversation.send({ content: multimodalParts });
 
       const started = yield* s.agui.event("RUN_STARTED");
-      assertOrderedMultimodalContent(record(started)["input"]);
-
-      const snapshot = yield* s.agui.event("MESSAGES_SNAPSHOT");
-      assertOrderedMultimodalContent(snapshot);
+      expect(messages(record(started)["input"])).toEqual([]);
+      expect(s.agui.events().some((event) => event.type === EventType.MESSAGES_SNAPSHOT)).toBe(
+        false,
+      );
 
       const finished = yield* s.agui.event("RUN_ERROR");
       expect(JSON.stringify(finished)).toContain("unsupported_model_capability");
       expect(s.model.requests()).toHaveLength(0);
+      assertOrderedMultimodalContent({
+        messages: conversation.snapshot().messages.map((message) => ({
+          role: message.role,
+          content: message.parts.map((part) => {
+            if (part.type === "text") return { type: "text", text: part.text };
+            if (
+              part.type === "image" ||
+              part.type === "audio" ||
+              part.type === "video" ||
+              part.type === "document"
+            ) {
+              return {
+                type: part.type,
+                source: part.source,
+                ...(part.metadata === undefined ? {} : { metadata: part.metadata }),
+              };
+            }
+            return { type: part.type };
+          }),
+        })),
+      });
 
       const reopened = yield* conversation.reopen();
       const replayed = JSON.stringify(reopened.snapshot().messages);

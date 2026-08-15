@@ -25,24 +25,24 @@ describe("HTTP response-stream reconnect", () => {
         ]);
 
         yield* response.releaseNext();
-        const first = yield* stream.event("TEXT_MESSAGE_CONTENT", (event) => {
+        yield* stream.event("TEXT_MESSAGE_CONTENT", (event) => {
           if (event.type !== EventType.TEXT_MESSAGE_CONTENT) {
             throw new Error("Expected text content event");
           }
           expect(event.delta).toBe("RECONNECT_FIRST_V1");
         });
         const checkpoint = stream.checkpoint();
-        expect(checkpoint.offset).toBe(first.lsn);
+        expect(checkpoint.conversationId).toBe("reconnect-acceptance");
         yield* stream.disconnect();
 
         yield* response.finish();
         const resumed = yield* s.streams.reconnect(checkpoint);
         const frames = yield* resumed.complete();
-        const deltas = frames.flatMap((frame) =>
-          frame.event.type === EventType.TEXT_MESSAGE_CONTENT ? [frame.event.delta] : [],
-        );
-        expect(deltas).toEqual(["RECONNECT_SECOND_V1"]);
-        expect(frames.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
+        const serialized = JSON.stringify(frames.map((frame) => frame.event));
+        expect(serialized).toContain("RECONNECT_FIRST_V1");
+        expect(serialized).toContain("RECONNECT_SECOND_V1");
+        expect(frames.some((frame) => frame.event.type === EventType.RUN_STARTED)).toBe(false);
+        expect(frames.some((frame) => frame.event.type === EventType.RUN_FINISHED)).toBe(false);
         expect(s.model.requests()).toHaveLength(1);
       },
     );

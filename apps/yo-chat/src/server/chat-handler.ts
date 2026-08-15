@@ -6,7 +6,10 @@ import {
   createYoChatExecutionStore,
   createYoChatProgramDriverJournalStore,
 } from "./program-driver-journal";
-import type { ProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
+import {
+  createProjectionTokenKeyring,
+  type ProgramDriverJournalStore,
+} from "@sweatpants/durable-chat-runtime/durable-handler";
 
 /** Expected composition failure for invalid ProgramRuntime configuration. */
 export class ProgramDriverConfigurationError extends Error {
@@ -43,5 +46,9 @@ export function createYoChatHandler(): ReturnType<typeof createChatHandler> {
     maxToolIterations: 10,
     programDriverJournalStore: journalStore,
     executionStore,
+    projectionTokens: createProjectionTokenKeyring(secret),
+    *authorizeHistoryRead() {
+      return "authorized" as const;
+    },
   });
 }

@@ -5,59 +5,33 @@ import { chatRequestBodyParser, parseChatRequestBody } from "../request-normaliz
 const issuedAt = Date.now();
 const expiresAt = issuedAt + 60_000;
 
-function request(input: Record<string, unknown>, controls: Record<string, unknown> = {}) {
+function command(override: Record<string, unknown> = {}, controls: Record<string, unknown> = {}) {
   return {
-    input: {
-      threadId: "thread-1",
-      runId: "run-1",
-      state: {},
-      messages: [],
-      tools: [],
-      context: [],
-      forwardedProps: {},
-      ...input,
-    },
-    command: {
-      type: "send-message",
-      commandId: "00000000-0000-4000-8000-000000000001",
-      issuedAt,
-      expiresAt,
-      basisRevision: null,
-      messageId: "user:1",
-    },
+    command: Object.fromEntries(
+      Object.entries({
+        type: "send-message",
+        commandId: "00000000-0000-4000-8000-000000000001",
+        issuedAt,
+        expiresAt,
+        basisRevision: null,
+        messageId: "user:1",
+        ...override,
+      }).filter(([, value]) => value !== undefined),
+    ),
     clientId: "client-1",
     conversationId: "conversation-1",
+    userMessage: { id: "user:1", role: "user", content: "hello" },
+    runId: "run-1",
+    state: { step: 1 },
+    context: [],
+    forwardedProps: { source: "test" },
     ...controls,
   };
 }
 
 describe("parseChatRequestBody", () => {
-  it("validates an AG-UI input nested inside the owned transport controls", () => {
-    const parsed = parseChatRequestBody(
-      request(
-        {
-          messages: [{ id: "user:1", role: "user", content: "hello" }],
-          tools: [{ name: "client-plugin-contract", description: "client", parameters: {} }],
-          state: { step: 1 },
-          forwardedProps: { source: "test" },
-        },
-        {
-          command: {
-            type: "respond-to-elicit",
-            commandId: "00000000-0000-4000-8000-000000000002",
-            issuedAt,
-            expiresAt,
-            basisRevision: "2",
-            logicalTurnId: "turn-1",
-            executionId: "execution-1",
-            interruptId: "interrupt:1",
-            status: "cancelled",
-          },
-          model: { provider: "test", id: "model" },
-          streamOptions: { toolChoice: "auto", maxTokens: 128 },
-        },
-      ),
-    );
+  it("accepts one matching native send-message without a loaded transcript", () => {
+    const parsed = parseChatRequestBody(command());
 
     expect(parsed.messages).toEqual([
       {
@@ -67,35 +41,35 @@ describe("parseChatRequestBody", () => {
         metadata: {},
       },
     ]);
-    expect(parsed.threadId).toBe("thread-1");
+    expect(parsed.threadId).toBe("conversation-1");
     expect(parsed.runId).toBe("run-1");
-    expect(parsed.resume?.[0]?.status).toBe("cancelled");
-    expect(parsed.model).toEqual({ provider: "test", id: "model" });
-    expect(parsed.tools).toEqual([
-      { name: "client-plugin-contract", description: "client", parameters: {} },
-    ]);
+    expect(parsed.tools).toEqual([]);
+    expect(parsed.state).toEqual({ step: 1 });
   });
 
-  it("returns parser results and rejects oversized ingress collections", () => {
-    expect(chatRequestBodyParser.parse(request({})).ok).toBe(true);
+  it("returns parser results and rejects oversized native context", () => {
+    expect(chatRequestBodyParser.parse(command()).ok).toBe(true);
     expect(
       chatRequestBodyParser.parse(
-        request({
-          messages: Array.from({ length: 4_097 }, (_, index) => ({
-            id: `message-${index}`,
-            role: "user",
-            content: "bounded",
-          })),
-        }),
+        command(
+          {},
+          {
+            context: Array.from({ length: 1_025 }, (_, index) => ({
+              description: `entry-${index}`,
+              value: "bounded",
+            })),
+          },
+        ),
       ).ok,
     ).toBe(false);
   });
 
-  it("uses the AG-UI and canonical Chat owner codecs for multimodal input", () => {
+  it("uses the AG-UI codec for the single multimodal user message", () => {
     const parsed = parseChatRequestBody(
-      request({
-        messages: [
-          {
+      command(
+        {},
+        {
+          userMessage: {
             id: "user:1",
             role: "user",
             content: [
@@ -103,8 +77,8 @@ describe("parseChatRequestBody", () => {
               { type: "image", source: { type: "url", value: "https://example.test/image.png" } },
             ],
           },
-        ],
-      }),
+        },
+      ),
     );
     const entry = parsed.messages[0];
     expect(entry?.type).toBe("message");
@@ -121,100 +95,61 @@ describe("parseChatRequestBody", () => {
     ]);
   });
 
-  it("converts native AG-UI tool argument text once and resolves a result name", () => {
+  it("derives elicitation resume only from respond-to-elicit", () => {
     const parsed = parseChatRequestBody(
-      request({
-        messages: [
-          {
-            id: "assistant:1",
-            role: "assistant",
-            content: "",
-            toolCalls: [
-              {
-                id: "call-1",
-                type: "function",
-                function: { name: "lookup", arguments: '{"query":"Ada"}' },
-              },
-            ],
-          },
-          { id: "tool:1", role: "tool", toolCallId: "call-1", content: "found" },
-        ],
-      }),
+      command(
+        {
+          type: "respond-to-elicit",
+          commandId: "00000000-0000-4000-8000-000000000002",
+          basisRevision: "2",
+          logicalTurnId: "turn-1",
+          executionId: "execution-1",
+          interruptId: "interrupt:1",
+          status: "cancelled",
+          messageId: undefined,
+        },
+        { userMessage: undefined },
+      ),
     );
 
-    expect(parsed.messages).toMatchObject([
+    expect(parsed.messages).toEqual([]);
+    expect(parsed.resume).toEqual([{ interruptId: "interrupt:1", status: "cancelled" }]);
+    expect(parsed.elicitResponses).toMatchObject([
       {
-        message: {
-          role: "assistant",
-          content: [
-            { type: "text", text: "" },
-            {
-              type: "tool-call",
-              toolCall: {
-                id: "call-1",
-                name: "lookup",
-                input: { query: "Ada" },
-                thoughtSignature: null,
-              },
-            },
-          ],
-        },
-      },
-      {
-        message: {
-          role: "tool",
-          toolCallId: "call-1",
-          name: "lookup",
-          content: "found",
-          isError: false,
-        },
+        sessionId: "execution-1",
+        elicitId: "interrupt:1",
+        completion: { action: "cancel" },
       },
     ]);
   });
 
   it.each([
     ["non-object", null],
-    ["missing transport input", {}],
-    ["missing AG-UI tools", { input: { threadId: "t", runId: "r", state: {}, messages: [] } }],
+    ["incomplete reconnect", { clientId: "client" }],
+    ["legacy AG-UI input envelope", command({}, { input: { messages: [] } })],
+    ["loaded transcript field", command({}, { messages: [] })],
+    ["missing matching user message", command({}, { userMessage: undefined })],
     [
-      "invalid AG-UI role",
-      request({ messages: [{ id: "m", role: "future-role", content: "ignored" }] }),
-    ],
-    ["flattened message field", { messages: [] }],
-    ["control nested inside protocol input", request({ trigger: "submit-message" })],
-    [
-      "legacy snake-case tool calls",
-      request({ messages: [{ id: "a", role: "assistant", tool_calls: [] }] }),
+      "mismatched user identity",
+      command({}, { userMessage: { id: "user:other", role: "user", content: "hello" } }),
     ],
     [
-      "legacy snake-case result id",
-      request({ messages: [{ id: "t", role: "tool", tool_call_id: "call" }] }),
+      "non-user send message",
+      command({}, { userMessage: { id: "user:1", role: "assistant", content: "hello" } }),
     ],
-    [
-      "invalid native tool arguments",
-      request({
-        messages: [
-          {
-            id: "assistant:1",
-            role: "assistant",
-            toolCalls: [
-              { id: "call", type: "function", function: { name: "lookup", arguments: "not-json" } },
-            ],
-          },
-        ],
-      }),
-    ],
+    ["user message on regenerate", command({ type: "regenerate", messageId: undefined }, {})],
     [
       "binary AG-UI content",
-      request({
-        messages: [
-          {
+      command(
+        {},
+        {
+          userMessage: {
             id: "user:1",
             role: "user",
             content: [{ type: "binary", mimeType: "application/octet-stream", data: "AA==" }],
           },
-        ],
-      }),
+        },
+      ),
     ],
   ])("rejects %s before turn planning", (_name, value) => {
     expect(() => parseChatRequestBody(value)).toThrow(

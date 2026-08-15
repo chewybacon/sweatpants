@@ -32,6 +32,8 @@ function normalizePayload(payload: DurableSemanticRecord["payload"]): Json {
       return structuredClone(semantic) as unknown as Json;
     }
     case "PullRequested":
+    case "ModelContextPrepared":
+    case "AssistantPartialAccepted":
     case "AttemptStarted":
     case "AttemptDetached":
     case "AttemptAbandoned":

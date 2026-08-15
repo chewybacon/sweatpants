@@ -29,6 +29,7 @@ import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createDurableChatHandler,
   createProgramDriverJournalStore,
+  createProjectionTokenKeyring,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
@@ -133,6 +134,12 @@ describe.skipIf(!externalSubstrateEnabled)(
       };
       const handler = createDurableChatHandler({
         programDriverJournalStore: journalStore,
+        projectionTokens: createProjectionTokenKeyring(
+          "book-flight-external-window-projection-key",
+        ),
+        *authorizeHistoryRead() {
+          return "authorized" as const;
+        },
         maxToolIterations: 5,
         setup: function* () {
           yield* installModelProvider(driver);

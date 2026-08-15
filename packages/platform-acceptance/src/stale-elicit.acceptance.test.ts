@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { call } from "effection";
-import { projectChatMessagesToAGUI } from "@sweatpants/chat-core";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import {
   ACCEPTANCE_DURABLE_TOOL_NAME,
@@ -11,17 +10,18 @@ import {
 
 type Binding = TestRigOptions["binding"];
 
-type DurableFrame = {
-  readonly lsn: number;
-  readonly event: { readonly type: string; readonly code?: string; readonly message?: string };
+type NativeFrame = {
+  readonly type: string;
+  readonly code?: string;
+  readonly message?: string;
 };
 
-function parseFrames(body: string): readonly DurableFrame[] {
+function parseFrames(body: string): readonly NativeFrame[] {
   return body
     .trim()
     .split("\n")
     .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as DurableFrame);
+    .map((line) => JSON.parse(line) as NativeFrame);
 }
 
 function readResponseWithin(response: Response, timeoutMs: number): Promise<string> {
@@ -107,7 +107,6 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
       if (pendingAuthority?.state !== "parked") {
         throw new Error("Pending elicitation did not publish parked authority");
       }
-      const staleMessages = projectChatMessagesToAGUI(pendingSnapshot.messages);
       const acceptedResume = settledResume(pending.elicitId, settlement);
       const staleConflict = conflictingResume(pending.elicitId);
 
@@ -153,15 +152,10 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
               },
               clientId: "stale-elicit-client",
               conversationId: conversation.conversationId,
-              input: {
-                threadId: conversation.conversationId,
-                runId: `stale-client-run:${settlement}:${label}`,
-                state: {},
-                messages: staleMessages,
-                tools: [],
-                context: [],
-                forwardedProps: {},
-              },
+              runId: `stale-client-run:${settlement}:${label}`,
+              state: {},
+              context: [],
+              forwardedProps: {},
             }),
           }),
         );
@@ -177,10 +171,8 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
       expect(retry.frames).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            event: expect.objectContaining({
-              type: "RUN_ERROR",
-              code: "conversation_state_changed",
-            }),
+            type: "RUN_ERROR",
+            code: "elicit_not_open",
           }),
         ]),
       );
@@ -194,10 +186,8 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
       expect(conflict.frames).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            event: expect.objectContaining({
-              type: "RUN_ERROR",
-              code: "conversation_state_changed",
-            }),
+            type: "RUN_ERROR",
+            code: "elicit_not_open",
           }),
         ]),
       );

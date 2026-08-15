@@ -151,7 +151,7 @@ export type CheckpointEvidence = unknown;
 export type StorageMetrics = unknown;
 
 export interface ScriptStreamTurn {
-  readonly sessionId: string;
+  readonly conversationId: string;
   readonly events: readonly StreamFrame[];
   event(type: string, assertion?: (event: StreamFrame["event"]) => void): Operation<StreamFrame>;
   checkpoint(): StreamCheckpoint;
@@ -186,8 +186,6 @@ export interface ScenarioContext {
   readonly host: {
     gracefulShutdown(options: { graceMs: number }): Operation<void>;
     replace(): Operation<void>;
-    /** Catastrophic harness only: no finalizer behavior is implied. */
-    abandon(): Operation<void>;
   };
   /** Named semantic fault boundaries, never source line or private-method hooks. */
   readonly faults: {
@@ -299,7 +297,7 @@ function toScriptTurn(turn: TurnHandle, label: string): ScriptTurn {
 
 function toScriptStream(turn: StreamTurnHandle): ScriptStreamTurn {
   return {
-    sessionId: turn.sessionId,
+    conversationId: turn.conversationId,
     get events() {
       return turn.events;
     },
@@ -370,7 +368,6 @@ export function scenario<T>(
     host: {
       gracefulShutdown: (options) => op(() => rig.lifecycle.gracefulShutdown(options)),
       replace: () => op(() => rig.lifecycle.replace()),
-      abandon: () => op(() => rig.lifecycle.abandon()),
     },
     faults: {
       arm: (point) => op(() => rig.lifecycle.armFault(point)),

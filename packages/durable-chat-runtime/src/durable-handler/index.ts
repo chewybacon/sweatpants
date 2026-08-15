@@ -11,6 +11,7 @@
 
 // Main handler factory
 export { createDurableChatHandler } from "./handler.ts";
+export { createProjectionTokenKeyring } from "../projection-tokens.ts";
 
 // Plugin session manager
 export { createPluginSessionManager } from "./plugin-session-manager.ts";
@@ -88,10 +89,6 @@ export type {
   // Elicit types
   ElicitResponse,
   PluginAbortRequest,
-
-  // Protocol types
-  DurableStreamEvent,
-  DurableStreamParams,
 
   // MCP tool registry
   McpToolRegistry,

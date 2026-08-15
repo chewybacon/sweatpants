@@ -22,6 +22,9 @@ export async function withDefaultSystemPrompt(request: Request): Promise<Request
   }
 
   const record = body as Record<string, unknown>;
+  if (!("command" in record)) {
+    return request;
+  }
   if (typeof record["systemPrompt"] === "string" && record["systemPrompt"].trim().length > 0) {
     return request;
   }

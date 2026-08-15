@@ -16,14 +16,16 @@ import {
   type StoredImmutableRecord,
   type StoredScanPage,
 } from "@sweatpants/durable-storage-kernel";
-import { canonicalJson, parseJsonText, type Json } from "@sweatpants/foundation";
+import { canonicalJson, canonicalSnapshot, parseJsonText, type Json } from "@sweatpants/foundation";
 import {
   conversationKeys,
+  decodeArchivedPublicRootIndex,
   decodeCheckpoint,
   decodeCommandReceipt,
   decodeConversationHead,
   decodePublicSegment,
   decodeTerminalSegment,
+  encodeArchivedPublicRootIndex,
   encodeCheckpoint,
   encodeCommandReceipt,
   encodeConversationHead,
@@ -31,6 +33,7 @@ import {
   encodeTerminalSegment,
 } from "@sweatpants/history-store/persistence";
 import type {
+  ArchivedPublicRootIndex,
   CommandReceipt,
   ConversationHead,
   StoredCheckpoint,
@@ -55,6 +58,7 @@ import {
   spConversationCheckpoints,
   spConversationCommandReceipts,
   spConversationHeads,
+  spConversationPublicRootIndex,
   spConversationPublicSegments,
   spConversationTerminalSegments,
   spExecutionControl,
@@ -79,6 +83,7 @@ type HeadRow = typeof spConversationHeads.$inferSelect;
 type ReceiptRow = typeof spConversationCommandReceipts.$inferSelect;
 type CheckpointRow = typeof spConversationCheckpoints.$inferSelect;
 type PublicRow = typeof spConversationPublicSegments.$inferSelect;
+type PublicRootIndexRow = typeof spConversationPublicRootIndex.$inferSelect;
 type TerminalRow = typeof spConversationTerminalSegments.$inferSelect;
 type ControlRow = typeof spExecutionControl.$inferSelect;
 type PrivateRow = typeof spExecutionJournalSegments.$inferSelect;
@@ -253,11 +258,10 @@ function checkpointFromRow(row: CheckpointRow): StoredCheckpoint {
     causeKey: row.causeKey,
     cause: parseJsonText(row.causeJson, "cause_json"),
     contentHash: row.contentHash,
-    archiveHead:
-      row.archiveHeadSegmentId === null
-        ? null
-        : { segmentId: row.archiveHeadSegmentId, lastPosition: row.archiveThroughPosition },
-    archiveThroughPosition: row.archiveThroughPosition,
+    lineageId: row.lineageId,
+    archiveHead: row.archiveHeadSegmentId === null ? null : { segmentId: row.archiveHeadSegmentId },
+    archiveFrontierOrdinal: row.archiveFrontierOrdinal,
+    nextPublicPosition: row.nextPublicPosition,
     payload: parseJsonText(row.payloadJson, "payload_json"),
     encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
     createdAt: numberValue(row.createdAt, "created_at"),
@@ -273,18 +277,28 @@ function publicFromRow(row: PublicRow): StoredPublicArchiveSegment {
   const value: StoredPublicArchiveSegment = {
     segmentId: row.segmentId,
     conversationId: row.conversationId,
-    previous:
-      row.previousSegmentId === null
-        ? null
-        : { segmentId: row.previousSegmentId, lastPosition: priorPosition(row.firstPosition) },
-    firstPosition: row.firstPosition,
-    lastPosition: row.lastPosition,
+    previous: row.previousSegmentId === null ? null : { segmentId: row.previousSegmentId },
+    minPosition: row.minPosition,
+    maxPosition: row.maxPosition,
     roots: parseJsonText(row.rootsJson, "roots_json") as readonly Json[],
     contentHash: row.contentHash,
     encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
     createdAt: numberValue(row.createdAt, "created_at"),
   };
   return value;
+}
+
+function publicRootIndexFromRow(row: PublicRootIndexRow): ArchivedPublicRootIndex {
+  return {
+    conversationId: row.conversationId,
+    position: row.position,
+    rootId: row.rootId,
+    segmentId: row.segmentId,
+    segmentRootIndex: numberValue(row.segmentRootIndex, "segment_root_index"),
+    archiveOrdinal: row.archiveOrdinal,
+    contentHash: row.contentHash,
+    encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
+  };
 }
 
 function terminalFromRow(row: TerminalRow): StoredTerminalSegment {
@@ -430,7 +444,7 @@ async function readImmutableIn(
               .where(
                 and(
                   eq(spConversationPublicSegments.conversationId, parts[0]!),
-                  eq(spConversationPublicSegments.firstPosition, parts[1]!),
+                  eq(spConversationPublicSegments.minPosition, parts[1]!),
                   eq(spConversationPublicSegments.segmentId, parts[2]!),
                 ),
               )
@@ -445,6 +459,34 @@ async function readImmutableIn(
         conversationKeys.publicSegment(value.segmentId),
         value.contentHash,
         encodePublicSegment(value),
+      );
+    }
+    case DurableCollections.conversationPublicRootIndex: {
+      const where =
+        parts.length === 2
+          ? and(
+              eq(spConversationPublicRootIndex.conversationId, parts[0]!),
+              eq(spConversationPublicRootIndex.position, parts[1]!),
+            )
+          : and(
+              eq(spConversationPublicRootIndex.conversationId, parts[0]!),
+              eq(spConversationPublicRootIndex.rootId, parts[2]!),
+            );
+      const row = await resolved(
+        database.select().from(spConversationPublicRootIndex).where(where).get() as
+          | PublicRootIndexRow
+          | undefined
+          | Promise<PublicRootIndexRow | undefined>,
+      );
+      if (!row) {
+        return null;
+      }
+      const entry = publicRootIndexFromRow(row);
+      return immutableRecord(
+        collection,
+        conversationKeys.publicRootIndex(entry.conversationId, entry.position),
+        canonicalSnapshot(entry).sha,
+        encodeArchivedPublicRootIndex(entry),
       );
     }
     case DurableCollections.conversationTerminalSegments: {
@@ -569,8 +611,10 @@ async function insertImmutable(
             causeKey: value.causeKey,
             causeJson: canonicalJson(value.cause),
             contentHash: value.contentHash,
+            lineageId: value.lineageId,
             archiveHeadSegmentId: value.archiveHead?.segmentId ?? null,
-            archiveThroughPosition: value.archiveThroughPosition,
+            archiveFrontierOrdinal: value.archiveFrontierOrdinal,
+            nextPublicPosition: value.nextPublicPosition,
             payloadJson: canonicalJson(value.payload),
             encodedBytes: value.encodedBytes,
             createdAt: value.createdAt,
@@ -588,12 +632,31 @@ async function insertImmutable(
             segmentId: value.segmentId,
             conversationId: value.conversationId,
             previousSegmentId: value.previous?.segmentId ?? null,
-            firstPosition: value.firstPosition,
-            lastPosition: value.lastPosition,
+            minPosition: value.minPosition,
+            maxPosition: value.maxPosition,
             rootsJson: canonicalJson(value.roots),
             contentHash: value.contentHash,
             encodedBytes: value.encodedBytes,
             createdAt: value.createdAt,
+          })
+          .run(),
+      );
+      return;
+    }
+    case DurableCollections.conversationPublicRootIndex: {
+      const value = decodeArchivedPublicRootIndex(record.value);
+      await resolved(
+        database
+          .insert(spConversationPublicRootIndex)
+          .values({
+            conversationId: value.conversationId,
+            position: value.position,
+            rootId: value.rootId,
+            segmentId: value.segmentId,
+            segmentRootIndex: value.segmentRootIndex,
+            archiveOrdinal: value.archiveOrdinal,
+            contentHash: value.contentHash,
+            encodedBytes: value.encodedBytes,
           })
           .run(),
       );
@@ -1032,38 +1095,102 @@ async function applyIn(
 async function scanIn(database: Database, request: BoundedScan): Promise<StoredScanPage> {
   validateScan(request);
   const scope = decodeDurableKey(request.scope);
-  let rows: Array<PublicRow | TerminalRow | PrivateRow>;
-  if (request.index === DurableIndexes.conversationPosition) {
+  let rows: Array<PublicRow | PublicRootIndexRow | TerminalRow | PrivateRow>;
+  if (
+    request.index === DurableIndexes.conversationPosition &&
+    request.collection === DurableCollections.conversationPublicRootIndex
+  ) {
     const [conversationId] = scope;
-    const table =
-      request.collection === DurableCollections.conversationPublicSegments
-        ? spConversationPublicSegments
-        : spConversationTerminalSegments;
-    const conditions: SQL[] = [eq(table.conversationId, conversationId!)];
+    const conditions: SQL[] = [eq(spConversationPublicRootIndex.conversationId, conversationId!)];
     if (request.after !== null) {
       conditions.push(
         request.direction === "forward"
-          ? gt(table.firstPosition, request.after)
-          : lt(table.firstPosition, request.after),
+          ? gt(spConversationPublicRootIndex.position, request.after)
+          : lt(spConversationPublicRootIndex.position, request.after),
       );
     }
     if (request.through !== undefined) {
       conditions.push(
         request.direction === "forward"
-          ? lte(table.firstPosition, request.through)
-          : gte(table.firstPosition, request.through),
+          ? lte(spConversationPublicRootIndex.position, request.through)
+          : gte(spConversationPublicRootIndex.position, request.through),
       );
     }
     rows = await resolved(
       database
         .select()
-        .from(table)
+        .from(spConversationPublicRootIndex)
         .where(and(...conditions))
         .orderBy(
-          request.direction === "forward" ? asc(table.firstPosition) : desc(table.firstPosition),
+          request.direction === "forward"
+            ? asc(spConversationPublicRootIndex.position)
+            : desc(spConversationPublicRootIndex.position),
         )
         .limit(request.maxRecords + 1)
-        .all() as Array<PublicRow | TerminalRow> | Promise<Array<PublicRow | TerminalRow>>,
+        .all() as PublicRootIndexRow[] | Promise<PublicRootIndexRow[]>,
+    );
+  } else if (
+    request.index === DurableIndexes.conversationPosition &&
+    request.collection === DurableCollections.conversationPublicSegments
+  ) {
+    const [conversationId] = scope;
+    const conditions: SQL[] = [eq(spConversationPublicSegments.conversationId, conversationId!)];
+    if (request.after !== null) {
+      conditions.push(
+        request.direction === "forward"
+          ? gt(spConversationPublicSegments.minPosition, request.after)
+          : lt(spConversationPublicSegments.minPosition, request.after),
+      );
+    }
+    if (request.through !== undefined) {
+      conditions.push(
+        request.direction === "forward"
+          ? lte(spConversationPublicSegments.minPosition, request.through)
+          : gte(spConversationPublicSegments.minPosition, request.through),
+      );
+    }
+    rows = await resolved(
+      database
+        .select()
+        .from(spConversationPublicSegments)
+        .where(and(...conditions))
+        .orderBy(
+          request.direction === "forward"
+            ? asc(spConversationPublicSegments.minPosition)
+            : desc(spConversationPublicSegments.minPosition),
+        )
+        .limit(request.maxRecords + 1)
+        .all() as PublicRow[] | Promise<PublicRow[]>,
+    );
+  } else if (request.index === DurableIndexes.conversationPosition) {
+    const [conversationId] = scope;
+    const conditions: SQL[] = [eq(spConversationTerminalSegments.conversationId, conversationId!)];
+    if (request.after !== null) {
+      conditions.push(
+        request.direction === "forward"
+          ? gt(spConversationTerminalSegments.firstPosition, request.after)
+          : lt(spConversationTerminalSegments.firstPosition, request.after),
+      );
+    }
+    if (request.through !== undefined) {
+      conditions.push(
+        request.direction === "forward"
+          ? lte(spConversationTerminalSegments.firstPosition, request.through)
+          : gte(spConversationTerminalSegments.firstPosition, request.through),
+      );
+    }
+    rows = await resolved(
+      database
+        .select()
+        .from(spConversationTerminalSegments)
+        .where(and(...conditions))
+        .orderBy(
+          request.direction === "forward"
+            ? asc(spConversationTerminalSegments.firstPosition)
+            : desc(spConversationTerminalSegments.firstPosition),
+        )
+        .limit(request.maxRecords + 1)
+        .all() as TerminalRow[] | Promise<TerminalRow[]>,
     );
   } else {
     const [executionId, taskId] = scope;
@@ -1104,7 +1231,14 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
   let bytes = 0;
   let more = false;
   for (const row of rows) {
-    const position = "firstPosition" in row ? row.firstPosition : row.firstSequence;
+    const position =
+      "position" in row
+        ? row.position
+        : "minPosition" in row
+          ? row.minPosition
+          : "firstPosition" in row
+            ? row.firstPosition
+            : row.firstSequence;
     const numeric = BigInt(position);
     if (after !== null && (request.direction === "forward" ? numeric <= after : numeric >= after)) {
       continue;
@@ -1116,26 +1250,36 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
       continue;
     }
     const record =
-      request.collection === DurableCollections.conversationPublicSegments
-        ? immutableRecord(
-            request.collection,
-            conversationKeys.publicSegment(row.segmentId),
-            row.contentHash,
-            encodePublicSegment(publicFromRow(row as PublicRow)),
-          )
-        : request.collection === DurableCollections.conversationTerminalSegments
+      request.collection === DurableCollections.conversationPublicRootIndex
+        ? (() => {
+            const entry = publicRootIndexFromRow(row as PublicRootIndexRow);
+            return immutableRecord(
+              request.collection,
+              conversationKeys.publicRootIndex(entry.conversationId, entry.position),
+              canonicalSnapshot(entry).sha,
+              encodeArchivedPublicRootIndex(entry),
+            );
+          })()
+        : request.collection === DurableCollections.conversationPublicSegments
           ? immutableRecord(
               request.collection,
-              conversationKeys.terminalSegment(row.segmentId),
+              conversationKeys.publicSegment(row.segmentId),
               row.contentHash,
-              encodeTerminalSegment(terminalFromRow(row as TerminalRow)),
+              encodePublicSegment(publicFromRow(row as PublicRow)),
             )
-          : immutableRecord(
-              request.collection,
-              executionKeys.segment(row.segmentId),
-              row.contentHash,
-              privateEnvelopeFromRow(row as PrivateRow),
-            );
+          : request.collection === DurableCollections.conversationTerminalSegments
+            ? immutableRecord(
+                request.collection,
+                conversationKeys.terminalSegment(row.segmentId),
+                row.contentHash,
+                encodeTerminalSegment(terminalFromRow(row as TerminalRow)),
+              )
+            : immutableRecord(
+                request.collection,
+                executionKeys.segment(row.segmentId),
+                row.contentHash,
+                privateEnvelopeFromRow(row as PrivateRow),
+              );
     if (
       records.length >= request.maxRecords ||
       bytes + record.value.byteLength > request.maxStoredBytes

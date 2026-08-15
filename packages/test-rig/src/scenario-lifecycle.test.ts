@@ -22,9 +22,6 @@ describe("causal scenario lifecycle vocabulary", () => {
               async gracefulShutdown({ graceMs }) {
                 events.push(`shutdown:${id}:${graceMs}`);
               },
-              async abandon() {
-                events.push(`abandon:${id}`);
-              },
               async armFault(point) {
                 events.push(`arm:${id}:${point}`);
               },
@@ -68,12 +65,6 @@ describe("causal scenario lifecycle vocabulary", () => {
           sessionId: "session-2",
           cursor: "cursor-2",
         });
-
-        yield* s.host.abandon();
-        expect(yield* s.evidence.storageMetrics()).toEqual({
-          generation: 3,
-          completedJournalReads: 0,
-        });
       },
     );
 
@@ -82,8 +73,7 @@ describe("causal scenario lifecycle vocabulary", () => {
       "arm:1:after_execution_terminal",
       "reached:1:after_execution_terminal",
       "close:1",
-      "abandon:2",
-      "close:3",
+      "close:2",
     ]);
   });
 });

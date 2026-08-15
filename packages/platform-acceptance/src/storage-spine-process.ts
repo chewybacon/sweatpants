@@ -20,7 +20,7 @@ import {
 } from "@sweatpants/storage-sqlite/better-sqlite3";
 import { readStorageReport, type StorageReport } from "@sweatpants/storage-sqlite/inspection";
 import { installStorageReadMetrics } from "@sweatpants/storage-sqlite/metrics";
-import type { ConversationHead } from "@sweatpants/history-store/contract";
+import type { ConversationHead, StoredCheckpoint } from "@sweatpants/history-store/contract";
 
 const defaultDirectory = resolve(process.cwd(), ".tmp/storage-spine");
 const defaultDatabase = resolve(defaultDirectory, "spine.sqlite");
@@ -44,23 +44,39 @@ interface FixtureExpected {
   };
 }
 
-function* readAllPublicRoots(): Operation<{
+function* readAllPublicRoots(
+  head: ConversationHead,
+  checkpoint: StoredCheckpoint,
+): Operation<{
   readonly roots: readonly unknown[];
   readonly pages: number;
 }> {
   const roots: unknown[] = [];
   let pages = 0;
-  let cursor: string | undefined;
+  let beforePosition = checkpoint.nextPublicPosition;
   while (true) {
-    const page = yield* ConversationStoreApi.operations.readPublicArchivePage(
+    const page = yield* ConversationStoreApi.operations.readPublicHistoryBefore({
       conversationId,
-      cursor,
-      50,
-    );
+      basis: {
+        lineageId: checkpoint.lineageId,
+        basisRevision: head.revision,
+        archiveFrontierOrdinal: checkpoint.archiveFrontierOrdinal,
+        nextPublicPosition: checkpoint.nextPublicPosition,
+        hotRootPositions: checkpointHotRoots(checkpoint.payload).map(
+          (root) => (root as { position: string }).position,
+        ),
+      },
+      beforePosition,
+      maxRoots: 50,
+      maxBytes: 1024 * 1024,
+    });
     pages += 1;
-    roots.push(...page.roots);
-    if (page.nextCursor === null) return { roots, pages };
-    cursor = page.nextCursor;
+    roots.unshift(...page.roots);
+    if (page.nextBeforePosition === null) {
+      roots.push(...checkpointHotRoots(checkpoint.payload));
+      return { roots, pages };
+    }
+    beforePosition = page.nextBeforePosition;
   }
 }
 
@@ -195,6 +211,20 @@ function* streamPrivateEvidence(
   return { journalEntries, replayEntries };
 }
 
+function* readPreparedContextEvidence(handle: BetterSqliteStorageHandle): Operation<number> {
+  const rows = handle.database.all(
+    sql`SELECT object_id FROM sp_execution_objects
+        WHERE object_kind = 'prepared-model-context.v1' ORDER BY object_id`,
+  ) as Array<{ object_id: string }>;
+  for (const row of rows) {
+    const object = yield* ExecutionStoreApi.operations.getObject({ objectId: row.object_id });
+    if (!object || object.objectKind !== "prepared-model-context.v1") {
+      throw new Error("prepared model context evidence is missing or has the wrong kind");
+    }
+  }
+  return rows.length;
+}
+
 function* collectExpected(
   handle: BetterSqliteStorageHandle,
   producerPid: number,
@@ -211,11 +241,16 @@ function* collectExpected(
   if (head.checkpoint && !checkpoint) {
     throw new Error("storage spine head points to a missing checkpoint");
   }
-  const publicPage = yield* readAllPublicRoots();
+  const publicPage = checkpoint
+    ? yield* readAllPublicRoots(head, checkpoint)
+    : { roots: [], pages: 0 };
   const terminalEntries = yield* readAllTerminalEntries();
   const streamed = yield* streamPrivateEvidence(handle);
   if (streamed.journalEntries === 0 || streamed.replayEntries === 0) {
     throw new Error("storage spine verifier did not stream private journal and replay evidence");
+  }
+  if ((yield* readPreparedContextEvidence(handle)) === 0) {
+    throw new Error("storage spine verifier found no prepared model context objects");
   }
   const physical = readStorageReport(handle.database, metrics.metrics());
   if (
@@ -285,7 +320,8 @@ async function produce(databasePath: string, expectedPath: string): Promise<void
     const options: TestRigOptions = {
       binding: "in-process",
       modelId: ACCEPTANCE_MODEL_ID,
-      scenarioTimeoutMs: 60_000,
+      barrierTimeoutMs: profile === "default" ? 30_000 : 20_000,
+      scenarioTimeoutMs: profile === "default" ? 150_000 : 90_000,
       createApplication,
     };
     await withTestScenario(options, driveTurns);

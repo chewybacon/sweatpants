@@ -114,21 +114,6 @@ export {
 } from "./event-stream.ts";
 
 export {
-  getConversationCheckpointId,
-  getConversationIndexId,
-  recordConversationCheckpoint,
-  recordConversationSession,
-  readLatestConversationCheckpoint,
-  resolveLatestConversationSession,
-} from "./conversation-index.ts";
-
-export {
-  decodeConversationCheckpoint,
-  encodeConversationCheckpoint,
-  ConversationCheckpointError,
-} from "./conversation-checkpoint.ts";
-
-export {
   createSharedStorage,
   createSharedBufferStore,
   createSharedRegistryStore,

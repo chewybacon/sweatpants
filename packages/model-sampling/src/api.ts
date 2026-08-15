@@ -1,7 +1,8 @@
 import { createContext, type Operation } from "effection";
 import { createApi } from "effection/experimental";
 import type { ProgramPlacementContextValue } from "@sweatpants/durable-effects";
-import type { ModelSampleRequest, ModelSampleDisposition } from "./contract.ts";
+import type { ModelContextSource, ModelSampleRequest, ModelSampleDisposition } from "./contract.ts";
+import type { ModelContext } from "@sweatpants/model-provider";
 
 export interface ModelSampleAttempt {
   /** Durable routing outcome that selected the current service. */
@@ -35,6 +36,10 @@ export class ModelSamplingUnavailable extends Error {
     this.name = "ModelSamplingUnavailable";
   }
 }
+
+export const ModelContextSourceResolverContext = createContext<
+  ((source: ModelContextSource) => Operation<ModelContext>) | undefined
+>("model-sampling:context-source-resolver", undefined);
 
 const ModelSamplingServiceContext = createContext<ModelSamplingService | undefined>(
   "model-sampling:service",

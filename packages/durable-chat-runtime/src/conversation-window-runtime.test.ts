@@ -1,0 +1,476 @@
+import type { Message } from "@ag-ui/core";
+import { call, run, useScope } from "effection";
+import { describe, expect, it } from "vitest";
+import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
+import type { ConversationHead, ConversationStore } from "@sweatpants/history-store/contract";
+import {
+  acceptedPublicMessageFact,
+  buildConversationWindow,
+  persistConversationCheckpoint,
+} from "./conversation-persistence.ts";
+import { createDurableChatHandler } from "./durable-handler/handler.ts";
+import { createHostScopeOwner, installHostScopeOwner } from "./host/host-scope.ts";
+import { installDurableStreamsOwner } from "./response-streams/owner.ts";
+import { setupInMemoryDurableStreams } from "./response-streams/setup.ts";
+import {
+  createProjectionTokenKeyring,
+  mintPublicHistoryCursor,
+  verifyPublicHistoryCursor,
+  verifyWindowToken,
+} from "./projection-tokens.ts";
+
+const keyring = createProjectionTokenKeyring("window-runtime-test-key-material-32-bytes");
+
+function message(id: string, content: string): Message {
+  return { id, role: "user", content };
+}
+
+function historyRequest(conversationId: string, cursor: string): Request {
+  return new Request(`http://localhost/api/chat/${conversationId}/history:page`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cursor }),
+  });
+}
+
+function* initialize(store: ConversationStore, conversationId: string) {
+  const result = yield* store.compareAndSwapHead(conversationId, null, null, {
+    state: "idle",
+    checkpoint: null,
+    terminalHistory: null,
+    activeLogicalTurnId: null,
+    activeExecutionId: null,
+    latestCompletedExecutionId: null,
+    activeSegment: null,
+    activeCommand: null,
+    deletedAt: null,
+    ownerTransition: { kind: "clear" },
+  });
+  if (result.status !== "committed") throw new Error("failed to initialize conversation");
+  return result.head;
+}
+
+function* publish(
+  store: ConversationStore,
+  head: ConversationHead,
+  facts: readonly ReturnType<typeof acceptedPublicMessageFact>[],
+  causeKey: string,
+) {
+  return yield* persistConversationCheckpoint(store, {
+    conversationId: head.conversationId,
+    causeKey,
+    cause: { kind: "test", causeKey },
+    roots: facts,
+    proposal: {
+      state: "idle",
+      activeLogicalTurnId: null,
+      activeExecutionId: null,
+      latestCompletedExecutionId: head.latestCompletedExecutionId,
+      activeSegment: null,
+      activeCommand: null,
+      deletedAt: null,
+      ownerTransition: { kind: "clear" },
+    },
+    createdAt: Date.now(),
+    expectedRevision: head.revision,
+    expectedOwnerEpoch: head.ownerEpoch,
+    targets: {
+      spill: { maxRoots: 1, maxEncodedBytes: 8 * 1024 * 1024 },
+      segment: { maxEntries: 8, maxEncodedBytes: 8 * 1024 * 1024 },
+    },
+  });
+}
+
+describe("native ConversationWindow production", () => {
+  it("uses reset initially and continue with complete prior-hot and newly allocated spill catch-up", async () => {
+    await run(function* () {
+      const store = createMemoryConversationStore();
+      const conversationId = "window-runtime";
+      const now = Date.now();
+      const initial = yield* initialize(store, conversationId);
+      const first = yield* publish(
+        store,
+        initial,
+        [acceptedPublicMessageFact(message("user-1", "one"))],
+        "first",
+      );
+      let initialHistoryReads = 0;
+      const hydrationStore = new Proxy(store, {
+        get(target, property, receiver) {
+          if (property === "readPublicHistoryBefore") {
+            return function* (
+              request: Parameters<ConversationStore["readPublicHistoryBefore"]>[0],
+            ) {
+              initialHistoryReads += 1;
+              return yield* target.readPublicHistoryBefore(request);
+            };
+          }
+          const value = Reflect.get(target, property, receiver) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as ConversationStore;
+      const firstWindow = yield* buildConversationWindow({
+        store: hydrationStore,
+        conversationId,
+        head: first.head,
+        checkpoint: first.checkpoint,
+        keyring,
+        now,
+      });
+      expect(firstWindow.windowMode).toBe("reset");
+      expect(initialHistoryReads).toBe(0);
+      expect(firstWindow.hotRoots.map((root) => root.position)).toEqual(["0"]);
+      expect(firstWindow.olderHistoryCursor).toBeNull();
+      const firstBasis = yield* call(() =>
+        verifyWindowToken(firstWindow.windowToken, keyring, now + 1),
+      );
+      expect(firstBasis).toMatchObject({
+        hotRootPositions: ["0"],
+        nextPublicPosition: "1",
+      });
+
+      const second = yield* publish(
+        store,
+        first.head,
+        [
+          acceptedPublicMessageFact(message("user-2", "two")),
+          acceptedPublicMessageFact(message("user-3", "three")),
+        ],
+        "second",
+      );
+      const continued = yield* buildConversationWindow({
+        store,
+        conversationId,
+        head: second.head,
+        checkpoint: second.checkpoint,
+        keyring,
+        knownWindowToken: firstWindow.windowToken,
+        now: now + 100,
+      });
+      expect(continued.windowMode).toBe("continue");
+      expect(continued.hotRoots.map((root) => root.position)).toEqual(["2"]);
+      expect(continued.sealedCatchupRoots.map((root) => root.position)).toEqual(["0", "1"]);
+      expect(continued.olderHistoryCursor).not.toBeNull();
+
+      const corruptStore = {
+        ...store,
+        *readPublicHistoryBefore() {
+          return { roots: [], nextBeforePosition: null };
+        },
+      } as ConversationStore;
+      let corruption: unknown;
+      try {
+        yield* buildConversationWindow({
+          store: corruptStore,
+          conversationId,
+          head: second.head,
+          checkpoint: second.checkpoint,
+          keyring,
+          knownWindowToken: firstWindow.windowToken,
+          now: now + 101,
+        });
+      } catch (error) {
+        corruption = error;
+      }
+      expect(corruption).toMatchObject({ code: "public_root_conflict" });
+
+      const cursor = yield* call(() =>
+        verifyPublicHistoryCursor(continued.olderHistoryCursor!, keyring, now + 101),
+      );
+      expect(cursor).toMatchObject({
+        lineageId: second.checkpoint.lineageId,
+        beforePosition: "3",
+        archiveFrontierOrdinal: "2",
+      });
+
+      const handler = createDurableChatHandler({
+        conversationStore: store,
+        projectionTokens: keyring,
+        programDriverJournalStore: {} as never,
+        *authorizeHistoryRead() {
+          return "authorized" as const;
+        },
+      });
+      const pageResponse = yield* call(() =>
+        handler(
+          new Request(`http://localhost/api/chat/${conversationId}/history:page`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cursor: continued.olderHistoryCursor }),
+          }),
+        ),
+      );
+      expect(pageResponse.status).toBe(200);
+      expect(pageResponse.headers.get("cache-control")).toBe("private, no-store");
+      const pageBody = (yield* call(() => pageResponse.json())) as {
+        roots: Array<{ position: string }>;
+        nextOlderCursor: string | null;
+      };
+      expect(pageBody.roots.map((root) => root.position)).toEqual(["0", "1"]);
+      expect(pageBody.nextOlderCursor).toBeNull();
+
+      const forbidden = createDurableChatHandler({
+        conversationStore: store,
+        projectionTokens: keyring,
+        programDriverJournalStore: {} as never,
+        *authorizeHistoryRead() {
+          return "forbidden" as const;
+        },
+      });
+      const forbiddenResponse = yield* call(() =>
+        forbidden(
+          new Request(`http://localhost/api/chat/${conversationId}/history:page`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cursor: "invalid.token" }),
+          }),
+        ),
+      );
+      expect(forbiddenResponse.status).toBe(403);
+
+      const reset = yield* buildConversationWindow({
+        store,
+        conversationId,
+        head: second.head,
+        checkpoint: second.checkpoint,
+        keyring,
+        knownWindowToken: "invalid.token",
+        now: now + 200,
+      });
+      expect(reset.windowMode).toBe("reset");
+      expect(reset.sealedCatchupRoots).toEqual([]);
+
+      let oversized = second;
+      for (let batch = 0; batch < 3; batch += 1) {
+        oversized = yield* publish(
+          store,
+          oversized.head,
+          Array.from({ length: 200 }, (_, index) =>
+            acceptedPublicMessageFact(
+              message(`oversized-${batch}-${index}`, `batch ${batch} message ${index}`),
+            ),
+          ),
+          `oversized-${batch}`,
+        );
+      }
+      const oversizedWindow = yield* buildConversationWindow({
+        store,
+        conversationId,
+        head: oversized.head,
+        checkpoint: oversized.checkpoint,
+        keyring,
+        knownWindowToken: firstWindow.windowToken,
+        now: now + 300,
+      });
+      expect(oversizedWindow.windowMode).toBe("reset");
+      expect(oversizedWindow.sealedCatchupRoots).toEqual([]);
+    });
+  });
+
+  it("hydrates through the production handler with one head and checkpoint read and no archive read", async () => {
+    await run(function* () {
+      const store = createMemoryConversationStore();
+      const conversationId = "bounded-handler-hydration";
+      const initial = yield* initialize(store, conversationId);
+      const published = yield* publish(
+        store,
+        initial,
+        [
+          acceptedPublicMessageFact(message("hydration-1", "one")),
+          acceptedPublicMessageFact(message("hydration-2", "two")),
+        ],
+        "bounded-handler-hydration",
+      );
+      expect(BigInt(published.checkpoint.archiveFrontierOrdinal)).toBeGreaterThan(0n);
+      let headReads = 0;
+      let checkpointReads = 0;
+      let historyReads = 0;
+      const observedStore = new Proxy(store, {
+        get(target, property, receiver) {
+          if (property === "loadHead") {
+            return function* (id: string) {
+              headReads += 1;
+              return yield* target.loadHead(id);
+            };
+          }
+          if (property === "getCheckpoint") {
+            return function* (pointer: { checkpointId: string }) {
+              checkpointReads += 1;
+              return yield* target.getCheckpoint(pointer);
+            };
+          }
+          if (property === "readPublicHistoryBefore") {
+            return function* (
+              request: Parameters<ConversationStore["readPublicHistoryBefore"]>[0],
+            ) {
+              historyReads += 1;
+              return yield* target.readPublicHistoryBefore(request);
+            };
+          }
+          const value = Reflect.get(target, property, receiver) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as ConversationStore;
+      const scope = yield* useScope();
+      const owner = createHostScopeOwner(scope);
+      yield* installHostScopeOwner(owner);
+      yield* installDurableStreamsOwner(owner);
+      yield* setupInMemoryDurableStreams();
+      const handler = createDurableChatHandler({
+        conversationStore: observedStore,
+        projectionTokens: keyring,
+        programDriverJournalStore: {} as never,
+        *authorizeHistoryRead() {
+          return "authorized" as const;
+        },
+      });
+      const scopedHandler = handler.withScope(scope);
+      const response = yield* call(() =>
+        scopedHandler(
+          new Request("http://localhost/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clientId: "hydration-client",
+              conversationId,
+            }),
+          }),
+        ),
+      );
+      expect(response.status).toBe(200);
+      const frames = (yield* call(() => response.text()))
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { type: string });
+      expect(frames.map((frame) => frame.type)).toEqual([
+        "sweatpants.conversation-window.v1",
+        "sweatpants.conversation-authority.v1",
+      ]);
+      expect(headReads).toBe(1);
+      expect(checkpointReads).toBe(1);
+      expect(historyReads).toBe(0);
+    });
+  });
+
+  it("authenticates before token/store access and maps the complete history status matrix", async () => {
+    await run(function* () {
+      const store = createMemoryConversationStore();
+      const conversationId = "history-status";
+      const now = Date.now();
+      const initial = yield* initialize(store, conversationId);
+      const published = yield* publish(
+        store,
+        initial,
+        [acceptedPublicMessageFact(message("user-status", "status"))],
+        "status",
+      );
+      const validPayload = {
+        lineageId: published.checkpoint.lineageId,
+        basisRevision: published.head.revision,
+        archiveFrontierOrdinal: published.checkpoint.archiveFrontierOrdinal,
+        nextPublicPosition: published.checkpoint.nextPublicPosition,
+        hotRootPositions: ["0"],
+        beforePosition: published.checkpoint.nextPublicPosition,
+        issuedAt: now - 1_000,
+        expiresAt: now + 60_000,
+      } as const;
+      const validCursor = yield* call(() => mintPublicHistoryCursor(validPayload, keyring));
+      let headReads = 0;
+      const observedStore = new Proxy(store, {
+        get(target, property, receiver) {
+          if (property === "loadHead") {
+            return function* (id: string) {
+              headReads += 1;
+              return yield* target.loadHead(id);
+            };
+          }
+          const value = Reflect.get(target, property, receiver) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as ConversationStore;
+      const handler = (
+        authorization: "authorized" | "unauthenticated" | "forbidden",
+        selectedStore: ConversationStore = observedStore,
+      ) =>
+        createDurableChatHandler({
+          conversationStore: selectedStore,
+          projectionTokens: keyring,
+          programDriverJournalStore: {} as never,
+          *authorizeHistoryRead() {
+            return authorization;
+          },
+        });
+
+      expect(
+        (yield* call(() =>
+          handler("unauthenticated")(historyRequest(conversationId, "invalid.token")),
+        )).status,
+      ).toBe(401);
+      expect(headReads).toBe(0);
+      expect(
+        (yield* call(() => handler("forbidden")(historyRequest(conversationId, "invalid.token"))))
+          .status,
+      ).toBe(403);
+      expect(headReads).toBe(0);
+      expect(
+        (yield* call(() => handler("authorized")(historyRequest(conversationId, "invalid.token"))))
+          .status,
+      ).toBe(400);
+      expect(headReads).toBe(0);
+
+      expect(
+        (yield* call(() =>
+          handler("authorized")(historyRequest("missing-conversation", validCursor)),
+        )).status,
+      ).toBe(404);
+
+      const deletedStore = createMemoryConversationStore();
+      const deletedInitial = yield* initialize(deletedStore, "deleted-conversation");
+      const deleted = yield* deletedStore.compareAndSwapHead(
+        "deleted-conversation",
+        deletedInitial.revision,
+        deletedInitial.ownerEpoch,
+        {
+          state: "deleted",
+          checkpoint: null,
+          terminalHistory: null,
+          activeLogicalTurnId: null,
+          activeExecutionId: null,
+          latestCompletedExecutionId: null,
+          activeSegment: null,
+          activeCommand: null,
+          deletedAt: now,
+          ownerTransition: { kind: "clear" },
+        },
+      );
+      expect(deleted.status).toBe("committed");
+      expect(
+        (yield* call(() =>
+          handler("authorized", deletedStore)(historyRequest("deleted-conversation", validCursor)),
+        )).status,
+      ).toBe(410);
+
+      const expiredCursor = yield* call(() =>
+        mintPublicHistoryCursor(
+          { ...validPayload, issuedAt: now - 2_000, expiresAt: now - 1 },
+          keyring,
+        ),
+      );
+      const readsBeforeExpired = headReads;
+      expect(
+        (yield* call(() => handler("authorized")(historyRequest(conversationId, expiredCursor))))
+          .status,
+      ).toBe(409);
+      expect(headReads).toBe(readsBeforeExpired);
+
+      const crossLineageCursor = yield* call(() =>
+        mintPublicHistoryCursor({ ...validPayload, lineageId: "another-lineage" }, keyring),
+      );
+      expect(
+        (yield* call(() =>
+          handler("authorized")(historyRequest(conversationId, crossLineageCursor)),
+        )).status,
+      ).toBe(409);
+    });
+  });
+});

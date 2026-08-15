@@ -1459,7 +1459,18 @@ export function foldAGUIEvent(state: ChatProjectionState, event: AGUIEvent): Cha
       return updateTool(next, event.toolCallId, (node) => {
         const data = node.publicData;
         const output = parseJsonOrString(event.content);
-        return { ...node, state: "output-available", publicData: { ...data, output } };
+        const disposition = toolDisposition(output);
+        return disposition.state === "output-error"
+          ? {
+              ...node,
+              state: "output-error",
+              publicData: { ...data, errorText: disposition.errorText },
+            }
+          : {
+              ...node,
+              state: "output-available",
+              publicData: { ...data, output: disposition.output },
+            };
       });
     }
     case EventType.ACTIVITY_SNAPSHOT:
@@ -1469,6 +1480,28 @@ export function foldAGUIEvent(state: ChatProjectionState, event: AGUIEvent): Cha
     default:
       return state;
   }
+}
+
+function toolDisposition(
+  value: Json,
+):
+  | { readonly state: "output-available"; readonly output: Json }
+  | { readonly state: "output-error"; readonly errorText: string } {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    if (value["status"] === "ok" && "output" in value) {
+      return { state: "output-available", output: value["output"]! };
+    }
+    if (value["status"] === "error" && typeof value["errorText"] === "string") {
+      return { state: "output-error", errorText: value["errorText"] };
+    }
+    if (value["status"] === "cancelled") {
+      return { state: "output-error", errorText: "Tool execution was cancelled" };
+    }
+    if (value["status"] === "interrupted" && value["outcome"] === "unknown") {
+      return { state: "output-error", errorText: "Tool outcome is unknown after interruption" };
+    }
+  }
+  return { state: "output-available", output: value };
 }
 
 function elicitFact(node: PublicElicitActivityNode): ClientElicitFact {

@@ -1,5 +1,9 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { applyHistoryPolicy, type HistoryPolicy } from "@sweatpants/chat-core";
+import {
+  applyHistoryPolicy,
+  type HistoryPolicy,
+  type HistoryPolicyDecision,
+} from "@sweatpants/chat-core";
 import type {
   Model,
   ModelContext,
@@ -24,7 +28,11 @@ export type ModelCallerEvidence =
 
 export type ModelInvocationDecision =
   | { type: "tool-catalog-bound"; digest: string }
-  | { type: "history-policy"; policy: string; decisionCount: number };
+  | {
+      type: "history-policy";
+      policy: string;
+      decisions: readonly HistoryPolicyDecision[];
+    };
 
 export interface ModelInvocationPlan {
   readonly caller: ModelCallerEvidence;
@@ -115,7 +123,7 @@ export function planModelInvocation(input: {
           {
             type: "history-policy" as const,
             policy: input.historyPolicy.name,
-            decisionCount: history.decisions.length,
+            decisions: history.decisions,
           },
         ]
       : []),

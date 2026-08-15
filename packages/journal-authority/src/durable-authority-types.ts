@@ -411,6 +411,7 @@ export type DurableTaskRecoveryState =
       readonly activeTasks: readonly {
         readonly taskId: string;
         readonly executionEpoch: number;
+        readonly attachmentId: string;
       }[];
     }
   | {
@@ -429,6 +430,128 @@ export type DurableOperationState =
       readonly outcome?: OperationOutcome;
     }
   | { readonly status: "not_found" };
+
+export interface ValidateElicitResponseRequest {
+  readonly sessionId: string;
+  readonly pullId: string;
+  readonly participantId: string;
+  readonly completion: Json;
+}
+
+export type ValidateElicitResponseResult =
+  | {
+      readonly status: "valid";
+      readonly taskId: string;
+      readonly audience: string;
+      readonly outcome: OperationOutcome;
+    }
+  | {
+      readonly status:
+        | "not_pending"
+        | "audience_invalid"
+        | "expired"
+        | "schema_validation_failed"
+        | "schema_version_unavailable";
+    };
+
+export type ModelContextPolicyDecision =
+  | {
+      readonly type: "include-range";
+      readonly fromPositionInclusive: string;
+      readonly beforePositionExclusive: string;
+      readonly reason: string;
+    }
+  | {
+      readonly type: "use-artifact";
+      readonly artifactDigest: string;
+      readonly firstUncoveredPosition: string;
+      readonly reason: string;
+    }
+  | {
+      readonly type: "drop-causal-group";
+      readonly fromPositionInclusive: string;
+      readonly beforePositionExclusive: string;
+      readonly reason: string;
+    }
+  | {
+      readonly type: "history-policy";
+      readonly policyId: string;
+      readonly action: "drop_turn" | "drop_message";
+      readonly reason: string;
+      readonly roles: readonly string[];
+      readonly toolCallIds: readonly string[];
+    };
+
+export interface ModelContextPreparedFact {
+  readonly type: "ModelContextPrepared";
+  readonly executionId: string;
+  readonly taskId: string;
+  readonly pullId: string;
+  readonly contextObject: { readonly objectId: string };
+  readonly contextDigest: string;
+  readonly invocationDigest: string;
+  readonly responseModeDigest: string;
+  readonly generationOptionsDigest: string;
+  readonly sourceCheckpoint: { readonly checkpointId: string };
+  readonly sourceArchiveHeadSegmentId: string | null;
+  readonly sourceArchiveFrontierOrdinal: string;
+  readonly sourceNextPublicPosition: string;
+  readonly acceptedCommandId: string;
+  readonly policyId: string;
+  readonly policyDecisions: readonly ModelContextPolicyDecision[];
+  readonly budgetId: string;
+  readonly budgetDigest: string;
+  readonly toolCatalogDigest: string;
+  readonly model: { readonly provider: string; readonly id: string };
+  readonly publicMessageId: string;
+}
+
+export interface AcceptPullPreparationRequest {
+  readonly executionId: string;
+  readonly taskId: string;
+  readonly pullId: string;
+  /** Exact active attempt fence authorizing provider dispatch. */
+  readonly expectedOwnerFence: string;
+  readonly kind: "model-context";
+  readonly fact: ModelContextPreparedFact;
+}
+
+export type AcceptPullPreparationResult =
+  | { readonly status: "accepted" | "duplicate" }
+  | {
+      readonly status: "pull_not_pending" | "stale_owner" | "identity_conflict";
+    };
+
+export interface AuthorizeModelDispatchRequest {
+  readonly executionId: string;
+  readonly taskId: string;
+  readonly pullId: string;
+  readonly expectedOwnerFence: string;
+  readonly invocationDigest: string;
+}
+
+export type AuthorizeModelDispatchResult =
+  | { readonly status: "authorized"; readonly fact: ModelContextPreparedFact }
+  | {
+      readonly status: "pull_not_pending" | "stale_owner" | "not_prepared" | "identity_conflict";
+    };
+
+export interface AssistantPartialAcceptedFact {
+  readonly type: "AssistantPartialAccepted";
+  readonly messageId: string;
+  readonly text: string;
+  readonly disposition: "interrupted" | "provider-error";
+}
+
+export interface AcceptAssistantPartialRequest {
+  readonly executionId: string;
+  readonly taskId: string;
+  readonly pullId: string;
+  readonly expectedOwnerFence: string;
+  readonly fact: AssistantPartialAcceptedFact;
+}
+
+export type AcceptAssistantPartialResult = AcceptPullPreparationResult;
 
 /** Narrow authority port mediating every durable state transition. */
 export interface DurableJournalAuthorityService {
@@ -451,6 +574,10 @@ export interface DurableJournalAuthorityService {
     taskId: string,
     pullId: string,
   ): Operation<DurableOperationState>;
+  /** Validates an exact pending elicitation without mutating durable authority. */
+  validateElicitResponse(
+    request: ValidateElicitResponseRequest,
+  ): Operation<ValidateElicitResponseResult>;
   /** Lists exact schema digests referenced by nonterminal durable tasks for readiness/retirement. */
   nonterminalSchemaDigests(): Operation<string[]>;
   /** Lists runnable work plus expired in-flight ownership for restart recovery. */
@@ -488,6 +615,24 @@ export interface DurableJournalAuthorityService {
   ensureChildTask(request: EnsureChildTaskRequest): Operation<EnsureChildTaskResult>;
   /** Reserves an operation before any host side effect is dispatched. */
   reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult>;
+  /** Returns accepted model preparation identity without exposing other journal state. */
+  pullPreparation(
+    sessionId: string,
+    taskId: string,
+    pullId: string,
+  ): Operation<ModelContextPreparedFact | null>;
+  /** Accepts immutable provider-input identity before any model dispatch. */
+  acceptPullPreparation(
+    request: AcceptPullPreparationRequest,
+  ): Operation<AcceptPullPreparationResult>;
+  /** Rechecks the accepted preparation and current attempt immediately before provider I/O. */
+  authorizeModelDispatch(
+    request: AuthorizeModelDispatchRequest,
+  ): Operation<AuthorizeModelDispatchResult>;
+  /** Accepts one typed public assistant partial before pull settlement. */
+  acceptAssistantPartial(
+    request: AcceptAssistantPartialRequest,
+  ): Operation<AcceptAssistantPartialResult>;
   /** Commits a capability-authorized operation outcome. */
   resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
   /** Appends an ordered durable emission idempotently. */

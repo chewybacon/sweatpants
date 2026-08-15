@@ -23,7 +23,7 @@ describe("yo-chat chat application composition", () => {
 
     // Quote style belongs to the formatter; the invariant is the import target.
     expect(route).toMatch(/from ["']\.\.\/server\/chat-application["']/);
-    expect(route).toContain("chatApp.handle(request)");
+    expect(route).toContain("chatApp.handle(await withDefaultSystemPrompt(request))");
     expect(route).toContain("withDefaultSystemPrompt(request)");
     expect(route.split("\n").length).toBeLessThanOrEqual(30);
 

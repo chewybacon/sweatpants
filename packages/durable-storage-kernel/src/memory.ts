@@ -166,7 +166,11 @@ export function createMemoryDurableKernel(): DurableKernel {
       const positionKey = entry.aliases
         .map((key) => decodeDurableKey(key))
         .find((key) => {
-          const required = taskCollection ? 4 : 3;
+          const required = taskCollection
+            ? 4
+            : entry.record.collection === "conversation-public-root-index"
+              ? 2
+              : 3;
           return key.length >= required && scope.every((part, index) => key[index] === part);
         });
       if (!positionKey) {

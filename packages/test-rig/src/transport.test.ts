@@ -4,20 +4,34 @@ import { createStreamTransportHandle } from "./transport.ts";
 function response(body: ReadableStream<Uint8Array>): Response {
   return new Response(body, {
     status: 200,
-    headers: { "x-session-id": "stream-session", "content-type": "application/x-ndjson" },
+    headers: { "content-type": "application/x-ndjson" },
   });
 }
 
 const encode = (value: string) => new TextEncoder().encode(value);
+const started = () => JSON.stringify({ type: "RUN_STARTED", threadId: "test", runId: "run" });
 
 describe("stream transport checkpoints", () => {
-  it("checkpoints only through consumed frames from a multi-frame chunk", async () => {
+  it("checkpoints only the latest opaque window basis, never a response offset", async () => {
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(
           encode(
-            `${JSON.stringify({ lsn: 1, event: { type: "FIRST" } })}\n` +
-              `${JSON.stringify({ lsn: 2, event: { type: "SECOND" } })}\n`,
+            `${started()}\n` +
+              `${JSON.stringify({
+                type: "sweatpants.conversation-window.v1",
+                conversationId: "test",
+                lineageId: "lineage:test",
+                basisRevision: "1",
+                windowToken: "opaque-window-token",
+                windowMode: "reset",
+                archiveFrontierOrdinal: "0",
+                nextPublicPosition: "0",
+                hotRoots: [],
+                sealedCatchupRoots: [],
+                applicationState: {},
+                olderHistoryCursor: null,
+              })}\n`,
           ),
         );
         controller.close();
@@ -26,10 +40,13 @@ describe("stream transport checkpoints", () => {
     const transport = createStreamTransportHandle(async () => response(body), 100);
     const stream = await transport.openTurn({ conversationId: "test", message: "test" });
 
-    await stream.expectEvent("FIRST");
-    expect(stream.checkpoint()).toEqual({ sessionId: "stream-session", offset: 1 });
-    await stream.expectEvent("SECOND");
-    expect(stream.checkpoint()).toEqual({ sessionId: "stream-session", offset: 2 });
+    await stream.expectEvent("RUN_STARTED");
+    expect(stream.events).toHaveLength(1);
+    await stream.expectEvent("sweatpants.conversation-window.v1");
+    expect(stream.checkpoint()).toEqual({
+      conversationId: "test",
+      knownWindowToken: "opaque-window-token",
+    });
   });
 
   it("can retry after a timed-out event wait without concurrent reader reads", async () => {
@@ -42,9 +59,9 @@ describe("stream transport checkpoints", () => {
     const transport = createStreamTransportHandle(async () => response(body), 20);
     const stream = await transport.openTurn({ conversationId: "test", message: "test" });
 
-    await expect(stream.expectEvent("LATE")).rejects.toThrow(/barrier_timeout/);
-    controller.enqueue(encode(`${JSON.stringify({ lsn: 3, event: { type: "LATE" } })}\n`));
-    expect(await stream.expectEvent("LATE")).toMatchObject({ lsn: 3 });
+    await expect(stream.expectEvent("RUN_STARTED")).rejects.toThrow(/barrier_timeout/);
+    controller.enqueue(encode(`${started()}\n`));
+    expect(await stream.expectEvent("RUN_STARTED")).toMatchObject({ sequence: 1 });
     await stream.disconnect();
   });
 });

@@ -7,14 +7,11 @@ import {
 } from "@sweatpants/durable-storage-kernel";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { assertCheckpointBounds } from "./checkpoint-bounds.ts";
-import {
-  assertCheckpointPayload,
-  checkpointHotRoots,
-  checkpointHotSealedRootCount,
-} from "./checkpoint-payload.ts";
+import { assertCheckpointPayload, checkpointHotRoots } from "./checkpoint-payload.ts";
 import { rootPayloadBytes } from "./segmentation.ts";
 import {
   ConversationStoreError,
+  type ArchivedPublicRootIndex,
   type CommandReceipt,
   type ConversationHead,
   type StoredCheckpoint,
@@ -67,6 +64,20 @@ function pointer(value: Json | undefined, label: string): { checkpointId: string
   }
   const object = record(value ?? null, label);
   return { checkpointId: text(object["checkpointId"], `${label}.checkpointId`) };
+}
+
+function publicArchivePointer(
+  value: Json | undefined,
+  label: string,
+): { segmentId: string } | null {
+  if (value === null) {
+    return null;
+  }
+  const object = record(value ?? null, label);
+  if (Object.keys(object).length !== 1) {
+    return invalid(`${label} must contain only segmentId`);
+  }
+  return { segmentId: text(object["segmentId"], `${label}.segmentId`) };
 }
 
 function historyPointer(
@@ -159,7 +170,13 @@ export function decodeCommandReceipt(value: Uint8Array): CommandReceipt {
 
 function validateCheckpointBounds(payload: Json, encodedBytes: number): void {
   const roots = checkpointHotRoots(payload);
-  const sealed = checkpointHotSealedRootCount(payload);
+  const mutable = roots.filter(
+    (root) =>
+      root !== null &&
+      typeof root === "object" &&
+      !Array.isArray(root) &&
+      root["state"] === "mutable",
+  ).length;
   const payloadRecord =
     payload !== null && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
   const continuation = payloadRecord?.["continuation"];
@@ -171,7 +188,7 @@ function validateCheckpointBounds(payload: Json, encodedBytes: number): void {
   assertCheckpointBounds({
     encodedBytes,
     totalRoots: roots.length,
-    mutableRoots: roots.length - sealed,
+    mutableRoots: mutable,
     openInterrupts: Array.isArray(openInterrupts) ? openInterrupts.length : 0,
     largestInlineRootBytes: Math.max(
       0,
@@ -202,14 +219,16 @@ export function decodeCheckpoint(value: Uint8Array): StoredCheckpoint {
   const result: StoredCheckpoint = {
     checkpointId: text(object["checkpointId"], "checkpoint.checkpointId"),
     conversationId: text(object["conversationId"], "checkpoint.conversationId"),
+    lineageId: text(object["lineageId"], "checkpoint.lineageId"),
     causeKey: text(object["causeKey"], "checkpoint.causeKey"),
     cause: nullableJson(object["cause"], "checkpoint.cause"),
     contentHash: text(object["contentHash"], "checkpoint.contentHash"),
-    archiveHead: historyPointer(object["archiveHead"], "checkpoint.archiveHead"),
-    archiveThroughPosition: counter(
-      object["archiveThroughPosition"],
-      "checkpoint.archiveThroughPosition",
+    archiveHead: publicArchivePointer(object["archiveHead"], "checkpoint.archiveHead"),
+    archiveFrontierOrdinal: counter(
+      object["archiveFrontierOrdinal"],
+      "checkpoint.archiveFrontierOrdinal",
     ),
+    nextPublicPosition: counter(object["nextPublicPosition"], "checkpoint.nextPublicPosition"),
     payload,
     encodedBytes: natural(object["encodedBytes"], "checkpoint.encodedBytes"),
     createdAt: natural(object["createdAt"], "checkpoint.createdAt"),
@@ -229,11 +248,32 @@ function jsonArray(value: Json | undefined, field: string): readonly Json[] {
   return Array.isArray(value) ? value : invalid(`${field} must be an array`);
 }
 
+function rootPosition(root: Json, label: string): bigint {
+  const value = record(root, label);
+  if (value["state"] !== "sealed") {
+    return invalid(`${label} must be sealed before archival`);
+  }
+  return BigInt(counter(value["position"], `${label}.position`));
+}
+
 function validatePublicSegmentBounds(segment: StoredPublicArchiveSegment): void {
-  const first = BigInt(counter(segment.firstPosition, "publicSegment.firstPosition"));
-  const last = BigInt(counter(segment.lastPosition, "publicSegment.lastPosition"));
-  if (last < first || last - first + 1n !== BigInt(segment.roots.length)) {
-    return invalid(`Public archive segment ${segment.segmentId} has an invalid position range`);
+  if (segment.roots.length === 0) {
+    return invalid(`Public archive segment ${segment.segmentId} must contain roots`);
+  }
+  const positions = segment.roots.map((root, index) =>
+    rootPosition(root, `publicSegment.roots[${index}]`),
+  );
+  const unique = new Set(positions.map((position) => position.toString(10)));
+  if (unique.size !== positions.length) {
+    return invalid(`Public archive segment ${segment.segmentId} contains duplicate positions`);
+  }
+  const min = positions.reduce((left, right) => (left < right ? left : right));
+  const max = positions.reduce((left, right) => (left > right ? left : right));
+  if (
+    min !== BigInt(counter(segment.minPosition, "publicSegment.minPosition")) ||
+    max !== BigInt(counter(segment.maxPosition, "publicSegment.maxPosition"))
+  ) {
+    return invalid(`Public archive segment ${segment.segmentId} has invalid position metadata`);
   }
   const payloadBytes = rootPayloadBytes(segment.roots);
   const singletonLegal = segment.roots.length === 1 && payloadBytes <= 1024 * 1024;
@@ -262,9 +302,9 @@ export function decodePublicSegment(value: Uint8Array): StoredPublicArchiveSegme
   const result: StoredPublicArchiveSegment = {
     segmentId: text(object["segmentId"], "publicSegment.segmentId"),
     conversationId: text(object["conversationId"], "publicSegment.conversationId"),
-    previous: historyPointer(object["previous"], "publicSegment.previous"),
-    firstPosition: counter(object["firstPosition"], "publicSegment.firstPosition"),
-    lastPosition: counter(object["lastPosition"], "publicSegment.lastPosition"),
+    previous: publicArchivePointer(object["previous"], "publicSegment.previous"),
+    minPosition: counter(object["minPosition"], "publicSegment.minPosition"),
+    maxPosition: counter(object["maxPosition"], "publicSegment.maxPosition"),
     roots: jsonArray(object["roots"], "publicSegment.roots"),
     contentHash: text(object["contentHash"], "publicSegment.contentHash"),
     encodedBytes: natural(object["encodedBytes"], "publicSegment.encodedBytes"),
@@ -287,6 +327,48 @@ function validateTerminalRange(value: StoredTerminalSegment): void {
   if (last < first || last - first + 1n !== BigInt(value.entries.length)) {
     return invalid(`Terminal segment ${value.segmentId} has an invalid position range`);
   }
+}
+
+export function encodeArchivedPublicRootIndex(value: ArchivedPublicRootIndex): Uint8Array {
+  counter(value.position, "publicRootIndex.position");
+  counter(value.archiveOrdinal, "publicRootIndex.archiveOrdinal");
+  if (!Number.isSafeInteger(value.segmentRootIndex) || value.segmentRootIndex < 0) {
+    return invalid("publicRootIndex.segmentRootIndex must be a non-negative safe integer");
+  }
+  if (!Number.isSafeInteger(value.encodedBytes) || value.encodedBytes < 0) {
+    return invalid("publicRootIndex.encodedBytes must be a non-negative safe integer");
+  }
+  return jsonEncode(value);
+}
+
+export function decodeArchivedPublicRootIndex(value: Uint8Array): ArchivedPublicRootIndex {
+  const object = record(decodeJsonValue(value, "public root index"), "public root index");
+  const expected = new Set([
+    "conversationId",
+    "position",
+    "rootId",
+    "segmentId",
+    "segmentRootIndex",
+    "archiveOrdinal",
+    "contentHash",
+    "encodedBytes",
+  ]);
+  if (
+    Object.keys(object).length !== expected.size ||
+    Object.keys(object).some((key) => !expected.has(key))
+  ) {
+    return invalid("Public root index has an invalid persisted shape");
+  }
+  return {
+    conversationId: text(object["conversationId"], "publicRootIndex.conversationId"),
+    position: counter(object["position"], "publicRootIndex.position"),
+    rootId: text(object["rootId"], "publicRootIndex.rootId"),
+    segmentId: text(object["segmentId"], "publicRootIndex.segmentId"),
+    segmentRootIndex: natural(object["segmentRootIndex"], "publicRootIndex.segmentRootIndex"),
+    archiveOrdinal: counter(object["archiveOrdinal"], "publicRootIndex.archiveOrdinal"),
+    contentHash: text(object["contentHash"], "publicRootIndex.contentHash"),
+    encodedBytes: natural(object["encodedBytes"], "publicRootIndex.encodedBytes"),
+  };
 }
 
 export function encodeTerminalSegment(value: StoredTerminalSegment): Uint8Array {
@@ -326,8 +408,12 @@ export const conversationKeys = Object.freeze({
   checkpointCause: (conversationId: string, causeKey: string) =>
     durableKey(conversationId, causeKey),
   publicSegment: (segmentId: string) => durableKey(segmentId),
-  publicPosition: (conversationId: string, firstPosition: string, segmentId: string) =>
-    durableKey(conversationId, firstPosition, segmentId),
+  publicPosition: (conversationId: string, minPosition: string, segmentId: string) =>
+    durableKey(conversationId, minPosition, segmentId),
+  publicRootIndex: (conversationId: string, position: string) =>
+    durableKey(conversationId, position),
+  publicRootIdentity: (conversationId: string, rootId: string) =>
+    durableKey(conversationId, "root", rootId),
   terminalSegment: (segmentId: string) => durableKey(segmentId),
   terminalPublication: (conversationId: string, publicationKey: string) =>
     durableKey(conversationId, publicationKey),

@@ -101,6 +101,9 @@ export type {
 } from "@sweatpants/chat-core";
 export {
   CONVERSATION_AUTHORITY_FRAME_TYPE,
+  CONVERSATION_WINDOW_FRAME_TYPE,
+  decodeConversationStreamEvent,
+  validateConversationSegment,
   advanceConversationAuthority,
   compareAuthorityRevisions,
   decodeConversationAuthority,

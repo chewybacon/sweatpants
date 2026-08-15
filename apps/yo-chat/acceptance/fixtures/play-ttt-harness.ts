@@ -29,6 +29,7 @@ import { createRedisExecutionStore } from "@sweatpants/execution-store-redis";
 import {
   createDurableChatHandler,
   createProgramDriverJournalStore,
+  createProjectionTokenKeyring,
   programDriverSchemaRegistry,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
@@ -66,7 +67,7 @@ const model: Model = {
 /**
  * Durable state plus the observable side-effect counter for one play_ttt
  * conversation. The substrate outlives every runtime placed over it, so a
- * runtime may be discarded and rebuilt exactly as a crashed host would be.
+ * runtime generation may be gracefully replaced without losing durable state.
  */
 export interface PlayTttSubstrate {
   readonly journalStore: ProgramDriverJournalStore;
@@ -165,6 +166,10 @@ function createApplication(
     programDriverJournalStore: journalStore,
     executionStore,
     conversationStore,
+    projectionTokens: createProjectionTokenKeyring("play-ttt-harness-window-projection-key"),
+    *authorizeHistoryRead() {
+      return "authorized" as const;
+    },
     maxToolIterations: 5,
     setup: function* () {
       yield* installModelProvider(driver);
@@ -288,12 +293,12 @@ export async function post(
 }
 
 /**
- * Posts one public chat request and abandons its response stream after
+ * Posts one public chat request and disconnects its response stream after
  * `frameBudget` frames, aborting the request signal. This is the outside-in
  * shape of a host that disappears mid-activation: the client stops reading and
  * the transport drops while durable work is still in flight.
  */
-export async function postAndAbandon(
+export async function postAndDisconnect(
   handler: (request: Request) => Promise<Response>,
   conversationId: string,
   messages: Array<{ id: string; role: string; content: string }>,
@@ -375,16 +380,12 @@ function buildChatRequest(
           },
       clientId: "play-ttt-acceptance",
       conversationId,
-      input: {
-        threadId: conversationId,
-        runId,
-        state: {},
-        messages,
-        tools: [],
-        context: [],
-        forwardedProps: {},
-        ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
-      },
+      runId,
+      ...(!resume && messages.at(-1) ? { userMessage: messages.at(-1) } : {}),
+      state: {},
+      context: [],
+      forwardedProps: {},
+      ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
     }),
   });
 }
@@ -399,8 +400,10 @@ export async function reattach(
   conversationId: string,
 ): Promise<PublicEvent[]> {
   const response = await handler(
-    new Request(`http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`, {
-      method: "GET",
+    new Request("http://localhost/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: "play-ttt-acceptance", conversationId }),
     }),
   );
   return (await response.text()).split("\n").filter(Boolean).map(parsePublicFrame);
@@ -408,14 +411,10 @@ export async function reattach(
 
 function parsePublicFrame(line: string): PublicEvent {
   const value: unknown = JSON.parse(line);
-  if (!isUnknownRecord(value) || !isUnknownRecord(value["event"])) {
+  if (!isUnknownRecord(value) || typeof value["type"] !== "string") {
     throw new Error("Invalid durable response frame");
   }
-  const event = value["event"];
-  if (typeof event["type"] !== "string") {
-    throw new Error("Durable response event has no type");
-  }
-  return event;
+  return value;
 }
 
 /** Extracts the first pending public interrupt from one response batch. */
@@ -445,7 +444,45 @@ export function publicInterrupt(events: PublicEvent[]):
   ) {
     return undefined;
   }
+  const latestWindow = events.findLast(
+    (event) => event.type === "sweatpants.conversation-window.v1",
+  );
   for (const event of events) {
+    if (
+      event === latestWindow &&
+      event.type === "sweatpants.conversation-window.v1" &&
+      Array.isArray(event["hotRoots"])
+    ) {
+      for (const root of [...event["hotRoots"]].reverse()) {
+        if (
+          !isUnknownRecord(root) ||
+          root["kind"] !== "activity-subtree" ||
+          !Array.isArray(root["nodes"])
+        ) {
+          continue;
+        }
+        for (const snapshot of [...root["nodes"]].reverse()) {
+          const activity = isUnknownRecord(snapshot) ? snapshot["event"] : undefined;
+          const content = isUnknownRecord(activity) ? activity["content"] : undefined;
+          const node = isUnknownRecord(content) ? content["node"] : undefined;
+          const data = isUnknownRecord(node) ? node["publicData"] : undefined;
+          if (
+            isUnknownRecord(node) &&
+            node["kind"] === "elicit" &&
+            node["state"] === "pending" &&
+            isUnknownRecord(data) &&
+            typeof data["elicitId"] === "string"
+          ) {
+            return {
+              id: data["elicitId"],
+              basisRevision,
+              logicalTurnId,
+              executionId,
+            };
+          }
+        }
+      }
+    }
     if (event.type !== "RUN_FINISHED" || !isUnknownRecord(event["outcome"])) {
       continue;
     }

@@ -12,8 +12,9 @@ import type {
   DurableCounter,
   HeadCommitResult,
   HistoryPointer,
-  PublicArchivePage,
   PublicArchivePointer,
+  PublicHistoryReadPage,
+  ReadPublicHistoryBeforeRequest,
   StoredCheckpoint,
   StoredPublicArchiveSegment,
   StoredTerminalSegment,
@@ -67,11 +68,9 @@ export const ConversationStorePort = definePort<ConversationStore>("conversation
   *putPublicArchiveSegment(_segment: StoredPublicArchiveSegment): Operation<PublicArchivePointer> {
     return unavailable();
   },
-  *readPublicArchivePage(
-    _conversationId: string,
-    _cursor?: string,
-    _limit?: number,
-  ): Operation<PublicArchivePage> {
+  *readPublicHistoryBefore(
+    _request: ReadPublicHistoryBeforeRequest,
+  ): Operation<PublicHistoryReadPage> {
     return unavailable();
   },
   *putTerminalHistorySegment(_segment: StoredTerminalSegment): Operation<HistoryPointer> {

@@ -1,5 +1,5 @@
 import type { Operation, Stream } from "effection";
-import type { JsonObject } from "@sweatpants/foundation";
+import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { Model, StreamOptions } from "@sweatpants/model-provider";
 import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
 import type { ToolRuntime } from "@sweatpants/tool-runtime";
@@ -8,7 +8,7 @@ import type { StreamEvent, ChatHistoryEntry } from "../handler/types.ts";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
-import type { Json } from "@sweatpants/foundation";
+import type { ProjectionTokenKeyring } from "../projection-tokens.ts";
 
 import type {
   ChatHandlerSetup,
@@ -20,8 +20,6 @@ export type {
   ChatHandlerSetup,
   ChatHandlerSetupContext,
   ChatRequestBody,
-  DurableStreamEvent,
-  DurableStreamParams,
   ElicitResponse,
   PluginAbortRequest,
 } from "../handler/chat-types.ts";
@@ -60,9 +58,12 @@ export interface ProgramRuntimeChatEngineParams {
    * - conversationId keys the crank journal
    * - agUiRun.threadId is always the wire alias of conversationId
    * - agUiRun.runId is ephemeral turn correlation only
-   * - HTTP X-Session-Id (response stream) never appears here
+   * - server-internal response-tail identity never appears here
    */
   conversationId: string;
+  conversationStore: ConversationStore;
+  /** Trusted participant bound to newly opened elicitation audiences. */
+  participantId: string;
   agUiRun: AgUiRunMetadata;
   /** Reattach existing canonical input without interpreting an empty GET body as replacement. */
   recoveryOnly?: boolean;
@@ -75,15 +76,19 @@ export interface ProgramRuntimeChatEngineParams {
   onResumeAccepted?: () => Operation<void>;
   pluginAbort?: PluginAbortRequest;
   /** Publishes a bounded nonterminal checkpoint for a parked execution. */
-  publishCheckpoint?: (request: {
-    events: readonly StreamEvent[];
-  }) => Operation<ConversationAuthority>;
+  publishCheckpoint?: (request: { events: readonly StreamEvent[] }) => Operation<{
+    readonly authority: ConversationAuthority;
+    readonly window?: import("@sweatpants/chat-core").ConversationWindowFrame;
+  }>;
   /** Commits accepted terminal authority output and publishes Session History. */
   publishTerminal(request: {
     outcome: Json;
     disposition: "completed" | "failed" | "cancelled";
     events: readonly StreamEvent[];
-  }): Operation<ConversationAuthority>;
+  }): Operation<{
+    readonly authority: ConversationAuthority;
+    readonly window?: import("@sweatpants/chat-core").ConversationWindowFrame;
+  }>;
 }
 
 export type ProgramRuntimeChatEngine = Stream<StreamEvent, void>;
@@ -92,6 +97,8 @@ export type ProgramRuntimeChatEngine = Stream<StreamEvent, void>;
  * Durable handler configuration. ProgramRuntime is the sole execution engine,
  * and its journal authority MUST be supplied by the host composition.
  */
+export type HistoryReadAuthorization = "authorized" | "unauthenticated" | "forbidden";
+
 export interface DurableChatHandlerConfig {
   setup?: ChatHandlerSetup;
   maxToolIterations?: number;
@@ -102,8 +109,15 @@ export interface DurableChatHandlerConfig {
   executionStore?: ExecutionStore;
   /** Authoritative conversation persistence; shared for Host replacement. */
   conversationStore?: ConversationStore;
+  /** Integrity keys for opaque window/history projection tokens. */
+  projectionTokens: ProjectionTokenKeyring;
+  /** Projection token validity; defaults to fifteen minutes. */
+  projectionTokenTtlMs?: number;
+  /** Authenticates and authorizes history reads before token verification or store access. */
+  authorizeHistoryRead: (
+    request: Request,
+    conversationId: string,
+  ) => Operation<HistoryReadAuthorization>;
   /** Lowers spill/segment targets for the durability walking skeleton. */
   storageProfile?: "low" | "default";
-  /** Non-fatal persistence observation; test harnesses may fail on any callback. */
-  onCheckpointError?: (error: unknown) => void;
 }

@@ -1,12 +1,12 @@
 /**
  * Durable chat transport ingress.
  *
- * The public request is a Sweatpants control envelope around AG-UI's owned
- * `RunAgentInput`. This module validates that boundary once, converts AG-UI
- * messages through Chat Core's codec, and leaves no compatibility message or
- * tool-call readers behind.
+ * The public request is the strict native Sweatpants command/reconnect
+ * envelope. This module validates that boundary once, converts only the one
+ * admitted send-message user value through Chat Core's codec, and leaves no
+ * transcript-bearing compatibility reader behind.
  */
-import { RunAgentInputSchema } from "@ag-ui/core";
+import { EventType } from "@ag-ui/core";
 import { z } from "zod";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
@@ -14,51 +14,26 @@ import {
   failure,
   parser,
   success,
-  type ParseIssue,
   type ParseResult,
   type Parser,
 } from "@sweatpants/foundation";
-import { agUiMessagesToChatHistoryEntries } from "@sweatpants/chat-core/ag-ui";
-import type { ConversationCommand, ResumeEntry } from "@sweatpants/chat-core";
+import {
+  agUiMessagesToChatHistoryEntries,
+  decodeAGUIEvent,
+  type ConversationCommand,
+  type ResumeEntry,
+} from "@sweatpants/chat-core";
 import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ChatRequestBody, ElicitResponse } from "./chat-types.ts";
 import type { OpenInterruptRecord } from "../interrupts/index.ts";
 
-const MAX_REQUEST_MESSAGES = 4_096;
-const MAX_REQUEST_TOOLS = 1_024;
 const MAX_REQUEST_CONTEXT_ENTRIES = 1_024;
-const MAX_REQUEST_RESUME_ENTRIES = 256;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Reject deleted OpenAI-compatible spellings before AG-UI's permissive parser can strip them. */
-function rejectLegacyMessageFields(value: unknown, path = "$.input", seen = new WeakSet()): void {
-  if (value === null || typeof value !== "object") {
-    return;
-  }
-  if (seen.has(value)) {
-    return;
-  }
-  seen.add(value);
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => rejectLegacyMessageFields(item, `${path}[${index}]`, seen));
-    return;
-  }
-  const record = value as Record<string, unknown>;
-  for (const key of ["tool_calls", "tool_call_id"]) {
-    if (Object.prototype.hasOwnProperty.call(record, key)) {
-      throw new Error(`${path}.${key} is a removed compatibility field`);
-    }
-  }
-  for (const [key, item] of Object.entries(record)) {
-    rejectLegacyMessageFields(item, `${path}.${key}`, seen);
-  }
-}
-
 const jsonValueSchema = z.json();
-const runAgentInputParser = parser(RunAgentInputSchema.strict());
 const streamOptionsSchema = z
   .object({
     apiKey: z.string().max(4_096).nullable().optional(),
@@ -144,13 +119,26 @@ const conversationCommandSchema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 
-/** Sweatpants-owned command; `input` remains AG-UI presentation/model input. */
-const chatTransportRequestSchema = z
+/** Sweatpants-owned native command request. */
+const chatCommandRequestSchema = z
   .object({
     command: conversationCommandSchema,
-    input: z.unknown(),
     clientId: z.string().min(1).max(512),
     conversationId: z.string().min(1).max(512),
+    knownWindowToken: z
+      .string()
+      .min(1)
+      .max(128 * 1024)
+      .optional(),
+    userMessage: z.unknown().optional(),
+    runId: z.string().min(1).max(512).optional(),
+    parentRunId: z.string().min(1).max(512).optional(),
+    state: jsonValueSchema.optional(),
+    context: z
+      .array(z.object({ description: z.string(), value: z.string() }).strict())
+      .max(MAX_REQUEST_CONTEXT_ENTRIES)
+      .optional(),
+    forwardedProps: jsonValueSchema.optional(),
     systemPrompt: z
       .string()
       .max(64 * 1024)
@@ -167,6 +155,20 @@ const chatTransportRequestSchema = z
       .optional(),
   })
   .strict();
+
+const chatReconnectRequestSchema = z
+  .object({
+    clientId: z.string().min(1).max(512),
+    conversationId: z.string().min(1).max(512),
+    knownWindowToken: z
+      .string()
+      .min(1)
+      .max(128 * 1024)
+      .optional(),
+  })
+  .strict();
+
+const chatTransportRequestSchema = z.union([chatCommandRequestSchema, chatReconnectRequestSchema]);
 
 const chatTransportRequestStructureParser = parser(chatTransportRequestSchema);
 
@@ -255,20 +257,19 @@ function normalizeChatRequestBody(
   controls: z.output<typeof chatTransportRequestSchema>,
 ): ParseResult<ChatRequestBody> {
   try {
-    rejectLegacyMessageFields(controls.input);
-    const bounds = verifyRunAgentInputBounds(controls.input);
-    if (!bounds.ok) {
-      return bounds;
-    }
-    const input = runAgentInputParser.parse(controls.input);
-    if (!input.ok) {
-      return prefixFailure(input.issues, ["input"]);
-    }
-    if (input.value.resume !== undefined) {
-      return failure({
-        path: ["input", "resume"],
-        message: "resume belongs to the respond-to-elicit command",
-        code: "invalid_chat_request",
+    if (!("command" in controls)) {
+      return success({
+        clientId: controls.clientId,
+        conversationId: controls.conversationId,
+        threadId: controls.conversationId,
+        ...(controls.knownWindowToken === undefined
+          ? {}
+          : { knownWindowToken: controls.knownWindowToken }),
+        messages: [],
+        state: {},
+        tools: [],
+        context: [],
+        forwardedProps: {},
       });
     }
     const command = decodeConversationCommand(controls.command);
@@ -304,7 +305,30 @@ function normalizeChatRequestBody(
             },
           ]
         : [];
-    const messages = agUiMessagesToChatHistoryEntries(input.value.messages);
+    const messages = (() => {
+      if (command.type === "send-message") {
+        if (controls.userMessage === undefined) {
+          throw new Error("send-message requires userMessage");
+        }
+        const snapshot = decodeAGUIEvent({
+          type: EventType.MESSAGES_SNAPSHOT,
+          messages: [controls.userMessage],
+        });
+        if (
+          snapshot.type !== EventType.MESSAGES_SNAPSHOT ||
+          snapshot.messages.length !== 1 ||
+          snapshot.messages[0]?.role !== "user" ||
+          snapshot.messages[0].id !== command.messageId
+        ) {
+          throw new Error("send-message userMessage must be the matching user message");
+        }
+        return agUiMessagesToChatHistoryEntries([snapshot.messages[0]]);
+      }
+      if (controls.userMessage !== undefined) {
+        throw new Error(`${command.type} must not carry userMessage`);
+      }
+      return [];
+    })();
     const streamOptions = decodeStreamOptions(controls.streamOptions);
     const pluginAbort =
       command.type === "interrupt-turn"
@@ -312,16 +336,19 @@ function normalizeChatRequestBody(
         : undefined;
     return success({
       command,
+      ...(controls.knownWindowToken === undefined
+        ? {}
+        : { knownWindowToken: controls.knownWindowToken }),
       clientId: controls.clientId,
       conversationId: controls.conversationId,
       messageId: command.commandId,
-      threadId: input.value.threadId,
-      runId: input.value.runId,
-      ...(input.value.parentRunId === undefined ? {} : { parentRunId: input.value.parentRunId }),
-      state: input.value.state,
-      tools: input.value.tools,
-      context: input.value.context,
-      forwardedProps: input.value.forwardedProps,
+      threadId: controls.conversationId,
+      ...(controls.runId === undefined ? {} : { runId: controls.runId }),
+      ...(controls.parentRunId === undefined ? {} : { parentRunId: controls.parentRunId }),
+      state: controls.state ?? {},
+      tools: [],
+      context: controls.context ?? [],
+      forwardedProps: controls.forwardedProps ?? {},
       ...(resume === undefined ? {} : { resume }),
       messages,
       ...(controls.systemPrompt === undefined ? {} : { systemPrompt: controls.systemPrompt }),
@@ -370,35 +397,6 @@ export function parseChatRequestBody(value: unknown): ChatRequestBody {
     issue?.code === "invalid_chat_request"
       ? issue.message
       : `Chat request shape is invalid: ${message || "invalid request"}`,
-  );
-}
-
-function verifyRunAgentInputBounds(input: unknown): ParseResult<void> {
-  if (!isRecord(input)) {
-    return success(undefined);
-  }
-  for (const [path, value, maximum] of [
-    [["input", "messages"], input["messages"], MAX_REQUEST_MESSAGES],
-    [["input", "tools"], input["tools"], MAX_REQUEST_TOOLS],
-    [["input", "context"], input["context"], MAX_REQUEST_CONTEXT_ENTRIES],
-    [["input", "resume"], input["resume"], MAX_REQUEST_RESUME_ENTRIES],
-  ] as const) {
-    if (Array.isArray(value) && value.length > maximum) {
-      return failure({ path, message: `entry count exceeds ${maximum}`, code: "too_big" });
-    }
-  }
-  return success(undefined);
-}
-
-function prefixFailure<T = never>(
-  issues: readonly ParseIssue[],
-  prefix: readonly (string | number)[],
-): ParseResult<T> {
-  return failure(
-    issues.map((issue) => ({
-      ...issue,
-      path: [...prefix, ...issue.path],
-    })),
   );
 }
 

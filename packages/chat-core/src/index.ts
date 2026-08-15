@@ -101,6 +101,8 @@ export type {
   ChatQueueOptions,
   ChatQueueOption,
   ChatUISnapshot,
+  ChatHistoryError,
+  ChatHistoryStatus,
   QueuedUserMessage,
   UserMessageInput,
   SendMessageOptions,
@@ -160,6 +162,10 @@ export {
 } from "./chat-client-codec.ts";
 export type { ChatProtocolErrorCode } from "./chat-client-codec.ts";
 export * from "./conversation-protocol.ts";
+export * from "./conversation-window.ts";
+export * from "./conversation-stream-validator.ts";
+export * from "./conversation-stream-codec.ts";
+export * from "./window-projection.ts";
 export {
   ChatProjectionError,
   createChatProjection,
@@ -246,7 +252,6 @@ export {
 export type {
   ChatConversionErrorCode,
   ChatConversionDirection,
-  DurableFrame,
   AgUiCustomState,
   AgUiRunMetadata,
   ElicitRequestStreamEvent,

@@ -4,7 +4,9 @@ import {
   type ImmutableEnsure,
   type StoredAuthorityRecord,
 } from "@sweatpants/durable-storage-kernel";
+import { canonicalSnapshot } from "@sweatpants/foundation";
 import type {
+  ArchivedPublicRootIndex,
   CommandAdmissionRequest,
   CommandAdmissionResult,
   CommandReceipt,
@@ -19,6 +21,7 @@ import type {
 import {
   conversationKeys,
   decodeAuthorityHead,
+  encodeArchivedPublicRootIndex,
   encodeCheckpoint,
   encodeCommandReceipt,
   encodeConversationHead,
@@ -173,12 +176,23 @@ export function publicSegmentEnsure(
     alternateKeys: [
       conversationKeys.publicPosition(
         segment.conversationId,
-        segment.firstPosition,
+        segment.minPosition,
         segment.segmentId,
       ),
     ],
     fingerprint: segment.contentHash,
     value: encodePublicSegment(segment),
+  };
+}
+
+export function publicRootIndexEnsure(entry: ArchivedPublicRootIndex): ImmutableEnsure {
+  return {
+    name: `public-root-${entry.position}`,
+    collection: DurableCollections.conversationPublicRootIndex,
+    key: conversationKeys.publicRootIndex(entry.conversationId, entry.position),
+    alternateKeys: [conversationKeys.publicRootIdentity(entry.conversationId, entry.rootId)],
+    fingerprint: canonicalSnapshot(entry).sha,
+    value: encodeArchivedPublicRootIndex(entry),
   };
 }
 
@@ -222,25 +236,54 @@ export function planConversationCommit(input: {
     throw new Error("terminal segment is outside the committed conversation");
   }
   const archiveSegments = request.publicArchiveSegments ?? [];
+  const archiveById = new Map(archiveSegments.map((segment) => [segment.segmentId, segment]));
+  const seenRootIds = new Set<string>();
+  const seenRootPositions = new Set<string>();
+  const seenArchiveOrdinals = new Set<string>();
+  for (const entry of request.publicArchiveRootIndex ?? []) {
+    if (entry.conversationId !== request.conversationId) {
+      throw new Error("public root index entry is outside the committed conversation");
+    }
+    if (seenRootIds.has(entry.rootId) || seenRootPositions.has(entry.position)) {
+      throw new Error("conversation commit contains duplicate public root identity or position");
+    }
+    if (seenArchiveOrdinals.has(entry.archiveOrdinal)) {
+      throw new Error("conversation commit contains duplicate public archive ordinal");
+    }
+    seenRootIds.add(entry.rootId);
+    seenRootPositions.add(entry.position);
+    seenArchiveOrdinals.add(entry.archiveOrdinal);
+    const segment = archiveById.get(entry.segmentId);
+    if (!segment) {
+      throw new Error("public root index must reference a segment committed atomically with it");
+    }
+    const root = segment.roots[entry.segmentRootIndex];
+    if (root === undefined) {
+      throw new Error("public root index points outside its archive segment");
+    }
+    const rootObject =
+      root !== null && typeof root === "object" && !Array.isArray(root) ? root : null;
+    const rootSnapshot = canonicalSnapshot(root);
+    const rootBytes = new TextEncoder().encode(rootSnapshot.canonical).byteLength;
+    if (
+      rootObject?.["rootId"] !== entry.rootId ||
+      rootObject?.["position"] !== entry.position ||
+      rootSnapshot.sha !== entry.contentHash ||
+      rootBytes !== entry.encodedBytes
+    ) {
+      throw new Error("public root index disagrees with its archive root");
+    }
+  }
   for (let index = 1; index < archiveSegments.length; index += 1) {
     const previous = archiveSegments[index - 1]!;
     const segment = archiveSegments[index]!;
-    if (
-      segment.previous?.segmentId !== previous.segmentId ||
-      segment.previous.lastPosition !== previous.lastPosition ||
-      counter(segment.firstPosition, "archive first position") !==
-        counter(previous.lastPosition, "archive previous position") + 1n
-    ) {
-      throw new Error("conversation commit contains a non-contiguous public archive chain");
+    if (segment.previous?.segmentId !== previous.segmentId) {
+      throw new Error("conversation commit contains an invalid public archive insertion chain");
     }
   }
   const lastArchive = archiveSegments.at(-1);
-  if (
-    lastArchive &&
-    (request.checkpoint?.archiveHead?.segmentId !== lastArchive.segmentId ||
-      request.checkpoint.archiveHead.lastPosition !== lastArchive.lastPosition)
-  ) {
-    throw new Error("checkpoint does not select the committed public archive frontier");
+  if (lastArchive && request.checkpoint?.archiveHead?.segmentId !== lastArchive.segmentId) {
+    throw new Error("checkpoint does not select the committed public archive insertion head");
   }
   if (
     current === null
@@ -275,6 +318,7 @@ export function planConversationCommit(input: {
     ...(request.publicArchiveSegments ?? []).map((segment, index) =>
       publicSegmentEnsure(segment, index),
     ),
+    ...(request.publicArchiveRootIndex ?? []).map((entry) => publicRootIndexEnsure(entry)),
     ...(request.checkpoint ? [checkpointEnsure(request.checkpoint)] : []),
     ...(request.terminalHistorySegment
       ? [terminalSegmentEnsure(request.terminalHistorySegment)]

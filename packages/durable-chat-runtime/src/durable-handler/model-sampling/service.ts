@@ -1,6 +1,12 @@
 import { EventType } from "@ag-ui/core";
 import { call, race, type Operation } from "effection";
-import { replaceControlCharacters } from "@sweatpants/foundation";
+import {
+  assertJson,
+  canonicalSnapshot,
+  replaceControlCharacters,
+  stableTupleHash,
+  type Json,
+} from "@sweatpants/foundation";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
   ModelProviderApi,
@@ -8,14 +14,267 @@ import {
   type Model,
   type StreamOptions,
 } from "@sweatpants/model-provider";
-import { settleModelSample, type ModelSamplingService } from "@sweatpants/model-sampling";
-import type { HistoryPolicy } from "@sweatpants/chat-core";
+import {
+  decodeModelSampleRequest,
+  encodeModelSampleSourceRequest,
+  settleModelSample,
+  type ModelContextSource,
+  type ModelSampleSourceRequest,
+  type ModelSamplingService,
+} from "@sweatpants/model-sampling";
+import {
+  agUiMessagesToChatHistoryEntries,
+  decodePublicProjectionRoot,
+  type HistoryPolicy,
+  type PublicProjectionRoot,
+} from "@sweatpants/chat-core";
+import { decodeModelContext, type ModelContext } from "@sweatpants/model-provider";
+import { ExecutionStoreApi } from "@sweatpants/journal-authority/api";
+import type {
+  ModelContextPolicyDecision,
+  ModelContextPreparedFact,
+} from "@sweatpants/journal-authority";
+import type { ConversationStore } from "@sweatpants/history-store/contract";
+import type { ProgramDriverJournal } from "../program-driver-journal.ts";
 import { useLogger } from "../../logger/index.ts";
 import type { ChatToolCatalog } from "../program-driver-schema.ts";
-import { planModelInvocation } from "./plan.ts";
+import { planModelInvocation, type ModelInvocationDecision } from "./plan.ts";
+import { readAllPublicRootsForModel } from "../../conversation-persistence.ts";
+import { projectChatHistory } from "./history.ts";
 import { TurnEventApi } from "./turn-event-api.ts";
 
 const MAX_PARTIAL_TEXT_LENGTH = 32_768;
+const MAX_PREPARED_CONTEXT_BYTES = 64 * 1024 * 1024;
+
+interface PreparedModelInvocation {
+  readonly version: 1;
+  readonly model: { readonly provider: string; readonly id: string };
+  readonly context: ModelContext;
+  readonly options: Json;
+  readonly response: Json;
+  readonly delivery: Json;
+  readonly decisions: Json;
+}
+
+function contextPolicyDecisions(
+  decisions: readonly ModelInvocationDecision[],
+): readonly ModelContextPolicyDecision[] {
+  return decisions.flatMap((decision) =>
+    decision.type === "history-policy"
+      ? decision.decisions.map((historyDecision) => ({
+          type: "history-policy" as const,
+          policyId: decision.policy,
+          action: historyDecision.action,
+          reason: historyDecision.reason,
+          roles: historyDecision.roles,
+          toolCallIds: historyDecision.toolCallIds,
+        }))
+      : [],
+  );
+}
+
+export function preparedModelContextByteLimit(contextWindow: number): number {
+  if (!Number.isSafeInteger(contextWindow) || contextWindow <= 0) {
+    throw new CrankError(
+      "model_context_limit_exceeded",
+      "Model context window must be a positive finite integer",
+    );
+  }
+  return Math.min(MAX_PREPARED_CONTEXT_BYTES, contextWindow * 8);
+}
+
+function semanticOptions(value: Record<string, unknown>): Json {
+  const { signal: _signal, apiKey: _apiKey, env: _env, ...semantic } = value;
+  return canonicalSnapshot(semantic as Json).value;
+}
+
+function decodePreparedInvocation(value: unknown): PreparedModelInvocation {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new CrankError("model_context_source_invalid", "Prepared model context is invalid");
+  }
+  const input = value as Record<string, unknown>;
+  const expected = new Set([
+    "version",
+    "model",
+    "context",
+    "options",
+    "response",
+    "delivery",
+    "decisions",
+  ]);
+  if (
+    input["version"] !== 1 ||
+    Object.keys(input).length !== expected.size ||
+    Object.keys(input).some((key) => !expected.has(key))
+  ) {
+    throw new CrankError("model_context_source_invalid", "Prepared model context shape is invalid");
+  }
+  const model = input["model"];
+  if (model === null || typeof model !== "object" || Array.isArray(model)) {
+    throw new CrankError("model_context_source_invalid", "Prepared model identity is invalid");
+  }
+  const modelRecord = model as Record<string, unknown>;
+  if (typeof modelRecord["provider"] !== "string" || typeof modelRecord["id"] !== "string") {
+    throw new CrankError("model_context_source_invalid", "Prepared model identity is invalid");
+  }
+  return {
+    version: 1,
+    model: { provider: modelRecord["provider"], id: modelRecord["id"] },
+    context: decodeModelContext(input["context"]),
+    options: canonicalSnapshot(input["options"] as Json).value,
+    response: canonicalSnapshot(input["response"] as Json).value,
+    delivery: canonicalSnapshot(input["delivery"] as Json).value,
+    decisions: canonicalSnapshot(input["decisions"] as Json).value,
+  };
+}
+
+function* loadPreparedInvocation(
+  fact: ModelContextPreparedFact,
+  model: Model,
+): Operation<PreparedModelInvocation> {
+  const stored = yield* ExecutionStoreApi.operations.getObject(fact.contextObject);
+  if (!stored || stored.contentHash !== fact.invocationDigest) {
+    throw new CrankError(
+      "model_context_source_invalid",
+      "Accepted prepared model context object is missing or corrupt",
+    );
+  }
+  const prepared = decodePreparedInvocation(stored.body);
+  if (
+    prepared.model.provider !== fact.model.provider ||
+    prepared.model.id !== fact.model.id ||
+    prepared.model.provider !== model.provider ||
+    prepared.model.id !== model.id ||
+    canonicalSnapshot(prepared.context).sha !== fact.contextDigest ||
+    canonicalSnapshot(prepared).sha !== fact.invocationDigest
+  ) {
+    throw new CrankError(
+      "model_context_identity_conflict",
+      "Accepted model preparation differs from the current provider identity",
+    );
+  }
+  return prepared;
+}
+
+export function* prepareModelSampleEffectInput(
+  input: Json,
+  conversationId: string,
+): Operation<Json> {
+  const request = decodeModelSampleRequest(input);
+  const context = canonicalSnapshot(request.invocation.context);
+  const byteLength = new TextEncoder().encode(context.canonical).byteLength;
+  const objectId = stableTupleHash(["model-context-source", conversationId, context.sha]);
+  const object = yield* ExecutionStoreApi.operations.putObject({
+    objectId,
+    lifetimeScope: "conversation",
+    scopeOwnerId: conversationId,
+    objectKind: "model-context-source.v1",
+    contentHash: context.sha,
+    byteLength,
+    body: assertJson(context.value),
+    createdAt: Date.now(),
+  });
+  const sourceRequest: ModelSampleSourceRequest = {
+    ...request,
+    invocation: {
+      context: { type: "object", object, digest: context.sha },
+      ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
+    },
+  };
+  return encodeModelSampleSourceRequest(sourceRequest);
+}
+
+function modelContextMessagesFromRoots(roots: readonly Json[]): ModelContext["messages"] {
+  const messages = roots
+    .map((root) => decodePublicProjectionRoot(root))
+    .filter(
+      (root): root is Extract<PublicProjectionRoot, { kind: "message" }> => root.kind === "message",
+    )
+    .sort((left, right) => {
+      const a = BigInt(left.position);
+      const b = BigInt(right.position);
+      return a === b ? 0 : a < b ? -1 : 1;
+    })
+    .map((root) => root.message);
+  return projectChatHistory(agUiMessagesToChatHistoryEntries(messages));
+}
+
+export function* resolveModelContextSource(
+  source: ModelContextSource,
+  options: {
+    readonly conversationStore?: ConversationStore;
+    readonly maxCanonicalBytes?: number;
+  } = {},
+): Operation<ModelContext> {
+  if (source.type === "conversation") {
+    if (!options.conversationStore) {
+      throw new CrankError(
+        "model_context_source_invalid",
+        "Conversation context source requires the conversation store",
+      );
+    }
+    if (source.contextArtifact) {
+      throw new CrankError(
+        "model_context_source_invalid",
+        "Conversation context artifacts require an explicit coverage planner",
+      );
+    }
+    const head = yield* options.conversationStore.loadHead(source.conversationId);
+    if (
+      !head ||
+      !head.checkpoint ||
+      head.checkpoint.checkpointId !== source.checkpoint.checkpointId ||
+      head.activeExecutionId !== source.executionId
+    ) {
+      throw new CrankError(
+        "model_context_source_invalid",
+        "Conversation context source no longer matches the authoritative head",
+      );
+    }
+    const activeCommand =
+      head.activeCommand &&
+      typeof head.activeCommand === "object" &&
+      !Array.isArray(head.activeCommand)
+        ? head.activeCommand
+        : null;
+    if (activeCommand?.["commandId"] !== source.acceptedCommandId) {
+      throw new CrankError(
+        "model_context_source_invalid",
+        "Conversation context source command identity is stale",
+      );
+    }
+    const checkpoint = yield* options.conversationStore.getCheckpoint(source.checkpoint);
+    if (!checkpoint) {
+      throw new CrankError(
+        "model_context_source_invalid",
+        "Conversation context checkpoint is missing",
+      );
+    }
+    const roots = yield* readAllPublicRootsForModel(
+      options.conversationStore,
+      source.conversationId,
+      checkpoint,
+      options.maxCanonicalBytes ?? MAX_PREPARED_CONTEXT_BYTES,
+    );
+    return { messages: modelContextMessagesFromRoots(roots), tools: [] };
+  }
+  const stored = yield* ExecutionStoreApi.operations.getObject(source.object);
+  if (
+    !stored ||
+    stored.objectKind !== "model-context-source.v1" ||
+    stored.contentHash !== source.digest
+  ) {
+    throw new CrankError(
+      "model_context_source_invalid",
+      "Model context source object is missing or corrupt",
+    );
+  }
+  const context = decodeModelContext(stored.body);
+  if (canonicalSnapshot(context).sha !== source.digest) {
+    throw new CrankError("model_context_source_invalid", "Model context source digest differs");
+  }
+  return context;
+}
 
 export function safeProviderErrorMessage(value: string | undefined): string | undefined {
   if (!value) return undefined;
@@ -32,6 +291,9 @@ export function createHostModelSamplingService(options: {
   streamOptions?: StreamOptions;
   catalog?: ChatToolCatalog;
   historyPolicy?: HistoryPolicy;
+  journal?: ProgramDriverJournal;
+  conversationStore?: ConversationStore;
+  conversationId?: string;
   /** Execution-owned samples must use a relay, not the Host Turn event writer. */
   emitLiveEvents?: boolean;
   onLiveMessageStarted?: (messageId: string) => void;
@@ -41,7 +303,7 @@ export function createHostModelSamplingService(options: {
     // Provider streaming intentionally keeps plan, delivery, settlement, and cancellation in one pump.
     // fallow-ignore-next-line complexity
     *sample(request, attempt) {
-      const plan = planModelInvocation({
+      let plan = planModelInvocation({
         request,
         attempt,
         model: options.model,
@@ -49,6 +311,192 @@ export function createHostModelSamplingService(options: {
         ...(options.catalog ? { catalog: options.catalog } : {}),
         ...(options.historyPolicy ? { historyPolicy: options.historyPolicy } : {}),
       });
+      const existingPreparation = options.journal
+        ? yield* options.journal.authority.pullPreparation(
+            attempt.sessionId,
+            attempt.taskId,
+            attempt.pullId,
+          )
+        : null;
+      let acceptedPreparation = existingPreparation;
+      if (existingPreparation) {
+        const prepared = yield* loadPreparedInvocation(existingPreparation, options.model);
+        plan = {
+          ...plan,
+          providerRequest: {
+            model: options.model,
+            context: prepared.context,
+            options: {
+              ...(prepared.options as Record<string, unknown>),
+              signal: attempt.cancellation,
+              sessionId: attempt.pullId,
+            },
+          },
+          ...(plan.delivery.type === "outer-assistant"
+            ? {
+                delivery: {
+                  ...plan.delivery,
+                  messageId: existingPreparation.publicMessageId,
+                },
+              }
+            : {}),
+        };
+      } else if (options.journal && options.conversationStore && options.conversationId) {
+        const contextSnapshot = canonicalSnapshot(plan.providerRequest.context);
+        const prepared: PreparedModelInvocation = {
+          version: 1,
+          model: { provider: options.model.provider, id: options.model.id },
+          context: plan.providerRequest.context,
+          options: semanticOptions(plan.providerRequest.options as Record<string, unknown>),
+          response: canonicalSnapshot(plan.response as unknown as Json).value,
+          delivery: canonicalSnapshot(plan.delivery as unknown as Json).value,
+          decisions: canonicalSnapshot(plan.decisions as unknown as Json).value,
+        };
+        const invocation = canonicalSnapshot(prepared);
+        const maxCanonicalBytes = preparedModelContextByteLimit(options.model.contextWindow);
+        const byteLength = new TextEncoder().encode(invocation.canonical).byteLength;
+        if (byteLength > maxCanonicalBytes) {
+          throw new CrankError(
+            "model_context_limit_exceeded",
+            `Prepared model context ${byteLength} exceeds budget ${maxCanonicalBytes}`,
+          );
+        }
+        const head = yield* options.conversationStore.loadHead(options.conversationId);
+        if (!head?.checkpoint || !head.activeExecutionId || !head.activeCommand) {
+          throw new CrankError(
+            "model_context_source_invalid",
+            "Model preparation requires an admitted command checkpoint",
+          );
+        }
+        const checkpoint = yield* options.conversationStore.getCheckpoint(head.checkpoint);
+        const activeCommand =
+          head.activeCommand !== null &&
+          typeof head.activeCommand === "object" &&
+          !Array.isArray(head.activeCommand)
+            ? head.activeCommand
+            : null;
+        const acceptedCommandId = activeCommand?.["commandId"];
+        if (!checkpoint || typeof acceptedCommandId !== "string") {
+          throw new CrankError(
+            "model_context_source_invalid",
+            "Model preparation source checkpoint or command is missing",
+          );
+        }
+        const publicMessageId = stableTupleHash(["sweatpants.public-assistant", attempt.pullId]);
+        const objectId = stableTupleHash([
+          "prepared-model-context",
+          head.activeExecutionId,
+          attempt.taskId,
+          attempt.pullId,
+          invocation.sha,
+        ]);
+        const contextObject = yield* ExecutionStoreApi.operations.putObject({
+          objectId,
+          lifetimeScope: "execution",
+          scopeOwnerId: head.activeExecutionId,
+          objectKind: "prepared-model-context.v1",
+          contentHash: invocation.sha,
+          byteLength,
+          body: invocation.value as unknown as Json,
+          createdAt: Date.now(),
+        });
+        const budget = {
+          id: `provider:${options.model.provider}/${options.model.id}:context-window`,
+          maxCanonicalBytes,
+          contextWindow: options.model.contextWindow,
+        };
+        const fact: ModelContextPreparedFact = {
+          type: "ModelContextPrepared",
+          executionId: head.activeExecutionId,
+          taskId: attempt.taskId,
+          pullId: attempt.pullId,
+          contextObject,
+          contextDigest: contextSnapshot.sha,
+          invocationDigest: invocation.sha,
+          responseModeDigest: canonicalSnapshot(plan.response as unknown as Json).sha,
+          generationOptionsDigest: canonicalSnapshot(prepared.options).sha,
+          sourceCheckpoint: head.checkpoint,
+          sourceArchiveHeadSegmentId: checkpoint.archiveHead?.segmentId ?? null,
+          sourceArchiveFrontierOrdinal: checkpoint.archiveFrontierOrdinal,
+          sourceNextPublicPosition: checkpoint.nextPublicPosition,
+          acceptedCommandId,
+          policyId: options.historyPolicy?.name ?? "complete-causal-history",
+          policyDecisions: contextPolicyDecisions(plan.decisions),
+          budgetId: budget.id,
+          budgetDigest: canonicalSnapshot(budget).sha,
+          toolCatalogDigest:
+            options.catalog?.digest ?? stableTupleHash(["model-tools", request.tools]),
+          model: { provider: options.model.provider, id: options.model.id },
+          publicMessageId,
+        };
+        const accepted = yield* options.journal.authority.acceptPullPreparation({
+          executionId: head.activeExecutionId,
+          taskId: attempt.taskId,
+          pullId: attempt.pullId,
+          expectedOwnerFence: attempt.attemptId,
+          kind: "model-context",
+          fact,
+        });
+        if (accepted.status === "stale_owner" || accepted.status === "pull_not_pending") {
+          throw new CrankError(
+            "model_context_source_invalid",
+            "Model pull settled before preparation",
+          );
+        }
+        if (accepted.status === "identity_conflict") {
+          throw new CrankError(
+            "model_context_identity_conflict",
+            "Model pull already has another preparation identity",
+          );
+        }
+        if (accepted.status === "duplicate") {
+          const authorized = yield* options.journal.authority.authorizeModelDispatch({
+            executionId: fact.executionId,
+            taskId: fact.taskId,
+            pullId: fact.pullId,
+            expectedOwnerFence: attempt.attemptId,
+            invocationDigest: fact.invocationDigest,
+          });
+          if (authorized.status !== "authorized") {
+            throw new CrankError(
+              authorized.status === "stale_owner"
+                ? "model_context_source_invalid"
+                : "model_context_identity_conflict",
+              "Accepted model preparation could not be reloaded for retry",
+            );
+          }
+          acceptedPreparation = authorized.fact;
+          const prepared = yield* loadPreparedInvocation(authorized.fact, options.model);
+          plan = {
+            ...plan,
+            providerRequest: {
+              model: options.model,
+              context: prepared.context,
+              options: {
+                ...(prepared.options as Record<string, unknown>),
+                signal: attempt.cancellation,
+                sessionId: attempt.pullId,
+              },
+            },
+            ...(plan.delivery.type === "outer-assistant"
+              ? {
+                  delivery: {
+                    ...plan.delivery,
+                    messageId: authorized.fact.publicMessageId,
+                  },
+                }
+              : {}),
+          };
+        } else {
+          acceptedPreparation = fact;
+        }
+        if (plan.delivery.type === "outer-assistant" && acceptedPreparation) {
+          plan = {
+            ...plan,
+            delivery: { ...plan.delivery, messageId: acceptedPreparation.publicMessageId },
+          };
+        }
+      }
       const log = yield* useLogger("handler:durable:model-sample");
       log.debug(
         {
@@ -65,21 +513,74 @@ export function createHostModelSamplingService(options: {
         (yield* TurnEventApi.operations.installed());
       let partialText = "";
       let streamStarted = false;
-      const publicFailureDetails = () =>
-        streamStarted && plan.delivery.type === "outer-assistant" && partialText.length > 0
-          ? {
-              publicAssistantPartial: {
-                messageId: plan.delivery.messageId,
-                text: partialText,
-              },
-            }
-          : undefined;
+      const acceptPartial = function* (
+        disposition: "interrupted" | "provider-error",
+      ): Operation<void> {
+        if (
+          !options.journal ||
+          (!acceptedPreparation && !(options.conversationStore && options.conversationId)) ||
+          plan.delivery.type !== "outer-assistant" ||
+          partialText.length === 0
+        ) {
+          return;
+        }
+        const preparation =
+          acceptedPreparation ??
+          (yield* options.journal.authority.pullPreparation(
+            attempt.sessionId,
+            attempt.taskId,
+            attempt.pullId,
+          ));
+        if (!preparation) return;
+        const accepted = yield* options.journal.authority.acceptAssistantPartial({
+          executionId: preparation.executionId,
+          taskId: attempt.taskId,
+          pullId: attempt.pullId,
+          expectedOwnerFence: attempt.attemptId,
+          fact: {
+            type: "AssistantPartialAccepted",
+            messageId: preparation.publicMessageId,
+            text: partialText,
+            disposition,
+          },
+        });
+        if (accepted.status === "stale_owner" || accepted.status === "pull_not_pending") {
+          throw new CrankError(
+            "model_context_source_invalid",
+            "Model pull settled before assistant partial acceptance",
+          );
+        }
+        if (accepted.status === "identity_conflict") {
+          throw new CrankError(
+            "model_context_identity_conflict",
+            "Model pull already has another assistant partial",
+          );
+        }
+      };
       return yield* race([
         (function* (): Operation<
           | { status: "ok"; value: ReturnType<typeof settleModelSample> }
           | { status: "cancelled"; partial: { text: string; interrupted: true } }
         > {
           try {
+            if (options.journal && acceptedPreparation) {
+              const authorized = yield* options.journal.authority.authorizeModelDispatch({
+                executionId: acceptedPreparation.executionId,
+                taskId: attempt.taskId,
+                pullId: attempt.pullId,
+                expectedOwnerFence: attempt.attemptId,
+                invocationDigest: acceptedPreparation.invocationDigest,
+              });
+              if (authorized.status !== "authorized") {
+                throw new CrankError(
+                  authorized.status === "stale_owner"
+                    ? "model_context_source_invalid"
+                    : "model_context_identity_conflict",
+                  "Model dispatch lost its accepted preparation fence",
+                );
+              }
+              acceptedPreparation = authorized.fact;
+            }
             const stream = yield* ModelProviderApi.operations.stream(plan.providerRequest);
             const subscription = yield* stream;
             while (true) {
@@ -125,25 +626,24 @@ export function createHostModelSamplingService(options: {
             }
           } catch (error) {
             if (attempt.cancellation.aborted) {
+              yield* acceptPartial("interrupted");
               return {
                 status: "cancelled",
                 partial: { text: partialText, interrupted: true },
               };
             }
+            yield* acceptPartial("provider-error");
             if (error instanceof CrankError) {
-              throw new CrankError(error.code, error.message, publicFailureDetails(), {
+              throw new CrankError(error.code, error.message, undefined, {
                 cause: error,
               });
             }
             if (error instanceof UnsupportedModelCapabilityError) {
-              throw new CrankError(
-                "unsupported_model_capability",
-                error.message,
-                publicFailureDetails(),
-                { cause: error },
-              );
+              throw new CrankError("unsupported_model_capability", error.message, undefined, {
+                cause: error,
+              });
             }
-            throw new CrankError("model_runtime_failed", "Provider error", publicFailureDetails(), {
+            throw new CrankError("model_runtime_failed", "Provider error", undefined, {
               cause: error,
             });
           }
@@ -160,6 +660,7 @@ export function createHostModelSamplingService(options: {
                 }),
             );
           }
+          yield* acceptPartial("interrupted");
           return {
             status: "cancelled",
             partial: { text: partialText, interrupted: true },

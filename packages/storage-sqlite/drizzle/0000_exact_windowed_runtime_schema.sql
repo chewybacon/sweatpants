@@ -4,12 +4,15 @@ CREATE TABLE `sp_conversation_checkpoints` (
 	`cause_key` text NOT NULL,
 	`cause_json` text NOT NULL,
 	`content_hash` text NOT NULL,
+	`lineage_id` text NOT NULL,
 	`archive_head_segment_id` text,
-	`archive_through_position` integer NOT NULL,
+	`archive_frontier_ordinal` integer NOT NULL,
+	`next_public_position` integer NOT NULL,
 	`payload_json` text NOT NULL,
 	`encoded_bytes` integer NOT NULL,
 	`created_at` integer NOT NULL,
-	CONSTRAINT "sp_checkpoint_archive_position" CHECK("sp_conversation_checkpoints"."archive_through_position" >= 0),
+	CONSTRAINT "sp_checkpoint_archive_frontier" CHECK("sp_conversation_checkpoints"."archive_frontier_ordinal" >= 0),
+	CONSTRAINT "sp_checkpoint_next_public_position" CHECK("sp_conversation_checkpoints"."next_public_position" >= 0),
 	CONSTRAINT "sp_checkpoint_encoded_bytes" CHECK("sp_conversation_checkpoints"."encoded_bytes" >= 0)
 );
 --> statement-breakpoint
@@ -59,22 +62,41 @@ CREATE TABLE `sp_conversation_heads` (
       ))
 );
 --> statement-breakpoint
+CREATE TABLE `sp_conversation_public_root_index` (
+	`conversation_id` text NOT NULL,
+	`position` integer NOT NULL,
+	`root_id` text NOT NULL,
+	`segment_id` text NOT NULL,
+	`segment_root_index` integer NOT NULL,
+	`archive_ordinal` integer NOT NULL,
+	`content_hash` text NOT NULL,
+	`encoded_bytes` integer NOT NULL,
+	PRIMARY KEY(`conversation_id`, `position`),
+	CONSTRAINT "sp_public_root_position" CHECK("sp_conversation_public_root_index"."position" >= 0),
+	CONSTRAINT "sp_public_root_segment_index" CHECK("sp_conversation_public_root_index"."segment_root_index" >= 0),
+	CONSTRAINT "sp_public_root_archive_ordinal_check" CHECK("sp_conversation_public_root_index"."archive_ordinal" >= 0),
+	CONSTRAINT "sp_public_root_bytes" CHECK("sp_conversation_public_root_index"."encoded_bytes" >= 0)
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `sp_public_root_identity` ON `sp_conversation_public_root_index` (`conversation_id`,`root_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `sp_public_root_archive_ordinal` ON `sp_conversation_public_root_index` (`conversation_id`,`archive_ordinal`);--> statement-breakpoint
+CREATE INDEX `sp_public_root_segment` ON `sp_conversation_public_root_index` (`segment_id`,`segment_root_index`);--> statement-breakpoint
 CREATE TABLE `sp_conversation_public_segments` (
 	`segment_id` text PRIMARY KEY NOT NULL,
 	`conversation_id` text NOT NULL,
 	`previous_segment_id` text,
-	`first_position` integer NOT NULL,
-	`last_position` integer NOT NULL,
+	`min_position` integer NOT NULL,
+	`max_position` integer NOT NULL,
 	`roots_json` text NOT NULL,
 	`content_hash` text NOT NULL,
 	`encoded_bytes` integer NOT NULL,
 	`created_at` integer NOT NULL,
-	CONSTRAINT "sp_public_segment_first_position" CHECK("sp_conversation_public_segments"."first_position" >= 0),
-	CONSTRAINT "sp_public_segment_positions" CHECK("sp_conversation_public_segments"."last_position" >= "sp_conversation_public_segments"."first_position"),
+	CONSTRAINT "sp_public_segment_min_position" CHECK("sp_conversation_public_segments"."min_position" >= 0),
+	CONSTRAINT "sp_public_segment_positions" CHECK("sp_conversation_public_segments"."max_position" >= "sp_conversation_public_segments"."min_position"),
 	CONSTRAINT "sp_public_segment_bytes" CHECK("sp_conversation_public_segments"."encoded_bytes" >= 0)
 );
 --> statement-breakpoint
-CREATE INDEX `sp_public_segment_conversation_position` ON `sp_conversation_public_segments` (`conversation_id`,`first_position`,`last_position`);--> statement-breakpoint
+CREATE INDEX `sp_public_segment_conversation_position` ON `sp_conversation_public_segments` (`conversation_id`,`min_position`,`max_position`);--> statement-breakpoint
 CREATE TABLE `sp_conversation_terminal_segments` (
 	`segment_id` text PRIMARY KEY NOT NULL,
 	`conversation_id` text NOT NULL,

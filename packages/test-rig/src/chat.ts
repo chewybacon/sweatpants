@@ -172,26 +172,29 @@ function requestOptionsFetch(
 ): ChatFetch {
   return async (input, init) => {
     if ((init?.method === undefined || init.method === "POST") && typeof init?.body === "string") {
+      let body: Record<string, unknown>;
       try {
-        const body = JSON.parse(init.body) as Record<string, unknown>;
-        const runInput = body["input"];
-        if (typeof runInput !== "object" || runInput === null || Array.isArray(runInput)) {
-          throw new Error("Chat transport request is missing its RunAgentInput envelope");
-        }
-        (runInput as Record<string, unknown>)["threadId"] = conversationId;
+        body = JSON.parse(init.body) as Record<string, unknown>;
+      } catch {
+        return fetch(input, init);
+      }
+      const nativeChatRequest =
+        typeof body["clientId"] === "string" && typeof body["conversationId"] === "string";
+      if (nativeChatRequest) {
         body["conversationId"] = conversationId;
-        if (options.systemPrompt !== undefined) {
-          body["systemPrompt"] = options.systemPrompt;
-        }
-        if (options.initialToolChoice !== undefined) {
-          body["initialToolChoice"] = options.initialToolChoice;
-        }
-        if (options.streamOptions !== undefined) {
-          body["streamOptions"] = options.streamOptions;
+        const command = body["command"];
+        if (command !== null && typeof command === "object" && !Array.isArray(command)) {
+          if (options.systemPrompt !== undefined) {
+            body["systemPrompt"] = options.systemPrompt;
+          }
+          if (options.initialToolChoice !== undefined) {
+            body["initialToolChoice"] = options.initialToolChoice;
+          }
+          if (options.streamOptions !== undefined) {
+            body["streamOptions"] = options.streamOptions;
+          }
         }
         return fetch(input, { ...init, body: JSON.stringify(body) });
-      } catch {
-        // Non-JSON requests pass through unchanged.
       }
     }
     return fetch(input, init);

@@ -20,6 +20,7 @@ import { createChatApplication, createChatHandler } from "@sweatpants/agent-host
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createProgramDriverJournalStore,
+  createProjectionTokenKeyring,
   programDriverSchemaRegistry,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
@@ -109,6 +110,12 @@ export function createStudioDurableChatApplication(options: {
   const modelProvider = options.modelProvider ?? createPiAiStudioModelProvider();
   const handler = createChatHandler({
     programDriverJournalStore: journalStore,
+    projectionTokens: createProjectionTokenKeyring(
+      "yo-studio-windowed-conversation-projection-key",
+    ),
+    *authorizeHistoryRead() {
+      return "authorized" as const;
+    },
     maxToolIterations: 8,
     setup: function* () {
       yield* installPiAiModelProvider(modelProvider);

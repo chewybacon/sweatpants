@@ -1,5 +1,6 @@
 export * from "./contract.ts";
 export * from "./memory.ts";
+export * from "./observation.ts";
 export * from "./persistence.ts";
 export * from "./planners.ts";
 export * from "./port.ts";

@@ -5,7 +5,8 @@ export type ConversationStoreErrorCode =
   | "immutable_object_conflict"
   | "persisted_data_invalid"
   | "checkpoint_bound_exceeded"
-  | "segment_entry_too_large";
+  | "segment_entry_too_large"
+  | "public_root_conflict";
 
 export class ConversationStoreError extends Error {
   constructor(
@@ -29,7 +30,6 @@ export interface CheckpointPointer {
 
 export interface PublicArchivePointer {
   readonly segmentId: string;
-  readonly lastPosition: DurableCounter;
 }
 
 export interface HistoryPointer {
@@ -91,6 +91,8 @@ export interface CommitConversationRequest {
   readonly expectedOwnerEpoch: DurableCounter | null;
   readonly proposal: ConversationHeadProposal;
   readonly publicArchiveSegments?: readonly StoredPublicArchiveSegment[];
+  /** Accepted position membership published atomically with the selecting checkpoint/head. */
+  readonly publicArchiveRootIndex?: readonly ArchivedPublicRootIndex[];
   readonly checkpoint?: StoredCheckpoint;
   readonly terminalHistorySegment?: StoredTerminalSegment;
   readonly updatedAt?: Milliseconds;
@@ -108,11 +110,15 @@ export type CommitConversationResult =
 export interface StoredCheckpoint {
   readonly checkpointId: string;
   readonly conversationId: string;
+  readonly lineageId: string;
   readonly causeKey: string;
   readonly cause: Json;
   readonly contentHash: string;
   readonly archiveHead: PublicArchivePointer | null;
-  readonly archiveThroughPosition: DurableCounter;
+  /** Exclusive accepted archive membership frontier. */
+  readonly archiveFrontierOrdinal: DurableCounter;
+  /** Exclusive allocator frontier for public root positions. */
+  readonly nextPublicPosition: DurableCounter;
   readonly payload: Json;
   readonly encodedBytes: number;
   readonly createdAt: Milliseconds;
@@ -122,12 +128,46 @@ export interface StoredPublicArchiveSegment {
   readonly segmentId: string;
   readonly conversationId: string;
   readonly previous: PublicArchivePointer | null;
-  readonly firstPosition: DurableCounter;
-  readonly lastPosition: DurableCounter;
+  readonly minPosition: DurableCounter;
+  readonly maxPosition: DurableCounter;
   readonly roots: readonly Json[];
   readonly contentHash: string;
   readonly encodedBytes: number;
   readonly createdAt: Milliseconds;
+}
+
+export interface ArchivedPublicRootIndex {
+  readonly conversationId: string;
+  readonly position: DurableCounter;
+  readonly rootId: string;
+  readonly segmentId: string;
+  readonly segmentRootIndex: number;
+  readonly archiveOrdinal: DurableCounter;
+  readonly contentHash: string;
+  readonly encodedBytes: number;
+}
+
+export interface PublicProjectionBasis {
+  readonly lineageId: string;
+  readonly basisRevision: DurableCounter;
+  readonly archiveFrontierOrdinal: DurableCounter;
+  readonly nextPublicPosition: DurableCounter;
+  readonly hotRootPositions: readonly DurableCounter[];
+}
+
+export interface ReadPublicHistoryBeforeRequest {
+  readonly conversationId: string;
+  readonly basis: PublicProjectionBasis;
+  readonly beforePosition: DurableCounter;
+  readonly atOrAfterPosition?: DurableCounter;
+  readonly maxRoots: number;
+  readonly maxBytes: number;
+}
+
+export interface PublicHistoryReadPage {
+  readonly roots: readonly Json[];
+  /** Exclusive upper bound for the next read. The HTTP layer signs it into a cursor. */
+  readonly nextBeforePosition: DurableCounter | null;
 }
 
 export interface StoredTerminalSegment {
@@ -182,12 +222,6 @@ export type CommandAdmissionResult =
   | { readonly status: "state_conflict"; readonly current: ConversationHead }
   | { readonly status: "command_identity_conflict"; readonly receipt: CommandReceipt };
 
-export interface PublicArchivePage {
-  readonly roots: readonly Json[];
-  readonly nextCursor: string | null;
-  readonly head: PublicArchivePointer | null;
-}
-
 export interface TerminalHistoryPage {
   readonly entries: readonly Json[];
   readonly nextCursor: string | null;
@@ -212,11 +246,10 @@ export interface ConversationStore {
   getCheckpoint(pointer: CheckpointPointer): Operation<StoredCheckpoint | null>;
   /** Optional immutable staging; a checkpoint frontier selects authoritative content. */
   putPublicArchiveSegment(segment: StoredPublicArchiveSegment): Operation<PublicArchivePointer>;
-  readPublicArchivePage(
-    conversationId: string,
-    cursor?: string,
-    limit?: number,
-  ): Operation<PublicArchivePage>;
+  /** Bounded position-index read under a previously verified projection basis. */
+  readPublicHistoryBefore(
+    request: ReadPublicHistoryBeforeRequest,
+  ): Operation<PublicHistoryReadPage>;
   /** Optional immutable staging; a conversation head selects authoritative content. */
   putTerminalHistorySegment(segment: StoredTerminalSegment): Operation<HistoryPointer>;
   readTerminalHistoryPage(

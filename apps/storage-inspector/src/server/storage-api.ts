@@ -96,17 +96,25 @@ function conversation(handle: BetterSqliteStorageHandle, conversationId: string)
   ) as StorageDatabaseRow[];
   const checkpoints = handle.database.all(
     sql`SELECT checkpoint_id, conversation_id, cause_key, content_hash,
-               archive_head_segment_id, archive_through_position, encoded_bytes, created_at
+               lineage_id, archive_head_segment_id, archive_frontier_ordinal,
+               next_public_position, encoded_bytes, created_at
         FROM sp_conversation_checkpoints
         WHERE conversation_id = ${conversationId}
         ORDER BY created_at, checkpoint_id`,
   ) as StorageDatabaseRow[];
   const publicSegments = handle.database.all(
     sql`SELECT segment_id, conversation_id, previous_segment_id,
-               first_position, last_position, content_hash, encoded_bytes, created_at
+               min_position, max_position, content_hash, encoded_bytes, created_at
         FROM sp_conversation_public_segments
         WHERE conversation_id = ${conversationId}
-        ORDER BY first_position, segment_id`,
+        ORDER BY min_position, segment_id`,
+  ) as StorageDatabaseRow[];
+  const publicRootIndex = handle.database.all(
+    sql`SELECT conversation_id, position, root_id, segment_id, segment_root_index,
+               archive_ordinal, content_hash, encoded_bytes
+        FROM sp_conversation_public_root_index
+        WHERE conversation_id = ${conversationId}
+        ORDER BY archive_ordinal, position`,
   ) as StorageDatabaseRow[];
   const terminalSegments = handle.database.all(
     sql`SELECT segment_id, conversation_id, logical_turn_id, execution_id,
@@ -129,6 +137,7 @@ function conversation(handle: BetterSqliteStorageHandle, conversationId: string)
     head: heads[0] ?? null,
     checkpoints,
     publicSegments,
+    publicRootIndex,
     terminalSegments,
     commandReceipts: receipts,
     bodies: "redacted",
@@ -183,7 +192,7 @@ export async function createStorageInspectorApi(
   if (existsSync(databasePath)) {
     try {
       handle = await run(() =>
-        openBetterSqliteStorage(databasePath, { migrate: false, wal: true }),
+        openBetterSqliteStorage(databasePath, { migrate: false, wal: false }),
       );
     } catch (error) {
       openError = error;

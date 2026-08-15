@@ -27,7 +27,7 @@ const flights = [
 ];
 
 function ndjson(events: unknown[]): string {
-  return events.map((event, index) => JSON.stringify({ lsn: index + 1, event })).join("\n") + "\n";
+  return events.map((event) => JSON.stringify(event)).join("\n") + "\n";
 }
 
 function activity(messageId: string, node: Record<string, unknown>): Record<string, unknown> {
@@ -37,6 +37,138 @@ function activity(messageId: string, node: Record<string, unknown>): Record<stri
     activityType: "sweatpants:public-execution",
     replace: true,
     content: { version: 1, node },
+  };
+}
+
+function activityRoot(
+  position: string,
+  rootId: string,
+  event: Record<string, unknown>,
+  anchors: readonly Record<string, unknown>[] = [],
+): Record<string, unknown> {
+  const node = (event.content as { node: Record<string, unknown> }).node;
+  return {
+    rootId,
+    position,
+    kind: "activity-subtree",
+    state: "mutable",
+    attribution: {},
+    rootNodeId: node.nodeId,
+    producerSequence: Number(node.sequence),
+    anchors,
+    nodes: [
+      {
+        activityRecordId: event.messageId,
+        producerSequence: Number(node.sequence),
+        event,
+      },
+    ],
+    unloadedDescendantCount: 0,
+  };
+}
+
+function resumeWindow(conversationId: string, revision: string): Record<string, unknown> {
+  const messageNode = {
+    nodeId: "message:book-flight-1",
+    parentNodeId: null,
+    sequence: 0,
+    kind: "message",
+    state: "streaming",
+    presentation: "public",
+    publicData: { kind: "message", messageId: "message:book-flight-1", role: "assistant" },
+  };
+  const toolNode = {
+    nodeId: "execution:call-book-flight-1",
+    parentNodeId: "message:book-flight-1",
+    sequence: 0,
+    kind: "tool-call",
+    state: "input-available",
+    presentation: "public",
+    publicData: {
+      kind: "tool-call",
+      callId: "call-book-flight-1",
+      name: "book_flight",
+      rawInput: JSON.stringify({ from: "NYC", destination: "LAX" }),
+      input: { from: "NYC", destination: "LAX" },
+    },
+  };
+  const nestedNode = {
+    nodeId: "message:nested-flight-guidance-1",
+    parentNodeId: "execution:call-book-flight-1",
+    sequence: 1,
+    kind: "message",
+    state: "done",
+    presentation: "public",
+    publicData: {
+      kind: "message",
+      messageId: "message:nested-flight-guidance-1",
+      role: "assistant",
+    },
+  };
+  const elicitNode = {
+    nodeId: "elicit:elicit-pick-flight-1",
+    parentNodeId: "execution:call-book-flight-1",
+    sequence: 0,
+    kind: "elicit",
+    state: "pending",
+    presentation: "public",
+    publicData: {
+      kind: "elicit",
+      elicitId: "elicit-pick-flight-1",
+      bindingId: pickFlightBinding.bindingId,
+      key: "pickFlight",
+      message: "Select a flight from NYC to LAX",
+      context: { flights },
+      responseContract: pickFlightBinding.responseContract,
+      ...(pickFlightBinding.contextContract
+        ? { contextContract: pickFlightBinding.contextContract }
+        : {}),
+      toolName: "book_flight",
+      callId: "call-book-flight-1",
+      producerSequence: 0,
+    },
+  };
+  const messageEvent = activity("activity:message:book-flight-1", messageNode);
+  const toolEvent = activity("activity:tool:book-flight-1", toolNode);
+  const nestedEvent = activity("activity:message:nested-flight-guidance-1", nestedNode);
+  const elicitEvent = activity("activity:elicit:pick-flight-1", elicitNode);
+  const messageAnchor = {
+    nodeId: "message:book-flight-1",
+    parentNodeId: null,
+    sequence: 0,
+    kind: "message",
+    presentation: "public",
+    publicData: { kind: "message", messageId: "message:book-flight-1", role: "assistant" },
+  };
+  const toolAnchor = {
+    nodeId: "execution:call-book-flight-1",
+    parentNodeId: "message:book-flight-1",
+    sequence: 0,
+    kind: "tool-call",
+    presentation: "public",
+    publicData: toolNode.publicData,
+  };
+  return {
+    type: "sweatpants.conversation-window.v1",
+    conversationId,
+    lineageId: "mock-lineage",
+    basisRevision: revision,
+    windowToken: `mock-window-${revision}`,
+    windowMode: "reset",
+    archiveFrontierOrdinal: "0",
+    nextPublicPosition: "4",
+    hotRoots: [
+      activityRoot("0", "activity:message:book-flight-1", messageEvent),
+      activityRoot("1", "activity:tool:book-flight-1", toolEvent, [messageAnchor]),
+      activityRoot("2", "activity:message:nested-flight-guidance-1", nestedEvent, [
+        messageAnchor,
+        toolAnchor,
+      ]),
+      activityRoot("3", "activity:elicit:pick-flight-1", elicitEvent, [messageAnchor, toolAnchor]),
+    ],
+    sealedCatchupRoots: [],
+    applicationState: {},
+    olderHistoryCursor: null,
   };
 }
 
@@ -59,8 +191,8 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
     const parsed = postData ? JSON.parse(postData) : {};
     seenRequests.push(parsed);
     const hasResume = parsed.command?.type === "respond-to-elicit";
-    const threadId = String(parsed.conversationId ?? parsed.input?.threadId);
-    const currentRunId = String(parsed.input?.runId);
+    const threadId = String(parsed.conversationId);
+    const currentRunId = String(parsed.runId ?? parsed.command?.commandId);
     const logicalTurnId = String(parsed.command?.logicalTurnId ?? currentRunId);
 
     await route.fulfill({
@@ -69,6 +201,13 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
       body: ndjson(
         hasResume
           ? [
+              {
+                type: "RUN_STARTED",
+                threadId,
+                runId: currentRunId,
+                parentRunId: parsed.parentRunId,
+              },
+              resumeWindow(threadId, "3"),
               {
                 type: "sweatpants.conversation-authority.v1",
                 authority: {
@@ -125,6 +264,12 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
               },
             ]
           : [
+              { type: "RUN_STARTED", threadId, runId: currentRunId },
+              {
+                ...resumeWindow(threadId, "1"),
+                hotRoots: [],
+                nextPublicPosition: "0",
+              },
               {
                 type: "sweatpants.conversation-authority.v1",
                 authority: {
@@ -136,7 +281,6 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
                   latestCompletedExecutionId: null,
                 },
               },
-              { type: "RUN_STARTED", threadId, runId: currentRunId },
               {
                 type: "TOOL_CALL_START",
                 toolCallId: "call-book-flight-1",

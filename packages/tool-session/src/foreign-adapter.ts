@@ -1,7 +1,9 @@
 import {
   MODEL_SAMPLE_EFFECT,
   decodeModelSampleRequest,
+  decodeModelSampleSourceRequest,
   encodeModelSampleResult,
+  resolveModelSampleSourceRequest,
   sampleDurableModel,
   type ModelSampleRequest,
   type ModelSampleResult,
@@ -23,6 +25,7 @@ import {
   FOREIGN_TOOL_START_EFFECT,
 } from "./foreign-contract.ts";
 import { projectModelSampleCompletion } from "@sweatpants/agent-sdk";
+import { ModelContextSourceResolverContext } from "@sweatpants/model-sampling";
 import { CrankError } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
@@ -166,7 +169,18 @@ export const foreignToolAdapter: ForeignToolAdapter = Object.freeze({
       MODEL_SAMPLE_EFFECT,
       MODEL_SAMPLE_EFFECT.retrySafety,
       function* (wireRequest) {
-        const request = decodeModelSampleRequest(wireRequest);
+        const sourceRequest = decodeModelSampleSourceRequest(wireRequest);
+        const resolveContext = yield* ModelContextSourceResolverContext.get();
+        if (!resolveContext) {
+          throw new CrankError(
+            "model_context_source_invalid",
+            "Foreign model sampling registration has no context source resolver",
+          );
+        }
+        const request = resolveModelSampleSourceRequest(
+          sourceRequest,
+          yield* resolveContext(sourceRequest.invocation.context),
+        );
         const result = yield* handler(request);
         return { status: "ok", value: encodeModelSampleResult(result) };
       },

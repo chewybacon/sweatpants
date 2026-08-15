@@ -37,6 +37,34 @@ export type ModelResponseMode =
 
 export type ModelSampleInvocationOptions = Omit<ModelGenerationOptions, "responseFormat">;
 
+export type ModelContextSource =
+  | {
+      readonly type: "object";
+      readonly object: { readonly objectId: string };
+      readonly digest: string;
+    }
+  | {
+      readonly type: "conversation";
+      readonly conversationId: string;
+      readonly checkpoint: { readonly checkpointId: string };
+      readonly acceptedCommandId: string;
+      readonly executionId: string;
+      readonly taskId: string;
+      readonly taskJournalFrontier: string;
+      readonly contextArtifact?: { readonly objectId: string };
+    };
+
+export interface ModelSampleSourceRequest {
+  readonly invocation: {
+    readonly context: ModelContextSource;
+    readonly options?: ModelSampleInvocationOptions;
+  };
+  readonly tools: ModelToolSource;
+  readonly response: ModelResponseMode;
+  readonly modelPreferences?: Json;
+  readonly classifications?: Json[];
+}
+
 /** Decoded canonical model-sampling command used by services and planners. */
 export interface ModelSampleRequest {
   readonly invocation: {
@@ -69,7 +97,7 @@ export type ModelSampleDisposition =
   | { readonly status: "error"; readonly error: SerializedEffectError }
   | { readonly status: "cancelled"; readonly partial?: ModelSampleCancellationPartial };
 
-type ModelSampleWireRequest = JsonObject;
+export type ModelSampleWireRequest = JsonObject;
 type ModelSampleWireResult = JsonObject;
 
 const MAX_MODEL_SAMPLE_MESSAGES = 4_096;
@@ -98,6 +126,23 @@ const responseModeSchema = z.discriminatedUnion("type", [
     type: z.literal("json"),
     schema: z.record(z.string(), z.json()),
     name: z.string().optional(),
+  }),
+]);
+const modelContextSourceSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("object"),
+    object: z.strictObject({ objectId: z.string().min(1).max(512) }),
+    digest: z.string().min(1).max(512),
+  }),
+  z.strictObject({
+    type: z.literal("conversation"),
+    conversationId: z.string().min(1).max(512),
+    checkpoint: z.strictObject({ checkpointId: z.string().min(1).max(512) }),
+    acceptedCommandId: z.string().min(1).max(512),
+    executionId: z.string().min(1).max(1024),
+    taskId: z.string().min(1).max(512),
+    taskJournalFrontier: z.string().min(1).max(512),
+    contextArtifact: z.strictObject({ objectId: z.string().min(1).max(512) }).optional(),
   }),
 ]);
 const modelSampleRequestSchema = z.strictObject({
@@ -170,6 +215,19 @@ const modelSampleRequestBoundsSchema: StandardSchemaV1<unknown, unknown> = {
 const modelSampleRequestStructureParser = parser(modelSampleRequestBoundsSchema).andThen((value) =>
   modelSampleRequestShapeParser.parse(value),
 );
+const modelSampleSourceRequestSchema = z.strictObject({
+  invocation: z.strictObject({
+    context: modelContextSourceSchema,
+    options: optionsSchema.optional(),
+  }),
+  tools: toolSourceSchema,
+  response: responseModeSchema,
+  modelPreferences: z.json().optional(),
+  classifications: z.array(z.json()).max(MAX_MODEL_SAMPLE_CLASSIFICATIONS).optional(),
+});
+const modelSampleSourceRequestParser = parser(modelSampleSourceRequestSchema).map(
+  (value) => value as ModelSampleSourceRequest,
+);
 const modelSampleResultStructureParser = parser(modelSampleResultSchema);
 
 /** Result-oriented parser for one model-sampling request. */
@@ -240,6 +298,34 @@ export const modelSampleCancellationPartialParser: Parser<ModelSampleCancellatio
 
 export function decodeModelSampleRequest(value: unknown): ModelSampleRequest {
   return requireParsed(modelSampleRequestParser, value, "$", "invalid model sampling request");
+}
+
+export function decodeModelSampleSourceRequest(value: unknown): ModelSampleSourceRequest {
+  return requireParsed(
+    modelSampleSourceRequestParser,
+    value,
+    "$",
+    "invalid model sampling source request",
+  );
+}
+
+export function resolveModelSampleSourceRequest(
+  request: ModelSampleSourceRequest,
+  context: ModelContext,
+): ModelSampleRequest {
+  return decodeModelSampleRequest({
+    ...request,
+    invocation: {
+      context,
+      ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
+    },
+  });
+}
+
+export function encodeModelSampleSourceRequest(
+  request: ModelSampleSourceRequest,
+): ModelSampleWireRequest {
+  return assertJson(request) as JsonObject;
 }
 
 export function encodeModelSampleRequest(request: ModelSampleRequest): ModelSampleWireRequest {
@@ -361,8 +447,8 @@ export const MODEL_SAMPLE_INPUT_DESCRIPTOR = bindSchema(
   "sweatpants.model-sample/input",
   "effect_input",
   objectProjection,
-  modelSampleRequestParser,
-  (value) => encodeModelSampleRequest(value),
+  modelSampleSourceRequestParser,
+  (value) => encodeModelSampleSourceRequest(value),
 );
 
 export const MODEL_SAMPLE_OUTPUT_DESCRIPTOR = bindSchema(

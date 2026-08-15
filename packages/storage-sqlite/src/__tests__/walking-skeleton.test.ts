@@ -38,6 +38,7 @@ describe("SQLite durability spine walking skeleton", () => {
         "sp_conversation_checkpoints",
         "sp_conversation_command_receipts",
         "sp_conversation_heads",
+        "sp_conversation_public_root_index",
         "sp_conversation_public_segments",
         "sp_conversation_terminal_segments",
         "sp_execution_control",
@@ -107,15 +108,26 @@ describe("SQLite durability spine walking skeleton", () => {
           },
         });
         expect(admitted).toMatchObject({ status: "admitted", head: { state: "running" } });
-        const payload = canonicalSnapshot(checkpointPayloadFromHotRoots([{ type: "RUN_STARTED" }]));
+        const root = {
+          rootId: "message:start",
+          position: "0",
+          kind: "message",
+          state: "sealed",
+          attribution: {},
+          message: { id: "start", role: "user", content: "start" },
+          placement: { type: "root", sequence: 0 },
+        };
+        const payload = canonicalSnapshot(checkpointPayloadFromHotRoots([root]));
         const pointer = yield* store.putCheckpoint({
           checkpointId: "checkpoint-1",
           conversationId: "conversation_spine_001",
           causeKey: "command-1",
           cause: { kind: "command", commandId: "command-1" },
           contentHash: payload.sha,
+          lineageId: "lineage-1",
           archiveHead: null,
-          archiveThroughPosition: "0",
+          archiveFrontierOrdinal: "0",
+          nextPublicPosition: "1",
           payload: payload.value,
           encodedBytes: new TextEncoder().encode(payload.canonical).byteLength,
           createdAt: 1,

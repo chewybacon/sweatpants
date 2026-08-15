@@ -1,4 +1,5 @@
 export type {
+  ArchivedPublicRootIndex,
   CheckpointPointer,
   CommandAdmissionRequest,
   CommandAdmissionResult,
@@ -14,8 +15,10 @@ export type {
   HistoryPointer,
   Milliseconds,
   OwnerTransition,
-  PublicArchivePage,
   PublicArchivePointer,
+  PublicHistoryReadPage,
+  PublicProjectionBasis,
+  ReadPublicHistoryBeforeRequest,
   StoredCheckpoint,
   StoredPublicArchiveSegment,
   StoredTerminalSegment,
@@ -42,6 +45,7 @@ export type StorageErrorCode =
   | "persisted_data_invalid"
   | "checkpoint_bound_exceeded"
   | "segment_entry_too_large"
+  | "public_root_conflict"
   | "sqlite_integer_out_of_range"
   | "sqlite_transaction_failed";
 

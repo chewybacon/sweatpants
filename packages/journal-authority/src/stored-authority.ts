@@ -28,6 +28,12 @@ import {
   type OpenDurableTaskRequest,
 } from "./durable-authority.ts";
 import type {
+  AcceptAssistantPartialRequest,
+  AcceptAssistantPartialResult,
+  AcceptPullPreparationRequest,
+  AcceptPullPreparationResult,
+  AuthorizeModelDispatchRequest,
+  AuthorizeModelDispatchResult,
   AppendEmissionRequest,
   BindRestoreFrontierRequest,
   BindRestoreFrontierResult,
@@ -46,6 +52,7 @@ import type {
   EnsureChildTaskResult,
   IssueRestoreTicketRequest,
   IssueRestoreTicketResult,
+  ModelContextPreparedFact,
   PrepareProgramRestoreRequest,
   PreparedProgramRestore,
   RecoverableSession,
@@ -59,6 +66,8 @@ import type {
   ResolveOperationRequest,
   ResolveOperationResult,
   TaskCloseReceipt,
+  ValidateElicitResponseRequest,
+  ValidateElicitResponseResult,
 } from "./durable-authority-types.ts";
 import type { CapabilityKeyring } from "./capabilities.ts";
 import type { ProgramStep } from "@sweatpants/durable-execution";
@@ -93,6 +102,14 @@ export interface StoredDurableJournalAuthority {
     taskId: string,
     pullId: string,
   ): Operation<DurableOperationState>;
+  pullPreparation(
+    sessionId: string,
+    taskId: string,
+    pullId: string,
+  ): Operation<ModelContextPreparedFact | null>;
+  validateElicitResponse(
+    request: ValidateElicitResponseRequest,
+  ): Operation<ValidateElicitResponseResult>;
   /** Lists exact schema digests referenced by nonterminal tasks. */
   nonterminalSchemaDigests(): Operation<string[]>;
   /** Clears the runnable marker when an accepted activation starts. */
@@ -123,6 +140,18 @@ export interface StoredDurableJournalAuthority {
   ensureChildTask(request: EnsureChildTaskRequest): Operation<EnsureChildTaskResult>;
   /** Atomically reserves an operation before host dispatch. */
   reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult>;
+  /** Atomically accepts immutable model preparation identity. */
+  acceptPullPreparation(
+    request: AcceptPullPreparationRequest,
+  ): Operation<AcceptPullPreparationResult>;
+  /** Rechecks the accepted preparation and current attempt before provider I/O. */
+  authorizeModelDispatch(
+    request: AuthorizeModelDispatchRequest,
+  ): Operation<AuthorizeModelDispatchResult>;
+  /** Atomically accepts one typed public assistant partial. */
+  acceptAssistantPartial(
+    request: AcceptAssistantPartialRequest,
+  ): Operation<AcceptAssistantPartialResult>;
   /** Atomically commits a capability-authorized outcome. */
   resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
   /** Atomically appends an ordered durable emission. */
@@ -554,6 +583,14 @@ export function createStoredDurableJournalAuthority(
       const loaded = yield* load();
       return yield* authority(loaded.snapshot).operationState(sessionId, taskId, pullId);
     },
+    *pullPreparation(sessionId, taskId, pullId) {
+      const loaded = yield* load();
+      return yield* authority(loaded.snapshot).pullPreparation(sessionId, taskId, pullId);
+    },
+    *validateElicitResponse(request) {
+      const loaded = yield* load();
+      return yield* authority(loaded.snapshot).validateElicitResponse(request);
+    },
     *nonterminalSchemaDigests() {
       const loaded = yield* load();
       return yield* authority(loaded.snapshot).nonterminalSchemaDigests();
@@ -609,6 +646,22 @@ export function createStoredDurableJournalAuthority(
     },
     *reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult> {
       return yield* mutate((value) => value.reserve(request));
+    },
+    *acceptPullPreparation(
+      request: AcceptPullPreparationRequest,
+    ): Operation<AcceptPullPreparationResult> {
+      return yield* mutate((value) => value.acceptPullPreparation(request));
+    },
+    *authorizeModelDispatch(
+      request: AuthorizeModelDispatchRequest,
+    ): Operation<AuthorizeModelDispatchResult> {
+      const loaded = yield* load();
+      return yield* authority(loaded.snapshot).authorizeModelDispatch(request);
+    },
+    *acceptAssistantPartial(
+      request: AcceptAssistantPartialRequest,
+    ): Operation<AcceptAssistantPartialResult> {
+      return yield* mutate((value) => value.acceptAssistantPartial(request));
     },
     *resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult> {
       return yield* mutate((value) => value.resolve(request));

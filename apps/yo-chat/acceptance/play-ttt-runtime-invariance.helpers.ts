@@ -2,7 +2,7 @@ import { expect } from "vitest";
 import {
   createPlayTttSubstrate,
   post,
-  postAndAbandon,
+  postAndDisconnect,
   publicInterrupt,
   reattach,
   readJournal,
@@ -50,16 +50,15 @@ async function playToCompletion(substrate: PlayTttSubstrate): Promise<PlayOutcom
 }
 
 /**
- * Abandons the first turn after `frameBudget` frames, destroys the runtime
- * while durable work is still in flight, then drives the conversation to
- * completion on fresh runtimes.
+ * Disconnects the first response after `frameBudget` frames, gracefully
+ * replaces the runtime generation, then drives the conversation to completion
+ * against the shared durable stores.
  *
- * Returns `undefined` when the host died before the journal accepted anything.
- * That is not a durability failure: nothing was ever promised, so there is
- * nothing to recover and the client's correct move is to send again. Durable
- * invariance only covers work the authority actually accepted.
+ * Returns `undefined` when the disconnect occurs before the journal accepts
+ * anything. Nothing was promised in that case, so the client's correct move is
+ * to send again. Durable invariance covers only authority-accepted work.
  */
-async function playThroughAbandonedTurn(
+async function playThroughDisconnectedTurn(
   substrate: PlayTttSubstrate,
   frameBudget: number,
 ): Promise<PlayOutcome | undefined> {
@@ -68,10 +67,16 @@ async function playThroughAbandonedTurn(
   let generations = 1;
 
   try {
-    const abandoned = await postAndAbandon(runtime.handle, conversationId, messages, frameBudget);
-    expect(abandoned.aborted, `frame budget ${frameBudget} must abandon a live stream`).toBe(true);
+    const disconnected = await postAndDisconnect(
+      runtime.handle,
+      conversationId,
+      messages,
+      frameBudget,
+    );
+    expect(disconnected.aborted, `frame budget ${frameBudget} must disconnect a live stream`).toBe(
+      true,
+    );
 
-    // The host disappears while the activation is still in flight.
     await runtime.close();
 
     if ((await readJournal(journalStore, conversationId)).length === 0) {
@@ -123,20 +128,11 @@ async function summarize(
     completed: events.some(
       (event) =>
         (event.type === "TEXT_MESSAGE_CONTENT" && event["delta"] === "Game complete.") ||
-        (event.type === "MESSAGES_SNAPSHOT" && JSON.stringify(event).includes("Game complete.")),
+        JSON.stringify(event).includes("Game complete."),
     ),
     toolResult: events.some(
       (event) =>
-        event.type === "TOOL_CALL_RESULT" ||
-        (event.type === "MESSAGES_SNAPSHOT" &&
-          Array.isArray(event["messages"]) &&
-          event["messages"].some(
-            (message) =>
-              message !== null &&
-              typeof message === "object" &&
-              !Array.isArray(message) &&
-              (message as Record<string, unknown>)["role"] === "tool",
-          )),
+        event.type === "TOOL_CALL_RESULT" || JSON.stringify(event).includes('"role":"tool"'),
     ),
     coinFlips: journal.filter(
       (entry) =>
@@ -162,11 +158,11 @@ export async function runPlayTttRuntimeInvariance(frameBudget: number): Promise<
     expect(expected.completed, "golden run must complete").toBe(true);
     expect(expected.coinFlips, "golden run flips the symbol coin once").toBe(1);
 
-    const actual = await playThroughAbandonedTurn(faulted, frameBudget);
+    const actual = await playThroughDisconnectedTurn(faulted, frameBudget);
     if (!actual) {
-      // The host died before the journal accepted anything. Nothing was
-      // promised, so nothing was lost. Timing decides whether this window is
-      // reachable, so both outcomes are legitimate for a given frame.
+      // The response disconnected before the journal accepted anything.
+      // Nothing was promised, so nothing was lost. Timing decides whether this
+      // window is reachable, so both outcomes are legitimate for a given frame.
       expect(
         (await readJournal(faulted.journalStore, faulted.conversationId)).length,
         "an unrecoverable turn must have journaled nothing at all",
