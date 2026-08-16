@@ -1,92 +1,15 @@
 /**
  * Style experiment: applicative fold fusion for indexed derivations.
  *
- * The projection programs compose *dependent* phases: `yield*` is a data
- * dependency, so each stage owns a traversal. That is the wrong primitive for
- * the inside of a derivation, where several indexes are computed from the same
- * items and do not feed each other. Splitting those into stages would trade
- * one traversal for N.
- *
- * Independent-and-combinable is applicative, not monadic. A `Fold` owns its
- * accumulator in a closure, so folds can be combined into a single fold that
- * produces every result in one pass — the same reason a database computes four
- * aggregates in one table scan.
- *
- * Degenerate model of the real derivations: items form a graph by `parent`,
- * which may reference an id that never arrives. Four independent indexes are
- * collected in one pass; partitioning edges into attached/pending genuinely
- * depends on the complete id set, so it is a second pass. That mixture —
- * a short sequential spine of fused stages — is the shape of
- * `refreshDerivedState`, `indexRecordProjection`, and `indexedTaskRecords`.
+ * The primitive graduated to `foundation/src/fold.ts`; this file keeps the
+ * degenerate graph domain that justified it. Items form a graph by `parent`,
+ * which may name an id that never arrives. Four independent indexes fuse into
+ * one pass; partitioning edges into attached/pending needs the complete id
+ * set, so it is post-processing rather than a second source traversal.
  */
+export * from "../fold.ts";
 
-export interface FoldStep<In, Out> {
-  step(item: In): void;
-  done(): Out;
-}
-
-/**
- * A fold whose accumulator is hidden in a closure. No existential type
- * parameter is needed, so folds of different accumulator types combine without
- * any cast at the call site.
- */
-export interface Fold<In, Out> {
-  start(): FoldStep<In, Out>;
-}
-
-export function fold<In, Out>(start: () => FoldStep<In, Out>): Fold<In, Out> {
-  return { start };
-}
-
-export class FoldError extends Error {
-  constructor(
-    readonly foldKey: string,
-    readonly reason: unknown,
-  ) {
-    super(`fold "${foldKey}" failed: ${reason instanceof Error ? reason.message : String(reason)}`);
-    this.name = "FoldError";
-  }
-}
-
-type OutputOf<In, F extends Fold<In, unknown>> = F extends Fold<In, infer Out> ? Out : never;
-
-/**
- * Combine named folds into one fold. The result runs every member against each
- * item exactly once, so N indexes cost one traversal instead of N.
- */
-export function combine<In, S extends Record<string, Fold<In, unknown>>>(
-  folds: S,
-): Fold<In, { readonly [K in keyof S]: OutputOf<In, S[K]> }> {
-  return fold(() => {
-    const members = Object.entries(folds).map(([key, member]) => [key, member.start()] as const);
-    return {
-      step(item) {
-        for (const [key, member] of members) {
-          try {
-            member.step(item);
-          } catch (error) {
-            throw new FoldError(key, error);
-          }
-        }
-      },
-      done() {
-        const output: Record<string, unknown> = {};
-        for (const [key, member] of members) {
-          output[key] = member.done();
-        }
-        return output as { readonly [K in keyof S]: OutputOf<In, S[K]> };
-      },
-    };
-  });
-}
-
-export function runFold<In, Out>(target: Fold<In, Out>, items: Iterable<In>): Out {
-  const stepper = target.start();
-  for (const item of items) {
-    stepper.step(item);
-  }
-  return stepper.done();
-}
+import { combine, fold, type Fold } from "../fold.ts";
 
 // =============================================================================
 // Degenerate graph domain

@@ -40,6 +40,11 @@ import {
   type ProjectionProgram,
 } from "@sweatpants/foundation/projection";
 import {
+  combine,
+  fold,
+  mapFold,
+  runFold,
+  type Fold,
   assertJson,
   canonicalJson,
   canonicalSnapshot,
@@ -1174,99 +1179,177 @@ function indexRecordProjection(
   records: readonly DurableSemanticRecord[],
   allRecords: readonly DurableSemanticRecord[],
 ): RecordProjectionIndex {
-  const pullRequests = new Map<string, PullRequestedRecord>();
-  for (const record of allRecords) {
-    if (record.payload.type === "PullRequested" && !pullRequests.has(record.payload.pullId)) {
-      pullRequests.set(record.payload.pullId, record.payload);
-    }
-  }
+  const scanned = runFold(allRecordsIndexFold, allRecords);
+  const terminal = runFold(terminalOutcomeFold, records);
+  return { ...scanned, ...terminal };
+}
 
+/** Pulls by id; first occurrence wins. */
+const pullRequestsFold: Fold<
+  DurableSemanticRecord,
+  ReadonlyMap<string, PullRequestedRecord>
+> = fold(() => {
+  const pulls = new Map<string, PullRequestedRecord>();
+  return {
+    step(record) {
+      if (record.payload.type === "PullRequested" && !pulls.has(record.payload.pullId)) {
+        pulls.set(record.payload.pullId, record.payload);
+      }
+    },
+    done: () => pulls,
+  };
+});
+
+/** Started/completed pairing resolves in `done()`, not in a second pass. */
+const toolLifecycleFold: Fold<
+  DurableSemanticRecord,
+  {
+    readonly previousToolStarts: ReadonlyMap<string, Record<string, Json>>;
+    readonly unfinishedToolCalls: readonly { callId: string; tool: string }[];
+  }
+> = fold(() => {
   const started = new Map<string, string>();
   const completed = new Set<string>();
   const previousToolStarts = new Map<string, Record<string, Json>>();
-  for (const record of allRecords) {
-    if (record.payload.type !== "DurableEmission") continue;
-    const payload = jsonRecord(record.payload.descriptor.payload);
-    if (!payload || typeof payload["callId"] !== "string") continue;
-    if (
-      record.payload.descriptor.eventType === "tool_started" &&
-      typeof payload["tool"] === "string"
-    ) {
-      started.set(payload["callId"], payload["tool"]);
-      previousToolStarts.set(payload["callId"], payload);
-    }
-    if (record.payload.descriptor.eventType === "tool_completed") {
-      completed.add(payload["callId"]);
-    }
-  }
-
-  const cancellationPartials = new Map<string, Json>();
-  for (const record of allRecords) {
-    const payload = record.payload;
-    if (payload.type !== "PullResolved" || payload.outcome.status !== "cancelled") continue;
-    if (payload.outcome.partial === undefined) continue;
-    const request = pullRequests.get(payload.pullId);
-    if (request?.descriptor.kind === "effect" && request.descriptor.resolver.route !== undefined) {
-      cancellationPartials.set(request.descriptor.resolver.route, payload.outcome.partial);
-    }
-  }
-
-  const errorClosed = [...records]
-    .reverse()
-    .find(
-      (record) => record.payload.type === "TaskClosed" && record.payload.outcome.status === "error",
-    );
-
-  // Assistant message identity: a preparation may be journaled after its
-  // emission, so collect preparations first, then walk forward tracking the
-  // most recent model-sample pull per task.
-  const preparedByPull = new Map<string, string>();
-  for (const record of allRecords) {
-    if (record.payload.type === "ModelContextPrepared") {
-      preparedByPull.set(
-        pullKey(record.payload.taskId, record.payload.pullId),
-        record.payload.fact.publicMessageId,
-      );
-    }
-  }
-  const modelMessageIds = new Map<DurableSemanticRecord, string | null>();
-  const lastModelPullByTask = new Map<string, PullRequestedRecord>();
-  for (const record of allRecords) {
-    const payload = record.payload;
-    if (
-      payload.type === "PullRequested" &&
-      payload.descriptor.kind === "effect" &&
-      payload.descriptor.name === modelSample.name &&
-      payload.descriptor.version === modelSample.version
-    ) {
-      lastModelPullByTask.set(payload.taskId, payload);
-      continue;
-    }
-    if (payload.type !== "DurableEmission") continue;
-    const pull = lastModelPullByTask.get(payload.taskId);
-    modelMessageIds.set(
-      record,
-      pull
-        ? (preparedByPull.get(pullKey(pull.taskId, pull.pullId)) ?? pull.publicMessageId ?? null)
-        : null,
-    );
-  }
-
   return {
-    pullRequests,
-    previousToolStarts,
-    unfinishedToolCalls: [...started]
-      .filter(([callId]) => !completed.has(callId))
-      .map(([callId, tool]) => ({ callId, tool })),
-    cancellationPartials,
-    modelMessageIds,
-    cancellationClosed: records.some(
-      (record) =>
-        record.payload.type === "TaskClosed" && record.payload.outcome.status === "cancelled",
-    ),
-    errorClosed,
+    step(record) {
+      if (record.payload.type !== "DurableEmission") return;
+      const payload = jsonRecord(record.payload.descriptor.payload);
+      if (!payload || typeof payload["callId"] !== "string") return;
+      if (
+        record.payload.descriptor.eventType === "tool_started" &&
+        typeof payload["tool"] === "string"
+      ) {
+        started.set(payload["callId"], payload["tool"]);
+        previousToolStarts.set(payload["callId"], payload);
+      }
+      if (record.payload.descriptor.eventType === "tool_completed") {
+        completed.add(payload["callId"]);
+      }
+    },
+    done: () => ({
+      previousToolStarts,
+      unfinishedToolCalls: [...started]
+        .filter(([callId]) => !completed.has(callId))
+        .map(([callId, tool]) => ({ callId, tool })),
+    }),
   };
-}
+});
+
+/** Cancelled partials, keyed by pull id; joined against pulls in `done()`. */
+const cancellationLinksFold: Fold<
+  DurableSemanticRecord,
+  readonly { readonly pullId: string; readonly partial: Json }[]
+> = fold(() => {
+  const links: { readonly pullId: string; readonly partial: Json }[] = [];
+  return {
+    step(record) {
+      const payload = record.payload;
+      if (payload.type !== "PullResolved" || payload.outcome.status !== "cancelled") return;
+      if (payload.outcome.partial === undefined) return;
+      links.push({ pullId: payload.pullId, partial: payload.outcome.partial });
+    },
+    done: () => links,
+  };
+});
+
+const preparedFold: Fold<DurableSemanticRecord, ReadonlyMap<string, string>> = fold(() => {
+  const prepared = new Map<string, string>();
+  return {
+    step(record) {
+      if (record.payload.type === "ModelContextPrepared") {
+        prepared.set(
+          pullKey(record.payload.taskId, record.payload.pullId),
+          record.payload.fact.publicMessageId,
+        );
+      }
+    },
+    done: () => prepared,
+  };
+});
+
+/**
+ * Links each emission to the most recent preceding model pull for its task.
+ * A preparation may be journaled after its emission, so the link is captured
+ * positionally here and resolved against `prepared` in `done()`.
+ */
+const modelLinksFold: Fold<
+  DurableSemanticRecord,
+  ReadonlyMap<DurableSemanticRecord, PullRequestedRecord | null>
+> = fold(() => {
+  const lastModelPullByTask = new Map<string, PullRequestedRecord>();
+  const links = new Map<DurableSemanticRecord, PullRequestedRecord | null>();
+  return {
+    step(record) {
+      const payload = record.payload;
+      if (
+        payload.type === "PullRequested" &&
+        payload.descriptor.kind === "effect" &&
+        payload.descriptor.name === modelSample.name &&
+        payload.descriptor.version === modelSample.version
+      ) {
+        lastModelPullByTask.set(payload.taskId, payload);
+        return;
+      }
+      if (payload.type !== "DurableEmission") return;
+      links.set(record, lastModelPullByTask.get(payload.taskId) ?? null);
+    },
+    done: () => links,
+  };
+});
+
+/** Every index over the full journal, in one traversal. */
+const allRecordsIndexFold = mapFold(
+  combine({
+    pullRequests: pullRequestsFold,
+    toolLifecycle: toolLifecycleFold,
+    cancellationLinks: cancellationLinksFold,
+    prepared: preparedFold,
+    modelLinks: modelLinksFold,
+  }),
+  ({ pullRequests, toolLifecycle, cancellationLinks, prepared, modelLinks }) => ({
+    pullRequests,
+    previousToolStarts: toolLifecycle.previousToolStarts,
+    unfinishedToolCalls: toolLifecycle.unfinishedToolCalls,
+    cancellationPartials: new Map(
+      cancellationLinks.flatMap(({ pullId, partial }) => {
+        const request = pullRequests.get(pullId);
+        return request?.descriptor.kind === "effect" &&
+          request.descriptor.resolver.route !== undefined
+          ? ([[request.descriptor.resolver.route, partial]] as const)
+          : [];
+      }),
+    ) as ReadonlyMap<string, Json>,
+    modelMessageIds: new Map(
+      [...modelLinks].map(([record, pull]) => [
+        record,
+        pull
+          ? (prepared.get(pullKey(pull.taskId, pull.pullId)) ?? pull.publicMessageId ?? null)
+          : null,
+      ]),
+    ) as ReadonlyMap<DurableSemanticRecord, string | null>,
+  }),
+);
+
+/** Terminal outcome is scoped to the new records, not the whole journal. */
+const terminalOutcomeFold: Fold<
+  DurableSemanticRecord,
+  {
+    readonly cancellationClosed: boolean;
+    readonly errorClosed: DurableSemanticRecord | undefined;
+  }
+> = fold(() => {
+  let cancellationClosed = false;
+  let errorClosed: DurableSemanticRecord | undefined;
+  return {
+    step(record) {
+      if (record.payload.type !== "TaskClosed") return;
+      if (record.payload.outcome.status === "cancelled") cancellationClosed = true;
+      if (record.payload.outcome.status === "error") errorClosed = record;
+    },
+    done: () => ({ cancellationClosed, errorClosed }),
+  };
+});
 
 function* projectRecordsProgram(
   records: DurableSemanticRecord[],

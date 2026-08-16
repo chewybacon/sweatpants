@@ -22,34 +22,7 @@
  * instead of re-reading. Bounded here by the window, but it is memory traded
  * for passes, not a free win.
  */
-import { combine, fold, runFold, type Fold } from "./fold-fusion-style.ts";
-
-/** Functor: post-process a fold's result once the accumulator is complete. */
-export function mapFold<In, A, B>(source: Fold<In, A>, project: (value: A) => B): Fold<In, B> {
-  return fold(() => {
-    const stepper = source.start();
-    return {
-      step: (item) => stepper.step(item),
-      done: () => project(stepper.done()),
-    };
-  });
-}
-
-/** Do work only for items the predicate admits; the traversal is still shared. */
-export function prefilter<In, Narrowed extends In, Out>(
-  admits: (item: In) => item is Narrowed,
-  source: Fold<Narrowed, Out>,
-): Fold<In, Out> {
-  return fold(() => {
-    const stepper = source.start();
-    return {
-      step(item) {
-        if (admits(item)) stepper.step(item);
-      },
-      done: () => stepper.done(),
-    };
-  });
-}
+import { combine, fold, mapFold, prefilter, runFold, type Fold } from "../fold.ts";
 
 // =============================================================================
 // Degenerate model of durable semantic records
