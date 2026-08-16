@@ -52,11 +52,13 @@ function* driver(): Operation<ExecutionStoreE> {
 
 export const StoreApiE = createApi("style-e-execution-store", {
   *load(executionId: string): Operation<ExecutionRecord | null> {
-    return yield* (yield* driver()).load(executionId);
+    const store = yield* driver();
+    return yield* store.load(executionId);
   },
 
   *commit(record: ExecutionRecord, expectedRevision: number | null): Operation<CommitResult> {
-    return yield* (yield* driver()).commit(record, expectedRevision);
+    const store = yield* driver();
+    return yield* store.commit(record, expectedRevision);
   },
 });
 

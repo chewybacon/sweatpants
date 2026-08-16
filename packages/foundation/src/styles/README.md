@@ -43,6 +43,85 @@ This style intentionally exposes the implementation context. It is not yet a
 production recommendation; it exists to test whether explicit trusted DI gives
 us the composability we want without the `Port.bind(currentScope)` pattern.
 
+## Derived view experiment
+
+`derived-view-style.ts` models the proposed decomposition of the chat
+projection fold (`chat-core/src/chat-client-projection.ts`). Two styles fold
+the same event vocabulary:
+
+- **Style M (maintained)** mirrors production: edges keyed by physical node
+  id, five indexes updated by hand on every mutation, and child-migration
+  surgery (`migrateProvisionalMessage` ↔ `replaceSyntheticMessageNode`) when a
+  synthetic message node is replaced by its authoritative placement.
+- **Style D (derived)** keys edges by stable logical identity
+  (`ParentRef = node | message | root`). The fold state is two fields; every
+  index is one O(n) derivation memoized on the identity of the nodes map.
+
+What the tests demonstrate:
+
+- Style D is order-independent: all 24 permutations of a conversation
+  materialize identically. Style M fails exactly the 12 permutations where an
+  authoritative child precedes its message placement.
+- Pending children are a derived category: transitive attachment needs no
+  fold-time recursion (`attachPending` disappears).
+- Conflicts (sibling sequence, double placement) surface on the same event in
+  both styles when derivation runs eagerly per structural fold.
+- Content deltas reuse the nodes map, so the WeakMap-keyed view survives them:
+  50 text folds cost zero re-derivations.
+
+Deliberately not modeled: mutable-fact merge rules, the structured-output
+streaming cursor, and `messageOrder` arrival semantics. No generators are
+involved — this decomposition is data modeling, not composition.
+
+## Projection program experiment
+
+`projection-program-style.ts` is the shape that came out of the pipeline
+experiments. A projection is one generator program; `yield*` delegation _is_
+the bind, so intermediate types thread automatically. There is no stage array,
+no builder, and no existential cast, and ordinary control flow works:
+
+```ts
+function* providerProjection(roots) {
+  const state = yield* stage("roots", function* () {
+    yield* note({ kind: "root-input", count: roots.length });
+    return projectionFromPublicRoots(roots);
+  });
+
+  if (isEmpty(state)) return [];
+
+  return yield* stage("provider", function* () { ... });
+}
+```
+
+The program yields instructions (`note`, `enter`, `exit`); the runner
+interprets them, accumulating notes, tracking the nested stage path, observing
+events, and converting a thrown domain error once. The same program can be run
+by different interpreters — plain, traced, or collected.
+
+`projection-style.ts` keeps the earlier Writer/ResultWriter and stage-array
+pipelines for contrast. They work, but they need a builder plus one type
+erasure to hold heterogeneous stages, and they cannot express branching or
+loops between stages.
+
+## Projection pipeline experiment
+
+`projection-style.ts` and `projection-style.test.ts` compare direct pure
+composition with an immutable Writer-style pipeline and a Result+Writer
+pipeline. They model the existing `projectionFromPublicRoots`,
+`providerHistoryFromFrames`, and `foldAGUIEvent` shapes without coupling
+foundation to Chat Core.
+
+The experiment keeps context explicit, accumulates structured notes, and
+preserves structured errors. It also includes a lazy iterator pipeline: typed
+stages are composed first, then execution yields one immutable observation per
+stage and returns the accumulated Result+Writer value. `runProjection()`
+centralizes the required `while (!done)` drain while invoking an optional
+observer; `collectProjection()` retains observations for tests and inspection.
+It demonstrates that a simple state fold remains clearer when no side channel
+is needed.
+
+It is intentionally not exported as production foundation API yet.
+
 ## Generic Resolver experiment
 
 `resolver-style.ts` and `resolver-style.test.ts` exercise the proposed generic

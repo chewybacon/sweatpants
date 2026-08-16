@@ -6,6 +6,7 @@ export default defineConfig({
     json: "src/json.ts",
     port: "src/port.ts",
     stream: "src/stream.ts",
+    projection: "src/projection.ts",
     errors: "src/errors.ts",
     schema: "src/schema.ts",
     "schema-validation": "src/schema-validation.ts",

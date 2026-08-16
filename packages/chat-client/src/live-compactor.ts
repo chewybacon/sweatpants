@@ -1,11 +1,17 @@
 import { EventType, type Message } from "@ag-ui/core";
 import type { Operation } from "effection";
 import {
+  note,
+  runProjectionProgram,
+  stage,
+  type ProjectionProgram,
+} from "@sweatpants/foundation/projection";
+import {
   appendAGUIMessage,
   createChatProjection,
   findTextParts,
   materializeChatMessages,
-  projectionFromPublicRoots,
+  publicRootProjection,
   transitionChatProjection,
   updateTextPartFrame,
   type ChatLocalPart,
@@ -16,6 +22,7 @@ import {
   type ConversationWindowFrame,
   type PublicHistoryPage,
   type PublicProjectionRoot,
+  type PublicRootProjectionNote,
   type Frame,
   type FramePipeline,
   type FramePipelineFactory,
@@ -29,6 +36,88 @@ interface DirtyPart {
 }
 
 export type LiveCompactorAction = Exclude<ChatProjectionAction, { readonly type: "text-changed" }>;
+
+function rootConflict(message: string): Error {
+  return Object.assign(new Error(message), { code: "public_root_conflict" });
+}
+
+type LiveProjectionNote =
+  | {
+      readonly kind: "roots-merged";
+      readonly sealed: number;
+      readonly hot: number;
+      readonly merged: number;
+    }
+  | { readonly kind: "live-events-replayed"; readonly events: number }
+  // Nested notes from the shared chat-core public-root projection.
+  | PublicRootProjectionNote;
+
+/**
+ * The client's view of a conversation: merge sealed and hot roots, project them
+ * with the same program the runtime uses, then replay any post-window live
+ * events. Sealed roots win identity ties so an in-flight hot root can never
+ * displace published history.
+ */
+export function* liveProjection(params: {
+  readonly sealed: ReadonlyMap<string, PublicProjectionRoot>;
+  readonly hot: ReadonlyMap<string, PublicProjectionRoot>;
+  readonly liveEvents: readonly AGUIEvent[];
+  readonly requireComplete: boolean;
+}): ProjectionProgram<ChatProjectionState, LiveProjectionNote> {
+  const roots = yield* stage("merge-roots", function* () {
+    const merged = new Map(params.sealed);
+    for (const [rootId, root] of params.hot) {
+      if (!merged.has(rootId)) merged.set(rootId, root);
+    }
+    yield* note({
+      kind: "roots-merged",
+      sealed: params.sealed.size,
+      hot: params.hot.size,
+      merged: merged.size,
+    });
+    return [...merged.values()];
+  });
+
+  // Delegating to the runtime's own program keeps root identity, position, and
+  // anchor-cycle rules in one place; its stages nest under this path.
+  const projected = yield* stage("project-roots", () => publicRootProjection(roots));
+
+  const replayed = yield* stage("replay-live", function* () {
+    let current = projected;
+    for (const event of params.liveEvents) {
+      current = transitionChatProjection(current, event).projection;
+    }
+    yield* note({ kind: "live-events-replayed", events: params.liveEvents.length });
+    return current;
+  });
+
+  if (!params.requireComplete) {
+    return replayed;
+  }
+
+  return yield* stage("assert-complete", function* () {
+    if (replayed.pendingChildren.size > 0) {
+      throw Object.assign(
+        new Error(
+          `Public history page is missing parents for ${[...replayed.pendingChildren.keys()].join(
+            ", ",
+          )}`,
+        ),
+        { code: "public_history_parent_missing" },
+      );
+    }
+    return replayed;
+  });
+}
+
+function runLiveProjection(params: Parameters<typeof liveProjection>[0]): ChatProjectionState {
+  const outcome = runProjectionProgram(
+    () => liveProjection(params),
+    (error) => error,
+  );
+  if (!outcome.ok) throw outcome.error;
+  return outcome.value;
+}
 
 /**
  * Presentation-side projection and frame compactor.
@@ -90,9 +179,7 @@ export class LiveChatCompactor {
       this.sealedRoots.clear();
     }
     if (window.windowMode === "continue") {
-      for (const root of window.sealedCatchupRoots) {
-        this.installSealedRoot(root);
-      }
+      this.installSealedRoots(this.sealedRoots, window.sealedCatchupRoots);
     }
     this.hotRoots.clear();
     for (const root of window.hotRoots) {
@@ -118,32 +205,19 @@ export class LiveChatCompactor {
   }
 
   applyHistoryPage(page: PublicHistoryPage): void {
-    const candidate = new Map(this.sealedRoots);
     for (const root of page.roots) {
       if (root.state !== "sealed") {
-        throw Object.assign(new Error("Public history pages may contain only sealed roots"), {
-          code: "public_root_conflict",
-        });
+        throw rootConflict("Public history pages may contain only sealed roots");
       }
-      this.installSealedRootInto(candidate, root);
     }
-    const roots = [...candidate.values(), ...this.hotRoots.values()].filter(
-      (root, index, all) => all.findIndex((other) => other.rootId === root.rootId) === index,
-    );
-    let projection = projectionFromPublicRoots(roots);
-    for (const event of this.liveEvents) {
-      projection = transitionChatProjection(projection, event).projection;
-    }
-    if (projection.pendingChildren.size > 0) {
-      throw Object.assign(
-        new Error(
-          `Public history page is missing parents for ${[...projection.pendingChildren.keys()].join(
-            ", ",
-          )}`,
-        ),
-        { code: "public_history_parent_missing" },
-      );
-    }
+    const candidate = new Map(this.sealedRoots);
+    this.installSealedRoots(candidate, page.roots);
+    const projection = runLiveProjection({
+      sealed: candidate,
+      hot: this.hotRoots,
+      liveEvents: this.liveEvents,
+      requireComplete: true,
+    });
     this.sealedRoots.clear();
     for (const [rootId, root] of candidate) this.sealedRoots.set(rootId, root);
     this.current = projection;
@@ -210,42 +284,39 @@ export class LiveChatCompactor {
     }
   }
 
-  private installSealedRoot(root: PublicProjectionRoot): void {
-    this.installSealedRootInto(this.sealedRoots, root);
-  }
-
-  private installSealedRootInto(
-    roots: Map<string, PublicProjectionRoot>,
-    root: PublicProjectionRoot,
+  /**
+   * Install sealed roots, rejecting reuse of a root identity with different
+   * content and reuse of a public position by a different root.
+   */
+  private installSealedRoots(
+    target: Map<string, PublicProjectionRoot>,
+    roots: readonly PublicProjectionRoot[],
   ): void {
-    const current = roots.get(root.rootId);
-    if (current && JSON.stringify(current) !== JSON.stringify(root)) {
-      throw Object.assign(new Error(`Public root ${root.rootId} conflicts with loaded history`), {
-        code: "public_root_conflict",
-      });
+    const byPosition = new Map<string, string>();
+    for (const existing of target.values()) {
+      byPosition.set(existing.position, existing.rootId);
     }
-    for (const candidate of roots.values()) {
-      if (candidate.position === root.position && candidate.rootId !== root.rootId) {
-        throw Object.assign(
-          new Error(`Public position ${root.position} conflicts with loaded history`),
-          { code: "public_root_conflict" },
-        );
+    for (const root of roots) {
+      const current = target.get(root.rootId);
+      if (current && JSON.stringify(current) !== JSON.stringify(root)) {
+        throw rootConflict(`Public root ${root.rootId} conflicts with loaded history`);
       }
+      const occupant = byPosition.get(root.position);
+      if (occupant !== undefined && occupant !== root.rootId) {
+        throw rootConflict(`Public position ${root.position} conflicts with loaded history`);
+      }
+      target.set(root.rootId, root);
+      byPosition.set(root.position, root.rootId);
     }
-    roots.set(root.rootId, root);
   }
 
   private rebuild(replayLive: boolean): void {
-    const roots = [...this.sealedRoots.values(), ...this.hotRoots.values()].filter(
-      (root, index, all) =>
-        all.findIndex((candidate) => candidate.rootId === root.rootId) === index,
-    );
-    this.current = projectionFromPublicRoots(roots);
-    if (replayLive) {
-      for (const event of this.liveEvents) {
-        this.current = transitionChatProjection(this.current, event).projection;
-      }
-    }
+    this.current = runLiveProjection({
+      sealed: this.sealedRoots,
+      hot: this.hotRoots,
+      liveEvents: replayLive ? this.liveEvents : [],
+      requireComplete: false,
+    });
     this.pipelines.clear();
     this.dirtyParts.clear();
   }

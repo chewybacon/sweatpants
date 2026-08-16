@@ -20,6 +20,12 @@ import {
   type DurableSemanticRecord,
 } from "@sweatpants/journal-authority";
 import { ProgramRouteResolver } from "@sweatpants/durable-execution";
+import {
+  note,
+  runProjectionProgram,
+  stage,
+  type ProjectionProgram,
+} from "@sweatpants/foundation/projection";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -913,7 +919,7 @@ function bindStandardHost(
     if (TERMINAL.has(current.status.state)) {
       throw hostError("task_not_modifiable", "Terminal task cannot be resumed");
     }
-    const pending = pendingElicitation(before, taskId);
+    const pending = pendingElicitation(indexedTaskRecords(before, taskId, contextId));
     if (!pending) {
       throw hostError("task_not_modifiable", "Task has no pending client input");
     }
@@ -1368,6 +1374,276 @@ function externalizeTask(
   };
 }
 
+type TaskPullRequested = Extract<DurableSemanticRecord["payload"], { type: "PullRequested" }>;
+type TaskPullResolved = Extract<DurableSemanticRecord["payload"], { type: "PullResolved" }>;
+
+/** Injective, allocation-cheap composite key. Ids are opaque, so length-prefix. */
+function taskPullKey(taskId: string, pullId: string): string {
+  return `${taskId.length}:${taskId}:${pullId}`;
+}
+
+type TaskProjectionNote =
+  | {
+      readonly kind: "task-records-indexed";
+      readonly records: number;
+      readonly descendants: number;
+      readonly pulls: number;
+    }
+  | { readonly kind: "status-projected"; readonly state: ForeignA2ANormalizedState }
+  | { readonly kind: "artifacts-projected"; readonly artifacts: number }
+  | {
+      readonly kind: "history-projected";
+      readonly candidates: number;
+      readonly retained: number;
+    };
+
+interface IndexedTaskPull {
+  readonly payload: TaskPullRequested;
+  readonly resolved: TaskPullResolved | undefined;
+}
+
+/**
+ * Task facts derived from one journal scan. The descendant closure, pull
+ * resolution, and terminal outcome were previously recomputed by each helper,
+ * so status, history, and pending elicitation each rewalked the journal.
+ * Later stages read these facts instead of rescanning.
+ */
+interface IndexedTaskRecords {
+  readonly taskId: string;
+  readonly contextId: string;
+  readonly taskIds: ReadonlySet<string>;
+  readonly input: AuthoredChatTurnInput;
+  readonly close: DurableSemanticRecord["payload"] | undefined;
+  readonly result: AuthoredChatTurnResult | undefined;
+  /** Pulls belonging to the task subtree, in journal order. */
+  readonly pulls: readonly IndexedTaskPull[];
+}
+
+function lastUnresolvedPull(facts: IndexedTaskRecords): TaskPullRequested | undefined {
+  for (let index = facts.pulls.length - 1; index >= 0; index -= 1) {
+    const pull = facts.pulls[index]!;
+    if (!pull.resolved) {
+      return pull.payload;
+    }
+  }
+  return undefined;
+}
+
+function indexedTaskRecords(
+  records: readonly DurableSemanticRecord[],
+  taskId: string,
+  contextId: string,
+): IndexedTaskRecords {
+  const opened = rootOpenings(records).find((candidate) => candidate.taskId === taskId);
+  if (!opened) {
+    throw hostError("task_not_found", "Task is unavailable");
+  }
+  const taskIds = descendantTaskIds(records, taskId);
+
+  const requested: TaskPullRequested[] = [];
+  const resolvedByPull = new Map<string, TaskPullResolved>();
+  let close: DurableSemanticRecord["payload"] | undefined;
+  for (const record of records) {
+    const payload = record.payload;
+    if (payload.type === "PullRequested" && taskIds.has(payload.taskId)) {
+      requested.push(payload);
+      continue;
+    }
+    if (payload.type === "PullResolved") {
+      resolvedByPull.set(taskPullKey(payload.taskId, payload.pullId), payload);
+      continue;
+    }
+    if (payload.type === "TaskClosed" && payload.taskId === taskId) {
+      close = payload;
+    }
+  }
+
+  return {
+    taskId,
+    contextId,
+    taskIds,
+    input: openedTurnInput(opened),
+    close,
+    result: completedResult(close),
+    pulls: requested.map((payload) => ({
+      payload,
+      resolved: resolvedByPull.get(taskPullKey(payload.taskId, payload.pullId)),
+    })),
+  };
+}
+
+function* indexTaskRecords(
+  records: readonly DurableSemanticRecord[],
+  taskId: string,
+  contextId: string,
+): ProjectionProgram<IndexedTaskRecords, TaskProjectionNote> {
+  return yield* stage("index-task-records", function* () {
+    const facts = indexedTaskRecords(records, taskId, contextId);
+    yield* note({
+      kind: "task-records-indexed",
+      records: records.length,
+      descendants: facts.taskIds.size,
+      pulls: facts.pulls.length,
+    });
+    return facts;
+  });
+}
+
+interface TaskWireMessages {
+  readonly userMessage: ForeignA2AMessage;
+  readonly agentMessage: ForeignA2AMessage | undefined;
+}
+
+function* projectTaskMessages(
+  facts: IndexedTaskRecords,
+): ProjectionProgram<TaskWireMessages, TaskProjectionNote> {
+  return yield* stage("project-task-messages", function* () {
+    return {
+      userMessage: chatToWireMessage(facts.input.message, facts.taskId, facts.contextId),
+      agentMessage: facts.result
+        ? chatToWireMessage(facts.result.message, facts.taskId, facts.contextId)
+        : undefined,
+    };
+  });
+}
+
+interface TaskStatusProjection {
+  readonly state: ForeignA2ANormalizedState;
+  readonly statusMessage: ForeignA2AMessage | undefined;
+}
+
+function* projectTaskStatus(
+  facts: IndexedTaskRecords,
+  messages: TaskWireMessages,
+): ProjectionProgram<TaskStatusProjection, TaskProjectionNote> {
+  return yield* stage("project-status", function* () {
+    const state = projectedState(facts);
+    const failure = terminalError(facts.close);
+    const pending = pendingElicitation(facts);
+    const statusMessage =
+      messages.agentMessage ??
+      (failure
+        ? {
+            messageId: `status:${facts.taskId}`,
+            role: "agent" as const,
+            taskId: facts.taskId,
+            contextId: facts.contextId,
+            parts: [{ text: failure.message }],
+          }
+        : pending
+          ? {
+              messageId: `input-required:${pending.pullId}`,
+              role: "agent" as const,
+              taskId: facts.taskId,
+              contextId: facts.contextId,
+              parts: [
+                {
+                  text: pending.message,
+                  metadata: {
+                    elicitationKey: pending.key,
+                    responseSchema: pending.responseSchema,
+                  } as Json,
+                },
+              ],
+            }
+          : undefined);
+    yield* note({ kind: "status-projected", state });
+    return { state, statusMessage };
+  });
+}
+
+function* projectTaskArtifacts(
+  facts: IndexedTaskRecords,
+): ProjectionProgram<readonly ForeignA2AArtifact[], TaskProjectionNote> {
+  return yield* stage("project-artifacts", function* () {
+    const artifacts: ForeignA2AArtifact[] = (facts.result?.artifacts ?? []).map((artifact) => ({
+      artifactId: artifact.id,
+      ...(artifact.name ? { name: artifact.name } : {}),
+      ...(artifact.description ? { description: artifact.description } : {}),
+      parts: artifact.parts.map((part) =>
+        typeof part.value === "string" ? { text: part.value } : { data: part.value },
+      ),
+    }));
+    yield* note({ kind: "artifacts-projected", artifacts: artifacts.length });
+    return artifacts;
+  });
+}
+
+function* projectTaskHistoryView(
+  facts: IndexedTaskRecords,
+  messages: TaskWireMessages,
+  historyLength: number,
+  historyProjection: StandardA2AHistoryProjection,
+  continuations: readonly StandardA2AContinuationBinding[],
+): ProjectionProgram<readonly ForeignA2AMessage[], TaskProjectionNote> {
+  return yield* stage("project-history", function* () {
+    const taskHistory = taskInteractionHistory(facts, messages, continuations);
+    const acceptedContextHistory =
+      historyProjection === "accepted-context"
+        ? [
+            ...facts.input.context.messages.map((message) =>
+              chatToWireMessage(message, undefined, facts.contextId),
+            ),
+            ...facts.input.context.referencedTasks.map((referenced) =>
+              chatToWireMessage(referenced.summary, undefined, facts.contextId),
+            ),
+          ]
+        : [];
+    const candidates = deduplicateWireMessages([...acceptedContextHistory, ...taskHistory]);
+    const history = historyLength === 0 ? [] : candidates.slice(-historyLength);
+    yield* note({
+      kind: "history-projected",
+      candidates: candidates.length,
+      retained: history.length,
+    });
+    return history;
+  });
+}
+
+/**
+ * The Standard A2A task view as one program: index the journal once, then
+ * project status, messages, artifacts, and history from those shared facts.
+ */
+function* standardTaskProjection(params: {
+  readonly records: readonly DurableSemanticRecord[];
+  readonly taskId: string;
+  readonly contextId: string;
+  readonly historyLength: number;
+  readonly historyProjection: StandardA2AHistoryProjection;
+  readonly continuations: readonly StandardA2AContinuationBinding[];
+}): ProjectionProgram<ForeignA2ATask, TaskProjectionNote> {
+  const facts = yield* indexTaskRecords(params.records, params.taskId, params.contextId);
+  const messages = yield* projectTaskMessages(facts);
+  const status = yield* projectTaskStatus(facts, messages);
+  const artifacts = yield* projectTaskArtifacts(facts);
+  const history = yield* projectTaskHistoryView(
+    facts,
+    messages,
+    params.historyLength,
+    params.historyProjection,
+    params.continuations,
+  );
+
+  return yield* stage("assemble-task", function* () {
+    return Object.freeze({
+      id: facts.taskId,
+      contextId: facts.contextId,
+      status: Object.freeze({
+        state: status.state,
+        ...(status.statusMessage ? { message: status.statusMessage } : {}),
+      }),
+      artifacts: [...artifacts],
+      history: [...history],
+      metadata: assertJson(
+        Object.freeze({
+          referenceTaskIds: Object.freeze([...(facts.input.context?.referenceTaskIds ?? [])]),
+          frontier: facts.input.context?.frontier ?? "0",
+        }),
+      ),
+    });
+  });
+}
+
 function projectTask(
   records: readonly DurableSemanticRecord[],
   taskId: string,
@@ -1376,114 +1652,39 @@ function projectTask(
   historyProjection: StandardA2AHistoryProjection,
   continuations: readonly StandardA2AContinuationBinding[],
 ): ForeignA2ATask {
-  const opened = rootOpenings(records).find((candidate) => candidate.taskId === taskId);
-  if (!opened) {
-    throw hostError("task_not_found", "Task is unavailable");
-  }
-  const input = openedTurnInput(opened);
-  const close = taskClose(records, taskId);
-  const result = completedResult(close);
-  const state = projectedState(records, taskId, close);
-  const userMessage = chatToWireMessage(input.message, taskId, contextId);
-  const agentMessage = result ? chatToWireMessage(result.message, taskId, contextId) : undefined;
-  const artifacts: ForeignA2AArtifact[] = (result?.artifacts ?? []).map((artifact) => ({
-    artifactId: artifact.id,
-    ...(artifact.name ? { name: artifact.name } : {}),
-    ...(artifact.description ? { description: artifact.description } : {}),
-    parts: artifact.parts.map((part) =>
-      typeof part.value === "string" ? { text: part.value } : { data: part.value },
-    ),
-  }));
-  const failure = terminalError(close);
-  const pending = pendingElicitation(records, taskId);
-  const statusMessage =
-    agentMessage ??
-    (failure
-      ? {
-          messageId: `status:${taskId}`,
-          role: "agent" as const,
-          taskId,
-          contextId,
-          parts: [{ text: failure.message }],
-        }
-      : pending
-        ? {
-            messageId: `input-required:${pending.pullId}`,
-            role: "agent" as const,
-            taskId,
-            contextId,
-            parts: [
-              {
-                text: pending.message,
-                metadata: {
-                  elicitationKey: pending.key,
-                  responseSchema: pending.responseSchema,
-                } as Json,
-              },
-            ],
-          }
-        : undefined);
-  const taskHistory = taskInteractionHistory(
-    records,
-    taskId,
-    contextId,
-    userMessage,
-    agentMessage,
-    continuations,
-  );
-  const acceptedContextHistory =
-    historyProjection === "accepted-context"
-      ? [
-          ...input.context.messages.map((message) =>
-            chatToWireMessage(message, undefined, contextId),
-          ),
-          ...input.context.referencedTasks.map((referenced) =>
-            chatToWireMessage(referenced.summary, undefined, contextId),
-          ),
-        ]
-      : [];
-  const historyCandidates = deduplicateWireMessages([...acceptedContextHistory, ...taskHistory]);
-  const history = historyLength === 0 ? [] : historyCandidates.slice(-historyLength);
-  return Object.freeze({
-    id: taskId,
-    contextId,
-    status: Object.freeze({ state, ...(statusMessage ? { message: statusMessage } : {}) }),
-    artifacts,
-    history,
-    metadata: assertJson(
-      Object.freeze({
-        referenceTaskIds: Object.freeze([...(input.context?.referenceTaskIds ?? [])]),
-        frontier: input.context?.frontier ?? "0",
+  const outcome = runProjectionProgram(
+    () =>
+      standardTaskProjection({
+        records,
+        taskId,
+        contextId,
+        historyLength,
+        historyProjection,
+        continuations,
       }),
-    ),
-  });
+    (error) => error,
+  );
+  if (!outcome.ok) throw outcome.error;
+  return outcome.value;
 }
 
 function taskInteractionHistory(
-  records: readonly DurableSemanticRecord[],
-  rootTaskId: string,
-  contextId: string,
-  userMessage: ForeignA2AMessage,
-  agentMessage: ForeignA2AMessage | undefined,
+  facts: IndexedTaskRecords,
+  messages: TaskWireMessages,
   continuations: readonly StandardA2AContinuationBinding[],
 ): ForeignA2AMessage[] {
-  const taskIds = descendantTaskIds(records, rootTaskId);
   const continuationByPull = new Map(continuations.map((binding) => [binding.pullId, binding]));
-  const history: ForeignA2AMessage[] = [userMessage];
-  for (const record of records) {
-    const payload = record.payload;
-    if (
-      payload.type !== "PullRequested" ||
-      payload.descriptor.kind !== "elicit" ||
-      !taskIds.has(payload.taskId)
-    ) {
+  const history: ForeignA2AMessage[] = [messages.userMessage];
+  for (const pull of facts.pulls) {
+    const payload = pull.payload;
+    if (payload.descriptor.kind !== "elicit") {
       continue;
     }
     history.push({
       messageId: `input-required:${payload.pullId}`,
       role: "agent",
-      taskId: rootTaskId,
-      contextId,
+      taskId: facts.taskId,
+      contextId: facts.contextId,
       parts: [
         {
           text: payload.descriptor.message,
@@ -1494,14 +1695,9 @@ function taskInteractionHistory(
         },
       ],
     });
-    const resolved = records.find(
-      (candidate) =>
-        candidate.payload.type === "PullResolved" &&
-        candidate.payload.taskId === payload.taskId &&
-        candidate.payload.pullId === payload.pullId,
-    )?.payload;
+    const resolved = pull.resolved;
     const continuation = continuationByPull.get(payload.pullId);
-    if (resolved?.type === "PullResolved" && resolved.outcome.status === "ok" && continuation) {
+    if (resolved && resolved.outcome.status === "ok" && continuation) {
       const value = resolved.outcome.value;
       const acceptedElicit = z
         .object({ action: z.literal("accept"), content: z.json().optional() })
@@ -1511,14 +1707,14 @@ function taskInteractionHistory(
       history.push({
         messageId: continuation.messageId,
         role: "user",
-        taskId: rootTaskId,
-        contextId,
+        taskId: facts.taskId,
+        contextId: facts.contextId,
         parts: [typeof content === "string" ? { text: content } : { data: content }],
       });
     }
   }
-  if (agentMessage) {
-    history.push(agentMessage);
+  if (messages.agentMessage) {
+    history.push(messages.agentMessage);
   }
   return history;
 }
@@ -1533,11 +1729,8 @@ function deduplicateWireMessages(messages: readonly ForeignA2AMessage[]): Foreig
   });
 }
 
-function projectedState(
-  records: readonly DurableSemanticRecord[],
-  rootTaskId: string,
-  close: DurableSemanticRecord["payload"] | undefined,
-): ForeignA2ANormalizedState {
+function projectedState(facts: IndexedTaskRecords): ForeignA2ANormalizedState {
+  const close = facts.close;
   if (close?.type === "TaskClosed") {
     if (close.outcome.status === "ok") {
       return "completed";
@@ -1547,55 +1740,50 @@ function projectedState(
     }
     return "failed";
   }
-  const taskIds = descendantTaskIds(records, rootTaskId);
-  let unresolved: DurableSemanticRecord | undefined;
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    const candidateRecord = records[index]!;
-    const payload = candidateRecord.payload;
-    if (payload.type !== "PullRequested" || !taskIds.has(payload.taskId)) {
-      continue;
-    }
-    const resolved = records.some(
-      (candidate) =>
-        candidate.payload.type === "PullResolved" &&
-        candidate.payload.taskId === payload.taskId &&
-        candidate.payload.pullId === payload.pullId,
-    );
-    if (!resolved) {
-      unresolved = candidateRecord;
-      break;
-    }
-  }
-  if (unresolved?.payload.type === "PullRequested") {
-    if (unresolved.payload.descriptor.kind === "elicit") {
+  const unresolved = lastUnresolvedPull(facts);
+  if (unresolved) {
+    if (unresolved.descriptor.kind === "elicit") {
       return "input_required";
     }
     if (
-      unresolved.payload.descriptor.kind === "effect" &&
-      unresolved.payload.descriptor.resolver.route === "secondary-authorization"
+      unresolved.descriptor.kind === "effect" &&
+      unresolved.descriptor.resolver.route === "secondary-authorization"
     ) {
       return "auth_required";
     }
   }
   return "working";
 }
+
+/**
+ * Reachability in the parent/child task graph. Journal order does not
+ * guarantee a parent opening precedes its child, so the closure is computed
+ * from an adjacency index rather than by repeated passes.
+ */
 function descendantTaskIds(
   records: readonly DurableSemanticRecord[],
   rootTaskId: string,
 ): Set<string> {
+  const childrenByParent = new Map<string, string[]>();
+  for (const record of records) {
+    const payload = record.payload;
+    if (payload.type !== "TaskOpened" || !payload.parentTaskId) {
+      continue;
+    }
+    const siblings = childrenByParent.get(payload.parentTaskId);
+    if (siblings) {
+      siblings.push(payload.taskId);
+    } else {
+      childrenByParent.set(payload.parentTaskId, [payload.taskId]);
+    }
+  }
   const ids = new Set([rootTaskId]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const opened of records) {
-      if (
-        opened.payload.type === "TaskOpened" &&
-        opened.payload.parentTaskId &&
-        ids.has(opened.payload.parentTaskId) &&
-        !ids.has(opened.payload.taskId)
-      ) {
-        ids.add(opened.payload.taskId);
-        changed = true;
+  const pending = [rootTaskId];
+  while (pending.length > 0) {
+    for (const child of childrenByParent.get(pending.pop()!) ?? []) {
+      if (!ids.has(child)) {
+        ids.add(child);
+        pending.push(child);
       }
     }
   }
@@ -1611,31 +1799,21 @@ function safeApplicationError(error: SerializedApplicationError) {
   return { code: error.code || "application_error", message: "Agent task failed" };
 }
 
-function pendingElicitation(records: readonly DurableSemanticRecord[], rootTaskId: string) {
-  const taskIds = descendantTaskIds(records, rootTaskId);
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    const record = records[index]!;
-    const payload = record.payload;
-    if (
-      payload.type === "PullRequested" &&
-      taskIds.has(payload.taskId) &&
-      payload.descriptor.kind === "elicit" &&
-      !records.some(
-        (candidate) =>
-          candidate.payload.type === "PullResolved" &&
-          candidate.payload.taskId === payload.taskId &&
-          candidate.payload.pullId === payload.pullId,
-      )
-    ) {
-      return {
-        taskId: payload.taskId,
-        pullId: payload.pullId,
-        audience: `user:${payload.descriptor.key}`,
-        key: payload.descriptor.key,
-        message: payload.descriptor.message,
-        responseSchema: payload.descriptor.response.inputProjection,
-      };
+function pendingElicitation(facts: IndexedTaskRecords) {
+  for (let index = facts.pulls.length - 1; index >= 0; index -= 1) {
+    const pull = facts.pulls[index]!;
+    const payload = pull.payload;
+    if (pull.resolved || payload.descriptor.kind !== "elicit") {
+      continue;
     }
+    return {
+      taskId: payload.taskId,
+      pullId: payload.pullId,
+      audience: `user:${payload.descriptor.key}`,
+      key: payload.descriptor.key,
+      message: payload.descriptor.message,
+      responseSchema: payload.descriptor.response.inputProjection,
+    };
   }
   return undefined;
 }

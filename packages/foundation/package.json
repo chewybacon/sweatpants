@@ -53,6 +53,17 @@
             },
             "default": "./src/stream.ts"
         },
+        "./projection": {
+            "development": {
+                "import": "./src/projection.ts",
+                "types": "./src/projection.ts"
+            },
+            "import": {
+                "types": "./dist/projection.d.ts",
+                "default": "./dist/projection.js"
+            },
+            "default": "./src/projection.ts"
+        },
         "./errors": {
             "development": {
                 "import": "./src/errors.ts",

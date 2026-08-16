@@ -34,6 +34,12 @@ import {
   type ProgramRunResult,
 } from "@sweatpants/durable-execution";
 import {
+  note,
+  runProjectionProgram,
+  stage,
+  type ProjectionProgram,
+} from "@sweatpants/foundation/projection";
+import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
@@ -1137,44 +1143,169 @@ function opaqueAncestryForTask(
   return [...parentNodes, node];
 }
 
-function modelSampleMessageId(
+type PullRequestedRecord = Extract<DurableSemanticRecord["payload"], { type: "PullRequested" }>;
+
+/** Injective, allocation-cheap composite key. Ids are opaque, so length-prefix. */
+function pullKey(taskId: string, pullId: string): string {
+  return `${taskId.length}:${taskId}:${pullId}`;
+}
+
+type RecordProjectionNote =
+  | {
+      readonly kind: "records-indexed";
+      readonly records: number;
+      readonly pullRequests: number;
+      readonly unfinishedTools: number;
+    }
+  | { readonly kind: "events-projected"; readonly events: number };
+
+interface RecordProjectionIndex {
+  readonly pullRequests: ReadonlyMap<string, PullRequestedRecord>;
+  readonly previousToolStarts: ReadonlyMap<string, Record<string, Json>>;
+  readonly unfinishedToolCalls: readonly { callId: string; tool: string }[];
+  readonly cancellationPartials: ReadonlyMap<string, Json>;
+  /** Public assistant message identity for each durable emission. */
+  readonly modelMessageIds: ReadonlyMap<DurableSemanticRecord, string | null>;
+  readonly cancellationClosed: boolean;
+  readonly errorClosed: DurableSemanticRecord | undefined;
+}
+
+function indexRecordProjection(
   records: readonly DurableSemanticRecord[],
-  record: DurableSemanticRecord,
-): string | null {
-  if (record.payload.type !== "DurableEmission") {
-    return null;
-  }
-  const recordIndex = records.indexOf(record);
-  for (let index = recordIndex - 1; index >= 0; index -= 1) {
-    const candidate = records[index]!.payload;
-    if (
-      candidate.type === "PullRequested" &&
-      candidate.taskId === record.payload.taskId &&
-      candidate.descriptor.kind === "effect" &&
-      candidate.descriptor.name === modelSample.name &&
-      candidate.descriptor.version === modelSample.version
-    ) {
-      const preparation = records.find(
-        (entry) =>
-          entry.payload.type === "ModelContextPrepared" &&
-          entry.payload.taskId === candidate.taskId &&
-          entry.payload.pullId === candidate.pullId,
-      );
-      if (preparation?.payload.type === "ModelContextPrepared") {
-        return preparation.payload.fact.publicMessageId;
-      }
-      if (candidate.publicMessageId) {
-        return candidate.publicMessageId;
-      }
-      return null;
+  allRecords: readonly DurableSemanticRecord[],
+): RecordProjectionIndex {
+  const pullRequests = new Map<string, PullRequestedRecord>();
+  for (const record of allRecords) {
+    if (record.payload.type === "PullRequested" && !pullRequests.has(record.payload.pullId)) {
+      pullRequests.set(record.payload.pullId, record.payload);
     }
   }
-  return null;
+
+  const started = new Map<string, string>();
+  const completed = new Set<string>();
+  const previousToolStarts = new Map<string, Record<string, Json>>();
+  for (const record of allRecords) {
+    if (record.payload.type !== "DurableEmission") continue;
+    const payload = jsonRecord(record.payload.descriptor.payload);
+    if (!payload || typeof payload["callId"] !== "string") continue;
+    if (
+      record.payload.descriptor.eventType === "tool_started" &&
+      typeof payload["tool"] === "string"
+    ) {
+      started.set(payload["callId"], payload["tool"]);
+      previousToolStarts.set(payload["callId"], payload);
+    }
+    if (record.payload.descriptor.eventType === "tool_completed") {
+      completed.add(payload["callId"]);
+    }
+  }
+
+  const cancellationPartials = new Map<string, Json>();
+  for (const record of allRecords) {
+    const payload = record.payload;
+    if (payload.type !== "PullResolved" || payload.outcome.status !== "cancelled") continue;
+    if (payload.outcome.partial === undefined) continue;
+    const request = pullRequests.get(payload.pullId);
+    if (request?.descriptor.kind === "effect" && request.descriptor.resolver.route !== undefined) {
+      cancellationPartials.set(request.descriptor.resolver.route, payload.outcome.partial);
+    }
+  }
+
+  const errorClosed = [...records]
+    .reverse()
+    .find(
+      (record) => record.payload.type === "TaskClosed" && record.payload.outcome.status === "error",
+    );
+
+  // Assistant message identity: a preparation may be journaled after its
+  // emission, so collect preparations first, then walk forward tracking the
+  // most recent model-sample pull per task.
+  const preparedByPull = new Map<string, string>();
+  for (const record of allRecords) {
+    if (record.payload.type === "ModelContextPrepared") {
+      preparedByPull.set(
+        pullKey(record.payload.taskId, record.payload.pullId),
+        record.payload.fact.publicMessageId,
+      );
+    }
+  }
+  const modelMessageIds = new Map<DurableSemanticRecord, string | null>();
+  const lastModelPullByTask = new Map<string, PullRequestedRecord>();
+  for (const record of allRecords) {
+    const payload = record.payload;
+    if (
+      payload.type === "PullRequested" &&
+      payload.descriptor.kind === "effect" &&
+      payload.descriptor.name === modelSample.name &&
+      payload.descriptor.version === modelSample.version
+    ) {
+      lastModelPullByTask.set(payload.taskId, payload);
+      continue;
+    }
+    if (payload.type !== "DurableEmission") continue;
+    const pull = lastModelPullByTask.get(payload.taskId);
+    modelMessageIds.set(
+      record,
+      pull
+        ? (preparedByPull.get(pullKey(pull.taskId, pull.pullId)) ?? pull.publicMessageId ?? null)
+        : null,
+    );
+  }
+
+  return {
+    pullRequests,
+    previousToolStarts,
+    unfinishedToolCalls: [...started]
+      .filter(([callId]) => !completed.has(callId))
+      .map(([callId, tool]) => ({ callId, tool })),
+    cancellationPartials,
+    modelMessageIds,
+    cancellationClosed: records.some(
+      (record) =>
+        record.payload.type === "TaskClosed" && record.payload.outcome.status === "cancelled",
+    ),
+    errorClosed,
+  };
+}
+
+function* projectRecordsProgram(
+  records: DurableSemanticRecord[],
+  allRecords: DurableSemanticRecord[],
+): ProjectionProgram<StreamEvent[], RecordProjectionNote> {
+  const index = yield* stage("index-records", function* () {
+    const indexed = indexRecordProjection(records, allRecords);
+    yield* note({
+      kind: "records-indexed",
+      records: records.length,
+      pullRequests: indexed.pullRequests.size,
+      unfinishedTools: indexed.unfinishedToolCalls.length,
+    });
+    return indexed;
+  });
+
+  return yield* stage("project-events", function* () {
+    const events = projectRecordsFromIndex(records, allRecords, index);
+    yield* note({ kind: "events-projected", events: events.length });
+    return events;
+  });
 }
 
 function projectRecords(
   records: DurableSemanticRecord[],
   allRecords: DurableSemanticRecord[],
+): StreamEvent[] {
+  const outcome = runProjectionProgram(
+    () => projectRecordsProgram(records, allRecords),
+    (error) => error,
+  );
+  if (!outcome.ok) throw outcome.error;
+  return outcome.value;
+}
+
+function projectRecordsFromIndex(
+  records: DurableSemanticRecord[],
+  allRecords: DurableSemanticRecord[],
+  index: RecordProjectionIndex,
 ): StreamEvent[] {
   const events: StreamEvent[] = [];
   const activeToolCalls = new Set<string>();
@@ -1193,7 +1324,7 @@ function projectRecords(
       continue;
     }
     if (recordEntry.payload.type === "PullResolved") {
-      const request = pullRequest(allRecords, recordEntry.payload.pullId);
+      const request = index.pullRequests.get(recordEntry.payload.pullId);
       if (request?.descriptor.kind === "elicit") {
         const completion =
           recordEntry.payload.outcome.status === "ok"
@@ -1219,7 +1350,7 @@ function projectRecords(
       continue;
     }
     if (descriptor.eventType === "assistant_text" && typeof payload["text"] === "string") {
-      const messageId = modelSampleMessageId(allRecords, recordEntry);
+      const messageId = index.modelMessageIds.get(recordEntry) ?? null;
       if (!messageId) continue;
       events.push(
         { type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" },
@@ -1254,7 +1385,7 @@ function projectRecords(
       typeof payload["tool"] === "string"
     ) {
       const activeInThisRun = activeToolCalls.delete(payload["callId"]);
-      const startedPreviously = previousToolStart(allRecords, payload["callId"]);
+      const startedPreviously = index.previousToolStarts.get(payload["callId"]);
       if (activeInThisRun) {
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: payload["callId"] });
       } else if (!startedPreviously) {
@@ -1293,13 +1424,9 @@ function projectRecords(
     }
   }
 
-  const cancellationClosed = records.some(
-    (record) =>
-      record.payload.type === "TaskClosed" && record.payload.outcome.status === "cancelled",
-  );
-  if (cancellationClosed) {
-    for (const pending of unfinishedToolCalls(allRecords)) {
-      const partial = cancellationPartialForCall(allRecords, pending.callId);
+  if (index.cancellationClosed) {
+    for (const pending of index.unfinishedToolCalls) {
+      const partial = index.cancellationPartials.get(pending.callId);
       if (activeToolCalls.delete(pending.callId)) {
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: pending.callId });
       }
@@ -1315,13 +1442,9 @@ function projectRecords(
       });
     }
   }
-  const errored = Array.from(records)
-    .reverse()
-    .find(
-      (record) => record.payload.type === "TaskClosed" && record.payload.outcome.status === "error",
-    );
+  const errored = index.errorClosed;
   if (errored?.payload.type === "TaskClosed" && errored.payload.outcome.status === "error") {
-    for (const pending of unfinishedToolCalls(allRecords)) {
+    for (const pending of index.unfinishedToolCalls) {
       if (activeToolCalls.delete(pending.callId)) {
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: pending.callId });
       }
@@ -1339,80 +1462,6 @@ function projectRecords(
     }
   }
   return events;
-}
-
-function pullRequest(records: DurableSemanticRecord[], pullId: string) {
-  const record = records.find(
-    (candidate) =>
-      candidate.payload.type === "PullRequested" && candidate.payload.pullId === pullId,
-  );
-  return record?.payload.type === "PullRequested" ? record.payload : undefined;
-}
-
-function unfinishedToolCalls(
-  records: DurableSemanticRecord[],
-): Array<{ callId: string; tool: string }> {
-  const started = new Map<string, string>();
-  const completed = new Set<string>();
-  for (const record of records) {
-    if (record.payload.type !== "DurableEmission") {
-      continue;
-    }
-    const payload = jsonRecord(record.payload.descriptor.payload);
-    if (!payload || typeof payload["callId"] !== "string") {
-      continue;
-    }
-    if (
-      record.payload.descriptor.eventType === "tool_started" &&
-      typeof payload["tool"] === "string"
-    ) {
-      started.set(payload["callId"], payload["tool"]);
-    }
-    if (record.payload.descriptor.eventType === "tool_completed") {
-      completed.add(payload["callId"]);
-    }
-  }
-  return [...started]
-    .filter(([callId]) => !completed.has(callId))
-    .map(([callId, tool]) => ({ callId, tool }));
-}
-
-function cancellationPartialForCall(
-  records: DurableSemanticRecord[],
-  callId: string,
-): Json | undefined {
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    const payload = records[index]?.payload;
-    if (payload?.type !== "PullResolved" || payload.outcome.status !== "cancelled") {
-      continue;
-    }
-    const request = pullRequest(records, payload.pullId);
-    if (
-      request?.descriptor.kind === "effect" &&
-      request.descriptor.resolver.route === callId &&
-      payload.outcome.partial !== undefined
-    ) {
-      return payload.outcome.partial;
-    }
-  }
-  return undefined;
-}
-
-function previousToolStart(
-  records: DurableSemanticRecord[],
-  callId: string,
-): Record<string, Json> | undefined {
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    const payload = records[index]?.payload;
-    if (payload?.type !== "DurableEmission" || payload.descriptor.eventType !== "tool_started") {
-      continue;
-    }
-    const candidate = jsonRecord(payload.descriptor.payload);
-    if (candidate?.["callId"] === callId) {
-      return candidate;
-    }
-  }
-  return undefined;
 }
 
 function pendingToolCallId(records: DurableSemanticRecord[], pending: PendingElicit): string {
