@@ -19,7 +19,7 @@ import {
   createCapabilityKeyring,
   type DurableSemanticRecord,
 } from "@sweatpants/journal-authority";
-import { ProgramRouteResolverContext } from "@sweatpants/durable-execution";
+import { ProgramRouteResolver } from "@sweatpants/durable-execution";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -1047,18 +1047,13 @@ function* runExisting(input: RuntimeInput): Operation<ProgramRunResult> {
   return yield* ProgramDriverRegistryContext.with(input.drivers, function* () {
     return yield* withJournalAuthority(input.journal.authority, function* () {
       return yield* DurableEffectRegistryContext.with(input.effects, function* () {
-        return yield* ProgramRouteResolverContext.with(
-          function* (_program, parentRoute): Operation<Json> {
-            return parentRoute;
-          },
-          function* () {
-            const result = yield* ProgramRuntime.operations.run({
-              attach: attachment(input),
-              executeHostEffects: true,
-            });
-            return result;
-          },
-        );
+        return yield* ProgramRouteResolver.with(undefined, function* () {
+          const result = yield* ProgramRuntime.operations.run({
+            attach: attachment(input),
+            executeHostEffects: true,
+          });
+          return result;
+        });
       });
     });
   });

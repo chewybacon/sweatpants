@@ -17,6 +17,7 @@ export {
   type JsonObject,
 } from "./json.ts";
 export * from "./port.ts";
+export * from "./resolver.ts";
 export * from "./stream.ts";
 
 export type { SerializedApplicationError } from "./errors.ts";
