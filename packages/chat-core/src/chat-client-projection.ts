@@ -1322,7 +1322,9 @@ export function appendAGUIMessages(
  */
 export function foldAGUIEvent(state: ChatProjectionState, event: AGUIEvent): ChatProjectionState {
   const next = foldEventCore(state, event);
-  return next.nodes.size > state.nodes.size ? refreshDerivedState(next) : next;
+  return event.type === EventType.MESSAGES_SNAPSHOT || next.nodes.size > state.nodes.size
+    ? refreshDerivedState(next)
+    : next;
 }
 
 /**
@@ -1337,16 +1339,23 @@ export function foldAGUIEvents(
   events: Iterable<AGUIEvent>,
 ): ChatProjectionState {
   let next = state;
+  let requiresRefresh = false;
   for (const event of events) {
     next = foldEventCore(next, event);
+    requiresRefresh ||= event.type === EventType.MESSAGES_SNAPSHOT;
   }
-  return next.nodes.size > state.nodes.size ? refreshDerivedState(next) : next;
+  return requiresRefresh || next.nodes.size > state.nodes.size ? refreshDerivedState(next) : next;
 }
 
 function foldEventCore(state: ChatProjectionState, event: AGUIEvent): ChatProjectionState {
   switch (event.type) {
-    case EventType.MESSAGES_SNAPSHOT:
-      return appendAGUIMessages(createChatProjection(), event.messages);
+    case EventType.MESSAGES_SNAPSHOT: {
+      let next = createChatProjection();
+      for (const message of event.messages) {
+        next = appendMessageCore(next, message);
+      }
+      return next;
+    }
     case EventType.TEXT_MESSAGE_START: {
       if (state.structuredOutputByMessageId.has(event.messageId)) {
         return state;

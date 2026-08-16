@@ -35,6 +35,7 @@ import type {
 import { ConversationStoreError } from "@sweatpants/history-store/contract";
 import { call, type Operation } from "effection";
 import { CrankError } from "@sweatpants/durable-execution";
+import type { StreamEvent } from "./handler/types.ts";
 import {
   mintPublicHistoryCursor,
   mintWindowToken,
@@ -251,10 +252,7 @@ export function* buildConversationWindow(params: {
   };
 }
 
-import {
-  buildCheckpointSnapshotEventsFromFrames,
-  providerHistoryFromFrames,
-} from "./projection.ts";
+import { replayConversationViews } from "./projection.ts";
 
 type ProjectionFrame = {
   readonly lsn: number;
@@ -475,8 +473,18 @@ function* compactPublicRoots(params: {
     lsn: index + 1,
     event,
   }));
-  const snapshots = yield* buildCheckpointSnapshotEventsFromFrames(frames);
-  const projectedMessages = providerHistoryFromFrames(frames);
+  // One replay supplies both the checkpoint snapshot and the projected
+  // messages. Replaying here and then calling providerHistoryFromFrames()
+  // would fold the complete frame set a second time.
+  const views = replayConversationViews(frames);
+  const snapshots: StreamEvent[] = [
+    {
+      type: EventType.MESSAGES_SNAPSHOT,
+      messages: [...views.providerMessages],
+    },
+    ...views.activitySnapshots,
+  ];
+  const projectedMessages = views.providerMessages;
   const previousMessages = params.previous
     .filter(
       (root): root is Extract<PublicProjectionRoot, { kind: "message" }> => root.kind === "message",
