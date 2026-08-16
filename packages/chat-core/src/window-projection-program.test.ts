@@ -84,7 +84,7 @@ describe("real window projection program experiment", () => {
     expect(execution.outcome.ok).toBe(false);
     if (!execution.outcome.ok) {
       expect(execution.outcome.error).toBeInstanceOf(PublicRootConflictError);
-      expect(execution.outcome.error.code).toBe("public_root_conflict");
+      expect(execution.outcome.error).toMatchObject({ code: "public_root_conflict" });
       expect(execution.outcome.path).toEqual(["roots"]);
     }
     expect(execution.outcome.notes).toEqual([{ kind: "root-input", count: 2 }]);

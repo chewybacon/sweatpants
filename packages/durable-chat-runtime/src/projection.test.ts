@@ -1,5 +1,6 @@
-import { EventType, type AGUIEvent } from "@ag-ui/core";
+import { EventType } from "@ag-ui/core";
 import { collectProjectionProgram } from "@sweatpants/foundation/projection";
+import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   buildCheckpointSnapshotEventsFromFrames,
@@ -12,22 +13,22 @@ import {
 } from "./projection.ts";
 import type { StreamEvent } from "./handler/types.ts";
 
-function frames(...events: readonly AGUIEvent[]): ProjectionFrame[] {
-  return parseBufferedFrames(events as StreamEvent[]);
+function frames(...events: readonly StreamEvent[]): ProjectionFrame[] {
+  return parseBufferedFrames([...events]);
 }
 
-const activitySnapshot = {
+const activitySnapshot: StreamEvent = {
   type: EventType.ACTIVITY_SNAPSHOT,
   messageId: "activity-1",
   activityType: "example.activity",
   content: { value: "private activity" },
   replace: true,
-} as const;
+};
 
-const messageSnapshot = {
+const messageSnapshot: StreamEvent = {
   type: EventType.MESSAGES_SNAPSHOT,
   messages: [{ id: "user-1", role: "user", content: "hello" }],
-} as const;
+};
 
 describe("conversation replay projection", () => {
   it("replays one frame scan into provider and activity views", () => {
@@ -72,14 +73,16 @@ describe("conversation replay projection", () => {
 
   it("uses the shared views for checkpoint and completed hydration", async () => {
     const input = frames(messageSnapshot, activitySnapshot);
-    const checkpoint = buildCheckpointSnapshotEventsFromFrames(input).next().value;
-    const completed = completedConversationHydrateEvents({
-      frames: input,
-      conversationId: "conversation-1",
-      runId: "run-1",
-      openInterrupts: [],
-      elicits: [],
-    }).next().value;
+    const checkpoint = await run(() => buildCheckpointSnapshotEventsFromFrames(input));
+    const completed = await run(() =>
+      completedConversationHydrateEvents({
+        frames: input,
+        conversationId: "conversation-1",
+        runId: "run-1",
+        openInterrupts: [],
+        elicits: [],
+      }),
+    );
 
     expect(checkpoint).toEqual([
       {
