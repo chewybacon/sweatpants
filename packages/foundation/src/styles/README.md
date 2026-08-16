@@ -98,29 +98,11 @@ interprets them, accumulating notes, tracking the nested stage path, observing
 events, and converting a thrown domain error once. The same program can be run
 by different interpreters — plain, traced, or collected.
 
-`projection-style.ts` keeps the earlier Writer/ResultWriter and stage-array
-pipelines for contrast. They work, but they need a builder plus one type
-erasure to hold heterogeneous stages, and they cannot express branching or
-loops between stages.
-
-## Projection pipeline experiment
-
-`projection-style.ts` and `projection-style.test.ts` compare direct pure
-composition with an immutable Writer-style pipeline and a Result+Writer
-pipeline. They model the existing `projectionFromPublicRoots`,
-`providerHistoryFromFrames`, and `foldAGUIEvent` shapes without coupling
-foundation to Chat Core.
-
-The experiment keeps context explicit, accumulates structured notes, and
-preserves structured errors. It also includes a lazy iterator pipeline: typed
-stages are composed first, then execution yields one immutable observation per
-stage and returns the accumulated Result+Writer value. `runProjection()`
-centralizes the required `while (!done)` drain while invoking an optional
-observer; `collectProjection()` retains observations for tests and inspection.
-It demonstrates that a simple state fold remains clearer when no side channel
-is needed.
-
-It is intentionally not exported as production foundation API yet.
+A rejected alternative — an explicit stage-array pipeline with a `.through()`
+builder — was prototyped and deleted. It required reifying a heterogeneous
+list of Kleisli arrows, which forced a builder plus one existential type
+erasure, and a static chain cannot express branching or loops between stages.
+`yield*` delegation provides the same sequencing with none of that machinery.
 
 ## Generic Resolver experiment
 
