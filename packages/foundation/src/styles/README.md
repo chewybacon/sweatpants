@@ -43,6 +43,42 @@ This style intentionally exposes the implementation context. It is not yet a
 production recommendation; it exists to test whether explicit trusted DI gives
 us the composability we want without the `Port.bind(currentScope)` pattern.
 
+## Fold fusion experiment
+
+`fold-fusion-style.ts` models the _inside_ of an indexed derivation, where the
+projection-program abstraction is the wrong tool. Programs compose dependent
+phases — `yield*` is a data dependency, so every stage owns a traversal.
+Several indexes computed from the same items do not feed each other, so
+splitting them into stages would trade one traversal for N.
+
+Independent-and-combinable is applicative. A `Fold` hides its accumulator in a
+closure, so folds with different accumulator types combine with no existential
+and no cast at the call site:
+
+```ts
+const baseIndexes = combine({ ids, byTag, slots, edges }); // one traversal
+```
+
+The degenerate domain is a graph whose `parent` may name an id that never
+arrives. Four indexes fuse into one pass; partitioning edges into
+attached/pending genuinely needs the complete id set, so it is a second pass.
+That mixture — a short monadic spine of applicatively fused stages — is the
+shape of `refreshDerivedState`, `indexRecordProjection`, and
+`indexedTaskRecords`.
+
+What the tests measure:
+
+- fused: visits == items. Unfused (the shape `indexRecordProjection` is written
+  in today): visits == items × 4.
+- composed output is identical to the hand-fused loop.
+- the spine keeps the dependent phase explicit while the scan stays one pass.
+- failures are attributed to the fold that raised them (`FoldError.foldKey`),
+  and dependent-phase failures report their stage path.
+
+Rule of thumb: monadic composition for dependent phases, applicative
+composition for independent accumulators, and never decompose a fused
+traversal into stages just to name it.
+
 ## Derived view experiment
 
 `derived-view-style.ts` models the proposed decomposition of the chat
