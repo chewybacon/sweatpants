@@ -11,7 +11,7 @@ import {
   ProgramDriverRegistryContext,
   ProgramExecutionScopeContext,
   ProgramPeer,
-  ProgramRouteResolverContext,
+  ProgramRouteResolver,
   ProgramRuntime,
   ProgramRuntimeDriverContext,
   type ProgramDriverRegistry,
@@ -485,10 +485,11 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
         }
         if (reservation.status === "pending" && descriptor.kind === "invoke") {
           const child = descriptor.child;
-          const routeResolver = yield* ProgramRouteResolverContext.get();
-          const childRoute = routeResolver
-            ? yield* routeResolver(child, request.attach.route)
-            : request.attach.route;
+          const routeResolver = yield* ProgramRouteResolver.use();
+          const childRoute = yield* routeResolver.resolve({
+            program: child,
+            parentRoute: request.attach.route,
+          });
           const manifest = yield* ProgramPeer.operations.manifest(childRoute, child);
           const childTask = yield* authority.ensureChildTask({
             sessionId: request.attach.sessionId,

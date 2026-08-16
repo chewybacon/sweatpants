@@ -1,6 +1,7 @@
 import { createContext, scoped, type Operation } from "effection";
 import { createApi } from "effection/experimental";
 import { CrankError } from "./errors.ts";
+import { defineResolver, type Resolver, type ResolverImplementation } from "@sweatpants/foundation";
 import type { DurableProgramManifest, PinnedProgram } from "./program-contract.ts";
 import type {
   ProgramAttachment,
@@ -51,10 +52,27 @@ export const ProgramPeer = createApi("durable-execution:program-peer", {
   },
 });
 
+/** Input to deployment-owned child placement policy. */
+export interface ProgramRouteResolutionRequest {
+  readonly program: PinnedProgram;
+  readonly parentRoute: ProgramRoute;
+}
+
 /** Deployment-owned child placement policy; authored programs remain location-neutral. */
-export const ProgramRouteResolverContext = createContext<
-  ((program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>) | undefined
->("durable-execution:program-route-resolver", undefined);
+export type ProgramRouteResolver = Resolver<ProgramRouteResolutionRequest, ProgramRoute>;
+
+export type ProgramRouteResolverImplementation = ResolverImplementation<
+  ProgramRouteResolutionRequest,
+  ProgramRoute
+>;
+
+/** Resolver with the domain fallback of inheriting the parent route. */
+export const ProgramRouteResolver = defineResolver<ProgramRouteResolutionRequest, ProgramRoute>(
+  "durable-execution:program-route-resolver",
+  function* ({ parentRoute }) {
+    return parentRoute;
+  },
+);
 
 export interface ProgramRuntimeDriver {
   run(request: ProgramRunRequest): Operation<ProgramRunResult>;

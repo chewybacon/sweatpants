@@ -7,7 +7,7 @@ import {
 } from "@sweatpants/durable-execution";
 import { type Operation } from "effection";
 import { withJournalAuthority, type DurableSemanticRecord } from "@sweatpants/journal-authority";
-import { ProgramRouteResolverContext } from "@sweatpants/durable-execution";
+import { ProgramRouteResolver } from "@sweatpants/durable-execution";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   ModelContextSourceResolverContext,
@@ -176,22 +176,29 @@ export function* runLocalProgramActivation<T>(
       return yield* withJournalAuthority(scope.authority, function* () {
         return yield* DurableEffectRegistryContext.with(scope.effects, function* () {
           return yield* ExecutionDurableEffectRegistryContext.with(scope.effects, function* () {
-            return yield* ProgramRouteResolverContext.with(scope.routeResolver, function* () {
-              return yield* DurableEffectOutcomeAcknowledgerContext.with(
-                scope.effectOutcomeAcknowledger,
-                function* () {
-                  return yield* DurableEffectInputPreparationContext.with(
-                    scope.effectInputPreparer,
-                    function* () {
-                      return yield* ModelContextSourceResolverContext.with(
-                        scope.modelContextSourceResolver,
-                        operation,
-                      );
-                    },
-                  );
-                },
-              );
-            });
+            return yield* ProgramRouteResolver.with(
+              scope.routeResolver
+                ? function* ({ program, parentRoute }) {
+                    return yield* scope.routeResolver!(program, parentRoute);
+                  }
+                : undefined,
+              function* () {
+                return yield* DurableEffectOutcomeAcknowledgerContext.with(
+                  scope.effectOutcomeAcknowledger,
+                  function* () {
+                    return yield* DurableEffectInputPreparationContext.with(
+                      scope.effectInputPreparer,
+                      function* () {
+                        return yield* ModelContextSourceResolverContext.with(
+                          scope.modelContextSourceResolver,
+                          operation,
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            );
           });
         });
       });
