@@ -691,7 +691,8 @@ function bindStandardHost(
       const sessionId = scopedSession(requestContext, contextId);
       const journal = yield* openJournal(journalStore, requestContext, contextId);
       const records = yield* readJournal(journal, sessionId);
-      const tasks = rootOpenings(records).map((opened) => {
+      const roots = rootOpenings(records);
+      const tasks = roots.map((opened) => {
         const projected = projectTask(records, opened.taskId, contextId, 0, "task-only", []);
         const input = openedTurnInput(opened);
         return Object.freeze({
@@ -701,7 +702,7 @@ function bindStandardHost(
         });
       });
       const contentReferences: StandardA2AExternalContentBinding[] = [];
-      for (const opened of rootOpenings(records)) {
+      for (const opened of roots) {
         contentReferences.push(...(yield* options.taskDirectory.contentForTask(opened.taskId)));
       }
       const operations = records.flatMap((record) => {
