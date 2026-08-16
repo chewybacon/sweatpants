@@ -1,29 +1,21 @@
 /**
- * Arrival-order characterization of the maintained projection fold.
+ * Arrival-order characterization of the derived-view projection fold.
  *
- * Documents, before the derived-view refactor, exactly how `foldAGUIEvent`
- * behaves for every arrival order of one message's placement, content, and
- * children. The styles experiment (`foundation/src/styles/derived-view-style`)
- * predicts three classes; this pins production to them:
+ * Children carry logical parent references (`ParentRef`), so arrival order no
+ * longer determines attachment: every order in which the message exists before
+ * its generic activity converges to the same tree. The formerly rejected class
+ * ("authoritative child cannot move with provisional message") is gone — late
+ * placement shadows the synthetic node and children re-resolve.
  *
- *   - converged: placement precedes the generic activity.
- *   - rejected:  a synthetic message exists when the generic activity arrives,
- *     so late placement hits "authoritative child cannot move".
- *   - divergent: the generic activity arrives before any message exists; the
- *     latest-message heuristic finds nothing, the activity becomes a root, and
- *     the materializer silently drops it.
- *
- * The derived-view refactor is expected to move the rejected class into
- * converged (message-bound children re-resolve to the authoritative node).
- * The divergent class is NOT a data-structure defect: the generic activity
- * event carries no message binding, so which message it attaches to is decided
- * by an ingest-time heuristic. Fixing that class requires the event to carry
- * an explicit binding, which is a protocol decision.
+ * One divergent class remains, deliberately: a generic activity arriving
+ * before ANY message exists roots itself (the latest-message heuristic finds
+ * nothing) and is silently dropped by the materializer. That is not a
+ * data-structure defect — the event carries no message binding, so fixing it
+ * requires the protocol to carry one.
  */
 import { EventType, type AGUIEvent } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import {
-  ChatProjectionError,
   createChatProjection,
   foldAGUIEvent,
   materializeChatMessages,
@@ -121,32 +113,20 @@ function permutations<T>(items: readonly T[]): T[][] {
 
 const ORDERINGS = permutations<UnitName>(["text", "tool", "activity", "placement"]);
 
-const placementBeforeActivity = (order: readonly UnitName[]): boolean =>
-  order.indexOf("placement") < order.indexOf("activity");
 const activityBeforeEverything = (order: readonly UnitName[]): boolean =>
   order.indexOf("activity") === 0;
-const activityUnderProvisional = (order: readonly UnitName[]): boolean =>
-  !placementBeforeActivity(order) && !activityBeforeEverything(order);
 
 const key = (order: readonly UnitName[]): string => order.join(",");
 
-describe("arrival-order characterization of the maintained projection fold", () => {
-  it("partitions all 24 arrival orders into converged, rejected, and silently divergent", () => {
+describe("arrival-order characterization of the derived projection fold", () => {
+  it("partitions all 24 arrival orders into converged and silently divergent", () => {
     const reference = normalize(replay(["placement", "text", "tool", "activity"]));
     expect(reference).toEqual([[MESSAGE_ID, "activity:example.custom", "text:hello", "tool:c1"]]);
 
     const converged: string[] = [];
-    const rejected: { order: string; error: unknown }[] = [];
     const divergent: { order: string; tree: readonly (readonly string[])[] }[] = [];
     for (const order of ORDERINGS) {
-      let state: ChatProjectionState;
-      try {
-        state = replay(order);
-      } catch (error) {
-        rejected.push({ order: key(order), error });
-        continue;
-      }
-      const tree = normalize(state);
+      const tree = normalize(replay(order));
       if (JSON.stringify(tree) === JSON.stringify(reference)) {
         converged.push(key(order));
       } else {
@@ -154,16 +134,14 @@ describe("arrival-order characterization of the maintained projection fold", () 
       }
     }
 
-    // Exactly the orders where placement precedes the generic activity converge.
-    expect(converged.sort()).toEqual(ORDERINGS.filter(placementBeforeActivity).map(key).sort());
-    expect(converged).toHaveLength(12);
-
-    // Exactly the orders where the activity lands under a provisional message
-    // are rejected at placement time.
-    expect(rejected.map((entry) => entry.order).sort()).toEqual(
-      ORDERINGS.filter(activityUnderProvisional).map(key).sort(),
+    // Every order in which the message exists before the generic activity
+    // converges — including the six the maintained fold used to reject.
+    expect(converged.sort()).toEqual(
+      ORDERINGS.filter((order) => !activityBeforeEverything(order))
+        .map(key)
+        .sort(),
     );
-    expect(rejected).toHaveLength(6);
+    expect(converged).toHaveLength(18);
 
     // Exactly the orders where the activity precedes every message-creating
     // event diverge: the activity becomes an invisible root.
@@ -173,18 +151,13 @@ describe("arrival-order characterization of the maintained projection fold", () 
     expect(divergent).toHaveLength(6);
   });
 
-  it("rejects late placement with chat_activity_conflict when an authoritative child arrived first", () => {
-    const failing: readonly UnitName[] = ["text", "activity", "placement"];
-    expect(() => replay(failing)).toThrow(ChatProjectionError);
-    expect(() => replay(failing)).toThrow(/cannot move with provisional message/);
-    try {
-      replay(failing);
-    } catch (error) {
-      expect((error as ChatProjectionError).code).toBe("chat_activity_conflict");
-    }
+  it("re-anchors an authoritative child that preceded its message placement", () => {
+    expect(normalize(replay(["text", "activity", "placement"]))).toEqual(
+      normalize(replay(["text", "placement", "activity"])),
+    );
   });
 
-  it("migrates synthetic tool children on late placement (what the surgery buys today)", () => {
+  it("re-parents synthetic tool children on late placement", () => {
     expect(normalize(replay(["text", "tool", "placement"]))).toEqual(
       normalize(replay(["placement", "text", "tool"])),
     );

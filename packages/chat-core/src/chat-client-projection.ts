@@ -92,12 +92,24 @@ interface InternalMessage {
   readonly id: string;
   readonly role: ChatUIMessage["role"];
   readonly metadata?: Readonly<Record<string, Json>>;
-  readonly nodeId: string;
   readonly parts: readonly InternalMessagePart[];
 }
 
+/**
+ * Logical parent identity. Synthetic children attach to a *message*, not to
+ * whichever node happens to represent it at ingest time, so replacing a
+ * provisional message node by its authoritative placement requires no child
+ * migration: resolution simply starts answering differently.
+ */
+type ParentRef =
+  | { readonly kind: "root" }
+  | { readonly kind: "node"; readonly nodeId: string }
+  | { readonly kind: "message"; readonly messageId: string };
+
 interface InternalNode {
+  /** `parentNodeId` is the resolved physical parent as of the last refresh. */
   readonly node: PublicActivityNode;
+  readonly parentRef: ParentRef;
   readonly activityRecordId: string;
   readonly synthetic: boolean;
 }
@@ -120,18 +132,22 @@ export interface ChatProjectionTransition {
 }
 
 export interface ChatProjectionState {
+  /** Fact store: node records with logical parents; resolved on refresh. */
   readonly nodes: ReadonlyMap<string, InternalNode>;
+  /** Core state: message content, arrival order, streaming cursors. */
   readonly messageById: ReadonlyMap<string, InternalMessage>;
-  readonly messageNodeById: ReadonlyMap<string, string>;
-  readonly toolNodeByCallId: ReadonlyMap<string, string>;
-  readonly elicitNodeById: ReadonlyMap<string, string>;
-  readonly activityNodeByRecordId: ReadonlyMap<string, string>;
-  readonly attachedChildren: ReadonlyMap<string, readonly string[]>;
-  readonly pendingChildren: ReadonlyMap<string, readonly string[]>;
   readonly messageOrder: readonly string[];
   readonly structuredOutputByMessageId: ReadonlyMap<string, string>;
   readonly nextSequence: number;
   readonly error: Error | null;
+  /** Alias registry: activity record id → node id, written only on upsert. */
+  readonly activityNodeByRecordId: ReadonlyMap<string, string>;
+  /** Derived indexes, recomputed from `nodes` whenever a record is inserted. */
+  readonly messageNodeById: ReadonlyMap<string, string>;
+  readonly toolNodeByCallId: ReadonlyMap<string, string>;
+  readonly elicitNodeById: ReadonlyMap<string, string>;
+  readonly attachedChildren: ReadonlyMap<string, readonly string[]>;
+  readonly pendingChildren: ReadonlyMap<string, readonly string[]>;
 }
 
 export function createChatProjection(): ChatProjectionState {
@@ -155,33 +171,16 @@ function mapCopy<T>(map: ReadonlyMap<string, T>): Map<string, T> {
   return new Map(map);
 }
 
-function childrenAdd(
-  children: ReadonlyMap<string, readonly string[]>,
-  parent: string,
-  child: string,
-): Map<string, readonly string[]> {
-  const output = mapCopy(children);
-  const current = output.get(parent) ?? [];
-  if (!current.includes(child)) {
-    output.set(parent, [...current, child]);
+/**
+ * Resolve a tool call to its node, tolerating a not-yet-refreshed index so a
+ * tool inserted earlier in the same fold batch is still addressable.
+ */
+function toolNodeIdFor(state: ChatProjectionState, callId: string): string | undefined {
+  const indexed = state.toolNodeByCallId.get(callId);
+  if (indexed !== undefined && state.nodes.has(indexed)) {
+    return indexed;
   }
-  return output;
-}
-
-function childrenRemove(
-  children: ReadonlyMap<string, readonly string[]>,
-  parent: string,
-  child: string,
-): Map<string, readonly string[]> {
-  const output = mapCopy(children);
-  const current = output.get(parent) ?? [];
-  const next = current.filter((value) => value !== child);
-  if (next.length === 0) {
-    output.delete(parent);
-  } else {
-    output.set(parent, next);
-  }
-  return output;
+  return state.nodes.has(`execution:${callId}`) ? `execution:${callId}` : undefined;
 }
 
 function nodeImmutable(node: PublicActivityNode): string {
@@ -234,136 +233,6 @@ function cloneNodeWithMutable(
   } as PublicActivityNode;
 }
 
-function attachPending(state: ChatProjectionState, parentId: string): ChatProjectionState {
-  const waiting = state.pendingChildren.get(parentId) ?? [];
-  if (waiting.length === 0) {
-    return state;
-  }
-  let attachedChildren = state.attachedChildren;
-  let pendingChildren = mapCopy(state.pendingChildren);
-  pendingChildren.delete(parentId);
-  for (const childId of waiting) {
-    const child = state.nodes.get(childId);
-    if (child) {
-      assertSiblingSequence({ ...state, attachedChildren }, child.node, childId);
-    }
-    attachedChildren = childrenAdd(attachedChildren, parentId, childId);
-    if (child) {
-      const nested = attachPending({ ...state, attachedChildren, pendingChildren }, childId);
-      attachedChildren = nested.attachedChildren;
-      pendingChildren = mapCopy(nested.pendingChildren);
-    }
-  }
-  return { ...state, attachedChildren, pendingChildren };
-}
-
-function replaceSyntheticMessageNode(
-  state: ChatProjectionState,
-  messageId: string,
-  nodeId: string,
-): ChatProjectionState {
-  const oldNodeId = state.messageNodeById.get(messageId);
-  if (!oldNodeId || oldNodeId === nodeId || !state.nodes.has(oldNodeId)) {
-    return { ...state, messageNodeById: new Map(state.messageNodeById).set(messageId, nodeId) };
-  }
-  const oldNode = state.nodes.get(oldNodeId)!;
-  const synthetic =
-    oldNode.node.publicData?.kind === "message" &&
-    oldNode.node.publicData.messageId === messageId &&
-    oldNodeId === `message:${messageId}`;
-  if (!synthetic) {
-    return { ...state, messageNodeById: new Map(state.messageNodeById).set(messageId, nodeId) };
-  }
-  const nodes = mapCopy(state.nodes);
-  nodes.delete(oldNodeId);
-
-  // Standard AG-UI message/tool events can establish content before the
-  // producer's placement activity arrives. Only those synthetic descendants
-  // may move with the message; producer-placed children remain immutable.
-  const provisionalChildren = state.attachedChildren.get(oldNodeId) ?? [];
-  for (const childId of provisionalChildren) {
-    const child = nodes.get(childId);
-    if (!child) {
-      continue;
-    }
-    if (!child.synthetic) {
-      throw new ChatProjectionError(
-        "chat_activity_conflict",
-        `Authoritative child "${childId}" cannot move with provisional message "${messageId}"`,
-      );
-    }
-    nodes.set(childId, {
-      ...child,
-      node: { ...child.node, parentNodeId: nodeId },
-    });
-  }
-
-  const attachedChildren = childrenRemove(
-    state.attachedChildren,
-    oldNode.node.parentNodeId ?? "",
-    oldNodeId,
-  );
-  attachedChildren.delete(oldNodeId);
-  if (provisionalChildren.length > 0) {
-    attachedChildren.set(nodeId, provisionalChildren);
-  }
-
-  const pendingChildren = mapCopy(state.pendingChildren);
-  const waitingForProvisional = pendingChildren.get(oldNodeId);
-  pendingChildren.delete(oldNodeId);
-  if (waitingForProvisional && waitingForProvisional.length > 0) {
-    pendingChildren.set(nodeId, waitingForProvisional);
-  }
-  for (const [parent, children] of pendingChildren) {
-    const next = children.filter((child) => child !== oldNodeId);
-    if (next.length === 0) {
-      pendingChildren.delete(parent);
-    } else {
-      pendingChildren.set(parent, next);
-    }
-  }
-
-  const messageById = mapCopy(state.messageById);
-  const message = messageById.get(messageId);
-  if (message) {
-    messageById.set(messageId, { ...message, nodeId });
-  }
-  return {
-    ...state,
-    nodes,
-    messageById,
-    attachedChildren,
-    pendingChildren,
-    messageNodeById: new Map(state.messageNodeById).set(messageId, nodeId),
-  };
-}
-
-function assertSiblingSequence(
-  state: ChatProjectionState,
-  node: PublicActivityNode,
-  excludingNodeId?: string,
-): void {
-  const siblings =
-    node.parentNodeId === null
-      ? [...state.nodes.values()]
-          .filter((entry) => entry.node.parentNodeId === null)
-          .map((entry) => entry.node)
-      : (state.attachedChildren.get(node.parentNodeId) ?? [])
-          .map((siblingId) => state.nodes.get(siblingId)?.node)
-          .filter((sibling): sibling is PublicActivityNode => sibling !== undefined);
-  for (const sibling of siblings) {
-    if (sibling.nodeId === excludingNodeId) {
-      continue;
-    }
-    if (sibling.sequence === node.sequence) {
-      throw new ChatProjectionError(
-        "chat_activity_conflict",
-        `Sibling sequence ${node.sequence} is already occupied under parent "${node.parentNodeId}"`,
-      );
-    }
-  }
-}
-
 function preserveSettledToolResult(
   previous: PublicActivityNode,
   incoming: PublicActivityNode,
@@ -389,10 +258,109 @@ function preserveSettledToolResult(
   };
 }
 
-function addGraphNode(
+/**
+ * Recompute every index derived from the node fact store: authoritative
+ * message claims shadow synthetic placeholders, logical parents resolve to
+ * physical node ids, children partition into attached and pending, and
+ * sibling-sequence conflicts are rejected on the event that created them.
+ */
+function refreshDerivedState(state: ChatProjectionState): ChatProjectionState {
+  const messageNodeById = new Map<string, string>();
+  for (const [nodeId, entry] of state.nodes) {
+    const data = entry.node.publicData;
+    if (data?.kind === "message" && entry.synthetic && !messageNodeById.has(data.messageId)) {
+      messageNodeById.set(data.messageId, nodeId);
+    }
+  }
+  for (const [nodeId, entry] of state.nodes) {
+    const data = entry.node.publicData;
+    if (data?.kind === "message" && !entry.synthetic) {
+      messageNodeById.set(data.messageId, nodeId);
+    }
+  }
+
+  const nodes = new Map<string, InternalNode>();
+  for (const [nodeId, entry] of state.nodes) {
+    const data = entry.node.publicData;
+    if (
+      entry.synthetic &&
+      data?.kind === "message" &&
+      messageNodeById.get(data.messageId) !== nodeId
+    ) {
+      // Shadowed by an authoritative placement: content lives in messageById
+      // and children re-resolve through their message reference.
+      continue;
+    }
+    const ref = entry.parentRef;
+    const parentNodeId =
+      ref.kind === "root"
+        ? null
+        : ref.kind === "node"
+          ? ref.nodeId
+          : (messageNodeById.get(ref.messageId) ?? `message:${ref.messageId}`);
+    nodes.set(
+      nodeId,
+      entry.node.parentNodeId === parentNodeId
+        ? entry
+        : { ...entry, node: { ...entry.node, parentNodeId } as PublicActivityNode },
+    );
+  }
+
+  const toolNodeByCallId = new Map<string, string>();
+  const elicitNodeById = new Map<string, string>();
+  const attachedChildren = new Map<string, string[]>();
+  const pendingChildren = new Map<string, string[]>();
+  for (const [nodeId, entry] of nodes) {
+    const data = entry.node.publicData;
+    if (data?.kind === "tool-call") {
+      toolNodeByCallId.set(data.callId, nodeId);
+    } else if (data?.kind === "elicit") {
+      elicitNodeById.set(data.elicitId, nodeId);
+    }
+    const parentId = entry.node.parentNodeId;
+    if (parentId === null) {
+      continue;
+    }
+    const bucket = nodes.has(parentId) ? attachedChildren : pendingChildren;
+    const list = bucket.get(parentId);
+    if (list) {
+      list.push(nodeId);
+    } else {
+      bucket.set(parentId, [nodeId]);
+    }
+  }
+
+  for (const [parentId, children] of attachedChildren) {
+    const occupied = new Set<number>();
+    for (const childId of children) {
+      const sequence = nodes.get(childId)!.node.sequence;
+      if (occupied.has(sequence)) {
+        throw new ChatProjectionError(
+          "chat_activity_conflict",
+          `Sibling sequence ${sequence} is already occupied under parent "${parentId}"`,
+        );
+      }
+      occupied.add(sequence);
+    }
+  }
+
+  return {
+    ...state,
+    nodes,
+    messageNodeById,
+    toolNodeByCallId,
+    elicitNodeById,
+    attachedChildren,
+    pendingChildren,
+  };
+}
+
+/** The entire structural fold: validate immutable facts, merge, store. */
+function upsertGraphNode(
   state: ChatProjectionState,
   node: PublicActivityNode,
   activityRecordId: string,
+  parentRef: ParentRef,
   synthetic = false,
 ): ChatProjectionState {
   const existingRecord = state.activityNodeByRecordId.get(activityRecordId);
@@ -402,6 +370,10 @@ function addGraphNode(
       `Activity record "${activityRecordId}" changed node identity`,
     );
   }
+  const activityNodeByRecordId = new Map(state.activityNodeByRecordId).set(
+    activityRecordId,
+    node.nodeId,
+  );
   const existing = state.nodes.get(node.nodeId);
   if (existing) {
     if (nodeImmutable(existing.node) !== nodeImmutable(node) && !existing.synthetic) {
@@ -410,59 +382,29 @@ function addGraphNode(
         `Node "${node.nodeId}" was reused with conflicting immutable facts`,
       );
     }
+    const merged =
+      existing.synthetic && !synthetic
+        ? preserveSettledToolResult(existing.node, node)
+        : cloneNodeWithMutable(existing.node, node);
     const nodes = mapCopy(state.nodes);
     nodes.set(node.nodeId, {
-      ...existing,
-      node:
-        existing.synthetic && !synthetic
-          ? preserveSettledToolResult(existing.node, node)
-          : cloneNodeWithMutable(existing.node, node),
+      // Attachment identity is stable across merges: the already-resolved
+      // parent wins so a merge never silently re-parents a rendered subtree.
+      node: { ...merged, parentNodeId: existing.node.parentNodeId } as PublicActivityNode,
+      parentRef: existing.parentRef,
+      activityRecordId,
       synthetic: existing.synthetic && synthetic,
     });
-    return {
-      ...state,
-      nodes,
-      activityNodeByRecordId: new Map(state.activityNodeByRecordId).set(
-        activityRecordId,
-        node.nodeId,
-      ),
-    };
-  }
-  if (node.parentNodeId !== null && state.nodes.has(node.parentNodeId)) {
-    assertSiblingSequence(state, node, node.nodeId);
-  }
-  if (node.parentNodeId !== null && !state.nodes.has(node.parentNodeId)) {
-    const nodes = mapCopy(state.nodes);
-    nodes.set(node.nodeId, { node, activityRecordId, synthetic });
-    const pendingChildren = childrenAdd(state.pendingChildren, node.parentNodeId, node.nodeId);
-    return {
-      ...state,
-      nodes,
-      pendingChildren,
-      activityNodeByRecordId: new Map(state.activityNodeByRecordId).set(
-        activityRecordId,
-        node.nodeId,
-      ),
-      nextSequence: Math.max(state.nextSequence, node.sequence + 1),
-    };
+    return { ...state, nodes, activityNodeByRecordId };
   }
   const nodes = mapCopy(state.nodes);
-  nodes.set(node.nodeId, { node, activityRecordId, synthetic });
-  let next: ChatProjectionState = {
+  nodes.set(node.nodeId, { node, parentRef, activityRecordId, synthetic });
+  return {
     ...state,
     nodes,
-    attachedChildren:
-      node.parentNodeId === null
-        ? state.attachedChildren
-        : childrenAdd(state.attachedChildren, node.parentNodeId, node.nodeId),
-    activityNodeByRecordId: new Map(state.activityNodeByRecordId).set(
-      activityRecordId,
-      node.nodeId,
-    ),
+    activityNodeByRecordId,
     nextSequence: Math.max(state.nextSequence, node.sequence + 1),
   };
-  next = attachPending(next, node.nodeId);
-  return next;
 }
 
 function ensureMessage(
@@ -480,32 +422,30 @@ function ensureMessage(
     }
     return state;
   }
-  const nodeId = state.messageNodeById.get(messageId) ?? `message:${messageId}`;
-  const node: PublicActivityNode = {
-    nodeId,
-    parentNodeId: null,
-    sequence: state.nextSequence,
-    kind: "message",
-    state: "streaming",
-    presentation: "public",
-    publicData: { kind: "message", messageId, role },
-  };
-  let next = nodeId === `message:${messageId}` ? addGraphNode(state, node, nodeId, true) : state;
+  const nodeId = `message:${messageId}`;
+  const next = state.messageNodeById.has(messageId)
+    ? state
+    : upsertGraphNode(
+        state,
+        {
+          nodeId,
+          parentNodeId: null,
+          sequence: state.nextSequence,
+          kind: "message",
+          state: "streaming",
+          presentation: "public",
+          publicData: { kind: "message", messageId, role },
+        },
+        nodeId,
+        { kind: "root" },
+        true,
+      );
   const messageById = mapCopy(next.messageById);
-  messageById.set(messageId, { id: messageId, role, nodeId, parts: [] });
-  const messageNodeById = mapCopy(next.messageNodeById);
-  messageNodeById.set(messageId, nodeId);
+  messageById.set(messageId, { id: messageId, role, parts: [] });
   const messageOrder = next.messageOrder.includes(messageId)
     ? next.messageOrder
     : [...next.messageOrder, messageId];
-  next = {
-    ...next,
-    messageById,
-    messageNodeById,
-    messageOrder,
-    nextSequence: next.nextSequence + 1,
-  };
-  return next;
+  return { ...next, messageById, messageOrder, nextSequence: next.nextSequence + 1 };
 }
 
 function ensureMessageFromActivity(
@@ -517,23 +457,21 @@ function ensureMessageFromActivity(
   }
   const messageId = node.publicData.messageId;
   const existing = state.messageById.get(messageId);
-  let next = replaceSyntheticMessageNode(state, messageId, node.nodeId);
-  next = addGraphNode(next, node, node.nodeId, false);
+  let next = upsertGraphNode(
+    state,
+    node,
+    node.nodeId,
+    node.parentNodeId === null ? { kind: "root" } : { kind: "node", nodeId: node.parentNodeId },
+    false,
+  );
   if (!existing) {
     const messageById = mapCopy(next.messageById);
-    messageById.set(messageId, {
-      id: messageId,
-      role: node.publicData.role,
-      nodeId: node.nodeId,
-      parts: [],
-    });
-    const messageNodeById = mapCopy(next.messageNodeById);
-    messageNodeById.set(messageId, node.nodeId);
+    messageById.set(messageId, { id: messageId, role: node.publicData.role, parts: [] });
     const messageOrder =
       node.parentNodeId === null && !next.messageOrder.includes(messageId)
         ? [...next.messageOrder, messageId]
         : next.messageOrder;
-    next = { ...next, messageById, messageNodeById, messageOrder };
+    next = { ...next, messageById, messageOrder };
   }
   return next;
 }
@@ -848,8 +786,7 @@ function toolNode(
   name: string,
   parentMessageId?: string,
 ): ChatProjectionState {
-  const existingNodeId = state.toolNodeByCallId.get(callId);
-  if (existingNodeId) {
+  if (toolNodeIdFor(state, callId) !== undefined) {
     return state;
   }
   const messageId = parentMessageId ?? latestMessageId(state, "assistant");
@@ -859,22 +796,19 @@ function toolNode(
       `Tool call "${callId}" has no parent message`,
     );
   }
-  let next = ensureMessage(state, messageId, "assistant");
-  const parentNodeId = next.messageNodeById.get(messageId)!;
+  const next = ensureMessage(state, messageId, "assistant");
   const nodeId = `execution:${callId}`;
   const node: PublicActivityNode = {
     nodeId,
-    parentNodeId,
+    parentNodeId: next.messageNodeById.get(messageId) ?? `message:${messageId}`,
     sequence: next.nextSequence,
     kind: "tool-call",
     state: "input-streaming",
     presentation: "public",
     publicData: { kind: "tool-call", callId, name, rawInput: "" },
   };
-  next = addGraphNode(next, node, nodeId, true);
-  const toolNodeByCallId = mapCopy(next.toolNodeByCallId);
-  toolNodeByCallId.set(callId, nodeId);
-  return { ...next, toolNodeByCallId, nextSequence: next.nextSequence + 1 };
+  const inserted = upsertGraphNode(next, node, nodeId, { kind: "message", messageId }, true);
+  return { ...inserted, nextSequence: inserted.nextSequence + 1 };
 }
 
 function updateTool(
@@ -882,7 +816,7 @@ function updateTool(
   callId: string,
   update: (node: PublicToolActivityNode) => PublicToolActivityNode,
 ): ChatProjectionState {
-  const nodeId = state.toolNodeByCallId.get(callId);
+  const nodeId = toolNodeIdFor(state, callId);
   if (!nodeId) {
     throw new ChatProjectionError(
       "chat_activity_parent_missing",
@@ -911,16 +845,16 @@ function activityNode(
       latestMessageId(state, "assistant") ??
       latestMessageId(state);
     let next = state;
-    const parentNodeId =
-      parentMessageId === undefined ? null : (next.messageNodeById.get(parentMessageId) ?? null);
-    if (parentMessageId !== undefined && parentNodeId === null) {
+    if (parentMessageId !== undefined && !next.messageNodeById.has(parentMessageId)) {
       next = ensureMessage(next, parentMessageId, "assistant");
     }
     const nodeId = `activity:${event.messageId}`;
     const node: PublicActivityNode = {
       nodeId,
       parentNodeId:
-        parentMessageId === undefined ? null : (next.messageNodeById.get(parentMessageId) ?? null),
+        parentMessageId === undefined
+          ? null
+          : (next.messageNodeById.get(parentMessageId) ?? `message:${parentMessageId}`),
       sequence: next.nextSequence,
       kind: "activity",
       state: "running",
@@ -931,24 +865,26 @@ function activityNode(
         data: event.content,
       },
     };
-    return addGraphNode(next, node, event.messageId);
+    return upsertGraphNode(
+      next,
+      node,
+      event.messageId,
+      parentMessageId === undefined
+        ? { kind: "root" }
+        : { kind: "message", messageId: parentMessageId },
+    );
   }
   const activity = decodePublicActivity(event.content);
-  let next = ensureMessageFromActivity(state, activity.node);
-  next = addGraphNode(next, activity.node, event.messageId);
-  const data = activity.node.publicData;
-  if (data?.kind === "message") {
-    next = replaceSyntheticMessageNode(next, data.messageId, activity.node.nodeId);
-  } else if (data?.kind === "tool-call") {
-    const toolNodeByCallId = mapCopy(next.toolNodeByCallId);
-    toolNodeByCallId.set(data.callId, activity.node.nodeId);
-    next = { ...next, toolNodeByCallId };
-  } else if (data?.kind === "elicit") {
-    const elicitNodeById = mapCopy(next.elicitNodeById);
-    elicitNodeById.set(data.elicitId, activity.node.nodeId);
-    next = { ...next, elicitNodeById };
-  }
-  return next;
+  const next = ensureMessageFromActivity(state, activity.node);
+  return upsertGraphNode(
+    next,
+    activity.node,
+    event.messageId,
+    activity.node.parentNodeId === null
+      ? { kind: "root" }
+      : { kind: "node", nodeId: activity.node.parentNodeId },
+    false,
+  );
 }
 
 function applyPatchToNode(node: PublicActivityNode, event: ActivityDeltaEvent): PublicActivityNode {
@@ -1300,12 +1236,9 @@ export function projectChatMessagesToAGUI<TLocalPart extends ChatLocalPart>(
   });
 }
 
-export function appendAGUIMessage(
-  state: ChatProjectionState,
-  message: Message,
-): ChatProjectionState {
+function appendMessageCore(state: ChatProjectionState, message: Message): ChatProjectionState {
   if (message.role === "tool") {
-    const nodeId = state.toolNodeByCallId.get(message.toolCallId);
+    const nodeId = toolNodeIdFor(state, message.toolCallId);
     const content = wireContent(message.content) ?? "";
     return nodeId === undefined
       ? state
@@ -1357,14 +1290,31 @@ function parseJsonOrString(value: string): Json {
   }
 }
 
+export function appendAGUIMessage(
+  state: ChatProjectionState,
+  message: Message,
+): ChatProjectionState {
+  const next = appendMessageCore(state, message);
+  return next.nodes.size > state.nodes.size ? refreshDerivedState(next) : next;
+}
+
+/**
+ * Fold one AG-UI event. Content deltas leave the node fact store untouched and
+ * cost O(1); events that insert node records trigger one O(n) index refresh.
+ */
 export function foldAGUIEvent(state: ChatProjectionState, event: AGUIEvent): ChatProjectionState {
+  const next = foldEventCore(state, event);
+  return next.nodes.size > state.nodes.size ? refreshDerivedState(next) : next;
+}
+
+function foldEventCore(state: ChatProjectionState, event: AGUIEvent): ChatProjectionState {
   switch (event.type) {
     case EventType.MESSAGES_SNAPSHOT: {
       let next = createChatProjection();
       for (const message of event.messages) {
-        next = appendAGUIMessage(next, message);
+        next = appendMessageCore(next, message);
       }
-      return next;
+      return refreshDerivedState(next);
     }
     case EventType.TEXT_MESSAGE_START: {
       if (state.structuredOutputByMessageId.has(event.messageId)) {
@@ -1453,7 +1403,7 @@ export function foldAGUIEvent(state: ChatProjectionState, event: AGUIEvent): Cha
     }
     case EventType.TOOL_CALL_RESULT: {
       let next = state;
-      if (!next.toolNodeByCallId.has(event.toolCallId)) {
+      if (toolNodeIdFor(next, event.toolCallId) === undefined) {
         next = toolNode(next, event.toolCallId, "tool", event.messageId);
       }
       return updateTool(next, event.toolCallId, (node) => {
@@ -1788,10 +1738,13 @@ function materializeMessage<TLocalPart extends { readonly type: string; readonly
   state: ChatProjectionState,
   message: InternalMessage,
 ): ChatUIMessage<TLocalPart> {
-  const nodeParts = nodeChildren(state, message.nodeId).flatMap((child) => {
-    const value = materializeNode<TLocalPart>(state, child.node.nodeId);
-    return value ? [{ value, sequence: child.node.sequence }] : [];
-  });
+  const messageNodeId = state.messageNodeById.get(message.id);
+  const nodeParts = (messageNodeId === undefined ? [] : nodeChildren(state, messageNodeId)).flatMap(
+    (child) => {
+      const value = materializeNode<TLocalPart>(state, child.node.nodeId);
+      return value ? [{ value, sequence: child.node.sequence }] : [];
+    },
+  );
   const parts = [
     ...message.parts.map((part) => ({
       value:
