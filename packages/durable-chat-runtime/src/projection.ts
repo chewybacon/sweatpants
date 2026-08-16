@@ -19,7 +19,7 @@ import {
   agUiMessagesToChatHistoryEntries,
   buildAgUiCustomState,
   createChatProjection,
-  foldAGUIEvent,
+  foldAGUIEvents,
   isConversationAuthorityFrame,
   isConversationWindowFrame,
   materializeChatMessages,
@@ -285,12 +285,12 @@ function* replayConversationFrames(
   options: ConversationReplayOptions,
 ): ProjectionProgram<ConversationReplayFacts, ConversationReplayNote> {
   return yield* stage("replay-frames", function* () {
-    let providerProjection = createChatProjection();
-    let activityProjection = createChatProjection();
+    // Classify once, then fold each batch with a single derivation. Folding
+    // per frame would pay a full index refresh for every event.
+    const providerEvents: AGUIEvent[] = [];
+    const activityEvents: AGUIEvent[] = [];
     const activityRecordOrder: string[] = [];
     const seenActivityRecords = new Set<string>();
-    let providerEvents = 0;
-    let activityEvents = 0;
 
     for (const frame of frames) {
       const event = frame.event;
@@ -308,19 +308,20 @@ function* replayConversationFrames(
           seenActivityRecords.add(event.messageId);
           activityRecordOrder.push(event.messageId);
         }
-        activityProjection = foldAGUIEvent(activityProjection, event);
-        activityEvents += 1;
+        activityEvents.push(event);
         continue;
       }
-      providerProjection = foldAGUIEvent(providerProjection, event);
-      providerEvents += 1;
+      providerEvents.push(event);
     }
+
+    const providerProjection = foldAGUIEvents(createChatProjection(), providerEvents);
+    const activityProjection = foldAGUIEvents(createChatProjection(), activityEvents);
 
     yield* note({
       kind: "frames-replayed",
       frames: frames.length,
-      providerEvents,
-      activityEvents,
+      providerEvents: providerEvents.length,
+      activityEvents: activityEvents.length,
     });
     return { providerProjection, activityProjection, activityRecordOrder };
   });

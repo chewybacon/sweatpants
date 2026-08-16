@@ -6,9 +6,9 @@ import {
 } from "@sweatpants/foundation/projection";
 import { EventType, type ActivitySnapshotEvent } from "@ag-ui/core";
 import {
-  appendAGUIMessage,
+  appendAGUIMessages,
   createChatProjection,
-  foldAGUIEvent,
+  foldAGUIEvents,
   type ChatProjectionState,
 } from "./chat-client-projection.ts";
 import type { PublicPlacementAnchor, PublicProjectionRoot } from "./conversation-window.ts";
@@ -157,14 +157,11 @@ function* orderAnchors(
  */
 function* seedMessages(indexed: IndexedPublicRoots): ProjectionProgram<ChatProjectionState, Note> {
   return yield* stage("seed-messages", function* () {
-    let state = createChatProjection();
-    let messages = 0;
-    for (const root of indexed.ordered) {
-      if (root.kind !== "message") continue;
-      state = appendAGUIMessage(state, root.message);
-      messages += 1;
-    }
-    yield* note({ kind: "messages-seeded", messages });
+    const messages = indexed.ordered.flatMap((root) =>
+      root.kind === "message" ? [root.message] : [],
+    );
+    const state = appendAGUIMessages(createChatProjection(), messages);
+    yield* note({ kind: "messages-seeded", messages: messages.length });
     return state;
   });
 }
@@ -174,8 +171,7 @@ function* attachAnchors(
   anchors: readonly PublicPlacementAnchor[],
 ): ProjectionProgram<ChatProjectionState, Note> {
   return yield* stage("attach-anchors", function* () {
-    let current = state;
-    for (const anchor of anchors) current = foldAGUIEvent(current, anchorEvent(anchor));
+    const current = foldAGUIEvents(state, anchors.map(anchorEvent));
     yield* note({ kind: "anchors-attached", anchors: anchors.length });
     return current;
   });
@@ -186,19 +182,15 @@ function* applyActivities(
   indexed: IndexedPublicRoots,
 ): ProjectionProgram<ChatProjectionState, Note> {
   return yield* stage("apply-activities", function* () {
-    let current = state;
-    let nodes = 0;
-    for (const root of indexed.ordered) {
-      if (root.kind !== "activity-subtree") continue;
-      const sorted = [...root.nodes].sort(
-        (left, right) => left.producerSequence - right.producerSequence,
-      );
-      for (const node of sorted) {
-        current = foldAGUIEvent(current, node.event);
-        nodes += 1;
-      }
-    }
-    yield* note({ kind: "activities-applied", nodes });
+    const events = indexed.ordered.flatMap((root) =>
+      root.kind === "activity-subtree"
+        ? [...root.nodes]
+            .sort((left, right) => left.producerSequence - right.producerSequence)
+            .map((node) => node.event)
+        : [],
+    );
+    const current = foldAGUIEvents(state, events);
+    yield* note({ kind: "activities-applied", nodes: events.length });
     return current;
   });
 }

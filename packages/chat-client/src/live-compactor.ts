@@ -10,6 +10,7 @@ import {
   appendAGUIMessage,
   createChatProjection,
   findTextParts,
+  foldAGUIEvents,
   materializeChatMessages,
   publicRootProjection,
   transitionChatProjection,
@@ -83,10 +84,7 @@ export function* liveProjection(params: {
   const projected = yield* stage("project-roots", () => publicRootProjection(roots));
 
   const replayed = yield* stage("replay-live", function* () {
-    let current = projected;
-    for (const event of params.liveEvents) {
-      current = transitionChatProjection(current, event).projection;
-    }
+    const current = foldAGUIEvents(projected, params.liveEvents);
     yield* note({ kind: "live-events-replayed", events: params.liveEvents.length });
     return current;
   });
