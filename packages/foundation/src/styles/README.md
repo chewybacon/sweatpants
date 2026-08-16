@@ -182,6 +182,40 @@ inherited across child implementation scopes.
 
 It is intentionally not exported as production foundation API yet.
 
+## Generic Registry experiment
+
+`registry-style.ts` and `registry-style.test.ts` exercise the missing
+composition-taxonomy member: an immutable named catalog of implementations.
+The candidate shape is deliberately pure:
+
+```ts
+const models = createRegistry("models", [
+    ["fast", fastModel],
+    ["safe", safeModel],
+]);
+
+models.get("fast");
+models.require("safe");
+models.names;
+```
+
+The registry copies its input, rejects duplicate names, exposes deterministic
+lexical ordering, and does not expose mutation. It does not install a driver,
+apply middleware, or select an implementation by policy:
+
+```text
+Registry  stores and looks up named implementations
+Resolver  selects one implementation for a request
+Port      invokes an installed capability through middleware
+FactStore persists accepted facts
+```
+
+The experiment intentionally rejects a mutable `register()` API and an
+Effection-backed registry context for this category. Runtime session/plugin
+registries may still need mutation and lifecycle, but those are different
+contracts and should not be generalized from this pure catalog without a
+second experiment.
+
 ## Style F
 
 `style-f-context-api-facade.ts` keeps the raw driver in a private context but
