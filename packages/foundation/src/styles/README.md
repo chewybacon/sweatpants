@@ -43,6 +43,38 @@ This style intentionally exposes the implementation context. It is not yet a
 production recommendation; it exists to test whether explicit trusted DI gives
 us the composability we want without the `Port.bind(currentScope)` pattern.
 
+## Fold adoption experiment
+
+`fold-adoption-style.ts` models `indexRecordProjection` — the worst production
+case, five separate loops over the same records — and adds the combinators
+full adoption needs beyond `combine`:
+
+```
+mapFold    functor  — post-process completed accumulators
+prefilter  narrows which items a fold does work for
+```
+
+It tests, and refutes, a claim made by the fusion experiment: that a phase
+depending on another phase's output forces a second traversal. Resolving model
+message identities needs the _completed_ `prepared` map from a different fold,
+yet stays in one pass, because `done()` sees every accumulator. It is `map`
+over a combined fold, not a second phase — and it resolves correctly even when
+the `prepared` record arrives after the emission it describes.
+
+A second traversal of the source is required only when a phase must re-read
+items with knowledge derived from them. None of our three derivations do.
+Corrected rule:
+
+```
+applicative combine  — independent accumulators
+functor    map       — post-processing over completed accumulators
+monadic    stages    — only for re-traversal or effects
+```
+
+Cost, stated honestly: resolving in `done()` buffers intermediate data rather
+than re-reading the source. Bounded by the window here, but it is memory
+traded for passes.
+
 ## Fold fusion experiment
 
 `fold-fusion-style.ts` models the _inside_ of an indexed derivation, where the
