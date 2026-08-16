@@ -3,6 +3,7 @@ import {
   useScope,
   type Api,
   type Around,
+  type Context,
   type Operation,
   type Scope,
 } from "effection";
@@ -12,14 +13,22 @@ import { createApi } from "effection/experimental";
  * A port is one effectful boundary that composition installs a driver into.
  *
  * The declaration is the contract, the runtime key list, and the fail-closed
- * default. No Context is exported, so callers cannot reach around the seam to
- * an installed driver; the only way in is `installDriver`.
+ * default. The exposed Context contains the API facade, not the installed raw
+ * driver, so trusted framework code can use current-scope DI without bypassing
+ * API middleware. Raw scope capture remains available only through the
+ * explicitly advanced `bind(scope)` operation.
  *
  * Foundation carries this because it is a portable composition primitive with
  * no Node-only API, I/O, or domain noun (DR-042).
  */
+export type PortFacade<T extends object> = Api<T>["operations"];
+
 export interface Port<T extends object> {
   readonly api: Api<T>;
+  /** Current-scope API facade; it never exposes the installed raw driver. */
+  readonly context: Context<PortFacade<T>>;
+  /** Resolve the current-scope API facade without capturing a Scope. */
+  use(): Operation<PortFacade<T>>;
   /**
    * A handle whose calls dispatch against `scope` rather than the caller's.
    *
@@ -30,18 +39,21 @@ export interface Port<T extends object> {
    * whether the lifetime you actually mean exists as a scope.
    * See `docs/adr/004-turn-scope-and-scope-crossing.md`.
    *
-   * Binding to the caller's own scope is unremarkable: dispatch is unchanged,
-   * and the call only materializes the port as a plain interface handle.
+   * Binding to the caller's own scope is not the normal access pattern; use
+   * `use()` instead. `bind()` exists for an intentional foreign-scope
+   * lifetime and should be treated as an advanced scope-crossing operation.
    *
-   * Middleware still applies either way, so this is never a driver handout.
+   * Middleware still applies to bound API calls, so this is never a driver
+   * handout.
    */
   bind(scope: Scope): T;
   /**
    * Whether a driver is installed for the calling scope.
    *
    * Some seams are genuinely optional: a Host may run with no tool runtime at
-   * all. Those callers need to branch on configuration without being handed the
-   * driver, which is what a Context would have leaked.
+   * all. Those callers can branch on configuration without resolving the
+   * facade, while trusted implementations may use `context.expect()` or
+   * `use()` when the seam is required.
    */
   isInstalled(): Operation<boolean>;
   /**
@@ -69,6 +81,8 @@ export function definePort<T extends object>(name: string, declaration: T): Port
   }
 
   const api = createApi(name, declaration);
+  const facade = api.operations;
+  const facadeContext = createContext<PortFacade<T>>(`${name}:facade`, facade);
   // Presence is tracked by a companion api rather than a Context so that an
   // optional seam can be probed without exposing the installed driver.
   // Records which scope installed a driver so a second install in that same
@@ -84,6 +98,10 @@ export function definePort<T extends object>(name: string, declaration: T): Port
 
   return {
     api,
+    context: facadeContext,
+    use() {
+      return facadeContext.expect();
+    },
     bind(scope: Scope): T {
       // SAFETY: one entry per declared key, forwarding the exact argument tuple
       // to `invoke`, which returns that member's own return type.

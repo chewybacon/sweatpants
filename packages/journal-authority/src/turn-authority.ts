@@ -17,6 +17,7 @@ import {
 import type { Operation } from "effection";
 import { createApi } from "effection/experimental";
 import { ExecutionStoreApi } from "./api.ts";
+import { AcceptedProjectionFactStore } from "./fact-store.ts";
 import { inlineControl, runExecutionCommitLoop } from "./commit-loop.ts";
 import {
   DEFAULT_PRIVATE_SEGMENT_TARGET,
@@ -93,19 +94,10 @@ export const TurnJournalAuthority = createApi("turn-journal-authority", {
           return { status: "return", result: requireTerminalCapsule(record) };
         }
         assertFacts(record, request.facts);
-        const factsValue: Json = request.facts.map((fact) => ({
-          executionId: fact.executionId,
-          sessionId: fact.sessionId,
-          turnId: fact.turnId,
-          sequence: fact.sequence,
-          kind: fact.kind,
-          payload: fact.payload,
-        }));
-        const facts = yield* putExecutionObject(
-          request.executionId,
-          "projection-facts",
-          factsValue,
-        );
+        const facts = yield* AcceptedProjectionFactStore.operations.put({
+          executionId: request.executionId,
+          facts: request.facts,
+        });
         const withFrontier: ExecutionTreeSnapshot = {
           ...record,
           unpublishedProjection: { throughSequence: request.facts.length, facts },
@@ -155,16 +147,10 @@ export const TurnJournalAuthority = createApi("turn-journal-authority", {
     if (!capsule.projection.facts) {
       throw new TurnAuthorityBoundaryError("Terminal Capsule fact frontier has no reference");
     }
-    const stored = yield* ExecutionStoreApi.operations.getObject({
-      objectId: capsule.projection.facts.id,
+    const facts = yield* AcceptedProjectionFactStore.operations.read({
+      executionId: capsule.executionId,
+      frontier: capsule.projection,
     });
-    if (!stored || stored.body instanceof Uint8Array || !Array.isArray(stored.body)) {
-      throw new TurnAuthorityBoundaryError("Accepted Projection Facts payload is unavailable");
-    }
-    if (stored.lifetimeScope === "execution" && stored.scopeOwnerId !== capsule.executionId) {
-      throw new TurnAuthorityBoundaryError("Accepted Projection Facts are outside execution scope");
-    }
-    const facts = stored.body.map(parseFact);
     assertFacts(capsule, facts);
     return facts;
   },
@@ -348,32 +334,6 @@ function requireTerminalCapsule(value: ExecutionTreeSnapshot | TerminalCapsule):
   return parsed.value;
 }
 
-function parseFact(value: Json): ProjectionFactEnvelope {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new TurnAuthorityBoundaryError("Projection Fact must be an object");
-  }
-  const fact = value as Record<string, Json>;
-  if (
-    typeof fact["executionId"] !== "string" ||
-    typeof fact["sessionId"] !== "string" ||
-    typeof fact["turnId"] !== "string" ||
-    typeof fact["sequence"] !== "number" ||
-    !Number.isSafeInteger(fact["sequence"]) ||
-    typeof fact["kind"] !== "string" ||
-    !("payload" in fact)
-  ) {
-    throw new TurnAuthorityBoundaryError("Projection Fact fields are invalid");
-  }
-  return {
-    executionId: fact["executionId"],
-    sessionId: fact["sessionId"],
-    turnId: fact["turnId"],
-    sequence: fact["sequence"],
-    kind: fact["kind"],
-    payload: fact["payload"],
-  };
-}
-
 function capsuleRevision(controlRevision: string): number {
   if (!/^\d+$/.test(controlRevision)) {
     throw new TurnAuthorityBoundaryError(`Invalid control revision ${controlRevision}`);
@@ -399,19 +359,20 @@ function* putExecutionObject(
 }> {
   const encoded = canonicalSnapshot(body);
   const objectId = stableTupleHash([executionId, kind, encoded.sha]);
+  const byteLength = new TextEncoder().encode(encoded.canonical).byteLength;
   yield* ExecutionStoreApi.operations.putObject({
     objectId,
     lifetimeScope: "execution",
     scopeOwnerId: executionId,
     objectKind: kind,
     contentHash: encoded.sha,
-    byteLength: new TextEncoder().encode(encoded.canonical).byteLength,
+    byteLength,
     body: encoded.value,
     createdAt: Date.now(),
   });
   return {
     id: objectId,
-    byteLength: new TextEncoder().encode(encoded.canonical).byteLength,
+    byteLength,
     version: "1",
     integrity: { algorithm: "sha256", value: encoded.sha },
   };
