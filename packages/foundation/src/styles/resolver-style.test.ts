@@ -1,6 +1,11 @@
 import { run, scoped } from "effection";
 import { describe, expect, it } from "vitest";
-import { defineResolver, type ResolutionRequest } from "./resolver-style.ts";
+import { defineResolver } from "./resolver-style.ts";
+
+interface ResolutionRequest {
+  readonly value: string;
+  readonly parentRoute: string;
+}
 
 const fallbackResolver = defineResolver<ResolutionRequest, string>(
   "resolver-style-fallback",
