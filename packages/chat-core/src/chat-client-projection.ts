@@ -1302,6 +1302,21 @@ export function appendAGUIMessage(
 }
 
 /**
+ * Append many messages, deriving once. Per-message appends each pay a full
+ * derivation, so seeding a window one message at a time is quadratic.
+ */
+export function appendAGUIMessages(
+  state: ChatProjectionState,
+  messages: Iterable<Message>,
+): ChatProjectionState {
+  let next = state;
+  for (const message of messages) {
+    next = appendMessageCore(next, message);
+  }
+  return next.nodes.size > state.nodes.size ? refreshDerivedState(next) : next;
+}
+
+/**
  * Fold one AG-UI event. Content deltas leave the node fact store untouched and
  * cost O(1); events that insert node records trigger one O(n) index refresh.
  */
@@ -1310,15 +1325,28 @@ export function foldAGUIEvent(state: ChatProjectionState, event: AGUIEvent): Cha
   return next.nodes.size > state.nodes.size ? refreshDerivedState(next) : next;
 }
 
+/**
+ * Fold a batch of events, deriving once at the end.
+ *
+ * Safe because parent references are logical: a mid-batch read of
+ * `messageNodeById` may be stale, but the value it feeds is only a placeholder
+ * `parentNodeId` that the final derivation overwrites from `parentRef`.
+ */
+export function foldAGUIEvents(
+  state: ChatProjectionState,
+  events: Iterable<AGUIEvent>,
+): ChatProjectionState {
+  let next = state;
+  for (const event of events) {
+    next = foldEventCore(next, event);
+  }
+  return next.nodes.size > state.nodes.size ? refreshDerivedState(next) : next;
+}
+
 function foldEventCore(state: ChatProjectionState, event: AGUIEvent): ChatProjectionState {
   switch (event.type) {
-    case EventType.MESSAGES_SNAPSHOT: {
-      let next = createChatProjection();
-      for (const message of event.messages) {
-        next = appendMessageCore(next, message);
-      }
-      return refreshDerivedState(next);
-    }
+    case EventType.MESSAGES_SNAPSHOT:
+      return appendAGUIMessages(createChatProjection(), event.messages);
     case EventType.TEXT_MESSAGE_START: {
       if (state.structuredOutputByMessageId.has(event.messageId)) {
         return state;

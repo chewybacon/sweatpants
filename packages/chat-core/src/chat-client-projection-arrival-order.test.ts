@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import {
   createChatProjection,
   foldAGUIEvent,
+  foldAGUIEvents,
   materializeChatMessages,
   type ChatProjectionState,
 } from "./chat-client-projection.ts";
@@ -168,5 +169,27 @@ describe("arrival-order characterization of the derived projection fold", () => 
     // The activity is gone: it rooted itself before m1 existed, and root
     // activities are not reachable from the message materializer.
     expect(tree).toEqual([[MESSAGE_ID, "text:hello", "tool:c1"]]);
+  });
+});
+
+describe("batched folding", () => {
+  it("agrees with per-event folding for every arrival order", () => {
+    for (const order of ORDERINGS) {
+      const events = order.flatMap((name) => UNITS[name] as AGUIEvent[]);
+      const perEvent = events.reduce(foldAGUIEvent, createChatProjection());
+      const batched = foldAGUIEvents(createChatProjection(), events);
+      expect(normalize(batched)).toEqual(normalize(perEvent));
+    }
+  });
+
+  it("resolves a placement that arrives mid-batch, after its children", () => {
+    // The tool's parentNodeId is computed from a stale index during the batch;
+    // the final derivation overwrites it from the logical parentRef.
+    const events = [...UNITS.text, ...UNITS.tool, ...UNITS.placement] as AGUIEvent[];
+    const batched = foldAGUIEvents(createChatProjection(), events);
+    const node = batched.nodes.get("execution:c1");
+
+    expect(node?.node.parentNodeId).toBe("activity-message:m1");
+    expect(batched.attachedChildren.get("activity-message:m1")).toEqual(["execution:c1"]);
   });
 });

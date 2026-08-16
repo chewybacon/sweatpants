@@ -118,8 +118,10 @@ export {
   ChatProjectionError,
   createChatProjection,
   foldAGUIEvent,
+  foldAGUIEvents,
   transitionChatProjection,
   appendAGUIMessage,
+  appendAGUIMessages,
   materializeChatMessages,
   updateTextPartFrame,
 } from "@sweatpants/chat-core";
