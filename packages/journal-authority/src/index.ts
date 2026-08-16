@@ -4,6 +4,7 @@ export * from "./store-persistence.ts";
 export * from "./store-planners.ts";
 export * from "./store-repository.ts";
 export * from "./api.ts";
+export * from "./fact-store.ts";
 export * from "./metrics-middleware.ts";
 export * from "./turn-authority.ts";
 export * from "./capabilities.ts";

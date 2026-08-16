@@ -1,5 +1,5 @@
-import { useScope, type Operation } from "effection";
-import { definePort } from "@sweatpants/foundation/port";
+import type { Operation } from "effection";
+import { definePort, type PortFacade } from "@sweatpants/foundation/port";
 import type {
   CreateSessionOptions,
   SessionEntry,
@@ -25,8 +25,8 @@ export class DurableStreamsStoreUnavailable extends Error {
  * Token buffer storage as a port.
  *
  * Declared over `unknown` tokens: storage mechanics do not depend on the token
- * type, and the sole cast is confined to the typed binding below rather than
- * repeated at every call site.
+ * type. The intentional type erasure is centralized in named installation and
+ * restoration helpers below rather than repeated at call sites.
  */
 export const TokenBufferStorePort = definePort<TokenBufferStore<unknown>>(
   "durable-streams-token-buffer-store",
@@ -78,16 +78,35 @@ export const SessionRegistryPort = definePort<SessionRegistry<unknown>>(
   },
 );
 
+type OpaqueTokenBufferStore = TokenBufferStore<unknown>;
+type OpaqueSessionRegistry = SessionRegistry<unknown>;
+
 /**
- * Installs the token buffer store for the calling scope.
- *
- * Tokens are opaque to storage, so the token type is erased at the seam and
- * restored by the typed binding.
+ * Token storage is intentionally type-erased at its one shared port. The
+ * implementation never inspects token values; this is the sole type-level
+ * erasure for installation.
  */
+function eraseTokenBufferStore<T>(store: TokenBufferStore<T>): OpaqueTokenBufferStore {
+  return store as unknown as OpaqueTokenBufferStore;
+}
+
+/** Restore the caller's token type at the typed facade boundary. */
+function restoreTokenBufferStore<T>(store: OpaqueTokenBufferStore): TokenBufferStore<T> {
+  return store as unknown as TokenBufferStore<T>;
+}
+
+/** Session lifecycle is token-parametric and uses the same shared erasure. */
+function eraseSessionRegistry<T>(registry: SessionRegistry<T>): OpaqueSessionRegistry {
+  return registry as unknown as OpaqueSessionRegistry;
+}
+
+/** Restore the caller's token type at the typed facade boundary. */
+function restoreSessionRegistry<T>(registry: OpaqueSessionRegistry): SessionRegistry<T> {
+  return registry as unknown as SessionRegistry<T>;
+}
+
 export function installTokenBufferStore<T>(store: TokenBufferStore<T>): Operation<void> {
-  // SAFETY: the driver only stores and returns buffers it was given; storage
-  // mechanics never inspect the token type.
-  return TokenBufferStorePort.installDriver(store as TokenBufferStore<unknown>);
+  return TokenBufferStorePort.installDriver(eraseTokenBufferStore(store));
 }
 
 export function installSessionRegistryStore(store: SessionRegistryStore): Operation<void> {
@@ -95,27 +114,20 @@ export function installSessionRegistryStore(store: SessionRegistryStore): Operat
 }
 
 export function installSessionRegistry<T>(registry: SessionRegistry<T>): Operation<void> {
-  // SAFETY: as above; session lifecycle does not depend on the token type.
-  return SessionRegistryPort.installDriver(registry as SessionRegistry<unknown>);
+  return SessionRegistryPort.installDriver(eraseSessionRegistry(registry));
 }
 
-/**
- * Typed token buffer store bound to the calling scope.
- *
- * The token type is restored here; storage itself never inspected it.
- */
+/** Typed token buffer store facade for the current Effection scope. */
 export function* useTokenBufferStore<T>(): Operation<TokenBufferStore<T>> {
-  // SAFETY: inverse of the erasure performed by installTokenBufferStore.
-  return TokenBufferStorePort.bind(yield* useScope()) as TokenBufferStore<T>;
+  return restoreTokenBufferStore(yield* TokenBufferStorePort.use());
 }
 
-/** Session refcount store bound to the calling scope. */
-export function* useSessionRegistryStore(): Operation<SessionRegistryStore> {
-  return SessionRegistryStorePort.bind(yield* useScope());
+/** Session refcount store facade for the current Effection scope. */
+export function* useSessionRegistryStore(): Operation<PortFacade<SessionRegistryStore>> {
+  return yield* SessionRegistryStorePort.use();
 }
 
-/** Typed session registry bound to the calling scope. */
+/** Typed session registry facade for the current Effection scope. */
 export function* useSessionRegistry<T>(): Operation<SessionRegistry<T>> {
-  // SAFETY: inverse of the erasure performed by installSessionRegistry.
-  return SessionRegistryPort.bind(yield* useScope()) as SessionRegistry<T>;
+  return restoreSessionRegistry(yield* SessionRegistryPort.use());
 }

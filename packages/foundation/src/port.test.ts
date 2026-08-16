@@ -74,6 +74,22 @@ describe("port scope semantics", () => {
     });
   });
 
+  it("provides a current-scope API facade without capturing the driver scope", async () => {
+    await run(function* () {
+      yield* GreeterPort.installDriver(driver("outer"));
+      const facade = yield* GreeterPort.use();
+      expect(yield* facade.greet("outer")).toBe("outer:outer");
+
+      yield* scoped(function* () {
+        yield* GreeterPort.installDriver(driver("inner"));
+        expect(yield* facade.greet("inner")).toBe("inner:inner");
+        expect(yield* GreeterPort.use()).toBe(facade);
+      });
+
+      expect(yield* facade.greet("after")).toBe("outer:after");
+    });
+  });
+
   it("keeps middleware installed per scope and drops it when the scope exits", async () => {
     const log: string[] = [];
     await run(function* () {

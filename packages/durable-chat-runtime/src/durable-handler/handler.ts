@@ -18,6 +18,7 @@
 import { EventType } from "@ag-ui/core";
 import {
   call,
+  ensure,
   resource,
   run,
   withResolvers,
@@ -257,16 +258,22 @@ async function createHistoryPageResponse(params: {
 }
 
 function* directChatSubscription(
+  registry: SessionRegistry<StreamEvent>,
   session: SessionHandle<StreamEvent>,
   prefix: readonly StreamEvent[] = [],
   startLSN = 0,
 ): Operation<Subscription<string, void>> {
-  const source = createPullStream(session.buffer, startLSN);
-  const subscription = yield* source;
   const validator = new ConversationSegmentValidator();
   let prefixIndex = 0;
   let finished = false;
   const stream: Stream<string, void> = resource(function* (provide) {
+    // The response subscription owns the registry reference. This is the
+    // stream-scoped equivalent of Cordis Fiber.effect(): acquire happens
+    // before this resource is returned, and release is guaranteed when the
+    // response scope is destroyed, including client cancellation and setup
+    // failure after acquisition.
+    yield* ensure(() => registry.release(session.id));
+    const subscription = yield* createPullStream(session.buffer, startLSN);
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
         const next =
@@ -1706,16 +1713,12 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 }
 
                 const response = yield* directChatSubscription(
+                  registry,
                   session,
                   responsePrefix,
                   responseStartLSN,
                 );
-                return {
-                  subscription: response,
-                  cleanup: function* () {
-                    yield* registry.release(sessionId);
-                  },
-                };
+                return { subscription: response };
               })();
               return { ok: true as const, value };
             } catch (error) {

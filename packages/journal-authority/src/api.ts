@@ -1,4 +1,4 @@
-import { definePort } from "@sweatpants/foundation/port";
+import { definePort, type PortFacade } from "@sweatpants/foundation/port";
 import type { Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import type {
@@ -61,6 +61,15 @@ export const ExecutionStorePort = definePort<ExecutionStore>("execution-store", 
 });
 
 export const ExecutionStoreApi = ExecutionStorePort.api;
+/** Trusted current-scope facade; it preserves ExecutionStoreApi middleware. */
+export type ExecutionStoreFacade = PortFacade<ExecutionStore>;
+export const ExecutionStoreContext = ExecutionStorePort.context;
+
+export function* useExecutionStore(): Operation<ExecutionStoreFacade> {
+  // This is the API facade, not the raw backend. Every method still dispatches
+  // through ExecutionStoreApi and its current-scope middleware chain.
+  return yield* ExecutionStorePort.use();
+}
 
 export function installExecutionStore(store: ExecutionStore): Operation<void> {
   return ExecutionStorePort.installDriver(store);

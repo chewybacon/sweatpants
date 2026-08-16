@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
-import { installExecutionStore } from "./api.ts";
+import { ExecutionStoreApi, installExecutionStore } from "./api.ts";
+import { AcceptedProjectionFactStore } from "./fact-store.ts";
 import { createMemoryExecutionStore } from "./memory.ts";
 import { TurnJournalAuthority } from "./turn-authority.ts";
 
@@ -46,6 +47,68 @@ describe("TurnJournalAuthority", () => {
         (yield* TurnJournalAuthority.operations.markPublished(identity.executionId)).publication,
       ).toBe("published");
     });
+  });
+
+  it("routes accepted fact put/read through both middleware layers", async () => {
+    const calls: string[] = [];
+    await run(function* () {
+      yield* installExecutionStore(createMemoryExecutionStore());
+      yield* AcceptedProjectionFactStore.around({
+        *put([request], next) {
+          calls.push(`fact-put:${request.executionId}`);
+          const result = yield* next(request);
+          calls.push(`fact-put-done:${result.id}`);
+          return result;
+        },
+        *read([request], next) {
+          calls.push(`fact-read:${request.executionId}`);
+          const result = yield* next(request);
+          calls.push(`fact-read-done:${result.length}`);
+          return result;
+        },
+      });
+      yield* ExecutionStoreApi.around({
+        *putObject([object], next) {
+          const result = yield* next(object);
+          if (object.objectKind === "projection-facts") calls.push("execution-put");
+          return result;
+        },
+        *getObject([pointer], next) {
+          const result = yield* next(pointer);
+          if (result?.objectKind === "projection-facts") calls.push("execution-read");
+          return result;
+        },
+      });
+
+      yield* TurnJournalAuthority.operations.open(identity);
+      const facts = [
+        {
+          executionId: identity.executionId,
+          sessionId: identity.sessionId,
+          turnId: identity.turnId,
+          sequence: 1,
+          kind: "chat.turn.completed",
+          payload: { text: "middleware" },
+        },
+      ];
+      const capsule = yield* TurnJournalAuthority.operations.complete({
+        executionId: identity.executionId,
+        outcome: { storage: "inline", value: "middleware" },
+        disposition: "completed",
+        completedAt: 123,
+        facts,
+      });
+      expect(yield* TurnJournalAuthority.operations.readAcceptedFacts(capsule)).toEqual(facts);
+    });
+
+    expect(calls).toEqual([
+      "fact-put:execution-1",
+      "execution-put",
+      expect.stringMatching(/^fact-put-done:/),
+      "fact-read:execution-1",
+      "execution-read",
+      "fact-read-done:1",
+    ]);
   });
 
   it("rejects facts outside the accepted Turn frontier", async () => {
