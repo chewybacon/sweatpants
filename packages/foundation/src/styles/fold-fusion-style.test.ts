@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { runProjectionProgram, stage, type ProjectionProgram } from "../projection.ts";
+import { combine, FoldError, runFold } from "../fold.ts";
 import {
   baseIndexes,
   byTagFold,
-  combine,
   deriveByHand,
   edgesFold,
-  FoldError,
   idsFold,
   resolveGraph,
-  runFold,
   slotsFold,
   type BaseIndexes,
   type Item,

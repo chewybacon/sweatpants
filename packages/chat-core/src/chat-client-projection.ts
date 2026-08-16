@@ -265,21 +265,30 @@ function preserveSettledToolResult(
  * sibling-sequence conflicts are rejected on the event that created them.
  */
 function refreshDerivedState(state: ChatProjectionState): ChatProjectionState {
+  // Pass 1: message claims. A synthetic node cannot be known to be shadowed
+  // until every node has been seen, so this genuinely precedes resolution.
   const messageNodeById = new Map<string, string>();
+  const authoritative = new Map<string, string>();
   for (const [nodeId, entry] of state.nodes) {
     const data = entry.node.publicData;
-    if (data?.kind === "message" && entry.synthetic && !messageNodeById.has(data.messageId)) {
-      messageNodeById.set(data.messageId, nodeId);
+    if (data?.kind !== "message") continue;
+    if (entry.synthetic) {
+      if (!messageNodeById.has(data.messageId)) messageNodeById.set(data.messageId, nodeId);
+    } else {
+      authoritative.set(data.messageId, nodeId);
     }
   }
-  for (const [nodeId, entry] of state.nodes) {
-    const data = entry.node.publicData;
-    if (data?.kind === "message" && !entry.synthetic) {
-      messageNodeById.set(data.messageId, nodeId);
-    }
+  for (const [messageId, nodeId] of authoritative) {
+    messageNodeById.set(messageId, nodeId);
   }
 
+  // Pass 2: resolve parents and collect every index that shares this walk.
+  // These are not independent accumulators — they all consume the resolved
+  // node — so one loop is correct here, not a combined fold.
   const nodes = new Map<string, InternalNode>();
+  const toolNodeByCallId = new Map<string, string>();
+  const elicitNodeById = new Map<string, string>();
+  const edges: (readonly [string, string])[] = [];
   for (const [nodeId, entry] of state.nodes) {
     const data = entry.node.publicData;
     if (
@@ -304,30 +313,24 @@ function refreshDerivedState(state: ChatProjectionState): ChatProjectionState {
         ? entry
         : { ...entry, node: { ...entry.node, parentNodeId } as PublicActivityNode },
     );
-  }
-
-  const toolNodeByCallId = new Map<string, string>();
-  const elicitNodeById = new Map<string, string>();
-  const attachedChildren = new Map<string, string[]>();
-  const pendingChildren = new Map<string, string[]>();
-  for (const [nodeId, entry] of nodes) {
-    const data = entry.node.publicData;
     if (data?.kind === "tool-call") {
       toolNodeByCallId.set(data.callId, nodeId);
     } else if (data?.kind === "elicit") {
       elicitNodeById.set(data.elicitId, nodeId);
     }
-    const parentId = entry.node.parentNodeId;
-    if (parentId === null) {
-      continue;
+    if (parentNodeId !== null) {
+      edges.push([parentNodeId, nodeId]);
     }
+  }
+
+  // Pass 3: partition edges, which needs the completed node set.
+  const attachedChildren = new Map<string, string[]>();
+  const pendingChildren = new Map<string, string[]>();
+  for (const [parentId, nodeId] of edges) {
     const bucket = nodes.has(parentId) ? attachedChildren : pendingChildren;
     const list = bucket.get(parentId);
-    if (list) {
-      list.push(nodeId);
-    } else {
-      bucket.set(parentId, [nodeId]);
-    }
+    if (list) list.push(nodeId);
+    else bucket.set(parentId, [nodeId]);
   }
 
   for (const [parentId, children] of attachedChildren) {

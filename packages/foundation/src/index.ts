@@ -16,6 +16,7 @@ export {
   type Json,
   type JsonObject,
 } from "./json.ts";
+export * from "./fold.ts";
 export * from "./port.ts";
 export * from "./projection.ts";
 export * from "./resolver.ts";

@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { combine, fold, runFold } from "./fold-fusion-style.ts";
+import { combine, fold, mapFold, prefilter, runFold } from "../fold.ts";
 import {
   indexRecords,
   indexRecordsByHand,
-  mapFold,
-  prefilter,
   recordIndexFold,
   type DurableRecord,
 } from "./fold-adoption-style.ts";
