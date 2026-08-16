@@ -7,6 +7,12 @@
  * pending-resume consistency invariant.
  */
 import { EventType, type AGUIEvent } from "@ag-ui/core";
+import {
+  note,
+  runProjectionProgram,
+  stage,
+  type ProjectionProgram,
+} from "@sweatpants/foundation/projection";
 import { resource, type Operation, type Stream } from "effection";
 import type { StreamEvent } from "./handler/types.ts";
 import {
@@ -23,7 +29,7 @@ import {
 } from "@sweatpants/chat-core";
 import type { OpenInterruptRecord } from "./interrupts/index.ts";
 
-type ProjectionFrame = {
+export type ProjectionFrame = {
   readonly lsn: number;
   readonly event: StreamEvent;
 };
@@ -242,27 +248,104 @@ export function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnap
   };
 }
 
-function activityProjectionEventsFromFrames(frames: readonly ProjectionFrame[]): StreamEvent[] {
-  let projection = createChatProjection();
-  const order: string[] = [];
-  for (const frame of frames) {
-    const event = frame.event;
-    if (
-      isConversationAuthorityFrame(event) ||
-      isConversationWindowFrame(event) ||
-      (event.type !== EventType.ACTIVITY_SNAPSHOT && event.type !== EventType.ACTIVITY_DELTA)
-    ) {
-      continue;
+export type ConversationReplayNote =
+  | {
+      readonly kind: "frames-replayed";
+      readonly frames: number;
+      readonly providerEvents: number;
+      readonly activityEvents: number;
     }
-    if (event.type === EventType.ACTIVITY_SNAPSHOT && !order.includes(event.messageId)) {
-      order.push(event.messageId);
-    }
-    projection = foldAGUIEvent(projection, event);
-  }
+  | { readonly kind: "provider-history-materialized"; readonly messages: number }
+  | { readonly kind: "activity-snapshots-materialized"; readonly snapshots: number };
 
-  return order.flatMap((activityRecordId) => {
-    const nodeId = projection.activityNodeByRecordId.get(activityRecordId);
-    const projected = nodeId ? projection.nodes.get(nodeId) : undefined;
+type ProviderHistoryMessage =
+  | Exclude<ReturnType<typeof projectChatMessagesToAGUI>[number], { readonly role: "tool" }>
+  | Omit<
+      Extract<ReturnType<typeof projectChatMessagesToAGUI>[number], { readonly role: "tool" }>,
+      "name" | "isError"
+    >;
+
+export interface ConversationReplayViews {
+  readonly providerMessages: readonly ProviderHistoryMessage[];
+  readonly activitySnapshots: readonly StreamEvent[];
+}
+
+interface ConversationReplayFacts {
+  readonly providerProjection: ReturnType<typeof createChatProjection>;
+  readonly activityProjection: ReturnType<typeof createChatProjection>;
+  readonly activityRecordOrder: readonly string[];
+}
+
+interface ConversationReplayOptions {
+  readonly includeActivity: boolean;
+}
+
+function* replayConversationFrames(
+  frames: readonly ProjectionFrame[],
+  options: ConversationReplayOptions,
+): ProjectionProgram<ConversationReplayFacts, ConversationReplayNote> {
+  return yield* stage("replay-frames", function* () {
+    let providerProjection = createChatProjection();
+    let activityProjection = createChatProjection();
+    const activityRecordOrder: string[] = [];
+    const seenActivityRecords = new Set<string>();
+    let providerEvents = 0;
+    let activityEvents = 0;
+
+    for (const frame of frames) {
+      const event = frame.event;
+      if (isConversationAuthorityFrame(event) || isConversationWindowFrame(event)) {
+        continue;
+      }
+      if (event.type === EventType.ACTIVITY_SNAPSHOT || event.type === EventType.ACTIVITY_DELTA) {
+        if (!options.includeActivity) {
+          continue;
+        }
+        if (
+          event.type === EventType.ACTIVITY_SNAPSHOT &&
+          !seenActivityRecords.has(event.messageId)
+        ) {
+          seenActivityRecords.add(event.messageId);
+          activityRecordOrder.push(event.messageId);
+        }
+        activityProjection = foldAGUIEvent(activityProjection, event);
+        activityEvents += 1;
+        continue;
+      }
+      providerProjection = foldAGUIEvent(providerProjection, event);
+      providerEvents += 1;
+    }
+
+    yield* note({
+      kind: "frames-replayed",
+      frames: frames.length,
+      providerEvents,
+      activityEvents,
+    });
+    return { providerProjection, activityProjection, activityRecordOrder };
+  });
+}
+
+function providerHistoryFromProjection(
+  projection: ReturnType<typeof createChatProjection>,
+): ConversationReplayViews["providerMessages"] {
+  return projectChatMessagesToAGUI(materializeChatMessages(projection, { allowPending: true })).map(
+    (message) => {
+      if (message.role !== "tool") {
+        return message;
+      }
+      const { name: _name, isError: _isError, ...official } = message;
+      return official;
+    },
+  );
+}
+
+function activitySnapshotsFromProjection(
+  projection: ConversationReplayFacts,
+): readonly StreamEvent[] {
+  return projection.activityRecordOrder.flatMap((activityRecordId) => {
+    const nodeId = projection.activityProjection.activityNodeByRecordId.get(activityRecordId);
+    const projected = nodeId ? projection.activityProjection.nodes.get(nodeId) : undefined;
     if (!projected || projected.synthetic) return [];
     return [
       {
@@ -276,38 +359,69 @@ function activityProjectionEventsFromFrames(frames: readonly ProjectionFrame[]):
   });
 }
 
-export function providerHistoryFromFrames(frames: readonly ProjectionFrame[]) {
-  let projection = createChatProjection();
-  for (const frame of frames) {
-    if (
-      !isConversationAuthorityFrame(frame.event) &&
-      !isConversationWindowFrame(frame.event) &&
-      frame.event.type !== EventType.ACTIVITY_SNAPSHOT &&
-      frame.event.type !== EventType.ACTIVITY_DELTA
-    ) {
-      projection = foldAGUIEvent(projection, frame.event);
-    }
+/**
+ * Replay frames once and materialize both public hydration views. The replay
+ * stage owns the shared fold; the materialization stages own their respective
+ * wire representations.
+ */
+export function* conversationReplayProjection(
+  frames: readonly ProjectionFrame[],
+): ProjectionProgram<ConversationReplayViews, ConversationReplayNote> {
+  const facts = yield* replayConversationFrames(frames, { includeActivity: true });
+  const providerMessages = yield* stage("provider-history", function* () {
+    const messages = providerHistoryFromProjection(facts.providerProjection);
+    yield* note({ kind: "provider-history-materialized", messages: messages.length });
+    return messages;
+  });
+  const activitySnapshots = yield* stage("activity-snapshots", function* () {
+    const snapshots = activitySnapshotsFromProjection(facts);
+    yield* note({ kind: "activity-snapshots-materialized", snapshots: snapshots.length });
+    return snapshots;
+  });
+  return { providerMessages, activitySnapshots };
+}
+
+function* providerHistoryProjection(
+  frames: readonly ProjectionFrame[],
+): ProjectionProgram<ConversationReplayViews["providerMessages"], ConversationReplayNote> {
+  const facts = yield* replayConversationFrames(frames, { includeActivity: false });
+  return yield* stage("provider-history", function* () {
+    const messages = providerHistoryFromProjection(facts.providerProjection);
+    yield* note({ kind: "provider-history-materialized", messages: messages.length });
+    return messages;
+  });
+}
+
+function runConversationProjection<TValue>(
+  program: () => ProjectionProgram<TValue, ConversationReplayNote>,
+): TValue {
+  const outcome = runProjectionProgram(program, (error) => error);
+  if (!outcome.ok) {
+    throw outcome.error;
   }
-  return projectChatMessagesToAGUI(materializeChatMessages(projection, { allowPending: true })).map(
-    (message) => {
-      if (message.role !== "tool") {
-        return message;
-      }
-      const { name: _name, isError: _isError, ...official } = message;
-      return official;
-    },
-  );
+  return outcome.value;
+}
+
+/** Replay only provider-facing messages, without folding activity records. */
+export function providerHistoryFromFrames(frames: readonly ProjectionFrame[]) {
+  return runConversationProjection(() => providerHistoryProjection(frames));
+}
+
+/** Replay and materialize the provider and activity hydration views. */
+export function replayConversationViews(frames: readonly ProjectionFrame[]) {
+  return runConversationProjection(() => conversationReplayProjection(frames));
 }
 
 export function* buildCheckpointSnapshotEventsFromFrames(
   frames: ProjectionFrame[],
 ): Operation<StreamEvent[]> {
+  const views = replayConversationViews(frames);
   return [
     {
       type: EventType.MESSAGES_SNAPSHOT,
-      messages: [...providerHistoryFromFrames(frames)],
+      messages: [...views.providerMessages],
     },
-    ...activityProjectionEventsFromFrames(frames),
+    ...views.activitySnapshots,
   ];
 }
 
@@ -324,12 +438,13 @@ export function* completedConversationHydrateEvents(params: {
   elicits: ElicitRequestStreamEvent[];
 }): Operation<StreamEvent[]> {
   const { frames, conversationId, runId, openInterrupts, elicits } = params;
+  const views = replayConversationViews(frames);
   return [
     {
       type: EventType.MESSAGES_SNAPSHOT,
-      messages: [...providerHistoryFromFrames(frames)],
+      messages: [...views.providerMessages],
     },
-    ...activityProjectionEventsFromFrames(frames),
+    ...views.activitySnapshots,
     {
       type: EventType.STATE_SNAPSHOT,
       snapshot: buildAgUiCustomState({ elicits }),
