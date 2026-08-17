@@ -275,7 +275,7 @@ export function createAgentCoreToolSession(
       return toToolSessionStatus(handle.status);
     },
 
-    notices: {
+    projection: {
       events(afterLSN = 0): Stream<ToolSessionEvent, void> {
         return resource<Subscription<ToolSessionEvent, void>>(function* (provide) {
           let cursor = afterLSN;

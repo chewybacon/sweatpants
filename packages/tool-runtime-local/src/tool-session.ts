@@ -220,7 +220,7 @@ export function createToolSession<
 
       settled: () => log.settled(),
 
-      notices: {
+      projection: {
         events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void> {
           return log.events(afterLSN);
         },

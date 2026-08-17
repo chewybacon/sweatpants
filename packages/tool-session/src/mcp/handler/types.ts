@@ -16,9 +16,9 @@
  * @packageDocumentation
  */
 import type { Operation } from "effection";
-import type { Json } from "@sweatpants/foundation";
-import type { ToolInvocationNoticeReader, ToolSessionRegistry } from "../../contract.ts";
-import type { ToolInvocationHost } from "../../invocation.ts";
+import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { ToolInvocationEventReader, ToolSessionRegistry } from "../../contract.ts";
+import type { ToolInvocationCursor, ToolInvocationHost } from "../../invocation.ts";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import type { JsonRpcId } from "../protocol/types.ts";
 
@@ -145,7 +145,7 @@ export interface McpElicitResponse {
   requestId: JsonRpcId;
   elicitId: string;
   action: "accept" | "decline" | "cancel";
-  content?: Record<string, unknown> | undefined;
+  content?: JsonObject | undefined;
   sessionId: string;
 }
 
@@ -240,7 +240,7 @@ export type McpClassifiedRequest =
  */
 export type McpPostResult =
   | { type: "json"; status: number; body: unknown; headers?: Record<string, string> }
-  | { type: "sse"; sessionId: string; notices: ToolInvocationNoticeReader };
+  | { type: "sse"; sessionId: string; events: ToolInvocationEventReader };
 
 // =============================================================================
 // SESSION STATE
@@ -253,7 +253,7 @@ export interface PendingElicitation {
   elicitId: string;
   requestId: JsonRpcId;
   key: string;
-  afterLSN: number;
+  cursor: ToolInvocationCursor;
 }
 
 /**
@@ -262,7 +262,7 @@ export interface PendingElicitation {
 export interface PendingSample {
   sampleId: string;
   requestId: JsonRpcId;
-  afterLSN: number;
+  cursor: ToolInvocationCursor;
 }
 
 /**
@@ -271,8 +271,8 @@ export interface PendingSample {
 export interface McpSessionState {
   /** Session ID */
   sessionId: string;
-  /** Pull-only UX and protocol notices. */
-  notices: ToolInvocationNoticeReader;
+  /** Pull-only replayable invocation events. */
+  events: ToolInvocationEventReader;
   /** Original tools/call request ID */
   toolCallRequestId: JsonRpcId;
   /** Pending elicitation requests */

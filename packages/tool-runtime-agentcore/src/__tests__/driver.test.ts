@@ -72,7 +72,7 @@ function createFakeSession(): ToolSession {
         return "completed" as const;
       })();
     },
-    notices: {
+    projection: {
       events() {
         return resource(function* (provide) {
           let emitted = false;

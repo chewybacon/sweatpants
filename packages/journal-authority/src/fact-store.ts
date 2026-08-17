@@ -1,4 +1,5 @@
-import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, parser, stableTupleHash, type Json } from "@sweatpants/foundation";
+import { z } from "zod";
 import type {
   DurableReference,
   ProjectionFactEnvelope,
@@ -41,8 +42,9 @@ export const AcceptedProjectionFactStore = createApi<FactStore<ProjectionFactEnv
   "accepted-projection-facts",
   {
     *put(request: PutFactsRequest<ProjectionFactEnvelope>): Operation<DurableReference> {
-      assertFactList(request.executionId, request.facts);
-      const factsValue: Json[] = request.facts.map((fact) => ({
+      const facts = request.facts.map(parseFact);
+      assertFactList(request.executionId, facts);
+      const factsValue: Json[] = facts.map((fact) => ({
         executionId: fact.executionId,
         sessionId: fact.sessionId,
         turnId: fact.turnId,
@@ -102,21 +104,29 @@ export const AcceptedProjectionFactStore = createApi<FactStore<ProjectionFactEnv
   },
 );
 
+const projectionFactEnvelopeParser = parser(
+  z.strictObject({
+    executionId: z.string().min(1),
+    sessionId: z.string().min(1),
+    turnId: z.string().min(1),
+    sequence: z.number().int().safe().positive(),
+    kind: z.string().min(1),
+    payload: z.json(),
+  }),
+).map(
+  (fact): ProjectionFactEnvelope => ({
+    executionId: fact.executionId,
+    sessionId: fact.sessionId,
+    turnId: fact.turnId,
+    sequence: fact.sequence,
+    kind: fact.kind,
+    payload: fact.payload,
+  }),
+);
+
 function assertFactList(executionId: string, facts: readonly ProjectionFactEnvelope[]): void {
   facts.forEach((fact, index) => {
-    if (
-      fact === null ||
-      typeof fact !== "object" ||
-      Array.isArray(fact) ||
-      fact.executionId !== executionId ||
-      typeof fact.sessionId !== "string" ||
-      typeof fact.turnId !== "string" ||
-      typeof fact.sequence !== "number" ||
-      !Number.isSafeInteger(fact.sequence) ||
-      fact.sequence !== index + 1 ||
-      typeof fact.kind !== "string" ||
-      !("payload" in fact)
-    ) {
+    if (fact.executionId !== executionId || fact.sequence !== index + 1) {
       throw new AcceptedProjectionFactsError(
         `Projection Fact ${index + 1} has an invalid accepted frontier`,
       );
@@ -124,28 +134,10 @@ function assertFactList(executionId: string, facts: readonly ProjectionFactEnvel
   });
 }
 
-function parseFact(value: Json): ProjectionFactEnvelope {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new AcceptedProjectionFactsError("Projection Fact must be an object");
-  }
-  const fact = value as Record<string, Json>;
-  if (
-    typeof fact["executionId"] !== "string" ||
-    typeof fact["sessionId"] !== "string" ||
-    typeof fact["turnId"] !== "string" ||
-    typeof fact["sequence"] !== "number" ||
-    !Number.isSafeInteger(fact["sequence"]) ||
-    typeof fact["kind"] !== "string" ||
-    !("payload" in fact)
-  ) {
+function parseFact(value: unknown): ProjectionFactEnvelope {
+  const result = projectionFactEnvelopeParser.parse(value);
+  if (!result.ok) {
     throw new AcceptedProjectionFactsError("Projection Fact fields are invalid");
   }
-  return {
-    executionId: fact["executionId"],
-    sessionId: fact["sessionId"],
-    turnId: fact["turnId"],
-    sequence: fact["sequence"],
-    kind: fact["kind"],
-    payload: fact["payload"],
-  };
+  return result.value;
 }

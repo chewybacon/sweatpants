@@ -87,8 +87,10 @@ export interface ToolInvocationForeignDriverOptions {
 
 /**
  * Creates durable foreign-tool effects over the pull-based invocation host.
- * The adapter owns durable continuation encoding. The host owns tool identity,
- * response delivery, and the crank that follows every response.
+ * The adapter owns durable continuation encoding. It resolves only the scoped
+ * host Port; composition chooses the concrete local, worker, or remote host.
+ * The host owns tool identity, response delivery, and the crank after each
+ * response.
  */
 export function createToolInvocationForeignEffectRegistrations(
   options: ToolInvocationForeignDriverOptions,

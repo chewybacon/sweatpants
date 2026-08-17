@@ -200,7 +200,7 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
 
       settled: () => log.settled(),
 
-      notices: {
+      projection: {
         events(afterLSN?: number): Stream<ToolSessionEvent, void> {
           return log.events(afterLSN);
         },

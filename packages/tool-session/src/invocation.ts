@@ -28,7 +28,7 @@ export type ToolInvocationResume =
   | {
       readonly kind: "elicit";
       readonly requestId: string;
-      readonly response: ElicitExchangeCompletion<Json>;
+      readonly response: ElicitExchangeCompletion<unknown>;
     }
   | {
       readonly kind: "cancel";

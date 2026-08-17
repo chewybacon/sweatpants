@@ -14,7 +14,7 @@
  *
  * ToolSession
  *   └─ id, toolName, status
- *   └─ notices.events() → pull-only UX projection
+ *   └─ projection.events() → pull-only UX projection
  *   └─ resume({ kind, requestId, response }) → private execution resource
  *
  * ToolSessionStore
@@ -191,14 +191,16 @@ export type ToolSessionEvent<TResult = unknown> =
   | CancelledEvent;
 
 // =============================================================================
-// TOOL INVOCATION NOTICES
+// TOOL INVOCATION EVENT PROJECTION
 // =============================================================================
 
 /**
- * Pull-only reader for the UX and protocol projection of an invocation.
- * Reading notices never advances the invocation control plane.
+ * Pull-only reader for an invocation's replayable event projection.
+ *
+ * The projection includes UX notices, parked asks, and terminal outcomes.
+ * Reading it never resumes the generator or advances invocation control.
  */
-export interface ToolInvocationNoticeReader<TResult = unknown> {
+export interface ToolInvocationEventReader<TResult = unknown> {
   events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void>;
 }
 
@@ -207,10 +209,11 @@ export interface ToolInvocationNoticeReader<TResult = unknown> {
 // =============================================================================
 
 /**
- * A durable tool execution session.
+ * Private runtime resource retained by a ToolInvocationHost.
  *
- * The session keeps the tool's generator alive across HTTP requests,
- * allowing elicitation and sampling to work over stateless HTTP.
+ * It keeps the live generator and replayable event projection together across
+ * request scopes. Callers use ToolInvocationHost for control; projection reads
+ * cannot answer, cancel, or otherwise advance the generator.
  *
  * @template TResult - The tool's result type
  */
@@ -229,8 +232,8 @@ export interface ToolSession<TResult = unknown> {
   /** Resolves when the session reaches a terminal status; no timer polling. */
   settled?(): Operation<ToolSessionStatus>;
 
-  /** Pull-only UX/protocol notices. This reader does not control the invocation. */
-  readonly notices: ToolInvocationNoticeReader<TResult>;
+  /** Pull-only replayable events. This reader does not control the invocation. */
+  readonly projection: ToolInvocationEventReader<TResult>;
 
   /**
    * Resume the private execution resource and advance its parked generator.

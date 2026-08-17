@@ -64,13 +64,13 @@ export function* handleToolsCall(
 ): Operation<McpPostResult> {
   // Create new session (tool execution is deferred)
   const state = yield* manager.createSession(request);
-  const { notices, sessionId } = state;
+  const { events, sessionId } = state;
 
   // Always upgrade to SSE - tool execution will start when SSE stream begins
   return {
     type: "sse",
     sessionId,
-    notices,
+    events,
   };
 }
 
