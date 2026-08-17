@@ -330,8 +330,12 @@ export interface BridgeHostConfig<
   /** Abort signal for cancellation */
   signal?: AbortSignal;
 
-  /** Tool call ID (generated if not provided) */
-  callId?: string;
+  /**
+   * Tool call ID. Required and caller-supplied: it seeds elicit and
+   * structured-sample exchange ids, which are provider-visible bytes, so it
+   * must derive from durable identity rather than be minted here.
+   */
+  callId: string;
 
   /** Initial system prompt */
   systemPrompt?: string;
@@ -467,6 +471,23 @@ function addTokens(tracker: TokenTracker, tokens: number): void {
 // TOOL EXECUTION STATE
 // =============================================================================
 
+/**
+ * Mints the exchange id for one structured (`__schema__`) sample.
+ *
+ * These ids are provider-visible bytes: the id names the synthetic tool call
+ * inside the exchange, and any later prompt that carries the exchange embeds
+ * it in the token stream. It must therefore be a pure function of durable
+ * identity (callId + sequence). A wall-clock or random component changes the
+ * prompt prefix on every re-execution of the same logical invocation, which
+ * invalidates the provider's prompt cache and breaks replay determinism.
+ * Pinned by provider-prompt-stability.integration.test.ts in
+ * tool-runtime-local.
+ */
+function nextSchemaExchangeId(state: { callId: string; sampleSeq: number }): string {
+  state.sampleSeq += 1;
+  return `schema_${state.callId}_${state.sampleSeq}`;
+}
+
 interface BridgeExecutionState<TElicits extends ElicitsMap> {
   readonly signal: AbortSignal;
   messages: ChatMessage[];
@@ -478,6 +499,7 @@ interface BridgeExecutionState<TElicits extends ElicitsMap> {
   toolName: string;
   callId: string;
   elicitSeq: number;
+  sampleSeq: number;
   elicits: TElicits;
   eventChannel: Channel<BridgeEvent, void>;
   // Note: samplingProvider removed - sampling now uses responseSignal pattern
@@ -607,7 +629,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 const exchange = createStructuredSampleExchange(
                   promptTextStr,
                   parsedResult.value,
-                  `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                  nextSchemaExchangeId(state),
                 );
                 return {
                   ...result,
@@ -619,7 +641,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 const exchange = createStructuredSampleExchange(
                   promptTextStr,
                   null,
-                  `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                  nextSchemaExchangeId(state),
                 );
                 return {
                   ...result,
@@ -639,7 +661,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               const exchange = createStructuredSampleExchange(
                 promptTextStr,
                 null,
-                `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                nextSchemaExchangeId(state),
               );
               return {
                 ...result,
@@ -881,7 +903,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 const exchange = createStructuredSampleExchange(
                   promptTextStr,
                   parsedResult.value,
-                  `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                  nextSchemaExchangeId(state),
                 );
 
                 return {
@@ -899,7 +921,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 const exchange = createStructuredSampleExchange(
                   promptTextStr,
                   null,
-                  `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                  nextSchemaExchangeId(state),
                 );
                 lastResult = {
                   ...result,
@@ -919,7 +941,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               const exchange = createStructuredSampleExchange(
                 promptTextStr,
                 null,
-                `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                nextSchemaExchangeId(state),
               );
               lastResult = {
                 ...result,
@@ -1098,7 +1120,7 @@ export function createBridgeHost<
   // Messages are queued until a subscriber starts iterating.
   const eventChannel = createBufferedChannel<BridgeEvent>();
 
-  const callId = config.callId ?? `call_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const callId = config.callId;
 
   return {
     events: eventChannel,
@@ -1139,6 +1161,7 @@ export function createBridgeHost<
             toolName: tool.name,
             callId,
             elicitSeq: 0,
+            sampleSeq: 0,
             elicits: tool.elicits as TElicits,
             eventChannel,
           };
@@ -1252,13 +1275,13 @@ export function runBridgeTool<
       const hostConfig: BridgeHostConfig<TName, TParams, TResult, TElicits> = {
         tool: config.tool,
         params,
+        callId,
       };
 
       // Only add optional properties if defined
       if (config.signal !== undefined) {
         hostConfig.signal = config.signal;
       }
-      hostConfig.callId = callId;
       if (config.limits !== undefined) {
         hostConfig.limits = config.limits;
       }
