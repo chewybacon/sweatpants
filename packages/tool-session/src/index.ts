@@ -1,4 +1,5 @@
 export * from "./contract.ts";
+export * from "./invocation.ts";
 export {
   createToolSessionEventLog,
   isTerminalToolSessionStatus,

@@ -13,7 +13,9 @@ import { describe, expect, it } from "vitest";
 import { each, run, sleep, spawn, type Operation } from "effection";
 import {
   createInMemoryToolSessionStore,
-  createToolSessionForeignEffectRegistrations,
+  createToolInvocationHost,
+  ToolInvocationHostPort,
+  createToolInvocationForeignEffectRegistrations,
   createToolSessionRegistry,
   createWorkerToolSession,
 } from "@sweatpants/tool-runtime-local";
@@ -66,8 +68,8 @@ describe("outside-in worker boundary (Tier A)", () => {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
         worker: yoChatToolSessionWorkerConfig,
       });
-      const [start] = createToolSessionForeignEffectRegistrations({
-        registry,
+      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
+      const [start] = createToolInvocationForeignEffectRegistrations({
         tools: new Map([[calculator.name, calculator]]),
       });
       const disposition = yield* start.handler(

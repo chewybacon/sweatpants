@@ -2,22 +2,32 @@ import { action, race, type Operation } from "effection";
 import { z } from "zod";
 
 import { isDurableToolSessionFacade } from "./durable-tool-session-facade.ts";
+import { ToolInvocationHostPort } from "./invocation-host.ts";
 import {
   parseElicitExchangeCompletion,
   type AnyToolContract,
   type ElicitExchangeCompletion,
   type SampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
-import type { ToolSession, ToolSessionEvent, ToolSessionRegistry } from "@sweatpants/tool-session";
-import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
-  type ForeignContinuation,
-  type ForeignDurability,
-  type ForeignToolContinueRequest,
-  type ForeignToolDisposition,
+  createDurableEffectRegistration,
+  type DurableEffectContext,
+  type DurableEffectRegistration,
+} from "@sweatpants/durable-effects";
+import type {
+  ForeignContinuation,
+  ForeignDurability,
+  ForeignInputRequest,
+  ForeignToolContinueRequest,
+  ForeignToolDisposition,
 } from "@sweatpants/durable-execution";
-import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
 import { assertJson, type Json } from "@sweatpants/foundation";
+import {
+  ToolInvocationHostError,
+  type ToolInvocationAsk,
+  type ToolInvocationHost,
+  type ToolInvocationTurn,
+} from "@sweatpants/tool-session";
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
@@ -57,8 +67,6 @@ const sampleBaseFields = {
   text: z.string(),
   model: z.string().optional(),
   stopReason: z.string().optional(),
-  // Historical model adapters include these bounded transcript fields. They
-  // are accepted at this compatibility seam but are not forwarded.
   calls: z.array(z.json()).max(256).optional(),
   content: z.array(z.json()).max(256).optional(),
 };
@@ -73,18 +81,17 @@ const sampleResponseSchema = z.union([
   z.strictObject(sampleBaseFields),
 ]);
 
-/** Scoped ToolSession registry and immutable authored-tool inventory used by the adapter. */
-export interface ToolSessionForeignDriverOptions {
-  registry: ToolSessionRegistry;
+export interface ToolInvocationForeignDriverOptions {
   tools: ReadonlyMap<string, AnyToolContract>;
 }
 
 /**
- * Creates start/continue registrations that own ToolSession acquisition, response
- * parsing, cancellation, and release. Expected protocol failures are dispositions.
+ * Creates durable foreign-tool effects over the pull-based invocation host.
+ * The adapter owns durable continuation encoding. The host owns tool identity,
+ * response delivery, and the crank that follows every response.
  */
-export function createToolSessionForeignEffectRegistrations(
-  options: ToolSessionForeignDriverOptions,
+export function createToolInvocationForeignEffectRegistrations(
+  options: ToolInvocationForeignDriverOptions,
 ): readonly [DurableEffectRegistration, DurableEffectRegistration] {
   const start = createDurableEffectRegistration(
     FOREIGN_TOOL_START_EFFECT,
@@ -105,53 +112,35 @@ export function createToolSessionForeignEffectRegistrations(
           `Foreign tool not found: ${request.tool}`,
         );
       }
+      const host = yield* ToolInvocationHostPort.use();
+      const invocationId = foreignSessionId(context.sessionId, context.taskId);
       const toolInput = isDurableToolSessionFacade(tool)
         ? { invocationId: context.taskId, input: request.input }
         : request.input;
-      let session: ToolSession;
+
       try {
-        session = yield* options.registry.create(tool, toolInput, {
-          sessionId: foreignSessionId(context.sessionId, context.taskId),
+        yield* host.start({
+          invocationId,
+          tool,
+          input: assertJson(toolInput),
         });
+        const turn = yield* turnWithCancellation(
+          host,
+          {
+            invocationId,
+            commandId: context.pullId,
+            cursor: 0,
+          },
+          context,
+        );
+        return dispositionFromTurn(turn, invocationId, request.durability);
       } catch {
         return failure(
           request.durability,
           "foreign_session_create_failed",
-          "Foreign ToolSession creation failed",
+          "Foreign tool invocation could not start",
         );
       }
-      let disposition: ForeignToolDisposition;
-      try {
-        // Registry creation must publish a fully initialized session before the
-        // durable adapter begins consuming events. Reading status is the
-        // readiness barrier shared by worker and remote registries.
-        yield* session.status();
-        disposition = yield* nextDispositionWithCancellation(
-          session,
-          0,
-          request.durability,
-          context.cancellation,
-          tool,
-        );
-      } catch {
-        return failure(
-          request.durability,
-          "foreign_session_read_failed",
-          "Foreign ToolSession event read failed",
-        );
-      }
-      if (disposition.type !== "input_required") {
-        try {
-          yield* options.registry.release(session.id);
-        } catch {
-          return failure(
-            request.durability,
-            "foreign_session_release_failed",
-            "Foreign ToolSession release failed",
-          );
-        }
-      }
-      return disposition;
     }),
   );
 
@@ -167,55 +156,43 @@ export function createToolSessionForeignEffectRegistrations(
           "ToolSession continuation is invalid",
         );
       }
-      const session = yield* options.registry.get(continuation.sessionId);
-      if (!session) {
-        return failure(
-          continuation.durability,
-          "foreign_continuation_lost",
-          `ToolSession ${continuation.sessionId} is unavailable`,
-        );
+
+      const host = yield* ToolInvocationHostPort.use();
+      const invocationId = continuation.sessionId;
+      const resume = yield* decodeResume(request, continuation);
+      if (resume.type === "invalid") {
+        yield* host.turn({
+          invocationId,
+          commandId: `${context.pullId}:cancel-invalid-response`,
+          cursor: continuation.afterLsn,
+          resume: { kind: "cancel", reason: "invalid continuation response" },
+        });
+        yield* host.dispose(invocationId);
+        return resume.failure;
       }
-      if (request.response.kind === "cancel") {
-        yield* session.cancel("durable program cancelled");
-        yield* options.registry.release(session.id);
-        return failure(
-          continuation.durability,
-          "foreign_tool_cancelled",
-          "Foreign tool was cancelled",
-        );
+
+      const turnRequest = {
+        invocationId,
+        commandId: context.pullId,
+        cursor: continuation.afterLsn,
+        resume: resume.value,
+      };
+      let turn: ToolInvocationTurn;
+      try {
+        turn = yield* turnWithCancellation(host, turnRequest, context);
+      } catch (error) {
+        if (error instanceof ToolInvocationHostError && error.code === "invocation_not_found") {
+          return failure(
+            continuation.durability,
+            "foreign_continuation_lost",
+            `Tool invocation ${invocationId} is unavailable`,
+          );
+        }
+        throw error;
       }
-      const mismatch = continuation.pending.kind !== request.response.kind;
-      if (mismatch) {
-        return failure(
-          continuation.durability,
-          "foreign_response_kind_mismatch",
-          `Expected ${continuation.pending.kind}, received ${request.response.kind}`,
-        );
-      }
-      const responseFailure = yield* deliverResponse(session, continuation, request);
-      if (responseFailure) {
-        yield* session.cancel("invalid foreign continuation response");
-        yield* options.registry.release(session.id);
-        return responseFailure;
-      }
-      const tool = options.tools.get(session.toolName);
-      if (!tool) {
-        yield* options.registry.release(session.id);
-        return failure(
-          continuation.durability,
-          "foreign_tool_not_found",
-          `Foreign tool not found: ${session.toolName}`,
-        );
-      }
-      const disposition = yield* nextDispositionWithCancellation(
-        session,
-        continuation.afterLsn,
-        continuation.durability,
-        context.cancellation,
-        tool,
-      );
+      const disposition = dispositionFromTurn(turn, invocationId, continuation.durability);
       if (disposition.type !== "input_required") {
-        yield* options.registry.release(session.id);
+        yield* host.dispose(invocationId);
       }
       return disposition;
     }),
@@ -224,231 +201,213 @@ export function createToolSessionForeignEffectRegistrations(
   return [start, continueRegistration];
 }
 
-function* nextDispositionWithCancellation(
-  session: ToolSession,
-  afterLsn: number,
-  durability: ForeignDurability,
-  signal: AbortSignal,
-  tool: AnyToolContract,
-): Operation<ForeignToolDisposition> {
+function* turnWithCancellation(
+  host: ToolInvocationHost,
+  request: Parameters<ToolInvocationHost["turn"]>[0],
+  context: DurableEffectContext,
+): Operation<ToolInvocationTurn> {
   return yield* race([
-    nextDisposition(session, afterLsn, durability, tool),
+    host.turn(request),
     (function* () {
-      if (!signal.aborted) {
+      if (!context.cancellation.aborted) {
         yield* action<void>((resolve) => {
           const onAbort = () => resolve();
-          signal.addEventListener("abort", onAbort, { once: true });
-          return () => signal.removeEventListener("abort", onAbort);
+          context.cancellation.addEventListener("abort", onAbort, { once: true });
+          return () => context.cancellation.removeEventListener("abort", onAbort);
         });
       }
-      try {
-        yield* session.cancel("durable program cancelled");
-      } catch {
-        // The durable cancellation remains authoritative if best-effort live
-        // signalling races terminal ToolSession cleanup.
+      const cancelTurn = yield* host.turn({
+        invocationId: request.invocationId,
+        commandId: `${request.commandId}:cancel`,
+        cursor: request.cursor,
+        resume: { kind: "cancel", reason: "durable program cancelled" },
+      });
+      if (cancelTurn.type === "cancelled") {
+        return cancelTurn;
       }
-      return failure(durability, "foreign_tool_cancelled", "Foreign tool was cancelled");
+      return {
+        type: "cancelled",
+        reason: "durable program cancelled",
+      } satisfies ToolInvocationTurn;
     })(),
   ]);
 }
 
+function* decodeResume(
+  request: ForeignToolContinueRequest,
+  continuation: ToolSessionContinuationState,
+): Operation<
+  | {
+      type: "valid";
+      value: NonNullable<Parameters<ToolInvocationHost["turn"]>[0]["resume"]>;
+    }
+  | { type: "invalid"; failure: ForeignToolDisposition }
+> {
+  if (request.response.kind === "cancel") {
+    return { type: "valid", value: { kind: "cancel", reason: "durable program cancelled" } };
+  }
+  if (request.response.kind !== continuation.pending.kind) {
+    return {
+      type: "invalid",
+      failure: failure(
+        continuation.durability,
+        "foreign_response_kind_mismatch",
+        `Expected ${continuation.pending.kind}, received ${request.response.kind}`,
+      ),
+    };
+  }
+  if (request.response.kind === "sample") {
+    const response = decodeSampleResponse(request.response.value);
+    return response
+      ? {
+          type: "valid",
+          value: { kind: "sample", requestId: continuation.pending.requestId, response },
+        }
+      : {
+          type: "invalid",
+          failure: failure(
+            continuation.durability,
+            "foreign_sample_response_invalid",
+            "Foreign sample response is invalid",
+          ),
+        };
+  }
+  const response = decodeElicitResponse(request.response.value);
+  return response
+    ? {
+        type: "valid",
+        value: { kind: "elicit", requestId: continuation.pending.requestId, response },
+      }
+    : {
+        type: "invalid",
+        failure: failure(
+          continuation.durability,
+          "foreign_elicit_response_invalid",
+          "Foreign elicitation response is invalid",
+        ),
+      };
+}
+
 function successfulEffect<I extends Json, O extends Json>(
-  handler: (input: I, context: Parameters<DurableEffectRegistration["handler"]>[1]) => Operation<O>,
-): (
-  input: I,
-  context: Parameters<DurableEffectRegistration["handler"]>[1],
-) => Operation<{ status: "ok"; value: O }> {
+  handler: (input: I, context: DurableEffectContext) => Operation<O>,
+): (input: I, context: DurableEffectContext) => Operation<{ status: "ok"; value: O }> {
   return function* (input, context) {
     return { status: "ok", value: yield* handler(input, context) };
   };
 }
 
-function* deliverResponse(
-  session: ToolSession,
-  continuation: ToolSessionContinuationState,
-  request: ForeignToolContinueRequest,
-): Operation<ForeignToolDisposition | undefined> {
-  if (request.response.kind === "cancel") {
-    return failure(continuation.durability, "foreign_tool_cancelled", "Foreign tool was cancelled");
-  }
-  if (request.response.kind === "sample") {
-    const response = decodeSampleResponse(request.response.value);
-    if (!response) {
-      return failure(
-        continuation.durability,
-        "foreign_sample_response_invalid",
-        "Foreign sample response is invalid",
-      );
-    }
-    yield* session.respondToSample(continuation.pending.requestId, response);
-    return undefined;
-  }
-  const response = decodeElicitResponse(request.response.value);
-  if (!response) {
-    return failure(
-      continuation.durability,
-      "foreign_elicit_response_invalid",
-      "Foreign elicitation response is invalid",
-    );
-  }
-  yield* session.respondToElicit(continuation.pending.requestId, response);
-  return undefined;
-}
-
-function* nextDisposition(
-  session: ToolSession,
-  afterLsn: number,
+function dispositionFromTurn(
+  turn: ToolInvocationTurn,
+  invocationId: string,
   durability: ForeignDurability,
-  tool: AnyToolContract,
-): Operation<ForeignToolDisposition> {
-  const events = yield* session.events(afterLsn);
-  while (true) {
-    const next = yield* events.next();
-    if (next.done) {
-      return failure(
-        durability,
-        "foreign_session_ended",
-        `ToolSession ${session.id} ended without a terminal event`,
-      );
-    }
-    const disposition = eventDisposition(session, next.value, durability, tool);
-    if (disposition) {
-      return disposition;
-    }
-  }
-}
-
-function eventDisposition(
-  session: ToolSession,
-  event: ToolSessionEvent,
-  durability: ForeignDurability,
-  tool: AnyToolContract,
-): ForeignToolDisposition | undefined {
-  switch (event.type) {
-    case "progress":
-    case "log":
-    case "sample_response_queued":
-      return undefined;
-    case "sample_request":
-      return {
-        type: "input_required",
-        request: {
-          kind: "sample",
-          payload: foreignJson({
-            invocation: {
-              context: {
-                messages: event.messages,
-                ...(event.systemPrompt !== undefined ? { systemPrompt: event.systemPrompt } : {}),
-              },
-              ...(event.maxTokens !== undefined || event.toolChoice !== undefined
-                ? {
-                    options: {
-                      ...(event.maxTokens !== undefined ? { maxTokens: event.maxTokens } : {}),
-                      ...(event.toolChoice !== undefined ? { toolChoice: event.toolChoice } : {}),
-                    },
-                  }
-                : {}),
-            },
-            tools:
-              event.tools !== undefined
-                ? { type: "embedded", tools: event.tools }
-                : { type: "none" },
-            response:
-              event.schema !== undefined
-                ? { type: "json", schema: event.schema }
-                : { type: "message" },
-            ...(event.modelPreferences !== undefined
-              ? { modelPreferences: event.modelPreferences }
-              : {}),
-          }),
-        },
-        continuation: createContinuation(
-          session.id,
-          event.lsn,
-          "sample",
-          event.sampleId,
-          durability,
-        ),
-      };
-    case "elicit_request":
-      return {
-        type: "input_required",
-        request: {
-          kind: "elicit",
-          key: event.key,
-          message: event.message,
-          responseSchema: foreignJson(event.schema),
-          ...(tool.interfaceDigest ? { ownerInterfaceDigest: tool.interfaceDigest } : {}),
-          ...(tool.artifacts.elicits[event.key]
-            ? {
-                responseContract: foreignJson(tool.artifacts.elicits[event.key]!.response),
-                ...(tool.artifacts.elicits[event.key]!.context
-                  ? { contextContract: foreignJson(tool.artifacts.elicits[event.key]!.context) }
-                  : {}),
-              }
-            : {}),
-          ...(event.context !== undefined ? { context: foreignJson(event.context) } : {}),
-        },
-        continuation: createContinuation(
-          session.id,
-          event.lsn,
-          "elicit",
-          event.elicitId,
-          durability,
-        ),
-      };
-    case "result":
-      return { type: "completed", result: foreignJson(event.result) };
-    case "error":
-      return failure(durability, "foreign_tool_error", event.message);
+): ForeignToolDisposition {
+  switch (turn.type) {
+    case "completed":
+      return { type: "completed", result: turn.result };
+    case "failed":
+      return failure(durability, "foreign_tool_error", turn.error.message);
     case "cancelled":
       return failure(
         durability,
         "foreign_tool_cancelled",
-        event.reason ?? "Foreign tool was cancelled",
+        turn.reason ?? "Foreign tool was cancelled",
       );
+    case "parked":
+      return {
+        type: "input_required",
+        request: inputRequestFromAsk(turn.ask),
+        continuation: createContinuation(invocationId, turn, durability),
+      };
   }
 }
 
+function inputRequestFromAsk(ask: ToolInvocationAsk): ForeignInputRequest {
+  if (ask.kind === "sample") {
+    return {
+      kind: "sample",
+      payload: foreignJson({
+        invocation: {
+          context: {
+            messages: ask.messages,
+            ...(ask.systemPrompt === undefined ? {} : { systemPrompt: ask.systemPrompt }),
+          },
+          ...(ask.maxTokens === undefined && ask.toolChoice === undefined
+            ? {}
+            : {
+                options: {
+                  ...(ask.maxTokens === undefined ? {} : { maxTokens: ask.maxTokens }),
+                  ...(ask.toolChoice === undefined ? {} : { toolChoice: ask.toolChoice }),
+                },
+              }),
+        },
+        tools: ask.tools === undefined ? { type: "none" } : { type: "embedded", tools: ask.tools },
+        response:
+          ask.schema === undefined ? { type: "message" } : { type: "json", schema: ask.schema },
+        ...(ask.modelPreferences === undefined ? {} : { modelPreferences: ask.modelPreferences }),
+      }),
+    };
+  }
+  return {
+    kind: "elicit",
+    key: ask.key,
+    message: ask.message,
+    responseSchema: foreignJson(ask.schema),
+    ...(ask.ownerInterfaceDigest === undefined
+      ? {}
+      : { ownerInterfaceDigest: ask.ownerInterfaceDigest }),
+    ...(ask.responseContract === undefined
+      ? {}
+      : { responseContract: foreignJson(ask.responseContract) }),
+    ...(ask.contextContract === undefined
+      ? {}
+      : { contextContract: foreignJson(ask.contextContract) }),
+    ...(ask.context === undefined ? {} : { context: foreignJson(ask.context) }),
+  };
+}
+
 function createContinuation(
-  sessionId: string,
-  afterLsn: number,
-  kind: "sample" | "elicit",
-  requestId: string,
+  invocationId: string,
+  turn: Extract<ToolInvocationTurn, { type: "parked" }>,
   durability: ForeignDurability,
 ): ForeignContinuation {
   return {
     driver: "tool-session",
     state: {
       scheme: CONTINUATION_SCHEME,
-      sessionId,
-      afterLsn,
-      pending: { kind, requestId },
+      sessionId: invocationId,
+      afterLsn: turn.cursor,
+      pending: { kind: turn.ask.kind, requestId: turn.ask.requestId },
       durability,
     },
   };
 }
 
 function decodeContinuation(value: ForeignContinuation): ToolSessionContinuationState | undefined {
-  if (value.driver !== "tool-session") return undefined;
+  if (value.driver !== "tool-session") {
+    return undefined;
+  }
   return continuationStateSchema.safeParse(value.state).data;
 }
 
 function decodeSampleResponse(value: Json): SampleExchangeCompletion | undefined {
   const result = sampleResponseSchema.safeParse(value);
-  if (!result.success) return undefined;
+  if (!result.success) {
+    return undefined;
+  }
   const response = result.data;
   const base = {
     text: response.text,
-    ...(response.model !== undefined ? { model: response.model } : {}),
-    ...(response.stopReason !== undefined ? { stopReason: response.stopReason } : {}),
+    ...(response.model === undefined ? {} : { model: response.model }),
+    ...(response.stopReason === undefined ? {} : { stopReason: response.stopReason }),
   };
-  if ("toolCalls" in response) return { ...base, toolCalls: response.toolCalls };
+  if ("toolCalls" in response) {
+    return { ...base, toolCalls: response.toolCalls };
+  }
   if ("parsed" in response) {
     return {
       ...base,
       parsed: response.parsed,
-      ...(response.parseError !== undefined ? { parseError: response.parseError } : {}),
+      ...(response.parseError === undefined ? {} : { parseError: response.parseError }),
     };
   }
   return base;

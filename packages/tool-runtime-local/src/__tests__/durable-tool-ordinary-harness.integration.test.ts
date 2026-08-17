@@ -40,7 +40,9 @@ import {
   createInMemoryDurableToolFacadeStateStore,
   createInMemoryToolSessionStore,
   createLocalDurableProgramDriver,
-  createToolSessionForeignEffectRegistrations,
+  createToolInvocationHost,
+  ToolInvocationHostPort,
+  createToolInvocationForeignEffectRegistrations,
   createToolSessionRegistry,
 } from "../index.ts";
 
@@ -192,9 +194,9 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
 
     await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
+      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
       const effects = createDurableEffectRegistry([
-        ...createToolSessionForeignEffectRegistrations({
-          registry,
+        ...createToolInvocationForeignEffectRegistrations({
           // SAFETY: the facade implements the callable RuntimeTool boundary;
           // its older AnyToolContract declaration omits the schemas property.
           tools: new Map<string, RuntimeTool>([[facade.name, facade as unknown as RuntimeTool]]),

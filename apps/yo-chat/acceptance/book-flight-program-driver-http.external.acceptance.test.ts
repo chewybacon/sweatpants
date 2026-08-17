@@ -35,7 +35,9 @@ import {
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createInMemoryToolSessionStore,
-  createToolSessionForeignEffectRegistrations,
+  createToolInvocationHost,
+  ToolInvocationHostPort,
+  createToolInvocationForeignEffectRegistrations,
   createToolSessionRegistry,
 } from "@sweatpants/tool-runtime-local";
 import {
@@ -160,13 +162,13 @@ describe.skipIf(!externalSubstrateEnabled)(
               return;
             }
             const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
+            yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
             yield* installToolInventory(
               createToolInventory([createToolInventoryEntry(bookFlightTool)]),
             );
             yield* installToolRuntime(runtime);
             yield* ProgramDriverForeignEffectsContext.set(
-              createToolSessionForeignEffectRegistrations({
-                registry,
+              createToolInvocationForeignEffectRegistrations({
                 tools: new Map<string, RuntimeTool>([[bookFlightTool.name, bookFlightTool]]),
               }),
             );

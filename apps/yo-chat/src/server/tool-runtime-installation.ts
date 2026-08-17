@@ -28,7 +28,9 @@ import { durableEffectKey } from "@sweatpants/durable-effects";
 import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createLocalWorkerDurableProgramDriver,
-  createToolSessionForeignEffectRegistrations,
+  createToolInvocationHost,
+  ToolInvocationHostPort,
+  createToolInvocationForeignEffectRegistrations,
   installLocalProgramToolRuntime,
 } from "@sweatpants/tool-runtime-local";
 import {
@@ -188,12 +190,12 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   }
 
   if (options.mode === "agentcore") {
+    yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(options.registry));
     // Remote ordinary-tool execution still uses the ToolSession foreign-effect
     // adapter for durable child sampling; only local composition is folded into
     // installLocalProgramToolRuntime.
     yield* ProgramDriverForeignEffectsContext.set(
-      createToolSessionForeignEffectRegistrations({
-        registry: options.registry,
+      createToolInvocationForeignEffectRegistrations({
         tools: new Map(ordinaryTools.map((tool) => [tool.name, tool])),
       }),
     );

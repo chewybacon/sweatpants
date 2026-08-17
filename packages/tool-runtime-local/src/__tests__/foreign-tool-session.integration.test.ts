@@ -33,7 +33,9 @@ import {
 import {
   createInMemoryToolSessionStore,
   createLocalDurableProgramDriver,
-  createToolSessionForeignEffectRegistrations,
+  createToolInvocationHost,
+  ToolInvocationHostPort,
+  createToolInvocationForeignEffectRegistrations,
   createToolSessionRegistry,
 } from "../index.ts";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
@@ -50,8 +52,8 @@ describe("ToolSession foreign-tool durability boundary", () => {
 
     const result = await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-      const [start, continueRegistration] = createToolSessionForeignEffectRegistrations({
-        registry,
+      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
+      const [start, continueRegistration] = createToolInvocationForeignEffectRegistrations({
         tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
       });
       const effectContext = {
@@ -162,8 +164,8 @@ describe("ToolSession foreign-tool durability boundary", () => {
 
     const firstRun = await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-      const registrations = createToolSessionForeignEffectRegistrations({
-        registry,
+      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
+      const registrations = createToolInvocationForeignEffectRegistrations({
         tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
       });
       const [startRegistration] = registrations;
@@ -213,9 +215,9 @@ describe("ToolSession foreign-tool durability boundary", () => {
         createInMemoryToolSessionStore(),
         {},
       );
+      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(replacementRegistry));
       const effects = createDurableEffectRegistry([
-        ...createToolSessionForeignEffectRegistrations({
-          registry: replacementRegistry,
+        ...createToolInvocationForeignEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
         }),
         foreignToolAdapter.modelSampleRegistration(function* () {

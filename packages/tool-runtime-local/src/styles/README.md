@@ -125,10 +125,17 @@ promoted to the host primitive (preferred; hoist the drain loop into the
 host), or `events()` remains a stream that is honestly not per-event
 interceptable.
 
-Experiment only; no production migration yet. It does not model worker spawn
-failure, replayable event logs with LSN cursors, durable continuations, remote
-(AgentCore) handles, or retention. Those decide whether the production seam
-can move.
+The Style F control plane is now implemented for the local foreign-tool
+adapter in `src/invocation-host.ts` and `src/foreign-tool-session.ts`.
+`ToolInvocationHostPort` exposes `start`, `turn`, and `dispose`; the adapter
+answers a parked request and advances in one `turn` call. The existing
+`ToolSession` event transport still sits underneath it for MCP and live UX.
+That transport is the next deletion target, not a second durable control API.
+
+The implementation still does not cover worker spawn failure as a separate
+host outcome, remote AgentCore invocation ownership, or bounded notice-store
+retention. Those remain the gates for replacing the underlying event
+transport.
 
 The naming conclusion stands on its own though: whatever shape wins,
 `ToolSessionRegistry` should be `ToolInvocationHost`, and `ToolSession` should

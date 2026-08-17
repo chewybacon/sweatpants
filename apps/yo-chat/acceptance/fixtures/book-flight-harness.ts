@@ -34,7 +34,9 @@ import {
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createInMemoryToolSessionStore,
-  createToolSessionForeignEffectRegistrations,
+  createToolInvocationHost,
+  ToolInvocationHostPort,
+  createToolInvocationForeignEffectRegistrations,
   createToolSessionRegistry,
 } from "@sweatpants/tool-runtime-local";
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
@@ -166,13 +168,13 @@ export async function createBookFlightSubstrate(options: {
         setup: function* () {
           yield* setupDurableStreams({ bufferStore, registryStore });
           const registry = yield* createToolSessionRegistry(toolSessionStore, {});
+          yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
           yield* installToolInventory(
             createToolInventory([createToolInventoryEntry(bookFlightTool)]),
           );
           yield* installToolRuntime(fallbackRuntime);
           yield* ProgramDriverForeignEffectsContext.set(
-            createToolSessionForeignEffectRegistrations({
-              registry,
+            createToolInvocationForeignEffectRegistrations({
               tools: new Map<string, RuntimeTool>([[bookFlightTool.name, bookFlightTool]]),
             }),
           );

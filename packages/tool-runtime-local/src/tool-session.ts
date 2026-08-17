@@ -141,6 +141,18 @@ export function createToolSession<
               message: event.request.message,
               schema: event.request.schema.json,
               ...(event.request.context !== undefined ? { context: event.request.context } : {}),
+              ...(event.request.bindingId !== undefined
+                ? { bindingId: event.request.bindingId }
+                : {}),
+              ...(event.request.responseContract !== undefined
+                ? { responseContract: event.request.responseContract }
+                : {}),
+              ...(event.request.contextContract !== undefined
+                ? { contextContract: event.request.contextContract }
+                : {}),
+              ...(event.request.ownerInterfaceDigest !== undefined
+                ? { ownerInterfaceDigest: event.request.ownerInterfaceDigest }
+                : {}),
             });
             break;
           }

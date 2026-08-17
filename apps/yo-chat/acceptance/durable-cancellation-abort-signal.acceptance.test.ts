@@ -33,7 +33,9 @@ import { NULL_RESULT_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import {
   createInMemoryToolSessionStore,
   createLocalDurableProgramDriver,
-  createToolSessionForeignEffectRegistrations,
+  createToolInvocationHost,
+  ToolInvocationHostPort,
+  createToolInvocationForeignEffectRegistrations,
   createToolSessionRegistry,
 } from "@sweatpants/tool-runtime-local";
 
@@ -123,9 +125,9 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
 
     await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
+      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
       const effects = createDurableEffectRegistry([
-        ...createToolSessionForeignEffectRegistrations({
-          registry,
+        ...createToolInvocationForeignEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[abortAwareTool.name, abortAwareTool]]),
         }),
       ]);

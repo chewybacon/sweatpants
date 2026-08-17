@@ -8,6 +8,11 @@ export {
 export { installLocalProgramToolRuntime } from "./program-runtime-installation.ts";
 
 export { createToolSession } from "./tool-session.ts";
+export {
+  createToolInvocationHost,
+  ToolInvocationHostPort,
+  ToolInvocationHostUnavailable,
+} from "./invocation-host.ts";
 
 export { createToolSessionRegistry, type ToolSessionRegistryOptions } from "./session-registry.ts";
 
@@ -38,8 +43,8 @@ export {
   type LocalWorkerDurableProgramDriverOptions,
 } from "./local-worker-durable-driver.ts";
 export {
-  createToolSessionForeignEffectRegistrations,
-  type ToolSessionForeignDriverOptions,
+  createToolInvocationForeignEffectRegistrations,
+  type ToolInvocationForeignDriverOptions,
 } from "./foreign-tool-session.ts";
 export {
   DURABLE_TOOL_FACADE_ANNOTATION,
