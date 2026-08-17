@@ -1,4 +1,5 @@
 import type { Operation } from "effection";
+import { definePort } from "@sweatpants/foundation";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { ChatMessage, ChatToolDefinition } from "@sweatpants/chat-contract";
 import type {
@@ -126,3 +127,25 @@ export interface ToolInvocationHost {
   turn(request: TurnToolInvocation): Operation<ToolInvocationTurn>;
   dispose(invocationId: ToolInvocationId): Operation<void>;
 }
+
+export class ToolInvocationHostUnavailable extends Error {
+  readonly code = "tool_invocation_host_unavailable";
+
+  constructor() {
+    super("No tool invocation host is installed in this scope");
+    this.name = "ToolInvocationHostUnavailable";
+  }
+}
+
+/** Scoped invocation-control capability. Composition installs its driver once. */
+export const ToolInvocationHostPort = definePort<ToolInvocationHost>("tool-invocation-host", {
+  *start(): Operation<void> {
+    throw new ToolInvocationHostUnavailable();
+  },
+  *turn(): Operation<ToolInvocationTurn> {
+    throw new ToolInvocationHostUnavailable();
+  },
+  *dispose(): Operation<void> {
+    throw new ToolInvocationHostUnavailable();
+  },
+});

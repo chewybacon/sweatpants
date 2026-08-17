@@ -16,7 +16,7 @@
 import { createContext, type Operation } from "effection";
 import { parser } from "@sweatpants/foundation";
 import { z } from "zod";
-import type { ToolSessionRegistry } from "../../contract.ts";
+import type { ToolInvocationEventSource } from "../../contract.ts";
 import type { ToolInvocationHost } from "../../invocation.ts";
 import type {
   ElicitsMap,
@@ -76,8 +76,8 @@ export const McpSessionManagerContext = createContext<McpSessionManager>("mcp-se
  * Options for creating a session manager.
  */
 export interface McpSessionManagerOptions {
-  /** Registry used to locate the notice reader after host.start(). */
-  registry: ToolSessionRegistry;
+  /** Pull-only event projections for started invocations. */
+  events: ToolInvocationEventSource;
 
   /** Pull-based control plane for the live invocation. */
   host: ToolInvocationHost;
@@ -94,12 +94,12 @@ export interface McpSessionManagerOptions {
  */
 export class McpSessionManager {
   private readonly sessions = new Map<string, McpSessionState>();
-  private readonly registry: ToolSessionRegistry;
+  private readonly events: ToolInvocationEventSource;
   private readonly host: ToolInvocationHost;
   private readonly tools: Map<string, ToolDefinition<string, unknown, unknown, ElicitsMap>>;
 
   constructor(options: McpSessionManagerOptions) {
-    this.registry = options.registry;
+    this.events = options.events;
     this.host = options.host;
     this.tools = options.tools;
   }
@@ -130,8 +130,8 @@ export class McpSessionManager {
       tool,
       input: args,
     });
-    const session = yield* this.registry.get(sessionId);
-    if (!session) {
+    const events = yield* this.events.open(sessionId);
+    if (!events) {
       throw new McpHandlerError(
         MCP_HANDLER_ERRORS.SESSION_NOT_FOUND,
         `Invocation ${sessionId} was not published`,
@@ -148,7 +148,7 @@ export class McpSessionManager {
     // Create session state
     const state: McpSessionState = {
       sessionId,
-      events: session.projection,
+      events,
       toolCallRequestId: requestId,
       pendingElicits: new Map(),
       pendingSamples: new Map(),
@@ -156,7 +156,7 @@ export class McpSessionManager {
       requestCounter: 0,
     };
 
-    this.sessions.set(session.id, state);
+    this.sessions.set(sessionId, state);
     return state;
   }
 

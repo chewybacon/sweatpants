@@ -1,13 +1,12 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { run } from "effection";
+import { createScope } from "effection";
 import { createMcpHandler } from "@sweatpants/tool-session/mcp";
 import type { SampleResultBase } from "@sweatpants/agent-sdk";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createInMemoryToolSessionStore,
-  createToolInvocationHost,
-  createToolSessionRegistry,
+  createLocalToolInvocationRuntime,
 } from "@sweatpants/tool-runtime-local";
 import { createToolsMap } from "./tools/index.js";
 
@@ -28,26 +27,30 @@ function createMockSamplingProvider(): ToolSessionSamplingProvider {
 }
 
 export async function createYoMcpRuntime() {
-  return await run(function* () {
-    const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-      worker: { workerUrl: TOOL_WORKER_URL, isDev: false, execArgv: TOOL_WORKER_EXEC_ARGV },
-    });
-    const { handler, manager } = createMcpHandler({
-      registry,
-      host: createToolInvocationHost(registry),
+  const [scope, destroy] = createScope();
+  const runtime = await scope.run(function* () {
+    const invocationRuntime = yield* createLocalToolInvocationRuntime(
+      createInMemoryToolSessionStore(),
+      {
+        worker: { workerUrl: TOOL_WORKER_URL, isDev: false, execArgv: TOOL_WORKER_EXEC_ARGV },
+      },
+    );
+    return yield* createMcpHandler({
+      events: invocationRuntime.events,
       tools: createToolsMap(),
       sessionTimeout: 300_000,
       sseRetryMs: 1_000,
     });
-    return {
-      handler,
-      cleanup: async () => {
-        await run(function* () {
-          yield* manager.cleanup();
-        });
-      },
-    };
   });
+  return {
+    handler: runtime.handler,
+    cleanup: async () => {
+      await scope.run(function* () {
+        yield* runtime.manager.cleanup();
+      });
+      await destroy();
+    },
+  };
 }
 
 export async function startYoMcpServer(port = 3_001) {

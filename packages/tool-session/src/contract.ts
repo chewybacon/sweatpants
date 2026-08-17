@@ -204,6 +204,11 @@ export interface ToolInvocationEventReader<TResult = unknown> {
   events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void>;
 }
 
+/** Lookup for pull-only invocation event projections. */
+export interface ToolInvocationEventSource {
+  open(invocationId: string): Operation<ToolInvocationEventReader | null>;
+}
+
 // =============================================================================
 // TOOL SESSION
 // =============================================================================

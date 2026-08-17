@@ -17,8 +17,8 @@
  */
 import type { Operation } from "effection";
 import type { Json, JsonObject } from "@sweatpants/foundation";
-import type { ToolInvocationEventReader, ToolSessionRegistry } from "../../contract.ts";
-import type { ToolInvocationCursor, ToolInvocationHost } from "../../invocation.ts";
+import type { ToolInvocationEventReader, ToolInvocationEventSource } from "../../contract.ts";
+import type { ToolInvocationCursor } from "../../invocation.ts";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import type { JsonRpcId } from "../protocol/types.ts";
 
@@ -31,13 +31,9 @@ import type { JsonRpcId } from "../protocol/types.ts";
  */
 export interface McpHandlerConfig {
   /**
-   * Registry for locating the pull-only notice reader after the host starts
-   * an invocation.
+   * Pull-only event projections for started invocations.
    */
-  registry: ToolSessionRegistry;
-
-  /** Pull-based control plane for starting and advancing tool invocations. */
-  host: ToolInvocationHost;
+  events: ToolInvocationEventSource;
 
   /**
    * Map of available tools by name.

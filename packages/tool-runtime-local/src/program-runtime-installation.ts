@@ -4,7 +4,8 @@ import type { ToolRuntime } from "@sweatpants/tool-runtime";
 import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
 import { installLocalToolRuntime, type LocalToolRuntimeDriverOptions } from "./driver.ts";
 import { createToolInvocationForeignEffectRegistrations } from "./foreign-tool-session.ts";
-import { createToolInvocationHost, ToolInvocationHostPort } from "./invocation-host.ts";
+import { createToolInvocationHost } from "./invocation-host.ts";
+import { ToolInvocationHostPort } from "@sweatpants/tool-session";
 
 /**
  * Installs the worker-backed local tool runtime together with the durable

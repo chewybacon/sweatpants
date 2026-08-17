@@ -35,7 +35,7 @@
  *
  * @packageDocumentation
  */
-import { createScope, type Operation } from "effection";
+import { createScope, useScope, type Operation } from "effection";
 import { requireJsonObject, type Json, type JsonObject } from "@sweatpants/foundation";
 import type {
   McpHandlerConfig,
@@ -53,6 +53,7 @@ import { createSseEventStream, type SseStreamOptions } from "./get-handler.ts";
 import { createPrimeEvent, createSseHeaders } from "../protocol/sse-formatter.ts";
 import { JSON_RPC_ERROR_CODES } from "../protocol/types.ts";
 import { MCP_PROTOCOL_VERSION } from "../protocol-version.ts";
+import { ToolInvocationHostPort } from "../../invocation.ts";
 
 // =============================================================================
 // HANDLER OPTIONS
@@ -239,13 +240,14 @@ function createToolsListResponse(
  * The handler manages tool execution sessions and implements the
  * MCP Streamable HTTP transport protocol.
  */
-export function createMcpHandler(options: McpHandlerOptions): {
+export function* createMcpHandler(options: McpHandlerOptions): Operation<{
   handler: McpHttpHandler;
   manager: McpSessionManager;
-} {
+}> {
+  const ownerScope = yield* useScope();
+  const host = ToolInvocationHostPort.bind(ownerScope);
   const {
-    registry,
-    host,
+    events,
     tools,
     sessionTimeout,
     sseRetryMs = 1000,
@@ -257,7 +259,7 @@ export function createMcpHandler(options: McpHandlerOptions): {
 
   // Create session manager
   const manager = createSessionManager({
-    registry,
+    events,
     host,
     tools,
     sessionTimeout,

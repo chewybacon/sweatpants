@@ -1,4 +1,4 @@
-import { assertJson, canonicalSnapshot, definePort } from "@sweatpants/foundation";
+import { assertJson, canonicalSnapshot } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import {
   ToolInvocationHostError,
@@ -24,31 +24,6 @@ interface InvocationEntry {
   readonly startDigest: string;
   readonly commands: Map<string, CommandState>;
 }
-
-export class ToolInvocationHostUnavailable extends Error {
-  readonly code = "tool_invocation_host_unavailable";
-
-  constructor() {
-    super("No tool invocation host is installed in this scope");
-    this.name = "ToolInvocationHostUnavailable";
-  }
-}
-
-/** Style F port for the pull-based tool invocation control plane. */
-export const ToolInvocationHostPort = definePort<ToolInvocationHost>(
-  "tool-runtime-local:invocation-host",
-  {
-    *start(): Operation<void> {
-      throw new ToolInvocationHostUnavailable();
-    },
-    *turn(): Operation<ToolInvocationTurn> {
-      throw new ToolInvocationHostUnavailable();
-    },
-    *dispose(): Operation<void> {
-      throw new ToolInvocationHostUnavailable();
-    },
-  },
-);
 
 /**
  * Adapts the existing live ToolSession transport to the pull-based invocation

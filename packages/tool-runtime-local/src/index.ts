@@ -8,11 +8,12 @@ export {
 export { installLocalProgramToolRuntime } from "./program-runtime-installation.ts";
 
 export { createToolSession } from "./tool-session.ts";
+export { createToolInvocationHost } from "./invocation-host.ts";
 export {
-  createToolInvocationHost,
-  ToolInvocationHostPort,
-  ToolInvocationHostUnavailable,
-} from "./invocation-host.ts";
+  createLocalToolInvocationRuntime,
+  type LocalToolInvocationRuntime,
+} from "./invocation-runtime.ts";
+export { ToolInvocationHostPort, ToolInvocationHostUnavailable } from "@sweatpants/tool-session";
 
 export { createToolSessionRegistry, type ToolSessionRegistryOptions } from "./session-registry.ts";
 
