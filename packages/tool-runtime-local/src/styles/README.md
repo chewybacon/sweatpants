@@ -98,10 +98,37 @@ is per-host, not global — the same rule Ports already give drivers.
 
 ## Status
 
-Experiment only. No production migration. It does not model worker spawn
+**Decision: Style F.** Not because it sees more — H could decorate handles —
+but because in H observation is opt-in per middleware author and does not
+compose: an outer scope must wrap a handle returned through an inner scope's
+wrapper, producing order-dependent nesting neither author controls. In F an
+outer scope observes inner calls structurally, by the same mechanism Ports
+already use for drivers. The erased `TResult` on the handle is already
+phantom at every consumption site that matters (the foreign adapter and MCP
+session manager both widen it immediately).
+
+One constraint travels with the decision, from the provider prompt-cache
+review: **the host never mints invocation identity — the caller supplies it,
+derived from durable state.** F enforces this structurally (every operation
+takes the id, so it must come from somewhere durable); H permits a UUID that
+works until the first replay. See
+`src/__tests__/provider-prompt-stability.integration.test.ts` for the pinned
+consequence: identity leaks into provider-visible bytes, so it must be a pure
+function of durable identity.
+
+One honest caveat: this experiment modeled the interaction as
+`turn(id) → Disposition`. Production exposes
+`events(afterLSN?): Stream<ToolSessionEvent>` and the only real consumer
+synthesizes the turn loop in the adapter's `nextDisposition`. Port middleware
+wraps stream _creation_, not each pulled event — so either `turn()` is
+promoted to the host primitive (preferred; hoist the drain loop into the
+host), or `events()` remains a stream that is honestly not per-event
+interceptable.
+
+Experiment only; no production migration yet. It does not model worker spawn
 failure, replayable event logs with LSN cursors, durable continuations, remote
-(AgentCore) handles, or retention. Those are the parts that decide whether the
-production seam can move.
+(AgentCore) handles, or retention. Those decide whether the production seam
+can move.
 
 The naming conclusion stands on its own though: whatever shape wins,
 `ToolSessionRegistry` should be `ToolInvocationHost`, and `ToolSession` should
