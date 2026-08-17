@@ -4,7 +4,9 @@ import {
 } from "@sweatpants/tool-session/tool-parameters";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { ChatToolCall } from "@sweatpants/chat-contract";
+import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import { action, resource, spawn, type Operation, type Stream } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import {
   installToolRuntime,
   ToolRuntimeError,
@@ -215,7 +217,11 @@ function* nextAgentCoreExecution(
         ...(next.value.toolChoice ? { toolChoice: next.value.toolChoice } : {}),
         ...(next.value.schema ? { schema: next.value.schema } : {}),
       });
-      yield* session.respondToSample(next.value.sampleId, result);
+      yield* session.resume({
+        kind: "sample",
+        requestId: next.value.sampleId,
+        response: result,
+      });
       continue;
     }
 
@@ -276,7 +282,7 @@ export function createAgentCoreToolExecutionStrategy(
       if (ctx.signal) {
         yield* spawn(function* () {
           yield* waitForAbort(ctx.signal!);
-          yield* session.cancel("tool invocation cancelled");
+          yield* session.resume({ kind: "cancel", reason: "tool invocation cancelled" });
         });
       }
       return yield* nextAgentCoreExecution(ctx.runtimeId, call, session, options.samplingProvider);
@@ -302,12 +308,16 @@ export function createAgentCoreToolExecutionStrategy(
         if (!input.elicitId) {
           throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
         }
-        yield* session.respondToElicit(input.elicitId, input.completion);
+        yield* session.resume({
+          kind: "elicit",
+          requestId: input.elicitId,
+          response: input.completion as ElicitExchangeCompletion<Json>,
+        });
       }
       if (ctx.signal) {
         yield* spawn(function* () {
           yield* waitForAbort(ctx.signal!);
-          yield* session.cancel("tool invocation cancelled");
+          yield* session.resume({ kind: "cancel", reason: "tool invocation cancelled" });
         });
       }
       return yield* nextAgentCoreExecution(
@@ -332,7 +342,10 @@ export function createAgentCoreToolExecutionStrategy(
           `AgentCore tool session not found: ${sessionId}`,
         );
       }
-      yield* session.cancel(reason);
+      yield* session.resume({
+        kind: "cancel",
+        ...(reason === undefined ? {} : { reason }),
+      });
     },
   };
 }

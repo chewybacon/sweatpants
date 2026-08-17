@@ -9,8 +9,8 @@
  *
  * | MCP Response             | Session Action                    |
  * |-------------------------|-----------------------------------|
- * | elicitation/create      | session.respondToElicit()         |
- * | sampling/createMessage  | session.respondToSample()         |
+ * | elicitation/create      | host.turn({ resume: "elicit" })   |
+ * | sampling/createMessage  | host.turn({ resume: "sample" })   |
  *
  * @packageDocumentation
  */

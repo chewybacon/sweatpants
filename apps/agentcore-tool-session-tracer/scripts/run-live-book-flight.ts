@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
-import { call, run } from "effection";
+import { call, run, type Operation } from "effection";
 import { createAwsSdkAgentCoreInvoker } from "@sweatpants/tool-runtime-agentcore";
+import type { ToolInvocationResume } from "@sweatpants/tool-session";
 import { createAgentCoreRemoteToolRuntimeClient } from "@sweatpants/tool-runtime-agentcore";
 import { createAgentCoreToolSessionRegistry } from "@sweatpants/tool-runtime-agentcore";
 import {
@@ -12,6 +13,13 @@ import type {
   AgentCoreToolRuntimeProfile,
   AgentCoreToolSessionStores,
 } from "@sweatpants/tool-runtime-agentcore";
+
+function* resumeTool(
+  session: { resume(resume: ToolInvocationResume): Operation<void> },
+  resume: ToolInvocationResume,
+): Operation<void> {
+  yield* session.resume(resume);
+}
 
 const runtimeArnEnv = process.env["AGENTCORE_RUNTIME_ARN"];
 if (!runtimeArnEnv) {
@@ -98,9 +106,13 @@ async function main(): Promise<void> {
           setTimeout(resolve, Number(process.env["AGENTCORE_BOOK_FLIGHT_TURN_DELAY_MS"] ?? "1000")),
         ),
     );
-    yield* session.respondToElicit(pickFlight.elicitId, {
-      action: "accept",
-      content: { flightId: "FL001" },
+    yield* resumeTool(session, {
+      kind: "elicit",
+      requestId: pickFlight.elicitId,
+      response: {
+        action: "accept",
+        content: { flightId: "FL001" },
+      },
     });
     assert((yield* session.status()) === "awaiting_elicit", "expected second awaiting_elicit");
 
@@ -114,9 +126,13 @@ async function main(): Promise<void> {
           setTimeout(resolve, Number(process.env["AGENTCORE_BOOK_FLIGHT_TURN_DELAY_MS"] ?? "1000")),
         ),
     );
-    yield* session.respondToElicit(pickSeat.elicitId, {
-      action: "accept",
-      content: { row: 3, seat: "A" },
+    yield* resumeTool(session, {
+      kind: "elicit",
+      requestId: pickSeat.elicitId,
+      response: {
+        action: "accept",
+        content: { row: 3, seat: "A" },
+      },
     });
     assert((yield* session.status()) === "awaiting_sample", "expected awaiting_sample");
 
@@ -130,8 +146,12 @@ async function main(): Promise<void> {
           setTimeout(resolve, Number(process.env["AGENTCORE_BOOK_FLIGHT_TURN_DELAY_MS"] ?? "1000")),
         ),
     );
-    yield* session.respondToSample(sample.sampleId, {
-      text: "Use the rideshare pickup zone on the arrivals level.",
+    yield* resumeTool(session, {
+      kind: "sample",
+      requestId: sample.sampleId,
+      response: {
+        text: "Use the rideshare pickup zone on the arrivals level.",
+      },
     });
     assert((yield* session.status()) === "completed", "expected completed");
 

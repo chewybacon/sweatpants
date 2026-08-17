@@ -1,7 +1,11 @@
 import { stableTupleHash } from "@sweatpants/foundation";
 import { resource, type Operation, type Stream, type Subscription } from "effection";
-import type { ToolSession, ToolSessionEvent, ToolSessionStatus } from "@sweatpants/tool-session";
-import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
+import type {
+  ToolInvocationResume,
+  ToolSession,
+  ToolSessionEvent,
+  ToolSessionStatus,
+} from "@sweatpants/tool-session";
 import { statusForToolSessionEvent } from "@sweatpants/tool-session";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
@@ -317,67 +321,59 @@ export function createAgentCoreToolSession(
       },
     },
 
-    *respondToElicit(
-      elicitId: string,
-      response: ElicitExchangeCompletion<unknown>,
-    ): Operation<void> {
+    *resume(resume: ToolInvocationResume): Operation<void> {
       const handle = yield* getHandle();
-      if (
-        handle.pendingRequest &&
-        (handle.pendingRequest.type !== "elicit" || handle.pendingRequest.elicitId !== elicitId)
-      ) {
-        throw new Error(
-          `Elicitation ID mismatch: expected ${JSON.stringify(handle.pendingRequest)}, got ${elicitId}`,
-        );
-      }
-      const stream = yield* runtimeClient.respondToElicit(handle, {
-        op: "respond_to_elicit",
-        protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
-        commandId: stableCommandId("respond_to_elicit", sessionId, elicitId),
-        toolSessionId: sessionId,
-        elicitId,
-        response,
-      });
-      yield* ingestStream(stream);
-    },
-
-    *respondToSample(sampleId: string, response: SampleExchangeCompletion): Operation<void> {
-      const handle = yield* getHandle();
-      if (
-        handle.pendingRequest &&
-        (handle.pendingRequest.type !== "sample" || handle.pendingRequest.sampleId !== sampleId)
-      ) {
-        throw new Error(
-          `Sample ID mismatch: expected ${JSON.stringify(handle.pendingRequest)}, got ${sampleId}`,
-        );
-      }
-      const stream = yield* runtimeClient.respondToSample(handle, {
-        op: "respond_to_sample",
-        protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
-        commandId: stableCommandId("respond_to_sample", sessionId, sampleId),
-        toolSessionId: sessionId,
-        sampleId,
-        response,
-      });
-      yield* ingestStream(stream);
-    },
-
-    *cancel(reason?: string): Operation<void> {
-      const handle = yield* getHandle();
-      if (
-        handle.status === "completed" ||
-        handle.status === "failed" ||
-        handle.status === "cancelled" ||
-        handle.status === "orphaned"
-      ) {
+      if (resume.kind === "elicit") {
+        const elicitId = resume.requestId;
+        if (
+          handle.pendingRequest &&
+          (handle.pendingRequest.type !== "elicit" || handle.pendingRequest.elicitId !== elicitId)
+        ) {
+          throw new Error(
+            `Elicitation ID mismatch: expected ${JSON.stringify(handle.pendingRequest)}, got ${elicitId}`,
+          );
+        }
+        const stream = yield* runtimeClient.respondToElicit(handle, {
+          op: "respond_to_elicit",
+          protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
+          commandId: stableCommandId("respond_to_elicit", sessionId, elicitId),
+          toolSessionId: sessionId,
+          elicitId,
+          response: resume.response,
+        });
+        yield* ingestStream(stream);
         return;
       }
+
+      if (resume.kind === "sample") {
+        const sampleId = resume.requestId;
+        if (
+          handle.pendingRequest &&
+          (handle.pendingRequest.type !== "sample" || handle.pendingRequest.sampleId !== sampleId)
+        ) {
+          throw new Error(
+            `Sample ID mismatch: expected ${JSON.stringify(handle.pendingRequest)}, got ${sampleId}`,
+          );
+        }
+        const stream = yield* runtimeClient.respondToSample(handle, {
+          op: "respond_to_sample",
+          protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
+          commandId: stableCommandId("respond_to_sample", sessionId, sampleId),
+          toolSessionId: sessionId,
+          sampleId,
+          response: resume.response,
+        });
+        yield* ingestStream(stream);
+        return;
+      }
+
+      if (isTerminalStatus(handle.status)) return;
       const stream = yield* runtimeClient.cancel(handle, {
         op: "cancel_tool_session",
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
         commandId: stableCommandId("cancel_tool_session", sessionId),
         toolSessionId: sessionId,
-        ...(reason !== undefined && { reason }),
+        ...(resume.reason !== undefined && { reason: resume.reason }),
       });
       yield* ingestStream(stream);
     },

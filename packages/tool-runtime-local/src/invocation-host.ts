@@ -156,16 +156,7 @@ export function createToolInvocationHost(registry: ToolSessionRegistry): ToolInv
       entry.commands.set(request.commandId, command);
       try {
         if (request.resume) {
-          if (request.resume.kind === "cancel") {
-            // The underlying session is the live transport adapter. The
-            // invocation boundary exposes this as a crank input; the adapter
-            // decides how to unwind its parked body.
-            yield* entry.session.cancel(request.resume.reason);
-          } else if (request.resume.kind === "sample") {
-            yield* entry.session.respondToSample(request.resume.requestId, request.resume.response);
-          } else {
-            yield* entry.session.respondToElicit(request.resume.requestId, request.resume.response);
-          }
+          yield* entry.session.resume(request.resume);
         }
 
         const result = yield* drainInvocation(entry.session, request.cursor);

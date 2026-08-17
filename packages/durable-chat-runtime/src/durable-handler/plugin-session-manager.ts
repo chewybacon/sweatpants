@@ -371,10 +371,18 @@ export function createPluginSessionManager(
                     },
                   );
 
-                  yield* toolSession.respondToSample(sampleEvent.sampleId, result);
+                  yield* toolSession.resume({
+                    kind: "sample",
+                    requestId: sampleEvent.sampleId,
+                    response: result,
+                  });
                 } catch (error) {
-                  yield* toolSession.respondToSample(sampleEvent.sampleId, {
-                    text: `[Sampling error: ${error instanceof Error ? error.message : String(error)}]`,
+                  yield* toolSession.resume({
+                    kind: "sample",
+                    requestId: sampleEvent.sampleId,
+                    response: {
+                      text: `[Sampling error: ${error instanceof Error ? error.message : String(error)}]`,
+                    },
                   });
                 }
                 // Continue to next event (don't return sample_request to caller)
@@ -429,13 +437,20 @@ export function createPluginSessionManager(
           elicitId: string,
           result: ElicitExchangeCompletion<unknown>,
         ): Operation<void> {
-          yield* toolSession.respondToElicit(elicitId, result);
+          yield* toolSession.resume({
+            kind: "elicit",
+            requestId: elicitId,
+            response: result as ElicitExchangeCompletion<Json>,
+          });
         },
 
         *abort(reason?: string): Operation<void> {
           aborted = true;
           abortReason = reason;
-          yield* toolSession.cancel(reason);
+          yield* toolSession.resume({
+            kind: "cancel",
+            ...(reason === undefined ? {} : { reason }),
+          });
         },
       };
 
