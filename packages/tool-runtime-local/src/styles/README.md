@@ -128,14 +128,16 @@ interceptable.
 The Style F control plane is now implemented for the local foreign-tool
 adapter in `src/invocation-host.ts` and `src/foreign-tool-session.ts`.
 `ToolInvocationHostPort` exposes `start`, `turn`, and `dispose`; the adapter
-answers a parked request and advances in one `turn` call. The existing
-`ToolSession` event transport still sits underneath it for MCP and live UX.
-That transport is the next deletion target, not a second durable control API.
+answers a parked request and advances in one `turn` call. The existing `ToolSession` resource still sits underneath it, but it now
+exposes only `notices` and one internal `resume()` operation. MCP receives the
+notice reader and sends all responses through the invocation host. There is no
+second response or cancellation API on the session resource, and no reader
+refcount or wake-up method.
 
 The implementation still does not cover worker spawn failure as a separate
 host outcome, remote AgentCore invocation ownership, or bounded notice-store
-retention. Those remain the gates for replacing the underlying event
-transport.
+retention. Those remain the gates for replacing the underlying event log with
+the final notice store.
 
 The naming conclusion stands on its own though: whatever shape wins,
 `ToolSessionRegistry` should be `ToolInvocationHost`, and `ToolSession` should

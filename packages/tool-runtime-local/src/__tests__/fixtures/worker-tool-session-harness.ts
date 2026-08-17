@@ -5,7 +5,11 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { createWorkerToolSession } from "../../worker-tool-session.ts";
-import type { ToolSession, ToolSessionEvent } from "@sweatpants/tool-session";
+import type { ToolInvocationResume, ToolSession, ToolSessionEvent } from "@sweatpants/tool-session";
+
+function* resumeToolSession(session: ToolSession, resume: ToolInvocationResume): Operation<void> {
+  yield* session.resume(resume);
+}
 
 const scenario = process.argv[2];
 if (!scenario) {
@@ -62,18 +66,26 @@ function* waitForEvent(
 function* respondToEvent(session: ToolSession, event: ToolSessionEvent): Operation<void> {
   if (event.type === "sample_request") {
     yield* sleep(25);
-    yield* session.respondToSample(event.sampleId, {
-      text: "Hello, Alice!",
-      model: "test-model",
-      stopReason: "endTurn",
+    yield* resumeToolSession(session, {
+      kind: "sample",
+      requestId: event.sampleId,
+      response: {
+        text: "Hello, Alice!",
+        model: "test-model",
+        stopReason: "endTurn",
+      },
     });
   }
 
   if (event.type === "elicit_request") {
     yield* sleep(25);
-    yield* session.respondToElicit(event.elicitId, {
-      action: "accept",
-      content: { confirmed: true },
+    yield* resumeToolSession(session, {
+      kind: "elicit",
+      requestId: event.elicitId,
+      response: {
+        action: "accept",
+        content: { confirmed: true },
+      },
     });
   }
 }
@@ -85,10 +97,14 @@ function* respondToEventWithSampleSequence(
 ): Operation<void> {
   if (event.type === "sample_request") {
     yield* sleep(25);
-    yield* session.respondToSample(event.sampleId, {
-      text: getNextText(),
-      model: "test-model",
-      stopReason: "endTurn",
+    yield* resumeToolSession(session, {
+      kind: "sample",
+      requestId: event.sampleId,
+      response: {
+        text: getNextText(),
+        model: "test-model",
+        stopReason: "endTurn",
+      },
     });
   }
 }
@@ -99,8 +115,12 @@ function* respondToEventWithElicitDecline(
 ): Operation<void> {
   if (event.type === "elicit_request") {
     yield* sleep(25);
-    yield* session.respondToElicit(event.elicitId, {
-      action: "decline",
+    yield* resumeToolSession(session, {
+      kind: "elicit",
+      requestId: event.elicitId,
+      response: {
+        action: "decline",
+      },
     });
   }
 }
@@ -111,8 +131,12 @@ function* respondToEventWithElicitCancel(
 ): Operation<void> {
   if (event.type === "elicit_request") {
     yield* sleep(25);
-    yield* session.respondToElicit(event.elicitId, {
-      action: "cancel",
+    yield* resumeToolSession(session, {
+      kind: "elicit",
+      requestId: event.elicitId,
+      response: {
+        action: "cancel",
+      },
     });
   }
 }
@@ -123,18 +147,26 @@ function* respondToEventSampleThenElicit(
 ): Operation<void> {
   if (event.type === "sample_request") {
     yield* sleep(25);
-    yield* session.respondToSample(event.sampleId, {
-      text: "Hello Alice!",
-      model: "test-model",
-      stopReason: "endTurn",
+    yield* resumeToolSession(session, {
+      kind: "sample",
+      requestId: event.sampleId,
+      response: {
+        text: "Hello Alice!",
+        model: "test-model",
+        stopReason: "endTurn",
+      },
     });
   }
 
   if (event.type === "elicit_request") {
     yield* sleep(25);
-    yield* session.respondToElicit(event.elicitId, {
-      action: "accept",
-      content: { approved: true, edited: false },
+    yield* resumeToolSession(session, {
+      kind: "elicit",
+      requestId: event.elicitId,
+      response: {
+        action: "accept",
+        content: { approved: true, edited: false },
+      },
     });
   }
 }
@@ -156,30 +188,46 @@ function* respondToBookFlightEvents(
     state.elicitCount++;
 
     if (event.key === "pickFlight") {
-      yield* session.respondToElicit(event.elicitId, {
-        action: "accept",
-        content: { flightId: "FL001" },
+      yield* resumeToolSession(session, {
+        kind: "elicit",
+        requestId: event.elicitId,
+        response: {
+          action: "accept",
+          content: { flightId: "FL001" },
+        },
       });
     } else if (event.key === "pickSeat") {
-      yield* session.respondToElicit(event.elicitId, {
-        action: "accept",
-        content: { row: 3, seat: "A" },
+      yield* resumeToolSession(session, {
+        kind: "elicit",
+        requestId: event.elicitId,
+        response: {
+          action: "accept",
+          content: { row: 3, seat: "A" },
+        },
       });
     } else {
       // Generic accept for any other elicit
-      yield* session.respondToElicit(event.elicitId, {
-        action: "accept",
-        content: {},
+      yield* resumeToolSession(session, {
+        kind: "elicit",
+        requestId: event.elicitId,
+        response: {
+          action: "accept",
+          content: {},
+        },
       });
     }
   }
 
   if (event.type === "sample_request") {
     yield* sleep(25);
-    yield* session.respondToSample(event.sampleId, {
-      text: "Remember to check the weather before you travel!",
-      model: "test-model",
-      stopReason: "endTurn",
+    yield* resumeToolSession(session, {
+      kind: "sample",
+      requestId: event.sampleId,
+      response: {
+        text: "Remember to check the weather before you travel!",
+        model: "test-model",
+        stopReason: "endTurn",
+      },
     });
   }
 }
@@ -421,8 +469,12 @@ async function main() {
         if (event.type === "elicit_request") {
           yield* sleep(25);
           // Decline the flight selection
-          yield* session.respondToElicit(event.elicitId, {
-            action: "decline",
+          yield* resumeToolSession(session, {
+            kind: "elicit",
+            requestId: event.elicitId,
+            response: {
+              action: "decline",
+            },
           });
         }
       });
@@ -456,14 +508,22 @@ async function main() {
 
           if (elicitCount === 1) {
             // Accept first elicit (pickFlight)
-            yield* session.respondToElicit(event.elicitId, {
-              action: "accept",
-              content: { flightId: "FL001" },
+            yield* resumeToolSession(session, {
+              kind: "elicit",
+              requestId: event.elicitId,
+              response: {
+                action: "accept",
+                content: { flightId: "FL001" },
+              },
             });
           } else {
             // Decline second elicit (pickSeat)
-            yield* session.respondToElicit(event.elicitId, {
-              action: "decline",
+            yield* resumeToolSession(session, {
+              kind: "elicit",
+              requestId: event.elicitId,
+              response: {
+                action: "decline",
+              },
             });
           }
         }
@@ -504,9 +564,13 @@ async function main() {
         if (event.type === "elicit_request") {
           capturedContext = event.context;
           yield* sleep(25);
-          yield* session.respondToElicit(event.elicitId, {
-            action: "accept",
-            content: { flightId: "FL001" },
+          yield* resumeToolSession(session, {
+            kind: "elicit",
+            requestId: event.elicitId,
+            response: {
+              action: "accept",
+              content: { flightId: "FL001" },
+            },
           });
         }
       });
@@ -545,9 +609,13 @@ async function main() {
         if (event.type === "elicit_request") {
           capturedContext = event.context;
           yield* sleep(25);
-          yield* session.respondToElicit(event.elicitId, {
-            action: "accept",
-            content: { flightId: "FL001" },
+          yield* resumeToolSession(session, {
+            kind: "elicit",
+            requestId: event.elicitId,
+            response: {
+              action: "accept",
+              content: { flightId: "FL001" },
+            },
           });
         }
       });
@@ -590,10 +658,14 @@ async function main() {
               : {}),
           };
           yield* sleep(25);
-          yield* session.respondToSample(event.sampleId, {
-            text: "Hello there!",
-            model: "test-model",
-            stopReason: "endTurn",
+          yield* resumeToolSession(session, {
+            kind: "sample",
+            requestId: event.sampleId,
+            response: {
+              text: "Hello there!",
+              model: "test-model",
+              stopReason: "endTurn",
+            },
           });
         }
       });
@@ -627,11 +699,15 @@ async function main() {
         if (event.type === "sample_request") {
           capturedSchema = event.schema;
           yield* sleep(25);
-          yield* session.respondToSample(event.sampleId, {
-            text: '{"name": "Alice", "age": 30}',
-            model: "test-model",
-            stopReason: "endTurn",
-            parsed: { name: "Alice", age: 30 },
+          yield* resumeToolSession(session, {
+            kind: "sample",
+            requestId: event.sampleId,
+            response: {
+              text: '{"name": "Alice", "age": 30}',
+              model: "test-model",
+              stopReason: "endTurn",
+              parsed: { name: "Alice", age: 30 },
+            },
           });
         }
       });
@@ -666,18 +742,22 @@ async function main() {
           capturedTools = event.tools;
           capturedToolChoice = event.toolChoice;
           yield* sleep(25);
-          yield* session.respondToSample(event.sampleId, {
-            text: "",
-            model: "test-model",
-            stopReason: "toolUse",
-            toolCalls: [
-              {
-                id: "call-123",
-                name: "get_weather",
-                input: { location: "New York" },
-                thoughtSignature: null,
-              },
-            ],
+          yield* resumeToolSession(session, {
+            kind: "sample",
+            requestId: event.sampleId,
+            response: {
+              text: "",
+              model: "test-model",
+              stopReason: "toolUse",
+              toolCalls: [
+                {
+                  id: "call-123",
+                  name: "get_weather",
+                  input: { location: "New York" },
+                  thoughtSignature: null,
+                },
+              ],
+            },
           });
         }
       });

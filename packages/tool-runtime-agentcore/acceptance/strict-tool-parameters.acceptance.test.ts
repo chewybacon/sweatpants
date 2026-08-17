@@ -46,13 +46,7 @@ function createCompletedSession(): ToolSession {
         });
       },
     },
-    respondToElicit() {
-      return (function* () {})();
-    },
-    respondToSample() {
-      return (function* () {})();
-    },
-    cancel() {
+    resume() {
       return (function* () {})();
     },
   };

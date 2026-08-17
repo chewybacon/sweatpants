@@ -21,12 +21,12 @@ import type {
   ToolSessionStatus,
   ToolSessionEvent,
   ToolSessionOptions,
+  ToolInvocationResume,
 } from "@sweatpants/tool-session";
 import type {
   ElicitsMap,
   SamplesMap,
   ToolDefinition,
-  ElicitExchangeCompletion,
   SampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
 import {
@@ -226,46 +226,39 @@ export function createToolSession<
         },
       },
 
-      *respondToElicit(
-        elicitId: string,
-        response: ElicitExchangeCompletion<unknown>,
-      ): Operation<void> {
-        const pending = pendingElicit;
-        if (!pending) {
+      *resume(resume: ToolInvocationResume): Operation<void> {
+        if (resume.kind === "cancel") {
+          if (isTerminalToolSessionStatus(log.status)) {
+            return;
+          }
+          invocationController.abort("tool invocation cancelled");
+          log.append({ type: "cancelled", reason: resume.reason });
+          log.close();
           return;
         }
-        if (pending.id !== elicitId) {
-          throw new Error(`Elicitation ID mismatch: expected ${pending.id}, got ${elicitId}`);
+
+        if (resume.kind === "elicit") {
+          const pending = pendingElicit;
+          if (!pending) return;
+          if (pending.id !== resume.requestId) {
+            throw new Error(
+              `Elicitation ID mismatch: expected ${pending.id}, got ${resume.requestId}`,
+            );
+          }
+          pendingElicit = null;
+          log.setStatus("running");
+          pending.signal.send({ id: pending.elicitRequestId, completion: resume.response });
+          return;
         }
 
-        // Send response via the bridge's signal - this unblocks the tool execution
-        pendingElicit = null;
-        log.setStatus("running");
-        pending.signal.send({ id: pending.elicitRequestId, completion: response });
-      },
-
-      *respondToSample(sampleId: string, response: SampleExchangeCompletion): Operation<void> {
         const pending = pendingSample;
-        if (!pending) {
-          return;
+        if (!pending) return;
+        if (pending.id !== resume.requestId) {
+          throw new Error(`Sample ID mismatch: expected ${pending.id}, got ${resume.requestId}`);
         }
-        if (pending.id !== sampleId) {
-          throw new Error(`Sample ID mismatch: expected ${pending.id}, got ${sampleId}`);
-        }
-
-        // Send response via the bridge's signal
         pendingSample = null;
         log.setStatus("running");
-        pending.signal.send({ completion: response });
-      },
-
-      *cancel(reason?: string): Operation<void> {
-        if (isTerminalToolSessionStatus(log.status)) {
-          return;
-        }
-        invocationController.abort("tool invocation cancelled");
-        log.append({ type: "cancelled", reason });
-        log.close();
+        pending.signal.send({ completion: resume.response });
       },
     };
 

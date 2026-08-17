@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
-import { call, run } from "effection";
+import { call, run, type Operation } from "effection";
 import { createAwsSdkAgentCoreInvoker } from "@sweatpants/tool-runtime-agentcore";
+import type { ToolInvocationResume } from "@sweatpants/tool-session";
 import { createAgentCoreRemoteToolRuntimeClient } from "@sweatpants/tool-runtime-agentcore";
 import { createAgentCoreToolSessionRegistry } from "@sweatpants/tool-runtime-agentcore";
 import {
@@ -11,6 +12,13 @@ import type {
   AgentCoreToolRuntimeProfile,
   AgentCoreToolSessionStores,
 } from "@sweatpants/tool-runtime-agentcore";
+
+function* resumeTool(
+  session: { resume(resume: ToolInvocationResume): Operation<void> },
+  resume: ToolInvocationResume,
+): Operation<void> {
+  yield* session.resume(resume);
+}
 
 const runtimeArnEnv = process.env["AGENTCORE_RUNTIME_ARN"];
 if (!runtimeArnEnv) {
@@ -70,9 +78,13 @@ async function main(): Promise<void> {
     const delayMs = Number(process.env["AGENTCORE_FACADE_DELAY_MS"] ?? "60000");
     yield* call(() => new Promise((resolve) => setTimeout(resolve, delayMs)));
 
-    yield* session.respondToElicit(elicitId, {
-      action: "accept",
-      content: { confirmed: true, via: "sweatpants-facade" },
+    yield* resumeTool(session, {
+      kind: "elicit",
+      requestId: elicitId,
+      response: {
+        action: "accept",
+        content: { confirmed: true, via: "sweatpants-facade" },
+      },
     });
     const statusAfter = yield* session.status();
     assert(statusAfter === "completed", `expected completed, got ${statusAfter}`);

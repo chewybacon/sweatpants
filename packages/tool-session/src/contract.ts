@@ -14,10 +14,8 @@
  *
  * ToolSession
  *   └─ id, toolName, status
- *   └─ events() → Stream of ToolSessionEvent
- *   └─ respondToElicit(id, response)
- *   └─ respondToSample(id, response)
- *   └─ cancel()
+ *   └─ notices.events() → pull-only UX projection
+ *   └─ resume({ kind, requestId, response }) → private execution resource
  *
  * ToolSessionStore
  *   └─ Pluggable storage (in-memory, Redis, Durable Objects)
@@ -29,13 +27,13 @@ import type { Operation, Stream } from "effection";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { ChatMessage, ChatToolDefinition } from "@sweatpants/chat-contract";
+import type { ToolInvocationResume } from "./invocation.ts";
 import type {
   ElicitsMap,
   LogLevel,
   ModelPreferences,
   SamplingToolChoice,
   ToolContract,
-  ElicitExchangeCompletion,
   SampleExchangeCompletionBase,
   ParsedSampleExchangeCompletion,
   ToolCallSampleExchangeCompletion,
@@ -235,33 +233,11 @@ export interface ToolSession<TResult = unknown> {
   readonly notices: ToolInvocationNoticeReader<TResult>;
 
   /**
-   * Respond to an elicitation request.
-   *
-   * @param elicitId - The ID from the ElicitRequestEvent
-   * @param response - The user's response
+   * Resume the private execution resource and advance its parked generator.
+   * The host is the public control surface. This single operation is the only
+   * response and cancellation entry point below it.
    */
-  respondToElicit(elicitId: string, response: ElicitExchangeCompletion<unknown>): Operation<void>;
-
-  /**
-   * Respond to a sampling request.
-   *
-   * @param sampleId - The ID from the SampleRequestEvent
-   * @param response - The LLM's response (raw result without exchange - exchange is constructed by runtime)
-   */
-  respondToSample(
-    sampleId: string,
-    response:
-      | SampleExchangeCompletionBase
-      | ParsedSampleExchangeCompletion<unknown>
-      | ToolCallSampleExchangeCompletion,
-  ): Operation<void>;
-
-  /**
-   * Cancel the session.
-   *
-   * @param reason - Optional cancellation reason
-   */
-  cancel(reason?: string): Operation<void>;
+  resume(resume: ToolInvocationResume): Operation<void>;
 }
 
 // =============================================================================

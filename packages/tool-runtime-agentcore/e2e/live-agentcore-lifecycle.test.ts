@@ -552,9 +552,10 @@ liveDescribe("AgentCore live runtime lifecycle contract", () => {
     }
 
     const afterResume = await run(function* () {
-      yield* afterStart.session.respondToElicit(pending.elicitId, {
-        action: "accept",
-        content: { confirmed: true },
+      yield* afterStart.session.resume({
+        kind: "elicit",
+        requestId: pending.elicitId,
+        response: { action: "accept", content: { confirmed: true } },
       });
       return {
         status: yield* afterStart.session.status(),

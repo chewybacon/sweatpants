@@ -96,13 +96,7 @@ function createFakeSession(): ToolSession {
         });
       },
     },
-    respondToElicit() {
-      return (function* () {})();
-    },
-    respondToSample() {
-      return (function* () {})();
-    },
-    cancel() {
+    resume() {
       return (function* () {})();
     },
   };

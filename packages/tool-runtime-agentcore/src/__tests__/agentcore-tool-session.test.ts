@@ -1,9 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { run } from "effection";
+import type { Operation } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import { stableTupleHash } from "@sweatpants/foundation";
+import type { ToolSession } from "@sweatpants/tool-session";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   FakeAgentCoreRemoteToolRuntimeClient,
@@ -20,6 +22,22 @@ import type {
   AgentCoreToolSessionStores,
   RemoteToolRuntimeClient,
 } from "../index.ts";
+
+function* resumeElicit(
+  session: ToolSession,
+  requestId: string,
+  response: unknown,
+): Operation<void> {
+  yield* session.resume({ kind: "elicit", requestId, response: response as never });
+}
+
+function* resumeSample(
+  session: ToolSession,
+  requestId: string,
+  response: unknown,
+): Operation<void> {
+  yield* session.resume({ kind: "sample", requestId, response: response as never });
+}
 
 function createStores(): AgentCoreToolSessionStores {
   return {
@@ -147,7 +165,7 @@ describe("AgentCore ToolSession facade", () => {
       const awaitingStatus = yield* session.status();
       const stopsWhileAwaiting = [...runtime.stoppedRuntimeSessionIds];
 
-      yield* session.respondToElicit("call_idle_then_complete:req:1", {
+      yield* resumeElicit(session, "call_idle_then_complete:req:1", {
         action: "accept",
         content: { confirmed: true },
       });
@@ -220,7 +238,7 @@ describe("AgentCore ToolSession facade", () => {
         elicitId: "call_elicit:req:1",
       });
 
-      yield* session.respondToElicit("call_elicit:req:1", {
+      yield* resumeElicit(session, "call_elicit:req:1", {
         action: "accept",
         content: { confirmed: true },
       });
@@ -257,7 +275,7 @@ describe("AgentCore ToolSession facade", () => {
     await expect(
       run(function* () {
         const session = yield* registry.create(elicitTool, {}, { sessionId: "call_elicit_bad" });
-        yield* session.respondToElicit("wrong", { action: "accept", content: {} });
+        yield* resumeElicit(session, "wrong", { action: "accept", content: {} });
       }),
     ).rejects.toThrow(/Elicitation ID mismatch/);
   });
@@ -275,7 +293,7 @@ describe("AgentCore ToolSession facade", () => {
     const result = await run(function* () {
       const session = yield* registry.create(sampleTool, {}, { sessionId: "call_sample" });
       expect(yield* session.status()).toBe("awaiting_sample");
-      yield* session.respondToSample("call_sample:req:1", { text: "hello model" });
+      yield* resumeSample(session, "call_sample:req:1", { text: "hello model" });
       return {
         status: yield* session.status(),
         events: yield* stores.events.readAfter("call_sample", 0),
@@ -333,7 +351,7 @@ describe("AgentCore ToolSession facade", () => {
     const result = await run(function* () {
       const session = yield* registry.create(elicitTool, {}, { sessionId: "call_orphan" });
       runtime.sessions.clear();
-      yield* session.respondToElicit("call_orphan:req:1", { action: "accept", content: {} });
+      yield* resumeElicit(session, "call_orphan:req:1", { action: "accept", content: {} });
       return {
         status: yield* session.status(),
         events: yield* stores.events.readAfter("call_orphan", 0),
@@ -387,12 +405,12 @@ describe("AgentCore ToolSession facade", () => {
 
     const result = await run(function* () {
       const elicit = yield* elicitRegistry.create(elicitTool, {}, { sessionId: "stable_elicit" });
-      yield* elicit.respondToElicit("stable_elicit:req:1", { action: "accept", content: {} });
-      yield* elicit.respondToElicit("stable_elicit:req:1", { action: "accept", content: {} });
+      yield* resumeElicit(elicit, "stable_elicit:req:1", { action: "accept", content: {} });
+      yield* resumeElicit(elicit, "stable_elicit:req:1", { action: "accept", content: {} });
 
       const sample = yield* sampleRegistry.create(sampleTool, {}, { sessionId: "stable_sample" });
-      yield* sample.respondToSample("stable_sample:req:1", { text: "hello" });
-      yield* sample.respondToSample("stable_sample:req:1", { text: "hello" });
+      yield* resumeSample(sample, "stable_sample:req:1", { text: "hello" });
+      yield* resumeSample(sample, "stable_sample:req:1", { text: "hello" });
 
       const cancellableStores = createStores();
       const cancellableRuntime = new FakeAgentCoreRemoteToolRuntimeClient();
@@ -406,7 +424,7 @@ describe("AgentCore ToolSession facade", () => {
         {},
         { sessionId: "stable_cancel" },
       );
-      yield* cancellable.cancel("stop");
+      yield* cancellable.resume({ kind: "cancel", reason: "stop" });
 
       return {
         elicitIds: elicitRuntime.invocations
@@ -497,7 +515,7 @@ describe("AgentCore ToolSession facade", () => {
       });
       fakeSession.nextSeq = 4;
 
-      yield* session.respondToElicit("duplicate_recover:req:1", {
+      yield* resumeElicit(session, "duplicate_recover:req:1", {
         action: "accept",
         content: { ok: true },
       });
@@ -582,7 +600,7 @@ describe("AgentCore ToolSession facade", () => {
       });
       yield* stores.events.markTerminal("stale_replay");
       const session = createAgentCoreToolSession({ handle, stores, runtimeClient });
-      yield* session.respondToElicit("old-elicit", { action: "accept", content: {} });
+      yield* resumeElicit(session, "old-elicit", { action: "accept", content: {} });
       return yield* stores.handles.get("stale_replay");
     });
 

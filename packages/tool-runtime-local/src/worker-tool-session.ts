@@ -39,7 +39,12 @@ import {
   type WorkerResponse,
   type WorkerResult,
 } from "@sweatpants/agent-sdk/transport/worker";
-import type { ToolSession, ToolSessionStatus, ToolSessionEvent } from "@sweatpants/tool-session";
+import type {
+  ToolInvocationResume,
+  ToolSession,
+  ToolSessionStatus,
+  ToolSessionEvent,
+} from "@sweatpants/tool-session";
 import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
 import { createToolSessionEventLog, isTerminalToolSessionStatus } from "@sweatpants/tool-session";
 import type { McpWorkerInitData } from "./worker-types.ts";
@@ -201,31 +206,27 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
         },
       },
 
-      *respondToElicit(
-        elicitId: string,
-        response: ElicitExchangeCompletion<unknown>,
-      ): Operation<void> {
-        yield* WorkerSessionStateContext.with(sessionState, function* () {
-          yield* WorkerSessionApi.operations.respondToElicit(elicitId, response);
-        });
-      },
-
-      *respondToSample(sampleId: string, response: SampleExchangeCompletion): Operation<void> {
-        yield* WorkerSessionStateContext.with(sessionState, function* () {
-          yield* WorkerSessionApi.operations.respondToSample(sampleId, response);
-        });
-      },
-
-      *cancel(reason?: string): Operation<void> {
-        if (isTerminalToolSessionStatus(log.status) || cancellationRequested) {
+      *resume(resume: ToolInvocationResume): Operation<void> {
+        if (resume.kind === "cancel") {
+          if (isTerminalToolSessionStatus(log.status) || cancellationRequested) {
+            return;
+          }
+          cancellationRequested = true;
+          cancellationReason = resume.reason;
+          // Unblock the worker-side request handler. Terminal `cancelled` is
+          // published only after workerResult settles, so ownership cannot
+          // outrun actual worker termination.
+          closePendingResponses();
           return;
         }
-        cancellationRequested = true;
-        cancellationReason = reason;
-        // Unblock the worker-side request handler. Terminal `cancelled` is
-        // published only after workerResult settles, so registry ownership
-        // cannot outrun actual worker termination.
-        closePendingResponses();
+
+        yield* WorkerSessionStateContext.with(sessionState, function* () {
+          if (resume.kind === "elicit") {
+            yield* WorkerSessionApi.operations.respondToElicit(resume.requestId, resume.response);
+          } else {
+            yield* WorkerSessionApi.operations.respondToSample(resume.requestId, resume.response);
+          }
+        });
       },
     };
 
