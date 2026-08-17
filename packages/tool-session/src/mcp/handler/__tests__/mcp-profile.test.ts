@@ -3,9 +3,11 @@ import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import { MCP_PROTOCOL_VERSION } from "../../protocol-version.ts";
 import type { ToolSessionRegistry } from "../../../contract.ts";
+import type { ToolInvocationHost } from "../../../invocation.ts";
 import { createMcpHandler, generateMcpManifest } from "../mcp-handler.ts";
 
 const unusedRegistry = {} as ToolSessionRegistry;
+const unusedHost = {} as ToolInvocationHost;
 
 function initialize(protocolVersion?: string): Request {
   return new Request("http://localhost/mcp", {
@@ -37,7 +39,11 @@ function ping(protocolVersion: string): Request {
 
 describe("canonical MCP profile", () => {
   it("negotiates MCP 2025-11-25 without advertising unimplemented extensions", async () => {
-    const { handler } = createMcpHandler({ registry: unusedRegistry, tools: new Map() });
+    const { handler } = createMcpHandler({
+      registry: unusedRegistry,
+      host: unusedHost,
+      tools: new Map(),
+    });
     const response = await handler(initialize(MCP_PROTOCOL_VERSION));
     const body = (await response.json()) as {
       result: { protocolVersion: string; capabilities: Record<string, unknown> };
@@ -49,7 +55,11 @@ describe("canonical MCP profile", () => {
   });
 
   it("returns its supported version when the client proposes an older version", async () => {
-    const { handler } = createMcpHandler({ registry: unusedRegistry, tools: new Map() });
+    const { handler } = createMcpHandler({
+      registry: unusedRegistry,
+      host: unusedHost,
+      tools: new Map(),
+    });
     const response = await handler(initialize("2024-11-05"));
     const body = (await response.json()) as { result: { protocolVersion: string } };
     expect(response.status).toBe(200);
@@ -57,7 +67,11 @@ describe("canonical MCP profile", () => {
   });
 
   it("returns a correlated invalid-params error when protocolVersion is missing", async () => {
-    const { handler } = createMcpHandler({ registry: unusedRegistry, tools: new Map() });
+    const { handler } = createMcpHandler({
+      registry: unusedRegistry,
+      host: unusedHost,
+      tools: new Map(),
+    });
     const response = await handler(initialize());
     const body = (await response.json()) as {
       id: string;
@@ -72,7 +86,11 @@ describe("canonical MCP profile", () => {
   });
 
   it("rejects a conflicting post-initialize MCP-Protocol-Version header", async () => {
-    const { handler } = createMcpHandler({ registry: unusedRegistry, tools: new Map() });
+    const { handler } = createMcpHandler({
+      registry: unusedRegistry,
+      host: unusedHost,
+      tools: new Map(),
+    });
     const response = await handler(ping("2024-11-05"));
     const body = (await response.json()) as { id: string; error: { code: number } };
     expect(response.status).toBe(400);

@@ -220,8 +220,10 @@ export function createToolSession<
 
       settled: () => log.settled(),
 
-      events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void> {
-        return log.events(afterLSN);
+      notices: {
+        events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void> {
+          return log.events(afterLSN);
+        },
       },
 
       *respondToElicit(
@@ -255,10 +257,6 @@ export function createToolSession<
         pendingSample = null;
         log.setStatus("running");
         pending.signal.send({ completion: response });
-      },
-
-      *emitWakeUp(): Operation<void> {
-        // No longer needed
       },
 
       *cancel(reason?: string): Operation<void> {

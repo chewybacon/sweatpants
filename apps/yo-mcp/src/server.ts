@@ -6,6 +6,7 @@ import type { SampleResultBase } from "@sweatpants/agent-sdk";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createInMemoryToolSessionStore,
+  createToolInvocationHost,
   createToolSessionRegistry,
 } from "@sweatpants/tool-runtime-local";
 import { createToolsMap } from "./tools/index.js";
@@ -33,6 +34,7 @@ export async function createYoMcpRuntime() {
     });
     const { handler, manager } = createMcpHandler({
       registry,
+      host: createToolInvocationHost(registry),
       tools: createToolsMap(),
       sessionTimeout: 300_000,
       sseRetryMs: 1_000,

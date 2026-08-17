@@ -33,7 +33,7 @@ function* collectEvents(
   handler?: (event: ToolSessionEvent) => Operation<void>,
 ) {
   yield* spawn(function* () {
-    for (const event of yield* each(session.events())) {
+    for (const event of yield* each(session.notices.events())) {
       events.push(event);
       if (handler) {
         yield* handler(event);
@@ -720,7 +720,7 @@ async function main() {
       // Now test the afterLSN feature - get events starting after LSN 2
       const eventsAfter2: ToolSessionEvent[] = [];
       yield* spawn(function* () {
-        for (const event of yield* each(session.events(2))) {
+        for (const event of yield* each(session.notices.events(2))) {
           eventsAfter2.push(event);
           yield* each.next();
         }

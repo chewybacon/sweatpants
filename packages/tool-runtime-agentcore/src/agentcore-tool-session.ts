@@ -271,48 +271,50 @@ export function createAgentCoreToolSession(
       return toToolSessionStatus(handle.status);
     },
 
-    events(afterLSN = 0): Stream<ToolSessionEvent, void> {
-      return resource<Subscription<ToolSessionEvent, void>>(function* (provide) {
-        let cursor = afterLSN;
-        let buffered: Array<{ lsn: number; event: AgentCoreToolEvent }> = [];
-        let index = 0;
-        let drainedBeforeWait = false;
+    notices: {
+      events(afterLSN = 0): Stream<ToolSessionEvent, void> {
+        return resource<Subscription<ToolSessionEvent, void>>(function* (provide) {
+          let cursor = afterLSN;
+          let buffered: Array<{ lsn: number; event: AgentCoreToolEvent }> = [];
+          let index = 0;
+          let drainedBeforeWait = false;
 
-        yield* provide({
-          *next(): Operation<IteratorResult<ToolSessionEvent, void>> {
-            while (true) {
-              if (index < buffered.length) {
-                const item = buffered[index++]!;
-                cursor = item.lsn;
+          yield* provide({
+            *next(): Operation<IteratorResult<ToolSessionEvent, void>> {
+              while (true) {
+                if (index < buffered.length) {
+                  const item = buffered[index++]!;
+                  cursor = item.lsn;
+                  drainedBeforeWait = false;
+                  return { done: false, value: toToolSessionEvent(item.lsn, item.event) };
+                }
+
+                const batch = yield* stores.events.readAfter(sessionId, cursor);
+                buffered = batch.events;
+                index = 0;
+                if (buffered.length > 0) {
+                  continue;
+                }
+
+                const terminal = yield* stores.events.isTerminal(sessionId);
+                if (terminal) {
+                  return { done: true, value: undefined };
+                }
+
+                const handle = yield* getHandle();
+                if (!isTerminalStatus(handle.status) && !drainedBeforeWait) {
+                  drainedBeforeWait = true;
+                  yield* reconcileRuntimeState();
+                  continue;
+                }
+
+                yield* stores.events.waitForChange(sessionId, cursor);
                 drainedBeforeWait = false;
-                return { done: false, value: toToolSessionEvent(item.lsn, item.event) };
               }
-
-              const batch = yield* stores.events.readAfter(sessionId, cursor);
-              buffered = batch.events;
-              index = 0;
-              if (buffered.length > 0) {
-                continue;
-              }
-
-              const terminal = yield* stores.events.isTerminal(sessionId);
-              if (terminal) {
-                return { done: true, value: undefined };
-              }
-
-              const handle = yield* getHandle();
-              if (!isTerminalStatus(handle.status) && !drainedBeforeWait) {
-                drainedBeforeWait = true;
-                yield* reconcileRuntimeState();
-                continue;
-              }
-
-              yield* stores.events.waitForChange(sessionId, cursor);
-              drainedBeforeWait = false;
-            }
-          },
+            },
+          });
         });
-      });
+      },
     },
 
     *respondToElicit(
@@ -358,10 +360,6 @@ export function createAgentCoreToolSession(
         response,
       });
       yield* ingestStream(stream);
-    },
-
-    *emitWakeUp(): Operation<void> {
-      yield* stores.events.waitForChange(sessionId, -1, 0);
     },
 
     *cancel(reason?: string): Operation<void> {

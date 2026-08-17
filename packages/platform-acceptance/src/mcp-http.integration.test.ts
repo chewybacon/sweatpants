@@ -7,6 +7,7 @@ import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import { createMcpHandler } from "@sweatpants/tool-session/mcp";
 import {
   createInMemoryToolSessionStore,
+  createToolInvocationHost,
   createToolSessionRegistry,
 } from "@sweatpants/tool-runtime-local";
 import {
@@ -88,6 +89,7 @@ describe("MCP Streamable HTTP worker integration", () => {
       });
       const { handler, manager } = createMcpHandler({
         registry,
+        host: createToolInvocationHost(registry),
         tools: new Map<string, RuntimeTool>([[ACCEPTANCE_TOOL_NAME, acceptanceBookingTool]]),
       });
       try {

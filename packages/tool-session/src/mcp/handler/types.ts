@@ -17,7 +17,8 @@
  */
 import type { Operation } from "effection";
 import type { Json } from "@sweatpants/foundation";
-import type { ToolSessionRegistry, ToolSession } from "../../contract.ts";
+import type { ToolInvocationNoticeReader, ToolSessionRegistry } from "../../contract.ts";
+import type { ToolInvocationHost } from "../../invocation.ts";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import type { JsonRpcId } from "../protocol/types.ts";
 
@@ -30,10 +31,13 @@ import type { JsonRpcId } from "../protocol/types.ts";
  */
 export interface McpHandlerConfig {
   /**
-   * Registry for managing tool sessions.
-   * The handler uses this to create/acquire/release sessions.
+   * Registry for locating the pull-only notice reader after the host starts
+   * an invocation.
    */
   registry: ToolSessionRegistry;
+
+  /** Pull-based control plane for starting and advancing tool invocations. */
+  host: ToolInvocationHost;
 
   /**
    * Map of available tools by name.
@@ -42,9 +46,7 @@ export interface McpHandlerConfig {
   tools: Map<string, RuntimeTool>;
 
   /**
-   * Session timeout in milliseconds.
-   * Sessions are cleaned up if no activity within this time.
-   * Default: 300000 (5 minutes)
+   * Retention hint for the runtime. The handler does not own invocation lifetime.
    */
   sessionTimeout?: number;
 
@@ -238,7 +240,7 @@ export type McpClassifiedRequest =
  */
 export type McpPostResult =
   | { type: "json"; status: number; body: unknown; headers?: Record<string, string> }
-  | { type: "sse"; sessionId: string; session: ToolSession };
+  | { type: "sse"; sessionId: string; notices: ToolInvocationNoticeReader };
 
 // =============================================================================
 // SESSION STATE
@@ -251,6 +253,7 @@ export interface PendingElicitation {
   elicitId: string;
   requestId: JsonRpcId;
   key: string;
+  afterLSN: number;
 }
 
 /**
@@ -259,6 +262,7 @@ export interface PendingElicitation {
 export interface PendingSample {
   sampleId: string;
   requestId: JsonRpcId;
+  afterLSN: number;
 }
 
 /**
@@ -267,8 +271,8 @@ export interface PendingSample {
 export interface McpSessionState {
   /** Session ID */
   sessionId: string;
-  /** The underlying tool session */
-  session: ToolSession;
+  /** Pull-only UX and protocol notices. */
+  notices: ToolInvocationNoticeReader;
   /** Original tools/call request ID */
   toolCallRequestId: JsonRpcId;
   /** Pending elicitation requests */

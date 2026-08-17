@@ -195,8 +195,10 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
 
       settled: () => log.settled(),
 
-      events(afterLSN?: number): Stream<ToolSessionEvent, void> {
-        return log.events(afterLSN);
+      notices: {
+        events(afterLSN?: number): Stream<ToolSessionEvent, void> {
+          return log.events(afterLSN);
+        },
       },
 
       *respondToElicit(
@@ -224,12 +226,6 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
         // published only after workerResult settles, so registry ownership
         // cannot outrun actual worker termination.
         closePendingResponses();
-      },
-
-      *emitWakeUp(): Operation<void> {
-        // Worker sessions don't need wake-up events - they use message passing
-        // between the host and worker thread, which has its own scheduling.
-        // This is a no-op for worker sessions.
       },
     };
 
