@@ -2,7 +2,6 @@ import { action, race, type Operation } from "effection";
 import { z } from "zod";
 
 import { isDurableToolSessionFacade } from "./durable-tool-session-facade.ts";
-import { ToolInvocationHostPort } from "./invocation-host.ts";
 import {
   parseElicitExchangeCompletion,
   type AnyToolContract,
@@ -24,6 +23,7 @@ import type {
 import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   ToolInvocationHostError,
+  ToolInvocationHostPort,
   type ToolInvocationAsk,
   type ToolInvocationHost,
   type ToolInvocationTurn,

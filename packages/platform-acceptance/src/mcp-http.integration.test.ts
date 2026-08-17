@@ -7,8 +7,7 @@ import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import { createMcpHandler } from "@sweatpants/tool-session/mcp";
 import {
   createInMemoryToolSessionStore,
-  createToolInvocationHost,
-  createToolSessionRegistry,
+  createLocalToolInvocationRuntime,
 } from "@sweatpants/tool-runtime-local";
 import {
   ACCEPTANCE_TOOL_NAME,
@@ -84,14 +83,11 @@ function post(body: unknown, sessionId?: string): Request {
 describe("MCP Streamable HTTP worker integration", () => {
   it("routes elicitation and sampling responses back into one live tool session", async () => {
     const result = await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
+      const runtime = yield* createLocalToolInvocationRuntime(createInMemoryToolSessionStore(), {
         worker: { workerUrl: workerBootstrapUrl(), isDev: false },
       });
-      const { handler, manager } = createMcpHandler({
-        // Control and replayable event reading are separate dependencies now.
-        // This host uses the same private session registry as the event reader.
-        registry,
-        host: createToolInvocationHost(registry),
+      const { handler, manager } = yield* createMcpHandler({
+        events: runtime.events,
         tools: new Map<string, RuntimeTool>([[ACCEPTANCE_TOOL_NAME, acceptanceBookingTool]]),
       });
       try {
