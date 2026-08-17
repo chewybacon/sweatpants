@@ -37,7 +37,9 @@ import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 import {
   createInMemoryToolSessionStore,
   createLocalDurableProgramDriver,
-  createToolSessionForeignEffectRegistrations,
+  createToolInvocationHost,
+  ToolInvocationHostPort,
+  createToolInvocationForeignEffectRegistrations,
   createToolSessionRegistry,
 } from "../index.ts";
 
@@ -173,9 +175,9 @@ describe("automatic foreign adapter child orchestration", () => {
 
     await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
+      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
       const effects = createDurableEffectRegistry([
-        ...createToolSessionForeignEffectRegistrations({
-          registry,
+        ...createToolInvocationForeignEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
         }),
         foreignToolAdapter.modelSampleRegistration(function* () {
@@ -324,9 +326,9 @@ describe("automatic foreign adapter child orchestration", () => {
           execArgv: ["--conditions=development"],
         },
       });
+      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
       const effects = createDurableEffectRegistry([
-        ...createToolSessionForeignEffectRegistrations({
-          registry,
+        ...createToolInvocationForeignEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
         }),
         {

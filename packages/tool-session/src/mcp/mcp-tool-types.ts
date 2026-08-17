@@ -48,6 +48,7 @@ import type {
   ToolElicitResult,
 } from "@sweatpants/agent-sdk";
 import type { ChatMessage } from "@sweatpants/chat-contract";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 
 // Re-export MCP types for convenience
 export type {
@@ -239,6 +240,11 @@ export interface ElicitRequest<
 
   /** Optional context data for richer UI */
   context?: unknown;
+  /** Optional producer-known identity for exact client binding lookup. */
+  bindingId?: string;
+  responseContract?: PortableSchemaDescriptor;
+  contextContract?: PortableSchemaDescriptor;
+  ownerInterfaceDigest?: string;
 }
 
 // =============================================================================
