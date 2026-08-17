@@ -308,7 +308,7 @@ describe("AgentCore ToolSession facade", () => {
     const result = await run(function* () {
       yield* registry.create(simpleTool, { input: "hello" }, { sessionId: "call_rehydrate" });
       const rehydrated = yield* registry.acquire("call_rehydrate");
-      const sub = yield* rehydrated.events(1);
+      const sub = yield* rehydrated.notices.events(1);
       const replayed = [];
       let next = yield* sub.next();
       while (!next.done) {

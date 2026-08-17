@@ -62,7 +62,7 @@ function toolsByCanonicalName(
 
 function eventStreamFromSession(session: McpToolSession): Stream<ToolExecutionEvent, void> {
   return resource(function* (provide) {
-    const subscription = yield* session.events();
+    const subscription = yield* session.notices.events();
     yield* provide({
       *next(): Operation<IteratorResult<ToolExecutionEvent, void>> {
         return yield* subscription.next();
@@ -176,7 +176,7 @@ function* findPendingRequestLsn(
     return undefined;
   }
 
-  const subscription = yield* session.events();
+  const subscription = yield* session.notices.events();
   while (true) {
     const next = yield* subscription.next();
     if (next.done) {
@@ -199,7 +199,7 @@ function* nextAgentCoreExecution(
   samplingProvider: ToolSessionSamplingProvider,
   afterLSN?: number,
 ): Operation<ToolExecution> {
-  const subscription = yield* session.events(afterLSN);
+  const subscription = yield* session.notices.events(afterLSN);
 
   while (true) {
     const next = yield* subscription.next();

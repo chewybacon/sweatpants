@@ -39,7 +39,7 @@ function* waitForProbeResult(
 ): Operation<ProbeResult> {
   const events: ToolSessionEvent[] = [];
   yield* spawn(function* () {
-    for (const event of yield* each(session.events())) {
+    for (const event of yield* each(session.notices.events())) {
       events.push(event);
       yield* each.next();
     }

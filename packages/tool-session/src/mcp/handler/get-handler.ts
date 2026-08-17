@@ -67,7 +67,7 @@ export function createSseEventStream(
   options: SseStreamOptions = {},
 ): Operation<Subscription<string, void>> {
   const { logger } = options;
-  const { session, sessionId, toolCallRequestId } = state;
+  const { notices, sessionId, toolCallRequestId } = state;
 
   return resource(function* (provide) {
     // Create encoder context
@@ -75,7 +75,7 @@ export function createSseEventStream(
 
     // Get event stream from session
     const afterLSN = state.lastLSN;
-    const eventSubscription = yield* session.events(afterLSN);
+    const eventSubscription = yield* notices.events(afterLSN);
 
     let currentLSN = afterLSN;
 
@@ -113,6 +113,7 @@ export function createSseEventStream(
                 encoded.elicitId,
                 (encoded.message as { id: JsonRpcId }).id,
                 elicitEvent.key ?? "unknown",
+                currentLSN,
               );
             }
             if (encoded.sampleId) {
@@ -120,6 +121,7 @@ export function createSseEventStream(
                 sessionId,
                 encoded.sampleId,
                 (encoded.message as { id: JsonRpcId }).id,
+                currentLSN,
               );
             }
           }
@@ -151,7 +153,7 @@ export function* handleGet(
   const { retryMs = 1000 } = options;
 
   // Acquire session
-  const state = yield* manager.acquireSession(sessionId);
+  const state = yield* manager.openSession(sessionId);
 
   // Update starting LSN if client is resuming
   if (afterLSN !== undefined) {

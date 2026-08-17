@@ -189,7 +189,7 @@ export function createToolInvocationHost(registry: ToolSessionRegistry): ToolInv
 }
 
 function* drainInvocation(session: ToolSession, cursor: number): Operation<ToolInvocationTurn> {
-  const events = yield* session.events(cursor);
+  const events = yield* session.notices.events(cursor);
   while (true) {
     const next = yield* events.next();
     if (next.done) {

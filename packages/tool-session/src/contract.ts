@@ -193,6 +193,18 @@ export type ToolSessionEvent<TResult = unknown> =
   | CancelledEvent;
 
 // =============================================================================
+// TOOL INVOCATION NOTICES
+// =============================================================================
+
+/**
+ * Pull-only reader for the UX and protocol projection of an invocation.
+ * Reading notices never advances the invocation control plane.
+ */
+export interface ToolInvocationNoticeReader<TResult = unknown> {
+  events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void>;
+}
+
+// =============================================================================
 // TOOL SESSION
 // =============================================================================
 
@@ -219,13 +231,8 @@ export interface ToolSession<TResult = unknown> {
   /** Resolves when the session reaches a terminal status; no timer polling. */
   settled?(): Operation<ToolSessionStatus>;
 
-  /**
-   * Get session events as a stream.
-   *
-   * @param afterLSN - Only return events after this LSN (for resumability)
-   * @returns Stream of events, completes when session ends
-   */
-  events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void>;
+  /** Pull-only UX/protocol notices. This reader does not control the invocation. */
+  readonly notices: ToolInvocationNoticeReader<TResult>;
 
   /**
    * Respond to an elicitation request.
@@ -248,12 +255,6 @@ export interface ToolSession<TResult = unknown> {
       | ParsedSampleExchangeCompletion<unknown>
       | ToolCallSampleExchangeCompletion,
   ): Operation<void>;
-
-  /**
-   * Emit an internal event to wake up the SSE stream.
-   * Used when a sample response is queued from a different HTTP request scope.
-   */
-  emitWakeUp(): Operation<void>;
 
   /**
    * Cancel the session.

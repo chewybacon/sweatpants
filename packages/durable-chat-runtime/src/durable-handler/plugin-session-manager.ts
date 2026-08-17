@@ -318,7 +318,7 @@ export function createPluginSessionManager(
           //
           // Instead, we use lastProcessedLSN to resume from where we left off,
           // so events are never replayed.
-          const stream = toolSession.events(lastProcessedLSN);
+          const stream = toolSession.notices.events(lastProcessedLSN);
           const eventSubscription = yield* stream;
 
           // Get next event

@@ -2,7 +2,7 @@
  * MCP Session Manager
  *
  * Manages MCP session state, correlating MCP-Session-Id headers with
- * underlying ToolSession instances.
+ * invocation ids and pull-only notice readers.
  *
  * ## Responsibilities
  *
@@ -14,9 +14,10 @@
  * @packageDocumentation
  */
 import { createContext, type Operation } from "effection";
-import { parser } from "@sweatpants/foundation";
+import { assertJson, parser, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
 import type { ToolSessionRegistry } from "../../contract.ts";
+import type { ToolInvocationHost } from "../../invocation.ts";
 import type {
   ElicitsMap,
   ToolDefinition,
@@ -75,13 +76,16 @@ export const McpSessionManagerContext = createContext<McpSessionManager>("mcp-se
  * Options for creating a session manager.
  */
 export interface McpSessionManagerOptions {
-  /** Tool session registry */
+  /** Registry used to locate the notice reader after host.start(). */
   registry: ToolSessionRegistry;
+
+  /** Pull-based control plane for the live invocation. */
+  host: ToolInvocationHost;
 
   /** Available tools by name */
   tools: Map<string, ToolDefinition<string, unknown, unknown, ElicitsMap>>;
 
-  /** Session timeout in milliseconds */
+  /** Retention hint passed by the runtime. */
   sessionTimeout?: number | undefined;
 }
 
@@ -91,13 +95,13 @@ export interface McpSessionManagerOptions {
 export class McpSessionManager {
   private readonly sessions = new Map<string, McpSessionState>();
   private readonly registry: ToolSessionRegistry;
+  private readonly host: ToolInvocationHost;
   private readonly tools: Map<string, ToolDefinition<string, unknown, unknown, ElicitsMap>>;
-  private readonly sessionTimeout: number;
 
   constructor(options: McpSessionManagerOptions) {
     this.registry = options.registry;
+    this.host = options.host;
     this.tools = options.tools;
-    this.sessionTimeout = options.sessionTimeout ?? 300000; // 5 minutes
   }
 
   // ===========================================================================
@@ -120,15 +124,31 @@ export class McpSessionManager {
       );
     }
 
-    // Create tool session
-    const session = yield* this.registry.create(tool, args, {
-      timeout: this.sessionTimeout,
+    const sessionId = request.sessionId ?? crypto.randomUUID();
+    yield* this.host.start({
+      invocationId: sessionId,
+      tool,
+      input: args,
+    });
+    const session = yield* this.registry.get(sessionId);
+    if (!session) {
+      throw new McpHandlerError(
+        MCP_HANDLER_ERRORS.SESSION_NOT_FOUND,
+        `Invocation ${sessionId} was not published`,
+        500,
+      );
+    }
+    // The first turn starts the tool and publishes its first ask or terminal.
+    yield* this.host.turn({
+      invocationId: sessionId,
+      commandId: `mcp:${requestId}:start`,
+      cursor: 0,
     });
 
     // Create session state
     const state: McpSessionState = {
-      sessionId: session.id,
-      session,
+      sessionId,
+      notices: session.notices,
       toolCallRequestId: requestId,
       pendingElicits: new Map(),
       pendingSamples: new Map(),
@@ -147,10 +167,8 @@ export class McpSessionManager {
     return this.sessions.get(sessionId) ?? null;
   }
 
-  /**
-   * Acquire an existing session (increments refcount in registry).
-   */
-  *acquireSession(sessionId: string): Operation<McpSessionState> {
+  /** Open an existing session for a pull-only notice reader. */
+  *openSession(sessionId: string): Operation<McpSessionState> {
     const state = this.sessions.get(sessionId);
     if (!state) {
       throw new McpHandlerError(
@@ -160,16 +178,7 @@ export class McpSessionManager {
       );
     }
 
-    // Acquire in registry
-    yield* this.registry.acquire(sessionId);
     return state;
-  }
-
-  /**
-   * Release a session (decrements refcount in registry).
-   */
-  *releaseSession(sessionId: string): Operation<void> {
-    yield* this.registry.release(sessionId);
   }
 
   /**
@@ -181,11 +190,13 @@ export class McpSessionManager {
       return; // Already terminated
     }
 
-    // Cancel the tool execution
-    yield* state.session.cancel("Session terminated by client");
-
-    // Release from registry
-    yield* this.registry.release(sessionId);
+    yield* this.host.turn({
+      invocationId: sessionId,
+      commandId: `mcp:${sessionId}:terminate`,
+      cursor: state.lastLSN,
+      resume: { kind: "cancel", reason: "Session terminated by client" },
+    });
+    yield* this.host.dispose(sessionId);
 
     // Remove from local state
     this.sessions.delete(sessionId);
@@ -203,6 +214,7 @@ export class McpSessionManager {
     elicitId: string,
     requestId: JsonRpcId,
     key: string,
+    afterLSN: number,
   ): void {
     const state = this.sessions.get(sessionId);
     if (!state) {
@@ -213,13 +225,19 @@ export class McpSessionManager {
       elicitId,
       requestId,
       key,
+      afterLSN,
     });
   }
 
   /**
    * Register a pending sampling request.
    */
-  registerPendingSample(sessionId: string, sampleId: string, requestId: JsonRpcId): void {
+  registerPendingSample(
+    sessionId: string,
+    sampleId: string,
+    requestId: JsonRpcId,
+    afterLSN: number,
+  ): void {
     const state = this.sessions.get(sessionId);
     if (!state) {
       return;
@@ -228,6 +246,7 @@ export class McpSessionManager {
     state.pendingSamples.set(String(requestId), {
       sampleId,
       requestId,
+      afterLSN,
     });
   }
 
@@ -311,12 +330,12 @@ export class McpSessionManager {
     // Build the wire result. This pass-through layer does not own the
     // originating elicit context, so exchange construction happens where the
     // elicit originated (bridge/worker runtime), not here.
-    let elicitResult: ElicitExchangeCompletion<unknown>;
+    let elicitResult: ElicitExchangeCompletion<Json>;
     switch (action) {
       case "accept":
         elicitResult = {
           action: "accept",
-          content: content ?? {},
+          content: assertJson(content ?? {}),
         };
         break;
       case "decline":
@@ -327,7 +346,16 @@ export class McpSessionManager {
         break;
     }
 
-    yield* state.session.respondToElicit(pending.elicitId, elicitResult);
+    yield* this.host.turn({
+      invocationId: sessionId,
+      commandId: `mcp:${String(requestId)}`,
+      cursor: pending.afterLSN,
+      resume: {
+        kind: "elicit",
+        requestId: pending.elicitId,
+        response: elicitResult,
+      },
+    });
 
     // Clear pending
     this.clearPendingElicit(sessionId, requestId);
@@ -370,7 +398,16 @@ export class McpSessionManager {
     // Clear pending tracking first
     this.clearPendingSample(sessionId, requestId);
 
-    yield* state.session.respondToSample(pending.sampleId, sampleResult);
+    yield* this.host.turn({
+      invocationId: sessionId,
+      commandId: `mcp:${String(requestId)}`,
+      cursor: pending.afterLSN,
+      resume: {
+        kind: "sample",
+        requestId: pending.sampleId,
+        response: sampleResult,
+      },
+    });
   }
 
   // ===========================================================================

@@ -245,6 +245,7 @@ export function createMcpHandler(options: McpHandlerOptions): {
 } {
   const {
     registry,
+    host,
     tools,
     sessionTimeout,
     sseRetryMs = 1000,
@@ -257,6 +258,7 @@ export function createMcpHandler(options: McpHandlerOptions): {
   // Create session manager
   const manager = createSessionManager({
     registry,
+    host,
     tools,
     sessionTimeout,
   });
@@ -397,7 +399,7 @@ export function createMcpHandler(options: McpHandlerOptions): {
           // Try to acquire the session
           try {
             const state = await scope.run(function* () {
-              const s = yield* manager.acquireSession(sessionId);
+              const s = yield* manager.openSession(sessionId);
               if (afterLSN !== undefined) {
                 s.lastLSN = afterLSN;
               }
@@ -635,13 +637,6 @@ function createSseResponse(
         if (!scopeDestroyed) {
           scopeDestroyed = true;
           try {
-            await scope.run(function* () {
-              yield* manager.releaseSession(sessionId);
-            });
-          } catch {
-            // Ignore release errors
-          }
-          try {
             await destroy();
           } catch {
             // Ignore destroy errors
@@ -660,13 +655,6 @@ function createSseResponse(
         if (queueResolver) {
           queueResolver();
           queueResolver = null;
-        }
-        try {
-          await scope.run(function* () {
-            yield* manager.releaseSession(sessionId);
-          });
-        } catch {
-          // Ignore release errors
         }
         try {
           await destroy();

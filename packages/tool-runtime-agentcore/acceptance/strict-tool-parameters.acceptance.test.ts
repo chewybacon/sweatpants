@@ -22,35 +22,34 @@ function createCompletedSession(): ToolSession {
         return "completed" as const;
       })();
     },
-    events() {
-      return resource(function* (provide) {
-        let emitted = false;
-        yield* provide({
-          *next() {
-            if (emitted) {
-              return { done: true as const, value: undefined };
-            }
-            emitted = true;
-            return {
-              done: false as const,
-              value: {
-                type: "result" as const,
-                lsn: 1,
-                timestamp: Date.now(),
-                result: { echoed: "hello" },
-              },
-            };
-          },
+    notices: {
+      events() {
+        return resource(function* (provide) {
+          let emitted = false;
+          yield* provide({
+            *next() {
+              if (emitted) {
+                return { done: true as const, value: undefined };
+              }
+              emitted = true;
+              return {
+                done: false as const,
+                value: {
+                  type: "result" as const,
+                  lsn: 1,
+                  timestamp: Date.now(),
+                  result: { echoed: "hello" },
+                },
+              };
+            },
+          });
         });
-      });
+      },
     },
     respondToElicit() {
       return (function* () {})();
     },
     respondToSample() {
-      return (function* () {})();
-    },
-    emitWakeUp() {
       return (function* () {})();
     },
     cancel() {
