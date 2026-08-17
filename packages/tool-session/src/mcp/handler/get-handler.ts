@@ -67,7 +67,7 @@ export function createSseEventStream(
   options: SseStreamOptions = {},
 ): Operation<Subscription<string, void>> {
   const { logger } = options;
-  const { notices, sessionId, toolCallRequestId } = state;
+  const { events, sessionId, toolCallRequestId } = state;
 
   return resource(function* (provide) {
     // Create encoder context
@@ -75,7 +75,7 @@ export function createSseEventStream(
 
     // Get event stream from session
     const afterLSN = state.lastLSN;
-    const eventSubscription = yield* notices.events(afterLSN);
+    const eventSubscription = yield* events.events(afterLSN);
 
     let currentLSN = afterLSN;
 

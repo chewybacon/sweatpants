@@ -180,7 +180,7 @@ export function createToolInvocationHost(registry: ToolSessionRegistry): ToolInv
 }
 
 function* drainInvocation(session: ToolSession, cursor: number): Operation<ToolInvocationTurn> {
-  const events = yield* session.notices.events(cursor);
+  const events = yield* session.projection.events(cursor);
   while (true) {
     const next = yield* events.next();
     if (next.done) {
@@ -199,6 +199,9 @@ function* drainInvocation(session: ToolSession, cursor: number): Operation<ToolI
       case "progress":
       case "log":
       case "sample_response_queued":
+        // These records remain in the replayable projection for UX readers.
+        // They do not park or terminate the control crank, so this drain keeps
+        // pulling until it reaches an ask or terminal outcome.
         continue;
       case "sample_request":
         return { type: "parked", cursor: event.lsn, ask: sampleAsk(event) };

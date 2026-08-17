@@ -88,6 +88,8 @@ describe("MCP Streamable HTTP worker integration", () => {
         worker: { workerUrl: workerBootstrapUrl(), isDev: false },
       });
       const { handler, manager } = createMcpHandler({
+        // Control and replayable event reading are separate dependencies now.
+        // This host uses the same private session registry as the event reader.
         registry,
         host: createToolInvocationHost(registry),
         tools: new Map<string, RuntimeTool>([[ACCEPTANCE_TOOL_NAME, acceptanceBookingTool]]),

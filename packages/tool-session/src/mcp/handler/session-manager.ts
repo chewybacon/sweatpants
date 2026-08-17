@@ -14,7 +14,7 @@
  * @packageDocumentation
  */
 import { createContext, type Operation } from "effection";
-import { assertJson, parser, type Json } from "@sweatpants/foundation";
+import { parser } from "@sweatpants/foundation";
 import { z } from "zod";
 import type { ToolSessionRegistry } from "../../contract.ts";
 import type { ToolInvocationHost } from "../../invocation.ts";
@@ -148,7 +148,7 @@ export class McpSessionManager {
     // Create session state
     const state: McpSessionState = {
       sessionId,
-      notices: session.notices,
+      events: session.projection,
       toolCallRequestId: requestId,
       pendingElicits: new Map(),
       pendingSamples: new Map(),
@@ -214,7 +214,7 @@ export class McpSessionManager {
     elicitId: string,
     requestId: JsonRpcId,
     key: string,
-    afterLSN: number,
+    cursor: number,
   ): void {
     const state = this.sessions.get(sessionId);
     if (!state) {
@@ -225,7 +225,7 @@ export class McpSessionManager {
       elicitId,
       requestId,
       key,
-      afterLSN,
+      cursor,
     });
   }
 
@@ -236,7 +236,7 @@ export class McpSessionManager {
     sessionId: string,
     sampleId: string,
     requestId: JsonRpcId,
-    afterLSN: number,
+    cursor: number,
   ): void {
     const state = this.sessions.get(sessionId);
     if (!state) {
@@ -246,7 +246,7 @@ export class McpSessionManager {
     state.pendingSamples.set(String(requestId), {
       sampleId,
       requestId,
-      afterLSN,
+      cursor,
     });
   }
 
@@ -330,12 +330,12 @@ export class McpSessionManager {
     // Build the wire result. This pass-through layer does not own the
     // originating elicit context, so exchange construction happens where the
     // elicit originated (bridge/worker runtime), not here.
-    let elicitResult: ElicitExchangeCompletion<Json>;
+    let elicitResult: ElicitExchangeCompletion<unknown>;
     switch (action) {
       case "accept":
         elicitResult = {
           action: "accept",
-          content: assertJson(content ?? {}),
+          content: content ?? {},
         };
         break;
       case "decline":
@@ -349,7 +349,7 @@ export class McpSessionManager {
     yield* this.host.turn({
       invocationId: sessionId,
       commandId: `mcp:${String(requestId)}`,
-      cursor: pending.afterLSN,
+      cursor: pending.cursor,
       resume: {
         kind: "elicit",
         requestId: pending.elicitId,
@@ -401,7 +401,7 @@ export class McpSessionManager {
     yield* this.host.turn({
       invocationId: sessionId,
       commandId: `mcp:${String(requestId)}`,
-      cursor: pending.afterLSN,
+      cursor: pending.cursor,
       resume: {
         kind: "sample",
         requestId: pending.sampleId,

@@ -4,9 +4,7 @@ import {
 } from "@sweatpants/tool-session/tool-parameters";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { ChatToolCall } from "@sweatpants/chat-contract";
-import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import { action, resource, spawn, type Operation, type Stream } from "effection";
-import type { Json } from "@sweatpants/foundation";
 import {
   installToolRuntime,
   ToolRuntimeError,
@@ -68,7 +66,7 @@ function toolsByCanonicalName(
 
 function eventStreamFromSession(session: McpToolSession): Stream<ToolExecutionEvent, void> {
   return resource(function* (provide) {
-    const subscription = yield* session.notices.events();
+    const subscription = yield* session.projection.events();
     yield* provide({
       *next(): Operation<IteratorResult<ToolExecutionEvent, void>> {
         return yield* subscription.next();
@@ -170,7 +168,7 @@ function* nextMcpExecution(
   samplingProvider: ToolSessionSamplingProvider,
   afterLSN?: number,
 ): Operation<ToolExecution> {
-  const subscription = yield* session.notices.events(afterLSN);
+  const subscription = yield* session.projection.events(afterLSN);
 
   while (true) {
     const next = yield* subscription.next();
@@ -275,7 +273,7 @@ export function createLocalSessionToolExecutionStrategy(
       yield* session.resume({
         kind: "elicit",
         requestId: input.elicitId,
-        response: input.completion as ElicitExchangeCompletion<Json>,
+        response: input.completion,
       });
       if (ctx.signal) {
         yield* spawn(function* () {
