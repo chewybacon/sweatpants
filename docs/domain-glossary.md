@@ -78,7 +78,31 @@ A modeled operational or application failure such as tool rejection, provider fa
 
 **Status:** Agreed
 
-A domain request to stop work, such as user cancellation, supersession, or a parent no longer requiring a child. Logical Cancellation propagates through the Structured Execution Tree, runs finalizers, joins children, and records the resulting semantic outcome.
+A domain request to terminate a computation with a cancelled outcome, such as user cancellation, supersession, or a parent no longer requiring a child. The Journal Authority records Logical Cancellation. The runtime delivers it through the normal crank protocol, runs authored finalizers, joins children, and records the semantic outcome.
+
+Logical Cancellation of a parked branch marks the branch runnable. It does not abort the branch because no computation is active. Logical Cancellation accepted during active work may cause the Host to abort that active attempt before the runtime delivers cancellation at the durable frontier.
+
+See [ADR-005](./adr/005-cancel-abort-and-dispose.md).
+
+### Abort
+
+**Status:** Agreed
+
+An operational request to stop active work now. Abort targets a live attempt, pull loop, provider request, worker, process, or Effection scope. It is process-local or placement-local and may use `AbortSignal` to reach cooperative external APIs.
+
+Abort is not a durable outcome and does not imply Logical Cancellation. Request disconnect, Host shutdown, ownership loss, and process replacement may abort live work without cancelling the program. A parked branch has no active work to abort.
+
+See [ADR-005](./adr/005-cancel-abort-and-dispose.md).
+
+### Dispose
+
+**Status:** Agreed
+
+Release of owned runtime resources after they are no longer needed. Disposal closes scopes, workers, subscriptions, queues, buffers, and handles. It does not choose or prove a semantic outcome.
+
+Normal completion, failure, Logical Cancellation, Host shutdown, and process replacement may all cause disposal. The owner preserves any required terminal or recovery state before deleting resources needed to recover it.
+
+See [ADR-005](./adr/005-cancel-abort-and-dispose.md).
 
 ### Graceful Host Shutdown
 
@@ -194,6 +218,16 @@ Human continuation input requested by an already active Turn, Tool Execution, or
 
 ## Execution language
 
+### Crank
+
+**Status:** Agreed
+
+One demand-pulled advance of a program. The crank supplies a resume input, runs the program until it parks or terminates, and returns the next durable proposal or outcome. `ProgramRuntime.run()` is the sole crank turner for durable programs.
+
+A response to a parked ask and Logical Cancellation of that ask are both crank inputs. Abort is not a crank input. It stops an active crank attempt so a later crank can continue from accepted durable state.
+
+See [ADR-001](./adr/001-one-crank-turner.md) and [ADR-005](./adr/005-cancel-abort-and-dispose.md).
+
 ### Durable Execution
 
 **Status:** Agreed as a concept; package boundary provisional
@@ -236,7 +270,9 @@ The authority atomically records child completion, resolves the waiting parent p
 
 **Status:** Agreed
 
-The state of one nonterminal program branch that is waiting on an authority-recorded input or outcome. A parked branch does not imply that its complete execution tree is quiescent; siblings, children, or Host-owned effects may still be advancing.
+The state of one nonterminal program branch that is waiting on an authority-recorded input or outcome. A parked branch has no active computation to abort. Logical Cancellation marks it runnable and supplies cancellation through a later crank.
+
+A parked branch does not imply that its complete execution tree is quiescent. Siblings, children, or Host-owned effects may still be advancing.
 
 ### Quiescent Cut
 
