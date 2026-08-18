@@ -7,7 +7,7 @@
  */
 
 import type { Operation } from "effection";
-import type { Json } from "@sweatpants/foundation";
+import type { IdentityConflict, Json } from "@sweatpants/foundation";
 import type {
   EffectDefinition,
   EffectDescriptor,
@@ -518,9 +518,8 @@ export interface AcceptPullPreparationRequest {
 
 export type AcceptPullPreparationResult =
   | { readonly status: "accepted" | "duplicate" }
-  | {
-      readonly status: "pull_not_pending" | "stale_owner" | "identity_conflict";
-    };
+  | { readonly status: "pull_not_pending" | "stale_owner" }
+  | { readonly status: "identity_conflict"; readonly conflict?: IdentityConflict };
 
 export interface AuthorizeModelDispatchRequest {
   readonly executionId: string;
@@ -532,9 +531,8 @@ export interface AuthorizeModelDispatchRequest {
 
 export type AuthorizeModelDispatchResult =
   | { readonly status: "authorized"; readonly fact: ModelContextPreparedFact }
-  | {
-      readonly status: "pull_not_pending" | "stale_owner" | "not_prepared" | "identity_conflict";
-    };
+  | { readonly status: "pull_not_pending" | "stale_owner" | "not_prepared" }
+  | { readonly status: "identity_conflict"; readonly conflict?: IdentityConflict };
 
 export interface AssistantPartialAcceptedFact {
   readonly type: "AssistantPartialAccepted";

@@ -1,4 +1,4 @@
-import type { Json } from "@sweatpants/foundation";
+import type { IdentityConflict, Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 
 export type ConversationStoreErrorCode =
@@ -220,7 +220,11 @@ export type CommandAdmissionResult =
     }
   | { readonly status: "head_conflict"; readonly current: ConversationHead | null }
   | { readonly status: "state_conflict"; readonly current: ConversationHead }
-  | { readonly status: "command_identity_conflict"; readonly receipt: CommandReceipt };
+  | {
+      readonly status: "command_identity_conflict";
+      readonly receipt: CommandReceipt;
+      readonly conflict: IdentityConflict;
+    };
 
 export interface TerminalHistoryPage {
   readonly entries: readonly Json[];

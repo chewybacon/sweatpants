@@ -2,7 +2,7 @@ import { canonicalSnapshot } from "@sweatpants/foundation";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createMemoryConversationStore } from "./memory.ts";
-import type { ConversationHeadProposal } from "./contract.ts";
+import type { CommandAdmissionRequest, ConversationHeadProposal } from "./contract.ts";
 
 const idle: ConversationHeadProposal = {
   state: "idle",
@@ -18,6 +18,42 @@ const idle: ConversationHeadProposal = {
 };
 
 describe("kernel conversation repository", () => {
+  it("preserves idempotent command retries and reports identity evidence on divergence", async () => {
+    const store = createMemoryConversationStore();
+    await run(function* () {
+      expect(yield* store.compareAndSwapHead("conversation", null, null, idle)).toMatchObject({
+        status: "committed",
+        head: { revision: "0" },
+      });
+
+      const request = commandRequest();
+      const admitted = yield* store.admitCommand(request);
+      expect(admitted).toMatchObject({
+        status: "admitted",
+        receipt: { commandDigest: "digest-1" },
+      });
+      if (admitted.status !== "admitted") throw new Error("command was not admitted");
+
+      const retried = yield* store.admitCommand(request);
+      expect(retried).toMatchObject({
+        status: "idempotent",
+        receipt: admitted.receipt,
+      });
+
+      expect(yield* store.admitCommand(commandRequest("digest-2"))).toEqual({
+        status: "command_identity_conflict",
+        receipt: admitted.receipt,
+        conflict: {
+          domain: "conversation-command",
+          key: "conversation/command-1",
+          guard: "identity",
+          expected: "digest-2",
+          observed: "digest-1",
+        },
+      });
+    });
+  });
+
   it("publishes terminal content and the selecting head in one semantic commit", async () => {
     const store = createMemoryConversationStore();
     await run(function* () {
@@ -60,3 +96,34 @@ describe("kernel conversation repository", () => {
     });
   });
 });
+
+function commandRequest(commandDigest = "digest-1"): CommandAdmissionRequest {
+  return {
+    conversationId: "conversation",
+    commandId: "command-1",
+    commandDigest,
+    participantId: "participant-1",
+    acceptedAt: 1,
+    retainUntil: 100,
+    expectedRevision: "0",
+    requiredState: "idle",
+    logicalTurnId: "turn-1",
+    executionId: "execution-1",
+    proposal: {
+      ...idle,
+      state: "running",
+      activeLogicalTurnId: "turn-1",
+      activeExecutionId: "execution-1",
+      activeCommand: {
+        kind: "send-message",
+        commandId: "command-1",
+        logicalTurnId: "turn-1",
+        executionId: "execution-1",
+      },
+      ownerTransition: {
+        kind: "assign",
+        ownerRoute: { executionId: "execution-1", taskId: "task-1" },
+      },
+    },
+  };
+}
