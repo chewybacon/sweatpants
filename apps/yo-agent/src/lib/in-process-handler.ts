@@ -17,7 +17,10 @@ import {
   setupInMemoryDurableStreams,
   type DurableStreamsOwner,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import { installLocalToolRuntime } from "@sweatpants/tool-runtime-local";
+import {
+  createLocalToolInvocationRuntime,
+  installLocalToolRuntime,
+} from "@sweatpants/tool-runtime-local";
 import type { Operation } from "effection";
 
 export type AgentTool = RuntimeTool;
@@ -58,11 +61,11 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
     yield* installToolInventory(
       createToolInventory(tools.map((tool) => createToolInventoryEntry(tool))),
     );
+    yield* createLocalToolInvocationRuntime({
+      worker: { workerUrl, isDev: false },
+    });
     yield* installLocalToolRuntime({
       tools,
-      registryOptions: {
-        worker: { workerUrl, isDev: false },
-      },
     });
   };
 

@@ -14,9 +14,9 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool, isExecutableToolContract, projectToolContract } from "@sweatpants/agent-sdk";
 import {
-  createInMemoryToolSessionStore,
+  createLocalToolInvocationRuntime,
   createLocalToolRuntimeDriver,
-  createToolSessionRegistry,
+  ToolInvocationHostPort,
 } from "../src/index.ts";
 
 const workerFixtureCandidates = [
@@ -68,6 +68,9 @@ describe("portable tool contract projection (F4)", () => {
 
   it("executes through a worker-backed runtime registered with only the projection", async () => {
     await run(function* () {
+      yield* createLocalToolInvocationRuntime({
+        worker: workerConfig,
+      });
       const projection = projectToolContract(echoTool);
       const driver = yield* createLocalToolRuntimeDriver({
         tools: [projection],
@@ -76,7 +79,6 @@ describe("portable tool contract projection (F4)", () => {
             return { text: "unused" };
           },
         },
-        registryOptions: { worker: workerConfig },
       });
 
       const execution = yield* driver.execute({
@@ -99,26 +101,40 @@ describe("portable tool contract projection (F4)", () => {
 
   it("rejects inline execution of a metadata-only projection with a clear error", async () => {
     await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
+      yield* createLocalToolInvocationRuntime({});
+      const host = yield* ToolInvocationHostPort.use();
       const projection = projectToolContract(echoTool);
 
       let error: Error | undefined;
       try {
-        yield* registry.create(projection, { message: "x" });
+        yield* host.start({
+          invocationId: "test-inline-reject",
+          tool: projection,
+          input: { message: "x" },
+        });
       } catch (caught) {
         error = caught as Error;
       }
       expect(error?.message).toContain("metadata-only contract projection");
-      expect(error?.message).toContain("worker mode");
+      expect(error?.message).toContain("worker configuration");
     });
   });
 
   it("inline execution still works with the full definition", async () => {
     await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-      const session = yield* registry.create(echoTool, { message: "inline" });
-      const settled = yield* session.settled!();
-      expect(settled).toBe("completed");
+      yield* createLocalToolInvocationRuntime({});
+      const host = yield* ToolInvocationHostPort.use();
+      yield* host.start({
+        invocationId: "test-inline-echo",
+        tool: echoTool,
+        input: { message: "inline" },
+      });
+      const turn = yield* host.turn({
+        invocationId: "test-inline-echo",
+        commandId: "turn-0",
+        cursor: 0,
+      });
+      expect(turn).toMatchObject({ type: "completed", result: { echoed: "inline" } });
     });
   });
 });

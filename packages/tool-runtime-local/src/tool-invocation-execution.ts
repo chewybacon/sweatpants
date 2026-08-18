@@ -16,6 +16,7 @@
  * @packageDocumentation
  */
 import { type Operation, type Signal, type Stream, spawn, resource, each } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import type {
   ToolSession,
   ToolSessionStatus,
@@ -78,10 +79,10 @@ interface PendingSample {
  * @param params - Tool parameters
  * @param options - Session options
  */
-export function createToolSession<
+export function createToolInvocationExecution<
   TName extends string,
   TParams,
-  TResult,
+  TResult extends Json,
   TElicits extends ElicitsMap,
   TSamples extends SamplesMap | true | undefined = undefined,
 >(

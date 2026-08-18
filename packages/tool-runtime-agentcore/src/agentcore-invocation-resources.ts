@@ -1,10 +1,7 @@
-import type { ToolContract, ElicitsMap } from "@sweatpants/agent-sdk";
+import type { AnyToolContract } from "@sweatpants/agent-sdk";
+import type { Json } from "@sweatpants/foundation";
 import type { Operation, Stream } from "effection";
-import type {
-  ToolSession,
-  ToolSessionRegistry,
-  ToolSessionOptions,
-} from "@sweatpants/tool-session";
+import type { ToolSession, ToolSessionOptions } from "@sweatpants/tool-session";
 import {
   parseToolParameters,
   requireToolParameterResult,
@@ -24,7 +21,7 @@ import {
   stopRuntimeSessionIfTerminal,
 } from "./agentcore-tool-session.ts";
 
-export interface AgentCoreToolSessionRegistryOptions {
+export interface AgentCoreToolInvocationResourceOptions {
   stores: AgentCoreToolSessionStores;
   runtimeClient: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>;
   profiles: AgentCoreToolRuntimeProfile[];
@@ -54,9 +51,15 @@ function monotonicSeq(handle: AgentCoreToolSessionHandle, incoming: number): num
   return Math.max(handle.lastRuntimeEventSeq ?? 0, incoming);
 }
 
-export function createAgentCoreToolSessionRegistry(
-  options: AgentCoreToolSessionRegistryOptions,
-): ToolSessionRegistry {
+export interface AgentCoreToolInvocationResources {
+  create(tool: AnyToolContract, params: Json, options?: ToolSessionOptions): Operation<ToolSession>;
+  get(sessionId: string): Operation<ToolSession | null>;
+  dispose(sessionId: string): Operation<void>;
+}
+
+export function createAgentCoreToolInvocationResources(
+  options: AgentCoreToolInvocationResourceOptions,
+): AgentCoreToolInvocationResources {
   const { stores, runtimeClient, profiles } = options;
   const active = new Map<string, ToolSession>();
   const now = options.now ?? (() => new Date());
@@ -209,16 +212,16 @@ export function createAgentCoreToolSessionRegistry(
   }
 
   return {
-    *create<TParams, _TInteraction, _TClient, TResult, TElicits extends ElicitsMap>(
-      tool: ToolContract<string, TParams, TResult, TElicits>,
-      params: TParams,
+    *create(
+      tool: AnyToolContract,
+      params: Json,
       sessionOptions?: ToolSessionOptions,
-    ): Operation<ToolSession<TResult>> {
+    ): Operation<ToolSession> {
       const sessionId =
         sessionOptions?.sessionId ??
         `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
       const validatedParams = requireToolParameterResult(
-        parseToolParameters<TParams>({
+        parseToolParameters<Json>({
           schema: tool.parameters,
           params,
           toolName: tool.name,
@@ -271,8 +274,8 @@ export function createAgentCoreToolSessionRegistry(
         handle: updated,
         stores,
         runtimeClient,
-      }) as ToolSession<TResult>;
-      active.set(sessionId, session as ToolSession);
+      });
+      active.set(sessionId, session);
       return session;
     },
 
@@ -280,16 +283,7 @@ export function createAgentCoreToolSessionRegistry(
       return yield* getSession(sessionId);
     },
 
-    *acquire(sessionId: string): Operation<ToolSession> {
-      const session = yield* getSession(sessionId);
-      if (!session) {
-        throw new Error(`Session not found: ${sessionId}`);
-      }
-      yield* session.status();
-      return session;
-    },
-
-    *release(sessionId: string): Operation<void> {
+    *dispose(sessionId: string): Operation<void> {
       const handle = yield* stores.handles.get(sessionId);
       if (!handle) {
         active.delete(sessionId);

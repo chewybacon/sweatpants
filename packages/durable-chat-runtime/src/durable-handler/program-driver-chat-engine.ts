@@ -210,6 +210,7 @@ type CatalogToolCall = ChatCall;
  */
 const RECOVERABLE_FOREIGN_FAILURES: ReadonlySet<string> = new Set([
   "foreign_session_ended",
+  "foreign_continuation_lost",
   "foreign_tool_start_failed",
   "foreign_tool_error",
   "effect_outcome_indeterminate",

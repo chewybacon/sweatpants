@@ -4,7 +4,11 @@ import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import { MCP_PROTOCOL_VERSION } from "../../protocol-version.ts";
 import type { ToolInvocationEventSource } from "../../../contract.ts";
-import { ToolInvocationHostPort, type ToolInvocationHost } from "../../../invocation.ts";
+import {
+  ToolInvocationEventSourcePort,
+  ToolInvocationHostPort,
+  type ToolInvocationHost,
+} from "../../../invocation.ts";
 import { createMcpHandler, generateMcpManifest } from "../mcp-handler.ts";
 
 const unusedEvents = {} as ToolInvocationEventSource;
@@ -13,7 +17,8 @@ const unusedHost = {} as ToolInvocationHost;
 function handle(request: Request): Promise<Response> {
   return run(function* () {
     yield* ToolInvocationHostPort.installDriver(unusedHost);
-    const { handler } = yield* createMcpHandler({ events: unusedEvents, tools: new Map() });
+    yield* ToolInvocationEventSourcePort.installDriver(unusedEvents);
+    const { handler } = yield* createMcpHandler({ tools: new Map() });
     return yield* call(() => handler(request));
   });
 }

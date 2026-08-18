@@ -14,8 +14,7 @@ import { createToolInventory, installToolInventory } from "@sweatpants/tool-runt
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
-  createInMemoryToolSessionStoreWithDebug,
-  createToolSessionRegistry,
+  createLocalToolInvocationRuntime,
   installLocalProgramToolRuntime,
 } from "@sweatpants/tool-runtime-local";
 import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants/test-rig";
@@ -58,12 +57,11 @@ export function createReactAcceptanceApplication(
         retentionPolicy: { mode: "retain_forever" },
       });
       yield* installToolInventory(inventory);
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStoreWithDebug(), {
+      yield* createLocalToolInvocationRuntime({
         worker: { workerUrl: workerBootstrapUrl(), isDev: false },
       });
       yield* installLocalProgramToolRuntime({
         tools: [reactBookingTool],
-        registry,
         installForeignEffects: function* (registrations) {
           yield* ProgramDriverForeignEffectsContext.set(registrations);
         },

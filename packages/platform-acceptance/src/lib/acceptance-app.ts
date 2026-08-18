@@ -32,7 +32,7 @@ import {
 import { createToolInventory, installToolInventory } from "@sweatpants/tool-runtime";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
-import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
+import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
 import type { ModelContext } from "@sweatpants/model-provider";
 import type { ChatMessage } from "@sweatpants/chat-contract";
@@ -42,12 +42,10 @@ import {
   type ProgramRoute,
 } from "@sweatpants/durable-execution";
 import {
-  createInMemoryToolSessionStoreWithDebug,
+  createLocalToolInvocationRuntime,
   createLocalWorkerDurableProgramDriver,
-  createToolSessionRegistry,
   installLocalProgramToolRuntime,
-  observeToolSessionDrain,
-  type ToolSessionDrainObserver,
+  type LocalToolInvocationRuntime,
 } from "@sweatpants/tool-runtime-local";
 import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants/test-rig";
 import { acceptanceBookingTool } from "../fixtures/acceptance-booking.tool.ts";
@@ -138,10 +136,7 @@ export interface AcceptanceApplicationInspection {
   modelSamplingProtocol: string[];
   checkpointErrors: unknown[];
   durableWorker: DurableWorkerMetrics;
-  get toolSessionRegistry(): ToolSessionRegistry | undefined;
-  get toolSessionIds(): readonly string[];
-  /** Event-driven wait until registry cleanup has removed every tool session. */
-  toolSessionsDrained(): Operation<void>;
+  get toolInvocationRuntime(): LocalToolInvocationRuntime | undefined;
 }
 
 export interface AcceptanceApplicationOptions {
@@ -184,9 +179,7 @@ export function createAcceptanceApplication(
     attachmentCount: 0,
     shutdownCount: 0,
   };
-  let toolSessionRegistry: ToolSessionRegistry | undefined;
-  let toolSessionStore: ReturnType<typeof createInMemoryToolSessionStoreWithDebug> | undefined;
-  let sessionDrain: ToolSessionDrainObserver | undefined;
+  let toolInvocationRuntime: LocalToolInvocationRuntime | undefined;
   const executionStore = options.executionStore ?? createMemoryExecutionStore();
   const conversationStore = options.conversationStore ?? createMemoryConversationStore();
   const journalStore =
@@ -212,16 +205,8 @@ export function createAcceptanceApplication(
     modelSamplingProtocol,
     checkpointErrors,
     durableWorker,
-    get toolSessionRegistry() {
-      return toolSessionRegistry;
-    },
-    get toolSessionIds() {
-      return sessionDrain?.sessionIds() ?? toolSessionStore?.getSessionIds() ?? [];
-    },
-    *toolSessionsDrained(): Operation<void> {
-      if (sessionDrain) {
-        yield* sessionDrain.drained();
-      }
+    get toolInvocationRuntime() {
+      return toolInvocationRuntime;
     },
   });
 
@@ -281,22 +266,15 @@ export function createAcceptanceApplication(
         });
       }
 
-      toolSessionStore = createInMemoryToolSessionStoreWithDebug();
-      // Observation is scoped middleware installed above the registry, so the
-      // store type stays free of test-only methods.
-      sessionDrain = yield* observeToolSessionDrain();
-      const registry = yield* createToolSessionRegistry(toolSessionStore, {
+      toolInvocationRuntime = yield* createLocalToolInvocationRuntime({
         worker: {
           workerUrl: resolveFixtureBootstrapUrl("acceptance-tool-worker-bootstrap.mjs"),
           isDev: false,
         },
       });
 
-      toolSessionRegistry = registry;
-
       yield* installLocalProgramToolRuntime({
         tools: [acceptanceBookingTool, acceptanceImmediateTool],
-        registry,
         samplingProvider,
         installForeignEffects: function* (registrations) {
           yield* ProgramDriverForeignEffectsContext.set(registrations);

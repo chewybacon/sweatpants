@@ -7,30 +7,18 @@ export {
 } from "./driver.ts";
 export { installLocalProgramToolRuntime } from "./program-runtime-installation.ts";
 
-export { createToolSession } from "./tool-session.ts";
-export { createToolInvocationHost } from "./invocation-host.ts";
+export { createToolInvocationHost } from "@sweatpants/tool-session";
 export {
   createLocalToolInvocationRuntime,
   type LocalToolInvocationRuntime,
+  type LocalToolInvocationRuntimeOptions,
 } from "./invocation-runtime.ts";
-export { ToolInvocationHostPort, ToolInvocationHostUnavailable } from "@sweatpants/tool-session";
-
-export { createToolSessionRegistry, type ToolSessionRegistryOptions } from "./session-registry.ts";
-
 export {
-  installToolSessionStore,
-  ToolSessionStoreApi,
-  ToolSessionStorePort,
-  ToolSessionStoreUnavailable,
-} from "./session-store-port.ts";
-export {
-  observeToolSessionDrain,
-  type ToolSessionDrainObserver,
-} from "./session-drain-observer.ts";
-export {
-  createInMemoryToolSessionStore,
-  createInMemoryToolSessionStoreWithDebug,
-} from "./in-memory-store.ts";
+  ToolInvocationEventSourcePort,
+  ToolInvocationEventSourceUnavailable,
+  ToolInvocationHostPort,
+  ToolInvocationHostUnavailable,
+} from "@sweatpants/tool-session";
 
 export * from "./worker.ts";
 
@@ -46,6 +34,7 @@ export {
 export {
   createToolInvocationForeignEffectRegistrations,
   type ToolInvocationForeignDriverOptions,
+  type ToolInvocationForeignEffectRegistrations,
 } from "./foreign-tool-session.ts";
 export {
   DURABLE_TOOL_FACADE_ANNOTATION,

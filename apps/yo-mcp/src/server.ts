@@ -1,13 +1,14 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { createScope } from "effection";
-import { createMcpHandler } from "@sweatpants/tool-session/mcp";
+import { action, createScope } from "effection";
+import {
+  createMcpHandler,
+  type McpHttpHandler,
+  type McpSessionManager,
+} from "@sweatpants/tool-session/mcp";
 import type { SampleResultBase } from "@sweatpants/agent-sdk";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
-import {
-  createInMemoryToolSessionStore,
-  createLocalToolInvocationRuntime,
-} from "@sweatpants/tool-runtime-local";
+import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
 import { createToolsMap } from "./tools/index.js";
 
 const TOOL_WORKER_URL = new URL("./tool-worker.mjs", import.meta.url);
@@ -26,22 +27,37 @@ function createMockSamplingProvider(): ToolSessionSamplingProvider {
   };
 }
 
+interface YoMcpHandlerRuntime {
+  readonly handler: McpHttpHandler;
+  readonly manager: McpSessionManager;
+}
+
 export async function createYoMcpRuntime() {
   const [scope, destroy] = createScope();
-  const runtime = await scope.run(function* () {
-    const invocationRuntime = yield* createLocalToolInvocationRuntime(
-      createInMemoryToolSessionStore(),
-      {
-        worker: { workerUrl: TOOL_WORKER_URL, isDev: false, execArgv: TOOL_WORKER_EXEC_ARGV },
-      },
-    );
-    return yield* createMcpHandler({
-      events: invocationRuntime.events,
-      tools: createToolsMap(),
-      sessionTimeout: 300_000,
-      sseRetryMs: 1_000,
-    });
+  let resolveRuntime!: (runtime: YoMcpHandlerRuntime) => void;
+  let rejectRuntime!: (error: unknown) => void;
+  const ready = new Promise<YoMcpHandlerRuntime>((resolve, reject) => {
+    resolveRuntime = resolve;
+    rejectRuntime = reject;
   });
+  scope.run(function* () {
+    try {
+      yield* createLocalToolInvocationRuntime({
+        worker: { workerUrl: TOOL_WORKER_URL, isDev: false, execArgv: TOOL_WORKER_EXEC_ARGV },
+      });
+      const runtime = yield* createMcpHandler({
+        tools: createToolsMap(),
+        sessionTimeout: 300_000,
+        sseRetryMs: 1_000,
+      });
+      resolveRuntime(runtime);
+      yield* action<void>(() => () => {});
+    } catch (error) {
+      rejectRuntime(error);
+      throw error;
+    }
+  });
+  const runtime = await ready;
   return {
     handler: runtime.handler,
     cleanup: async () => {

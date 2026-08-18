@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import { createLocalToolRuntimeDriver } from "../src/index.ts";
+import { createLocalToolInvocationRuntime, createLocalToolRuntimeDriver } from "../src/index.ts";
 
 const workerFixtureCandidates = [
   resolve(process.cwd(), "src/__tests__/fixtures/tool-worker-bootstrap.mjs"),
@@ -40,6 +40,10 @@ const strictTool = createTool("strict_echo")
 describe("@sweatpants/tool-runtime-local strict parameter acceptance", () => {
   it("rejects invalid session params before local session or tool execution and executes valid params", async () => {
     await run(function* () {
+      yield* createLocalToolInvocationRuntime({
+        worker: localRuntimeWorkerConfig,
+      });
+
       const driver = yield* createLocalToolRuntimeDriver({
         tools: [strictTool],
         samplingProvider: {
@@ -47,7 +51,6 @@ describe("@sweatpants/tool-runtime-local strict parameter acceptance", () => {
             return { text: "unused" };
           },
         },
-        registryOptions: { worker: localRuntimeWorkerConfig },
       });
 
       try {

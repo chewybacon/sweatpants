@@ -1,8 +1,8 @@
 /**
  * Style experiment: the seam the original PoC actually needed.
  *
- * `ToolSessionRegistry` is named for its least interesting property. What it
- * really provides is a *host for addressable, resumable tool invocations*: a
+ * Address lookup is the least interesting property here. The seam is a *host
+ * for addressable, resumable tool invocations*: a
  * generator (often in a worker thread) runs under a long-lived scope, parks
  * when it needs a sample or elicit, and a later request attaches to the same
  * invocation to answer it.

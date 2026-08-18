@@ -85,6 +85,11 @@ export interface ToolInvocationForeignDriverOptions {
   tools: ReadonlyMap<string, AnyToolContract>;
 }
 
+export type ToolInvocationForeignEffectRegistrations = readonly [
+  start: DurableEffectRegistration,
+  continuation: DurableEffectRegistration,
+];
+
 /**
  * Creates durable foreign-tool effects over the pull-based invocation host.
  * The adapter owns durable continuation encoding. It resolves only the scoped
@@ -94,7 +99,7 @@ export interface ToolInvocationForeignDriverOptions {
  */
 export function createToolInvocationForeignEffectRegistrations(
   options: ToolInvocationForeignDriverOptions,
-): readonly [DurableEffectRegistration, DurableEffectRegistration] {
+): ToolInvocationForeignEffectRegistrations {
   const start = createDurableEffectRegistration(
     FOREIGN_TOOL_START_EFFECT,
     { mode: "unsafe" },
@@ -218,15 +223,10 @@ function* turnWithCancellation(
           return () => context.cancellation.removeEventListener("abort", onAbort);
         });
       }
-      const cancelTurn = yield* host.turn({
-        invocationId: request.invocationId,
-        commandId: `${request.commandId}:cancel`,
-        cursor: request.cursor,
-        resume: { kind: "cancel", reason: "durable program cancelled" },
-      });
-      if (cancelTurn.type === "cancelled") {
-        return cancelTurn;
-      }
+      // This is an active-attempt abort, not semantic cancellation. Returning
+      // from the race stops waiting for this crank. The durable authority later
+      // replays and supplies `{ kind: "cancel" }` through a separate turn.
+      // Do not start a second concurrent crank here.
       return {
         type: "cancelled",
         reason: "durable program cancelled",

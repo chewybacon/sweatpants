@@ -1,13 +1,8 @@
-import { run } from "effection";
+import { action, createQueue, run, spawn } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import {
-  createInMemoryToolSessionStore,
-  createToolInvocationHost,
-  createToolSessionRegistry,
-  ToolInvocationHostPort,
-} from "../index.ts";
+import { createLocalToolInvocationRuntime, ToolInvocationHostPort } from "../index.ts";
 
 const bookingTool = createTool("invocation_host_booking")
   .description("Invocation host fixture")
@@ -27,8 +22,8 @@ const bookingTool = createTool("invocation_host_booking")
 describe("ToolInvocationHost", () => {
   it("couples response delivery with the next crank", async () => {
     const result = await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-      const host = createToolInvocationHost(registry);
+      yield* createLocalToolInvocationRuntime({});
+      const host = yield* ToolInvocationHostPort.use();
       const invocationId = "foreign:session:turn-0/root";
 
       yield* host.start({
@@ -87,9 +82,7 @@ describe("ToolInvocationHost", () => {
   it("routes every control operation through the Style F port", async () => {
     const observed: string[] = [];
     await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-      const host = createToolInvocationHost(registry);
-      yield* ToolInvocationHostPort.installDriver(host);
+      yield* createLocalToolInvocationRuntime({});
       yield* ToolInvocationHostPort.api.around({
         *start([request], next) {
           observed.push(`start:${request.invocationId}`);
@@ -127,10 +120,56 @@ describe("ToolInvocationHost", () => {
     ]);
   });
 
+  it("aborts active computation without delivering a concurrent semantic cancel", async () => {
+    const started = createQueue<void, void>();
+    const stopped = createQueue<void, void>();
+    const activeTool = createTool("invocation_host_active_abort")
+      .description("Active abort fixture")
+      .parameters(z.object({}))
+      .execute(function* () {
+        started.add();
+        yield* action<void>(() => () => stopped.add());
+        return { unreachable: true };
+      });
+
+    await run(function* () {
+      yield* createLocalToolInvocationRuntime({});
+      const host = yield* ToolInvocationHostPort.use();
+      const invocationId = "foreign:session:active-abort";
+      yield* host.start({ invocationId, tool: activeTool, input: {} });
+
+      const activeTurn = yield* spawn(function* () {
+        try {
+          yield* host.turn({ invocationId, commandId: "pull-0", cursor: 0 });
+          return "completed" as const;
+        } catch (error) {
+          return error;
+        }
+      });
+      yield* started.next();
+
+      try {
+        yield* host.turn({
+          invocationId,
+          commandId: "cancel-while-active",
+          cursor: 0,
+          resume: { kind: "cancel", reason: "superseded" },
+        });
+        throw new Error("expected active command rejection");
+      } catch (error) {
+        expect(error).toMatchObject({ code: "command_in_progress" });
+      }
+
+      yield* host.dispose(invocationId);
+      yield* stopped.next();
+      expect(yield* activeTurn).toMatchObject({ code: "command_in_progress" });
+    });
+  });
+
   it("uses the same crank for semantic cancellation of parked work", async () => {
     const result = await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-      const host = createToolInvocationHost(registry);
+      yield* createLocalToolInvocationRuntime({});
+      const host = yield* ToolInvocationHostPort.use();
       const invocationId = "foreign:session:cancelled-turn";
 
       yield* host.start({

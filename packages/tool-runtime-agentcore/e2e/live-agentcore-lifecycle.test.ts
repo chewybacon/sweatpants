@@ -13,13 +13,15 @@ import { createTool } from "@sweatpants/agent-sdk";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   createAgentCoreRemoteToolRuntimeClient,
-  createAgentCoreToolSessionRegistry,
   createAwsSdkAgentCoreInvoker,
+  type AgentCoreToolRuntimeProfile,
+} from "../src/index.ts";
+import { createAgentCoreToolInvocationResources } from "../src/agentcore-invocation-resources.ts";
+import {
   createInMemoryAgentCoreToolSessionEventStore,
   createInMemoryAgentCoreToolSessionHandleStore,
-  type AgentCoreToolRuntimeProfile,
-  type AgentCoreToolSessionStores,
-} from "../src/index.ts";
+} from "../src/agentcore-memory-store.ts";
+import type { AgentCoreToolSessionStores } from "../src/agentcore-types.ts";
 
 const enabled = process.env["AGENTCORE_LIVE_E2E"] === "yes";
 const runtimeArn = process.env["AGENTCORE_RUNTIME_ARN"];
@@ -476,7 +478,7 @@ liveDescribe("AgentCore live runtime lifecycle contract", () => {
     const runtimeClient = createAgentCoreRemoteToolRuntimeClient(
       createAwsSdkAgentCoreInvoker({ clientConfig: { region } }),
     );
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient,
       profiles: [createProfile(["simple_result"])],
@@ -484,7 +486,7 @@ liveDescribe("AgentCore live runtime lifecycle contract", () => {
     });
 
     const result = await run(function* () {
-      const session = yield* registry.create(
+      const session = yield* resources.create(
         simpleResultTool,
         { value: "ok" },
         { sessionId: toolSessionId },
@@ -518,7 +520,7 @@ liveDescribe("AgentCore live runtime lifecycle contract", () => {
     const runtimeClient = createAgentCoreRemoteToolRuntimeClient(
       createAwsSdkAgentCoreInvoker({ clientConfig: { region } }),
     );
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient,
       profiles: [createProfile(["elicit_then_result"])],
@@ -526,7 +528,7 @@ liveDescribe("AgentCore live runtime lifecycle contract", () => {
     });
 
     const afterStart = await run(function* () {
-      const session = yield* registry.create(
+      const session = yield* resources.create(
         elicitThenResultTool,
         { value: "pause" },
         { sessionId: toolSessionId },

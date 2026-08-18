@@ -10,18 +10,16 @@
  * guard for the just-restored worker serialization boundary.
  */
 import { describe, expect, it } from "vitest";
-import { each, run, sleep, spawn, type Operation } from "effection";
+import { run } from "effection";
+import { z } from "zod";
+import { createTool } from "@sweatpants/agent-sdk";
 import {
-  createInMemoryToolSessionStore,
-  createToolInvocationHost,
-  ToolInvocationHostPort,
+  createLocalToolInvocationRuntime,
   createToolInvocationForeignEffectRegistrations,
-  createToolSessionRegistry,
-  createWorkerToolSession,
 } from "@sweatpants/tool-runtime-local";
+import { ToolInvocationHostPort } from "@sweatpants/tool-session";
 import { calculator } from "@/tools/calculator";
 import { yoChatToolSessionWorkerConfig } from "@/server/tool-worker-config";
-import type { ToolSessionEvent } from "@sweatpants/tool-session";
 
 const PROBE_WORKER_URL = new URL("./lib/worker-probe-bootstrap.mjs", import.meta.url);
 
@@ -31,44 +29,19 @@ interface ProbeResult {
   pid: number;
 }
 
-function* waitForProbeResult(
-  session: Awaited<ReturnType<typeof createWorkerToolSession>> extends Operation<infer S>
-    ? S
-    : never,
-  timeoutMs: number,
-): Operation<ProbeResult> {
-  const events: ToolSessionEvent[] = [];
-  yield* spawn(function* () {
-    for (const event of yield* each(session.projection.events())) {
-      events.push(event);
-      yield* each.next();
-    }
+const workerProbe = createTool("worker_probe")
+  .description("Report the worker-thread identity")
+  .parameters(z.object({}))
+  .execute(function* () {
+    throw new Error("worker probe must execute in the configured worker");
   });
-
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const event of events) {
-      if (event.type === "result") {
-        return (event as { result: ProbeResult }).result;
-      }
-      if (event.type === "error") {
-        throw new Error(
-          `worker probe failed: ${(event as { message?: string }).message ?? "unknown"}`,
-        );
-      }
-    }
-    yield* sleep(25);
-  }
-  throw new Error("timed out waiting for worker probe result");
-}
 
 describe("outside-in worker boundary (Tier A)", () => {
   it("executes the generated calculator tool in the real worker", async () => {
     await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
+      yield* createLocalToolInvocationRuntime({
         worker: yoChatToolSessionWorkerConfig,
       });
-      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
       const [start] = createToolInvocationForeignEffectRegistrations({
         tools: new Map([[calculator.name, calculator]]),
       });
@@ -100,14 +73,24 @@ describe("outside-in worker boundary (Tier A)", () => {
 
   it("runs tool execute generators off the main thread in a genuine worker", async () => {
     await run(function* () {
-      const session = yield* createWorkerToolSession({
-        sessionId: "worker-probe-1",
-        toolName: "worker_probe",
-        params: {},
-        workerUrl: PROBE_WORKER_URL,
+      yield* createLocalToolInvocationRuntime({
+        worker: { workerUrl: PROBE_WORKER_URL },
       });
-
-      const result = yield* waitForProbeResult(session, 20_000);
+      const host = yield* ToolInvocationHostPort.use();
+      yield* host.start({
+        invocationId: "worker-probe-1",
+        tool: workerProbe,
+        input: {},
+      });
+      const turn = yield* host.turn({
+        invocationId: "worker-probe-1",
+        commandId: "worker-probe:start",
+        cursor: 0,
+      });
+      if (turn.type !== "completed") {
+        throw new Error(`worker probe did not complete: ${turn.type}`);
+      }
+      const result = turn.result as ProbeResult;
 
       // The whole point: this ran OFF the main thread.
       expect(result.isMainThread).toBe(false);

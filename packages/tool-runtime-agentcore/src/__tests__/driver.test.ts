@@ -1,22 +1,38 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
+import {
+  createStrategyToolRuntime,
+  createToolInventoryEntry,
+  type ToolRuntime,
+} from "@sweatpants/tool-runtime";
 import { describe, expect, it } from "vitest";
 import { run, resource, type Operation } from "effection";
 import { z } from "zod";
-import { createTool } from "@sweatpants/agent-sdk";
+import { createTool, type AnyToolContract } from "@sweatpants/agent-sdk";
 import { ToolRuntimeApi } from "@sweatpants/tool-runtime";
 import { createToolInventory } from "@sweatpants/tool-runtime";
-import { type ToolSessionRegistry, type ToolSession } from "@sweatpants/tool-session";
+import {
+  createToolInvocationHost,
+  ToolInvocationEventSourcePort,
+  ToolInvocationHostPort,
+  type StartToolInvocation,
+  type ToolInvocationResource,
+  type ToolInvocationResourceFactory,
+  type ToolSession,
+} from "@sweatpants/tool-session";
 import {
   FakeAgentCoreRemoteToolRuntimeClient,
   createAgentCoreToolExecutionStrategy,
-  createAgentCoreToolRuntimeDriver,
-  createAgentCoreToolSessionRegistry,
-  createInMemoryAgentCoreToolSessionEventStore,
-  createInMemoryAgentCoreToolSessionHandleStore,
   installAgentCoreToolRuntime,
   type AgentCoreToolRuntimeProfile,
-  type AgentCoreToolSessionStores,
 } from "../index.ts";
+import {
+  createAgentCoreToolInvocationResources,
+  type AgentCoreToolInvocationResources,
+} from "../agentcore-invocation-resources.ts";
+import {
+  createInMemoryAgentCoreToolSessionEventStore,
+  createInMemoryAgentCoreToolSessionHandleStore,
+} from "../agentcore-memory-store.ts";
+import type { AgentCoreToolSessionStores } from "../agentcore-types.ts";
 
 const remoteTool = createTool("remote_echo")
   .description("Remote echo")
@@ -102,7 +118,7 @@ function createFakeSession(): ToolSession {
   };
 }
 
-function createFakeRegistry(): ToolSessionRegistry {
+function createFakeResources(): AgentCoreToolInvocationResources {
   const session = createFakeSession();
   // SAFETY: generic result typing is irrelevant to this completed-session
   // driver fixture; every create returns the same protocol-complete fake.
@@ -113,34 +129,75 @@ function createFakeRegistry(): ToolSessionRegistry {
     *get(): Operation<ToolSession | null> {
       return session;
     },
-    *acquire(): Operation<ToolSession> {
-      return session;
+    *dispose(): Operation<void> {},
+  } as unknown as AgentCoreToolInvocationResources;
+}
+
+function invocationResource(
+  session: ToolSession,
+  resources: AgentCoreToolInvocationResources,
+): ToolInvocationResource {
+  return {
+    id: session.id,
+    toolName: session.toolName,
+    projection: session.projection,
+    resume: (resume) => session.resume(resume),
+    *dispose() {
+      yield* resources.dispose(session.id);
     },
-    *release(): Operation<void> {},
-  } as unknown as ToolSessionRegistry;
+  };
+}
+
+function* installResourceHost(resources: AgentCoreToolInvocationResources): Operation<void> {
+  const factory: ToolInvocationResourceFactory = {
+    *create(request: StartToolInvocation) {
+      const session = yield* resources.create(request.tool, request.input, {
+        sessionId: request.invocationId,
+        ...(request.model === undefined ? {} : { model: request.model }),
+      });
+      return invocationResource(session, resources);
+    },
+    *open(invocationId) {
+      const session = yield* resources.get(invocationId);
+      return session ? invocationResource(session, resources) : null;
+    },
+  };
+  yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(factory));
+  yield* ToolInvocationEventSourcePort.installDriver({
+    *open(invocationId) {
+      const resource = yield* factory.open(invocationId);
+      return resource?.projection ?? null;
+    },
+  });
+}
+
+function createTestDriver(tools: AnyToolContract[], provider = samplingProvider): ToolRuntime {
+  return createStrategyToolRuntime({
+    id: "agentcore",
+    strategies: [
+      createAgentCoreToolExecutionStrategy({
+        id: "agentcore",
+        tools,
+        samplingProvider: provider,
+      }),
+    ],
+  });
 }
 
 describe("AgentCore ToolRuntimeDriver", () => {
   it("rejects duplicate configured tool names deterministically", () => {
     try {
-      createAgentCoreToolRuntimeDriver({
-        tools: [remoteTool, remoteTool],
-        registry: createFakeRegistry(),
-        samplingProvider,
-      });
+      createTestDriver([remoteTool, remoteTool]);
       throw new Error("expected duplicate tool rejection");
     } catch (error) {
       expect(error).toMatchObject({ code: "DUPLICATE_TOOL_STRATEGY" });
     }
   });
 
-  it("executes AgentCore registry sessions via the canonical runtime surface", async () => {
+  it("executes AgentCore resources via the canonical runtime surface", async () => {
     await run(function* () {
-      const driver = createAgentCoreToolRuntimeDriver({
-        tools: [remoteTool],
-        registry: createFakeRegistry(),
-        samplingProvider,
-      });
+      yield* installResourceHost(createFakeResources());
+      const driver = createTestDriver([remoteTool]);
 
       const result = yield* driver.execute({
         entry: createToolInventoryEntry(remoteTool),
@@ -163,11 +220,8 @@ describe("AgentCore ToolRuntimeDriver", () => {
 
   it("refuses mismatched inventory entries and call targets", async () => {
     await run(function* () {
-      const driver = createAgentCoreToolRuntimeDriver({
-        tools: [remoteTool],
-        registry: createFakeRegistry(),
-        samplingProvider,
-      });
+      yield* installResourceHost(createFakeResources());
+      const driver = createTestDriver([remoteTool]);
 
       try {
         yield* driver.execute({
@@ -197,7 +251,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
       let createCalls = 0;
       // SAFETY: this boundary fake counts dispatch and always returns the same
       // completed protocol session, independent of TResult.
-      const registry = {
+      const resources = {
         *create(): Operation<ToolSession> {
           createCalls++;
           return createFakeSession();
@@ -205,16 +259,10 @@ describe("AgentCore ToolRuntimeDriver", () => {
         *get(): Operation<ToolSession | null> {
           return null;
         },
-        *acquire(): Operation<ToolSession> {
-          return createFakeSession();
-        },
-        *release(): Operation<void> {},
-      } as unknown as ToolSessionRegistry;
-      const driver = createAgentCoreToolRuntimeDriver({
-        tools: [remoteTool],
-        registry,
-        samplingProvider,
-      });
+        *dispose(): Operation<void> {},
+      } as unknown as AgentCoreToolInvocationResources;
+      yield* installResourceHost(resources);
+      const driver = createTestDriver([remoteTool]);
 
       try {
         yield* driver.execute({
@@ -244,7 +292,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
   it("resumes AgentCore elicitation from the response boundary instead of replaying stale state", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["remote_elicit"])],
@@ -252,11 +300,8 @@ describe("AgentCore ToolRuntimeDriver", () => {
     });
 
     await run(function* () {
-      const driver = createAgentCoreToolRuntimeDriver({
-        tools: [remoteElicitTool],
-        registry,
-        samplingProvider,
-      });
+      yield* installResourceHost(resources);
+      const driver = createTestDriver([remoteElicitTool]);
       const entry = createToolInventoryEntry(remoteElicitTool);
 
       const initial = yield* driver.execute({
@@ -284,7 +329,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
   it("passes selected chat model into AgentCore start context and handle metadata", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["remote_echo"])],
@@ -292,11 +337,8 @@ describe("AgentCore ToolRuntimeDriver", () => {
     });
 
     await run(function* () {
-      const driver = createAgentCoreToolRuntimeDriver({
-        tools: [remoteTool],
-        registry,
-        samplingProvider,
-      });
+      yield* installResourceHost(resources);
+      const driver = createTestDriver([remoteTool]);
       const entry = createToolInventoryEntry(remoteTool);
       yield* driver.execute({
         entry,
@@ -326,7 +368,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
   it("handles AgentCore sample_request events via the sampling provider", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["remote_sample"])],
@@ -334,11 +376,8 @@ describe("AgentCore ToolRuntimeDriver", () => {
     });
 
     await run(function* () {
-      const driver = createAgentCoreToolRuntimeDriver({
-        tools: [remoteSampleTool],
-        registry,
-        samplingProvider,
-      });
+      yield* installResourceHost(resources);
+      const driver = createTestDriver([remoteSampleTool]);
       const entry = createToolInventoryEntry(remoteSampleTool, { profile: "test" });
 
       const result = yield* driver.execute({
@@ -366,11 +405,8 @@ describe("AgentCore ToolRuntimeDriver", () => {
     expect(() => createToolInventory([entry, entry])).toThrow("Duplicate tool name");
 
     await run(function* () {
-      const driver = createAgentCoreToolRuntimeDriver({
-        tools: [remoteTool],
-        registry: createFakeRegistry(),
-        samplingProvider,
-      });
+      yield* installResourceHost(createFakeResources());
+      const driver = createTestDriver([remoteTool]);
       const result = yield* driver.execute({
         entry,
         call: {
@@ -422,8 +458,8 @@ describe("AgentCore ToolRuntimeDriver", () => {
 
   it("exports an executable AgentCore strategy object", async () => {
     await run(function* () {
+      yield* installResourceHost(createFakeResources());
       const strategy = createAgentCoreToolExecutionStrategy({
-        registry: createFakeRegistry(),
         samplingProvider,
         tools: [remoteTool],
       });
@@ -453,8 +489,12 @@ describe("AgentCore ToolRuntimeDriver", () => {
     await run(function* () {
       yield* installAgentCoreToolRuntime({
         tools: [remoteTool],
-        registry: createFakeRegistry(),
         samplingProvider,
+        runtime: {
+          runtimeClient: new FakeAgentCoreRemoteToolRuntimeClient(),
+          profiles: [createProfile(["remote_echo"])],
+          createRuntimeSessionId: () => "runtime-installed",
+        },
       });
       const result = yield* ToolRuntimeApi.operations.execute({
         entry: createToolInventoryEntry(remoteTool),

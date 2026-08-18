@@ -1,10 +1,15 @@
 import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
-import { run, resource, type Operation } from "effection";
+import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import { type ToolSession, type ToolSessionRegistry } from "@sweatpants/tool-session";
-import { createAgentCoreToolRuntimeDriver } from "../src/index.ts";
+import {
+  createAgentCoreRemoteToolRuntimeClient,
+  createAgentCoreToolRuntimeDriver,
+  streamFromAgentCoreResponses,
+  type AgentCoreInvokeInput,
+  type AgentCoreInvoker,
+} from "../src/index.ts";
 
 const remoteTool = createTool("remote_echo")
   .description("Remote echo")
@@ -13,71 +18,45 @@ const remoteTool = createTool("remote_echo")
     return { unreachable: true };
   });
 
-function createCompletedSession(): ToolSession {
-  return {
-    id: "call-remote",
-    toolName: "remote_echo",
-    status() {
-      return (function* () {
-        return "completed" as const;
-      })();
-    },
-    projection: {
-      events() {
-        return resource(function* (provide) {
-          let emitted = false;
-          yield* provide({
-            *next() {
-              if (emitted) {
-                return { done: true as const, value: undefined };
-              }
-              emitted = true;
-              return {
-                done: false as const,
-                value: {
-                  type: "result" as const,
-                  lsn: 1,
-                  timestamp: Date.now(),
-                  result: { echoed: "hello" },
-                },
-              };
-            },
-          });
-        });
-      },
-    },
-    resume() {
-      return (function* () {})();
-    },
-  };
-}
-
 describe("@sweatpants/tool-runtime-agentcore strict parameter acceptance", () => {
-  it("rejects invalid params before AgentCore registry/session dispatch and dispatches valid params", async () => {
+  it("rejects invalid params before AgentCore dispatch and dispatches valid params", async () => {
     await run(function* () {
-      const createArgs: unknown[] = [];
-      // SAFETY: generic TResult does not affect this strict-input fixture; the
-      // fake always returns one protocol-complete session.
-      const registry = {
-        *create(_tool: unknown, params: unknown): Operation<ToolSession> {
-          createArgs.push(params);
-          return createCompletedSession();
+      const invocations: AgentCoreInvokeInput[] = [];
+      const simulator: AgentCoreInvoker = {
+        *invoke(input) {
+          invocations.push(input);
+          return streamFromAgentCoreResponses([
+            {
+              type: "tool_event",
+              toolSessionId: input.payload.toolSessionId,
+              runtimeEventSeq: 1,
+              runtimeEventId: `${input.payload.commandId}:result`,
+              event: { type: "result", result: { echoed: "hello" } },
+            },
+          ]);
         },
-        *get(): Operation<ToolSession | null> {
-          return null;
-        },
-        *acquire(): Operation<ToolSession> {
-          return createCompletedSession();
-        },
-        *release(): Operation<void> {},
-      } as unknown as ToolSessionRegistry;
-      const driver = createAgentCoreToolRuntimeDriver({
+      };
+      const runtimeClient = createAgentCoreRemoteToolRuntimeClient(simulator);
+      const driver = yield* createAgentCoreToolRuntimeDriver({
         tools: [remoteTool],
-        registry,
         samplingProvider: {
           *sample() {
             return { text: "unused" };
           },
+        },
+        runtime: {
+          runtimeClient,
+          profiles: [
+            {
+              name: "test",
+              runtimeArn: "arn:agentcore:test",
+              endpointName: "DEFAULT",
+              region: "us-east-1",
+              toolNames: [remoteTool.name],
+              maxSessionTtlMs: 60_000,
+            },
+          ],
+          createRuntimeSessionId: () => "strict-params-runtime",
         },
       });
 
@@ -98,7 +77,7 @@ describe("@sweatpants/tool-runtime-agentcore strict parameter acceptance", () =>
           payload: { toolName: "remote_echo", callId: "call-invalid-agentcore" },
         });
       }
-      expect(createArgs).toEqual([]);
+      expect(invocations).toEqual([]);
 
       const result = yield* driver.execute({
         entry: createToolInventoryEntry(remoteTool),
@@ -109,8 +88,11 @@ describe("@sweatpants/tool-runtime-agentcore strict parameter acceptance", () =>
           thoughtSignature: null,
         },
       });
-      expect(result).toMatchObject({ kind: "completed", result: { echoed: "hello" } });
-      expect(createArgs).toEqual([{ message: "hello" }]);
+      expect(result).toMatchObject({ kind: "completed" });
+      expect(invocations[0]?.payload).toMatchObject({
+        op: "start_tool_session",
+        params: { message: "hello" },
+      });
     });
   });
 

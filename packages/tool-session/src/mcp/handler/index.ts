@@ -6,14 +6,12 @@
  * ## Quick Start
  *
  * ```typescript
- * Compose this transport with a ToolSessionRegistry supplied by a runtime
- * adapter; the framework does not import or construct that adapter.
+ * Install a tool invocation runtime, then create the transport in the same
+ * application scope.
  * const tools = new Map([['my_tool', myTool]])
  *
- * const { handler } = createMcpHandler({
- *   registry,
- *   tools,
- * })
+ * yield* createLocalToolInvocationRuntime({})
+ * const { handler } = yield* createMcpHandler({ tools })
  *
  * // Use with any HTTP framework
  * app.all('/mcp', handler)

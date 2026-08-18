@@ -383,7 +383,7 @@ describe("sse-formatter integration", () => {
 // =============================================================================
 
 describe("session-manager", () => {
-  // Session manager tests would require mocking the ToolSessionRegistry
+  // Session manager tests require an installed invocation host
   // These will be added in a follow-up
   it.todo("creates sessions for tools/call requests");
   it.todo("tracks pending elicitation requests");

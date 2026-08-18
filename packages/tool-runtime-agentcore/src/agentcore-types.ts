@@ -1,4 +1,5 @@
 import type { Operation, Stream } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import type { ToolSession, ToolSessionStatus, ToolSessionEvent } from "@sweatpants/tool-session";
 import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
 
@@ -80,7 +81,7 @@ interface AgentCoreToolRuntimeRequestBase {
 export interface StartToolSessionRequest extends AgentCoreToolRuntimeRequestBase {
   op: "start_tool_session";
   toolName: string;
-  params: unknown;
+  params: Json;
   context?: {
     conversationId?: string;
     callId?: string;
@@ -92,7 +93,7 @@ export interface StartToolSessionRequest extends AgentCoreToolRuntimeRequestBase
 export interface RespondToElicitRequest extends AgentCoreToolRuntimeRequestBase {
   op: "respond_to_elicit";
   elicitId: string;
-  response: ElicitExchangeCompletion<unknown>;
+  response: ElicitExchangeCompletion<Json>;
 }
 
 export interface RespondToSampleRequest extends AgentCoreToolRuntimeRequestBase {

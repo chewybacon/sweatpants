@@ -4,10 +4,8 @@ import { createPluginSessionManager } from "@sweatpants/durable-chat-runtime/dur
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createAgentCoreRemoteToolRuntimeClient,
-  createAgentCoreToolSessionRegistry,
+  createAgentCoreToolInvocationRuntime,
   createAwsSdkAgentCoreInvoker,
-  createInMemoryAgentCoreToolSessionEventStore,
-  createInMemoryAgentCoreToolSessionHandleStore,
   type AgentCoreToolRuntimeProfile,
 } from "@sweatpants/tool-runtime-agentcore";
 
@@ -34,22 +32,15 @@ export function* setupAgentCoreProgramDriverToolRuntime(tool: RuntimeTool): Oper
     toolNames: [tool.name],
     maxSessionTtlMs: 15 * 60 * 1000,
   };
-  const pluginRegistry = createAgentCoreToolSessionRegistry({
-    stores: {
-      handles: createInMemoryAgentCoreToolSessionHandleStore(),
-      events: createInMemoryAgentCoreToolSessionEventStore(),
-    },
+  const runtimeOptions = {
     runtimeClient,
     profiles: [profile],
     defaultProfile: profile.name,
-  });
-  const pluginManager = yield* createPluginSessionManager({
-    registry: pluginRegistry,
-    samplingProvider,
-  });
+  };
+  yield* createAgentCoreToolInvocationRuntime(runtimeOptions);
+  const pluginManager = yield* createPluginSessionManager({ samplingProvider });
   yield* installYoChatToolRuntime({
     mode: "agentcore",
-    registry: pluginRegistry,
     pluginManager,
     samplingProvider,
     tools: [tool],
