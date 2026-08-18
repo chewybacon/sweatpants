@@ -15,18 +15,9 @@
  * ## Usage
  *
  * ```typescript
- * import {
-  createMcpHandler } from './handler'
- * import { createSessionRegistry } from '../session/index.ts'
- *
- * const registry = createSessionRegistry(store)
- * const tools = new Map([['my_tool',
-  myTool]])
- *
- * const { handler } = createMcpHandler({
- *   registry,
-  *   tools,
-  * })
+ * yield* createLocalToolInvocationRuntime({})
+ * const tools = new Map([['my_tool', myTool]])
+ * const { handler } = yield* createMcpHandler({ tools })
  *
  * // Use with any HTTP framework
  * app.all('/mcp',
@@ -53,7 +44,7 @@ import { createSseEventStream, type SseStreamOptions } from "./get-handler.ts";
 import { createPrimeEvent, createSseHeaders } from "../protocol/sse-formatter.ts";
 import { JSON_RPC_ERROR_CODES } from "../protocol/types.ts";
 import { MCP_PROTOCOL_VERSION } from "../protocol-version.ts";
-import { ToolInvocationHostPort } from "../../invocation.ts";
+import { ToolInvocationEventSourcePort, ToolInvocationHostPort } from "../../invocation.ts";
 
 // =============================================================================
 // HANDLER OPTIONS
@@ -244,10 +235,17 @@ export function* createMcpHandler(options: McpHandlerOptions): Operation<{
   handler: McpHttpHandler;
   manager: McpSessionManager;
 }> {
-  const ownerScope = yield* useScope();
-  const host = ToolInvocationHostPort.bind(ownerScope);
+  // HTTP requests execute in standalone scopes created below, not descendants
+  // of this installation scope. Bind the two installed capabilities so those
+  // foreign request scopes dispatch through the application-owned runtime.
+  const installationScope = yield* useScope();
+  // SCOPE-CROSSING (ownership): standalone HTTP request scopes use the
+  // invocation host owned by this MCP application installation.
+  const host = ToolInvocationHostPort.bind(installationScope);
+  // SCOPE-CROSSING (ownership): standalone HTTP request scopes use the event
+  // source owned by this MCP application installation.
+  const events = ToolInvocationEventSourcePort.bind(installationScope);
   const {
-    events,
     tools,
     sessionTimeout,
     sseRetryMs = 1000,

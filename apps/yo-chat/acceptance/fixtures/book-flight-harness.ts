@@ -33,11 +33,8 @@ import {
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
-  createInMemoryToolSessionStore,
-  createToolInvocationHost,
-  ToolInvocationHostPort,
+  createLocalToolInvocationRuntime,
   createToolInvocationForeignEffectRegistrations,
-  createToolSessionRegistry,
 } from "@sweatpants/tool-runtime-local";
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
@@ -125,11 +122,10 @@ export async function createBookFlightSubstrate(options: {
   const conversationStore = createMemoryConversationStore();
   const journalStore = createProgramDriverJournalStore({ keyring, executionStore });
 
-  // Shared durable state: journal, stream buffers, and foreign ToolSession
-  // continuations all outlive any single runtime generation.
+  // Shared durable state: journal and response buffers outlive each runtime.
+  // Foreign local invocation handles are process-local and may be lost.
   const bufferStore = createInMemoryBufferStore<string>();
   const registryStore = createInMemoryRegistryStore();
-  const toolSessionStore = createInMemoryToolSessionStore();
 
   const fallbackRuntime: ToolRuntime = {
     *runtimeId() {
@@ -167,8 +163,7 @@ export async function createBookFlightSubstrate(options: {
         handler,
         setup: function* () {
           yield* setupDurableStreams({ bufferStore, registryStore });
-          const registry = yield* createToolSessionRegistry(toolSessionStore, {});
-          yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
+          yield* createLocalToolInvocationRuntime({});
           yield* installToolInventory(
             createToolInventory([createToolInventoryEntry(bookFlightTool)]),
           );

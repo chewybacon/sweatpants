@@ -60,7 +60,8 @@ describe("tool invocation host: the property the PoC needed", () => {
     const scope = hostScope();
 
     const output = await scope.run(function* () {
-      yield* InvocationHostPort.installDriver(yield* createInvocationHost());
+      const driver = yield* createInvocationHost();
+      yield* InvocationHostPort.installDriver(driver);
 
       // Request A: start, park on the elicit, exit.
       const elicit = yield* scoped(function* (): Operation<Disposition> {
@@ -94,7 +95,8 @@ describe("tool invocation host: the property the PoC needed", () => {
     const scope = hostScope();
 
     const terminal = await scope.run(function* () {
-      yield* InvocationHostPort.installDriver(yield* createInvocationHost());
+      const driver = yield* createInvocationHost();
+      yield* InvocationHostPort.installDriver(driver);
       const facade = yield* InvocationHostPort.use();
 
       yield* facade.start("booking", bookFlight, "SFO");
@@ -111,7 +113,8 @@ describe("tool invocation host: the property the PoC needed", () => {
     const scope = hostScope();
 
     const status = await scope.run(function* () {
-      yield* InvocationHostPort.installDriver(yield* createInvocationHost());
+      const driver = yield* createInvocationHost();
+      yield* InvocationHostPort.installDriver(driver);
       const facade = yield* InvocationHostPort.use();
 
       yield* facade.start("booking", bookFlight, "SFO");
@@ -137,7 +140,8 @@ describe("tool invocation host: the property the PoC needed", () => {
 
     await expect(
       scope.run(function* () {
-        yield* InvocationHostPort.installDriver(yield* createInvocationHost());
+        const driver = yield* createInvocationHost();
+        yield* InvocationHostPort.installDriver(driver);
         const facade = yield* InvocationHostPort.use();
         yield* facade.status("missing");
       }),
@@ -157,7 +161,8 @@ describe("what scope middleware can observe", () => {
     const observed: string[] = [];
 
     await scope.run(function* () {
-      yield* HandleHostPort.installDriver(yield* createHandleHost());
+      const driver = yield* createHandleHost();
+      yield* HandleHostPort.installDriver(driver);
       yield* HandleHostPort.api.around({
         *start([id, body, input], next) {
           observed.push(`start:${id}`);
@@ -214,7 +219,8 @@ describe("what scope middleware can observe", () => {
     const observed: string[] = [];
 
     await scope.run(function* () {
-      yield* InvocationHostPort.installDriver(yield* createInvocationHost());
+      const driver = yield* createInvocationHost();
+      yield* InvocationHostPort.installDriver(driver);
       yield* InvocationHostPort.api.around({
         *start([id, body, input], next) {
           observed.push(`start:${id}`);
@@ -272,7 +278,8 @@ describe("what scope middleware can observe", () => {
     const scope = hostScope();
 
     const [outer, inner] = await scope.run(function* (): Operation<[string, string]> {
-      yield* InvocationHostPort.installDriver(yield* createInvocationHost());
+      const driver = yield* createInvocationHost();
+      yield* InvocationHostPort.installDriver(driver);
       const outerFacade = yield* InvocationHostPort.use();
       yield* outerFacade.start("shared-id", bookFlight, "outer");
       yield* outerFacade.turn("shared-id");
@@ -280,7 +287,8 @@ describe("what scope middleware can observe", () => {
       const innerOutput = yield* scoped(function* () {
         // A nested composition installs its own host; the same invocation id
         // must resolve to the child's invocation, not the parent's.
-        yield* InvocationHostPort.installDriver(yield* createInvocationHost());
+        const driver = yield* createInvocationHost();
+        yield* InvocationHostPort.installDriver(driver);
         const facade = yield* InvocationHostPort.use();
         yield* facade.start("shared-id", bookFlight, "inner");
         const parked = yield* facade.turn("shared-id");

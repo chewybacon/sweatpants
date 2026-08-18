@@ -5,21 +5,23 @@ import type { Operation } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import { stableTupleHash } from "@sweatpants/foundation";
-import type { ToolSession } from "@sweatpants/tool-session";
+import { ToolInvocationHostPort, type ToolSession } from "@sweatpants/tool-session";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   FakeAgentCoreRemoteToolRuntimeClient,
-  createAgentCoreToolSession,
-  createAgentCoreToolSessionRegistry,
-  createInMemoryAgentCoreToolSessionEventStore,
-  createInMemoryAgentCoreToolSessionHandleStore,
-  setupAgentCoreToolSessions,
+  createAgentCoreToolInvocationRuntime,
   streamFromAgentCoreResponses,
 } from "../index.ts";
+import { createAgentCoreToolInvocationResources } from "../agentcore-invocation-resources.ts";
+import {
+  createInMemoryAgentCoreToolSessionEventStore,
+  createInMemoryAgentCoreToolSessionHandleStore,
+} from "../agentcore-memory-store.ts";
+import type { AgentCoreToolSessionStores } from "../agentcore-types.ts";
+import { createAgentCoreToolSession } from "../agentcore-tool-session.ts";
 import type {
   AgentCoreToolRuntimeProfile,
   AgentCoreToolSessionHandle,
-  AgentCoreToolSessionStores,
   RemoteToolRuntimeClient,
 } from "../index.ts";
 
@@ -82,7 +84,7 @@ describe("AgentCore ToolSession facade", () => {
   it("creates a serializable handle and records remote result events", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["simple_tool"])],
@@ -90,7 +92,7 @@ describe("AgentCore ToolSession facade", () => {
     });
 
     const result = await run(function* () {
-      const session = yield* registry.create(
+      const session = yield* resources.create(
         simpleTool,
         { input: "hello" },
         { sessionId: "call_simple" },
@@ -118,7 +120,7 @@ describe("AgentCore ToolSession facade", () => {
   it("stops the AgentCore runtime session after immediate terminal completion", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["simple_tool"])],
@@ -126,7 +128,7 @@ describe("AgentCore ToolSession facade", () => {
     });
 
     const result = await run(function* () {
-      const session = yield* registry.create(
+      const session = yield* resources.create(
         simpleTool,
         { input: "hello" },
         { sessionId: "call_complete_stop" },
@@ -149,7 +151,7 @@ describe("AgentCore ToolSession facade", () => {
   it("does not stop the AgentCore runtime while a tool is awaiting elicitation, then stops after resume completes", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["elicit_tool"])],
@@ -157,7 +159,7 @@ describe("AgentCore ToolSession facade", () => {
     });
 
     const result = await run(function* () {
-      const session = yield* registry.create(
+      const session = yield* resources.create(
         elicitTool,
         {},
         { sessionId: "call_idle_then_complete" },
@@ -193,7 +195,7 @@ describe("AgentCore ToolSession facade", () => {
     runtime.stopRuntimeSession = function* () {
       throw new Error("stop failed");
     };
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["simple_tool"])],
@@ -201,7 +203,7 @@ describe("AgentCore ToolSession facade", () => {
     });
 
     const result = await run(function* () {
-      const session = yield* registry.create(
+      const session = yield* resources.create(
         simpleTool,
         { input: "hello" },
         { sessionId: "call_stop_failure" },
@@ -222,7 +224,7 @@ describe("AgentCore ToolSession facade", () => {
   it("pauses for elicit and resumes via respondToElicit using the same runtimeSessionId", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["elicit_tool"])],
@@ -230,7 +232,7 @@ describe("AgentCore ToolSession facade", () => {
     });
 
     const result = await run(function* () {
-      const session = yield* registry.create(elicitTool, {}, { sessionId: "call_elicit" });
+      const session = yield* resources.create(elicitTool, {}, { sessionId: "call_elicit" });
       expect(yield* session.status()).toBe("awaiting_elicit");
       const handleBefore = yield* stores.handles.get("call_elicit");
       expect(handleBefore?.pendingRequest).toEqual({
@@ -266,7 +268,7 @@ describe("AgentCore ToolSession facade", () => {
   it("rejects mismatched pending elicit id locally", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["elicit_tool"])],
@@ -274,7 +276,7 @@ describe("AgentCore ToolSession facade", () => {
 
     await expect(
       run(function* () {
-        const session = yield* registry.create(elicitTool, {}, { sessionId: "call_elicit_bad" });
+        const session = yield* resources.create(elicitTool, {}, { sessionId: "call_elicit_bad" });
         yield* resumeElicit(session, "wrong", { action: "accept", content: {} });
       }),
     ).rejects.toThrow(/Elicitation ID mismatch/);
@@ -283,7 +285,7 @@ describe("AgentCore ToolSession facade", () => {
   it("pauses for sample and resumes via respondToSample", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["sample_tool"])],
@@ -291,7 +293,7 @@ describe("AgentCore ToolSession facade", () => {
     });
 
     const result = await run(function* () {
-      const session = yield* registry.create(sampleTool, {}, { sessionId: "call_sample" });
+      const session = yield* resources.create(sampleTool, {}, { sessionId: "call_sample" });
       expect(yield* session.status()).toBe("awaiting_sample");
       yield* resumeSample(session, "call_sample:req:1", { text: "hello model" });
       return {
@@ -317,15 +319,18 @@ describe("AgentCore ToolSession facade", () => {
   it("rehydrates a facade from a serialized handle and replays events after LSN", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["simple_tool"])],
     });
 
     const result = await run(function* () {
-      yield* registry.create(simpleTool, { input: "hello" }, { sessionId: "call_rehydrate" });
-      const rehydrated = yield* registry.acquire("call_rehydrate");
+      yield* resources.create(simpleTool, { input: "hello" }, { sessionId: "call_rehydrate" });
+      const rehydrated = yield* resources.get("call_rehydrate");
+      if (!rehydrated) {
+        throw new Error("expected rehydrated invocation resource");
+      }
       const sub = yield* rehydrated.projection.events(1);
       const replayed = [];
       let next = yield* sub.next();
@@ -342,14 +347,14 @@ describe("AgentCore ToolSession facade", () => {
   it("marks a non-terminal session orphaned when remote runtime cannot find it", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["elicit_tool"])],
     });
 
     const result = await run(function* () {
-      const session = yield* registry.create(elicitTool, {}, { sessionId: "call_orphan" });
+      const session = yield* resources.create(elicitTool, {}, { sessionId: "call_orphan" });
       runtime.sessions.clear();
       yield* resumeElicit(session, "call_orphan:req:1", { action: "accept", content: {} });
       return {
@@ -365,31 +370,34 @@ describe("AgentCore ToolSession facade", () => {
     });
   });
 
-  it("setupAgentCoreToolSessions returns a usable AgentCore registry", async () => {
-    const stores = createStores();
+  it("createAgentCoreToolInvocationRuntime installs a usable invocation host", async () => {
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
 
     const result = await run(function* () {
-      const registry = yield* setupAgentCoreToolSessions({
-        stores,
+      yield* createAgentCoreToolInvocationRuntime({
         runtimeClient: runtime,
         profiles: [createProfile(["simple_tool"])],
       });
-      const session = yield* registry.create(
-        simpleTool,
-        { input: "from-context" },
-        { sessionId: "call_context" },
-      );
-      return yield* session.status();
+      const host = yield* ToolInvocationHostPort.use();
+      yield* host.start({
+        invocationId: "call_context",
+        tool: simpleTool,
+        input: { input: "from-context" },
+      });
+      return yield* host.turn({
+        invocationId: "call_context",
+        commandId: "call:call_context:start",
+        cursor: 0,
+      });
     });
 
-    expect(result).toBe("completed");
+    expect(result).toMatchObject({ type: "completed" });
   });
 
   it("uses stable command ids for retryable elicit, sample, and cancel commands", async () => {
     const elicitStores = createStores();
     const elicitRuntime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const elicitRegistry = createAgentCoreToolSessionRegistry({
+    const elicitResources = createAgentCoreToolInvocationResources({
       stores: elicitStores,
       runtimeClient: elicitRuntime,
       profiles: [createProfile(["elicit_tool"])],
@@ -397,29 +405,29 @@ describe("AgentCore ToolSession facade", () => {
 
     const sampleStores = createStores();
     const sampleRuntime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const sampleRegistry = createAgentCoreToolSessionRegistry({
+    const sampleResources = createAgentCoreToolInvocationResources({
       stores: sampleStores,
       runtimeClient: sampleRuntime,
       profiles: [createProfile(["sample_tool"])],
     });
 
     const result = await run(function* () {
-      const elicit = yield* elicitRegistry.create(elicitTool, {}, { sessionId: "stable_elicit" });
+      const elicit = yield* elicitResources.create(elicitTool, {}, { sessionId: "stable_elicit" });
       yield* resumeElicit(elicit, "stable_elicit:req:1", { action: "accept", content: {} });
       yield* resumeElicit(elicit, "stable_elicit:req:1", { action: "accept", content: {} });
 
-      const sample = yield* sampleRegistry.create(sampleTool, {}, { sessionId: "stable_sample" });
+      const sample = yield* sampleResources.create(sampleTool, {}, { sessionId: "stable_sample" });
       yield* resumeSample(sample, "stable_sample:req:1", { text: "hello" });
       yield* resumeSample(sample, "stable_sample:req:1", { text: "hello" });
 
       const cancellableStores = createStores();
       const cancellableRuntime = new FakeAgentCoreRemoteToolRuntimeClient();
-      const cancellableRegistry = createAgentCoreToolSessionRegistry({
+      const cancellableResources = createAgentCoreToolInvocationResources({
         stores: cancellableStores,
         runtimeClient: cancellableRuntime,
         profiles: [createProfile(["elicit_tool"])],
       });
-      const cancellable = yield* cancellableRegistry.create(
+      const cancellable = yield* cancellableResources.create(
         elicitTool,
         {},
         { sessionId: "stable_cancel" },
@@ -450,14 +458,14 @@ describe("AgentCore ToolSession facade", () => {
   it("rehydrated non-terminal handles lazily drain and reconcile runtime completion", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["elicit_tool"])],
     });
 
     const result = await run(function* () {
-      yield* registry.create(elicitTool, {}, { sessionId: "stale_rehydrate" });
+      yield* resources.create(elicitTool, {}, { sessionId: "stale_rehydrate" });
       const fakeSession = [...runtime.sessions.values()][0] as any;
       fakeSession.pending = undefined;
       fakeSession.status = "completed";
@@ -468,7 +476,10 @@ describe("AgentCore ToolSession facade", () => {
       });
       fakeSession.nextSeq = 4;
 
-      const rehydrated = yield* registry.acquire("stale_rehydrate");
+      const rehydrated = yield* resources.get("stale_rehydrate");
+      if (!rehydrated) {
+        throw new Error("expected stale invocation resource");
+      }
       const status = yield* rehydrated.status();
       const handle = yield* stores.handles.get("stale_rehydrate");
       const events = yield* stores.events.readAfter("stale_rehydrate", 0);
@@ -484,14 +495,14 @@ describe("AgentCore ToolSession facade", () => {
   it("recovers command_duplicate by draining missing runtime events", async () => {
     const stores = createStores();
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient();
-    const registry = createAgentCoreToolSessionRegistry({
+    const resources = createAgentCoreToolInvocationResources({
       stores,
       runtimeClient: runtime,
       profiles: [createProfile(["elicit_tool"])],
     });
 
     const result = await run(function* () {
-      const session = yield* registry.create(elicitTool, {}, { sessionId: "duplicate_recover" });
+      const session = yield* resources.create(elicitTool, {}, { sessionId: "duplicate_recover" });
       const request = {
         op: "respond_to_elicit",
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,

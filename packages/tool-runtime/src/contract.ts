@@ -34,6 +34,7 @@ export interface ToolExecutionRef {
   callId: string;
   toolName: string;
   sessionId?: string;
+  cursor?: number;
 }
 
 export interface ToolExecuteRequest {
@@ -47,7 +48,7 @@ export interface ToolExecuteRequest {
 export interface ToolContinuationInput {
   type: "elicit_response";
   elicitId?: string;
-  completion: ElicitExchangeCompletion<unknown>;
+  completion: ElicitExchangeCompletion<Json>;
 }
 
 export interface ToolResumeRequest {
@@ -146,7 +147,7 @@ export interface ToolContinuationPayload {
   toolName: string;
   ref?: ToolExecutionRef;
   elicitId: string;
-  completion: ElicitExchangeCompletion<unknown>;
+  completion: ElicitExchangeCompletion<Json>;
 }
 
 export interface ToolRuntime {

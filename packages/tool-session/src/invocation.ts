@@ -2,13 +2,12 @@ import type { Operation } from "effection";
 import { definePort } from "@sweatpants/foundation";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { ChatMessage, ChatToolDefinition } from "@sweatpants/chat-contract";
-import type {
-  AnyToolContract,
-  ElicitExchangeCompletion,
-  ModelPreferences,
-  SamplingToolChoice,
-  SampleExchangeCompletion,
-} from "@sweatpants/agent-sdk";
+import type { ToolInvocationEventReader, ToolInvocationEventSource } from "./contract.ts";
+import type { ToolSessionModelSelection } from "./model-selection.ts";
+import type { ToolInvocationResume } from "./invocation-resume.ts";
+export type { ToolInvocationResume } from "./invocation-resume.ts";
+import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
+import type { AnyToolContract, ModelPreferences, SamplingToolChoice } from "@sweatpants/agent-sdk";
 
 export type ToolInvocationId = string;
 export type ToolInvocationCommandId = string;
@@ -18,23 +17,8 @@ export interface StartToolInvocation {
   readonly invocationId: ToolInvocationId;
   readonly tool: AnyToolContract;
   readonly input: Json;
+  readonly model?: ToolSessionModelSelection;
 }
-
-export type ToolInvocationResume =
-  | {
-      readonly kind: "sample";
-      readonly requestId: string;
-      readonly response: SampleExchangeCompletion;
-    }
-  | {
-      readonly kind: "elicit";
-      readonly requestId: string;
-      readonly response: ElicitExchangeCompletion<unknown>;
-    }
-  | {
-      readonly kind: "cancel";
-      readonly reason?: string;
-    };
 
 export interface TurnToolInvocation {
   readonly invocationId: ToolInvocationId;
@@ -65,8 +49,8 @@ export interface ToolInvocationElicitAsk {
   readonly schema: JsonObject;
   readonly context?: Json;
   readonly bindingId?: string;
-  readonly responseContract?: Json;
-  readonly contextContract?: Json;
+  readonly responseContract?: PortableSchemaDescriptor;
+  readonly contextContract?: PortableSchemaDescriptor;
   readonly ownerInterfaceDigest?: string;
 }
 
@@ -122,6 +106,20 @@ export class ToolInvocationHostError extends Error {
  * `turn()` is the only operation that answers a parked request and advances
  * the invocation.
  */
+export interface ToolInvocationResource {
+  readonly id: ToolInvocationId;
+  readonly toolName: string;
+  readonly projection: ToolInvocationEventReader<Json>;
+  resume(resume: ToolInvocationResume): Operation<void>;
+  dispose(): Operation<void>;
+}
+
+/** Runtime-owned factory. Its storage and placement details stay private. */
+export interface ToolInvocationResourceFactory {
+  create(request: StartToolInvocation): Operation<ToolInvocationResource>;
+  open(invocationId: ToolInvocationId): Operation<ToolInvocationResource | null>;
+}
+
 export interface ToolInvocationHost {
   start(request: StartToolInvocation): Operation<void>;
   turn(request: TurnToolInvocation): Operation<ToolInvocationTurn>;
@@ -149,3 +147,21 @@ export const ToolInvocationHostPort = definePort<ToolInvocationHost>("tool-invoc
     throw new ToolInvocationHostUnavailable();
   },
 });
+
+export class ToolInvocationEventSourceUnavailable extends Error {
+  readonly code = "tool_invocation_event_source_unavailable";
+
+  constructor() {
+    super("No tool invocation event source is installed in this scope");
+    this.name = "ToolInvocationEventSourceUnavailable";
+  }
+}
+
+export const ToolInvocationEventSourcePort = definePort<ToolInvocationEventSource>(
+  "tool-invocation-events",
+  {
+    *open(): Operation<ToolInvocationEventReader | null> {
+      throw new ToolInvocationEventSourceUnavailable();
+    },
+  },
+);

@@ -8,6 +8,7 @@
  * event-log semantics so they cannot drift.
  */
 import { action, resource, type Operation, type Stream, type Subscription } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import type { ToolSessionEvent, ToolSessionStatus } from "./contract.ts";
 
 export function isTerminalToolSessionStatus(status: ToolSessionStatus): boolean {
@@ -44,7 +45,7 @@ export function statusForToolSessionEvent(
   }
 }
 
-export interface ToolSessionEventLog<TResult = unknown> {
+export interface ToolSessionEventLog<TResult extends Json = Json> {
   /** Current session status. */
   readonly status: ToolSessionStatus;
   /** LSN of the most recently appended event. */
@@ -73,12 +74,21 @@ export interface ToolSessionEventLog<TResult = unknown> {
   events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void>;
 }
 
-export function createToolSessionEventLog<TResult = unknown>(
+const MAX_EPHEMERAL_EVENTS = 256;
+
+function isEphemeralEvent(event: ToolSessionEvent): boolean {
+  return (
+    event.type === "progress" || event.type === "log" || event.type === "sample_response_queued"
+  );
+}
+
+export function createToolSessionEventLog<TResult extends Json = Json>(
   initialStatus: ToolSessionStatus = "initializing",
 ): ToolSessionEventLog<TResult> {
   let status: ToolSessionStatus = initialStatus;
   let lsn = 0;
   let closed = false;
+  let ephemeralCount = 0;
   const buffer: ToolSessionEvent<TResult>[] = [];
   const settledWaiters = new Set<(status: ToolSessionStatus) => void>();
   const eventWaiters = new Set<() => void>();
@@ -122,6 +132,16 @@ export function createToolSessionEventLog<TResult = unknown>(
         timestamp: Date.now(),
       } as ToolSessionEvent<TResult>;
       buffer.push(fullEvent);
+      if (isEphemeralEvent(fullEvent)) {
+        ephemeralCount += 1;
+        if (ephemeralCount > MAX_EPHEMERAL_EVENTS) {
+          const oldest = buffer.findIndex(isEphemeralEvent);
+          if (oldest >= 0) {
+            buffer.splice(oldest, 1);
+            ephemeralCount -= 1;
+          }
+        }
+      }
       const next = statusForToolSessionEvent(fullEvent, status);
       if (next !== undefined) {
         status = next;

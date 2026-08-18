@@ -1,18 +1,16 @@
 import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { describe, expect, it } from "vitest";
-import { run } from "effection";
+import { action, createQueue, run, spawn } from "effection";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import { ToolRuntimeApi } from "@sweatpants/tool-runtime";
-import { createToolInventory } from "@sweatpants/tool-runtime";
+import { ToolRuntimeApi, createToolInventory } from "@sweatpants/tool-runtime";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
-  createInMemoryToolSessionStore,
+  createLocalToolInvocationRuntime,
   createLocalToolRuntimeDriver,
-  createToolSessionRegistry,
   installLocalProgramToolRuntime,
   installLocalToolRuntime,
 } from "../index.ts";
@@ -47,10 +45,59 @@ const echoTool = createTool("echo")
   });
 
 describe("local ToolRuntimeDriver", () => {
-  it("requires worker-backed execution", async () => {
+  it("aborts active computation when the caller signal is cancelled", async () => {
+    const started = createQueue<void, void>();
+    const stopped = createQueue<void, void>();
+    const activeTool = createTool("active_abort")
+      .description("Active abort fixture")
+      .parameters(z.object({}))
+      .execute(function* () {
+        started.add();
+        yield* action<void>(() => () => stopped.add());
+        return { unreachable: true };
+      });
+
+    await run(function* () {
+      yield* createLocalToolInvocationRuntime({});
+      const driver = yield* createLocalToolRuntimeDriver({
+        tools: [activeTool],
+        samplingProvider: {
+          *sample() {
+            return { text: "unused" };
+          },
+        },
+      });
+      const controller = new AbortController();
+      const execution = yield* spawn(function* () {
+        try {
+          yield* driver.execute({
+            entry: createToolInventoryEntry(activeTool),
+            call: {
+              id: "active-abort-call",
+              name: activeTool.name,
+              input: {},
+              thoughtSignature: null,
+            },
+            signal: controller.signal,
+          });
+          return null;
+        } catch (error) {
+          return error;
+        }
+      });
+
+      yield* started.next();
+      controller.abort();
+      yield* stopped.next();
+      const error = yield* execution;
+      expect(error).toMatchObject({ code: "TOOL_ABORTED" });
+    });
+  });
+
+  it("fails closed when no invocation runtime is installed in scope", async () => {
     await expect(
       run(function* () {
-        yield* createLocalToolRuntimeDriver({
+        const driver = yield* createLocalToolRuntimeDriver({
           tools: [echoTool],
           samplingProvider: {
             *sample() {
@@ -58,8 +105,17 @@ describe("local ToolRuntimeDriver", () => {
             },
           },
         });
+        yield* driver.execute({
+          entry: createToolInventoryEntry(echoTool),
+          call: {
+            id: "call-no-host",
+            name: "echo",
+            input: { message: "hello" },
+            thoughtSignature: null,
+          },
+        });
       }),
-    ).rejects.toMatchObject({ code: "WORKER_BACKED_LOCAL_RUNTIME_REQUIRED" });
+    ).rejects.toMatchObject({ code: "tool_invocation_host_unavailable" });
   });
 
   it("rejects duplicate configured tool names deterministically", async () => {
@@ -72,7 +128,6 @@ describe("local ToolRuntimeDriver", () => {
               return { text: "unused" };
             },
           },
-          registryOptions: { worker: localRuntimeWorkerConfig },
         });
       }),
     ).rejects.toMatchObject({ code: "DUPLICATE_TOOL_STRATEGY" });
@@ -80,6 +135,10 @@ describe("local ToolRuntimeDriver", () => {
 
   it("executes a local tool via the canonical runtime surface", async () => {
     await run(function* () {
+      yield* createLocalToolInvocationRuntime({
+        worker: localRuntimeWorkerConfig,
+      });
+
       const driver = yield* createLocalToolRuntimeDriver({
         tools: [echoTool],
         samplingProvider: {
@@ -87,7 +146,6 @@ describe("local ToolRuntimeDriver", () => {
             return { text: "unused" };
           },
         },
-        registryOptions: { worker: localRuntimeWorkerConfig },
       });
 
       const result = yield* driver.execute({
@@ -111,6 +169,10 @@ describe("local ToolRuntimeDriver", () => {
 
   it("refuses mismatched inventory entries and call targets", async () => {
     await run(function* () {
+      yield* createLocalToolInvocationRuntime({
+        worker: localRuntimeWorkerConfig,
+      });
+
       const driver = yield* createLocalToolRuntimeDriver({
         tools: [echoTool],
         samplingProvider: {
@@ -118,7 +180,6 @@ describe("local ToolRuntimeDriver", () => {
             return { text: "unused" };
           },
         },
-        registryOptions: { worker: localRuntimeWorkerConfig },
       });
 
       try {
@@ -154,6 +215,10 @@ describe("local ToolRuntimeDriver", () => {
           return { echoed: params.message };
         });
 
+      yield* createLocalToolInvocationRuntime({
+        worker: localRuntimeWorkerConfig,
+      });
+
       const driver = yield* createLocalToolRuntimeDriver({
         tools: [strictTool],
         samplingProvider: {
@@ -161,7 +226,6 @@ describe("local ToolRuntimeDriver", () => {
             return { text: "unused" };
           },
         },
-        registryOptions: { worker: localRuntimeWorkerConfig },
       });
 
       try {
@@ -170,7 +234,7 @@ describe("local ToolRuntimeDriver", () => {
           call: {
             id: "call-invalid-session",
             name: "strict_echo",
-            input: {},
+            input: { wrong: "field" },
             thoughtSignature: null,
           },
         });
@@ -202,13 +266,12 @@ describe("local ToolRuntimeDriver", () => {
 
   it("program installer publishes matching durable foreign effects", async () => {
     await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
+      yield* createLocalToolInvocationRuntime({
         worker: localRuntimeWorkerConfig,
       });
 
       yield* installLocalProgramToolRuntime({
         tools: [echoTool],
-        registry,
         installForeignEffects: function* (registrations) {
           yield* ProgramDriverForeignEffectsContext.set(registrations);
         },
@@ -229,6 +292,10 @@ describe("local ToolRuntimeDriver", () => {
 
   it("installer makes the runtime resolvable through the tool runtime port", async () => {
     await run(function* () {
+      yield* createLocalToolInvocationRuntime({
+        worker: localRuntimeWorkerConfig,
+      });
+
       yield* installLocalToolRuntime({
         tools: [echoTool],
         samplingProvider: {
@@ -236,7 +303,6 @@ describe("local ToolRuntimeDriver", () => {
             return { text: "unused" };
           },
         },
-        registryOptions: { worker: localRuntimeWorkerConfig },
       });
 
       const result = yield* ToolRuntimeApi.operations.execute({

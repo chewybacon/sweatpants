@@ -6,10 +6,7 @@ import {
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import type { AnyToolContract, RuntimeTool } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import {
-  PluginSessionManagerContext,
-  PluginSessionRegistryContext,
-} from "@sweatpants/durable-chat-runtime/contexts";
+import { PluginSessionManagerContext } from "@sweatpants/durable-chat-runtime/contexts";
 import { projectAvailableToolContracts } from "@sweatpants/durable-chat-runtime/tool-inventory";
 import { createStrategyToolRuntime, installToolRuntime } from "@sweatpants/tool-runtime";
 import {
@@ -25,11 +22,10 @@ import {
 } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
 import { durableEffectKey } from "@sweatpants/durable-effects";
-import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
+import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
+  createLocalToolInvocationRuntime,
   createLocalWorkerDurableProgramDriver,
-  createToolInvocationHost,
-  ToolInvocationHostPort,
   createToolInvocationForeignEffectRegistrations,
   installLocalProgramToolRuntime,
 } from "@sweatpants/tool-runtime-local";
@@ -47,7 +43,6 @@ import { yoChatDurableProgramWorkerUrl } from "./tool-worker-config";
 /** Explicit dependencies for installing one complete yo-chat tool runtime. */
 export interface YoChatToolRuntimeInstallation {
   mode: "local" | "agentcore";
-  registry: ToolSessionRegistry;
   pluginManager: PluginSessionManager;
   samplingProvider: ToolSessionSamplingProvider;
   tools: AnyToolContract[];
@@ -69,8 +64,8 @@ export interface YoChatToolRuntimeInstallation {
 }
 
 /**
- * Installs the entire tool inventory into exactly one execution runtime. Local
- * mode uses one worker-backed registry; AgentCore mode uses one remote registry.
+ * Installs the entire tool inventory into exactly one execution runtime. The
+ * selected invocation host supplies local or AgentCore placement.
  */
 export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation): Operation<void> {
   const developmentPrograms = options.agentCoreDurable?.developmentPrograms;
@@ -157,7 +152,6 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
     schemas: schemaRegistry,
     durableDrivers: new Map(readyPrograms.map((tool) => [tool.name, driverKind])),
   });
-  yield* PluginSessionRegistryContext.set(options.registry);
   yield* PluginSessionManagerContext.set(options.pluginManager);
   yield* installToolInventory(
     createToolInventory(availableContracts.map((tool) => createToolInventoryEntry(tool))),
@@ -190,10 +184,8 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   }
 
   if (options.mode === "agentcore") {
-    yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(options.registry));
-    // Remote ordinary-tool execution still uses the ToolSession foreign-effect
-    // adapter for durable child sampling; only local composition is folded into
-    // installLocalProgramToolRuntime.
+    // Remote ordinary-tool execution uses the same invocation host foreign
+    // effects as local composition.
     yield* ProgramDriverForeignEffectsContext.set(
       createToolInvocationForeignEffectRegistrations({
         tools: new Map(ordinaryTools.map((tool) => [tool.name, tool])),
@@ -244,7 +236,6 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
         strategies: [
           createAgentCoreToolExecutionStrategy({
             tools: ordinaryContracts as RuntimeTool[],
-            registry: options.registry,
             samplingProvider: options.samplingProvider,
           }),
         ],
@@ -255,7 +246,6 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
 
   yield* installLocalProgramToolRuntime({
     tools: ordinaryTools,
-    registry: options.registry,
     samplingProvider: options.samplingProvider,
     installForeignEffects: function* (registrations) {
       yield* ProgramDriverForeignEffectsContext.set(registrations);

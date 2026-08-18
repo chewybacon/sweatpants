@@ -26,11 +26,7 @@ import type { Operation } from "effection";
 import { createChatApplication } from "@sweatpants/agent-host/server";
 import { createPluginSessionManager } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { setupLogger } from "@sweatpants/agent-host/logging";
-import type { ToolSessionRegistry } from "@sweatpants/tool-session";
-import {
-  createInMemoryToolSessionStore,
-  createToolSessionRegistry,
-} from "@sweatpants/tool-runtime-local";
+import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
 
 import { setupYoChatDurableStreams } from "@/server/durable-streams";
 import { setupYoChatBaseContexts, allTools } from "@/server/tools";
@@ -51,18 +47,14 @@ function* setupTierAWorkerRuntime(): Operation<void> {
     throw new Error(`[outside-in:tier-a] worker entry not found at ${workerEntryPath}.`);
   }
 
-  const store = createInMemoryToolSessionStore();
   const samplingProvider = createPluginSamplingProvider();
-  const registry: ToolSessionRegistry = yield* createToolSessionRegistry(store, {
+  yield* createLocalToolInvocationRuntime({
     worker: yoChatToolSessionWorkerConfig,
   });
-  const manager = yield* createPluginSessionManager({
-    registry,
-  });
+  const manager = yield* createPluginSessionManager({ samplingProvider });
 
   yield* installYoChatToolRuntime({
     mode: "local",
-    registry,
     pluginManager: manager,
     samplingProvider,
     tools: [...allTools],

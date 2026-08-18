@@ -7,18 +7,13 @@
  * ## Architecture
  *
  * ```
- * ToolSessionRegistry
- *   └─ create() → ToolSession
- *   └─ acquire(id) → ToolSession (refcount++)
- *   └─ release(id) → cleanup when refcount = 0
+ * ToolInvocationHost
+ *   └─ start() / turn() → control cranks
+ *   └─ dispose() → resource cleanup
  *
- * ToolSession
- *   └─ id, toolName, status
- *   └─ projection.events() → pull-only UX projection
- *   └─ resume({ kind, requestId, response }) → private execution resource
- *
- * ToolSessionStore
- *   └─ Pluggable storage (in-memory, Redis, Durable Objects)
+ * ToolSession (private runtime resource)
+ *   └─ projection.events() → pull-only event projection
+ *   └─ resume({ kind, requestId, response }) → execution advancement
  * ```
  *
  * @packageDocumentation
@@ -27,13 +22,12 @@ import type { Operation, Stream } from "effection";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { ChatMessage, ChatToolDefinition } from "@sweatpants/chat-contract";
-import type { ToolInvocationResume } from "./invocation.ts";
+import type { ToolInvocationResume } from "./invocation-resume.ts";
+import type { ToolSessionModelSelection } from "./model-selection.ts";
 import type {
-  ElicitsMap,
   LogLevel,
   ModelPreferences,
   SamplingToolChoice,
-  ToolContract,
   SampleExchangeCompletionBase,
   ParsedSampleExchangeCompletion,
   ToolCallSampleExchangeCompletion,
@@ -140,7 +134,7 @@ export interface SampleRequestEvent extends ToolSessionEventBase {
 /**
  * Tool completed successfully.
  */
-export interface ResultEvent<TResult = unknown> extends ToolSessionEventBase {
+export interface ResultEvent<TResult extends Json = Json> extends ToolSessionEventBase {
   type: "result";
   /** The tool's return value */
   result: TResult;
@@ -180,7 +174,7 @@ export interface SampleResponseQueuedEvent {
 /**
  * All possible session events.
  */
-export type ToolSessionEvent<TResult = unknown> =
+export type ToolSessionEvent<TResult extends Json = Json> =
   | ProgressEvent
   | LogEvent
   | ElicitRequestEvent
@@ -200,7 +194,7 @@ export type ToolSessionEvent<TResult = unknown> =
  * The projection includes UX notices, parked asks, and terminal outcomes.
  * Reading it never resumes the generator or advances invocation control.
  */
-export interface ToolInvocationEventReader<TResult = unknown> {
+export interface ToolInvocationEventReader<TResult extends Json = Json> {
   events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void>;
 }
 
@@ -222,7 +216,7 @@ export interface ToolInvocationEventSource {
  *
  * @template TResult - The tool's result type
  */
-export interface ToolSession<TResult = unknown> {
+export interface ToolSession<TResult extends Json = Json> {
   /** Unique session ID */
   readonly id: string;
 
@@ -255,11 +249,6 @@ export interface ToolSession<TResult = unknown> {
 /**
  * Options for creating a tool session.
  */
-export interface ToolSessionModelSelection {
-  provider: string;
-  id: string;
-}
-
 export interface ToolSessionOptions {
   /** Custom session ID (auto-generated if not provided) */
   sessionId?: string;
@@ -291,106 +280,6 @@ export interface ToolSessionOptions {
    * @default false
    */
   startImmediately?: boolean;
-}
-
-// =============================================================================
-// TOOL SESSION REGISTRY
-// =============================================================================
-
-/**
- * Registry for managing tool sessions.
- *
- * Uses reference counting to track active clients and clean up
- * sessions when no longer needed.
- *
- * @template TResult - Default result type for sessions
- */
-export interface ToolSessionRegistry {
-  /**
-   * Create a new tool session.
-   *
-   * @param tool - The tool to execute
-   * @param params - Tool parameters
-   * @param options - Session options
-   * @returns The created session
-   */
-  create<TParams, _TInteraction, _TClient, TResult, TElicits extends ElicitsMap>(
-    tool: ToolContract<string, TParams, TResult, TElicits>,
-    params: TParams,
-    options?: ToolSessionOptions,
-  ): Operation<ToolSession<TResult>>;
-
-  /**
-   * Get a session by ID without acquiring it.
-   * Returns null if session doesn't exist.
-   */
-  get(sessionId: string): Operation<ToolSession | null>;
-
-  /**
-   * Acquire a session by ID (increments refcount).
-   * Throws if session doesn't exist.
-   */
-  acquire(sessionId: string): Operation<ToolSession>;
-
-  /**
-   * Release a session (decrements refcount).
-   * Session is cleaned up when refcount reaches 0.
-   */
-  release(sessionId: string): Operation<void>;
-}
-
-// =============================================================================
-// TOOL SESSION STORE
-// =============================================================================
-
-/**
- * Entry stored for each session.
- */
-export interface ToolSessionEntry<TResult = unknown> {
-  /** The session instance */
-  session: ToolSession<TResult>;
-
-  /** Reference count (number of active clients) */
-  refCount: number;
-
-  /** When the session was created */
-  createdAt: number;
-
-  /** Current status (cached for quick access) */
-  status: ToolSessionStatus;
-}
-
-/**
- * Pluggable storage for tool sessions.
- *
- * Implementations can use in-memory Map, Redis, or Durable Objects.
- */
-export interface ToolSessionStore {
-  /**
-   * Get a session entry by ID.
-   */
-  get(sessionId: string): Operation<ToolSessionEntry | null>;
-
-  /**
-   * Set a session entry.
-   */
-  set(sessionId: string, entry: ToolSessionEntry): Operation<void>;
-
-  /**
-   * Delete a session entry.
-   */
-  delete(sessionId: string): Operation<void>;
-
-  /**
-   * Update the reference count.
-   * @returns The new refcount
-   */
-  updateRefCount(sessionId: string, delta: number): Operation<number>;
-
-  /**
-   * Update the status.
-   */
-  updateStatus(sessionId: string, status: ToolSessionStatus): Operation<void>;
 }
 
 // =============================================================================

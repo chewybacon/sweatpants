@@ -154,21 +154,21 @@ describe("MCP Protocol", () => {
         const ctx = createEncoderContext("call_1", "progress_1", "test-logger");
 
         // Progress
-        const progressEncoded = encodeSessionEvent<unknown>(
+        const progressEncoded = encodeSessionEvent(
           { type: "progress", lsn: 1, timestamp: Date.now(), message: "Working..." },
           ctx,
         );
         expect(progressEncoded.type).toBe("notification");
 
         // Log
-        const logEncoded = encodeSessionEvent<unknown>(
+        const logEncoded = encodeSessionEvent(
           { type: "log", lsn: 2, timestamp: Date.now(), level: "info", message: "Info" },
           ctx,
         );
         expect(logEncoded.type).toBe("notification");
 
         // Elicit
-        const elicitEncoded = encodeSessionEvent<unknown>(
+        const elicitEncoded = encodeSessionEvent(
           {
             type: "elicit_request",
             lsn: 3,
@@ -193,14 +193,14 @@ describe("MCP Protocol", () => {
         expect(resultEncoded.type).toBe("response");
 
         // Error
-        const errorEncoded = encodeSessionEvent<unknown>(
+        const errorEncoded = encodeSessionEvent(
           { type: "error", lsn: 5, timestamp: Date.now(), name: "Error", message: "Failed" },
           ctx,
         );
         expect(errorEncoded.type).toBe("response");
 
         // Cancelled
-        const cancelledEncoded = encodeSessionEvent<unknown>(
+        const cancelledEncoded = encodeSessionEvent(
           { type: "cancelled", lsn: 6, timestamp: Date.now(), reason: "User cancelled" },
           ctx,
         );

@@ -91,6 +91,20 @@ describe("createToolSessionEventLog", () => {
     expect(seen.map((event) => event.lsn)).toEqual([2, 3]);
   });
 
+  it("bounds ephemeral progress and log records without dropping control events", () => {
+    const log = createToolSessionEventLog();
+    const ask = log.append({ type: "elicit_request", elicitId: "e1" });
+    for (let index = 0; index < 300; index += 1) {
+      log.append({ type: "progress", message: `progress-${index}` });
+    }
+    const terminal = log.append({ type: "result", result: { ok: true } });
+
+    expect(log.buffer.filter((event) => event.type === "progress")).toHaveLength(256);
+    expect(log.buffer).toContain(ask);
+    expect(log.buffer).toContain(terminal);
+    expect(log.lastLsn).toBe(302);
+  });
+
   it("settled resolves immediately for terminal state and waits otherwise", async () => {
     const log = createToolSessionEventLog();
 

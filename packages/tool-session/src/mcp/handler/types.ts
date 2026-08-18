@@ -17,7 +17,7 @@
  */
 import type { Operation } from "effection";
 import type { Json, JsonObject } from "@sweatpants/foundation";
-import type { ToolInvocationEventReader, ToolInvocationEventSource } from "../../contract.ts";
+import type { ToolInvocationEventReader } from "../../contract.ts";
 import type { ToolInvocationCursor } from "../../invocation.ts";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import type { JsonRpcId } from "../protocol/types.ts";
@@ -30,11 +30,6 @@ import type { JsonRpcId } from "../protocol/types.ts";
  * Configuration for the MCP HTTP handler.
  */
 export interface McpHandlerConfig {
-  /**
-   * Pull-only event projections for started invocations.
-   */
-  events: ToolInvocationEventSource;
-
   /**
    * Map of available tools by name.
    * Used to resolve tools/call requests.

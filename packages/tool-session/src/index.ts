@@ -1,5 +1,7 @@
 export * from "./contract.ts";
 export * from "./invocation.ts";
+export type { ToolSessionModelSelection } from "./model-selection.ts";
+export { createToolInvocationHost } from "./invocation-host.ts";
 export {
   createToolSessionEventLog,
   isTerminalToolSessionStatus,

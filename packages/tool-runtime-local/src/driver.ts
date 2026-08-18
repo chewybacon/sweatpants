@@ -2,9 +2,10 @@ import {
   parseRuntimeToolParameters,
   requireToolParameterResult,
 } from "@sweatpants/tool-session/tool-parameters";
+import type { Json } from "@sweatpants/foundation";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { ChatToolCall } from "@sweatpants/chat-contract";
-import { action, resource, spawn, type Operation, type Stream } from "effection";
+import { action, race, type Operation } from "effection";
 import {
   installToolRuntime,
   ToolRuntimeError,
@@ -12,39 +13,51 @@ import {
   createToolExecutionRef,
   type ToolExecution,
   type ToolExecutionContext,
-  type ToolExecutionEvent,
   type ToolExecutionStrategy,
   type ToolRuntime,
 } from "@sweatpants/tool-runtime";
-import type {
-  ToolSession as McpToolSession,
-  ToolSessionEvent as McpToolSessionEvent,
-  ToolSessionRegistry,
-  ToolSessionSamplingProvider,
-  ToolSessionStore,
-} from "@sweatpants/tool-session";
-import { createInMemoryToolSessionStore } from "./in-memory-store.ts";
 import {
-  createToolSessionRegistry,
-  isWorkerBackedToolSessionRegistry,
-  type ToolSessionRegistryOptions,
-} from "./session-registry.ts";
+  ToolInvocationHostError,
+  ToolInvocationHostPort,
+  type ToolInvocationHost,
+  type ToolInvocationTurn,
+  type ToolSessionSamplingProvider,
+  type TurnToolInvocation,
+} from "@sweatpants/tool-session";
 
 export interface LocalToolRuntimeDriverOptions {
   id?: string;
   tools: AnyToolContract[];
-  registry?: ToolSessionRegistry;
-  store?: ToolSessionStore;
   samplingProvider?: ToolSessionSamplingProvider;
-  registryOptions?: ToolSessionRegistryOptions;
 }
 
-function localRuntimeWorkerRequirementError(): ToolRuntimeError {
-  return new ToolRuntimeError(
-    "WORKER_BACKED_LOCAL_RUNTIME_REQUIRED",
-    "Local tool runtime requires a worker-backed ToolSessionRegistry. " +
-      "Pass registryOptions.worker when creating the runtime or supply a registry created with worker mode enabled.",
-  );
+function* waitForAbort(signal: AbortSignal): Operation<void> {
+  if (signal.aborted) {
+    return;
+  }
+  yield* action<void>((resolve) => {
+    const onAbort = () => resolve();
+    signal.addEventListener("abort", onAbort, { once: true });
+    return () => signal.removeEventListener("abort", onAbort);
+  });
+}
+
+function* turnWithActiveAbort(
+  host: ToolInvocationHost,
+  request: TurnToolInvocation,
+  signal: AbortSignal | undefined,
+): Operation<ToolInvocationTurn> {
+  if (!signal) {
+    return yield* host.turn(request);
+  }
+  return yield* race([
+    host.turn(request),
+    (function* abortActiveTurn() {
+      yield* waitForAbort(signal);
+      yield* host.dispose(request.invocationId);
+      throw new ToolRuntimeError("TOOL_ABORTED", "Active tool execution was aborted");
+    })(),
+  ]);
 }
 
 function toolsByCanonicalName(
@@ -64,149 +77,93 @@ function toolsByCanonicalName(
   return byName;
 }
 
-function eventStreamFromSession(session: McpToolSession): Stream<ToolExecutionEvent, void> {
-  return resource(function* (provide) {
-    const subscription = yield* session.projection.events();
-    yield* provide({
-      *next(): Operation<IteratorResult<ToolExecutionEvent, void>> {
-        return yield* subscription.next();
-      },
-    });
-  });
-}
-
-function mcpEventToExecution(
+function* runInvocationTurnLoop(
+  host: ToolInvocationHost,
   runtimeId: string,
   call: ChatToolCall,
-  session: McpToolSession,
-  event: McpToolSessionEvent | null,
-): ToolExecution {
-  const ref = createToolExecutionRef({
-    runtimeId,
-    executionId: session.id,
-    sessionId: session.id,
-    callId: call.id,
-    toolName: session.toolName,
-  });
-  if (!event) {
-    return {
-      kind: "failed",
-      ref,
-      error: { code: "SESSION_ENDED", message: "Tool session ended unexpectedly" },
-    };
-  }
-
-  switch (event.type) {
-    case "elicit_request":
-      return {
-        kind: "awaiting_elicit",
-        ref,
-        request: {
-          elicitId: event.elicitId,
-          key: event.key,
-          message: event.message,
-          schema: event.schema,
-          ...(event.context !== undefined ? { context: event.context } : {}),
-          ...(event.bindingId ? { bindingId: event.bindingId } : {}),
-          ...(event.responseContract ? { responseContract: event.responseContract } : {}),
-          ...(event.contextContract ? { contextContract: event.contextContract } : {}),
-          ...(event.placement ? { placement: event.placement } : {}),
-          ...(event.ownerInterfaceDigest
-            ? { ownerInterfaceDigest: event.ownerInterfaceDigest }
-            : {}),
-          ...(event.clientMetadata !== undefined ? { clientMetadata: event.clientMetadata } : {}),
-        },
-      };
-    case "result":
-      return { kind: "completed", ref, result: event.result };
-    case "error":
+  initialTurn: ToolInvocationTurn,
+  samplingProvider: ToolSessionSamplingProvider,
+): Operation<ToolExecution> {
+  let currentTurn = initialTurn;
+  while (true) {
+    const ref = createToolExecutionRef({
+      runtimeId,
+      executionId: call.id,
+      sessionId: call.id,
+      callId: call.id,
+      toolName: call.name,
+      ...(currentTurn.type === "parked" ? { cursor: currentTurn.cursor } : {}),
+    });
+    if (currentTurn.type === "completed") {
+      return { kind: "completed", ref, result: currentTurn.result };
+    }
+    if (currentTurn.type === "failed") {
       return {
         kind: "failed",
         ref,
-        error: {
-          code: event.name,
-          message: event.message,
-        },
+        error: { code: currentTurn.error.code, message: currentTurn.error.message },
       };
-    case "cancelled":
+    }
+    if (currentTurn.type === "cancelled") {
       return {
         kind: "failed",
         ref,
         error: {
           code: "TOOL_CANCELLED",
-          message: event.reason ?? "Tool execution was cancelled",
+          message: currentTurn.reason ?? "Tool execution was cancelled",
         },
       };
-    default:
-      return { kind: "running", ref, events: eventStreamFromSession(session) };
-  }
-}
-
-function* waitForAbort(signal: AbortSignal): Operation<void> {
-  if (signal.aborted) {
-    return;
-  }
-  yield* action<void>((resolve) => {
-    const onAbort = () => resolve();
-    signal.addEventListener("abort", onAbort, { once: true });
-    return () => signal.removeEventListener("abort", onAbort);
-  });
-}
-
-function afterLsnFromElicitId(elicitId: string | undefined): number | undefined {
-  if (!elicitId) {
-    return undefined;
-  }
-  const requestMatch = /:req:(\d+)$/.exec(elicitId);
-  return requestMatch?.[1] ? Number(requestMatch[1]) : undefined;
-}
-
-function* nextMcpExecution(
-  runtimeId: string,
-  call: ChatToolCall,
-  session: McpToolSession,
-  samplingProvider: ToolSessionSamplingProvider,
-  afterLSN?: number,
-): Operation<ToolExecution> {
-  const subscription = yield* session.projection.events(afterLSN);
-
-  while (true) {
-    const next = yield* subscription.next();
-    if (next.done) {
-      return mcpEventToExecution(runtimeId, call, session, null);
     }
-
-    if (next.value.type === "sample_request") {
-      const result = yield* samplingProvider.sample(next.value.messages, {
-        ...(next.value.systemPrompt ? { systemPrompt: next.value.systemPrompt } : {}),
-        ...(next.value.maxTokens !== undefined ? { maxTokens: next.value.maxTokens } : {}),
-        ...(next.value.tools ? { tools: next.value.tools } : {}),
-        ...(next.value.toolChoice ? { toolChoice: next.value.toolChoice } : {}),
-        ...(next.value.schema ? { schema: next.value.schema } : {}),
-      });
-      yield* session.resume({
-        kind: "sample",
-        requestId: next.value.sampleId,
-        response: result,
-      });
-      continue;
+    if (currentTurn.type === "parked") {
+      if (currentTurn.ask.kind === "elicit") {
+        const ask = currentTurn.ask;
+        return {
+          kind: "awaiting_elicit",
+          ref,
+          request: {
+            elicitId: ask.requestId,
+            key: ask.key,
+            message: ask.message,
+            schema: ask.schema,
+            ...(ask.context !== undefined ? { context: ask.context } : {}),
+            ...(ask.bindingId !== undefined ? { bindingId: ask.bindingId } : {}),
+            ...(ask.responseContract !== undefined
+              ? { responseContract: ask.responseContract }
+              : {}),
+            ...(ask.contextContract !== undefined ? { contextContract: ask.contextContract } : {}),
+            ...(ask.ownerInterfaceDigest !== undefined
+              ? { ownerInterfaceDigest: ask.ownerInterfaceDigest }
+              : {}),
+          },
+        };
+      }
+      if (currentTurn.ask.kind === "sample") {
+        const ask = currentTurn.ask;
+        const result = yield* samplingProvider.sample([...ask.messages], {
+          ...(ask.systemPrompt !== undefined ? { systemPrompt: ask.systemPrompt } : {}),
+          ...(ask.maxTokens !== undefined ? { maxTokens: ask.maxTokens } : {}),
+          ...(ask.tools !== undefined ? { tools: [...ask.tools] } : {}),
+          ...(ask.toolChoice !== undefined ? { toolChoice: ask.toolChoice } : {}),
+          ...(ask.schema !== undefined ? { schema: ask.schema } : {}),
+        });
+        currentTurn = yield* host.turn({
+          invocationId: call.id,
+          commandId: `sample:${ask.requestId}`,
+          cursor: currentTurn.cursor,
+          resume: {
+            kind: "sample",
+            requestId: ask.requestId,
+            response: result,
+          },
+        });
+        continue;
+      }
     }
-
-    if (
-      next.value.type === "progress" ||
-      next.value.type === "log" ||
-      next.value.type === "sample_response_queued"
-    ) {
-      continue;
-    }
-
-    return mcpEventToExecution(runtimeId, call, session, next.value);
   }
 }
 
 export interface LocalSessionToolExecutionStrategyOptions {
   id?: string;
-  registry: ToolSessionRegistry;
   samplingProvider: ToolSessionSamplingProvider;
   tools: AnyToolContract[];
 }
@@ -237,76 +194,96 @@ export function createLocalSessionToolExecutionStrategy(
         );
       }
       const params = requireToolParameterResult(
-        parseRuntimeToolParameters(tool, call.input, call.id),
+        parseRuntimeToolParameters<Json>(tool, call.input, call.id),
         { toolName: tool.name, callId: call.id },
       );
-      const session = yield* options.registry.create(tool, params, {
-        sessionId: call.id,
-        ...(ctx.signal ? { signal: ctx.signal } : {}),
+
+      const host = yield* ToolInvocationHostPort.use();
+      yield* host.start({
+        invocationId: call.id,
+        tool,
+        input: params,
       });
-      if (ctx.signal) {
-        yield* spawn(function* () {
-          yield* waitForAbort(ctx.signal!);
-          yield* session.resume({ kind: "cancel", reason: "tool invocation cancelled" });
-        });
-      }
-      return yield* nextMcpExecution(ctx.runtimeId, call, session, options.samplingProvider);
+
+      const initialTurn = yield* turnWithActiveAbort(
+        host,
+        {
+          invocationId: call.id,
+          commandId: `call:${call.id}:start`,
+          cursor: 0,
+        },
+        ctx.signal,
+      );
+
+      return yield* runInvocationTurnLoop(
+        host,
+        ctx.runtimeId,
+        call,
+        initialTurn,
+        options.samplingProvider,
+      );
     },
     *resume(ref, input, ctx: ToolExecutionContext): Operation<ToolExecution> {
-      const sessionId = ref.sessionId ?? ref.executionId;
-      const session = yield* options.registry.get(sessionId);
-      if (!session) {
+      const invocationId = ref.sessionId ?? ref.executionId;
+      if (!toolsByName.has(ref.toolName)) {
         throw new ToolRuntimeError(
           "EXECUTION_NOT_FOUND",
-          `Local tool session not found: ${sessionId}`,
-        );
-      }
-      if (ref.toolName && session.toolName !== ref.toolName) {
-        throw new ToolRuntimeError(
-          "EXECUTION_NOT_FOUND",
-          `Local tool session not found: ${sessionId}`,
+          `Local tool invocation not found: ${invocationId}`,
         );
       }
       if (!input.elicitId) {
         throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
       }
-      yield* session.resume({
-        kind: "elicit",
-        requestId: input.elicitId,
-        response: input.completion,
-      });
-      if (ctx.signal) {
-        yield* spawn(function* () {
-          yield* waitForAbort(ctx.signal!);
-          yield* session.resume({ kind: "cancel", reason: "tool invocation cancelled" });
-        });
-      }
-      return yield* nextMcpExecution(
+
+      const host = yield* ToolInvocationHostPort.use();
+      const turn = yield* turnWithActiveAbort(
+        host,
+        {
+          invocationId,
+          commandId: `elicit:${input.elicitId}`,
+          cursor: ref.cursor ?? 0,
+          resume: {
+            kind: "elicit",
+            requestId: input.elicitId,
+            response: input.completion,
+          },
+        },
+        ctx.signal,
+      );
+
+      return yield* runInvocationTurnLoop(
+        host,
         ctx.runtimeId,
         {
           id: ref.callId,
-          name: ref.toolName || session.toolName,
+          name: ref.toolName,
           input: {},
           thoughtSignature: null,
         },
-        session,
+        turn,
         options.samplingProvider,
-        afterLsnFromElicitId(input.elicitId),
       );
     },
     *abort(ref, reason): Operation<void> {
-      const sessionId = ref.sessionId ?? ref.executionId;
-      const session = yield* options.registry.get(sessionId);
-      if (!session) {
-        throw new ToolRuntimeError(
-          "EXECUTION_NOT_FOUND",
-          `Local tool session not found: ${sessionId}`,
-        );
+      const invocationId = ref.sessionId ?? ref.executionId;
+      const host = yield* ToolInvocationHostPort.use();
+      try {
+        yield* host.turn({
+          invocationId,
+          commandId: `abort:${invocationId}`,
+          cursor: ref.cursor ?? 0,
+          resume: {
+            kind: "cancel",
+            ...(reason === undefined ? {} : { reason }),
+          },
+        });
+      } catch (error) {
+        if (!(error instanceof ToolInvocationHostError) || error.code !== "command_in_progress") {
+          throw error;
+        }
+      } finally {
+        yield* host.dispose(invocationId);
       }
-      yield* session.resume({
-        kind: "cancel",
-        ...(reason === undefined ? {} : { reason }),
-      });
     },
   };
 }
@@ -321,27 +298,11 @@ export function* createLocalToolRuntimeDriver(
     },
   };
 
-  if (options.registry) {
-    if (!isWorkerBackedToolSessionRegistry(options.registry)) {
-      throw localRuntimeWorkerRequirementError();
-    }
-  } else if (!options.registryOptions?.worker) {
-    throw localRuntimeWorkerRequirementError();
-  }
-
-  const registry =
-    options.registry ??
-    (yield* createToolSessionRegistry(
-      options.store ?? createInMemoryToolSessionStore(),
-      options.registryOptions ?? {},
-    ));
-
   return createStrategyToolRuntime({
     id: runtimeId,
     strategies: [
       createLocalSessionToolExecutionStrategy({
         id: runtimeId,
-        registry,
         samplingProvider,
         tools: options.tools,
       }),

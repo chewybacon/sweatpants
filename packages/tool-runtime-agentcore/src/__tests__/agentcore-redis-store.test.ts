@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { run, spawn, sleep } from "effection";
+import { AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION } from "../index.ts";
 import {
-  AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   createRedisAgentCoreToolSessionEventStore,
   createRedisAgentCoreToolSessionHandleStore,
-} from "../index.ts";
+} from "../agentcore-redis-store.ts";
 import type { AgentCoreToolSessionHandle, RedisLikeClient } from "../index.ts";
 
 class InMemoryRedisLikeClient implements RedisLikeClient {

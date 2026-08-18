@@ -35,12 +35,9 @@ import { anyGuard, createSchemaFixture, nullGuard } from "@sweatpants/journal-au
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 
 import {
-  createInMemoryToolSessionStore,
+  createLocalToolInvocationRuntime,
   createLocalDurableProgramDriver,
-  createToolInvocationHost,
-  ToolInvocationHostPort,
   createToolInvocationForeignEffectRegistrations,
-  createToolSessionRegistry,
 } from "../index.ts";
 
 type Result = { answers: string[] };
@@ -174,8 +171,7 @@ describe("automatic foreign adapter child orchestration", () => {
     };
 
     await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
+      yield* createLocalToolInvocationRuntime({});
       const effects = createDurableEffectRegistry([
         ...createToolInvocationForeignEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
@@ -319,14 +315,13 @@ describe("automatic foreign adapter child orchestration", () => {
     };
 
     const outcome = await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
+      yield* createLocalToolInvocationRuntime({
         worker: {
           workerUrl: new URL("./fixtures/tool-worker-bootstrap.mjs", import.meta.url),
           isDev: false,
           execArgv: ["--conditions=development"],
         },
       });
-      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
       const effects = createDurableEffectRegistry([
         ...createToolInvocationForeignEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[tool.name, tool]]),

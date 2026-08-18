@@ -58,13 +58,3 @@ export type {
   DurableProgramWorkerResult,
   DurableWorkerAttachmentMetadata,
 } from "./durable-worker-protocol.ts";
-
-// =============================================================================
-// WORKER TOOL SESSION (host-side adapter for worker-based tools)
-// =============================================================================
-
-export {
-  // Worker tool session adapter
-  createWorkerToolSession,
-  type WorkerToolSessionOptions,
-} from "./worker-tool-session.ts";

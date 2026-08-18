@@ -31,12 +31,9 @@ import {
 } from "@sweatpants/tool-session/foreign";
 
 import {
-  createInMemoryToolSessionStore,
+  createLocalToolInvocationRuntime,
   createLocalDurableProgramDriver,
-  createToolInvocationHost,
-  ToolInvocationHostPort,
   createToolInvocationForeignEffectRegistrations,
-  createToolSessionRegistry,
 } from "../index.ts";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 
@@ -51,8 +48,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
       });
 
     const result = await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
+      yield* createLocalToolInvocationRuntime({});
       const [start, continueRegistration] = createToolInvocationForeignEffectRegistrations({
         tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
       });
@@ -102,7 +98,6 @@ describe("ToolSession foreign-tool durability boundary", () => {
       return {
         disposition:
           effectDisposition.status === "ok" ? effectDisposition.value : effectDisposition,
-        released: (yield* registry.get(foreignSessionId)) === null,
       };
     });
 
@@ -111,7 +106,6 @@ describe("ToolSession foreign-tool durability boundary", () => {
         type: "failed",
         error: { code: "foreign_sample_response_invalid", retryable: false },
       },
-      released: true,
     });
   });
 
@@ -163,8 +157,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
     const attach = attachRequest(sessionId, taskId, request);
 
     const firstRun = await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
+      yield* createLocalToolInvocationRuntime({});
       const registrations = createToolInvocationForeignEffectRegistrations({
         tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
       });
@@ -211,11 +204,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
     authority = recreate(authority, keyring);
 
     const recovered = await run(function* () {
-      const replacementRegistry = yield* createToolSessionRegistry(
-        createInMemoryToolSessionStore(),
-        {},
-      );
-      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(replacementRegistry));
+      yield* createLocalToolInvocationRuntime({});
       const effects = createDurableEffectRegistry([
         ...createToolInvocationForeignEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[tool.name, tool]]),

@@ -4,7 +4,7 @@ import {
   createPluginSessionManager,
   type PluginSessionManager,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
-import type { ToolSessionRegistry, ToolSessionSamplingProvider } from "@sweatpants/tool-session";
+import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
@@ -14,24 +14,17 @@ import {
 } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import {
-  createInMemoryToolSessionStore,
-  createToolSessionRegistry,
-} from "@sweatpants/tool-runtime-local";
+import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
 import {
   createAgentCoreDurableProgramDriver,
   createAgentCoreRemoteToolRuntimeClient,
-  createAgentCoreToolSessionRegistry,
+  createAgentCoreToolInvocationRuntime,
   createAwsSdkAgentCoreInvoker,
-  createInMemoryAgentCoreToolSessionEventStore,
-  createInMemoryAgentCoreToolSessionHandleStore,
-  createRedisAgentCoreToolSessionEventStore,
-  createRedisAgentCoreToolSessionHandleStore,
   createAgentCoreWebSocketProgramTransport,
   createSigV4AgentCoreWebSocketConnector,
   exactProgramKey,
+  type AgentCoreToolInvocationPersistence,
   type AgentCoreToolRuntimeProfile,
-  type AgentCoreToolSessionStores,
   type RedisLikeClient,
 } from "@sweatpants/tool-runtime-agentcore";
 import { env } from "@/env";
@@ -46,26 +39,13 @@ import { installYoChatToolRuntime } from "./tool-runtime-installation";
 // only when the single selected runtime is local.
 import toolWorkerUrl from "./tool-worker.ts?modulePath";
 
-let sharedRegistry: ToolSessionRegistry | null = null;
 let sharedPluginSessionManager: PluginSessionManager | null = null;
 let sharedSamplingProvider: ToolSessionSamplingProvider | null = null;
 
-function* createLocalRegistry(): Operation<ToolSessionRegistry> {
-  return yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-    worker: {
-      workerUrl: toolWorkerUrl,
-      isDev: process.env["NODE_ENV"] !== "production",
-    },
-  });
-}
-
-function* createAgentCoreStores(): Operation<AgentCoreToolSessionStores> {
+function* createAgentCorePersistence(): Operation<AgentCoreToolInvocationPersistence> {
   const redis = yield* call(() => getSharedRedisClient());
   if (!redis) {
-    return {
-      handles: createInMemoryAgentCoreToolSessionHandleStore(),
-      events: createInMemoryAgentCoreToolSessionEventStore(),
-    };
+    return { kind: "memory" };
   }
   const redisOptions = {
     keyPrefix: env.AGENTCORE_REDIS_KEY_PREFIX,
@@ -74,13 +54,10 @@ function* createAgentCoreStores(): Operation<AgentCoreToolSessionStores> {
   // SAFETY: both adapters use the same Redis command subset; the framework
   // client carries wider generic module metadata than the narrow store port.
   const client = redis as unknown as RedisLikeClient;
-  return {
-    handles: createRedisAgentCoreToolSessionHandleStore(client, redisOptions),
-    events: createRedisAgentCoreToolSessionEventStore(client, redisOptions),
-  };
+  return { kind: "redis", client, options: redisOptions };
 }
 
-function* createAgentCoreRegistry(): Operation<ToolSessionRegistry> {
+function* installAgentCoreInvocationRuntime(): Operation<void> {
   if (!env.AGENTCORE_RUNTIME_ARN) {
     throw new Error("AGENTCORE_RUNTIME_ARN is required when MCP_TOOL_RUNTIME=agentcore");
   }
@@ -98,12 +75,13 @@ function* createAgentCoreRegistry(): Operation<ToolSessionRegistry> {
     toolNames,
     maxSessionTtlMs: env.AGENTCORE_TOOL_SESSION_TTL_MS,
   };
-  return createAgentCoreToolSessionRegistry({
-    stores: yield* createAgentCoreStores(),
+  const registryOptions = {
+    persistence: yield* createAgentCorePersistence(),
     runtimeClient,
     profiles: [profile],
     defaultProfile: profile.name,
-  });
+  };
+  yield* createAgentCoreToolInvocationRuntime(registryOptions);
 }
 
 function redactAgentCoreArn(value: string | undefined): string | undefined {
@@ -114,7 +92,7 @@ function redactAgentCoreArn(value: string | undefined): string | undefined {
   return `[redacted-agentcore-runtime:${suffix}]`;
 }
 
-function* createSelectedRegistry(): Operation<ToolSessionRegistry> {
+function* installSelectedInvocationRuntime(): Operation<void> {
   if (env.MCP_TOOL_RUNTIME === "agentcore") {
     console.info("[yo-chat] tool runtime: agentcore", {
       runtimeArn: redactAgentCoreArn(env.AGENTCORE_RUNTIME_ARN),
@@ -122,10 +100,16 @@ function* createSelectedRegistry(): Operation<ToolSessionRegistry> {
       region: env.AGENTCORE_REGION,
       toolCount: allTools.length,
     });
-    return yield* createAgentCoreRegistry();
+    yield* installAgentCoreInvocationRuntime();
+    return;
   }
   console.info("[yo-chat] tool runtime: local", { toolCount: allTools.length });
-  return yield* createLocalRegistry();
+  yield* createLocalToolInvocationRuntime({
+    worker: {
+      workerUrl: toolWorkerUrl,
+      isDev: process.env["NODE_ENV"] !== "production",
+    },
+  });
 }
 
 function durableAgentCoreInstallation() {
@@ -265,11 +249,10 @@ function developmentProgramReleases():
 
 /** Installs all discovered tools into the single selected runtime. */
 export function* setupYoChatPluginsAndRuntime(): Operation<void> {
-  if (!sharedRegistry || !sharedPluginSessionManager || !sharedSamplingProvider) {
-    sharedSamplingProvider = createPluginSamplingProvider();
-    sharedRegistry = yield* createSelectedRegistry();
+  sharedSamplingProvider ??= createPluginSamplingProvider();
+  yield* installSelectedInvocationRuntime();
+  if (!sharedPluginSessionManager) {
     sharedPluginSessionManager = yield* createPluginSessionManager({
-      registry: sharedRegistry,
       samplingProvider: sharedSamplingProvider,
     });
   }
@@ -277,7 +260,6 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
     env.MCP_TOOL_RUNTIME === "agentcore" ? durableAgentCoreInstallation() : undefined;
   yield* installYoChatToolRuntime({
     mode: env.MCP_TOOL_RUNTIME,
-    registry: sharedRegistry,
     pluginManager: sharedPluginSessionManager,
     samplingProvider: sharedSamplingProvider,
     tools: [...allTools],

@@ -1,10 +1,10 @@
-import { assertJson, canonicalSnapshot } from "@sweatpants/foundation";
-import type { Operation } from "effection";
+import { canonicalSnapshot } from "@sweatpants/foundation";
+import { action, spawn, type Operation, type Task } from "effection";
+import type { ToolSessionEvent } from "./contract.ts";
 import {
   ToolInvocationHostError,
-  type ToolSession,
-  type ToolSessionEvent,
-  type ToolSessionRegistry,
+  type ToolInvocationResource,
+  type ToolInvocationResourceFactory,
   type StartToolInvocation,
   type ToolInvocationAsk,
   type ToolInvocationHost,
@@ -12,17 +12,28 @@ import {
   type ToolInvocationId,
   type ToolInvocationTurn,
   type TurnToolInvocation,
-} from "@sweatpants/tool-session";
+} from "./invocation.ts";
+
+type CommandOutcome =
+  | { readonly type: "result"; readonly value: ToolInvocationTurn }
+  | { readonly type: "error"; readonly error: unknown };
 
 interface CommandState {
   readonly digest: string;
-  result?: ToolInvocationTurn;
+  outcome?: CommandOutcome;
+  readonly waiters: Set<(outcome: CommandOutcome) => void>;
+}
+
+interface ActiveCommand {
+  readonly command: CommandState;
+  readonly task: Task<void>;
 }
 
 interface InvocationEntry {
-  readonly session: ToolSession;
+  readonly resource: ToolInvocationResource;
   readonly startDigest: string;
   readonly commands: Map<string, CommandState>;
+  active: ActiveCommand | undefined;
 }
 
 /**
@@ -30,7 +41,9 @@ interface InvocationEntry {
  * control plane. The registry and event stream stay behind this boundary. A
  * durable caller sees only start, turn, and dispose.
  */
-export function createToolInvocationHost(registry: ToolSessionRegistry): ToolInvocationHost {
+export function createToolInvocationHost(
+  factory: ToolInvocationResourceFactory,
+): ToolInvocationHost {
   const invocations = new Map<ToolInvocationId, InvocationEntry>();
 
   function hostError(code: ToolInvocationHostErrorCode, message: string): never {
@@ -43,37 +56,57 @@ export function createToolInvocationHost(registry: ToolSessionRegistry): ToolInv
       return existing;
     }
 
-    const session = yield* registry.get(id);
-    if (!session) {
+    const resource = yield* factory.open(id);
+    if (!resource) {
       hostError("invocation_not_found", `Tool invocation "${id}" is not available`);
     }
     const entry: InvocationEntry = {
-      session,
+      resource,
       startDigest: "rehydrated",
       commands: new Map(),
+      active: undefined,
     };
     invocations.set(id, entry);
     return entry;
   }
 
   function startDigest(request: StartToolInvocation): string {
-    return canonicalSnapshot(
-      assertJson({
-        invocationId: request.invocationId,
-        tool: request.tool.name,
-        input: request.input,
-      }),
-    ).sha;
+    return canonicalSnapshot({
+      invocationId: request.invocationId,
+      tool: request.tool.name,
+      input: request.input,
+      model: request.model ?? null,
+    }).sha;
+  }
+
+  function settleCommand(command: CommandState, outcome: CommandOutcome): void {
+    command.outcome = outcome;
+    for (const resolve of command.waiters) {
+      resolve(outcome);
+    }
+    command.waiters.clear();
+  }
+
+  function* waitForCommand(command: CommandState): Operation<ToolInvocationTurn> {
+    let outcome = command.outcome;
+    if (!outcome) {
+      outcome = yield* action<CommandOutcome>((resolve) => {
+        command.waiters.add(resolve);
+        return () => command.waiters.delete(resolve);
+      });
+    }
+    if (outcome.type === "error") {
+      throw outcome.error;
+    }
+    return outcome.value;
   }
 
   function turnDigest(request: TurnToolInvocation): string {
-    return canonicalSnapshot(
-      assertJson({
-        invocationId: request.invocationId,
-        cursor: request.cursor,
-        resume: request.resume ?? null,
-      }),
-    ).sha;
+    return canonicalSnapshot({
+      invocationId: request.invocationId,
+      cursor: request.cursor,
+      resume: request.resume ?? null,
+    }).sha;
   }
 
   return {
@@ -90,23 +123,23 @@ export function createToolInvocationHost(registry: ToolSessionRegistry): ToolInv
         return;
       }
 
-      const existingSession = yield* registry.get(request.invocationId);
-      if (existingSession) {
+      const existingResource = yield* factory.open(request.invocationId);
+      if (existingResource) {
         invocations.set(request.invocationId, {
-          session: existingSession,
+          resource: existingResource,
           startDigest: digest,
           commands: new Map(),
+          active: undefined,
         });
         return;
       }
 
-      const session = yield* registry.create(request.tool, request.input, {
-        sessionId: request.invocationId,
-      });
+      const resource = yield* factory.create(request);
       invocations.set(request.invocationId, {
-        session,
+        resource,
         startDigest: digest,
         commands: new Map(),
+        active: undefined,
       });
     },
 
@@ -121,26 +154,39 @@ export function createToolInvocationHost(registry: ToolSessionRegistry): ToolInv
             `Command "${request.commandId}" was retried with different input`,
           );
         }
-        if (!existing.result) {
-          hostError("command_in_progress", `Command "${request.commandId}" is still running`);
-        }
-        return existing.result;
+        return yield* waitForCommand(existing);
       }
 
-      const command: CommandState = { digest };
+      if (entry.active) {
+        hostError(
+          "command_in_progress",
+          `Tool invocation "${request.invocationId}" already has an active command`,
+        );
+      }
+
+      const command: CommandState = { digest, waiters: new Set() };
       entry.commands.set(request.commandId, command);
-      try {
-        if (request.resume) {
-          yield* entry.session.resume(request.resume);
-        }
+      const task = yield* spawn(function* activeInvocationCommand() {
+        try {
+          if (request.resume) {
+            yield* entry.resource.resume(request.resume);
+          }
 
-        const result = yield* drainInvocation(entry.session, request.cursor);
-        command.result = result;
-        return result;
-      } catch (error) {
-        entry.commands.delete(request.commandId);
-        throw error;
+          const result = yield* drainInvocation(entry.resource, request.cursor);
+          settleCommand(command, { type: "result", value: result });
+        } catch (error) {
+          settleCommand(command, { type: "error", error });
+        } finally {
+          if (entry.active?.command === command) {
+            entry.active = undefined;
+          }
+        }
+      });
+      entry.active = { command, task };
+      if (command.outcome) {
+        entry.active = undefined;
       }
+      return yield* waitForCommand(command);
     },
 
     *dispose(invocationId): Operation<void> {
@@ -149,13 +195,28 @@ export function createToolInvocationHost(registry: ToolSessionRegistry): ToolInv
         return;
       }
       invocations.delete(invocationId);
-      yield* registry.release(entry.session.id);
+      const active = entry.active;
+      if (active) {
+        yield* active.task.halt();
+        entry.active = undefined;
+      }
+      yield* entry.resource.dispose();
+      if (active) {
+        const error = new ToolInvocationHostError(
+          "command_in_progress",
+          `Active command for tool invocation "${invocationId}" was aborted`,
+        );
+        settleCommand(active.command, { type: "error", error });
+      }
     },
   };
 }
 
-function* drainInvocation(session: ToolSession, cursor: number): Operation<ToolInvocationTurn> {
-  const events = yield* session.projection.events(cursor);
+function* drainInvocation(
+  resource: ToolInvocationResource,
+  cursor: number,
+): Operation<ToolInvocationTurn> {
+  const events = yield* resource.projection.events(cursor);
   while (true) {
     const next = yield* events.next();
     if (next.done) {
@@ -163,7 +224,7 @@ function* drainInvocation(session: ToolSession, cursor: number): Operation<ToolI
         type: "failed",
         error: {
           code: "invocation_ended_without_terminal",
-          message: `Tool invocation "${session.id}" ended without a terminal event`,
+          message: `Tool invocation "${resource.id}" ended without a terminal event`,
           retryable: false,
         },
       };
@@ -183,7 +244,7 @@ function* drainInvocation(session: ToolSession, cursor: number): Operation<ToolI
       case "elicit_request":
         return { type: "parked", cursor: event.lsn, ask: elicitAsk(event) };
       case "result":
-        return { type: "completed", result: assertJson(event.result) };
+        return { type: "completed", result: event.result };
       case "error":
         return {
           type: "failed",
@@ -228,11 +289,7 @@ function elicitAsk(
     ...(event.ownerInterfaceDigest === undefined
       ? {}
       : { ownerInterfaceDigest: event.ownerInterfaceDigest }),
-    ...(event.responseContract === undefined
-      ? {}
-      : { responseContract: assertJson(event.responseContract) }),
-    ...(event.contextContract === undefined
-      ? {}
-      : { contextContract: assertJson(event.contextContract) }),
+    ...(event.responseContract === undefined ? {} : { responseContract: event.responseContract }),
+    ...(event.contextContract === undefined ? {} : { contextContract: event.contextContract }),
   };
 }

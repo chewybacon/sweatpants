@@ -51,6 +51,7 @@ export function createToolExecutionRef(input: {
   toolName: string;
   executionId?: string;
   sessionId?: string;
+  cursor?: number;
 }): ToolExecutionRef {
   return {
     runtimeId: input.runtimeId,
@@ -58,6 +59,7 @@ export function createToolExecutionRef(input: {
     callId: input.callId,
     toolName: input.toolName,
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+    ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
   };
 }
 

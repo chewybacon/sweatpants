@@ -1,46 +1,75 @@
+import type { AnyToolContract } from "@sweatpants/agent-sdk";
+import type { ChatToolCall } from "@sweatpants/chat-contract";
+import type { Json } from "@sweatpants/foundation";
+import {
+  createStrategyToolRuntime,
+  createToolExecutionRef,
+  installToolRuntime,
+  ToolRuntimeError,
+  type ToolExecution,
+  type ToolExecutionContext,
+  type ToolExecutionStrategy,
+  type ToolRuntime,
+} from "@sweatpants/tool-runtime";
+import {
+  ToolInvocationHostError,
+  ToolInvocationHostPort,
+  type ToolInvocationHost,
+  type ToolInvocationTurn,
+  type TurnToolInvocation,
+  type ToolSessionModelSelection,
+  type ToolSessionSamplingProvider,
+} from "@sweatpants/tool-session";
 import {
   parseRuntimeToolParameters,
   requireToolParameterResult,
 } from "@sweatpants/tool-session/tool-parameters";
-import type { AnyToolContract } from "@sweatpants/agent-sdk";
-import type { ChatToolCall } from "@sweatpants/chat-contract";
-import { action, resource, spawn, type Operation, type Stream } from "effection";
+import { action, race, type Operation } from "effection";
 import {
-  installToolRuntime,
-  ToolRuntimeError,
-  createStrategyToolRuntime,
-  createToolExecutionRef,
-  type ElicitToolRequest,
-  type ToolExecution,
-  type ToolExecutionContext,
-  type ToolExecutionEvent,
-  type ToolExecutionStrategy,
-  type ToolRuntime,
-} from "@sweatpants/tool-runtime";
-import type {
-  ToolSession as McpToolSession,
-  ToolSessionEvent as McpToolSessionEvent,
-  ToolSessionRegistry,
-  ToolSessionSamplingProvider,
-} from "@sweatpants/tool-session";
-import {
-  createAgentCoreToolSessionRegistry,
-  type AgentCoreToolSessionRegistryOptions,
-} from "./agentcore-session-registry.ts";
-
-type AgentCoreContextModelSelection = { provider: string; id: string };
+  createAgentCoreToolInvocationRuntime,
+  type AgentCoreToolInvocationRuntimeOptions,
+} from "./invocation-runtime.ts";
 
 export interface AgentCoreToolRuntimeDriverOptions {
-  /** Stable runtime identifier stored on all execution refs. */
-  id?: string;
-  /** Executable tool contracts allowed through this runtime. */
-  tools: AnyToolContract[];
-  /** Existing AgentCore registry. If omitted, registryOptions are used to create one. */
-  registry?: ToolSessionRegistry;
-  /** Sampling provider used when remote tools emit sample_request events. */
-  samplingProvider: ToolSessionSamplingProvider;
-  /** Options for creating the AgentCore session registry. */
-  registryOptions?: AgentCoreToolSessionRegistryOptions;
+  readonly id?: string;
+  readonly tools: AnyToolContract[];
+  readonly samplingProvider: ToolSessionSamplingProvider;
+  readonly runtime: AgentCoreToolInvocationRuntimeOptions;
+}
+
+export interface AgentCoreToolExecutionStrategyOptions {
+  readonly id?: string;
+  readonly samplingProvider: ToolSessionSamplingProvider;
+  readonly tools: AnyToolContract[];
+}
+
+function* waitForAbort(signal: AbortSignal): Operation<void> {
+  if (signal.aborted) {
+    return;
+  }
+  yield* action<void>((resolve) => {
+    const onAbort = () => resolve();
+    signal.addEventListener("abort", onAbort, { once: true });
+    return () => signal.removeEventListener("abort", onAbort);
+  });
+}
+
+function* turnWithActiveAbort(
+  host: ToolInvocationHost,
+  request: TurnToolInvocation,
+  signal: AbortSignal | undefined,
+): Operation<ToolInvocationTurn> {
+  if (!signal) {
+    return yield* host.turn(request);
+  }
+  return yield* race([
+    host.turn(request),
+    (function* abortActiveTurn() {
+      yield* waitForAbort(signal);
+      yield* host.dispose(request.invocationId);
+      throw new ToolRuntimeError("TOOL_ABORTED", "Active tool execution was aborted");
+    })(),
+  ]);
 }
 
 function toolsByCanonicalName(
@@ -60,79 +89,9 @@ function toolsByCanonicalName(
   return byName;
 }
 
-function eventStreamFromSession(session: McpToolSession): Stream<ToolExecutionEvent, void> {
-  return resource(function* (provide) {
-    const subscription = yield* session.projection.events();
-    yield* provide({
-      *next(): Operation<IteratorResult<ToolExecutionEvent, void>> {
-        return yield* subscription.next();
-      },
-    });
-  });
-}
-
-function sessionEventToExecution(
-  runtimeId: string,
-  call: ChatToolCall,
-  session: McpToolSession,
-  event: McpToolSessionEvent | null,
-): ToolExecution {
-  const ref = createToolExecutionRef({
-    runtimeId,
-    executionId: session.id,
-    sessionId: session.id,
-    callId: call.id,
-    toolName: session.toolName,
-  });
-  if (!event) {
-    return {
-      kind: "failed",
-      ref,
-      error: { code: "SESSION_ENDED", message: "AgentCore tool session ended unexpectedly" },
-    };
-  }
-
-  switch (event.type) {
-    case "elicit_request":
-      return {
-        kind: "awaiting_elicit",
-        ref,
-        request: {
-          elicitId: event.elicitId,
-          key: event.key,
-          message: event.message,
-          schema: event.schema,
-          ...(event.context !== undefined ? { context: event.context } : {}),
-        } satisfies ElicitToolRequest,
-      };
-    case "result":
-      return { kind: "completed", ref, result: event.result };
-    case "error":
-      return {
-        kind: "failed",
-        ref,
-        error: {
-          code: event.name,
-          message: event.message,
-        },
-      };
-    case "cancelled":
-      return {
-        kind: "failed",
-        ref,
-        error: {
-          code: "TOOL_CANCELLED",
-          message: event.reason ?? "AgentCore tool execution was cancelled",
-        },
-      };
-    default:
-      return { kind: "running", ref, events: eventStreamFromSession(session) };
-  }
-}
-
 function modelSelectionFromMetadata(
   metadata: Record<string, unknown> | undefined,
-): AgentCoreContextModelSelection | undefined {
+): ToolSessionModelSelection | undefined {
   const model = metadata?.["model"];
   if (!model || typeof model !== "object" || Array.isArray(model)) {
     return undefined;
@@ -148,98 +107,88 @@ function modelSelectionFromMetadata(
   return { provider: provider.trim(), id: id.trim() };
 }
 
-function* waitForAbort(signal: AbortSignal): Operation<void> {
-  if (signal.aborted) {
-    return;
-  }
-  yield* action<void>((resolve) => {
-    const onAbort = () => resolve();
-    signal.addEventListener("abort", onAbort, { once: true });
-    return () => signal.removeEventListener("abort", onAbort);
-  });
-}
-
-function afterLsnFromPendingId(id: string | undefined): number | undefined {
-  if (!id) {
-    return undefined;
-  }
-
-  const requestMatch = /:req:(\d+)$/.exec(id);
-  return requestMatch?.[1] ? Number(requestMatch[1]) : undefined;
-}
-
-function* findPendingRequestLsn(
-  session: McpToolSession,
-  pendingId: string | undefined,
-): Operation<number | undefined> {
-  if (!pendingId) {
-    return undefined;
-  }
-
-  const subscription = yield* session.projection.events();
-  while (true) {
-    const next = yield* subscription.next();
-    if (next.done) {
-      return undefined;
-    }
-    const event = next.value;
-    if (event.type === "elicit_request" && String(event.elicitId) === pendingId) {
-      return event.lsn;
-    }
-    if (event.type === "sample_request" && String(event.sampleId) === pendingId) {
-      return event.lsn;
-    }
-  }
-}
-
-function* nextAgentCoreExecution(
+function* runInvocationTurnLoop(
+  host: ToolInvocationHost,
   runtimeId: string,
   call: ChatToolCall,
-  session: McpToolSession,
+  initialTurn: ToolInvocationTurn,
   samplingProvider: ToolSessionSamplingProvider,
-  afterLSN?: number,
 ): Operation<ToolExecution> {
-  const subscription = yield* session.projection.events(afterLSN);
-
+  let currentTurn = initialTurn;
   while (true) {
-    const next = yield* subscription.next();
-    if (next.done) {
-      return sessionEventToExecution(runtimeId, call, session, null);
+    const ref = createToolExecutionRef({
+      runtimeId,
+      executionId: call.id,
+      sessionId: call.id,
+      callId: call.id,
+      toolName: call.name,
+      ...(currentTurn.type === "parked" ? { cursor: currentTurn.cursor } : {}),
+    });
+    if (currentTurn.type === "completed") {
+      return { kind: "completed", ref, result: currentTurn.result };
     }
-
-    if (next.value.type === "sample_request") {
-      const result = yield* samplingProvider.sample(next.value.messages, {
-        ...(next.value.systemPrompt ? { systemPrompt: next.value.systemPrompt } : {}),
-        ...(next.value.maxTokens !== undefined ? { maxTokens: next.value.maxTokens } : {}),
-        ...(next.value.tools ? { tools: next.value.tools } : {}),
-        ...(next.value.toolChoice ? { toolChoice: next.value.toolChoice } : {}),
-        ...(next.value.schema ? { schema: next.value.schema } : {}),
-      });
-      yield* session.resume({
-        kind: "sample",
-        requestId: next.value.sampleId,
-        response: result,
-      });
-      continue;
+    if (currentTurn.type === "failed") {
+      return {
+        kind: "failed",
+        ref,
+        error: { code: currentTurn.error.code, message: currentTurn.error.message },
+      };
     }
-
-    if (
-      next.value.type === "progress" ||
-      next.value.type === "log" ||
-      next.value.type === "sample_response_queued"
-    ) {
-      continue;
+    if (currentTurn.type === "cancelled") {
+      return {
+        kind: "failed",
+        ref,
+        error: {
+          code: "TOOL_CANCELLED",
+          message: currentTurn.reason ?? "Tool execution was cancelled",
+        },
+      };
     }
-
-    return sessionEventToExecution(runtimeId, call, session, next.value);
+    if (currentTurn.type === "parked") {
+      if (currentTurn.ask.kind === "elicit") {
+        const ask = currentTurn.ask;
+        return {
+          kind: "awaiting_elicit",
+          ref,
+          request: {
+            elicitId: ask.requestId,
+            key: ask.key,
+            message: ask.message,
+            schema: ask.schema,
+            ...(ask.context !== undefined ? { context: ask.context } : {}),
+            ...(ask.bindingId !== undefined ? { bindingId: ask.bindingId } : {}),
+            ...(ask.responseContract !== undefined
+              ? { responseContract: ask.responseContract }
+              : {}),
+            ...(ask.contextContract !== undefined ? { contextContract: ask.contextContract } : {}),
+            ...(ask.ownerInterfaceDigest !== undefined
+              ? { ownerInterfaceDigest: ask.ownerInterfaceDigest }
+              : {}),
+          },
+        };
+      }
+      if (currentTurn.ask.kind === "sample") {
+        const ask = currentTurn.ask;
+        const result = yield* samplingProvider.sample([...ask.messages], {
+          ...(ask.systemPrompt !== undefined ? { systemPrompt: ask.systemPrompt } : {}),
+          ...(ask.maxTokens !== undefined ? { maxTokens: ask.maxTokens } : {}),
+          ...(ask.tools !== undefined ? { tools: [...ask.tools] } : {}),
+          ...(ask.toolChoice !== undefined ? { toolChoice: ask.toolChoice } : {}),
+          ...(ask.schema !== undefined ? { schema: ask.schema } : {}),
+        });
+        currentTurn = yield* host.turn({
+          invocationId: call.id,
+          commandId: `sample:${ask.requestId}`,
+          cursor: currentTurn.cursor,
+          resume: {
+            kind: "sample",
+            requestId: ask.requestId,
+            response: result,
+          },
+        });
+      }
+    }
   }
-}
-
-export interface AgentCoreToolExecutionStrategyOptions {
-  id?: string;
-  registry: ToolSessionRegistry;
-  samplingProvider: ToolSessionSamplingProvider;
-  tools: AnyToolContract[];
 }
 
 export function createAgentCoreToolExecutionStrategy(
@@ -267,106 +216,108 @@ export function createAgentCoreToolExecutionStrategy(
           `AgentCore strategy cannot execute tool: ${entry.definition.name}`,
         );
       }
-      const selectedModel = modelSelectionFromMetadata(ctx.metadata);
       const params = requireToolParameterResult(
-        parseRuntimeToolParameters(tool, call.input, call.id),
+        parseRuntimeToolParameters<Json>(tool, call.input, call.id),
         { toolName: tool.name, callId: call.id },
       );
-      const session = yield* options.registry.create(tool, params, {
-        sessionId: call.id,
-        ...(ctx.signal ? { signal: ctx.signal } : {}),
-        ...(selectedModel ? { model: selectedModel } : {}),
+      const model = modelSelectionFromMetadata(ctx.metadata);
+      const host = yield* ToolInvocationHostPort.use();
+      yield* host.start({
+        invocationId: call.id,
+        tool,
+        input: params,
+        ...(model === undefined ? {} : { model }),
       });
-      if (ctx.signal) {
-        yield* spawn(function* () {
-          yield* waitForAbort(ctx.signal!);
-          yield* session.resume({ kind: "cancel", reason: "tool invocation cancelled" });
-        });
-      }
-      return yield* nextAgentCoreExecution(ctx.runtimeId, call, session, options.samplingProvider);
+      const initialTurn = yield* turnWithActiveAbort(
+        host,
+        {
+          invocationId: call.id,
+          commandId: `call:${call.id}:start`,
+          cursor: 0,
+        },
+        ctx.signal,
+      );
+      return yield* runInvocationTurnLoop(
+        host,
+        ctx.runtimeId,
+        call,
+        initialTurn,
+        options.samplingProvider,
+      );
     },
     *resume(ref, input, ctx: ToolExecutionContext): Operation<ToolExecution> {
-      const sessionId = ref.sessionId ?? ref.executionId;
-      const session = yield* options.registry.get(sessionId);
-      if (!session) {
+      const invocationId = ref.sessionId ?? ref.executionId;
+      if (!toolsByName.has(ref.toolName)) {
         throw new ToolRuntimeError(
           "EXECUTION_NOT_FOUND",
-          `AgentCore tool session not found: ${sessionId}`,
+          `AgentCore tool invocation not found: ${invocationId}`,
         );
       }
-      if (ref.toolName && session.toolName !== ref.toolName) {
-        throw new ToolRuntimeError(
-          "EXECUTION_NOT_FOUND",
-          `AgentCore tool session not found: ${sessionId}`,
-        );
+      if (!input.elicitId) {
+        throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
       }
-      const pendingId = input.type === "elicit_response" ? input.elicitId : undefined;
-      const pendingLsn = yield* findPendingRequestLsn(session, pendingId);
-      if (input.type === "elicit_response") {
-        if (!input.elicitId) {
-          throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
-        }
-        yield* session.resume({
-          kind: "elicit",
-          requestId: input.elicitId,
-          response: input.completion,
-        });
-      }
-      if (ctx.signal) {
-        yield* spawn(function* () {
-          yield* waitForAbort(ctx.signal!);
-          yield* session.resume({ kind: "cancel", reason: "tool invocation cancelled" });
-        });
-      }
-      return yield* nextAgentCoreExecution(
+      const host = yield* ToolInvocationHostPort.use();
+      const turn = yield* turnWithActiveAbort(
+        host,
+        {
+          invocationId,
+          commandId: `elicit:${input.elicitId}`,
+          cursor: ref.cursor ?? 0,
+          resume: {
+            kind: "elicit",
+            requestId: input.elicitId,
+            response: input.completion,
+          },
+        },
+        ctx.signal,
+      );
+      return yield* runInvocationTurnLoop(
+        host,
         ctx.runtimeId,
         {
           id: ref.callId,
-          name: ref.toolName || session.toolName,
+          name: ref.toolName,
           input: {},
           thoughtSignature: null,
         },
-        session,
+        turn,
         options.samplingProvider,
-        pendingLsn ?? afterLsnFromPendingId(pendingId),
       );
     },
     *abort(ref, reason): Operation<void> {
-      const sessionId = ref.sessionId ?? ref.executionId;
-      const session = yield* options.registry.get(sessionId);
-      if (!session) {
-        throw new ToolRuntimeError(
-          "EXECUTION_NOT_FOUND",
-          `AgentCore tool session not found: ${sessionId}`,
-        );
+      const invocationId = ref.sessionId ?? ref.executionId;
+      const host = yield* ToolInvocationHostPort.use();
+      try {
+        yield* host.turn({
+          invocationId,
+          commandId: `abort:${invocationId}`,
+          cursor: ref.cursor ?? 0,
+          resume: {
+            kind: "cancel",
+            ...(reason === undefined ? {} : { reason }),
+          },
+        });
+      } catch (error) {
+        if (!(error instanceof ToolInvocationHostError) || error.code !== "command_in_progress") {
+          throw error;
+        }
+      } finally {
+        yield* host.dispose(invocationId);
       }
-      yield* session.resume({
-        kind: "cancel",
-        ...(reason === undefined ? {} : { reason }),
-      });
     },
   };
 }
 
-export function createAgentCoreToolRuntimeDriver(
+export function* createAgentCoreToolRuntimeDriver(
   options: AgentCoreToolRuntimeDriverOptions,
-): ToolRuntime {
+): Operation<ToolRuntime> {
+  yield* createAgentCoreToolInvocationRuntime(options.runtime);
   const runtimeId = options.id ?? "agentcore";
-  const registry =
-    options.registry ??
-    (options.registryOptions
-      ? createAgentCoreToolSessionRegistry(options.registryOptions)
-      : undefined);
-  if (!registry) {
-    throw new Error("AgentCore tool runtime requires registry or registryOptions");
-  }
-
   return createStrategyToolRuntime({
     id: runtimeId,
     strategies: [
       createAgentCoreToolExecutionStrategy({
         id: runtimeId,
-        registry,
         samplingProvider: options.samplingProvider,
         tools: options.tools,
       }),
@@ -377,7 +328,7 @@ export function createAgentCoreToolRuntimeDriver(
 export function* installAgentCoreToolRuntime(
   options: AgentCoreToolRuntimeDriverOptions,
 ): Operation<ToolRuntime> {
-  const driver = createAgentCoreToolRuntimeDriver(options);
+  const driver = yield* createAgentCoreToolRuntimeDriver(options);
   yield* installToolRuntime(driver);
   return driver;
 }

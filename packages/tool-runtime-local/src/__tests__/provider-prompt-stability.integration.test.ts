@@ -44,12 +44,9 @@ import {
 } from "@sweatpants/tool-session/foreign";
 
 import {
-  createInMemoryToolSessionStore,
+  createLocalToolInvocationRuntime,
   createLocalDurableProgramDriver,
-  createToolInvocationHost,
-  ToolInvocationHostPort,
   createToolInvocationForeignEffectRegistrations,
-  createToolSessionRegistry,
 } from "../index.ts";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 
@@ -122,8 +119,7 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
 
   const contexts: string[] = [];
   return run(function* () {
-    const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-    yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
+    yield* createLocalToolInvocationRuntime({});
     const effects = createDurableEffectRegistry([
       ...createToolInvocationForeignEffectRegistrations({
         tools: new Map<string, RuntimeTool>([[probeTool.name, probeTool]]),

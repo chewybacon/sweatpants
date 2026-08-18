@@ -1,24 +1,10 @@
 import crypto from "node:crypto";
-import { call, run, type Operation } from "effection";
+import { call, run } from "effection";
 import { createAwsSdkAgentCoreInvoker } from "@sweatpants/tool-runtime-agentcore";
-import type { ToolInvocationResume } from "@sweatpants/tool-session";
+import { ToolInvocationHostPort } from "@sweatpants/tool-session";
 import { createAgentCoreRemoteToolRuntimeClient } from "@sweatpants/tool-runtime-agentcore";
-import { createAgentCoreToolSessionRegistry } from "@sweatpants/tool-runtime-agentcore";
-import {
-  createInMemoryAgentCoreToolSessionEventStore,
-  createInMemoryAgentCoreToolSessionHandleStore,
-} from "@sweatpants/tool-runtime-agentcore";
-import type {
-  AgentCoreToolRuntimeProfile,
-  AgentCoreToolSessionStores,
-} from "@sweatpants/tool-runtime-agentcore";
-
-function* resumeTool(
-  session: { resume(resume: ToolInvocationResume): Operation<void> },
-  resume: ToolInvocationResume,
-): Operation<void> {
-  yield* session.resume(resume);
-}
+import { createAgentCoreToolInvocationRuntime } from "@sweatpants/tool-runtime-agentcore";
+import type { AgentCoreToolRuntimeProfile } from "@sweatpants/tool-runtime-agentcore";
 
 const runtimeArnEnv = process.env["AGENTCORE_RUNTIME_ARN"];
 if (!runtimeArnEnv) {
@@ -37,10 +23,6 @@ function assert(condition: unknown, message: string): asserts condition {
 const elicitTool = { name: "elicit_then_result" } as never;
 
 async function main(): Promise<void> {
-  const stores: AgentCoreToolSessionStores = {
-    handles: createInMemoryAgentCoreToolSessionHandleStore(),
-    events: createInMemoryAgentCoreToolSessionEventStore(),
-  };
   const runtimeClient = createAgentCoreRemoteToolRuntimeClient(
     createAwsSdkAgentCoreInvoker({ clientConfig: { region } }),
   );
@@ -57,40 +39,43 @@ async function main(): Promise<void> {
   const toolSessionId = process.env["TOOL_SESSION_ID"] ?? `facade-tool-${crypto.randomUUID()}`;
 
   const summary = await run(function* () {
-    const registry = createAgentCoreToolSessionRegistry({
-      stores,
+    yield* createAgentCoreToolInvocationRuntime({
       runtimeClient,
       profiles: [profile],
       createRuntimeSessionId: () => runtimeSessionId,
     });
+    const host = yield* ToolInvocationHostPort.use();
+    yield* host.start({ invocationId: toolSessionId, tool: elicitTool, input: {} });
+    const initial = yield* host.turn({
+      invocationId: toolSessionId,
+      commandId: `call:${toolSessionId}:start`,
+      cursor: 0,
+    });
+    assert(initial.type === "parked", `expected parked, got ${initial.type}`);
+    const statusBefore = "awaiting_elicit";
 
-    const session = yield* registry.create(elicitTool, {}, { sessionId: toolSessionId });
-    const statusBefore = yield* session.status();
-    assert(statusBefore === "awaiting_elicit", `expected awaiting_elicit, got ${statusBefore}`);
-
-    const handleBefore = yield* stores.handles.get(toolSessionId);
-    const elicitId =
-      handleBefore?.pendingRequest?.type === "elicit"
-        ? handleBefore.pendingRequest.elicitId
-        : undefined;
-    assert(elicitId, "missing pending elicit id in handle");
+    assert(initial.ask.kind === "elicit", "missing pending elicitation");
+    const elicitId = initial.ask.requestId;
 
     const delayMs = Number(process.env["AGENTCORE_FACADE_DELAY_MS"] ?? "60000");
     yield* call(() => new Promise((resolve) => setTimeout(resolve, delayMs)));
 
-    yield* resumeTool(session, {
-      kind: "elicit",
-      requestId: elicitId,
-      response: {
-        action: "accept",
-        content: { confirmed: true, via: "sweatpants-facade" },
+    const terminal = yield* host.turn({
+      invocationId: toolSessionId,
+      commandId: `elicit:${elicitId}`,
+      cursor: initial.cursor,
+      resume: {
+        kind: "elicit",
+        requestId: elicitId,
+        response: {
+          action: "accept",
+          content: { confirmed: true, via: "sweatpants-facade" },
+        },
       },
     });
-    const statusAfter = yield* session.status();
-    assert(statusAfter === "completed", `expected completed, got ${statusAfter}`);
+    assert(terminal.type === "completed", `expected completed, got ${terminal.type}`);
+    const statusAfter = "completed";
 
-    const events = yield* stores.events.readAfter(toolSessionId, 0);
-    const handleAfter = yield* stores.handles.get(toolSessionId);
     return {
       status: "ok",
       runtimeArn,
@@ -100,10 +85,7 @@ async function main(): Promise<void> {
       delayMs,
       statusBefore,
       statusAfter,
-      handleBefore,
-      handleAfter,
-      eventTypes: events.events.map(({ event }) => event.type),
-      events: events.events,
+      result: terminal.result,
     };
   });
 

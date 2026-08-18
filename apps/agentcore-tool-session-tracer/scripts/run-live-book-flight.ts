@@ -1,25 +1,10 @@
 import crypto from "node:crypto";
-import { call, run, type Operation } from "effection";
+import { call, run } from "effection";
 import { createAwsSdkAgentCoreInvoker } from "@sweatpants/tool-runtime-agentcore";
-import type { ToolInvocationResume } from "@sweatpants/tool-session";
+import { ToolInvocationHostPort } from "@sweatpants/tool-session";
 import { createAgentCoreRemoteToolRuntimeClient } from "@sweatpants/tool-runtime-agentcore";
-import { createAgentCoreToolSessionRegistry } from "@sweatpants/tool-runtime-agentcore";
-import {
-  createInMemoryAgentCoreToolSessionEventStore,
-  createInMemoryAgentCoreToolSessionHandleStore,
-} from "@sweatpants/tool-runtime-agentcore";
-import type {
-  AgentCoreToolEvent,
-  AgentCoreToolRuntimeProfile,
-  AgentCoreToolSessionStores,
-} from "@sweatpants/tool-runtime-agentcore";
-
-function* resumeTool(
-  session: { resume(resume: ToolInvocationResume): Operation<void> },
-  resume: ToolInvocationResume,
-): Operation<void> {
-  yield* session.resume(resume);
-}
+import { createAgentCoreToolInvocationRuntime } from "@sweatpants/tool-runtime-agentcore";
+import type { AgentCoreToolRuntimeProfile } from "@sweatpants/tool-runtime-agentcore";
 
 const runtimeArnEnv = process.env["AGENTCORE_RUNTIME_ARN"];
 if (!runtimeArnEnv) {
@@ -36,36 +21,7 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const bookFlightTool = { name: "book_flight" } as never;
 
-function latestElicit(
-  events: Array<{ lsn: number; event: AgentCoreToolEvent }>,
-  key: string,
-): Extract<AgentCoreToolEvent, { type: "elicit_request" }> | undefined {
-  return [...events]
-    .reverse()
-    .map(({ event }) => event)
-    .find(
-      (event): event is Extract<AgentCoreToolEvent, { type: "elicit_request" }> =>
-        event.type === "elicit_request" && event.key === key,
-    );
-}
-
-function latestSample(
-  events: Array<{ lsn: number; event: AgentCoreToolEvent }>,
-): Extract<AgentCoreToolEvent, { type: "sample_request" }> | undefined {
-  return [...events]
-    .reverse()
-    .map(({ event }) => event)
-    .find(
-      (event): event is Extract<AgentCoreToolEvent, { type: "sample_request" }> =>
-        event.type === "sample_request",
-    );
-}
-
 async function main(): Promise<void> {
-  const stores: AgentCoreToolSessionStores = {
-    handles: createInMemoryAgentCoreToolSessionHandleStore(),
-    events: createInMemoryAgentCoreToolSessionEventStore(),
-  };
   const runtimeClient = createAgentCoreRemoteToolRuntimeClient(
     createAwsSdkAgentCoreInvoker({ clientConfig: { region } }),
   );
@@ -82,23 +38,29 @@ async function main(): Promise<void> {
   const toolSessionId = process.env["TOOL_SESSION_ID"] ?? `book-flight-${crypto.randomUUID()}`;
 
   const summary = await run(function* () {
-    const registry = createAgentCoreToolSessionRegistry({
-      stores,
+    yield* createAgentCoreToolInvocationRuntime({
       runtimeClient,
       profiles: [profile],
       createRuntimeSessionId: () => runtimeSessionId,
     });
+    const host = yield* ToolInvocationHostPort.use();
+    yield* host.start({
+      invocationId: toolSessionId,
+      tool: bookFlightTool,
+      input: { from: "NYC", destination: "LAX" },
+    });
+    const firstTurn = yield* host.turn({
+      invocationId: toolSessionId,
+      commandId: `call:${toolSessionId}:start`,
+      cursor: 0,
+    });
+    assert(firstTurn.type === "parked", "expected first parked turn");
 
-    const session = yield* registry.create(
-      bookFlightTool,
-      { from: "NYC", destination: "LAX" },
-      { sessionId: toolSessionId },
+    assert(
+      firstTurn.ask.kind === "elicit" && firstTurn.ask.key === "pickFlight",
+      "missing pickFlight elicit",
     );
-    assert((yield* session.status()) === "awaiting_elicit", "expected first awaiting_elicit");
-
-    let events = (yield* stores.events.readAfter(toolSessionId, 0)).events;
-    const pickFlight = latestElicit(events, "pickFlight");
-    assert(pickFlight, "missing pickFlight elicit");
+    const pickFlight = firstTurn.ask;
 
     yield* call(
       () =>
@@ -106,19 +68,26 @@ async function main(): Promise<void> {
           setTimeout(resolve, Number(process.env["AGENTCORE_BOOK_FLIGHT_TURN_DELAY_MS"] ?? "1000")),
         ),
     );
-    yield* resumeTool(session, {
-      kind: "elicit",
-      requestId: pickFlight.elicitId,
-      response: {
-        action: "accept",
-        content: { flightId: "FL001" },
+    const secondTurn = yield* host.turn({
+      invocationId: toolSessionId,
+      commandId: `elicit:${pickFlight.requestId}`,
+      cursor: firstTurn.cursor,
+      resume: {
+        kind: "elicit",
+        requestId: pickFlight.requestId,
+        response: {
+          action: "accept",
+          content: { flightId: "FL001" },
+        },
       },
     });
-    assert((yield* session.status()) === "awaiting_elicit", "expected second awaiting_elicit");
+    assert(secondTurn.type === "parked", "expected second parked turn");
 
-    events = (yield* stores.events.readAfter(toolSessionId, 0)).events;
-    const pickSeat = latestElicit(events, "pickSeat");
-    assert(pickSeat, "missing pickSeat elicit");
+    assert(
+      secondTurn.ask.kind === "elicit" && secondTurn.ask.key === "pickSeat",
+      "missing pickSeat elicit",
+    );
+    const pickSeat = secondTurn.ask;
 
     yield* call(
       () =>
@@ -126,19 +95,23 @@ async function main(): Promise<void> {
           setTimeout(resolve, Number(process.env["AGENTCORE_BOOK_FLIGHT_TURN_DELAY_MS"] ?? "1000")),
         ),
     );
-    yield* resumeTool(session, {
-      kind: "elicit",
-      requestId: pickSeat.elicitId,
-      response: {
-        action: "accept",
-        content: { row: 3, seat: "A" },
+    const sampleTurn = yield* host.turn({
+      invocationId: toolSessionId,
+      commandId: `elicit:${pickSeat.requestId}`,
+      cursor: secondTurn.cursor,
+      resume: {
+        kind: "elicit",
+        requestId: pickSeat.requestId,
+        response: {
+          action: "accept",
+          content: { row: 3, seat: "A" },
+        },
       },
     });
-    assert((yield* session.status()) === "awaiting_sample", "expected awaiting_sample");
+    assert(sampleTurn.type === "parked", "expected sample turn");
 
-    events = (yield* stores.events.readAfter(toolSessionId, 0)).events;
-    const sample = latestSample(events);
-    assert(sample, "missing sample request");
+    assert(sampleTurn.ask.kind === "sample", "missing sample request");
+    const sample = sampleTurn.ask;
 
     yield* call(
       () =>
@@ -146,19 +119,21 @@ async function main(): Promise<void> {
           setTimeout(resolve, Number(process.env["AGENTCORE_BOOK_FLIGHT_TURN_DELAY_MS"] ?? "1000")),
         ),
     );
-    yield* resumeTool(session, {
-      kind: "sample",
-      requestId: sample.sampleId,
-      response: {
-        text: "Use the rideshare pickup zone on the arrivals level.",
+    const terminal = yield* host.turn({
+      invocationId: toolSessionId,
+      commandId: `sample:${sample.requestId}`,
+      cursor: sampleTurn.cursor,
+      resume: {
+        kind: "sample",
+        requestId: sample.requestId,
+        response: {
+          text: "Use the rideshare pickup zone on the arrivals level.",
+        },
       },
     });
-    assert((yield* session.status()) === "completed", "expected completed");
+    assert(terminal.type === "completed", "expected completed");
 
-    events = (yield* stores.events.readAfter(toolSessionId, 0)).events;
-    const result = [...events].reverse().find(({ event }) => event.type === "result")?.event;
-    assert(result?.type === "result", "missing final result");
-    const booking = result.result as {
+    const booking = terminal.result as {
       success?: boolean;
       seat?: string;
       travelTip?: string;
@@ -173,20 +148,14 @@ async function main(): Promise<void> {
       "travel tip mismatch",
     );
 
-    const handle = yield* stores.handles.get(toolSessionId);
     return {
       status: "ok",
       runtimeArn,
       region,
       runtimeSessionId,
       toolSessionId,
-      handle,
-      eventTypes: events.map(({ event }) => event.type),
-      elicitKeys: events.flatMap(({ event }) =>
-        event.type === "elicit_request" ? [event.key] : [],
-      ),
+      elicitKeys: [pickFlight.key, pickSeat.key],
       result: booking,
-      events,
     };
   });
 

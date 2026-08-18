@@ -57,17 +57,11 @@ async function supersedeParkedOrdinaryTool(binding: Binding): Promise<void> {
       yield* replacementRequest.respond.text("SUPERSEDE_ORDINARY_RECOVERED_V1");
       expect((yield* replacement.settled()).text).toBe("SUPERSEDE_ORDINARY_RECOVERED_V1");
 
-      if (!inspection?.toolSessionRegistry) {
-        throw new Error("tool session registry inspection unavailable");
+      if (!inspection?.toolInvocationRuntime) {
+        throw new Error("tool invocation runtime inspection unavailable");
       }
-      // Registry cleanup runs when the released session settles, so wait on that
-      // semantic boundary instead of sampling the store as the Turn settles.
-      yield* inspection.toolSessionsDrained();
-      const leaked = yield* inspection.toolSessionRegistry.get(
-        `foreign:${conversation.conversationId}:turn-0/root.0`,
-      );
-      expect(leaked).toBeNull();
-      expect(inspection.toolSessionIds).toEqual([]);
+      yield* inspection.toolInvocationRuntime.drained();
+      expect(inspection.toolInvocationRuntime.activeIds()).toEqual([]);
     },
   );
 }

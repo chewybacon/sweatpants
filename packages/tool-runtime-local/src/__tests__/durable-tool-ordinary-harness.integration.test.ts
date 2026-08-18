@@ -36,14 +36,11 @@ import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 
 import {
+  createLocalToolInvocationRuntime,
   createDurableToolSessionFacade,
   createInMemoryDurableToolFacadeStateStore,
-  createInMemoryToolSessionStore,
   createLocalDurableProgramDriver,
-  createToolInvocationHost,
-  ToolInvocationHostPort,
   createToolInvocationForeignEffectRegistrations,
-  createToolSessionRegistry,
 } from "../index.ts";
 
 type InnerInput = { topic: string };
@@ -193,8 +190,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
     const attach = attachRequest(sessionId, taskId, request);
 
     await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
-      yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(registry));
+      yield* createLocalToolInvocationRuntime({});
       const effects = createDurableEffectRegistry([
         ...createToolInvocationForeignEffectRegistrations({
           // SAFETY: the facade implements the callable RuntimeTool boundary;

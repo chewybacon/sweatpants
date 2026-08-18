@@ -43,6 +43,7 @@ import type {
   CancelledEvent,
 } from "../../contract.ts";
 import { SCHEMA_TOOL_NAME, type LogLevel as ToolLogLevel } from "@sweatpants/agent-sdk";
+import type { Json } from "@sweatpants/foundation";
 import { encodeElicitContext } from "../../elicit-context/index.ts";
 import { chatMessagesToMcpMessages } from "../../messages.ts";
 
@@ -226,7 +227,7 @@ export function encodeSamplingRequest(
 /**
  * Encode a result event as an MCP tools/call response.
  */
-export function encodeToolCallResult<TResult>(
+export function encodeToolCallResult<TResult extends Json>(
   event: ResultEvent<TResult>,
   requestId: JsonRpcId,
 ): JsonRpcResponse<McpToolCallResult> {
@@ -325,7 +326,7 @@ export type EncodedMessage =
  * @param ctx - Encoder context
  * @returns The encoded MCP message with its type
  */
-export function encodeSessionEvent<TResult = unknown>(
+export function encodeSessionEvent<TResult extends Json = Json>(
   event: ToolSessionEvent<TResult>,
   ctx: EncoderContext,
 ): EncodedMessage {

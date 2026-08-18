@@ -9,12 +9,12 @@
  * 1. Create new sessions for tools/call requests
  * 2. Track pending elicitation and sampling requests
  * 3. Route responses back to the correct tool session
- * 4. Manage session lifecycle with reference counting
+ * 4. Manage transport-session lifecycle and invocation disposal
  *
  * @packageDocumentation
  */
 import { createContext, type Operation } from "effection";
-import { parser } from "@sweatpants/foundation";
+import { parser, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
 import type { ToolInvocationEventSource } from "../../contract.ts";
 import type { ToolInvocationHost } from "../../invocation.ts";
@@ -330,7 +330,7 @@ export class McpSessionManager {
     // Build the wire result. This pass-through layer does not own the
     // originating elicit context, so exchange construction happens where the
     // elicit originated (bridge/worker runtime), not here.
-    let elicitResult: ElicitExchangeCompletion<unknown>;
+    let elicitResult: ElicitExchangeCompletion<Json>;
     switch (action) {
       case "accept":
         elicitResult = {
