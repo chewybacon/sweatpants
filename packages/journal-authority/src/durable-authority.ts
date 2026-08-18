@@ -1543,7 +1543,16 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (pull.preparation) {
       return pull.preparationDigest === preparationDigest
         ? { status: "duplicate" }
-        : { status: "identity_conflict" };
+        : {
+            status: "identity_conflict",
+            conflict: {
+              domain: "model-context",
+              key: `${request.executionId}/${request.taskId}/${request.pullId}`,
+              guard: "identity",
+              expected: preparationDigest,
+              observed: pull.preparationDigest ?? null,
+            },
+          };
     }
     pull.preparation = structuredClone(request.fact);
     pull.preparationDigest = preparationDigest;
@@ -1586,11 +1595,20 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
     const preparation = pull.preparation;
     if (!preparation) return { status: "not_prepared" };
-    if (
-      preparation.executionId !== request.executionId ||
-      preparation.invocationDigest !== request.invocationDigest
-    ) {
+    if (preparation.executionId !== request.executionId) {
       return { status: "identity_conflict" };
+    }
+    if (preparation.invocationDigest !== request.invocationDigest) {
+      return {
+        status: "identity_conflict",
+        conflict: {
+          domain: "model-context",
+          key: `${request.executionId}/${request.taskId}/${request.pullId}`,
+          guard: "identity",
+          expected: request.invocationDigest,
+          observed: preparation.invocationDigest,
+        },
+      };
     }
     return { status: "authorized", fact: structuredClone(preparation) };
   }
@@ -1636,7 +1654,16 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (pull.assistantPartial) {
       return pull.assistantPartialDigest === factDigest
         ? { status: "duplicate" }
-        : { status: "identity_conflict" };
+        : {
+            status: "identity_conflict",
+            conflict: {
+              domain: "assistant-partial",
+              key: `${request.executionId}/${request.taskId}/${request.pullId}`,
+              guard: "identity",
+              expected: factDigest,
+              observed: pull.assistantPartialDigest ?? null,
+            },
+          };
     }
     pull.assistantPartial = structuredClone(request.fact);
     pull.assistantPartialDigest = factDigest;

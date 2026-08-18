@@ -20,7 +20,7 @@ import {
   parseDurableAuthoritySnapshot,
   signCapability,
 } from "../index.ts";
-import { type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
@@ -392,19 +392,39 @@ describe("crank-native durable runtime", () => {
       };
       expect(yield* authority.acceptAssistantPartial(partial)).toEqual({ status: "accepted" });
       expect(yield* authority.acceptAssistantPartial(partial)).toEqual({ status: "duplicate" });
+      const conflictingPartialFact = { ...partial.fact, text: "different" };
       expect(
         yield* authority.acceptAssistantPartial({
           ...partial,
-          fact: { ...partial.fact, text: "different" },
+          fact: conflictingPartialFact,
         }),
-      ).toEqual({ status: "identity_conflict" });
+      ).toEqual({
+        status: "identity_conflict",
+        conflict: {
+          domain: "assistant-partial",
+          key: `execution-1/${attach.taskId}/${reserved.pullId}`,
+          guard: "identity",
+          expected: canonicalSnapshot(conflictingPartialFact).sha,
+          observed: canonicalSnapshot(partial.fact).sha,
+        },
+      });
       expect(yield* authority.acceptPullPreparation(request)).toEqual({ status: "duplicate" });
+      const conflictingPreparationFact = { ...fact, invocationDigest: "different" };
       expect(
         yield* authority.acceptPullPreparation({
           ...request,
-          fact: { ...fact, invocationDigest: "different" },
+          fact: conflictingPreparationFact,
         }),
-      ).toEqual({ status: "identity_conflict" });
+      ).toEqual({
+        status: "identity_conflict",
+        conflict: {
+          domain: "model-context",
+          key: `execution-1/${attach.taskId}/${reserved.pullId}`,
+          guard: "identity",
+          expected: canonicalSnapshot(conflictingPreparationFact).sha,
+          observed: canonicalSnapshot(fact).sha,
+        },
+      });
       expect(authority.readJournal(attach.sessionId).map((record) => record.payload.type)).toEqual(
         expect.arrayContaining(["ModelContextPrepared", "AssistantPartialAccepted"]),
       );

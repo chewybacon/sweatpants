@@ -22,7 +22,7 @@ export * from "./projection.ts";
 export * from "./resolver.ts";
 export * from "./stream.ts";
 
-export type { SerializedApplicationError } from "./errors.ts";
+export type { ConflictEvidence, IdentityConflict, SerializedApplicationError } from "./errors.ts";
 export * from "./schema.ts";
 
 export * from "./schema-validation.ts";

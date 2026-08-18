@@ -313,7 +313,17 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       if (observedReceipt !== null) {
         const receipt = decodeCommandReceipt(observedReceipt.value);
         if (receipt.commandDigest !== request.commandDigest) {
-          return { status: "command_identity_conflict", receipt };
+          return {
+            status: "command_identity_conflict",
+            receipt,
+            conflict: {
+              domain: "conversation-command",
+              key: `${request.conversationId}/${request.commandId}`,
+              guard: "identity",
+              expected: request.commandDigest,
+              observed: receipt.commandDigest,
+            },
+          };
         }
         const head = yield* loadHead(request.conversationId);
         if (head === null) {
@@ -359,7 +369,17 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       if (outcome.status === "claim_exists") {
         const receipt = decodeCommandReceipt(outcome.existing.value);
         if (receipt.commandDigest !== request.commandDigest) {
-          return { status: "command_identity_conflict", receipt };
+          return {
+            status: "command_identity_conflict",
+            receipt,
+            conflict: {
+              domain: "conversation-command",
+              key: `${request.conversationId}/${request.commandId}`,
+              guard: "identity",
+              expected: request.commandDigest,
+              observed: receipt.commandDigest,
+            },
+          };
         }
         const head = yield* loadHead(request.conversationId);
         if (head === null) {
