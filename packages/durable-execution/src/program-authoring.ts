@@ -52,6 +52,7 @@ export interface DurableProgramContext {
     response: PortableSchemaDescriptor,
     context?: Json,
     contextContract?: PortableSchemaDescriptor,
+    binding?: { readonly id: string },
   ): Operation<ProgramElicitResult<T>>;
   emit(eventType: string, payload: Json): Operation<void>;
   clock: {

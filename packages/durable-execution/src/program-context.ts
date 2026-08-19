@@ -183,6 +183,7 @@ export function createDurableProgramContext(
       response: PortableSchemaDescriptor,
       context?: Json,
       contextContract?: PortableSchemaDescriptor,
+      binding?: { readonly id: string },
     ): Operation<ProgramElicitResult<T>> {
       const descriptor = parsePortableSchemaDescriptor(response);
       const outcome = yield* propose({
@@ -199,6 +200,7 @@ export function createDurableProgramContext(
               }
             : {}),
           ...(context !== undefined ? { context: canonicalSnapshot(context).value } : {}),
+          ...(binding !== undefined ? { binding: canonicalInteractionBinding(binding) } : {}),
         },
       });
       return unwrapOutcome<ProgramElicitResult<T>>(outcome);
@@ -328,6 +330,20 @@ export function assertInlineSize(value: Json, maxBytes = DEFAULT_MAX_INLINE_BYTE
   if (bytes > maxBytes) {
     throw new CrankError("payload_too_large", `Canonical payload is ${bytes} bytes`);
   }
+}
+
+function canonicalInteractionBinding(value: { readonly id: string }): { readonly id: string } {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== 1 ||
+    typeof value.id !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.id)
+  ) {
+    throw new CrankError("invalid_descriptor", "Invalid interaction binding");
+  }
+  return { id: value.id };
 }
 
 function unwrapOutcome<T = Json>(input: unknown): T {

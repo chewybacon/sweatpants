@@ -36,6 +36,13 @@ interface DirtyPart {
   readonly done: boolean;
 }
 
+interface TextPresentation {
+  readonly text: string;
+  readonly state: "streaming" | "done";
+  readonly frame: Frame;
+  readonly rendered: string;
+}
+
 export type LiveCompactorAction = Exclude<ChatProjectionAction, { readonly type: "text-changed" }>;
 
 function rootConflict(message: string): Error {
@@ -130,6 +137,7 @@ export class LiveChatCompactor {
   private lineageId: string | null = null;
   private readonly pipelines = new Map<string, FramePipeline>();
   private readonly dirtyParts = new Map<string, DirtyPart>();
+  private pendingPresentationReconciliation: ReadonlyMap<string, TextPresentation> | null = null;
 
   constructor(private readonly pipelineFactory: FramePipelineFactory) {}
 
@@ -153,6 +161,7 @@ export class LiveChatCompactor {
       this.liveEvents = [];
       this.pipelines.clear();
       this.dirtyParts.clear();
+      this.pendingPresentationReconciliation = null;
     }
     this.liveEvents.push(event);
     const transition = transitionChatProjection(this.current, event);
@@ -218,9 +227,7 @@ export class LiveChatCompactor {
     });
     this.sealedRoots.clear();
     for (const [rootId, root] of candidate) this.sealedRoots.set(rootId, root);
-    this.current = projection;
-    this.pipelines.clear();
-    this.dirtyParts.clear();
+    this.replaceProjection(projection);
   }
 
   reset(): void {
@@ -231,6 +238,7 @@ export class LiveChatCompactor {
     this.lineageId = null;
     this.pipelines.clear();
     this.dirtyParts.clear();
+    this.pendingPresentationReconciliation = null;
   }
 
   setError(error: Error): void {
@@ -242,6 +250,7 @@ export class LiveChatCompactor {
   }
 
   *pull(finish = false): Operation<void> {
+    this.reconcileProjectionPresentation();
     if (finish) {
       for (const entry of findTextParts(this.current)) {
         const pipeline = this.pipelines.get(entry.part.id);
@@ -309,14 +318,71 @@ export class LiveChatCompactor {
   }
 
   private rebuild(replayLive: boolean): void {
-    this.current = runLiveProjection({
-      sealed: this.sealedRoots,
-      hot: this.hotRoots,
-      liveEvents: replayLive ? this.liveEvents : [],
-      requireComplete: false,
-    });
+    this.replaceProjection(
+      runLiveProjection({
+        sealed: this.sealedRoots,
+        hot: this.hotRoots,
+        liveEvents: replayLive ? this.liveEvents : [],
+        requireComplete: false,
+      }),
+    );
+  }
+
+  /** Record an authoritative semantic replacement for the next presentation pull. */
+  private replaceProjection(projection: ChatProjectionState): void {
+    this.pendingPresentationReconciliation = new Map(
+      findTextParts(this.current).map((entry) => [
+        `${entry.messageId}\u0000${entry.part.id}`,
+        {
+          text: entry.part.text,
+          state: entry.part.state,
+          frame: entry.part.frame,
+          rendered: entry.part.rendered,
+        },
+      ]),
+    );
+    this.current = projection;
     this.pipelines.clear();
     this.dirtyParts.clear();
+  }
+
+  /** Reuse unchanged frames and queue changed authoritative text exactly once. */
+  private reconcileProjectionPresentation(): void {
+    const previous = this.pendingPresentationReconciliation;
+    if (!previous) {
+      return;
+    }
+    this.pendingPresentationReconciliation = null;
+    for (const entry of findTextParts(this.current)) {
+      const prior = previous.get(`${entry.messageId}\u0000${entry.part.id}`);
+      if (
+        prior?.text === entry.part.text &&
+        prior.rendered.length > 0 &&
+        prior.state === entry.part.state
+      ) {
+        this.current = updateTextPartFrame(
+          this.current,
+          entry.messageId,
+          entry.part.id,
+          prior.frame,
+          prior.rendered,
+          entry.part.state === "done",
+        );
+        continue;
+      }
+      if (entry.part.text.length === 0) {
+        continue;
+      }
+      const pipeline = this.pipelineFactory(entry.part.kind, entry.part.id);
+      pipeline.push(entry.part.text);
+      this.pipelines.set(entry.part.id, pipeline);
+      this.dirtyParts.set(entry.part.id, {
+        messageId: entry.messageId,
+        partId: entry.part.id,
+        fallbackText: entry.part.text,
+        done: entry.part.state === "done",
+      });
+    }
   }
 
   private bufferText(

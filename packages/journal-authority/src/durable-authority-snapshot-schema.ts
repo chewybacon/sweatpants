@@ -73,6 +73,7 @@ const durableOperationDescriptorSchema = z.union([
     response: portableSchemaDescriptorSchema,
     context: jsonValueSchema.optional(),
     contextContract: portableSchemaDescriptorSchema.optional(),
+    binding: z.strictObject({ id: digestSchema }).optional(),
   }),
   z
     .strictObject({
