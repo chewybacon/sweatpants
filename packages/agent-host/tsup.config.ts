@@ -3,7 +3,6 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     "server/index": "src/server/index.ts",
-    "server/testing": "src/server/testing.ts",
     "deployment/index": "src/deployment/index.ts",
     "logging/index": "src/logging/index.ts",
   },

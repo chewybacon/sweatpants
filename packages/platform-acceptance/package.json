@@ -12,7 +12,6 @@
     },
     "dependencies": {
         "@ag-ui/core": "0.0.57",
-        "@sweatpants/a2a": "workspace:*",
         "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/chat-contract": "workspace:*",

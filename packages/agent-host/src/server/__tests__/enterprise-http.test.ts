@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest";
-import {
-  createStandardA2AMetrics,
-  parseTraceContext,
-  projectTrustedHttpRequest,
-} from "../index.ts";
+import { parseTraceContext, projectTrustedHttpRequest } from "../index.ts";
 
-describe("standard A2A enterprise HTTP seams", () => {
+describe("enterprise HTTP seams", () => {
   it("uses forwarded transport data only from explicitly trusted peers", () => {
-    const request = new Request("http://internal/a2a", {
+    const request = new Request("http://internal/chat", {
       headers: {
         "x-forwarded-for": "203.0.113.8, 10.0.0.2",
         "x-forwarded-host": "agent.example.test",
@@ -57,19 +53,5 @@ describe("standard A2A enterprise HTTP seams", () => {
         }),
       ),
     ).toEqual({});
-  });
-
-  it("collects bounded body-free request, state, and error metrics", () => {
-    const metrics = createStandardA2AMetrics();
-    metrics.observe({ type: "request", action: "message:send" });
-    metrics.observe({ type: "state", state: "completed", taskId: "task" });
-    metrics.observe({ type: "error", code: "authorization_denied" });
-    expect(metrics.snapshot()).toEqual({
-      requests: 1,
-      errors: 1,
-      states: { completed: 1 },
-      actions: { "message:send": 1 },
-      errorCodes: { authorization_denied: 1 },
-    });
   });
 });

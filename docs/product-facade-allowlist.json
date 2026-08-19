@@ -3,7 +3,6 @@
   "facadePaths": [
     "@sweatpants/agent-host/deployment",
     "@sweatpants/agent-host/server",
-    "@sweatpants/agent-host/server/testing",
     "@sweatpants/agent-sdk",
     "@sweatpants/agent-sdk/tool",
     "@sweatpants/agent-sdk/tools",

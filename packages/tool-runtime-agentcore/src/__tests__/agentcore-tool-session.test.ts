@@ -550,6 +550,7 @@ describe("AgentCore ToolSession facade", () => {
       protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
       sessionId: "stale_replay",
       toolName: "elicit_tool",
+      elicitBindings: {},
       runtimeProfile: "test-profile",
       runtimeArn: "arn:aws:bedrock-agentcore:us-east-1:123:runtime/test",
       endpointName: "DEFAULT",

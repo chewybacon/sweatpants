@@ -146,9 +146,9 @@ describe("durable chat authoring", () => {
     });
     expect(accepted.context.referenceTaskIds).toEqual(["a"]);
     expect(parseAuthoredChatTurnInput(accepted)).toEqual(accepted);
-    expect(() => parseAuthoredChatTurnInput({ ...accepted, transport: "a2a" })).toThrowError(
-      expect.objectContaining({ code: "invalid_chat_program" }),
-    );
+    expect(() =>
+      parseAuthoredChatTurnInput({ ...accepted, transport: "unsupported" }),
+    ).toThrowError(expect.objectContaining({ code: "invalid_chat_program" }));
   });
 
   it("produces a generated program whose first durable boundary is classified model.sample", async () => {

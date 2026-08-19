@@ -126,14 +126,7 @@ function* runInvocationTurnLoop(
             message: ask.message,
             schema: ask.schema,
             ...(ask.context !== undefined ? { context: ask.context } : {}),
-            ...(ask.bindingId !== undefined ? { bindingId: ask.bindingId } : {}),
-            ...(ask.responseContract !== undefined
-              ? { responseContract: ask.responseContract }
-              : {}),
-            ...(ask.contextContract !== undefined ? { contextContract: ask.contextContract } : {}),
-            ...(ask.ownerInterfaceDigest !== undefined
-              ? { ownerInterfaceDigest: ask.ownerInterfaceDigest }
-              : {}),
+            binding: ask.binding,
           },
         };
       }

@@ -1,5 +1,0 @@
-{
-    "extends": ["./tsconfig.json", "@sweatpants/ts-config/tsconfig.tests.json"],
-    "compilerOptions": { "rootDir": "." },
-    "include": ["src/**/*.ts", "src/**/*.tsx", "acceptance/**/*.ts", "e2e/**/*.ts", "tests/**/*.ts"]
-}

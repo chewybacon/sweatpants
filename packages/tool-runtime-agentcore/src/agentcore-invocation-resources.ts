@@ -1,4 +1,4 @@
-import type { AnyToolContract } from "@sweatpants/agent-sdk";
+import type { AnyToolContract, InteractionBinding } from "@sweatpants/agent-sdk";
 import type { Json } from "@sweatpants/foundation";
 import type { Operation, Stream } from "effection";
 import type { ToolSession, ToolSessionOptions } from "@sweatpants/tool-session";
@@ -54,6 +54,7 @@ function monotonicSeq(handle: AgentCoreToolSessionHandle, incoming: number): num
 export interface AgentCoreToolInvocationResources {
   create(tool: AnyToolContract, params: Json, options?: ToolSessionOptions): Operation<ToolSession>;
   get(sessionId: string): Operation<ToolSession | null>;
+  elicitBindings(sessionId: string): Operation<Readonly<Record<string, InteractionBinding>> | null>;
   dispose(sessionId: string): Operation<void>;
 }
 
@@ -238,6 +239,7 @@ export function createAgentCoreToolInvocationResources(
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
         sessionId,
         toolName: tool.name,
+        elicitBindings: tool.bindings.elicits,
         callId: sessionOptions?.sessionId,
         runtimeProfile: profile.name,
         runtimeArn: profile.runtimeArn,
@@ -281,6 +283,11 @@ export function createAgentCoreToolInvocationResources(
 
     *get(sessionId: string): Operation<ToolSession | null> {
       return yield* getSession(sessionId);
+    },
+
+    *elicitBindings(sessionId: string) {
+      const handle = yield* stores.handles.get(sessionId);
+      return handle?.elicitBindings ?? null;
     },
 
     *dispose(sessionId: string): Operation<void> {

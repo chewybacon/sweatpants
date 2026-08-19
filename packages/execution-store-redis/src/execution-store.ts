@@ -26,6 +26,7 @@ export interface RedisExecutionStoreOptions {
 }
 
 const CAS_EXECUTION = `
+-- SWEATPANTS_EXECUTION_STORE_V1
 local current = redis.call('GET', KEYS[1])
 if (current or '') ~= ARGV[1] then return 0 end
 local index = 3

@@ -167,12 +167,14 @@ describe("createDurableTool fluent builder", () => {
       type: "boolean",
     });
     expect(tool.manifest.elicits["approval"]?.response.role).toBe("elicit_response");
-    // Artifacts retain the same descriptors plus a digest-keyed validator catalog.
-    expect(tool.artifacts.parameters).toEqual(tool.manifest.inputSchema);
-    expect(tool.artifacts.elicits["approval"]?.response).toEqual(
-      tool.manifest.elicits["approval"]?.response,
-    );
+    // ToolContract artifacts use the placement-neutral tool schema domain;
+    // the catalog also retains crank-native manifest validators.
+    expect(tool.artifacts.parameters.role).toBe("tool_parameters");
+    expect(tool.artifacts.elicits["approval"]?.response.role).toBe("elicit_response");
+    expect(tool.artifacts.parameters).not.toEqual(tool.manifest.inputSchema);
     const digests = tool.artifacts.catalog.map((entry) => entry.descriptor.digest);
+    expect(digests).toContain(tool.artifacts.parameters.digest);
+    expect(digests).toContain(tool.artifacts.elicits["approval"]?.response.digest);
     expect(digests).toContain(tool.manifest.inputSchema.digest);
     expect(digests).toContain(tool.manifest.elicits["approval"]?.response.digest);
     expect(digests).toContain(echo.inputSchema.digest);

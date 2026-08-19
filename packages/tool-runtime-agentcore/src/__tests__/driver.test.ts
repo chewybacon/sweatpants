@@ -44,6 +44,7 @@ const remoteTool = createTool("remote_echo")
 const remoteElicitTool = createTool("remote_elicit")
   .description("Remote elicit")
   .parameters(z.object({}))
+  .elicits({ confirm: z.object({ confirmed: z.boolean() }) })
   .execute(function* () {
     return { unreachable: true };
   });
@@ -120,14 +121,19 @@ function createFakeSession(): ToolSession {
 
 function createFakeResources(): AgentCoreToolInvocationResources {
   const session = createFakeSession();
+  let bindings: AnyToolContract["bindings"]["elicits"] = {};
   // SAFETY: generic result typing is irrelevant to this completed-session
   // driver fixture; every create returns the same protocol-complete fake.
   return {
-    *create(): Operation<ToolSession> {
+    *create(tool: AnyToolContract): Operation<ToolSession> {
+      bindings = tool.bindings.elicits;
       return session;
     },
     *get(): Operation<ToolSession | null> {
       return session;
+    },
+    *elicitBindings() {
+      return bindings;
     },
     *dispose(): Operation<void> {},
   } as unknown as AgentCoreToolInvocationResources;
@@ -135,11 +141,13 @@ function createFakeResources(): AgentCoreToolInvocationResources {
 
 function invocationResource(
   session: ToolSession,
+  elicitBindings: AnyToolContract["bindings"]["elicits"],
   resources: AgentCoreToolInvocationResources,
 ): ToolInvocationResource {
   return {
     id: session.id,
     toolName: session.toolName,
+    elicitBindings,
     projection: session.projection,
     resume: (resume) => session.resume(resume),
     *dispose() {
@@ -155,11 +163,18 @@ function* installResourceHost(resources: AgentCoreToolInvocationResources): Oper
         sessionId: request.invocationId,
         ...(request.model === undefined ? {} : { model: request.model }),
       });
-      return invocationResource(session, resources);
+      return invocationResource(session, request.tool.bindings.elicits, resources);
     },
     *open(invocationId) {
       const session = yield* resources.get(invocationId);
-      return session ? invocationResource(session, resources) : null;
+      if (!session) {
+        return null;
+      }
+      const bindings = yield* resources.elicitBindings(invocationId);
+      if (!bindings) {
+        throw new Error("test resource omitted bindings");
+      }
+      return invocationResource(session, bindings, resources);
     },
   };
   yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(factory));

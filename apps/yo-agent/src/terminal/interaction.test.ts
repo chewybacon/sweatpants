@@ -7,7 +7,7 @@ function request(elicitId: string): ChatInteractionRequest {
   const binding = [...askUserPlugin.client.bindings.values()][0]!;
   return {
     elicitId,
-    bindingId: binding.bindingId,
+    bindingId: binding.binding.id,
     toolName: binding.toolName,
     key: binding.key,
     message: "Which branch should I inspect?",

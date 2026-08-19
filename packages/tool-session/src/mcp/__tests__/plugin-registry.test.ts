@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { createTool } from "@sweatpants/agent-sdk";
+import { createDurableTool, createTool } from "@sweatpants/agent-sdk";
 import { createPluginRegistry, createPluginRegistryFrom } from "../plugin-registry.ts";
 import { makePlugin, type ClientPluginRegistration } from "../plugin.ts";
 
@@ -58,6 +58,34 @@ describe("createPluginRegistry", () => {
 
     expect(registry.get("unknown_binding")).toBeUndefined();
     expect(registry.has("unknown_binding")).toBe(false);
+  });
+
+  it("uses the same plugin API and binding for equivalent ordinary and durable tools", () => {
+    const elicitation = { choose: z.object({ value: z.string() }) };
+    const ordinary = createTool("placement_neutral")
+      .description("Placement neutral")
+      .parameters(z.object({}))
+      .elicits(elicitation)
+      .execute(function* () {
+        return null;
+      });
+    const durable = createDurableTool("placement_neutral", { version: "1" })
+      .description("Placement neutral")
+      .parameters(z.object({}))
+      .elicits(elicitation)
+      .execute(function* () {
+        return null;
+      });
+    const handler = function* () {
+      return { action: "accept" as const, content: { value: "ok" } };
+    };
+    const ordinaryPlugin = makePlugin(ordinary).onElicit({ choose: handler }).build().client;
+    const durablePlugin = makePlugin(durable).onElicit({ choose: handler }).build().client;
+
+    expect([...ordinaryPlugin.bindings.keys()]).toEqual([...durablePlugin.bindings.keys()]);
+    expect([...ordinaryPlugin.bindings.values()][0]?.binding).toEqual(
+      [...durablePlugin.bindings.values()][0]?.binding,
+    );
   });
 
   it("allows same-named contracts with distinct exact interfaces", () => {

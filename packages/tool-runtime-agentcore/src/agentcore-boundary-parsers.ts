@@ -32,6 +32,10 @@ const handleSchema = z
     protocolVersion: z.literal(AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION),
     sessionId: boundedString,
     toolName: boundedString,
+    elicitBindings: z.record(
+      z.string().min(1),
+      z.object({ id: z.string().regex(/^[0-9a-f]{64}$/) }).strict(),
+    ),
     callId: boundedString.optional(),
     conversationId: boundedString.optional(),
     runtimeProfile: boundedString,

@@ -134,6 +134,7 @@ function handle(overrides: Partial<AgentCoreToolSessionHandle> = {}): AgentCoreT
     updatedAt: now,
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
     ...overrides,
+    elicitBindings: overrides.elicitBindings ?? {},
   };
 }
 

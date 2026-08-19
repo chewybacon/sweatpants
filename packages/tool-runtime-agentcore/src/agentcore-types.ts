@@ -1,7 +1,11 @@
 import type { Operation, Stream } from "effection";
 import type { Json } from "@sweatpants/foundation";
 import type { ToolSession, ToolSessionStatus, ToolSessionEvent } from "@sweatpants/tool-session";
-import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "@sweatpants/agent-sdk";
+import type {
+  ElicitExchangeCompletion,
+  InteractionBinding,
+  SampleExchangeCompletion,
+} from "@sweatpants/agent-sdk";
 
 export const AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION =
   "sweatpants.agentcore.tool-session.v1" as const;
@@ -22,6 +26,7 @@ export interface AgentCoreToolSessionHandle {
 
   sessionId: string;
   toolName: string;
+  elicitBindings: Readonly<Record<string, InteractionBinding>>;
   callId?: string | undefined;
   conversationId?: string | undefined;
 

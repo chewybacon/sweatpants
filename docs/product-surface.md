@@ -58,8 +58,7 @@ Three lanes classify every workspace package:
 `destination domain packages` is **dual-natured**:
 
 - **Product entries** (import these):
-  - `@sweatpants/agent-host/server` — `createChatApplication`, `createChatHandler` / `createDurableChatHandler`, `serveAgent`, `createStandardA2AHost`, explicit profiles, and posture-specific connections
-  - `@sweatpants/agent-host/server/testing` — real-transport agent harness utilities for tests/development only
+  - `@sweatpants/agent-host/server` — `createChatApplication` and `createChatHandler` / `createDurableChatHandler`
   - `@sweatpants/chat-core` — framework-neutral message/event/frame types, codecs, immutable folds, and internal placement normalization
   - `@sweatpants/chat-client` — headless client/runtime/transport Ports, reconnect, middleware, and pipeline orchestration
   - `@sweatpants/react-chat` — thin React `useChat`, client/runtime facades, framework-native `makePlugin`, and prepared native render parts
@@ -82,8 +81,6 @@ Three lanes classify every workspace package:
 | `makePlugin` | `@sweatpants/react-chat` (framework-native) |
 | `defineAgent` / `advertiseCapability` | `@sweatpants/agent-sdk` |
 | `defineChatProgram` / `latestContextWindow` | `@sweatpants/chat-core` |
-| `serveAgent` / `remoteExecutor` / `standardA2A` / `sweatpantsPeer` / `createStandardA2AHost` | `@sweatpants/agent-host/server` |
-| `startAgentHarness` | `@sweatpants/agent-host/server/testing` |
 
 Durable reconnect/resume behavior is documented via `ChatClient`/`useChat` and the durable handler protocol (conversation id + cursor/LSN).
 
@@ -193,7 +190,6 @@ Deviations from this baseline MUST be recorded here with date and reason (and re
 
 | Date | Change | Reason |
 |---|---|---|
-| 2026-07-19 | Added the journal-backed standard A2A host and testing-only real-transport harness | Standard clients can invoke callee-authoritative durable chat without a new product target |
 | 2026-07-18 | Added agent/chat authoring and explicit serving profiles to existing core/chat/server targets | Durable authoring without adding a fifth product target |
 | 2026-07-09 | Initial baseline classification | Phase 0 product surface program |
 

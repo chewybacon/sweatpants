@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import type { Json } from "@sweatpants/foundation";
 import type { SchemaBinding, PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
+import type { ToolInteractionBindings } from "./interaction-binding.ts";
 import type {
   ChatAssistantMessage,
   ChatMessage,
@@ -543,8 +544,9 @@ export interface ToolDefinition<
   readonly capabilities: { readonly elicitation: boolean; readonly sampling: boolean };
   readonly annotations: Readonly<Record<string, unknown>>;
   readonly extensions: readonly ToolExtensionMetadata[];
-  /** Optional execution-neutral identity used by client elicitation bindings. */
-  readonly interfaceDigest?: string;
+  /** Complete execution-neutral identity and compiled interaction addresses. */
+  readonly interfaceDigest: string;
+  readonly bindings: ToolInteractionBindings;
 }
 
 /** Wire-boundary erased tool with its authored sample-schema evidence retained. */

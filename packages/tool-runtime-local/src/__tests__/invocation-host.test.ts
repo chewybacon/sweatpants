@@ -19,7 +19,58 @@ const bookingTool = createTool("invocation_host_booking")
     return selection.action === "accept" ? selection.content : { flight: "declined" };
   });
 
+/**
+ * Contract fixture, not an authoring example: it deliberately declares every
+ * input of the elicit binding identity (context contract, response contract,
+ * authored metadata) so the host projection is checked against the complete
+ * identity, not just the common subset.
+ */
+const bindingIdentityTool = createTool("invocation_host_binding_identity")
+  .description("Binding identity contract fixture")
+  .parameters(z.object({}))
+  .elicits({
+    choose: {
+      context: z.object({ options: z.array(z.string()) }),
+      response: z.object({ choice: z.string() }),
+      metadata: { ui: "choice" },
+    },
+  })
+  .execute(function* (_input, context) {
+    return yield* context.elicit("choose", {
+      message: "Choose one",
+      context: { options: ["one", "two"] },
+    });
+  });
+
 describe("ToolInvocationHost", () => {
+  it("projects the contract-derived binding identity on parked elicit asks", async () => {
+    await run(function* () {
+      yield* createLocalToolInvocationRuntime({});
+      const host = yield* ToolInvocationHostPort.use();
+      const expected = bindingIdentityTool.bindings.elicits["choose"]!;
+      yield* host.start({
+        invocationId: "foreign:session:identity",
+        tool: bindingIdentityTool,
+        input: {},
+      });
+
+      const parked = yield* host.turn({
+        invocationId: "foreign:session:identity",
+        commandId: "pull-0",
+        cursor: 0,
+      });
+      expect(parked).toMatchObject({
+        type: "parked",
+        ask: {
+          kind: "elicit",
+          key: "choose",
+          binding: expected,
+        },
+      });
+      expect(expected.id).toMatch(/^[0-9a-f]{64}$/);
+    });
+  });
+
   it("couples response delivery with the next crank", async () => {
     const result = await run(function* () {
       yield* createLocalToolInvocationRuntime({});

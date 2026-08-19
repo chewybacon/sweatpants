@@ -249,10 +249,18 @@ function inputRequired(
     message: string;
     schema: Record<string, unknown>;
     context?: Json;
+    binding?: { readonly id: string };
   },
   entry?: ToolInventoryEntry,
 ): ForeignToolDisposition {
   try {
+    const binding = request.binding ?? entry?.elicits?.[request.key]?.binding;
+    if (!binding) {
+      return failure(
+        "interaction_binding_missing",
+        `Tool "${tool}" omitted binding for elicitation "${request.key}"`,
+      );
+    }
     return {
       type: "input_required",
       request: {
@@ -266,15 +274,7 @@ function inputRequired(
           toolName: tool,
           ...(request.context !== undefined ? { context: request.context } : {}),
         }),
-        ...(entry?.interfaceDigest ? { ownerInterfaceDigest: entry.interfaceDigest } : {}),
-        ...(entry?.elicits?.[request.key]
-          ? {
-              responseContract: assertJson(entry.elicits[request.key]!.responseContract),
-              ...(entry.elicits[request.key]!.contextContract
-                ? { contextContract: assertJson(entry.elicits[request.key]!.contextContract) }
-                : {}),
-            }
-          : {}),
+        binding,
       },
       continuation: {
         driver: DRIVER,

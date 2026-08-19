@@ -6,8 +6,12 @@ import type { ToolInvocationEventReader, ToolInvocationEventSource } from "./con
 import type { ToolSessionModelSelection } from "./model-selection.ts";
 import type { ToolInvocationResume } from "./invocation-resume.ts";
 export type { ToolInvocationResume } from "./invocation-resume.ts";
-import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
-import type { AnyToolContract, ModelPreferences, SamplingToolChoice } from "@sweatpants/agent-sdk";
+import type {
+  AnyToolContract,
+  InteractionBinding,
+  ModelPreferences,
+  SamplingToolChoice,
+} from "@sweatpants/agent-sdk";
 
 export type ToolInvocationId = string;
 export type ToolInvocationCommandId = string;
@@ -48,10 +52,8 @@ export interface ToolInvocationElicitAsk {
   readonly message: string;
   readonly schema: JsonObject;
   readonly context?: Json;
-  readonly bindingId?: string;
-  readonly responseContract?: PortableSchemaDescriptor;
-  readonly contextContract?: PortableSchemaDescriptor;
-  readonly ownerInterfaceDigest?: string;
+  /** Contract-derived rendezvous identity for exact client dispatch. */
+  readonly binding: InteractionBinding;
 }
 
 export type ToolInvocationAsk = ToolInvocationSampleAsk | ToolInvocationElicitAsk;
@@ -87,7 +89,8 @@ export type ToolInvocationHostErrorCode =
   | "command_conflict"
   | "command_in_progress"
   | "cursor_conflict"
-  | "response_mismatch";
+  | "response_mismatch"
+  | "interaction_binding_missing";
 
 export class ToolInvocationHostError extends Error {
   readonly code: ToolInvocationHostErrorCode;
@@ -109,6 +112,7 @@ export class ToolInvocationHostError extends Error {
 export interface ToolInvocationResource {
   readonly id: ToolInvocationId;
   readonly toolName: string;
+  readonly elicitBindings: Readonly<Record<string, InteractionBinding>>;
   readonly projection: ToolInvocationEventReader<Json>;
   resume(resume: ToolInvocationResume): Operation<void>;
   dispose(): Operation<void>;

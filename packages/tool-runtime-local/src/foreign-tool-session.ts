@@ -354,15 +354,7 @@ function inputRequestFromAsk(ask: ToolInvocationAsk): ForeignInputRequest {
     key: ask.key,
     message: ask.message,
     responseSchema: foreignJson(ask.schema),
-    ...(ask.ownerInterfaceDigest === undefined
-      ? {}
-      : { ownerInterfaceDigest: ask.ownerInterfaceDigest }),
-    ...(ask.responseContract === undefined
-      ? {}
-      : { responseContract: foreignJson(ask.responseContract) }),
-    ...(ask.contextContract === undefined
-      ? {}
-      : { contextContract: foreignJson(ask.contextContract) }),
+    binding: ask.binding,
     ...(ask.context === undefined ? {} : { context: foreignJson(ask.context) }),
   };
 }

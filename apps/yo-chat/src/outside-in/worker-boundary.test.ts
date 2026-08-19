@@ -23,11 +23,15 @@ import { yoChatToolSessionWorkerConfig } from "@/server/tool-worker-config";
 
 const PROBE_WORKER_URL = new URL("./lib/worker-probe-bootstrap.mjs", import.meta.url);
 
-interface ProbeResult {
-  isMainThread: boolean;
-  threadId: number;
-  pid: number;
-}
+const probeResultSchema = z
+  .object({
+    isMainThread: z.boolean(),
+    threadId: z.number().int(),
+    pid: z.number().int(),
+  })
+  .strict();
+
+type ProbeResult = z.infer<typeof probeResultSchema>;
 
 const workerProbe = createTool("worker_probe")
   .description("Report the worker-thread identity")
@@ -90,7 +94,7 @@ describe("outside-in worker boundary (Tier A)", () => {
       if (turn.type !== "completed") {
         throw new Error(`worker probe did not complete: ${turn.type}`);
       }
-      const result = turn.result as ProbeResult;
+      const result: ProbeResult = probeResultSchema.parse(turn.result);
 
       // The whole point: this ran OFF the main thread.
       expect(result.isMainThread).toBe(false);
