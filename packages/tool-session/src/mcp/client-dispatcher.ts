@@ -53,7 +53,7 @@ export function* executeClientElicitHandler<TCapabilities>(
   capabilities: TCapabilities,
 ): Operation<ElicitExchangeCompletion<unknown>> {
   if (
-    binding.bindingId !== request.bindingId ||
+    binding.binding.id !== request.bindingId ||
     binding.toolName !== request.toolName ||
     binding.key !== request.key ||
     !descriptorMatches(binding.responseContract, request.responseContract) ||

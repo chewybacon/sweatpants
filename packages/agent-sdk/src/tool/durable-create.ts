@@ -32,6 +32,7 @@ import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { type SchemaBinding, type PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
+import { buildToolSchemaArtifacts } from "./artifacts.ts";
 import { effectCatalogEntries } from "./durable-effect.ts";
 import { projectModelSampleCompletion } from "./exchange.ts";
 import {
@@ -40,6 +41,10 @@ import {
   type DurableExtensionMap,
 } from "./durable-context-extension.ts";
 import { computeToolInterfaceDigest, type ToolSchemaArtifacts } from "./contract.ts";
+import {
+  compileToolInteractionBindings,
+  type ToolInteractionBindings,
+} from "./interaction-binding.ts";
 import type {
   ElicitDefinition,
   ElicitsMap,
@@ -161,7 +166,8 @@ export type DurableToolDefinition<
   readonly capabilities: { readonly elicitation: boolean; readonly sampling: boolean };
   readonly annotations: Readonly<Record<string, unknown>>;
   readonly extensions: readonly ToolExtensionMetadata[];
-  readonly interfaceDigest?: string;
+  readonly interfaceDigest: string;
+  readonly bindings: ToolInteractionBindings;
   readonly manifest: DurableProgramManifest<I, O>;
   readonly program: DurableTool<I, O>["program"];
 };
@@ -433,14 +439,6 @@ function builder(state: BuilderState): unknown {
           contextContract?: PortableSchemaDescriptor;
         }
       > = {};
-      const elicitArtifacts: Record<
-        string,
-        {
-          response: PortableSchemaDescriptor;
-          context?: PortableSchemaDescriptor;
-          contextContract?: PortableSchemaDescriptor;
-        }
-      > = {};
       for (const [key, definition] of Object.entries(normalizedElicits)) {
         const response = toPortableSchema(definition.response, {
           identity: `${identityPrefix}/elicits/${key}/response`,
@@ -462,7 +460,6 @@ function builder(state: BuilderState): unknown {
           ...(context ? { context: context.descriptor, contextContract: context.descriptor } : {}),
         };
         manifestElicits[key] = declaration;
-        elicitArtifacts[key] = declaration;
       }
 
       // Effect schema catalog entries travel with their authored definitions;
@@ -537,11 +534,25 @@ function builder(state: BuilderState): unknown {
                 factory,
               )
             : createInterfaceDerivedPinnedDurableProgram(manifest, factory);
+      const contractArtifacts = buildToolSchemaArtifacts({
+        identity: `tool:${state.name}`,
+        version,
+        parameters,
+        ...(state.parametersProjections
+          ? { parametersProjections: state.parametersProjections }
+          : {}),
+        ...(state.output ? { output: state.output } : {}),
+        ...(state.outputProjections ? { outputProjections: state.outputProjections } : {}),
+        elicits: normalizedElicits,
+      });
+      const catalogByDigest = new Map(
+        [...catalog, ...contractArtifacts.catalog].map((entry) => [entry.descriptor.digest, entry]),
+      );
       const artifacts: ToolSchemaArtifacts = Object.freeze({
-        parameters: input.descriptor,
-        output: outputDescriptor,
-        elicits: Object.freeze(elicitArtifacts),
-        catalog: Object.freeze(catalog),
+        parameters: contractArtifacts.parameters,
+        ...(contractArtifacts.output ? { output: contractArtifacts.output } : {}),
+        elicits: contractArtifacts.elicits,
+        catalog: Object.freeze([...catalogByDigest.values()]),
       });
       const interfaceDigest = computeToolInterfaceDigest({
         name: state.name,
@@ -550,6 +561,11 @@ function builder(state: BuilderState): unknown {
         elicits: artifacts.elicits,
         annotations: {},
         extensions: [],
+      });
+      const bindings = compileToolInteractionBindings({
+        ownerInterfaceDigest: interfaceDigest,
+        elicits: normalizedElicits,
+        artifacts: artifacts.elicits,
       });
       return Object.freeze({
         ...tool,
@@ -568,6 +584,7 @@ function builder(state: BuilderState): unknown {
         annotations: Object.freeze({}),
         extensions: Object.freeze([]),
         interfaceDigest,
+        bindings,
       });
     },
   };

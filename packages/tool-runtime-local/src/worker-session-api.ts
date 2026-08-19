@@ -127,12 +127,6 @@ export const WorkerSessionApi = createApi("worker-session", {
       message: request.message,
       schema: request.schema,
       ...(request.context !== undefined && { context: request.context }),
-      ...(request.bindingId !== undefined && { bindingId: request.bindingId }),
-      ...(request.responseContract !== undefined && { responseContract: request.responseContract }),
-      ...(request.contextContract !== undefined && { contextContract: request.contextContract }),
-      ...(request.ownerInterfaceDigest !== undefined && {
-        ownerInterfaceDigest: request.ownerInterfaceDigest,
-      }),
     });
 
     const result = yield* queue.next();

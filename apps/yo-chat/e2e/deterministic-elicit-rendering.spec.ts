@@ -115,7 +115,7 @@ function resumeWindow(conversationId: string, revision: string): Record<string, 
     publicData: {
       kind: "elicit",
       elicitId: "elicit-pick-flight-1",
-      bindingId: pickFlightBinding.bindingId,
+      bindingId: pickFlightBinding.binding.id,
       key: "pickFlight",
       message: "Select a flight from NYC to LAX",
       context: { flights },
@@ -358,7 +358,7 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
                 publicData: {
                   kind: "elicit",
                   elicitId: "elicit-pick-flight-1",
-                  bindingId: pickFlightBinding.bindingId,
+                  bindingId: pickFlightBinding.binding.id,
                   key: "pickFlight",
                   message: "Select a flight from NYC to LAX",
                   context: { flights },

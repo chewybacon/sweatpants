@@ -46,7 +46,7 @@ describe("client elicitation dispatcher", () => {
     });
     dispatcher.observe({
       elicitId: "elicit-1",
-      bindingId: binding.bindingId,
+      bindingId: binding.binding.id,
       toolName: tool.name,
       key: "choose",
       message: "Choose",
@@ -86,7 +86,7 @@ describe("client elicitation dispatcher", () => {
     const binding = [...plugin.bindings.values()][0]!;
     const request = {
       elicitId: "elicit-2",
-      bindingId: binding.bindingId,
+      bindingId: binding.binding.id,
       toolName: tool.name,
       key: "choose",
       message: "Choose",
@@ -162,7 +162,7 @@ describe("client elicitation dispatcher", () => {
     });
     const request = {
       elicitId: "elicit-3",
-      bindingId: binding.bindingId,
+      bindingId: binding.binding.id,
       toolName: tool.name,
       key: "choose",
       message: "Choose",
@@ -200,7 +200,7 @@ describe("client elicitation dispatcher", () => {
     });
     dispatcher.observe({
       elicitId: "failed-1",
-      bindingId: binding.bindingId,
+      bindingId: binding.binding.id,
       toolName: tool.name,
       key: "choose",
       message: "Choose",
@@ -243,7 +243,7 @@ describe("client elicitation dispatcher", () => {
     });
     const request = {
       elicitId: "elicit-4",
-      bindingId: binding.bindingId,
+      bindingId: binding.binding.id,
       toolName: tool.name,
       key: "choose",
       message: "Choose",

@@ -8,6 +8,7 @@ import {
 
 import { buildToolSchemaArtifacts } from "./artifacts.ts";
 import { computeToolInterfaceDigest } from "./contract.ts";
+import { compileToolInteractionBindings } from "./interaction-binding.ts";
 import { isStandardSchema } from "../schema/zod-adapter.ts";
 import type {
   CreateToolBuilderBase,
@@ -175,6 +176,19 @@ function finalizeCoreUnifiedTool(options: {
       ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>
     >,
   });
+  const interfaceDigest = computeToolInterfaceDigest({
+    name: options.name,
+    parameters: artifacts.parameters,
+    ...(artifacts.output ? { output: artifacts.output } : {}),
+    elicits: artifacts.elicits,
+    annotations: options.annotations,
+    extensions: options.extensions,
+  });
+  const bindings = compileToolInteractionBindings({
+    ownerInterfaceDigest: interfaceDigest,
+    elicits: normalizedElicits,
+    artifacts: artifacts.elicits,
+  });
   const factory = function unifiedToolFactory(
     ctx: ToolCtx,
   ): Operation<(input: unknown) => Operation<unknown>> {
@@ -273,14 +287,13 @@ function finalizeCoreUnifiedTool(options: {
       configurable: true,
     },
     interfaceDigest: {
-      value: computeToolInterfaceDigest({
-        name: options.name,
-        parameters: artifacts.parameters,
-        ...(artifacts.output ? { output: artifacts.output } : {}),
-        elicits: artifacts.elicits,
-        annotations: options.annotations,
-        extensions: options.extensions,
-      }),
+      value: interfaceDigest,
+      enumerable: true,
+      writable: false,
+      configurable: true,
+    },
+    bindings: {
+      value: bindings,
       enumerable: true,
       writable: false,
       configurable: true,

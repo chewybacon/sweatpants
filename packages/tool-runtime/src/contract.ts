@@ -1,4 +1,4 @@
-import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
+import type { ElicitExchangeCompletion, InteractionBinding } from "@sweatpants/agent-sdk";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { ChatToolCall, ChatToolDefinition } from "@sweatpants/chat-contract";
@@ -21,6 +21,7 @@ export interface ToolInventoryEntry {
     Record<
       string,
       {
+        binding: InteractionBinding;
         responseContract: PortableSchemaDescriptor;
         contextContract?: PortableSchemaDescriptor;
       }
@@ -71,12 +72,8 @@ export interface ElicitToolRequest {
   message: string;
   schema: JsonObject;
   context?: Json;
-  bindingId?: string;
-  responseContract?: PortableSchemaDescriptor;
-  contextContract?: PortableSchemaDescriptor;
+  binding: InteractionBinding;
   placement?: { nodeId: string; parentNodeId: string | null; sequence: number };
-  ownerInterfaceDigest?: string;
-  clientMetadata?: Json;
 }
 
 export type ToolExecutionEvent =
@@ -91,12 +88,6 @@ export type ToolExecutionEvent =
       message: string;
       schema: JsonObject;
       context?: Json;
-      bindingId?: string;
-      responseContract?: PortableSchemaDescriptor;
-      contextContract?: PortableSchemaDescriptor;
-      placement?: { nodeId: string; parentNodeId: string | null; sequence: number };
-      ownerInterfaceDigest?: string;
-      clientMetadata?: Json;
     }
   | {
       type: "sample_request";

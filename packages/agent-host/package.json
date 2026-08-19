@@ -1,7 +1,7 @@
 {
     "name": "@sweatpants/agent-host",
     "version": "0.1.0",
-    "description": "Host lifecycle, ingress, server, A2A composition, deployment, and logging",
+    "description": "Host lifecycle, ingress, chat server, deployment, and logging",
     "license": "MIT",
     "files": [
         "dist",
@@ -30,17 +30,6 @@
                 "default": "./dist/server/index.js"
             },
             "default": "./src/server/index.ts"
-        },
-        "./server/testing": {
-            "development": {
-                "import": "./src/server/testing.ts",
-                "types": "./src/server/testing.ts"
-            },
-            "import": {
-                "types": "./dist/server/testing.d.ts",
-                "default": "./dist/server/testing.js"
-            },
-            "default": "./src/server/testing.ts"
         },
         "./deployment": {
             "development": {
@@ -71,7 +60,6 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@sweatpants/a2a": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",

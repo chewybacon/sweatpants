@@ -8,22 +8,19 @@
  */
 import type { Operation } from "effection";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { assertJson, canonicalJson, sha256, type Json } from "@sweatpants/foundation";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import {
-  computeToolInterfaceDigest,
   type ElicitDefinition,
   type ElicitsMap,
   type ExtractElicitContext,
   type ExtractElicitResponseInput,
+  type InteractionBinding,
   type ToolContract,
   type ToolElicitSchemaArtifact,
   type ToolExecutionKind,
   type ElicitExchangeCompletion,
 } from "@sweatpants/agent-sdk";
-
-/** Domain separation required for client binding identity. */
-export const CLIENT_ELICIT_BINDING_DOMAIN = "sweatpants.client-elicit-binding\n";
 
 /** Correlation facts supplied to an authored handler as immutable data. */
 export interface ElicitHandlerMetadata<TKey extends string = string> {
@@ -55,31 +52,9 @@ export type ElicitHandlers<TNormalized, TCapabilities> = {
   [K in keyof TNormalized & string]: ElicitHandler<K, TNormalized[K], TCapabilities>;
 };
 
-/** Exact interface facts committed by a client binding digest. */
-export interface ClientElicitBindingIdentityInput {
-  readonly ownerInterfaceDigest: string;
-  readonly key: string;
-  readonly response: PortableSchemaDescriptor;
-  readonly context: PortableSchemaDescriptor | null;
-  readonly clientMetadata: Json;
-}
-
-/** Compute the lowercase hexadecimal binding digest defined by REQ-038. */
-export function computeClientElicitBindingId(input: ClientElicitBindingIdentityInput): string {
-  const canonical = canonicalJson({
-    ownerInterfaceDigest: input.ownerInterfaceDigest,
-    key: input.key,
-    response: input.response,
-    context: input.context,
-    clientMetadata: assertJson(input.clientMetadata),
-  });
-  return sha256(`${CLIENT_ELICIT_BINDING_DOMAIN}${canonical}`);
-}
-
 /** Runtime binding installed in a client-only registry. */
 export interface ClientElicitBinding<TDefinition = unknown, TCapabilities = unknown> {
-  readonly bindingId: string;
-  readonly ownerInterfaceDigest: string;
+  readonly binding: InteractionBinding;
   readonly toolName: string;
   readonly key: string;
   readonly responseContract: PortableSchemaDescriptor;
@@ -87,7 +62,7 @@ export interface ClientElicitBinding<TDefinition = unknown, TCapabilities = unkn
   readonly responseSchema: StandardSchemaV1;
   readonly contextSchema?: StandardSchemaV1;
   readonly artifacts: ToolElicitSchemaArtifact;
-  readonly clientMetadata: Json;
+  readonly metadata: Json;
   readonly handler: ElicitHandler<string, TDefinition, TCapabilities>;
 }
 
@@ -134,24 +109,13 @@ export function createPluginBuilder<TCapabilities, TContract extends PluginToolC
     onElicit(handlers) {
       return {
         build(): ClientPlugin<TCapabilities> {
-          const ownerInterfaceDigest =
-            tool.interfaceDigest ??
-            computeToolInterfaceDigest({
-              name: tool.name,
-              parameters: tool.artifacts.parameters,
-              ...(tool.artifacts.output ? { output: tool.artifacts.output } : {}),
-              elicits: tool.artifacts.elicits,
-              annotations: tool.annotations,
-              extensions: tool.extensions,
-            });
           const bindings = new Map<string, ClientElicitBinding<unknown, TCapabilities>>();
           for (const key of Object.keys(tool.elicits)) {
             const definition = tool.elicits[key] as ElicitDefinition;
             const artifact = tool.artifacts.elicits[key];
-            if (!artifact) {
-              throw new Error(
-                `Tool "${tool.name}" has no schema artifact for elicitation "${key}"`,
-              );
+            const interactionBinding = tool.bindings.elicits[key];
+            if (!artifact || !interactionBinding) {
+              throw new Error(`Tool "${tool.name}" has no binding for elicitation "${key}"`);
             }
             const handler = handlers[key as keyof typeof handlers] as ElicitHandler<
               string,
@@ -161,33 +125,24 @@ export function createPluginBuilder<TCapabilities, TContract extends PluginToolC
             if (typeof handler !== "function") {
               throw new Error(`Tool "${tool.name}" has no handler for elicitation "${key}"`);
             }
-            const clientMetadata = assertJson(definition.metadata ?? null);
-            const bindingId = computeClientElicitBindingId({
-              ownerInterfaceDigest,
-              key,
-              response: artifact.response,
-              context: artifact.context ?? null,
-              clientMetadata,
-            });
             const binding: ClientElicitBinding<unknown, TCapabilities> = {
-              bindingId,
-              ownerInterfaceDigest,
-              toolName: tool.name,
-              key,
+              binding: interactionBinding,
               responseContract: artifact.response,
               ...(artifact.context ? { contextContract: artifact.context } : {}),
+              metadata: assertJson(definition.metadata ?? null),
+              toolName: tool.name,
+              key,
               responseSchema: definition.response,
               ...(definition.context ? { contextSchema: definition.context } : {}),
               artifacts: artifact,
-              clientMetadata,
               handler,
             };
-            bindings.set(bindingId, Object.freeze(binding));
+            bindings.set(interactionBinding.id, Object.freeze(binding));
           }
           return Object.freeze({
             client: Object.freeze({
               toolName: tool.name,
-              ownerInterfaceDigest,
+              ownerInterfaceDigest: tool.interfaceDigest,
               bindings,
             }),
           });

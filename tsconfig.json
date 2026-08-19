@@ -33,9 +33,6 @@
             "path": "./packages/durable-chat-runtime"
         },
         {
-            "path": "./packages/a2a"
-        },
-        {
             "path": "./packages/agent-sdk"
         },
         {

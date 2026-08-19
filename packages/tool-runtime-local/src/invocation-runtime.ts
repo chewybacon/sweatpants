@@ -7,7 +7,7 @@ import {
   type Queue,
   type Task,
 } from "effection";
-import { isExecutableToolContract } from "@sweatpants/agent-sdk";
+import { isExecutableToolContract, type InteractionBinding } from "@sweatpants/agent-sdk";
 import {
   createToolInvocationHost,
   ToolInvocationEventSourcePort,
@@ -35,6 +35,7 @@ export interface LocalToolInvocationRuntimeOptions {
 
 interface LocalResourceEntry {
   readonly session: ToolSession;
+  readonly elicitBindings: Readonly<Record<string, InteractionBinding>>;
   readonly task: Task<void>;
 }
 
@@ -99,6 +100,7 @@ function* createLocalToolInvocationResourceFactory(
       return {
         id: entry.session.id,
         toolName: entry.session.toolName,
+        elicitBindings: entry.elicitBindings,
         projection: entry.session.projection,
         resume: (resume) => entry.session.resume(resume),
         *dispose() {
@@ -187,7 +189,11 @@ function* createLocalToolInvocationResourceFactory(
           command.replies.add(publication.value);
           continue;
         }
-        const entry: LocalResourceEntry = { session: publication.value.session, task };
+        const entry: LocalResourceEntry = {
+          session: publication.value.session,
+          elicitBindings: command.request.tool.bindings.elicits,
+          task,
+        };
         resources.set(command.request.invocationId, entry);
         command.replies.add({ ok: true, resource: resourceFor(entry) });
       }

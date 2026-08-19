@@ -61,8 +61,6 @@ export {
 // =============================================================================
 
 export {
-  CLIENT_ELICIT_BINDING_DOMAIN,
-  computeClientElicitBindingId,
   createPluginBuilder,
   createPluginRegistry,
   createPluginRegistryFrom,
@@ -80,7 +78,6 @@ export type {
 } from "./client-dispatcher.ts";
 export type {
   ClientElicitBinding,
-  ClientElicitBindingIdentityInput,
   ClientElicitRequest as RawClientElicit,
   ClientPlugin,
   ClientPluginRegistration,

@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
+import type { ToolInteractionBindings } from "./interaction-binding.ts";
 import type {
   ElicitsMap,
   NormalizedElicitsMap,
@@ -50,8 +51,10 @@ export interface ToolContract<
   readonly capabilities: { readonly elicitation: boolean; readonly sampling: boolean };
   readonly annotations: Readonly<Record<string, unknown>>;
   readonly extensions: readonly ToolExtensionMetadata[];
-  /** Execution-neutral identity; omitted only for legacy external projections. */
-  readonly interfaceDigest?: string;
+  /** Complete execution-neutral owner identity. */
+  readonly interfaceDigest: string;
+  /** Contract-addressed client rendezvous points compiled during authoring. */
+  readonly bindings: ToolInteractionBindings;
 }
 
 /** Erased contract type for registries and heterogeneous collections. */
@@ -131,6 +134,7 @@ export function projectToolContract<
     capabilities: tool.capabilities,
     annotations: tool.annotations,
     extensions: tool.extensions,
-    ...(tool.interfaceDigest ? { interfaceDigest: tool.interfaceDigest } : {}),
+    interfaceDigest: tool.interfaceDigest,
+    bindings: tool.bindings,
   }) as ToolContract<TName, TParams, TResult, TElicits, TSamples>;
 }

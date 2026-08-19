@@ -57,9 +57,42 @@ describe("target package charters", () => {
 
   it("keeps History Store generic over bounded-context entry schemas", () => {
     expectNoMatches(productionSource("history-store"), [
-      /from ["']@sweatpants\/(?:chat-core|a2a|tool-session|agent-host)/,
-      /ChatMessage|ForeignA2A|McpMessage/,
+      /from ["']@sweatpants\/(?:chat-core|tool-session|agent-host)/,
+      /ChatMessage|McpMessage/,
     ]);
+  });
+
+  it("keeps interaction binding compilation in authored tool construction", () => {
+    const consumers = [
+      "packages/tool-session/src/invocation-host.ts",
+      "packages/tool-session/src/mcp/plugin.ts",
+      "packages/tool-runtime-local/src",
+      "packages/tool-runtime-agentcore/src",
+      "packages/durable-chat-runtime/src",
+    ]
+      .map((path) => {
+        const absolute = resolve(root, path);
+        return statSync(absolute).isDirectory()
+          ? sourceTree(absolute)
+          : readFileSync(absolute, "utf8");
+      })
+      .join("\n");
+    expect(consumers).not.toMatch(
+      /compileInteractionBinding|compileToolInteractionBindings|client-elicit-binding/,
+    );
+    const workerTypes = readFileSync(
+      resolve(root, "packages/agent-sdk/src/transport/worker/types.ts"),
+      "utf8",
+    );
+    expect(workerTypes).not.toMatch(
+      /bindingId|InteractionBinding|ownerInterfaceDigest|clientMetadata/,
+    );
+    const foreignInput = readFileSync(
+      resolve(root, "packages/durable-execution/src/program-contract.ts"),
+      "utf8",
+    );
+    expect(foreignInput).not.toMatch(/ownerInterfaceDigest|clientMetadata/);
+    expect(foreignInput).toMatch(/binding: \{ readonly id: string \}/);
   });
 
   it("keeps Model Provider neutral and concrete adapters off Chat Core", () => {
@@ -329,7 +362,6 @@ describe("target package charters", () => {
       "packages/tool-session/src/contract.ts",
       "packages/tool-session/src/mcp/durable-invocation.ts",
       "packages/workspace-runtime/src/sandbox-substrate.ts",
-      "packages/agent-host/src/server/agent-connections.ts",
     ];
     for (const file of contractFiles) {
       expect(readFileSync(resolve(root, file), "utf8"), file).not.toMatch(/Promise</);

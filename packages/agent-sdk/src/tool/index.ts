@@ -1,4 +1,13 @@
 export { createTool } from "./create.ts";
+export {
+  INTERACTION_BINDING_DOMAIN,
+  compileInteractionBinding,
+  compileToolInteractionBindings,
+  parseInteractionBinding,
+  type ElicitBindingEvidence,
+  type InteractionBinding,
+  type ToolInteractionBindings,
+} from "./interaction-binding.ts";
 export { SampleValidationError } from "./types.ts";
 export {
   SCHEMA_TOOL_NAME,

@@ -48,7 +48,6 @@ import {
   assertJson,
   canonicalJson,
   canonicalSnapshot,
-  sha256,
   stableTupleHash,
   type Json,
   type JsonObject,
@@ -56,7 +55,7 @@ import {
 import { foreignToolAdapter, foreignToolAdapterChild } from "@sweatpants/tool-session/foreign";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
-import { computeClientElicitBindingId } from "@sweatpants/tool-session/mcp";
+import { parseInteractionBinding } from "@sweatpants/agent-sdk";
 import {
   CONVERSATION_AUTHORITY_FRAME_TYPE,
   type ConversationStreamEvent,
@@ -1571,25 +1570,29 @@ function projectInterrupt(
         schema: objectSchema(responseProjection),
       }
     : { message: pending.descriptor.message, schema: objectSchema(responseProjection) };
-  const responseContract =
-    portableDescriptorFromJson(context?.["responseContract"]) ?? pending.descriptor.response;
-  const contextContract =
-    portableDescriptorFromJson(context?.["contextContract"]) ?? pending.descriptor.contextContract;
-  const ownerInterfaceDigest =
-    typeof context?.["ownerInterfaceDigest"] === "string"
-      ? context["ownerInterfaceDigest"]
-      : ownerInterfaceDigestForPending(records, pending, params);
-  const bindingId = computeClientElicitBindingId({
-    ownerInterfaceDigest,
-    key:
-      typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : pending.descriptor.key,
-    response: responseContract,
-    context: contextContract ?? null,
-    clientMetadata: context?.["clientMetadata"] ?? null,
-  });
-  const placement = placementForPending(records, pending, correlation);
   const publicKey =
     typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : pending.descriptor.key;
+  const inventoryEntry =
+    typeof context?.["foreignTool"] === "string"
+      ? params.toolInventoryEntries?.find(
+          (entry) => entry.definition.name === context["foreignTool"],
+        )
+      : undefined;
+  const inventoryElicit = inventoryEntry?.elicits?.[publicKey];
+  const responseContract = isForeign
+    ? inventoryElicit?.responseContract
+    : pending.descriptor.response;
+  if (!responseContract) {
+    throw new CrankError(
+      "interaction_binding_missing",
+      `No authored response contract exists for elicitation "${publicKey}"`,
+    );
+  }
+  const contextContract = isForeign
+    ? inventoryElicit?.contextContract
+    : pending.descriptor.contextContract;
+  const binding = bindingForPending(records, pending, params, context);
+  const placement = placementForPending(records, pending, correlation);
   return {
     type: EventType.RUN_FINISHED,
     ...params.agUiRun,
@@ -1608,7 +1611,7 @@ function projectInterrupt(
             callId: correlation.callId ?? pending.pullId,
             ...(correlation.elicitId ? { elicitId: correlation.elicitId } : {}),
             "sweatpants/elicitation": {
-              bindingId,
+              bindingId: binding.id,
               ...(authoredContext !== undefined ? { context: authoredContext } : {}),
               responseContract,
               ...(contextContract ? { contextContract } : {}),
@@ -1621,48 +1624,42 @@ function projectInterrupt(
   };
 }
 
-function ownerInterfaceDigestForPending(
+function bindingForPending(
   records: DurableSemanticRecord[],
   pending: PendingElicit,
   params: ProgramDriverChatEngineParams,
-): string {
+  context: Record<string, Json> | undefined,
+) {
+  if (context?.["interactionBinding"] !== undefined) {
+    try {
+      return parseInteractionBinding(context["interactionBinding"]);
+    } catch (error) {
+      throw new CrankError(
+        "interaction_binding_missing",
+        `Persisted binding is invalid for elicitation "${pending.descriptor.key}": ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   const opened = records.find(
     (record) => record.payload.type === "TaskOpened" && record.payload.taskId === pending.taskId,
   );
-  if (opened?.payload.type === "TaskOpened") {
-    const programDigest = opened.payload.programDigest;
-    const native = [...(params.nativeTools?.bindings.values() ?? [])].find(
-      (binding) => binding.tool.manifest.digest === programDigest,
-    );
-    const interfaceDigest = (native?.tool as { interfaceDigest?: string } | undefined)
-      ?.interfaceDigest;
-    if (interfaceDigest) {
-      return interfaceDigest;
-    }
-  }
-  const context = jsonRecord(pending.descriptor.context);
-  const foreignToolName =
-    typeof context?.["foreignTool"] === "string"
-      ? context["foreignTool"]
-      : typeof context?.["toolName"] === "string"
-        ? context["toolName"]
-        : undefined;
-  const inventoryEntry = foreignToolName
-    ? params.toolInventoryEntries?.find((entry) => entry.definition.name === foreignToolName)
+  const programDigest =
+    opened?.payload.type === "TaskOpened" ? opened.payload.programDigest : undefined;
+  const native = programDigest
+    ? [...(params.nativeTools?.bindings.values() ?? [])].find(
+        (candidate) => candidate.tool.manifest.digest === programDigest,
+      )
     : undefined;
-  if (inventoryEntry?.interfaceDigest) {
-    return inventoryEntry.interfaceDigest;
+  const bindings = (native?.tool as { bindings?: { elicits?: Record<string, { id: string }> } })
+    ?.bindings;
+  const binding = bindings?.elicits?.[pending.descriptor.key];
+  if (!binding) {
+    throw new CrankError(
+      "interaction_binding_missing",
+      `No authored binding exists for elicitation "${pending.descriptor.key}"`,
+    );
   }
-  const toolName =
-    foreignToolName ??
-    (opened?.payload.type === "TaskOpened" ? opened.payload.programId : pending.descriptor.key);
-  return sha256(
-    `sweatpants.tool-interface\\n${canonicalJson({
-      name: toolName,
-      response: pending.descriptor.response,
-      context: pending.descriptor.contextContract ?? null,
-    })}`,
-  );
+  return parseInteractionBinding(binding);
 }
 
 function placementForPending(

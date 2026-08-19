@@ -108,7 +108,6 @@ const targetEdges: Readonly<Record<string, readonly string[]>> = {
     "@sweatpants/durable-execution",
     "@sweatpants/durable-streams",
     "@sweatpants/foundation",
-    "@sweatpants/a2a",
     "@sweatpants/journal-authority",
     "@sweatpants/history-store",
     "@sweatpants/stream-bridge",

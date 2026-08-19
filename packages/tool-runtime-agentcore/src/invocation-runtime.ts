@@ -9,6 +9,7 @@ import {
 } from "@sweatpants/tool-session";
 import { createToolInvocationHost } from "@sweatpants/tool-session";
 import { createAgentCoreToolInvocationResources } from "./agentcore-invocation-resources.ts";
+import type { InteractionBinding } from "@sweatpants/agent-sdk";
 import type {
   AgentCoreToolRuntimeProfile,
   AgentCoreToolSessionHandle,
@@ -44,11 +45,13 @@ export interface AgentCoreToolInvocationRuntimeOptions {
 
 function remoteResource(
   session: ToolSession,
+  elicitBindings: Readonly<Record<string, InteractionBinding>>,
   dispose: (id: string) => Operation<void>,
 ): ToolInvocationResource {
   return {
     id: session.id,
     toolName: session.toolName,
+    elicitBindings,
     projection: session.projection,
     resume: (resume) => session.resume(resume),
     *dispose() {
@@ -93,11 +96,18 @@ export function* createAgentCoreToolInvocationRuntime(
         sessionId: request.invocationId,
         ...(request.model === undefined ? {} : { model: request.model }),
       });
-      return remoteResource(session, (id) => resources.dispose(id));
+      return remoteResource(session, request.tool.bindings.elicits, (id) => resources.dispose(id));
     },
     *open(invocationId) {
       const session = yield* resources.get(invocationId);
-      return session ? remoteResource(session, (id) => resources.dispose(id)) : null;
+      if (!session) {
+        return null;
+      }
+      const bindings = yield* resources.elicitBindings(invocationId);
+      if (!bindings) {
+        throw new Error(`AgentCore invocation "${invocationId}" omitted authored bindings`);
+      }
+      return remoteResource(session, bindings, (id) => resources.dispose(id));
     },
   };
 

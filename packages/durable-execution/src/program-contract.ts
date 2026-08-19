@@ -144,9 +144,8 @@ export type ForeignInputRequest =
       message: string;
       responseSchema: JsonSchema;
       context?: Json;
-      ownerInterfaceDigest?: string;
-      responseContract?: Json;
-      contextContract?: Json;
+      /** Structurally identical to agent-sdk InteractionBinding without a dependency cycle. */
+      binding: { readonly id: string };
     };
 export type ForeignToolDisposition =
   | { type: "input_required"; request: ForeignInputRequest; continuation: ForeignContinuation }

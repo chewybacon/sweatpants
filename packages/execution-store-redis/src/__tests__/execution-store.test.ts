@@ -69,10 +69,35 @@ describe("Redis Execution Store", () => {
   it("CAS-isolates executions and atomically stores private segments", async () => {
     const store = createRedisExecutionStore(client, { keyPrefix });
     await run(function* () {
-      expect(yield* store.commitExecution(initial("one"))).toMatchObject({
+      const first = segment("journal-one", null, [{ outcome: "first" }]);
+      const second = segment(
+        "journal-two",
+        { segmentId: first.segmentId, lastSequence: first.lastSequence },
+        [{ outcome: "second" }],
+      );
+      expect(
+        yield* store.commitExecution({
+          ...initial("one"),
+          journalSegments: [first, second],
+        }),
+      ).toMatchObject({
         status: "committed",
         control: { controlRevision: "0" },
       });
+      const journal = yield* store.readJournal({
+        executionId: "one",
+        taskId: "root",
+        head: { segmentId: second.segmentId, lastSequence: second.lastSequence },
+      });
+      const entries = yield* call(async () => {
+        const result: Json[] = [];
+        for await (const chunk of journal) {
+          result.push(...chunk);
+        }
+        return result;
+      });
+      expect(entries).toEqual([{ outcome: "first" }, { outcome: "second" }]);
+
       expect(yield* store.commitExecution(initial("two"))).toMatchObject({
         status: "committed",
         control: { controlRevision: "0" },

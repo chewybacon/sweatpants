@@ -36,7 +36,6 @@
 import type { Operation } from "effection";
 import type { Json, JsonObject } from "@sweatpants/foundation";
 import type { ElicitExchangeCompletion, SampleExchangeCompletion } from "../../tool/types.ts";
-import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { z } from "zod";
 
 const progressMessageSchema = z.object({ type: z.literal("progress") }).loose();
@@ -88,11 +87,6 @@ export interface WorkerElicitRequest extends WorkerRequestBase {
   schema: JsonObject;
   /** Context data for the UI to render (e.g., flight options, seat map) */
   context?: Json;
-  bindingId?: string;
-  responseContract?: PortableSchemaDescriptor;
-  contextContract?: PortableSchemaDescriptor;
-  ownerInterfaceDigest?: string;
-  clientMetadata?: Json;
 }
 
 /**

@@ -59,23 +59,35 @@ export function createMemoryRedisClient(): RedisClientType {
       return removed;
     },
     async eval(script: string, options: { keys: string[]; arguments: string[] }) {
-      const [stateKey, secondKey, runnableKey] = options.keys;
-      const [expected, next, third, keepRunnable] = options.arguments;
+      const [stateKey, runnableKey] = options.keys;
+      const [expected, next, sessionId, keepRunnable] = options.arguments;
       if (!stateKey || expected === undefined || next === undefined) {
         return 0;
       }
       if ((strings.get(stateKey) ?? "") !== expected) {
         return 0;
       }
-      strings.set(stateKey, next);
       if (script.includes("SWEATPANTS_EXECUTION_STORE_V1")) {
-        if (!secondKey || third === undefined) {
+        const segmentKeys = options.keys.slice(1);
+        const segmentValues = options.arguments.slice(2);
+        if (segmentKeys.length !== segmentValues.length) {
           return 0;
         }
-        strings.set(secondKey, third);
+        for (let index = 0; index < segmentKeys.length; index += 1) {
+          const key = segmentKeys[index]!;
+          const value = segmentValues[index]!;
+          const existing = strings.get(key);
+          if (existing !== undefined && existing !== value) {
+            return -1;
+          }
+        }
+        for (let index = 0; index < segmentKeys.length; index += 1) {
+          strings.set(segmentKeys[index]!, segmentValues[index]!);
+        }
+        strings.set(stateKey, next);
         return 1;
       }
-      const sessionId = third;
+      strings.set(stateKey, next);
       if (runnableKey && sessionId) {
         const runnable = sets.get(runnableKey) ?? new Set<string>();
         if (keepRunnable === "1") {

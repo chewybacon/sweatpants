@@ -1,6 +1,7 @@
 import { canonicalSnapshot } from "@sweatpants/foundation";
 import { action, spawn, type Operation, type Task } from "effection";
 import type { ToolSessionEvent } from "./contract.ts";
+import type { InteractionBinding } from "@sweatpants/agent-sdk";
 import {
   ToolInvocationHostError,
   type ToolInvocationResource,
@@ -241,8 +242,20 @@ function* drainInvocation(
         continue;
       case "sample_request":
         return { type: "parked", cursor: event.lsn, ask: sampleAsk(event) };
-      case "elicit_request":
-        return { type: "parked", cursor: event.lsn, ask: elicitAsk(event) };
+      case "elicit_request": {
+        const binding = resource.elicitBindings[event.key];
+        if (!binding) {
+          throw new ToolInvocationHostError(
+            "interaction_binding_missing",
+            `Tool "${resource.toolName}" emitted undeclared elicitation "${event.key}"`,
+          );
+        }
+        return {
+          type: "parked",
+          cursor: event.lsn,
+          ask: elicitAsk(event, binding),
+        };
+      }
       case "result":
         return { type: "completed", result: event.result };
       case "error":
@@ -277,6 +290,7 @@ function sampleAsk(
 
 function elicitAsk(
   event: Extract<ToolSessionEvent, { type: "elicit_request" }>,
+  binding: InteractionBinding,
 ): ToolInvocationAsk {
   return {
     kind: "elicit",
@@ -285,11 +299,6 @@ function elicitAsk(
     message: event.message,
     schema: event.schema,
     ...(event.context === undefined ? {} : { context: event.context }),
-    ...(event.bindingId === undefined ? {} : { bindingId: event.bindingId }),
-    ...(event.ownerInterfaceDigest === undefined
-      ? {}
-      : { ownerInterfaceDigest: event.ownerInterfaceDigest }),
-    ...(event.responseContract === undefined ? {} : { responseContract: event.responseContract }),
-    ...(event.contextContract === undefined ? {} : { contextContract: event.contextContract }),
+    binding,
   };
 }
