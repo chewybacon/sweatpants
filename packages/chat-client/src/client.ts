@@ -804,7 +804,7 @@ class ChatClientController<
       stop: () => this.stopImpl("user"),
       regenerate: (options) => this.regenerateImpl(options ?? {}),
       reconnect: () => this.reconnectImpl(),
-      loadOlder: () => this.loadOlderImpl(),
+      loadOlder: () => this.loadOlderHistory(),
       cancelQueued: (id) => this.cancelQueuedImpl(id),
       setMessages: (update) =>
         this.setMessagesImpl(
@@ -1099,7 +1099,7 @@ class ChatClientController<
     }
   }
 
-  private *loadOlderImpl(): Operation<void> {
+  private *loadOlderHistory(): Operation<void> {
     this.ensureOpen();
     const cursor = this.olderHistoryCursor;
     if (cursor === null) {
@@ -1130,13 +1130,17 @@ class ChatClientController<
       }
       this.compactor.applyHistoryPage(page);
       this.olderHistoryCursor = page.nextOlderCursor;
-      this.publishProjection({
-        history: {
-          hasOlder: this.olderHistoryCursor !== null,
-          loadingOlder: false,
-          error: null,
+      yield* this.flushPublication(
+        {
+          history: {
+            hasOlder: this.olderHistoryCursor !== null,
+            loadingOlder: false,
+            error: null,
+          },
         },
-      });
+        true,
+        false,
+      );
     } catch (error) {
       if (generation !== this.historyGeneration || cursor !== this.olderHistoryCursor) {
         throw error;

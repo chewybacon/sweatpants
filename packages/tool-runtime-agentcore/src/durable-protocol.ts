@@ -147,6 +147,7 @@ const operationDescriptorSchema = z.discriminatedUnion("kind", [
     response: z.json(),
     context: z.json().optional(),
     contextContract: z.json().optional(),
+    binding: z.strictObject({ id: digestSchema }).optional(),
   }),
   z
     .strictObject({

@@ -103,11 +103,12 @@ const adapterTool = createPinnedDurableProgram(
                   foreignKey: disposition.request.key,
                   ...(request.route !== undefined ? { foreignRoute: request.route } : {}),
                   responseSchema: disposition.request.responseSchema,
-                  interactionBinding: disposition.request.binding,
                   ...(disposition.request.context !== undefined
                     ? { context: disposition.request.context }
                     : {}),
                 },
+                FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
+                disposition.request.binding,
               );
 
         disposition = yield* context.effect(

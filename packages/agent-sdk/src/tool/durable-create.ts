@@ -489,12 +489,49 @@ function builder(state: BuilderState): unknown {
           replay: "strict" as const,
         },
       };
+      const contractArtifacts = buildToolSchemaArtifacts({
+        identity: `tool:${state.name}`,
+        version,
+        parameters,
+        ...(state.parametersProjections
+          ? { parametersProjections: state.parametersProjections }
+          : {}),
+        ...(state.output ? { output: state.output } : {}),
+        ...(state.outputProjections ? { outputProjections: state.outputProjections } : {}),
+        elicits: normalizedElicits,
+      });
+      const catalogByDigest = new Map(
+        [...catalog, ...contractArtifacts.catalog].map((entry) => [entry.descriptor.digest, entry]),
+      );
+      const artifacts: ToolSchemaArtifacts = Object.freeze({
+        parameters: contractArtifacts.parameters,
+        ...(contractArtifacts.output ? { output: contractArtifacts.output } : {}),
+        elicits: contractArtifacts.elicits,
+        catalog: Object.freeze([...catalogByDigest.values()]),
+      });
+      const interfaceDigest = computeToolInterfaceDigest({
+        name: state.name,
+        parameters: artifacts.parameters,
+        ...(artifacts.output ? { output: artifacts.output } : {}),
+        elicits: artifacts.elicits,
+        annotations: {},
+        extensions: [],
+      });
+      const bindings = compileToolInteractionBindings({
+        ownerInterfaceDigest: interfaceDigest,
+        elicits: normalizedElicits,
+        artifacts: artifacts.elicits,
+      });
+      // The authored contract attaches its own compiled interaction identity:
+      // every fluent elicit proposal carries the binding into the journal, so
+      // placements and drivers stay mechanics-only.
       const factory = (rawInput: Json, context: DurableProgramContext) =>
         program(
           rawInput,
           contextForDeclarations(
             context,
             manifestElicits,
+            bindings.elicits,
             state.samples === true,
             state.extensions ?? {},
           ),
@@ -534,39 +571,6 @@ function builder(state: BuilderState): unknown {
                 factory,
               )
             : createInterfaceDerivedPinnedDurableProgram(manifest, factory);
-      const contractArtifacts = buildToolSchemaArtifacts({
-        identity: `tool:${state.name}`,
-        version,
-        parameters,
-        ...(state.parametersProjections
-          ? { parametersProjections: state.parametersProjections }
-          : {}),
-        ...(state.output ? { output: state.output } : {}),
-        ...(state.outputProjections ? { outputProjections: state.outputProjections } : {}),
-        elicits: normalizedElicits,
-      });
-      const catalogByDigest = new Map(
-        [...catalog, ...contractArtifacts.catalog].map((entry) => [entry.descriptor.digest, entry]),
-      );
-      const artifacts: ToolSchemaArtifacts = Object.freeze({
-        parameters: contractArtifacts.parameters,
-        ...(contractArtifacts.output ? { output: contractArtifacts.output } : {}),
-        elicits: contractArtifacts.elicits,
-        catalog: Object.freeze([...catalogByDigest.values()]),
-      });
-      const interfaceDigest = computeToolInterfaceDigest({
-        name: state.name,
-        parameters: artifacts.parameters,
-        ...(artifacts.output ? { output: artifacts.output } : {}),
-        elicits: artifacts.elicits,
-        annotations: {},
-        extensions: [],
-      });
-      const bindings = compileToolInteractionBindings({
-        ownerInterfaceDigest: interfaceDigest,
-        elicits: normalizedElicits,
-        artifacts: artifacts.elicits,
-      });
       return Object.freeze({
         ...tool,
         execution: "crank_native" as const,
@@ -600,6 +604,7 @@ function contextForDeclarations(
       contextContract?: PortableSchemaDescriptor;
     }
   >,
+  bindings: ToolInteractionBindings["elicits"],
   sampling: boolean,
   extensions: DurableExtensionMap,
 ): DurableProgramContext {
@@ -676,7 +681,8 @@ function contextForDeclarations(
         return context.elicit(key, requestOrMessage, response!, rawContext);
       }
       const declaration = elicits[key];
-      if (!declaration) {
+      const binding = bindings[key];
+      if (!declaration || !binding) {
         throw new Error(`Durable tool elicit "${key}" is not declared`);
       }
       return context.elicit(
@@ -685,6 +691,7 @@ function contextForDeclarations(
         declaration.response,
         requestOrMessage.context,
         declaration.contextContract ?? declaration.context,
+        binding,
       );
     },
   });

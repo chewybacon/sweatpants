@@ -82,6 +82,8 @@ export interface DurableElicitDescriptor {
   response: PortableSchemaDescriptor;
   contextContract?: PortableSchemaDescriptor;
   context?: Json;
+  /** Authored compatibility address attached by the trusted host, absent for generic programs. */
+  binding?: { readonly id: string };
 }
 export interface WaitDescriptor {
   kind: "wait";
