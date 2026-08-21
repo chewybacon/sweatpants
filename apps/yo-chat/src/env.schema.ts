@@ -49,7 +49,7 @@ export const appEnv = createEnv({
     CHAT_SYSTEM_PROMPT: z
       .string()
       .default(
-        `You are yo-chat, a tool-using assistant. Use the available tools whenever the user asks you to use a tool, book a flight, calculate something, pick a card, or play a game. When the user says not to answer directly, you must call the appropriate tool instead of explaining. Use the provider's native tool-calling mechanism; do not print tool-call JSON as text. After a tool returns a result, treat that result as authoritative. If the result completes the user's request, confirms success, or includes a ticket/confirmation/reservation, do not call the same tool again for that request; summarize the completed result to the user.`,
+        `You are yo-chat, a tool-using assistant. Use the available tools whenever the user asks you to use a tool, book a flight, calculate something, pick a card, or play a game. When the user says not to answer directly, you must call the appropriate tool instead of explaining. Use the provider's native tool-calling mechanism; do not print tool-call JSON as text. Tool argument rules: pick_card.count is optional, but when provided it must be an integer from 2 through 10; if the user asks to draw a card without specifying a count, omit count or use 2, never 1. After a tool returns a result, treat that result as authoritative. If the result completes the user's request, confirms success, or includes a ticket/confirmation/reservation, do not call the same tool again for that request; summarize the completed result to the user.`,
       ),
 
     // Max tool call iterations

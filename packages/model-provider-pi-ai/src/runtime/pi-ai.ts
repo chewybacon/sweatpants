@@ -1,4 +1,6 @@
 import { call, resource, useAbortSignal, type Operation } from "effection";
+import { createProvider } from "@earendil-works/pi-ai";
+import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { builtinImagesModels, builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type * as PiAi from "@earendil-works/pi-ai";
 import {
@@ -233,7 +235,35 @@ export interface AdapterRuntimeOptions {
   readonly images?: PiAi.ImagesModels;
 }
 
-const defaultPiModels = builtinModels();
+function createDefaultPiModels(): PiAi.Models {
+  const models = builtinModels();
+  // Ollama is an app-local, dynamically selected model rather than a model in
+  // pi-ai's built-in catalog. Register its OpenAI-compatible transport so the
+  // Models collection can still apply auth before dispatching the request.
+  models.setProvider(
+    createProvider({
+      id: "ollama",
+      name: "Ollama",
+      auth: {
+        apiKey: {
+          name: "Ollama",
+          resolve: async ({ credential, signal }) => {
+            signal.throwIfAborted();
+            return {
+              auth: { apiKey: credential?.key ?? "ollama" },
+              source: "local Ollama",
+            };
+          },
+        },
+      },
+      models: [],
+      api: openAICompletionsApi(),
+    }),
+  );
+  return models;
+}
+
+const defaultPiModels = createDefaultPiModels();
 const defaultPiImages = builtinImagesModels();
 
 export function createPiAiRuntime(options: AdapterRuntimeOptions = {}): Runtime {
