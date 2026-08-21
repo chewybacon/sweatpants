@@ -15,6 +15,7 @@ import {
   type StreamOptions,
   type ThinkingLevel,
 } from "@sweatpants/model-provider";
+import { FileCredentialStore } from "../auth.ts";
 import {
   STRUCTURED_RESPONSE_TOOL_NAME,
   appendPiStructuredResponseTool,
@@ -236,7 +237,7 @@ export interface AdapterRuntimeOptions {
 }
 
 function createDefaultPiModels(): PiAi.Models {
-  const models = builtinModels();
+  const models = builtinModels({ credentials: new FileCredentialStore() });
   // Ollama is an app-local, dynamically selected model rather than a model in
   // pi-ai's built-in catalog. Register its OpenAI-compatible transport so the
   // Models collection can still apply auth before dispatching the request.

@@ -2,22 +2,22 @@ import { run } from "effection";
 import { describe, it } from "vitest";
 
 import {
-  createInMemoryDurableJournalAuthority,
-  type InMemoryDurableJournalAuthority,
-} from "@sweatpants/journal-authority";
+  createAuthorityScenarioDriver,
+  type AuthorityScenarioDriver,
+} from "@sweatpants/journal-authority/testing";
 import {
   adaptInMemoryAuthorityForSandboxConformance,
   createDurableSandboxConformanceCases,
   type DurableSandboxConformanceFactory,
 } from "./conformance.ts";
 
-const authorities = new Map<string, InMemoryDurableJournalAuthority>();
+const authorities = new Map<string, AuthorityScenarioDriver>();
 const factory: DurableSandboxConformanceFactory = {
   backendName: "in-memory",
   *open(options) {
     let authority = authorities.get(options.journalId);
     if (!authority) {
-      authority = createInMemoryDurableJournalAuthority({
+      authority = createAuthorityScenarioDriver({
         journalId: options.journalId,
         journalIncarnation: "sandbox-conformance-v1",
         keyring: options.keyring,

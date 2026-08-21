@@ -15,7 +15,7 @@ import {
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import { createPiAiModelProviderDriver, resolvePiAiModel } from "@sweatpants/model-provider-pi-ai";
 import type { ModelContext } from "@sweatpants/model-provider";
-import { env } from "@/env";
+import { defaultYoChatModel } from "./default-model.ts";
 
 interface SamplingOptions {
   systemPrompt?: string;
@@ -43,10 +43,7 @@ function modelContext(messages: ChatMessage[], options: SamplingOptions | undefi
 
 export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
   const driver = createPiAiModelProviderDriver();
-  const model = resolvePiAiModel({
-    provider: env.DEFAULT_CHAT_MODEL_PROVIDER,
-    id: env.DEFAULT_CHAT_MODEL_ID,
-  });
+  const model = resolvePiAiModel(defaultYoChatModel());
 
   return {
     *sample(

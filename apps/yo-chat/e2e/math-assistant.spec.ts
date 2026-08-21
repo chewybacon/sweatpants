@@ -9,7 +9,7 @@ import { test, expect, type Page } from "@playwright/test";
  * 3. Pipeline processing with the 'math' preset
  * 4. Tool call UI with expandable details
  *
- * Requires Ollama running locally.
+ * Runs against the selected managed provider.
  */
 
 // LLM responses can be slow
@@ -118,9 +118,9 @@ test.describe("Math Assistant", () => {
       console.log("KaTeX rendering confirmed - inline math processed");
     } else {
       // If LLM didn't output LaTeX, at least verify the message is rendered
-      const hasContent = (await assistantMessage.locator("p").count()) > 0;
-      console.log(`No KaTeX found, but has paragraph content: ${hasContent}`);
-      expect(hasContent).toBe(true);
+      const hasRenderedContent = (await assistantMessage.getByTestId("message-text").count()) > 0;
+      console.log(`No KaTeX found, but text content rendered: ${hasRenderedContent}`);
+      expect(hasRenderedContent).toBe(true);
     }
   });
 
@@ -146,9 +146,9 @@ test.describe("Math Assistant", () => {
       console.log("KaTeX block rendering confirmed");
     } else {
       // If LLM didn't output LaTeX blocks, at least verify the message is rendered
-      const hasContent = (await assistantMessage.locator("p").count()) > 0;
-      console.log(`No block math found, but has paragraph content: ${hasContent}`);
-      expect(hasContent).toBe(true);
+      const hasRenderedContent = (await assistantMessage.getByTestId("message-text").count()) > 0;
+      console.log(`No block math found, but text content rendered: ${hasRenderedContent}`);
+      expect(hasRenderedContent).toBe(true);
     }
   });
 
@@ -158,7 +158,9 @@ test.describe("Math Assistant", () => {
 
     await expectAssistantResponse(page);
 
-    const assistantMessage = getAssistantMessages(page).first();
+    // A tool call is its own assistant message; inspect the model's final
+    // response after the calculator result rather than that call placeholder.
+    const assistantMessage = getAssistantMessages(page).last();
 
     // Should have KaTeX rendered math (the sqrt and pi symbols)
     const katexElements = assistantMessage.locator(".katex");
@@ -282,8 +284,8 @@ test.describe("Math Assistant", () => {
     await expectAssistantResponse(page);
 
     // Both messages should still have rendered math when the model completed both turns.
-    // With real local models, a long sampled response may be stopped after visible
-    // content, so tolerate a single finalized assistant card.
+    // A provider may stop after visible content, so tolerate a single finalized
+    // assistant card.
     assistantMessages = getAssistantMessages(page);
     expect(await assistantMessages.count()).toBeGreaterThanOrEqual(1);
 
@@ -310,29 +312,20 @@ test.describe("Math Assistant", () => {
 
     await expectAssistantResponse(page);
 
-    const assistantMessage = getAssistantMessages(page).first();
-
-    // Should have text content
-    const hasText = (await assistantMessage.locator("p").count()) > 0;
-    console.log(`Has text paragraphs: ${hasText}`);
-
-    // Real local models vary: some use the calculator tool, some compute the
-    // product directly, and some explain the operation without stable formatting.
-    // This renderer-focused e2e requires non-empty coherent assistant output and
-    // accepts the exact result when present.
-    const text = await assistantMessage.textContent();
-    const hasResult = /56088|56,088/.test(text ?? "");
-    const hasCalculatorUI =
-      (await assistantMessage.locator('button:has-text("calculator")').count()) > 0;
+    // A provider may emit the tool call and its final explanation as separate
+    // assistant messages. Assert against the complete rendered conversation.
+    const assistantMessages = getAssistantMessages(page);
+    const hasText = (await assistantMessages.getByTestId("message-text").count()) > 0;
+    const text = (await assistantMessages.allTextContents()).join("\n");
+    const hasResult = /56088|56,088/.test(text);
+    const hasCalculatorUI = (await assistantMessages.getByTestId("tool-call-block").count()) > 0;
+    console.log(`Has rendered text: ${hasText}`);
     console.log(`Contains expected result (56088): ${hasResult}`);
     console.log(`Contains calculator UI: ${hasCalculatorUI}`);
 
-    expect(text?.trim().length ?? 0).toBeGreaterThan(0);
+    expect(text.trim().length).toBeGreaterThan(0);
     expect(text).not.toContain("undefined");
-    if (!hasResult && !hasCalculatorUI) {
-      test.skip(true, "LLM did not reach calculator renderer/correct-result product boundary");
-      return;
-    }
+    expect(hasText).toBe(true);
     expect(hasResult || hasCalculatorUI).toBe(true);
   });
 

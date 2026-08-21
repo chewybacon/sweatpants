@@ -7,12 +7,11 @@ import {
 } from "@sweatpants/durable-execution";
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
+import { createCapabilityKeyring, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-  type DurableSemanticRecord,
-} from "@sweatpants/journal-authority";
+  createAuthorityScenarioDriver,
+  withAuthorityTestScope,
+} from "@sweatpants/journal-authority/testing";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -179,7 +178,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
     const outerKeyring = createCapabilityKeyring("ordinary-harness-outer", [
       { keyId: "active", secret: "ordinary-harness-outer-key-32bytes" },
     ]);
-    let authority = createInMemoryDurableJournalAuthority({
+    let authority = createAuthorityScenarioDriver({
       journalId: "ordinary-harness-outer",
       journalIncarnation: "1",
       keyring: outerKeyring,
@@ -259,7 +258,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       if (!innerSnapshot) {
         throw new Error("Missing inner durable journal snapshot");
       }
-      const innerAuthority = createInMemoryDurableJournalAuthority({
+      const innerAuthority = createAuthorityScenarioDriver({
         journalId: `durable-tool-facade:${innerManifest.programId}`,
         journalIncarnation: "1",
         keyring,
@@ -312,12 +311,12 @@ function attachRequest(
 
 function runProgram(
   attach: AttachProgramRequest,
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withJournalAuthority(authority, function* () {
+    return yield* withAuthorityTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* withModelSampleTestBoundary(() =>
           ProgramRuntime.operations.run({ attach, executeHostEffects: true }),
@@ -328,10 +327,10 @@ function runProgram(
 }
 
 function recreateAuthority(
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   keyring: ReturnType<typeof createCapabilityKeyring>,
 ) {
-  return createInMemoryDurableJournalAuthority({
+  return createAuthorityScenarioDriver({
     journalId: "ordinary-harness-outer",
     journalIncarnation: "1",
     keyring,
@@ -341,7 +340,7 @@ function recreateAuthority(
 }
 
 function* acceptPending(
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   sessionId: string,
   taskId: string,
   content: Choice,

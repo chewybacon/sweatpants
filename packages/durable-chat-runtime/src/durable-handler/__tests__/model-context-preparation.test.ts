@@ -133,35 +133,33 @@ function journalAuthority(state: {
   preparation: ModelContextPreparedFact | null;
 }): ProgramDriverJournal {
   return {
-    authority: {
-      *pullPreparation() {
-        return state.preparation;
-      },
-      *acceptPullPreparation(request_: AcceptPullPreparationRequest) {
-        state.preparation = request_.fact;
-        return { status: "accepted" as const };
-      },
-      *authorizeModelDispatch(request_: {
-        executionId: string;
-        taskId: string;
-        pullId: string;
-        expectedOwnerFence: string;
-        invocationDigest: string;
-      }) {
-        if (
-          !state.preparation ||
-          state.preparation.executionId !== request_.executionId ||
-          state.preparation.taskId !== request_.taskId ||
-          state.preparation.pullId !== request_.pullId ||
-          state.preparation.invocationDigest !== request_.invocationDigest
-        ) {
-          return { status: "identity_conflict" as const };
-        }
-        return { status: "authorized" as const, fact: state.preparation };
-      },
-      *acceptAssistantPartial() {
-        return { status: "accepted" as const };
-      },
+    *pullPreparation() {
+      return state.preparation;
+    },
+    *acceptPullPreparation(request_: AcceptPullPreparationRequest) {
+      state.preparation = request_.fact;
+      return { status: "accepted" as const };
+    },
+    *authorizeModelDispatch(request_: {
+      executionId: string;
+      taskId: string;
+      pullId: string;
+      expectedOwnerFence: string;
+      invocationDigest: string;
+    }) {
+      if (
+        !state.preparation ||
+        state.preparation.executionId !== request_.executionId ||
+        state.preparation.taskId !== request_.taskId ||
+        state.preparation.pullId !== request_.pullId ||
+        state.preparation.invocationDigest !== request_.invocationDigest
+      ) {
+        return { status: "identity_conflict" as const };
+      }
+      return { status: "authorized" as const, fact: state.preparation };
+    },
+    *acceptAssistantPartial() {
+      return { status: "accepted" as const };
     },
   } as unknown as ProgramDriverJournal;
 }

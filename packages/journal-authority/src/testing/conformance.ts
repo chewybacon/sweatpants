@@ -26,23 +26,26 @@ import type {
   RenewActivationResult,
   ReleaseActivationRequest,
   ReleaseActivationResult,
-} from "../durable-authority-types.ts";
+  PrepareProgramRestoreRequest,
+} from "../authority-types.ts";
 import type {
   CancellationAcknowledgement,
   ReserveOperationRequest,
   ReserveOperationResult,
   ResolveOperationRequest,
   ResolveOperationResult,
-  DurableJournalAuthorityService,
   DurableOperationState,
   DurableTaskRecoveryState,
-} from "../durable-authority-types.ts";
+  OpenDurableTaskRequest,
+} from "../authority-types.ts";
 import type { DurableProgramManifest } from "@sweatpants/durable-execution";
 import type {
-  DurableSemanticRecord,
-  InMemoryDurableJournalAuthority,
-  OpenDurableTaskRequest,
-} from "../durable-authority.ts";
+  AuthorityCommand,
+  AuthorityJournalContract,
+  CommandResult,
+  JournalAuthorityContract,
+} from "../authority-contract.ts";
+import type { DurableSemanticRecord } from "../semantic-record.ts";
 
 /**
  * Operation-native authority surface exercised identically by every durable
@@ -50,18 +53,44 @@ import type {
  * stores cross one testing boundary without leaking storage mechanics.
  */
 export interface JournalAuthorityConformancePort {
-  readonly journalIdentity: DurableJournalAuthorityService["journalIdentity"];
-  readonly taskExecutionState: DurableJournalAuthorityService["taskExecutionState"];
-  readonly taskInput: DurableJournalAuthorityService["taskInput"];
-  readonly nonterminalSchemaDigests: DurableJournalAuthorityService["nonterminalSchemaDigests"];
-  readonly recoverableSessions: DurableJournalAuthorityService["recoverableSessions"];
-  readonly bindProgramAttachment: DurableJournalAuthorityService["bindProgramAttachment"];
-  readonly cancellationState: DurableJournalAuthorityService["cancellationState"];
-  readonly beginCancellationUnwind: DurableJournalAuthorityService["beginCancellationUnwind"];
-  readonly prepareProgramRestore: DurableJournalAuthorityService["prepareProgramRestore"];
-  readonly emit: DurableJournalAuthorityService["emit"];
-  readonly complete: DurableJournalAuthorityService["complete"];
-  readonly ensureChildTask: DurableJournalAuthorityService["ensureChildTask"];
+  journalIdentity(): { readonly id: string; readonly incarnation: string };
+  taskExecutionState(
+    sessionId: string,
+    taskId: string,
+  ): Operation<import("../authority-types.ts").DurableTaskExecutionState>;
+  taskInput(sessionId: string, taskId: string): Operation<import("@sweatpants/foundation").Json>;
+  nonterminalSchemaDigests(): Operation<readonly string[]>;
+  recoverableSessions(): Operation<readonly import("../authority-types.ts").RecoverableSession[]>;
+  bindProgramAttachment(
+    sessionId: string,
+    taskId: string,
+    attachmentId: string,
+    executionEpoch: number,
+  ): Operation<{ readonly programCapability: string }>;
+  cancellationState(
+    sessionId: string,
+    taskId: string,
+  ): Operation<import("../authority-types.ts").DurableCancellationState>;
+  beginCancellationUnwind(
+    sessionId: string,
+    taskId: string,
+    restoredFrontier?: {
+      readonly proof: import("../authority-types.ts").RestoredFrontierProof;
+      readonly step: import("@sweatpants/durable-execution").ProgramStep;
+    },
+  ): Operation<import("../authority-types.ts").DurableCancellationState>;
+  prepareProgramRestore(
+    request: PrepareProgramRestoreRequest,
+  ): Operation<import("../authority-types.ts").PreparedProgramRestore>;
+  emit(
+    request: import("../authority-types.ts").AppendEmissionRequest,
+  ): Operation<import("../authority-types.ts").EmissionReceipt>;
+  complete(
+    request: import("../authority-types.ts").CompleteTaskRequest,
+  ): Operation<import("../authority-types.ts").TaskCloseReceipt>;
+  ensureChildTask(
+    request: import("../authority-types.ts").EnsureChildTaskRequest,
+  ): Operation<import("../authority-types.ts").EnsureChildTaskResult>;
   /** Selects active root work or its terminal value without exposing the journal. */
   taskRecoveryState(
     sessionId: string,
@@ -271,117 +300,87 @@ const turnId = "turn-0";
  * Adapts the synchronous diagnostic reads of the process-local authority to the
  * operation-native conformance port. Mutations retain the production methods.
  */
-export function adaptInMemoryAuthorityForConformance(
-  authority: InMemoryDurableJournalAuthority,
+export function adaptAuthorityPortsForConformance(
+  authority: JournalAuthorityContract,
+  journal: AuthorityJournalContract,
+  identity: { readonly id: string; readonly incarnation: string },
 ): JournalAuthorityConformancePort {
+  function command<C extends AuthorityCommand>(selected: C): Operation<CommandResult<C>> {
+    return authority.command(selected);
+  }
   return {
-    journalIdentity: () => authority.journalIdentity(),
-    *taskExecutionState(selectedSessionId, selectedTaskId) {
-      return yield* authority.taskExecutionState(selectedSessionId, selectedTaskId);
-    },
-    *taskInput(selectedSessionId, selectedTaskId) {
-      return yield* authority.taskInput(selectedSessionId, selectedTaskId);
-    },
-    *nonterminalSchemaDigests() {
-      return yield* authority.nonterminalSchemaDigests();
-    },
-    *recoverableSessions() {
-      return yield* authority.recoverableSessions();
-    },
-    *bindProgramAttachment(selectedSessionId, selectedTaskId, attachmentId, executionEpoch) {
-      return yield* authority.bindProgramAttachment(
-        selectedSessionId,
-        selectedTaskId,
-        attachmentId,
-        executionEpoch,
-      );
-    },
-    *cancellationState(selectedSessionId, selectedTaskId) {
-      return yield* authority.cancellationState(selectedSessionId, selectedTaskId);
-    },
-    *beginCancellationUnwind(selectedSessionId, selectedTaskId, restoredFrontier) {
-      return yield* authority.beginCancellationUnwind(
-        selectedSessionId,
-        selectedTaskId,
-        restoredFrontier,
-      );
-    },
-    *prepareProgramRestore(request) {
-      return yield* authority.prepareProgramRestore(request);
-    },
-    *emit(request) {
-      return yield* authority.emit(request);
-    },
-    *complete(request) {
-      return yield* authority.complete(request);
-    },
-    *ensureChildTask(request) {
-      return yield* authority.ensureChildTask(request);
-    },
-    *taskRecoveryState(selectedSessionId, requestedTaskId) {
-      return yield* authority.taskRecoveryState(selectedSessionId, requestedTaskId);
-    },
-    *rootTaskCount(selectedSessionId) {
-      return yield* authority.rootTaskCount(selectedSessionId);
-    },
-    *operationState(selectedSessionId, selectedTaskId, pullId) {
-      return yield* authority.operationState(selectedSessionId, selectedTaskId, pullId);
-    },
-    *claimActivation(request) {
-      return yield* authority.claimActivation(request);
-    },
-    *renewActivation(request) {
-      return yield* authority.renewActivation(request);
-    },
-    *releaseActivation(request) {
-      return yield* authority.releaseActivation(request);
-    },
-    *issueRestoreTicket(request) {
-      return yield* authority.issueRestoreTicket(request);
-    },
-    *bindRestoreFrontier(request) {
-      return yield* authority.bindRestoreFrontier(request);
-    },
-    *consumeRestoreTicket(request) {
-      return yield* authority.consumeRestoreTicket(request);
-    },
-    *openTask(request) {
-      return yield* authority.openTask(request);
-    },
-    *reserve(request) {
-      return yield* authority.reserve(request);
-    },
-    *resolve(request) {
-      return yield* authority.resolve(request);
-    },
-    *replaceAttachment(selectedSessionId, selectedTaskId, attachmentId, audience) {
-      return yield* authority.replaceAttachment(
-        selectedSessionId,
-        selectedTaskId,
-        attachmentId,
-        audience,
-      );
-    },
-    *requestCancellation(selectedSessionId, selectedTaskId, reason, commandId) {
-      return yield* authority.requestCancellation(
-        selectedSessionId,
-        selectedTaskId,
-        reason,
-        commandId,
-      );
-    },
-    *forceOrphan(selectedSessionId, selectedTaskId, reason) {
-      yield* authority.forceOrphan(selectedSessionId, selectedTaskId, reason);
-    },
-    *abandonAttempt(selectedSessionId, selectedTaskId, pullId, attemptId, reason) {
-      yield* authority.abandonAttempt(selectedSessionId, selectedTaskId, pullId, attemptId, reason);
-    },
-    *readJournal(selectedSessionId) {
-      return authority.readJournal(selectedSessionId);
-    },
-    *runnableSessions() {
-      return authority.runnableSessions();
-    },
+    journalIdentity: () => identity,
+    taskExecutionState: (sessionId, taskId) =>
+      authority.query({ type: "task.execution-state", sessionId, taskId }),
+    taskInput: (sessionId, taskId) => authority.query({ type: "task.input", sessionId, taskId }),
+    nonterminalSchemaDigests: () =>
+      authority.query({ type: "authority.nonterminal-schema-digests" }),
+    recoverableSessions: () => authority.query({ type: "authority.recoverable-sessions" }),
+    bindProgramAttachment: (sessionId, taskId, attachmentId, executionEpoch) =>
+      command({
+        type: "execution.bind-attachment",
+        request: { sessionId, taskId, attachmentId, executionEpoch },
+      }) as never,
+    cancellationState: (sessionId, taskId) =>
+      authority.query({ type: "task.cancellation-state", sessionId, taskId }),
+    beginCancellationUnwind: (sessionId, taskId, restoredFrontier) =>
+      command({
+        type: "execution.begin-cancellation-unwind",
+        request: { sessionId, taskId, ...(restoredFrontier ? { restoredFrontier } : {}) },
+      }) as never,
+    prepareProgramRestore: (request) =>
+      command({ type: "recovery.prepare-restore", request }) as never,
+    emit: (request) => command({ type: "execution.append-emission", request }) as never,
+    complete: (request) => command({ type: "execution.complete-task", request }) as never,
+    ensureChildTask: (request) => command({ type: "execution.ensure-child", request }) as never,
+    taskRecoveryState: (sessionId, taskId) =>
+      authority.query({ type: "task.recovery-state", sessionId, ...(taskId ? { taskId } : {}) }),
+    rootTaskCount: (sessionId) => authority.query({ type: "session.root-task-count", sessionId }),
+    operationState: (sessionId, taskId, pullId) =>
+      authority.query({ type: "pull.state", sessionId, taskId, pullId }),
+    claimActivation: (request) => command({ type: "control.claim-activation", request }) as never,
+    renewActivation: (request) => command({ type: "control.renew-activation", request }) as never,
+    releaseActivation: (request) =>
+      command({ type: "control.release-activation", request }) as never,
+    issueRestoreTicket: (request) => command({ type: "recovery.issue-ticket", request }) as never,
+    bindRestoreFrontier: (request) => command({ type: "recovery.bind-frontier", request }) as never,
+    consumeRestoreTicket: (request) =>
+      command({ type: "recovery.consume-ticket", request }) as never,
+    openTask: (request) => command({ type: "execution.open-task", request }) as never,
+    reserve: (request) => command({ type: "execution.reserve-pull", request }) as never,
+    resolve: (request) => command({ type: "execution.resolve-pull", request }) as never,
+    replaceAttachment: (sessionId, taskId, attachmentId, audience) =>
+      command({
+        type: "execution.replace-attachment",
+        request: { sessionId, taskId, attachmentId, ...(audience ? { audience } : {}) },
+      }) as never,
+    requestCancellation: (sessionId, taskId, reason, commandId) =>
+      command({
+        type: "execution.request-cancellation",
+        request: {
+          sessionId,
+          taskId,
+          ...(reason !== undefined ? { reason } : {}),
+          ...(commandId !== undefined ? { commandId } : {}),
+        },
+      }) as never,
+    forceOrphan: (sessionId, taskId, reason) =>
+      command({ type: "execution.force-orphan", request: { sessionId, taskId, reason } }) as never,
+    abandonAttempt: (sessionId, taskId, pullId, attemptId, reason) =>
+      command({
+        type: "execution.abandon-attempt",
+        request: {
+          sessionId,
+          taskId,
+          pullId,
+          attemptId,
+          ...(reason !== undefined ? { reason } : {}),
+        },
+      }) as never,
+    readJournal: (sessionId) =>
+      journal.readSession(sessionId) as Operation<DurableSemanticRecord[]>,
+    runnableSessions: () =>
+      authority.query({ type: "authority.runnable-sessions" }) as Operation<string[]>,
   };
 }
 

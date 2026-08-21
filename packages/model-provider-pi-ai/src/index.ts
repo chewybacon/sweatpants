@@ -1,5 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { stableTupleHash } from "@sweatpants/foundation";
 import { type Operation, type Subscription } from "effection";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
@@ -21,6 +19,7 @@ import {
 } from "@sweatpants/model-provider";
 
 export * from "./runtime/index.ts";
+export * from "./auth.ts";
 
 export interface ModelSelection {
   provider: string;
@@ -222,7 +221,7 @@ export function resolvePiAiModel(selection: ModelSelection): Model {
   const normalized = parseModelSelection(selection, "model");
   const registryModel = registryLookup(normalized);
   if (registryModel) {
-    return withGitHubCopilotAuth(registryModel);
+    return registryModel;
   }
 
   if (normalized.provider === "ollama") {
@@ -244,54 +243,6 @@ export function resolvePiAiModel(selection: ModelSelection): Model {
   throw new ModelResolutionError(
     `Unable to resolve chat model ${sanitizeIdentifier(normalized.provider)}/${sanitizeIdentifier(normalized.id)}`,
   );
-}
-
-function withGitHubCopilotAuth(model: Model): Model {
-  if (model.provider !== "github-copilot") {
-    return model;
-  }
-
-  const token =
-    process.env["COPILOT_GITHUB_TOKEN"] ?? readGitHubCopilotAccessTokenFromSweatpantsAuth();
-  if (!token) {
-    return model;
-  }
-
-  const baseUrl = githubCopilotBaseUrlFromAccessToken(token);
-  if (!process.env["COPILOT_GITHUB_TOKEN"]) {
-    process.env["COPILOT_GITHUB_TOKEN"] = token;
-  }
-  return baseUrl ? { ...model, baseUrl } : model;
-}
-
-function readGitHubCopilotAccessTokenFromSweatpantsAuth(): string | undefined {
-  return readGitHubCopilotAccessTokenFromAuthFile(
-    process.env["SWEATPANTS_AUTH_FILE"] ?? `${homedir()}/.sweatpants/auth.json`,
-  );
-}
-
-function readGitHubCopilotAccessTokenFromAuthFile(authPath: string): string | undefined {
-  if (!existsSync(authPath)) {
-    return undefined;
-  }
-  try {
-    const auth = JSON.parse(readFileSync(authPath, "utf8")) as {
-      ["github-copilot"]?: { access?: unknown; type?: unknown };
-    };
-    const access = auth["github-copilot"]?.access;
-    return typeof access === "string" && access.trim().length > 0 ? access : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function githubCopilotBaseUrlFromAccessToken(token: string): string | undefined {
-  const match = token.match(/proxy-ep=([^;]+)/);
-  const proxyHost = match?.[1];
-  if (!proxyHost) {
-    return undefined;
-  }
-  return `https://${proxyHost.replace(/^proxy\./, "api.")}`;
 }
 
 export function redactSensitiveString(message: string | undefined): string | undefined {

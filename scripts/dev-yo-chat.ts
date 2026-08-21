@@ -1,23 +1,28 @@
 import { spawn, spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  defaultModelForProvider,
+  isYoChatAuthProvider,
+  readStoredModelSelection,
+} from "../packages/model-provider-pi-ai/src/auth.ts";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const provider = process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot";
-const model = process.env["DEFAULT_CHAT_MODEL_ID"] ?? "gpt-5.5";
+const stored = readStoredModelSelection();
+const provider = process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? stored?.provider ?? "github-copilot";
+const model =
+  process.env["DEFAULT_CHAT_MODEL_ID"] ??
+  (stored?.provider === provider ? stored.id : undefined) ??
+  (isYoChatAuthProvider(provider) ? defaultModelForProvider(provider) : "gpt-5.5");
 
-function runPnpmTask(task: string): void {
-  const result = spawnSync("pnpm", [task], {
+function runPnpmTask(task: string, args: readonly string[] = []): void {
+  const result = spawnSync("pnpm", [task, ...args], {
     cwd: repoRoot,
     env: process.env,
     stdio: "inherit",
   });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
-  }
+  if (result.error) throw result.error;
+  if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
 function launch(): void {
@@ -27,13 +32,9 @@ function launch(): void {
     DEFAULT_CHAT_MODEL_ID: model,
   };
 
-  if (provider === "github-copilot") {
-    console.log("Refreshing GitHub Copilot credentials before starting yo-chat...");
-    runPnpmTask("copilot:auth:refresh");
-    runPnpmTask("copilot:auth:sync");
-    // Prefer the freshly synced .env.local/auth file over a stale token that
-    // may have been exported by an older shell session.
-    delete childEnv.COPILOT_GITHUB_TOKEN;
+  if (isYoChatAuthProvider(provider)) {
+    console.log(`Checking ${provider} credentials before starting yo-chat...`);
+    runPnpmTask("model:auth:refresh", ["--provider", provider]);
   }
 
   console.log(`Starting yo-chat with ${provider}/${model}`);
@@ -43,27 +44,20 @@ function launch(): void {
     stdio: "inherit",
   });
 
-  const forward = (signal: NodeJS.Signals): void => {
-    child.kill(signal);
-  };
+  const forward = (signal: NodeJS.Signals): void => child.kill(signal);
   process.once("SIGINT", () => forward("SIGINT"));
   process.once("SIGTERM", () => forward("SIGTERM"));
   child.once("error", (error) => {
     console.error(`yo-chat failed to start: ${error.message}`);
     process.exit(1);
   });
-  child.once("exit", (code, signal) => {
-    if (signal) {
-      process.exit(1);
-    }
-    process.exit(code ?? 1);
-  });
+  child.once("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 1)));
 }
 
 try {
   launch();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
-  console.error("Run `pnpm copilot:auth:login` if no refresh credential is available.");
+  console.error("Run `pnpm model:auth:login --provider <provider>` to authenticate.");
   process.exit(1);
 }

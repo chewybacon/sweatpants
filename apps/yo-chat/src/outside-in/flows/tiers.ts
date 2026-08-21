@@ -6,8 +6,9 @@
  * - Live flows are gated behind `RUN_LIVE=1`, so unmarked/manual runs stay
  *   hermetic and avoid importing app/tool runtime modules that could touch the
  *   network or print noisy setup logs.
- * - When `RUN_LIVE=1`, tests RUN and `requireCopilotAuth()` fails fast if auth
- *   is missing/expired. Integration coverage should fail, not silently skip.
+ * - When `RUN_LIVE=1`, tests RUN and `requireModelAuth()` fails fast if the
+ *   selected provider is missing credentials. Integration coverage should fail,
+ *   not silently skip.
  */
 import type { ChatBinding } from "../lib/chat-fetch.ts";
 

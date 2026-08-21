@@ -12,11 +12,10 @@ import { describe, expect, it } from "vitest";
 
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import { CrankError } from "@sweatpants/durable-execution";
-import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-} from "../index.ts";
+import { createCapabilityKeyring } from "../index.ts";
+import { withAuthorityTestScope } from "../journal-program-runtime.ts";
+import { createAuthorityScenarioDriver, type InMemoryJournalAuthorityOptions } from "../testing.ts";
+import type { DurableAuthoritySnapshot } from "../authority-snapshot.ts";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,
@@ -31,6 +30,10 @@ import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   NULL_RESULT_SCHEMA_DESCRIPTOR,
 } from "@sweatpants/durable-execution";
+
+function firstTask(snapshot: DurableAuthoritySnapshot) {
+  return snapshot.sessions[0]?.[1].execution.tasks[0];
+}
 
 const keyring = createCapabilityKeyring("effect-contract-policy-test", [
   { keyId: "key-1", secret: "x".repeat(32) },
@@ -74,14 +77,8 @@ function errorCode(error: unknown): string | undefined {
   return error instanceof CrankError ? error.code : undefined;
 }
 
-function authority(
-  options: Partial<
-    ConstructorParameters<
-      typeof import("../durable-authority.ts").InMemoryDurableJournalAuthority
-    >[0]
-  > = {},
-) {
-  return createInMemoryDurableJournalAuthority({
+function authority(options: Partial<InMemoryJournalAuthorityOptions> = {}) {
+  return createAuthorityScenarioDriver({
     journalId: "journal",
     keyring,
     ...options,
@@ -210,10 +207,12 @@ describe("semantic emission policy", () => {
             programCapability,
           });
         }
-        const taskSnapshot = selected.exportSnapshot().tasks[0]!;
+        const taskSnapshot = firstTask(selected.exportSnapshot())!;
         expect(taskSnapshot.emissionPolicy).toBeUndefined();
-        expect(taskSnapshot.acceptedEmissionCount).toBeUndefined();
-        expect(taskSnapshot.cumulativeEmissionBytes).toBeUndefined();
+        // The direct snapshot mirrors current state, so counters are retained
+        // even when no policy consumes them.
+        expect(taskSnapshot.acceptedEmissionCount).toBe(5);
+        expect(taskSnapshot.cumulativeEmissionBytes).toBeGreaterThan(0);
       }
     });
   });
@@ -244,9 +243,9 @@ describe("semantic emission policy", () => {
       }
       expect(errorCode(caught)).toBe("emission_quota_exceeded");
       const snapshot = selected.exportSnapshot();
-      expect(snapshot.tasks[0]?.nextActionIndex).toBe(1);
-      expect(snapshot.tasks[0]?.nextEmissionIndex).toBe(1);
-      expect(snapshot.tasks[0]?.acceptedEmissionCount).toBe(1);
+      expect(firstTask(snapshot)?.nextActionIndex).toBe(1);
+      expect(firstTask(snapshot)?.nextEmissionIndex).toBe(1);
+      expect(firstTask(snapshot)?.acceptedEmissionCount).toBe(1);
       expect(
         selected
           .readJournal("session")
@@ -305,7 +304,7 @@ describe("semantic emission policy", () => {
         caught = error;
       }
       expect(errorCode(caught)).toBe("emission_quota_exceeded");
-      expect(restored.exportSnapshot().tasks[0]).toMatchObject({
+      expect(firstTask(restored.exportSnapshot())).toMatchObject({
         acceptedEmissionCount: 2,
         cumulativeEmissionBytes: exactBytes * 2,
       });
@@ -348,7 +347,7 @@ describe("semantic emission policy", () => {
         audience: "test",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(selected, function* () {
+        return yield* withAuthorityTestScope(selected, function* () {
           return yield* ProgramRuntime.operations.run({ attach });
         });
       });

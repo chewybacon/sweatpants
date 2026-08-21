@@ -15,11 +15,8 @@ import type {
   TaskCloseReceipt,
 } from "@sweatpants/journal-authority";
 import type { ResolutionReceipt, DurableProgramManifest } from "@sweatpants/durable-execution";
-import type {
-  DurableSemanticRecord,
-  InMemoryDurableJournalAuthority,
-  OpenDurableTaskRequest,
-} from "@sweatpants/journal-authority";
+import type { DurableSemanticRecord, OpenDurableTaskRequest } from "@sweatpants/journal-authority";
+import type { AuthorityScenarioDriver } from "@sweatpants/journal-authority/testing";
 
 const manifest: DurableProgramManifest = {
   programId: "conformance.sandbox.elicit-once",
@@ -87,7 +84,7 @@ export class DurableSandboxConformanceError extends Error {
 
 /** Adapts the process-local authority to the operation-native conformance port. */
 export function adaptInMemoryAuthorityForSandboxConformance(
-  authority: InMemoryDurableJournalAuthority,
+  authority: AuthorityScenarioDriver,
 ): DurableSandboxConformancePort {
   return {
     *openTask(request) {

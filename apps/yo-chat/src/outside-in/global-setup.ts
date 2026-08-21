@@ -7,12 +7,25 @@
  * `OUTSIDE_IN_SERVER_URL` for `tier-b` bindings and tears the server down after
  * the run. No-op for Tier-A-only runs so the fast loop stays server-free.
  */
-import { requireCopilotAuth } from "./lib/auth.ts";
+import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
+import { isYoChatAuthProvider, readStoredModelSelection } from "@sweatpants/model-provider-pi-ai";
+import { requireModelAuth } from "./lib/auth.ts";
 import { bootServer } from "./lib/server-fixture.ts";
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   if (process.env["RUN_LIVE"] === "1") {
-    requireCopilotAuth();
+    const selected = readStoredModelSelection();
+    const provider =
+      process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? selected?.provider ?? "github-copilot";
+    if (isYoChatAuthProvider(provider)) {
+      execFileSync(
+        "pnpm",
+        ["--dir", resolve(process.cwd(), "../.."), "model:auth:refresh", "--provider", provider],
+        { stdio: "inherit", env: process.env },
+      );
+    }
+    requireModelAuth();
   }
 
   if (process.env["OUTSIDE_IN_TIER_B"] !== "1") {

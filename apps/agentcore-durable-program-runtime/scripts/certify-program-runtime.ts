@@ -5,11 +5,11 @@ import { readFile } from "node:fs/promises";
 import { run } from "effection";
 
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-} from "@sweatpants/journal-authority";
+  createAuthorityScenarioDriver,
+  withAuthorityTestScope,
+} from "@sweatpants/journal-authority/testing";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -81,7 +81,7 @@ const connector = createSigV4AgentCoreWebSocketConnector();
 const driver = createAgentCoreDurableProgramDriver(
   createAgentCoreWebSocketProgramTransport(connector),
 );
-const authority = createInMemoryDurableJournalAuthority({
+const authority = createAuthorityScenarioDriver({
   journalId: "live-program-runtime",
   journalIncarnation: "1",
   keyring: createCapabilityKeyring("live-program-runtime", [
@@ -130,7 +130,7 @@ async function activate(ownerId: string): Promise<ProgramRunResult> {
     let reason: "parked" | "terminal" | "failed" = "failed";
     try {
       const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(authority, function* () {
+        return yield* withAuthorityTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRuntime.operations.run({
               attach: {

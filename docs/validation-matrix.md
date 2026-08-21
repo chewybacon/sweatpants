@@ -44,7 +44,6 @@ Both populations are maintained on purpose.
 | --- | --- |
 | **E2E** | Real browser/HTTP transport against a running app (Playwright or HTTP acceptance test) |
 | **Process replacement** | Host process SIGKILLed mid-work; a fresh process recovers from persisted journal state; evidence asserted (no re-execution, byte-identical terminal results) |
-| **Local model** | The scenario driven end-to-end by a small local model (Ollama-class), not a frontier model and not a script |
 | **Third-party interop** | Driven by a pinned, independently authored client (A2A Inspector at `8098818f`, upstream Python SDK) |
 
 ## The matrix
@@ -55,7 +54,6 @@ Both populations are maintained on purpose.
 | --- | --- | --- |
 | E2E | ✅ `apps/yo-a2a/e2e/a2a-inspector.spec.ts` · `apps/yo-chat/acceptance/durable-pick-card-http.acceptance.test.ts`, `durable-pick-card-worker.acceptance.test.ts` | ✅ `apps/yo-chat/e2e/pick-card.spec.ts` · `apps/yo-mcp/e2e/pick-card.spec.ts` · `apps/yo-chat/acceptance/demo-mcp-browser-elicit.acceptance.test.ts` |
 | Process replacement | ✅ `apps/yo-a2a/test/process-replacement.test.ts` (SIGKILL, file journal, terminal-task byte equality) · AgentCore live evidence: `apps/agentcore-durable-program-runtime/live-evidence/` | ⬜ **Gap G1** — foreign mid-elicit death semantics untested and unspecified |
-| Local model | ✅ `apps/yo-chat/e2e/ollama-chat.spec.ts` ("LLM response reflects the card user picked") — dev-machine only, model unpinned (**Gap G3**) | ✅ same suite (pick_card there is the ordinary-tool variant) |
 | Third-party interop | ✅ `apps/yo-a2a/e2e/a2a-inspector.spec.ts` (pinned Inspector: park → `input_required` → resume → context memory) | ✅ MCP Inspector: `apps/yo-mcp/e2e/` |
 
 ### book_flight — multi-elicit workflow
@@ -64,7 +62,6 @@ Both populations are maintained on purpose.
 | --- | --- | --- |
 | E2E | ✅ `apps/yo-chat/acceptance/book-flight-program-driver.acceptance.test.ts`, `book-flight-program-driver-http.acceptance.test.ts` (unchanged authored tool through ProgramRuntime) | ✅ `apps/yo-chat/e2e/book-flight.spec.ts` (501 lines: full flow, decline/cancel, repeat booking in one session) · `book-flight-full.spec.ts` · `src/outside-in/flows/book-flight.flow.test.ts` |
 | Process replacement | ✅ `apps/yo-a2a/test/process-replacement.test.ts` ("multi-elicit workflow across two process replacements": SIGKILL while parked before flight selection *and* between the two elicitations; exactly-once reservation; post-completion continuation retry reconciles) | ⬜ **Gap G1** (same as pick_card; this is the sharpest instance) |
-| Local model | ⬜ | ⬜ (frontier models only today) |
 | Third-party interop | ⬜ | ⬜ |
 
 ### tictactoe — bounded agent loop with HITL
@@ -76,7 +73,6 @@ tolerant); `play_ttt` uses structured agentic strategy.
 | --- | --- | --- |
 | E2E | ✅ `apps/yo-chat/acceptance/play-ttt-program-driver.acceptance.test.ts`, `play-ttt-program-driver-http.acceptance.test.ts` | ✅ `apps/yo-chat/e2e/tictactoe.spec.ts` (554 lines) · `play-ttt.spec.ts` (412) · `repro-play-ttt-twice.spec.ts` · `src/outside-in/flows/play-ttt.flow.test.ts` |
 | Process replacement | ⬜ (mid-game death → resume with board state intact) | ⬜ **Gap G1** |
-| Local model | ⬜ **Gap G3** — the highest-value cell in the matrix: pinned local model + code referee = CI-certifiable "works with any model" | ⬜ |
 | Third-party interop | ⬜ | ⬜ |
 
 ### Cross-cutting certifications (not per-case)
@@ -105,12 +101,8 @@ tolerant); `play_ttt` uses structured agentic strategy.
   immediately found a real defect: the agent harness checkpointed journal state *after*
   sending HTTP responses, so a process death after acknowledging a parked task lost it.
   Persistence now precedes acknowledgement (`packages/agent-host/src/server/testing.ts`).
-- **G3 — Pinned local-model CI gate.** The Ollama evidence is dev-machine-only with an
-  unpinned model tag. Convert to a pinned artifact (model name + digest, mirroring
-  `interop/a2a-inspector/inspector.pin.json`) driving tictactoe in CI, pass/fail decided by
-  the code referee. This converts "works with any model" from demonstration to certification.
-- **G4 — Native tictactoe mid-game replacement.** Cheap once G2's pattern exists.
-- **G5 — book_flight / tictactoe through a third-party client.** The Inspector gate currently
+- **G3 — Native tictactoe mid-game replacement.** Cheap once G2's pattern exists.
+- **G4 — book_flight / tictactoe through a third-party client.** The Inspector gate currently
   exercises pick_card only (via yo-a2a). Serving book_flight through `standardA2A` would also
   exercise multi-elicit continuation over the standard protocol.
 

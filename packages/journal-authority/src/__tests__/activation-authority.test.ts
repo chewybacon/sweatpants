@@ -1,7 +1,8 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
-import { createCapabilityKeyring, createInMemoryDurableJournalAuthority } from "../index.ts";
+import { createCapabilityKeyring } from "../index.ts";
+import { createAuthorityScenarioDriver } from "../testing.ts";
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import { type DurableProgramManifest } from "@sweatpants/durable-execution";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
@@ -18,7 +19,7 @@ const manifest: DurableProgramManifest = {
 };
 
 function authority(now: () => number) {
-  return createInMemoryDurableJournalAuthority({
+  return createAuthorityScenarioDriver({
     journalId: "journal",
     journalIncarnation: "incarnation",
     keyring: createCapabilityKeyring("tests", [{ keyId: "k1", secret: "x".repeat(32) }]),

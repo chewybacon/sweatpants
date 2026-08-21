@@ -9,7 +9,7 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
  * 3. Previous messages retain their rendered HTML when new messages are sent
  * 4. Mermaid diagrams are rendered to SVG
  *
- * Requires Ollama running locally with a model that can follow instructions.
+ * Runs against the selected managed provider.
  */
 
 // LLM responses can be slow

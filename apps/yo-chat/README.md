@@ -17,33 +17,38 @@ To run this application:
 
 ```bash
 pnpm install
-DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=gemma4:12b-mlx pnpm dev
+pnpm model:auth:login --provider openai-codex
+pnpm dev:yo-chat
 ```
 
-## GitHub Copilot auth
+## Model providers and auth
 
-The default local dev model is `github-copilot/claude-sonnet-4.5`. The app can read a Copilot token from `COPILOT_GITHUB_TOKEN` or the Sweatpants auth file at `SWEATPANTS_AUTH_FILE` / `~/.sweatpants/auth.json`.
-
-Use the root helper tasks to login, inspect, refresh, or export the token without committing secrets:
+yo-chat persists credentials and the selected model once in the repository-local,
+git-ignored `.sweatpants/auth.json` (override with `YO_CHAT_MODEL_AUTH_FILE`). No
+secret is copied into `.env.local`. Environment variables remain useful for CI
+or one-off overrides.
 
 ```bash
-# Run GitHub Copilot device auth and save ~/.sweatpants/auth.json
-pnpm copilot:auth:login
+# GitHub Copilot device OAuth
+pnpm model:auth:login --provider github-copilot
 
-# Redacted status, source, expiry, and proxy endpoint
-pnpm copilot:auth
+# ChatGPT browser OAuth or choose the headless device-code flow when prompted
+pnpm model:auth:login --provider openai-codex --model gpt-5.5
 
-# Refresh the stored Sweatpants token
-pnpm copilot:auth:refresh
+# OpenCode Zen API key (prompted once)
+pnpm model:auth:login --provider opencode --model gpt-5.5
 
-# Print shell exports for the current terminal session
-eval "$(pnpm -s copilot:auth:env)"
+# Change the selected provider/model without reauthenticating
+pnpm model:auth:use --provider github-copilot --model claude-sonnet-4.5
 
-# Write apps/yo-chat/.env.local with 0600 permissions; gitignored
-pnpm copilot:auth:sync
+# Redacted status and OAuth refresh
+pnpm model:auth:status
+pnpm model:auth:refresh
 ```
 
-If `pnpm copilot:auth` reports no token or an expired token, run `pnpm copilot:auth:login`, `pnpm copilot:auth:refresh`, or export `COPILOT_GITHUB_TOKEN` directly before starting yo-chat.
+`pnpm dev:yo-chat` uses the selected model automatically. An explicit
+`DEFAULT_CHAT_MODEL_PROVIDER` / `DEFAULT_CHAT_MODEL_ID` pair overrides it for
+that process.
 
 ## MCP tool runtime mode
 

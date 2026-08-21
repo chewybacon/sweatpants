@@ -125,9 +125,9 @@ async function main(): Promise<void> {
   function liveStages(): Stage[] {
     return [
       {
-        name: "preflight:copilot-auth",
+        name: "preflight:model-auth",
         command: "pnpm",
-        args: ["copilot:auth:status"],
+        args: ["model:auth:refresh"],
         timeoutMs: 30_000,
       },
       {
@@ -473,7 +473,7 @@ async function main(): Promise<void> {
     const log = relativeArtifact(logPath);
     switch (classification) {
       case "PROVIDER_AUTH_FAILED":
-        return `refresh with \`pnpm copilot:auth:refresh\` (or login), then rerun once; details: ${log}`;
+        return `refresh with \`pnpm model:auth:refresh\` (or login), then rerun once; details: ${log}`;
       case "PORT_OCCUPIED":
         return "identify the owning process or choose an isolated LAND_*_PLAYWRIGHT_PORT";
       case "APPLICATION_ASSERTION":

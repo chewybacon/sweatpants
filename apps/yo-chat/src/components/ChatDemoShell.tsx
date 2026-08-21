@@ -286,6 +286,10 @@ function DemoThreadPanel({
     authority?.state === "parked" ||
     authority?.state === "recovering";
   const renderReady = renderStatus === "ready";
+  // A parked tool turn is waiting on user interaction. Let an ordinary message
+  // supersede it rather than forcing callers to manufacture a resume payload.
+  const canInterruptParkedTurn = authority?.state === "parked";
+  const canCompose = canSendMessage || canInterruptParkedTurn;
   const lifecycleLabel = !renderReady
     ? "Loading renderer"
     : authority === null
@@ -312,13 +316,13 @@ function DemoThreadPanel({
     (event: React.FormEvent) => {
       event.preventDefault();
       const content = draft.trim();
-      if (!content || !canSendMessage) {
+      if (!content || !canCompose) {
         return;
       }
-      sendMessage(content);
+      sendMessage(content, canInterruptParkedTurn ? { whenBusy: "interrupt" } : undefined);
       onDraftChange("");
     },
-    [canSendMessage, draft, onDraftChange, sendMessage],
+    [canCompose, canInterruptParkedTurn, draft, onDraftChange, sendMessage],
   );
 
   return (
@@ -360,7 +364,7 @@ function DemoThreadPanel({
                   key={suggestion.label}
                   type="button"
                   onClick={() => onDraftChange(suggestion.message)}
-                  disabled={!canSendMessage}
+                  disabled={!canCompose}
                   className="rounded-full border border-slate-700 bg-slate-900/80 px-4 py-2 text-xs text-slate-300 transition hover:border-sky-400 hover:text-sky-200 disabled:opacity-50"
                 >
                   {suggestion.label}
@@ -389,10 +393,10 @@ function DemoThreadPanel({
             value={draft}
             onChange={(event) => onDraftChange(event.target.value)}
             placeholder="Type a message..."
-            disabled={!canSendMessage}
+            disabled={!canCompose}
             className="h-14 rounded-2xl border-slate-700 bg-slate-900/90 px-5 text-base"
           />
-          {turnActive ? (
+          {turnActive && !canInterruptParkedTurn ? (
             <Button
               type="button"
               onClick={stop}
@@ -403,7 +407,7 @@ function DemoThreadPanel({
           ) : (
             <Button
               type="submit"
-              disabled={!draft.trim() || !canSendMessage}
+              disabled={!draft.trim() || !canCompose}
               className="h-14 rounded-2xl bg-sky-500 px-6 text-white hover:bg-sky-400"
             >
               Send
@@ -430,6 +434,10 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
   const hydratedOnceRef = useRef(false);
   const selectionGenerationRef = useRef(0);
   const storageKey = `yo-chat:${definition.namespace}:selected-thread-id`;
+  // Every Playwright test gets a new browser storage context but shares the
+  // test server's durable metadata. Start those new contexts on a clean
+  // thread; a refresh in the same test still restores its selected thread.
+  const isolateTestBrowserSession = import.meta.env["VITE_PLAYWRIGHT_TEST_SERVER"] === "1";
 
   const persistSelection = useCallback(
     (threadId: string | null) => {
@@ -463,9 +471,9 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
           let nextThreads = await listThreads(definition.namespace);
           let nextSelected =
             typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
-          if (nextThreads.length === 0) {
+          if (nextThreads.length === 0 || (isolateTestBrowserSession && !nextSelected)) {
             const created = await createThread(definition.namespace);
-            nextThreads = [created];
+            nextThreads = [created, ...nextThreads];
             nextSelected = created.id;
           }
           if (!nextSelected || !nextThreads.some((thread) => thread.id === nextSelected)) {
@@ -496,7 +504,7 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
       });
       return operation;
     },
-    [definition.namespace, inspectorStore, persistSelection, storageKey],
+    [definition.namespace, inspectorStore, isolateTestBrowserSession, persistSelection, storageKey],
   );
 
   useEffect(() => {

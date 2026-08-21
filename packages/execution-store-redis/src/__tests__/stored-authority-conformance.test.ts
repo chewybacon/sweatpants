@@ -3,12 +3,13 @@ import type { RedisClientType } from "redis";
 import { run } from "effection";
 
 import {
+  adaptAuthorityPortsForConformance,
   createJournalAuthorityConformanceCases,
   type JournalAuthorityConformanceFactory,
 } from "@sweatpants/journal-authority/testing";
 
 import { createRedisExecutionStore } from "../execution-store.ts";
-import { createStoredDurableJournalAuthority } from "@sweatpants/journal-authority";
+import { createStoredScenarioDriver } from "@sweatpants/journal-authority/testing";
 import { cleanupRedisBackend, connectRedisBackend, type RedisBackend } from "./redis-backend.ts";
 
 let backend: RedisBackend;
@@ -18,7 +19,7 @@ let client: RedisClientType;
 const factory: JournalAuthorityConformanceFactory = {
   backendName: "redis",
   *open(options) {
-    return createStoredDurableJournalAuthority(
+    const drivers = createStoredScenarioDriver(
       createRedisExecutionStore(client, { keyPrefix: authorityKeyPrefix }),
       {
         journalId: options.journalId,
@@ -28,6 +29,10 @@ const factory: JournalAuthorityConformanceFactory = {
         schemaRegistry: options.schemaRegistry,
       },
     );
+    return adaptAuthorityPortsForConformance(drivers.authority, drivers.journal, {
+      id: options.journalId,
+      incarnation: "conformance-v1",
+    });
   },
 };
 

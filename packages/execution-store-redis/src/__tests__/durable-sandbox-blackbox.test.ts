@@ -8,7 +8,7 @@ import {
 } from "@sweatpants/workspace-runtime/testing";
 
 import { createRedisExecutionStore } from "../execution-store.ts";
-import { createStoredDurableJournalAuthority } from "@sweatpants/journal-authority";
+import { createStoredScenarioDriver } from "@sweatpants/journal-authority/testing";
 import { cleanupRedisBackend, connectRedisBackend, type RedisBackend } from "./redis-backend.ts";
 
 const authorityKeyPrefix = `test:${process.pid}:sandbox-conformance:`;
@@ -18,7 +18,7 @@ let client: RedisClientType;
 const factory: DurableSandboxConformanceFactory = {
   backendName: "redis",
   *open(options) {
-    return createStoredDurableJournalAuthority(
+    return createStoredScenarioDriver(
       createRedisExecutionStore(client, { keyPrefix: authorityKeyPrefix }),
       {
         journalId: options.journalId,

@@ -13,13 +13,13 @@ import { describe, expect, it } from "vitest";
 import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
-  withJournalAuthority,
   createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
   durableAuthoritySnapshotParser,
   parseDurableAuthoritySnapshot,
   signCapability,
 } from "../index.ts";
+import { withAuthorityTestScope } from "../journal-program-runtime.ts";
+import { createAuthorityScenarioDriver } from "../testing.ts";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,
@@ -153,8 +153,8 @@ function captureError(action: () => unknown): unknown {
 }
 
 describe("persisted boundary parsing", () => {
-  it("rejects pre-v4 snapshots instead of converting them", () => {
-    const snapshot = createInMemoryDurableJournalAuthority({
+  it("accepts only the current direct snapshot format", () => {
+    const snapshot = createAuthorityScenarioDriver({
       journalId: "current-format-only",
       keyring,
     }).exportSnapshot();
@@ -166,55 +166,25 @@ describe("persisted boundary parsing", () => {
     expect(
       durableAuthoritySnapshotParser.parse({
         ...snapshot,
-        runnable: Array.from({ length: 10_001 }, (_, index) => `session-${index}`),
+        sessions: Array.from({ length: 10_001 }, (_, index) => [
+          `session-${index}`,
+          { execution: { tasks: [] }, control: {} },
+        ]),
       }).ok,
     ).toBe(false);
-    expect(
-      durableAuthoritySnapshotParser.parse({
-        ...snapshot,
-        activationLeases: [
-          [
-            "session-1",
-            {
-              sessionId: "session-1",
-              ownerId: "owner-1",
-              epoch: 1,
-              expiresAtMs: 1,
-              leaseDurationMs: 1,
-              claimedTaskRevision: 0,
-              claimedHeadDigest: "head",
-              restoreNonce: "nonce",
-              unknown: true,
-            },
-          ],
-        ],
-      }).ok,
-    ).toBe(false);
-    expect(
-      durableAuthoritySnapshotParser.parse({
-        ...snapshot,
-        activationLeases: [
-          [
-            "session-1",
-            {
-              sessionId: "different-session",
-              ownerId: "owner-1",
-              epoch: 1,
-              expiresAtMs: 1,
-              leaseDurationMs: 1,
-              claimedTaskRevision: 0,
-              claimedHeadDigest: "head",
-              restoreNonce: "nonce",
-            },
-          ],
-        ],
-      }).ok,
-    ).toBe(false);
-    for (const version of [2, 3]) {
+    for (const version of [0, 2, 3, 4, 5]) {
       expect(() => parseDurableAuthoritySnapshot(JSON.stringify({ ...snapshot, version }))).toThrow(
         "Invalid durable authority snapshot",
       );
     }
+  });
+
+  it("rejects snapshots from prior framework revisions", () => {
+    expect(() =>
+      parseDurableAuthoritySnapshot(
+        JSON.stringify({ version: 5, sessions: [], nextNonce: 0, records: [] }),
+      ),
+    ).toThrow("Invalid durable authority snapshot");
   });
 
   it("rejects malformed nested authority collections", () => {
@@ -305,7 +275,7 @@ function attachRequest(sessionId = "session-1"): AttachProgramRequest {
 }
 
 function createAuthority(sessionId = "session-1", now: () => number = () => 1_000) {
-  const authority = createInMemoryDurableJournalAuthority({
+  const authority = createAuthorityScenarioDriver({
     journalId: "journal-1",
     journalIncarnation: "incarnation-1",
     keyring,
@@ -736,7 +706,7 @@ describe("crank-native durable runtime", () => {
       if (reserved.status !== "authorized") {
         throw new Error("not authorized");
       }
-      const recovered = createInMemoryDurableJournalAuthority({
+      const recovered = createAuthorityScenarioDriver({
         journalId: "journal-1",
         journalIncarnation: "incarnation-1",
         keyring,
@@ -791,10 +761,9 @@ describe("crank-native durable runtime", () => {
         attach.taskId,
         "replacement",
       );
-      // The guard rejects before the operation suspends, so stepping the
-      // iterator once is enough to observe it.
-      const staleReserve = (): IteratorResult<unknown> => {
-        const operation = authority.reserve({
+      let staleError: unknown;
+      try {
+        yield* authority.reserve({
           sessionId: attach.sessionId,
           turnId: "turn-0",
           taskId: attach.taskId,
@@ -809,9 +778,10 @@ describe("crank-native durable runtime", () => {
           },
           programCapability: opened.programCapability,
         });
-        return operation[Symbol.iterator]().next();
-      };
-      expect(staleReserve).toThrow(/stale_program_capability/);
+      } catch (error) {
+        staleError = error;
+      }
+      expect(staleError).toMatchObject({ code: "stale_program_capability" });
       const parked = yield* authority.reserve({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1060,7 +1030,7 @@ describe("crank-native durable runtime", () => {
       if (reserved.status !== "authorized") {
         throw new Error("effect not authorized");
       }
-      const unavailable = createInMemoryDurableJournalAuthority({
+      const unavailable = createAuthorityScenarioDriver({
         journalId: "journal-1",
         journalIncarnation: "incarnation-1",
         keyring,
@@ -1135,7 +1105,7 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withJournalAuthority(authority, function* () {
+          return yield* withAuthorityTestScope(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
@@ -1242,7 +1212,7 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withJournalAuthority(authority, function* () {
+          return yield* withAuthorityTestScope(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
@@ -1306,7 +1276,7 @@ describe("crank-native durable runtime", () => {
     });
     const tools = createDurableToolRegistry([parent, child]);
     const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
-    const authority = createInMemoryDurableJournalAuthority({
+    const authority = createAuthorityScenarioDriver({
       journalId: "ordinary-child-journal",
       journalIncarnation: "ordinary-child-incarnation",
       keyring,
@@ -1338,7 +1308,7 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withJournalAuthority(authority, function* () {
+          return yield* withAuthorityTestScope(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
@@ -1416,7 +1386,7 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withJournalAuthority(authority, function* () {
+          return yield* withAuthorityTestScope(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
@@ -1478,7 +1448,7 @@ describe("crank-native durable runtime", () => {
         },
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(authority, function* () {
+        return yield* withAuthorityTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ExecutionDurableEffectRegistryContext.with(effects, function* () {
               return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
@@ -1528,7 +1498,7 @@ describe("crank-native durable runtime", () => {
         },
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(authority, function* () {
+        return yield* withAuthorityTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(hostEffects, function* () {
             return yield* ExecutionDurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
@@ -1571,7 +1541,7 @@ describe("crank-native durable runtime", () => {
         audience: "program-host",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(authority, function* () {
+        return yield* withAuthorityTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(
             createDurableEffectRegistry([]),
             function* () {
@@ -1628,7 +1598,7 @@ describe("crank-native durable runtime", () => {
         audience: "program-host",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(authority, function* () {
+        return yield* withAuthorityTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(
             createDurableEffectRegistry([]),
             function* () {
@@ -1668,7 +1638,7 @@ describe("crank-native durable runtime", () => {
         audience: "program-host",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(authority, function* () {
+        return yield* withAuthorityTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(
             createDurableEffectRegistry([]),
             function* () {
@@ -1743,7 +1713,7 @@ describe("crank-native durable runtime", () => {
         { at: "min" },
       );
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(authority, function* () {
+        return yield* withAuthorityTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRuntime.operations.run({
               attach,

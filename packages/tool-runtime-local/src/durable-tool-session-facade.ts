@@ -3,16 +3,21 @@ import {
   type DurableEffectRegistration,
 } from "@sweatpants/durable-effects";
 
-import type { Operation } from "effection";
+import { scoped, type Operation } from "effection";
 import { z } from "zod";
 import { createTool, type AnyToolContract } from "@sweatpants/agent-sdk";
 import {
-  withJournalAuthority,
-  createStoredDurableJournalAuthority,
+  AuthorityJournalPort,
+  AuthoritySnapshotPort,
+  JournalAuthorityPort,
+  installJournalProgramRuntime,
+  installStoredJournalAuthority,
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
   type DurableSemanticRecord,
+  type JournalAuthorityContract,
 } from "@sweatpants/journal-authority";
+import { installExecutionStore } from "@sweatpants/journal-authority/api";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
@@ -166,22 +171,34 @@ function* runFacadeProgram<I extends Json, O extends Json>(
 ): Operation<O> {
   let snapshot = yield* options.stateStore.load(invocationId);
   let activation = 0;
+  const executionStore = createMemoryExecutionStore();
+  const authoredCatalog = (
+    options.tool as DurableTool<I, O> & {
+      artifacts?: { catalog?: readonly SchemaBinding[] };
+    }
+  ).artifacts?.catalog;
+  const schemaRegistry =
+    options.schemaRegistry ??
+    createDurableSchemaRegistry([...foreignToolSchemaEntries(), ...(authoredCatalog ?? [])]);
+  const withAuthority = function* <T>(
+    operation: (authority: JournalAuthorityContract) => Operation<T>,
+  ): Operation<T> {
+    return yield* scoped(function* () {
+      yield* installExecutionStore(executionStore);
+      yield* installStoredJournalAuthority({
+        journalId: `durable-tool-facade:${options.tool.manifest.programId}`,
+        journalIncarnation: "1",
+        keyring: options.keyring,
+        schemaRegistry,
+        ...(snapshot ? { initialSnapshot: snapshot } : {}),
+      });
+      yield* installJournalProgramRuntime();
+      const authority = yield* JournalAuthorityPort.use();
+      return yield* operation(authority);
+    });
+  };
 
   while (true) {
-    const authoredCatalog = (
-      options.tool as DurableTool<I, O> & {
-        artifacts?: { catalog?: readonly SchemaBinding[] };
-      }
-    ).artifacts?.catalog;
-    const authority = createStoredDurableJournalAuthority(createMemoryExecutionStore(), {
-      journalId: `durable-tool-facade:${options.tool.manifest.programId}`,
-      journalIncarnation: "1",
-      keyring: options.keyring,
-      schemaRegistry:
-        options.schemaRegistry ??
-        createDurableSchemaRegistry([...foreignToolSchemaEntries(), ...(authoredCatalog ?? [])]),
-      ...(snapshot ? { initialSnapshot: snapshot } : {}),
-    });
     const taskId = "turn-0/root";
     const attach = {
       sessionId: invocationId,
@@ -195,19 +212,6 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       route: { driverKind: "program" },
       executionEpoch: 1,
     };
-    if (!snapshot) {
-      yield* authority.openTask({
-        sessionId: invocationId,
-        turnId: "turn-0",
-        taskId,
-        manifest: options.tool.manifest,
-        input,
-        executionEpoch: 1,
-        attachmentId: "unattached-facade-program",
-        audience: "program-runtime",
-      });
-    }
-
     // SAFETY: registry lookup erases program type witnesses; the exact pinned
     // manifest schemas restore input/output types at attachment boundaries.
     const tools = createDurableToolRegistry([options.tool as unknown as DurableTool]);
@@ -217,19 +221,46 @@ function* runFacadeProgram<I extends Json, O extends Json>(
     const effects = createDurableEffectRegistry(
       effectRegistrations(options.tool.manifest, outerContext, options.effectHandlers),
     );
-    const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-      return yield* withJournalAuthority(authority, function* () {
+    const activated = yield* withAuthority(function* (authority) {
+      if (!snapshot) {
+        yield* authority.command({
+          type: "execution.open-task",
+          request: {
+            sessionId: invocationId,
+            turnId: "turn-0",
+            taskId,
+            manifest: options.tool.manifest,
+            input,
+            executionEpoch: 1,
+            attachmentId: "unattached-facade-program",
+            audience: "program-runtime",
+          },
+        });
+      }
+      const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
         return yield* DurableEffectRegistryContext.with(effects, function* () {
           return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
         });
       });
+      const snapshotPort = yield* AuthoritySnapshotPort.use();
+      const journalPort = yield* AuthorityJournalPort.use();
+      return {
+        outcome,
+        snapshot: yield* snapshotPort.exportSnapshot(),
+        journal: [...(yield* journalPort.readSession(invocationId))],
+      };
     });
+    const outcome = activated.outcome;
     activation += 1;
-    snapshot = yield* authority.exportSnapshot();
+    snapshot = activated.snapshot;
     yield* options.stateStore.save(invocationId, snapshot);
     if (options.onActivation) {
-      const journal = yield* authority.readJournal(invocationId);
-      yield* options.onActivation({ invocationId, activation, outcome, journal });
+      yield* options.onActivation({
+        invocationId,
+        activation,
+        outcome,
+        journal: activated.journal,
+      });
     }
 
     if (outcome.state === "completed") {
@@ -242,8 +273,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       throw new DurableToolFacadeError("program_cancelled", "Durable tool was cancelled");
     }
 
-    const journal = yield* authority.readJournal(invocationId);
-    const request = pendingElicit(journal, outcome.pullId);
+    const request = pendingElicit(activated.journal, outcome.pullId);
     if (!request) {
       throw new DurableToolFacadeError(
         "unsupported_park",
@@ -260,32 +290,39 @@ function* runFacadeProgram<I extends Json, O extends Json>(
           : {}),
       },
     });
-    const resolutionCapability = yield* authority.resolutionCapability(
-      invocationId,
-      taskId,
-      request.pullId,
-    );
-    const resolution = yield* authority.resolve({
-      capability: resolutionCapability,
-      audience: `user:${request.descriptor.key}`,
-      outcome: {
-        status: "ok",
-        value:
-          response.action === "accept"
-            ? { action: "accept", content: assertJson(response.content) }
-            : {
-                action: response.action,
-                ...(response.reason !== undefined ? { reason: response.reason } : {}),
-              },
-      },
+    snapshot = yield* withAuthority(function* (authority) {
+      const resolutionCapability = yield* authority.query({
+        type: "pull.resolution-capability",
+        sessionId: invocationId,
+        taskId,
+        pullId: request.pullId,
+      });
+      const resolution = yield* authority.command({
+        type: "execution.resolve-pull",
+        request: {
+          capability: resolutionCapability,
+          audience: `user:${request.descriptor.key}`,
+          outcome: {
+            status: "ok",
+            value:
+              response.action === "accept"
+                ? { action: "accept", content: assertJson(response.content) }
+                : {
+                    action: response.action,
+                    ...(response.reason !== undefined ? { reason: response.reason } : {}),
+                  },
+          },
+        },
+      });
+      if (resolution.status === "rejected") {
+        throw new DurableToolFacadeError(
+          "resolution_rejected",
+          `Unable to resolve durable facade elicitation: ${resolution.code}`,
+        );
+      }
+      const snapshotPort = yield* AuthoritySnapshotPort.use();
+      return yield* snapshotPort.exportSnapshot();
     });
-    if (resolution.status === "rejected") {
-      throw new DurableToolFacadeError(
-        "resolution_rejected",
-        `Unable to resolve durable facade elicitation: ${resolution.code}`,
-      );
-    }
-    snapshot = yield* authority.exportSnapshot();
     yield* options.stateStore.save(invocationId, snapshot);
   }
 }

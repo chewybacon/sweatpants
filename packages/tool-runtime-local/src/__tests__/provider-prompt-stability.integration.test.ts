@@ -27,11 +27,11 @@ import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
 import type { ChatMessage } from "@sweatpants/chat-contract";
 import { canonicalSnapshot } from "@sweatpants/foundation";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-} from "@sweatpants/journal-authority";
+  createAuthorityScenarioDriver,
+  withAuthorityTestScope,
+} from "@sweatpants/journal-authority/testing";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   DurableEffectRegistryContext,
@@ -107,7 +107,7 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
   const keyring = createCapabilityKeyring("prompt-stability", [
     { keyId: "active", secret: "prompt-stability-secret-32-bytes!" },
   ]);
-  const authority = createInMemoryDurableJournalAuthority({
+  const authority = createAuthorityScenarioDriver({
     journalId: "prompt-stability",
     journalIncarnation: "1",
     keyring,
@@ -155,7 +155,7 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
     const result: ProgramRunResult = yield* ProgramDriverRegistryContext.with(
       drivers,
       function* () {
-        return yield* withJournalAuthority(authority, function* () {
+        return yield* withAuthorityTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* withModelSampleTestBoundary(() =>
               ProgramRuntime.operations.run({ attach, executeHostEffects: true }),

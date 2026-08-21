@@ -6,15 +6,15 @@ Production-candidate ops story for the cutover app (`apps/yo-chat`).
 
 | Variable | Required | Description |
 |---|---|---|
-| `DEFAULT_CHAT_MODEL_PROVIDER` | Yes (for real chat) | e.g. `ollama`, `github-copilot`, `amazon-bedrock`, `openai` |
-| `DEFAULT_CHAT_MODEL_ID` | Yes (for real chat) | Model id for the chosen provider |
-| `COPILOT_GITHUB_TOKEN` / Sweatpants auth file | When using GitHub Copilot | Prefer `pnpm copilot:auth:login` — do not commit tokens |
+| `DEFAULT_CHAT_MODEL_PROVIDER` | Override | e.g. `github-copilot`, `openai-codex`, `opencode`, `ollama` |
+| `DEFAULT_CHAT_MODEL_ID` | Override | Model id for the chosen provider |
+| `.sweatpants/auth.json` | Real managed providers | Git-ignored credentials and selected model; use `pnpm model:auth:login` |
 | `MCP_TOOL_RUNTIME` | No | `local` (default) or `agentcore` |
 | `REDIS_URL` | No | When set, durable token buffers use Redis |
 | `AGENTCORE_RUNTIME_ARN` | AgentCore only | Remote tool runtime ARN |
 | `AWS_REGION` / `AGENTCORE_REGION` | AgentCore / Bedrock | AWS region |
 
-**Secrets:** never hardcode API keys or tokens in source or docs. Use env vars or `pnpm copilot:auth:*` helpers. Durable stores and model credentials are sensitive configuration and must not be committed.
+**Secrets:** never hardcode API keys or tokens in source or docs. Use `pnpm model:auth:*` or environment variables. Durable stores and model credentials are sensitive configuration and must not be committed.
 
 ## Session / token buffer store
 
@@ -35,8 +35,14 @@ Examples:
 # Local Ollama
 DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=gemma4:12b-mlx
 
-# GitHub Copilot (after pnpm copilot:auth:login)
+# Managed providers are selected once; this is an explicit per-process override
 DEFAULT_CHAT_MODEL_PROVIDER=github-copilot DEFAULT_CHAT_MODEL_ID=claude-sonnet-4.5
+
+# ChatGPT Codex OAuth
+DEFAULT_CHAT_MODEL_PROVIDER=openai-codex DEFAULT_CHAT_MODEL_ID=gpt-5.5
+
+# OpenCode Zen API key
+DEFAULT_CHAT_MODEL_PROVIDER=opencode DEFAULT_CHAT_MODEL_ID=gpt-5.5
 
 # Amazon Bedrock
 DEFAULT_CHAT_MODEL_PROVIDER=amazon-bedrock DEFAULT_CHAT_MODEL_ID=zai.glm-5 AWS_REGION=us-east-1
@@ -52,7 +58,7 @@ pnpm install
 # Recommended local defaults (local tools, no AgentCore)
 pnpm dev:yo-chat:local
 
-# Or default root script (Copilot-oriented defaults)
+# Or the selected managed provider (Copilot, Codex, or OpenCode Zen)
 pnpm dev:yo-chat
 ```
 
@@ -89,4 +95,4 @@ pnpm -C apps/yo-chat server
 
 - Do not expose production credentials in client-side samples
 - Redis and model credentials are server-side only
-- Copilot tokens live in env or `~/.sweatpants/auth.json` (gitignored patterns)
+- Managed provider credentials live in environment variables or repository-local `.sweatpants/auth.json` (gitignored)

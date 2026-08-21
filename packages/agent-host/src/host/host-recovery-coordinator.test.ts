@@ -1,7 +1,7 @@
 import { run, sleep } from "effection";
 import { describe, expect, it } from "vitest";
 
-import type { DurableJournalAuthorityService } from "@sweatpants/journal-authority";
+import type { JournalAuthorityContract } from "@sweatpants/journal-authority";
 import {
   createHostRecoveryCoordinator,
   recoverKnownWorkOnStartup,
@@ -10,13 +10,13 @@ import {
 describe("host recovery coordinator", () => {
   it("performs a bounded readable startup sweep and isolates failures", async () => {
     const authority = {
-      *recoverableSessions() {
+      *query() {
         return [
           { sessionId: "expired", reason: "expired_activation" as const },
           { sessionId: "runnable", reason: "runnable" as const },
         ];
       },
-    } as unknown as DurableJournalAuthorityService;
+    } as unknown as JournalAuthorityContract;
     const result = await run(() =>
       recoverKnownWorkOnStartup(authority, {
         *activate(session) {

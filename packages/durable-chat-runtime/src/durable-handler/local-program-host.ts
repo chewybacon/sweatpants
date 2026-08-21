@@ -5,8 +5,12 @@ import {
   DurableEffectInputPreparationContext,
   type DurableEffectInputPreparer,
 } from "@sweatpants/durable-execution";
-import { type Operation } from "effection";
-import { withJournalAuthority, type DurableSemanticRecord } from "@sweatpants/journal-authority";
+import { scoped, type Operation } from "effection";
+import {
+  JournalAuthorityPort,
+  type DurableSemanticRecord,
+  type JournalAuthorityContract,
+} from "@sweatpants/journal-authority";
 import { ProgramRouteResolver } from "@sweatpants/durable-execution";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
@@ -153,7 +157,7 @@ type AcceptedExecution = {
 };
 
 export interface LocalProgramActivationScope {
-  authority: ProgramDriverJournal["authority"];
+  installAuthority: ProgramDriverJournal["install"];
   effects: DurableEffectRegistry;
   drivers: ProgramDriverRegistry;
   routeResolver?: (program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>;
@@ -169,11 +173,13 @@ export interface LocalProgramActivationScope {
 /** Installs the protocol-neutral authority scope shared by LocalProgramHost and applications. */
 export function* runLocalProgramActivation<T>(
   scope: LocalProgramActivationScope,
-  operation: () => Operation<T>,
+  operation: (authority: JournalAuthorityContract) => Operation<T>,
 ): Operation<T> {
   const runConfigured = function* (): Operation<T> {
-    return yield* ProgramDriverRegistryContext.with(scope.drivers, function* () {
-      return yield* withJournalAuthority(scope.authority, function* () {
+    return yield* scoped(function* () {
+      yield* scope.installAuthority();
+      const authority = yield* JournalAuthorityPort.use();
+      return yield* ProgramDriverRegistryContext.with(scope.drivers, function* () {
         return yield* DurableEffectRegistryContext.with(scope.effects, function* () {
           return yield* ExecutionDurableEffectRegistryContext.with(scope.effects, function* () {
             return yield* ProgramRouteResolver.with(
@@ -191,7 +197,7 @@ export function* runLocalProgramActivation<T>(
                       function* () {
                         return yield* ModelContextSourceResolverContext.with(
                           scope.modelContextSourceResolver,
-                          operation,
+                          () => operation(authority),
                         );
                       },
                     );
@@ -255,7 +261,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
   ): Operation<ProgramRunResult> {
     return yield* runLocalProgramActivation(
       {
-        authority: journal.authority,
+        installAuthority: journal.install,
         drivers: options.drivers,
         effects: options.effects,
         // Always install this wrapper: the no-policy case still has to enforce

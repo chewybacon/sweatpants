@@ -13,11 +13,11 @@ import { run } from "effection";
 import config from "../../yo-chat/sweatpants.config.ts";
 import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-} from "@sweatpants/journal-authority";
+  createAuthorityScenarioDriver,
+  withAuthorityTestScope,
+} from "@sweatpants/journal-authority/testing";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
       },
     ),
   ]);
-  const authority = createInMemoryDurableJournalAuthority({
+  const authority = createAuthorityScenarioDriver({
     journalId: "live-development-play-ttt",
     journalIncarnation: "1",
     keyring: createCapabilityKeyring("live-development-play-ttt", [
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
       let reason: "parked" | "terminal" | "failed" = "failed";
       try {
         const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withJournalAuthority(authority, function* () {
+          return yield* withAuthorityTestScope(authority, function* () {
             return yield* DurableEffectRegistryContext.with(effects, function* () {
               return yield* ProgramRuntime.operations.run({
                 attach: {

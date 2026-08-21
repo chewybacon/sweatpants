@@ -3,12 +3,12 @@ import { race, sleep, type Operation } from "effection";
 
 import {
   type ClaimActivationResult,
-  type DurableJournalAuthorityService,
+  type JournalAuthorityContract,
   type ReleaseActivationRequest,
 } from "@sweatpants/journal-authority";
 
 export interface AgentCoreActivationCoordinatorOptions {
-  readonly authority: DurableJournalAuthorityService;
+  readonly authority: JournalAuthorityContract;
   readonly ownerId: string;
   readonly leaseDurationMs?: number;
   readonly renewalIntervalMs?: number;
@@ -50,10 +50,9 @@ export function createAgentCoreActivationCoordinator(
       runActivation: (epoch: number) => Operation<T>,
       releaseReason?: (value: T) => ReleaseActivationRequest["reason"],
     ): Operation<CoordinatedActivationResult<T>> {
-      const claim = yield* options.authority.claimActivation({
-        sessionId,
-        ownerId: options.ownerId,
-        leaseDurationMs,
+      const claim = yield* options.authority.command({
+        type: "control.claim-activation",
+        request: { sessionId, ownerId: options.ownerId, leaseDurationMs },
       });
       if (claim.status !== "claimed") {
         return claim;
@@ -67,10 +66,9 @@ export function createAgentCoreActivationCoordinator(
           (function* (): Operation<never> {
             while (true) {
               yield* sleep(renewalIntervalMs);
-              const renewed = yield* options.authority.renewActivation({
-                sessionId,
-                ownerId: options.ownerId,
-                epoch: claim.epoch,
+              const renewed = yield* options.authority.command({
+                type: "control.renew-activation",
+                request: { sessionId, ownerId: options.ownerId, epoch: claim.epoch },
               });
               if (renewed.status !== "renewed") {
                 throw new CrankError("stale_activation", "Activation lease renewal was lost");
@@ -87,11 +85,9 @@ export function createAgentCoreActivationCoordinator(
             : "failed";
         throw error;
       } finally {
-        yield* options.authority.releaseActivation({
-          sessionId,
-          ownerId: options.ownerId,
-          epoch: claim.epoch,
-          reason,
+        yield* options.authority.command({
+          type: "control.release-activation",
+          request: { sessionId, ownerId: options.ownerId, epoch: claim.epoch, reason },
         });
       }
     },

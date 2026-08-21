@@ -12,13 +12,12 @@ const playwrightBaseUrl = `http://localhost:${playwrightPort}`;
 
 // Playwright is an optional presentation/browser gate:
 // - default: deterministic browser smoke tests when explicitly invoked
-// - E2E_FULL=1: extensive, manually-invoked live Copilot suite
+// - E2E_FULL=1: extensive, manually-invoked live suite using the selected
+//   managed provider.
 //
-// The manual suite retains the historical threaded-chat, pick-card, play_ttt,
-// tictactoe, book-flight, and durable-chat coverage. Ollama is a third opt-in
-// because it requires a separate local service/model.
+// The manual suite retains threaded-chat, pick-card, play_ttt, tictactoe,
+// book-flight, and durable-chat coverage without provider-specific variants.
 const runFullE2E = process.env["E2E_FULL"] === "1";
-const includeOllama = process.env["E2E_INCLUDE_OLLAMA"] === "1";
 const deterministicBrowserSmokeSpecs = [
   "**/deterministic-elicit-rendering.spec.ts",
   "**/journal-inspector.spec.ts",
@@ -27,10 +26,7 @@ const deterministicBrowserSmokeSpecs = [
 export default defineConfig({
   testDir: "./e2e",
   ...(runFullE2E
-    ? {
-        globalSetup: "./e2e/global-setup.ts",
-        ...(includeOllama ? {} : { testIgnore: ["**/ollama-chat.spec.ts"] }),
-      }
+    ? { globalSetup: "./e2e/global-setup.ts" }
     : { testMatch: deterministicBrowserSmokeSpecs }),
   fullyParallel: true,
   timeout: 120_000,
@@ -60,11 +56,9 @@ export default defineConfig({
     timeout: 120000,
     env: {
       ...process.env,
-      DEFAULT_CHAT_MODEL_PROVIDER: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
-      DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.5",
-      OLLAMA_URL: process.env["OLLAMA_URL"] ?? "http://localhost:11434",
       MCP_TOOL_RUNTIME: process.env["MCP_TOOL_RUNTIME"] ?? "local",
       PLAYWRIGHT_TEST_SERVER: "1",
+      VITE_PLAYWRIGHT_TEST_SERVER: "1",
     },
   },
 });
