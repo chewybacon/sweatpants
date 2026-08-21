@@ -55,7 +55,7 @@
     "scripts": {
         "build": "tsup && pnpm build:types",
         "dev": "tsup --watch",
-        "check": "pnpm build:deps && tsc -b",
+        "check": "pnpm build:types",
         "test": "vitest run src acceptance",
         "test:acceptance": "vitest run acceptance",
         "test:e2e:agentcore": "vitest run --config vitest.agentcore-e2e.config.ts",

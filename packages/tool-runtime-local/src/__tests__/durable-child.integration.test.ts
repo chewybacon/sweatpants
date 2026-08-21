@@ -9,12 +9,11 @@ import {
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 
+import { createCapabilityKeyring, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-  type DurableSemanticRecord,
-} from "@sweatpants/journal-authority";
+  createAuthorityScenarioDriver,
+  withAuthorityTestScope,
+} from "@sweatpants/journal-authority/testing";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -247,7 +246,7 @@ describe("automatic local durable parent/child recovery", () => {
     const keyring = createCapabilityKeyring("parent-child-test", [
       { keyId: "active", secret: "parent-child-secret-is-32-bytes!!" },
     ]);
-    let authority = createInMemoryDurableJournalAuthority({
+    let authority = createAuthorityScenarioDriver({
       journalId: "parent-child-integration",
       journalIncarnation: "1",
       keyring,
@@ -399,7 +398,7 @@ describe("automatic local durable parent/child recovery", () => {
     const keyring = createCapabilityKeyring("parent-child-cancellation-test", [
       { keyId: "active", secret: "parent-child-cancel-secret-32-bytes" },
     ]);
-    let authority = createInMemoryDurableJournalAuthority({
+    let authority = createAuthorityScenarioDriver({
       journalId: "parent-child-integration",
       journalIncarnation: "1",
       keyring,
@@ -521,12 +520,12 @@ function attachRequest(sessionId: string, taskId: string): AttachProgramRequest 
 
 function runProgram(
   attach: AttachProgramRequest,
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withJournalAuthority(authority, function* () {
+    return yield* withAuthorityTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
       });
@@ -535,10 +534,10 @@ function runProgram(
 }
 
 function recreate(
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   keyring: ReturnType<typeof createCapabilityKeyring>,
 ) {
-  return createInMemoryDurableJournalAuthority({
+  return createAuthorityScenarioDriver({
     journalId: "parent-child-integration",
     journalIncarnation: "1",
     keyring,
@@ -570,7 +569,7 @@ function findPendingChildElicit(
 }
 
 function* acceptPending(
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   sessionId: string,
   childTaskId: string,
   value: Choice,

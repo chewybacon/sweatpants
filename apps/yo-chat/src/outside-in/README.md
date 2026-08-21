@@ -91,7 +91,7 @@ Live flows require a valid Copilot token; the tier prechecks and **fails fast**
 with a clear message rather than hanging. Refresh + sync:
 
 ```bash
-pnpm copilot:auth:refresh && pnpm copilot:auth:sync
+pnpm model:auth:refresh
 ```
 
 Tokens are short-lived (~25 min); refresh before a live run.

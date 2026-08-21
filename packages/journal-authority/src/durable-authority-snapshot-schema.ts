@@ -154,12 +154,6 @@ const resolutionReceiptSchema = z.strictObject({
   outcomeDigest: z.string(),
   status: z.enum(["accepted", "duplicate"]),
 });
-const attemptSnapshotSchema = z.strictObject({
-  attemptId: z.string(),
-  attemptIndex: nonNegativeIntegerSchema,
-  state: z.enum(["started", "detached", "completed", "revoked", "superseded"]),
-  capability: z.string(),
-});
 const durablePositionSchema = z.string().regex(/^(0|[1-9]\d*)$/);
 const modelContextPolicyDecisionSchema = z.discriminatedUnion("type", [
   z.strictObject({
@@ -220,43 +214,7 @@ const assistantPartialAcceptedFactSchema = z.strictObject({
   disposition: z.enum(["interrupted", "provider-error"]),
 });
 
-const indexedPullSchema = z.tuple([
-  nonNegativeIntegerSchema,
-  z.strictObject({
-    pullId: z.string(),
-    actionIndex: nonNegativeIntegerSchema,
-    pullIndex: nonNegativeIntegerSchema,
-    descriptor: durableOperationDescriptorSchema,
-    descriptorDigest: z.string(),
-    effectiveDescriptor: durableOperationDescriptorSchema,
-    resultDescriptor: portableSchemaDescriptorSchema,
-    resultSchemaDigest: z.string(),
-    audience: z.string(),
-    publicMessageId: z.string().optional(),
-    maxOutcomeBytes: nonNegativeIntegerSchema,
-    attempts: z.array(attemptSnapshotSchema).max(MAX_ATTEMPTS_PER_PULL),
-    revoked: z.boolean(),
-    capability: z.string().optional(),
-    outcome: operationOutcomeSchema.optional(),
-    outcomeDigest: z.string().optional(),
-    receipt: resolutionReceiptSchema.optional(),
-    preparation: modelContextPreparedFactSchema.optional(),
-    preparationDigest: z.string().min(1).optional(),
-    assistantPartial: assistantPartialAcceptedFactSchema.optional(),
-    assistantPartialDigest: z.string().min(1).optional(),
-  }),
-]);
-const indexedEmissionSchema = z.tuple([
-  nonNegativeIntegerSchema,
-  z.strictObject({
-    digest: z.string(),
-    receipt: z.strictObject({ offset: z.string(), eventId: z.string(), duplicate: z.boolean() }),
-  }),
-]);
-const taskCloseSchema = z.strictObject({
-  digest: z.string(),
-  receipt: z.strictObject({ offset: z.string(), duplicate: z.boolean() }),
-});
+const taskCloseReceiptSchema = z.strictObject({ offset: z.string(), duplicate: z.boolean() });
 const emissionPolicySnapshotSchema = z.strictObject({
   maxEmissionsPerTask: nonNegativeIntegerSchema.optional(),
   maxCumulativeEmissionBytes: nonNegativeIntegerSchema.optional(),
@@ -303,33 +261,6 @@ const cancellationStateSchema = z.union([
   z.strictObject({ type: z.literal("cancelled"), commandId: z.string() }),
   z.strictObject({ type: z.literal("orphaned"), reason: orphanReasonSchema }),
 ]);
-const taskSnapshotSchema = z.strictObject({
-  sessionId: z.string(),
-  turnId: z.string(),
-  taskId: z.string(),
-  manifest: durableProgramManifestSchema,
-  input: jsonValueSchema,
-  executionEpoch: nonNegativeIntegerSchema,
-  attachmentId: z.string(),
-  audience: z.string(),
-  elicitAudience: z.string().optional(),
-  nextActionIndex: nonNegativeIntegerSchema,
-  nextPullIndex: nonNegativeIntegerSchema,
-  nextEmissionIndex: nonNegativeIntegerSchema,
-  pullsByAction: z.array(indexedPullSchema).max(MAX_ACTIONS_PER_TASK),
-  emissionsByAction: z.array(indexedEmissionSchema).max(MAX_ACTIONS_PER_TASK),
-  status: z.enum(["active", "closed", "cancelled", "orphaned"]),
-  cancellation: cancellationStateSchema,
-  close: taskCloseSchema.optional(),
-  parentTaskId: z.string().optional(),
-  parentPullId: z.string().optional(),
-  emissionPolicy: emissionPolicySnapshotSchema.optional(),
-  acceptedEmissionCount: nonNegativeIntegerSchema.optional(),
-  cumulativeEmissionBytes: nonNegativeIntegerSchema.optional(),
-  catalog: jsonRecordSchema.optional(),
-  catalogDigest: z.string().optional(),
-  route: z.union([z.string(), jsonRecordSchema]).optional(),
-});
 const semanticPayloadSchema = z.union([
   z.strictObject({
     type: z.literal("TaskOpened"),
@@ -478,40 +409,161 @@ const recordCollectionSchema = z.tuple([
   z.string(),
   z.array(semanticRecordSchema).max(MAX_RECORDS_PER_SESSION),
 ]);
-const activationLeaseSchema = z.tuple([
-  z.string(),
+const activationLeaseValueSchema = z.strictObject({
+  sessionId: z.string(),
+  ownerId: z.string(),
+  epoch: nonNegativeIntegerSchema,
+  expiresAtMs: nonNegativeIntegerSchema,
+  leaseDurationMs: nonNegativeIntegerSchema,
+  claimedTaskRevision: nonNegativeIntegerSchema,
+  claimedHeadDigest: z.string(),
+  restoreNonce: z.string(),
+});
+const taskOriginSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("root") }),
   z.strictObject({
-    sessionId: z.string(),
-    ownerId: z.string(),
-    epoch: nonNegativeIntegerSchema,
-    expiresAtMs: nonNegativeIntegerSchema,
-    leaseDurationMs: nonNegativeIntegerSchema,
-    claimedTaskRevision: nonNegativeIntegerSchema,
-    claimedHeadDigest: z.string(),
-    restoreNonce: z.string(),
+    kind: z.literal("child"),
+    invokedBy: z.strictObject({ taskId: z.string(), pullId: z.string() }),
   }),
 ]);
-const durableAuthoritySnapshotStructureSchema = z.strictObject({
-  version: z.literal(4),
-  tasks: z.array(taskSnapshotSchema).max(MAX_SNAPSHOT_TASKS),
-  records: z.array(recordCollectionSchema).max(MAX_SNAPSHOT_COLLECTIONS),
-  runnable: z.array(z.string()).max(MAX_SNAPSHOT_TASKS),
-  nonce: nonNegativeIntegerSchema,
-  activationLeases: z.array(activationLeaseSchema).max(MAX_SNAPSHOT_TASKS),
-  lastActivationEpochBySession: z
-    .array(z.tuple([z.string(), nonNegativeIntegerSchema]))
-    .max(MAX_SNAPSHOT_TASKS),
-  taskRevisions: z.array(z.tuple([z.string(), nonNegativeIntegerSchema])).max(MAX_SNAPSHOT_TASKS),
-  restoreNonces: z.array(z.tuple([z.string(), z.string()])).max(MAX_SNAPSHOT_TASKS),
-  restoreFrontierDigests: z.array(z.tuple([z.string(), z.string()])).max(MAX_SNAPSHOT_TASKS),
-  consecutiveRestoreStales: z
-    .array(z.tuple([z.string(), nonNegativeIntegerSchema]))
-    .max(MAX_SNAPSHOT_TASKS),
-  activationNotBeforeMs: z
-    .array(z.tuple([z.string(), nonNegativeIntegerSchema]))
-    .max(MAX_SNAPSHOT_TASKS),
+const resolutionAuthoritySchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("attempt"),
+    owner: z.enum(["program", "effect"]),
+    audience: z.string(),
+  }),
+  z.strictObject({ kind: z.literal("participant"), audience: z.string(), capability: z.string() }),
+  z.strictObject({
+    kind: z.literal("clock"),
+    audience: z.string(),
+    notBefore: z.string(),
+    capability: z.string(),
+  }),
+  z.strictObject({
+    kind: z.literal("child"),
+    mode: z.enum(["invoke", "all", "race", "spawn", "join"]),
+    audience: z.string(),
+    capability: z.string(),
+  }),
+]);
+const attemptSchema = z.strictObject({
+  attemptId: z.string(),
+  attemptIndex: nonNegativeIntegerSchema,
+  capability: z.string(),
+  status: z.enum(["started", "detached", "completed", "revoked", "superseded"]),
 });
-
+const pullResolutionSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("open"), revoked: z.boolean() }),
+  z.strictObject({
+    status: z.literal("settled"),
+    revoked: z.boolean(),
+    settlement: z.strictObject({
+      outcome: operationOutcomeSchema,
+      outcomeDigest: z.string(),
+      receipt: resolutionReceiptSchema,
+    }),
+  }),
+]);
+const pullSchema = z.strictObject({
+  pullId: z.string(),
+  request: z.strictObject({
+    proposedDescriptorDigest: z.string(),
+    proposedDescriptor: durableOperationDescriptorSchema,
+    acceptedDescriptor: durableOperationDescriptorSchema,
+    resultDescriptor: portableSchemaDescriptorSchema,
+    resultSchemaDigest: z.string(),
+    maxOutcomeBytes: nonNegativeIntegerSchema,
+    publicMessageId: z.string().optional(),
+  }),
+  resolutionAuthority: resolutionAuthoritySchema,
+  attempts: z.array(attemptSchema).max(MAX_ATTEMPTS_PER_PULL),
+  acceptedFacts: z.strictObject({
+    preparation: modelContextPreparedFactSchema.optional(),
+    preparationDigest: z.string().optional(),
+    assistantPartial: assistantPartialAcceptedFactSchema.optional(),
+    assistantPartialDigest: z.string().optional(),
+  }),
+  resolution: pullResolutionSchema,
+});
+const actionSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("pull"),
+    actionIndex: nonNegativeIntegerSchema,
+    pullIndex: nonNegativeIntegerSchema,
+    pull: pullSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("emission"),
+    actionIndex: nonNegativeIntegerSchema,
+    emissionIndex: nonNegativeIntegerSchema,
+    descriptorDigest: z.string(),
+    receipt: z.strictObject({ offset: z.string(), eventId: z.string(), duplicate: z.boolean() }),
+  }),
+]);
+const taskLifecycleSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("active"), cancellation: cancellationStateSchema }),
+  z.strictObject({
+    status: z.literal("closed"),
+    outcome: operationOutcomeSchema,
+    receipt: taskCloseReceiptSchema,
+  }),
+  z.strictObject({
+    status: z.literal("cancelled"),
+    outcome: z.strictObject({
+      status: z.literal("cancelled"),
+      partial: jsonValueSchema.optional(),
+    }),
+    receipt: taskCloseReceiptSchema,
+    commandId: z.string(),
+  }),
+  z.strictObject({ status: z.literal("orphaned"), reason: orphanReasonSchema }),
+]);
+const taskSchema = z.strictObject({
+  taskId: z.string(),
+  turnId: z.string(),
+  origin: taskOriginSchema,
+  program: z.strictObject({
+    artifact: z.strictObject({ id: z.string(), version: z.string(), digest: digestSchema }),
+    manifest: durableProgramManifestSchema,
+    input: jsonValueSchema,
+  }),
+  execution: z.strictObject({
+    epoch: nonNegativeIntegerSchema,
+    attachmentId: z.string(),
+    audience: z.string(),
+    elicitAudience: z.string().optional(),
+    route: z.union([z.string(), jsonRecordSchema]).optional(),
+    catalog: jsonValueSchema.optional(),
+    catalogDigest: z.string().optional(),
+  }),
+  actions: z.array(actionSchema).max(MAX_ACTIONS_PER_TASK),
+  nextActionIndex: nonNegativeIntegerSchema,
+  nextPullIndex: nonNegativeIntegerSchema,
+  nextEmissionIndex: nonNegativeIntegerSchema,
+  emissionPolicy: emissionPolicySnapshotSchema.optional(),
+  acceptedEmissionCount: nonNegativeIntegerSchema,
+  cumulativeEmissionBytes: nonNegativeIntegerSchema,
+  lifecycle: taskLifecycleSchema,
+});
+const sessionSchema = z.strictObject({
+  execution: z.strictObject({ tasks: z.array(taskSchema).max(MAX_SNAPSHOT_TASKS) }),
+  control: z.strictObject({
+    runnable: z.boolean(),
+    revision: nonNegativeIntegerSchema,
+    activationLease: activationLeaseValueSchema.optional(),
+    lastActivationEpoch: nonNegativeIntegerSchema,
+    restoreNonce: z.string().optional(),
+    restoreFrontierDigest: z.string().optional(),
+    consecutiveRestoreStales: nonNegativeIntegerSchema,
+    activationNotBeforeMs: nonNegativeIntegerSchema.optional(),
+  }),
+});
+const durableAuthoritySnapshotStructureSchema = z.strictObject({
+  version: z.literal(1),
+  sessions: z.array(z.tuple([z.string(), sessionSchema])).max(MAX_SNAPSHOT_COLLECTIONS),
+  nextNonce: nonNegativeIntegerSchema,
+  records: z.array(recordCollectionSchema).max(MAX_SNAPSHOT_COLLECTIONS),
+});
 const boundedSnapshotValueSchema: StandardSchemaV1<unknown, unknown> = {
   "~standard": {
     version: 1,

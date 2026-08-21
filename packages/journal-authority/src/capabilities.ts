@@ -10,7 +10,7 @@ import type {
   CapabilityClaims,
   ProgramExecutionCapabilityClaims,
   ResolutionCapabilityClaims,
-} from "./durable-authority-types.ts";
+} from "./authority-types.ts";
 
 const encoder = new TextEncoder();
 

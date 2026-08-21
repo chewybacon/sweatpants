@@ -1,10 +1,11 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
-import { createCapabilityKeyring, createInMemoryDurableJournalAuthority } from "../index.ts";
+import { createCapabilityKeyring } from "../index.ts";
+import { createAuthorityScenarioDriver } from "../testing.ts";
 import { type DurableProgramManifest } from "@sweatpants/durable-execution";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
-import type { DurableSemanticRecord } from "../durable-authority.ts";
+import type { DurableSemanticRecord } from "../semantic-record.ts";
 import {
   normalizeSemanticJournal,
   normalizedSemanticJournalDigest,
@@ -47,7 +48,7 @@ describe("semantic journal normalizer", () => {
   });
 
   it("normalizes records emitted by the real journal authority", async () => {
-    const authority = createInMemoryDurableJournalAuthority({
+    const authority = createAuthorityScenarioDriver({
       journalId: "normalizer",
       keyring: createCapabilityKeyring("normalizer", [
         { keyId: "active", secret: "normalizer-secret-at-least-32-bytes" },

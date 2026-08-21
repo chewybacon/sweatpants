@@ -8,16 +8,14 @@ import {
   resolvePiAiModel,
   type ModelSelection,
 } from "@sweatpants/model-provider-pi-ai";
+import { defaultYoChatModel } from "./default-model.ts";
 import { env } from "@/env";
 type ChatRequestModelBody = {
   model?: unknown;
 };
 
 function defaultChatModel(): ModelSelection {
-  return {
-    provider: env.DEFAULT_CHAT_MODEL_PROVIDER,
-    id: env.DEFAULT_CHAT_MODEL_ID,
-  };
+  return defaultYoChatModel();
 }
 
 export function* setupYoChatModelProvider(ctx: ChatHandlerSetupContext): Operation<void> {

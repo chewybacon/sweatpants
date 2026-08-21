@@ -6,7 +6,6 @@
  * and completion. Depends on the contract and protocol layers.
  */
 
-import type { Operation } from "effection";
 import type { IdentityConflict, Json } from "@sweatpants/foundation";
 import type {
   EffectDefinition,
@@ -257,6 +256,24 @@ export interface ResolutionCapabilityClaims {
 
 /** Closed authenticated capability claim algebra. */
 export type CapabilityClaims = ProgramExecutionCapabilityClaims | ResolutionCapabilityClaims;
+
+/** Complete root/child identity and pinned input required to open a task. */
+export interface OpenDurableTaskRequest {
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly taskId: string;
+  readonly manifest: DurableProgramManifest;
+  readonly input: Json;
+  readonly executionEpoch: number;
+  readonly attachmentId: string;
+  readonly audience: string;
+  readonly elicitAudience?: string;
+  readonly catalog?: Json;
+  readonly catalogDigest?: string;
+  readonly route?: ProgramRoute;
+  readonly parentTaskId?: string;
+  readonly parentPullId?: string;
+}
 
 /** Program-authorized request to reserve an ordered operation before dispatch. */
 export interface ReserveOperationRequest {
@@ -550,102 +567,3 @@ export interface AcceptAssistantPartialRequest {
 }
 
 export type AcceptAssistantPartialResult = AcceptPullPreparationResult;
-
-/** Narrow authority port mediating every durable state transition. */
-export interface DurableJournalAuthorityService {
-  /** Host-private stable journal identity used by placement effect services. */
-  journalIdentity(): { readonly id: string; readonly incarnation: string };
-  /** Reads authority-owned placement/catalog state without exposing capabilities. */
-  taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
-  /** Returns the canonical parsed input accepted for a task; replay never reruns schema code. */
-  taskInput(sessionId: string, taskId: string): Operation<Json>;
-  /** Selects active root work or its terminal value without exposing the journal. */
-  taskRecoveryState(
-    sessionId: string,
-    requestedTaskId?: string,
-  ): Operation<DurableTaskRecoveryState>;
-  /** Counts accepted roots for deterministic local Turn-id allocation. */
-  rootTaskCount(sessionId: string): Operation<number>;
-  /** Looks up one operation without exposing private capabilities or the journal. */
-  operationState(
-    sessionId: string,
-    taskId: string,
-    pullId: string,
-  ): Operation<DurableOperationState>;
-  /** Validates an exact pending elicitation without mutating durable authority. */
-  validateElicitResponse(
-    request: ValidateElicitResponseRequest,
-  ): Operation<ValidateElicitResponseResult>;
-  /** Lists exact schema digests referenced by nonterminal durable tasks for readiness/retirement. */
-  nonterminalSchemaDigests(): Operation<string[]>;
-  /** Lists runnable work plus expired in-flight ownership for restart recovery. */
-  recoverableSessions(): Operation<RecoverableSession[]>;
-  /** Claims absent/expired runnable work under an authority-minted epoch. */
-  claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult>;
-  /** Renews only the exact current owner and epoch using authority time. */
-  renewActivation(request: RenewActivationRequest): Operation<RenewActivationResult>;
-  /** Releases exact ownership and re-derives runnable state without losing wakeups. */
-  releaseActivation(request: ReleaseActivationRequest): Operation<ReleaseActivationResult>;
-  /** Issues a host-private single-use ticket for one authority snapshot. */
-  issueRestoreTicket(request: IssueRestoreTicketRequest): Operation<IssueRestoreTicketResult>;
-  /** Derives one integrity-linked replay plan and ticket from the claimed snapshot. */
-  prepareProgramRestore(request: PrepareProgramRestoreRequest): Operation<PreparedProgramRestore>;
-  /** Binds the host-verified remote frontier digest without consuming the ticket. */
-  bindRestoreFrontier(request: BindRestoreFrontierRequest): Operation<BindRestoreFrontierResult>;
-  /** Atomically verifies and consumes one first-live-frontier ticket. */
-  consumeRestoreTicket(request: ConsumeRestoreTicketRequest): Operation<ConsumeRestoreTicketResult>;
-  /** Reads the durable cancellation state used by fresh replay attachments. */
-  cancellationState(sessionId: string, taskId: string): Operation<DurableCancellationState>;
-  /** Transitions a settled cancellation frontier into one-shot unwind. */
-  beginCancellationUnwind(
-    sessionId: string,
-    taskId: string,
-    restoredFrontier?: { readonly proof: RestoredFrontierProof; readonly step: ProgramStep },
-  ): Operation<DurableCancellationState>;
-  /** Binds program authority to one attachment and execution epoch. */
-  bindProgramAttachment(
-    sessionId: string,
-    taskId: string,
-    attachmentId: string,
-    executionEpoch: number,
-  ): Operation<{ programCapability: string }>;
-  /** Idempotently allocates a deterministic child task. */
-  ensureChildTask(request: EnsureChildTaskRequest): Operation<EnsureChildTaskResult>;
-  /** Reserves an operation before any host side effect is dispatched. */
-  reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult>;
-  /** Returns accepted model preparation identity without exposing other journal state. */
-  pullPreparation(
-    sessionId: string,
-    taskId: string,
-    pullId: string,
-  ): Operation<ModelContextPreparedFact | null>;
-  /** Accepts immutable provider-input identity before any model dispatch. */
-  acceptPullPreparation(
-    request: AcceptPullPreparationRequest,
-  ): Operation<AcceptPullPreparationResult>;
-  /** Rechecks the accepted preparation and current attempt immediately before provider I/O. */
-  authorizeModelDispatch(
-    request: AuthorizeModelDispatchRequest,
-  ): Operation<AuthorizeModelDispatchResult>;
-  /** Accepts one typed public assistant partial before pull settlement. */
-  acceptAssistantPartial(
-    request: AcceptAssistantPartialRequest,
-  ): Operation<AcceptAssistantPartialResult>;
-  /** Commits a capability-authorized operation outcome. */
-  resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
-  /** Appends an ordered durable emission idempotently. */
-  emit(request: AppendEmissionRequest): Operation<EmissionReceipt>;
-  /** Closes a task idempotently after output validation. */
-  complete(request: CompleteTaskRequest): Operation<TaskCloseReceipt>;
-  /** Fences a task whose execution cannot be reconstructed through accepted history. */
-  forceOrphan(
-    sessionId: string,
-    taskId: string,
-    reason:
-      | "program_version_unavailable"
-      | "program_corrupt"
-      | "cleanup_stuck"
-      | "replay_execution_failed"
-      | "replay_diverged",
-  ): Operation<void>;
-}

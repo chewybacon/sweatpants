@@ -861,7 +861,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   }
                   const journal =
                     yield* config.programDriverJournalStore.open(requestedConversationId);
-                  const validation = yield* journal.authority.validateElicitResponse({
+                  const validation = yield* journal.validateElicitResponse({
                     sessionId: requestedConversationId,
                     pullId: body.command.interruptId,
                     participantId,

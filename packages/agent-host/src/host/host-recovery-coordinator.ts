@@ -2,7 +2,7 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { call, race, type Operation } from "effection";
 
 import {
-  type DurableJournalAuthorityService,
+  type JournalAuthorityContract,
   type RecoverableSession,
 } from "@sweatpants/journal-authority";
 
@@ -13,10 +13,13 @@ export interface StartupRecoveryOptions {
 
 /** Bounded one-shot recovery used after process restart; continuous polling is deferred. */
 export function* recoverKnownWorkOnStartup(
-  authority: DurableJournalAuthorityService,
+  authority: JournalAuthorityContract,
   options: StartupRecoveryOptions,
 ): Operation<{ attempted: string[]; failed: string[] }> {
-  const sessions = (yield* authority.recoverableSessions()).slice(0, options.maxSessions ?? 100);
+  const sessions = (yield* authority.query({ type: "authority.recoverable-sessions" })).slice(
+    0,
+    options.maxSessions ?? 100,
+  );
   const attempted: string[] = [];
   const failed: string[] = [];
   for (const session of sessions) {

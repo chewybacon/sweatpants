@@ -2,7 +2,7 @@ import { run } from "effection";
 import { describe, it } from "vitest";
 
 import { createMemoryExecutionStore } from "./memory.ts";
-import { createStoredDurableJournalAuthority } from "./stored-authority.ts";
+import { createStoredScenarioDriver } from "./testing/stored-scenario-driver.ts";
 import {
   createJournalAuthorityConformanceCases,
   type JournalAuthorityConformanceFactory,
@@ -12,7 +12,7 @@ const store = createMemoryExecutionStore();
 const factory: JournalAuthorityConformanceFactory = {
   backendName: "memory-execution-store",
   *open(options) {
-    return createStoredDurableJournalAuthority(store, {
+    return createStoredScenarioDriver(store, {
       journalId: options.journalId,
       journalIncarnation: "conformance-v1",
       keyring: options.keyring,

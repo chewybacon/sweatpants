@@ -388,11 +388,7 @@ export function createHostModelSamplingService(options: {
         ...(options.historyPolicy ? { historyPolicy: options.historyPolicy } : {}),
       });
       const existingPreparation = options.journal
-        ? yield* options.journal.authority.pullPreparation(
-            attempt.sessionId,
-            attempt.taskId,
-            attempt.pullId,
-          )
+        ? yield* options.journal.pullPreparation(attempt.sessionId, attempt.taskId, attempt.pullId)
         : null;
       let acceptedPreparation = existingPreparation;
       if (existingPreparation) {
@@ -505,7 +501,7 @@ export function createHostModelSamplingService(options: {
           model: { provider: options.model.provider, id: options.model.id },
           publicMessageId,
         };
-        const accepted = yield* options.journal.authority.acceptPullPreparation({
+        const accepted = yield* options.journal.acceptPullPreparation({
           executionId: head.activeExecutionId,
           taskId: attempt.taskId,
           pullId: attempt.pullId,
@@ -526,7 +522,7 @@ export function createHostModelSamplingService(options: {
           );
         }
         if (accepted.status === "duplicate") {
-          const authorized = yield* options.journal.authority.authorizeModelDispatch({
+          const authorized = yield* options.journal.authorizeModelDispatch({
             executionId: fact.executionId,
             taskId: fact.taskId,
             pullId: fact.pullId,
@@ -602,13 +598,13 @@ export function createHostModelSamplingService(options: {
         }
         const preparation =
           acceptedPreparation ??
-          (yield* options.journal.authority.pullPreparation(
+          (yield* options.journal.pullPreparation(
             attempt.sessionId,
             attempt.taskId,
             attempt.pullId,
           ));
         if (!preparation) return;
-        const accepted = yield* options.journal.authority.acceptAssistantPartial({
+        const accepted = yield* options.journal.acceptAssistantPartial({
           executionId: preparation.executionId,
           taskId: attempt.taskId,
           pullId: attempt.pullId,
@@ -640,7 +636,7 @@ export function createHostModelSamplingService(options: {
         > {
           try {
             if (options.journal && acceptedPreparation) {
-              const authorized = yield* options.journal.authority.authorizeModelDispatch({
+              const authorized = yield* options.journal.authorizeModelDispatch({
                 executionId: acceptedPreparation.executionId,
                 taskId: attempt.taskId,
                 pullId: attempt.pullId,

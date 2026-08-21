@@ -6,12 +6,11 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
+import { createCapabilityKeyring, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-  type DurableSemanticRecord,
-} from "@sweatpants/journal-authority";
+  createAuthorityScenarioDriver,
+  withAuthorityTestScope,
+} from "@sweatpants/journal-authority/testing";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
@@ -146,7 +145,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
     const keyring = createCapabilityKeyring("foreign-loss", [
       { keyId: "active", secret: "foreign-loss-secret-is-32-bytes!!" },
     ]);
-    let authority = createInMemoryDurableJournalAuthority({
+    let authority = createAuthorityScenarioDriver({
       journalId: "foreign-loss",
       journalIncarnation: "1",
       keyring,
@@ -250,12 +249,12 @@ function attachRequest(
 
 function runProgram(
   attach: AttachProgramRequest,
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withJournalAuthority(authority, function* () {
+    return yield* withAuthorityTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* withModelSampleTestBoundary(() =>
           ProgramRuntime.operations.run({ attach, executeHostEffects: true }),
@@ -266,10 +265,10 @@ function runProgram(
 }
 
 function recreate(
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   keyring: ReturnType<typeof createCapabilityKeyring>,
 ) {
-  return createInMemoryDurableJournalAuthority({
+  return createAuthorityScenarioDriver({
     journalId: "foreign-loss",
     journalIncarnation: "1",
     keyring,
@@ -279,7 +278,7 @@ function recreate(
 }
 
 function* acceptPending(
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   sessionId: string,
   taskId: string,
 ): Operation<void> {

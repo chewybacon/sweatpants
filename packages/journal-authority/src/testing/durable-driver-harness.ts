@@ -9,12 +9,9 @@ import {
 } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 
-import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-  type DurableSemanticRecord,
-} from "../index.ts";
+import { createCapabilityKeyring, type DurableSemanticRecord } from "../index.ts";
+import { withAuthorityTestScope } from "../journal-program-runtime.ts";
+import { createAuthorityScenarioDriver } from "./scenario-driver.ts";
 import { type Json } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,
@@ -282,7 +279,7 @@ export function* runDurableDriverRecoveryFixture(
       },
     ),
   ]);
-  const authority = createInMemoryDurableJournalAuthority({
+  const authority = createAuthorityScenarioDriver({
     journalId: `driver-integration:${options.driverKind}`,
     journalIncarnation: "fixture-1",
     keyring: createCapabilityKeyring("driver-integration", [
@@ -328,7 +325,7 @@ export function* runDurableDriverRecoveryFixture(
     let releaseReason: "parked" | "terminal" | "failed" = "failed";
     try {
       const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(authority, function* () {
+        return yield* withAuthorityTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRuntime.operations.run({
               attach: { ...attach, executionEpoch },
@@ -448,7 +445,7 @@ export function* runDurableDriverCancellationFixture(
   const keyring = createCapabilityKeyring("driver-cancellation-integration", [
     { keyId: "fixture-key", secret: "driver-cancellation-secret-32-bytes!!" },
   ]);
-  let authority = createInMemoryDurableJournalAuthority({
+  let authority = createAuthorityScenarioDriver({
     journalId: `driver-cancellation-integration:${options.driverKind}`,
     journalIncarnation: "fixture-1",
     keyring,
@@ -479,7 +476,7 @@ export function* runDurableDriverCancellationFixture(
   });
 
   const first = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withJournalAuthority(authority, function* () {
+    return yield* withAuthorityTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
       });
@@ -497,7 +494,7 @@ export function* runDurableDriverCancellationFixture(
     "cancel-command-1",
   );
 
-  authority = createInMemoryDurableJournalAuthority({
+  authority = createAuthorityScenarioDriver({
     journalId: `driver-cancellation-integration:${options.driverKind}`,
     journalIncarnation: "fixture-1",
     keyring,
@@ -505,7 +502,7 @@ export function* runDurableDriverCancellationFixture(
     schemaRegistry: createDurableSchemaRegistry([...DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES]),
   });
   const second = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withJournalAuthority(authority, function* () {
+    return yield* withAuthorityTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
       });

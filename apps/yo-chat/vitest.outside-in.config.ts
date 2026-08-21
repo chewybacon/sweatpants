@@ -1,5 +1,8 @@
 import type { UserConfig } from "vite";
+import { readStoredModelSelection } from "@sweatpants/model-provider-pi-ai";
 import baseConfig from "./vite.config";
+
+const selectedModel = readStoredModelSelection();
 
 /**
  * Vitest config for the outside-in HTTP test tier (design R11/C6).
@@ -11,9 +14,9 @@ import baseConfig from "./vite.config";
  *   pnpm test:outside-in:tier-a   # faster integration: real model + Tier A
  *   pnpm test:outside-in:hermetic # no-network worker-boundary guard only
  *
- * Live flows run when `RUN_LIVE=1`; missing/expired Copilot auth fails fast in
- * test setup instead of silently skipping requested integration coverage. Tier B
- * runs when `OUTSIDE_IN_TIER_B=1`.
+ * Live flows run when `RUN_LIVE=1`; missing selected-provider auth fails fast
+ * in test setup instead of silently skipping requested integration coverage.
+ * Tier B runs when `OUTSIDE_IN_TIER_B=1`.
  *
  * NOTE: `test` is replaced (not merged) so the base run's outside-in exclude
  * glob does not leak in and hide these tests.
@@ -25,8 +28,10 @@ const config: UserConfig = {
   test: {
     environment: "node",
     env: {
-      DEFAULT_CHAT_MODEL_PROVIDER: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
-      DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.5",
+      DEFAULT_CHAT_MODEL_PROVIDER:
+        process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? selectedModel?.provider ?? "github-copilot",
+      DEFAULT_CHAT_MODEL_ID:
+        process.env["DEFAULT_CHAT_MODEL_ID"] ?? selectedModel?.id ?? "claude-sonnet-4.5",
     },
     include: ["src/outside-in/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],

@@ -9,11 +9,9 @@ import {
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
-import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-} from "../index.ts";
+import { createCapabilityKeyring } from "../index.ts";
+import { withAuthorityTestScope } from "../journal-program-runtime.ts";
+import { createAuthorityScenarioDriver } from "../testing.ts";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
@@ -132,7 +130,7 @@ const manifest: DurableProgramManifest<null, string> = {
 };
 
 function authority(name: string, maxOutcomeBytes?: number) {
-  return createInMemoryDurableJournalAuthority({
+  return createAuthorityScenarioDriver({
     journalId: name,
     journalIncarnation: "1",
     keyring,
@@ -321,7 +319,7 @@ describe("durable cancellation and partial results", () => {
         audience: "program-runtime",
       });
       const first = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(selected, function* () {
+        return yield* withAuthorityTestScope(selected, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRuntime.operations.run({
               attach: request,
@@ -333,7 +331,7 @@ describe("durable cancellation and partial results", () => {
       expect(first.state).toBe("parked");
       yield* selected.requestCancellation(request.sessionId, request.taskId, "stop", "cancel-1");
       const second = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withJournalAuthority(selected, function* () {
+        return yield* withAuthorityTestScope(selected, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRuntime.operations.run({
               attach: request,

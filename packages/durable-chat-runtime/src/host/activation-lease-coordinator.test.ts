@@ -1,7 +1,7 @@
 import { run, sleep } from "effection";
 import { describe, expect, it } from "vitest";
 
-import type { DurableJournalAuthorityService } from "@sweatpants/journal-authority";
+import type { JournalAuthorityContract } from "@sweatpants/journal-authority";
 import { runWithRenewedActivationLease } from "./activation-lease-coordinator.ts";
 
 describe("activation lease coordinator", () => {
@@ -10,26 +10,26 @@ describe("activation lease coordinator", () => {
     let activationClosed = false;
     let releasedReason: string | undefined;
     const authority = {
-      *claimActivation() {
-        return {
-          status: "claimed" as const,
-          epoch: 7,
-          expiresAtMs: 100,
-          taskRevision: 1,
-          journalHeadDigest: "a".repeat(64),
-        };
-      },
-      *renewActivation() {
-        renewals += 1;
-        return renewals === 1
-          ? { status: "renewed" as const, expiresAtMs: 100 }
-          : { status: "stale_activation" as const };
-      },
-      *releaseActivation(request: { reason: string }) {
-        releasedReason = request.reason;
+      *command(command: { type: string; request: { reason?: string } }) {
+        if (command.type === "control.claim-activation") {
+          return {
+            status: "claimed" as const,
+            epoch: 7,
+            expiresAtMs: 100,
+            taskRevision: 1,
+            journalHeadDigest: "a".repeat(64),
+          };
+        }
+        if (command.type === "control.renew-activation") {
+          renewals += 1;
+          return renewals === 1
+            ? { status: "renewed" as const, expiresAtMs: 100 }
+            : { status: "stale_activation" as const };
+        }
+        releasedReason = command.request.reason;
         return { status: "released" as const, runnable: true };
       },
-    } as unknown as DurableJournalAuthorityService;
+    } as unknown as JournalAuthorityContract;
 
     await expect(
       run(() =>

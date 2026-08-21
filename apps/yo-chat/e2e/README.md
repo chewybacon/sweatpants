@@ -20,14 +20,16 @@ The optional presentation suite covers:
 Keep this suite provider-independent when possible. It must not become the source of
 truth for message ordering, elicitation state, replay, or durable tool behavior.
 
-## Extensive manual Copilot suite
+## Extensive live-provider suite
 
-Refresh and sync auth, then run:
+Authenticate once, then run the full suite against the selected provider:
 
 ```bash
-pnpm copilot:auth:refresh
-pnpm copilot:auth:sync
-pnpm test:e2e:manual
+pnpm model:auth:login --provider openai-codex
+pnpm test:yo-chat:e2e
+
+# One-off provider/model override without changing the saved selection
+pnpm test:yo-chat:e2e -- --provider opencode --model gpt-5.5
 ```
 
 For interactive debugging:
@@ -47,17 +49,6 @@ The manual suite restores the broad historical browser coverage, including:
 - Markdown and math/rendering pipeline persistence.
 
 It is intentionally **not** part of `pnpm land`: it is live-provider-dependent,
-serial, relatively slow, and some historical assertions may classify model
-non-cooperation as a Playwright skip. Use the deterministic package acceptance
-suites for merge gating and this suite for periodic browser/product confidence.
-
-## Optional Ollama browser suite
-
-With a compatible local Ollama model running:
-
-```bash
-pnpm -C apps/yo-chat test:e2e:manual:ollama
-```
-
-Ollama tests are excluded from the normal manual Copilot suite because they
-require a separately managed local service.
+serial, and relatively slow. It has one provider-neutral contract and fails on
+an unmet assertion; use the deterministic package acceptance suites for merge
+gating and this suite for periodic browser/product confidence.

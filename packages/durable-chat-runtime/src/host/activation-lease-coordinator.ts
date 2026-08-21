@@ -1,12 +1,12 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { race, sleep, type Operation } from "effection";
 
-import { type DurableJournalAuthorityService } from "@sweatpants/journal-authority";
+import { type JournalAuthorityContract } from "@sweatpants/journal-authority";
 import { type ProgramRunResult } from "@sweatpants/durable-execution";
 
 /** Host coordinator timer; deliberately outside the durable crank implementation. */
 export function* runWithRenewedActivationLease(
-  authority: DurableJournalAuthorityService,
+  authority: JournalAuthorityContract,
   sessionId: string,
   ownerId: string,
   activate: (epoch: number, ownerId: string) => Operation<ProgramRunResult>,
@@ -14,10 +14,9 @@ export function* runWithRenewedActivationLease(
 ): Operation<ProgramRunResult> {
   const leaseDurationMs = timing.leaseDurationMs ?? 30_000;
   const renewalIntervalMs = timing.renewalIntervalMs ?? 10_000;
-  const claim = yield* authority.claimActivation({
-    sessionId,
-    ownerId,
-    leaseDurationMs,
+  const claim = yield* authority.command({
+    type: "control.claim-activation",
+    request: { sessionId, ownerId, leaseDurationMs },
   });
   if (claim.status === "busy") {
     throw new CrankError("activation_busy", "Durable activation is owned by another host");
@@ -45,10 +44,9 @@ export function* runWithRenewedActivationLease(
       (function* (): Operation<ProgramRunResult> {
         while (true) {
           yield* sleep(renewalIntervalMs);
-          const renewed = yield* authority.renewActivation({
-            sessionId,
-            ownerId,
-            epoch: claim.epoch,
+          const renewed = yield* authority.command({
+            type: "control.renew-activation",
+            request: { sessionId, ownerId, epoch: claim.epoch },
           });
           if (renewed.status !== "renewed") {
             reason = "lease_lost";
@@ -60,11 +58,9 @@ export function* runWithRenewedActivationLease(
     reason = outcome.state === "parked" ? "parked" : "terminal";
     return outcome;
   } finally {
-    yield* authority.releaseActivation({
-      sessionId,
-      ownerId,
-      epoch: claim.epoch,
-      reason,
+    yield* authority.command({
+      type: "control.release-activation",
+      request: { sessionId, ownerId, epoch: claim.epoch, reason },
     });
   }
 }

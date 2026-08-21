@@ -14,11 +14,9 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
  * 8. User selects a seat
  * 9. Confirmation message appears
  *
- * Tests require:
- * - Ollama running locally at http://localhost:11434
- * - A model that supports tool calling (e.g., gemma4:12b-mlx)
+ * Runs against the selected managed provider, which must support tool calling.
  *
- * Run with: pnpm test:e2e --grep "book_flight"
+ * Run with: pnpm test:yo-chat:e2e -- e2e/book-flight.spec.ts
  */
 
 // Reasonable timeout for LLM responses - fail fast if things are broken.

@@ -18,7 +18,7 @@ import {
   expectRunFinished,
   expectToolCalled,
 } from "../lib/assertions.ts";
-import { requireCopilotAuth } from "../lib/auth.ts";
+import { requireModelAuth } from "../lib/auth.ts";
 import type { ChatBinding } from "../lib/chat-fetch.ts";
 import { runChatFlow } from "../lib/driver.ts";
 import { withFlakePolicy } from "../lib/flake.ts";
@@ -29,7 +29,7 @@ for (const tier of selectedTiers()) {
     let binding: ChatBinding;
 
     beforeAll(async () => {
-      requireCopilotAuth();
+      requireModelAuth();
       binding = await tier.create();
     });
     afterAll(async () => {

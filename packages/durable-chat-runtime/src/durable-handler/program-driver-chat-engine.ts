@@ -16,7 +16,7 @@ import {
 
 import { resource, type Operation, type Stream } from "effection";
 import type {
-  DurableJournalAuthorityService,
+  JournalAuthorityContract,
   DurableSemanticRecord,
 } from "@sweatpants/journal-authority";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
@@ -501,7 +501,7 @@ function* activateProgramDriverChatEngine(
   try {
     outcome = yield* runLocalProgramActivation(
       {
-        authority: journal.authority,
+        installAuthority: journal.install,
         drivers,
         effects,
         modelSamplingService,
@@ -529,9 +529,9 @@ function* activateProgramDriverChatEngine(
           return binding?.route ?? parentRoute;
         },
       },
-      function* () {
+      function* (authority) {
         return yield* runFencedActivation(
-          journal.authority,
+          authority,
           params.conversationId,
           attach.executionEpoch,
           requiresFencedActivation(params.nativeTools),
@@ -547,11 +547,8 @@ function* activateProgramDriverChatEngine(
     );
   } catch (error) {
     if (
-      !(yield* isExpectedCancellationFenceLoss(
-        journal.authority,
-        params.conversationId,
-        taskId,
-        error,
+      !(yield* journal.withAuthority((authority) =>
+        isExpectedCancellationFenceLoss(authority, params.conversationId, taskId, error),
       ))
     ) {
       throw error;
@@ -1736,7 +1733,7 @@ function foreignElicitId(
 let activationOwnerCounter = 0;
 
 function* isExpectedCancellationFenceLoss(
-  authority: DurableJournalAuthorityService,
+  authority: JournalAuthorityContract,
   sessionId: string,
   taskId: string,
   error: unknown,
@@ -1750,7 +1747,10 @@ function* isExpectedCancellationFenceLoss(
     return false;
   }
   try {
-    return (yield* authority.cancellationState(sessionId, taskId)).type !== "none";
+    return (
+      (yield* authority.query({ type: "task.cancellation-state", sessionId, taskId })).type !==
+      "none"
+    );
   } catch {
     return false;
   }
@@ -1758,7 +1758,7 @@ function* isExpectedCancellationFenceLoss(
 
 /** Fences only deployments whose native bindings declare fenced activation. */
 function* runFencedActivation(
-  authority: DurableJournalAuthorityService,
+  authority: JournalAuthorityContract,
   sessionId: string,
   fallbackEpoch: number,
   fenced: boolean,

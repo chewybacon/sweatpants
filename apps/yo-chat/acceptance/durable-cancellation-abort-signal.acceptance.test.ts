@@ -7,11 +7,11 @@ import { action, createQueue, run, spawn, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-} from "@sweatpants/journal-authority";
+  createAuthorityScenarioDriver,
+  withAuthorityTestScope,
+} from "@sweatpants/journal-authority/testing";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
@@ -98,7 +98,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
     const keyring = createCapabilityKeyring("abort-signal-acceptance", [
       { keyId: "active", secret: "abort-signal-acceptance-key-32-bytes" },
     ]);
-    const authority = createInMemoryDurableJournalAuthority({
+    const authority = createAuthorityScenarioDriver({
       journalId: "abort-signal-acceptance",
       journalIncarnation: "1",
       keyring,
@@ -186,12 +186,12 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
 
 function runProgram(
   attach: AttachProgramRequest,
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withJournalAuthority(authority, function* () {
+    return yield* withAuthorityTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
       });

@@ -1,6 +1,5 @@
 import { scoped, useScope, type Operation } from "effection";
 import type { DurableEffectAuthorization, OperationOutcome } from "@sweatpants/durable-effects";
-import { definePort } from "@sweatpants/foundation/port";
 
 import { serializeDurableError } from "@sweatpants/durable-execution";
 import { canonicalSnapshot } from "@sweatpants/foundation";
@@ -22,13 +21,20 @@ import {
   ProgramPlacementContext,
 } from "@sweatpants/durable-effects";
 import type {
+  AppendEmissionRequest,
   CancellationFrontier,
+  CompleteTaskRequest,
   DurableCancellationState,
-  DurableJournalAuthorityService,
   EmissionReceipt,
+  ReserveOperationRequest,
+  ReserveOperationResult,
   RestoredFrontierProof,
+  ResolveOperationRequest,
   ResolveOperationResult,
-} from "./durable-authority-types.ts";
+  TaskCloseReceipt,
+} from "./authority-types.ts";
+import type { JournalAuthorityContract } from "./authority-contract.ts";
+import { JournalAuthorityPort } from "./authority-ports.ts";
 import type {
   ProgramAttachment,
   ProgramDriver,
@@ -38,14 +44,6 @@ import type {
   ProgramShutdownReason,
   ProgramStep,
 } from "@sweatpants/durable-execution";
-
-function* authorityUnavailable(): Operation<never> {
-  throw new CrankError("unknown_target", "No journal authority is installed");
-}
-
-function authorityUnavailableSync(): never {
-  throw new CrankError("unknown_target", "No journal authority is installed");
-}
 
 function* prepareOperationStep(
   step: Extract<ProgramStep, { type: "operation" }>,
@@ -70,64 +68,24 @@ function* prepareOperationStep(
   };
 }
 
-/**
- * Journal authority as a port.
- *
- * Every member fails closed, so an uninstalled authority can never be mistaken
- * for an authority that accepted a transition.
- */
-export const JournalAuthorityPort = definePort<DurableJournalAuthorityService>(
-  "crank-journal-authority",
-  {
-    // Deliberately synchronous: identity is a pure read of already-claimed
-    // state, and nothing may inject waiting between a claim and its identity.
-    journalIdentity: authorityUnavailableSync,
-    taskExecutionState: authorityUnavailable,
-    taskInput: authorityUnavailable,
-    taskRecoveryState: authorityUnavailable,
-    rootTaskCount: authorityUnavailable,
-    operationState: authorityUnavailable,
-    pullPreparation: authorityUnavailable,
-    validateElicitResponse: authorityUnavailable,
-    nonterminalSchemaDigests: authorityUnavailable,
-    recoverableSessions: authorityUnavailable,
-    claimActivation: authorityUnavailable,
-    renewActivation: authorityUnavailable,
-    releaseActivation: authorityUnavailable,
-    issueRestoreTicket: authorityUnavailable,
-    prepareProgramRestore: authorityUnavailable,
-    bindRestoreFrontier: authorityUnavailable,
-    consumeRestoreTicket: authorityUnavailable,
-    cancellationState: authorityUnavailable,
-    beginCancellationUnwind: authorityUnavailable,
-    bindProgramAttachment: authorityUnavailable,
-    ensureChildTask: authorityUnavailable,
-    reserve: authorityUnavailable,
-    acceptPullPreparation: authorityUnavailable,
-    authorizeModelDispatch: authorityUnavailable,
-    acceptAssistantPartial: authorityUnavailable,
-    resolve: authorityUnavailable,
-    emit: authorityUnavailable,
-    complete: authorityUnavailable,
-    forceOrphan: authorityUnavailable,
-  },
-);
-
-/** Installs one journal authority for the calling scope. */
-export function* installJournalAuthority(
-  authority: DurableJournalAuthorityService,
-): Operation<void> {
-  yield* JournalAuthorityPort.installDriver(authority);
+/** @internal Transitional installer used while repository callers move to composition options. */
+export function* installJournalProgramRuntime(): Operation<void> {
   yield* ProgramRuntimeDriverContext.set(legacyProgramRuntimeDriver);
 }
 
+/** @internal Test-only installer for a precomposed command/query authority. */
+export function* installAuthorityTestScope(authority: JournalAuthorityContract): Operation<void> {
+  yield* JournalAuthorityPort.installDriver(authority);
+  yield* installJournalProgramRuntime();
+}
+
 /** Runs `body` with `authority` installed in a child scope. */
-export function withJournalAuthority<T>(
-  authority: DurableJournalAuthorityService,
+export function withAuthorityTestScope<T>(
+  authority: JournalAuthorityContract,
   body: () => Operation<T>,
 ): Operation<T> {
   return scoped(function* () {
-    yield* installJournalAuthority(authority);
+    yield* installAuthorityTestScope(authority);
     return yield* body();
   });
 }
@@ -137,7 +95,7 @@ export function withJournalAuthority<T>(
  * Callers that hand work to a detached task must resolve this before handing
  * off, so dispatch stays pinned to the scope that owns the authority.
  */
-export function* useJournalAuthority(): Operation<DurableJournalAuthorityService> {
+function* useJournalAuthority(): Operation<JournalAuthorityContract> {
   return JournalAuthorityPort.bind(yield* useScope());
 }
 
@@ -147,7 +105,23 @@ export function* useJournalAuthority(): Operation<DurableJournalAuthorityService
  * This is the port's own api, so there is no separate facade that could drift
  * from the service contract.
  */
-export const JournalAuthority = JournalAuthorityPort.api;
+const JournalAuthority = JournalAuthorityPort.api;
+
+function reserveCommand(request: ReserveOperationRequest): Operation<ReserveOperationResult> {
+  return JournalAuthority.operations.command({ type: "execution.reserve-pull", request });
+}
+
+function resolveCommand(request: ResolveOperationRequest): Operation<ResolveOperationResult> {
+  return JournalAuthority.operations.command({ type: "execution.resolve-pull", request });
+}
+
+function emitCommand(request: AppendEmissionRequest): Operation<EmissionReceipt> {
+  return JournalAuthority.operations.command({ type: "execution.append-emission", request });
+}
+
+function completeCommand(request: CompleteTaskRequest): Operation<TaskCloseReceipt> {
+  return JournalAuthority.operations.command({ type: "execution.complete-task", request });
+}
 
 /** Resolves the durable-effects-owned dispatch outcome through Journal Authority. */
 function* executeDurableEffectAuthorization(
@@ -159,7 +133,7 @@ function* executeDurableEffectAuthorization(
   } catch (error) {
     outcome = { status: "error", error: serializeDurableError(error) };
   }
-  const resolution = yield* JournalAuthority.operations.resolve({
+  const resolution = yield* resolveCommand({
     capability: authorization.resolutionCapability,
     audience: authorization.resolver.audience,
     outcome,
@@ -171,7 +145,7 @@ function* executeDurableEffectAuthorization(
 }
 
 function* resumeResolvedOperation(
-  authority: DurableJournalAuthorityService,
+  authority: JournalAuthorityContract,
   attachment: ProgramAttachment,
   request: ProgramRunRequest,
   step: Extract<ProgramStep, { type: "operation" }>,
@@ -180,14 +154,17 @@ function* resumeResolvedOperation(
   replayError: string,
 ): Operation<{ step: ProgramStep; pullIndex: number }> {
   const preparedStep = yield* prepareOperationStep(step);
-  const replayed = yield* authority.reserve({
-    sessionId: request.attach.sessionId,
-    turnId: turnIdFor(request.attach.taskId),
-    taskId: request.attach.taskId,
-    actionIndex: step.actionIndex,
-    pullIndex,
-    descriptor: preparedStep.descriptor,
-    programCapability,
+  const replayed = yield* authority.command({
+    type: "execution.reserve-pull",
+    request: {
+      sessionId: request.attach.sessionId,
+      turnId: turnIdFor(request.attach.taskId),
+      taskId: request.attach.taskId,
+      actionIndex: step.actionIndex,
+      pullIndex,
+      descriptor: preparedStep.descriptor,
+      programCapability,
+    },
   });
   if (replayed.status !== "resolved") {
     throw new CrankError("runtime_error", replayError);
@@ -233,14 +210,15 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
     const executionScope = yield* useScope();
     yield* ProgramExecutionScopeContext.set(executionScope);
     let attachment: ProgramAttachment | undefined;
-    let authority: DurableJournalAuthorityService | undefined;
+    let authority: JournalAuthorityContract | undefined;
     let shutdownReason: ProgramShutdownReason = "scope_exit";
     try {
       authority = yield* useJournalAuthority();
-      const acceptedInput = yield* authority.taskInput(
-        request.attach.sessionId,
-        request.attach.taskId,
-      );
+      const acceptedInput = yield* authority.query({
+        type: "task.input",
+        sessionId: request.attach.sessionId,
+        taskId: request.attach.taskId,
+      });
       const acceptedAttach = { ...request.attach, input: acceptedInput };
       const driver = yield* driverFor(driverKind(acceptedAttach.route));
       let step: ProgramStep;
@@ -252,15 +230,18 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           throw new CrankError("placement_unavailable", "Driver restore context is missing");
         }
         const context = yield* driver.restoreContext(acceptedAttach);
-        const prepared = yield* authority.prepareProgramRestore({
-          sessionId: acceptedAttach.sessionId,
-          taskId: acceptedAttach.taskId,
-          ownerId: request.activationOwnerId,
-          activationEpoch: acceptedAttach.executionEpoch,
-          releaseId: context.releaseId,
-          sandboxSessionId: context.sandboxSessionId,
-          replayDomain: context.replayDomain,
-          frontierDomain: context.frontierDomain,
+        const prepared = yield* authority.command({
+          type: "recovery.prepare-restore",
+          request: {
+            sessionId: acceptedAttach.sessionId,
+            taskId: acceptedAttach.taskId,
+            ownerId: request.activationOwnerId,
+            activationEpoch: acceptedAttach.executionEpoch,
+            releaseId: context.releaseId,
+            sandboxSessionId: context.sandboxSessionId,
+            replayDomain: context.replayDomain,
+            frontierDomain: context.frontierDomain,
+          },
         });
         pullIndex = prepared.replay.filter((entry) => entry.type === "operation").length;
         const restored = yield* ProgramPeer.operations.restore({
@@ -278,19 +259,25 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
         }
         attachment = restored.attachment;
         step = restored.frontier;
-        programCapability ??= (yield* authority.bindProgramAttachment(
-          request.attach.sessionId,
-          request.attach.taskId,
-          attachment.attachmentId,
-          request.attach.executionEpoch,
-        )).programCapability;
-        const bound = yield* authority.bindRestoreFrontier({
-          sessionId: acceptedAttach.sessionId,
-          taskId: acceptedAttach.taskId,
-          ownerId: request.activationOwnerId,
-          activationEpoch: acceptedAttach.executionEpoch,
-          restoreTicket: prepared.restoreTicket,
-          frontierDigest: restored.frontierDigest,
+        programCapability ??= (yield* authority.command({
+          type: "execution.bind-attachment",
+          request: {
+            sessionId: request.attach.sessionId,
+            taskId: request.attach.taskId,
+            attachmentId: attachment.attachmentId,
+            executionEpoch: request.attach.executionEpoch,
+          },
+        })).programCapability;
+        const bound = yield* authority.command({
+          type: "recovery.bind-frontier",
+          request: {
+            sessionId: acceptedAttach.sessionId,
+            taskId: acceptedAttach.taskId,
+            ownerId: request.activationOwnerId,
+            activationEpoch: acceptedAttach.executionEpoch,
+            restoreTicket: prepared.restoreTicket,
+            frontierDigest: restored.frontierDigest,
+          },
         });
         if (bound.status !== "bound") {
           throw new CrankError("restore_stale");
@@ -303,29 +290,36 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           input: acceptedInput,
         });
       }
-      programCapability ??= (yield* authority.bindProgramAttachment(
-        request.attach.sessionId,
-        request.attach.taskId,
-        attachment.attachmentId,
-        request.attach.executionEpoch,
-      )).programCapability;
+      programCapability ??= (yield* authority.command({
+        type: "execution.bind-attachment",
+        request: {
+          sessionId: request.attach.sessionId,
+          taskId: request.attach.taskId,
+          attachmentId: attachment.attachmentId,
+          executionEpoch: request.attach.executionEpoch,
+        },
+      })).programCapability;
       let cancellationInjected = false;
       while (true) {
-        let cancellation = yield* authority.cancellationState(
-          request.attach.sessionId,
-          request.attach.taskId,
-        );
+        let cancellation = yield* authority.query({
+          type: "task.cancellation-state",
+          sessionId: request.attach.sessionId,
+          taskId: request.attach.taskId,
+        });
         if (
           !cancellationInjected &&
           isCancellationInProgress(cancellation) &&
           shouldInjectBeforeStep(step, cancellation.frontier)
         ) {
           if (cancellation.type !== "unwinding") {
-            cancellation = yield* authority.beginCancellationUnwind(
-              request.attach.sessionId,
-              request.attach.taskId,
-              frontierProof ? { proof: frontierProof, step } : undefined,
-            );
+            cancellation = yield* authority.command({
+              type: "execution.begin-cancellation-unwind",
+              request: {
+                sessionId: request.attach.sessionId,
+                taskId: request.attach.taskId,
+                ...(frontierProof ? { restoredFrontier: { proof: frontierProof, step } } : {}),
+              },
+            });
             frontierProof = undefined;
           }
           if (step.type === "operation" || step.type === "emission") {
@@ -350,7 +344,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           cancellation = unwound.cancellation;
           frontierProof = unwound.frontierProof;
           const proof = frontierProof;
-          yield* JournalAuthority.operations.complete({
+          yield* completeCommand({
             sessionId: request.attach.sessionId,
             taskId: request.attach.taskId,
             actionIndex: step.actionIndex,
@@ -379,7 +373,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           }
           const proof = frontierProof;
           try {
-            yield* JournalAuthority.operations.complete({
+            yield* completeCommand({
               sessionId: request.attach.sessionId,
               taskId: request.attach.taskId,
               actionIndex: step.actionIndex,
@@ -394,11 +388,14 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
             // Ordinary Effection operations are intentionally rerun during
             // reconstruction. If one now fails before an accepted frontier,
             // fence the unreconstructable task and propagate its original error.
-            yield* authority.forceOrphan(
-              request.attach.sessionId,
-              request.attach.taskId,
-              "replay_execution_failed",
-            );
+            yield* authority.command({
+              type: "execution.force-orphan",
+              request: {
+                sessionId: request.attach.sessionId,
+                taskId: request.attach.taskId,
+                reason: "replay_execution_failed",
+              },
+            });
           }
           shutdownReason = cancelled ? "cancelled" : "failed";
           return cancelled ? { state: "cancelled" } : { state: "failed", error: step.error };
@@ -407,7 +404,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           const proof = frontierProof;
           let receipt: EmissionReceipt;
           try {
-            receipt = yield* JournalAuthority.operations.emit({
+            receipt = yield* emitCommand({
               sessionId: request.attach.sessionId,
               taskId: request.attach.taskId,
               actionIndex: step.actionIndex,
@@ -420,7 +417,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
               throw error;
             }
             const serialized = serializeDurableError(error);
-            yield* JournalAuthority.operations.complete({
+            yield* completeCommand({
               sessionId: request.attach.sessionId,
               taskId: request.attach.taskId,
               actionIndex: step.actionIndex,
@@ -444,7 +441,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
         const proof = frontierProof;
         const preparedStep = yield* prepareOperationStep(step);
         const descriptor = preparedStep.descriptor;
-        const reservation = yield* JournalAuthority.operations.reserve({
+        const reservation = yield* reserveCommand({
           sessionId: request.attach.sessionId,
           turnId: turnIdFor(request.attach.taskId),
           taskId: request.attach.taskId,
@@ -465,11 +462,14 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
             cancellation.frontier.pullId === reservation.receipt.pullId
           ) {
             if (cancellation.type !== "unwinding") {
-              yield* authority.beginCancellationUnwind(
-                request.attach.sessionId,
-                request.attach.taskId,
-                frontierProof ? { proof: frontierProof, step } : undefined,
-              );
+              yield* authority.command({
+                type: "execution.begin-cancellation-unwind",
+                request: {
+                  sessionId: request.attach.sessionId,
+                  taskId: request.attach.taskId,
+                  ...(frontierProof ? { restoredFrontier: { proof: frontierProof, step } } : {}),
+                },
+              });
               frontierProof = undefined;
             }
             cancellationInjected = true;
@@ -491,16 +491,19 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
             parentRoute: request.attach.route,
           });
           const manifest = yield* ProgramPeer.operations.manifest(childRoute, child);
-          const childTask = yield* authority.ensureChildTask({
-            sessionId: request.attach.sessionId,
-            turnId: turnIdFor(request.attach.taskId),
-            parentTaskId: request.attach.taskId,
-            parentPullId: reservation.pullId,
-            child,
-            manifest,
-            executionEpoch: request.attach.executionEpoch,
-            audience: "program-runtime",
-            route: childRoute,
+          const childTask = yield* authority.command({
+            type: "execution.ensure-child",
+            request: {
+              sessionId: request.attach.sessionId,
+              turnId: turnIdFor(request.attach.taskId),
+              parentTaskId: request.attach.taskId,
+              parentPullId: reservation.pullId,
+              child,
+              manifest,
+              executionEpoch: request.attach.executionEpoch,
+              audience: "program-runtime",
+              route: childRoute,
+            },
           });
           let childOutcome = childTask.outcome;
           if (!childOutcome) {
@@ -535,7 +538,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           if (!reservation.resolutionCapability) {
             throw new CrankError("runtime_error", "Child pull has no resolution capability");
           }
-          const childResolution = yield* JournalAuthority.operations.resolve({
+          const childResolution = yield* resolveCommand({
             capability: reservation.resolutionCapability,
             audience: "child-runtime",
             outcome: childOutcome,
@@ -569,13 +572,13 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           ) {
             throw new CrankError("program_protocol_error", "Driver did not settle recorded work");
           }
-          let resolution = yield* JournalAuthority.operations.resolve({
+          let resolution = yield* resolveCommand({
             capability: reservation.resolutionCapability,
             audience: "program-execution",
             outcome: authorized.authorizedOutcome,
           });
           if (resolution.status === "rejected" && resolution.code === "payload_too_large") {
-            resolution = yield* JournalAuthority.operations.resolve({
+            resolution = yield* resolveCommand({
               capability: reservation.resolutionCapability,
               audience: "program-execution",
               outcome: {
@@ -629,7 +632,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           if (route.placement !== "host" && route.placement !== "execution") {
             throw new CrankError("effect_placement_unavailable", "Effect route is invalid");
           }
-          const journal = authority.journalIdentity();
+          const journal = yield* authority.query({ type: "authority.identity" });
           const effectResolver = descriptor.resolver;
           const authorization: DurableEffectAuthorization = {
             sessionId: request.attach.sessionId,
@@ -670,7 +673,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
               );
             }
             executionOutcome = authorized.authorizedOutcome;
-            resolution = yield* JournalAuthority.operations.resolve({
+            resolution = yield* resolveCommand({
               capability: reservation.resolutionCapability,
               audience: effectResolver.audience,
               outcome: authorized.authorizedOutcome,
@@ -722,11 +725,14 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           error.code === "history_not_exhausted" ||
           error.code === "replay_diverged")
       ) {
-        yield* authority.forceOrphan(
-          request.attach.sessionId,
-          request.attach.taskId,
-          "replay_diverged",
-        );
+        yield* authority.command({
+          type: "execution.force-orphan",
+          request: {
+            sessionId: request.attach.sessionId,
+            taskId: request.attach.taskId,
+            reason: "replay_diverged",
+          },
+        });
         if (error.code === "history_not_exhausted") {
           throw new CrankError(
             "replay_diverged",
@@ -746,14 +752,6 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
     }
   },
 };
-
-/** Bound JournalAuthority operations for composition without API-object lookup. */
-export const {
-  reserve: reserveOperation,
-  resolve: resolveOperation,
-  emit: appendDurableEmission,
-  complete: completeDurableTask,
-} = JournalAuthority.operations;
 
 function* driverFor(kind: string): Operation<ProgramDriver> {
   const registry: ProgramDriverRegistry | undefined = yield* ProgramDriverRegistryContext.get();
@@ -792,7 +790,7 @@ function isCancellationInProgress(
 }
 
 function* unwindCancellationIfNeeded(
-  authority: DurableJournalAuthorityService,
+  authority: JournalAuthorityContract,
   sessionId: string,
   taskId: string,
   cancellation: DurableCancellationState,
@@ -804,11 +802,14 @@ function* unwindCancellationIfNeeded(
 }> {
   if (isCancellationInProgress(cancellation) && cancellation.type !== "unwinding") {
     return {
-      cancellation: yield* authority.beginCancellationUnwind(
-        sessionId,
-        taskId,
-        frontierProof ? { proof: frontierProof, step } : undefined,
-      ),
+      cancellation: yield* authority.command({
+        type: "execution.begin-cancellation-unwind",
+        request: {
+          sessionId,
+          taskId,
+          ...(frontierProof ? { restoredFrontier: { proof: frontierProof, step } } : {}),
+        },
+      }),
       frontierProof: undefined,
     };
   }

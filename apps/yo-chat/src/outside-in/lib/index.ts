@@ -39,7 +39,7 @@ export {
   expectTerminalTicTacToeResult,
   expectRunFinished,
 } from "./assertions.ts";
-export { type CopilotAuthStatus, getCopilotAuthStatus, requireCopilotAuth } from "./auth.ts";
+export { type ModelAuthStatus, getModelAuthStatus, requireModelAuth } from "./auth.ts";
 export {
   type FlakePolicy,
   DEFAULT_FLAKE_POLICY,

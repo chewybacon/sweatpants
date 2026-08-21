@@ -9,12 +9,11 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
+import { createCapabilityKeyring, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
-  withJournalAuthority,
-  createCapabilityKeyring,
-  createInMemoryDurableJournalAuthority,
-  type DurableSemanticRecord,
-} from "@sweatpants/journal-authority";
+  createAuthorityScenarioDriver,
+  withAuthorityTestScope,
+} from "@sweatpants/journal-authority/testing";
 import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -148,7 +147,7 @@ describe("automatic foreign adapter child orchestration", () => {
     const keyring = createCapabilityKeyring("automatic-child", [
       { keyId: "active", secret: "automatic-child-secret-is-32bytes" },
     ]);
-    let authority = createInMemoryDurableJournalAuthority({
+    let authority = createAuthorityScenarioDriver({
       journalId: "automatic-child",
       journalIncarnation: "1",
       keyring,
@@ -293,7 +292,7 @@ describe("automatic foreign adapter child orchestration", () => {
     const keyring = createCapabilityKeyring("immediate-child", [
       { keyId: "active", secret: "immediate-child-secret-is-32bytes" },
     ]);
-    const authority = createInMemoryDurableJournalAuthority({
+    const authority = createAuthorityScenarioDriver({
       journalId: "immediate-child",
       journalIncarnation: "1",
       keyring,
@@ -353,12 +352,12 @@ describe("automatic foreign adapter child orchestration", () => {
 
 function runProgram(
   attach: AttachProgramRequest,
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withJournalAuthority(authority, function* () {
+    return yield* withAuthorityTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
         return yield* withModelSampleTestBoundary(() =>
           ProgramRuntime.operations.run({ attach, executeHostEffects: true }),
@@ -369,10 +368,10 @@ function runProgram(
 }
 
 function recreate(
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   keyring: ReturnType<typeof createCapabilityKeyring>,
 ) {
-  return createInMemoryDurableJournalAuthority({
+  return createAuthorityScenarioDriver({
     journalId: "automatic-child",
     journalIncarnation: "1",
     keyring,
@@ -382,7 +381,7 @@ function recreate(
 }
 
 function* acceptPending(
-  authority: ReturnType<typeof createInMemoryDurableJournalAuthority>,
+  authority: ReturnType<typeof createAuthorityScenarioDriver>,
   sessionId: string,
   taskId: string,
   content: Choice,
