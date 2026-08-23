@@ -1,11 +1,16 @@
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { ProgramPlacementContext } from "@sweatpants/durable-effects";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
+import type { ProgramPlacementContextValue } from "@sweatpants/durable-effects";
+import type { ModelContext } from "@sweatpants/model-provider";
+import type { Operation } from "effection";
 import {
   MODEL_SAMPLE_EFFECT,
   decodeModelSampleSourceRequest,
   encodeModelSampleResult,
   resolveModelSampleSourceRequest,
+  type ModelContextSource,
+  type ModelSampleDisposition,
 } from "./contract.ts";
 import {
   ModelContextSourceResolverContext,
@@ -59,4 +64,40 @@ export function createModelSamplingEffectRegistration(
       return disposition;
     },
   );
+}
+
+/**
+ * Executes a parked kernel sample pull outside any program scope: decodes the
+ * journaled wire request, resolves context sources through the supplied
+ * resolver, and invokes the sampling service with an explicit placement.
+ * Mirrors createModelSamplingEffectRegistration's handler pipeline so both
+ * paths produce identical results for identical requests.
+ */
+export function* executeModelSamplePull(input: {
+  service: ModelSamplingService;
+  wireRequest: unknown;
+  sessionId: string;
+  taskId: string;
+  pullId: string;
+  attemptId?: string;
+  placement: ProgramPlacementContextValue;
+  sourceResolver: (source: ModelContextSource) => Operation<ModelContext>;
+}): Operation<ModelSampleDisposition> {
+  const sourceRequest = decodeModelSampleSourceRequest(input.wireRequest);
+  const request = resolveModelSampleSourceRequest(
+    sourceRequest,
+    yield* input.sourceResolver(sourceRequest.invocation.context),
+  );
+  return yield* runWithModelSamplingService(input.service, function* () {
+    return yield* ModelSamplingApi.operations.sample(request, {
+      executor: "host",
+      placement: input.placement,
+      sessionId: input.sessionId,
+      taskId: input.taskId,
+      pullId: input.pullId,
+      attemptId: input.attemptId ?? `${input.pullId}:engine`,
+      effectContractDigest: effectContractDigest(MODEL_SAMPLE_EFFECT),
+      cancellation: new AbortController().signal,
+    });
+  });
 }

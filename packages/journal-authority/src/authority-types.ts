@@ -313,7 +313,7 @@ export type ReserveOperationResult =
   | {
       status: "pending";
       pullId: string;
-      reason: "elicit" | "wait" | "child";
+      reason: "elicit" | "wait" | "child" | "foreign" | "sample";
       resolutionCapability?: string;
       restoredFrontierConsumed?: true;
     };
@@ -380,6 +380,18 @@ export interface TaskCloseReceipt {
   duplicate: boolean;
   restoredFrontierConsumed?: true;
 }
+
+/**
+ * Result of a completion attempt. Value-level policy violations
+ * (`schema_validation_failed`, `payload_too_large`) are protocol rejections
+ * returned as data — programs author values the authority may refuse —
+ * while contract violations (unknown task, stale capability,
+ * `nondeterminism_detected`, `history_not_exhausted`) remain exceptions.
+ */
+export type CompleteTaskResult =
+  | { readonly status: "accepted"; readonly receipt: TaskCloseReceipt }
+  | { readonly status: "duplicate"; readonly receipt: TaskCloseReceipt }
+  | { readonly status: "rejected"; readonly code: string; readonly message: string };
 
 /** Complete deterministic child-allocation request tied to a parent pull. */
 export interface EnsureChildTaskRequest {

@@ -26,6 +26,7 @@ import type {
   ClaimActivationRequest,
   ClaimActivationResult,
   CompleteTaskRequest,
+  CompleteTaskResult,
   ConsumeRestoreTicketRequest,
   ConsumeRestoreTicketResult,
   DurableCancellationState,
@@ -51,7 +52,6 @@ import type {
   ResolveOperationRequest,
   ResolveOperationResult,
   RestoredFrontierProof,
-  TaskCloseReceipt,
   ValidateElicitResponseRequest,
   ValidateElicitResponseResult,
 } from "../authority-types.ts";
@@ -150,7 +150,7 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
     emit(
       request: import("../authority-types.ts").AppendEmissionRequest,
     ): Operation<EmissionReceipt>;
-    complete(request: CompleteTaskRequest): Operation<TaskCloseReceipt>;
+    complete(request: CompleteTaskRequest): Operation<CompleteTaskResult>;
     requestCancellation(
       sessionId: string,
       taskId: string,

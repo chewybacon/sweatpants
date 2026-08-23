@@ -29,6 +29,7 @@ import type {
   ClaimActivationRequest,
   ClaimActivationResult,
   CompleteTaskRequest,
+  CompleteTaskResult,
   ConsumeRestoreTicketRequest,
   ConsumeRestoreTicketResult,
   DurableCancellationState,
@@ -192,7 +193,7 @@ export interface CommandResultByType {
   readonly "execution.accept-assistant-partial": AcceptAssistantPartialResult;
   readonly "execution.resolve-pull": ResolveOperationResult;
   readonly "execution.append-emission": EmissionReceipt;
-  readonly "execution.complete-task": TaskCloseReceipt;
+  readonly "execution.complete-task": CompleteTaskResult;
   readonly "execution.request-cancellation": CancellationAcknowledgement;
   readonly "execution.begin-cancellation-unwind": DurableCancellationState;
   readonly "execution.detach-attempt": void;

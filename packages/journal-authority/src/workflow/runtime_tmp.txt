@@ -1,0 +1,157 @@
+import { call, type Effect } from "effection";
+import type { Json } from "@sweatpants/foundation";
+import type {
+  AppendEmissionRequest,
+  ResolveOperationRequest,
+  ResolveOperationResult,
+  ReserveOperationRequest,
+  ReserveOperationResult,
+} from "../authority-types.ts";
+import type { ProgramAttachmentHandle } from "./runtime.ts";
+
+/** Minimal authority surface the parked-activation drive loop needs. */
+export interface HostAuthority {
+  reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult>;
+  resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
+  emit(request: AppendEmissionRequest): Operation<{ readonly offset: string }>;
+}
+
+export type ActivationResult =
+  | {
+      readonly kind: "completed";
+      readonly value: Json;
+      readonly actionIndex: number;
+    }
+  | {
+      readonly kind: "pending";
+      readonly reason: "elicit" | "wait" | "child";
+      readonly pullId: string;
+      readonly resolutionCapability?: string;
+    };
+
+/**
+ * Drives one activation: settles every proposal through the authority until
+ * the workflow reaches its terminal event. Returns the terminal value and
+ * the action index the caller should close the task at.
+ *
+ * Pending reservations are NOT handled here: parking is host policy. A host
+ * that wants legacy parking semantics ends its activation when it observes a
+ * pending reservation and relies on restore replaying the settled history.
+ */
+export function* driveActivation(
+  handle: ProgramAttachmentHandle,
+  authority: HostAuthority,
+  sessionId: string,
+  taskId: string,
+  programCapability: string,
+  input: Json,
+): Generator<
+    Effect<unknown> | Operation<unknown>,
+    ActivationResult,
+    unknown
+  > {
+  let event = yield* handle.exchange({ type: "start", input });
+  let pullIndex = 0;
+  while (event.type !== "completed" && event.type !== "failed") {
+    if (event.type === "emission-proposed") {
+      const receipt = yield* authority.emit({
+        sessionId,
+        taskId,
+        actionIndex: event.actionIndex,
+        descriptor: event.descriptor,
+        programCapability,
+      });
+      event = yield* handle.exchange({
+        type: "ack-emission",
+        actionIndex: event.actionIndex,
+        offset: receipt.offset,
+      });
+      continue;
+    }
+    if (event.type !== "record-proposed") {
+      throw new Error(`unexpected attachment event ${event.type}`);
+    }
+    const reserved = yield* call(() =>
+      authority.reserve({
+      sessionId,
+      turnId: turnIdFor(taskId),
+      taskId,
+      actionIndex: event.actionIndex,
+      pullIndex,
+      descriptor: event.descriptor,
+      programCapability,
+    });
+    if (reserved.status === "pending") {
+      // Parking is host policy: a host that wants legacy semantics ends its
+      // activation when it sees a pending reservation and relies on restore
+      // replaying the settled history once the participant settles.
+      const pullId = reserved.pullId;
+      return {
+        kind: "pending",
+        reason: reserved.reason,
+        pullId,
+        ...(reserved.resolutionCapability === undefined
+          ? {}
+          : { resolutionCapability: reserved.resolutionCapability }),
+      };
+    }
+    if (reserved.status === "resolved") {
+      pullIndex += 1;
+      event = yield* handle.exchange({
+        type: "resume-record",
+        actionIndex: event.actionIndex,
+        outcome: reserved.outcome,
+        receipt: { ...reserved.receipt!, status: "accepted" },
+        replayed: true,
+      });
+      continue;
+    }
+    if (reserved.status !== "authorized") {
+      throw new Error(`unexpected reservation state`);
+    }
+    pullIndex += 1;
+    const attempted = yield* handle.exchange({
+      type: "authorize-record",
+      actionIndex: event.actionIndex,
+      pullId: reserved.pullId,
+      attemptId: reserved.attemptId,
+      descriptor: event.descriptor,
+    });
+    if (attempted.type !== "record-attempt-completed") {
+      throw new Error(`expected attempt completion, got ${attempted.type}`);
+    }
+    const resolved = yield* authority.resolve({
+      capability: reserved.resolutionCapability,
+      audience: "program-execution",
+      outcome: attempted.outcome,
+    });
+    if (resolved.status !== "accepted") {
+      throw new Error(`resolution rejected: ${resolved.status}`);
+    }
+    event = yield* handle.exchange({
+      type: "resume-record",
+      actionIndex: event.actionIndex,
+      outcome: attempted.outcome,
+      receipt: {
+        sessionId,
+        taskId,
+        pullId: reserved.pullId,
+        resolutionOffset: resolved.receipt.resolutionOffset,
+        outcomeDigest: resolved.receipt.outcomeDigest,
+        status: "accepted",
+      },
+      replayed: false,
+    });
+  }
+  if (event.type !== "completed") throw new Error(event.error.message);
+  return {
+    kind: "completed" as const,
+    value: event.value,
+    actionIndex: event.actionIndex,
+  };
+}
+
+function turnIdFor(taskId: string): string {
+  const separator = taskId.indexOf("/");
+  return separator === -1 ? "turn-0" : taskId.slice(0, separator);
+}

@@ -1,34 +1,52 @@
-import {
-  type DurableEffectHandler,
-  type DurableEffectRegistration,
-} from "@sweatpants/durable-effects";
+import { type DurableEffectHandler } from "@sweatpants/durable-effects";
 
 import { scoped, type Operation } from "effection";
 import { z } from "zod";
-import { createTool, type AnyToolContract } from "@sweatpants/agent-sdk";
+import { createTool, type RuntimeTool, type AnyToolContract } from "@sweatpants/agent-sdk";
 import {
   AuthorityJournalPort,
   AuthoritySnapshotPort,
   JournalAuthorityPort,
-  installJournalProgramRuntime,
   installStoredJournalAuthority,
   type CapabilityKeyring,
   type DurableAuthoritySnapshot,
   type DurableSemanticRecord,
   type JournalAuthorityContract,
+  durableToolWorkflow,
+  driveActivation,
+  InstalledEffectPort,
+  type HostAuthority,
+  createPullResolverRegistry,
+  PULL_KIND_ELICIT,
+  PULL_KIND_FOREIGN,
+  PULL_KIND_SAMPLE,
+  type PullResolver,
+} from "@sweatpants/journal-authority";
+import type { OperationOutcome } from "@sweatpants/durable-effects";
+import type {
+  AppendEmissionRequest,
+  CompleteTaskRequest,
+  ResolveOperationRequest,
+  ResolveOperationResult,
+  ReserveOperationRequest,
+  ReserveOperationResult,
+  CompleteTaskResult,
 } from "@sweatpants/journal-authority";
 import { installExecutionStore } from "@sweatpants/journal-authority/api";
+import { DURABLE_TOOL_FACADE_ANNOTATION } from "./durable-tool-facade-marker.ts";
+import { executeForeignToolCall, type ForeignAskRelay } from "./foreign-tool-session.ts";
+export {
+  DURABLE_TOOL_FACADE_ANNOTATION,
+  isDurableToolSessionFacade,
+} from "./durable-tool-facade-marker.ts";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
-import {
-  DurableEffectRegistryContext,
-  createDurableEffectRegistry,
-} from "@sweatpants/durable-effects/runtime";
+import type { AttachProgramRequest } from "@sweatpants/durable-execution";
 import {
   assertReplayedCanonicalValue,
-  createDurableToolRegistry,
-  type DurableProgramManifest,
+  stableProgramAttachmentId,
+  exactProgramKey,
   type DurableTool,
+  type DurableToolRegistry,
   type ProgramRunResult,
 } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
@@ -37,16 +55,9 @@ import {
   type DurableSchemaRegistry,
 } from "@sweatpants/journal-authority/schema-registry";
 import { type SchemaBinding } from "@sweatpants/foundation/schema";
-import {
-  createProgramDriverRegistry,
-  ProgramDriverRegistryContext,
-} from "@sweatpants/durable-execution";
+import { ProgramRouteResolver } from "@sweatpants/durable-execution";
 
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
-import { createLocalDurableProgramDriver } from "./durable-driver.ts";
-
-/** Runtime annotation identifying an ordinary tool backed by an inner durable journal. */
-export const DURABLE_TOOL_FACADE_ANNOTATION = "sweatpants/durable-tool-facade";
 
 /** Expected facade failure translated through the ordinary ToolSession exception boundary. */
 export class DurableToolFacadeError extends Error {
@@ -58,6 +69,8 @@ export class DurableToolFacadeError extends Error {
       | "program_cancelled"
       | "unsupported_park"
       | "resolution_rejected"
+      | "invalid_journal"
+      | "program_version_unavailable"
       | "effect_handler_missing",
     message: string,
   ) {
@@ -74,11 +87,8 @@ export interface DurableToolFacadeStateStore {
 }
 
 type FacadeOuterContext = {
-  sample(request: { prompt: string }): Operation<{
-    text: string;
-    model?: string;
-    stopReason?: string;
-  }>;
+  /** Receives the raw model-sample request exactly as journaled. */
+  sample?(request: Json): Operation<Json>;
   elicit(
     key: "foreign_input",
     request: { message: string; context: unknown },
@@ -98,6 +108,14 @@ export interface DurableToolSessionFacadeOptions<I extends Json, O extends Json>
   effectHandlers?: ReadonlyMap<string, DurableEffectHandler>;
   /** Runtime validators for low-level durable definitions. Core-authored tools
    * expose `artifacts.catalog` and are detected automatically. */
+  /** Authored child programs available for automatic invocation composition. */
+  children?: DurableToolRegistry;
+  /**
+   * Static pull resolvers supplied by the host — e.g. createForeignPullResolver
+   * for session-bound live tools. Sample/elicit resolvers are built internally
+   * from the tool's outer channels (REQ-009: no kind-shaped option bags).
+   */
+  pullResolvers?: readonly PullResolver[];
   schemaRegistry?: DurableSchemaRegistry;
   onActivation?: (evidence: {
     invocationId: string;
@@ -153,14 +171,81 @@ export function createDurableToolSessionFacade<I extends Json, O extends Json>(
     .annotate(DURABLE_TOOL_FACADE_ANNOTATION, { version: 1 })
     .execute(function* ({ invocationId, input }, context) {
       const validatedInput = assertManifestInput<I>(input);
-      return yield* runFacadeProgram(options, invocationId, validatedInput, context);
+      return yield* runFacadeProgram(
+        options,
+        invocationId,
+        validatedInput,
+        // The RuntimeTool context satisfies the facade's outer-channel shape;
+        // `sample` is optional and only present when the host provides it.
+        {
+          ...(context.sample !== undefined
+            ? {
+                // Raw journaled request passes through opaquely; decode is
+                // owned by the sampling layer, not the facade.
+                sample: (request: Json) =>
+                  context.sample(request as never) as unknown as Operation<Json>,
+              }
+            : {}),
+          elicit: context.elicit,
+        } as unknown as FacadeOuterContext,
+      );
     });
 }
 
 /** Returns whether a runtime tool carries the durable-facade annotation. */
-export function isDurableToolSessionFacade(tool: AnyToolContract): boolean {
-  const annotation = tool.annotations[DURABLE_TOOL_FACADE_ANNOTATION];
-  return Boolean(annotation && typeof annotation === "object");
+
+/** Adapts the journal-authority contract onto the drive loop's host surface. */
+function hostAuthorityFor(authority: JournalAuthorityContract): HostAuthority {
+  return {
+    reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult> {
+      return authority.command({ type: "execution.reserve-pull", request });
+    },
+    resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult> {
+      return authority.command({ type: "execution.resolve-pull", request });
+    },
+    emit(request: AppendEmissionRequest): Operation<{ readonly offset: string }> {
+      return authority.command({ type: "execution.append-emission", request });
+    },
+    complete(request: CompleteTaskRequest): Operation<CompleteTaskResult> {
+      return authority.command({ type: "execution.complete-task", request });
+    },
+  };
+}
+
+/**
+ * Installs the facade's effect implementations through the workflow
+ * runtime's installed-effect port. Configured handlers win; model sampling
+ * bridges to the outer context; anything else fails closed.
+ */
+function* installWorkflowEffectHandlers(
+  sessionId: string,
+  taskId: string,
+  configured: ReadonlyMap<string, DurableEffectHandler> | undefined,
+): Operation<void> {
+  yield* InstalledEffectPort.installDriver({
+    *run(descriptor, attempt) {
+      const input = descriptor.input as Json;
+      const context = {
+        sessionId,
+        taskId,
+        pullId: attempt.pullId,
+        attemptId: attempt.attemptId,
+        cancellation: attempt.cancellation,
+        resolver: descriptor.resolver,
+      };
+      const configuredHandler = configured?.get(descriptor.name);
+      if (configuredHandler) {
+        return yield* configuredHandler(input, context);
+      }
+      // Sampling knowledge belongs to whoever installs handlers; the facade
+      // itself carries no model-sampling protocol.
+      throw new DurableToolFacadeError(
+        "effect_handler_missing",
+        `No facade effect handler for ${descriptor.name}. Sampling requires a ` +
+          `host-provided model.sample handler.`,
+      );
+    },
+  });
 }
 
 function* runFacadeProgram<I extends Json, O extends Json>(
@@ -192,7 +277,6 @@ function* runFacadeProgram<I extends Json, O extends Json>(
         schemaRegistry,
         ...(snapshot ? { initialSnapshot: snapshot } : {}),
       });
-      yield* installJournalProgramRuntime();
       const authority = yield* JournalAuthorityPort.use();
       return yield* operation(authority);
     });
@@ -212,45 +296,16 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       route: { driverKind: "program" },
       executionEpoch: 1,
     };
-    // SAFETY: registry lookup erases program type witnesses; the exact pinned
-    // manifest schemas restore input/output types at attachment boundaries.
-    const tools = createDurableToolRegistry([options.tool as unknown as DurableTool]);
-    const drivers = createProgramDriverRegistry([
-      ["program", createLocalDurableProgramDriver(tools)],
-    ]);
-    const effects = createDurableEffectRegistry(
-      effectRegistrations(options.tool.manifest, outerContext, options.effectHandlers),
-    );
-    const activated = yield* withAuthority(function* (authority) {
-      if (!snapshot) {
-        yield* authority.command({
-          type: "execution.open-task",
-          request: {
-            sessionId: invocationId,
-            turnId: "turn-0",
-            taskId,
-            manifest: options.tool.manifest,
-            input,
-            executionEpoch: 1,
-            attachmentId: "unattached-facade-program",
-            audience: "program-runtime",
-          },
-        });
-      }
-      const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* DurableEffectRegistryContext.with(effects, function* () {
-          return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
-        });
-      });
-      const snapshotPort = yield* AuthoritySnapshotPort.use();
-      const journalPort = yield* AuthorityJournalPort.use();
-      return {
-        outcome,
-        snapshot: yield* snapshotPort.exportSnapshot(),
-        journal: [...(yield* journalPort.readSession(invocationId))],
-      };
+    const activated = yield* runWorkflowActivation({
+      options,
+      invocationId,
+      taskId,
+      activation,
+      input,
+      snapshotExists: snapshot !== undefined,
+      withAuthority,
     });
-    const outcome = activated.outcome;
+    const workflowOutcome = activated.outcome;
     activation += 1;
     snapshot = activated.snapshot;
     yield* options.stateStore.save(invocationId, snapshot);
@@ -258,142 +313,388 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       yield* options.onActivation({
         invocationId,
         activation,
-        outcome,
+        outcome: workflowOutcome,
         journal: activated.journal,
       });
     }
-
-    if (outcome.state === "completed") {
-      return assertReplayedCanonicalValue<O>(outcome.value);
+    if (workflowOutcome.state === "completed") {
+      return assertReplayedCanonicalValue<O>(workflowOutcome.value as O);
     }
-    if (outcome.state === "failed") {
-      throw new DurableToolFacadeError("program_failed", outcome.error.message);
+    if (workflowOutcome.state === "failed") {
+      throw new DurableToolFacadeError("program_failed", workflowOutcome.error.message);
     }
-    if (outcome.state === "cancelled") {
+    if (workflowOutcome.state === "cancelled") {
       throw new DurableToolFacadeError("program_cancelled", "Durable tool was cancelled");
     }
-
-    const request = pendingElicit(activated.journal, outcome.pullId);
-    if (!request) {
-      throw new DurableToolFacadeError(
-        "unsupported_park",
-        `Unsupported durable facade park reason: ${outcome.reason}`,
-      );
-    }
-    const response = yield* outerContext.elicit("foreign_input", {
-      message: request.descriptor.message,
-      context: {
-        key: request.descriptor.key,
-        responseSchema: request.descriptor.response.inputProjection,
-        ...(request.descriptor.context !== undefined
-          ? { context: request.descriptor.context }
-          : {}),
-      },
-    });
-    snapshot = yield* withAuthority(function* (authority) {
-      const resolutionCapability = yield* authority.query({
-        type: "pull.resolution-capability",
-        sessionId: invocationId,
-        taskId,
-        pullId: request.pullId,
-      });
-      const resolution = yield* authority.command({
-        type: "execution.resolve-pull",
-        request: {
-          capability: resolutionCapability,
-          audience: `user:${request.descriptor.key}`,
-          outcome: {
-            status: "ok",
-            value:
-              response.action === "accept"
-                ? { action: "accept", content: assertJson(response.content) }
-                : {
-                    action: response.action,
-                    ...(response.reason !== undefined ? { reason: response.reason } : {}),
-                  },
-          },
-        },
-      });
-      if (resolution.status === "rejected") {
+    if (workflowOutcome.state === "parked" && workflowOutcome.reason === "child") {
+      if (!options.children) {
         throw new DurableToolFacadeError(
-          "resolution_rejected",
-          `Unable to resolve durable facade elicitation: ${resolution.code}`,
+          "unsupported_park",
+          "Child invocation without a configured child registry",
         );
       }
-      const snapshotPort = yield* AuthoritySnapshotPort.use();
-      return yield* snapshotPort.exportSnapshot();
-    });
-    yield* options.stateStore.save(invocationId, snapshot);
-  }
-}
-
-function effectRegistrations(
-  manifest: DurableProgramManifest,
-  outerContext: FacadeOuterContext,
-  configured: ReadonlyMap<string, DurableEffectHandler> | undefined,
-): DurableEffectRegistration[] {
-  return Object.values(manifest.effects).map((definition) => ({
-    definition,
-    satisfies:
-      definition.retrySafety.mode === "idempotent"
-        ? { mode: "idempotent", mechanism: definition.retrySafety.mechanism }
-        : definition.retrySafety.mode === "repeatable"
-          ? { mode: "repeatable" }
-          : { mode: "unsafe" },
-    handler(input, context) {
-      const configuredHandler = configured?.get(definition.name);
-      if (configuredHandler) {
-        return configuredHandler(input, context);
+      yield* composeAuthoredChild(
+        {
+          invocationId,
+          taskId,
+          attach,
+          pullId: workflowOutcome.pullId,
+          children: options.children,
+        },
+        activated.journal,
+        withAuthority,
+      );
+      continue;
+    }
+    if (workflowOutcome.state === "parked") {
+      // Generic resolver dispatch: one find → perform → settle path for every
+      // interaction kind; unregistered kinds fail closed (REQ-006/REQ-008).
+      const pull = findPull(activated.journal, taskId, workflowOutcome.pullId);
+      const resolver = facadePullResolvers(options, outerContext).get(workflowOutcome.reason);
+      if (!resolver) {
+        throw new DurableToolFacadeError(
+          "unsupported_park",
+          `Unsupported durable facade park reason: ${workflowOutcome.reason}`,
+        );
       }
-      if (definition.name !== "model.sample") {
-        return (function* () {
+      const outcome = (yield* resolver.perform(
+        { sessionId: invocationId, taskId, pullId: workflowOutcome.pullId },
+        pull.descriptor,
+      )) as OperationOutcome;
+      yield* withAuthority(function* (authority) {
+        const capability = yield* authority.query({
+          type: "pull.resolution-capability",
+          sessionId: invocationId,
+          taskId,
+          pullId: workflowOutcome.pullId,
+        });
+        const resolution = (yield* authority.command({
+          type: "execution.resolve-pull",
+          request: {
+            capability,
+            audience: resolver.audience(pull.descriptor),
+            outcome,
+          },
+        })) as { status: string; code?: string };
+        if (resolution.status === "rejected") {
           throw new DurableToolFacadeError(
-            "effect_handler_missing",
-            `No facade effect handler for ${definition.name}`,
+            "resolution_rejected",
+            (resolution as { code?: string }).code ?? "rejected",
           );
-        })();
-      }
-      return (function* () {
-        return { status: "ok" as const, value: yield* bridgeModelSample(input, outerContext) };
-      })();
-    },
-  }));
-}
-
-function* bridgeModelSample(input: Json, context: FacadeOuterContext): Operation<Json> {
-  const prompt =
-    input !== null && typeof input === "object" && !Array.isArray(input)
-      ? input["prompt"]
-      : undefined;
-  const sample = yield* context.sample({
-    prompt: typeof prompt === "string" ? prompt : JSON.stringify(input),
-  });
-  return {
-    text: sample.text,
-    ...(sample.model !== undefined ? { model: sample.model } : {}),
-    ...(sample.stopReason !== undefined ? { stopReason: sample.stopReason } : {}),
-  };
+        }
+        if (resolution.status === "rejected") {
+          throw new DurableToolFacadeError("resolution_rejected", resolution.code ?? "rejected");
+        }
+      });
+      continue;
+    }
+  }
 }
 
 function assertManifestInput<I extends Json>(input: unknown): I {
   return assertReplayedCanonicalValue<I>(input);
 }
 
-function pendingElicit(records: DurableSemanticRecord[], pullId: string) {
+/** Generic unresolved-pull lookup feeding registry dispatch. */
+function findPull(
+  records: DurableSemanticRecord[],
+  taskId: string,
+  pullId: string,
+): { kind: string; descriptor: Json } {
+  const resolved = new Set(
+    records.flatMap((r) => (r.payload.type === "PullResolved" ? [r.payload.pullId] : [])),
+  );
   const record = records.find(
-    (candidate) =>
-      candidate.payload.type === "PullRequested" &&
-      candidate.payload.pullId === pullId &&
-      candidate.payload.descriptor.kind === "elicit",
+    (r) =>
+      r.payload.type === "PullRequested" &&
+      r.payload.taskId === taskId &&
+      r.payload.pullId === pullId &&
+      !resolved.has(r.payload.pullId),
   );
   if (!record || record.payload.type !== "PullRequested") {
-    return undefined;
-  }
-  if (record.payload.descriptor.kind !== "elicit") {
-    return undefined;
+    throw new DurableToolFacadeError("invalid_journal", "Parked pull missing from journal");
   }
   return {
-    pullId: record.payload.pullId,
-    descriptor: record.payload.descriptor,
+    kind: record.payload.descriptor.kind,
+    descriptor: record.payload.descriptor as unknown as Json,
   };
+}
+
+/**
+ * Facade-side resolver registry: each interaction kind owns its transport;
+ * dispatch is generic. Kinds ride kernel name constants — no host literals.
+ */
+/** Stock resolver for parked `foreign` pulls over host-supplied live tools. */
+export function createForeignPullResolver(statics: {
+  readonly tools: ReadonlyMap<string, RuntimeTool>;
+  readonly asks?: ForeignAskRelay;
+}): PullResolver {
+  return {
+    kind: PULL_KIND_FOREIGN,
+    audience: (descriptor) => `foreign:${(descriptor as { driver: string }).driver}`,
+    perform(ctx, descriptor) {
+      const d = descriptor as { driver: string; tool: string; input: Json };
+      return executeForeignToolCall(
+        { tools: statics.tools as Map<string, RuntimeTool> },
+        {
+          driver: d.driver,
+          tool: d.tool,
+          input: d.input,
+          durability: "ephemeral_handle",
+        },
+        ctx,
+        statics.asks,
+      );
+    },
+  };
+}
+
+function facadePullResolvers(
+  options: { readonly pullResolvers?: readonly PullResolver[] },
+  outerContext: FacadeOuterContext,
+): ReadonlyMap<string, PullResolver> {
+  return createPullResolverRegistry([
+    ...(options.pullResolvers ?? []),
+    {
+      kind: PULL_KIND_SAMPLE,
+      audience: () => "model-runtime",
+      *perform(_ctx, descriptor) {
+        if (!outerContext.sample) {
+          throw new DurableToolFacadeError(
+            "unsupported_park",
+            "Program sampled for a model but no outer sampler is configured",
+          );
+        }
+        const sampled = yield* outerContext.sample((descriptor as { input: Json }).input);
+        // Rich tool results carry undefined optional members; journals hold
+        // canonical JSON, so strip them before settling the pull.
+        return {
+          status: "ok" as const,
+          value: JSON.parse(JSON.stringify(sampled ?? null)) as Json,
+        };
+      },
+    },
+    {
+      kind: PULL_KIND_ELICIT,
+      audience: (descriptor) => `user:${(descriptor as { key: string }).key}`,
+      *perform(_ctx, descriptor) {
+        const d = descriptor as {
+          message: string;
+          key: string;
+          response: { inputProjection: Json };
+          context?: Json;
+        };
+        const elicitResponse = yield* outerContext.elicit("foreign_input", {
+          message: d.message,
+          context: {
+            key: d.key,
+            responseSchema: d.response.inputProjection,
+            ...(d.context !== undefined ? { context: d.context } : {}),
+          },
+        });
+        return {
+          status: "ok" as const,
+          value:
+            elicitResponse.action === "accept"
+              ? { action: "accept", content: assertJson(elicitResponse.content) }
+              : {
+                  action: elicitResponse.action,
+                  ...(elicitResponse.reason !== undefined ? { reason: elicitResponse.reason } : {}),
+                },
+        };
+      },
+    },
+  ]);
+}
+
+/** Locates one unresolved invoke pull proposed by the root task. */
+function findInvokePull(
+  records: DurableSemanticRecord[],
+  taskId: string,
+  pullId: string,
+): { child: { id: string; version: string; digest: string; input: Json } } | undefined {
+  const resolved = new Set(
+    records.flatMap((r) => (r.payload.type === "PullResolved" ? [r.payload.pullId] : [])),
+  );
+  const pull = records.find(
+    (r) =>
+      r.payload.type === "PullRequested" &&
+      r.payload.taskId === taskId &&
+      r.payload.pullId === pullId &&
+      !resolved.has(r.payload.pullId) &&
+      r.payload.descriptor.kind === "invoke",
+  );
+  if (!pull || pull.payload.type !== "PullRequested") return undefined;
+  if (pull.payload.descriptor.kind !== "invoke") return undefined;
+  return { child: pull.payload.descriptor.child as never };
+}
+
+interface ComposeRequest {
+  readonly invocationId: string;
+  readonly taskId: string;
+  readonly attach: AttachProgramRequest;
+  readonly pullId: string;
+  readonly children: DurableToolRegistry;
+  /** Reserved for foreign-call orchestration once session resolution lands. */
+  readonly foreignRequest?: undefined;
+}
+
+/**
+ * Composes one parked authored-child invocation: ensure-child, bind, and a
+ * nested activation that closes the child against its own journal. The next
+ * facade activation restores the parent against the settled invocation.
+ */
+function* composeAuthoredChild(
+  request: ComposeRequest,
+  journal: DurableSemanticRecord[],
+  withAuthority: <T>(
+    operation: (authority: JournalAuthorityContract) => Operation<T>,
+  ) => Operation<T>,
+): Operation<void> {
+  const { invocationId, taskId, attach, pullId, children } = request;
+  const pull = findInvokePull(journal, taskId, pullId);
+  if (!pull) {
+    throw new DurableToolFacadeError("invalid_journal", "Child pull missing from journal");
+  }
+  const childTool = children.get(exactProgramKey(pull.child));
+  if (!childTool) {
+    throw new DurableToolFacadeError(
+      "program_version_unavailable",
+      `No child program for ${exactProgramKey(pull.child)}`,
+    );
+  }
+  yield* withAuthority(function* (authority) {
+    const routeResolver = yield* ProgramRouteResolver.use();
+    const childRoute = yield* routeResolver.resolve({
+      program: pull.child,
+      parentRoute: attach.route,
+    });
+    const childTask = yield* authority.command({
+      type: "execution.ensure-child",
+      request: {
+        sessionId: invocationId,
+        turnId: "turn-0",
+        parentTaskId: taskId,
+        parentPullId: pullId,
+        child: pull.child,
+        manifest: childTool.manifest,
+        executionEpoch: attach.executionEpoch,
+        audience: "program-runtime",
+        route: childRoute,
+      },
+    });
+    const childRequest: AttachProgramRequest = {
+      sessionId: invocationId,
+      taskId: childTask.taskId,
+      program: {
+        id: pull.child.id,
+        version: pull.child.version,
+        digest: pull.child.digest,
+      },
+      input: pull.child.input,
+      route: childRoute,
+      executionEpoch: attach.executionEpoch,
+    };
+    const bound = yield* authority.command({
+      type: "execution.bind-attachment",
+      request: {
+        sessionId: invocationId,
+        taskId: childTask.taskId,
+        attachmentId: stableProgramAttachmentId(childRequest),
+        executionEpoch: attach.executionEpoch,
+      },
+    });
+    // The composed child closes itself; restoring the parent is the caller's
+    // next activation.
+    yield* driveActivation({
+      attach: childRequest,
+      authority: hostAuthorityFor(authority),
+      programCapability: bound.programCapability,
+      workflow: durableToolWorkflow(childTool, pull.child.input),
+    });
+  });
+}
+
+interface WorkflowActivationRequest<I extends Json> {
+  readonly options: DurableToolSessionFacadeOptions<I, Json>;
+  readonly invocationId: string;
+  readonly taskId: string;
+  readonly activation: number;
+  readonly input: I;
+  readonly snapshotExists: boolean;
+  readonly withAuthority: <T>(
+    operation: (authority: JournalAuthorityContract) => Operation<T>,
+  ) => Operation<T>;
+}
+
+interface WorkflowActivationResult {
+  readonly outcome: ProgramRunResult;
+  readonly snapshot: DurableAuthoritySnapshot;
+  readonly journal: DurableSemanticRecord[];
+}
+
+/**
+ * One workflow-runtime activation: open or bind by snapshot presence, install
+ * effect handlers, drive the attachment to park or terminal, and export the
+ * post-activation snapshot and journal.
+ */
+function* runWorkflowActivation<I extends Json>(
+  request: WorkflowActivationRequest<I>,
+): Operation<WorkflowActivationResult> {
+  const { options, invocationId, taskId, activation, input } = request;
+  return yield* request.withAuthority(function* (authority): Operation<WorkflowActivationResult> {
+    let programCapability: string;
+    if (!request.snapshotExists) {
+      const openedTask = yield* authority.command({
+        type: "execution.open-task",
+        request: {
+          sessionId: invocationId,
+          turnId: "turn-0",
+          taskId,
+          manifest: options.tool.manifest,
+          input,
+          executionEpoch: 1,
+          attachmentId: "unattached-facade-program",
+          audience: "program-runtime",
+        },
+      });
+      programCapability = openedTask.programCapability;
+    } else {
+      const bound = yield* authority.command({
+        type: "execution.bind-attachment",
+        request: {
+          sessionId: invocationId,
+          taskId,
+          attachmentId: `unattached-facade-program-${activation}`,
+          executionEpoch: 1,
+        },
+      });
+      programCapability = bound.programCapability;
+    }
+    yield* installWorkflowEffectHandlers(invocationId, taskId, options.effectHandlers);
+    const outcome: ProgramRunResult = yield* driveActivation({
+      attach: {
+        sessionId: invocationId,
+        taskId,
+        program: {
+          id: options.tool.manifest.programId,
+          version: options.tool.manifest.version,
+          digest: options.tool.manifest.digest,
+        },
+        input,
+        route: { driverKind: "program" },
+        executionEpoch: 1,
+      },
+      workflow: durableToolWorkflow(options.tool, input),
+      authority: hostAuthorityFor(authority),
+      programCapability,
+    });
+    const snapshotPort = yield* AuthoritySnapshotPort.use();
+    const journalPort = yield* AuthorityJournalPort.use();
+    return {
+      outcome,
+      snapshot: yield* snapshotPort.exportSnapshot(),
+      journal: [...(yield* journalPort.readSession(invocationId))],
+    };
+  });
 }

@@ -9,7 +9,6 @@ import type {
   DurableProgramManifest,
   DurableTaskHandle,
   EmissionDescriptor,
-  ForeignToolRequest,
   GeneratedProgramArtifactIdentityV1,
   ProgramIdentityProvenanceV1,
   ProgramElicitResult,
@@ -31,6 +30,17 @@ export interface RecordOptions {
 }
 
 export interface DurableProgramContext {
+  /**
+   * Workflow-runtime sampling boundary: journals the canonical wire request
+   * and parks until the owning session resolves it. Absent on the legacy
+   * context, where sampling lowers onto an effect proposal instead.
+   */
+  /**
+   * Single generic parked-pull boundary: lowers any registered interaction
+   * descriptor onto the runtime. The only interaction member programs see —
+   * ergonomics live in authoring layers, never here (REQ-009).
+   */
+  pull?(descriptor: Json): Operation<Json>;
   effect<I extends Json, O extends Json, P extends Json = never>(
     definition: EffectDefinition<I, O, P>,
     input: I,
@@ -66,7 +76,6 @@ export interface DurableProgramContext {
   race<T extends Json = Json>(children: DurableChildDescriptor[]): Operation<T>;
   spawn(child: DurableChildDescriptor): Operation<DurableTaskHandle>;
   join<T extends Json = Json>(handle: DurableTaskHandle): Operation<T>;
-  foreignTool<T extends Json = Json>(request: ForeignToolRequest): Operation<T>;
 }
 
 export type DurableProgramFactory<I extends Json = Json, O extends Json = Json> = (

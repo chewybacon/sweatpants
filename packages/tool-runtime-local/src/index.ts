@@ -35,11 +35,14 @@ export {
   createToolInvocationForeignEffectRegistrations,
   type ToolInvocationForeignDriverOptions,
   type ToolInvocationForeignEffectRegistrations,
+  executeForeignToolCall,
+  type ForeignAskRelay,
 } from "./foreign-tool-session.ts";
 export {
   DURABLE_TOOL_FACADE_ANNOTATION,
   DurableToolFacadeError,
   createDurableToolSessionFacade,
+  createForeignPullResolver,
   createInMemoryDurableToolFacadeStateStore,
   isDurableToolSessionFacade,
   type DurableToolFacadeStateStore,

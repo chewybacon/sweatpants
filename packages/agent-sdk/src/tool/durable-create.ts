@@ -98,6 +98,10 @@ type SamplingRequestBase = {
   readonly messages?: readonly ChatMessage[];
   readonly systemPrompt?: string;
   readonly maxTokens?: number;
+  readonly temperature?: number;
+  readonly topP?: number;
+  readonly topK?: number;
+  readonly thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   readonly modelPreferences?: Json;
   readonly classifications?: readonly Json[];
   readonly retries?: number;
@@ -719,6 +723,10 @@ function createCanonicalModelSampleRequest(
     modelPreferences,
     classifications,
     toolChoice,
+    temperature,
+    topP,
+    topK,
+    thinking,
   } = request;
   assertSamplingRequest(prompt, messages, request.retries);
   const contextMessages: ChatMessage[] = [
@@ -732,11 +740,20 @@ function createCanonicalModelSampleRequest(
   return {
     invocation: {
       context,
-      ...(maxTokens !== undefined || toolChoice !== undefined
+      ...(maxTokens !== undefined ||
+      toolChoice !== undefined ||
+      temperature !== undefined ||
+      topP !== undefined ||
+      topK !== undefined ||
+      thinking !== undefined
         ? {
             options: {
               ...(maxTokens !== undefined ? { maxTokens } : {}),
               ...(toolChoice !== undefined ? { toolChoice } : {}),
+              ...(temperature !== undefined ? { temperature } : {}),
+              ...(topP !== undefined ? { topP } : {}),
+              ...(topK !== undefined ? { topK } : {}),
+              ...(thinking !== undefined ? { thinking } : {}),
             },
           }
         : {}),
@@ -748,6 +765,14 @@ function createCanonicalModelSampleRequest(
   };
 }
 
+function projectSampleCompletion(value: unknown): SampleExchangeCompletion {
+  const completion = value as { text?: string } & Record<string, unknown>;
+  return {
+    ...(completion.text !== undefined ? { text: String(completion.text) } : { text: "" }),
+    ...completion,
+  } as unknown as SampleExchangeCompletion;
+}
+
 function* sampleModel(
   context: DurableProgramContext,
   request: SamplingRequestBase & {
@@ -757,6 +782,17 @@ function* sampleModel(
   },
 ): Operation<SampleExchangeCompletion> {
   const canonicalRequest = createCanonicalModelSampleRequest(request);
+  // Workflow runtime: prefer the native sample boundary (parks the program);
+  // fall back to the legacy effect proposal when only that surface exists.
+  if (context.pull) {
+    const settled = (yield* context.pull({
+      kind: "sample",
+      input: canonicalRequest,
+    } as unknown as Json)) as {
+      text: string;
+    };
+    return projectSampleCompletion(settled);
+  }
   return projectModelSampleCompletion(
     yield* sampleDurableModel(context, canonicalRequest, { audience: "model-runtime" }),
   );

@@ -1,7 +1,11 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { registeredPullKinds } from "./pull-kinds/index.ts";
 import { parser, type Parser } from "@sweatpants/foundation";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { z } from "zod";
+
+/** Pull kinds whose snapshot variants come straight from the registry. */
+const PULL_KIND_SNAPSHOT_KINDS = new Set(["elicit", "sample", "foreign", "invoke", "spawn"]);
 
 export const DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 const MAX_SNAPSHOT_DEPTH = 128;
@@ -66,15 +70,12 @@ const durableOperationDescriptorSchema = z.union([
     input: jsonValueSchema,
     resolver: z.strictObject({ audience: z.string(), route: z.string().optional() }),
   }),
-  z.strictObject({
-    kind: z.literal("elicit"),
-    key: z.string(),
-    message: z.string(),
-    response: portableSchemaDescriptorSchema,
-    context: jsonValueSchema.optional(),
-    contextContract: portableSchemaDescriptorSchema.optional(),
-    binding: z.strictObject({ id: digestSchema }).optional(),
-  }),
+  // Registered interaction kinds derive their snapshot variants from the
+  // pull-kind registry — adding a kind never requires editing this codec.
+  ...registeredPullKinds()
+    .filter((policy) => PULL_KIND_SNAPSHOT_KINDS.has(policy.kind))
+    .map((policy) => policy.descriptorSchema),
+  // Clock waits keep their snapshot-only exactly-one-deadline refinement.
   z
     .strictObject({
       kind: z.literal("wait"),
@@ -87,8 +88,6 @@ const durableOperationDescriptorSchema = z.union([
         (value.notBefore !== undefined && Number.isFinite(Date.parse(value.notBefore))) ||
         value.durationMs !== undefined,
     ),
-  z.strictObject({ kind: z.literal("invoke"), child: childSnapshotSchema }),
-  z.strictObject({ kind: z.literal("spawn"), child: childSnapshotSchema }),
   z.strictObject({
     kind: z.literal("all"),
     children: z.array(childSnapshotSchema).max(MAX_CHILDREN_PER_OPERATION),
