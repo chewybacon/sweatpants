@@ -130,11 +130,12 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       innerFactories += 1;
       const answers: string[] = [];
       for (let round = 0; round < 2; round += 1) {
-        const sampled = yield* context.effect(
-          modelSample,
-          { prompt: `Suggest ${topic}, round ${round}`, round },
-          { audience: "inner-model" },
-        );
+        // Native workflow sampling boundary: journals the request and parks
+        // until the owning session resolves it (Decision 3 semantics).
+        const sampled = (yield* context.pull!({
+          kind: "sample",
+          input: { prompt: `Suggest ${topic}, round ${round}` },
+        } as never)) as unknown as { text: string };
         const result = yield* context.elicit<Choice>(
           "choice",
           sampled.text,
@@ -266,7 +267,8 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
         schemaRegistry: innerSchemas(),
       });
       const innerJournal = innerAuthority.readJournal(taskId);
-      expect(countEffectPulls(innerJournal, "model.sample")).toBe(2);
+      // Sampling parks as a native kernel pull under the workflow runtime.
+      expect(countPulls(innerJournal, "sample")).toBe(2);
       expect(countPulls(innerJournal, "elicit")).toBe(2);
       expect(innerJournal.at(-1)?.payload).toMatchObject({
         type: "TaskClosed",
@@ -284,8 +286,10 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       expect(JSON.stringify(outerJournal)).not.toContain("inner-model");
     });
 
-    expect(innerFactories).toBe(3);
-    expect(innerActivations).toBe(3);
+    // Workflow runtime replays the program body once per parked pull
+    // (2 samples + 2 elicits + completing run), not per legacy batch.
+    expect(innerFactories).toBe(5);
+    expect(innerActivations).toBe(5);
     expect(outerModelSamples).toBe(2);
   });
 });

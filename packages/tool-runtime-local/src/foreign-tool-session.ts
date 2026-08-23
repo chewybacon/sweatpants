@@ -1,7 +1,7 @@
 import { action, race, type Operation } from "effection";
 import { z } from "zod";
 
-import { isDurableToolSessionFacade } from "./durable-tool-session-facade.ts";
+import { isDurableToolSessionFacade } from "./durable-tool-facade-marker.ts";
 import {
   parseElicitExchangeCompletion,
   type AnyToolContract,
@@ -12,6 +12,7 @@ import {
   createDurableEffectRegistration,
   type DurableEffectContext,
   type DurableEffectRegistration,
+  type OperationOutcome,
 } from "@sweatpants/durable-effects";
 import type {
   ForeignContinuation,
@@ -26,6 +27,7 @@ import {
   ToolInvocationHostPort,
   type ToolInvocationAsk,
   type ToolInvocationHost,
+  type ToolInvocationResume,
   type ToolInvocationTurn,
 } from "@sweatpants/tool-session";
 import {
@@ -443,4 +445,210 @@ function stripUndefined(value: unknown): unknown {
     );
   }
   return value;
+}
+
+// ── Session-side executor for parked foreign pulls ──
+
+/** Relays a live tool's backchannel asks to whoever can answer them. */
+export interface ForeignAskRelay {
+  /** Answer a sampling ask with a sample exchange completion. */
+  sample?(ask: {
+    requestId: string;
+    text?: string;
+    systemPrompt?: string;
+    messages?: readonly unknown[];
+  }): Operation<{ text: string }>;
+  /** Answer an elicitation ask with accept/decline/cancel. */
+  elicit?(request: { message: string; context?: Json | undefined }): Operation<{
+    action: "accept" | "decline" | "cancel";
+    content?: Json;
+    reason?: string;
+  }>;
+}
+
+function* turnOnce(
+  host: ToolInvocationHost,
+  invocationId: string,
+  cursor: number,
+  commandId: string,
+  resume: ToolInvocationResume | undefined,
+): Operation<ToolInvocationTurn> {
+  const turnRequest: {
+    invocationId: string;
+    commandId: string;
+    cursor: number;
+    resume?: ToolInvocationResume;
+  } = {
+    invocationId,
+    commandId,
+    cursor,
+  };
+  if (resume !== undefined) {
+    turnRequest.resume = resume;
+  }
+  return yield* turnWithCancellation(
+    host,
+    turnRequest,
+    // The executor runs outside any attempt; cancellation is host-driven
+    // process death, so a fresh non-aborted signal is correct here.
+    {
+      sessionId: "",
+      taskId: "",
+      pullId: commandId,
+      attemptId: "none",
+      cancellation: new AbortController().signal,
+      resolver: { audience: "foreign:tool-session" },
+    } as never,
+  );
+}
+
+/**
+ * Executes one session-bound foreign tool call against the invocation host
+ * and returns the outcome to journal on the parked pull. The tool's own
+ * sample/elicit asks ride {@link ForeignAskRelay}; unanswered kinds fail the
+ * call closed.
+ */
+export function* executeForeignToolCall(
+  options: ToolInvocationForeignDriverOptions,
+  request: {
+    readonly driver: string;
+    readonly tool: string;
+    readonly input: Json;
+    readonly durability: ForeignDurability;
+  },
+  identity: { readonly sessionId: string; readonly taskId: string; readonly pullId: string },
+  relay?: ForeignAskRelay,
+): Operation<OperationOutcome> {
+  const fail = (code: string, message: string): OperationOutcome => ({
+    status: "error",
+    error: { code, message },
+  });
+
+  if (request.driver !== "tool-session") {
+    return fail("foreign_driver_mismatch", `ToolSession driver cannot handle ${request.driver}`);
+  }
+  if (request.durability !== "ephemeral_handle") {
+    return fail("unsupported_park", "Only ephemeral_handle foreign calls are supported");
+  }
+  const tool = options.tools.get(request.tool);
+  if (!tool) {
+    return fail("foreign_tool_not_found", `Foreign tool not found: ${request.tool}`);
+  }
+
+  const host = yield* ToolInvocationHostPort.use();
+  const invocationId = foreignSessionId(
+    identity.sessionId,
+    `${identity.taskId}:${identity.pullId}`,
+  );
+  const toolInput = isDurableToolSessionFacade(tool)
+    ? { invocationId: identity.taskId, input: request.input }
+    : request.input;
+
+  try {
+    yield* host.start({
+      invocationId,
+      tool,
+      input: assertJson(toolInput),
+    });
+  } catch {
+    return fail("foreign_session_create_failed", "Foreign tool invocation could not start");
+  }
+
+  let cursor = 0;
+  let commandIndex = 0;
+  let event: ToolInvocationTurn = yield* turnOnce(
+    host,
+    invocationId,
+    cursor,
+    `${identity.pullId}:0`,
+    undefined,
+  );
+
+  for (;;) {
+    cursor = "cursor" in event ? event.cursor : cursor;
+
+    if (event.type === "completed") {
+      return { status: "ok", value: assertJson(event.result) };
+    }
+    if (event.type === "failed") {
+      return {
+        status: "error",
+        error: { code: "foreign_tool_error", message: event.error.message },
+      };
+    }
+    if (event.type === "cancelled") {
+      return { status: "cancelled" };
+    }
+
+    const ask = event.ask as {
+      kind: "sample" | "elicit";
+      requestId: string;
+      messages?: readonly { type?: string; text?: string }[];
+      systemPrompt?: string;
+      message?: string;
+      context?: Json;
+    };
+
+    let answer: unknown;
+    try {
+      if (ask.kind === "sample") {
+        if (!relay?.sample) {
+          return fail("foreign_ask_unanswered", "No sample relay configured");
+        }
+        const lastText = ask.messages?.at(-1)?.text;
+        answer = yield* relay.sample({
+          ...(lastText !== undefined ? { text: lastText } : {}),
+          ...(ask.systemPrompt !== undefined ? { systemPrompt: ask.systemPrompt } : {}),
+          requestId: ask.requestId,
+        });
+      } else {
+        if (!relay?.elicit) {
+          return fail("foreign_ask_unanswered", "No elicit relay configured");
+        }
+        answer = yield* relay.elicit({
+          message: ask.message ?? "",
+          ...(ask.context !== undefined ? { context: ask.context as Json } : {}),
+        });
+      }
+    } catch (error) {
+      return fail(
+        "foreign_ask_failed",
+        error instanceof Error ? error.message : "Foreign ask could not be answered",
+      );
+    }
+
+    commandIndex += 1;
+    const resume: ToolInvocationResume =
+      ask.kind === "elicit"
+        ? {
+            kind: "elicit",
+            requestId: ask.requestId,
+            response: answer as {
+              action: "accept";
+              content: Json;
+            },
+          }
+        : {
+            kind: "sample",
+            requestId: ask.requestId,
+            response: answer as {
+              text: string;
+            },
+          };
+
+    try {
+      event = yield* turnOnce(
+        host,
+        invocationId,
+        cursor,
+        `${identity.pullId}:${commandIndex}`,
+        resume,
+      );
+    } catch (error) {
+      if (error instanceof ToolInvocationHostError && error.code === "invocation_not_found") {
+        return fail("foreign_reference_lost", `Live reference ${invocationId} is gone`);
+      }
+      throw error;
+    }
+  }
 }

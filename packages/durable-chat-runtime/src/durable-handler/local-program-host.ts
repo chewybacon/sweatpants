@@ -7,6 +7,7 @@ import {
 } from "@sweatpants/durable-execution";
 import { scoped, type Operation } from "effection";
 import {
+  installEffectRegistrations,
   JournalAuthorityPort,
   type DurableSemanticRecord,
   type JournalAuthorityContract,
@@ -212,6 +213,65 @@ export function* runLocalProgramActivation<T>(
   };
   return yield* runWithModelSamplingService(scope.modelSamplingService, function* () {
     return yield* runWithProgramDeliveryWriter(scope.deliveryWriter, runConfigured);
+  });
+}
+
+
+
+
+// ── Workflow-runtime activation environment ──
+
+/**
+ * Activation scope for the workflow runtime. Effects arrive as legacy-style
+ * registrations installed verbatim onto the kernel's installed-effect port;
+ * per Decision 1 the journaled input is exactly what the authoring code
+ * proposed (no preparation layer).
+ */
+export interface WorkflowProgramActivationScope {
+  installAuthority: ProgramDriverJournal["install"];
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly effectRegistrations: readonly import("@sweatpants/durable-effects").DurableEffectRegistration[];
+  /** Post-resolution bookkeeping (e.g. sampling acknowledgement). */
+  readonly onEffectResolved?: (info: {
+    readonly pullId: string;
+    readonly attemptId: string;
+    readonly outcomeDigest: string;
+    readonly effect: { readonly name: string; readonly version: string };
+  }) => Operation<void>;
+  readonly routeResolver?: (
+    program: PinnedProgram,
+    parentRoute: ProgramRoute,
+  ) => Operation<ProgramRoute>;
+}
+
+/**
+ * Workflow-runtime twin of {@link runLocalProgramActivation}: installs the
+ * authority plus an installed-effect driver built from the supplied
+ * registrations, then hands the live authority to the caller's drive
+ * operation inside the route-resolver scope.
+ */
+export function* runWorkflowProgramActivation(
+  scope: WorkflowProgramActivationScope,
+  drive: (authority: JournalAuthorityContract) => Operation<ProgramRunResult>,
+): Operation<ProgramRunResult> {
+  return yield* scoped(function* () {
+    yield* scope.installAuthority();
+    const authority = yield* JournalAuthorityPort.use();
+    yield* installEffectRegistrations(
+      { sessionId: scope.sessionId, taskId: scope.taskId },
+      scope.effectRegistrations,
+    );
+    return yield* ProgramRouteResolver.with(
+      scope.routeResolver
+        ? function* ({ program, parentRoute }) {
+            return yield* scope.routeResolver!(program, parentRoute);
+          }
+        : undefined,
+      function* () {
+        return yield* drive(authority);
+      },
+    );
   });
 }
 

@@ -126,6 +126,11 @@ export type ForeignDurability =
   | "resumable_handle"
   | "server_task"
   | "crank_native";
+/** Model-sampling pull proposed by a journaled program; input is the canonical wire request. */
+export interface DurableSampleDescriptor {
+  kind: "sample";
+  input: Json;
+}
 export type ForeignToolRequest = {
   driver: string;
   tool: string;
@@ -133,6 +138,14 @@ export type ForeignToolRequest = {
   durability: ForeignDurability;
   route?: string;
 };
+/** Session-bound live tool call proposed by a journaled program. */
+export interface DurableForeignDescriptor {
+  kind: "foreign";
+  driver: string;
+  tool: string;
+  input: Json;
+  durability: ForeignDurability;
+}
 export type ForeignContinuation = { driver: string; state: Json };
 export type ProgramElicitResult<T extends Json = Json> =
   | { action: "accept"; content: T }
@@ -177,6 +190,8 @@ export type DurableOperationDescriptor =
   | DurableElicitDescriptor
   | WaitDescriptor
   | DurableInvokeDescriptor
+  | DurableSampleDescriptor
+  | DurableForeignDescriptor
   | DurableAllDescriptor
   | DurableRaceDescriptor
   | DurableSpawnDescriptor

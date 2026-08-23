@@ -87,7 +87,7 @@ export interface JournalAuthorityConformancePort {
   ): Operation<import("../authority-types.ts").EmissionReceipt>;
   complete(
     request: import("../authority-types.ts").CompleteTaskRequest,
-  ): Operation<import("../authority-types.ts").TaskCloseReceipt>;
+  ): Operation<import("../authority-types.ts").CompleteTaskResult>;
   ensureChildTask(
     request: import("../authority-types.ts").EnsureChildTaskRequest,
   ): Operation<import("../authority-types.ts").EnsureChildTaskResult>;
@@ -1330,10 +1330,15 @@ function* emissionAndCompletion(
     programCapability,
   };
   const closed = yield* authority.complete(closeRequest);
-  assert(caseName, !closed.duplicate, "first completion must close");
   assert(
     caseName,
-    (yield* authority.complete(closeRequest)).duplicate,
+    closed.status === "accepted" && !closed.receipt.duplicate,
+    "first completion must close",
+  );
+  const replayed = yield* authority.complete(closeRequest);
+  assert(
+    caseName,
+    replayed.status === "duplicate" && replayed.receipt.duplicate,
     "identical completion must be idempotent",
   );
   assertEqual(

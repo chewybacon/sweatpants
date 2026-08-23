@@ -119,8 +119,30 @@ function emitCommand(request: AppendEmissionRequest): Operation<EmissionReceipt>
   return JournalAuthority.operations.command({ type: "execution.append-emission", request });
 }
 
-function completeCommand(request: CompleteTaskRequest): Operation<TaskCloseReceipt> {
-  return JournalAuthority.operations.command({ type: "execution.complete-task", request });
+interface TaskClosure {
+  readonly receipt: TaskCloseReceipt;
+  /** The outcome the authority actually closed the task with. */
+  readonly outcome: OperationOutcome;
+}
+
+function* completeCommand(request: CompleteTaskRequest): Operation<TaskClosure> {
+  const result = yield* JournalAuthority.operations.command({
+    type: "execution.complete-task",
+    request,
+  });
+  if (result.status === "rejected") {
+    // Program-authored values the authority refuses surface as ordinary
+    // program failures: close through the standard error envelope so the
+    // journal records TaskClosed{error} exactly like a thrown body.
+    const error = { code: result.code, message: result.message };
+    const retry = yield* JournalAuthority.operations.command({
+      type: "execution.complete-task",
+      request: { ...request, outcome: { status: "error", error } },
+    });
+    if (retry.status === "rejected") throw new CrankError(retry.code, retry.message);
+    return { receipt: retry.receipt, outcome: { status: "error", error } };
+  }
+  return { receipt: result.receipt, outcome: request.outcome };
 }
 
 /** Resolves the durable-effects-owned dispatch outcome through Journal Authority. */
@@ -344,7 +366,7 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
           cancellation = unwound.cancellation;
           frontierProof = unwound.frontierProof;
           const proof = frontierProof;
-          yield* completeCommand({
+          const closure = yield* completeCommand({
             sessionId: request.attach.sessionId,
             taskId: request.attach.taskId,
             actionIndex: step.actionIndex,
@@ -352,6 +374,12 @@ const legacyProgramRuntimeDriver: ProgramRuntimeDriver = {
             programCapability,
             ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
           });
+          if (closure.outcome.status === "error") {
+            // Authority refused the program's value; the task closed as a
+            // failure even though the terminal step reported success.
+            shutdownReason = "failed";
+            return { state: "failed", error: closure.outcome.error };
+          }
           const cancelled = isCancellationInProgress(cancellation);
           shutdownReason = cancelled ? "cancelled" : "completed";
           return cancelled ? { state: "cancelled" } : { state: "completed", value: step.value };

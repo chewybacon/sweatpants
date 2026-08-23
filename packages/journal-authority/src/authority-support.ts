@@ -1,3 +1,4 @@
+import { pullKindPolicy } from "./pull-kinds/index.ts";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   CrankError,
@@ -85,6 +86,10 @@ export function operationPolicy(
   inputDigest?: string;
   contextDigest?: string;
 } {
+  const declaredPolicy = pullKindPolicy(descriptor.kind);
+  if (declaredPolicy?.resolutionTarget) {
+    return declaredPolicy.resolutionTarget(descriptor, manifest);
+  }
   switch (descriptor.kind) {
     case "record":
       if (
@@ -159,6 +164,8 @@ export function operationPolicy(
       }
       return { resultDescriptor: ANY_JSON_SCHEMA_DESCRIPTOR, audience: "child-runtime" };
   }
+  // Registered interaction kinds resolved above; anything else is invalid.
+  throw new CrankError("invalid_descriptor");
 }
 
 export function installedOrRecordedDescriptor(
@@ -217,10 +224,12 @@ export function snapshotOutcome(outcome: OperationOutcome): OperationOutcome {
   return canonicalSnapshot(outcome).value;
 }
 
-export function pendingReason(descriptor: DurableOperationDescriptor): "elicit" | "wait" | "child" {
-  if (descriptor.kind === "elicit") return "elicit";
-  if (descriptor.kind === "wait") return "wait";
-  return "child";
+export function pendingReason(
+  descriptor: DurableOperationDescriptor,
+): "elicit" | "wait" | "child" | "foreign" | "sample" {
+  const policy = pullKindPolicy(descriptor.kind);
+  if (!policy) return "child";
+  return (policy.pendingReason ?? descriptor.kind) as ReturnType<typeof pendingReason>;
 }
 
 export function sanitizeCancellationReason(reason: string | undefined): string | undefined {

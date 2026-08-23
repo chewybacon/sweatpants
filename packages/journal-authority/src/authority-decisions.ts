@@ -1,3 +1,4 @@
+import { pullKindPolicy } from "./pull-kinds/index.ts";
 import {
   CrankError,
   DEFAULT_MAX_INLINE_BYTES,
@@ -48,6 +49,7 @@ import type {
   ClaimActivationRequest,
   ClaimActivationResult,
   CompleteTaskRequest,
+  CompleteTaskResult,
   ConsumeRestoreTicketRequest,
   ConsumeRestoreTicketResult,
   DurableCancellationState,
@@ -1215,7 +1217,10 @@ function appendEmission(draft: DecisionDraft, request: AppendEmissionRequest): E
   return receipt;
 }
 
-function completeTask(draft: DecisionDraft, request: CompleteTaskRequest): TaskCloseReceipt {
+function completeTask(
+  draft: DecisionDraft,
+  request: CompleteTaskRequest,
+): CompleteTaskResult {
   const task = draft.task(request.sessionId, request.taskId);
   draft.assertProgram(request.programCapability, task, request.sessionId);
   const proposed = snapshotOutcome(request.outcome);
@@ -1223,15 +1228,28 @@ function completeTask(draft: DecisionDraft, request: CompleteTaskRequest): TaskC
     task.lifecycle.status === "active" && task.lifecycle.cancellation.type === "unwinding"
       ? { status: "cancelled" }
       : proposed;
-  if (outcome.status === "ok")
-    outcome = {
-      status: "ok",
-      value: draft.parseSchema(
+  if (outcome.status === "ok") {
+    // Program-authored values may be refused by policy; refusals are data,
+    // not exceptions (mirrors resolve-pull / validate-elicit-response).
+    let value: Json;
+    try {
+      value = draft.parseSchema(
         task.program.manifest.outputSchema.digest,
         outcome.value,
         "schema_validation_failed",
-      ),
-    };
+      );
+    } catch (error) {
+      if (!(error instanceof CrankError) || error.code !== "schema_validation_failed") throw error;
+      return { status: "rejected", code: error.code, message: error.message };
+    }
+    outcome = { status: "ok", value };
+    try {
+      assertInlineSize(outcome, draft.maxOutcomeBytes);
+    } catch (error) {
+      if (!(error instanceof CrankError) || error.code !== "payload_too_large") throw error;
+      return { status: "rejected", code: error.code, message: error.message };
+    }
+  }
   assertInlineSize(outcome, draft.maxOutcomeBytes);
   const digest = canonicalSnapshot(outcome).sha;
   if (task.lifecycle.status === "closed" || task.lifecycle.status === "cancelled") {
@@ -1240,7 +1258,7 @@ function completeTask(draft: DecisionDraft, request: CompleteTaskRequest): TaskC
     if (oldDigest !== digest)
       throw new CrankError("nondeterminism_detected", "Task completion differs");
     settleParentFromChild(draft, request.sessionId, task, outcome);
-    return { ...receipt, duplicate: true };
+    return { status: "duplicate", receipt: { ...receipt, duplicate: true } };
   }
   draft.assertActive(task);
   if (request.actionIndex !== task.nextActionIndex) throw new CrankError("history_not_exhausted");
@@ -1284,7 +1302,7 @@ function completeTask(draft: DecisionDraft, request: CompleteTaskRequest): TaskC
         }
       : { status: "closed", outcome, receipt };
   settleParentFromChild(draft, request.sessionId, task, outcome);
-  return receipt;
+  return { status: "accepted", receipt };
 }
 
 function requestCancellation(
@@ -1892,19 +1910,11 @@ function pendingResolutionAuthority(
   descriptor: DurableOperationDescriptor,
   audience: string,
 ): ResolutionAuthority {
-  const capability = "";
-  if (descriptor.kind === "elicit") return { kind: "participant", audience, capability };
-  if (descriptor.kind === "wait")
-    return { kind: "clock", audience, notBefore: descriptor.notBefore ?? "", capability };
-  if (
-    descriptor.kind === "invoke" ||
-    descriptor.kind === "all" ||
-    descriptor.kind === "race" ||
-    descriptor.kind === "spawn" ||
-    descriptor.kind === "join"
-  )
-    return { kind: "child", mode: descriptor.kind, audience, capability };
-  throw new CrankError("invalid_descriptor");
+  const policy = pullKindPolicy(descriptor.kind);
+  if (!policy?.resolutionAuthority) {
+    throw new CrankError("invalid_descriptor");
+  }
+  return policy.resolutionAuthority(descriptor, audience);
 }
 
 function startAttempt(

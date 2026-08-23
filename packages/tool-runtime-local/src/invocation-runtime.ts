@@ -120,15 +120,20 @@ function* createLocalToolInvocationResourceFactory(
         );
       }
 
-      const params = requireToolParameterResult(
-        parseToolParameters({
-          schema: request.tool.parameters,
-          params: request.input,
-          toolName: request.tool.name,
-          callId: request.invocationId,
-        }),
-        { toolName: request.tool.name, callId: request.invocationId },
-      );
+      let params;
+      try {
+        params = requireToolParameterResult(
+          parseToolParameters({
+            schema: request.tool.parameters,
+            params: request.input,
+            toolName: request.tool.name,
+            callId: request.invocationId,
+          }),
+          { toolName: request.tool.name, callId: request.invocationId },
+        );
+      } catch (error) {
+        throw error;
+      }
       const worker = options.worker;
       if (worker) {
         return yield* createWorkerToolSession({

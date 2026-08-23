@@ -26,6 +26,7 @@ export type {
   ClaimActivationRequest,
   ClaimActivationResult,
   CompleteTaskRequest,
+  CompleteTaskResult,
   ConsumeRestoreTicketRequest,
   ConsumeRestoreTicketResult,
   DurableCancellationState,
@@ -99,3 +100,8 @@ export * from "./commit-loop.ts";
 export * from "./segmentation.ts";
 
 export * from "./schema-registry.ts";
+export * from "./workflow/runtime.ts";
+export * from "./workflow/tool-adapter.ts";
+export * from "./workflow/host-drive.ts";
+export * from "./error-taxonomy.ts";
+export * from "./pull-kinds/index.ts";

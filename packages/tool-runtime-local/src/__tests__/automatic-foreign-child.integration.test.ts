@@ -28,7 +28,18 @@ import {
   type ProgramRunResult,
 } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
-import { foreignToolAdapter } from "@sweatpants/tool-session/foreign";
+import {
+  FOREIGN_TOOL_ADAPTER_MANIFEST,
+  foreignToolAdapter,
+  foreignToolAdapterChild,
+} from "@sweatpants/tool-session/foreign";
+import {
+  driveActivation,
+  durableToolWorkflow,
+  hostAuthority,
+  installEffectRegistrations,
+} from "@sweatpants/journal-authority";
+import { ProgramRouteResolver } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { anyGuard, createSchemaFixture, nullGuard } from "@sweatpants/journal-authority/testing";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
@@ -138,6 +149,7 @@ describe("automatic foreign adapter child orchestration", () => {
       durability: "ephemeral_handle",
     };
     const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
+      // Legacy driver context: foreignTool remains until deletion phase.
       return yield* context.foreignTool<Result>(request);
     });
     const tools = createDurableToolRegistry([parent, foreignToolAdapter]);

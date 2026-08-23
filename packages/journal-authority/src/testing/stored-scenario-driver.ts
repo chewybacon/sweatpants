@@ -20,6 +20,7 @@ import type {
   ClaimActivationRequest,
   ClaimActivationResult,
   CompleteTaskRequest,
+  CompleteTaskResult,
   ConsumeRestoreTicketRequest,
   ConsumeRestoreTicketResult,
   DurableCancellationState,
@@ -45,7 +46,6 @@ import type {
   ResolveOperationRequest,
   ResolveOperationResult,
   RestoredFrontierProof,
-  TaskCloseReceipt,
   ValidateElicitResponseRequest,
   ValidateElicitResponseResult,
 } from "../authority-types.ts";
@@ -107,7 +107,7 @@ export type StoredScenarioDriver = StoredShellDrivers & {
   ): Operation<AcceptAssistantPartialResult>;
   resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
   emit(request: import("../authority-types.ts").AppendEmissionRequest): Operation<EmissionReceipt>;
-  complete(request: CompleteTaskRequest): Operation<TaskCloseReceipt>;
+  complete(request: CompleteTaskRequest): Operation<CompleteTaskResult>;
   openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }>;
   replaceAttachment(
     sessionId: string,

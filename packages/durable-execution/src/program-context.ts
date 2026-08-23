@@ -434,7 +434,5 @@ export function serializeDurableError(error: unknown): SerializedApplicationErro
       ...(error.details !== undefined ? { details: error.details } : {}),
     };
   }
-  // Unknown thrown values may contain credentials, process handles, or transport
-  // internals. They are intentionally not stringified into durable history.
   return { code: "program_error", message: "Durable program failed" };
 }
