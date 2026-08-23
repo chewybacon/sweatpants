@@ -27,16 +27,12 @@ import {
   type JournalAuthorityContract,
   type DurableSemanticRecord,
 } from "@sweatpants/journal-authority";
-import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import {
   CrankError,
   PullApplicationError,
-  ProgramRuntime,
   assertReplayedCanonicalValue,
   createPinnedDurableProgram,
   createDurableToolRegistry,
-  createLocalProgramDriver,
-  createProgramDriverRegistry,
   stableProgramAttachmentId,
   type DurableProgramContext,
   type ProgramRunResult,
@@ -63,7 +59,7 @@ import {
   type Json,
   type JsonObject,
 } from "@sweatpants/foundation";
-import { foreignToolAdapter, foreignToolAdapterChild } from "@sweatpants/tool-session/foreign";
+import { foreignToolAdapter } from "@sweatpants/tool-session/foreign";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { parseInteractionBinding } from "@sweatpants/agent-sdk";
@@ -87,12 +83,11 @@ import {
   type ProgramDriverNativeToolComposition,
 } from "../program-driver/native-tools.ts";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
-import { runLocalProgramActivation, runWorkflowProgramActivation } from "./local-program-host.ts";
+import { runWorkflowProgramActivation } from "./local-program-host.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ElicitResponse, ProgramRuntimeChatEngineParams } from "./types.ts";
 import {
   createHostModelSamplingService,
-  prepareModelSampleEffectInput,
   preparedModelContextByteLimit,
   resolveModelContextSource,
 } from "./model-sampling/service.ts";
@@ -250,13 +245,13 @@ function* invokeCatalogTool(
     const result =
       entry.kind === "program"
         ? yield* context.invoke({ ...entry.program, input: durableToolInput(call) })
-        : yield* context.foreignTool({
+        : yield* context.pull!({
+            kind: "foreign",
             driver: entry.driver,
             tool: entry.tool,
             input: call.input,
             durability: entry.durability,
-            route: call.id,
-          });
+          } as Json);
     return { result, failed: false };
   } catch (error) {
     if (!(error instanceof PullApplicationError)) {
@@ -468,20 +463,6 @@ function* activateProgramDriverChatEngine(
       endedLiveMessageIds.add(messageId);
     },
   });
-  const effects = createDurableEffectRegistry(
-    [
-      createModelSamplingEffectRegistration(modelSamplingService),
-      ...foreignEffects,
-      ...(params.nativeTools?.effects ?? []),
-    ],
-    Object.values(manifest.effects),
-  );
-  const executionEffects = executionModelSamplingService
-    ? createDurableEffectRegistry(
-        [createModelSamplingEffectRegistration(executionModelSamplingService, "execution")],
-        Object.values(manifest.effects),
-      )
-    : undefined;
   const effectOutcomeAcknowledger = executionModelSamplingService?.acknowledge
     ? function* (acknowledgement: DurableEffectOutcomeAcknowledgement): Operation<void> {
         if (
@@ -499,17 +480,6 @@ function* activateProgramDriverChatEngine(
         }
       }
     : undefined;
-  const drivers = createProgramDriverRegistry([
-    [
-      "program",
-      createLocalProgramDriver(tools, {
-        foreignToolChild: foreignToolAdapterChild,
-        ...(params.nativeTools?.setup ? { setup: params.nativeTools.setup } : {}),
-        ...(executionEffects ? { executionEffects } : {}),
-      }),
-    ],
-    ...(params.nativeTools?.drivers ?? []),
-  ]);
   const routeResolverFn = function* (
     program: PinnedProgram,
     parentRoute: ProgramRoute,
@@ -553,180 +523,185 @@ function* activateProgramDriverChatEngine(
       }
     : undefined;
 
+  // Parked-pull parity: interaction kinds with registered resolvers are
+  // answered by the host and the activation re-runs until the program
+  // parks on something public. Sampling registers the model-sampling
+  // resolver; the engine itself stays kind-agnostic (REQ-007).
+  const parkedPullResolvers = createPullResolverRegistry(
+    modelSamplingService
+      ? [
+          {
+            kind: PULL_KIND_SAMPLE,
+            audience: () => "model-runtime",
+            *perform(ctx, _descriptor) {
+              const records = yield* journal.readJournal(params.conversationId, ctx.taskId);
+              const pull = records.find(
+                (entry) =>
+                  entry.payload.type === "PullRequested" &&
+                  entry.payload.pullId === ctx.pullId &&
+                  entry.payload.descriptor.kind === PULL_KIND_SAMPLE,
+              );
+              if (!pull || pull.payload.type !== "PullRequested") {
+                throw new CrankError("sample_pull_unresolved", "Parked sample pull not found");
+              }
+              if (!modelSamplingService) {
+                throw new CrankError("sampler_unavailable", "No sampling service configured");
+              }
+              const disposition = yield* executeModelSamplePull({
+                service: modelSamplingService,
+                wireRequest: (pull.payload.descriptor as { input: Json }).input,
+                sessionId: ctx.sessionId,
+                taskId: ctx.taskId,
+                pullId: ctx.pullId,
+                placement: {
+                  journal: {
+                    id: params.conversationId,
+                    incarnation: String(attach.executionEpoch),
+                  },
+                  program: attach.program,
+                  route: attach.route,
+                  driverKind: "workflow",
+                },
+                sourceResolver: modelContextSourceResolver,
+              });
+              return disposition.status === "ok"
+                ? { status: "ok" as const, value: encodeModelSampleResult(disposition.value) }
+                : disposition;
+            },
+          },
+        ]
+      : [],
+  );
+  // One workflow activation at a fixed epoch; both activation paths share it.
+  const activateWorkflow = function* (
+    executionEpoch: number,
+    allowOpenedCapability: boolean,
+  ): Operation<ProgramRunResult> {
+    return yield* runWorkflowProgramActivation(
+      {
+        installAuthority: journal.install,
+        sessionId: params.conversationId,
+        taskId,
+        effectRegistrations: workflowEffectRegistrations,
+        ...(onEffectResolved ? { onEffectResolved } : {}),
+        routeResolver: routeResolverFn,
+      },
+      function* (authority) {
+        const host = hostAuthority(authority);
+        let programCapability = openedCapability;
+        if (!allowOpenedCapability) {
+          const bound = yield* authority.command({
+            type: "execution.bind-attachment",
+            request: {
+              sessionId: params.conversationId,
+              taskId,
+              attachmentId: `${stableProgramAttachmentId(attach)}-${executionEpoch}`,
+              executionEpoch,
+            },
+          });
+          programCapability = bound.programCapability;
+        }
+        const tool = tools.get(exactProgramKey(attach.program));
+        if (!tool) {
+          throw new CrankError("program_version_unavailable", "No pinned program for activation");
+        }
+        const tool2 = tool;
+        void tool2;
+        return yield* driveActivation({
+          attach: { ...attach, executionEpoch },
+          authority: host,
+          programCapability,
+          workflow: durableToolWorkflow(tool, input),
+          ...(onEffectResolved ? { onEffectResolved } : {}),
+        });
+      },
+    );
+  };
+  const settleParked = function* (reason: string, pullId: string): Operation<Json> {
+    const resolver = parkedPullResolvers.get(reason);
+    if (!resolver) {
+      throw new CrankError("unsupported_park", `Unregistered park reason: ${reason}`);
+    }
+    return yield* resolver.perform(
+      { sessionId: params.conversationId, taskId, pullId },
+      {} as never,
+    );
+  };
+  const commitParked = function* (
+    reason: string,
+    pullId: string,
+    envelope: OperationOutcome,
+  ): Operation<void> {
+    const resolver = parkedPullResolvers.get(reason)!;
+    yield* journal.withAuthority(function* (authority) {
+      const capability = yield* authority.query({
+        type: "pull.resolution-capability",
+        sessionId: params.conversationId,
+        taskId,
+        pullId,
+      });
+      const resolved = (yield* authority.command({
+        type: "execution.resolve-pull",
+        request: {
+          capability,
+          audience: resolver.audience({} as never),
+          outcome: envelope,
+        },
+      })) as { status: string; code?: string };
+      if (resolved.status === "rejected") {
+        throw new CrankError("pull_resolution_rejected", resolved.code ?? "rejected");
+      }
+    });
+  };
   let cancellationFenceLost = false;
   let outcome: ProgramRunResult;
   if (!requiresFencedActivation(params.nativeTools)) {
     // Workflow runtime path (default). Fenced native bindings remain on the
     // legacy activation loop until their remote substrate migrates.
     //
-    // Sampling parity: model.sample pulls park on this runtime; they are
-    // answered here by the sampling service (matching legacy inline execution)
-    // and the activation re-runs until the program parks on something public.
-    // Parked-pull parity: interaction kinds with registered resolvers are
-    // answered by the host and the activation re-runs until the program
-    // parks on something public. Sampling registers the model-sampling
-    // resolver; the engine itself stays kind-agnostic (REQ-007).
-    const parkedPullResolvers = createPullResolverRegistry(
-      modelSamplingService
-        ? [
-            {
-              kind: PULL_KIND_SAMPLE,
-              audience: () => "model-runtime",
-              *perform(ctx, _descriptor) {
-                const records = yield* journal.readJournal(params.conversationId, ctx.taskId);
-                const pull = records.find(
-                  (entry) =>
-                    entry.payload.type === "PullRequested" &&
-                    entry.payload.pullId === ctx.pullId &&
-                    entry.payload.descriptor.kind === PULL_KIND_SAMPLE,
-                );
-                if (!pull || pull.payload.type !== "PullRequested") {
-                  throw new CrankError("sample_pull_unresolved", "Parked sample pull not found");
-                }
-                if (!modelSamplingService) {
-                  throw new CrankError("sampler_unavailable", "No sampling service configured");
-                }
-                const disposition = yield* executeModelSamplePull({
-                  service: modelSamplingService,
-                  wireRequest: (pull.payload.descriptor as { input: Json }).input,
-                  sessionId: ctx.sessionId,
-                  taskId: ctx.taskId,
-                  pullId: ctx.pullId,
-                  placement: {
-                    journal: {
-                      id: params.conversationId,
-                      incarnation: String(attach.executionEpoch),
-                    },
-                    program: attach.program,
-                    route: attach.route,
-                    driverKind: "workflow",
-                  },
-                  sourceResolver: modelContextSourceResolver,
-                });
-                return disposition.status === "ok"
-                  ? { status: "ok" as const, value: encodeModelSampleResult(disposition.value) }
-                  : disposition;
-              },
-            },
-          ]
-        : [],
-    );
-    let sampleAutoResolveGuard = 0;
+    let autoResolveGuard = 0;
     for (;;) {
-      outcome = yield* runWorkflowProgramActivation(
-        {
-          installAuthority: journal.install,
-          sessionId: params.conversationId,
-          taskId,
-          effectRegistrations: workflowEffectRegistrations,
-          ...(onEffectResolved ? { onEffectResolved } : {}),
-          routeResolver: routeResolverFn,
-        },
-        function* (authority) {
-          const host = hostAuthority(authority);
-          let programCapability = openedCapability;
-          if (active) {
-            const bound = yield* authority.command({
-              type: "execution.bind-attachment",
-              request: {
-                sessionId: params.conversationId,
-                taskId,
-                attachmentId: `${stableProgramAttachmentId(attach)}-${attach.executionEpoch}`,
-                executionEpoch: attach.executionEpoch,
-              },
-            });
-            programCapability = bound.programCapability;
-          }
-          const tool = tools.get(exactProgramKey(attach.program));
-          if (!tool) {
-            throw new CrankError("program_version_unavailable", "No pinned program for activation");
-          }
-          return yield* driveActivation({
-            attach: { ...attach, executionEpoch: attach.executionEpoch },
-            authority: host,
-            programCapability,
-            workflow: durableToolWorkflow(tool, input),
-            ...(onEffectResolved ? { onEffectResolved } : {}),
-          });
-        },
-      );
+      outcome = yield* activateWorkflow(attach.executionEpoch, !active);
       const resolver =
         outcome.state === "parked" ? parkedPullResolvers.get(outcome.reason) : undefined;
-      if (outcome.state === "parked" && resolver && sampleAutoResolveGuard < 8) {
-        sampleAutoResolveGuard += 1;
-        // Settle the parked pull through its resolver, then loop: the next
-        // activation replays the settled pull and continues. The resolver
-        // owns descriptor reads and audience derivation.
-        const parkedPullId = outcome.pullId;
-        const outcomeEnvelope = yield* resolver.perform(
-          { sessionId: params.conversationId, taskId, pullId: parkedPullId },
-          {} as never,
-        );
-        yield* journal.withAuthority(function* (authority) {
-          const capability = yield* authority.query({
-            type: "pull.resolution-capability",
-            sessionId: params.conversationId,
-            taskId,
-            pullId: parkedPullId,
-          });
-          const resolvedPull = (yield* authority.command({
-            type: "execution.resolve-pull",
-            request: {
-              capability,
-              audience: resolver.audience({} as never),
-              outcome: outcomeEnvelope as OperationOutcome,
-            },
-          })) as { status: string; code?: string };
-          if (resolvedPull.status === "rejected") {
-            throw new CrankError("pull_resolution_rejected", resolvedPull.code ?? "rejected");
-          }
-        });
+      if (outcome.state === "parked" && resolver && autoResolveGuard < 8) {
+        autoResolveGuard += 1;
+        const envelope = yield* settleParked(outcome.reason, outcome.pullId);
+        yield* commitParked(outcome.reason, outcome.pullId, envelope as OperationOutcome);
         continue;
       }
       break;
     }
   } else {
+    // Fenced native bindings: the SAME workflow activation, wrapped in the
+    // host-side activation lease (claim/renew/release). The kernel's
+    // epoch-gated bind + lease state provide zombie protection; no legacy
+    // runtime involved.
+    const fenced = requiresFencedActivation(params.nativeTools);
     try {
-      outcome = yield* runLocalProgramActivation(
-        {
-          installAuthority: journal.install,
-          drivers,
-          effects,
-          modelSamplingService,
-          effectInputPreparer: function* (request) {
-            if (request.name !== modelSample.name || request.version !== modelSample.version) {
-              return request.input;
+      outcome = yield* journal.withAuthority(function* (rootAuthority) {
+        return yield* runFencedActivation(
+          rootAuthority,
+          params.conversationId,
+          attach.executionEpoch,
+          fenced,
+          function* (claimedEpoch) {
+            let guard = 0;
+            for (;;) {
+              outcome = yield* activateWorkflow(claimedEpoch, false);
+              const resolver =
+                outcome.state === "parked" ? parkedPullResolvers.get(outcome.reason) : undefined;
+              if (outcome.state === "parked" && resolver && guard < 8) {
+                guard += 1;
+                const envelope = yield* settleParked(outcome.reason, outcome.pullId);
+                yield* commitParked(outcome.reason, outcome.pullId, envelope as OperationOutcome);
+                continue;
+              }
+              return outcome;
             }
-            return yield* prepareModelSampleEffectInput(request.input, params.conversationId);
           },
-          modelContextSourceResolver,
-          ...(effectOutcomeAcknowledger ? { effectOutcomeAcknowledger } : {}),
-          routeResolver: function* (program, parentRoute) {
-            const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
-              (candidate) =>
-                candidate.tool.manifest.programId === program.id &&
-                candidate.tool.manifest.version === program.version &&
-                candidate.tool.manifest.digest === program.digest,
-            );
-            return binding?.route ?? parentRoute;
-          },
-        },
-        function* (authority) {
-          return yield* runFencedActivation(
-            authority,
-            params.conversationId,
-            attach.executionEpoch,
-            requiresFencedActivation(params.nativeTools),
-            function* (executionEpoch, activationOwnerId) {
-              return yield* ProgramRuntime.operations.run({
-                attach: { ...attach, executionEpoch },
-                executeHostEffects: true,
-                ...(activationOwnerId ? { activationOwnerId } : {}),
-              });
-            },
-          );
-        },
-      );
+        );
+      });
     } catch (error) {
       if (
         !(yield* journal.withAuthority((authority) =>
