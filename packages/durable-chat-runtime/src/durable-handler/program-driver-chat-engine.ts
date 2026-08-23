@@ -575,7 +575,7 @@ function* activateProgramDriverChatEngine(
   // One workflow activation at a fixed epoch; both activation paths share it.
   const activateWorkflow = function* (
     executionEpoch: number,
-    allowOpenedCapability: boolean,
+    bind: boolean,
   ): Operation<ProgramRunResult> {
     return yield* runWorkflowProgramActivation(
       {
@@ -589,7 +589,7 @@ function* activateProgramDriverChatEngine(
       function* (authority) {
         const host = hostAuthority(authority);
         let programCapability = openedCapability;
-        if (!allowOpenedCapability) {
+        if (bind) {
           const bound = yield* authority.command({
             type: "execution.bind-attachment",
             request: {
@@ -605,8 +605,6 @@ function* activateProgramDriverChatEngine(
         if (!tool) {
           throw new CrankError("program_version_unavailable", "No pinned program for activation");
         }
-        const tool2 = tool;
-        void tool2;
         return yield* driveActivation({
           attach: { ...attach, executionEpoch },
           authority: host,
@@ -617,88 +615,103 @@ function* activateProgramDriverChatEngine(
       },
     );
   };
-  const settleParked = function* (reason: string, pullId: string): Operation<Json> {
-    const resolver = parkedPullResolvers.get(reason);
-    if (!resolver) {
-      throw new CrankError("unsupported_park", `Unregistered park reason: ${reason}`);
-    }
-    return yield* resolver.perform(
-      { sessionId: params.conversationId, taskId, pullId },
-      {} as never,
+  /** Reads the pending descriptor for one parked pull from the journal. */
+  const readPendingPullDescriptor = function* (pullId: string): Operation<Json> {
+    const records: DurableSemanticRecord[] = yield* journal.readJournal(
+      params.conversationId,
+      taskId,
     );
+    const resolved = new Set(
+      records.flatMap((r) => (r.payload.type === "PullResolved" ? [r.payload.pullId] : [])),
+    );
+    const pull = records.find(
+      (entry) =>
+        entry.payload.type === "PullRequested" &&
+        entry.payload.pullId === pullId &&
+        !resolved.has(pullId),
+    );
+    if (!pull || pull.payload.type !== "PullRequested") {
+      throw new CrankError("unsupported_park", "Parked pull missing from journal");
+    }
+    return pull.payload.descriptor as unknown as Json;
   };
-  const commitParked = function* (
-    reason: string,
-    pullId: string,
-    envelope: OperationOutcome,
-  ): Operation<void> {
-    const resolver = parkedPullResolvers.get(reason)!;
+
+  /**
+   * Resolves one parked pull through its registered resolver and journals the
+   * settlement under the resolver's audience. Returns undefined when the kind
+   * is unregistered — the caller then treats the park as public input.
+   */
+  const resolveParkedPull = function* (
+    parked: Extract<ProgramRunResult, { state: "parked" }>,
+  ): Operation<OperationOutcome | undefined> {
+    const resolver = parkedPullResolvers.get(parked.reason);
+    if (!resolver) {
+      return undefined;
+    }
+    const descriptor = yield* readPendingPullDescriptor(parked.pullId);
+    const envelope = yield* resolver.perform(
+      { sessionId: params.conversationId, taskId, pullId: parked.pullId },
+      descriptor,
+    );
     yield* journal.withAuthority(function* (authority) {
       const capability = yield* authority.query({
         type: "pull.resolution-capability",
         sessionId: params.conversationId,
         taskId,
-        pullId,
+        pullId: parked.pullId,
       });
       const resolved = (yield* authority.command({
         type: "execution.resolve-pull",
         request: {
           capability,
-          audience: resolver.audience({} as never),
-          outcome: envelope,
+          audience: resolver.audience(descriptor),
+          outcome: envelope as OperationOutcome,
         },
       })) as { status: string; code?: string };
       if (resolved.status === "rejected") {
         throw new CrankError("pull_resolution_rejected", resolved.code ?? "rejected");
       }
     });
+    return envelope as OperationOutcome;
+  };
+
+  /**
+   * Drives activations at `epoch()` until the program parks on an
+   * unregistered kind (public input) or reaches a terminal state. Resolver-
+   * settled parks re-enter activation so replay continues.
+   */
+  const runTurnsToPublicPark = function* (
+    epoch: () => number,
+    bind: boolean,
+  ): Operation<ProgramRunResult> {
+    for (let settledPulls = 0; ; settledPulls += 1) {
+      const result: ProgramRunResult = yield* activateWorkflow(epoch(), bind);
+      if (result.state !== "parked" || settledPulls >= 8) {
+        return result;
+      }
+      const settled = yield* resolveParkedPull(result);
+      if (settled === undefined) {
+        return result;
+      }
+    }
   };
   let cancellationFenceLost = false;
   let outcome: ProgramRunResult;
   if (!requiresFencedActivation(params.nativeTools)) {
-    // Workflow runtime path (default). Fenced native bindings remain on the
-    // legacy activation loop until their remote substrate migrates.
-    //
-    let autoResolveGuard = 0;
-    for (;;) {
-      outcome = yield* activateWorkflow(attach.executionEpoch, !active);
-      const resolver =
-        outcome.state === "parked" ? parkedPullResolvers.get(outcome.reason) : undefined;
-      if (outcome.state === "parked" && resolver && autoResolveGuard < 8) {
-        autoResolveGuard += 1;
-        const envelope = yield* settleParked(outcome.reason, outcome.pullId);
-        yield* commitParked(outcome.reason, outcome.pullId, envelope as OperationOutcome);
-        continue;
-      }
-      break;
-    }
+    outcome = yield* runTurnsToPublicPark(() => attach.executionEpoch, !active);
   } else {
-    // Fenced native bindings: the SAME workflow activation, wrapped in the
+    // Fenced native bindings: the SAME workflow turns, wrapped in the
     // host-side activation lease (claim/renew/release). The kernel's
-    // epoch-gated bind + lease state provide zombie protection; no legacy
-    // runtime involved.
-    const fenced = requiresFencedActivation(params.nativeTools);
+    // epoch-gated bind + session lease state provide zombie protection.
     try {
       outcome = yield* journal.withAuthority(function* (rootAuthority) {
         return yield* runFencedActivation(
           rootAuthority,
           params.conversationId,
           attach.executionEpoch,
-          fenced,
+          true,
           function* (claimedEpoch) {
-            let guard = 0;
-            for (;;) {
-              outcome = yield* activateWorkflow(claimedEpoch, false);
-              const resolver =
-                outcome.state === "parked" ? parkedPullResolvers.get(outcome.reason) : undefined;
-              if (outcome.state === "parked" && resolver && guard < 8) {
-                guard += 1;
-                const envelope = yield* settleParked(outcome.reason, outcome.pullId);
-                yield* commitParked(outcome.reason, outcome.pullId, envelope as OperationOutcome);
-                continue;
-              }
-              return outcome;
-            }
+            return yield* runTurnsToPublicPark(() => claimedEpoch, true);
           },
         );
       });
