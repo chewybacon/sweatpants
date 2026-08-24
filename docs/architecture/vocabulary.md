@@ -4,6 +4,15 @@
 **Supersedes:** conflicting entries in `docs/domain-glossary.md` (see Stale-doc register)
 **Companion:** [responsibility-map.md](./responsibility-map.md)
 
+## Ledger
+
+**Ratified:** R1′–R6′ · strand · fork group · durability class ·
+evidence-not-recipe · notify/log ruling · delivery contract.
+
+**Proposed:** R7′ structure-vs-order · leaf · venue · live-edge handoff
+name · attribution-chain placement · delegated-audience transcoding ·
+fork-group expiry values · driver→evaluator rename.
+
 One concept, one word. If a noun needs an adjective to be understood in this
 codebase, the noun is wrong. This document defines the words the system is
 allowed to use, states each concept's function and lifetime, and lists the
@@ -348,9 +357,11 @@ descriptors. Governs replay semantics (recipe versus log), park economics
 (free versus rent), and loss handling (cold-walk versus errored outcome).
 See R6′.
 
-**fork group** *(ratified rule, name provisional)* — The set of peers opened
+**fork group** *(ratified rule, shape in spine-types)* — The set of peers opened
 by one suspension point (invoke/all/race). Ancestors freeze until the group
-settles; members run as roots under the same rules.
+settles; members run as roots under the same rules. Failure propagation
+between members is a declared `SupervisionStrategy` (β import — see
+spine-types §0); deadlines give R5′ its teeth.
 
 **leaf** *(candidate)* — An open strand's advancing tip: frontier plus any
 open slot. Candidate because "head" is taken — `journalHead`/`journalHead`

@@ -4,6 +4,26 @@ One page. Each actor gets one sentence per cell. A cell that cannot be filled
 in one sentence is a convicted seam, listed below the table. Baseline metrics
 at the bottom are the "before" numbers for any future refactor.
 
+## Amendments — post-jam (forest discipline & spine types)
+
+The actor table below reflects pre-jam naming and is retained as the
+today-code baseline; proposed renames live in
+[vocabulary.md](./vocabulary.md). What changed since the baseline:
+
+- **Structure vs order split (R7′, proposed):** the kernel owns concurrency
+  *structure* — forest rows, slot lifecycle, terminal algebra including
+  `expired` — while hosts own evaluation order. The kernel row's "sole
+  mutator" claim now includes enforcing structural refusals.
+- **Fork groups** supersede separate invoke/all/race handling in the tree
+  coordinator; failure propagation becomes a declared `SupervisionStrategy`.
+- **Mandate / ReactivationPlan** formalize bind-time facts (placement,
+  capability, addressing), retiring the capability-binding seam (#3) as a
+  design target rather than an open question.
+- **DeliveryPort** carries the entire peer_hosted delta (`durability:
+  "peer_hosted"` children receive deliveries instead of sharing the strand).
+- **Storage** is confirmed as the shell's state strategy beneath the kernel
+  contract — never a port; change protocols in [spine-types.md](./spine-types.md) §8.
+
 ## The actors
 
 | Actor | Home | Owns | Collaborators | Explicitly does NOT own |

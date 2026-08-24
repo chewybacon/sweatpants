@@ -3,6 +3,14 @@
 **Status:** Jam draft — type-level consequences of R1′–R6′ and the
 vocabulary. Nothing here migrates data; compatibility notes at the end.
 
+## Ledger
+
+**Ratified:** R1′–R6′ · strand · fork group · durability class ·
+delivery contract (journal-first + correlators) · evidence-not-recipe.
+**Proposed:** R7′ structure-vs-order · leaf (recommended by §7) · venue
+(de-facto via `VenueOf`) · handoff name · attribution-chain placement ·
+delegated-audience transcoding.
+
 Every type name below is a glossary word or an explicitly flagged
 candidate. Fields carry rule citations. Where a decision was open in
 discussion, the type keeps it open as a union or optional — never
@@ -335,9 +343,19 @@ the replay walker's streamed reads.
 3. **venue** — promoted de facto by `Venue` appearing as a registry field;
    recommend adopting.
 
-## 8 · Explicitly unchanged
+## 8 · Change protocols — nothing is off-limits; layers differ in evidence
 
-Journal record schema · snapshot codec · capability/audience grammar ·
-kernel decision stages · projection inputs. The durability class changes
-*interpretation* at exactly three points (§5, §2 sandbox intent, R5′ policy),
-which is the encapsulation claim R6′ made — now stated as types.
+| Layer | May change? | Protocol |
+|---|---|---|
+| Journal record schema | yes — additively | optional fields anytime; renames dual-read until drained |
+| Snapshot codec | yes — encouraged | must stay derived-from-journal and verifiable-on-load |
+| Capability/audience grammar | yes | explicit security review; closed unions preferred |
+| Kernel decision stages | yes | invariant + parity evidence per change |
+| Storage engine | yes | swapped behind the shell seam; invisible to the spine |
+
+Durability class changes *interpretation* at exactly three points (§5,
+§2 sandbox intent, supervision/deadline policy) — the encapsulation claim
+R6′ made, now stated as types.
+
+Open design thread from this table: **zero-trust cold-start** — snapshots
+as disposable caches verified against frontier digests rather than trusted.
