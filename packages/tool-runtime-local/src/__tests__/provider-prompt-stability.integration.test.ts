@@ -1,3 +1,4 @@
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 /**
  * Provider prompt-prefix stability.
  *
@@ -14,7 +15,6 @@
  */
 import {
   ProgramDriverRegistryContext,
-  ProgramRuntime,
   createDurableToolRegistry,
   createProgramDriverRegistry,
   type AttachProgramRequest,
@@ -30,7 +30,8 @@ import { canonicalSnapshot } from "@sweatpants/foundation";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
-  withAuthorityTestScope,
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
@@ -45,7 +46,6 @@ import {
 
 import {
   createLocalToolInvocationRuntime,
-  createLocalDurableProgramDriver,
   createToolInvocationForeignEffectRegistrations,
 } from "../index.ts";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
@@ -114,7 +114,7 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
     schemaRegistry: createDurableSchemaRegistry(foreignToolSchemaEntries()),
   });
   const drivers = createProgramDriverRegistry([
-    ["program", createLocalDurableProgramDriver(createDurableToolRegistry([foreignToolAdapter]))],
+    ["program", createWorkflowProgramDriver(createDurableToolRegistry([foreignToolAdapter]))],
   ]);
 
   const contexts: string[] = [];
@@ -124,24 +124,24 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
       ...createToolInvocationForeignEffectRegistrations({
         tools: new Map<string, RuntimeTool>([[probeTool.name, probeTool]]),
       }),
-      foreignToolAdapter.modelSampleRegistration(function* (sampleRequest) {
-        contexts.push(canonicalSnapshot(sampleRequest.invocation.context).canonical);
-        return {
-          message: {
-            message: {
-              role: "assistant",
-              content: [{ type: "text", text: `{"label":"answer-${contexts.length}"}` }],
-            },
-            source: null,
-            usage: null,
-            stopReason: null,
-            responseId: null,
-            errorMessage: null,
-          },
-          output: { type: "message" },
-        };
-      }),
     ]);
+    const sample: Parameters<typeof withModelSampleTestBoundary>[0] = function* (sampleRequest) {
+      contexts.push(canonicalSnapshot(sampleRequest.invocation.context).canonical);
+      return {
+        message: {
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: `{"label":"answer-${contexts.length}"}` }],
+          },
+          source: null,
+          usage: null,
+          stopReason: null,
+          responseId: null,
+          errorMessage: null,
+        },
+        output: { type: "message" },
+      };
+    };
     yield* authority.openTask({
       sessionId,
       turnId: "turn-0",
@@ -150,15 +150,15 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
       input: request,
       executionEpoch: 1,
       attachmentId: "unattached-adapter",
-      audience: "program-runtime",
+      audience: "workflow-host",
     });
     const result: ProgramRunResult = yield* ProgramDriverRegistryContext.with(
       drivers,
       function* () {
-        return yield* withAuthorityTestScope(authority, function* () {
+        return yield* withProgramDriverTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
-            return yield* withModelSampleTestBoundary(() =>
-              ProgramRuntime.operations.run({ attach, executeHostEffects: true }),
+            return yield* withModelSampleTestBoundary(sample, () =>
+              driveInstalledTestProgramTree({ attach }),
             );
           });
         });

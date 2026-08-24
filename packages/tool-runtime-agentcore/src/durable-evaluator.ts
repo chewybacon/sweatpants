@@ -3,11 +3,11 @@ import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 
 import {
-  createLocalProgramDriver,
   type ProgramAttachment,
   type ProgramStep,
   type ReplayEntry,
 } from "@sweatpants/durable-execution";
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   computeFrontierDigest,
@@ -26,7 +26,7 @@ export interface AgentCoreDurableEvaluatorOptions {
 export function createAgentCoreDurableEvaluator(options: AgentCoreDurableEvaluatorOptions): {
   handle(message: HostProgramMessage): Operation<RuntimeProgramMessage | undefined>;
 } {
-  const driver = createLocalProgramDriver(options.registry);
+  const driver = createWorkflowProgramDriver(options.registry, { detachedScope: true });
   let attachment: ProgramAttachment | undefined;
   let taskId: string | undefined;
   let activationEpoch: number | undefined;

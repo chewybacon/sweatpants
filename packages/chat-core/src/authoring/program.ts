@@ -123,7 +123,7 @@ export type ChatProgramDefinition = DurableTool<AuthoredChatTurnInput, AuthoredC
   readonly contextPolicy: AuthoredChatContextPolicy;
 };
 
-export const CHAT_MODEL_SAMPLE_EFFECT: EffectDefinition<
+export const CHAT_MODEL_SAMPLE_CONTRACT: EffectDefinition<
   AuthoredChatModelSampleRequest,
   AuthoredChatModelSampleResult
 > = Object.freeze({
@@ -285,7 +285,11 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
     "resources.search": readerBinding(readers.search),
   };
   const effects: Record<string, EffectDefinition<Json, Json, Json>> = {
-    [CHAT_MODEL_SAMPLE_EFFECT.name]: CHAT_MODEL_SAMPLE_EFFECT as EffectDefinition<Json, Json, Json>,
+    [CHAT_MODEL_SAMPLE_CONTRACT.name]: CHAT_MODEL_SAMPLE_CONTRACT as EffectDefinition<
+      Json,
+      Json,
+      Json
+    >,
   };
   for (const effectName of sortedKeys(options.effects ?? {})) {
     const definition = options.effects![effectName]!;
@@ -300,7 +304,7 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
     effects[effectName] = definition;
   }
   const authoredSchemas = Object.values(effects).flatMap((definition) =>
-    definition === CHAT_MODEL_SAMPLE_EFFECT ? [] : [...effectCatalogEntries(definition)],
+    definition === CHAT_MODEL_SAMPLE_CONTRACT ? [] : [...effectCatalogEntries(definition)],
   );
   const effectSchemas = aggregateSchemas([...authoredSchemas, ...(options.schemaCatalog ?? [])]);
   if (Object.keys(options.elicitations ?? {}).length > 0) {
@@ -388,7 +392,7 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const classifications = chatPayloadClassifications({ systemPrompt: promptPart, messages });
       const sampled = yield* context.effect(
-        CHAT_MODEL_SAMPLE_EFFECT,
+        CHAT_MODEL_SAMPLE_CONTRACT,
         {
           messages,
           systemPrompt: promptPart,
@@ -411,7 +415,12 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
         if (!binding) {
           throw new CrankError("invalid_chat_program", "Model requested an undeclared tool");
         }
-        const result = yield* context.invoke<Json>({ ...pin(binding.program), input: call.input });
+        const result = yield* context.pull(
+          assertJson({
+            kind: "invoke",
+            child: { ...pin(binding.program), input: call.input },
+          }),
+        );
         messages.push(
           toolResultMessage(
             call.id,
@@ -459,14 +468,14 @@ export function createChatModelEffectRegistration(options: {
 }): DurableEffectRegistration {
   const allowed = new Set(options.allowedClassifications);
   const inputSchema = CHAT_CONTRACT_SCHEMA_ENTRIES.find(
-    (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.inputSchema.digest,
+    (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_CONTRACT.inputSchema.digest,
   )!;
   const outputSchema = CHAT_CONTRACT_SCHEMA_ENTRIES.find(
-    (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.outputSchema.digest,
+    (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_CONTRACT.outputSchema.digest,
   )!;
   return createDurableEffectRegistration(
-    CHAT_MODEL_SAMPLE_EFFECT,
-    CHAT_MODEL_SAMPLE_EFFECT.retrySafety,
+    CHAT_MODEL_SAMPLE_CONTRACT,
+    CHAT_MODEL_SAMPLE_CONTRACT.retrySafety,
     function* (
       request,
       context,

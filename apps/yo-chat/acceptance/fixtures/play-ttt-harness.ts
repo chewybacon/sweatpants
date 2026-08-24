@@ -96,7 +96,7 @@ export async function createPlayTttSubstrate(options: {
       return completedStream(sampleMessage(request, sampleCount));
     },
     *sample(): Operation<ModelResponse> {
-      throw new Error("ProgramRuntime must use the streaming model seam");
+      throw new Error("workflow host must use the streaming model seam");
     },
   };
   const keyring = createCapabilityKeyring("play-ttt-http", [
@@ -579,7 +579,7 @@ function findBoard(value: Json | undefined): Json[] | undefined {
 function requiredRedisUrl(): string {
   const value = process.env["REDIS_URL"];
   if (!value) {
-    throw new Error("REDIS_URL is required for Redis ProgramRuntime acceptance");
+    throw new Error("REDIS_URL is required for Redis workflow host acceptance");
   }
   return value;
 }

@@ -15,8 +15,6 @@ import { z } from "zod";
 import type { SemanticEmissionPolicy } from "./authority-snapshot.ts";
 import type { RestoreTicketClaims } from "./authority-types.ts";
 
-export const MODEL_SAMPLE_EFFECT_NAME = "model.sample";
-export const MODEL_SAMPLE_EFFECT_VERSION = "1";
 export const MAX_OPEN_ELICITATIONS = 64;
 
 export function effectContractDigest(definition: EffectDefinition<Json, Json, Json>): string {
@@ -33,11 +31,12 @@ export function effectContractDigest(definition: EffectDefinition<Json, Json, Js
 }
 
 export function isModelSampleDescriptor(descriptor: DurableOperationDescriptor): boolean {
-  return (
-    descriptor.kind === "effect" &&
-    descriptor.name === MODEL_SAMPLE_EFFECT_NAME &&
-    descriptor.version === MODEL_SAMPLE_EFFECT_VERSION
-  );
+  return descriptor.kind === "sample";
+}
+
+/** Stable attachment-epoch owner fence for preparation of one parked sample pull. */
+export function modelPullOwnerFence(pullId: string, executionEpoch: number): string {
+  return stableTupleHash(["model-pull-owner", pullId, executionEpoch]);
 }
 
 export function canonicalByteLength(value: Json): number {
@@ -260,6 +259,10 @@ export function manifestSchemaDigests(manifest: DurableProgramManifest): string[
       effect.inputSchema.digest,
       effect.outputSchema.digest,
       ...(effect.cancellation ? [effect.cancellation.partialSchema.digest] : []),
+    ]),
+    ...Object.values(manifest.pulls ?? {}).flatMap((pull) => [
+      pull.input.digest,
+      pull.output.digest,
     ]),
   ];
 }

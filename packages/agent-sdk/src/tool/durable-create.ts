@@ -1,22 +1,31 @@
-import type { ModelSampleRequest } from "@sweatpants/model-sampling";
 import {
-  MODEL_SAMPLE_EFFECT,
-  MODEL_SAMPLE_SCHEMA_ENTRIES,
-  sampleDurableModel,
+  decodeModelSampleResult,
+  MODEL_SAMPLE_CONTRACT,
+  MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
+  MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR,
+  MODEL_SAMPLE_PULL_SCHEMA_ENTRIES,
+  ModelContextSourceStagerContext,
+  type ModelSampleRequest,
+  type ModelSampleSourceRequest,
 } from "@sweatpants/model-sampling";
 import type { ChatMessage, ChatToolDefinition } from "@sweatpants/chat-contract";
 import type { ModelContext } from "@sweatpants/model-provider";
-import { type EffectDefinition } from "@sweatpants/durable-effects";
-
-import { CrankError } from "@sweatpants/durable-execution";
+import type { EffectDefinition } from "@sweatpants/durable-effects";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import { z } from "zod";
-import { sha256, sortStrings, stableTupleHash } from "@sweatpants/foundation";
-import { safeSchemaIssues, validateAuthoredSchema } from "@sweatpants/foundation/parser";
-import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
-import { type Json, type JsonObject } from "@sweatpants/foundation";
 import {
+  assertJson,
+  sha256,
+  sortStrings,
+  stableTupleHash,
+  type Json,
+  type JsonObject,
+} from "@sweatpants/foundation";
+import { safeSchemaIssues, validateAuthoredSchema } from "@sweatpants/foundation/parser";
+import {
+  ANY_JSON_SCHEMA_DESCRIPTOR,
+  CrankError,
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
@@ -28,8 +37,7 @@ import {
   type DurableTool,
   type ProgramElicitResult,
 } from "@sweatpants/durable-execution";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
-import { type SchemaBinding, type PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
+import type { SchemaBinding, PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import { buildToolSchemaArtifacts } from "./artifacts.ts";
@@ -373,29 +381,13 @@ function builder(state: BuilderState): unknown {
     },
     effects(effects: EffectMap) {
       requireStage(state.parameters, ".parameters()", ".effects()");
-      const samplingDefinition = effects[MODEL_SAMPLE_EFFECT.name];
-      if (
-        state.samples &&
-        samplingDefinition &&
-        effectContractDigest(samplingDefinition) !== effectContractDigest(MODEL_SAMPLE_EFFECT)
-      ) {
-        throw new Error(
-          "Durable tool model.sample declaration differs from the canonical contract",
-        );
+      if (effects[MODEL_SAMPLE_CONTRACT.name]) {
+        throw new Error("model.sample is a pull kind; declare sampling with .samples()");
       }
       return builder({ ...state, effects: { ...state.effects, ...effects } });
     },
     samples() {
       requireStage(state.parameters, ".parameters()", ".samples()");
-      const samplingDefinition = state.effects?.[MODEL_SAMPLE_EFFECT.name];
-      if (
-        samplingDefinition &&
-        effectContractDigest(samplingDefinition) !== effectContractDigest(MODEL_SAMPLE_EFFECT)
-      ) {
-        throw new Error(
-          "Durable tool model.sample declaration differs from the canonical contract",
-        );
-      }
       return builder({ ...state, samples: true });
     },
     execute(program: (input: Json, context: DurableProgramContext) => Operation<Json>) {
@@ -467,18 +459,11 @@ function builder(state: BuilderState): unknown {
       }
 
       // Effect schema catalog entries travel with their authored definitions;
-      // the manifest embeds only their descriptors. Sampling always adds the
-      // one canonical contract and its built-in validators.
-      const declaredEffects: EffectMap = {
-        ...state.effects,
-        ...(state.samples ? { [MODEL_SAMPLE_EFFECT.name]: MODEL_SAMPLE_EFFECT } : {}),
-      };
+      // sampling is a pull kind and contributes only its wire validators.
+      const declaredEffects: EffectMap = { ...state.effects };
+      if (state.samples) catalog.push(...MODEL_SAMPLE_PULL_SCHEMA_ENTRIES);
       for (const definition of Object.values(declaredEffects)) {
-        if (definition === MODEL_SAMPLE_EFFECT) {
-          catalog.push(...MODEL_SAMPLE_SCHEMA_ENTRIES);
-        } else {
-          catalog.push(...effectCatalogEntries(definition));
-        }
+        catalog.push(...effectCatalogEntries(definition));
       }
       const manifest = {
         programId: state.name,
@@ -487,6 +472,16 @@ function builder(state: BuilderState): unknown {
         outputSchema: outputDescriptor,
         elicits: manifestElicits,
         effects: declaredEffects,
+        ...(state.samples
+          ? {
+              pulls: {
+                sample: {
+                  input: MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
+                  output: MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR,
+                },
+              },
+            }
+          : {}),
         capabilities: {
           durableEmissions: true,
           structuredChildren: true,
@@ -682,26 +677,39 @@ function contextForDeclarations(
     ) {
       // Low-level escape hatch: (key, message, descriptor, context).
       if (typeof requestOrMessage === "string") {
-        return context.elicit(key, requestOrMessage, response!, rawContext);
+        return context.pull(
+          assertJson({
+            kind: "elicit",
+            key,
+            message: requestOrMessage,
+            response: response!,
+            ...(rawContext === undefined ? {} : { context: rawContext }),
+          }),
+        );
       }
       const declaration = elicits[key];
       const binding = bindings[key];
       if (!declaration || !binding) {
         throw new Error(`Durable tool elicit "${key}" is not declared`);
       }
-      return context.elicit(
-        key,
-        requestOrMessage.message,
-        declaration.response,
-        requestOrMessage.context,
-        declaration.contextContract ?? declaration.context,
-        binding,
+      return context.pull(
+        assertJson({
+          kind: "elicit",
+          key,
+          message: requestOrMessage.message,
+          response: declaration.response,
+          ...(requestOrMessage.context === undefined ? {} : { context: requestOrMessage.context }),
+          ...((declaration.contextContract ?? declaration.context)
+            ? { contextContract: declaration.contextContract ?? declaration.context }
+            : {}),
+          binding,
+        }),
       );
     },
   });
   // SAFETY: the adapter preserves the low-level overloads while routing the
   // fluent keyed forms through declared descriptors and default resolvers.
-  return adapted as DurableProgramContext;
+  return adapted as unknown as DurableProgramContext;
 }
 
 // Canonical request construction preserves authored sampling options at the effect boundary.
@@ -765,14 +773,6 @@ function createCanonicalModelSampleRequest(
   };
 }
 
-function projectSampleCompletion(value: unknown): SampleExchangeCompletion {
-  const completion = value as { text?: string } & Record<string, unknown>;
-  return {
-    ...(completion.text !== undefined ? { text: String(completion.text) } : { text: "" }),
-    ...completion,
-  } as unknown as SampleExchangeCompletion;
-}
-
 function* sampleModel(
   context: DurableProgramContext,
   request: SamplingRequestBase & {
@@ -782,20 +782,25 @@ function* sampleModel(
   },
 ): Operation<SampleExchangeCompletion> {
   const canonicalRequest = createCanonicalModelSampleRequest(request);
-  // Workflow runtime: prefer the native sample boundary (parks the program);
-  // fall back to the legacy effect proposal when only that surface exists.
-  if (context.pull) {
-    const settled = (yield* context.pull({
-      kind: "sample",
-      input: canonicalRequest,
-    } as unknown as Json)) as {
-      text: string;
+  const stage = yield* ModelContextSourceStagerContext.get();
+  let wireRequest: ModelSampleRequest | ModelSampleSourceRequest = canonicalRequest;
+  if (stage) {
+    const source = yield* stage(canonicalRequest.invocation.context);
+    wireRequest = {
+      ...canonicalRequest,
+      invocation: {
+        context: source,
+        ...(canonicalRequest.invocation.options === undefined
+          ? {}
+          : { options: canonicalRequest.invocation.options }),
+      },
     };
-    return projectSampleCompletion(settled);
   }
-  return projectModelSampleCompletion(
-    yield* sampleDurableModel(context, canonicalRequest, { audience: "model-runtime" }),
-  );
+  const settled = yield* context.pull({
+    kind: "sample",
+    input: assertJson(wireRequest),
+  });
+  return projectModelSampleCompletion(decodeModelSampleResult(settled));
 }
 
 function* sampleStructured<T>(

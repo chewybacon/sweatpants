@@ -1,21 +1,40 @@
-import { type DurableEffectRegistry, type OperationOutcome } from "@sweatpants/durable-effects";
-
 import {
   CrankError,
-  DurableEffectInputPreparationContext,
-  type DurableEffectInputPreparer,
+  exactProgramKey,
+  ProgramRouteResolver,
+  stableProgramAttachmentId,
+  type AttachProgramRequest,
+  type DurableProgramManifest,
+  type DurableToolRegistry,
+  type ForeignDurability,
+  type NormalizedProgramOperationTrace,
+  type NormalizedProgramTaskTrace,
+  type NormalizedProgramTrace,
+  type PinnedProgram,
+  type ProgramElicitResult,
+  type ProgramRoute,
+  type ProgramRunResult,
 } from "@sweatpants/durable-execution";
 import { scoped, type Operation } from "effection";
 import {
+  createPullResolverRegistry,
+  createWaitPullResolver,
+  driveActivation,
+  driveWorkflowTree,
+  durableToolWorkflow,
+  hostAuthority,
   installEffectRegistrations,
   JournalAuthorityPort,
+  PULL_KIND_SAMPLE,
+  PULL_KIND_WAIT,
+  settleParkedPull,
   type DurableSemanticRecord,
   type JournalAuthorityContract,
+  type PullResolver,
 } from "@sweatpants/journal-authority";
-import { ProgramRouteResolver } from "@sweatpants/durable-execution";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   ModelContextSourceResolverContext,
+  ModelContextSourceStagerContext,
   runWithModelSamplingService,
   runWithProgramDeliveryWriter,
   type ModelContextSource,
@@ -23,37 +42,20 @@ import {
   type ProgramDeliveryWriter,
 } from "@sweatpants/model-sampling";
 import {
-  DurableEffectOutcomeAcknowledgerContext,
+  ProgramPlacementContext,
   type DurableEffectOutcomeAcknowledger,
+  type DurableEffectRegistration,
+  type DurableEffectRegistry,
+  type OperationOutcome,
 } from "@sweatpants/durable-effects";
-import {
-  DurableEffectRegistryContext,
-  assertDurableEffectBindings,
-} from "@sweatpants/durable-effects/runtime";
-import {
-  exactProgramKey,
-  stableProgramAttachmentId,
-  type DurableProgramManifest,
-  type ForeignDurability,
-  type PinnedProgram,
-  type ProgramRoute,
-  type ProgramRunResult,
-  type ProgramElicitResult,
-  type NormalizedProgramOperationTrace,
-  type NormalizedProgramTaskTrace,
-  type NormalizedProgramTrace,
-} from "@sweatpants/durable-execution";
+import type { ModelContext } from "@sweatpants/model-provider";
+import { assertDurableEffectBindings } from "@sweatpants/durable-effects/runtime";
 export type { NormalizedProgramOperationTrace, NormalizedProgramTaskTrace, NormalizedProgramTrace };
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
 import { FOREIGN_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/foreign";
-import {
-  ExecutionDurableEffectRegistryContext,
-  ProgramDriverRegistryContext,
-  type DurableToolRegistry,
-  type ProgramDriverRegistry,
-} from "@sweatpants/durable-execution";
 
+import { createParkedSamplePullResolver } from "./parked-sample-resolver.ts";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
 
 export type ProgramCatalogEntry =
@@ -105,22 +107,22 @@ const pinnedProgramCatalogSchema = z.strictObject({
   entries: programCatalogEntriesSchema,
 });
 
-export interface LocalProgramHostOptions {
+export interface ProgramWorkflowHostOptions {
   journalStore: ProgramDriverJournalStore;
   programs: DurableToolRegistry;
   effects: DurableEffectRegistry;
-  drivers: ProgramDriverRegistry;
   routeResolver?: (program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>;
   modelSamplingService?: ModelSamplingService;
   effectOutcomeAcknowledger?: DurableEffectOutcomeAcknowledger;
   deliveryWriter?: ProgramDeliveryWriter;
-  effectInputPreparer?: DurableEffectInputPreparer;
-  modelContextSourceResolver?: (
-    source: ModelContextSource,
-  ) => Operation<import("@sweatpants/model-provider").ModelContext>;
+  modelContextSourceResolver?: (source: ModelContextSource) => Operation<ModelContext>;
+  modelContextSourceStager?: (context: ModelContext) => Operation<ModelContextSource>;
+  pullResolvers?: readonly PullResolver[];
+  /** Installs deployment-owned APIs inherited by every workflow attachment. */
+  setup?: () => Operation<void>;
 }
 
-export interface OpenLocalProgramRequest {
+export interface OpenProgramWorkflowRequest {
   sessionId?: string;
   turnId?: string;
   taskId?: string;
@@ -131,15 +133,15 @@ export interface OpenLocalProgramRequest {
   route?: ProgramRoute;
 }
 
-export interface LocalProgramRun {
+export interface ProgramWorkflowRun {
   sessionId: string;
   turnId: string;
   taskId: string;
   result: Operation<ProgramRunResult>;
 }
 
-export interface LocalProgramHost {
-  open(request: OpenLocalProgramRequest): Operation<LocalProgramRun>;
+export interface ProgramWorkflowHost {
+  open(request: OpenProgramWorkflowRequest): Operation<ProgramWorkflowRun>;
   resume(sessionId: string): Operation<ProgramRunResult>;
   respond(request: {
     sessionId: string;
@@ -157,81 +159,17 @@ type AcceptedExecution = {
   catalog: PinnedProgramCatalog;
 };
 
-export interface LocalProgramActivationScope {
-  installAuthority: ProgramDriverJournal["install"];
-  effects: DurableEffectRegistry;
-  drivers: ProgramDriverRegistry;
-  routeResolver?: (program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>;
-  modelSamplingService?: ModelSamplingService;
-  effectOutcomeAcknowledger?: DurableEffectOutcomeAcknowledger;
-  deliveryWriter?: ProgramDeliveryWriter;
-  effectInputPreparer?: DurableEffectInputPreparer;
-  modelContextSourceResolver?: (
-    source: ModelContextSource,
-  ) => Operation<import("@sweatpants/model-provider").ModelContext>;
-}
-
-/** Installs the protocol-neutral authority scope shared by LocalProgramHost and applications. */
-export function* runLocalProgramActivation<T>(
-  scope: LocalProgramActivationScope,
-  operation: (authority: JournalAuthorityContract) => Operation<T>,
-): Operation<T> {
-  const runConfigured = function* (): Operation<T> {
-    return yield* scoped(function* () {
-      yield* scope.installAuthority();
-      const authority = yield* JournalAuthorityPort.use();
-      return yield* ProgramDriverRegistryContext.with(scope.drivers, function* () {
-        return yield* DurableEffectRegistryContext.with(scope.effects, function* () {
-          return yield* ExecutionDurableEffectRegistryContext.with(scope.effects, function* () {
-            return yield* ProgramRouteResolver.with(
-              scope.routeResolver
-                ? function* ({ program, parentRoute }) {
-                    return yield* scope.routeResolver!(program, parentRoute);
-                  }
-                : undefined,
-              function* () {
-                return yield* DurableEffectOutcomeAcknowledgerContext.with(
-                  scope.effectOutcomeAcknowledger,
-                  function* () {
-                    return yield* DurableEffectInputPreparationContext.with(
-                      scope.effectInputPreparer,
-                      function* () {
-                        return yield* ModelContextSourceResolverContext.with(
-                          scope.modelContextSourceResolver,
-                          () => operation(authority),
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            );
-          });
-        });
-      });
-    });
-  };
-  return yield* runWithModelSamplingService(scope.modelSamplingService, function* () {
-    return yield* runWithProgramDeliveryWriter(scope.deliveryWriter, runConfigured);
-  });
-}
-
-
-
-
-// ── Workflow-runtime activation environment ──
-
 /**
- * Activation scope for the workflow runtime. Effects arrive as legacy-style
- * registrations installed verbatim onto the kernel's installed-effect port;
+ * Activation scope for the workflow runtime. Effect registrations install
+ * verbatim onto the kernel's installed-effect port;
  * per Decision 1 the journaled input is exactly what the authoring code
  * proposed (no preparation layer).
  */
 export interface WorkflowProgramActivationScope {
   installAuthority: ProgramDriverJournal["install"];
-  readonly sessionId: string;
-  readonly taskId: string;
-  readonly effectRegistrations: readonly import("@sweatpants/durable-effects").DurableEffectRegistration[];
+  readonly attach: AttachProgramRequest;
+  readonly driverKind: string;
+  readonly effectRegistrations: readonly DurableEffectRegistration[];
   /** Post-resolution bookkeeping (e.g. sampling acknowledgement). */
   readonly onEffectResolved?: (info: {
     readonly pullId: string;
@@ -243,13 +181,15 @@ export interface WorkflowProgramActivationScope {
     program: PinnedProgram,
     parentRoute: ProgramRoute,
   ) => Operation<ProgramRoute>;
+  readonly modelContextSourceResolver?: (source: ModelContextSource) => Operation<ModelContext>;
+  readonly modelContextSourceStager?: (context: ModelContext) => Operation<ModelContextSource>;
+  /** Installs deployment-owned scoped APIs inherited by the workflow attachment. */
+  readonly setup?: () => Operation<void>;
 }
 
 /**
- * Workflow-runtime twin of {@link runLocalProgramActivation}: installs the
- * authority plus an installed-effect driver built from the supplied
- * registrations, then hands the live authority to the caller's drive
- * operation inside the route-resolver scope.
+ * Installs authority, placement, effects, context-source composition, and
+ * deployment APIs for one workflow attachment.
  */
 export function* runWorkflowProgramActivation(
   scope: WorkflowProgramActivationScope,
@@ -259,9 +199,10 @@ export function* runWorkflowProgramActivation(
     yield* scope.installAuthority();
     const authority = yield* JournalAuthorityPort.use();
     yield* installEffectRegistrations(
-      { sessionId: scope.sessionId, taskId: scope.taskId },
+      { sessionId: scope.attach.sessionId, taskId: scope.attach.taskId },
       scope.effectRegistrations,
     );
+    const journal = yield* authority.query({ type: "authority.identity" });
     return yield* ProgramRouteResolver.with(
       scope.routeResolver
         ? function* ({ program, parentRoute }) {
@@ -269,18 +210,42 @@ export function* runWorkflowProgramActivation(
           }
         : undefined,
       function* () {
-        return yield* drive(authority);
+        return yield* ProgramPlacementContext.with(
+          {
+            journal,
+            program: scope.attach.program,
+            route: scope.attach.route,
+            driverKind: scope.driverKind,
+          },
+          function* () {
+            return yield* ModelContextSourceResolverContext.with(
+              scope.modelContextSourceResolver,
+              function* () {
+                return yield* ModelContextSourceStagerContext.with(
+                  scope.modelContextSourceStager,
+                  function* () {
+                    if (scope.setup) {
+                      yield* scope.setup();
+                    }
+                    return yield* drive(authority);
+                  },
+                );
+              },
+            );
+          },
+        );
       },
     );
   });
 }
 
 /**
- * Creates the protocol-neutral in-process Host composition. ProgramRuntime is
- * still the only crank turner; this object owns identity, authority lookup,
+ * Creates an in-process workflow Host owning identity, authority lookup,
  * exact registries, user responses, cancellation, and trace projection.
  */
-export function createLocalProgramHost(options: LocalProgramHostOptions): LocalProgramHost {
+export function createProgramWorkflowHost(
+  options: ProgramWorkflowHostOptions,
+): ProgramWorkflowHost {
   // Process-local ownership is only a churn-avoidance hint. Every reuse is
   // checked against authority state; a replacement Host has an empty map and
   // therefore claims newer fences for the complete active task tree.
@@ -290,7 +255,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
     return options.programs.get(exactProgramKey(program));
   }
 
-  function verifyLocalProgramRequest(request: OpenLocalProgramRequest): void {
+  function verifyLocalProgramRequest(request: OpenProgramWorkflowRequest): void {
     const tool = findTool(request.program);
     if (!tool) {
       throw new CrankError(
@@ -318,48 +283,143 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
     program: PinnedProgram,
     input: Json,
     execution: AcceptedExecution,
+    initialProgramCapability?: string,
   ): Operation<ProgramRunResult> {
-    return yield* runLocalProgramActivation(
-      {
-        installAuthority: journal.install,
-        drivers: options.drivers,
-        effects: options.effects,
-        // Always install this wrapper: the no-policy case still has to enforce
-        // the accepted catalog before returning the inherited parent route.
-        routeResolver: function* (child, parentRoute) {
-          assertCatalogDispatch(execution.catalog, child);
-          return options.routeResolver
-            ? yield* options.routeResolver(child, parentRoute)
-            : parentRoute;
+    const rootAttach = {
+      sessionId,
+      taskId,
+      program,
+      input,
+      route: execution.route,
+      executionEpoch: execution.executionEpoch,
+    };
+    const customResolvers = options.pullResolvers ?? [];
+    const customKinds = new Set(customResolvers.map((resolver) => resolver.kind));
+    const pullResolvers = createPullResolverRegistry([
+      ...customResolvers,
+      ...(!customKinds.has(PULL_KIND_SAMPLE) &&
+      options.modelSamplingService &&
+      options.modelContextSourceResolver
+        ? [
+            createParkedSamplePullResolver({
+              service: options.modelSamplingService,
+              *journalIdentity() {
+                return yield* journal.withAuthority((authority) =>
+                  authority.query({ type: "authority.identity" }),
+                );
+              },
+              sourceResolver: options.modelContextSourceResolver,
+            }),
+          ]
+        : []),
+      ...(!customKinds.has(PULL_KIND_WAIT) ? [createWaitPullResolver()] : []),
+    ]);
+    const route = function* (child: PinnedProgram, parentRoute: ProgramRoute) {
+      assertCatalogDispatch(execution.catalog, child);
+      return options.routeResolver ? yield* options.routeResolver(child, parentRoute) : parentRoute;
+    };
+    const activate = function* (request: {
+      readonly attach: typeof rootAttach;
+      readonly initialProgramCapability?: string;
+    }): Operation<ProgramRunResult> {
+      const tool = findTool(request.attach.program);
+      if (!tool) {
+        throw new CrankError(
+          "program_version_unavailable",
+          `No exact program ${exactProgramKey(request.attach.program)}`,
+        );
+      }
+      return yield* runWorkflowProgramActivation(
+        {
+          installAuthority: () => journal.install(),
+          attach: request.attach,
+          driverKind: "workflow",
+          effectRegistrations: [...options.effects.values()],
+          routeResolver: route,
+          ...(options.modelContextSourceResolver
+            ? { modelContextSourceResolver: options.modelContextSourceResolver }
+            : {}),
+          ...(options.modelContextSourceStager
+            ? { modelContextSourceStager: options.modelContextSourceStager }
+            : {}),
+          ...(options.setup ? { setup: options.setup } : {}),
         },
-        ...(options.modelSamplingService
-          ? { modelSamplingService: options.modelSamplingService }
-          : {}),
-        ...(options.effectOutcomeAcknowledger
-          ? { effectOutcomeAcknowledger: options.effectOutcomeAcknowledger }
-          : {}),
-        ...(options.deliveryWriter ? { deliveryWriter: options.deliveryWriter } : {}),
-        ...(options.effectInputPreparer
-          ? { effectInputPreparer: options.effectInputPreparer }
-          : {}),
-        ...(options.modelContextSourceResolver
-          ? { modelContextSourceResolver: options.modelContextSourceResolver }
-          : {}),
-      },
-      function* () {
-        return yield* ProgramRuntime.operations.run({
-          attach: {
-            sessionId,
-            taskId,
-            program,
-            input,
-            route: execution.route,
-            executionEpoch: execution.executionEpoch,
+        function* (authority) {
+          let capability = request.initialProgramCapability;
+          if (capability === undefined) {
+            capability = (yield* authority.command({
+              type: "execution.bind-attachment",
+              request: {
+                sessionId: request.attach.sessionId,
+                taskId: request.attach.taskId,
+                attachmentId: `${stableProgramAttachmentId(request.attach)}-${request.attach.executionEpoch}`,
+                executionEpoch: request.attach.executionEpoch,
+              },
+            })).programCapability;
+          }
+          return yield* driveActivation({
+            attach: request.attach,
+            authority: hostAuthority(authority),
+            programCapability: capability,
+            workflow: durableToolWorkflow(tool, request.attach.input),
+            ...(options.effectOutcomeAcknowledger
+              ? {
+                  *onEffectResolved(info) {
+                    yield* options.effectOutcomeAcknowledger!({
+                      sessionId: request.attach.sessionId,
+                      taskId: request.attach.taskId,
+                      pullId: info.pullId,
+                      attemptId: info.attemptId,
+                      outcomeDigest: info.outcomeDigest,
+                      effect: info.effect,
+                    });
+                  },
+                }
+              : {}),
+          });
+        },
+      );
+    };
+    const drive = function* (): Operation<ProgramRunResult> {
+      return yield* journal.withAuthority(function* (authority) {
+        return yield* driveWorkflowTree({
+          authority,
+          attach: rootAttach,
+          ...(initialProgramCapability === undefined ? {} : { initialProgramCapability }),
+          host: {
+            activate,
+            *manifest(child) {
+              const tool = findTool(child);
+              if (!tool) {
+                throw new CrankError(
+                  "program_version_unavailable",
+                  `No exact program ${exactProgramKey(child)}`,
+                );
+              }
+              return tool.manifest;
+            },
+            route,
+            *settle(parked, currentAttach) {
+              const resolver = pullResolvers.get(parked.reason);
+              if (!resolver) {
+                return false;
+              }
+              yield* settleParkedPull({
+                authority,
+                resolver,
+                attach: currentAttach,
+                pullId: parked.pullId,
+                driverKind: "workflow",
+              });
+              return true;
+            },
           },
-          executeHostEffects: true,
         });
-      },
-    );
+      });
+    };
+    return yield* runWithModelSamplingService(options.modelSamplingService, function* () {
+      return yield* runWithProgramDeliveryWriter(options.deliveryWriter, drive);
+    });
   }
 
   function* resumeTask(sessionId: string, requestedTaskId?: string): Operation<ProgramRunResult> {
@@ -416,7 +476,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
   }
 
   return {
-    *open(request): Operation<LocalProgramRun> {
+    *open(request): Operation<ProgramWorkflowRun> {
       verifyLocalProgramRequest(request);
       const sessionId = request.sessionId ?? `local-session:${crypto.randomUUID()}`;
       const journal = yield* options.journalStore.open(sessionId);
@@ -437,7 +497,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
         route,
         executionEpoch: execution.executionEpoch,
       };
-      yield* journal.openTask({
+      const opened = yield* journal.openTask({
         sessionId,
         turnId,
         taskId,
@@ -445,7 +505,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
         input: request.input,
         executionEpoch: execution.executionEpoch,
         attachmentId: stableProgramAttachmentId(attach),
-        audience: "program-runtime",
+        audience: "workflow-host",
         catalog: canonicalSnapshot(assertJson(request.catalog)).value,
         catalogDigest: request.catalog.digest,
         route,
@@ -455,7 +515,15 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
         sessionId,
         turnId,
         taskId,
-        result: runTask(journal, sessionId, taskId, request.program, request.input, execution),
+        result: runTask(
+          journal,
+          sessionId,
+          taskId,
+          request.program,
+          request.input,
+          execution,
+          opened.programCapability,
+        ),
       };
     },
 

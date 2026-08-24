@@ -1,16 +1,15 @@
 import {
-  MODEL_SAMPLE_EFFECT,
   decodeModelSampleRequest,
-  decodeModelSampleSourceRequest,
-  encodeModelSampleResult,
-  resolveModelSampleSourceRequest,
-  sampleDurableModel,
+  decodeModelSampleResult,
+  MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
+  MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR,
+  encodeModelSampleSourceRequest,
+  ModelContextSourceStagerContext,
   type ModelSampleRequest,
   type ModelSampleResult,
 } from "@sweatpants/model-sampling";
 import type { Operation } from "effection";
 
-import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   createPinnedDurableProgram,
   defineDurableProgramManifest,
@@ -25,10 +24,8 @@ import {
   FOREIGN_TOOL_START_EFFECT,
 } from "./foreign-contract.ts";
 import { projectModelSampleCompletion } from "@sweatpants/agent-sdk";
-import { ModelContextSourceResolverContext } from "@sweatpants/model-sampling";
-import { CrankError } from "@sweatpants/durable-execution";
+import { CrankError, type DurableProgramContext } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
-import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
 import type { ForeignToolRequest } from "@sweatpants/durable-execution";
 
 /**
@@ -43,6 +40,31 @@ function classifyToolOwnedSample(payload: Json): ModelSampleRequest {
   const existing = request.classifications ?? [];
   if (existing.includes(TOOL_OWNED_SAMPLE_CLASSIFICATION)) return request;
   return { ...request, classifications: [...existing, TOOL_OWNED_SAMPLE_CLASSIFICATION] };
+}
+
+function* sampleToolOwnedModel(
+  context: DurableProgramContext,
+  payload: Json,
+): Operation<ModelSampleResult> {
+  const request = classifyToolOwnedSample(payload);
+  const stage = yield* ModelContextSourceStagerContext.get();
+  if (!stage) {
+    throw new CrankError(
+      "model_context_source_invalid",
+      "Foreign adapter model sampling requires an authoring-edge context stager",
+    );
+  }
+  const source = yield* stage(request.invocation.context);
+  const wireRequest = encodeModelSampleSourceRequest({
+    ...request,
+    invocation: {
+      context: source,
+      ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
+    },
+  });
+  return decodeModelSampleResult(
+    yield* context.pull(assertJson({ kind: "sample", input: wireRequest })),
+  );
 }
 
 /** Validated manifest for the built-in foreign adapter child program. */
@@ -62,7 +84,12 @@ export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<Foreig
     effects: {
       [FOREIGN_TOOL_START_EFFECT.name]: FOREIGN_TOOL_START_EFFECT,
       [FOREIGN_TOOL_CONTINUE_EFFECT.name]: FOREIGN_TOOL_CONTINUE_EFFECT,
-      [MODEL_SAMPLE_EFFECT.name]: MODEL_SAMPLE_EFFECT,
+    },
+    pulls: {
+      sample: {
+        input: MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
+        output: MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR,
+      },
     },
     capabilities: {
       durableEmissions: false,
@@ -81,23 +108,19 @@ const adapterTool = createPinnedDurableProgram(
       ...(request.route ? { route: request.route } : {}),
     });
 
-    let terminal = false;
-    try {
-      while (disposition.type === "input_required") {
-        const response =
-          disposition.request.kind === "sample"
-            ? projectModelSampleCompletion(
-                yield* sampleDurableModel(
-                  context,
-                  classifyToolOwnedSample(disposition.request.payload),
-                  { audience: "model-runtime" },
-                ),
-              )
-            : yield* context.elicit<Json>(
-                "foreign_input",
-                disposition.request.message,
-                FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
-                {
+    while (disposition.type === "input_required") {
+      const response =
+        disposition.request.kind === "sample"
+          ? projectModelSampleCompletion(
+              yield* sampleToolOwnedModel(context, disposition.request.payload),
+            )
+          : yield* context.pull(
+              assertJson({
+                kind: "elicit",
+                key: "foreign_input",
+                message: disposition.request.message,
+                response: FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
+                context: {
                   foreignDriver: request.driver,
                   foreignTool: request.tool,
                   foreignKey: disposition.request.key,
@@ -107,76 +130,32 @@ const adapterTool = createPinnedDurableProgram(
                     ? { context: disposition.request.context }
                     : {}),
                 },
-                FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
-                disposition.request.binding,
-              );
+                contextContract: FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
+                ...(disposition.request.binding === undefined
+                  ? {}
+                  : { binding: disposition.request.binding }),
+              }),
+            );
 
-        disposition = yield* context.effect(
-          FOREIGN_TOOL_CONTINUE_EFFECT,
-          {
-            continuation: disposition.continuation,
-            response: { kind: disposition.request.kind, value: assertJson(response) },
-          },
-          {
-            audience,
-            ...(request.route ? { route: request.route } : {}),
-          },
-        );
-      }
-
-      terminal = true;
-      if (disposition.type === "completed") {
-        return disposition.result;
-      }
-      throw new CrankError(disposition.error.code, disposition.error.message, disposition.error);
-    } finally {
-      if (!terminal && disposition.type === "input_required") {
-        yield* context.effect(
-          FOREIGN_TOOL_CONTINUE_EFFECT,
-          {
-            continuation: disposition.continuation,
-            response: { kind: "cancel", value: null },
-          },
-          {
-            audience,
-            ...(request.route ? { route: request.route } : {}),
-          },
-        );
-      }
+      disposition = yield* context.effect(
+        FOREIGN_TOOL_CONTINUE_EFFECT,
+        {
+          continuation: disposition.continuation,
+          response: { kind: disposition.request.kind, value: assertJson(response) },
+        },
+        {
+          audience,
+          ...(request.route ? { route: request.route } : {}),
+        },
+      );
     }
+
+    if (disposition.type === "completed") {
+      return disposition.result;
+    }
+    throw new CrankError(disposition.error.code, disposition.error.message, disposition.error);
   },
 );
 
-/** Durable adapter tool plus helper registration for lifted model sampling. */
-export type ForeignToolAdapter = typeof adapterTool & {
-  modelSampleRegistration(
-    handler: (request: ModelSampleRequest) => Operation<ModelSampleResult>,
-  ): DurableEffectRegistration;
-};
-
-/** Frozen built-in adapter that journals start, continuation, and sampling boundaries. */
-export const foreignToolAdapter: ForeignToolAdapter = Object.freeze({
-  ...adapterTool,
-  modelSampleRegistration(handler: (request: ModelSampleRequest) => Operation<ModelSampleResult>) {
-    return createDurableEffectRegistration(
-      MODEL_SAMPLE_EFFECT,
-      MODEL_SAMPLE_EFFECT.retrySafety,
-      function* (wireRequest) {
-        const sourceRequest = decodeModelSampleSourceRequest(wireRequest);
-        const resolveContext = yield* ModelContextSourceResolverContext.get();
-        if (!resolveContext) {
-          throw new CrankError(
-            "model_context_source_invalid",
-            "Foreign model sampling registration has no context source resolver",
-          );
-        }
-        const request = resolveModelSampleSourceRequest(
-          sourceRequest,
-          yield* resolveContext(sourceRequest.invocation.context),
-        );
-        const result = yield* handler(request);
-        return { status: "ok", value: encodeModelSampleResult(result) };
-      },
-    );
-  },
-});
+/** Frozen built-in adapter that journals start, continuation, and pull boundaries. */
+export const foreignToolAdapter = Object.freeze(adapterTool);

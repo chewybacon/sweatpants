@@ -15,7 +15,7 @@ import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/re
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createLocalToolInvocationRuntime,
-  installLocalProgramToolRuntime,
+  installLocalToolRuntimeComposition,
 } from "@sweatpants/tool-runtime-local";
 import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants/test-rig";
 import { reactBookingTool } from "./fixtures/react-booking.tool.ts";
@@ -60,7 +60,7 @@ export function createReactAcceptanceApplication(
       yield* createLocalToolInvocationRuntime({
         worker: { workerUrl: workerBootstrapUrl(), isDev: false },
       });
-      yield* installLocalProgramToolRuntime({
+      yield* installLocalToolRuntimeComposition({
         tools: [reactBookingTool],
         installForeignEffects: function* (registrations) {
           yield* ProgramDriverForeignEffectsContext.set(registrations);

@@ -9,14 +9,13 @@ import {
 
 /**
  * Installs the worker-backed local tool runtime together with the durable
- * Program Runtime foreign-effect adapter that uses the same registry and tool
- * contracts.
+ * workflow foreign-effect adapter that uses the same registry and contracts.
  *
  * Use this composition helper when ordinary local tools can be invoked from a
  * durable program (including tools that call ctx.sample()). Applications that
  * only need the ordinary chat ToolRuntime should use installLocalToolRuntime.
  */
-export function* installLocalProgramToolRuntime(
+export function* installLocalToolRuntimeComposition(
   options: LocalToolRuntimeDriverOptions & {
     installForeignEffects(registrations: ToolInvocationForeignEffectRegistrations): Operation<void>;
   },

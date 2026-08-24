@@ -17,11 +17,16 @@ import {
   type ModelResponse,
   type ModelStreamEvent,
 } from "@sweatpants/model-provider";
-import type { ModelSampleAttempt, ModelSampleRequest } from "@sweatpants/model-sampling";
+import {
+  decodeModelSampleSourceRequest,
+  type ModelSampleAttempt,
+  type ModelSampleRequest,
+} from "@sweatpants/model-sampling";
 import type { ProgramDriverJournal } from "../program-driver-journal.ts";
 import {
   createHostModelSamplingService,
   resolveModelContextSource,
+  stageProgramDriverModelSampleInput,
 } from "../model-sampling/service.ts";
 
 const model: Model = {
@@ -278,5 +283,66 @@ describe("accepted model-context preparation", () => {
     ).rejects.toMatchObject({ code: "model_context_limit_exceeded" });
     expect(objectWrites).toBe(0);
     expect(providerCalls).toBe(0);
+  });
+});
+
+describe("ProgramDriver model-context composition", () => {
+  it("stores embedded context before the journal boundary and preserves staged input", async () => {
+    const store = createMemoryExecutionStore();
+    const evidence = await run(function* () {
+      yield* installExecutionStore(store);
+      const staged = yield* stageProgramDriverModelSampleInput(request, "conversation-1");
+      const decoded = decodeModelSampleSourceRequest(staged);
+      const resolved = yield* resolveModelContextSource(decoded.invocation.context);
+      const repeated = yield* stageProgramDriverModelSampleInput(staged, "conversation-1");
+      return { staged, resolved, repeated };
+    });
+
+    expect(evidence.resolved).toEqual(request.invocation.context);
+    expect(evidence.repeated).toEqual(evidence.staged);
+    expect(JSON.stringify(evidence.staged)).not.toContain('"messages"');
+  });
+});
+
+describe("host sampling service modes", () => {
+  it("refuses journal-backed construction without the conversation store", () => {
+    expect(() =>
+      createHostModelSamplingService({
+        model,
+        journal: journalAuthority({ preparation: null }),
+      }),
+    ).toThrowError(/conversation store/);
+  });
+
+  it("streams parked pulls with no journal, preparation, or object traffic", async () => {
+    let providerCalls = 0;
+    const driver: ModelProviderDriver = {
+      *stream() {
+        providerCalls += 1;
+        return completedResponse();
+      },
+      *sample() {
+        throw new Error("stream seam only");
+      },
+    };
+    const store = createMemoryExecutionStore();
+    let objectWrites = 0;
+    const originalPut = store.putObject.bind(store);
+    store.putObject = function* (request_: Parameters<typeof originalPut>[0]) {
+      objectWrites += 1;
+      return yield* originalPut(request_);
+    } as typeof store.putObject;
+
+    await run(function* () {
+      yield* installExecutionStore(store);
+      yield* installModelProvider(driver);
+      // Pull-fence mode: no journal means no effect-owner preparation protocol.
+      const service = createHostModelSamplingService({ model, emitLiveEvents: false });
+      const disposition = yield* service.sample(request, attempt);
+      expect(disposition.status).toBe("ok");
+    });
+
+    expect(providerCalls).toBe(1);
+    expect(objectWrites).toBe(0);
   });
 });

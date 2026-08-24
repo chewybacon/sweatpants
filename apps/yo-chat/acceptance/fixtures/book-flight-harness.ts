@@ -112,7 +112,7 @@ export async function createBookFlightSubstrate(options: {
       return completedStream(sampleMessage(request, sampleIndex));
     },
     *sample(): Operation<ModelResponse> {
-      throw new Error("ProgramRuntime must use the streaming model seam");
+      throw new Error("workflow host must use the streaming model seam");
     },
   };
   const keyring = createCapabilityKeyring("book-flight-foreign", [

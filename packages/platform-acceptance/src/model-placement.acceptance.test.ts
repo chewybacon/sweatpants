@@ -9,7 +9,7 @@ import {
   createAcceptanceApplication,
   type AcceptanceApplicationInspection,
 } from "./lib/acceptance-app.ts";
-import { createLocalProgramDriver } from "@sweatpants/durable-execution";
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 
 describe("model-sampling placement semantics", () => {
   it.each(["host", "execution"] as const)(
@@ -69,10 +69,7 @@ describe("model-sampling placement semantics", () => {
               modelSamplingOwnership: "execution",
               modelSamplingTargets: "all",
               durableDriverKind: "nested-program",
-              createDurableDriver: (registry, executionEffects) =>
-                createLocalProgramDriver(registry, {
-                  ...(executionEffects ? { executionEffects } : {}),
-                }),
+              createDurableDriver: (registry) => createWorkflowProgramDriver(registry),
             },
           ),
       },

@@ -61,4 +61,4 @@ Framework acceptance use of the escape hatch requires a `scenario-escape-hatch:`
 - Every turn must settle, fail, be cancelled, or be superseded.
 - Successful rig cleanup verifies no requests, expectations, turns, or semantic barriers remain.
 - The first failure poisons the rig; cleanup diagnostics never replace that primary failure.
-- Tests synchronize on semantic events, never sleeps, polling, or manual Program Runtime cranks.
+- Tests synchronize on semantic events, never sleeps, polling, or manual workflow host cranks.

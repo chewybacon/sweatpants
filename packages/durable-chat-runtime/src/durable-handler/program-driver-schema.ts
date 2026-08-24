@@ -1,6 +1,7 @@
 import {
-  MODEL_SAMPLE_EFFECT,
-  MODEL_SAMPLE_SCHEMA_ENTRIES,
+  MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
+  MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR,
+  MODEL_SAMPLE_PULL_SCHEMA_ENTRIES,
   type ModelContextSource,
 } from "@sweatpants/model-sampling";
 import type { ChatToolDefinition } from "@sweatpants/chat-contract";
@@ -9,6 +10,7 @@ import {
   assertJson,
   canonicalSnapshot,
   requireJsonObject,
+  sha256,
   type Json,
   type JsonObject,
 } from "@sweatpants/foundation";
@@ -142,8 +144,6 @@ function chatEngineSchema(
   return descriptor;
 }
 
-export const modelSample = MODEL_SAMPLE_EFFECT;
-
 const chatRootInputDescriptor = chatEngineSchema(
   "sweatpants.chat-root/input",
   "program_input",
@@ -267,20 +267,26 @@ const chatRootOutputDescriptor = chatEngineSchema(
 
 export const manifest = defineDurableProgramManifest<ChatProgramInput, string>({
   programId: "sweatpants.chat-root",
-  version: "1.4.0",
-  digest: "9c9ef3577a2d1190d46f49d230c06554291d663019dbae7b85cdf457b4f5b047",
+  version: "1.5.0",
+  digest: sha256("sweatpants.chat-root@1.5.0:workflow-sample-pull"),
   inputSchema: chatRootInputDescriptor,
   outputSchema: chatRootOutputDescriptor,
   elicits: {},
-  effects: { [modelSample.name]: modelSample },
+  effects: {},
+  pulls: {
+    sample: {
+      input: MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
+      output: MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR,
+    },
+  },
   capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
 });
 
 /**
  * Digest-keyed validator entries for the built-in chat-root program and its
- * model-sampling effect. Deployments merge these with their generated tool
+ * model-sampling pull. Deployments merge these with their generated tool
  * catalogs into the journal authority's schema registry.
  */
 export function programDriverChatEngineSchemaEntries(): readonly SchemaBinding[] {
-  return [...MODEL_SAMPLE_SCHEMA_ENTRIES, ...chatEngineSchemaEntries];
+  return [...MODEL_SAMPLE_PULL_SCHEMA_ENTRIES, ...chatEngineSchemaEntries];
 }

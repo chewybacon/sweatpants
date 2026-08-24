@@ -59,7 +59,7 @@ const externalSubstrateEnabled =
   process.env["PROGRAM_DRIVER_ACCEPTANCE_REDIS"] === "1" || useAgentCoreProgramDriverAcceptance();
 
 describe.skipIf(!externalSubstrateEnabled)(
-  "unchanged book_flight through an external HTTP ProgramRuntime substrate",
+  "unchanged book_flight through an external HTTP workflow host substrate",
   () => {
     it("journals elicits and sampling without tool.execute/tool.resume", async () => {
       let sampleIndex = 0;
@@ -103,7 +103,7 @@ describe.skipIf(!externalSubstrateEnabled)(
           return completedStream(message);
         },
         *sample(): Operation<ModelResponse> {
-          throw new Error("ProgramRuntime must use the streaming model seam");
+          throw new Error("workflow host must use the streaming model seam");
         },
       };
       const keyring = createCapabilityKeyring("book-flight-http", [
@@ -389,7 +389,7 @@ async function readJournal(store: ProgramDriverJournalStore, conversationId: str
 function requiredRedisUrl(): string {
   const value = process.env["REDIS_URL"];
   if (!value) {
-    throw new Error("REDIS_URL is required for Redis ProgramRuntime acceptance");
+    throw new Error("REDIS_URL is required for Redis workflow host acceptance");
   }
   return value;
 }

@@ -2,23 +2,20 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   createDurableToolRegistry,
-  createLocalProgramDriver,
   createPinnedDurableProgram,
-  ExecutionDurableEffectRegistryContext,
   ProgramDriverRegistryContext,
   createProgramDriverRegistry,
-  ProgramRuntime,
   stableProgramAttachmentId,
   type DurableProgramManifest,
   type Json,
+  type ProgramElicitResult,
 } from "@sweatpants/durable-execution";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { assertJson, canonicalSnapshot } from "@sweatpants/foundation";
+import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import {
-  DurableEffectRegistryContext,
-  DurableEffectRouting,
-  createDurableEffectRegistry,
-} from "@sweatpants/durable-effects/runtime";
-import { withAuthorityTestScope } from "../journal-program-runtime.ts";
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
+} from "../testing/program-driver-host.ts";
 import { createAuthorityScenarioDriver } from "../testing.ts";
 import { projectExecutionForest } from "../execution-forest.ts";
 import { booleanGuard, createSchemaFixture, stringGuard } from "../schema-fixtures.ts";
@@ -142,74 +139,19 @@ const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
 });
 
 const parkedTool = createPinnedDurableProgram(manifest, function* (_input, context) {
-  const approval = yield* context.elicit<boolean>(
-    "approval",
-    "Continue?",
-    approvalResponse.descriptor,
-  );
+  const approval = (yield* context.pull(
+    assertJson({
+      kind: "elicit",
+      key: "approval",
+      message: "Continue?",
+      response: approvalResponse.descriptor,
+    }),
+  )) as ProgramElicitResult<boolean>;
   return `approved:${String(approval.action)}`;
 });
 
 describe("workflow runtime behind the ProgramDriver contract", () => {
   const sessionId = "driver-flip";
-
-  async function runLegacy(): Promise<ScenarioResult> {
-    return run(function* () {
-      const authority = makeAuthority("journal-flip-legacy");
-      const drivers = createProgramDriverRegistry([
-        ["program", createLocalProgramDriver(createDurableToolRegistry([tool]))],
-      ]);
-      const effects = createDurableEffectRegistry([
-        {
-          definition: manifest.effects["echo"]!,
-          satisfies: { mode: "idempotent", mechanism: "pull_id_key" },
-          handler: (input) =>
-            (function* () {
-              return { status: "ok" as const, value: `${input["message"]}-executed` };
-            })(),
-        },
-      ]);
-      const request = attach(sessionId);
-      yield* withAuthorityTestScope(authority, function* () {
-        yield* authority.openTask({
-          sessionId: request.sessionId,
-          turnId: "turn-0",
-          taskId: request.taskId,
-          manifest,
-          input: request.input,
-          executionEpoch: 1,
-          attachmentId: stableProgramAttachmentId(request),
-          audience: "program-host",
-        });
-        yield* DurableEffectRouting.around({
-          *route() {
-            return { placement: "execution" as const };
-          },
-        });
-        yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          yield* DurableEffectRegistryContext.with(effects, function* () {
-            yield* ExecutionDurableEffectRegistryContext.with(effects, function* () {
-              yield* ProgramRuntime.operations.run({
-                attach: request,
-                executeHostEffects: true,
-              });
-            });
-          });
-        });
-      });
-      const journal = authority.readJournal(sessionId);
-      const closed = journal.find((entry) => entry.payload.type === "TaskClosed");
-      if (!closed || closed.payload.type !== "TaskClosed") throw new Error("legacy not closed");
-      return {
-        value: (closed.payload.outcome as { value: string }).value,
-        journalTypes: payloadTypes(journal),
-        forest: canonicalSnapshot(projectExecutionForest(journal)),
-        settledValues: journal
-          .filter((entry) => entry.payload.type === "PullResolved")
-          .map((entry) => (entry.payload.outcome as { value: string }).value),
-      };
-    }) as unknown as Promise<ScenarioResult>;
-  }
 
   async function runWorkflowDriver(): Promise<ScenarioResult> {
     return run(function* () {
@@ -232,7 +174,7 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
         ],
       ]);
       const request = attach(sessionId);
-      yield* withAuthorityTestScope(authority, function* () {
+      yield* withProgramDriverTestScope(authority, function* () {
         yield* authority.openTask({
           sessionId: request.sessionId,
           turnId: "turn-0",
@@ -249,9 +191,8 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
           },
         });
         yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          yield* ProgramRuntime.operations.run({
+          yield* driveInstalledTestProgramTree({
             attach: request,
-            executeHostEffects: true,
           });
         });
       });
@@ -269,15 +210,13 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
     }) as unknown as Promise<ScenarioResult>;
   }
 
-  it("runs the same tool identically through the workflow driver", async () => {
-    const legacy = await runLegacy();
-    const modern = await runWorkflowDriver();
+  it("runs the tool through the workflow driver", async () => {
+    const result = await runWorkflowDriver();
 
-    expect(modern.value).toBe(legacy.value);
-    expect(modern.journalTypes).toEqual(legacy.journalTypes);
-    expect(modern.forest).toEqual(legacy.forest);
-    expect(modern.settledValues).toEqual(legacy.settledValues);
-    expect(modern.settledValues).toEqual(["one", "one-executed", "two"]);
+    expect(result.value).toBe("one|one-executed|two");
+    expect(result.settledValues).toEqual(["one", "one-executed", "two"]);
+    expect(result.journalTypes).toContain("TaskClosed");
+    expect(result.forest).toBeDefined();
   });
 
   it("parks and resumes elicitations across activations through the driver", async () => {
@@ -285,22 +224,17 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
     let pullId = "";
     let capability = "";
 
-    async function runSide(journalId: string, driverKind: "legacy" | "workflow") {
+    async function runSide(journalId: string) {
       return run(function* () {
         const authority = makeAuthority(journalId);
-        const drivers =
-          driverKind === "workflow"
-            ? createProgramDriverRegistry([
-                ["program", createWorkflowProgramDriver(createDurableToolRegistry([parkedTool]))],
-              ])
-            : createProgramDriverRegistry([
-                ["program", createLocalProgramDriver(createDurableToolRegistry([parkedTool]))],
-              ]);
+        const drivers = createProgramDriverRegistry([
+          ["program", createWorkflowProgramDriver(createDurableToolRegistry([parkedTool]))],
+        ]);
         const request = attach(sessionId);
         let firstState = "";
         let firstReason = "";
         let secondValue = "";
-        yield* withAuthorityTestScope(authority, function* () {
+        yield* withProgramDriverTestScope(authority, function* () {
           const opened = yield* authority.openTask({
             sessionId: request.sessionId,
             turnId: "turn-0",
@@ -323,7 +257,7 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
                 )) as unknown as { programCapability: string };
                 capabilityForRun = bound.programCapability;
               }
-              return yield* ProgramRuntime.operations.run({
+              return yield* driveInstalledTestProgramTree({
                 attach: request,
                 programCapability: capabilityForRun,
               });
@@ -388,17 +322,11 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
       }>;
     }
 
-    const legacy = await runSide("journal-parked-legacy", "legacy");
-    expect(legacy.firstState).toBe("parked");
-    expect(legacy.firstReason).toBe("elicit");
-    expect(legacy.value).toBe("approved:accept");
-
-    const modern = await runSide("journal-parked-workflow", "workflow");
-    expect(modern.firstState).toBe("parked");
-    expect(modern.firstReason).toBe("elicit");
-    expect(modern.value).toBe("approved:accept");
-
-    expect(modern.journalTypes).toEqual(legacy.journalTypes);
-    expect(modern.forest).toEqual(legacy.forest);
+    const result = await runSide("journal-parked-workflow");
+    expect(result.firstState).toBe("parked");
+    expect(result.firstReason).toBe("elicit");
+    expect(result.value).toBe("approved:accept");
+    expect(result.journalTypes).toContain("TaskClosed");
+    expect(result.forest).toBeDefined();
   });
 });

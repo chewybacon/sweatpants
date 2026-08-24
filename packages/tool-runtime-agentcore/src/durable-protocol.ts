@@ -160,6 +160,23 @@ const operationDescriptorSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("invoke"), child: childSchema }),
   z.strictObject({ kind: z.literal("spawn"), child: childSchema }),
   z.strictObject({
+    kind: z.literal("sample"),
+    input: z.json(),
+  }),
+  z.strictObject({
+    kind: z.literal("foreign"),
+    driver: nonemptyStringSchema,
+    tool: nonemptyStringSchema,
+    input: z.json(),
+    durability: z.enum([
+      "opaque",
+      "ephemeral_handle",
+      "resumable_handle",
+      "server_task",
+      "crank_native",
+    ]),
+  }),
+  z.strictObject({
     kind: z.literal("join"),
     handle: z.strictObject({
       __durableTask: nonemptyStringSchema,

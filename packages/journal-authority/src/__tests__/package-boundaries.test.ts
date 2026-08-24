@@ -24,7 +24,7 @@ describe("journal-authority package boundaries", () => {
     ]);
 
     // Authority semantics remain independent of concrete storage and hosting adapters.
-    const sourceFiles = ["journal-program-runtime.ts", "authority-decisions.ts", "index.ts"];
+    const sourceFiles = ["workflow/driver-drive.ts", "authority-decisions.ts", "index.ts"];
     for (const file of sourceFiles) {
       const source = readFileSync(resolve(packageRoot, "src", file), "utf8");
       expect(source, file).not.toContain(["@sweatpants", "framework"].join("/"));

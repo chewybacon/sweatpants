@@ -63,6 +63,11 @@ export interface DurableProgramManifest<I extends Json = Json, O extends Json = 
     }
   >;
   effects: Record<string, EffectDefinition<Json, Json, Json>>;
+  /** Typed contracts for generic `pull` descriptors keyed by pull kind. */
+  pulls?: Record<
+    string,
+    { readonly input: PortableSchemaDescriptor; readonly output: PortableSchemaDescriptor }
+  >;
   capabilities: { durableEmissions: boolean; structuredChildren: boolean; replay: "strict" };
 }
 const programInputType: unique symbol = Symbol("program-input") as never;

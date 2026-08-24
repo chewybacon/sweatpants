@@ -9,9 +9,11 @@ import {
 } from "@sweatpants/foundation";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
+  decodeModelContext,
   ModelProviderApi,
   UnsupportedModelCapabilityError,
   type Model,
+  type ModelContext,
   type StreamOptions,
 } from "@sweatpants/model-provider";
 import {
@@ -19,7 +21,6 @@ import {
   decodeModelSampleResult,
   decodeModelSampleSourceRequest,
   encodeModelSampleSourceRequest,
-  MODEL_SAMPLE_EFFECT,
   settleModelSample,
   type ModelContextSource,
   type ModelSampleSourceRequest,
@@ -31,7 +32,6 @@ import {
   type HistoryPolicy,
   type PublicProjectionRoot,
 } from "@sweatpants/chat-core";
-import { decodeModelContext, type ModelContext } from "@sweatpants/model-provider";
 import { ExecutionStoreApi } from "@sweatpants/journal-authority/api";
 import type {
   DurableSemanticRecord,
@@ -160,7 +160,33 @@ function* loadPreparedInvocation(
   return prepared;
 }
 
-export function* prepareModelSampleEffectInput(
+export function* stageModelContextSource(
+  value: ModelContext,
+  conversationId: string,
+): Operation<ModelContextSource> {
+  const context = canonicalSnapshot(value);
+  const byteLength = new TextEncoder().encode(context.canonical).byteLength;
+  const objectId = stableTupleHash(["model-context-source", conversationId, context.sha]);
+  const object = yield* ExecutionStoreApi.operations.putObject({
+    objectId,
+    lifetimeScope: "conversation",
+    scopeOwnerId: conversationId,
+    objectKind: "model-context-source.v1",
+    contentHash: context.sha,
+    byteLength,
+    body: assertJson(context.value),
+    createdAt: Date.now(),
+  });
+  return { type: "object", object, digest: context.sha };
+}
+
+/**
+ * Explicit ProgramDriver transport composition edge. Process-independent
+ * evaluators cannot inherit the Host's context stager; this stores an embedded
+ * context before Authority receives the descriptor. Already-staged source
+ * requests pass through unchanged.
+ */
+export function* stageProgramDriverModelSampleInput(
   input: Json,
   conversationId: string,
 ): Operation<Json> {
@@ -181,23 +207,10 @@ export function* prepareModelSampleEffectInput(
     return encodeModelSampleSourceRequest(decodeModelSampleSourceRequest(input));
   }
   const request = decodeModelSampleRequest(input);
-  const context = canonicalSnapshot(request.invocation.context);
-  const byteLength = new TextEncoder().encode(context.canonical).byteLength;
-  const objectId = stableTupleHash(["model-context-source", conversationId, context.sha]);
-  const object = yield* ExecutionStoreApi.operations.putObject({
-    objectId,
-    lifetimeScope: "conversation",
-    scopeOwnerId: conversationId,
-    objectKind: "model-context-source.v1",
-    contentHash: context.sha,
-    byteLength,
-    body: assertJson(context.value),
-    createdAt: Date.now(),
-  });
   const sourceRequest: ModelSampleSourceRequest = {
     ...request,
     invocation: {
-      context: { type: "object", object, digest: context.sha },
+      context: yield* stageModelContextSource(request.invocation.context, conversationId),
       ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
     },
   };
@@ -231,11 +244,7 @@ function taskModelMessages(records: readonly DurableSemanticRecord[]): ModelCont
   for (const record of records) {
     if (record.payload.type === "PullResolved") {
       const request = pulls.get(record.payload.pullId);
-      if (
-        request?.descriptor.kind === "effect" &&
-        request.descriptor.name === MODEL_SAMPLE_EFFECT.name &&
-        record.payload.outcome.status === "ok"
-      ) {
+      if (request?.descriptor.kind === "sample" && record.payload.outcome.status === "ok") {
         const result = decodeModelSampleResult(record.payload.outcome.value);
         messages.push(result.message.message);
       }
@@ -367,6 +376,13 @@ export function createHostModelSamplingService(options: {
   streamOptions?: StreamOptions;
   catalog?: ChatToolCatalog;
   historyPolicy?: HistoryPolicy;
+  /**
+   * Presence selects the sampling mode. With the journal, samples run the
+   * effect-owner preparation protocol (stage → accept → authorize) and
+   * require `conversationStore` + `conversationId`. Without it, pulls are
+   * fenced by their pull capability alone and stream without preparation —
+   * there is no AttemptStarted owner to fence with.
+   */
   journal?: ProgramDriverJournal;
   conversationStore?: ConversationStore;
   conversationId?: string;
@@ -375,6 +391,14 @@ export function createHostModelSamplingService(options: {
   onLiveMessageStarted?: (messageId: string) => void;
   onLiveMessageEnded?: (messageId: string) => void;
 }): ModelSamplingService {
+  if (options.journal && !(options.conversationStore && options.conversationId)) {
+    // Silent degradation here would quietly disable durable preparation
+    // (retry-safe dispatch fences) for every sample on this service.
+    throw new CrankError(
+      "model_context_source_invalid",
+      "Journal-backed model sampling requires the conversation store and id",
+    );
+  }
   return {
     // Provider streaming intentionally keeps plan, delivery, settlement, and cancellation in one pump.
     // fallow-ignore-next-line complexity
@@ -414,15 +438,16 @@ export function createHostModelSamplingService(options: {
             : {}),
         };
       } else if (options.journal && options.conversationStore && options.conversationId) {
+        // The constructor guard guarantees this triple is all-or-nothing.
         const contextSnapshot = canonicalSnapshot(plan.providerRequest.context);
         const prepared: PreparedModelInvocation = {
           version: 1,
           model: { provider: options.model.provider, id: options.model.id },
           context: plan.providerRequest.context,
           options: semanticOptions(plan.providerRequest.options as Record<string, unknown>),
-          response: canonicalSnapshot(plan.response as unknown as Json).value,
-          delivery: canonicalSnapshot(plan.delivery as unknown as Json).value,
-          decisions: canonicalSnapshot(plan.decisions as unknown as Json).value,
+          response: canonicalSnapshot(assertJson(plan.response)).value,
+          delivery: canonicalSnapshot(assertJson(plan.delivery)).value,
+          decisions: canonicalSnapshot(assertJson(plan.decisions)).value,
         };
         const invocation = canonicalSnapshot(prepared);
         const maxCanonicalBytes = preparedModelContextByteLimit(options.model.contextWindow);
@@ -469,7 +494,7 @@ export function createHostModelSamplingService(options: {
           objectKind: "prepared-model-context.v1",
           contentHash: invocation.sha,
           byteLength,
-          body: invocation.value as unknown as Json,
+          body: assertJson(invocation.value),
           createdAt: Date.now(),
         });
         const budget = {
@@ -485,7 +510,7 @@ export function createHostModelSamplingService(options: {
           contextObject,
           contextDigest: contextSnapshot.sha,
           invocationDigest: invocation.sha,
-          responseModeDigest: canonicalSnapshot(plan.response as unknown as Json).sha,
+          responseModeDigest: canonicalSnapshot(assertJson(plan.response)).sha,
           generationOptionsDigest: canonicalSnapshot(prepared.options).sha,
           sourceCheckpoint: head.checkpoint,
           sourceArchiveHeadSegmentId: checkpoint.archiveHead?.segmentId ?? null,

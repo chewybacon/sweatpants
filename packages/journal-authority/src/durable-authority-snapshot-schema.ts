@@ -106,6 +106,10 @@ const programElicitDeclarationSchema = z.strictObject({
   context: portableSchemaDescriptorSchema.optional(),
   contextContract: portableSchemaDescriptorSchema.optional(),
 });
+const programPullDeclarationSchema = z.strictObject({
+  input: portableSchemaDescriptorSchema,
+  output: portableSchemaDescriptorSchema,
+});
 const effectCancellationSchema = z.strictObject({ partialSchema: portableSchemaDescriptorSchema });
 const effectDefinitionSchema = z.strictObject({
   name: z.string(),
@@ -127,6 +131,10 @@ const durableProgramManifestSchema = z.strictObject({
   effects: z
     .record(z.string(), effectDefinitionSchema)
     .refine((value) => Object.keys(value).length <= MAX_MANIFEST_ENTRIES),
+  pulls: z
+    .record(z.string(), programPullDeclarationSchema)
+    .refine((value) => Object.keys(value).length <= MAX_MANIFEST_ENTRIES)
+    .optional(),
   capabilities: z.strictObject({
     durableEmissions: z.boolean(),
     structuredChildren: z.boolean(),
@@ -238,7 +246,7 @@ const cancellationStateSchema = z.union([
     frontier: cancellationFrontierSchema,
   }),
   z.strictObject({
-    type: z.literal("settling_effect"),
+    type: z.literal("settling_pull"),
     commandId: z.string(),
     pullId: z.string(),
     reason: z.string().optional(),

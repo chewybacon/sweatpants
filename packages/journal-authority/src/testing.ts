@@ -6,7 +6,13 @@ export type { InMemoryJournalAuthorityOptions } from "./authority-snapshot.ts";
 export { createStoredScenarioDriver } from "./testing/stored-scenario-driver.ts";
 export type { StoredScenarioDriver } from "./testing/stored-scenario-driver.ts";
 export type { StoredJournalAuthorityOptions } from "./stored-shell.ts";
-export { installAuthorityTestScope, withAuthorityTestScope } from "./journal-program-runtime.ts";
+export {
+  driveInstalledTestProgramTree,
+  driveTestProgramTree,
+  withProgramDriverTestPullResolvers,
+  withProgramDriverTestSampleStager,
+  withProgramDriverTestScope,
+} from "./testing/program-driver-host.ts";
 export * from "./metrics-middleware.ts";
 export * from "./schema-fixtures.ts";
 export * from "./testing/conformance.ts";

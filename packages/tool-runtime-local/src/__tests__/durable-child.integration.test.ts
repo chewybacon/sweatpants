@@ -1,3 +1,5 @@
+import { assertJson } from "@sweatpants/foundation";
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
@@ -12,9 +14,9 @@ import { describe, expect, it } from "vitest";
 import { createCapabilityKeyring, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
-  withAuthorityTestScope,
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
@@ -26,12 +28,11 @@ import {
   defineDurableProgramManifest,
   type AttachProgramRequest,
   type ProgramDriver,
+  type ProgramElicitResult,
   type ProgramRunResult,
 } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { anyGuard, createSchemaFixture, nullGuard } from "@sweatpants/journal-authority/testing";
-
-import { createLocalDurableProgramDriver } from "../index.ts";
 
 type ChildInput = { topic: string };
 type SampleInput = { round: number; answers: string[] };
@@ -180,11 +181,14 @@ describe("automatic local durable parent/child recovery", () => {
           round,
           suggestion: sampled.suggestion,
         });
-        const result = yield* context.elicit<Choice>(
-          "choice",
-          `Round ${round + 1}: ${sampled.suggestion}`,
-          choiceSchema.descriptor,
-        );
+        const result = (yield* context.pull(
+          assertJson({
+            kind: "elicit",
+            key: "choice",
+            message: `Round ${round + 1}: ${sampled.suggestion}`,
+            response: choiceSchema.descriptor,
+          }),
+        )) as ProgramElicitResult<Choice>;
         if (result.action !== "accept") {
           break;
         }
@@ -197,15 +201,20 @@ describe("automatic local durable parent/child recovery", () => {
     });
     const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
       parentFactories += 1;
-      return yield* context.invoke<ChildOutput>({
-        id: childManifest.programId,
-        version: childManifest.version,
-        digest: childManifest.digest,
-        input: { topic: "durability" },
-      });
+      return (yield* context.pull(
+        assertJson({
+          kind: "invoke",
+          child: {
+            id: childManifest.programId,
+            version: childManifest.version,
+            digest: childManifest.digest,
+            input: { topic: "durability" },
+          },
+        }),
+      )) as ChildOutput;
     });
     const tools = createDurableToolRegistry([parent, child]);
-    const concrete = createLocalDurableProgramDriver(tools);
+    const concrete = createWorkflowProgramDriver(tools);
     const driver: ProgramDriver = {
       capabilities: concrete.capabilities,
       *attach(request) {
@@ -266,7 +275,7 @@ describe("automatic local durable parent/child recovery", () => {
         input: null,
         executionEpoch: 1,
         attachmentId: "unattached-parent",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
 
       expect(yield* runProgram(attach, authority, drivers, effects)).toMatchObject({
@@ -323,10 +332,12 @@ describe("automatic local durable parent/child recovery", () => {
     });
 
     expect(sampleExecutions).toBe(2);
-    expect(parentFactories).toBe(3);
+    // Tree composition reactivates the parent once after the terminal child
+    // settles its invoke pull; each public park still creates one child.
+    expect(parentFactories).toBe(4);
     expect(childFactories).toBe(3);
-    expect(attachmentCount).toBe(6);
-    expect(shutdownCount).toBe(6);
+    expect(attachmentCount).toBe(7);
+    expect(shutdownCount).toBe(7);
   });
 
   it("cancels an active child leaves-first and runs child cleanup before closing the parent", async () => {
@@ -346,11 +357,14 @@ describe("automatic local durable parent/child recovery", () => {
           round: 0,
           suggestion: sampled.suggestion,
         });
-        const result = yield* context.elicit<Choice>(
-          "choice",
-          `Choose: ${sampled.suggestion}`,
-          choiceSchema.descriptor,
-        );
+        const result = (yield* context.pull(
+          assertJson({
+            kind: "elicit",
+            key: "choice",
+            message: `Choose: ${sampled.suggestion}`,
+            response: choiceSchema.descriptor,
+          }),
+        )) as ProgramElicitResult<Choice>;
         return {
           rounds: 1,
           answers: result.action === "accept" ? [result.content.answer] : [],
@@ -366,17 +380,20 @@ describe("automatic local durable parent/child recovery", () => {
       }
     });
     const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
-      return yield* context.invoke<ChildOutput>({
-        id: childManifest.programId,
-        version: childManifest.version,
-        digest: childManifest.digest,
-        input: { topic: "cancellation" },
-      });
+      return (yield* context.pull(
+        assertJson({
+          kind: "invoke",
+          child: {
+            id: childManifest.programId,
+            version: childManifest.version,
+            digest: childManifest.digest,
+            input: { topic: "cancellation" },
+          },
+        }),
+      )) as ChildOutput;
     });
     const tools = createDurableToolRegistry([parent, child]);
-    const drivers = createProgramDriverRegistry([
-      ["program", createLocalDurableProgramDriver(tools)],
-    ]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const effects = createDurableEffectRegistry([
       createDurableEffectRegistration(
         sampleDefinition,
@@ -418,7 +435,7 @@ describe("automatic local durable parent/child recovery", () => {
         input: null,
         executionEpoch: 1,
         attachmentId: "unattached-parent",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
 
       expect(yield* runProgram(attach, authority, drivers, effects)).toMatchObject({
@@ -525,9 +542,9 @@ function runProgram(
   effects: ReturnType<typeof createDurableEffectRegistry>,
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withAuthorityTestScope(authority, function* () {
+    return yield* withProgramDriverTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+        return yield* driveInstalledTestProgramTree({ attach });
       });
     });
   });

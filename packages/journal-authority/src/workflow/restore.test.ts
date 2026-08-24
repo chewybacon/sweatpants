@@ -13,7 +13,6 @@ import { createStoredShellDrivers } from "../stored-shell.ts";
 import { createMemoryExecutionStore } from "../memory.ts";
 import { createDurableSchemaRegistry } from "../schema-registry.ts";
 import { createSchemaFixture, stringGuard } from "../schema-fixtures.ts";
-import type { DurableProgramManifest } from "@sweatpants/durable-execution";
 import { openProgramAttachment, record, type ProgramAttachmentHandle } from "./runtime.ts";
 
 const programInput = createSchemaFixture(

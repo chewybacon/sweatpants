@@ -1,3 +1,4 @@
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import {
   ProgramDriverRegistryContext,
   createProgramDriverRegistry,
@@ -9,10 +10,10 @@ import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
-  withAuthorityTestScope,
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
@@ -31,7 +32,6 @@ import {
 
 import {
   createLocalToolInvocationRuntime,
-  createLocalDurableProgramDriver,
   createToolInvocationForeignEffectRegistrations,
 } from "../index.ts";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
@@ -139,9 +139,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
       durability: "ephemeral_handle",
     };
     const tools = createDurableToolRegistry([foreignToolAdapter]);
-    const drivers = createProgramDriverRegistry([
-      ["program", createLocalDurableProgramDriver(tools)],
-    ]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const keyring = createCapabilityKeyring("foreign-loss", [
       { keyId: "active", secret: "foreign-loss-secret-is-32-bytes!!" },
     ]);
@@ -170,19 +168,6 @@ describe("ToolSession foreign-tool durability boundary", () => {
           },
         },
         ...registrations.slice(1),
-        foreignToolAdapter.modelSampleRegistration(function* () {
-          return {
-            message: {
-              message: { role: "assistant", content: [{ type: "text", text: "suggestion-0" }] },
-              source: null,
-              usage: null,
-              stopReason: null,
-              responseId: null,
-              errorMessage: null,
-            },
-            output: { type: "message" },
-          };
-        }),
       ]);
       yield* authority.openTask({
         sessionId,
@@ -192,9 +177,21 @@ describe("ToolSession foreign-tool durability boundary", () => {
         input: request,
         executionEpoch: 1,
         attachmentId: "unattached-adapter",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
-      return yield* runProgram(attach, authority, drivers, effects);
+      return yield* runProgram(attach, authority, drivers, effects, function* () {
+        return {
+          message: {
+            message: { role: "assistant", content: [{ type: "text", text: "suggestion-0" }] },
+            source: null,
+            usage: null,
+            stopReason: null,
+            responseId: null,
+            errorMessage: null,
+          },
+          output: { type: "message" },
+        };
+      });
     });
     expect(firstRun).toMatchObject({ state: "parked", reason: "elicit" });
 
@@ -208,11 +205,10 @@ describe("ToolSession foreign-tool durability boundary", () => {
         ...createToolInvocationForeignEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
         }),
-        foreignToolAdapter.modelSampleRegistration(function* () {
-          throw new Error("Recorded sampling must replay after host loss");
-        }),
       ]);
-      return yield* runProgram(attach, authority, drivers, effects);
+      return yield* runProgram(attach, authority, drivers, effects, function* () {
+        throw new Error("Recorded sampling must replay after host loss");
+      });
     });
 
     expect(recovered).toMatchObject({
@@ -222,7 +218,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
     const journal = authority.readJournal(sessionId);
     expect(countEffectPulls(journal, "foreign.tool.start")).toBe(1);
     expect(countEffectPulls(journal, "foreign.tool.continue")).toBe(2);
-    expect(countEffectPulls(journal, "model.sample")).toBe(1);
+    expect(countSamplePulls(journal)).toBe(1);
     expect(foreignStarts).toBe(1);
     expect(toolBodyExecutions).toBe(1);
   });
@@ -252,12 +248,13 @@ function runProgram(
   authority: ReturnType<typeof createAuthorityScenarioDriver>,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
+  sample: Parameters<typeof withModelSampleTestBoundary>[0],
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withAuthorityTestScope(authority, function* () {
+    return yield* withProgramDriverTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* withModelSampleTestBoundary(() =>
-          ProgramRuntime.operations.run({ attach, executeHostEffects: true }),
+        return yield* withModelSampleTestBoundary(sample, () =>
+          driveInstalledTestProgramTree({ attach }),
         );
       });
     });
@@ -309,6 +306,13 @@ function* acceptPending(
   if (result.status === "rejected") {
     throw new Error(result.code);
   }
+}
+
+function countSamplePulls(records: DurableSemanticRecord[]): number {
+  return records.filter(
+    (record) =>
+      record.payload.type === "PullRequested" && record.payload.descriptor.kind === "sample",
+  ).length;
 }
 
 function countEffectPulls(records: DurableSemanticRecord[], name: string): number {

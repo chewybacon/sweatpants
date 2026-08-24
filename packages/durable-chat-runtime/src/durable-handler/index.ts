@@ -22,24 +22,24 @@ export {
 } from "./program-driver-journal.ts";
 export { programDriverChatEngineSchemaEntries } from "./program-driver-schema.ts";
 export {
-  createLocalProgramHost,
   createPinnedProgramCatalog,
+  createProgramWorkflowHost,
   normalizeProgramTrace,
-  runLocalProgramActivation,
+  runWorkflowProgramActivation,
   verifyPinnedProgramCatalog,
-} from "./local-program-host.ts";
+} from "./program-workflow-host.ts";
 export type {
-  LocalProgramHost,
-  LocalProgramActivationScope,
-  LocalProgramHostOptions,
-  LocalProgramRun,
   NormalizedProgramOperationTrace,
   NormalizedProgramTaskTrace,
   NormalizedProgramTrace,
-  OpenLocalProgramRequest,
+  OpenProgramWorkflowRequest,
   PinnedProgramCatalog,
   ProgramCatalogEntry,
-} from "./local-program-host.ts";
+  ProgramWorkflowHost,
+  ProgramWorkflowHostOptions,
+  ProgramWorkflowRun,
+  WorkflowProgramActivationScope,
+} from "./program-workflow-host.ts";
 export {
   createProgramDeliveryWriter,
   highestRemoteOriginLsn,
@@ -53,7 +53,7 @@ export {
   type ProgramDriverNativeToolBinding,
   type ProgramDriverNativeToolComposition,
 } from "../program-driver/native-tools.ts";
-/** ProgramRuntime journal composition contracts. */
+/** Workflow journal composition contracts. */
 export type {
   ProgramDriverJournalStoreOptions,
   ProgramDriverJournal,
@@ -73,9 +73,9 @@ export type {
 // Types
 /** Durable handler request, setup, stream, and tool-inventory contracts. */
 export type {
-  // ProgramRuntime execution types
-  ProgramRuntimeChatEngine,
-  ProgramRuntimeChatEngineParams,
+  // Workflow execution types
+  WorkflowChatEngine,
+  WorkflowChatEngineParams,
 
   // Tool types
   ToolSchema,

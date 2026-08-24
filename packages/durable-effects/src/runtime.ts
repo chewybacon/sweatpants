@@ -150,7 +150,7 @@ export const DurableEffects = createApi("durable-effects:execute", {
     }
     const input = canonicalSnapshot(assertJson(authorization.descriptor.input)).value;
     const controller = new AbortController();
-    const release = registerLiveDurableEffect(
+    const release = registerLiveDurablePull(
       authorization.sessionId,
       authorization.taskId,
       authorization.pullId,
@@ -268,7 +268,7 @@ export const DurableEffectRouting = createApi<{
   },
 });
 
-interface LiveEffectRegistration {
+interface LivePullRegistration {
   readonly sessionId: string;
   readonly taskId: string;
   readonly pullId: string;
@@ -276,45 +276,45 @@ interface LiveEffectRegistration {
   readonly cancel: (reason?: string) => void;
 }
 
-const liveEffects = new Map<string, LiveEffectRegistration>();
+const livePulls = new Map<string, LivePullRegistration>();
 
-function effectKey(sessionId: string, taskId: string, pullId: string, attemptId: string): string {
+function livePullKey(sessionId: string, taskId: string, pullId: string, attemptId: string): string {
   return stableTupleHash([sessionId, taskId, pullId, attemptId]);
 }
 
 /** Registers an activation-local cancellation bridge; this state is never durable. */
-export function registerLiveDurableEffect(
+export function registerLiveDurablePull(
   sessionId: string,
   taskId: string,
   pullId: string,
   attemptId: string,
   cancel: (reason?: string) => void,
 ): () => void {
-  const key = effectKey(sessionId, taskId, pullId, attemptId);
-  const registration: LiveEffectRegistration = {
+  const key = livePullKey(sessionId, taskId, pullId, attemptId);
+  const registration: LivePullRegistration = {
     sessionId,
     taskId,
     pullId,
     attemptId,
     cancel,
   };
-  liveEffects.set(key, registration);
+  livePulls.set(key, registration);
   return () => {
-    if (liveEffects.get(key) === registration) {
-      liveEffects.delete(key);
+    if (livePulls.get(key) === registration) {
+      livePulls.delete(key);
     }
   };
 }
 
 /** Signals every attached attempt for one pull without exposing its controller. */
-export function signalLiveDurableEffect(
+export function signalLiveDurablePull(
   sessionId: string,
   taskId: string,
   pullId: string,
   reason?: string,
 ): boolean {
   let signalled = false;
-  for (const registration of liveEffects.values()) {
+  for (const registration of livePulls.values()) {
     if (
       registration.sessionId === sessionId &&
       registration.taskId === taskId &&
@@ -328,8 +328,8 @@ export function signalLiveDurableEffect(
 }
 
 /** Runtime-only settleability probe used while cancellation is accepted locally. */
-export function hasLiveDurableEffect(sessionId: string, taskId: string, pullId: string): boolean {
-  return [...liveEffects.values()].some(
+export function hasLiveDurablePull(sessionId: string, taskId: string, pullId: string): boolean {
+  return [...livePulls.values()].some(
     (registration) =>
       registration.sessionId === sessionId &&
       registration.taskId === taskId &&

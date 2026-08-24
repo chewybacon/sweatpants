@@ -199,7 +199,7 @@ describe("authority-backed Effection Workflow proof", () => {
         }),
       );
       hostRuntime = yield* ProgramEffectRuntimeContext.get();
-      expect(Reflect.ownKeys(handle)).toEqual(["exchange", "setDisposition"]);
+      expect(Reflect.ownKeys(handle)).toEqual(["exchange", "setDisposition", "close"]);
       const proposed = yield* handle.exchange({ type: "start", input: request.input });
       expect(proposed).toEqual({
         type: "record-proposed",

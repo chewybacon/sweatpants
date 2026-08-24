@@ -2,7 +2,7 @@
 
 This package owns framework behavior that must remain stable across refactors.
 Every scenario crosses the public client/session and real provider parser; tool
-scenarios also cross Program Runtime and real worker threads. The HTTP-sensitive
+scenarios also cross workflow host and real worker threads. The HTTP-sensitive
 subset runs through a loopback server rather than a mocked fetch.
 
 All scenarios use the causal generator authoring model documented in
@@ -66,7 +66,7 @@ rather than introduce pre-armed promise choreography.
 
 ## Change-safety expectation
 
-Framework changes affecting chat orchestration, Program Runtime, provider
+Framework changes affecting chat orchestration, workflow host, provider
 projection, ordinary/durable tools, cancellation, history, or response-stream
 transport SHOULD keep this matrix green. New behavior should extend an existing
 semantic fixture before introducing an app-local manual harness.

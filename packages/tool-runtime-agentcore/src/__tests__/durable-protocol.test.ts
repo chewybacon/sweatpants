@@ -13,6 +13,7 @@ import {
   hostProgramMessageParser,
   linkReplayEntry,
   parseHostProgramMessage,
+  parseRuntimeProgramMessage,
   parseAgentCoreRuntimeRelease,
   parseAgentCoreTaskPlacement,
   verifyAgentCoreRuntimeRelease,
@@ -111,6 +112,29 @@ describe("AgentCore durable placement and protocol", () => {
     expect(() =>
       parseHostProgramMessage(JSON.stringify({ ...message, protocolVersion: 2 })),
     ).toThrow(/version/);
+  });
+
+  it("round-trips workflow sample pulls across the evaluator protocol", () => {
+    const message = {
+      protocolVersion: 1,
+      type: "step",
+      releaseId: release.releaseId,
+      taskId: attach.taskId,
+      activationEpoch: attach.executionEpoch,
+      attachmentId: "attachment-1",
+      actionIndex: 1,
+      payload: {
+        step: {
+          type: "operation",
+          actionIndex: 1,
+          descriptor: {
+            kind: "sample",
+            input: { invocation: { context: { type: "object" } } },
+          },
+        },
+      },
+    } as const;
+    expect(parseRuntimeProgramMessage(encodeAgentCoreProgramMessage(message))).toEqual(message);
   });
 
   it("integrity-links replay entries and independently hashes the live frontier", () => {

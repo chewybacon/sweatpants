@@ -67,7 +67,7 @@ describe("yo-chat chat application composition", () => {
     }
   });
 
-  it("uses ProgramRuntime as the only durable chat execution engine", () => {
+  it("uses workflow host as the only durable chat execution engine", () => {
     const envSchema = read("src/env.schema.ts");
     const handler = read("src/server/chat-handler.ts");
 
@@ -104,7 +104,7 @@ describe("yo-chat chat application composition", () => {
 
     const serverSources = serverFiles.map((file) => read(file)).join("\n");
     expect(serverSources).toContain("installPiAiModelProvider");
-    expect(serverSources).toContain("installLocalProgramToolRuntime");
+    expect(serverSources).toContain("installLocalToolRuntimeComposition");
     expect(serverSources).toContain("createAgentCoreToolExecutionStrategy");
     expect(serverSources).toContain("withDefaultSystemPrompt");
   });

@@ -1,7 +1,6 @@
 import { z } from "zod";
-import type { DurableSampleDescriptor } from "@sweatpants/durable-execution";
+import { CrankError, type DurableSampleDescriptor } from "@sweatpants/durable-execution";
 import { parser, type Parser } from "@sweatpants/foundation";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { registerPullKind } from "./registry.ts";
 
 export const sampleDescriptorSchema = z.strictObject({
@@ -17,10 +16,20 @@ registerPullKind({
   kind: "sample",
   journalLabel: () => "model.sample",
   descriptorSchema: sampleDescriptorSchema,
-  resolutionTarget: () => ({
-    resultDescriptor: ANY_JSON_SCHEMA_DESCRIPTOR,
-    audience: "model-runtime",
-  }),
+  resolutionTarget: (_descriptor, manifest) => {
+    const declaration = manifest.pulls?.["sample"];
+    if (!declaration) {
+      throw new CrankError(
+        "invalid_descriptor",
+        "Program manifest does not declare the sample pull contract",
+      );
+    }
+    return {
+      resultDescriptor: declaration.output,
+      inputDigest: declaration.input.digest,
+      audience: "model-runtime",
+    };
+  },
   // Model-runtime sampling parks participant-style; the owning session's
   // sampling resolver settles it against the journaled canonical request.
   resolutionAuthority: (_descriptor, audience) => ({

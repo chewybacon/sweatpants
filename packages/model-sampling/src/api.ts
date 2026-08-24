@@ -41,6 +41,15 @@ export const ModelContextSourceResolverContext = createContext<
   ((source: ModelContextSource) => Operation<ModelContext>) | undefined
 >("model-sampling:context-source-resolver", undefined);
 
+/**
+ * Explicit authoring-edge service that stores an embedded model context and
+ * returns the durable source recipe to journal. Runtime effect dispatch never
+ * rewrites authored input.
+ */
+export const ModelContextSourceStagerContext = createContext<
+  ((context: ModelContext) => Operation<ModelContextSource>) | undefined
+>("model-sampling:context-source-stager", undefined);
+
 const ModelSamplingServiceContext = createContext<ModelSamplingService | undefined>(
   "model-sampling:service",
   undefined,

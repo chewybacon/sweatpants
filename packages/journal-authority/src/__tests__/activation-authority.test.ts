@@ -40,7 +40,7 @@ describe("activation leases and restore fencing", () => {
         input: {},
         executionEpoch: 1,
         attachmentId: "initial",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
       const claim = yield* value.claimActivation({ sessionId: "s1", ownerId: "a" });
       expect(claim).toMatchObject({ status: "claimed", epoch: 1, expiresAtMs: 31_000 });
@@ -83,7 +83,7 @@ describe("activation leases and restore fencing", () => {
         input: {},
         executionEpoch: 1,
         attachmentId: "initial",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
       expect(
         yield* value.claimActivation({
@@ -115,7 +115,7 @@ describe("activation leases and restore fencing", () => {
         input: {},
         executionEpoch: 1,
         attachmentId: "initial",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
       expect(
         yield* value.claimActivation({
@@ -145,7 +145,7 @@ describe("activation leases and restore fencing", () => {
         input: {},
         executionEpoch: 1,
         attachmentId: "initial",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
       expect(
         yield* value.claimActivation({ sessionId: "s-frontier", ownerId: "owner" }),
@@ -224,7 +224,7 @@ describe("activation leases and restore fencing", () => {
         input: {},
         executionEpoch: 1,
         attachmentId: "initial",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
       expect(yield* value.claimActivation({ sessionId: "s2", ownerId: "owner" })).toMatchObject({
         status: "claimed",

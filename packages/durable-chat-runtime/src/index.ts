@@ -230,7 +230,7 @@ function isPristineConversationHead(head: ConversationHead): boolean {
   );
 }
 
-/** Atomically admits one state-derived command before any ProgramRuntime work starts. */
+/** Atomically admits one state-derived command before any workflow host work starts. */
 export function* beginTurnPublication(
   request: BeginTurnPublicationRequest,
 ): Operation<BeginTurnPublicationRequest> {

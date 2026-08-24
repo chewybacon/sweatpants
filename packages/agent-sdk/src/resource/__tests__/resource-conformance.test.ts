@@ -1,7 +1,10 @@
-import { run } from "effection";
+import { run, type Operation } from "effection";
 import { describe, expect, it, vi } from "vitest";
 
-import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
+import {
+  createTestDurableProgramContext,
+  type TestProgramResume,
+} from "@sweatpants/durable-execution/testing";
 import { type Json } from "@sweatpants/foundation";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 
@@ -351,7 +354,7 @@ describe("reader search safety and schemas", () => {
     );
   });
 
-  it("executes an effect-free generated reader through the real local ProgramDriver", async () => {
+  it("executes an effect-free generated reader through its authored program", async () => {
     const pkg = defineResourcePackage({
       id: "driver-reader",
       version: "1",
@@ -362,31 +365,20 @@ describe("reader search safety and schemas", () => {
       registry: install(pkg),
       consumer: { kind: "model" },
     });
-    const driver = createLocalProgramDriver(createDurableToolRegistry([readers.read]));
     const input = {
       ref: { packageId: pkg.manifest.id, packageDigest: pkg.manifest.digest, path: "a.txt" },
     };
-    await run(function* () {
-      const attachment = yield* driver.attach({
-        sessionId: "resource-reader-session",
-        taskId: "turn/root/read",
-        program: {
-          id: readers.read.manifest.programId,
-          version: readers.read.manifest.version,
-          digest: readers.read.manifest.digest,
-        },
+    const result = await run(() =>
+      readers.read.program(
         input,
-        route: { driverKind: "program" },
-        executionEpoch: 1,
-      });
-      const step = yield* driver.step(attachment, { type: "start", input });
-      expect(step).toMatchObject({
-        type: "completed",
-        actionIndex: 0,
-        value: { kind: "text", text: "hello" },
-      });
-      yield* driver.shutdown(attachment, "completed");
-    });
+        createTestDurableProgramContext(() =>
+          (function* (): Operation<TestProgramResume> {
+            throw new Error("resource reader proposed unexpected durable work");
+          })(),
+        ),
+      ),
+    );
+    expect(result).toMatchObject({ kind: "text", text: "hello" });
   });
 
   it("does not search program-private content or include it in counts", () => {

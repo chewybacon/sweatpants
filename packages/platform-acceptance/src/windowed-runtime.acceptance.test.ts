@@ -90,12 +90,13 @@ describe("windowed native lifecycle", () => {
         if (!pull || pull.payload.type !== "PullRequested") {
           throw new Error("model pull record is missing");
         }
-        expect(pull.payload.descriptor.kind).toBe("effect");
-        if (pull.payload.descriptor.kind !== "effect") {
-          throw new Error("model pull is not an effect");
+        expect(pull.payload.descriptor.kind).toBe("sample");
+        if (pull.payload.descriptor.kind !== "sample") {
+          throw new Error("model pull is not a sample");
         }
         const input = pull.payload.descriptor.input as { invocation?: { context?: unknown } };
         expect(input.invocation?.context).toMatchObject({ type: "conversation" });
+        expect(records.some((record) => record.payload.type === "ModelContextPrepared")).toBe(true);
       },
     );
   }, 30_000);

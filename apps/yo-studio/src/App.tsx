@@ -335,7 +335,7 @@ export function App() {
               <Token label="MCP" />
             </HStack>
             <Text type="body" weight="semibold">
-              Durable chat handler + ProgramRuntime
+              Durable chat handler + workflow host
             </Text>
             <Token label="MicroVM workspace" color="blue" />
           </VStack>

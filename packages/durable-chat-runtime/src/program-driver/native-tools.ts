@@ -16,7 +16,7 @@ export interface ProgramDriverNativeToolBinding {
    * Declare `"fenced"` when program evaluation can execute in a remote or
    * process-independent substrate that may outlive or race this host's
    * activation. Fenced bindings cause the host to claim, renew, and release
-   * an activation lease around each ProgramRuntime run. In-process drivers
+   * an activation lease around each workflow host run. In-process drivers
    * (generator, worker threads owned by this host) omit it.
    */
   readonly activation?: "fenced";

@@ -16,6 +16,7 @@ import {
   acceptanceDurableTool,
   createAcceptanceApplication,
   type AcceptanceApplicationInspection,
+  type AcceptanceApplicationOptions,
 } from "./lib/acceptance-app.ts";
 
 const DURABLE_CALL_ID = "call_durable_acceptance_1";
@@ -38,7 +39,10 @@ function record(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-async function runDurableToolScenario(binding: Binding): Promise<void> {
+async function runDurableToolScenario(
+  binding: Binding,
+  options: AcceptanceApplicationOptions = {},
+): Promise<void> {
   let inspection: AcceptanceApplicationInspection | undefined;
   await withTestScenario(
     {
@@ -46,9 +50,13 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
       modelId: ACCEPTANCE_MODEL_ID,
       scenarioTimeoutMs: 30_000,
       createApplication(context) {
-        return createAcceptanceApplication(context, (created) => {
-          inspection = created;
-        });
+        return createAcceptanceApplication(
+          context,
+          (created) => {
+            inspection = created;
+          },
+          options,
+        );
       },
     },
     function* (s) {
@@ -83,10 +91,12 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
       if (!inspection) {
         throw new Error("acceptance application inspection was not installed");
       }
+      // Native sampling is a parked pull: sample settlement and elicitation
+      // each end one worker attachment before replay continues.
       expect(inspection.durableWorker).toEqual({
         activeAttachments: 0,
-        attachmentCount: 1,
-        shutdownCount: 1,
+        attachmentCount: 2,
+        shutdownCount: 2,
       });
       yield* choose.accept({ selected: "trains-beta" });
 
@@ -109,8 +119,8 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
       });
       expect(inspection.durableWorker).toEqual({
         activeAttachments: 0,
-        attachmentCount: 2,
-        shutdownCount: 2,
+        attachmentCount: 3,
+        shutdownCount: 3,
       });
 
       yield* finalRequest.respond.text(DURABLE_TERMINAL_TEXT);
@@ -217,8 +227,8 @@ async function runDurableElicitOutcome(
       expect((yield* turn.settled()).text).toBe(`DURABLE_${action.toUpperCase()}_TERMINAL_V1`);
       expect(inspection?.durableWorker).toEqual({
         activeAttachments: 0,
-        attachmentCount: 2,
-        shutdownCount: 2,
+        attachmentCount: 3,
+        shutdownCount: 3,
       });
     },
   );
@@ -264,6 +274,10 @@ describe("crank-native durable tool semantics", () => {
 
   it("parks, resumes in a fresh worker, samples, and preserves follow-up history", async () => {
     await runDurableToolScenario(binding);
+  }, 30_000);
+
+  it("preserves worker placement under a fenced activation lease", async () => {
+    await runDurableToolScenario(binding, { durableActivation: "fenced" });
   }, 30_000);
 
   it.each(["decline", "cancel"] as const)(

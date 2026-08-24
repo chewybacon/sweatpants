@@ -5,7 +5,7 @@
  * ToolSession worker. The worker entry (`tool-worker.ts`) runs exactly this
  * list; the host composition (`tools.ts`) derives its ordinary inventory from
  * it. Crank-native durable programs (pick_card, play_ttt) never appear here —
- * they execute through the Program Runtime, not the ordinary worker.
+ * they execute through the workflow host, not the ordinary worker.
  *
  * `composition.test.ts` enforces host/worker agreement.
  */

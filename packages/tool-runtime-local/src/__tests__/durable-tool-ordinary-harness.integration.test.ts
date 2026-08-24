@@ -1,5 +1,6 @@
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
+import { assertJson } from "@sweatpants/foundation";
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
-import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 
 import {
   ProgramDriverRegistryContext,
@@ -10,9 +11,9 @@ import { describe, expect, it } from "vitest";
 import { createCapabilityKeyring, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
-  withAuthorityTestScope,
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
@@ -23,6 +24,7 @@ import {
   defineDurableProgramManifest,
   type AttachProgramRequest,
   type ForeignToolRequest,
+  type ProgramElicitResult,
   type ProgramRunResult,
 } from "@sweatpants/durable-execution";
 import {
@@ -38,25 +40,22 @@ import {
   createLocalToolInvocationRuntime,
   createDurableToolSessionFacade,
   createInMemoryDurableToolFacadeStateStore,
-  createLocalDurableProgramDriver,
   createToolInvocationForeignEffectRegistrations,
 } from "../index.ts";
 
 type InnerInput = { topic: string };
 type InnerOutput = { answers: string[] };
-type SampleInput = { prompt: string; round: number };
-type SampleOutput = { text: string };
 type Choice = { answer: string; continue: boolean };
 
 const sampleInput = createSchemaFixture(
   "ordinary-harness/sample-input",
-  "effect_input",
+  "pull_input",
   true,
   anyGuard,
 );
 const sampleOutput = createSchemaFixture(
   "ordinary-harness/sample-output",
-  "effect_output",
+  "pull_output",
   true,
   anyGuard,
 );
@@ -96,14 +95,6 @@ const innerSchemas = () =>
     innerOutput.entry,
   ]);
 
-const modelSample = defineDurableEffect<SampleInput, SampleOutput>({
-  name: "model.sample",
-  version: "1",
-  inputSchema: sampleInput.descriptor,
-  outputSchema: sampleOutput.descriptor,
-  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
-});
-
 const innerManifest = defineDurableProgramManifest<InnerInput, InnerOutput>({
   programId: "fixture.inner-durable-behind-ordinary-harness",
   version: "1.0.0",
@@ -113,7 +104,8 @@ const innerManifest = defineDurableProgramManifest<InnerInput, InnerOutput>({
   elicits: {
     choice: { response: choiceSchema.descriptor },
   },
-  effects: { [modelSample.name]: modelSample },
+  effects: {},
+  pulls: { sample: { input: sampleInput.descriptor, output: sampleOutput.descriptor } },
   capabilities: {
     durableEmissions: false,
     structuredChildren: false,
@@ -132,15 +124,20 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       for (let round = 0; round < 2; round += 1) {
         // Native workflow sampling boundary: journals the request and parks
         // until the owning session resolves it (Decision 3 semantics).
-        const sampled = (yield* context.pull!({
-          kind: "sample",
-          input: { prompt: `Suggest ${topic}, round ${round}` },
-        } as never)) as unknown as { text: string };
-        const result = yield* context.elicit<Choice>(
-          "choice",
-          sampled.text,
-          choiceSchema.descriptor,
-        );
+        const sampled = (yield* context.pull(
+          assertJson({
+            kind: "sample",
+            input: { prompt: `Suggest ${topic}, round ${round}` },
+          }),
+        )) as { text: string };
+        const result = (yield* context.pull(
+          assertJson({
+            kind: "elicit",
+            key: "choice",
+            message: sampled.text,
+            response: choiceSchema.descriptor,
+          }),
+        )) as ProgramElicitResult<Choice>;
         if (result.action !== "accept") {
           break;
         }
@@ -174,7 +171,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
     };
     const adapterTools = createDurableToolRegistry([foreignToolAdapter]);
     const drivers = createProgramDriverRegistry([
-      ["program", createLocalDurableProgramDriver(adapterTools)],
+      ["program", createWorkflowProgramDriver(adapterTools)],
     ]);
     const outerKeyring = createCapabilityKeyring("ordinary-harness-outer", [
       { keyId: "active", secret: "ordinary-harness-outer-key-32bytes" },
@@ -197,25 +194,25 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
           // its older AnyToolContract declaration omits the schemas property.
           tools: new Map<string, RuntimeTool>([[facade.name, facade as unknown as RuntimeTool]]),
         }),
-        foreignToolAdapter.modelSampleRegistration(function* () {
-          const round = outerModelSamples;
-          outerModelSamples += 1;
-          return {
-            message: {
-              message: {
-                role: "assistant",
-                content: [{ type: "text", text: `suggestion-${round}` }],
-              },
-              source: null,
-              usage: null,
-              stopReason: null,
-              responseId: null,
-              errorMessage: null,
-            },
-            output: { type: "message" },
-          };
-        }),
       ]);
+      const sample: Parameters<typeof withModelSampleTestBoundary>[0] = function* () {
+        const round = outerModelSamples;
+        outerModelSamples += 1;
+        return {
+          message: {
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: `suggestion-${round}` }],
+            },
+            source: null,
+            usage: null,
+            stopReason: null,
+            responseId: null,
+            errorMessage: null,
+          },
+          output: { type: "message" },
+        };
+      };
       yield* authority.openTask({
         sessionId,
         turnId: "turn-0",
@@ -224,10 +221,10 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
         input: request,
         executionEpoch: 1,
         attachmentId: "unattached-outer-adapter",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
 
-      expect(yield* runProgram(attach, authority, drivers, effects)).toMatchObject({
+      expect(yield* runProgram(attach, authority, drivers, effects, sample)).toMatchObject({
         state: "parked",
         reason: "elicit",
       });
@@ -238,7 +235,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       });
       authority = recreateAuthority(authority, outerKeyring);
 
-      expect(yield* runProgram(attach, authority, drivers, effects)).toMatchObject({
+      expect(yield* runProgram(attach, authority, drivers, effects, sample)).toMatchObject({
         state: "parked",
         reason: "elicit",
       });
@@ -249,7 +246,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       });
       authority = recreateAuthority(authority, outerKeyring);
 
-      expect(yield* runProgram(attach, authority, drivers, effects)).toEqual({
+      expect(yield* runProgram(attach, authority, drivers, effects, sample)).toEqual({
         state: "completed",
         value: { answers: ["answer-0", "answer-1"] },
       });
@@ -281,13 +278,13 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       const outerJournal = authority.readJournal(sessionId);
       expect(countEffectPulls(outerJournal, "foreign.tool.start")).toBe(1);
       expect(countEffectPulls(outerJournal, "foreign.tool.continue")).toBe(4);
-      expect(countEffectPulls(outerJournal, "model.sample")).toBe(2);
+      expect(countPulls(outerJournal, "sample")).toBe(2);
       expect(countPulls(outerJournal, "elicit")).toBe(2);
       expect(JSON.stringify(outerJournal)).not.toContain("inner-model");
     });
 
     // Workflow runtime replays the program body once per parked pull
-    // (2 samples + 2 elicits + completing run), not per legacy batch.
+    // (2 samples + 2 elicits + completing run), not per journal batch.
     expect(innerFactories).toBe(5);
     expect(innerActivations).toBe(5);
     expect(outerModelSamples).toBe(2);
@@ -318,12 +315,13 @@ function runProgram(
   authority: ReturnType<typeof createAuthorityScenarioDriver>,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
+  sample: Parameters<typeof withModelSampleTestBoundary>[0],
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withAuthorityTestScope(authority, function* () {
+    return yield* withProgramDriverTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* withModelSampleTestBoundary(() =>
-          ProgramRuntime.operations.run({ attach, executeHostEffects: true }),
+        return yield* withModelSampleTestBoundary(sample, () =>
+          driveInstalledTestProgramTree({ attach }),
         );
       });
     });

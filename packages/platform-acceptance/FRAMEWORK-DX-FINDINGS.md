@@ -97,7 +97,7 @@ exports remain available for runtime tests and advanced transports.
 
 ### Evidence
 
-A sampling-capable ordinary tool used through the durable Program Runtime
+A sampling-capable ordinary tool used through the durable workflow host
 requires two separate setup calls over the same registry and tool set:
 
 ```ts
@@ -207,7 +207,7 @@ The provider adapter should continue to enforce wire validity only.
 
 **Status:** Fixed by the negative-path acceptance expansion
 
-A Program Runtime/tool failure was emitted as `RUN_ERROR` and then rethrown by
+A workflow host/tool failure was emitted as `RUN_ERROR` and then rethrown by
 the spawned client request task. Effection propagated that child failure into
 the long-lived session owner, preventing later sends. Request tasks now report
 failure through events/lifecycle callbacks and terminate without killing the
@@ -221,7 +221,7 @@ history synchronization.
 Errored durable tasks and unsupported/invalid calls previously left no tool
 result in follow-up model history. Journal projection now emits one structured
 error result for unfinished calls, and the client persists mirrored call/result
-messages before surfacing `RUN_ERROR`. Cancel-on-send uses Program Runtime
+messages before surfacing `RUN_ERROR`. Cancel-on-send uses workflow host
 cancellation instead of resuming tool business logic with a normal cancel
 response.
 
@@ -231,7 +231,7 @@ response.
 
 A crank-native tool fixture initially had to know the internal
 `TOOL_OWNED_SAMPLE_CLASSIFICATION` to prevent its nested `context.sample()`
-text from streaming into the outer chat turn. The Program Runtime already
+text from streaming into the outer chat turn. The workflow host already
 provides stronger provenance: the sampling execution context identifies the
 child task separately from the root chat task. The chat engine now permits
 outer streaming only for the root task and retains explicit classification for

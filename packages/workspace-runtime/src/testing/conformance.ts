@@ -6,13 +6,13 @@ import type {
   ClaimActivationRequest,
   ClaimActivationResult,
   CompleteTaskRequest,
+  CompleteTaskResult,
   ReleaseActivationRequest,
   ReleaseActivationResult,
   ReserveOperationRequest,
   ReserveOperationResult,
   ResolveOperationRequest,
   ResolveOperationResult,
-  TaskCloseReceipt,
 } from "@sweatpants/journal-authority";
 import type { ResolutionReceipt, DurableProgramManifest } from "@sweatpants/durable-execution";
 import type { DurableSemanticRecord, OpenDurableTaskRequest } from "@sweatpants/journal-authority";
@@ -49,7 +49,7 @@ export interface DurableSandboxConformancePort {
   ): Operation<{ programCapability: string }>;
   reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult>;
   resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
-  complete(request: CompleteTaskRequest): Operation<TaskCloseReceipt>;
+  complete(request: CompleteTaskRequest): Operation<CompleteTaskResult>;
   readJournal(sessionId: string): Operation<DurableSemanticRecord[]>;
   runnableSessions(): Operation<string[]>;
 }
@@ -166,7 +166,7 @@ function defineCase(
         input: {},
         executionEpoch: 1,
         attachmentId: "unattached",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
       const claimA = yield* hostA.claimActivation({ sessionId, ownerId: "host-A" });
       assert(caseName, claimA.status === "claimed", "host A must claim runnable work");

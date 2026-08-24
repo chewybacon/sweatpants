@@ -35,7 +35,7 @@ describe("ProgramDriver journal inspector", () => {
         input: { secret: "must-not-leak", visible: "okay" },
         executionEpoch: 1,
         attachmentId: "inspector-attachment",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
     });
 

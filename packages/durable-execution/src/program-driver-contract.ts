@@ -200,7 +200,6 @@ export interface ProgramDriver {
 export interface ProgramRunRequest {
   attach: AttachProgramRequest;
   programCapability?: string;
-  executeHostEffects?: boolean;
   /** Host-private owner used to issue/consume restore tickets under a claimed lease. */
   activationOwnerId?: string;
 }

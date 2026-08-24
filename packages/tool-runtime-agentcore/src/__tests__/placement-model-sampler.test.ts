@@ -1,6 +1,6 @@
 import type { ModelSampleRequest } from "@sweatpants/model-sampling";
 import {
-  MODEL_SAMPLE_EFFECT,
+  MODEL_SAMPLE_CONTRACT,
   runWithProgramDeliveryWriter,
   type ModelSampleResult,
 } from "@sweatpants/model-sampling";
@@ -54,7 +54,7 @@ function sampled(text: string): ModelSampleResult {
   };
 }
 const requestDigest = canonicalSnapshot(request).sha;
-const contractDigest = effectContractDigest(MODEL_SAMPLE_EFFECT);
+const contractDigest = effectContractDigest(MODEL_SAMPLE_CONTRACT);
 
 function attachRequest(overrides: Record<string, unknown> = {}) {
   return {

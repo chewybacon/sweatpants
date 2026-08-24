@@ -1,15 +1,9 @@
-import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
-import type { DurableEffectRegistry } from "@sweatpants/durable-effects";
-import { type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Operation } from "effection";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
-import {
-  createDurableEffectRegistry,
-  DurableEffectRouting,
-} from "@sweatpants/durable-effects/runtime";
+import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import { createCapabilityKeyring, LOW_PRIVATE_SEGMENT_TARGET } from "@sweatpants/journal-authority";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
@@ -25,11 +19,14 @@ import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtim
 import { createSimulatedRemoteModelSamplingService } from "./model-placement-simulator.ts";
 import {
   assistantText,
-  createModelSamplingEffectRegistration,
   ExecutionModelSamplingServiceContext,
   ModelSamplingApi,
 } from "@sweatpants/model-sampling";
-import { createToolInventory, installToolInventory } from "@sweatpants/tool-runtime";
+import {
+  createToolInventory,
+  createToolInventoryEntry,
+  installToolInventory,
+} from "@sweatpants/tool-runtime";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
@@ -38,13 +35,14 @@ import type { ModelContext } from "@sweatpants/model-provider";
 import type { ChatMessage } from "@sweatpants/chat-contract";
 import {
   createDurableToolRegistry,
+  type DurableToolRegistry,
   type ProgramDriver,
   type ProgramRoute,
 } from "@sweatpants/durable-execution";
 import {
   createLocalToolInvocationRuntime,
   createLocalWorkerDurableProgramDriver,
-  installLocalProgramToolRuntime,
+  installLocalToolRuntimeComposition,
   type LocalToolInvocationRuntime,
 } from "@sweatpants/tool-runtime-local";
 import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants/test-rig";
@@ -152,10 +150,9 @@ export interface AcceptanceApplicationOptions {
   storageProfile?: "low" | "default";
   durableDriverKind?: string;
   durableRoute?: ProgramRoute;
-  createDurableDriver?(
-    registry: DurableToolRegistry,
-    executionEffects?: DurableEffectRegistry,
-  ): ProgramDriver;
+  /** Explicitly exercises the host activation-lease path for native bindings. */
+  durableActivation?: "fenced";
+  createDurableDriver?(registry: DurableToolRegistry): ProgramDriver;
   modelSamplingOwnership?: "host" | "execution";
   modelSamplingTargets?: "root" | "all";
 }
@@ -217,7 +214,6 @@ export function createAcceptanceApplication(
       );
       yield* installToolInventory(inventory);
       yield* durableOptionsProvider.install();
-      let executionEffects: DurableEffectRegistry | undefined;
       yield* ModelSamplingApi.around({
         *sample([request, attempt], next) {
           modelSamplingExecutors.push(attempt.executor ?? "host");
@@ -249,9 +245,6 @@ export function createAcceptanceApplication(
             : {}),
         };
         yield* ExecutionModelSamplingServiceContext.set(executionService);
-        executionEffects = createDurableEffectRegistry([
-          createModelSamplingEffectRegistration(executionSampling, "execution"),
-        ]);
         yield* DurableEffectRouting.around({
           *route([request], next) {
             if (
@@ -273,7 +266,7 @@ export function createAcceptanceApplication(
         },
       });
 
-      yield* installLocalProgramToolRuntime({
+      yield* installLocalToolRuntimeComposition({
         tools: [acceptanceBookingTool, acceptanceImmediateTool],
         samplingProvider,
         installForeignEffects: function* (registrations) {
@@ -283,7 +276,7 @@ export function createAcceptanceApplication(
 
       const durableRegistry = createDurableToolRegistry([acceptanceDurableTool]);
       const concreteDurableDriver = options.createDurableDriver
-        ? options.createDurableDriver(durableRegistry, executionEffects)
+        ? options.createDurableDriver(durableRegistry)
         : createLocalWorkerDurableProgramDriver({
             workerUrl: resolveFixtureBootstrapUrl("acceptance-durable-worker-bootstrap.mjs"),
             name: "framework-acceptance-durable",
@@ -326,6 +319,7 @@ export function createAcceptanceApplication(
                 driverKind: options.durableDriverKind ?? "worker",
                 profile: "framework-acceptance-durable",
               },
+              ...(options.durableActivation ? { activation: options.durableActivation } : {}),
             },
           ],
         ]),

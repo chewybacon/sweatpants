@@ -1,4 +1,5 @@
 import { scoped, type Operation } from "effection";
+import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
 import type { AttachProgramRequest, ProgramRunResult } from "@sweatpants/durable-execution";
 import { DurableProgramCancellation, CrankError } from "@sweatpants/durable-execution";
 import { InstalledEffectPort } from "./runtime.ts";
@@ -54,9 +55,6 @@ export interface HostAuthority {
   emit(request: AppendEmissionRequest): Operation<{ readonly offset: string }>;
   complete(request: CompleteTaskRequest): Operation<CompleteTaskResult>;
 }
-
-/** @deprecated Use `ProgramRunResult`; retained for additive export stability. */
-export type ActivationResult = ProgramRunResult;
 
 export interface DriveActivationRequest {
   readonly attach: AttachProgramRequest;
@@ -133,9 +131,8 @@ function* driveAttachment(
       programCapability,
     });
     if (reserved.status === "pending") {
-      // Parking is host policy: a host that wants legacy semantics ends its
-      // activation when it sees a pending reservation and relies on restore
-      // replaying the settled history once the participant settles.
+      // Parking is host policy: a pending reservation ends this activation;
+      // a later attachment replays the settled history.
       return {
         state: "parked",
         reason: reserved.reason,
@@ -247,24 +244,13 @@ function* driveAttachment(
 }
 
 /**
- * Installs legacy-style durable-effect registrations onto the workflow
- * runtime's installed-effect port. Registration handlers speak the durable
- * registry envelope (`OperationOutcome`); this adapter unwraps it so hosts
- * migrating from `DurableEffectRegistryContext` keep their handlers verbatim.
+ * Installs durable-effect registrations onto the workflow runtime's
+ * installed-effect port. Registration handlers speak the durable registry
+ * envelope (`OperationOutcome`); this adapter unwraps it for authored bodies.
  */
 export function* installEffectRegistrations(
   identity: { readonly sessionId: string; readonly taskId: string },
-  registrations: readonly {
-    readonly definition: { readonly name: string; readonly version: string };
-    readonly handler: (
-      input: Json,
-      context: never,
-    ) => Operation<
-      | { status: "ok"; value: Json }
-      | { status: "cancelled" }
-      | { status: "error"; error: { code: string; message: string; details?: Json } }
-    >;
-  }[],
+  registrations: readonly DurableEffectRegistration[],
 ): Operation<void> {
   yield* InstalledEffectPort.installDriver({
     *run(descriptor, attempt) {
@@ -287,12 +273,7 @@ export function* installEffectRegistrations(
         cancellation: attempt.cancellation,
         resolver: descriptor.resolver,
       };
-      console.log(
-        "BRIDGE RUN:",
-        descriptor.name,
-        JSON.stringify({ sessionId: identity.sessionId, taskId: identity.taskId }),
-      );
-      const outcome = yield* reg.handler(descriptor.input as Json, context as never);
+      const outcome = yield* reg.handler(descriptor.input, context);
       if (outcome.status === "ok") {
         return outcome.value;
       }

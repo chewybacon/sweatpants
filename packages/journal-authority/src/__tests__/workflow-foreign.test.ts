@@ -4,7 +4,7 @@ import type { AttachProgramRequest, DurableProgramManifest } from "@sweatpants/d
 import { stableProgramAttachmentId } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 import { canonicalSnapshot } from "@sweatpants/foundation";
-import { createAuthorityScenarioDriver, withAuthorityTestScope } from "../testing.ts";
+import { createAuthorityScenarioDriver, withProgramDriverTestScope } from "../testing.ts";
 import { foreignTool, type Workflow } from "../workflow/runtime.ts";
 import { driveActivation } from "../workflow/host-drive.ts";
 import { anyGuard, createSchemaFixture } from "../schema-fixtures.ts";
@@ -85,7 +85,7 @@ describe("workflow runtime foreign boundaries", () => {
     const request = attach(sessionId);
 
     const outcome = await run(function* () {
-      return yield* withAuthorityTestScope(authority, function* () {
+      return yield* withProgramDriverTestScope(authority, function* () {
         const opened = (yield* authority.openTask({
           sessionId,
           turnId: "turn-0",
@@ -158,7 +158,7 @@ describe("workflow runtime foreign boundaries", () => {
     const request = attach(sessionId);
 
     const outcome = await run(function* () {
-      return yield* withAuthorityTestScope(authority, function* () {
+      return yield* withProgramDriverTestScope(authority, function* () {
         const opened = (yield* authority.openTask({
           sessionId,
           turnId: "turn-0",
@@ -270,7 +270,7 @@ describe("workflow runtime foreign boundaries", () => {
     const request = attach(sessionId);
 
     await run(function* () {
-      yield* withAuthorityTestScope(authority, function* () {
+      yield* withProgramDriverTestScope(authority, function* () {
         const opened = (yield* authority.openTask({
           sessionId,
           turnId: "turn-0",
