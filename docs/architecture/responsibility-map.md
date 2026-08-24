@@ -1,0 +1,68 @@
+# Responsibility Map — Authority-Backed Effection Workflow Runtime
+
+One page. Each actor gets one sentence per cell. A cell that cannot be filled
+in one sentence is a convicted seam, listed below the table. Baseline metrics
+at the bottom are the "before" numbers for any future refactor.
+
+## The actors
+
+| Actor | Home | Owns | Collaborators | Explicitly does NOT own |
+|---|---|---|---|---|
+| Authority kernel | `journal-authority` decision-pipeline, commit-loop, execution-forest | Validating and committing every semantic record; sole mutator of durable journal state | store/repository; pull-kind policies | What records mean to hosts or programs |
+| Pull kinds + registry | `pull-kinds/*` | Typed interaction descriptors and per-kind authorization policy | kernel decisions | Executing interactions; host wiring |
+| Workflow runtime | `workflow/runtime.ts` | The Effection attachment resource: open/exchange/close lifecycle; replaying settled pulls into a fresh run | authority port; pull settlement | Durability decisions; transports beyond the in-process handle |
+| Host drive (`driveActivation`) | `workflow/host-drive.ts` | One in-process attachment from start to park-or-terminal, including closure normalization | workflow runtime; HostAuthority port | Child topology; remote transports; restore/fencing |
+| Driver drive (`driveProgramDriverActivation`) | `workflow/driver-drive.ts` | One process-independent evaluator attachment, including restore proofs, fencing, cancellation injection | ProgramDriver peer; full authority contract | Child topology; in-process pumping |
+| Tree drive (`driveWorkflowTree`) | `workflow/tree-drive.ts` | Recursion over invoke parks: ensure-child, activate child, settle parent | an injected `activate` operation; execution.ensure-child | How one activation pumps; parking policy |
+| Evaluator adapter (`createWorkflowProgramDriver`) | `workflow/program-driver.ts` | Bridging the ProgramDriver transport contract onto the drives | durable-execution peer protocol | Journal state; placement policy |
+| Pull resolvers (e.g. parked-sample) | `durable-handler/parked-sample-resolver.ts`, registry | Settling one parked pull given descriptor + placement evidence | sampling service; source stager | Proposing pulls; journal mutation |
+| Facade composition | `program-workflow-host.ts` | Assembling a session's runtime pieces: resolver registry, staging edges, delivery writers | chat engine; model-sampling; authority shell | Projection of records into UI events |
+| Chat engine projection | `program-driver-chat-engine.ts` | Journal-records → public chat events/snapshots; elicitation response schema | facade composition; history store | Any journal write; sampling itself |
+| Model sampling service | `model-sampling` | Actual model invocation and preparation artifacts, in both modes | context source resolver/stager | Journaling; when preparation happens |
+| Evaluators (local/worker/agentcore) | `tool-runtime-local`, `tool-runtime-agentcore` | Executing program attempts within their placement; nothing else survives process death | evaluator adapter; fenced leases | Durable state; child allocation |
+
+## Seams this exercise convicts
+
+1. **"Host" names six unrelated roles** — `HostAuthority` (kernel port),
+   `ProgramWorkflowHost` (facade), `WorkflowTreeHost` (composition policy),
+   `ProgramDriverEffectHost` (effect routing), `HostScopeOwner` (Effection
+   scope), `createHostModelSamplingService`. No cell above can say which is
+   *the* host.
+2. **Two result vocabularies for one outcome** — `ActivationResult` vs
+   `ProgramRunResult`.
+3. **Capability binding lives in three places** — `openProgramAttachment`
+   minting, driver-drive `bindAttachment`, resumed-attachment paths.
+4. **`turnIdFor` duplicated** — host-drive and tree-drive.
+5. **Descriptor codec duplicated** — `pull-kinds/wire.ts` ↔
+   `workflow/runtime.ts` (fallow dup group).
+6. **Test shells duplicate production shell logic** — in-memory-shell ↔
+   stored-shell ↔ scenario-driver (three fallow clone groups). Testing should
+   consume production seams, not re-implement them.
+7. **Uncurated public surface** — `journal-authority/src/index.ts` is ~25
+   `export *` lines; depth requires hiding something, and this hides nothing.
+8. **Optional placement evidence** — resolvers police at runtime what the type
+   could guarantee statically.
+
+## Baseline metrics (2024 refactor checkpoint)
+
+Re-measure after any seam lift:
+
+- Cognitive complexity leaders (kernel): `resolvePull` 81,
+  `validateRecordHistory` 73, `verifyDurableAuthoritySnapshot` 63,
+  `validateEntryEvidence` 57, `reservePull` 45. Pumps are modest:
+  `driveAttachment` 23, `driveNode` 21.
+- fallow: 24 clone groups in journal-authority alone.
+- Vocabulary collisions: 60+ exported symbols share only four tokens
+  (`Host`, `Driver`, `Runtime`, `Activation`); 77 files carry "runtime" in
+  the name.
+- Public surface: unbounded via wildcard re-exports.
+- Housekeeping: stray `src/workflow/runtime_tmp.txt` (157-line leftover).
+
+## Reading the map diagnostically
+
+Rows that took longest to write, or needed hedging: the three drives (rows
+4–6 share lifecycle duties the table cannot cleanly divide), and facade
+composition vs chat engine (both touch elicitation). Those two boundaries —
+activation lifecycle and projection ownership — are where the next lift
+should aim, not because duplication is large but because this table could
+not draw them in one sentence each.
