@@ -3,6 +3,14 @@
 **Status:** Jam notes — working analysis, not yet decided policy.
 **Companion:** [vocabulary.md](./vocabulary.md) · [responsibility-map.md](./responsibility-map.md)
 
+## Ledger
+
+**Ratified:** R1′–R6′ (see Forest Discipline below) · replay/live-edge
+separation finding · peer-hosted delivery contract.
+**Proposed:** R7′ structure-vs-order (end of this section) · zero-trust
+cold-start snapshots. Type-level synthesis (α interpreter core / γ ledger /
+β supervision) lives in [spine-types.md](./spine-types.md) §0.
+
 ## The compression
 
 Sixty-four glossary terms reduce to one sentence:
@@ -127,6 +135,13 @@ heads — it was heads escaping the fork that created them.
 > state and appear in the strand only as deliveries and declared evidence.
 > Delegated samples are journaled and host-metered; undelegated are
 > peer-metered and invisible to history.
+>
+> **R7′ Structure vs order — PROPOSED, not ratified.** The kernel owns
+> concurrency *structure*: forest rows, slot lifecycle, terminal algebra
+> (including `expired`), structural refusals such as detached-origin slots.
+> Hosts own *order*: which leaf, which transport, which moment. Structural
+> rules are kernel-enforced; ordering rules are host policy; neither layer
+> reaches into the other.
 
 Compute concurrency inside a group is unrestricted; only slots are exclusive.
 Effection's scoped `spawn` already embodies R2′ — the substrate agrees with
