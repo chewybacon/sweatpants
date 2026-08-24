@@ -990,7 +990,7 @@ class ChatClientController<
         const stream = yield* ChatTransportPort.api.operations.sendMessages(cancellation, signal);
         // Once the Host has accepted the explicit control request, the old
         // response consumer is obsolete. Halt only that consumer; Host-owned
-        // ProgramRuntime, cleanup, writer, and terminal publication continue.
+        // workflow host, cleanup, writer, and terminal publication continue.
         if (active) {
           this.intentionallyInterruptedTasks.add(active);
           try {

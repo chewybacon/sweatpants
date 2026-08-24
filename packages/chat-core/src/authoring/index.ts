@@ -39,7 +39,7 @@ export {
   type AuthoredReferencedTaskSummary,
 } from "./contracts.ts";
 export {
-  CHAT_MODEL_SAMPLE_EFFECT,
+  CHAT_MODEL_SAMPLE_CONTRACT,
   CHAT_PROGRAM_IDENTITY_DOMAIN,
   GENERIC_CHAT_ENGINE,
   classifiedToolResult,

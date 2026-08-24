@@ -15,6 +15,7 @@ export const elicitDescriptorSchema = z.strictObject({
 registerPullKind({
   kind: "elicit",
   descriptorSchema: elicitDescriptorSchema,
+  journalLabel: (descriptor) => `elicit(${(descriptor as { key: string }).key})`,
   resolutionAuthority: (_descriptor, audience) => ({
     kind: "participant",
     audience,

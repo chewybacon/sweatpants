@@ -1,3 +1,4 @@
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import {
   ProgramDriverRegistryContext,
   createProgramDriverRegistry,
@@ -10,10 +11,10 @@ import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
-  withAuthorityTestScope,
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
@@ -26,13 +27,16 @@ import {
   type ForeignToolRequest,
   type ProgramRunResult,
 } from "@sweatpants/durable-execution";
-import { type Json } from "@sweatpants/foundation";
-import { foreignToolAdapter, foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
+import { assertJson, type Json } from "@sweatpants/foundation";
+import {
+  FOREIGN_TOOL_ADAPTER_PROGRAM,
+  foreignToolAdapter,
+  foreignToolSchemaEntries,
+} from "@sweatpants/tool-session/foreign";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { NULL_RESULT_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import {
   createLocalToolInvocationRuntime,
-  createLocalDurableProgramDriver,
   createToolInvocationForeignEffectRegistrations,
 } from "@sweatpants/tool-runtime-local";
 
@@ -89,12 +93,15 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
       route: "call-abort-aware",
     };
     const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
-      return yield* context.foreignTool<Json>(foreignRequest);
+      return yield* context.pull(
+        assertJson({
+          kind: "invoke",
+          child: { ...FOREIGN_TOOL_ADAPTER_PROGRAM, input: foreignRequest },
+        }),
+      );
     });
     const tools = createDurableToolRegistry([parent, foreignToolAdapter]);
-    const drivers = createProgramDriverRegistry([
-      ["program", createLocalDurableProgramDriver(tools)],
-    ]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const keyring = createCapabilityKeyring("abort-signal-acceptance", [
       { keyId: "active", secret: "abort-signal-acceptance-key-32-bytes" },
     ]);
@@ -135,7 +142,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
         input: null,
         executionEpoch: 1,
         attachmentId: "unattached-parent",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
 
       const activation = yield* spawn(function* () {
@@ -191,9 +198,9 @@ function runProgram(
   effects: ReturnType<typeof createDurableEffectRegistry>,
 ): Operation<ProgramRunResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withAuthorityTestScope(authority, function* () {
+    return yield* withProgramDriverTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+        return yield* driveInstalledTestProgramTree({ attach });
       });
     });
   });

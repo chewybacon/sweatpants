@@ -1,7 +1,9 @@
 import {
-  MODEL_SAMPLE_EFFECT,
   decodeModelSampleRequest,
+  decodeModelSampleSourceRequest,
   encodeModelSampleResult,
+  encodeModelSampleSourceRequest,
+  resolveModelSampleSourceRequest,
 } from "@sweatpants/model-sampling";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { randomUUID } from "node:crypto";
@@ -12,20 +14,22 @@ import { run } from "effection";
 
 import config from "../../yo-chat/sweatpants.config.ts";
 import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
-import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
-  withAuthorityTestScope,
+  driveInstalledTestProgramTree,
+  withProgramDriverTestPullResolvers,
+  withProgramDriverTestSampleStager,
+  withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
 } from "@sweatpants/durable-effects/runtime";
 import { type ProgramRunResult } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import { assertJson, type Json } from "@sweatpants/foundation";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import type { PullResolver } from "@sweatpants/journal-authority";
 import {
   createProgramDriverRegistry,
   ProgramDriverRegistryContext,
@@ -121,18 +125,50 @@ async function main(): Promise<void> {
     createAgentCoreWebSocketProgramTransport(connector),
   );
   let modelSamples = 0;
-  const effects = createDurableEffectRegistry([
-    createDurableEffectRegistration(
-      MODEL_SAMPLE_EFFECT,
-      MODEL_SAMPLE_EFFECT.retrySafety,
-      function* (wireRequest) {
-        modelSamples += 1;
-        const request = decodeModelSampleRequest(wireRequest);
-        const value = {
+  const effects = createDurableEffectRegistry([]);
+  const contexts = new Map<
+    string,
+    ReturnType<typeof decodeModelSampleRequest>["invocation"]["context"]
+  >();
+  const stageSampleInput = function* (input: Json) {
+    const request = decodeModelSampleRequest(input);
+    const snapshot = canonicalSnapshot(request.invocation.context);
+    const objectId = `certification-context:${snapshot.sha}`;
+    contexts.set(objectId, request.invocation.context);
+    return encodeModelSampleSourceRequest({
+      ...request,
+      invocation: {
+        context: { type: "object", object: { objectId }, digest: snapshot.sha },
+        ...(request.invocation.options === undefined
+          ? {}
+          : { options: request.invocation.options }),
+      },
+    });
+  };
+  const sampleResolver: PullResolver = {
+    kind: "sample",
+    audience: () => "model-runtime",
+    *perform(_context, descriptor) {
+      if (descriptor === null || typeof descriptor !== "object" || Array.isArray(descriptor)) {
+        throw new Error("model sample descriptor is malformed");
+      }
+      const source = decodeModelSampleSourceRequest(descriptor["input"]);
+      if (source.invocation.context.type !== "object") {
+        throw new Error("certification requires an object model context source");
+      }
+      const context = contexts.get(source.invocation.context.object.objectId);
+      if (!context || canonicalSnapshot(context).sha !== source.invocation.context.digest) {
+        throw new Error("certification model context source is unavailable");
+      }
+      const request = resolveModelSampleSourceRequest(source, context);
+      modelSamples += 1;
+      return {
+        status: "ok",
+        value: encodeModelSampleResult({
           message: {
             message: {
-              role: "assistant" as const,
-              content: [{ type: "text" as const, text: "first legal cell" }],
+              role: "assistant",
+              content: [{ type: "text", text: "first legal cell" }],
             },
             source: null,
             usage: null,
@@ -141,14 +177,13 @@ async function main(): Promise<void> {
             errorMessage: null,
           },
           output: {
-            type: "json" as const,
+            type: "json",
             value: { cell: firstEmptyPosition(request.invocation.context.messages) },
           },
-        };
-        return { status: "ok" as const, value: encodeModelSampleResult(value) };
-      },
-    ),
-  ]);
+        }),
+      };
+    },
+  };
   const authority = createAuthorityScenarioDriver({
     journalId: "live-development-play-ttt",
     journalIncarnation: "1",
@@ -167,7 +202,7 @@ async function main(): Promise<void> {
       input: {},
       executionEpoch: 1,
       attachmentId: "unattached",
-      audience: "program-runtime",
+      audience: "workflow-host",
     }),
   );
 
@@ -180,19 +215,22 @@ async function main(): Promise<void> {
       let reason: "parked" | "terminal" | "failed" = "failed";
       try {
         const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withAuthorityTestScope(authority, function* () {
-            return yield* DurableEffectRegistryContext.with(effects, function* () {
-              return yield* ProgramRuntime.operations.run({
-                attach: {
-                  sessionId,
-                  taskId,
-                  program,
-                  input: {},
-                  route,
-                  executionEpoch: claim.epoch,
-                },
-                executeHostEffects: true,
-                activationOwnerId: ownerId,
+          return yield* withProgramDriverTestScope(authority, function* () {
+            return yield* withProgramDriverTestSampleStager(stageSampleInput, function* () {
+              return yield* withProgramDriverTestPullResolvers([sampleResolver], function* () {
+                return yield* DurableEffectRegistryContext.with(effects, function* () {
+                  return yield* driveInstalledTestProgramTree({
+                    attach: {
+                      sessionId,
+                      taskId,
+                      program,
+                      input: {},
+                      route,
+                      executionEpoch: claim.epoch,
+                    },
+                    activationOwnerId: ownerId,
+                  });
+                });
               });
             });
           });

@@ -27,7 +27,7 @@ import {
   createLocalToolInvocationRuntime,
   createLocalWorkerDurableProgramDriver,
   createToolInvocationForeignEffectRegistrations,
-  installLocalProgramToolRuntime,
+  installLocalToolRuntimeComposition,
 } from "@sweatpants/tool-runtime-local";
 import {
   createAgentCoreToolExecutionStrategy,
@@ -244,7 +244,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
     return;
   }
 
-  yield* installLocalProgramToolRuntime({
+  yield* installLocalToolRuntimeComposition({
     tools: ordinaryTools,
     samplingProvider: options.samplingProvider,
     installForeignEffects: function* (registrations) {

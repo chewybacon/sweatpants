@@ -1,5 +1,5 @@
 import { canonicalSnapshot } from "@sweatpants/foundation";
-import { hasLiveDurableEffect, signalLiveDurableEffect } from "@sweatpants/durable-effects/runtime";
+import { hasLiveDurablePull, signalLiveDurablePull } from "@sweatpants/durable-effects/runtime";
 import { verifyResolutionCapability } from "./capabilities.ts";
 import type { Operation } from "effection";
 
@@ -193,9 +193,8 @@ function liveEffectTargets(state: AuthorityState): readonly { taskId: string; pu
       for (const action of task.actions) {
         if (
           action.kind === "pull" &&
-          action.pull.request.acceptedDescriptor.kind === "effect" &&
           action.pull.resolution.status === "open" &&
-          hasLiveDurableEffect(sessionId, task.taskId, action.pull.pullId)
+          hasLiveDurablePull(sessionId, task.taskId, action.pull.pullId)
         ) {
           targets.push({ taskId: task.taskId, pullId: action.pull.pullId });
         }
@@ -214,12 +213,12 @@ function signalCommittedCancellation<C extends AuthorityCommand>(
   if (!session) return;
   for (const task of session.execution.tasks.values()) {
     const lifecycle = task.lifecycle;
-    if (lifecycle.status !== "active" || lifecycle.cancellation.type !== "settling_effect") {
+    if (lifecycle.status !== "active" || lifecycle.cancellation.type !== "settling_pull") {
       continue;
     }
     const pullId = lifecycle.cancellation.pullId;
-    if (hasLiveDurableEffect(command.request.sessionId, task.taskId, pullId)) {
-      signalLiveDurableEffect(
+    if (hasLiveDurablePull(command.request.sessionId, task.taskId, pullId)) {
+      signalLiveDurablePull(
         command.request.sessionId,
         task.taskId,
         pullId,

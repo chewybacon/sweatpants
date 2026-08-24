@@ -85,7 +85,7 @@ describe("facade workflow runtime foreign execution", () => {
       capabilities: { durableEmissions: false, structuredChildren: false, replay: "strict" },
     });
     const parentTool = createPinnedDurableProgram(parentManifest, function* (_input, context) {
-      const result = (yield* context.pull!({
+      const result = (yield* context.pull({
         kind: "foreign",
         driver: "tool-session",
         tool: "wf_weather",
@@ -104,7 +104,6 @@ describe("facade workflow runtime foreign execution", () => {
       stateStore,
       keyring,
       name: "foreign_facade_tool",
-      runtime: "workflow",
       schemaRegistry: createDurableSchemaRegistry([
         ...foreignToolSchemaEntries(),
         parentInput.entry,

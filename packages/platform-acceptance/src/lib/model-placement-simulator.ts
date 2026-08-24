@@ -3,7 +3,7 @@ import { spawn } from "effection";
 import type { Model, StreamOptions } from "@sweatpants/model-provider";
 import { createHostModelSamplingService } from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
-  MODEL_SAMPLE_EFFECT,
+  MODEL_SAMPLE_CONTRACT,
   type ModelSampleAttempt,
   type ModelSamplingService,
 } from "@sweatpants/model-sampling";
@@ -71,7 +71,7 @@ export function createSimulatedRemoteModelSamplingService(options: {
         taskId: identity.taskId,
         pullId: identity.pullId,
         attemptId,
-        effectContractDigest: effectContractDigest(MODEL_SAMPLE_EFFECT),
+        effectContractDigest: effectContractDigest(MODEL_SAMPLE_CONTRACT),
         cancellation: producerContext.signal,
       };
       return yield* providerService.sample(request, attempt);

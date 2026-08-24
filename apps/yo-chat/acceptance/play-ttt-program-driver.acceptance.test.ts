@@ -1,25 +1,16 @@
-import {
-  MODEL_SAMPLE_EFFECT,
-  decodeModelSampleRequest,
-  encodeModelSampleResult,
-  encodeModelSampleSourceRequest,
-  type ModelSampleResult,
-} from "@sweatpants/model-sampling";
-import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
+import type { ModelSampleResult, ModelSamplingService } from "@sweatpants/model-sampling";
 // @vitest-environment node
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
-import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
+import { createDurableToolRegistry } from "@sweatpants/durable-execution";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import type { ModelContext } from "@sweatpants/model-provider";
-import { createLocalWorkerDurableProgramDriver } from "@sweatpants/tool-runtime-local";
 import {
   createProgramDriverJournalStore,
-  createLocalProgramHost,
   createPinnedProgramCatalog,
+  createProgramWorkflowHost,
   programDriverSchemaRegistry,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 
@@ -31,159 +22,128 @@ const pin = {
   digest: playTttTool.manifest.digest,
 };
 
-describe("journal-native play_ttt through ProgramRuntime", () => {
-  it.each([
-    ["program", "program"],
-    ["worker", "worker"],
-  ] as const)(
-    "completes through the %s driver without ToolSession",
-    async (_label, driverKind) => {
-      let modelSamples = 0;
-      let storedContext: ModelContext | undefined;
-      let storedDigest = "";
-      const programs = createDurableToolRegistry([playTttTool]);
-      const effects = createDurableEffectRegistry([
-        createDurableEffectRegistration(
-          MODEL_SAMPLE_EFFECT,
-          MODEL_SAMPLE_EFFECT.retrySafety,
-          function* (request) {
-            modelSamples += 1;
-            const value: ModelSampleResult = {
-              message: {
-                message: {
-                  role: "assistant",
-                  content: [{ type: "text", text: "first legal cell" }],
-                },
-                source: null,
-                usage: null,
-                stopReason: "stop",
-                responseId: null,
-                errorMessage: null,
-              },
-              output: {
-                type: "json",
-                value: { cell: firstEmptyPosition(storedContext?.messages ?? []) },
-              },
-            };
-            return { status: "ok", value: encodeModelSampleResult(value) };
-          },
-        ),
-      ]);
-      const driver =
-        driverKind === "program"
-          ? createLocalProgramDriver(programs)
-          : createLocalWorkerDurableProgramDriver({
-              workerUrl: new URL(
-                "./fixtures/durable-play-ttt-worker-bootstrap.mjs",
-                import.meta.url,
-              ),
-              name: "play-ttt-conformance-worker",
-              registry: programs,
-            });
-      const host = createLocalProgramHost({
-        *effectInputPreparer(request) {
-          if (request.name !== "model.sample") return request.input;
-          const semantic = decodeModelSampleRequest(request.input);
-          const snapshot = canonicalSnapshot(semantic.invocation.context);
-          storedContext = semantic.invocation.context;
-          storedDigest = snapshot.sha;
-          return encodeModelSampleSourceRequest({
-            ...semantic,
-            invocation: {
-              context: {
-                type: "object",
-                object: { objectId: "play-ttt-context" },
-                digest: snapshot.sha,
-              },
-              ...(semantic.invocation.options === undefined
-                ? {}
-                : { options: semantic.invocation.options }),
+describe("journal-native play_ttt through the workflow host", () => {
+  it("completes without ToolSession", async () => {
+    let modelSamples = 0;
+    let storedContext: ModelContext | undefined;
+    let storedDigest = "";
+    const programs = createDurableToolRegistry([playTttTool]);
+    const effects = createDurableEffectRegistry([]);
+    const modelSamplingService: ModelSamplingService = {
+      *sample(request) {
+        modelSamples += 1;
+        const value: ModelSampleResult = {
+          message: {
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "first legal cell" }],
             },
-          });
-        },
-        *modelContextSourceResolver(source) {
-          if (
-            source.type !== "object" ||
-            source.object.objectId !== "play-ttt-context" ||
-            source.digest !== storedDigest ||
-            !storedContext
-          ) {
-            throw new Error("unexpected play_ttt model context source");
-          }
-          return storedContext;
-        },
-        journalStore: createProgramDriverJournalStore({
-          keyring: createCapabilityKeyring("native-play-ttt", [
-            { keyId: "active", secret: "native-play-ttt-key-material-32!!" },
-          ]),
-          schemaRegistry: programDriverSchemaRegistry(playTttTool.artifacts.catalog),
-        }),
-        programs,
-        effects,
-        drivers: createProgramDriverRegistry([[driverKind, driver]]),
-      });
-      const catalog = createPinnedProgramCatalog({
-        play_ttt: { kind: "program", target: "play_ttt", program: pin },
-      });
-
-      await run(function* () {
-        const opened = yield* host.open({
-          program: pin,
-          manifest: playTttTool.manifest,
-          input: {},
-          catalog,
-          route: { driverKind },
-        });
-        let outcome = yield* opened.result;
-        let userResponses = 0;
-        for (let round = 0; outcome.state === "parked" && round < 12; round += 1) {
-          const trace = yield* host.trace(opened.sessionId);
-          const task = trace.tasks.find((candidate) => candidate.taskId === opened.taskId)!;
-          const pending = [...task.operations]
-            .reverse()
-            .find((operation) => operation.outcome === undefined);
-          if (!pending || pending.descriptor["kind"] !== "elicit") {
-            throw new Error("Missing native play_ttt elicitation");
-          }
-          const context = pending.descriptor["context"] as Json;
-          const position = containsGameOver(context) ? -1 : firstEmptyBoardPosition(context);
-          outcome = yield* host.respond({
-            sessionId: opened.sessionId,
-            taskId: opened.taskId,
-            pullId: pending.pullId,
-            response: { action: "accept", content: { position } },
-          });
-          userResponses += 1;
+            source: null,
+            usage: null,
+            stopReason: "stop",
+            responseId: null,
+            errorMessage: null,
+          },
+          output: {
+            type: "json",
+            value: { cell: firstEmptyPosition(request.invocation.context.messages) },
+          },
+        };
+        return { status: "ok" as const, value };
+      },
+    };
+    const host = createProgramWorkflowHost({
+      *modelContextSourceStager(context) {
+        const snapshot = canonicalSnapshot(context);
+        storedContext = context;
+        storedDigest = snapshot.sha;
+        return {
+          type: "object",
+          object: { objectId: "play-ttt-context" },
+          digest: snapshot.sha,
+        };
+      },
+      *modelContextSourceResolver(source) {
+        if (
+          source.type !== "object" ||
+          source.object.objectId !== "play-ttt-context" ||
+          source.digest !== storedDigest ||
+          !storedContext
+        ) {
+          throw new Error("unexpected play_ttt model context source");
         }
+        return storedContext;
+      },
+      journalStore: createProgramDriverJournalStore({
+        keyring: createCapabilityKeyring("native-play-ttt", [
+          { keyId: "active", secret: "native-play-ttt-key-material-32!!" },
+        ]),
+        schemaRegistry: programDriverSchemaRegistry(playTttTool.artifacts.catalog),
+      }),
+      programs,
+      effects,
+      modelSamplingService,
+    });
+    const catalog = createPinnedProgramCatalog({
+      play_ttt: { kind: "program", target: "play_ttt", program: pin },
+    });
 
-        expect(outcome.state).toBe("completed");
-        if (outcome.state !== "completed") {
-          throw new Error("game did not complete");
-        }
-        expect(outcome.value as PlayTttResult).toMatchObject({ success: true });
+    await run(function* () {
+      const opened = yield* host.open({
+        program: pin,
+        manifest: playTttTool.manifest,
+        input: {},
+        catalog,
+        route: { driverKind: "workflow" },
+      });
+      let outcome = yield* opened.result;
+      let userResponses = 0;
+      for (let round = 0; outcome.state === "parked" && round < 12; round += 1) {
         const trace = yield* host.trace(opened.sessionId);
-        const operations = trace.tasks[0]!.operations;
-        expect(
-          operations.filter((operation) => operation.descriptor["kind"] === "effect"),
-        ).toHaveLength(modelSamples);
-        expect(
-          operations.filter(
-            (operation) =>
-              operation.descriptor["kind"] === "record" &&
-              operation.descriptor["key"] === "play-ttt-symbol-coin-flip",
-          ),
-        ).toHaveLength(1);
-        expect(
-          operations.filter((operation) => operation.descriptor["kind"] === "elicit"),
-        ).toHaveLength(userResponses);
-        expect(JSON.stringify(trace)).not.toContain("foreign.tool");
-        expect(JSON.stringify(trace)).not.toContain("tool.execute");
-      });
+        const task = trace.tasks.find((candidate) => candidate.taskId === opened.taskId)!;
+        const pending = [...task.operations]
+          .reverse()
+          .find((operation) => operation.outcome === undefined);
+        if (!pending || pending.descriptor["kind"] !== "elicit") {
+          throw new Error("Missing native play_ttt elicitation");
+        }
+        const context = pending.descriptor["context"] as Json;
+        const position = containsGameOver(context) ? -1 : firstEmptyBoardPosition(context);
+        outcome = yield* host.respond({
+          sessionId: opened.sessionId,
+          taskId: opened.taskId,
+          pullId: pending.pullId,
+          response: { action: "accept", content: { position } },
+        });
+        userResponses += 1;
+      }
 
-      expect(modelSamples).toBeGreaterThan(1);
-    },
-    15_000,
-  );
+      expect(outcome.state).toBe("completed");
+      if (outcome.state !== "completed") {
+        throw new Error("game did not complete");
+      }
+      expect(outcome.value as PlayTttResult).toMatchObject({ success: true });
+      const trace = yield* host.trace(opened.sessionId);
+      const operations = trace.tasks[0]!.operations;
+      expect(
+        operations.filter((operation) => operation.descriptor["kind"] === "sample"),
+      ).toHaveLength(modelSamples);
+      expect(
+        operations.filter(
+          (operation) =>
+            operation.descriptor["kind"] === "record" &&
+            operation.descriptor["key"] === "play-ttt-symbol-coin-flip",
+        ),
+      ).toHaveLength(1);
+      expect(
+        operations.filter((operation) => operation.descriptor["kind"] === "elicit"),
+      ).toHaveLength(userResponses);
+      expect(JSON.stringify(trace)).not.toContain("foreign.tool");
+      expect(JSON.stringify(trace)).not.toContain("tool.execute");
+    });
+
+    expect(modelSamples).toBeGreaterThan(1);
+  }, 15_000);
 });
 
 function firstEmptyPosition(messages: Json[]): number {

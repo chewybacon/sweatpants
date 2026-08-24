@@ -7,12 +7,15 @@
  * depend on this file; nothing here depends on a kind.
  */
 import type { Operation } from "effection";
+import type { OperationOutcome } from "@sweatpants/durable-effects";
 import type { z } from "zod";
-import { CrankError } from "@sweatpants/durable-execution";
+import {
+  CrankError,
+  type DurableOperationDescriptor,
+  type DurableProgramManifest,
+} from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
-import type { DurableProgramManifest } from "@sweatpants/durable-execution";
-import type { DurableOperationDescriptor } from "@sweatpants/durable-execution";
 import type { ResolutionAuthority } from "../authority-contract.ts";
 
 /** Structural contract hosts implement to settle one kind of parked pull. */
@@ -20,12 +23,29 @@ export interface PullResolutionContext {
   readonly sessionId: string;
   readonly taskId: string;
   readonly pullId: string;
+  /**
+   * Placement evidence for the attachment whose activation exposed the park.
+   * Supplied by the settle site, which owns that binding by construction;
+   * resolvers MUST NOT reconstruct it from host-side mutable state.
+   */
+  readonly placement: {
+    readonly program: { readonly id: string; readonly version: string; readonly digest: string };
+    readonly route: Json;
+    readonly driverKind: string;
+    readonly executionEpoch: number;
+  };
 }
 
 export interface PullResolver {
   readonly kind: string;
   audience(descriptor: Json): string;
-  perform(ctx: PullResolutionContext, descriptor: Json): Operation<Json>;
+  perform(ctx: PullResolutionContext, descriptor: Json): Operation<OperationOutcome>;
+  /** Runs only after Authority accepted or deduplicated the durable outcome. */
+  afterResolve?(
+    ctx: PullResolutionContext,
+    descriptor: Json,
+    outcomeDigest: string,
+  ): Operation<void>;
 }
 
 /** Registry construction rejects duplicate kinds at build time. */
@@ -70,6 +90,7 @@ export interface PullKindPolicy {
   ) => {
     resultDescriptor: PortableSchemaDescriptor;
     audience: string;
+    inputDigest?: string;
   };
 }
 

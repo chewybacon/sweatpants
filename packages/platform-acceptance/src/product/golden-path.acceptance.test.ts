@@ -262,8 +262,8 @@ describe("product facade golden path", () => {
       },
       handler: createChatHandler({
         programDriverJournalStore: createDevelopmentProgramDriverJournalStore({
-          audience: "golden-path-program-runtime",
-          secret: "golden-path-program-runtime-secret",
+          audience: "golden-path-workflow-host",
+          secret: "golden-path-workflow-host-secret",
         }),
         projectionTokens: createProjectionTokenKeyring("golden-path-windowed-projection-key"),
         *authorizeHistoryRead() {

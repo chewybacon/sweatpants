@@ -96,6 +96,7 @@ import {
   isModelSampleDescriptor,
   manifestSchemaDigests,
   MAX_OPEN_ELICITATIONS,
+  modelPullOwnerFence,
   normalizeEmissionPolicy,
   operationPolicy,
   parseProgramElicitResult,
@@ -697,10 +698,13 @@ function reservePull(
       notBefore: new Date(draft.context.nowMs + descriptor.durationMs).toISOString(),
     };
   }
-  if (descriptor.kind === "effect") {
+  if (
+    policy.inputDigest !== undefined &&
+    (descriptor.kind === "effect" || descriptor.kind === "sample")
+  ) {
     effectiveDescriptor = {
       ...descriptor,
-      input: draft.parseSchema(policy.inputDigest!, descriptor.input, "invalid_descriptor"),
+      input: draft.parseSchema(policy.inputDigest, descriptor.input, "invalid_descriptor"),
     };
   }
   if (descriptor.kind === "elicit" && policy.contextDigest && descriptor.context !== undefined) {
@@ -769,7 +773,7 @@ function reservePull(
     actionIndex: request.actionIndex,
     pullIndex: request.pullIndex,
     pullId,
-    descriptor: effectiveDescriptor,
+    descriptor,
     descriptorDigest,
     ...(publicMessageId === undefined ? {} : { publicMessageId }),
   });
@@ -799,6 +803,18 @@ function reservePull(
   };
 }
 
+function matchesModelPreparationOwner(
+  task: DraftTask,
+  pull: DraftPull,
+  expectedOwnerFence: string,
+): boolean {
+  const attempt = currentAttempt(pull);
+  return attempt
+    ? attempt.attemptId === expectedOwnerFence
+    : pull.request.proposedDescriptor.kind === "sample" &&
+        expectedOwnerFence === modelPullOwnerFence(pull.pullId, task.execution.epoch);
+}
+
 function acceptPreparation(
   draft: DecisionDraft,
   request: AcceptPullPreparationRequest,
@@ -822,8 +838,7 @@ function acceptPreparation(
     return { status: "pull_not_pending" };
   if (!isModelSampleDescriptor(pull.request.proposedDescriptor))
     return { status: "identity_conflict" };
-  const attempt = currentAttempt(pull);
-  if (!attempt || attempt.attemptId !== request.expectedOwnerFence)
+  if (!matchesModelPreparationOwner(task, pull, request.expectedOwnerFence))
     return { status: "stale_owner" };
   const digest = canonicalSnapshot(request.fact).sha;
   if (pull.acceptedFacts.preparation)
@@ -868,8 +883,7 @@ function authorizeModelDispatch(
     return { status: "pull_not_pending" };
   if (!isModelSampleDescriptor(pull.request.proposedDescriptor))
     return { status: "identity_conflict" };
-  const attempt = currentAttempt(pull);
-  if (!attempt || attempt.attemptId !== request.expectedOwnerFence)
+  if (!matchesModelPreparationOwner(task, pull, request.expectedOwnerFence))
     return { status: "stale_owner" };
   const preparation = pull.acceptedFacts.preparation;
   if (!preparation) return { status: "not_prepared" };
@@ -902,8 +916,7 @@ function acceptAssistantPartial(
     return { status: "pull_not_pending" };
   if (!isModelSampleDescriptor(pull.request.proposedDescriptor))
     return { status: "identity_conflict" };
-  const attempt = currentAttempt(pull);
-  if (!attempt || attempt.attemptId !== request.expectedOwnerFence)
+  if (!matchesModelPreparationOwner(task, pull, request.expectedOwnerFence))
     return { status: "stale_owner" };
   if (pull.acceptedFacts.preparation?.executionId !== request.executionId)
     return { status: "identity_conflict" };
@@ -1137,7 +1150,7 @@ function resolvePull(
   task.nextActionIndex = Math.max(task.nextActionIndex, pullActionIndex(task, pull) + 1);
   if (
     task.lifecycle.status === "active" &&
-    task.lifecycle.cancellation.type === "settling_effect" &&
+    task.lifecycle.cancellation.type === "settling_pull" &&
     task.lifecycle.cancellation.pullId === pull.pullId
   )
     task.lifecycle.cancellation = {
@@ -1217,10 +1230,7 @@ function appendEmission(draft: DecisionDraft, request: AppendEmissionRequest): E
   return receipt;
 }
 
-function completeTask(
-  draft: DecisionDraft,
-  request: CompleteTaskRequest,
-): CompleteTaskResult {
+function completeTask(draft: DecisionDraft, request: CompleteTaskRequest): CompleteTaskResult {
   const task = draft.task(request.sessionId, request.taskId);
   draft.assertProgram(request.programCapability, task, request.sessionId);
   const proposed = snapshotOutcome(request.outcome);
@@ -1369,18 +1379,14 @@ function requestCancellation(
         safeReason,
         `${commandId}:child:${child.taskId}`,
       );
-    } else if (
-      (frontierPull.request.acceptedDescriptor.kind === "effect" ||
-        frontierPull.request.acceptedDescriptor.kind === "record") &&
-      currentAttempt(frontierPull)
-    ) {
+    } else {
       const live =
         draft.context.liveEffectTargets?.some(
           (target) => target.taskId === task.taskId && target.pullId === frontierPull.pullId,
         ) ?? false;
       if (live) {
         task.lifecycle.cancellation = {
-          type: "settling_effect",
+          type: "settling_pull",
           commandId,
           pullId: frontierPull.pullId,
           ...(safeReason === undefined ? {} : { reason: safeReason }),
@@ -1389,8 +1395,6 @@ function requestCancellation(
       } else {
         cancelNonSettleablePull(draft, sessionId, task, frontierPull);
       }
-    } else {
-      cancelNonSettleablePull(draft, sessionId, task, frontierPull);
     }
   }
   return {
@@ -1416,7 +1420,7 @@ function beginCancellationUnwind(
   if (current.type === "unwinding") return structuredClone(current);
   if (
     current.type !== "requested" &&
-    current.type !== "settling_effect" &&
+    current.type !== "settling_pull" &&
     current.type !== "cancelling_children"
   )
     throw new CrankError("invalid_command", "Task has no cancellation to unwind");
@@ -2190,7 +2194,7 @@ function failIndeterminate(
   settlePull(draft, sessionId, task, pull, outcome);
   if (
     task.lifecycle.status === "active" &&
-    task.lifecycle.cancellation.type === "settling_effect" &&
+    task.lifecycle.cancellation.type === "settling_pull" &&
     task.lifecycle.cancellation.pullId === pull.pullId
   )
     task.lifecycle.cancellation = {

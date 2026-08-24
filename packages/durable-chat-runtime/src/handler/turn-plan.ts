@@ -1,7 +1,7 @@
 /**
  * Pure planning for one typed conversation command.
  *
- * Conversation admission validates head/Turn identity. ProgramRuntime's
+ * Conversation admission validates head/Turn identity. the workflow host's
  * journal authority validates and settles respond-to-elicit against the exact
  * pending pull. Process-local interrupt records are rendering indexes only and
  * never participate in command correctness.

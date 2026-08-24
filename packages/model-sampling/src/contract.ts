@@ -9,7 +9,11 @@ import {
   type ParseIssue,
   type Parser,
 } from "@sweatpants/foundation";
-import { createPortableSchemaDescriptor, type SchemaBinding } from "@sweatpants/foundation/schema";
+import {
+  createPortableSchemaDescriptor,
+  type PortableSchemaDescriptor,
+  type SchemaBinding,
+} from "@sweatpants/foundation/schema";
 import type {
   EffectDefinition,
   EffectSchemaDescriptor,
@@ -429,6 +433,26 @@ function bindSchema<T>(
   return value;
 }
 
+function bindPullSchema<T>(
+  identity: string,
+  role: "pull_input" | "pull_output",
+  projection: Json,
+  valueParser: Parser<T>,
+  encode: (value: T) => Json,
+): PortableSchemaDescriptor {
+  const value = createPortableSchemaDescriptor({
+    identity,
+    role,
+    version: "1",
+    vendor: "sweatpants",
+    inputProjection: projection,
+    outputProjection: projection,
+    fidelity: { input: "explicit", output: "explicit" },
+  });
+  schemaEntries.push({ descriptor: value, schema: parserStandardSchema(valueParser, encode) });
+  return value;
+}
+
 function parserStandardSchema<T>(
   valueParser: Parser<T>,
   encode: (value: T) => Json,
@@ -471,6 +495,23 @@ export const MODEL_SAMPLE_OUTPUT_DESCRIPTOR = bindSchema(
   (value) => encodeModelSampleResult(value),
 );
 
+/** Pull-contract descriptors for workflow-native model sampling. */
+export const MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR = bindPullSchema(
+  "sweatpants.model-sample/pull-input",
+  "pull_input",
+  objectProjection,
+  modelSampleSourceRequestParser,
+  (value) => encodeModelSampleSourceRequest(value),
+);
+
+export const MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR = bindPullSchema(
+  "sweatpants.model-sample/pull-output",
+  "pull_output",
+  objectProjection,
+  modelSampleResultParser,
+  (value) => encodeModelSampleResult(value),
+);
+
 const modelSamplePartialProjection = { type: "object", required: ["text", "interrupted"] };
 export const MODEL_SAMPLE_PARTIAL_DESCRIPTOR = bindSchema(
   "sweatpants.model-sample/cancellation-partial",
@@ -480,7 +521,7 @@ export const MODEL_SAMPLE_PARTIAL_DESCRIPTOR = bindSchema(
   (value) => assertJson(value),
 );
 
-export const MODEL_SAMPLE_EFFECT: EffectDefinition<
+export const MODEL_SAMPLE_CONTRACT: EffectDefinition<
   ModelSampleWireRequest,
   ModelSampleWireResult,
   ModelSampleCancellationPartial
@@ -493,6 +534,9 @@ export const MODEL_SAMPLE_EFFECT: EffectDefinition<
   retrySafety: { mode: "repeatable" as const },
 });
 
-export const MODEL_SAMPLE_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze([
-  ...schemaEntries,
-]);
+export const MODEL_SAMPLE_CONTRACT_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze(
+  schemaEntries.filter((entry) => !entry.descriptor.role.startsWith("pull_")),
+);
+export const MODEL_SAMPLE_PULL_SCHEMA_ENTRIES: readonly SchemaBinding[] = Object.freeze(
+  schemaEntries.filter((entry) => entry.descriptor.role.startsWith("pull_")),
+);

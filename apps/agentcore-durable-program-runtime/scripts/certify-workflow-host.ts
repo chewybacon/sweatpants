@@ -8,9 +8,9 @@ import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
-  withAuthorityTestScope,
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
@@ -63,15 +63,15 @@ const release: AgentCoreRuntimeRelease = {
   filesystem: { kind: "managed_session_storage", mountPath: "/mnt/workspace" },
   lifecycle: deployment.lifecycle,
 };
-const taskId = `program-runtime-${randomUUID()}`;
-const sessionId = `program-runtime-session-${randomUUID()}`;
+const taskId = `workflow-host-${randomUUID()}`;
+const sessionId = `workflow-host-session-${randomUUID()}`;
 const program = {
   id: pickCard.manifest.programId,
   version: pickCard.manifest.version,
   digest: pickCard.manifest.digest,
 };
 const placement = createInvocationAgentCorePlacement({
-  journalId: "live-program-runtime",
+  journalId: "live-workflow-host",
   rootTaskId: taskId,
   program,
   release,
@@ -82,9 +82,9 @@ const driver = createAgentCoreDurableProgramDriver(
   createAgentCoreWebSocketProgramTransport(connector),
 );
 const authority = createAuthorityScenarioDriver({
-  journalId: "live-program-runtime",
+  journalId: "live-workflow-host",
   journalIncarnation: "1",
-  keyring: createCapabilityKeyring("live-program-runtime", [
+  keyring: createCapabilityKeyring("live-workflow-host", [
     { keyId: "live", secret: randomUUID().repeat(2) },
   ]),
   schemaRegistry: createDurableSchemaRegistry(pickCard.artifacts.catalog),
@@ -117,7 +117,7 @@ await run(() =>
     input: { count: 3 },
     executionEpoch: 1,
     attachmentId: "unattached",
-    audience: "program-runtime",
+    audience: "workflow-host",
   }),
 );
 
@@ -130,9 +130,9 @@ async function activate(ownerId: string): Promise<ProgramRunResult> {
     let reason: "parked" | "terminal" | "failed" = "failed";
     try {
       const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(authority, function* () {
+        return yield* withProgramDriverTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
-            return yield* ProgramRuntime.operations.run({
+            return yield* driveInstalledTestProgramTree({
               attach: {
                 sessionId,
                 taskId,
@@ -141,7 +141,6 @@ async function activate(ownerId: string): Promise<ProgramRunResult> {
                 route,
                 executionEpoch: claim.epoch,
               },
-              executeHostEffects: true,
               activationOwnerId: ownerId,
             });
           });

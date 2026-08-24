@@ -308,7 +308,7 @@ cancellation, but it does not claim default-deny network enforcement.
   conversation identity, and an explicit New session action; it renders the HTTP
   projection without importing or owning the durable model loop.
 - `src/server/durable-chat-application.ts` — `createDurableChatHandler` composed
-  with ProgramRuntime-native workspace children and attachment-scope ordinary providers.
+  with workflow-native workspace children and attachment-scope ordinary providers.
 
 The primary UI calls `useChat({ api: "/api/chat", threadId, plugins })` and recursively renders
 text, reasoning, tool, nested-message, activity, elicitation, and prepared local parts. The handler owns the

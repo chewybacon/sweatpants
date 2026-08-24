@@ -5,9 +5,9 @@ import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
   effectContractDigest,
-  hasLiveDurableEffect,
-  registerLiveDurableEffect,
-  signalLiveDurableEffect,
+  hasLiveDurablePull,
+  registerLiveDurablePull,
+  signalLiveDurablePull,
   useDurableEffectRegistry,
 } from "./runtime.ts";
 
@@ -80,15 +80,15 @@ describe("durable effect runtime", () => {
 
   it("scopes cancellation registration to one effect attempt", () => {
     const reasons: Array<string | undefined> = [];
-    const release = registerLiveDurableEffect("session", "task", "pull", "attempt", (reason) => {
+    const release = registerLiveDurablePull("session", "task", "pull", "attempt", (reason) => {
       reasons.push(reason);
     });
 
-    expect(hasLiveDurableEffect("session", "task", "pull")).toBe(true);
-    expect(signalLiveDurableEffect("session", "task", "pull", "cancelled")).toBe(true);
+    expect(hasLiveDurablePull("session", "task", "pull")).toBe(true);
+    expect(signalLiveDurablePull("session", "task", "pull", "cancelled")).toBe(true);
     expect(reasons).toEqual(["cancelled"]);
 
     release();
-    expect(hasLiveDurableEffect("session", "task", "pull")).toBe(false);
+    expect(hasLiveDurablePull("session", "task", "pull")).toBe(false);
   });
 });

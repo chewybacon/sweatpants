@@ -12,7 +12,7 @@
         "deploy:agentcore": "tsx scripts/deploy-agentcore-runtime.ts",
         "smoke:websocket": "tsx scripts/smoke-websocket.ts",
         "certify:live": "tsx scripts/certify-live.ts",
-        "certify:program-runtime": "tsx scripts/certify-program-runtime.ts",
+        "certify:workflow-host": "tsx scripts/certify-workflow-host.ts",
         "certify:development-readiness": "tsx scripts/certify-development-readiness.ts",
         "certify:development-play-ttt": "tsx scripts/certify-development-play-ttt.ts"
     },

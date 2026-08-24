@@ -1056,7 +1056,7 @@ function rootRequest(
     input: null,
     executionEpoch: 1,
     attachmentId,
-    audience: "program-runtime",
+    audience: "workflow-host",
   };
 }
 
@@ -1289,7 +1289,7 @@ function* structuredChildAllocation(
       digest: child.digest,
     },
     executionEpoch: 1,
-    audience: "program-runtime",
+    audience: "workflow-host",
   };
   const allocated = yield* authority.ensureChildTask(request);
   assertEqual(

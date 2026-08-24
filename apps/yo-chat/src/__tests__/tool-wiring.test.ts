@@ -56,7 +56,7 @@ describe("yo-chat tool wiring", () => {
     const workerNames = workerTools.map((tool) => tool.name).sort();
 
     expect(workerNames).toEqual(["ask_question", "book_flight", "calculator", "tictactoe"]);
-    // Crank-native programs execute through the Program Runtime, never the
+    // Crank-native programs execute through the workflow host, never the
     // ordinary ToolSession worker.
     expect(workerNames).not.toContain("pick_card");
     expect(workerNames).not.toContain("play_ttt");

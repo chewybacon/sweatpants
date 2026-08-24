@@ -20,7 +20,7 @@ export type CoordinatedActivationResult<T> =
 
 /**
  * Fenced coordinator ownership. Renewal runs outside the crank operation; a
- * failed renewal cancels the run branch, which triggers ProgramRuntime socket
+ * failed renewal cancels the run branch, which triggers workflow host socket
  * shutdown through structured scope exit before stale work can continue.
  */
 export function createAgentCoreActivationCoordinator(

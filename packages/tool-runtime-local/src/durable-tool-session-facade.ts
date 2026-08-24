@@ -1,8 +1,14 @@
-import { type DurableEffectHandler } from "@sweatpants/durable-effects";
+import type { DurableEffectHandler } from "@sweatpants/durable-effects";
 
 import { scoped, type Operation } from "effection";
+import type { ChatMessage } from "@sweatpants/chat-contract";
 import { z } from "zod";
-import { createTool, type RuntimeTool, type AnyToolContract } from "@sweatpants/agent-sdk";
+import {
+  createTool,
+  type AnyToolContract,
+  type RuntimeTool,
+  type ToolSampleConfig,
+} from "@sweatpants/agent-sdk";
 import {
   AuthorityJournalPort,
   AuthoritySnapshotPort,
@@ -21,16 +27,13 @@ import {
   PULL_KIND_FOREIGN,
   PULL_KIND_SAMPLE,
   type PullResolver,
-} from "@sweatpants/journal-authority";
-import type { OperationOutcome } from "@sweatpants/durable-effects";
-import type {
-  AppendEmissionRequest,
-  CompleteTaskRequest,
-  ResolveOperationRequest,
-  ResolveOperationResult,
-  ReserveOperationRequest,
-  ReserveOperationResult,
-  CompleteTaskResult,
+  type AppendEmissionRequest,
+  type CompleteTaskRequest,
+  type ResolveOperationRequest,
+  type ResolveOperationResult,
+  type ReserveOperationRequest,
+  type ReserveOperationResult,
+  type CompleteTaskResult,
 } from "@sweatpants/journal-authority";
 import { installExecutionStore } from "@sweatpants/journal-authority/api";
 import { DURABLE_TOOL_FACADE_ANNOTATION } from "./durable-tool-facade-marker.ts";
@@ -40,11 +43,12 @@ export {
   isDurableToolSessionFacade,
 } from "./durable-tool-facade-marker.ts";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
-import type { AttachProgramRequest } from "@sweatpants/durable-execution";
 import {
   assertReplayedCanonicalValue,
+  ProgramRouteResolver,
   stableProgramAttachmentId,
   exactProgramKey,
+  type AttachProgramRequest,
   type DurableTool,
   type DurableToolRegistry,
   type ProgramRunResult,
@@ -54,8 +58,7 @@ import {
   createDurableSchemaRegistry,
   type DurableSchemaRegistry,
 } from "@sweatpants/journal-authority/schema-registry";
-import { type SchemaBinding } from "@sweatpants/foundation/schema";
-import { ProgramRouteResolver } from "@sweatpants/durable-execution";
+import type { SchemaBinding } from "@sweatpants/foundation/schema";
 
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 
@@ -171,24 +174,19 @@ export function createDurableToolSessionFacade<I extends Json, O extends Json>(
     .annotate(DURABLE_TOOL_FACADE_ANNOTATION, { version: 1 })
     .execute(function* ({ invocationId, input }, context) {
       const validatedInput = assertManifestInput<I>(input);
-      return yield* runFacadeProgram(
-        options,
-        invocationId,
-        validatedInput,
-        // The RuntimeTool context satisfies the facade's outer-channel shape;
-        // `sample` is optional and only present when the host provides it.
-        {
-          ...(context.sample !== undefined
-            ? {
-                // Raw journaled request passes through opaquely; decode is
-                // owned by the sampling layer, not the facade.
-                sample: (request: Json) =>
-                  context.sample(request as never) as unknown as Operation<Json>,
-              }
-            : {}),
-          elicit: context.elicit,
-        } as unknown as FacadeOuterContext,
-      );
+      return yield* runFacadeProgram(options, invocationId, validatedInput, {
+        ...(context.sample === undefined
+          ? {}
+          : {
+              *sample(request: Json): Operation<Json> {
+                const sampled = yield* context.sample(facadeSampleRequest(request));
+                return assertJson(JSON.parse(JSON.stringify(sampled ?? null)));
+              },
+            }),
+        *elicit(_key, request) {
+          return yield* context.elicit("foreign_input", request);
+        },
+      });
     });
 }
 
@@ -357,10 +355,20 @@ function* runFacadeProgram<I extends Json, O extends Json>(
           `Unsupported durable facade park reason: ${workflowOutcome.reason}`,
         );
       }
-      const outcome = (yield* resolver.perform(
-        { sessionId: invocationId, taskId, pullId: workflowOutcome.pullId },
+      const outcome = yield* resolver.perform(
+        {
+          sessionId: invocationId,
+          taskId,
+          pullId: workflowOutcome.pullId,
+          placement: {
+            program: attach.program,
+            route: attach.route,
+            driverKind: "workflow",
+            executionEpoch: attach.executionEpoch,
+          },
+        },
         pull.descriptor,
-      )) as OperationOutcome;
+      );
       yield* withAuthority(function* (authority) {
         const capability = yield* authority.query({
           type: "pull.resolution-capability",
@@ -377,18 +385,28 @@ function* runFacadeProgram<I extends Json, O extends Json>(
           },
         })) as { status: string; code?: string };
         if (resolution.status === "rejected") {
-          throw new DurableToolFacadeError(
-            "resolution_rejected",
-            (resolution as { code?: string }).code ?? "rejected",
-          );
-        }
-        if (resolution.status === "rejected") {
           throw new DurableToolFacadeError("resolution_rejected", resolution.code ?? "rejected");
         }
       });
       continue;
     }
   }
+}
+
+const facadeSampleRequestSchema = z.union([
+  z.object({ prompt: z.string() }).passthrough(),
+  z.object({ messages: z.array(z.unknown()) }).passthrough(),
+]);
+
+function facadeSampleRequest(request: Json): ToolSampleConfig<ChatMessage> {
+  const parsed = facadeSampleRequestSchema.safeParse(request);
+  if (!parsed.success) {
+    throw new DurableToolFacadeError(
+      "unsupported_park",
+      "Facade sampling requires a prompt or messages request",
+    );
+  }
+  return parsed.data as unknown as ToolSampleConfig<ChatMessage>;
 }
 
 function assertManifestInput<I extends Json>(input: unknown): I {
@@ -416,7 +434,7 @@ function findPull(
   }
   return {
     kind: record.payload.descriptor.kind,
-    descriptor: record.payload.descriptor as unknown as Json,
+    descriptor: assertJson(record.payload.descriptor),
   };
 }
 
@@ -526,7 +544,7 @@ function findInvokePull(
   );
   if (!pull || pull.payload.type !== "PullRequested") return undefined;
   if (pull.payload.descriptor.kind !== "invoke") return undefined;
-  return { child: pull.payload.descriptor.child as never };
+  return { child: pull.payload.descriptor.child };
 }
 
 interface ComposeRequest {
@@ -579,7 +597,7 @@ function* composeAuthoredChild(
         child: pull.child,
         manifest: childTool.manifest,
         executionEpoch: attach.executionEpoch,
-        audience: "program-runtime",
+        audience: "workflow-host",
         route: childRoute,
       },
     });
@@ -655,7 +673,7 @@ function* runWorkflowActivation<I extends Json>(
           input,
           executionEpoch: 1,
           attachmentId: "unattached-facade-program",
-          audience: "program-runtime",
+          audience: "workflow-host",
         },
       });
       programCapability = openedTask.programCapability;

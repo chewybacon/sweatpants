@@ -3,12 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "effection";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  createDurableToolRegistry,
-  createLocalProgramDriver,
-  type ProgramStep,
-} from "@sweatpants/durable-execution";
+import { createDurableToolRegistry, type ProgramStep } from "@sweatpants/durable-execution";
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { encodeModelSampleResult } from "@sweatpants/model-sampling";
+import { canonicalSnapshot } from "@sweatpants/foundation";
 import {
   createWorkspaceService,
   installLocalWorkspaceFilesProvider,
@@ -38,20 +36,17 @@ describe("yo-studio play_ttt capability", () => {
       scripts: {},
     });
     service.bind(fence);
-    const driver = createLocalProgramDriver(createDurableToolRegistry([playTttTool]), {
-      setup: function* () {
-        yield* installLocalWorkspaceFilesProvider({
-          resolve: function* () {
-            return { operations: service.operations, fence };
-          },
-        });
-      },
-    });
+    const driver = createWorkflowProgramDriver(createDurableToolRegistry([playTttTool]));
     const labels: string[] = [];
     let elicitedMoves = 0;
     let terminalAcknowledgements = 0;
 
     const completed = await run(function* () {
+      yield* installLocalWorkspaceFilesProvider({
+        resolve: function* () {
+          return { operations: service.operations, fence };
+        },
+      });
       const attachment = yield* driver.attach({
         sessionId: "play-ttt-session",
         taskId: fence.taskId,
@@ -75,7 +70,9 @@ describe("yo-studio play_ttt capability", () => {
           resolution += 1;
           const actionIndex = step.actionIndex;
           let outcome;
+          let attemptedInDriver = false;
           if (step.descriptor.kind === "record") {
+            attemptedInDriver = true;
             labels.push(step.descriptor.key ?? "record");
             const authorized = yield* driver.step(attachment, {
               type: "authorize",
@@ -89,7 +86,7 @@ describe("yo-studio play_ttt capability", () => {
               throw new Error("recording did not settle");
             }
             outcome = authorized.authorizedOutcome;
-          } else if (step.descriptor.kind === "effect" && step.descriptor.name === "model.sample") {
+          } else if (step.descriptor.kind === "sample") {
             outcome = {
               status: "ok" as const,
               value: encodeModelSampleResult({
@@ -131,10 +128,10 @@ describe("yo-studio play_ttt capability", () => {
               taskId: fence.taskId,
               pullId: `pull-${resolution}`,
               resolutionOffset: String(resolution),
-              outcomeDigest: resolution.toString(16).padStart(64, "0"),
+              outcomeDigest: canonicalSnapshot(outcome).sha,
               status: "accepted",
             },
-            replayed: false,
+            replayed: !attemptedInDriver,
           });
         }
         if (step.type !== "completed") {

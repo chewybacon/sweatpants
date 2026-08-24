@@ -490,7 +490,7 @@ describe("sequential pull kinds", () => {
             child: proposed.descriptor.child,
             manifest: childManifest,
             executionEpoch: 1,
-            audience: "program-runtime",
+            audience: "workflow-host",
             route: { driverKind: "kinds-test" },
           },
         });
@@ -774,10 +774,8 @@ describe("sequential pull kinds", () => {
 
   it("fails closed on installed effects when no handler is registered", async () => {
     const request = attach("installed-effect-missing");
-    let failure: unknown;
     await run(function* () {
-      const programCapability = yield* installMemoryAuthority(request.sessionId);
-      const authority = JournalAuthorityPort.api.operations;
+      yield* installMemoryAuthority(request.sessionId);
       yield* scoped(function* () {
         const handle = yield* openProgramAttachment(request, function* (): Workflow<Json> {
           return yield* installedEffect({
@@ -803,7 +801,6 @@ describe("sequential pull kinds", () => {
             error: { code: "program_protocol_error" },
           },
         });
-        void failure;
       });
     });
   });

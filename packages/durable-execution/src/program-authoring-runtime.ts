@@ -61,6 +61,12 @@ const durableManifestShapeSchema = z
         .strict(),
     ),
     effects: z.record(z.string().min(1).max(512), z.record(z.string(), jsonValueSchema)),
+    pulls: z
+      .record(
+        z.string().min(1).max(512),
+        z.object({ input: descriptorSchema, output: descriptorSchema }).strict(),
+      )
+      .optional(),
     capabilities: z
       .object({
         durableEmissions: z.boolean(),
@@ -103,6 +109,11 @@ export function verifyDurableManifest(manifest: DurableProgramManifest): void {
   >) {
     assertEffectDefinition(definition);
     if (definition.name !== key) invalidManifest(`effect key ${key} must equal its symbolic name`);
+  }
+  for (const [kind, declaration] of Object.entries(manifest.pulls ?? {})) {
+    requireId(kind, "pull kind");
+    assertDescriptorField(declaration.input, "pull_input", `pulls.${kind}.input`);
+    assertDescriptorField(declaration.output, "pull_output", `pulls.${kind}.output`);
   }
   canonicalSnapshot(manifest);
 }

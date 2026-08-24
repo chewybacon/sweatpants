@@ -3,12 +3,11 @@ import { createApi } from "effection/experimental";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  createDurableProgramContext,
-  createDurableToolRegistry,
-  createLocalProgramDriver,
-} from "@sweatpants/durable-execution";
+  createTestDurableProgramContext,
+  type TestProgramResume,
+  type TestProgramStepProposal,
+} from "@sweatpants/durable-execution/testing";
 import { sha256 } from "@sweatpants/foundation";
-import { type ProgramResume, type ProgramStepProposal } from "@sweatpants/durable-execution";
 
 import { createDurableTool } from "../durable-create.ts";
 import { defineDurableContextExtension } from "../durable-context-extension.ts";
@@ -111,7 +110,7 @@ function buildTool(extension: typeof data = data) {
     });
 }
 
-function rejectBoundary(_proposal: ProgramStepProposal): Operation<ProgramResume> {
+function rejectBoundary(_proposal: TestProgramStepProposal): Operation<TestProgramResume> {
   return (function* () {
     throw new Error("ordinary extension unexpectedly proposed a durable boundary");
   })();
@@ -129,7 +128,7 @@ describe("durable context extensions", () => {
             return { value: `value:${args[0].key}`, revision: "r1" };
           },
         });
-        const context = createDurableProgramContext(rejectBoundary);
+        const context = createTestDurableProgramContext(rejectBoundary);
         return yield* tool.program({ key: "answer", value: "42" }, context);
       }),
     ).resolves.toEqual({
@@ -178,7 +177,7 @@ describe("durable context extensions", () => {
           return value;
         },
       });
-      const context = createDurableProgramContext(rejectBoundary);
+      const context = createTestDurableProgramContext(rejectBoundary);
       return yield* tool.program({ key: "answer", value: "42" }, context);
     });
 
@@ -233,72 +232,26 @@ describe("durable context extensions", () => {
         );
         return { first, second };
       });
-    const driver = createLocalProgramDriver(createDurableToolRegistry([tool]));
-    await run(function* () {
-      const attachment = yield* driver.attach({
-        sessionId: "session",
-        taskId: "task",
-        program: {
-          id: tool.manifest.programId,
-          version: tool.manifest.version,
-          digest: tool.manifest.digest,
-        },
-        input: { key: "answer" },
-        route: { driverKind: "program" },
-        executionEpoch: 1,
-      });
-      const effect = yield* driver.step(attachment, {
-        type: "start",
-        input: { key: "answer" },
-      });
-      expect(effect).toMatchObject({
-        type: "operation",
-        descriptor: { kind: "effect", input: { key: "answer" } },
-      });
-      if (effect.type !== "operation") {
-        throw new Error("expected effect");
-      }
-      const secondEffect = yield* driver.step(attachment, {
-        type: "resume",
-        actionIndex: effect.actionIndex,
-        outcome: { status: "ok", value: { value: "42" } },
-        receipt: {
-          sessionId: "session",
-          taskId: "task",
-          pullId: "pull",
-          resolutionOffset: "1",
-          outcomeDigest: "a".repeat(64),
-          status: "accepted",
-        },
-        replayed: false,
-      });
-      expect(secondEffect).toMatchObject({
-        type: "operation",
-        descriptor: { input: { key: "answer:second" } },
-      });
-      if (secondEffect.type !== "operation") {
-        throw new Error("expected second effect");
-      }
-      const completed = yield* driver.step(attachment, {
-        type: "resume",
-        actionIndex: secondEffect.actionIndex,
-        outcome: { status: "ok", value: { value: "43" } },
-        receipt: {
-          sessionId: "session",
-          taskId: "task",
-          pullId: "pull-2",
-          resolutionOffset: "2",
-          outcomeDigest: "b".repeat(64),
-          status: "accepted",
-        },
-        replayed: false,
-      });
-      expect(completed).toMatchObject({
-        type: "completed",
-        value: { first: { value: "42" }, second: { value: "43" } },
-      });
-      yield* driver.shutdown(attachment, "completed");
+    const proposals: TestProgramStepProposal[] = [];
+    const outcomes: TestProgramResume[] = [
+      { status: "ok", value: { value: "42" } },
+      { status: "ok", value: { value: "43" } },
+    ];
+    const result = await run(function* () {
+      const context = createTestDurableProgramContext(
+        (proposal): Operation<TestProgramResume> =>
+          (function* () {
+            proposals.push(proposal);
+            return outcomes.shift();
+          })(),
+      );
+      return yield* tool.program({ key: "answer" }, context);
     });
+    expect(proposals).toMatchObject([
+      { type: "operation", descriptor: { kind: "effect", input: { key: "answer" } } },
+      { type: "operation", descriptor: { input: { key: "answer:second" } } },
+    ]);
+    expect(result).toEqual({ first: { value: "42" }, second: { value: "43" } });
   });
 
   it("pins semantic client identity but not provider middleware", async () => {

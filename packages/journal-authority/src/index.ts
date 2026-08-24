@@ -67,6 +67,7 @@ export {
 } from "./snapshot-codec.ts";
 export {
   emissionPolicyParser,
+  modelPullOwnerFence,
   programElicitResultParser,
   restoreTicketClaimsParser,
 } from "./authority-support.ts";
@@ -78,7 +79,6 @@ export type {
   InMemoryJournalAuthorityOptions,
   SemanticEmissionPolicy,
 } from "./authority-snapshot.ts";
-export { installJournalProgramRuntime } from "./journal-program-runtime.ts";
 export * from "./authority-contract.ts";
 export {
   AuthorityJournalPort,
@@ -102,6 +102,10 @@ export * from "./segmentation.ts";
 export * from "./schema-registry.ts";
 export * from "./workflow/runtime.ts";
 export * from "./workflow/tool-adapter.ts";
+export * from "./workflow/program-driver.ts";
 export * from "./workflow/host-drive.ts";
+export * from "./workflow/tree-drive.ts";
+export * from "./workflow/driver-drive.ts";
+export * from "./workflow/pull-settlement.ts";
 export * from "./error-taxonomy.ts";
 export * from "./pull-kinds/index.ts";

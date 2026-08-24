@@ -93,8 +93,8 @@ AGENTCORE_TOOL_SESSION_TTL_MS=900000
 AGENTCORE_REDIS_KEY_PREFIX=sp:yo-chat:agentcore:
 REDIS_URL=redis://localhost:6379
 
-# ProgramRuntime is the only HTTP chat engine. Its capability secret is
-# required and must contain at least 32 bytes. Redis persists the private
+# The authority-backed workflow host is the only HTTP chat engine. Its
+# capability secret is required and must contain at least 32 bytes. Redis persists the private
 # authority journal when configured; otherwise it is process-local and intended
 # only for development.
 PROGRAM_DRIVER_CAPABILITY_SECRET='replace-with-at-least-32-random-bytes'
@@ -116,7 +116,7 @@ AGENTCORE_TOOL_SAMPLE_MODEL_ID=zai.glm-5
 
 The selected runtime receives the complete generated tool inventory. If `REDIS_URL` is set, AgentCore session handles/events are stored in Redis. Otherwise they use in-memory app-side stores for local development.
 
-ProgramRuntime uses concrete ToolSession registries to journal tool sampling and elicitation. Both local and AgentCore modes expose those operations through the same journal-aware foreign adapter.
+The workflow host uses concrete ToolSession registries to journal tool sampling and elicitation. Both local and AgentCore modes expose those operations through the same journal-aware foreign adapter child.
 
 # Building For Production
 

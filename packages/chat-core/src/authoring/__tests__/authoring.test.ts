@@ -1,10 +1,10 @@
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
-  createDurableProgramContext,
-  type ProgramResume,
-  type ProgramStepProposal,
-} from "@sweatpants/durable-execution";
+  createTestDurableProgramContext,
+  type TestProgramResume,
+  type TestProgramStepProposal,
+} from "@sweatpants/durable-execution/testing";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
@@ -12,7 +12,7 @@ import {
 } from "@sweatpants/journal-authority/testing";
 import { defineGuidance, defineResourcePackage, textResource } from "@sweatpants/agent-sdk";
 import {
-  CHAT_MODEL_SAMPLE_EFFECT,
+  CHAT_MODEL_SAMPLE_CONTRACT,
   acceptChatTurn,
   classifiedToolResult,
   createChatModelEffectRegistration,
@@ -57,15 +57,15 @@ class BoundaryReached extends Error {}
 async function drive(
   program: ReturnType<typeof chat>,
   input: Json,
-  outcomes: ProgramResume[],
-): Promise<{ proposals: ProgramStepProposal[]; result?: Json }> {
-  const proposals: ProgramStepProposal[] = [];
+  outcomes: TestProgramResume[],
+): Promise<{ proposals: TestProgramStepProposal[]; result?: Json }> {
+  const proposals: TestProgramStepProposal[] = [];
   const remaining = [...outcomes];
   let result: Json | undefined;
   try {
     result = await run(function* () {
-      const context = createDurableProgramContext(
-        (proposal): Operation<ProgramResume> =>
+      const context = createTestDurableProgramContext(
+        (proposal): Operation<TestProgramResume> =>
           (function* () {
             proposals.push(proposal);
             if (remaining.length === 0) {
@@ -101,7 +101,7 @@ function chat(
 
 describe("durable chat authoring", () => {
   it("owns the authored chat sampling contract independently of provider invocation", () => {
-    expect(CHAT_MODEL_SAMPLE_EFFECT).toMatchObject({
+    expect(CHAT_MODEL_SAMPLE_CONTRACT).toMatchObject({
       name: "chat.model.sample",
       version: "1",
       retrySafety: { mode: "repeatable" },

@@ -58,7 +58,7 @@ export const appEnv = createEnv({
     // Redis configuration (optional, falls back to in-memory if not set)
     REDIS_URL: z.string().optional(),
 
-    // ProgramRuntime journal signing secret. Startup fails when it is absent.
+    // workflow host journal signing secret. Startup fails when it is absent.
     PROGRAM_DRIVER_CAPABILITY_SECRET: z.string().min(32).optional(),
 
     // MCP plugin tool execution mode.

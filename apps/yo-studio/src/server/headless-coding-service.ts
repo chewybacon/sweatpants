@@ -8,17 +8,16 @@ import {
 } from "@sweatpants/chat-core";
 import {
   createProgramDriverJournalStore,
-  createLocalProgramHost,
   createPinnedProgramCatalog,
+  createProgramWorkflowHost,
   programDriverSchemaRegistry,
-  type LocalProgramHost,
   type NormalizedProgramTrace,
+  type ProgramWorkflowHost,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
-import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
+import { createDurableToolRegistry } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
-import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import {
   installLocalWorkspaceFilesProvider,
   installRemoteWorkspaceFilesProvider,
@@ -53,7 +52,7 @@ export interface HeadlessCodingService {
 }
 
 /**
- * Creates the finite-request coding service over the existing LocalProgramHost.
+ * Creates the finite-request coding service over the workflow host.
  * A production composition swaps only the journal store and model service.
  */
 export function createHeadlessCodingService(options: {
@@ -90,7 +89,7 @@ export function createHeadlessCodingService(options: {
       });
     }
   };
-  const host: LocalProgramHost = createLocalProgramHost({
+  const host: ProgramWorkflowHost = createProgramWorkflowHost({
     journalStore: createProgramDriverJournalStore({
       keyring: createCapabilityKeyring("yo-studio-headless", [
         { keyId: "active", secret: "yo-studio-headless-development-secret" },
@@ -106,9 +105,7 @@ export function createHeadlessCodingService(options: {
         },
       }),
     ]),
-    drivers: createProgramDriverRegistry([
-      ["program", createLocalProgramDriver(programs, { setup: installWorkspace })],
-    ]),
+    setup: installWorkspace,
   });
   const rootPin = pin(codingHarness);
   const catalog = createPinnedProgramCatalog({

@@ -70,7 +70,7 @@ import {
 import type {
   ChatRequestBody,
   DurableChatHandlerConfig,
-  ProgramRuntimeChatEngineParams,
+  WorkflowChatEngineParams,
   ToolSchema,
 } from "./types.ts";
 import { cancelOpenInterruptsForThread, settleInterruptForThread } from "../interrupts/index.ts";
@@ -1459,7 +1459,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     typeof contextHead.activeCommand["commandId"] === "string"
                       ? contextHead.activeCommand["commandId"]
                       : authorityTurn?.commandId;
-                  const engineParams: ProgramRuntimeChatEngineParams = {
+                  const engineParams: WorkflowChatEngineParams = {
                     messages: authoritativeMessages,
                     ...(sourceCheckpoint && authorityTurn && activeCommandId
                       ? {
@@ -1584,7 +1584,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                     publishTerminal: function* ({ outcome, disposition, events }) {
                       if (!authorityTurn) {
                         throw new Error(
-                          "Recovered terminal publication cannot execute ProgramRuntime",
+                          "Recovered terminal publication cannot execute workflow host",
                         );
                       }
                       const fact = createChatTurnCompletedFact({
@@ -1693,7 +1693,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   );
 
                   // Acquire the one Host-owned response buffer before constructing the
-                  // pull source. ProgramRuntime is turned only when this sole writer asks
+                  // pull source. workflow host is turned only when this sole writer asks
                   // the engine for its next event; live model activity appends directly
                   // to the same reconnectable buffer from inside that crank turn.
                   log.debug({ sessionId }, "new session path: acquiring session with source");

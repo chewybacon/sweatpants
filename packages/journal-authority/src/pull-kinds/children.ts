@@ -24,6 +24,7 @@ function childPolicy(kind: string, schema: z.ZodType): void {
     // The whole child family parks under the shared "child" reason.
     pendingReason: "child",
     descriptorSchema: schema,
+    journalLabel: (descriptor) => `${kind}(${(descriptor as { child: { id: string } }).child.id})`,
     resolutionAuthority: (descriptor, audience) => ({
       kind: "child",
       mode: descriptor.kind as "invoke" | "spawn",

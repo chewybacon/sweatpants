@@ -62,7 +62,7 @@ describe("scoped authority boundary", () => {
             input: { accepted: true },
             executionEpoch: 1,
             attachmentId: "attachment",
-            audience: "program-runtime",
+            audience: "workflow-host",
           },
         });
         expect(opened.programCapability).toEqual(expect.any(String));
@@ -111,7 +111,7 @@ describe("scoped authority boundary", () => {
           input: null,
           executionEpoch: 1,
           attachmentId: "attachment",
-          audience: "program-runtime",
+          audience: "workflow-host",
         },
       });
       expect(
@@ -144,7 +144,7 @@ describe("scoped authority boundary", () => {
           input: null,
           executionEpoch: 1,
           attachmentId: "attachment",
-          audience: "program-runtime",
+          audience: "workflow-host",
         },
       });
     });

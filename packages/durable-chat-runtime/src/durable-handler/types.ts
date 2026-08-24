@@ -33,7 +33,7 @@ export interface ToolSchema {
 
 export type { McpToolRegistry } from "@sweatpants/chat-core";
 
-export interface ProgramRuntimeChatEngineParams {
+export interface WorkflowChatEngineParams {
   messages: readonly ChatHistoryEntry[];
   /** Durable source recipe used by the chat-root task instead of full history input. */
   modelContextSource?: ModelContextSource;
@@ -93,10 +93,10 @@ export interface ProgramRuntimeChatEngineParams {
   }>;
 }
 
-export type ProgramRuntimeChatEngine = Stream<StreamEvent, void>;
+export type WorkflowChatEngine = Stream<StreamEvent, void>;
 
 /**
- * Durable handler configuration. ProgramRuntime is the sole execution engine,
+ * Durable handler configuration. workflow host is the sole execution engine,
  * and its journal authority MUST be supplied by the host composition.
  */
 export type HistoryReadAuthorization = "authorized" | "unauthenticated" | "forbidden";

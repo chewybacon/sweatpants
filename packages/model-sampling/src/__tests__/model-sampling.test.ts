@@ -1,8 +1,8 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
-  MODEL_SAMPLE_EFFECT,
-  MODEL_SAMPLE_SCHEMA_ENTRIES,
+  MODEL_SAMPLE_CONTRACT,
+  MODEL_SAMPLE_CONTRACT_SCHEMA_ENTRIES,
   ModelSamplingApi,
   modelSampleRequestParser,
   runWithModelSamplingService,
@@ -12,7 +12,8 @@ import {
 } from "../index.ts";
 
 function validator(digest: string) {
-  return MODEL_SAMPLE_SCHEMA_ENTRIES.find((entry) => entry.descriptor.digest === digest)!.schema;
+  return MODEL_SAMPLE_CONTRACT_SCHEMA_ENTRIES.find((entry) => entry.descriptor.digest === digest)!
+    .schema;
 }
 
 const request: ModelSampleRequest = {
@@ -54,12 +55,12 @@ describe("durable model sampling", () => {
         },
       },
     };
-    const parsed = await validator(MODEL_SAMPLE_EFFECT.inputSchema.digest)["~standard"].validate(
+    const parsed = await validator(MODEL_SAMPLE_CONTRACT.inputSchema.digest)["~standard"].validate(
       sourceRequest,
     );
     expect(parsed).toHaveProperty("value");
     expect(
-      await validator(MODEL_SAMPLE_EFFECT.inputSchema.digest)["~standard"].validate(request),
+      await validator(MODEL_SAMPLE_CONTRACT.inputSchema.digest)["~standard"].validate(request),
     ).toHaveProperty("issues");
     expect(modelSampleRequestParser.parse(request)).toEqual({ ok: true, value: request });
     expect(modelSampleRequestParser.parse({ ...request, unknown: true }).ok).toBe(false);
@@ -83,7 +84,7 @@ describe("durable model sampling", () => {
   });
 
   it("rejects the removed loose request and unknown message roles", async () => {
-    const schema = validator(MODEL_SAMPLE_EFFECT.inputSchema.digest)["~standard"];
+    const schema = validator(MODEL_SAMPLE_CONTRACT.inputSchema.digest)["~standard"];
     expect(await schema.validate({ messages: [{ role: "user", content: "old" }] })).toHaveProperty(
       "issues",
     );

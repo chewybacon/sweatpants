@@ -11,7 +11,7 @@ import {
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 
-/** Expected composition failure for invalid ProgramRuntime configuration. */
+/** Expected composition failure for invalid workflow host configuration. */
 export class ProgramDriverConfigurationError extends Error {
   readonly _tag = "ProgramDriverConfigurationError";
   readonly code = "PROGRAM_DRIVER_SECRET_REQUIRED";

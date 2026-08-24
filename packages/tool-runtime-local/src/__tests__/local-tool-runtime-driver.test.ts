@@ -11,7 +11,7 @@ import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-run
 import {
   createLocalToolInvocationRuntime,
   createLocalToolRuntimeDriver,
-  installLocalProgramToolRuntime,
+  installLocalToolRuntimeComposition,
   installLocalToolRuntime,
 } from "../index.ts";
 
@@ -270,7 +270,7 @@ describe("local ToolRuntimeDriver", () => {
         worker: localRuntimeWorkerConfig,
       });
 
-      yield* installLocalProgramToolRuntime({
+      yield* installLocalToolRuntimeComposition({
         tools: [echoTool],
         installForeignEffects: function* (registrations) {
           yield* ProgramDriverForeignEffectsContext.set(registrations);

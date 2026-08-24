@@ -33,6 +33,7 @@ import {
 import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
+  foreignToolInvocationId,
 } from "@sweatpants/tool-session/foreign";
 
 const CONTINUATION_SCHEME = "sweatpants/tool-session-v1";
@@ -122,7 +123,7 @@ export function createToolInvocationForeignEffectRegistrations(
         );
       }
       const host = yield* ToolInvocationHostPort.use();
-      const invocationId = foreignSessionId(context.sessionId, context.taskId);
+      const invocationId = foreignToolInvocationId(context.sessionId, context.taskId);
       const toolInput = isDurableToolSessionFacade(tool)
         ? { invocationId: context.taskId, input: request.input }
         : request.input;
@@ -425,10 +426,6 @@ function failure(
   };
 }
 
-function foreignSessionId(sessionId: string, taskId: string): string {
-  return `foreign:${sessionId}:${taskId}`;
-}
-
 function foreignJson(value: unknown): Json {
   return assertJson(stripUndefined(value));
 }
@@ -536,7 +533,7 @@ export function* executeForeignToolCall(
   }
 
   const host = yield* ToolInvocationHostPort.use();
-  const invocationId = foreignSessionId(
+  const invocationId = foreignToolInvocationId(
     identity.sessionId,
     `${identity.taskId}:${identity.pullId}`,
   );

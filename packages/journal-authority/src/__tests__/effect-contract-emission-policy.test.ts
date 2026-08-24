@@ -1,3 +1,4 @@
+import { createWorkflowProgramDriver } from "../workflow/program-driver.ts";
 import {
   createDurableEffectRegistration,
   type EffectDefinition,
@@ -13,18 +14,19 @@ import { describe, expect, it } from "vitest";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import { CrankError } from "@sweatpants/durable-execution";
 import { createCapabilityKeyring } from "../index.ts";
-import { withAuthorityTestScope } from "../journal-program-runtime.ts";
+import {
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
+} from "../testing/program-driver-host.ts";
 import { createAuthorityScenarioDriver, type InMemoryJournalAuthorityOptions } from "../testing.ts";
 import type { DurableAuthoritySnapshot } from "../authority-snapshot.ts";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
-  createLocalProgramDriver,
   stableProgramAttachmentId,
   type DurableProgramManifest,
 } from "@sweatpants/durable-execution";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
@@ -319,7 +321,7 @@ describe("semantic emission policy", () => {
       return null;
     });
     const drivers = createProgramDriverRegistry([
-      ["program", createLocalProgramDriver(createDurableToolRegistry([tool]))],
+      ["program", createWorkflowProgramDriver(createDurableToolRegistry([tool]))],
     ]);
     const selected = authority({ emissionPolicy: { maxEmissionsPerTask: 1 } });
     const attach = {
@@ -347,8 +349,8 @@ describe("semantic emission policy", () => {
         audience: "test",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(selected, function* () {
-          return yield* ProgramRuntime.operations.run({ attach });
+        return yield* withProgramDriverTestScope(selected, function* () {
+          return yield* driveInstalledTestProgramTree({ attach });
         });
       });
       expect(result).toMatchObject({

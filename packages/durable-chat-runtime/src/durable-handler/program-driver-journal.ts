@@ -4,7 +4,6 @@ import {
   AuthorityJournalPort,
   JournalAuthorityPort,
   createCapabilityKeyring,
-  installJournalProgramRuntime,
   installStoredJournalAuthority,
   type AcceptAssistantPartialRequest,
   type AcceptAssistantPartialResult,
@@ -51,7 +50,7 @@ export function programDriverSchemaRegistry(
 export interface ProgramDriverJournal {
   install(): Operation<void>;
   withAuthority<T>(operation: (authority: JournalAuthorityContract) => Operation<T>): Operation<T>;
-  openTask(request: OpenDurableTaskRequest): Operation<void>;
+  openTask(request: OpenDurableTaskRequest): Operation<{ readonly programCapability: string }>;
   executionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
   recoveryState(sessionId: string, requestedTaskId?: string): Operation<DurableTaskRecoveryState>;
   rootTaskCount(sessionId: string): Operation<number>;
@@ -143,7 +142,6 @@ export function createProgramDriverJournalStore(
       const install = function* (): Operation<void> {
         yield* installExecutionStore(executionStore);
         yield* installStoredJournalAuthority(authorityOptions);
-        yield* installJournalProgramRuntime();
       };
       const withAuthority = function* <T>(
         operation: (authority: JournalAuthorityContract) => Operation<T>,
@@ -159,7 +157,7 @@ export function createProgramDriverJournalStore(
         install,
         withAuthority,
         *openTask(request) {
-          yield* withAuthority((authority) =>
+          return yield* withAuthority((authority) =>
             authority.command({ type: "execution.open-task", request }),
           );
         },
@@ -191,7 +189,7 @@ export function createProgramDriverJournalStore(
           const replaced = yield* withAuthority((authority) =>
             authority.command({
               type: "execution.replace-attachment",
-              request: { sessionId, taskId, attachmentId, audience: "program-runtime" },
+              request: { sessionId, taskId, attachmentId, audience: "workflow-host" },
             }),
           );
           return { executionEpoch: replaced.executionEpoch };

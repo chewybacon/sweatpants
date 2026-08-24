@@ -1,24 +1,23 @@
-import { assertJson, parser, type Json } from "@sweatpants/foundation";
+import { assertJson, parser, sha256, type Json } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   type PortableSchemaDescriptor,
 } from "@sweatpants/foundation/schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
-  DurableChildDescriptor,
   ForeignToolContinueRequest,
   ForeignToolRequest,
   ForeignToolDisposition,
 } from "@sweatpants/durable-execution";
 import type { EffectDefinition } from "@sweatpants/durable-effects";
-import { MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
+import { MODEL_SAMPLE_PULL_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
 import { z } from "zod";
 
 /** Pinned identity of the built-in foreign-tool adapter program. */
 export const FOREIGN_TOOL_ADAPTER_PROGRAM = Object.freeze({
   id: "sweatpants.foreign-tool-adapter",
-  version: "1.2.0",
-  digest: "856587981242afd44be8488756cf4c154733f3f2467caccba1fb31a1d7cbf5bc",
+  version: "1.3.0",
+  digest: sha256("sweatpants.foreign-tool-adapter@1.3.0:workflow-pulls"),
 });
 
 const FOREIGN_DURABILITIES = [
@@ -197,7 +196,7 @@ export function foreignToolSchemaEntries(): Array<{
       schema: guardSchema(foreignContinueGuard),
     },
     { descriptor: FOREIGN_TOOL_CONTINUE_OUTPUT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
-    ...MODEL_SAMPLE_SCHEMA_ENTRIES,
+    ...MODEL_SAMPLE_PULL_SCHEMA_ENTRIES,
     { descriptor: FOREIGN_INPUT_RESPONSE_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
     { descriptor: FOREIGN_INPUT_CONTEXT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
     { descriptor: FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR, schema: guardSchema(foreignStartGuard) },
@@ -228,9 +227,7 @@ const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignTo
 /** Effect contract for applying one response to foreign continuation state. */
 export const FOREIGN_TOOL_CONTINUE_EFFECT = Object.freeze(continueDefinition);
 
-/** Canonical model-sampling effect used by foreign ToolSession lifting. */
-
-/** Projects a foreign request into the pinned adapter child descriptor. */
-export function foreignToolAdapterChild(request: ForeignToolRequest): DurableChildDescriptor {
-  return { ...FOREIGN_TOOL_ADAPTER_PROGRAM, input: request };
+/** Canonical live ToolInvocationHost identity for one foreign adapter task. */
+export function foreignToolInvocationId(sessionId: string, taskId: string): string {
+  return `foreign:${sessionId}:${taskId}`;
 }

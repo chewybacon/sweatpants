@@ -1,3 +1,4 @@
+import { createWorkflowProgramDriver } from "../workflow/program-driver.ts";
 import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 
@@ -8,18 +9,20 @@ import {
 } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
+import { assertJson } from "@sweatpants/foundation";
 
 import { createCapabilityKeyring } from "../index.ts";
-import { withAuthorityTestScope } from "../journal-program-runtime.ts";
+import {
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
+} from "../testing/program-driver-host.ts";
 import { createAuthorityScenarioDriver } from "../testing.ts";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
-  createLocalProgramDriver,
   stableProgramAttachmentId,
   type DurableProgramManifest,
 } from "@sweatpants/durable-execution";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
@@ -169,7 +172,7 @@ function* open(name: string, selected = authority(name)) {
     input: null,
     executionEpoch: 1,
     attachmentId: stableProgramAttachmentId(request),
-    audience: "program-runtime",
+    audience: "workflow-host",
   });
   return { selected, request, programCapability: opened.programCapability };
 }
@@ -279,7 +282,14 @@ describe("durable cancellation and partial results", () => {
     let cleanupRuns = 0;
     const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
       try {
-        yield* context.elicit<boolean>("approval", "Approve?", approvalResponse.descriptor);
+        yield* context.pull(
+          assertJson({
+            kind: "elicit",
+            key: "approval",
+            message: "Approve?",
+            response: approvalResponse.descriptor,
+          }),
+        );
         return "approved";
       } catch (error) {
         if (error instanceof DurableProgramCancellation) {
@@ -292,7 +302,7 @@ describe("durable cancellation and partial results", () => {
       }
     });
     const drivers = createProgramDriverRegistry([
-      ["program", createLocalProgramDriver(createDurableToolRegistry([tool]))],
+      ["program", createWorkflowProgramDriver(createDurableToolRegistry([tool]))],
     ]);
     const effects = createDurableEffectRegistry([
       createDurableEffectRegistration(
@@ -316,14 +326,13 @@ describe("durable cancellation and partial results", () => {
         input: null,
         executionEpoch: 1,
         attachmentId: stableProgramAttachmentId(request),
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
       const first = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(selected, function* () {
+        return yield* withProgramDriverTestScope(selected, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
-            return yield* ProgramRuntime.operations.run({
+            return yield* driveInstalledTestProgramTree({
               attach: request,
-              executeHostEffects: true,
             });
           });
         });
@@ -331,11 +340,10 @@ describe("durable cancellation and partial results", () => {
       expect(first.state).toBe("parked");
       yield* selected.requestCancellation(request.sessionId, request.taskId, "stop", "cancel-1");
       const second = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(selected, function* () {
+        return yield* withProgramDriverTestScope(selected, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
-            return yield* ProgramRuntime.operations.run({
+            return yield* driveInstalledTestProgramTree({
               attach: request,
-              executeHostEffects: true,
             });
           });
         });

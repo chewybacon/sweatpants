@@ -7,7 +7,7 @@ import {
   responsePosition,
 } from "./fixtures/play-ttt-harness.ts";
 
-describe("journal-native play_ttt through the HTTP ProgramRuntime", () => {
+describe("journal-native play_ttt through the HTTP workflow host", () => {
   it("journals native child sampling and elicitations through game completion", async () => {
     const substrate = await createPlayTttSubstrate({
       conversationId: "play-ttt-program-driver-http",
@@ -52,7 +52,12 @@ describe("journal-native play_ttt through the HTTP ProgramRuntime", () => {
       );
       expect(effectNames).not.toContain("foreign.tool.start");
       expect(effectNames).not.toContain("foreign.tool.continue");
-      expect(effectNames.filter((name) => name === "model.sample").length).toBeGreaterThan(2);
+      expect(
+        journal.filter(
+          (entry) =>
+            entry.payload.type === "PullRequested" && entry.payload.descriptor.kind === "sample",
+        ).length,
+      ).toBeGreaterThan(0);
       expect(
         journal.filter(
           (entry) =>

@@ -1,19 +1,21 @@
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { assertJson } from "@sweatpants/foundation";
 import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
-  withAuthorityTestScope,
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
 import {
   FOREIGN_TOOL_ADAPTER_MANIFEST,
   foreignToolAdapter,
 } from "@sweatpants/tool-session/foreign";
 import {
-  ProgramRuntime,
   ProgramDriverRegistryContext,
   createProgramDriverRegistry,
   createPinnedDurableProgram,
@@ -32,7 +34,6 @@ import { anyGuard, createSchemaFixture } from "@sweatpants/journal-authority/tes
 import {
   createDurableToolSessionFacade,
   createInMemoryDurableToolFacadeStateStore,
-  createLocalDurableProgramDriver,
   createLocalToolInvocationRuntime,
   createToolInvocationForeignEffectRegistrations,
 } from "../index.ts";
@@ -103,12 +104,17 @@ describe("facade workflow runtime child composition", () => {
       return { echo: "child-says" };
     });
     const parentTool = createPinnedDurableProgram(parentManifest, function* (_input, context) {
-      const childResult = yield* context.invoke<{ echo: string }>({
-        id: childManifest.programId,
-        version: childManifest.version,
-        digest: childManifest.digest,
-        input: null,
-      });
+      const childResult = (yield* context.pull(
+        assertJson({
+          kind: "invoke",
+          child: {
+            id: childManifest.programId,
+            version: childManifest.version,
+            digest: childManifest.digest,
+            input: null,
+          },
+        }),
+      )) as { echo: string };
       return { answers: [childResult.echo] };
     });
 
@@ -121,7 +127,6 @@ describe("facade workflow runtime child composition", () => {
       stateStore,
       keyring,
       name: "compose_durable_tool",
-      runtime: "workflow",
       children: createDurableToolRegistry([childTool]),
       schemaRegistry: createDurableSchemaRegistry([
         ...foreignToolSchemaEntries(),
@@ -180,12 +185,12 @@ describe("facade workflow runtime child composition", () => {
         input: request,
         executionEpoch: 1,
         attachmentId: "unattached-compose-adapter",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
 
       // One outer activation completes end-to-end: the facade composes its
-      // authored child on the workflow runtime while the outer adapter stays
-      // on the legacy local driver — both drivers share this process.
+      // authored child while the outer adapter runs through the ProgramDriver
+      // workflow transport in the same process.
       const outcome: ProgramRunResult = yield* runOuter(attach, authority, effects);
       expect(outcome).toEqual({ state: "completed", value: { answers: ["child-says"] } });
     });
@@ -199,11 +204,11 @@ function runOuter(
 ): Operation<ProgramRunResult> {
   const adapterTools = createDurableToolRegistry([foreignToolAdapter]);
   return ProgramDriverRegistryContext.with(
-    createProgramDriverRegistry([["program", createLocalDurableProgramDriver(adapterTools)]]),
+    createProgramDriverRegistry([["program", createWorkflowProgramDriver(adapterTools)]]),
     function* () {
-      return yield* withAuthorityTestScope(authority, function* () {
+      return yield* withProgramDriverTestScope(authority, function* () {
         return yield* DurableEffectRegistryContext.with(effects, function* () {
-          return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+          return yield* driveInstalledTestProgramTree({ attach });
         });
       });
     },

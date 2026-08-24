@@ -267,7 +267,7 @@ export function* createSessionRegistry<T>(
             throw new Error("Detached session recovery requires an explicit writer fence");
           }
           // Claim before constructing the source. A competing replacement Host
-          // therefore cannot turn ProgramRuntime unless it owns the response
+          // therefore cannot turn workflow host unless it owns the response
           // mutation lane.
           const writer = yield* buffer.claimWriter(options.writer);
           const state: MutableSessionState = { status: "streaming" };
@@ -370,7 +370,7 @@ export function* createSessionRegistry<T>(
       }
 
       // Claim before constructing the source. A stale/equal conflicting
-      // activation therefore cannot turn ProgramRuntime or create a task.
+      // activation therefore cannot turn workflow host or create a task.
       const writer = yield* buffer.claimWriter(options.writer);
       const priorWriter = sessionTasks.get(sessionId)?.get(TASK_KEYS.WRITER);
       if (priorWriter && !priorWriter.isDone()) {

@@ -6,7 +6,7 @@ import {
   type Json,
 } from "@sweatpants/foundation";
 import { CrankError, type DurableReference } from "@sweatpants/durable-execution";
-import { hasLiveDurableEffect, signalLiveDurableEffect } from "@sweatpants/durable-effects/runtime";
+import { hasLiveDurablePull, signalLiveDurablePull } from "@sweatpants/durable-effects/runtime";
 import { call, type Operation } from "effection";
 import { createDurableSchemaRegistry, type DurableSchemaRegistry } from "./schema-registry.ts";
 import type {
@@ -297,7 +297,7 @@ export function createStoredShellDrivers(
             ].flatMap((task) => {
               const lifecycle = task.lifecycle;
               return lifecycle.status === "active" &&
-                lifecycle.cancellation.type === "settling_effect"
+                lifecycle.cancellation.type === "settling_pull"
                 ? [
                     {
                       taskId: task.taskId,
@@ -378,8 +378,8 @@ export function createStoredShellDrivers(
     })) as CommandResult<C>;
     if (command.type === "execution.request-cancellation") {
       for (const target of cancellationTargets) {
-        if (hasLiveDurableEffect(command.request.sessionId, target.taskId, target.pullId)) {
-          signalLiveDurableEffect(
+        if (hasLiveDurablePull(command.request.sessionId, target.taskId, target.pullId)) {
+          signalLiveDurablePull(
             command.request.sessionId,
             target.taskId,
             target.pullId,
@@ -510,9 +510,8 @@ function liveEffectTargets(
       for (const action of task.actions) {
         if (
           action.kind === "pull" &&
-          action.pull.request.acceptedDescriptor.kind === "effect" &&
           action.pull.resolution.status === "open" &&
-          hasLiveDurableEffect(sessionId, task.taskId, action.pull.pullId)
+          hasLiveDurablePull(sessionId, task.taskId, action.pull.pullId)
         ) {
           targets.push({ taskId: task.taskId, pullId: action.pull.pullId });
         }

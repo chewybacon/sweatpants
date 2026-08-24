@@ -1,11 +1,8 @@
 import { exactProgramKey, type DurableToolRegistry } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import {
-  createLocalProgramDriver,
-  type ProgramAttachment,
-  type ProgramShutdownReason,
-} from "@sweatpants/durable-execution";
+import { type ProgramAttachment, type ProgramShutdownReason } from "@sweatpants/durable-execution";
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 import {
   normalizeSemanticJournal,
@@ -25,7 +22,7 @@ function createReplacingAgentCoreTransport(registry: DurableToolRegistry): {
   shutdownReasons: ProgramShutdownReason[];
   replayEntryCounts: number[];
 } {
-  const evaluator = createLocalProgramDriver(registry);
+  const evaluator = createWorkflowProgramDriver(registry, { detachedScope: true });
   const containerGenerations: number[] = [];
   const shutdownReasons: ProgramShutdownReason[] = [];
   const replayEntryCounts: number[] = [];
@@ -228,7 +225,7 @@ describe("AgentCore crank-native ProgramDriver integration", () => {
       runDurableDriverRecoveryFixture({
         driverKind: "program",
         sessionId: "parity-session",
-        createDriver: createLocalProgramDriver,
+        createDriver: createWorkflowProgramDriver,
       }),
     );
     const agentcore = await run(() =>
@@ -254,7 +251,7 @@ describe("AgentCore crank-native ProgramDriver integration", () => {
       runDurableDriverCancellationFixture({
         driverKind: "program",
         sessionId: "cancellation-parity-session",
-        createDriver: createLocalProgramDriver,
+        createDriver: createWorkflowProgramDriver,
       }),
     );
     const agentcore = await run(() =>

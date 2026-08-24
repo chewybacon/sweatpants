@@ -10,18 +10,21 @@ import {
 import type { Operation } from "effection";
 
 import { createCapabilityKeyring, type DurableSemanticRecord } from "../index.ts";
-import { withAuthorityTestScope } from "../journal-program-runtime.ts";
+import {
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
+} from "./program-driver-host.ts";
 import { createAuthorityScenarioDriver } from "./scenario-driver.ts";
-import { type Json } from "@sweatpants/foundation";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
   type DurableProgramManifest,
   type ProgramDriver,
+  type ProgramElicitResult,
   type ProgramRoute,
   type ProgramRunResult,
 } from "@sweatpants/durable-execution";
-import { ProgramRuntime } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
@@ -173,11 +176,14 @@ export const durableDriverRecoveryFixtureTool = createPinnedDurableProgram(
       audience: "fixture-effects",
     });
     yield* context.emit("fixture_progress", { echoed });
-    const approval = yield* context.elicit<boolean>(
-      "approval",
-      "Approve the recovered execution?",
-      approvalResponse.descriptor,
-    );
+    const approval = (yield* context.pull(
+      assertJson({
+        kind: "elicit",
+        key: "approval",
+        message: "Approve the recovered execution?",
+        response: approvalResponse.descriptor,
+      }),
+    )) as ProgramElicitResult<boolean>;
     const approved = approval.action === "accept" ? approval.content : false;
     return `${echoed}:${approved}`;
   },
@@ -191,10 +197,13 @@ export const durableDriverCancellationFixtureTool = createPinnedDurableProgram(
       audience: "fixture-effects",
     });
     try {
-      yield* context.elicit<boolean>(
-        "approval",
-        "Approve cancellation fixture?",
-        approvalResponse.descriptor,
+      yield* context.pull(
+        assertJson({
+          kind: "elicit",
+          key: "approval",
+          message: "Approve cancellation fixture?",
+          response: approvalResponse.descriptor,
+        }),
       );
       return echoed;
     } catch (error) {
@@ -218,7 +227,7 @@ export const DURABLE_DRIVER_FIXTURE_TOOLS = Object.freeze([
 /**
  * Shared protocol-neutral integration fixture used by concrete runtime
  * packages. It proves that the concrete driver participates in the real
- * ProgramRuntime/JournalAuthority loop rather than testing adapter methods in
+ * workflow-driver/JournalAuthority loop rather than testing adapter methods in
  * isolation.
  */
 /** Runs a deterministic park/recover scenario through production runtime seams. */
@@ -325,11 +334,10 @@ export function* runDurableDriverRecoveryFixture(
     let releaseReason: "parked" | "terminal" | "failed" = "failed";
     try {
       const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(authority, function* () {
+        return yield* withProgramDriverTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
-            return yield* ProgramRuntime.operations.run({
+            return yield* driveInstalledTestProgramTree({
               attach: { ...attach, executionEpoch },
-              executeHostEffects: true,
               ...(claim?.status === "claimed" ? { activationOwnerId: ownerId } : {}),
             });
           });
@@ -476,9 +484,9 @@ export function* runDurableDriverCancellationFixture(
   });
 
   const first = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withAuthorityTestScope(authority, function* () {
+    return yield* withProgramDriverTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+        return yield* driveInstalledTestProgramTree({ attach });
       });
     });
   });
@@ -502,9 +510,9 @@ export function* runDurableDriverCancellationFixture(
     schemaRegistry: createDurableSchemaRegistry([...DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES]),
   });
   const second = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* withAuthorityTestScope(authority, function* () {
+    return yield* withProgramDriverTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+        return yield* driveInstalledTestProgramTree({ attach });
       });
     });
   });

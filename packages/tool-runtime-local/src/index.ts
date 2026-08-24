@@ -5,7 +5,7 @@ export {
   type LocalSessionToolExecutionStrategyOptions,
   type LocalToolRuntimeDriverOptions,
 } from "./driver.ts";
-export { installLocalProgramToolRuntime } from "./program-runtime-installation.ts";
+export { installLocalToolRuntimeComposition } from "./tool-runtime-composition.ts";
 
 export { createToolInvocationHost } from "@sweatpants/tool-session";
 export {
@@ -22,11 +22,6 @@ export {
 
 export * from "./worker.ts";
 
-export {
-  createLocalDurableProgramDriver,
-  createWorkerDurableProgramDriver,
-  type DurableWorkerProgramTransport,
-} from "./durable-driver.ts";
 export {
   createLocalWorkerDurableProgramDriver,
   type LocalWorkerDurableProgramDriverOptions,

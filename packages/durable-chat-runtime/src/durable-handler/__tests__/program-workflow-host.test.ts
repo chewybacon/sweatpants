@@ -1,21 +1,15 @@
-import { createProgramDriverRegistry } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createDurableTool } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
-import {
-  createModelSamplingEffectRegistration,
-  decodeModelSampleRequest,
-  encodeModelSampleSourceRequest,
-  type ModelSamplingService,
-} from "@sweatpants/model-sampling";
+import type { ModelSamplingService } from "@sweatpants/model-sampling";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
-import { createDurableToolRegistry, createLocalProgramDriver } from "@sweatpants/durable-execution";
+import { createDurableToolRegistry } from "@sweatpants/durable-execution";
 import { canonicalSnapshot, sha256 } from "@sweatpants/foundation";
 import type { ModelContext } from "@sweatpants/model-provider";
 import { z } from "zod";
 
-import { createLocalProgramHost, createPinnedProgramCatalog } from "../local-program-host.ts";
+import { createPinnedProgramCatalog, createProgramWorkflowHost } from "../program-workflow-host.ts";
 import {
   createProgramDriverJournalStore,
   programDriverSchemaRegistry,
@@ -54,11 +48,10 @@ function sharedApprovalStore() {
 function fixture(journalStore = sharedApprovalStore()) {
   const programs = createDurableToolRegistry([approvalProgram]);
   const effects = createDurableEffectRegistry([]);
-  return createLocalProgramHost({
+  return createProgramWorkflowHost({
     journalStore,
     programs,
     effects,
-    drivers: createProgramDriverRegistry([["program", createLocalProgramDriver(programs)]]),
   });
 }
 
@@ -72,7 +65,7 @@ const catalog = createPinnedProgramCatalog({
   host_approval: { kind: "program", target: "host_approval", program: pin },
 });
 
-describe("LocalProgramHost", () => {
+describe("ProgramWorkflowHost", () => {
   it("opens, parks, accepts a typed response, resumes, and returns a normalized trace", async () => {
     const host = fixture();
     await run(function* () {
@@ -272,7 +265,10 @@ describe("LocalProgramHost", () => {
       .parameters(z.object({}))
       .effects({})
       .execute(function* (_input, context) {
-        return yield* context.invoke({ ...childPin, input: {} });
+        return yield* context.pull({
+          kind: "invoke",
+          child: { ...childPin, input: {} },
+        });
       });
     const parentPin = {
       id: parent.manifest.programId,
@@ -280,7 +276,7 @@ describe("LocalProgramHost", () => {
       digest: parent.manifest.digest,
     };
     const programs = createDurableToolRegistry([parent, child]);
-    const host = createLocalProgramHost({
+    const host = createProgramWorkflowHost({
       journalStore: createProgramDriverJournalStore({
         keyring: createCapabilityKeyring("parent-child-host", [
           { keyId: "active", secret: "parent-child-host-secret-32-bytes" },
@@ -292,7 +288,6 @@ describe("LocalProgramHost", () => {
       }),
       programs,
       effects: createDurableEffectRegistry([]),
-      drivers: createProgramDriverRegistry([["program", createLocalProgramDriver(programs)]]),
     });
     const parentCatalog = createPinnedProgramCatalog({
       host_parent: { kind: "program", target: "host_parent", program: parentPin },
@@ -330,7 +325,10 @@ describe("LocalProgramHost", () => {
       .parameters(z.object({}))
       .effects({})
       .execute(function* (_input, context) {
-        return yield* context.invoke({ ...childPin, input: {} });
+        return yield* context.pull({
+          kind: "invoke",
+          child: { ...childPin, input: {} },
+        });
       });
     const parentPin = {
       id: parent.manifest.programId,
@@ -338,7 +336,7 @@ describe("LocalProgramHost", () => {
       digest: parent.manifest.digest,
     };
     const programs = createDurableToolRegistry([parent]);
-    const host = createLocalProgramHost({
+    const host = createProgramWorkflowHost({
       journalStore: createProgramDriverJournalStore({
         keyring: createCapabilityKeyring("catalog-host", [
           { keyId: "active", secret: "catalog-host-secret-at-least-32!!" },
@@ -347,7 +345,6 @@ describe("LocalProgramHost", () => {
       }),
       programs,
       effects: createDurableEffectRegistry([]),
-      drivers: createProgramDriverRegistry([["program", createLocalProgramDriver(programs)]]),
     });
     await run(function* () {
       const opened = yield* host.open({
@@ -389,7 +386,7 @@ describe("LocalProgramHost", () => {
     });
   });
 
-  it("routes canonical sampling through placement DI and acknowledges only after journal acceptance", async () => {
+  it("routes canonical parked sampling through placement DI", async () => {
     const sampledProgram = createDurableTool("host_sample")
       .description("Sample")
       .identity({ version: "1", digest: sha256("host-sample-v1") })
@@ -424,26 +421,16 @@ describe("LocalProgramHost", () => {
     };
     let storedContext: ModelContext | undefined;
     let storedDigest = "";
-    const host = createLocalProgramHost({
-      *effectInputPreparer(request) {
-        if (request.name !== "model.sample") return request.input;
-        const semantic = decodeModelSampleRequest(request.input);
-        const snapshot = canonicalSnapshot(semantic.invocation.context);
-        storedContext = semantic.invocation.context;
+    const host = createProgramWorkflowHost({
+      *modelContextSourceStager(context) {
+        const snapshot = canonicalSnapshot(context);
+        storedContext = context;
         storedDigest = snapshot.sha;
-        return encodeModelSampleSourceRequest({
-          ...semantic,
-          invocation: {
-            context: {
-              type: "object",
-              object: { objectId: "local-host-context" },
-              digest: snapshot.sha,
-            },
-            ...(semantic.invocation.options === undefined
-              ? {}
-              : { options: semantic.invocation.options }),
-          },
-        });
+        return {
+          type: "object",
+          object: { objectId: "local-host-context" },
+          digest: snapshot.sha,
+        };
       },
       *modelContextSourceResolver(source) {
         if (
@@ -463,14 +450,8 @@ describe("LocalProgramHost", () => {
         schemaRegistry: programDriverSchemaRegistry(sampledProgram.artifacts.catalog),
       }),
       programs,
-      effects: createDurableEffectRegistry([createModelSamplingEffectRegistration()]),
-      drivers: createProgramDriverRegistry([["program", createLocalProgramDriver(programs)]]),
+      effects: createDurableEffectRegistry([]),
       modelSamplingService,
-      effectOutcomeAcknowledger: function* ({ effect, outcomeDigest }) {
-        expect(effect).toEqual({ name: "model.sample", version: "1" });
-        expect(outcomeDigest).toMatch(/^[0-9a-f]{64}$/);
-        observed.push("acknowledged");
-      },
     });
     const samplePin = {
       id: sampledProgram.manifest.programId,
@@ -488,11 +469,10 @@ describe("LocalProgramHost", () => {
         }),
       });
       expect(yield* opened.result).toEqual({ state: "completed", value: "sampled" });
-      expect(observed).toEqual(["route:program", "provider", "acknowledged"]);
+      expect(observed).toEqual(["route:program", "provider"]);
       const descriptor = (yield* host.trace(opened.sessionId)).tasks[0]?.operations[0]?.descriptor;
       expect(descriptor).toMatchObject({
-        kind: "effect",
-        name: "model.sample",
+        kind: "sample",
         input: {
           invocation: {
             context: {

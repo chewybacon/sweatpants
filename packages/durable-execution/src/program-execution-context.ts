@@ -1,11 +1,13 @@
 import { createContext, type Operation } from "effection";
 import { canonicalSnapshot, stableTupleHash } from "@sweatpants/foundation";
+
 import { CrankError } from "./errors.ts";
 import type { AttachProgramRequest, ProgramRoute } from "./program-driver-contract.ts";
 import type { PinnedProgram, SandboxAffinity } from "./program-contract.ts";
 
 export const PROGRAM_EXECUTION_FORMAT = "sweatpants.program-execution.v1" as const;
 
+/** Attachment-local identity exposed to deployment-owned ordinary APIs. */
 export interface ProgramExecutionValue {
   readonly format: typeof PROGRAM_EXECUTION_FORMAT;
   readonly identity: {
@@ -62,7 +64,6 @@ export function createProgramExecutionValue(
     attempt,
     affinity,
     operationId(namespace: string) {
-      const acceptedNamespace = boundedNamespace(namespace);
       callIndex += 1;
       return stableTupleHash([
         "program-operation-attempt-v1",
@@ -73,7 +74,7 @@ export function createProgramExecutionValue(
         identity.program.digest,
         attempt.attachmentId,
         attempt.executionEpoch,
-        acceptedNamespace,
+        boundedNamespace(namespace),
         callIndex,
       ]);
     },
@@ -81,14 +82,10 @@ export function createProgramExecutionValue(
 }
 
 function acceptedAffinity(request: AttachProgramRequest, route: ProgramRoute): SandboxAffinity {
-  if (request.affinity) {
-    return freezeAffinity(request.affinity);
-  }
+  if (request.affinity) return freezeAffinity(request.affinity);
   if (route && typeof route === "object" && !Array.isArray(route)) {
-    const candidate = (route as Record<string, unknown>)["affinity"];
-    if (isAffinity(candidate)) {
-      return freezeAffinity(candidate);
-    }
+    const candidate = route["affinity"];
+    if (isAffinity(candidate)) return freezeAffinity(candidate);
   }
   return freezeAffinity({ kind: "invocation", key: request.taskId });
 }
@@ -113,9 +110,7 @@ function freezeAffinity(value: SandboxAffinity): SandboxAffinity {
 }
 
 function assertNoAuthorityMaterial(value: unknown, path = "route"): void {
-  if (!value || typeof value !== "object") {
-    return;
-  }
+  if (!value || typeof value !== "object") return;
   if (Array.isArray(value)) {
     value.forEach((child, index) => assertNoAuthorityMaterial(child, `${path}[${index}]`));
     return;

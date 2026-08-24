@@ -1,5 +1,8 @@
 import {
-  ExecutionDurableEffectRegistryContext,
+  createWorkflowEffectHandlers,
+  createWorkflowProgramDriver,
+} from "../workflow/program-driver.ts";
+import {
   ProgramDriverRegistryContext,
   createProgramDriverRegistry,
 } from "@sweatpants/durable-execution";
@@ -15,21 +18,25 @@ import { CrankError } from "@sweatpants/durable-execution";
 import {
   createCapabilityKeyring,
   durableAuthoritySnapshotParser,
+  modelPullOwnerFence,
   parseDurableAuthoritySnapshot,
   signCapability,
 } from "../index.ts";
-import { withAuthorityTestScope } from "../journal-program-runtime.ts";
+import {
+  driveInstalledTestProgramTree,
+  withProgramDriverTestScope,
+} from "../testing/program-driver-host.ts";
 import { createAuthorityScenarioDriver } from "../testing.ts";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
-  createLocalProgramDriver,
   stableProgramAttachmentId,
   type AttachProgramRequest,
   type DurableProgramManifest,
+  type ProgramElicitResult,
 } from "@sweatpants/durable-execution";
-import { ProgramPeer, ProgramRuntime } from "@sweatpants/durable-execution";
+import { ProgramPeer } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
@@ -84,6 +91,18 @@ const mutateOutput = createSchemaFixture(
   true,
   anyGuard,
 );
+const modelPullInput = createSchemaFixture(
+  "fixture.basic/model-pull-input",
+  "pull_input",
+  true,
+  anyGuard,
+);
+const modelPullOutput = createSchemaFixture(
+  "fixture.basic/model-pull-output",
+  "pull_output",
+  true,
+  anyGuard,
+);
 const fixtureSchemaRegistry = () =>
   createDurableSchemaRegistry([
     programInput.entry,
@@ -93,6 +112,8 @@ const fixtureSchemaRegistry = () =>
     echoOutput.entry,
     mutateInput.entry,
     mutateOutput.entry,
+    modelPullInput.entry,
+    modelPullOutput.entry,
   ]);
 
 const digest = "a".repeat(64);
@@ -120,13 +141,9 @@ const manifest: DurableProgramManifest = {
       outputSchema: mutateOutput.descriptor,
       retrySafety: { mode: "unsafe" },
     },
-    "model.sample": {
-      name: "model.sample",
-      version: "1",
-      inputSchema: echoInput.descriptor,
-      outputSchema: echoOutput.descriptor,
-      retrySafety: { mode: "repeatable" },
-    },
+  },
+  pulls: {
+    sample: { input: modelPullInput.descriptor, output: modelPullOutput.descriptor },
   },
   capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
 };
@@ -248,7 +265,7 @@ describe("capability boundary parsing", () => {
       programDigest: manifest.digest,
       attachmentId: "attachment-1",
       executionEpoch: 1,
-      audience: "program-runtime",
+      audience: "workflow-host",
       permissions,
       nonce: "nonce-1",
       unexpected: "must-not-cross-boundary",
@@ -306,16 +323,10 @@ describe("crank-native durable runtime", () => {
         taskId: attach.taskId,
         actionIndex: 0,
         pullIndex: 0,
-        descriptor: {
-          kind: "effect",
-          name: "model.sample",
-          version: "1",
-          input: "hello",
-          resolver: { audience: "host-effects" },
-        },
+        descriptor: { kind: "sample", input: "hello" },
         programCapability: opened.programCapability,
       });
-      if (reserved.status !== "authorized") throw new Error("model sample was not authorized");
+      if (reserved.status !== "pending") throw new Error("model sample did not park");
       const fact = {
         type: "ModelContextPrepared" as const,
         executionId: "execution-1",
@@ -343,7 +354,7 @@ describe("crank-native durable runtime", () => {
         executionId: "execution-1",
         taskId: attach.taskId,
         pullId: reserved.pullId,
-        expectedOwnerFence: reserved.attemptId,
+        expectedOwnerFence: modelPullOwnerFence(reserved.pullId, attach.executionEpoch),
         kind: "model-context" as const,
         fact,
       };
@@ -352,7 +363,7 @@ describe("crank-native durable runtime", () => {
         executionId: "execution-1",
         taskId: attach.taskId,
         pullId: reserved.pullId,
-        expectedOwnerFence: reserved.attemptId,
+        expectedOwnerFence: modelPullOwnerFence(reserved.pullId, attach.executionEpoch),
         fact: {
           type: "AssistantPartialAccepted" as const,
           messageId: "assistant-1",
@@ -400,7 +411,7 @@ describe("crank-native durable runtime", () => {
       );
       yield* authority.resolve({
         capability: reserved.resolutionCapability,
-        audience: "host-effects",
+        audience: "model-runtime",
         outcome: { status: "ok", value: "hello" },
       });
       expect(yield* authority.acceptPullPreparation(request)).toEqual({
@@ -448,7 +459,7 @@ describe("crank-native durable runtime", () => {
           input: "hello",
           executionEpoch: 1,
           attachmentId: `attachment-${index}`,
-          audience: "program-runtime",
+          audience: "workflow-host",
         });
         opened.push({ taskId, programCapability: task.programCapability });
         if (index < 64) {
@@ -514,7 +525,7 @@ describe("crank-native durable runtime", () => {
       const tool = createPinnedDurableProgram(terminalManifest, function* () {
         return value as Json;
       });
-      const driver = createLocalProgramDriver(createDurableToolRegistry([tool]));
+      const driver = createWorkflowProgramDriver(createDurableToolRegistry([tool]));
       return await run(function* () {
         const attachment = yield* driver.attach({
           ...attachRequest("terminal-bounds"),
@@ -546,7 +557,7 @@ describe("crank-native durable runtime", () => {
       return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
     });
     const registry = createDurableToolRegistry([tool]);
-    const driver = createLocalProgramDriver(registry);
+    const driver = createWorkflowProgramDriver(registry);
 
     await run(function* () {
       const attachment = yield* driver.attach(attachRequest());
@@ -572,10 +583,10 @@ describe("crank-native durable runtime", () => {
           taskId: "turn-0/root",
           pullId: "pull",
           resolutionOffset: "4",
-          outcomeDigest: "digest",
+          outcomeDigest: canonicalSnapshot({ status: "ok", value: "world" }).sha,
           status: "accepted",
         },
-        replayed: false,
+        replayed: true,
       });
       expect(completed).toEqual({ type: "completed", actionIndex: 2, value: "world" });
       yield* driver.shutdown(attachment, "completed");
@@ -944,7 +955,7 @@ describe("crank-native durable runtime", () => {
     });
   });
 
-  it("persists relative wait deadlines once and rejects early scheduler resolution", async () => {
+  it("journals relative waits verbatim and rejects early scheduler resolution", async () => {
     let now = 10_000;
     const { authority, attach } = createAuthority("wait", () => now);
     await run(function* () {
@@ -994,8 +1005,9 @@ describe("crank-native durable runtime", () => {
         .readJournal(attach.sessionId)
         .find((record) => record.payload.type === "PullRequested");
       expect(request?.payload).toMatchObject({
-        descriptor: { durationMs: 500, notBefore: new Date(10_500).toISOString() },
+        descriptor: { kind: "wait", key: "delay", durationMs: 500 },
       });
+      expect(JSON.stringify(request?.payload)).not.toContain("notBefore");
     });
   });
 
@@ -1075,15 +1087,18 @@ describe("crank-native durable runtime", () => {
         recordedReads += 1;
         return `recorded-${recordedReads}`;
       });
-      const approval = yield* context.elicit<boolean>(
-        "approval",
-        "Continue?",
-        approvalResponse.descriptor,
-      );
+      const approval = (yield* context.pull(
+        assertJson({
+          kind: "elicit",
+          key: "approval",
+          message: "Continue?",
+          response: approvalResponse.descriptor,
+        }),
+      )) as ProgramElicitResult<boolean>;
       return `${ordinary}:${recorded}:${approval.action}`;
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const { authority, attach } = createAuthority("ordinary-operation-replay");
 
     await run(function* () {
@@ -1105,11 +1120,11 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withAuthorityTestScope(authority, function* () {
+          return yield* withProgramDriverTestScope(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
-                return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+                return yield* driveInstalledTestProgramTree({ attach });
               },
             );
           });
@@ -1192,11 +1207,18 @@ describe("crank-native durable runtime", () => {
       yield* context.record({ key: label }, function* () {
         return "accepted";
       });
-      yield* context.elicit<boolean>("approval", "Continue?", approvalResponse.descriptor);
+      yield* context.pull(
+        assertJson({
+          kind: "elicit",
+          key: "approval",
+          message: "Continue?",
+          response: approvalResponse.descriptor,
+        }),
+      );
       return "done";
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const { authority, attach } = createAuthority("descriptor-divergence");
 
     await run(function* () {
@@ -1212,11 +1234,11 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withAuthorityTestScope(authority, function* () {
+          return yield* withProgramDriverTestScope(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
-                return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+                return yield* driveInstalledTestProgramTree({ attach });
               },
             );
           });
@@ -1265,17 +1287,29 @@ describe("crank-native durable runtime", () => {
       })();
     });
     const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
-      const value = yield* context.invoke<string>({
-        id: childManifest.programId,
-        version: childManifest.version,
-        digest: childManifest.digest,
-        input: "child",
-      });
-      yield* context.elicit<boolean>("approval", "Continue?", approvalResponse.descriptor);
+      const value = (yield* context.pull(
+        assertJson({
+          kind: "invoke",
+          child: {
+            id: childManifest.programId,
+            version: childManifest.version,
+            digest: childManifest.digest,
+            input: "child",
+          },
+        }),
+      )) as string;
+      yield* context.pull(
+        assertJson({
+          kind: "elicit",
+          key: "approval",
+          message: "Continue?",
+          response: approvalResponse.descriptor,
+        }),
+      );
       return value;
     });
     const tools = createDurableToolRegistry([parent, child]);
-    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const authority = createAuthorityScenarioDriver({
       journalId: "ordinary-child-journal",
       journalIncarnation: "ordinary-child-incarnation",
@@ -1308,11 +1342,11 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withAuthorityTestScope(authority, function* () {
+          return yield* withProgramDriverTestScope(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
-                return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+                return yield* driveInstalledTestProgramTree({ attach });
               },
             );
           });
@@ -1366,11 +1400,18 @@ describe("crank-native durable runtime", () => {
       yield* context.record({ key: "checkpoint" }, function* () {
         return "recorded";
       });
-      yield* context.elicit<boolean>("approval", "Continue?", approvalResponse.descriptor);
+      yield* context.pull(
+        assertJson({
+          kind: "elicit",
+          key: "approval",
+          message: "Continue?",
+          response: approvalResponse.descriptor,
+        }),
+      );
       return contents;
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const { authority, attach } = createAuthority("ordinary-operation-failure");
 
     await run(function* () {
@@ -1386,11 +1427,11 @@ describe("crank-native durable runtime", () => {
       });
       const activate = function* () {
         return yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withAuthorityTestScope(authority, function* () {
+          return yield* withProgramDriverTestScope(authority, function* () {
             return yield* DurableEffectRegistryContext.with(
               createDurableEffectRegistry([]),
               function* () {
-                return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+                return yield* driveInstalledTestProgramTree({ attach });
               },
             );
           });
@@ -1417,7 +1458,6 @@ describe("crank-native durable runtime", () => {
       return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const effects = createDurableEffectRegistry([
       {
         definition: manifest.effects["echo"]!,
@@ -1428,6 +1468,14 @@ describe("crank-native durable runtime", () => {
             return { status: "ok" as const, value: `${input}:execution` };
           })(),
       },
+    ]);
+    const drivers = createProgramDriverRegistry([
+      [
+        "program",
+        createWorkflowProgramDriver(tools, {
+          effectHandlers: createWorkflowEffectHandlers(effects),
+        }),
+      ],
     ]);
     const { authority, attach } = createAuthority("execution-route");
 
@@ -1448,11 +1496,9 @@ describe("crank-native durable runtime", () => {
         },
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(authority, function* () {
+        return yield* withProgramDriverTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
-            return yield* ExecutionDurableEffectRegistryContext.with(effects, function* () {
-              return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
-            });
+            return yield* driveInstalledTestProgramTree({ attach });
           });
         });
       });
@@ -1467,7 +1513,6 @@ describe("crank-native durable runtime", () => {
       return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const hostEffects = createDurableEffectRegistry([
       {
         definition: manifest.effects["echo"]!,
@@ -1478,6 +1523,14 @@ describe("crank-native durable runtime", () => {
             return { status: "ok" as const, value: input };
           })(),
       },
+    ]);
+    const drivers = createProgramDriverRegistry([
+      [
+        "program",
+        createWorkflowProgramDriver(tools, {
+          effectHandlers: createWorkflowEffectHandlers(createDurableEffectRegistry([])),
+        }),
+      ],
     ]);
     const { authority, attach } = createAuthority("missing-execution-route");
 
@@ -1498,14 +1551,9 @@ describe("crank-native durable runtime", () => {
         },
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(authority, function* () {
+        return yield* withProgramDriverTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(hostEffects, function* () {
-            return yield* ExecutionDurableEffectRegistryContext.with(
-              createDurableEffectRegistry([]),
-              function* () {
-                return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
-              },
-            );
+            return yield* driveInstalledTestProgramTree({ attach });
           });
         });
       });
@@ -1526,7 +1574,7 @@ describe("crank-native durable runtime", () => {
       });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const { authority, attach } = createAuthority("record-runtime");
 
     await run(function* () {
@@ -1541,11 +1589,11 @@ describe("crank-native durable runtime", () => {
         audience: "program-host",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(authority, function* () {
+        return yield* withProgramDriverTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(
             createDurableEffectRegistry([]),
             function* () {
-              return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+              return yield* driveInstalledTestProgramTree({ attach });
             },
           );
         });
@@ -1583,7 +1631,7 @@ describe("crank-native durable runtime", () => {
       });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const { authority, attach } = createAuthority("oversized-record-runtime");
 
     await run(function* () {
@@ -1598,11 +1646,11 @@ describe("crank-native durable runtime", () => {
         audience: "program-host",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(authority, function* () {
+        return yield* withProgramDriverTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(
             createDurableEffectRegistry([]),
             function* () {
-              return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+              return yield* driveInstalledTestProgramTree({ attach });
             },
           );
         });
@@ -1623,7 +1671,7 @@ describe("crank-native durable runtime", () => {
       });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const { authority, attach } = createAuthority("nested-record-runtime");
 
     await run(function* () {
@@ -1638,11 +1686,11 @@ describe("crank-native durable runtime", () => {
         audience: "program-host",
       });
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(authority, function* () {
+        return yield* withProgramDriverTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(
             createDurableEffectRegistry([]),
             function* () {
-              return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+              return yield* driveInstalledTestProgramTree({ attach });
             },
           );
         });
@@ -1665,7 +1713,7 @@ describe("crank-native durable runtime", () => {
       return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const effects = createDurableEffectRegistry([
       {
         definition: manifest.effects["echo"]!,
@@ -1713,11 +1761,10 @@ describe("crank-native durable runtime", () => {
         { at: "min" },
       );
       const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withAuthorityTestScope(authority, function* () {
+        return yield* withProgramDriverTestScope(authority, function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
-            return yield* ProgramRuntime.operations.run({
+            return yield* driveInstalledTestProgramTree({
               attach,
-              executeHostEffects: true,
             });
           });
         });

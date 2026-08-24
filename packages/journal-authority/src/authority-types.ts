@@ -182,7 +182,7 @@ export type DurableCancellationState =
   | { type: "none" }
   | { type: "requested"; commandId: string; reason?: string; frontier: CancellationFrontier }
   | {
-      type: "settling_effect";
+      type: "settling_pull";
       commandId: string;
       pullId: string;
       reason?: string;

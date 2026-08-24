@@ -11,12 +11,12 @@ import {
 } from "@sweatpants/cli/remote-development-evaluator";
 import {
   createDurableToolRegistry,
-  createLocalProgramDriver,
   exactProgramKey,
   type PinnedProgram,
   type ProgramCommand,
   type ProgramStep,
 } from "@sweatpants/durable-execution";
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { type Json } from "@sweatpants/foundation";
 
 interface LambdaCrankRequestV1 {
@@ -74,7 +74,7 @@ export async function handler(
     throw new Error("crank transcript must begin with start");
   }
   const registry = createDurableToolRegistry(loaded.programs.values());
-  const driver = createLocalProgramDriver(registry);
+  const driver = createWorkflowProgramDriver(registry);
   const step = await run(function* () {
     const attachment = yield* driver.attach({
       sessionId: `lambda:${event.taskId}`,

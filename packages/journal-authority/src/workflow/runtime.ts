@@ -13,14 +13,22 @@ import {
   type Result,
   type WithResolvers,
 } from "effection";
-import type { OperationOutcome } from "@sweatpants/durable-effects";
+import {
+  ProgramPlacementContext,
+  type OperationOutcome,
+  type ProgramPlacementContextValue,
+} from "@sweatpants/durable-effects";
 import { z } from "zod";
 import {
+  createProgramExecutionValue,
   CrankError,
   DurableProgramCancellation,
+  ProgramExecutionContext,
+  PullApplicationError,
   assertInlineSize,
   assertReplayedCanonicalValue,
   serializeDurableError,
+  stableProgramAttachmentId,
   type AttachProgramRequest,
   type DurableElicitDescriptor,
   type DurableOperationDescriptor,
@@ -305,7 +313,7 @@ function unwrapOutcome<T extends Json>(outcome: OperationOutcome): T {
   if (outcome.status === "cancelled") {
     throw new DurableProgramCancellation();
   }
-  throw new CrankError(outcome.error.code, outcome.error.message, outcome.error.details);
+  throw new PullApplicationError(outcome.error);
 }
 
 /**
@@ -601,6 +609,7 @@ export type ProgramCommand =
       readonly pullId: string;
       readonly attemptId: string;
       readonly descriptor: DurableOperationDescriptor;
+      readonly placement?: ProgramPlacementContextValue;
     }
   | {
       readonly type: "resume-record";
@@ -646,9 +655,7 @@ const sequentialOperationDescriptorSchema = z.discriminatedUnion("kind", [
 ]);
 
 export { elicitDescriptorSchema, waitDescriptorSchema } from "../pull-kinds/index.ts";
-export {
-  assertEphemeralForeign,
-} from "../pull-kinds/index.ts";
+export { assertEphemeralForeign } from "../pull-kinds/index.ts";
 
 const pullDescriptorParser = parser(sequentialOperationDescriptorSchema);
 
@@ -714,6 +721,17 @@ const resolutionReceiptSchema = z.strictObject({
   outcomeDigest: z.string().regex(/^[0-9a-f]{64}$/u),
   status: z.enum(["accepted", "duplicate"]),
 });
+const placementSchema = z.strictObject({
+  journal: z.strictObject({ id: z.string().min(1), incarnation: z.string().min(1) }),
+  program: z.strictObject({
+    id: z.string().min(1),
+    version: z.string().min(1),
+    digest: z.string().regex(/^[0-9a-f]{64}$/u),
+  }),
+  route: z.json(),
+  driverKind: z.string().min(1),
+});
+
 const programCommandSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("start"), input: z.json() }),
   z.strictObject({
@@ -722,6 +740,7 @@ const programCommandSchema = z.discriminatedUnion("type", [
     pullId: z.string().min(1),
     attemptId: z.string().min(1),
     descriptor: sequentialOperationDescriptorSchema,
+    placement: placementSchema.optional(),
   }),
   z.strictObject({
     type: z.literal("resume-record"),
@@ -922,6 +941,8 @@ export type ProgramEvent =
 export interface ProgramAttachmentHandle {
   exchange(command: ProgramCommand): Operation<ProgramEvent>;
   setDisposition(reason: ProgramShutdownReason): void;
+  /** Explicitly releases a driver-owned attachment before its caller scope ends. */
+  close(reason: ProgramShutdownReason): Operation<void>;
 }
 
 /** Facts a live record attempt may read while coordinating its settlement. */
@@ -1152,26 +1173,29 @@ function* runAttempt(
   const cancellation = yield* useAbortSignal();
   try {
     const coordination = yield* RecordAttemptPort.use();
-    return yield* coordination.run(
-      {
-        actionIndex: state.actionIndex,
-        pullId: command.pullId,
-        attemptId: command.attemptId,
-        cancellation,
-      },
-      function* () {
-        const value = yield* RecordAttemptGuardContext.with(true, function* () {
-          const produced = yield* pending.boundary.execute({
-            pullId: command.pullId,
-            attemptId: command.attemptId,
-            cancellation,
+    const execute = function* () {
+      return yield* coordination.run(
+        {
+          actionIndex: state.actionIndex,
+          pullId: command.pullId,
+          attemptId: command.attemptId,
+          cancellation,
+        },
+        function* () {
+          return yield* RecordAttemptGuardContext.with(true, function* () {
+            return yield* pending.boundary.execute({
+              pullId: command.pullId,
+              attemptId: command.attemptId,
+              cancellation,
+            });
           });
-          return produced;
-        });
-        return value;
-      },
-      canonicalAttemptOutcome,
-    );
+        },
+        canonicalAttemptOutcome,
+      );
+    };
+    return command.placement
+      ? yield* ProgramPlacementContext.with(command.placement, execute)
+      : yield* execute();
   } catch (error) {
     return cancellation.aborted || error instanceof DurableProgramCancellation
       ? { status: "cancelled" }
@@ -1358,6 +1382,9 @@ export function openProgramAttachment(
 ): Operation<ProgramAttachmentHandle> {
   return resource(function* (provide) {
     yield* RecordAttemptPort.installDriver(ordinaryRecordAttemptDriver);
+    yield* ProgramExecutionContext.set(
+      createProgramExecutionValue(request, stableProgramAttachmentId(request)),
+    );
     const state: AttachmentState = {
       request: structuredClone(request),
       commands: createQueue<CommandEnvelope, void>(),
@@ -1467,6 +1494,17 @@ export function openProgramAttachment(
           throw stale();
         }
         state.disposition = acceptedReason;
+      },
+      *close(reason: ProgramShutdownReason): Operation<void> {
+        if (state.phase === "disposed") return;
+        state.disposition = requireParsed(
+          programShutdownReasonParser,
+          reason,
+          "program_protocol_error",
+          "Invalid shutdown disposition",
+        );
+        closeState(state, stale());
+        yield* disposerTask;
       },
     });
 

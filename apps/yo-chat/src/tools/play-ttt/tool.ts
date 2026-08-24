@@ -77,7 +77,7 @@ type GameMove = z.infer<typeof GameMoveSchema>;
 /**
  * The canonical game is a synchronous durable Effection program. Symbol
  * assignment is an execution-owned recorded coin flip, user moves are
- * elicitations, and model moves are completed model.sample effects.
+ * elicitations, and model moves are completed model.sample pulls.
  */
 export const playTttTool = createDurableTool("play_ttt")
   .description(`Play a complete game of tic-tac-toe against the user.

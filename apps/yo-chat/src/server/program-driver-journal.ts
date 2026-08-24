@@ -19,7 +19,7 @@ const yoChatProgramSchemaEntries = [
   ...playTttTool.artifacts.catalog,
 ];
 
-/** Creates the yo-chat ProgramRuntime journal adapter over shared Redis or development memory. */
+/** Creates the yo-chat workflow host journal adapter over shared Redis or development memory. */
 export function createYoChatProgramDriverJournalStore(
   keyring: CapabilityKeyring,
   executionStore: ExecutionStore = createYoChatExecutionStore(),
@@ -83,7 +83,7 @@ export function createYoChatExecutionStore(): ExecutionStore {
   };
 }
 
-/** Creates a ProgramRuntime journal store over the bounded Redis Execution Store. */
+/** Creates a workflow host journal store over the bounded Redis Execution Store. */
 export function createRedisProgramDriverJournalStore(
   client: RedisClientType,
   keyring: CapabilityKeyring,

@@ -1,5 +1,5 @@
 import type { ModelSampleRequest } from "@sweatpants/model-sampling";
-import { MODEL_SAMPLE_EFFECT } from "@sweatpants/model-sampling";
+import { MODEL_SAMPLE_CONTRACT } from "@sweatpants/model-sampling";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
@@ -180,7 +180,7 @@ function sampleKey(identity: RemoteSampleIdentity): string {
 /**
  * Host-side execution-local service. It attaches idempotently, relays only
  * origin LSNs absent from the root log, and leaves semantic resolution to
- * ProgramRuntime's authority path.
+ * the workflow host's authority path.
  */
 export function createPlacementModelSamplingService(options: {
   readonly sampler: PlacementModelSampler;
@@ -204,7 +204,7 @@ export function createPlacementModelSamplingService(options: {
         );
       }
       const requestDigest = canonicalSnapshot(request).sha;
-      const contractDigest = effectContractDigest(MODEL_SAMPLE_EFFECT);
+      const contractDigest = effectContractDigest(MODEL_SAMPLE_CONTRACT);
       if (context.effectContractDigest !== contractDigest) {
         throw new CrankError(
           "sampling_placement_unavailable",

@@ -63,7 +63,7 @@ describe("semantic journal normalizer", () => {
         input: {},
         executionEpoch: 1,
         attachmentId: "attachment",
-        audience: "program-runtime",
+        audience: "workflow-host",
       });
       yield* authority.reserve({
         sessionId: "real-session",

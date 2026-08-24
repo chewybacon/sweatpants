@@ -1,7 +1,8 @@
-import { createContext, scoped, type Operation } from "effection";
+import type { Operation } from "effection";
 import { createApi } from "effection/experimental";
+import { defineResolver, type Resolver } from "@sweatpants/foundation";
+
 import { CrankError } from "./errors.ts";
-import { defineResolver, type Resolver, type ResolverImplementation } from "@sweatpants/foundation";
 import type { DurableProgramManifest, PinnedProgram } from "./program-contract.ts";
 import type {
   ProgramAttachment,
@@ -9,17 +10,15 @@ import type {
   ProgramDriver,
   ProgramRestoreRequest,
   ProgramRoute,
-  ProgramRunRequest,
-  ProgramRunResult,
   ProgramShutdownReason,
   ProgramStep,
 } from "./program-driver-contract.ts";
 import {
   ProgramDriverRegistryContext,
   type ProgramDriverRegistry,
-} from "./program-runtime-context.ts";
+} from "./program-driver-context.ts";
 
-/** Canonical ProgramDriver dispatch API. */
+/** Middleware-capable dispatch API for deployment-selected program drivers. */
 export const ProgramPeer = createApi("durable-execution:program-peer", {
   *attach(request: Parameters<ProgramDriver["attach"]>[0]): Operation<ProgramAttachment> {
     const driver = yield* driverFor(driverKind(request.route));
@@ -60,12 +59,6 @@ export interface ProgramRouteResolutionRequest {
 
 /** Deployment-owned child placement policy; authored programs remain location-neutral. */
 export type ProgramRouteResolver = Resolver<ProgramRouteResolutionRequest, ProgramRoute>;
-
-export type ProgramRouteResolverImplementation = ResolverImplementation<
-  ProgramRouteResolutionRequest,
-  ProgramRoute
->;
-
 /** Resolver with the domain fallback of inheriting the parent route. */
 export const ProgramRouteResolver = defineResolver<ProgramRouteResolutionRequest, ProgramRoute>(
   "durable-execution:program-route-resolver",
@@ -74,49 +67,19 @@ export const ProgramRouteResolver = defineResolver<ProgramRouteResolutionRequest
   },
 );
 
-export interface ProgramRuntimeDriver {
-  run(request: ProgramRunRequest): Operation<ProgramRunResult>;
-}
-
-/** Scoped implementation seam; the API identity remains durable-execution-owned. */
-export const ProgramRuntimeDriverContext = createContext<ProgramRuntimeDriver | undefined>(
-  "durable-execution:program-runtime-driver",
-  undefined,
-);
-
-export const ProgramRuntime = createApi("durable-execution:program-runtime", {
-  *run(request: ProgramRunRequest): Operation<ProgramRunResult> {
-    const driver = yield* ProgramRuntimeDriverContext.get();
-    if (!driver) throw new CrankError("unknown_target", "No ProgramRuntime driver is installed");
-    return yield* driver.run(request);
-  },
-});
-
-export function withProgramRuntimeDriver<T>(
-  driver: ProgramRuntimeDriver,
-  body: () => Operation<T>,
-): Operation<T> {
-  return scoped(() => ProgramRuntimeDriverContext.with(driver, body));
-}
-
-export const {
-  attach: attachProgram,
-  restore: restoreProgram,
-  step: stepProgram,
-  shutdown: shutdownProgram,
-  manifest: resolveProgramManifest,
-} = ProgramPeer.operations;
-export const { run: runDurableProgram } = ProgramRuntime.operations;
-
 function* driverFor(kind: string): Operation<ProgramDriver> {
   const registry: ProgramDriverRegistry | undefined = yield* ProgramDriverRegistryContext.get();
   const driver = registry?.get(kind);
-  if (!driver) throw new CrankError("unknown_target", `No program driver for ${kind}`);
+  if (!driver) {
+    throw new CrankError("unknown_target", `No program driver for ${kind}`);
+  }
   return driver;
 }
 
 function driverKind(route: ProgramRoute): string {
-  if (route === null || typeof route !== "object" || Array.isArray(route)) return "program";
+  if (route === null || typeof route !== "object" || Array.isArray(route)) {
+    return "program";
+  }
   const value = route["driverKind"] ?? route["kind"];
   return typeof value === "string" && value ? value : "program";
 }

@@ -11,14 +11,14 @@ import {
 
 import { installYoChatToolRuntime } from "../src/server/tool-runtime-installation.ts";
 
-/** Installs one real AgentCore-hosted tool behind the ProgramRuntime foreign boundary. */
+/** Installs one real AgentCore-hosted tool behind the workflow host foreign boundary. */
 export function* setupAgentCoreProgramDriverToolRuntime(tool: RuntimeTool): Operation<void> {
   const runtimeArn = requiredEnvironment("AGENTCORE_RUNTIME_ARN");
   const region = requiredEnvironment("AWS_REGION");
   const endpointName = process.env["AGENTCORE_ENDPOINT_NAME"] ?? "DEFAULT";
   const samplingProvider: ToolSessionSamplingProvider = {
     *sample(): Operation<never> {
-      throw new Error("AgentCore sampling must be lifted into ProgramRuntime");
+      throw new Error("AgentCore sampling must be lifted into workflow host");
     },
   };
   const runtimeClient = createAgentCoreRemoteToolRuntimeClient(

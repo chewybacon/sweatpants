@@ -1,3 +1,4 @@
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
@@ -5,10 +6,7 @@ import {
   runDurableDriverRecoveryFixture,
 } from "@sweatpants/journal-authority/testing";
 
-import {
-  createLocalDurableProgramDriver,
-  createLocalWorkerDurableProgramDriver,
-} from "../index.ts";
+import { createLocalWorkerDurableProgramDriver } from "../index.ts";
 
 const durableWorkerUrl = new URL(
   "./fixtures/durable-program-worker-bootstrap.mjs",
@@ -21,7 +19,7 @@ describe("local crank-native ProgramDriver integration", () => {
       runDurableDriverRecoveryFixture({
         driverKind: "program",
         route: { driverKind: "program", runtime: "local-package" },
-        createDriver: (registry) => createLocalDurableProgramDriver(registry),
+        createDriver: (registry) => createWorkflowProgramDriver(registry),
       }),
     );
 
@@ -50,7 +48,7 @@ describe("local crank-native ProgramDriver integration", () => {
       runDurableDriverCancellationFixture({
         driverKind: "program",
         route: { driverKind: "program", runtime: "local-package" },
-        createDriver: (registry) => createLocalDurableProgramDriver(registry),
+        createDriver: (registry) => createWorkflowProgramDriver(registry),
       }),
     );
 

@@ -1,9 +1,19 @@
-import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
+import {
+  encodeModelSampleResult,
+  MODEL_SAMPLE_CONTRACT,
+  MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
+  MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR,
+  MODEL_SAMPLE_PULL_SCHEMA_ENTRIES,
+  ModelContextSourceStagerContext,
+} from "@sweatpants/model-sampling";
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createDurableProgramContext } from "@sweatpants/durable-execution";
-import { type ProgramResume, type ProgramStepProposal } from "@sweatpants/durable-execution";
+import {
+  createTestDurableProgramContext,
+  type TestProgramResume,
+  type TestProgramStepProposal,
+} from "@sweatpants/durable-execution/testing";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { assertJson } from "@sweatpants/foundation";
 
@@ -32,8 +42,8 @@ describe("createDurableTool fluent builder", () => {
     const result = await run(() =>
       tool.program(
         { value: "ok" },
-        createDurableProgramContext(() =>
-          (function* (): Operation<ProgramResume> {
+        createTestDurableProgramContext(() =>
+          (function* (): Operation<TestProgramResume> {
             throw new Error("unexpected durable proposal");
           })(),
         ),
@@ -77,8 +87,8 @@ describe("createDurableTool fluent builder", () => {
     const result = await run(() =>
       tool.program(
         { required: "present" },
-        createDurableProgramContext(() =>
-          (function* (): Operation<ProgramResume> {
+        createTestDurableProgramContext(() =>
+          (function* (): Operation<TestProgramResume> {
             throw new Error("unexpected durable proposal");
           })(),
         ),
@@ -196,13 +206,19 @@ describe("createDurableTool fluent builder", () => {
       });
 
     expect(tool.capabilities.sampling).toBe(true);
-    expect(tool.manifest.effects).toEqual({ "model.sample": MODEL_SAMPLE_EFFECT });
-    for (const entry of MODEL_SAMPLE_SCHEMA_ENTRIES) {
+    expect(tool.manifest.effects).toEqual({});
+    expect(tool.manifest.pulls).toEqual({
+      sample: {
+        input: MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
+        output: MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR,
+      },
+    });
+    for (const entry of MODEL_SAMPLE_PULL_SCHEMA_ENTRIES) {
       expect(tool.artifacts.catalog).toContain(entry);
     }
 
-    const proposals: ProgramStepProposal[] = [];
-    const outcomes: ProgramResume[] = [
+    const proposals: TestProgramStepProposal[] = [];
+    const outcomes: TestProgramResume[] = [
       {
         status: "ok",
         value: {
@@ -236,8 +252,8 @@ describe("createDurableTool fluent builder", () => {
       },
     ];
     const result = await run(function* () {
-      const context = createDurableProgramContext(
-        (proposal): Operation<ProgramResume> =>
+      const context = createTestDurableProgramContext(
+        (proposal): Operation<TestProgramResume> =>
           (function* () {
             proposals.push(proposal);
             return outcomes.shift();
@@ -248,9 +264,7 @@ describe("createDurableTool fluent builder", () => {
     expect(proposals[0]).toMatchObject({
       type: "operation",
       descriptor: {
-        kind: "effect",
-        name: "model.sample",
-        version: "1",
+        kind: "sample",
         input: {
           invocation: {
             context: { messages: [{ role: "user", content: "Choose a value" }] },
@@ -262,9 +276,76 @@ describe("createDurableTool fluent builder", () => {
     });
     expect(proposals[1]).toMatchObject({
       type: "operation",
-      descriptor: { name: "model.sample" },
+      descriptor: { kind: "sample" },
     });
     expect(result).toEqual({ value: 7 });
+  });
+
+  it("stages workflow sample context before proposing the raw pull", async () => {
+    const tool = createDurableTool("durable.sample-source")
+      .description("Stage sample context")
+      .identity({ version: "1", digest: "b".repeat(64) })
+      .parameters(z.object({}))
+      .samples()
+      .execute(function* (_input, context) {
+        return (yield* context.sample({ prompt: "Stage me" })).text;
+      });
+    const descriptors: unknown[] = [];
+    const base = createTestDurableProgramContext(() =>
+      (function* (): Operation<TestProgramResume> {
+        throw new Error("effect proposal was not expected");
+      })(),
+    );
+    const context = {
+      ...base,
+      *pull(descriptor: Parameters<NonNullable<typeof base.pull>>[0]) {
+        descriptors.push(descriptor);
+        return encodeModelSampleResult({
+          message: {
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "staged" }],
+            },
+            source: null,
+            usage: null,
+            stopReason: null,
+            responseId: null,
+            errorMessage: null,
+          },
+          output: { type: "message" },
+        });
+      },
+    };
+
+    const result = await run(function* () {
+      return yield* ModelContextSourceStagerContext.with(
+        function* () {
+          return {
+            type: "object" as const,
+            object: { objectId: "context-object" },
+            digest: "context-digest",
+          };
+        },
+        () => tool.program({}, context),
+      );
+    });
+
+    expect(result).toBe("staged");
+    expect(descriptors).toEqual([
+      {
+        kind: "sample",
+        input: expect.objectContaining({
+          invocation: {
+            context: {
+              type: "object",
+              object: { objectId: "context-object" },
+              digest: "context-digest",
+            },
+          },
+        }),
+      },
+    ]);
+    expect(JSON.stringify(descriptors)).not.toContain('"messages"');
   });
 
   it("composes sampling and custom effects in either declaration order", () => {
@@ -287,8 +368,15 @@ describe("createDurableTool fluent builder", () => {
               return null;
             });
     };
-    expect(Object.keys(build(true).manifest.effects).sort()).toEqual(["echo", "model.sample"]);
-    expect(Object.keys(build(false).manifest.effects).sort()).toEqual(["echo", "model.sample"]);
+    expect(Object.keys(build(true).manifest.effects)).toEqual(["echo"]);
+    expect(Object.keys(build(false).manifest.effects)).toEqual(["echo"]);
+    expect(() =>
+      createDurableTool("durable.reserved-sample")
+        .description("Reserved")
+        .identity({ version: "1", digest: "0".repeat(64) })
+        .parameters(z.object({}))
+        .effects({ [MODEL_SAMPLE_CONTRACT.name]: MODEL_SAMPLE_CONTRACT }),
+    ).toThrow(/pull kind/);
   });
 
   it("rejects invalid sampling request modes and retry counts before a proposal", async () => {
@@ -306,8 +394,8 @@ describe("createDurableTool fluent builder", () => {
         } as never);
         return assertJson(result.parsed);
       });
-    const context = createDurableProgramContext(() =>
-      (function* (): Operation<ProgramResume> {
+    const context = createTestDurableProgramContext(() =>
+      (function* (): Operation<TestProgramResume> {
         throw new Error("unexpected proposal");
       })(),
     );
