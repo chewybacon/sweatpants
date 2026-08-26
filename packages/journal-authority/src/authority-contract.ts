@@ -246,6 +246,11 @@ export type AuthorityQuery =
       readonly taskId: string;
     }
   | {
+      readonly type: "task.lifecycle";
+      readonly sessionId: string;
+      readonly taskId: string;
+    }
+  | {
       readonly type: "pull.state";
       readonly sessionId: string;
       readonly taskId: string;
@@ -282,6 +287,9 @@ export interface QueryResultByType {
   readonly "task.input": Json;
   readonly "task.recovery-state": DurableTaskRecoveryState;
   readonly "task.cancellation-state": DurableCancellationState;
+  readonly "task.lifecycle": {
+    readonly status: "active" | "closed" | "cancelled" | "orphaned";
+  };
   readonly "pull.state": DurableOperationState;
   readonly "pull.preparation": ModelContextPreparedFact | null;
   readonly "pull.validate-elicit-response": ValidateElicitResponseResult;

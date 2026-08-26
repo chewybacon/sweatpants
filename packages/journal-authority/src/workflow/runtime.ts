@@ -52,12 +52,16 @@ import {
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import {
   pullKindPolicy,
+  allDescriptorSchema,
   elicitDescriptorSchema,
   foreignDescriptorSchema,
   invokeDescriptorSchema,
+  raceDescriptorSchema,
   sampleDescriptorSchema,
   waitDescriptorSchema,
 } from "../pull-kinds/index.ts";
+import type { ForkGroupTerminal } from "../fork-group.ts";
+import type { DurableForkExpiry } from "@sweatpants/durable-execution";
 import { definePort } from "@sweatpants/foundation/port";
 
 /** A closed marker carried by durable boundaries. Ephemeral markers never leave the attachment. */
@@ -482,6 +486,110 @@ export function invoke(options: {
   );
 }
 
+/** Options for the fork combinators: exact pinned children plus an explicit
+ *  or inherited expiry policy (REQ-030). */
+export interface ForkOptions {
+  readonly children: readonly {
+    readonly id: string;
+    readonly version: string;
+    readonly digest: string;
+    readonly input: Json;
+  }[];
+  readonly expiry: DurableForkExpiry;
+}
+
+/**
+ * The single fork composition boundary (REQ-022): one descriptor, one pull,
+ * one Terminal value back (REQ-026). The supervision pairing is fixed by the
+ * mode, so contradictory policies are unrepresentable (REQ-025).
+ */
+function forkPull<T extends Json>(
+  mode: "all" | "race",
+  options: ForkOptions,
+  project: (terminal: Extract<ForkGroupTerminal, { status: "completed" }>) => T,
+): Durable<T> {
+  const input = {
+    kind: mode,
+    supervision: mode === "all" ? "one_for_all" : "first_success",
+    children: options.children,
+    expiry: options.expiry,
+  } as const;
+  const descriptor =
+    mode === "all"
+      ? requireParsed(parser(allDescriptorSchema), input, "invalid_descriptor", "Invalid all options")
+      : requireParsed(
+          parser(raceDescriptorSchema),
+          input,
+          "invalid_descriptor",
+          "Invalid race options",
+        );
+  const boundary: RuntimeRecordBoundary<Json> = {
+    serializable: {
+      type: "operation",
+      descriptor: descriptor as unknown as DurableOperationDescriptor,
+    },
+    execute() {
+      throw protocol("Fork groups settle through child composition, not attempts");
+    },
+  };
+  return durable(
+    effectFromOperation(`${mode}(${descriptor.children.length})`, boundary.serializable, function* () {
+      const insideAttempt = yield* RecordAttemptGuardContext.get();
+      if (insideAttempt) {
+        throw new CrankError(
+          "nested_durable_operation",
+          "A fork group cannot be scheduled inside another durable operation",
+        );
+      }
+      const runtime = yield* ProgramEffectRuntimeContext.expect();
+      return yield* runtime.perform(boundary);
+    }),
+    (settled) => {
+      // failed/expired/orphaned surface as PullApplicationError via
+      // unwrapOutcome; cancelled throws the program cancellation signal.
+      const terminal = unwrapOutcome<Json>(settled as OperationOutcome) as unknown as
+        ForkGroupTerminal;
+      if (terminal.status !== "completed") {
+        throw new PullApplicationError({
+          code: `fork_group_${terminal.status}`,
+          message: `Fork group ended ${terminal.status}`,
+        });
+      }
+      return project(terminal);
+    },
+  );
+}
+
+/**
+ * Runs every child and gathers successful outcomes in descriptor member order
+ * (REQ-026): the first failure starts one-for-all cancellation and the pull
+ * resolves only after every member is terminal.
+ */
+export function all<T extends Json = Json>(options: ForkOptions): Durable<T[]> {
+  return forkPull("all", options, (terminal) =>
+    terminal.outcomes.map((entry) => {
+      if (entry.outcome.status !== "ok") {
+        throw protocol("A completed all group holds a non-ok biography");
+      }
+      return entry.outcome.value as T;
+    }),
+  );
+}
+
+/**
+ * Races every child: the first successfully committed member wins, losers are
+ * cancelled, and the winner resolves only after every loser is terminal.
+ */
+export function race<T extends Json = Json>(options: ForkOptions): Durable<T> {
+  return forkPull("race", options, (terminal) => {
+    const winner = terminal.outcomes.find((entry) => entry.ordinal === terminal.winnerOrdinal);
+    if (!winner || winner.outcome.status !== "ok") {
+      throw protocol("A completed race group holds no ok winner");
+    }
+    return winner.outcome.value as T;
+  });
+}
+
 /**
  * Model-sampling pull. Journals the canonical wire request verbatim and parks
  * until the owning session resolves it — sampling never executes inline.
@@ -654,10 +762,28 @@ const sequentialOperationDescriptorSchema = z.discriminatedUnion("kind", [
   foreignDescriptorSchema,
 ]);
 
+/**
+ * Descriptors a program may PROPOSE through the pull boundary: every
+ * sequential kind plus the two fork combinators (REQ-022). Attempt
+ * authorization keeps the sequential schema — fork descriptors never
+ * execute inside attempts, they park and compose (TC-110's gate stands).
+ */
+const proposableOperationDescriptorSchema = z.discriminatedUnion("kind", [
+  recordedOperationDescriptorSchema,
+  effectDescriptorSchema,
+  elicitDescriptorSchema,
+  waitDescriptorSchema,
+  invokeDescriptorSchema,
+  sampleDescriptorSchema,
+  foreignDescriptorSchema,
+  allDescriptorSchema,
+  raceDescriptorSchema,
+]);
+
 export { elicitDescriptorSchema, waitDescriptorSchema } from "../pull-kinds/index.ts";
 export { assertEphemeralForeign } from "../pull-kinds/index.ts";
 
-const pullDescriptorParser = parser(sequentialOperationDescriptorSchema);
+const pullDescriptorParser = parser(proposableOperationDescriptorSchema);
 
 /**
  * One generic parked-pull boundary: parses any registered interaction
@@ -792,7 +918,7 @@ function normalizePortableSchema(
 }
 
 function normalizeParsedDescriptor(
-  descriptor: z.infer<typeof sequentialOperationDescriptorSchema>,
+  descriptor: z.infer<typeof proposableOperationDescriptorSchema>,
 ): DurableOperationDescriptor {
   switch (descriptor.kind) {
     case "record":
@@ -836,6 +962,30 @@ function normalizeParsedDescriptor(
           digest: descriptor.child.digest,
           input: asJson(descriptor.child.input),
         },
+      };
+    case "all":
+      return {
+        kind: "all",
+        supervision: descriptor.supervision,
+        children: descriptor.children.map((child) => ({
+          id: child.id,
+          version: child.version,
+          digest: child.digest,
+          input: asJson(child.input),
+        })),
+        expiry: descriptor.expiry,
+      };
+    case "race":
+      return {
+        kind: "race",
+        supervision: descriptor.supervision,
+        children: descriptor.children.map((child) => ({
+          id: child.id,
+          version: child.version,
+          digest: child.digest,
+          input: asJson(child.input),
+        })),
+        expiry: descriptor.expiry,
       };
     case "sample":
       return { kind: "sample", input: asJson(descriptor.input) };

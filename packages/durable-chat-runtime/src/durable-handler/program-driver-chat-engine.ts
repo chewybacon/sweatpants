@@ -786,15 +786,23 @@ function* activateProgramDriverChatEngine(
       terminalEvent,
     );
   } else if (outcome.state === "parked") {
-    const pending = pendingElicit(after, outcome.pullId);
-    if (pending) {
-      const pendingCallId = pendingToolCallId(after, pending);
-      if (pendingCallId) {
-        events.push({ type: EventType.TOOL_CALL_END, toolCallId: pendingCallId });
+    // Bounded frontier (REQ-028): surface every participant-addressable slot
+    // a fork group parked on; a single park degrades to its one pull.
+    const slotPullIds =
+      outcome.slots === undefined ? [outcome.pullId] : outcome.slots.map((slot) => slot.pullId);
+    const pendings = slotPullIds
+      .map((slotPullId) => pendingElicit(after, slotPullId))
+      .filter((pending): pending is NonNullable<typeof pending> => pending !== undefined);
+    if (pendings.length > 0) {
+      for (const pending of pendings) {
+        const pendingCallId = pendingToolCallId(after, pending);
+        if (pendingCallId) {
+          events.push({ type: EventType.TOOL_CALL_END, toolCallId: pendingCallId });
+        }
+        const interrupt = projectInterrupt(after, pending, params);
+        events.push(...publicActivityElicitSnapshots(after, pending, interrupt));
+        events.push(interrupt);
       }
-      const interrupt = projectInterrupt(after, pending, params);
-      events.push(...publicActivityElicitSnapshots(after, pending, interrupt));
-      events.push(interrupt);
     } else {
       events.push({
         type: EventType.RUN_ERROR,
