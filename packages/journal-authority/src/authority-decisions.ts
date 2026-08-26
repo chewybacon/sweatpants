@@ -1,9 +1,24 @@
 import { pullKindPolicy } from "./pull-kinds/index.ts";
 import {
+  assertForkPolicyPairing,
+  beginForkGroupCancellation,
+  drainForkGroup,
+  forceOrphanForkGroupResolution,
+  forkGroupIdFor,
+  forkGroupOutcome,
+  reduceForkMemberTerminal,
+  resolveForkDeadline,
+  type ForkGroupState,
+  type ForkPolicy,
+} from "./fork-group.ts";
+import {
   CrankError,
   DEFAULT_MAX_INLINE_BYTES,
   assertInlineSize,
+  type DurableAllDescriptor,
+  type DurableChildDescriptor,
   type DurableOperationDescriptor,
+  type DurableRaceDescriptor,
   type DurableProgramManifest,
   type ProgramStep,
   type ReplayEmissionEntry,
@@ -59,9 +74,15 @@ import type {
   EmissionReceipt,
   EnsureChildTaskRequest,
   EnsureChildTaskResult,
+  BreachForkGroupRequest,
+  BreachForkGroupResult,
+  ForceOrphanForkGroupRequest,
+  ForceOrphanForkGroupResult,
   IssueRestoreTicketRequest,
   IssueRestoreTicketResult,
   OpenDurableTaskRequest,
+  OpenForkGroupRequest,
+  OpenForkGroupResult,
   PrepareProgramRestoreRequest,
   PreparedProgramRestore,
   RecoverableSession,
@@ -369,6 +390,15 @@ function dispatchCommand<C extends AuthorityCommand>(
     case "execution.ensure-child":
       result = ensureChild(draft, command.request);
       break;
+    case "execution.open-fork-group":
+      result = openForkGroup(draft, command.request);
+      break;
+    case "execution.breach-fork-group":
+      result = breachForkGroup(draft, command.request);
+      break;
+    case "execution.force-orphan-fork-group":
+      result = forceOrphanForkGroup(draft, command.request);
+      break;
     case "execution.reserve-pull":
       result = reservePull(draft, command.request);
       break;
@@ -471,10 +501,24 @@ function openTask(
         invokedBy: { taskId: request.parentTaskId, pullId: request.parentPullId! },
       }
     : { kind: "root" as const };
+  // Expiry caps flow downward (REQ-030): explicit policies resolve against the
+  // ancestor cap; descendants without one inherit it; roots without one carry
+  // no policy, so a later `inherit` fork admission fails closed.
+  let deadlineMs: number | undefined;
+  if (request.expiryPolicy !== undefined) {
+    const ancestor =
+      request.parentTaskId === undefined
+        ? undefined
+        : draft.task(request.sessionId, request.parentTaskId).deadlineMs;
+    deadlineMs = resolveForkDeadline(request.expiryPolicy, ancestor, draft.context.nowMs);
+  } else if (request.parentTaskId !== undefined) {
+    deadlineMs = draft.task(request.sessionId, request.parentTaskId).deadlineMs;
+  }
   const task: DraftTask = {
     taskId: request.taskId,
     turnId: request.turnId,
     origin,
+    ...(deadlineMs === undefined ? {} : { deadlineMs }),
     program: {
       artifact: {
         id: request.manifest.programId,
@@ -626,6 +670,234 @@ function ensureChild(draft: DecisionDraft, request: EnsureChildTaskRequest): Ens
   return { taskId };
 }
 
+type ForkDescriptorPayload =
+  | (DurableAllDescriptor & { readonly children: readonly DurableChildDescriptor[] })
+  | (DurableRaceDescriptor & { readonly children: readonly DurableChildDescriptor[] });
+
+/**
+ * Atomic fork-group admission (REQ-021/023/030). Opens the group row and
+ * every member row in one commit; identical retries return the recorded
+ * opening; a second distinct group on a nonterminal pull is refused.
+ */
+function openForkGroup(draft: DecisionDraft, request: OpenForkGroupRequest): OpenForkGroupResult {
+  const parent = draft.task(request.sessionId, request.parentTaskId);
+  draft.assertActive(parent);
+  const pull = pullById(parent, request.parentPullId);
+  const kind = pull.request.acceptedDescriptor.kind;
+  if (kind !== "all" && kind !== "race") {
+    throw new CrankError("invalid_descriptor", "Parent pull is not a fork descriptor");
+  }
+  const descriptor = pull.request.acceptedDescriptor as unknown as ForkDescriptorPayload;
+  const descriptorDigest = pull.request.proposedDescriptorDigest;
+  const existing = parent.forkGroup;
+  if (existing !== undefined && existing.status !== "resolved") {
+    if (existing.pullId === pull.pullId && existing.descriptorDigest === descriptorDigest) {
+      return {
+        status: "duplicate",
+        groupId: existing.groupId,
+        deadlineMs: existing.deadlineMs,
+        memberTaskIds: existing.members.map((member) => member.taskId),
+      };
+    }
+    throw new CrankError("fork_group_open", "Task already has an open fork group");
+  }
+  const policy: ForkPolicy =
+    kind === "all"
+      ? { mode: "all", supervision: "one_for_all" }
+      : { mode: "race", supervision: "first_success" };
+  assertForkPolicyPairing(policy);
+  if (request.members.length !== descriptor.children.length) {
+    throw new CrankError("nondeterminism_detected", "Fork members differ from the descriptor");
+  }
+  for (const [index, member] of request.members.entries()) {
+    const expected = descriptor.children[index]!;
+    if (
+      expected.id !== member.child.id ||
+      expected.version !== member.child.version ||
+      expected.digest !== member.child.digest ||
+      canonicalSnapshot(expected.input).sha !== canonicalSnapshot(member.child.input).sha
+    ) {
+      throw new CrankError("nondeterminism_detected", "Fork member differs from the descriptor");
+    }
+  }
+  const deadlineMs = resolveForkDeadline(
+    descriptor.expiry,
+    parent.deadlineMs,
+    draft.context.nowMs,
+  );
+  const groupId = forkGroupIdFor(parent.taskId, pull.pullId);
+  const baseOrdinal = [...draft.session(request.sessionId).execution.tasks.values()].filter(
+    (task) => task.origin.kind === "child" && task.origin.invokedBy.taskId === parent.taskId,
+  ).length;
+  const memberTaskIds = request.members.map((_, index) => `${parent.taskId}.${baseOrdinal + index}`);
+  const group: DeepMutable<ForkGroupState> = {
+    groupId,
+    parentTaskId: parent.taskId,
+    pullId: pull.pullId,
+    descriptorDigest,
+    policy,
+    deadlineMs,
+    members: request.members.map((_, index) => ({ ordinal: index, taskId: memberTaskIds[index]! })),
+    status: "open",
+  };
+  for (const [index, member] of request.members.entries()) {
+    openTask(draft, {
+      sessionId: request.sessionId,
+      turnId: request.turnId,
+      taskId: memberTaskIds[index]!,
+      manifest: member.manifest,
+      input: member.child.input,
+      executionEpoch: request.executionEpoch,
+      attachmentId: "unattached-child",
+      audience: request.audience,
+      ...(parent.execution.elicitAudience === undefined
+        ? {}
+        : { elicitAudience: parent.execution.elicitAudience }),
+      ...(parent.execution.catalog === undefined
+        ? {}
+        : { catalog: parent.execution.catalog, catalogDigest: parent.execution.catalogDigest! }),
+      ...(member.route === undefined ? {} : { route: member.route }),
+      parentTaskId: parent.taskId,
+      parentPullId: pull.pullId,
+      expiryPolicy: { kind: "at", atMs: deadlineMs },
+    });
+  }
+  parent.forkGroup = group;
+  draft.append(request.sessionId, parent.execution.epoch, {
+    type: "ForkGroupOpened",
+    taskId: parent.taskId,
+    pullId: pull.pullId,
+    groupId,
+    policy,
+    deadlineMs,
+    memberTaskIds,
+    descriptorDigest,
+  });
+  draft.session(request.sessionId).control.runnable = true;
+  return { status: "opened", groupId, deadlineMs, memberTaskIds };
+}
+
+/**
+ * Clock-driven expiry breach (REQ-031): commits an auditable breach record,
+ * starts leaves-first member cancellation, and resolves `expired` only once
+ * every member is terminal. Loses to an earlier resolution with a typed
+ * `fork_group_terminal` rejection (REQ-032); a breach committed first makes
+ * later member successes member history only.
+ */
+function breachForkGroup(
+  draft: DecisionDraft,
+  request: BreachForkGroupRequest,
+): BreachForkGroupResult {
+  const parent = draft.task(request.sessionId, request.taskId);
+  const group = parent.forkGroup;
+  if (group === undefined || group.groupId !== request.groupId) {
+    throw new CrankError("invalid_journal", "Unknown fork group");
+  }
+  if (group.status === "resolved") {
+    throw new CrankError("fork_group_terminal", "Fork group already resolved");
+  }
+  if (draft.context.nowMs < group.deadlineMs) {
+    throw new CrankError("fork_group_unexpired", "Fork group deadline has not elapsed");
+  }
+  let cancelMembers: readonly string[] = [];
+  if (group.breachedAtMs === undefined) {
+    group.breachedAtMs = draft.context.nowMs;
+    draft.append(request.sessionId, parent.execution.epoch, {
+      type: "ForkGroupBreached",
+      taskId: parent.taskId,
+      groupId: group.groupId,
+      deadlineMs: group.deadlineMs,
+      breachedAtMs: draft.context.nowMs,
+    });
+    cancelMembers = beginForkGroupCancellation(group, "expiry");
+    for (const memberTaskId of cancelMembers) {
+      requestCancellation(draft, request.sessionId, memberTaskId, "fork_group_expired");
+    }
+  }
+  const resolution = drainForkGroup(group);
+  if (resolution !== undefined) {
+    draft.append(request.sessionId, parent.execution.epoch, {
+      type: "ForkGroupResolved",
+      taskId: parent.taskId,
+      pullId: group.pullId,
+      groupId: group.groupId,
+      terminal: resolution,
+      terminalDigest: canonicalSnapshot(resolution).sha,
+    });
+    settlePullWithOutcome(
+      draft,
+      request.sessionId,
+      parent,
+      pullById(parent, group.pullId),
+      parent.execution.epoch,
+      forkGroupOutcome(resolution),
+    );
+  }
+  return {
+    groupId: group.groupId,
+    cancelMembers,
+    ...(resolution === undefined ? {} : { resolution }),
+  };
+}
+
+/**
+ * Separately authorized force-orphan of a stuck group (REQ-034). Honest:
+ * records `orphaned` and never fabricates another ending; nonterminal
+ * members are orphaned in place; later member messages stay opaque evidence.
+ */
+function forceOrphanForkGroup(
+  draft: DecisionDraft,
+  request: ForceOrphanForkGroupRequest,
+): ForceOrphanForkGroupResult {
+  const parent = draft.task(request.sessionId, request.taskId);
+  const group = parent.forkGroup;
+  if (group === undefined || group.groupId !== request.groupId) {
+    throw new CrankError("invalid_journal", "Unknown fork group");
+  }
+  if (group.status !== "cancelling") {
+    throw new CrankError(
+      group.status === "resolved" ? "fork_group_terminal" : "fork_group_not_cancelling",
+      "Force-orphan requires a stuck cancelling fork group",
+    );
+  }
+  const resolution = forceOrphanForkGroupResolution(group, request.reason);
+  for (const member of group.members) {
+    if (member.terminal !== undefined) continue;
+    const memberTask = draft.task(request.sessionId, member.taskId);
+    if (memberTask.lifecycle.status !== "active") continue;
+    memberTask.lifecycle = { status: "orphaned", reason: "cleanup_stuck" };
+    draft.append(request.sessionId, memberTask.execution.epoch, {
+      type: "TaskOrphaned",
+      taskId: member.taskId,
+      reason: "cleanup_stuck",
+    });
+  }
+  draft.append(request.sessionId, parent.execution.epoch, {
+    type: "ForkGroupOrphaned",
+    taskId: parent.taskId,
+    pullId: group.pullId,
+    groupId: group.groupId,
+    reason: request.reason,
+  });
+  draft.append(request.sessionId, parent.execution.epoch, {
+    type: "ForkGroupResolved",
+    taskId: parent.taskId,
+    pullId: group.pullId,
+    groupId: group.groupId,
+    terminal: resolution,
+    terminalDigest: canonicalSnapshot(resolution).sha,
+  });
+  settlePullWithOutcome(
+    draft,
+    request.sessionId,
+    parent,
+    pullById(parent, group.pullId),
+    parent.execution.epoch,
+    forkGroupOutcome(resolution),
+  );
+  return { resolution };
+}
+
 function reservePull(
   draft: DecisionDraft,
   request: ReserveOperationRequest,
@@ -681,6 +953,9 @@ function reservePull(
     request.actionIndex >= task.lifecycle.cancellation.frontier.actionIndex
   )
     throw new CrankError("cancellation_blocked");
+  // Ancestor freeze (REQ-021): no new work while a fork group is nonterminal.
+  if (task.forkGroup !== undefined && task.forkGroup.status !== "resolved")
+    throw new CrankError("fork_group_open", "Task is frozen by an open fork group");
   if (request.actionIndex !== task.nextActionIndex || request.pullIndex !== task.nextPullIndex) {
     throw new CrankError("nondeterminism_detected", "Task-local action or pull cursor mismatch");
   }
@@ -2024,13 +2299,29 @@ function settleParentFromChild(
   const pull = pullById(parent, task.origin.invokedBy.pullId);
   if (!["invoke", "all", "race", "spawn", "join"].includes(pull.request.acceptedDescriptor.kind))
     throw new CrankError("invalid_journal");
+  const group = parent.forkGroup;
+  if (group !== undefined && group.pullId === pull.pullId) {
+    settleForkGroupMember(draft, sessionId, parent, pull, group, task, outcome);
+    return;
+  }
+  settlePullWithOutcome(draft, sessionId, parent, pull, task.execution.epoch, outcome);
+}
+
+function settlePullWithOutcome(
+  draft: DecisionDraft,
+  sessionId: string,
+  parent: DraftTask,
+  pull: DraftPull,
+  ownerEpoch: number,
+  outcome: OperationOutcome,
+): void {
   const digest = canonicalSnapshot(outcome).sha;
   if (pull.resolution.status === "settled") {
     if (pull.resolution.settlement.outcomeDigest !== digest)
       throw new CrankError("nondeterminism_detected");
     return;
   }
-  const offset = draft.append(sessionId, task.execution.epoch, {
+  const offset = draft.append(sessionId, ownerEpoch, {
     type: "PullResolved",
     taskId: parent.taskId,
     pullId: pull.pullId,
@@ -2055,6 +2346,62 @@ function settleParentFromChild(
   };
   parent.nextActionIndex = Math.max(parent.nextActionIndex, pullActionIndex(parent, pull) + 1);
   draft.session(sessionId).control.runnable = true;
+}
+
+/**
+ * Folds a member terminal into the fork-group algebra (REQ-026). The parent
+ * fork slot resolves exactly once, to the closed Terminal value; member
+ * biographies cross only inside it. Winner selection, policy-driven member
+ * cancellation, and resolution evidence are journal records, in commit
+ * order (REQ-032).
+ */
+function settleForkGroupMember(
+  draft: DecisionDraft,
+  sessionId: string,
+  parent: DraftTask,
+  pull: DraftPull,
+  group: DeepMutable<ForkGroupState>,
+  member: DraftTask,
+  outcome: OperationOutcome,
+): void {
+  const reduction = reduceForkMemberTerminal(group, member.taskId, outcome);
+  if (reduction.winnerSelected !== undefined) {
+    const lifecycle = member.lifecycle;
+    const closeOffset =
+      lifecycle.status === "closed" || lifecycle.status === "cancelled"
+        ? lifecycle.receipt.offset
+        : "0";
+    draft.append(sessionId, member.execution.epoch, {
+      type: "RaceWinnerSelected",
+      taskId: parent.taskId,
+      pullId: pull.pullId,
+      winnerTaskId: member.taskId,
+      closeOffset,
+      outcomeDigest: reduction.winnerSelected.outcomeDigest,
+    });
+  }
+  for (const memberTaskId of reduction.cancelMembers) {
+    requestCancellation(draft, sessionId, memberTaskId, "fork_group_cancelled");
+  }
+  if (reduction.resolution !== undefined) {
+    const terminal = reduction.resolution;
+    draft.append(sessionId, parent.execution.epoch, {
+      type: "ForkGroupResolved",
+      taskId: parent.taskId,
+      pullId: pull.pullId,
+      groupId: group.groupId,
+      terminal,
+      terminalDigest: canonicalSnapshot(terminal).sha,
+    });
+    settlePullWithOutcome(
+      draft,
+      sessionId,
+      parent,
+      pull,
+      parent.execution.epoch,
+      forkGroupOutcome(terminal),
+    );
+  }
 }
 
 function cancelNonSettleablePull(

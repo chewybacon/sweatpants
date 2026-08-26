@@ -5,7 +5,15 @@ import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { z } from "zod";
 
 /** Pull kinds whose snapshot variants come straight from the registry. */
-const PULL_KIND_SNAPSHOT_KINDS = new Set(["elicit", "sample", "foreign", "invoke", "spawn"]);
+const PULL_KIND_SNAPSHOT_KINDS = new Set([
+  "elicit",
+  "sample",
+  "foreign",
+  "invoke",
+  "spawn",
+  "all",
+  "race",
+]);
 
 export const DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 const MAX_SNAPSHOT_DEPTH = 128;
@@ -152,6 +160,41 @@ const operationOutcomeSchema = z.union([
     }),
   }),
   z.strictObject({ status: z.literal("cancelled"), partial: jsonValueSchema.optional() }),
+]);
+const forkPolicySchema = z.discriminatedUnion("mode", [
+  z.strictObject({ mode: z.literal("single"), supervision: z.literal("single") }),
+  z.strictObject({ mode: z.literal("all"), supervision: z.literal("one_for_all") }),
+  z.strictObject({ mode: z.literal("race"), supervision: z.literal("first_success") }),
+]);
+const forkMemberBiographySchema = z.strictObject({
+  ordinal: nonNegativeIntegerSchema,
+  taskId: z.string(),
+  outcome: operationOutcomeSchema,
+});
+const forkGroupTerminalSchema = z.discriminatedUnion("status", [
+  z.strictObject({
+    status: z.literal("completed"),
+    winnerOrdinal: nonNegativeIntegerSchema.optional(),
+    outcomes: z.array(forkMemberBiographySchema),
+  }),
+  z.strictObject({
+    status: z.literal("failed"),
+    error: z.strictObject({
+      code: z.string(),
+      message: z.string(),
+      details: jsonValueSchema.optional(),
+    }),
+    outcomes: z.array(forkMemberBiographySchema),
+  }),
+  z.strictObject({
+    status: z.literal("cancelled"),
+    outcomes: z.array(forkMemberBiographySchema),
+  }),
+  z.strictObject({
+    status: z.literal("expired"),
+    outcomes: z.array(forkMemberBiographySchema),
+  }),
+  z.strictObject({ status: z.literal("orphaned"), reason: z.string() }),
 ]);
 const resolutionReceiptSchema = z.strictObject({
   sessionId: z.string(),
@@ -404,6 +447,38 @@ const semanticPayloadSchema = z.union([
     taskId: z.string(),
     outcome: operationOutcomeSchema,
   }),
+  z.strictObject({
+    type: z.literal("ForkGroupOpened"),
+    taskId: z.string(),
+    pullId: z.string(),
+    groupId: z.string(),
+    policy: forkPolicySchema,
+    deadlineMs: z.number(),
+    memberTaskIds: z.array(z.string()).max(MAX_CHILDREN_PER_OPERATION),
+    descriptorDigest: z.string(),
+  }),
+  z.strictObject({
+    type: z.literal("ForkGroupBreached"),
+    taskId: z.string(),
+    groupId: z.string(),
+    deadlineMs: z.number(),
+    breachedAtMs: z.number(),
+  }),
+  z.strictObject({
+    type: z.literal("ForkGroupResolved"),
+    taskId: z.string(),
+    pullId: z.string(),
+    groupId: z.string(),
+    terminal: forkGroupTerminalSchema,
+    terminalDigest: z.string(),
+  }),
+  z.strictObject({
+    type: z.literal("ForkGroupOrphaned"),
+    taskId: z.string(),
+    pullId: z.string(),
+    groupId: z.string(),
+    reason: z.string(),
+  }),
 ]);
 const semanticRecordSchema = z.strictObject({
   offset: z.string(),
@@ -525,10 +600,35 @@ const taskLifecycleSchema = z.discriminatedUnion("status", [
   }),
   z.strictObject({ status: z.literal("orphaned"), reason: orphanReasonSchema }),
 ]);
+const forkGroupMemberSchema = z.strictObject({
+  ordinal: nonNegativeIntegerSchema,
+  taskId: z.string(),
+  terminal: z
+    .strictObject({ outcome: operationOutcomeSchema, outcomeDigest: z.string() })
+    .optional(),
+});
+const forkGroupStateSchema = z.strictObject({
+  groupId: z.string(),
+  parentTaskId: z.string(),
+  pullId: z.string(),
+  descriptorDigest: z.string(),
+  policy: forkPolicySchema,
+  deadlineMs: z.number(),
+  members: z.array(forkGroupMemberSchema).max(MAX_CHILDREN_PER_OPERATION),
+  status: z.enum(["open", "cancelling", "resolved"]),
+  cancellingCause: z.enum(["failure", "race_winner", "expiry", "cancellation"]).optional(),
+  breachedAtMs: z.number().optional(),
+  winner: z
+    .strictObject({ ordinal: nonNegativeIntegerSchema, outcomeDigest: z.string() })
+    .optional(),
+  resolution: forkGroupTerminalSchema.optional(),
+});
 const taskSchema = z.strictObject({
   taskId: z.string(),
   turnId: z.string(),
   origin: taskOriginSchema,
+  deadlineMs: z.number().optional(),
+  forkGroup: forkGroupStateSchema.optional(),
   program: z.strictObject({
     artifact: z.strictObject({ id: z.string(), version: z.string(), digest: digestSchema }),
     manifest: durableProgramManifestSchema,

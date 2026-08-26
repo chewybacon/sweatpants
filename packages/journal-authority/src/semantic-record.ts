@@ -3,6 +3,7 @@ import type { DurableOperationDescriptor } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 
 import type { AssistantPartialAcceptedFact, ModelContextPreparedFact } from "./authority-types.ts";
+import type { ForkGroupTerminal, ForkPolicy } from "./fork-group.ts";
 
 /** Closed attempt-state algebra persisted by the authority. */
 export type DurableAttemptState = "started" | "detached" | "completed" | "revoked" | "superseded";
@@ -102,6 +103,38 @@ export type DurableSemanticRecord = {
         winnerTaskId: string;
         closeOffset: string;
         outcomeDigest: string;
+      }
+    | {
+        type: "ForkGroupOpened";
+        taskId: string;
+        pullId: string;
+        groupId: string;
+        policy: ForkPolicy;
+        deadlineMs: number;
+        memberTaskIds: readonly string[];
+        descriptorDigest: string;
+      }
+    | {
+        type: "ForkGroupBreached";
+        taskId: string;
+        groupId: string;
+        deadlineMs: number;
+        breachedAtMs: number;
+      }
+    | {
+        type: "ForkGroupResolved";
+        taskId: string;
+        pullId: string;
+        groupId: string;
+        terminal: ForkGroupTerminal;
+        terminalDigest: string;
+      }
+    | {
+        type: "ForkGroupOrphaned";
+        taskId: string;
+        pullId: string;
+        groupId: string;
+        reason: string;
       }
     | {
         type: "CancellationRequested";

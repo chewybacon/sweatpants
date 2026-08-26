@@ -309,7 +309,14 @@ function validateEntryEvidence(
         throw new AuthorityCompositionError("Resolution proposal differs from replacement state");
       return;
     case "RaceWinnerSelected":
-      if (!pull || pull.kind !== "pull" || pull.pull.resolution.status !== "settled") {
+      // Winner selection commits while the group is cancelling; the parent
+      // pull settles only when the group resolves after losers drain.
+      if (
+        !pull ||
+        pull.kind !== "pull" ||
+        task.forkGroup?.winner === undefined ||
+        task.forkGroup.members[task.forkGroup.winner.ordinal]?.taskId !== payload.winnerTaskId
+      ) {
         throw new AuthorityCompositionError("Race winner proposal differs from replacement state");
       }
       return;
@@ -342,6 +349,28 @@ function validateEntryEvidence(
         canonicalSnapshot(task.lifecycle.outcome).sha !== canonicalSnapshot(payload.outcome).sha
       )
         throw new AuthorityCompositionError("Closure proposal differs from replacement state");
+      return;
+    case "ForkGroupOpened":
+      if (
+        task.forkGroup?.groupId !== payload.groupId ||
+        task.forkGroup.members.length !== payload.memberTaskIds.length
+      )
+        throw new AuthorityCompositionError("Fork-open proposal differs from replacement state");
+      return;
+    case "ForkGroupBreached":
+      if (task.forkGroup?.breachedAtMs !== payload.breachedAtMs)
+        throw new AuthorityCompositionError("Fork-breach proposal differs from replacement state");
+      return;
+    case "ForkGroupResolved":
+      if (
+        task.forkGroup?.resolution === undefined ||
+        canonicalSnapshot(task.forkGroup.resolution).sha !== payload.terminalDigest
+      )
+        throw new AuthorityCompositionError("Fork-resolve proposal differs from replacement state");
+      return;
+    case "ForkGroupOrphaned":
+      if (task.forkGroup?.resolution?.status !== "orphaned")
+        throw new AuthorityCompositionError("Fork-orphan proposal differs from replacement state");
       return;
     default:
       return assertNever(payload);

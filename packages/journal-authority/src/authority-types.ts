@@ -23,6 +23,7 @@ import type {
   ReplayEntry,
   ResolutionReceipt,
 } from "@sweatpants/durable-execution";
+import type { ForkExpiryPolicy, ForkGroupTerminal } from "./fork-group.ts";
 
 /** Private, authority-time activation ownership state. */
 export interface ActivationLeaseState {
@@ -273,6 +274,12 @@ export interface OpenDurableTaskRequest {
   readonly route?: ProgramRoute;
   readonly parentTaskId?: string;
   readonly parentPullId?: string;
+  /**
+   * Session-root expiry policy source (REQ-030). Roots may declare `at` or
+   * `after`; descendants resolve fork deadlines against the inherited cap.
+   * Absent means no policy, which makes `inherit` fork admission fail closed.
+   */
+  readonly expiryPolicy?: ForkExpiryPolicy;
 }
 
 /** Program-authorized request to reserve an ordered operation before dispatch. */
@@ -411,6 +418,65 @@ export interface EnsureChildTaskRequest {
 export interface EnsureChildTaskResult {
   taskId: string;
   outcome?: OperationOutcome;
+}
+
+/** One fork-group member opening request (REQ-024: members run as roots). */
+export interface ForkGroupMemberRequest {
+  readonly child: DurableChildDescriptor;
+  readonly manifest: DurableProgramManifest;
+  readonly route?: ProgramRoute;
+}
+
+/**
+ * Atomic, idempotent fork-group admission (REQ-021, REQ-023, REQ-030).
+ * Opens the group row and every member row in one commit; a retry with the
+ * same descriptor digest returns the recorded opening. Policy and expiry
+ * derive from the accepted fork descriptor — the descriptor is the only
+ * source of truth, so no request field can drift from it.
+ */
+export interface OpenForkGroupRequest {
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly parentTaskId: string;
+  readonly parentPullId: string;
+  readonly members: readonly ForkGroupMemberRequest[];
+  readonly executionEpoch: number;
+  readonly audience: string;
+}
+
+export interface OpenForkGroupResult {
+  readonly status: "opened" | "duplicate";
+  readonly groupId: string;
+  readonly deadlineMs: number;
+  readonly memberTaskIds: readonly string[];
+}
+
+/** Clock-driven expiry breach (REQ-031). Commits the breach record, starts
+ *  leaves-first member cancellation, and resolves the group only once every
+ *  member is terminal. Loses to an earlier group resolution with a typed
+ *  `fork_group_terminal` rejection (REQ-032). */
+export interface BreachForkGroupRequest {
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly groupId: string;
+}
+
+export interface BreachForkGroupResult {
+  readonly groupId: string;
+  readonly cancelMembers: readonly string[];
+  readonly resolution?: ForkGroupTerminal;
+}
+
+/** Separately authorized force-orphan of a stuck group (REQ-034). */
+export interface ForceOrphanForkGroupRequest {
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly groupId: string;
+  readonly reason: string;
+}
+
+export interface ForceOrphanForkGroupResult {
+  readonly resolution: ForkGroupTerminal;
 }
 
 export interface DurableTaskExecutionState {

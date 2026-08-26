@@ -36,6 +36,12 @@ import type {
   EmissionReceipt,
   EnsureChildTaskRequest,
   EnsureChildTaskResult,
+  BreachForkGroupRequest,
+  BreachForkGroupResult,
+  ForceOrphanForkGroupRequest,
+  ForceOrphanForkGroupResult,
+  OpenForkGroupRequest,
+  OpenForkGroupResult,
   IssueRestoreTicketRequest,
   IssueRestoreTicketResult,
   ModelContextPreparedFact,
@@ -56,6 +62,7 @@ import type {
   ValidateElicitResponseResult,
 } from "../authority-types.ts";
 import { normalizeEmissionPolicy } from "../authority-support.ts";
+import { signCapability } from "../capabilities.ts";
 export type AuthorityScenarioDriver = ReturnType<typeof createAuthorityScenarioDriver>;
 
 export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityOptions) {
@@ -130,6 +137,14 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
     ): Operation<{ programCapability: string }>;
     openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }>;
     ensureChildTask(request: EnsureChildTaskRequest): Operation<EnsureChildTaskResult>;
+    openForkGroup(request: OpenForkGroupRequest): Operation<OpenForkGroupResult>;
+    breachForkGroup(request: BreachForkGroupRequest): Operation<BreachForkGroupResult>;
+    forceOrphanForkGroup(
+      request: ForceOrphanForkGroupRequest,
+    ): Operation<ForceOrphanForkGroupResult>;
+    /** Test-side mint mirroring the kernel's program-capability claims, so
+     *  scenarios can drive member tasks opened inside group admission. */
+    programCapability(sessionId: string, taskId: string): string;
     replaceAttachment(
       sessionId: string,
       taskId: string,
@@ -262,6 +277,38 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
     },
     *ensureChildTask(request) {
       return yield* direct({ type: "execution.ensure-child", request });
+    },
+    *openForkGroup(request) {
+      return yield* direct({ type: "execution.open-fork-group", request });
+    },
+    *breachForkGroup(request) {
+      return yield* direct({ type: "execution.breach-fork-group", request });
+    },
+    *forceOrphanForkGroup(request) {
+      return yield* direct({ type: "execution.force-orphan-fork-group", request });
+    },
+    programCapability(sessionId, taskId) {
+      const task = latest.sessions
+        .find(([id]) => id === sessionId)?.[1]
+        .execution.tasks.find((candidate) => candidate.taskId === taskId);
+      if (!task) throw new Error(`Unknown task ${taskId}`);
+      return signCapability(
+        {
+          journalId: options.journalId,
+          journalIncarnation: options.journalIncarnation ?? "1",
+          sessionId,
+          taskId,
+          programId: task.program.artifact.id,
+          programVersion: task.program.artifact.version,
+          programDigest: task.program.artifact.digest,
+          attachmentId: task.execution.attachmentId,
+          executionEpoch: task.execution.epoch,
+          audience: task.execution.audience,
+          permissions: ["propose", "complete"],
+          nonce: `scenario-driver:${taskId}:${capabilities.size}`,
+        },
+        options.keyring,
+      );
     },
     *replaceAttachment(sessionId, taskId, attachmentId, audience) {
       return yield* direct({

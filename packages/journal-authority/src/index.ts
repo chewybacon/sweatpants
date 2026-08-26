@@ -8,6 +8,7 @@ export * from "./fact-store.ts";
 export * from "./metrics-middleware.ts";
 export * from "./turn-authority.ts";
 export * from "./capabilities.ts";
+export * from "./fork-group.ts";
 export type {
   AcceptAssistantPartialRequest,
   AcceptAssistantPartialResult,

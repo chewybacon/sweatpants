@@ -228,6 +228,10 @@ export function projectExecutionForest(records: readonly DurableSemanticRecord[]
       case "CancellationRequested":
       case "CancellationPartialDiscarded":
       case "CleanupSkipped":
+      case "ForkGroupOpened":
+      case "ForkGroupBreached":
+      case "ForkGroupResolved":
+      case "ForkGroupOrphaned":
         break;
       default:
         assertNever(payload);
