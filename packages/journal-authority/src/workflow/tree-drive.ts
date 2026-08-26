@@ -5,7 +5,7 @@ import {
   type DurableProgramManifest,
   type PinnedProgram,
   type ProgramRoute,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 
 import type { JournalAuthorityContract } from "../authority-contract.ts";
@@ -22,7 +22,7 @@ export interface WorkflowTreeActivationRequest {
 
 export interface WorkflowTreeHost {
   /** Runs one task until it parks or becomes terminal. */
-  activate(request: WorkflowTreeActivationRequest): Operation<ProgramRunResult>;
+  activate(request: WorkflowTreeActivationRequest): Operation<AdvancementResult>;
   /** Resolves a pinned child manifest without weakening exact identity. */
   manifest(program: PinnedProgram): Operation<DurableProgramManifest>;
   /** Deployment-owned child placement policy. */
@@ -33,7 +33,7 @@ export interface WorkflowTreeHost {
    * park to the caller (for example, an elicitation awaiting a participant).
    */
   settle(
-    parked: Extract<ProgramRunResult, { state: "parked" }>,
+    parked: Extract<AdvancementResult, { state: "parked" }>,
     attach: AttachProgramRequest,
   ): Operation<boolean>;
 }
@@ -50,7 +50,7 @@ export interface DriveWorkflowTreeRequest extends WorkflowTreeActivationRequest 
  * child allocation and parent settlement, while this coordinator recursively
  * activates the exact child selected by the accepted invoke descriptor.
  */
-export function* driveWorkflowTree(request: DriveWorkflowTreeRequest): Operation<ProgramRunResult> {
+export function* driveWorkflowTree(request: DriveWorkflowTreeRequest): Operation<AdvancementResult> {
   return yield* driveNode(
     request.authority,
     request.host,
@@ -64,7 +64,7 @@ function* driveNode(
   host: WorkflowTreeHost,
   attach: AttachProgramRequest,
   initialProgramCapability?: string,
-): Operation<ProgramRunResult> {
+): Operation<AdvancementResult> {
   let capability = initialProgramCapability;
   for (;;) {
     const outcome = yield* host.activate({
@@ -173,7 +173,7 @@ function* driveForkGroup(
   attach: AttachProgramRequest,
   pullId: string,
   descriptor: Extract<DurableOperationDescriptor, { kind: "all" | "race" }>,
-): Operation<Extract<ProgramRunResult, { state: "parked" }> | undefined> {
+): Operation<Extract<AdvancementResult, { state: "parked" }> | undefined> {
   const members = [] as {
     child: (typeof descriptor.children)[number];
     route: ProgramRoute;

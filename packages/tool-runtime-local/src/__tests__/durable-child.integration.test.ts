@@ -29,7 +29,7 @@ import {
   type AttachProgramRequest,
   type ProgramDriver,
   type ProgramElicitResult,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { anyGuard, createSchemaFixture, nullGuard } from "@sweatpants/journal-authority/testing";
@@ -540,7 +540,7 @@ function runProgram(
   authority: ReturnType<typeof createAuthorityScenarioDriver>,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
-): Operation<ProgramRunResult> {
+): Operation<AdvancementResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
     return yield* withProgramDriverTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {

@@ -25,7 +25,7 @@ import {
   type AttachProgramRequest,
   type ForeignToolRequest,
   type ProgramElicitResult,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import {
   FOREIGN_TOOL_ADAPTER_MANIFEST,
@@ -316,7 +316,7 @@ function runProgram(
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
   sample: Parameters<typeof withModelSampleTestBoundary>[0],
-): Operation<ProgramRunResult> {
+): Operation<AdvancementResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
     return yield* withProgramDriverTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {

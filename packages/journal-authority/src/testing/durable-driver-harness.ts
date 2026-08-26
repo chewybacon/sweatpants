@@ -23,7 +23,7 @@ import {
   type ProgramDriver,
   type ProgramElicitResult,
   type ProgramRoute,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -321,7 +321,7 @@ export function* runDurableDriverRecoveryFixture(
   });
 
   let activationCount = 0;
-  const activate = function* (): Operation<ProgramRunResult> {
+  const activate = function* (): Operation<AdvancementResult> {
     activationCount += 1;
     const ownerId = `fixture-owner-${activationCount}`;
     const claim = options.useActivationLease

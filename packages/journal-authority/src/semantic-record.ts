@@ -31,6 +31,23 @@ export type DurableSemanticRecord = {
         elicitAudience?: string;
       }
     | {
+        type: "AdvancementBound";
+        taskId: string;
+        ownerId: string;
+        leaseEpoch: number;
+        expiresAtMs: number;
+        attachmentId: string;
+        strandHeadDigest: string;
+        forkGroupRevision: number;
+        frontierDigest: string;
+      }
+    | {
+        type: "AdvancementReleased";
+        taskId: string;
+        leaseEpoch: number;
+        reason: "parked" | "settled" | "terminal" | "failed" | "scope_exit";
+      }
+    | {
         type: "PullRequested";
         taskId: string;
         turnId: string;

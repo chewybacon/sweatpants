@@ -359,8 +359,10 @@ describe("semantic emission policy", () => {
       });
       expect(selected.readJournal("session").map((record) => record.payload.type)).toEqual([
         "TaskOpened",
+        "AdvancementBound",
         "DurableEmission",
         "TaskClosed",
+        "AdvancementReleased",
       ]);
     });
   });

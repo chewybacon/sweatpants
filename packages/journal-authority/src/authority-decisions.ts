@@ -1,5 +1,11 @@
 import { pullKindPolicy } from "./pull-kinds/index.ts";
 import {
+  currentForkGroupRevision,
+  planForestReplay,
+  parkedHead,
+  strandHead,
+} from "./forest-replay.ts";
+import {
   assertForkPolicyPairing,
   beginForkGroupCancellation,
   drainForkGroup,
@@ -22,6 +28,7 @@ import {
   type DurableOperationDescriptor,
   type DurableRaceDescriptor,
   type DurableProgramManifest,
+  type Mandate,
   type ProgramStep,
   type ReplayEmissionEntry,
   type ReplayEntry,
@@ -60,6 +67,8 @@ import type {
   AppendEmissionRequest,
   AuthorizeModelDispatchRequest,
   AuthorizeModelDispatchResult,
+  BindMandateRequest,
+  BindMandateResult,
   BindRestoreFrontierRequest,
   BindRestoreFrontierResult,
   CancellationAcknowledgement,
@@ -82,6 +91,10 @@ import type {
   ForceOrphanForkGroupResult,
   IssueRestoreTicketRequest,
   IssueRestoreTicketResult,
+  LiveReservationResult,
+  MandateCompleteRequest,
+  MandateEmissionRequest,
+  MandateReserveRequest,
   OpenDurableTaskRequest,
   OpenForkGroupRequest,
   OpenForkGroupResult,
@@ -96,6 +109,8 @@ import type {
   RecoverableSession,
   ReleaseActivationRequest,
   ReleaseActivationResult,
+  ReleaseMandateRequest,
+  ReleaseMandateResult,
   RenewActivationRequest,
   RenewActivationResult,
   ReserveOperationRequest,
@@ -190,6 +205,9 @@ export function queryAuthorityState<Q extends AuthorityQuery>(
       result = sortedStrings(
         [...state.sessions].filter(([, session]) => session.control.runnable).map(([id]) => id),
       );
+      break;
+    case "forest.replay-plan":
+      result = planForestReplay(state, query.sessionId, context.journalHeadDigest, context.nowMs);
       break;
     case "session.root-task-count":
       result = rootTaskCount(state, query.sessionId);
@@ -310,7 +328,7 @@ class DecisionDraft {
     return stableTupleHash(["nonce", this.context.journalIdentity.id, this.state.nextNonce]);
   }
 
-  programCapability(task: DraftTask): string {
+  programCapability(task: DraftTask, deterministicNonce?: string): string {
     return signCapability(
       {
         journalId: this.context.journalIdentity.id,
@@ -324,7 +342,7 @@ class DecisionDraft {
         executionEpoch: task.execution.epoch,
         audience: task.execution.audience,
         permissions: ["propose", "complete"],
-        nonce: this.nonce(),
+        nonce: deterministicNonce ?? this.nonce(),
       },
       this.context.keyring,
     );
@@ -397,6 +415,12 @@ function dispatchCommand<C extends AuthorityCommand>(
     case "execution.bind-attachment":
       result = bindAttachment(draft, command.request);
       break;
+    case "execution.bind-mandate":
+      result = bindMandate(draft, command.request);
+      break;
+    case "execution.release-mandate":
+      result = releaseMandate(draft, command.request);
+      break;
     case "execution.replace-attachment":
       result = replaceAttachment(draft, command.request);
       break;
@@ -423,6 +447,15 @@ function dispatchCommand<C extends AuthorityCommand>(
       break;
     case "execution.reserve-pull":
       result = reservePull(draft, command.request);
+      break;
+    case "execution.mandate-reserve":
+      result = reserveUnderMandate(draft, command.request);
+      break;
+    case "execution.mandate-emission":
+      result = emitUnderMandate(draft, command.request);
+      break;
+    case "execution.mandate-complete":
+      result = completeUnderMandate(draft, command.request);
       break;
     case "execution.accept-preparation":
       result = acceptPreparation(draft, command.request);
@@ -607,6 +640,145 @@ function bindAttachment(
   return { programCapability: draft.programCapability(task) };
 }
 
+function bindMandate(
+  draft: DecisionDraft,
+  request: BindMandateRequest,
+): BindMandateResult {
+  if (
+    !request.ownerId ||
+    !Number.isSafeInteger(request.leaseDurationMs) ||
+    request.leaseDurationMs < 1 ||
+    request.leaseDurationMs > 300_000
+  ) {
+    throw new CrankError("invalid_command", "Invalid task lease request");
+  }
+  const session = draft.session(request.address.sessionId);
+  const task = draft.task(request.address.sessionId, request.address.taskId);
+  draft.assertActive(task);
+  if (
+    request.strand !== task.taskId ||
+    request.address.turnId !== task.turnId ||
+    request.program.id !== task.program.artifact.id ||
+    request.program.version !== task.program.artifact.version ||
+    request.program.digest !== task.program.artifact.digest
+  ) {
+    throw new CrankError("nondeterminism_detected", "Prepared target identity differs");
+  }
+  const head = strandHead(task);
+  if (
+    head.digest !== request.expected.strandHeadDigest ||
+    request.frontierProof.strandHeadDigest !== request.expected.strandHeadDigest ||
+    request.frontierProof.replayedThroughActionIndex !== head.actionIndex
+  ) {
+    return { status: "stale", mismatch: "strand_head" };
+  }
+  if (
+    task.execution.epoch !== request.expected.leaseEpoch ||
+    (task.execution.liveLease !== undefined &&
+      draft.context.nowMs < task.execution.liveLease.expiresAtMs)
+  ) {
+    return { status: "stale", mismatch: "lease_epoch" };
+  }
+  const groupRevision = currentForkGroupRevision(session, task.taskId);
+  if (groupRevision !== request.expected.forkGroupRevision) {
+    return { status: "stale", mismatch: "fork_group_revision" };
+  }
+  const planned = planForestReplay(
+    draft.state,
+    request.address.sessionId,
+    draft.context.journalHeadDigest,
+    draft.context.nowMs,
+  );
+  const row = planned.rows.find((candidate) => candidate.address.taskId === task.taskId);
+  if (row?.classification !== "replayable" || parkedHead(task) !== undefined) {
+    return { status: "stale", mismatch: "strand_head" };
+  }
+
+  // The conditional state transition is the complete guard: no separate
+  // validate/claim phase exists. Advancing the epoch fences every older bind.
+  task.execution.epoch += 1;
+  task.execution.attachmentId = request.attachmentId;
+  const expiresAtMs = draft.context.nowMs + request.leaseDurationMs;
+  task.execution.liveLease = {
+    ownerId: request.ownerId,
+    epoch: task.execution.epoch,
+    expiresAtMs,
+    attachmentId: request.attachmentId,
+    strandHeadDigest: head.digest,
+    forkGroupRevision: groupRevision,
+    frontierDigest: request.frontierProof.frontierDigest,
+  };
+  draft.append(request.address.sessionId, task.execution.epoch, {
+    type: "AdvancementBound",
+    taskId: task.taskId,
+    ownerId: request.ownerId,
+    leaseEpoch: task.execution.epoch,
+    expiresAtMs,
+    attachmentId: request.attachmentId,
+    strandHeadDigest: head.digest,
+    forkGroupRevision: groupRevision,
+    frontierDigest: request.frontierProof.frontierDigest,
+  });
+  session.control.runnable = false;
+  const programCapability = draft.programCapability(
+    task,
+    stableTupleHash([
+      "mandate",
+      request.address.sessionId,
+      task.taskId,
+      task.execution.epoch,
+      request.attachmentId,
+      head.digest,
+      groupRevision,
+    ]),
+  );
+  const mandate: Mandate = {
+    kind: "mandate",
+    address: structuredClone(request.address),
+    strand: request.strand,
+    program: structuredClone(task.program.artifact),
+    placement: structuredClone(request.placement),
+    attachment: {
+      attachmentId: request.attachmentId,
+      boundAtRevision: session.control.revision,
+    },
+    groupContext: structuredClone(row.groupContext),
+    lease: { ownerId: request.ownerId, epoch: task.execution.epoch, expiresAtMs },
+    boundFrontier: structuredClone(request.frontierProof),
+    programCapability,
+  };
+  return { status: "bound", mandate };
+}
+
+function releaseMandate(
+  draft: DecisionDraft,
+  request: ReleaseMandateRequest,
+): ReleaseMandateResult {
+  const mandate = request.mandate;
+  const task = draft.task(mandate.address.sessionId, mandate.address.taskId);
+  const lease = task.execution.liveLease;
+  if (
+    lease === undefined ||
+    lease.ownerId !== mandate.lease.ownerId ||
+    lease.epoch !== mandate.lease.epoch ||
+    lease.attachmentId !== mandate.attachment.attachmentId
+  ) {
+    return { status: "stale" };
+  }
+  draft.assertProgram(mandate.programCapability, task, mandate.address.sessionId);
+  delete task.execution.liveLease;
+  draft.append(mandate.address.sessionId, mandate.lease.epoch, {
+    type: "AdvancementReleased",
+    taskId: task.taskId,
+    leaseEpoch: mandate.lease.epoch,
+    reason: request.reason,
+  });
+  const session = draft.session(mandate.address.sessionId);
+  session.control.runnable =
+    request.reason === "settled" || request.reason === "failed" || request.reason === "scope_exit";
+  return { status: "released" };
+}
+
 function replaceAttachment(
   draft: DecisionDraft,
   request: { sessionId: string; taskId: string; attachmentId: string; audience?: string },
@@ -773,6 +945,7 @@ function openForkGroup(draft: DecisionDraft, request: OpenForkGroupRequest): Ope
   ).length;
   const memberTaskIds = request.members.map((_, index) => `${parent.taskId}.${baseOrdinal + index}`);
   const group: DeepMutable<ForkGroupState> = {
+    revision: 1,
     groupId,
     parentTaskId: parent.taskId,
     pullId: pull.pullId,
@@ -859,6 +1032,7 @@ function breachForkGroup(
   let cancelMembers: readonly string[] = [];
   if (group.breachedAtMs === undefined) {
     group.breachedAtMs = draft.context.nowMs;
+    group.revision = (group.revision ?? 0) + 1;
     draft.append(request.sessionId, parent.execution.epoch, {
       type: "ForkGroupBreached",
       taskId: parent.taskId,
@@ -1043,6 +1217,7 @@ function commitPeerDelegation(
     return { status: "duplicate", correlator, deliveryMandate: mandate };
   }
   member.delegationCorrelator = correlator;
+  group.revision = (group.revision ?? 0) + 1;
   draft.append(request.sessionId, parent.execution.epoch, {
     type: "PeerDelegationCommitted",
     taskId: parent.taskId,
@@ -1139,6 +1314,104 @@ function reportPeerLoss(
     peerLossOutcome(request.reason),
   );
   return { status: "accepted" };
+}
+
+function mandateTask(draft: DecisionDraft, mandate: Mandate): DraftTask {
+  const task = draft.task(mandate.address.sessionId, mandate.address.taskId);
+  const lease = task.execution.liveLease;
+  if (
+    mandate.strand !== task.taskId ||
+    mandate.address.turnId !== task.turnId ||
+    mandate.program.id !== task.program.artifact.id ||
+    mandate.program.version !== task.program.artifact.version ||
+    mandate.program.digest !== task.program.artifact.digest ||
+    lease === undefined ||
+    lease.ownerId !== mandate.lease.ownerId ||
+    lease.epoch !== mandate.lease.epoch ||
+    lease.attachmentId !== mandate.attachment.attachmentId ||
+    lease.strandHeadDigest !== mandate.boundFrontier.strandHeadDigest ||
+    lease.frontierDigest !== mandate.boundFrontier.frontierDigest ||
+    lease.forkGroupRevision !== mandate.groupContext.groupRevision ||
+    draft.context.nowMs >= lease.expiresAtMs
+  ) {
+    throw new CrankError("stale_program_capability", "Mandate is stale");
+  }
+  draft.assertActive(task);
+  draft.assertProgram(mandate.programCapability, task, mandate.address.sessionId);
+  return task;
+}
+
+function reserveUnderMandate(
+  draft: DecisionDraft,
+  request: MandateReserveRequest,
+): LiveReservationResult {
+  const task = mandateTask(draft, request.mandate);
+  const result = reservePull(draft, {
+    sessionId: request.mandate.address.sessionId,
+    turnId: request.mandate.address.turnId,
+    taskId: task.taskId,
+    actionIndex: task.nextActionIndex,
+    pullIndex: task.nextPullIndex,
+    descriptor: request.descriptor,
+    programCapability: request.mandate.programCapability,
+  });
+  if (result.status === "resolved") {
+    throw new CrankError("replay_diverged", "Recorded history crossed the live edge");
+  }
+  if (result.status === "pending") {
+    endLiveLease(draft, request.mandate.address.sessionId, task, "parked");
+  }
+  return result;
+}
+
+function emitUnderMandate(
+  draft: DecisionDraft,
+  request: MandateEmissionRequest,
+): EmissionReceipt {
+  const task = mandateTask(draft, request.mandate);
+  return appendEmission(draft, {
+    sessionId: request.mandate.address.sessionId,
+    taskId: task.taskId,
+    actionIndex: task.nextActionIndex,
+    descriptor: request.descriptor,
+    programCapability: request.mandate.programCapability,
+  });
+}
+
+function completeUnderMandate(
+  draft: DecisionDraft,
+  request: MandateCompleteRequest,
+): CompleteTaskResult {
+  const task = mandateTask(draft, request.mandate);
+  const result = completeTask(draft, {
+    sessionId: request.mandate.address.sessionId,
+    taskId: task.taskId,
+    actionIndex: task.nextActionIndex,
+    outcome: request.outcome,
+    programCapability: request.mandate.programCapability,
+  });
+  if (result.status !== "rejected") {
+    endLiveLease(draft, request.mandate.address.sessionId, task, "terminal");
+  }
+  return result;
+}
+
+function endLiveLease(
+  draft: DecisionDraft,
+  sessionId: string,
+  task: DraftTask,
+  reason: "parked" | "settled" | "terminal" | "failed" | "scope_exit",
+): void {
+  const lease = task.execution.liveLease;
+  if (lease === undefined) return;
+  delete task.execution.liveLease;
+  draft.append(sessionId, lease.epoch, {
+    type: "AdvancementReleased",
+    taskId: task.taskId,
+    leaseEpoch: lease.epoch,
+    reason,
+  });
+  draft.session(sessionId).control.runnable = reason === "settled" || reason === "failed";
 }
 
 function reservePull(
@@ -1679,6 +1952,7 @@ function resolvePull(
         : { reason: task.lifecycle.cancellation.reason }),
       frontier: task.lifecycle.cancellation.frontier,
     };
+  endLiveLease(draft, claims.sessionId, task, "settled");
   draft.session(claims.sessionId).control.runnable = true;
   return { status: "accepted", receipt };
 }
@@ -2588,6 +2862,7 @@ function settlePullWithOutcome(
     },
   };
   parent.nextActionIndex = Math.max(parent.nextActionIndex, pullActionIndex(parent, pull) + 1);
+  endLiveLease(draft, sessionId, parent, "settled");
   draft.session(sessionId).control.runnable = true;
 }
 
@@ -2703,6 +2978,8 @@ function settlePull(
     },
   };
   task.nextActionIndex = Math.max(task.nextActionIndex, pullActionIndex(task, pull) + 1);
+  endLiveLease(draft, sessionId, task, "settled");
+  draft.session(sessionId).control.runnable = true;
 }
 function detachTaskAttempts(
   draft: DecisionDraft,

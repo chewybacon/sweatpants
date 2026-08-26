@@ -31,6 +31,12 @@ function normalizePayload(payload: DurableSemanticRecord["payload"]): Json {
       // Host-private bindings and placement route/epoch never enter this record.
       return structuredClone(semantic) as unknown as Json;
     }
+    case "AdvancementBound": {
+      const { ownerId: _owner, expiresAtMs: _expiry, attachmentId: _attachment, ...semantic } =
+        payload;
+      return structuredClone(semantic) as unknown as Json;
+    }
+    case "AdvancementReleased":
     case "PullRequested":
     case "ModelContextPrepared":
     case "AssistantPartialAccepted":

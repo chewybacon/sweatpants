@@ -5,7 +5,7 @@ import {
   ProgramRouteResolver,
   type ProgramDriver,
   type ProgramRunRequest,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import {
   DurableEffectOutcomeAcknowledgerContext,
@@ -22,7 +22,7 @@ import type { JournalAuthorityContract } from "../authority-contract.ts";
 import { createPullResolverRegistry, type PullResolver } from "../pull-kinds/registry.ts";
 import {
   driveProgramDriverActivation,
-  type ProgramDriverSampleStager,
+  type JournalSamplingService,
 } from "../workflow/driver-drive.ts";
 import { settleParkedPull } from "../workflow/pull-settlement.ts";
 import { driveWorkflowTree } from "../workflow/tree-drive.ts";
@@ -35,7 +35,7 @@ const TestPullResolversContext = createContext<readonly PullResolver[]>(
   "journal-authority:test-pull-resolvers",
   [],
 );
-const TestSampleStagerContext = createContext<ProgramDriverSampleStager | undefined>(
+const TestSampleStagerContext = createContext<JournalSamplingService | undefined>(
   "journal-authority:test-sample-stager",
   undefined,
 );
@@ -58,7 +58,7 @@ export function withProgramDriverTestPullResolvers<T>(
 
 /** Installs the remote-evaluator sample composition edge for a test tree. */
 export function withProgramDriverTestSampleStager<T>(
-  stager: ProgramDriverSampleStager,
+  stager: JournalSamplingService,
   body: () => Operation<T>,
 ): Operation<T> {
   return TestSampleStagerContext.with(stager, body);
@@ -67,7 +67,7 @@ export function withProgramDriverTestSampleStager<T>(
 /** Drives through the lexical authority installed by `withProgramDriverTestScope`. */
 export function* driveInstalledTestProgramTree(
   request: ProgramRunRequest,
-): Operation<ProgramRunResult> {
+): Operation<AdvancementResult> {
   const authority = yield* TestJournalAuthorityContext.get();
   if (!authority) {
     throw new CrankError("unknown_target", "No test journal authority is installed");
@@ -83,7 +83,7 @@ export function* driveInstalledTestProgramTree(
 export function driveTestProgramTree(
   authority: JournalAuthorityContract,
   request: ProgramRunRequest,
-): Operation<ProgramRunResult> {
+): Operation<AdvancementResult> {
   return scoped(function* () {
     const drivers = yield* ProgramDriverRegistryContext.get();
     if (!drivers) {

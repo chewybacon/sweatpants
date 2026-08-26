@@ -328,6 +328,23 @@ const semanticPayloadSchema = z.union([
     elicitAudience: z.string().optional(),
   }),
   z.strictObject({
+    type: z.literal("AdvancementBound"),
+    taskId: z.string(),
+    ownerId: z.string(),
+    leaseEpoch: nonNegativeIntegerSchema,
+    expiresAtMs: z.number(),
+    attachmentId: z.string(),
+    strandHeadDigest: digestSchema,
+    forkGroupRevision: nonNegativeIntegerSchema,
+    frontierDigest: digestSchema,
+  }),
+  z.strictObject({
+    type: z.literal("AdvancementReleased"),
+    taskId: z.string(),
+    leaseEpoch: nonNegativeIntegerSchema,
+    reason: z.enum(["parked", "settled", "terminal", "failed", "scope_exit"]),
+  }),
+  z.strictObject({
     type: z.literal("PullRequested"),
     taskId: z.string(),
     turnId: z.string(),
@@ -621,6 +638,7 @@ const forkGroupMemberSchema = z.strictObject({
     .optional(),
 });
 const forkGroupStateSchema = z.strictObject({
+  revision: nonNegativeIntegerSchema.optional(),
   groupId: z.string(),
   parentTaskId: z.string(),
   pullId: z.string(),
@@ -655,6 +673,17 @@ const taskSchema = z.strictObject({
     route: z.union([z.string(), jsonRecordSchema]).optional(),
     catalog: jsonValueSchema.optional(),
     catalogDigest: z.string().optional(),
+    liveLease: z
+      .strictObject({
+        ownerId: z.string(),
+        epoch: nonNegativeIntegerSchema,
+        expiresAtMs: z.number(),
+        attachmentId: z.string(),
+        strandHeadDigest: digestSchema,
+        forkGroupRevision: nonNegativeIntegerSchema,
+        frontierDigest: digestSchema,
+      })
+      .optional(),
   }),
   actions: z.array(actionSchema).max(MAX_ACTIONS_PER_TASK),
   nextActionIndex: nonNegativeIntegerSchema,

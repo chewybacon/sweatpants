@@ -51,7 +51,7 @@ import {
   type AttachProgramRequest,
   type DurableTool,
   type DurableToolRegistry,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import {
@@ -123,7 +123,7 @@ export interface DurableToolSessionFacadeOptions<I extends Json, O extends Json>
   onActivation?: (evidence: {
     invocationId: string;
     activation: number;
-    outcome: ProgramRunResult;
+    outcome: AdvancementResult;
     journal: DurableSemanticRecord[];
   }) => Operation<void>;
 }
@@ -646,7 +646,7 @@ interface WorkflowActivationRequest<I extends Json> {
 }
 
 interface WorkflowActivationResult {
-  readonly outcome: ProgramRunResult;
+  readonly outcome: AdvancementResult;
   readonly snapshot: DurableAuthoritySnapshot;
   readonly journal: DurableSemanticRecord[];
 }
@@ -690,7 +690,7 @@ function* runWorkflowActivation<I extends Json>(
       programCapability = bound.programCapability;
     }
     yield* installWorkflowEffectHandlers(invocationId, taskId, options.effectHandlers);
-    const outcome: ProgramRunResult = yield* driveActivation({
+    const outcome: AdvancementResult = yield* driveActivation({
       attach: {
         sessionId: invocationId,
         taskId,

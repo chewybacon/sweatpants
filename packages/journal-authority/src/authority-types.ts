@@ -17,7 +17,10 @@ import type {
   DurableOperationDescriptor,
   DurableProgramManifest,
   EmissionDescriptor,
+  LivePlacement,
+  Mandate,
   ProgramRoute,
+  TurnAddress,
   ProgramStep,
   RecordedOperationDescriptor,
   ReplayEntry,
@@ -307,6 +310,45 @@ export interface OpenDurableTaskRequest {
   readonly expiryPolicy?: ForkExpiryPolicy;
 }
 
+/** Plain bind proposal; runtime handles never cross the decision boundary. */
+export interface BindMandateRequest {
+  readonly address: TurnAddress;
+  readonly strand: string;
+  readonly program: { readonly id: string; readonly version: string; readonly digest: string };
+  readonly attachmentId: string;
+  readonly ownerId: string;
+  readonly leaseDurationMs: number;
+  readonly placement: LivePlacement;
+  readonly expected: {
+    readonly strandHeadDigest: string;
+    readonly leaseEpoch: number;
+    readonly forkGroupRevision: number;
+  };
+  readonly frontierProof: {
+    readonly frontierDigest: string;
+    readonly strandHeadDigest: string;
+    readonly replayedThroughActionIndex: number;
+    readonly replayChainDigest: string;
+    readonly cancellationReplayed: boolean;
+  };
+}
+
+export type BindMandateResult =
+  | { readonly status: "bound"; readonly mandate: Mandate }
+  | {
+      readonly status: "stale";
+      readonly mismatch: "strand_head" | "lease_epoch" | "fork_group_revision";
+    };
+
+export interface ReleaseMandateRequest {
+  readonly mandate: Mandate;
+  readonly reason: "parked" | "settled" | "terminal" | "failed" | "scope_exit";
+}
+
+export type ReleaseMandateResult =
+  | { readonly status: "released" }
+  | { readonly status: "stale" };
+
 /** Program-authorized request to reserve an ordered operation before dispatch. */
 export interface ReserveOperationRequest {
   sessionId: string;
@@ -349,6 +391,22 @@ export type ReserveOperationResult =
       resolutionCapability?: string;
       restoredFrontierConsumed?: true;
     };
+
+export type LiveReservationResult = Exclude<ReserveOperationResult, { status: "resolved" }>;
+
+/** Mandate-relative live commands: addressing and sequence positions are derived once. */
+export interface MandateReserveRequest {
+  readonly mandate: Mandate;
+  readonly descriptor: DurableOperationDescriptor;
+}
+export interface MandateEmissionRequest {
+  readonly mandate: Mandate;
+  readonly descriptor: EmissionDescriptor;
+}
+export interface MandateCompleteRequest {
+  readonly mandate: Mandate;
+  readonly outcome: OperationOutcome;
+}
 
 /** Capability-bearing request to commit one canonical operation outcome. */
 export interface ResolveOperationRequest {

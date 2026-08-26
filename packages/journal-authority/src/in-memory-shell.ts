@@ -18,6 +18,7 @@ import type {
 } from "./authority-contract.ts";
 import { authorityStateFromSnapshot, snapshotFromAuthorityState } from "./authority-state.ts";
 import { queryAuthorityState } from "./authority-decisions.ts";
+import { structuralCommandSessionId } from "./authority-command-address.ts";
 import { decideAuthorityTransition } from "./decision-pipeline.ts";
 import type {
   DurableAuthoritySnapshot,
@@ -139,9 +140,8 @@ function commandSessionId(
   state: AuthorityState,
   options: InMemoryJournalAuthorityOptions,
 ): string {
-  if ("sessionId" in command.request && typeof command.request.sessionId === "string") {
-    return command.request.sessionId;
-  }
+  const structural = structuralCommandSessionId(command);
+  if (structural !== undefined) return structural;
   if (command.type === "execution.resolve-pull") {
     try {
       return verifyResolutionCapability(

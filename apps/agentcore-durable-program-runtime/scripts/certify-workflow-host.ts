@@ -15,7 +15,7 @@ import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
 } from "@sweatpants/durable-effects/runtime";
-import { type ProgramRunResult, type ProgramRoute } from "@sweatpants/durable-execution";
+import { type AdvancementResult, type ProgramRoute } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import {
   createProgramDriverRegistry,
@@ -121,7 +121,7 @@ await run(() =>
   }),
 );
 
-async function activate(ownerId: string): Promise<ProgramRunResult> {
+async function activate(ownerId: string): Promise<AdvancementResult> {
   return await run(function* () {
     const claim = yield* authority.claimActivation({ sessionId, ownerId });
     if (claim.status !== "claimed") {

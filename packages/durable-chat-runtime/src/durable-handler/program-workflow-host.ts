@@ -13,7 +13,7 @@ import {
   type PinnedProgram,
   type ProgramElicitResult,
   type ProgramRoute,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import { scoped, type Operation } from "effection";
 import {
@@ -137,18 +137,18 @@ export interface ProgramWorkflowRun {
   sessionId: string;
   turnId: string;
   taskId: string;
-  result: Operation<ProgramRunResult>;
+  result: Operation<AdvancementResult>;
 }
 
 export interface ProgramWorkflowHost {
   open(request: OpenProgramWorkflowRequest): Operation<ProgramWorkflowRun>;
-  resume(sessionId: string): Operation<ProgramRunResult>;
+  resume(sessionId: string): Operation<AdvancementResult>;
   respond(request: {
     sessionId: string;
     taskId: string;
     pullId: string;
     response: ProgramElicitResult;
-  }): Operation<ProgramRunResult>;
+  }): Operation<AdvancementResult>;
   cancel(sessionId: string, taskId: string, reason?: string): Operation<void>;
   trace(sessionId: string): Operation<NormalizedProgramTrace>;
 }
@@ -193,8 +193,8 @@ export interface WorkflowProgramActivationScope {
  */
 export function* runWorkflowProgramActivation(
   scope: WorkflowProgramActivationScope,
-  drive: (authority: JournalAuthorityContract) => Operation<ProgramRunResult>,
-): Operation<ProgramRunResult> {
+  drive: (authority: JournalAuthorityContract) => Operation<AdvancementResult>,
+): Operation<AdvancementResult> {
   return yield* scoped(function* () {
     yield* scope.installAuthority();
     const authority = yield* JournalAuthorityPort.use();
@@ -284,7 +284,7 @@ export function createProgramWorkflowHost(
     input: Json,
     execution: AcceptedExecution,
     initialProgramCapability?: string,
-  ): Operation<ProgramRunResult> {
+  ): Operation<AdvancementResult> {
     const rootAttach = {
       sessionId,
       taskId,
@@ -321,7 +321,7 @@ export function createProgramWorkflowHost(
     const activate = function* (request: {
       readonly attach: typeof rootAttach;
       readonly initialProgramCapability?: string;
-    }): Operation<ProgramRunResult> {
+    }): Operation<AdvancementResult> {
       const tool = findTool(request.attach.program);
       if (!tool) {
         throw new CrankError(
@@ -380,7 +380,7 @@ export function createProgramWorkflowHost(
         },
       );
     };
-    const drive = function* (): Operation<ProgramRunResult> {
+    const drive = function* (): Operation<AdvancementResult> {
       return yield* journal.withAuthority(function* (authority) {
         return yield* driveWorkflowTree({
           authority,
@@ -422,7 +422,7 @@ export function createProgramWorkflowHost(
     });
   }
 
-  function* resumeTask(sessionId: string, requestedTaskId?: string): Operation<ProgramRunResult> {
+  function* resumeTask(sessionId: string, requestedTaskId?: string): Operation<AdvancementResult> {
     const journal = yield* options.journalStore.open(sessionId);
     const recovery = yield* journal.recoveryState(sessionId, requestedTaskId);
     if (recovery.status === "terminal") {
@@ -527,11 +527,11 @@ export function createProgramWorkflowHost(
       };
     },
 
-    *resume(sessionId): Operation<ProgramRunResult> {
+    *resume(sessionId): Operation<AdvancementResult> {
       return yield* resumeTask(sessionId);
     },
 
-    *respond(request): Operation<ProgramRunResult> {
+    *respond(request): Operation<AdvancementResult> {
       const journal = yield* options.journalStore.open(request.sessionId);
       const operation = yield* journal.operationState(
         request.sessionId,
@@ -733,7 +733,7 @@ export function normalizeProgramTrace(
   return { version: 1, tasks: [...tasks.values()] };
 }
 
-function outcomeToRunResult(outcome: OperationOutcome): ProgramRunResult {
+function outcomeToRunResult(outcome: OperationOutcome): AdvancementResult {
   return outcome.status === "ok"
     ? { state: "completed", value: outcome.value }
     : outcome.status === "cancelled"
