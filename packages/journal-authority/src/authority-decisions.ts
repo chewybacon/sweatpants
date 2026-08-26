@@ -6,6 +6,8 @@ import {
   forceOrphanForkGroupResolution,
   forkGroupIdFor,
   forkGroupOutcome,
+  peerDeliveryCorrelator,
+  peerLossOutcome,
   reduceForkMemberTerminal,
   resolveForkDeadline,
   type ForkGroupState,
@@ -83,6 +85,12 @@ import type {
   OpenDurableTaskRequest,
   OpenForkGroupRequest,
   OpenForkGroupResult,
+  CommitPeerDelegationRequest,
+  CommitPeerDelegationResult,
+  CommitPeerEvidenceRequest,
+  CommitPeerEvidenceResult,
+  ReportPeerLossRequest,
+  ReportPeerLossResult,
   PrepareProgramRestoreRequest,
   PreparedProgramRestore,
   RecoverableSession,
@@ -102,6 +110,7 @@ import type {
 import {
   signCapability,
   signPrivateAuthorityToken,
+  verifyDeliveryMandate,
   verifyPrivateAuthorityToken,
   verifyProgramCapability,
   verifyResolutionCapability,
@@ -402,6 +411,15 @@ function dispatchCommand<C extends AuthorityCommand>(
       break;
     case "execution.force-orphan-fork-group":
       result = forceOrphanForkGroup(draft, command.request);
+      break;
+    case "execution.commit-peer-delegation":
+      result = commitPeerDelegation(draft, command.request);
+      break;
+    case "execution.commit-peer-evidence":
+      result = commitPeerEvidence(draft, command.request);
+      break;
+    case "execution.report-peer-loss":
+      result = reportPeerLoss(draft, command.request);
       break;
     case "execution.reserve-pull":
       result = reservePull(draft, command.request);
@@ -724,6 +742,26 @@ function openForkGroup(draft: DecisionDraft, request: OpenForkGroupRequest): Ope
       throw new CrankError("nondeterminism_detected", "Fork member differs from the descriptor");
     }
   }
+  // Closed durability union with declared peer sampling (REQ-035, REQ-042):
+  // admission fails closed on unknown classes and missing declarations.
+  for (const child of descriptor.children) {
+    const durability = child.durability;
+    if (durability === undefined || durability.kind === "crank_native") continue;
+    if (durability.kind === "peer_hosted") {
+      if (
+        typeof durability.peer !== "string" ||
+        durability.peer.length === 0 ||
+        (durability.sampling !== "delegated" && durability.sampling !== "private")
+      ) {
+        throw new CrankError(
+          "invalid_descriptor",
+          "Peer-hosted members require a declared sampling mode",
+        );
+      }
+      continue;
+    }
+    throw new CrankError("invalid_descriptor", "Unknown member durability class");
+  }
   const deadlineMs = resolveForkDeadline(
     descriptor.expiry,
     parent.deadlineMs,
@@ -741,10 +779,22 @@ function openForkGroup(draft: DecisionDraft, request: OpenForkGroupRequest): Ope
     descriptorDigest,
     policy,
     deadlineMs,
-    members: request.members.map((_, index) => ({ ordinal: index, taskId: memberTaskIds[index]! })),
+    members: request.members.map((_, index) => {
+      const durability = descriptor.children[index]!.durability;
+      return durability?.kind === "peer_hosted"
+        ? {
+            ordinal: index,
+            taskId: memberTaskIds[index]!,
+            durability: "peer_hosted" as const,
+            peer: durability.peer,
+            sampling: durability.sampling,
+          }
+        : { ordinal: index, taskId: memberTaskIds[index]!, durability: "crank_native" as const };
+    }),
     status: "open",
   };
   for (const [index, member] of request.members.entries()) {
+    const durability = descriptor.children[index]!.durability;
     openTask(draft, {
       sessionId: request.sessionId,
       turnId: request.turnId,
@@ -753,7 +803,10 @@ function openForkGroup(draft: DecisionDraft, request: OpenForkGroupRequest): Ope
       input: member.child.input,
       executionEpoch: request.executionEpoch,
       attachmentId: "unattached-child",
-      audience: request.audience,
+      // Peer member audiences are derived locally, never taken from
+      // peer-supplied claims (REQ-041).
+      audience:
+        durability?.kind === "peer_hosted" ? `peer:${durability.peer}` : request.audience,
       ...(parent.execution.elicitAudience === undefined
         ? {}
         : { elicitAudience: parent.execution.elicitAudience }),
@@ -900,6 +953,192 @@ function forceOrphanForkGroup(
     forkGroupOutcome(resolution),
   );
   return { resolution };
+}
+
+function peerMemberOf(
+  group: DeepMutable<ForkGroupState>,
+  memberTaskId: string,
+): DeepMutable<ForkGroupState>["members"][number] {
+  const member = group.members.find((entry) => entry.taskId === memberTaskId);
+  if (member === undefined) {
+    throw new CrankError("invalid_journal", `Task ${memberTaskId} is not a fork group member`);
+  }
+  if (member.durability !== "peer_hosted") {
+    throw new CrankError("invalid_descriptor", `Member ${memberTaskId} is not peer-hosted`);
+  }
+  return member;
+}
+
+function groupForRequest(
+  draft: DecisionDraft,
+  sessionId: string,
+  taskId: string,
+  groupId: string,
+): { parent: DraftTask; group: DeepMutable<ForkGroupState> } {
+  const parent = draft.task(sessionId, taskId);
+  const group = parent.forkGroup;
+  if (group === undefined || group.groupId !== groupId) {
+    throw new CrankError("invalid_journal", "Unknown fork group");
+  }
+  return { parent, group };
+}
+
+function mintDeliveryMandate(
+  draft: DecisionDraft,
+  sessionId: string,
+  parent: DraftTask,
+  group: DeepMutable<ForkGroupState>,
+  memberTaskId: string,
+  correlator: string,
+  peer: string,
+): string {
+  return signCapability(
+    {
+      journalId: draft.context.journalIdentity.id,
+      journalIncarnation: draft.context.journalIdentity.incarnation,
+      sessionId,
+      taskId: parent.taskId,
+      groupId: group.groupId,
+      memberTaskId,
+      correlator,
+      audience: `peer:${peer}`,
+      permissions: ["deliver"],
+      // Deterministic: duplicate delegation retries mint the identical
+      // mandate without consuming journal nonce state.
+      nonce: stableTupleHash(["delivery-mandate", correlator]),
+    },
+    draft.context.keyring,
+  );
+}
+
+/**
+ * Journal-first peer delegation (REQ-038): the delivery record commits before
+ * any send; the correlator is deterministic, so retries reuse it and peers
+ * dedupe by it (REQ-039). The returned DeliveryMandate confers proposal
+ * rights only (REQ-074).
+ */
+function commitPeerDelegation(
+  draft: DecisionDraft,
+  request: CommitPeerDelegationRequest,
+): CommitPeerDelegationResult {
+  const { parent, group } = groupForRequest(draft, request.sessionId, request.taskId, request.groupId);
+  if (group.status === "resolved") {
+    throw new CrankError("fork_group_terminal", "Fork group already resolved");
+  }
+  const member = peerMemberOf(group, request.memberTaskId);
+  const correlator = peerDeliveryCorrelator(group.groupId, member.taskId);
+  const mandate = mintDeliveryMandate(
+    draft,
+    request.sessionId,
+    parent,
+    group,
+    member.taskId,
+    correlator,
+    member.peer!,
+  );
+  if (member.delegationCorrelator !== undefined) {
+    if (member.delegationCorrelator !== correlator) {
+      throw new CrankError("nondeterminism_detected", "Peer delegation correlator differs");
+    }
+    return { status: "duplicate", correlator, deliveryMandate: mandate };
+  }
+  member.delegationCorrelator = correlator;
+  draft.append(request.sessionId, parent.execution.epoch, {
+    type: "PeerDelegationCommitted",
+    taskId: parent.taskId,
+    groupId: group.groupId,
+    memberTaskId: member.taskId,
+    correlator,
+    peer: member.peer!,
+    deadlineMs: group.deadlineMs,
+  });
+  draft.session(request.sessionId).control.runnable = true;
+  return { status: "committed", correlator, deliveryMandate: mandate };
+}
+
+/**
+ * Closes a peer member from external evidence. Invariant P (REQ-075): the
+ * member row holds a structural task and evidence only — no local attempt
+ * ever exists on it, and the evidence commits through the ordinary group
+ * reducer so supervision stays exact (REQ-043).
+ */
+function closePeerMember(
+  draft: DecisionDraft,
+  sessionId: string,
+  group: DeepMutable<ForkGroupState>,
+  memberTaskId: string,
+  correlator: string,
+  mandate: string,
+  outcome: OperationOutcome,
+): void {
+  const member = peerMemberOf(group, memberTaskId);
+  verifyDeliveryMandate(mandate, draft.context.keyring, {
+    journalId: draft.context.journalIdentity.id,
+    journalIncarnation: draft.context.journalIdentity.incarnation,
+    sessionId,
+    groupId: group.groupId,
+    memberTaskId,
+    correlator,
+  });
+  if (member.delegationCorrelator !== correlator) {
+    throw new CrankError("invalid_delivery_mandate", "Unknown delivery correlator");
+  }
+  const memberTask = draft.task(sessionId, member.taskId);
+  if (memberTask.lifecycle.status !== "active") {
+    // First-committed-wins (REQ-032): the accepted fact is never rewritten.
+    throw new CrankError("fork_member_terminal", "Peer member is already terminal");
+  }
+  const offset = draft.append(sessionId, memberTask.execution.epoch, {
+    type: "TaskClosed",
+    taskId: member.taskId,
+    outcome,
+  });
+  memberTask.lifecycle =
+    outcome.status === "cancelled"
+      ? {
+          status: "cancelled",
+          outcome,
+          receipt: { offset, duplicate: false },
+          commandId: stableTupleHash(["peer-cancel", correlator]),
+        }
+      : { status: "closed", outcome, receipt: { offset, duplicate: false } };
+  settleParentFromChild(draft, sessionId, memberTask, outcome);
+}
+
+function commitPeerEvidence(
+  draft: DecisionDraft,
+  request: CommitPeerEvidenceRequest,
+): CommitPeerEvidenceResult {
+  const { group } = groupForRequest(draft, request.sessionId, request.taskId, request.groupId);
+  closePeerMember(
+    draft,
+    request.sessionId,
+    group,
+    request.memberTaskId,
+    request.correlator,
+    request.deliveryMandate,
+    request.outcome,
+  );
+  return { status: "accepted" };
+}
+
+/** Typed peer loss (REQ-043): a journaled `peer_lost` member outcome that
+ *  flows through supervision, never a dangling member. */
+function reportPeerLoss(
+  draft: DecisionDraft,
+  request: ReportPeerLossRequest,
+): ReportPeerLossResult {
+  const { group } = groupForRequest(draft, request.sessionId, request.taskId, request.groupId);
+  closePeerMember(
+    draft,
+    request.sessionId,
+    group,
+    request.memberTaskId,
+    request.correlator,
+    request.deliveryMandate,
+    peerLossOutcome(request.reason),
+  );
+  return { status: "accepted" };
 }
 
 function reservePull(

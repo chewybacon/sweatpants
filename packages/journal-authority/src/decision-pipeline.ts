@@ -372,6 +372,15 @@ function validateEntryEvidence(
       if (task.forkGroup?.resolution?.status !== "orphaned")
         throw new AuthorityCompositionError("Fork-orphan proposal differs from replacement state");
       return;
+    case "PeerDelegationCommitted":
+      if (
+        task.forkGroup?.members.find((member) => member.taskId === payload.memberTaskId)
+          ?.delegationCorrelator !== payload.correlator
+      )
+        throw new AuthorityCompositionError(
+          "Peer-delegation proposal differs from replacement state",
+        );
+      return;
     default:
       return assertNever(payload);
   }

@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import type {
   CapabilityClaims,
+  DeliveryCapabilityClaims,
   ProgramExecutionCapabilityClaims,
   ResolutionCapabilityClaims,
 } from "./authority-types.ts";
@@ -81,9 +82,14 @@ type UnsignedResolutionCapabilityClaims = Omit<
   ResolutionCapabilityClaims,
   "version" | "issuer" | "keyId"
 >;
+type UnsignedDeliveryCapabilityClaims = Omit<
+  DeliveryCapabilityClaims,
+  "version" | "issuer" | "keyId"
+>;
 type UnsignedCapabilityClaims =
   | UnsignedProgramCapabilityClaims
-  | UnsignedResolutionCapabilityClaims;
+  | UnsignedResolutionCapabilityClaims
+  | UnsignedDeliveryCapabilityClaims;
 
 /** Signs exact, canonical capability claims; rejects extra runtime fields. */
 export function signCapability(
@@ -295,6 +301,49 @@ export function isResolutionClaims(claims: CapabilityClaims): claims is Resoluti
   );
 }
 
+/** Narrows authenticated claims to DeliveryMandate authority. */
+export function isDeliveryClaims(claims: CapabilityClaims): claims is DeliveryCapabilityClaims {
+  return (
+    Array.isArray(claims.permissions) &&
+    claims.permissions.length === 1 &&
+    claims.permissions[0] === "deliver"
+  );
+}
+
+/**
+ * Verifies a DeliveryMandate for exactly one peer member evidence strand
+ * (REQ-074). The mandate confers proposal rights only; every durable
+ * consequence still passes through authority admission.
+ */
+export function verifyDeliveryMandate(
+  token: string,
+  keyring: CapabilityKeyring,
+  expected: {
+    journalId: string;
+    journalIncarnation: string;
+    sessionId: string;
+    groupId: string;
+    memberTaskId: string;
+    correlator: string;
+  },
+): DeliveryCapabilityClaims {
+  const claims = verifyCapability(token, keyring);
+  if (!isDeliveryClaims(claims)) {
+    throw invalid();
+  }
+  if (
+    claims.journalId !== expected.journalId ||
+    claims.journalIncarnation !== expected.journalIncarnation ||
+    claims.sessionId !== expected.sessionId ||
+    claims.groupId !== expected.groupId ||
+    claims.memberTaskId !== expected.memberTaskId ||
+    claims.correlator !== expected.correlator
+  ) {
+    throw new CrankError("invalid_delivery_mandate", "Delivery mandate claims mismatch");
+  }
+  return claims;
+}
+
 const capabilityCommonSchema = {
   version: z.literal(1),
   issuer: z.string().min(1),
@@ -327,9 +376,18 @@ const resolutionCapabilityClaimsSchema = z.strictObject({
   permissions: z.tuple([z.literal("resolve")]),
 });
 
+const deliveryCapabilityClaimsSchema = z.strictObject({
+  ...capabilityCommonSchema,
+  groupId: z.string().min(1),
+  memberTaskId: z.string().min(1),
+  correlator: z.string().min(1),
+  permissions: z.tuple([z.literal("deliver")]),
+});
+
 const capabilityClaimsSchema = z.union([
   programCapabilityClaimsSchema,
   resolutionCapabilityClaimsSchema,
+  deliveryCapabilityClaimsSchema,
 ]);
 
 export const capabilityClaimsParser = parser(capabilityClaimsSchema).map(

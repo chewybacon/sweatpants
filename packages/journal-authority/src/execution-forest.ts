@@ -232,6 +232,7 @@ export function projectExecutionForest(records: readonly DurableSemanticRecord[]
       case "ForkGroupBreached":
       case "ForkGroupResolved":
       case "ForkGroupOrphaned":
+      case "PeerDelegationCommitted":
         break;
       default:
         assertNever(payload);

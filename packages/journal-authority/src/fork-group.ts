@@ -123,9 +123,34 @@ export type ForkGroupTerminal =
 export interface ForkGroupMember {
   readonly ordinal: number;
   readonly taskId: string;
+  /** Closed durability class (REQ-035); absent means crank_native. */
+  readonly durability?: "crank_native" | "peer_hosted";
+  /** Peer endpoint identity and declared sampling mode (REQ-042). */
+  readonly peer?: string;
+  readonly sampling?: "delegated" | "private";
+  /** Stable delivery correlator, set when the delegation record commits
+   *  (REQ-038: journal-first, stable across retries). */
+  delegationCorrelator?: string;
   readonly terminal?: {
     readonly outcome: OperationOutcome;
     readonly outcomeDigest: string;
+  };
+}
+
+/** Deterministic delivery identity: retries reuse it, peers dedupe by it. */
+export function peerDeliveryCorrelator(groupId: string, memberTaskId: string): string {
+  return stableTupleHash(["peer-delivery", groupId, memberTaskId]);
+}
+
+/** The typed outcome for a lost peer continuation (REQ-043): data, not a hang. */
+export function peerLossOutcome(reason: string): OperationOutcome {
+  return {
+    status: "error",
+    error: {
+      code: "peer_lost",
+      message: `Peer continuation lost: ${reason}`,
+      details: { reason },
+    },
   };
 }
 
@@ -211,7 +236,10 @@ function resolveDrained(group: ForkGroupState): ForkGroupTerminal {
       outcomes,
     };
   }
-  const failure = outcomes.find((entry) => entry.outcome.status !== "ok");
+  // The causal failure leads; cancelled members are usually its victims.
+  const failure =
+    outcomes.find((entry) => entry.outcome.status === "error") ??
+    outcomes.find((entry) => entry.outcome.status !== "ok");
   if (failure === undefined) return { status: "completed", outcomes };
   return {
     status: "failed",

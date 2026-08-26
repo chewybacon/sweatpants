@@ -203,6 +203,10 @@ function* driveForkGroup(
     const slots: ProgramParkedSlot[] = [];
     let progressed = false;
     for (const [index, memberTaskId] of group.memberTaskIds.entries()) {
+      // Peers advance under their own authority: the local row is structural
+      // evidence, never a recipe (REQ-037), and never enters the prepared
+      // set for local activation (REQ-075).
+      if (descriptor.children[index]!.durability?.kind === "peer_hosted") continue;
       const lifecycle = yield* authority.query({
         type: "task.lifecycle",
         sessionId: attach.sessionId,

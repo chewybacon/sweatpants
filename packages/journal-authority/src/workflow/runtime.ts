@@ -61,7 +61,7 @@ import {
   waitDescriptorSchema,
 } from "../pull-kinds/index.ts";
 import type { ForkGroupTerminal } from "../fork-group.ts";
-import type { DurableForkExpiry } from "@sweatpants/durable-execution";
+import type { DurableChildDurability, DurableForkExpiry } from "@sweatpants/durable-execution";
 import { definePort } from "@sweatpants/foundation/port";
 
 /** A closed marker carried by durable boundaries. Ephemeral markers never leave the attachment. */
@@ -494,6 +494,8 @@ export interface ForkOptions {
     readonly version: string;
     readonly digest: string;
     readonly input: Json;
+    /** Closed durability class (REQ-035); absent means crank_native. */
+    readonly durability?: DurableChildDurability;
   }[];
   readonly expiry: DurableForkExpiry;
 }
@@ -972,6 +974,7 @@ function normalizeParsedDescriptor(
           version: child.version,
           digest: child.digest,
           input: asJson(child.input),
+          ...(child.durability === undefined ? {} : { durability: child.durability }),
         })),
         expiry: descriptor.expiry,
       };
@@ -984,6 +987,7 @@ function normalizeParsedDescriptor(
           version: child.version,
           digest: child.digest,
           input: asJson(child.input),
+          ...(child.durability === undefined ? {} : { durability: child.durability }),
         })),
         expiry: descriptor.expiry,
       };

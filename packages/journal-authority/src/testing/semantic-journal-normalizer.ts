@@ -52,6 +52,7 @@ function normalizePayload(payload: DurableSemanticRecord["payload"]): Json {
     case "ForkGroupBreached":
     case "ForkGroupResolved":
     case "ForkGroupOrphaned":
+    case "PeerDelegationCommitted":
       return structuredClone(payload) as unknown as Json;
     default:
       return assertNever(payload);

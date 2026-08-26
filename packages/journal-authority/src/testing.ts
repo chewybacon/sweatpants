@@ -18,5 +18,6 @@ export * from "./schema-fixtures.ts";
 export * from "./testing/conformance.ts";
 export * from "./testing/durable-driver-harness.ts";
 export * from "./testing/semantic-journal-normalizer.ts";
+export * from "./testing/peer-simulator.ts";
 export * from "./testing/authority-backed-effection-workflow.ts";
 export * from "./testing/record-execution-index.ts";

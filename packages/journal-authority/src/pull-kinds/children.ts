@@ -2,11 +2,21 @@ import { z } from "zod";
 import type { Json } from "@sweatpants/foundation";
 import { registerPullKind } from "./registry.ts";
 
+const childDurabilitySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("crank_native") }),
+  z.strictObject({
+    kind: z.literal("peer_hosted"),
+    peer: z.string().min(1),
+    sampling: z.enum(["delegated", "private"]),
+  }),
+]);
+
 const childRefSchema = z.strictObject({
   id: z.string().min(1),
   version: z.string().min(1),
   digest: z.string().min(1),
   input: z.json(),
+  durability: childDurabilitySchema.optional(),
 });
 
 export const invokeDescriptorSchema = z.strictObject({

@@ -137,6 +137,15 @@ export type DurableSemanticRecord = {
         reason: string;
       }
     | {
+        type: "PeerDelegationCommitted";
+        taskId: string;
+        groupId: string;
+        memberTaskId: string;
+        correlator: string;
+        peer: string;
+        deadlineMs: number;
+      }
+    | {
         type: "CancellationRequested";
         taskId: string;
         commandId: string;
