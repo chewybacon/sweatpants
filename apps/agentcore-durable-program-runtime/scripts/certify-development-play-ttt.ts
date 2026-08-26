@@ -26,7 +26,7 @@ import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
 } from "@sweatpants/durable-effects/runtime";
-import { type ProgramRunResult } from "@sweatpants/durable-execution";
+import { type AdvancementResult } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import type { PullResolver } from "@sweatpants/journal-authority";
@@ -206,7 +206,7 @@ async function main(): Promise<void> {
     }),
   );
 
-  async function activate(ownerId: string): Promise<ProgramRunResult> {
+  async function activate(ownerId: string): Promise<AdvancementResult> {
     return await run(function* () {
       const claim = yield* authority.claimActivation({ sessionId, ownerId });
       if (claim.status !== "claimed") {

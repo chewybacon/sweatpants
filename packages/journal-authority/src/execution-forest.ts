@@ -222,6 +222,8 @@ export function projectExecutionForest(records: readonly DurableSemanticRecord[]
           invalid(`Task ${task.taskId} became terminal twice`);
         task.lifecycle = { status: "orphaned", reason: payload.reason, offset: record.offset };
         break;
+      case "AdvancementBound":
+      case "AdvancementReleased":
       case "ModelContextPrepared":
       case "AssistantPartialAccepted":
       case "RaceWinnerSelected":

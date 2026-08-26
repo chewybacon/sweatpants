@@ -157,6 +157,9 @@ export function peerLossOutcome(reason: string): OperationOutcome {
 export type ForkGroupStatus = "open" | "cancelling" | "resolved";
 
 export interface ForkGroupState {
+  /** Monotonic materialized-index revision used by bind CAS. Optional only
+   * while dual-reading snapshots written before the spine cutover. */
+  revision?: number;
   readonly groupId: string;
   readonly parentTaskId: string;
   readonly pullId: string;
@@ -281,6 +284,7 @@ export function reduceForkMemberTerminal(
     outcome: structuredClone(outcome),
     outcomeDigest,
   };
+  group.revision = (group.revision ?? 0) + 1;
   if (group.status === "resolved") {
     // Late biography after an orphaned resolution: confined to member history.
     return { cancelMembers: [] };
@@ -330,6 +334,7 @@ export function drainForkGroup(group: ForkGroupState): ForkGroupTerminal | undef
   if (!group.members.every((member) => member.terminal !== undefined)) return undefined;
   group.status = "resolved";
   group.resolution = resolveDrained(group);
+  group.revision = (group.revision ?? 0) + 1;
   return group.resolution;
 }
 
@@ -349,6 +354,7 @@ export function beginForkGroupCancellation(
   if (group.status === "open") {
     group.status = "cancelling";
     group.cancellingCause = cause;
+    group.revision = (group.revision ?? 0) + 1;
   }
   return nonterminalMembers(group);
 }
@@ -367,6 +373,7 @@ export function forceOrphanForkGroupResolution(
   }
   group.status = "resolved";
   group.resolution = { status: "orphaned", reason };
+  group.revision = (group.revision ?? 0) + 1;
   return group.resolution;
 }
 

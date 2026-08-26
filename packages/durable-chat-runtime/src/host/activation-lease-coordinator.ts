@@ -2,16 +2,16 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { race, sleep, type Operation } from "effection";
 
 import { type JournalAuthorityContract } from "@sweatpants/journal-authority";
-import { type ProgramRunResult } from "@sweatpants/durable-execution";
+import { type AdvancementResult } from "@sweatpants/durable-execution";
 
 /** Host coordinator timer; deliberately outside the durable crank implementation. */
 export function* runWithRenewedActivationLease(
   authority: JournalAuthorityContract,
   sessionId: string,
   ownerId: string,
-  activate: (epoch: number, ownerId: string) => Operation<ProgramRunResult>,
+  activate: (epoch: number, ownerId: string) => Operation<AdvancementResult>,
   timing: { readonly leaseDurationMs?: number; readonly renewalIntervalMs?: number } = {},
-): Operation<ProgramRunResult> {
+): Operation<AdvancementResult> {
   const leaseDurationMs = timing.leaseDurationMs ?? 30_000;
   const renewalIntervalMs = timing.renewalIntervalMs ?? 10_000;
   const claim = yield* authority.command({
@@ -27,7 +27,7 @@ export function* runWithRenewedActivationLease(
   let reason: "parked" | "terminal" | "failed" | "lease_lost" = "failed";
   try {
     const outcome = yield* race([
-      (function* (): Operation<ProgramRunResult> {
+      (function* (): Operation<AdvancementResult> {
         // Retries stay inside the same fenced activation epoch. On the third
         // consecutive stale restore the authority deletes that lease; the next
         // attempt therefore fails stale_activation and exits instead of bypassing backoff.
@@ -41,7 +41,7 @@ export function* runWithRenewedActivationLease(
           }
         }
       })(),
-      (function* (): Operation<ProgramRunResult> {
+      (function* (): Operation<AdvancementResult> {
         while (true) {
           yield* sleep(renewalIntervalMs);
           const renewed = yield* authority.command({

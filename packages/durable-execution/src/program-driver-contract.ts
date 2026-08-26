@@ -212,7 +212,7 @@ export interface ProgramParkedSlot {
 }
 
 /** Caller-visible terminal or parked result of one runtime activation. */
-export type ProgramRunResult =
+export type AdvancementResult =
   | { state: "completed"; value: Json }
   | { state: "failed"; error: SerializedApplicationError }
   | { state: "cancelled" }

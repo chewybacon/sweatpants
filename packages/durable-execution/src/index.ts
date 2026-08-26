@@ -13,7 +13,7 @@ export type {
   ProgramRoute,
   ProgramRunRequest,
   ProgramParkedSlot,
-  ProgramRunResult,
+  AdvancementResult,
   ProgramShutdownReason,
   ProgramStep,
   ProgramRestoreContext,
@@ -31,6 +31,7 @@ export * from "./program-contract.ts";
 export * from "./program-authoring.ts";
 export * from "./program-authoring-runtime.ts";
 export * from "./program-driver-context.ts";
+export * from "./execution-spine.ts";
 export * from "./program-registry.ts";
 export * from "./program-execution-context.ts";
 export * from "./program-driver.ts";

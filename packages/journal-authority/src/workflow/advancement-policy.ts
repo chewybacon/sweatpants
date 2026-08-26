@@ -1,0 +1,115 @@
+import { type Operation } from "effection";
+import {
+  CrankError,
+  type AdvancementPlan,
+  type CaughtUpLeaf,
+  type LivePlacement,
+  type Mandate,
+  type PlacementRoute,
+  type PreparedTarget,
+  type ProgramRoute,
+  type SandboxAffinity,
+} from "@sweatpants/durable-execution";
+
+import type { JournalAuthorityContract } from "../authority-contract.ts";
+
+/** Deployment policy owns selection and placement; replay owns neither. */
+export interface AdvancementPolicy {
+  select(targets: readonly PreparedTarget[]): Operation<AdvancementPlan | null>;
+}
+
+/** Deterministic policy used by the recursive composition coordinator. */
+export function requestedTargetPolicy(
+  taskId: string,
+  placement: LivePlacement,
+): AdvancementPolicy {
+  return {
+    *select(targets) {
+      const target = targets.find((candidate) =>
+        candidate.kind === "crank_native"
+          ? candidate.caughtUp.item.address.taskId === taskId
+          : candidate.ready.address.taskId === taskId,
+      );
+      return target === undefined ? null : { target, placement };
+    },
+  };
+}
+
+/** The one trust-boundary conversion from driver-owned route JSON. */
+export function livePlacement(
+  route: ProgramRoute,
+  affinity?: SandboxAffinity,
+): LivePlacement {
+  const driverKind = routeDriverKind(route);
+  let placementRoute: PlacementRoute;
+  let evaluatorKind: LivePlacement["evaluatorKind"];
+  if (driverKind === "worker") {
+    placementRoute = { kind: "worker", driverKind, route: structuredClone(route) };
+    evaluatorKind = "worker";
+  } else if (["agentcore", "mcp", "lambda", "remote"].includes(driverKind)) {
+    placementRoute = { kind: "remote", driverKind, route: structuredClone(route) };
+    evaluatorKind = "remote";
+  } else {
+    placementRoute = { kind: "local", driverKind, route: structuredClone(route) };
+    evaluatorKind = "program";
+  }
+  return {
+    route: placementRoute,
+    evaluatorKind,
+    sandbox:
+      affinity === undefined
+        ? { mode: "allocate" }
+        : { mode: "reuse", affinity: structuredClone(affinity) },
+  };
+}
+
+/**
+ * Separate live bind. Prepared values are sent once as CAS expectations;
+ * Authority either issues the Mandate atomically or reports the stale field.
+ */
+export function* bindCaughtUpLeaf(
+  authority: JournalAuthorityContract,
+  caughtUp: CaughtUpLeaf,
+  policy: AdvancementPolicy,
+  ownerId: string,
+  leaseDurationMs = 30_000,
+): Operation<Mandate | null> {
+  const selection = yield* policy.select([{ kind: "crank_native", caughtUp }]);
+  if (selection === null || selection.target.kind !== "crank_native") return null;
+  const item = selection.target.caughtUp.item;
+  const bound = yield* authority.command({
+    type: "execution.bind-mandate",
+    request: {
+      address: item.address,
+      strand: item.strand,
+      program: item.program,
+      attachmentId: selection.target.caughtUp.restored.attachment.attachmentId,
+      ownerId,
+      leaseDurationMs,
+      placement: selection.placement,
+      expected: {
+        strandHeadDigest: item.plannedHead.digest,
+        leaseEpoch: item.executionEpoch,
+        forkGroupRevision: item.groupContext.groupRevision,
+      },
+      frontierProof: selection.target.caughtUp.frontierProof,
+    },
+  });
+  if (bound.status === "stale") return null;
+  return bound.mandate;
+}
+
+export function assertMandateCurrent(mandate: Mandate): void {
+  if (mandate.lease.expiresAtMs <= 0 || mandate.lease.epoch <= 0) {
+    throw new CrankError("stale_activation", "Mandate lease is invalid");
+  }
+}
+
+function routeDriverKind(route: ProgramRoute): string {
+  if (route !== null && typeof route === "object" && !Array.isArray(route)) {
+    const value = (route as Record<string, unknown>)["driverKind"];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  // This default lives at the sole route-taxonomy issuer, never below it.
+  return "program";
+}

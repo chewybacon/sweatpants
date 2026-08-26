@@ -25,7 +25,7 @@ import {
   defineDurableProgramManifest,
   type AttachProgramRequest,
   type ForeignToolRequest,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import {
@@ -196,7 +196,7 @@ function runProgram(
   authority: ReturnType<typeof createAuthorityScenarioDriver>,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
-): Operation<ProgramRunResult> {
+): Operation<AdvancementResult> {
   return ProgramDriverRegistryContext.with(drivers, function* () {
     return yield* withProgramDriverTestScope(authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {

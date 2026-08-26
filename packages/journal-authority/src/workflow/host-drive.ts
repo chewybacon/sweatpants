@@ -1,6 +1,6 @@
 import { scoped, type Operation } from "effection";
 import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
-import type { AttachProgramRequest, ProgramRunResult } from "@sweatpants/durable-execution";
+import type { AttachProgramRequest, AdvancementResult } from "@sweatpants/durable-execution";
 import { DurableProgramCancellation, CrankError } from "@sweatpants/durable-execution";
 import { InstalledEffectPort } from "./runtime.ts";
 import type { JournalAuthorityContract } from "../authority-contract.ts";
@@ -78,7 +78,7 @@ export interface DriveActivationRequest {
  * event. Terminal events close the authority task before this Operation
  * returns; resource disposal is owned here rather than by each caller.
  */
-export function driveActivation(request: DriveActivationRequest): Operation<ProgramRunResult> {
+export function driveActivation(request: DriveActivationRequest): Operation<AdvancementResult> {
   return scoped(function* () {
     const handle = yield* openProgramAttachment(request.attach, request.workflow);
     return yield* driveAttachment(
@@ -97,7 +97,7 @@ function* driveAttachment(
   attach: AttachProgramRequest,
   programCapability: string,
   onEffectResolved?: DriveActivationRequest["onEffectResolved"],
-): Operation<ProgramRunResult> {
+): Operation<AdvancementResult> {
   const { sessionId, taskId, input } = attach;
   let event = yield* handle.exchange({ type: "start", input });
   let pullIndex = 0;

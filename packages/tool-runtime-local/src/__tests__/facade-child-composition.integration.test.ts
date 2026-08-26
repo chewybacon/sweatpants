@@ -23,7 +23,7 @@ import {
   defineDurableProgramManifest,
   type AttachProgramRequest,
   type ForeignToolRequest,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import {
   DurableEffectRegistryContext,
@@ -191,7 +191,7 @@ describe("facade workflow runtime child composition", () => {
       // One outer activation completes end-to-end: the facade composes its
       // authored child while the outer adapter runs through the ProgramDriver
       // workflow transport in the same process.
-      const outcome: ProgramRunResult = yield* runOuter(attach, authority, effects);
+      const outcome: AdvancementResult = yield* runOuter(attach, authority, effects);
       expect(outcome).toEqual({ state: "completed", value: { answers: ["child-says"] } });
     });
   });
@@ -201,7 +201,7 @@ function runOuter(
   attach: AttachProgramRequest,
   authority: ReturnType<typeof createAuthorityScenarioDriver>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
-): Operation<ProgramRunResult> {
+): Operation<AdvancementResult> {
   const adapterTools = createDurableToolRegistry([foreignToolAdapter]);
   return ProgramDriverRegistryContext.with(
     createProgramDriverRegistry([["program", createWorkflowProgramDriver(adapterTools)]]),

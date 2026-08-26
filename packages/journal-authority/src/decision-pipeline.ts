@@ -7,6 +7,7 @@ import type {
   KernelTransition,
 } from "./authority-contract.ts";
 import { decideAuthorityCommand } from "./authority-decisions.ts";
+import { structuralCommandSessionId } from "./authority-command-address.ts";
 import type { DecisionStageDiagnostic, DecisionStageName } from "./authority-snapshot.ts";
 
 /** Internal composition failure: a transition violated a kernel invariant. */
@@ -343,6 +344,19 @@ function validateEntryEvidence(
         throw new AuthorityCompositionError("Orphan proposal differs from replacement state");
       }
       return;
+    case "AdvancementBound":
+      if (
+        task.execution.liveLease?.epoch !== payload.leaseEpoch ||
+        task.execution.liveLease.frontierDigest !== payload.frontierDigest
+      ) {
+        throw new AuthorityCompositionError("Advancement bind differs from replacement state");
+      }
+      return;
+    case "AdvancementReleased":
+      if (task.execution.liveLease !== undefined) {
+        throw new AuthorityCompositionError("Advancement release differs from replacement state");
+      }
+      return;
     case "TaskClosed":
       if (
         (task.lifecycle.status !== "closed" && task.lifecycle.status !== "cancelled") ||
@@ -395,9 +409,7 @@ function canonicalState(state: AuthorityState): string {
 }
 
 function sessionIdOf(command: AuthorityCommand): string | undefined {
-  return "sessionId" in command.request && typeof command.request.sessionId === "string"
-    ? command.request.sessionId
-    : undefined;
+  return structuralCommandSessionId(command);
 }
 
 function publicCategory(error: unknown): string {

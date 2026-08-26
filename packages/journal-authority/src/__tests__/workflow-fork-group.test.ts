@@ -7,7 +7,7 @@ import {
   createProgramDriverRegistry,
   stableProgramAttachmentId,
   type DurableProgramManifest,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import { assertJson } from "@sweatpants/foundation";
 import {
@@ -200,7 +200,7 @@ describe("fork groups through the workflow program driver", () => {
           attachmentId: stableProgramAttachmentId(request),
           audience: "program-host",
         });
-        const firstRun: ProgramRunResult = yield* ProgramDriverRegistryContext.with(
+        const firstRun: AdvancementResult = yield* ProgramDriverRegistryContext.with(
           drivers,
           function* () {
             return yield* driveInstalledTestProgramTree({
@@ -258,7 +258,7 @@ describe("fork groups through the workflow program driver", () => {
           stableProgramAttachmentId(request) + "-2",
           1,
         );
-        const secondRun: ProgramRunResult = yield* ProgramDriverRegistryContext.with(
+        const secondRun: AdvancementResult = yield* ProgramDriverRegistryContext.with(
           drivers,
           function* () {
             return yield* driveInstalledTestProgramTree({
@@ -321,7 +321,7 @@ describe("fork groups through the workflow program driver", () => {
             });
           });
 
-        const firstRun: ProgramRunResult = yield* activate(1, "");
+        const firstRun: AdvancementResult = yield* activate(1, "");
         if (firstRun.state !== "parked") throw new Error(`expected parked, got ${firstRun.state}`);
         // Bounded frontier: both member elicits surface as slots.
         expect(firstRun.reason).toBe("child");
@@ -346,7 +346,7 @@ describe("fork groups through the workflow program driver", () => {
           if (resolved.status !== "accepted") throw new Error(`resolve ${resolved.status}`);
         }
 
-        const secondRun: ProgramRunResult = yield* activate(2, "-2");
+        const secondRun: AdvancementResult = yield* activate(2, "-2");
         if (secondRun.state !== "completed") throw new Error(`expected completed, got ${secondRun.state}`);
         expect(secondRun.value).toBe("A:accept|B:accept");
 
@@ -413,7 +413,7 @@ describe("fork groups through the workflow program driver", () => {
           attachmentId: stableProgramAttachmentId(request),
           audience: "program-host",
         });
-        const result: ProgramRunResult = yield* ProgramDriverRegistryContext.with(
+        const result: AdvancementResult = yield* ProgramDriverRegistryContext.with(
           drivers,
           function* () {
             return yield* driveInstalledTestProgramTree({ attach: request });

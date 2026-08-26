@@ -354,10 +354,15 @@ describe("durable cancellation and partial results", () => {
     expect(catches).toBe(1);
     expect(cleanupRuns).toBe(1);
     const records = selected.readJournal(request.sessionId);
-    expect(records.at(-1)?.payload).toEqual({
+    expect(records.findLast((record) => record.payload.type === "TaskClosed")?.payload).toEqual({
       type: "TaskClosed",
       taskId: request.taskId,
       outcome: { status: "cancelled" },
+    });
+    expect(records.at(-1)?.payload).toMatchObject({
+      type: "AdvancementReleased",
+      taskId: request.taskId,
+      reason: "terminal",
     });
     expect(records.some((record) => record.payload.type === "DurableEmission")).toBe(true);
     expect(JSON.stringify(records)).not.toContain("must-not-become-success");

@@ -2,6 +2,7 @@ import type { OperationOutcome } from "@sweatpants/durable-effects";
 import type {
   DurableOperationDescriptor,
   DurableProgramManifest,
+  ForestReplayPlan,
   PinnedProgram,
   ProgramRoute,
   ProgramStep,
@@ -23,6 +24,8 @@ import type {
   AssistantPartialAcceptedFact,
   AuthorizeModelDispatchRequest,
   AuthorizeModelDispatchResult,
+  BindMandateRequest,
+  BindMandateResult,
   BindRestoreFrontierRequest,
   BindRestoreFrontierResult,
   CancellationAcknowledgement,
@@ -41,6 +44,10 @@ import type {
   EnsureChildTaskResult,
   IssueRestoreTicketRequest,
   IssueRestoreTicketResult,
+  LiveReservationResult,
+  MandateCompleteRequest,
+  MandateEmissionRequest,
+  MandateReserveRequest,
   ModelContextPreparedFact,
   OpenDurableTaskRequest,
   PrepareProgramRestoreRequest,
@@ -48,6 +55,8 @@ import type {
   RecoverableSession,
   ReleaseActivationRequest,
   ReleaseActivationResult,
+  ReleaseMandateRequest,
+  ReleaseMandateResult,
   RenewActivationRequest,
   RenewActivationResult,
   ResolveOperationRequest,
@@ -154,6 +163,8 @@ export interface ForceOrphanCommand {
 export type ExecutionCommand =
   | { readonly type: "execution.open-task"; readonly request: OpenDurableTaskRequest }
   | { readonly type: "execution.bind-attachment"; readonly request: BindAttachmentCommand }
+  | { readonly type: "execution.bind-mandate"; readonly request: BindMandateRequest }
+  | { readonly type: "execution.release-mandate"; readonly request: ReleaseMandateRequest }
   | { readonly type: "execution.replace-attachment"; readonly request: ReplaceAttachmentCommand }
   | { readonly type: "execution.ensure-child"; readonly request: EnsureChildTaskRequest }
   | { readonly type: "execution.open-fork-group"; readonly request: OpenForkGroupRequest }
@@ -172,6 +183,9 @@ export type ExecutionCommand =
     }
   | { readonly type: "execution.report-peer-loss"; readonly request: ReportPeerLossRequest }
   | { readonly type: "execution.reserve-pull"; readonly request: ReserveOperationRequest }
+  | { readonly type: "execution.mandate-reserve"; readonly request: MandateReserveRequest }
+  | { readonly type: "execution.mandate-emission"; readonly request: MandateEmissionRequest }
+  | { readonly type: "execution.mandate-complete"; readonly request: MandateCompleteRequest }
   | {
       readonly type: "execution.accept-preparation";
       readonly request: AcceptPullPreparationRequest;
@@ -211,6 +225,8 @@ export type AuthorityCommand = ExecutionCommand | ActivationControlCommand | Rec
 export interface CommandResultByType {
   readonly "execution.open-task": { readonly programCapability: string };
   readonly "execution.bind-attachment": { readonly programCapability: string };
+  readonly "execution.bind-mandate": BindMandateResult;
+  readonly "execution.release-mandate": ReleaseMandateResult;
   readonly "execution.replace-attachment": {
     readonly executionEpoch: number;
     readonly programCapability: string;
@@ -223,6 +239,9 @@ export interface CommandResultByType {
   readonly "execution.commit-peer-evidence": CommitPeerEvidenceResult;
   readonly "execution.report-peer-loss": ReportPeerLossResult;
   readonly "execution.reserve-pull": ReserveOperationResult;
+  readonly "execution.mandate-reserve": LiveReservationResult;
+  readonly "execution.mandate-emission": EmissionReceipt;
+  readonly "execution.mandate-complete": CompleteTaskResult;
   readonly "execution.accept-preparation": AcceptPullPreparationResult;
   readonly "execution.accept-assistant-partial": AcceptAssistantPartialResult;
   readonly "execution.resolve-pull": ResolveOperationResult;
@@ -254,6 +273,7 @@ export type AuthorityQuery =
   | { readonly type: "authority.nonterminal-schema-digests" }
   | { readonly type: "authority.recoverable-sessions" }
   | { readonly type: "authority.runnable-sessions" }
+  | { readonly type: "forest.replay-plan"; readonly sessionId: string }
   | { readonly type: "session.root-task-count"; readonly sessionId: string }
   | { readonly type: "task.execution-state"; readonly sessionId: string; readonly taskId: string }
   | { readonly type: "task.input"; readonly sessionId: string; readonly taskId: string }
@@ -300,6 +320,7 @@ export interface QueryResultByType {
   readonly "authority.nonterminal-schema-digests": readonly string[];
   readonly "authority.recoverable-sessions": readonly RecoverableSession[];
   readonly "authority.runnable-sessions": readonly string[];
+  readonly "forest.replay-plan": ForestReplayPlan;
   readonly "session.root-task-count": number;
   readonly "task.execution-state": DurableTaskExecutionState;
   readonly "task.input": Json;
@@ -453,6 +474,16 @@ export interface TaskState {
     readonly route?: ProgramRoute;
     readonly catalog?: Json;
     readonly catalogDigest?: string;
+    /** Materialized task-scoped live lease. The Mandate itself is runtime-only. */
+    readonly liveLease?: {
+      readonly ownerId: string;
+      readonly epoch: number;
+      readonly expiresAtMs: number;
+      readonly attachmentId: string;
+      readonly strandHeadDigest: string;
+      readonly forkGroupRevision: number;
+      readonly frontierDigest: string;
+    };
   };
   readonly actions: readonly ActionState[];
   readonly nextActionIndex: number;

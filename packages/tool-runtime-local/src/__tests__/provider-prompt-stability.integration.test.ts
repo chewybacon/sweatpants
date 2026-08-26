@@ -19,7 +19,7 @@ import {
   createProgramDriverRegistry,
   type AttachProgramRequest,
   type ForeignToolRequest,
-  type ProgramRunResult,
+  type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
@@ -79,7 +79,7 @@ const probeTool = createTool("prompt_stability_probe")
   });
 
 interface ExecutionCapture {
-  readonly result: ProgramRunResult;
+  readonly result: AdvancementResult;
   /** Canonical bytes of each model sample's provider-visible context. */
   readonly contexts: string[];
 }
@@ -152,7 +152,7 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
       attachmentId: "unattached-adapter",
       audience: "workflow-host",
     });
-    const result: ProgramRunResult = yield* ProgramDriverRegistryContext.with(
+    const result: AdvancementResult = yield* ProgramDriverRegistryContext.with(
       drivers,
       function* () {
         return yield* withProgramDriverTestScope(authority, function* () {

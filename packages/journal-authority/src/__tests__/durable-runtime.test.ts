@@ -1196,6 +1196,8 @@ describe("crank-native durable runtime", () => {
       });
     });
 
+    // Settlement replay advances the verified warm attachment; only a later
+    // activation reconstructs and reruns the ordinary operation.
     expect(ordinaryReads).toBe(2);
     expect(recordedReads).toBe(1);
     await rm(directory, { recursive: true, force: true });
@@ -1249,13 +1251,27 @@ describe("crank-native durable runtime", () => {
         .readJournal(attach.sessionId)
         .map((record) => structuredClone(record));
       label = "changed-b";
+      const pending = accepted.find(
+        (record) =>
+          record.payload.type === "PullRequested" && record.payload.descriptor.kind === "elicit",
+      );
+      if (pending?.payload.type !== "PullRequested") throw new Error("no pending elicit");
+      yield* authority.resolve({
+        capability: authority.resolutionCapability(
+          attach.sessionId,
+          attach.taskId,
+          pending.payload.pullId,
+        ),
+        audience: "user:approval",
+        outcome: { status: "ok", value: { action: "accept", content: true } },
+      });
       let caught: unknown;
       try {
         yield* activate();
       } catch (error) {
         caught = error;
       }
-      expect(caught).toMatchObject({ code: "nondeterminism_detected" });
+      expect(caught).toMatchObject({ code: "replay_diverged" });
       const after = authority.readJournal(attach.sessionId);
       expect(after.slice(0, accepted.length)).toEqual(accepted);
       expect(after.at(-1)?.payload).toMatchObject({
@@ -1438,15 +1454,33 @@ describe("crank-native durable runtime", () => {
         });
       };
       expect(yield* activate()).toMatchObject({ state: "parked", reason: "elicit" });
-      yield* call(() => rm(file));
-      const replayed = yield* activate();
-      expect(replayed).toMatchObject({
-        state: "failed",
-        error: { code: "workspace_file_missing" },
+      const pending = authority
+        .readJournal(attach.sessionId)
+        .find(
+          (record) =>
+            record.payload.type === "PullRequested" && record.payload.descriptor.kind === "elicit",
+        );
+      if (pending?.payload.type !== "PullRequested") throw new Error("no pending elicit");
+      yield* authority.resolve({
+        capability: authority.resolutionCapability(
+          attach.sessionId,
+          attach.taskId,
+          pending.payload.pullId,
+        ),
+        audience: "user:approval",
+        outcome: { status: "ok", value: { action: "accept", content: true } },
       });
+      yield* call(() => rm(file));
+      let replayError: unknown;
+      try {
+        yield* activate();
+      } catch (error) {
+        replayError = error;
+      }
+      expect(replayError).toMatchObject({ code: "replay_diverged" });
       expect(authority.readJournal(attach.sessionId).at(-1)?.payload).toMatchObject({
         type: "TaskOrphaned",
-        reason: "replay_execution_failed",
+        reason: "replay_diverged",
       });
     });
     await rm(directory, { recursive: true, force: true });
@@ -1604,10 +1638,14 @@ describe("crank-native durable runtime", () => {
     expect(executions).toBe(1);
     expect(authority.readJournal(attach.sessionId).map((record) => record.payload.type)).toEqual([
       "TaskOpened",
+      "AdvancementBound",
       "PullRequested",
       "AttemptStarted",
       "PullResolved",
+      "AdvancementReleased",
+      "AdvancementBound",
       "TaskClosed",
+      "AdvancementReleased",
     ]);
     expect(
       authority
@@ -1772,11 +1810,15 @@ describe("crank-native durable runtime", () => {
       expect(result).toEqual({ state: "completed", value: "hello" });
       expect(authority.readJournal(attach.sessionId).map((record) => record.payload.type)).toEqual([
         "TaskOpened",
+        "AdvancementBound",
         "DurableEmission",
         "PullRequested",
         "AttemptStarted",
         "PullResolved",
+        "AdvancementReleased",
+        "AdvancementBound",
         "TaskClosed",
+        "AdvancementReleased",
       ]);
     });
 

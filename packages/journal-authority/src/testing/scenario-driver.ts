@@ -277,10 +277,11 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
         },
       });
     },
-    *bindProgramAttachment(sessionId, taskId, attachmentId, executionEpoch) {
+    *bindProgramAttachment(sessionId, taskId, attachmentId, _executionEpoch) {
+      const current = yield* query({ type: "task.execution-state", sessionId, taskId });
       return yield* direct({
         type: "execution.bind-attachment",
-        request: { sessionId, taskId, attachmentId, executionEpoch },
+        request: { sessionId, taskId, attachmentId, executionEpoch: current.executionEpoch },
       });
     },
     *openTask(request) {

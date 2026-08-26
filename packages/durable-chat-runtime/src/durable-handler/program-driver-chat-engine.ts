@@ -49,7 +49,7 @@ import {
   stableProgramAttachmentId,
   type AttachProgramRequest,
   type DurableProgramContext,
-  type ProgramRunResult,
+  type AdvancementResult,
   type PinnedProgram,
   type ProgramRoute,
   exactProgramKey,
@@ -569,7 +569,7 @@ function* activateProgramDriverChatEngine(
   const activateWorkflowTask = function* (request: {
     readonly attach: AttachProgramRequest;
     readonly initialProgramCapability?: string;
-  }): Operation<ProgramRunResult> {
+  }): Operation<AdvancementResult> {
     const currentAttach = request.attach;
     const tool = tools.get(exactProgramKey(currentAttach.program));
     if (!tool) {
@@ -618,7 +618,7 @@ function* activateProgramDriverChatEngine(
       readonly initialProgramCapability?: string;
     },
     activationOwnerId?: string,
-  ): Operation<ProgramRunResult> {
+  ): Operation<AdvancementResult> {
     const kind = routeDriverKind(request.attach.route);
     const driver = remoteDrivers.get(kind);
     if (!driver) {
@@ -674,7 +674,7 @@ function* activateProgramDriverChatEngine(
     executionEpoch: number,
     initialProgramCapability?: string,
     activationOwnerId?: string,
-  ): Operation<ProgramRunResult> {
+  ): Operation<AdvancementResult> {
     const rootAttach = { ...attach, executionEpoch };
     return yield* journal.withAuthority(function* (authority) {
       return yield* driveWorkflowTree({
@@ -717,7 +717,7 @@ function* activateProgramDriverChatEngine(
     });
   };
   let cancellationFenceLost = false;
-  let outcome: ProgramRunResult;
+  let outcome: AdvancementResult;
   if (!requiresFencedActivation(params.nativeTools)) {
     outcome = yield* driveTreeAtEpoch(attach.executionEpoch, active ? undefined : openedCapability);
   } else {
@@ -1982,8 +1982,8 @@ function* runFencedActivation(
   sessionId: string,
   fallbackEpoch: number,
   fenced: boolean,
-  activate: (epoch: number, ownerId?: string) => Operation<ProgramRunResult>,
-): Operation<ProgramRunResult> {
+  activate: (epoch: number, ownerId?: string) => Operation<AdvancementResult>,
+): Operation<AdvancementResult> {
   if (!fenced) {
     return yield* activate(fallbackEpoch);
   }
