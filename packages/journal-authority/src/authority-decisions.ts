@@ -202,6 +202,10 @@ export function queryAuthorityState<Q extends AuthorityQuery>(
           : terminalCancellation(task);
       break;
     }
+    case "task.lifecycle": {
+      result = { status: taskFor(state, query.sessionId, query.taskId).lifecycle.status };
+      break;
+    }
     case "pull.state":
       result = operationState(state, query.sessionId, query.taskId, query.pullId);
       break;

@@ -204,9 +204,26 @@ export interface ProgramRunRequest {
   activationOwnerId?: string;
 }
 
+/** One participant-addressable parked slot on the active leaf frontier. */
+export interface ProgramParkedSlot {
+  readonly taskId: string;
+  readonly pullId: string;
+  readonly reason: string;
+}
+
 /** Caller-visible terminal or parked result of one runtime activation. */
 export type ProgramRunResult =
   | { state: "completed"; value: Json }
   | { state: "failed"; error: SerializedApplicationError }
   | { state: "cancelled" }
-  | { state: "parked"; pullId: string; reason: string };
+  | {
+      state: "parked";
+      pullId: string;
+      reason: string;
+      /**
+       * Bounded open-slot set when a fork group parks with several live
+       * members (REQ-028): every slot is participant-addressable. Absent for
+       * single-park results; `pullId` remains the primary slot either way.
+       */
+      slots?: readonly ProgramParkedSlot[];
+    };

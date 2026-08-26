@@ -12,6 +12,7 @@ export type {
   ContinuationCheckpointCapability,
   ProgramRoute,
   ProgramRunRequest,
+  ProgramParkedSlot,
   ProgramRunResult,
   ProgramShutdownReason,
   ProgramStep,
