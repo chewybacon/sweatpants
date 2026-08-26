@@ -58,7 +58,14 @@ import type {
   ValidateElicitResponseResult,
   ReserveOperationRequest,
   ReserveOperationResult,
+  BreachForkGroupRequest,
+  BreachForkGroupResult,
+  ForceOrphanForkGroupRequest,
+  ForceOrphanForkGroupResult,
+  OpenForkGroupRequest,
+  OpenForkGroupResult,
 } from "./authority-types.ts";
+import type { ForkGroupState } from "./fork-group.ts";
 import type { DurableSchemaRegistry } from "./schema-registry.ts";
 
 export type DecisionStageName =
@@ -143,6 +150,12 @@ export type ExecutionCommand =
   | { readonly type: "execution.bind-attachment"; readonly request: BindAttachmentCommand }
   | { readonly type: "execution.replace-attachment"; readonly request: ReplaceAttachmentCommand }
   | { readonly type: "execution.ensure-child"; readonly request: EnsureChildTaskRequest }
+  | { readonly type: "execution.open-fork-group"; readonly request: OpenForkGroupRequest }
+  | { readonly type: "execution.breach-fork-group"; readonly request: BreachForkGroupRequest }
+  | {
+      readonly type: "execution.force-orphan-fork-group";
+      readonly request: ForceOrphanForkGroupRequest;
+    }
   | { readonly type: "execution.reserve-pull"; readonly request: ReserveOperationRequest }
   | {
       readonly type: "execution.accept-preparation";
@@ -188,6 +201,9 @@ export interface CommandResultByType {
     readonly programCapability: string;
   };
   readonly "execution.ensure-child": EnsureChildTaskResult;
+  readonly "execution.open-fork-group": OpenForkGroupResult;
+  readonly "execution.breach-fork-group": BreachForkGroupResult;
+  readonly "execution.force-orphan-fork-group": ForceOrphanForkGroupResult;
   readonly "execution.reserve-pull": ReserveOperationResult;
   readonly "execution.accept-preparation": AcceptPullPreparationResult;
   readonly "execution.accept-assistant-partial": AcceptAssistantPartialResult;
@@ -393,6 +409,11 @@ export interface TaskState {
   readonly taskId: string;
   readonly turnId: string;
   readonly origin: TaskOrigin;
+  /** Resolved expiry cap inherited by descendant fork groups (REQ-030). */
+  readonly deadlineMs?: number;
+  /** At most one open fork group per task; the task is frozen while the
+   *  group is nonterminal (REQ-021). */
+  readonly forkGroup?: ForkGroupState;
   readonly program: {
     readonly artifact: PinnedProgram;
     readonly manifest: DurableProgramManifest;

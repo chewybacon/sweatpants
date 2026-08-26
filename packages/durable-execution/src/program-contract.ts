@@ -109,13 +109,25 @@ export interface DurableInvokeDescriptor {
   kind: "invoke";
   child: DurableChildDescriptor;
 }
+/** Fork expiry policy: explicit deadline, relative duration, or inheritance
+ *  through ancestors. No default and no library constant exist. */
+export type DurableForkExpiry =
+  | { kind: "at"; atMs: number }
+  | { kind: "after"; durationMs: number }
+  | { kind: "inherit" };
 export interface DurableAllDescriptor {
   kind: "all";
+  /** Closed pairing: `all` requires one-for-all supervision. */
+  supervision: "one_for_all";
   children: DurableChildDescriptor[];
+  expiry: DurableForkExpiry;
 }
 export interface DurableRaceDescriptor {
   kind: "race";
+  /** Closed pairing: `race` requires first-success supervision. */
+  supervision: "first_success";
   children: DurableChildDescriptor[];
+  expiry: DurableForkExpiry;
 }
 export interface DurableSpawnDescriptor {
   kind: "spawn";
