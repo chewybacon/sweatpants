@@ -144,6 +144,146 @@ function attachRequest(manifest: DurableProgramManifest = parentManifest) {
 }
 
 describe("fork groups through the workflow program driver", () => {
+  it("mixed group: local members drive, peers resolve through evidence (REQ-037, REQ-075)", async () => {
+    const peerProgram = createPinnedDurableProgram(
+      childManifest("fixture.fork/peer-p", "7"),
+      function* (input) {
+        return `${input}:peer`;
+      },
+    );
+    const peerRef = {
+      id: peerProgram.manifest.programId,
+      version: peerProgram.manifest.version,
+      digest: peerProgram.manifest.digest,
+      input: "P",
+      durability: { kind: "peer_hosted" as const, peer: "peer-1", sampling: "delegated" as const },
+    };
+    const mixedParent = createPinnedDurableProgram(
+      { ...parentManifest, programId: "fixture.fork/mixed-parent", digest: "9".repeat(64) },
+      function* (_input, context) {
+        const terminal = (yield* context.pull(
+          assertJson({
+            kind: "all",
+            supervision: "one_for_all",
+            children: [childARef, peerRef],
+            expiry: { kind: "after", durationMs: 60_000 },
+          }),
+        )) as {
+          status: string;
+          outcomes: { ordinal: number; outcome: { status: string; value?: string } }[];
+        };
+        if (terminal.status !== "completed") throw new Error(`group ended ${terminal.status}`);
+        return terminal.outcomes.map((entry) => entry.outcome.value).join("|");
+      },
+    );
+
+    const authority = makeAuthority();
+    const drivers = createProgramDriverRegistry([
+      [
+        "program",
+        createWorkflowProgramDriver(
+          createDurableToolRegistry([mixedParent, childA, peerProgram]),
+        ),
+      ],
+    ]);
+    const request = attachRequest(mixedParent.manifest);
+
+    await run(function* () {
+      yield* withProgramDriverTestScope(authority, function* () {
+        const opened = yield* authority.openTask({
+          sessionId: request.sessionId,
+          turnId: "turn-0",
+          taskId: request.taskId,
+          manifest: mixedParent.manifest,
+          input: request.input,
+          executionEpoch: 1,
+          attachmentId: stableProgramAttachmentId(request),
+          audience: "program-host",
+        });
+        const firstRun: ProgramRunResult = yield* ProgramDriverRegistryContext.with(
+          drivers,
+          function* () {
+            return yield* driveInstalledTestProgramTree({
+              attach: request,
+              programCapability: opened.programCapability,
+            });
+          },
+        );
+        if (firstRun.state !== "parked") throw new Error(`expected parked, got ${firstRun.state}`);
+        // The peer member never surfaces a local slot; only the local elicit
+        // is participant-addressable (REQ-028 + Invariant P).
+        expect(firstRun.slots).toHaveLength(1);
+        expect(firstRun.slots![0]).toMatchObject({ reason: "elicit" });
+
+        const journal = authority.readJournal(sessionId);
+        const openedRecord = journal.find((entry) => entry.payload.type === "ForkGroupOpened");
+        if (openedRecord?.payload.type !== "ForkGroupOpened") throw new Error("no group");
+        const groupId = openedRecord.payload.groupId;
+        const peerTaskId = openedRecord.payload.memberTaskIds[1]!;
+
+        // Journal-first delegation, then peer evidence under the mandate.
+        const delegation = yield* authority.commitPeerDelegation({
+          sessionId,
+          taskId: request.taskId,
+          groupId,
+          memberTaskId: peerTaskId,
+        });
+        yield* authority.commitPeerEvidence({
+          sessionId,
+          taskId: request.taskId,
+          groupId,
+          memberTaskId: peerTaskId,
+          correlator: delegation.correlator,
+          outcome: { status: "ok", value: "P:peer" },
+          deliveryMandate: delegation.deliveryMandate,
+        });
+
+        // Settle the local member's elicit and re-drive.
+        const slot = firstRun.slots![0]!;
+        const validated = yield* authority.validateElicitResponse({
+          sessionId,
+          pullId: slot.pullId,
+          participantId: "user:answer",
+          completion: { action: "accept", content: true },
+        });
+        if (validated.status !== "valid") throw new Error(`validation ${validated.status}`);
+        yield* authority.resolve({
+          capability: authority.resolutionCapability(sessionId, slot.taskId, slot.pullId),
+          audience: validated.audience,
+          outcome: validated.outcome,
+        });
+        const bound = yield* authority.bindProgramAttachment(
+          request.sessionId,
+          request.taskId,
+          stableProgramAttachmentId(request) + "-2",
+          1,
+        );
+        const secondRun: ProgramRunResult = yield* ProgramDriverRegistryContext.with(
+          drivers,
+          function* () {
+            return yield* driveInstalledTestProgramTree({
+              attach: request,
+              programCapability: bound.programCapability,
+            });
+          },
+        );
+        if (secondRun.state !== "completed") {
+          throw new Error(`expected completed, got ${secondRun.state}`);
+        }
+        expect(secondRun.value).toBe("A:accept|P:peer");
+
+        // The peer member never accrued a local action — its strand is
+        // structural evidence only (REQ-037).
+        const snapshot = authority.exportSnapshot();
+        const peerTask = snapshot.sessions[0]![1].execution.tasks.find(
+          (task) => task.taskId === peerTaskId,
+        );
+        expect(peerTask?.actions).toHaveLength(0);
+        expect(peerTask?.execution.audience).toBe("peer:peer-1");
+      });
+    });
+  });
+
   it("parks one elicit per member and resolves in descriptor order (REQ-053)", async () => {
     const authority = makeAuthority();
     const drivers = createProgramDriverRegistry([

@@ -64,6 +64,12 @@ import type {
   ForceOrphanForkGroupResult,
   OpenForkGroupRequest,
   OpenForkGroupResult,
+  CommitPeerDelegationRequest,
+  CommitPeerDelegationResult,
+  CommitPeerEvidenceRequest,
+  CommitPeerEvidenceResult,
+  ReportPeerLossRequest,
+  ReportPeerLossResult,
 } from "./authority-types.ts";
 import type { ForkGroupState } from "./fork-group.ts";
 import type { DurableSchemaRegistry } from "./schema-registry.ts";
@@ -156,6 +162,15 @@ export type ExecutionCommand =
       readonly type: "execution.force-orphan-fork-group";
       readonly request: ForceOrphanForkGroupRequest;
     }
+  | {
+      readonly type: "execution.commit-peer-delegation";
+      readonly request: CommitPeerDelegationRequest;
+    }
+  | {
+      readonly type: "execution.commit-peer-evidence";
+      readonly request: CommitPeerEvidenceRequest;
+    }
+  | { readonly type: "execution.report-peer-loss"; readonly request: ReportPeerLossRequest }
   | { readonly type: "execution.reserve-pull"; readonly request: ReserveOperationRequest }
   | {
       readonly type: "execution.accept-preparation";
@@ -204,6 +219,9 @@ export interface CommandResultByType {
   readonly "execution.open-fork-group": OpenForkGroupResult;
   readonly "execution.breach-fork-group": BreachForkGroupResult;
   readonly "execution.force-orphan-fork-group": ForceOrphanForkGroupResult;
+  readonly "execution.commit-peer-delegation": CommitPeerDelegationResult;
+  readonly "execution.commit-peer-evidence": CommitPeerEvidenceResult;
+  readonly "execution.report-peer-loss": ReportPeerLossResult;
   readonly "execution.reserve-pull": ReserveOperationResult;
   readonly "execution.accept-preparation": AcceptPullPreparationResult;
   readonly "execution.accept-assistant-partial": AcceptAssistantPartialResult;

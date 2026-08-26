@@ -255,8 +255,33 @@ export interface ResolutionCapabilityClaims {
   nonce: string;
 }
 
+/**
+ * DeliveryMandate claims (REQ-074): proposal rights only for one peer
+ * member's evidence strand — journal-first delivery acknowledgement and
+ * evidence/loss proposals under one correlator. Never program, resolution,
+ * restore, or participant authority (REQ-040).
+ */
+export interface DeliveryCapabilityClaims {
+  version: 1;
+  issuer: string;
+  keyId: string;
+  journalId: string;
+  journalIncarnation: string;
+  sessionId: string;
+  taskId: string;
+  groupId: string;
+  memberTaskId: string;
+  correlator: string;
+  audience: string;
+  permissions: ["deliver"];
+  nonce: string;
+}
+
 /** Closed authenticated capability claim algebra. */
-export type CapabilityClaims = ProgramExecutionCapabilityClaims | ResolutionCapabilityClaims;
+export type CapabilityClaims =
+  | ProgramExecutionCapabilityClaims
+  | ResolutionCapabilityClaims
+  | DeliveryCapabilityClaims;
 
 /** Complete root/child identity and pinned input required to open a task. */
 export interface OpenDurableTaskRequest {
@@ -477,6 +502,56 @@ export interface ForceOrphanForkGroupRequest {
 
 export interface ForceOrphanForkGroupResult {
   readonly resolution: ForkGroupTerminal;
+}
+
+/**
+ * Journal-first peer delegation (REQ-038): commits the delivery record and
+ * returns the stable correlator plus a DeliveryMandate. Retries under the
+ * same correlator dedupe; no send may precede this commit.
+ */
+export interface CommitPeerDelegationRequest {
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly groupId: string;
+  readonly memberTaskId: string;
+}
+
+export interface CommitPeerDelegationResult {
+  readonly status: "committed" | "duplicate";
+  readonly correlator: string;
+  readonly deliveryMandate: string;
+}
+
+/** Peer terminal evidence proposed under the DeliveryMandate (REQ-074):
+ *  the authority validates and commits; the mandate never mutates directly. */
+export interface CommitPeerEvidenceRequest {
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly groupId: string;
+  readonly memberTaskId: string;
+  readonly correlator: string;
+  readonly outcome: OperationOutcome;
+  readonly deliveryMandate: string;
+}
+
+export interface CommitPeerEvidenceResult {
+  readonly status: "accepted";
+}
+
+/** Typed peer loss report (REQ-043): closes the member with a journaled
+ *  `peer_lost` outcome that flows through the group supervision policy. */
+export interface ReportPeerLossRequest {
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly groupId: string;
+  readonly memberTaskId: string;
+  readonly correlator: string;
+  readonly reason: string;
+  readonly deliveryMandate: string;
+}
+
+export interface ReportPeerLossResult {
+  readonly status: "accepted";
 }
 
 export interface DurableTaskExecutionState {

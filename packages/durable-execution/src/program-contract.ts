@@ -102,8 +102,18 @@ export interface PinnedProgram {
   digest: string;
 }
 export type SandboxAffinity = { kind: "invocation" | "conversation" | "workspace"; key: string };
+/** Closed durability classification for one fork member (REQ-035).
+ *  `crank_native` members execute under the local crank; `peer_hosted`
+ *  members execute under a peer authority and carry a declared sampling
+ *  mode (REQ-042) — metering truth requires the choice be explicit. */
+export type DurableChildDurability =
+  | { kind: "crank_native" }
+  | { kind: "peer_hosted"; peer: string; sampling: "delegated" | "private" };
+
 export interface DurableChildDescriptor extends PinnedProgram {
   input: Json;
+  /** Absent means `crank_native` — the pre-fork behavior. */
+  durability?: DurableChildDurability;
 }
 export interface DurableInvokeDescriptor {
   kind: "invoke";

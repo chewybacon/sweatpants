@@ -479,6 +479,15 @@ const semanticPayloadSchema = z.union([
     groupId: z.string(),
     reason: z.string(),
   }),
+  z.strictObject({
+    type: z.literal("PeerDelegationCommitted"),
+    taskId: z.string(),
+    groupId: z.string(),
+    memberTaskId: z.string(),
+    correlator: z.string(),
+    peer: z.string(),
+    deadlineMs: z.number(),
+  }),
 ]);
 const semanticRecordSchema = z.strictObject({
   offset: z.string(),
@@ -603,6 +612,10 @@ const taskLifecycleSchema = z.discriminatedUnion("status", [
 const forkGroupMemberSchema = z.strictObject({
   ordinal: nonNegativeIntegerSchema,
   taskId: z.string(),
+  durability: z.enum(["crank_native", "peer_hosted"]).optional(),
+  peer: z.string().optional(),
+  sampling: z.enum(["delegated", "private"]).optional(),
+  delegationCorrelator: z.string().optional(),
   terminal: z
     .strictObject({ outcome: operationOutcomeSchema, outcomeDigest: z.string() })
     .optional(),

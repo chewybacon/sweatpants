@@ -42,6 +42,12 @@ import type {
   ForceOrphanForkGroupResult,
   OpenForkGroupRequest,
   OpenForkGroupResult,
+  CommitPeerDelegationRequest,
+  CommitPeerDelegationResult,
+  CommitPeerEvidenceRequest,
+  CommitPeerEvidenceResult,
+  ReportPeerLossRequest,
+  ReportPeerLossResult,
   IssueRestoreTicketRequest,
   IssueRestoreTicketResult,
   ModelContextPreparedFact,
@@ -142,6 +148,11 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
     forceOrphanForkGroup(
       request: ForceOrphanForkGroupRequest,
     ): Operation<ForceOrphanForkGroupResult>;
+    commitPeerDelegation(
+      request: CommitPeerDelegationRequest,
+    ): Operation<CommitPeerDelegationResult>;
+    commitPeerEvidence(request: CommitPeerEvidenceRequest): Operation<CommitPeerEvidenceResult>;
+    reportPeerLoss(request: ReportPeerLossRequest): Operation<ReportPeerLossResult>;
     /** Test-side mint mirroring the kernel's program-capability claims, so
      *  scenarios can drive member tasks opened inside group admission. */
     programCapability(sessionId: string, taskId: string): string;
@@ -286,6 +297,15 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
     },
     *forceOrphanForkGroup(request) {
       return yield* direct({ type: "execution.force-orphan-fork-group", request });
+    },
+    *commitPeerDelegation(request) {
+      return yield* direct({ type: "execution.commit-peer-delegation", request });
+    },
+    *commitPeerEvidence(request) {
+      return yield* direct({ type: "execution.commit-peer-evidence", request });
+    },
+    *reportPeerLoss(request) {
+      return yield* direct({ type: "execution.report-peer-loss", request });
     },
     programCapability(sessionId, taskId) {
       const task = latest.sessions
