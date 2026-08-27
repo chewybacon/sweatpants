@@ -10,7 +10,7 @@ import { PluginSessionManagerContext } from "@sweatpants/durable-chat-runtime/co
 import { projectAvailableToolContracts } from "@sweatpants/durable-chat-runtime/tool-inventory";
 import { createStrategyToolRuntime, installToolRuntime } from "@sweatpants/tool-runtime";
 import {
-  ProgramDriverForeignEffectsContext,
+  ProgramDriverEphemeralEffectsContext,
   ProgramDriverNativeToolsContext,
   programDriverSchemaRegistry,
   type PluginSessionManager,
@@ -186,7 +186,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   if (options.mode === "agentcore") {
     // Remote ordinary-tool execution uses the same invocation host foreign
     // effects as local composition.
-    yield* ProgramDriverForeignEffectsContext.set(
+    yield* ProgramDriverEphemeralEffectsContext.set(
       createToolInvocationForeignEffectRegistrations({
         tools: new Map(ordinaryTools.map((tool) => [tool.name, tool])),
       }),
@@ -248,7 +248,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
     tools: ordinaryTools,
     samplingProvider: options.samplingProvider,
     installForeignEffects: function* (registrations) {
-      yield* ProgramDriverForeignEffectsContext.set(registrations);
+      yield* ProgramDriverEphemeralEffectsContext.set(registrations);
     },
   });
 }

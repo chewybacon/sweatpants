@@ -32,7 +32,7 @@ import {
   createProjectionTokenKeyring,
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
-import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
+import { ProgramDriverEphemeralEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createLocalToolInvocationRuntime,
   createToolInvocationForeignEffectRegistrations,
@@ -163,7 +163,7 @@ describe.skipIf(!externalSubstrateEnabled)(
               createToolInventory([createToolInventoryEntry(bookFlightTool)]),
             );
             yield* installToolRuntime(runtime);
-            yield* ProgramDriverForeignEffectsContext.set(
+            yield* ProgramDriverEphemeralEffectsContext.set(
               createToolInvocationForeignEffectRegistrations({
                 tools: new Map<string, RuntimeTool>([[bookFlightTool.name, bookFlightTool]]),
               }),

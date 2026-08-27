@@ -86,14 +86,14 @@ describe("yo-chat AgentCore runtime smoke", () => {
     const { setupYoChatPluginsAndRuntime } = await import("../server/tool-runtime");
     const { ToolInventoryApi } = await import("@sweatpants/tool-runtime");
     const { ToolRuntimeApi } = await import("@sweatpants/tool-runtime");
-    const { ProgramDriverForeignEffectsContext } =
+    const { ProgramDriverEphemeralEffectsContext } =
       await import("@sweatpants/durable-chat-runtime/durable-handler");
 
     await run(function* () {
       yield* setupYoChatPluginsAndRuntime();
 
-      const foreignEffects = yield* ProgramDriverForeignEffectsContext.get();
-      expect(foreignEffects).toHaveLength(2);
+      const ephemeralEffects = yield* ProgramDriverEphemeralEffectsContext.get();
+      expect(ephemeralEffects).toHaveLength(2);
 
       const inventory = yield* ToolInventoryApi.list();
       expect(inventory.some((tool) => tool.definition.name === "book_flight")).toBe(true);

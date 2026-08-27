@@ -30,9 +30,9 @@ export function projectInterrupt(
   const context = jsonRecord(pending.descriptor.context);
   const nested = jsonRecord(context?.["context"]);
   const correlation = pendingCorrelation(records, pending);
-  const isForeign = typeof context?.["foreignTool"] === "string";
-  const authoredContext = isForeign ? nested : context;
-  const responseProjection = isForeign
+  const legacyForeignContext = typeof context?.["foreignTool"] === "string";
+  const authoredContext = legacyForeignContext ? nested : context;
+  const responseProjection = legacyForeignContext
     ? context?.["responseSchema"]
     : pending.descriptor.response.inputProjection;
   const encoded = {

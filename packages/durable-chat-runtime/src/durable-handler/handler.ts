@@ -60,7 +60,7 @@ import type { StreamEvent } from "../handler/types.ts";
 import { createProgramDriverChatEngine } from "./program-driver-chat-engine.ts";
 import { manifest as chatProgramManifest } from "./program-driver-schema.ts";
 import { preparedModelContextByteLimit } from "./model-sampling/service.ts";
-import { useOptionalProgramDriverForeignEffects } from "../program-driver/effects.ts";
+import { useOptionalProgramDriverEphemeralEffects } from "../program-driver/effects.ts";
 import { useOptionalProgramDriverNativeTools } from "../program-driver/native-tools.ts";
 import {
   createSerializedEventStream,
@@ -1396,8 +1396,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   if (liveActivation) {
                     liveProgramActivations.set(requestedConversationId, liveActivation);
                   }
-                  const programDriverForeignEffects =
-                    yield* useOptionalProgramDriverForeignEffects();
+                  const programDriverEphemeralEffects =
+                    yield* useOptionalProgramDriverEphemeralEffects();
                   const programDriverNativeTools = yield* useOptionalProgramDriverNativeTools();
 
                   // Create the chat engine. If public resume validation failed, use an
@@ -1649,8 +1649,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                             ...engineParams,
                             journalStore: config.programDriverJournalStore,
                             liveEvent,
-                            ...(programDriverForeignEffects
-                              ? { foreignEffects: programDriverForeignEffects }
+                            ...(programDriverEphemeralEffects
+                              ? { ephemeralEffects: programDriverEphemeralEffects }
                               : {}),
                             ...(programDriverNativeTools
                               ? { nativeTools: programDriverNativeTools }

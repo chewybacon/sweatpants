@@ -1,8 +1,12 @@
+import { CrankError, type PinnedProgram } from "@sweatpants/durable-execution";
 import { nativeProgramIdentities } from "../program-driver/native-tools.ts";
 import type { ChatActivationContext } from "./program-driver-chat-activation.ts";
 import type { ChatAdmissionRequest } from "./program-driver-chat-admission.ts";
 import type { ChatPresentationContext } from "./program-driver-chat-presentation.ts";
-import type { ChatExecutionEnvironment } from "./program-driver-chat-runtime.ts";
+import type {
+  ChatExecutionEnvironment,
+  EphemeralExecutionStrategy,
+} from "./program-driver-chat-runtime.ts";
 import type { ElicitSettlementRequest } from "./program-driver-chat-settlement.ts";
 import type { ProgramDriverChatEngineParams } from "./program-driver-chat-types.ts";
 
@@ -15,20 +19,27 @@ export interface ProgramDriverChatComposition {
 export function composeProgramDriverChat(
   params: ProgramDriverChatEngineParams,
 ): ProgramDriverChatComposition {
+  if (params.modelContextSource === undefined) {
+    throw new CrankError(
+      "model_context_source_invalid",
+      "Chat-root execution requires an authoritative conversation context source",
+    );
+  }
+  const nativePrograms = nativeProgramIdentities(params.nativeTools);
+  const ephemeral = decideEphemeralExecution(params, nativePrograms);
   const admission: ChatAdmissionRequest = {
     journalStore: params.journalStore,
     conversationId: params.conversationId,
     participantId: params.participantId,
     maxIterations: params.maxIterations,
     tools: params.toolSchemas,
-    nativePrograms: nativeProgramIdentities(params.nativeTools),
-    ephemeralDriver: params.foreignEffects ? "tool-session" : "chat-tool-runtime",
+    nativePrograms,
+    ephemeral:
+      ephemeral.kind === "none" ? { kind: "none" } : { kind: "driver", driver: ephemeral.kind },
     recoveryOnly: params.recoveryOnly === true,
     superseding: params.pluginAbort !== undefined,
     hasElicitResponses: (params.elicitResponses?.length ?? 0) > 0,
-    ...(params.modelContextSource === undefined
-      ? {}
-      : { contextSource: params.modelContextSource }),
+    contextSource: params.modelContextSource,
     ...(params.systemPrompt === undefined ? {} : { systemPrompt: params.systemPrompt }),
     ...(params.initialToolChoice === undefined
       ? {}
@@ -44,13 +55,7 @@ export function composeProgramDriverChat(
       ...(params.historyPolicy === undefined ? {} : { historyPolicy: params.historyPolicy }),
     },
     ...(params.nativeTools === undefined ? {} : { native: params.nativeTools }),
-    ephemeral: {
-      inventory: params.toolInventoryEntries ?? [],
-      threadId: params.agUiRun.threadId,
-      runId: params.agUiRun.runId,
-      ...(params.foreignEffects === undefined ? {} : { effects: params.foreignEffects }),
-      ...(params.toolRuntime === undefined ? {} : { runtime: params.toolRuntime }),
-    },
+    ephemeral,
   };
   const settlement: ElicitSettlementRequest = {
     responses: params.elicitResponses ?? [],
@@ -82,4 +87,30 @@ export function composeProgramDriverChat(
         : { publishCheckpoint: params.publishCheckpoint }),
     },
   };
+}
+
+function decideEphemeralExecution(
+  params: ProgramDriverChatEngineParams,
+  nativePrograms: Readonly<Record<string, PinnedProgram>>,
+): EphemeralExecutionStrategy {
+  const needsEphemeralExecution = params.toolSchemas.some(
+    (tool) => nativePrograms[tool.name] === undefined,
+  );
+  if (!needsEphemeralExecution) return { kind: "none" };
+  if (params.ephemeralEffects !== undefined) {
+    return { kind: "tool-session", effects: params.ephemeralEffects };
+  }
+  if (params.toolRuntime !== undefined) {
+    return {
+      kind: "chat-tool-runtime",
+      runtime: params.toolRuntime,
+      inventory: params.toolInventoryEntries ?? [],
+      threadId: params.agUiRun.threadId,
+      runId: params.agUiRun.runId,
+    };
+  }
+  throw new CrankError(
+    "tool_runtime_not_installed",
+    "Ephemeral tools require a composed execution strategy",
+  );
 }

@@ -16,19 +16,19 @@ export function pendingCorrelation(
 ): { callId?: string; elicitId?: string; toolName?: string } {
   const context = jsonRecord(pending.descriptor.context);
   const nested = jsonRecord(context?.["context"]);
-  const foreignId = foreignCallId(context, nested);
-  const foreignTool =
+  const legacyForeignId = legacyForeignCallId(context, nested);
+  const legacyForeignTool =
     typeof context?.["foreignTool"] === "string"
       ? context["foreignTool"]
       : typeof nested?.["toolName"] === "string"
         ? nested["toolName"]
         : undefined;
-  if (foreignId || foreignTool) {
-    const elicitId = foreignElicitId(context, nested);
+  if (legacyForeignId || legacyForeignTool) {
+    const elicitId = legacyForeignElicitId(context, nested);
     return {
-      ...(foreignId ? { callId: foreignId } : {}),
+      ...(legacyForeignId ? { callId: legacyForeignId } : {}),
       ...(elicitId ? { elicitId } : {}),
-      ...(foreignTool ? { toolName: foreignTool } : {}),
+      ...(legacyForeignTool ? { toolName: legacyForeignTool } : {}),
     };
   }
 
@@ -67,7 +67,7 @@ export function pendingCorrelation(
   return { elicitId: pending.pullId };
 }
 
-function foreignCallId(
+function legacyForeignCallId(
   context: Record<string, Json> | undefined,
   nested: Record<string, Json> | undefined,
 ): string | undefined {
@@ -77,7 +77,7 @@ function foreignCallId(
   return typeof nested?.["callId"] === "string" ? nested["callId"] : undefined;
 }
 
-function foreignElicitId(
+function legacyForeignElicitId(
   context: Record<string, Json> | undefined,
   nested: Record<string, Json> | undefined,
 ): string | undefined {
