@@ -1,17 +1,13 @@
-import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import type { Json } from "@sweatpants/foundation";
-import { jsonRecord } from "./program-driver-chat-projection-values.ts";
-
-export type PullRequestedPayload = Extract<
-  DurableSemanticRecord["payload"],
-  { type: "PullRequested" }
->;
-export type PendingElicit = Omit<PullRequestedPayload, "descriptor"> & {
-  descriptor: Extract<PullRequestedPayload["descriptor"], { kind: "elicit" }>;
-};
+import {
+  parentToolStart,
+  type ChatJournalIndex,
+  type PendingElicit,
+} from "./program-driver-chat-journal-index.ts";
+import { jsonRecord } from "./program-driver-chat-projection-codecs.ts";
 
 export function pendingCorrelation(
-  records: DurableSemanticRecord[],
+  index: ChatJournalIndex,
   pending: PendingElicit,
 ): { callId?: string; elicitId?: string; toolName?: string } {
   const context = jsonRecord(pending.descriptor.context);
@@ -34,37 +30,11 @@ export function pendingCorrelation(
 
   // Native durable child context is the authored value only. Correlation stays
   // private by deriving the child invocation from TaskOpened.parentPullId and
-  // the immediately preceding root `tool_started` emission.
-  const opened = records.find(
-    (record) => record.payload.type === "TaskOpened" && record.payload.taskId === pending.taskId,
-  );
-  if (opened?.payload.type !== "TaskOpened" || !opened.payload.parentPullId) {
-    return { elicitId: pending.pullId };
-  }
-  const parentPullId = opened.payload.parentPullId;
-  const parentPullIndex = records.findIndex(
-    (record) => record.payload.type === "PullRequested" && record.payload.pullId === parentPullId,
-  );
-  const parentTaskId = opened.payload.parentTaskId;
-  for (let index = parentPullIndex - 1; index >= 0; index -= 1) {
-    const candidate = records[index]?.payload;
-    if (
-      candidate?.type !== "DurableEmission" ||
-      candidate.taskId !== parentTaskId ||
-      candidate.descriptor.eventType !== "tool_started"
-    ) {
-      continue;
-    }
-    const payload = jsonRecord(candidate.descriptor.payload);
-    if (typeof payload?.["callId"] === "string" && typeof payload["tool"] === "string") {
-      return {
-        callId: payload["callId"],
-        elicitId: pending.pullId,
-        toolName: payload["tool"],
-      };
-    }
-  }
-  return { elicitId: pending.pullId };
+  // the tool start immediately preceding that pull.
+  const parent = parentToolStart(index, pending.taskId);
+  return parent
+    ? { callId: parent.callId, elicitId: pending.pullId, toolName: parent.tool }
+    : { elicitId: pending.pullId };
 }
 
 function legacyForeignCallId(

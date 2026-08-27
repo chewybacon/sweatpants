@@ -12,7 +12,12 @@ import {
 import type { ProgramDriverJournal } from "./program-driver-journal.ts";
 import type { ElicitResponse } from "./types.ts";
 import type { ProgramDriverNativeToolComposition } from "../program-driver/native-tools.ts";
-import { pendingCorrelation, type PendingElicit } from "./program-driver-chat-correlation.ts";
+import { pendingCorrelation } from "./program-driver-chat-correlation.ts";
+import {
+  indexChatJournal,
+  type ChatJournalIndex,
+  type PendingElicit,
+} from "./program-driver-chat-journal-index.ts";
 
 export function* disposeEphemeralChildSessions(
   records: readonly DurableSemanticRecord[],
@@ -85,14 +90,11 @@ export interface ElicitSettlementRequest {
 
 function nativeElicitResponseSchema(
   request: ElicitSettlementRequest,
-  records: DurableSemanticRecord[],
+  index: ChatJournalIndex,
   pending: PendingElicit,
 ) {
-  const opened = records.find(
-    (record) => record.payload.type === "TaskOpened" && record.payload.taskId === pending.taskId,
-  );
-  const openedPayload = opened?.payload;
-  if (!openedPayload || openedPayload.type !== "TaskOpened") {
+  const openedPayload = index.tasks.get(pending.taskId);
+  if (!openedPayload) {
     return undefined;
   }
   const binding = [...(request.nativeBindings?.values() ?? [])].find(
@@ -109,14 +111,14 @@ function nativeElicitResponseSchema(
  */
 function* normalizeNativeElicitCompletion(
   request: ElicitSettlementRequest,
-  records: DurableSemanticRecord[],
+  index: ChatJournalIndex,
   pending: PendingElicit,
   completion: ElicitResponse["completion"],
 ): Operation<ElicitResponse["completion"]> {
   if (completion.action !== "accept") {
     return completion;
   }
-  const schema = nativeElicitResponseSchema(request, records, pending);
+  const schema = nativeElicitResponseSchema(request, index, pending);
   if (!schema) {
     return completion;
   }
@@ -145,14 +147,15 @@ export function* resolveElicitResponses(
   records: DurableSemanticRecord[],
 ): Operation<number> {
   let accepted = 0;
+  const index = indexChatJournal(records);
   for (const response of request.responses) {
-    const pending = findPendingResponse(records, response);
+    const pending = findPendingResponse(index, response);
     if (!pending) {
       continue;
     }
     const completion = yield* normalizeNativeElicitCompletion(
       request,
-      records,
+      index,
       pending,
       response.completion,
     );
@@ -171,24 +174,16 @@ export function* resolveElicitResponses(
 }
 
 function findPendingResponse(
-  records: DurableSemanticRecord[],
+  index: ChatJournalIndex,
   response: ElicitResponse,
 ): PendingElicit | undefined {
-  const resolved = new Set(
-    records.flatMap((record) =>
-      record.payload.type === "PullResolved" ? [record.payload.pullId] : [],
-    ),
-  );
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    const payload = records[index]?.payload;
-    if (
-      payload?.type !== "PullRequested" ||
-      payload.descriptor.kind !== "elicit" ||
-      resolved.has(payload.pullId)
-    ) {
+  const requests = [...index.pullRequests.values()];
+  for (let cursor = requests.length - 1; cursor >= 0; cursor -= 1) {
+    const payload = requests[cursor];
+    if (payload?.descriptor.kind !== "elicit" || index.resolvedPullIds.has(payload.pullId)) {
       continue;
     }
-    const correlation = pendingCorrelation(records, {
+    const correlation = pendingCorrelation(index, {
       ...payload,
       descriptor: payload.descriptor,
     });
