@@ -28,7 +28,7 @@ import {
   installToolInventory,
 } from "@sweatpants/tool-runtime";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
-import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
+import { ProgramDriverEphemeralEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
 import type { ModelContext } from "@sweatpants/model-provider";
@@ -270,7 +270,7 @@ export function createAcceptanceApplication(
         tools: [acceptanceBookingTool, acceptanceImmediateTool],
         samplingProvider,
         installForeignEffects: function* (registrations) {
-          yield* ProgramDriverForeignEffectsContext.set(registrations);
+          yield* ProgramDriverEphemeralEffectsContext.set(registrations);
         },
       });
 

@@ -45,7 +45,7 @@ export {
   highestRemoteOriginLsn,
   projectProgramDeliveryEnvelope,
 } from "./model-sampling-relay.ts";
-export { ProgramDriverForeignEffectsContext } from "../program-driver/effects.ts";
+export { ProgramDriverEphemeralEffectsContext } from "../program-driver/effects.ts";
 export { createHostModelSamplingService } from "./model-sampling/service.ts";
 export {
   ProgramDriverNativeToolsContext,

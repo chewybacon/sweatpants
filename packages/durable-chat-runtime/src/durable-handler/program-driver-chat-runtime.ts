@@ -62,6 +62,20 @@ import type { ConversationStore } from "@sweatpants/history-store/contract";
 import type { ToolInventoryEntry, ToolRuntime } from "@sweatpants/tool-runtime";
 import type { ProgramDriverNativeToolComposition } from "../program-driver/native-tools.ts";
 
+export type EphemeralExecutionStrategy =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "tool-session";
+      readonly effects: readonly [DurableEffectRegistration, DurableEffectRegistration];
+    }
+  | {
+      readonly kind: "chat-tool-runtime";
+      readonly runtime: ToolRuntime;
+      readonly inventory: readonly ToolInventoryEntry[];
+      readonly threadId: string;
+      readonly runId: string;
+    };
+
 export interface ChatExecutionEnvironment {
   readonly sessionId: string;
   readonly sampling: {
@@ -71,13 +85,7 @@ export interface ChatExecutionEnvironment {
     readonly historyPolicy?: HistoryPolicy;
   };
   readonly native?: ProgramDriverNativeToolComposition;
-  readonly ephemeral: {
-    readonly effects?: readonly [DurableEffectRegistration, DurableEffectRegistration];
-    readonly runtime?: ToolRuntime;
-    readonly inventory: readonly ToolInventoryEntry[];
-    readonly threadId: string;
-    readonly runId: string;
-  };
+  readonly ephemeral: EphemeralExecutionStrategy;
 }
 
 export interface ChatExecutionRuntime {
@@ -95,7 +103,6 @@ export function* composeChatExecutionRuntime(
   input: ChatProgramInput,
   attach: AttachProgramRequest,
 ): Operation<ChatExecutionRuntime> {
-  const scopedEphemeralEffects = environment.ephemeral.effects;
   // SAFETY: registry storage erases manifest type witnesses; both tools are
   // restored from their exact pinned schemas before driver execution.
   const tools = createDurableToolRegistry([
@@ -113,17 +120,33 @@ export function* composeChatExecutionRuntime(
       execution: Extract<ChatToolCatalogEntry["execution"], { kind: "foreign-tool" }>;
     } => entry.execution.kind === "foreign-tool",
   )?.execution.driver;
-  const ephemeralEffects =
-    boundEphemeralDriver === "tool-session"
-      ? requireScopedEphemeralEffects(scopedEphemeralEffects)
-      : boundEphemeralDriver === "chat-tool-runtime"
-        ? createToolRuntimeForeignEffectRegistrations({
-            runtime: requireToolRuntime(environment.ephemeral.runtime),
-            entries: environment.ephemeral.inventory,
-            threadId: environment.ephemeral.threadId,
-            runId: environment.ephemeral.runId,
-          })
-        : [];
+  const ephemeralEffects = (() => {
+    switch (environment.ephemeral.kind) {
+      case "none":
+        if (boundEphemeralDriver !== undefined) {
+          throw new CrankError(
+            "tool_runtime_not_installed",
+            "Catalog requires ephemeral execution but none was composed",
+          );
+        }
+        return [];
+      case "tool-session":
+        if (boundEphemeralDriver !== "tool-session") {
+          throw new CrankError("foreign_driver_not_installed", "Catalog driver differs");
+        }
+        return environment.ephemeral.effects;
+      case "chat-tool-runtime":
+        if (boundEphemeralDriver !== "chat-tool-runtime") {
+          throw new CrankError("tool_runtime_not_installed", "Catalog driver differs");
+        }
+        return createToolRuntimeForeignEffectRegistrations({
+          runtime: environment.ephemeral.runtime,
+          entries: environment.ephemeral.inventory,
+          threadId: environment.ephemeral.threadId,
+          runId: environment.ephemeral.runId,
+        });
+    }
+  })();
   const samplingServiceOptions = {
     model: environment.sampling.model,
     ...(environment.sampling.streamOptions
@@ -345,27 +368,11 @@ export function* composeChatExecutionRuntime(
 
 function routeDriverKind(route: ProgramRoute): string {
   if (route === null || typeof route !== "object" || Array.isArray(route)) {
-    return "program";
+    throw new CrankError("invalid_descriptor", "Program route is not an object");
   }
-  const kind = route["driverKind"] ?? route["kind"];
-  return typeof kind === "string" && kind.length > 0 ? kind : "program";
-}
-
-function requireScopedEphemeralEffects(
-  registrations: readonly [DurableEffectRegistration, DurableEffectRegistration] | undefined,
-) {
-  if (!registrations) {
-    throw new CrankError(
-      "foreign_driver_not_installed",
-      "The recorded tool-session foreign driver is not installed",
-    );
+  const kind = route["driverKind"];
+  if (typeof kind !== "string" || kind.length === 0) {
+    throw new CrankError("invalid_descriptor", "Program route has no driver kind");
   }
-  return registrations;
-}
-
-function requireToolRuntime(runtime: ToolRuntime | undefined) {
-  if (!runtime) {
-    throw new CrankError("tool_runtime_not_installed", "Tool runtime is not installed");
-  }
-  return runtime;
+  return kind;
 }

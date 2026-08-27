@@ -26,11 +26,13 @@ export interface ChatAdmissionRequest {
   readonly journalStore: ProgramDriverJournalStore;
   readonly conversationId: string;
   readonly participantId: string;
-  readonly contextSource?: ModelContextSource;
+  readonly contextSource: ModelContextSource;
   readonly maxIterations: number;
   readonly tools: readonly ToolSchema[];
   readonly nativePrograms: Readonly<Record<string, PinnedProgram>>;
-  readonly ephemeralDriver: "tool-session" | "chat-tool-runtime";
+  readonly ephemeral:
+    | { readonly kind: "none" }
+    | { readonly kind: "driver"; readonly driver: "tool-session" | "chat-tool-runtime" };
   readonly systemPrompt?: string;
   readonly initialToolChoice?: StreamOptions["toolChoice"];
   readonly recoveryOnly: boolean;
@@ -58,20 +60,18 @@ export function* admitProgramDriverChatTurn(
     recovery.status === "active"
       ? { taskId: recovery.taskId, turnId: recovery.turnId, input: recovery.input }
       : undefined;
-  const recoveredExecutionEpoch =
-    recovery.status === "active"
-      ? (recovery.activeTasks.find((task) => task.taskId === recovery.taskId)?.executionEpoch ?? 1)
-      : 1;
+  let recoveredExecutionEpoch = 1;
+  if (recovery.status === "active") {
+    const recoveredRoot = recovery.activeTasks.find((task) => task.taskId === recovery.taskId);
+    if (recoveredRoot === undefined) {
+      throw new CrankError("invalid_journal", "Active recovery omitted its root task");
+    }
+    recoveredExecutionEpoch = recoveredRoot.executionEpoch;
+  }
   const turnNumber = yield* journal.rootTaskCount(request.conversationId);
   const taskId = active?.taskId ?? `turn-${turnNumber}/root`;
   const turnId = active?.turnId ?? `turn-${turnNumber}`;
   let before = yield* journal.readJournal(request.conversationId, taskId);
-  if (!request.contextSource) {
-    throw new CrankError(
-      "model_context_source_invalid",
-      "Chat-root execution requires an authoritative conversation context source",
-    );
-  }
   const modelContextSource = {
     ...request.contextSource,
     taskId,
@@ -142,6 +142,25 @@ export function* admitProgramDriverChatTurn(
   };
 }
 
+function ephemeralToolEntry(
+  request: ChatAdmissionRequest,
+  tool: string,
+): ChatToolCatalogEntry["execution"] {
+  if (request.ephemeral.kind === "none") {
+    throw new CrankError(
+      "tool_runtime_not_installed",
+      `No execution strategy exists for ephemeral tool ${tool}`,
+    );
+  }
+  return {
+    kind: "foreign-tool",
+    target: tool,
+    driver: request.ephemeral.driver,
+    tool,
+    durability: "ephemeral_handle",
+  };
+}
+
 function createChatToolCatalog(request: ChatAdmissionRequest): ChatToolCatalog {
   const nativePrograms = request.nativePrograms;
   const entries: Record<string, ChatToolCatalogEntry> = {};
@@ -156,13 +175,7 @@ function createChatToolCatalog(request: ChatAdmissionRequest): ChatToolCatalog {
       },
       execution: program
         ? { kind: "program", target: tool.name, program }
-        : {
-            kind: "foreign-tool",
-            target: tool.name,
-            driver: request.ephemeralDriver,
-            tool: tool.name,
-            durability: "ephemeral_handle",
-          },
+        : ephemeralToolEntry(request, tool.name),
     };
   }
   return {

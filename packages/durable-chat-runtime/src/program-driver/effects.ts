@@ -1,14 +1,14 @@
 import { createContext, type Operation } from "effection";
 import type { DurableEffectRegistration } from "@sweatpants/chat-core";
 
-/** Scoped foreign-effect registrations supplied by a concrete runtime adapter. */
-export const ProgramDriverForeignEffectsContext = createContext<
+/** Scoped ephemeral-effect registrations supplied by a concrete runtime adapter. */
+export const ProgramDriverEphemeralEffectsContext = createContext<
   readonly [DurableEffectRegistration, DurableEffectRegistration] | undefined
->("ProgramDriverForeignEffects");
+>("ProgramDriverEphemeralEffects");
 
-/** Resolves optional sampling-aware foreign registrations from application setup. */
-export function* useOptionalProgramDriverForeignEffects(): Operation<
+/** Resolves optional sampling-aware ephemeral registrations from application setup. */
+export function* useOptionalProgramDriverEphemeralEffects(): Operation<
   readonly [DurableEffectRegistration, DurableEffectRegistration] | undefined
 > {
-  return yield* ProgramDriverForeignEffectsContext.get();
+  return yield* ProgramDriverEphemeralEffectsContext.get();
 }

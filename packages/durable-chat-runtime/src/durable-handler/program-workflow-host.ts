@@ -574,10 +574,10 @@ function assertCatalogDispatch(catalog: PinnedProgramCatalog, program: PinnedPro
     return;
   }
 
-  const foreignAdapter =
+  const ephemeralAdapter =
     exactProgramKey(program) === exactProgramKey(FOREIGN_TOOL_ADAPTER_PROGRAM) &&
     entries.some((entry) => entry.kind === "foreign-tool");
-  if (foreignAdapter) {
+  if (ephemeralAdapter) {
     return;
   }
 

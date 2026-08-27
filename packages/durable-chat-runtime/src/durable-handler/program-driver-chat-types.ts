@@ -12,7 +12,7 @@ export type StreamEvent = ConversationStreamEvent;
 /** Product composition input. Execution and projection consume disjoint subsets. */
 export type ProgramDriverChatEngineParams = WorkflowChatEngineParams & {
   journalStore: ProgramDriverJournalStore;
-  foreignEffects?: readonly [DurableEffectRegistration, DurableEffectRegistration];
+  ephemeralEffects?: readonly [DurableEffectRegistration, DurableEffectRegistration];
   nativeTools?: ProgramDriverNativeToolComposition;
   continueAfterCancellation?: boolean;
   /** Host-owned delivery invoked only by the outer composition root. */

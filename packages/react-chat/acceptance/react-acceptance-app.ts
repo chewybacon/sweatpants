@@ -12,7 +12,7 @@ import {
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { createToolInventory, installToolInventory } from "@sweatpants/tool-runtime";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
-import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
+import { ProgramDriverEphemeralEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createLocalToolInvocationRuntime,
   installLocalToolRuntimeComposition,
@@ -63,7 +63,7 @@ export function createReactAcceptanceApplication(
       yield* installLocalToolRuntimeComposition({
         tools: [reactBookingTool],
         installForeignEffects: function* (registrations) {
-          yield* ProgramDriverForeignEffectsContext.set(registrations);
+          yield* ProgramDriverEphemeralEffectsContext.set(registrations);
         },
         samplingProvider: {
           *sample() {

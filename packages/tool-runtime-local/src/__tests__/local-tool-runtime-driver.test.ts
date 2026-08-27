@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import { ToolRuntimeApi, createToolInventory } from "@sweatpants/tool-runtime";
-import { ProgramDriverForeignEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
+import { ProgramDriverEphemeralEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createLocalToolInvocationRuntime,
   createLocalToolRuntimeDriver,
@@ -273,7 +273,7 @@ describe("local ToolRuntimeDriver", () => {
       yield* installLocalToolRuntimeComposition({
         tools: [echoTool],
         installForeignEffects: function* (registrations) {
-          yield* ProgramDriverForeignEffectsContext.set(registrations);
+          yield* ProgramDriverEphemeralEffectsContext.set(registrations);
         },
         samplingProvider: {
           *sample() {
@@ -282,7 +282,7 @@ describe("local ToolRuntimeDriver", () => {
         },
       });
 
-      const effects = yield* ProgramDriverForeignEffectsContext.get();
+      const effects = yield* ProgramDriverEphemeralEffectsContext.get();
       expect(effects?.map((registration) => registration.definition.name)).toEqual([
         "foreign.tool.start",
         "foreign.tool.continue",
