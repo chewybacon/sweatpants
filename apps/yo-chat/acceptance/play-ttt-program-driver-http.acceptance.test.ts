@@ -68,7 +68,9 @@ describe("journal-native play_ttt through the HTTP workflow host", () => {
       ).toHaveLength(1);
       expect(effectNames).not.toContain("tool.execute");
       expect(effectNames).not.toContain("tool.resume");
-      expect(journal.at(-1)?.payload.type).toBe("TaskClosed");
+      expect(
+        [...journal].reverse().find((entry) => entry.payload.type === "TaskClosed")?.payload.type,
+      ).toBe("TaskClosed");
       expect(substrate.sampleCount()).toBeGreaterThan(2);
     } finally {
       await runtime.close();

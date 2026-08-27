@@ -73,10 +73,20 @@ export function* advanceCaughtUpLeaf(request: {
     if (!cancellationInjected && isCancellationInProgress(cancellation)) {
       if (cancellation.type !== "unwinding") yield* execution.beginCancellationUnwind();
       const reason = "reason" in cancellation ? cancellation.reason : undefined;
-      step = yield* ProgramPeer.operations.step(attachment, {
-        type: "cancel",
-        ...(reason === undefined ? {} : { reason }),
-      });
+      try {
+        step = yield* ProgramPeer.operations.step(attachment, {
+          type: "cancel",
+          ...(reason === undefined ? {} : { reason }),
+        });
+      } catch (error) {
+        if (!(error instanceof CrankError) || error.code !== "stale_program_capability") {
+          throw error;
+        }
+        // A scope-owned external attempt may dispose the evaluator while its
+        // cancellation settles. Authority still owns terminal admission.
+        yield* execution.complete({ status: "cancelled" });
+        return { state: "cancelled" };
+      }
       cancellationInjected = true;
       continue;
     }

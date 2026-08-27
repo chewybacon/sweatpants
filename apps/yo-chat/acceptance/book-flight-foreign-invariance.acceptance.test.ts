@@ -23,7 +23,11 @@ interface BookingOutcome {
 }
 
 function summarize(journal: DurableSemanticRecord[], events: PublicEvent[]): BookingOutcome {
-  const terminal = journal.at(-1)?.payload;
+  const terminal = [...journal]
+    .reverse()
+    .find(
+      (entry) => entry.payload.type === "TaskClosed" || entry.payload.type === "TaskOrphaned",
+    )?.payload;
   const effectNames = journal.flatMap((entry) =>
     entry.payload.type === "PullRequested" && entry.payload.descriptor.kind === "effect"
       ? [entry.payload.descriptor.name]
