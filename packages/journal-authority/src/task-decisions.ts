@@ -119,7 +119,8 @@ export function openTask(
     const retainedRoots = [...session.execution.tasks.values()].filter(
       (candidate) => candidate.origin.kind === "root",
     ).length;
-    session.control.nextRootOrdinal = Math.max(session.control.nextRootOrdinal ?? 0, retainedRoots);
+    session.control.nextRootOrdinal =
+      (session.control.nextRootOrdinal ?? Math.max(0, retainedRoots - 1)) + 1;
   }
   draft.append(request.sessionId, request.executionEpoch, {
     type: "TaskOpened",
