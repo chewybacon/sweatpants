@@ -10,13 +10,17 @@ import {
 } from "@sweatpants/durable-execution";
 
 import type { JournalAuthorityContract } from "../authority-contract.ts";
-import { advanceCaughtUpLeaf, type AdvancementDisposition } from "./advancement-drive.ts";
+import {
+  advanceCaughtUpLeaf,
+  type AdvancementDisposition,
+  type AdvancementServices,
+} from "./advancement-drive.ts";
 import { bindCaughtUpLeaf, livePlacement, requestedTargetPolicy } from "./advancement-policy.ts";
-import type { EffectRouter, JournalSamplingService } from "./advancement-ports.ts";
 import { executionComposition } from "./execution-composition.ts";
 import { replayStrand, replayWarmSuffix } from "./replay-walker.ts";
 
 export type { EffectRouter, JournalSamplingService } from "./advancement-ports.ts";
+export type { AdvancementServices } from "./advancement-drive.ts";
 
 export interface DriveProgramDriverActivationRequest {
   readonly authority: JournalAuthorityContract;
@@ -24,8 +28,7 @@ export interface DriveProgramDriverActivationRequest {
   readonly attach: AttachProgramRequest;
   /** Owner of the task-scoped Mandate lease. */
   readonly activationOwnerId?: string;
-  readonly effects?: EffectRouter;
-  readonly stageSampleInput?: JournalSamplingService;
+  readonly advancement: AdvancementServices;
 }
 
 /**
@@ -64,7 +67,18 @@ export function driveProgramDriverActivation(
       }
       if (row.classification === "structurally_blocked") {
         if (row.parked !== undefined) {
-          return { state: "parked", pullId: row.parked.pullId, reason: row.parked.reason };
+          return {
+            state: "parked",
+            pullId: row.parked.pullId,
+            reason: row.parked.reason,
+            slots: [
+              {
+                taskId: row.address.taskId,
+                pullId: row.parked.pullId,
+                reason: row.parked.reason,
+              },
+            ],
+          };
         }
         throw new CrankError("stale_activation", "Strand is structurally blocked");
       }
@@ -76,11 +90,7 @@ export function driveProgramDriverActivation(
       }
       const disposition = yield* runPreparedAdvancement(
         request,
-        {
-          ...item,
-          route: request.attach.route,
-          ...(request.attach.affinity === undefined ? {} : { affinity: request.attach.affinity }),
-        },
+        replayItemForAttachment(item, request.attach),
         ownerId,
       );
       if (disposition.state === "settled") continue;
@@ -107,7 +117,11 @@ function runPreparedAdvancement(
     let shutdownReason: ProgramShutdownReason = "scope_exit";
     try {
       for (;;) {
-        const placement = livePlacement(request.attach.route, request.attach.affinity);
+        const placement = livePlacement(
+          request.attach.route,
+          request.attach.affinity,
+          request.driver.evaluatorKind,
+        );
         const mandate = yield* bindCaughtUpLeaf(
           request.authority,
           caughtUp,
@@ -123,10 +137,7 @@ function runPreparedAdvancement(
           disposition = yield* advanceCaughtUpLeaf({
             caughtUp,
             execution,
-            ...(request.effects === undefined ? {} : { effects: request.effects }),
-            ...(request.stageSampleInput === undefined
-              ? {}
-              : { stageSampleInput: request.stageSampleInput }),
+            services: request.advancement,
           });
         } catch (error) {
           try {
@@ -149,27 +160,14 @@ function runPreparedAdvancement(
           }
           caughtUp = yield* replayWarmSuffix(
             caughtUp,
-            {
-              ...nextItem,
-              route: request.attach.route,
-              ...(request.attach.affinity === undefined
-                ? {}
-                : { affinity: request.attach.affinity }),
-            },
+            replayItemForAttachment(nextItem, request.attach),
             disposition.actionIndex,
             disposition.attemptedInDriver,
             disposition.frontier,
           );
           continue;
         }
-        shutdownReason =
-          disposition.state === "parked"
-            ? "parked"
-            : disposition.state === "completed"
-              ? "completed"
-              : disposition.state === "cancelled"
-                ? "cancelled"
-                : "failed";
+        shutdownReason = shutdownReasonFor(disposition);
         return disposition;
       }
     } catch (error) {
@@ -180,6 +178,29 @@ function runPreparedAdvancement(
       yield* ProgramPeer.operations.shutdown(caughtUp.restored.attachment, shutdownReason);
     }
   });
+}
+
+function replayItemForAttachment(item: ReplayItem, attach: AttachProgramRequest): ReplayItem {
+  return {
+    ...item,
+    route: attach.route,
+    ...(attach.affinity === undefined ? {} : { affinity: attach.affinity }),
+  };
+}
+
+function shutdownReasonFor(
+  disposition: Exclude<AdvancementDisposition, { state: "settled" }>,
+): ProgramShutdownReason {
+  switch (disposition.state) {
+    case "parked":
+      return "parked";
+    case "completed":
+      return "completed";
+    case "cancelled":
+      return "cancelled";
+    case "failed":
+      return "failed";
+  }
 }
 
 function* orphanReplayDivergence(

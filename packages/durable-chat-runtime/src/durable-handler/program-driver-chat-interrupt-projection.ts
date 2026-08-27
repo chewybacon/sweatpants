@@ -5,7 +5,7 @@ import { parseInteractionBinding } from "@sweatpants/agent-sdk";
 import type { StreamEvent } from "./program-driver-chat-types.ts";
 import type { AgUiRunMetadata } from "@sweatpants/chat-core";
 import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
-import { pendingCorrelation } from "./program-driver-chat-correlation.ts";
+import { requiredPendingCorrelation } from "./program-driver-chat-correlation.ts";
 import {
   pendingElicit,
   type ChatJournalIndex,
@@ -14,7 +14,7 @@ import {
 import { elicitationContextEvidence, jsonRecord } from "./program-driver-chat-projection-codecs.ts";
 
 export function pendingToolCallId(index: ChatJournalIndex, pending: PendingElicit): string {
-  return pendingCorrelation(index, pending).callId ?? pending.pullId;
+  return requiredPendingCorrelation(index, pending).callId;
 }
 
 export interface InterruptProjectionPolicy {
@@ -28,7 +28,7 @@ export function projectInterrupt(
   policy: InterruptProjectionPolicy,
 ): Extract<StreamEvent, { type: EventType.RUN_FINISHED }> {
   const context = elicitationContextEvidence(pending.descriptor.context, pending.descriptor.key);
-  const correlation = pendingCorrelation(index, pending);
+  const correlation = requiredPendingCorrelation(index, pending);
   const authoredContext = context.authoredContext;
   const responseProjection = context.historical
     ? context.responseProjection
@@ -61,11 +61,11 @@ export function projectInterrupt(
           reason: "input_required",
           message: encoded.message,
           responseSchema: encoded.schema,
-          toolCallId: correlation.callId ?? pending.pullId,
+          toolCallId: correlation.callId,
           metadata: {
             "sweatpants/key": publicKey,
-            ...(correlation.toolName ? { "sweatpants/toolName": correlation.toolName } : {}),
-            callId: correlation.callId ?? pending.pullId,
+            "sweatpants/toolName": correlation.toolName,
+            callId: correlation.callId,
             ...(correlation.elicitId ? { elicitId: correlation.elicitId } : {}),
             "sweatpants/elicitation": {
               bindingId: binding.id,

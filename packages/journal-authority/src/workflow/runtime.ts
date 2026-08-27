@@ -60,7 +60,7 @@ import {
   sampleDescriptorSchema,
   waitDescriptorSchema,
 } from "../pull-kinds/index.ts";
-import type { ForkGroupTerminal } from "../fork-group.ts";
+import { completedForkGroupTerminal, type ForkGroupTerminal } from "../fork-group.ts";
 import type { DurableChildDurability, DurableForkExpiry } from "@sweatpants/durable-execution";
 import { definePort } from "@sweatpants/foundation/port";
 
@@ -103,7 +103,7 @@ export interface Durable<T> {
  */
 function durable<T>(
   effect: DurableProgramEffect<unknown>,
-  unwrap: (settled: unknown) => T,
+  unwrap: (settled: OperationOutcome) => T,
 ): Durable<T> {
   return {
     *[Symbol.iterator]() {
@@ -558,15 +558,7 @@ function forkPull<T extends Json>(
     (settled) => {
       // failed/expired/orphaned surface as PullApplicationError via
       // unwrapOutcome; cancelled throws the program cancellation signal.
-      const terminal = unwrapOutcome<Json>(
-        settled as OperationOutcome,
-      ) as unknown as ForkGroupTerminal;
-      if (terminal.status !== "completed") {
-        throw new PullApplicationError({
-          code: `fork_group_${terminal.status}`,
-          message: `Fork group ended ${terminal.status}`,
-        });
-      }
+      const terminal = completedForkGroupTerminal(unwrapOutcome<Json>(settled));
       return project(terminal);
     },
   );

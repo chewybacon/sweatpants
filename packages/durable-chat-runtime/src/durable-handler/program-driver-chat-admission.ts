@@ -23,6 +23,11 @@ import type { StreamOptions } from "@sweatpants/model-provider";
 
 type ActiveChatTurn = { readonly taskId: string; readonly turnId: string; readonly input: Json };
 
+export interface ChatAdmissionInputPolicy {
+  readonly systemPrompt?: string;
+  readonly initialToolChoice?: StreamOptions["toolChoice"];
+}
+
 export interface ChatAdmissionRequest {
   readonly journalStore: ProgramDriverJournalStore;
   readonly conversationId: string;
@@ -34,13 +39,14 @@ export interface ChatAdmissionRequest {
   readonly ephemeral:
     | { readonly kind: "none" }
     | { readonly kind: "driver"; readonly driver: "tool-session" | "chat-tool-runtime" };
-  readonly systemPrompt?: string;
-  readonly initialToolChoice?: StreamOptions["toolChoice"];
+  readonly inputPolicy: ChatAdmissionInputPolicy;
   readonly recoveryOnly: boolean;
   readonly superseding: boolean;
   readonly hasElicitResponses: boolean;
   readonly onTaskReady?: (taskId: string) => void;
 }
+
+export type ChatTurnTransition = { readonly kind: "continue" } | { readonly kind: "supersede" };
 
 export interface ChatTurnAdmission {
   readonly journal: ProgramDriverJournal;
@@ -49,7 +55,7 @@ export interface ChatTurnAdmission {
   readonly before: import("@sweatpants/journal-authority").DurableSemanticRecord[];
   readonly input: ChatProgramInput;
   readonly attach: AttachProgramRequest;
-  readonly replacementQueued: boolean;
+  readonly transition: ChatTurnTransition;
 }
 
 export function* admitProgramDriverChatTurn(
@@ -82,16 +88,22 @@ export function* admitProgramDriverChatTurn(
     contextSource: modelContextSource,
     maxIterations: request.maxIterations,
     catalog: createChatToolCatalog(request),
-    ...(request.systemPrompt !== undefined ? { systemPrompt: request.systemPrompt } : {}),
-    ...(request.initialToolChoice !== undefined ? { toolChoice: request.initialToolChoice } : {}),
+    ...(request.inputPolicy.systemPrompt !== undefined
+      ? { systemPrompt: request.inputPolicy.systemPrompt }
+      : {}),
+    ...(request.inputPolicy.initialToolChoice !== undefined
+      ? { toolChoice: request.inputPolicy.initialToolChoice }
+      : {}),
   };
   // Replay of the accepted canonical input never reruns schema code (DR-023).
-  const replacementQueued =
+  const transition: ChatTurnTransition =
     active !== undefined &&
     !request.superseding &&
     !request.recoveryOnly &&
     !request.hasElicitResponses &&
-    canonicalJson(active.input) !== canonicalJson(requestedInput);
+    canonicalJson(active.input) !== canonicalJson(requestedInput)
+      ? { kind: "supersede" }
+      : { kind: "continue" };
   const input = active
     ? assertReplayedCanonicalValue<ChatProgramInput>(active.input)
     : requestedInput;
@@ -140,7 +152,7 @@ export function* admitProgramDriverChatTurn(
     before,
     input,
     attach,
-    replacementQueued,
+    transition,
   };
 }
 

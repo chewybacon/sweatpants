@@ -30,6 +30,7 @@ import {
   type ChatJournalIndex,
   type PendingElicit,
 } from "./program-driver-chat-journal-index.ts";
+import { requiredPendingCorrelation } from "./program-driver-chat-correlation.ts";
 
 function publicActivitySnapshot(
   messageId: string,
@@ -193,10 +194,7 @@ export function publicActivityElicitSnapshots(
     typeof metadata["sweatpants/key"] === "string"
       ? metadata["sweatpants/key"]
       : pending.descriptor.key;
-  const toolName =
-    typeof metadata["sweatpants/toolName"] === "string" ? metadata["sweatpants/toolName"] : key;
-  const callId =
-    value.toolCallId ?? (typeof metadata["callId"] === "string" ? metadata["callId"] : value.id);
+  const { callId, toolName } = requiredPendingCorrelation(index, pending);
   const nodeId = placement.nodeId;
   snapshots.push(
     publicActivitySnapshot(nodeId, {

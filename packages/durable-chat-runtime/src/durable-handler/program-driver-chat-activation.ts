@@ -36,13 +36,20 @@ export interface ChatActivationContext {
   readonly native?: ProgramDriverNativeToolComposition;
 }
 
+export type ChatActivationDisposition = { readonly kind: "present" } | { readonly kind: "restart" };
+
+export interface ChatActivationResult {
+  readonly report: ChatActivationReport;
+  readonly disposition: ChatActivationDisposition;
+}
+
 export function* runProgramDriverChatActivation(
   context: ChatActivationContext,
-): Operation<ChatActivationReport> {
+): Operation<ChatActivationResult> {
   const admission = yield* admitProgramDriverChatTurn(context.admission);
-  const { journal, active, taskId, before, input, attach, replacementQueued } = admission;
+  const { journal, active, taskId, before, input, attach, transition } = admission;
 
-  if (active && (context.pluginAbort || replacementQueued)) {
+  if (active && (context.pluginAbort || transition.kind === "supersede")) {
     const reason = context.pluginAbort?.reason ?? "active turn superseded by a new message";
     yield* journal.requestCancellation(
       context.sessionId,
@@ -54,7 +61,7 @@ export function* runProgramDriverChatActivation(
     yield* disposeEphemeralChildSessions(before, context.sessionId);
   }
   const accepted =
-    context.pluginAbort || replacementQueued
+    context.pluginAbort || transition.kind === "supersede"
       ? 0
       : yield* resolveElicitResponses(context.settlement, journal, before);
   if (accepted > 0 && context.onResumeAccepted) {
@@ -99,13 +106,15 @@ export function* runProgramDriverChatActivation(
   }
   const after = yield* journal.readJournal(context.sessionId, taskId);
   return {
-    before,
-    after,
-    outcome,
-    liveMessageIds: execution.liveMessageIds,
-    endedLiveMessageIds: execution.endedLiveMessageIds,
-    cancellationFenceLost,
-    replacementQueued,
+    report: {
+      before,
+      after,
+      outcome,
+      liveMessageIds: execution.liveMessageIds,
+      endedLiveMessageIds: execution.endedLiveMessageIds,
+      cancellationFenceLost,
+    },
+    disposition: transition.kind === "supersede" ? { kind: "restart" } : { kind: "present" },
   };
 }
 

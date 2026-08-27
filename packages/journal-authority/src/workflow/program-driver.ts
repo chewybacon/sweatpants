@@ -96,6 +96,7 @@ export function createWorkflowProgramDriver(
 ): ProgramDriver {
   const handlers = options.effectHandlers;
   return {
+    evaluatorKind: "program",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
 
     *attach(request): Operation<ProgramAttachment> {

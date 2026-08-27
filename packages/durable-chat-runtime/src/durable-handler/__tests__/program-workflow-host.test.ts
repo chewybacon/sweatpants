@@ -98,7 +98,12 @@ describe("ProgramWorkflowHost", () => {
         input: { prompt: "Continue?" },
         catalog,
       });
-      expect(yield* opened.result).toMatchObject({ state: "parked", reason: "elicit" });
+      const parked = yield* opened.result;
+      expect(parked).toMatchObject({ state: "parked", reason: "elicit" });
+      if (parked.state !== "parked") throw new Error("workflow did not park");
+      expect(parked.slots).toEqual([
+        { taskId: opened.taskId, pullId: parked.pullId, reason: "elicit" },
+      ]);
 
       const parkedTrace = yield* host.trace(opened.sessionId);
       const pull = parkedTrace.tasks[0]?.operations[0];

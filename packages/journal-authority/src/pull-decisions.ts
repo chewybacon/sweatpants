@@ -9,6 +9,7 @@ import type { OperationOutcome } from "@sweatpants/durable-effects";
 import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
 import type { AuthorityState, ResolutionAuthority } from "./authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
+import type { AuthorityKernel } from "./authority-transaction.ts";
 import {
   currentAttempt,
   emissionByAction,
@@ -61,13 +62,19 @@ import type {
   TaskCloseReceipt,
 } from "./authority-types.ts";
 
-export interface PullDecisionServices {
-  settleParent(
-    draft: DecisionDraft,
-    sessionId: string,
-    task: DraftTask,
-    outcome: OperationOutcome,
-  ): void;
+function resolutionConflictCode(
+  attempt: DraftPull["attempts"][number] | undefined,
+): "resolution_conflict" | "idempotency_conflict" {
+  if (attempt === undefined) return "resolution_conflict";
+  switch (attempt.status) {
+    case "superseded":
+      return "idempotency_conflict";
+    case "started":
+    case "detached":
+    case "completed":
+    case "revoked":
+      return "resolution_conflict";
+  }
 }
 
 function mandateTask(draft: DecisionDraft, mandate: Mandate): DraftTask {
@@ -136,22 +143,18 @@ export function emitUnderMandate(
 }
 
 export function completeUnderMandate(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   request: MandateCompleteRequest,
-  services: PullDecisionServices,
 ): CompleteTaskResult {
+  const { draft } = kernel;
   const task = mandateTask(draft, request.mandate);
-  const result = completeTask(
-    draft,
-    {
-      sessionId: request.mandate.address.sessionId,
-      taskId: task.taskId,
-      actionIndex: task.nextActionIndex,
-      outcome: request.outcome,
-      programCapability: request.mandate.programCapability,
-    },
-    services,
-  );
+  const result = completeTask(kernel, {
+    sessionId: request.mandate.address.sessionId,
+    taskId: task.taskId,
+    actionIndex: task.nextActionIndex,
+    outcome: request.outcome,
+    programCapability: request.mandate.programCapability,
+  });
   if (result.status !== "rejected") {
     endLiveLease(draft, request.mandate.address.sessionId, task, "terminal");
   }
@@ -606,7 +609,7 @@ export function resolvePull(
       };
     return {
       status: "rejected",
-      code: pull.attempts.length > 1 ? "idempotency_conflict" : "resolution_conflict",
+      code: resolutionConflictCode(attempt),
     };
   }
   const offset = draft.append(claims.sessionId, undefined, {
@@ -737,10 +740,10 @@ export function appendEmission(
 }
 
 export function completeTask(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   request: CompleteTaskRequest,
-  services: PullDecisionServices,
 ): CompleteTaskResult {
+  const { draft } = kernel;
   const task = draft.task(request.sessionId, request.taskId);
   draft.assertProgram(request.programCapability, task, request.sessionId);
   const proposed = snapshotOutcome(request.outcome);
@@ -777,7 +780,7 @@ export function completeTask(
     const oldDigest = terminalOutcomeDigest(task.lifecycle.outcome);
     if (oldDigest !== digest)
       throw new CrankError("nondeterminism_detected", "Task completion differs");
-    services.settleParent(draft, request.sessionId, task, outcome);
+    kernel.settleParent(request.sessionId, task, outcome);
     return { status: "duplicate", receipt: { ...receipt, duplicate: true } };
   }
   draft.assertActive(task);
@@ -821,7 +824,7 @@ export function completeTask(
           commandId,
         }
       : { status: "closed", outcome, receipt };
-  services.settleParent(draft, request.sessionId, task, outcome);
+  kernel.settleParent(request.sessionId, task, outcome);
   return { status: "accepted", receipt };
 }
 

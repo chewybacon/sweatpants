@@ -116,51 +116,53 @@ export function driveTestProgramTree(
             ...(request.activationOwnerId === undefined
               ? {}
               : { activationOwnerId: request.activationOwnerId }),
-            ...(stageSampleInput ? { stageSampleInput } : {}),
-            effects: {
-              *route({ authorization, definition }) {
-                const routed = yield* DurableEffectRouting.operations.route({
-                  definition,
-                  effectContractDigest: authorization.effectContractDigest,
-                  sessionId: authorization.sessionId,
-                  taskId: authorization.taskId,
-                  pullId: authorization.pullId,
-                  attemptId: authorization.attemptId,
-                  program: activation.attach.program,
-                  programRoute: activation.attach.route,
-                });
-                return routed.placement;
-              },
-              *executeHost(authorization, placement) {
-                const registry = yield* DurableEffectRegistryContext.get();
-                if (!registry) {
-                  throw new CrankError(
-                    "effect_placement_unavailable",
-                    "No host effect registry is installed",
-                  );
-                }
-                return yield* DurableEffectRegistryContext.with(registry, function* () {
-                  return yield* ProgramPlacementContext.with(placement, function* () {
-                    return yield* DurableEffects.operations.execute(authorization);
+            advancement: {
+              ...(stageSampleInput ? { stageSampleInput } : {}),
+              effects: {
+                *route({ authorization, definition }) {
+                  const routed = yield* DurableEffectRouting.operations.route({
+                    definition,
+                    effectContractDigest: authorization.effectContractDigest,
+                    sessionId: authorization.sessionId,
+                    taskId: authorization.taskId,
+                    pullId: authorization.pullId,
+                    attemptId: authorization.attemptId,
+                    program: activation.attach.program,
+                    programRoute: activation.attach.route,
                   });
-                });
-              },
-              *acknowledge({ authorization, outcome }) {
-                const acknowledge = yield* DurableEffectOutcomeAcknowledgerContext.get();
-                if (!acknowledge) {
-                  return;
-                }
-                yield* acknowledge({
-                  effect: {
-                    name: authorization.descriptor.name,
-                    version: authorization.descriptor.version,
-                  },
-                  sessionId: authorization.sessionId,
-                  taskId: authorization.taskId,
-                  pullId: authorization.pullId,
-                  attemptId: authorization.attemptId,
-                  outcomeDigest: canonicalSnapshot(outcome).sha,
-                });
+                  return routed.placement;
+                },
+                *executeHost(authorization, placement) {
+                  const registry = yield* DurableEffectRegistryContext.get();
+                  if (!registry) {
+                    throw new CrankError(
+                      "effect_placement_unavailable",
+                      "No host effect registry is installed",
+                    );
+                  }
+                  return yield* DurableEffectRegistryContext.with(registry, function* () {
+                    return yield* ProgramPlacementContext.with(placement, function* () {
+                      return yield* DurableEffects.operations.execute(authorization);
+                    });
+                  });
+                },
+                *acknowledge({ authorization, outcome }) {
+                  const acknowledge = yield* DurableEffectOutcomeAcknowledgerContext.get();
+                  if (!acknowledge) {
+                    return;
+                  }
+                  yield* acknowledge({
+                    effect: {
+                      name: authorization.descriptor.name,
+                      version: authorization.descriptor.version,
+                    },
+                    sessionId: authorization.sessionId,
+                    taskId: authorization.taskId,
+                    pullId: authorization.pullId,
+                    attemptId: authorization.attemptId,
+                    outcomeDigest: canonicalSnapshot(outcome).sha,
+                  });
+                },
               },
             },
           });

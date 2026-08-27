@@ -4,6 +4,7 @@ import {
   type AdvancementPlan,
   type CaughtUpLeaf,
   type DeliveryMandate,
+  type EvaluatorKind,
   type LivePlacement,
   type Mandate,
   programRouteDriverKind,
@@ -36,28 +37,43 @@ export function requestedTargetPolicy(taskId: string, placement: LivePlacement):
 }
 
 /** The one trust-boundary conversion from driver-owned route JSON. */
-export function livePlacement(route: ProgramRoute, affinity?: SandboxAffinity): LivePlacement {
+export function livePlacement(
+  route: ProgramRoute,
+  affinity: SandboxAffinity | undefined,
+  evaluatorKind: EvaluatorKind,
+): LivePlacement {
   const driverKind = programRouteDriverKind(route);
-  let placementRoute: PlacementRoute;
-  let evaluatorKind: LivePlacement["evaluatorKind"];
-  if (driverKind === "worker") {
-    placementRoute = { kind: "worker", driverKind, route: structuredClone(route) };
-    evaluatorKind = "worker";
-  } else if (["agentcore", "mcp", "lambda", "remote"].includes(driverKind)) {
-    placementRoute = { kind: "remote", driverKind, route: structuredClone(route) };
-    evaluatorKind = "remote";
-  } else {
-    placementRoute = { kind: "local", driverKind, route: structuredClone(route) };
-    evaluatorKind = "program";
-  }
+  const placementKind = placementKindForEvaluator(evaluatorKind);
   return {
-    route: placementRoute,
+    route: {
+      kind: placementKind,
+      driverKind,
+      route: structuredClone(route),
+    },
     evaluatorKind,
     sandbox:
       affinity === undefined
         ? { mode: "allocate" }
         : { mode: "reuse", affinity: structuredClone(affinity) },
   };
+}
+
+function placementKindForEvaluator(
+  evaluatorKind: EvaluatorKind,
+): Exclude<PlacementRoute["kind"], "peer"> {
+  switch (evaluatorKind) {
+    case "program":
+      return "local";
+    case "worker":
+      return "worker";
+    case "remote":
+      return "remote";
+    case "peer":
+      throw new CrankError(
+        "placement_unavailable",
+        "Peer evaluators cannot be activated by a local driver",
+      );
+  }
 }
 
 /**

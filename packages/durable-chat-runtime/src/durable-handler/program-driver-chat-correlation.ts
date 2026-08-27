@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import {
   parentToolStart,
   type ChatJournalIndex,
@@ -5,10 +6,16 @@ import {
 } from "./program-driver-chat-journal-index.ts";
 import { elicitationContextEvidence } from "./program-driver-chat-projection-codecs.ts";
 
+export type PendingCorrelation = {
+  readonly callId?: string;
+  readonly elicitId?: string;
+  readonly toolName?: string;
+};
+
 export function pendingCorrelation(
   index: ChatJournalIndex,
   pending: PendingElicit,
-): { callId?: string; elicitId?: string; toolName?: string } {
+): PendingCorrelation {
   const evidence = elicitationContextEvidence(pending.descriptor.context, pending.descriptor.key);
   if (evidence.callId || evidence.toolName) {
     return {
@@ -25,4 +32,22 @@ export function pendingCorrelation(
   return parent
     ? { callId: parent.callId, elicitId: pending.pullId, toolName: parent.tool }
     : { elicitId: pending.pullId };
+}
+
+export function requiredPendingCorrelation(
+  index: ChatJournalIndex,
+  pending: PendingElicit,
+): { readonly callId: string; readonly toolName: string; readonly elicitId?: string } {
+  const correlation = pendingCorrelation(index, pending);
+  if (correlation.callId === undefined || correlation.toolName === undefined) {
+    throw new CrankError(
+      "interaction_binding_missing",
+      `Elicitation "${pending.descriptor.key}" has no authored tool correlation`,
+    );
+  }
+  return {
+    callId: correlation.callId,
+    toolName: correlation.toolName,
+    ...(correlation.elicitId === undefined ? {} : { elicitId: correlation.elicitId }),
+  };
 }

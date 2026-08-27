@@ -61,28 +61,30 @@ export function driveActivation(request: DriveActivationRequest): Operation<Adva
       authority: request.authority,
       driver,
       attach: request.attach,
-      effects: {
-        *route() {
-          return "execution";
+      advancement: {
+        effects: {
+          *route() {
+            return "execution";
+          },
+          *executeHost() {
+            throw new CrankError("effect_placement_unavailable");
+          },
+          ...(request.onEffectResolved === undefined
+            ? {}
+            : {
+                *acknowledge({ authorization, outcome }) {
+                  yield* request.onEffectResolved!({
+                    pullId: authorization.pullId,
+                    attemptId: authorization.attemptId,
+                    outcomeDigest: canonicalSnapshot(outcome).sha,
+                    effect: {
+                      name: authorization.descriptor.name,
+                      version: authorization.descriptor.version,
+                    },
+                  });
+                },
+              }),
         },
-        *executeHost() {
-          throw new CrankError("effect_placement_unavailable");
-        },
-        ...(request.onEffectResolved === undefined
-          ? {}
-          : {
-              *acknowledge({ authorization, outcome }) {
-                yield* request.onEffectResolved!({
-                  pullId: authorization.pullId,
-                  attemptId: authorization.attemptId,
-                  outcomeDigest: canonicalSnapshot(outcome).sha,
-                  effect: {
-                    name: authorization.descriptor.name,
-                    version: authorization.descriptor.version,
-                  },
-                });
-              },
-            }),
       },
     });
   });
@@ -90,6 +92,7 @@ export function driveActivation(request: DriveActivationRequest): Operation<Adva
 
 function workflowFactoryDriver(workflow: () => Workflow<Json>): ProgramDriver {
   return {
+    evaluatorKind: "program",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     *attach(request): Operation<ProgramAttachment> {
       const handle = yield* openProgramAttachment(request, workflow);

@@ -6,10 +6,9 @@ import {
   stage,
   type ProjectionProgram,
 } from "@sweatpants/foundation/projection";
-import type { Json } from "@sweatpants/foundation";
 import type { StreamEvent } from "./program-driver-chat-types.ts";
 import type { ChatJournalIndex } from "./program-driver-chat-journal-index.ts";
-import { jsonRecord } from "./program-driver-chat-projection-codecs.ts";
+import { jsonRecord, toolFailureEnvelope } from "./program-driver-chat-projection-codecs.ts";
 import {
   publicActivityToolStartSnapshots,
   publicElicitActivityDelta,
@@ -152,12 +151,7 @@ function projectRecordsFromIndex(
           failed
             ? {
                 status: "error",
-                errorText:
-                  typeof (jsonRecord(result)?.["error"] as Record<string, Json> | undefined)?.[
-                    "message"
-                  ] === "string"
-                    ? (jsonRecord(result)?.["error"] as Record<string, Json>)["message"]
-                    : "Tool execution failed",
+                errorText: toolFailureEnvelope(result).error.message,
                 detail: result,
               }
             : { status: "ok", output: result },

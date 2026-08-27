@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 
@@ -48,6 +49,39 @@ export function elicitationContextEvidence(
         : typeof context?.["foreignKey"] === "string"
           ? context["foreignKey"]
           : undefined,
+  };
+}
+
+export interface ToolFailureEnvelope {
+  readonly status: "error";
+  readonly error: {
+    readonly code: string;
+    readonly message: string;
+    readonly details?: Json;
+  };
+}
+
+/** Decodes the application failure envelope before it crosses into chat events. */
+export function toolFailureEnvelope(value: Json | undefined): ToolFailureEnvelope {
+  const envelope = jsonRecord(value);
+  const error = jsonRecord(envelope?.["error"]);
+  if (
+    envelope?.["status"] !== "error" ||
+    typeof error?.["code"] !== "string" ||
+    typeof error["message"] !== "string"
+  ) {
+    throw new CrankError(
+      "invalid_journal",
+      "Tool failure result does not contain a serialized application error",
+    );
+  }
+  return {
+    status: "error",
+    error: {
+      code: error["code"],
+      message: error["message"],
+      ...(error["details"] === undefined ? {} : { details: error["details"] }),
+    },
   };
 }
 
