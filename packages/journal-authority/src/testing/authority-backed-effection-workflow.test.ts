@@ -472,11 +472,11 @@ describe("authority-backed Effection Workflow proof", () => {
           route: request.route,
         },
       });
+      void opened;
       controlled.arm();
       const result = yield* runProofRecordWorkflow({
         attach: request,
         authority: proofAuthorityPort(JournalAuthorityPort.api.operations),
-        programCapability: opened.programCapability,
         workflow: workflow("cas", function* () {
           closureRuns += 1;
           controlled.arm();
@@ -799,6 +799,7 @@ describe("authority-backed Effection Workflow proof", () => {
           type: "record-attempt-completed",
           outcome: { status: "ok", value: "value" },
         });
+        if (attempted.type !== "record-attempt-completed") throw new Error("attempt missing");
         const terminal = yield* handle.exchange({
           type: "resume-record",
           actionIndex: 0,
@@ -858,6 +859,7 @@ describe("authority-backed Effection Workflow proof", () => {
           type: "record-attempt-completed",
           outcome: { status: "error", error: { code: "lost_settlement" } },
         });
+        if (attempted.type !== "record-attempt-completed") throw new Error("attempt missing");
         const terminal = yield* handle.exchange({
           type: "resume-record",
           actionIndex: 0,

@@ -410,7 +410,7 @@ describe("crank-native durable runtime", () => {
         expect.arrayContaining(["ModelContextPrepared", "AssistantPartialAccepted"]),
       );
       yield* authority.resolve({
-        capability: reserved.resolutionCapability,
+        capability: reserved.resolutionCapability!,
         audience: "model-runtime",
         outcome: { status: "ok", value: "hello" },
       });

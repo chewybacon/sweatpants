@@ -7,10 +7,9 @@ import {
   createProgramDriverRegistry,
   stableProgramAttachmentId,
   type DurableProgramManifest,
-  type Json,
   type ProgramElicitResult,
 } from "@sweatpants/durable-execution";
-import { assertJson, canonicalSnapshot } from "@sweatpants/foundation";
+import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import {
   driveInstalledTestProgramTree,
@@ -19,10 +18,8 @@ import {
 import { createAuthorityScenarioDriver } from "../testing.ts";
 import { projectExecutionForest } from "../execution-forest.ts";
 import { booleanGuard, createSchemaFixture, stringGuard } from "../schema-fixtures.ts";
-import type { PortableSchemaDescriptor } from "@sweatpants/foundation";
 import { createCapabilityKeyring } from "../capabilities.ts";
 import { createDurableSchemaRegistry } from "../schema-registry.ts";
-import { InstalledEffectPort } from "../workflow/runtime.ts";
 import { createWorkflowProgramDriver } from "../workflow/program-driver.ts";
 
 const programInput = createSchemaFixture(
@@ -203,9 +200,11 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
         value: (closed.payload.outcome as { value: string }).value,
         journalTypes: payloadTypes(journal),
         forest: canonicalSnapshot(projectExecutionForest(journal)),
-        settledValues: journal
-          .filter((entry) => entry.payload.type === "PullResolved")
-          .map((entry) => (entry.payload.outcome as { value: string }).value),
+        settledValues: journal.flatMap((entry) =>
+          entry.payload.type === "PullResolved"
+            ? [(entry.payload.outcome as { value: string }).value]
+            : [],
+        ),
       };
     }) as unknown as Promise<ScenarioResult>;
   }
@@ -235,7 +234,7 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
         let firstReason = "";
         let secondValue = "";
         yield* withProgramDriverTestScope(authority, function* () {
-          const opened = yield* authority.openTask({
+          yield* authority.openTask({
             sessionId: request.sessionId,
             turnId: "turn-0",
             taskId: request.taskId,
@@ -245,26 +244,15 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
             attachmentId: stableProgramAttachmentId(request),
             audience: "program-host",
           });
-          const activate = (epoch: number, attachmentSuffix: string) =>
+          const activate = () =>
             ProgramDriverRegistryContext.with(drivers, function* () {
-              let capabilityForRun = opened.programCapability;
-              if (epoch > 1) {
-                const bound = (yield* authority.bindProgramAttachment(
-                  request.sessionId,
-                  request.taskId,
-                  stableProgramAttachmentId(request) + attachmentSuffix,
-                  1,
-                )) as unknown as { programCapability: string };
-                capabilityForRun = bound.programCapability;
-              }
-              return yield* driveInstalledTestProgramTree({
-                attach: request,
-                programCapability: capabilityForRun,
-              });
+              return yield* driveInstalledTestProgramTree({ attach: request });
             });
-          const firstRun = yield* activate(1, "");
+          const firstRun = yield* activate();
           if (firstRun.state !== "parked" || firstRun.reason !== "elicit") {
-            throw new Error(`expected parked elicit, got ${firstRun.state}/${firstRun.reason}`);
+            throw new Error(
+              `expected parked elicit, got ${firstRun.state}/${"reason" in firstRun ? firstRun.reason : "terminal"}`,
+            );
           }
           firstState = firstRun.state;
           firstReason = firstRun.reason ?? "";
@@ -299,11 +287,11 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
             throw new Error(`resolution rejected: ${resolved.status}`);
           }
           void capability;
-          const secondRun = yield* activate(2, "-2");
+          const secondRun = yield* activate();
           if (secondRun.state !== "completed") {
             throw new Error(`second run ${secondRun.state}`);
           }
-          secondValue = secondRun.value ?? "";
+          secondValue = String(secondRun.value);
         });
         const journal = authority.readJournal(sessionId);
         return {

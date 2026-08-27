@@ -73,7 +73,7 @@ describe("parked sample pull resolver", () => {
     expect(resolver.audience({ kind: "sample" })).toBe("model-runtime");
     expect(outcome).toEqual({ status: "cancelled" });
     expect(samples).toHaveLength(1);
-    expect(samples[0].placement).toEqual({
+    expect(samples[0]!.placement).toEqual({
       journal: { id: "journal-1", incarnation: "inc-1" },
       program: placement.program,
       route: placement.route,

@@ -1,10 +1,9 @@
 import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
-import { run } from "effection";
+import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import { assertJson } from "@sweatpants/foundation";
-import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
+import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,

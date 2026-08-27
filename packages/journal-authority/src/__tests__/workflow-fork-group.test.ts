@@ -205,12 +205,12 @@ describe("fork groups through the workflow program driver", () => {
           attachmentId: stableProgramAttachmentId(request),
           audience: "program-host",
         });
+        void opened;
         const firstRun: AdvancementResult = yield* ProgramDriverRegistryContext.with(
           drivers,
           function* () {
             return yield* driveInstalledTestProgramTree({
               attach: request,
-              programCapability: opened.programCapability,
             });
           },
         );
@@ -263,12 +263,12 @@ describe("fork groups through the workflow program driver", () => {
           stableProgramAttachmentId(request) + "-2",
           1,
         );
+        void bound;
         const secondRun: AdvancementResult = yield* ProgramDriverRegistryContext.with(
           drivers,
           function* () {
             return yield* driveInstalledTestProgramTree({
               attach: request,
-              programCapability: bound.programCapability,
             });
           },
         );

@@ -268,7 +268,10 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       expect(countPulls(innerJournal, "sample")).toBe(2);
       expect(countPulls(innerJournal, "elicit")).toBe(2);
       expect(
-        innerJournal.findLast((record) => record.payload.type === "TaskClosed")?.payload,
+        innerJournal
+          .slice()
+          .reverse()
+          .find((record) => record.payload.type === "TaskClosed")?.payload,
       ).toMatchObject({
         type: "TaskClosed",
         outcome: {
@@ -388,7 +391,7 @@ function countEffectPulls(records: DurableSemanticRecord[], name: string): numbe
   ).length;
 }
 
-function countPulls(records: DurableSemanticRecord[], kind: "elicit"): number {
+function countPulls(records: DurableSemanticRecord[], kind: "elicit" | "sample"): number {
   return records.filter(
     (record) => record.payload.type === "PullRequested" && record.payload.descriptor.kind === kind,
   ).length;
