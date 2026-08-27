@@ -5,6 +5,7 @@ import {
   DurableProgramCancellation,
   ProgramDriverRegistryContext,
   REPLAY_CHECKPOINT_CAPABILITIES,
+  programRouteDriverKind,
   stableProgramAttachmentId,
   type AdvancementResult,
   type AttachProgramRequest,
@@ -53,7 +54,7 @@ export interface DriveActivationRequest {
  */
 export function driveActivation(request: DriveActivationRequest): Operation<AdvancementResult> {
   const driver = workflowFactoryDriver(request.workflow);
-  const kind = routeDriverKind(request.attach.route);
+  const kind = programRouteDriverKind(request.attach.route);
   const registry = new Map<string, ProgramDriver>([[kind, driver]]);
   return ProgramDriverRegistryContext.with(registry, function* () {
     return yield* driveProgramDriverActivation({
@@ -95,7 +96,7 @@ function workflowFactoryDriver(workflow: () => Workflow<Json>): ProgramDriver {
       return {
         attachmentId: stableProgramAttachmentId(request),
         taskId: request.taskId,
-        driverKind: routeDriverKind(request.route),
+        driverKind: programRouteDriverKind(request.route),
         route: request.route,
         executionEpoch: request.executionEpoch,
         handle,
@@ -188,14 +189,6 @@ function toStep(event: ProgramEvent): ProgramStep {
     default:
       return assertNever(event);
   }
-}
-
-function routeDriverKind(route: AttachProgramRequest["route"]): string {
-  if (route !== null && typeof route === "object" && !Array.isArray(route)) {
-    const value = (route as Record<string, unknown>)["driverKind"];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return "program";
 }
 
 function assertNever(value: never): never {

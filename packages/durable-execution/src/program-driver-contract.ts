@@ -8,6 +8,7 @@
 
 import type { Operation } from "effection";
 import type { Json, SerializedApplicationError } from "@sweatpants/foundation";
+import { CrankError } from "./errors.ts";
 import type { ProgramPlacementContextValue } from "@sweatpants/durable-effects";
 import type {
   DurableOperationDescriptor,
@@ -40,6 +41,18 @@ export interface ResolutionReceipt {
 
 /** Driver-owned canonical routing data persisted with attachment requests. */
 export type ProgramRoute = Json;
+
+/** The sole discriminator for dispatching an already-bound program route. */
+export function programRouteDriverKind(route: ProgramRoute): string {
+  if (route === null || typeof route !== "object" || Array.isArray(route)) {
+    throw new CrankError("invalid_descriptor", "Program route is not an object");
+  }
+  const driverKind = route["driverKind"];
+  if (typeof driverKind !== "string" || driverKind.length === 0) {
+    throw new CrankError("invalid_descriptor", "Program route has no driver kind");
+  }
+  return driverKind;
+}
 
 /** Complete request for attaching to a pinned task execution epoch. */
 export interface AttachProgramRequest {

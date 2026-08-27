@@ -3,6 +3,7 @@ import {
   CrankError,
   ProgramDriverRegistryContext,
   ProgramRouteResolver,
+  programRouteDriverKind,
   type ProgramDriver,
   type ProgramRunRequest,
   type AdvancementResult,
@@ -94,7 +95,7 @@ export function driveTestProgramTree(
     const stageSampleInput = yield* TestSampleStagerContext.get();
 
     const driverFor = (route: ProgramRunRequest["attach"]["route"]): ProgramDriver => {
-      const kind = routeDriverKind(route);
+      const kind = programRouteDriverKind(route);
       const driver = drivers.get(kind);
       if (!driver) {
         throw new CrankError("unknown_target", `No program driver for ${kind}`);
@@ -173,7 +174,7 @@ export function driveTestProgramTree(
           if (!driver.manifest) {
             throw new CrankError(
               "program_version_unavailable",
-              `Driver ${routeDriverKind(route)} cannot resolve manifests`,
+              `Driver ${programRouteDriverKind(route)} cannot resolve manifests`,
             );
           }
           return yield* driver.manifest(program);
@@ -191,19 +192,11 @@ export function driveTestProgramTree(
             resolver,
             attach,
             pullId: parked.pullId,
-            driverKind: routeDriverKind(attach.route),
+            driverKind: programRouteDriverKind(attach.route),
           });
           return true;
         },
       },
     });
   });
-}
-
-function routeDriverKind(route: ProgramRunRequest["attach"]["route"]): string {
-  if (route === null || typeof route !== "object" || Array.isArray(route)) {
-    return "program";
-  }
-  const value = route["driverKind"] ?? route["kind"];
-  return typeof value === "string" && value ? value : "program";
 }

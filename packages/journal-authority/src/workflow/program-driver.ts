@@ -3,6 +3,7 @@ import {
   DurableProgramCancellation,
   REPLAY_CHECKPOINT_CAPABILITIES,
   exactProgramKey,
+  programRouteDriverKind,
   stableProgramAttachmentId,
   type DurableProgramManifest,
   type DurableToolRegistry,
@@ -158,7 +159,7 @@ export function createWorkflowProgramDriver(
       return {
         attachmentId,
         taskId: request.taskId,
-        driverKind: routeDriverKind(request.route),
+        driverKind: programRouteDriverKind(request.route),
         route: request.route,
         executionEpoch: request.executionEpoch,
         handle,
@@ -304,12 +305,6 @@ function attachmentHandleOf(attachment: ProgramAttachment): WorkflowDriverAttach
 
 function handleOf(attachment: ProgramAttachment): ProgramAttachmentHandle {
   return attachmentHandleOf(attachment).value;
-}
-
-function routeDriverKind(route: ProgramAttachment["route"]): ProgramAttachment["driverKind"] {
-  if (route === null || typeof route !== "object" || Array.isArray(route)) return "program";
-  const value = route["driverKind"] ?? route["kind"];
-  return typeof value === "string" && value ? value : "program";
 }
 
 function protocol(message: string): CrankError {
