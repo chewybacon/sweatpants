@@ -72,7 +72,7 @@ wc -l packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engi
 grep -c 'export \*' packages/journal-authority/src/index.ts
 
 # structural gates still green:
-pnpm validate:module-graph && pnpm validate:exports && pnpm validate:product-surface
+pnpm validate:exports && pnpm validate:product-surface
 git diff --check
 ```
 
