@@ -61,6 +61,14 @@ import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-
 export type ProgramCatalogEntry =
   | { kind: "program"; target: string; program: PinnedProgram }
   | {
+      kind: "ephemeral-tool";
+      target: string;
+      driver: string;
+      tool: string;
+      durability: EphemeralDurability;
+    }
+  /** Historical catalog encoding; read-only until version-1 journals retire. */
+  | {
       kind: "foreign-tool";
       target: string;
       driver: string;
@@ -85,6 +93,19 @@ const programCatalogEntrySchema = z.discriminatedUnion("kind", [
     kind: z.literal("program"),
     target: catalogTextSchema,
     program: pinnedProgramSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("ephemeral-tool"),
+    target: catalogTextSchema,
+    driver: catalogTextSchema,
+    tool: catalogTextSchema,
+    durability: z.enum([
+      "opaque",
+      "ephemeral_handle",
+      "resumable_handle",
+      "server_task",
+      "crank_native",
+    ]),
   }),
   z.strictObject({
     kind: z.literal("foreign-tool"),
@@ -564,6 +585,12 @@ function decodePinnedProgramCatalog(value: unknown): PinnedProgramCatalog {
   return parsed.data;
 }
 
+function isEphemeralCatalogEntry(
+  entry: ProgramCatalogEntry,
+): entry is Exclude<ProgramCatalogEntry, { kind: "program" }> {
+  return entry.kind === "ephemeral-tool" || entry.kind === "foreign-tool";
+}
+
 function assertCatalogDispatch(catalog: PinnedProgramCatalog, program: PinnedProgram): void {
   const entries = Object.values(catalog.entries);
   const exact = entries.some(
@@ -576,7 +603,7 @@ function assertCatalogDispatch(catalog: PinnedProgramCatalog, program: PinnedPro
 
   const ephemeralAdapter =
     exactProgramKey(program) === exactProgramKey(FOREIGN_TOOL_ADAPTER_PROGRAM) &&
-    entries.some((entry) => entry.kind === "foreign-tool");
+    entries.some(isEphemeralCatalogEntry);
   if (ephemeralAdapter) {
     return;
   }
