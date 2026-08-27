@@ -25,6 +25,7 @@ export function* replayStrand(item: ReplayItem): Operation<CaughtUpLeaf> {
     input: item.input,
     route: item.route,
     executionEpoch: item.executionEpoch,
+    ...(item.affinity === undefined ? {} : { affinity: item.affinity }),
   });
   let step: ProgramStep;
   try {

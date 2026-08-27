@@ -76,6 +76,7 @@ export interface ReplayItem {
   readonly program: PinnedProgram;
   readonly input: Json;
   readonly route: ProgramRoute;
+  readonly affinity?: SandboxAffinity;
   readonly executionEpoch: number;
   readonly groupContext: ForkContext;
   readonly replay: readonly ReplayEntry[];
