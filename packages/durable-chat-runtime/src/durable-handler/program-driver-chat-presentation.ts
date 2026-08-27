@@ -1,27 +1,51 @@
 import { EventType, type AGUIEvent } from "@ag-ui/core";
 import { type Operation } from "effection";
-import { assertJson } from "@sweatpants/foundation";
-import { CONVERSATION_AUTHORITY_FRAME_TYPE } from "@sweatpants/chat-core";
+import { assertJson, type Json } from "@sweatpants/foundation";
+import {
+  CONVERSATION_AUTHORITY_FRAME_TYPE,
+  type AgUiRunMetadata,
+  type ConversationAuthority,
+  type ConversationWindowFrame,
+} from "@sweatpants/chat-core";
+import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
 
 import {
   pendingElicit,
-  pendingToolCallId,
-  projectInterrupt,
-  projectRecords,
   publicActivityElicitSnapshots,
-} from "./program-driver-chat-projection.ts";
-import type {
-  ChatActivationReport,
-  ProgramDriverChatEngineParams,
-  StreamEvent,
-} from "./program-driver-chat-types.ts";
+} from "./program-driver-chat-activity-projection.ts";
+import { pendingToolCallId, projectInterrupt } from "./program-driver-chat-interrupt-projection.ts";
+import { projectRecords } from "./program-driver-chat-record-projection.ts";
+import type { ChatActivationReport, StreamEvent } from "./program-driver-chat-types.ts";
 
 /** Pure-history presentation and product publication; receives no Authority capability. */
+export interface ChatPresentationContext {
+  readonly agUiRun: AgUiRunMetadata;
+  readonly toolInventory: readonly ToolInventoryEntry[];
+  readonly continueAfterCancellation: boolean;
+  readonly cancellationMessage: string;
+  readonly publishCheckpoint?: (request: { events: readonly StreamEvent[] }) => Operation<{
+    readonly authority: ConversationAuthority;
+    readonly window?: ConversationWindowFrame;
+  }>;
+  readonly publishTerminal: (request: {
+    outcome: Json;
+    disposition: "completed" | "failed" | "cancelled";
+    events: readonly StreamEvent[];
+  }) => Operation<{
+    readonly authority: ConversationAuthority;
+    readonly window?: ConversationWindowFrame;
+  }>;
+}
+
+export interface ChatPresentationResult {
+  readonly events: StreamEvent[];
+  readonly continueActivation: boolean;
+}
+
 export function* presentProgramDriverChatActivation(
-  params: ProgramDriverChatEngineParams,
+  context: ChatPresentationContext,
   report: ChatActivationReport,
-  continueActivation: (params: ProgramDriverChatEngineParams) => Operation<StreamEvent[]>,
-): Operation<StreamEvent[]> {
+): Operation<ChatPresentationResult> {
   const {
     before,
     after,
@@ -51,10 +75,10 @@ export function* presentProgramDriverChatActivation(
   if (outcome.state === "completed") {
     const terminalEvent: AGUIEvent = {
       type: EventType.RUN_FINISHED,
-      ...params.agUiRun,
+      ...context.agUiRun,
       outcome: { type: "success" },
     };
-    const published = yield* params.publishTerminal({
+    const published = yield* context.publishTerminal({
       outcome: outcome.value,
       disposition: "completed",
       events: [...projected, terminalEvent],
@@ -78,7 +102,10 @@ export function* presentProgramDriverChatActivation(
         if (pendingCallId) {
           events.push({ type: EventType.TOOL_CALL_END, toolCallId: pendingCallId });
         }
-        const interrupt = projectInterrupt(after, pending, params);
+        const interrupt = projectInterrupt(after, pending, {
+          agUiRun: context.agUiRun,
+          toolInventory: context.toolInventory,
+        });
         events.push(...publicActivityElicitSnapshots(after, pending, interrupt));
         events.push(interrupt);
       }
@@ -89,8 +116,8 @@ export function* presentProgramDriverChatActivation(
         message: "Program parked without a public input request",
       });
     }
-    if (params.publishCheckpoint) {
-      const published = yield* params.publishCheckpoint({ events });
+    if (context.publishCheckpoint) {
+      const published = yield* context.publishCheckpoint({ events });
       const terminalIndex = Math.max(0, events.length - 1);
       events.splice(terminalIndex, 0, ...(published.window ? [published.window] : []), {
         type: CONVERSATION_AUTHORITY_FRAME_TYPE,
@@ -104,7 +131,7 @@ export function* presentProgramDriverChatActivation(
         code: "PROGRAM_CANCELLED",
         message: "Program was cancelled",
       };
-      const published = yield* params.publishTerminal({
+      const published = yield* context.publishTerminal({
         outcome: { code: "PROGRAM_CANCELLED", message: "Program was cancelled" },
         disposition: "cancelled",
         events: [...projected, terminalEvent],
@@ -114,23 +141,18 @@ export function* presentProgramDriverChatActivation(
         { type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority: published.authority },
         terminalEvent,
       );
-    } else if (params.continueAfterCancellation || replacementQueued) {
-      const {
-        pluginAbort: _pluginAbort,
-        continueAfterCancellation: _continueAfterCancellation,
-        ...continuationParams
-      } = params;
-      events.push(...(yield* continueActivation(continuationParams)));
+    } else if (context.continueAfterCancellation || replacementQueued) {
+      return { events, continueActivation: true };
     } else {
       const terminalEvent: AGUIEvent = {
         type: EventType.RUN_ERROR,
         code: "PROGRAM_CANCELLED",
-        message: params.pluginAbort?.reason ?? "Program was cancelled",
+        message: context.cancellationMessage,
       };
-      const published = yield* params.publishTerminal({
+      const published = yield* context.publishTerminal({
         outcome: {
           code: "PROGRAM_CANCELLED",
-          message: params.pluginAbort?.reason ?? "Program was cancelled",
+          message: context.cancellationMessage,
         },
         disposition: "cancelled",
         events: [...projected, terminalEvent],
@@ -147,7 +169,7 @@ export function* presentProgramDriverChatActivation(
       code: outcome.error.code,
       message: outcome.error.message,
     };
-    const published = yield* params.publishTerminal({
+    const published = yield* context.publishTerminal({
       outcome: assertJson(outcome.error),
       disposition: "failed",
       events: [...projected, terminalEvent],
@@ -159,5 +181,5 @@ export function* presentProgramDriverChatActivation(
     );
   }
 
-  return events;
+  return { events, continueActivation: false };
 }
