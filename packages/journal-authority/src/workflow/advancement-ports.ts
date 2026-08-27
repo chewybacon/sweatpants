@@ -8,6 +8,16 @@ import type {
 import type { AttachProgramRequest } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 
+/** Explicit signal that post-commit acknowledgement may be retried without failing the turn. */
+export class RetryableEffectAcknowledgement extends Error {
+  readonly code = "retryable_effect_acknowledgement";
+
+  constructor(message = "Effect acknowledgement can be retried") {
+    super(message);
+    this.name = "RetryableEffectAcknowledgement";
+  }
+}
+
 /** Routes and performs an installed effect after Authority authorization. */
 export interface EffectRouter {
   route(request: {

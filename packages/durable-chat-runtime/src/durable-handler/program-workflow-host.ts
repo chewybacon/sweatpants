@@ -1,6 +1,7 @@
 import {
   CrankError,
   exactProgramKey,
+  rootTurnIdentity,
   ProgramRouteResolver,
   stableProgramAttachmentId,
   type AttachProgramRequest,
@@ -462,9 +463,11 @@ export function createProgramWorkflowHost(
       verifyLocalProgramRequest(request);
       const sessionId = request.sessionId ?? `local-session:${crypto.randomUUID()}`;
       const journal = yield* options.journalStore.open(sessionId);
-      const rootCount = yield* journal.rootTaskCount(sessionId);
-      const turnId = request.turnId ?? `turn-${rootCount}`;
-      const taskId = request.taskId ?? `${turnId}/root`;
+      const identity = rootTurnIdentity(yield* journal.rootTaskCount(sessionId), {
+        ...(request.turnId === undefined ? {} : { turnId: request.turnId }),
+        ...(request.taskId === undefined ? {} : { taskId: request.taskId }),
+      });
+      const { turnId, taskId } = identity;
       const route = request.route ?? { driverKind: "program" };
       const execution: AcceptedExecution = {
         route,

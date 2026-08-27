@@ -11,7 +11,7 @@ import {
   type ChatJournalIndex,
   type PendingElicit,
 } from "./program-driver-chat-journal-index.ts";
-import { jsonRecord } from "./program-driver-chat-projection-codecs.ts";
+import { elicitationContextEvidence, jsonRecord } from "./program-driver-chat-projection-codecs.ts";
 
 export function pendingToolCallId(index: ChatJournalIndex, pending: PendingElicit): string {
   return pendingCorrelation(index, pending).callId ?? pending.pullId;
@@ -27,20 +27,17 @@ export function projectInterrupt(
   pending: NonNullable<ReturnType<typeof pendingElicit>>,
   policy: InterruptProjectionPolicy,
 ): Extract<StreamEvent, { type: EventType.RUN_FINISHED }> {
-  const context = jsonRecord(pending.descriptor.context);
-  const nested = jsonRecord(context?.["context"]);
+  const context = elicitationContextEvidence(pending.descriptor.context, pending.descriptor.key);
   const correlation = pendingCorrelation(index, pending);
-  const legacyForeignContext = typeof context?.["foreignTool"] === "string";
-  const authoredContext = legacyForeignContext ? nested : context;
-  const responseProjection = legacyForeignContext
-    ? context?.["responseSchema"]
+  const authoredContext = context.authoredContext;
+  const responseProjection = context.historical
+    ? context.responseProjection
     : pending.descriptor.response.inputProjection;
   const encoded = {
     message: pending.descriptor.message,
     schema: objectSchema(responseProjection),
   };
-  const publicKey =
-    typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : pending.descriptor.key;
+  const publicKey = context.publicKey;
   const inventoryElicit = policy.toolInventory.find(
     (entry) => entry.definition.name === correlation.toolName,
   )?.elicits?.[publicKey];
