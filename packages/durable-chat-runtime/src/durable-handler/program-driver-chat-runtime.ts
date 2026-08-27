@@ -38,10 +38,10 @@ import {
   exactProgramKey,
   programRouteDriverKind,
 } from "@sweatpants/durable-execution";
-import { foreignToolAdapter } from "@sweatpants/tool-session/foreign";
+import { ephemeralToolAdapter } from "@sweatpants/tool-session/ephemeral";
 
 import { createParkedSamplePullResolver } from "./parked-sample-resolver.ts";
-import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
+import { createToolRuntimeEphemeralEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ProgramDriverJournal } from "./program-driver-journal.ts";
 import {
   isEphemeralToolCatalogExecution,
@@ -109,7 +109,7 @@ export function* composeChatExecutionRuntime(
   // restored from their exact pinned schemas before driver execution.
   const tools = createDurableToolRegistry([
     rootTool,
-    foreignToolAdapter,
+    ephemeralToolAdapter,
     ...[...(environment.native?.bindings.values() ?? [])].map((binding) => binding.tool),
   ]);
   const executionModelSamplingService = yield* ExecutionModelSamplingServiceContext.get();
@@ -139,7 +139,7 @@ export function* composeChatExecutionRuntime(
         if (boundEphemeralDriver !== "chat-tool-runtime") {
           throw new CrankError("tool_runtime_not_installed", "Catalog driver differs");
         }
-        return createToolRuntimeForeignEffectRegistrations({
+        return createToolRuntimeEphemeralEffectRegistrations({
           runtime: environment.ephemeral.runtime,
           entries: environment.ephemeral.inventory,
           threadId: environment.ephemeral.threadId,

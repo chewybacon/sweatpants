@@ -25,14 +25,14 @@ import {
   type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import {
-  FOREIGN_TOOL_ADAPTER_MANIFEST,
-  foreignToolAdapter,
-  foreignToolSchemaEntries,
-} from "@sweatpants/tool-session/foreign";
+  EPHEMERAL_TOOL_ADAPTER_MANIFEST,
+  ephemeralToolAdapter,
+  ephemeralToolSchemaEntries,
+} from "@sweatpants/tool-session/ephemeral";
 
 import {
   createLocalToolInvocationRuntime,
-  createToolInvocationForeignEffectRegistrations,
+  createToolInvocationEphemeralEffectRegistrations,
 } from "../index.ts";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 
@@ -48,7 +48,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
 
     const result = await run(function* () {
       yield* createLocalToolInvocationRuntime({});
-      const [start, continueRegistration] = createToolInvocationForeignEffectRegistrations({
+      const [start, continueRegistration] = createToolInvocationEphemeralEffectRegistrations({
         tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
       });
       const effectContext = {
@@ -69,23 +69,23 @@ describe("ToolSession foreign-tool durability boundary", () => {
         effectContext,
       );
       if (startedDisposition.status !== "ok") {
-        throw new Error("Foreign start returned a non-success disposition");
+        throw new Error("Ephemeral start returned a non-success disposition");
       }
       const started = startedDisposition.value;
       if (!started || typeof started !== "object" || Array.isArray(started)) {
-        throw new Error("Foreign start returned a non-object disposition");
+        throw new Error("Ephemeral start returned a non-object disposition");
       }
       const continuation = started["continuation"];
       if (!continuation || typeof continuation !== "object" || Array.isArray(continuation)) {
-        throw new Error("Foreign start did not return a continuation");
+        throw new Error("Ephemeral start did not return a continuation");
       }
       const state = continuation["state"];
       if (!state || typeof state !== "object" || Array.isArray(state)) {
-        throw new Error("Foreign continuation did not contain state");
+        throw new Error("Ephemeral continuation did not contain state");
       }
-      const foreignSessionId = state["sessionId"];
-      if (typeof foreignSessionId !== "string") {
-        throw new Error("Foreign continuation did not contain a session ID");
+      const invocationSessionId = state["sessionId"];
+      if (typeof invocationSessionId !== "string") {
+        throw new Error("Ephemeral continuation did not contain a session ID");
       }
       const effectDisposition = yield* continueRegistration.handler(
         {
@@ -110,7 +110,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
 
   it("fails without restarting when an ephemeral ToolSession host disappears", async () => {
     let toolBodyExecutions = 0;
-    let foreignStarts = 0;
+    let ephemeralStarts = 0;
     const tool = createTool("lost_foreign_tool")
       .description("A foreign tool whose live host will disappear")
       .parameters(z.object({ topic: z.string() }))
@@ -138,7 +138,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
       input: { topic: "durability" },
       durability: "ephemeral_handle",
     };
-    const tools = createDurableToolRegistry([foreignToolAdapter]);
+    const tools = createDurableToolRegistry([ephemeralToolAdapter]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const keyring = createCapabilityKeyring("foreign-loss", [
       { keyId: "active", secret: "foreign-loss-secret-is-32-bytes!!" },
@@ -147,7 +147,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
       journalId: "foreign-loss",
       journalIncarnation: "1",
       keyring,
-      schemaRegistry: createDurableSchemaRegistry(foreignToolSchemaEntries()),
+      schemaRegistry: createDurableSchemaRegistry(ephemeralToolSchemaEntries()),
     });
     const sessionId = "foreign-loss-session";
     const taskId = "turn-0/root";
@@ -155,7 +155,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
 
     const firstRun = await run(function* () {
       yield* createLocalToolInvocationRuntime({});
-      const registrations = createToolInvocationForeignEffectRegistrations({
+      const registrations = createToolInvocationEphemeralEffectRegistrations({
         tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
       });
       const [startRegistration] = registrations;
@@ -163,7 +163,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
         {
           ...startRegistration,
           handler(input, context) {
-            foreignStarts += 1;
+            ephemeralStarts += 1;
             return startRegistration.handler(input, context);
           },
         },
@@ -173,7 +173,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
         sessionId,
         turnId: "turn-0",
         taskId,
-        manifest: FOREIGN_TOOL_ADAPTER_MANIFEST,
+        manifest: EPHEMERAL_TOOL_ADAPTER_MANIFEST,
         input: request,
         executionEpoch: 1,
         attachmentId: "unattached-adapter",
@@ -202,7 +202,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
     const recovered = await run(function* () {
       yield* createLocalToolInvocationRuntime({});
       const effects = createDurableEffectRegistry([
-        ...createToolInvocationForeignEffectRegistrations({
+        ...createToolInvocationEphemeralEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
         }),
       ]);
@@ -219,7 +219,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
     expect(countEffectPulls(journal, "foreign.tool.start")).toBe(1);
     expect(countEffectPulls(journal, "foreign.tool.continue")).toBe(2);
     expect(countSamplePulls(journal)).toBe(1);
-    expect(foreignStarts).toBe(1);
+    expect(ephemeralStarts).toBe(1);
     expect(toolBodyExecutions).toBe(1);
   });
 });
@@ -233,9 +233,9 @@ function attachRequest(
     sessionId,
     taskId,
     program: {
-      id: FOREIGN_TOOL_ADAPTER_MANIFEST.programId,
-      version: FOREIGN_TOOL_ADAPTER_MANIFEST.version,
-      digest: FOREIGN_TOOL_ADAPTER_MANIFEST.digest,
+      id: EPHEMERAL_TOOL_ADAPTER_MANIFEST.programId,
+      version: EPHEMERAL_TOOL_ADAPTER_MANIFEST.version,
+      digest: EPHEMERAL_TOOL_ADAPTER_MANIFEST.digest,
     },
     input,
     route: { driverKind: "program" },
@@ -269,7 +269,7 @@ function recreate(
     journalId: "foreign-loss",
     journalIncarnation: "1",
     keyring,
-    schemaRegistry: createDurableSchemaRegistry(foreignToolSchemaEntries()),
+    schemaRegistry: createDurableSchemaRegistry(ephemeralToolSchemaEntries()),
     snapshot: authority.exportSnapshot(),
   });
 }

@@ -126,7 +126,7 @@ host), or `events()` remains a stream that is honestly not per-event
 interceptable.
 
 The Style F control plane is now implemented for the local foreign-tool
-adapter in `src/invocation-host.ts` and `src/foreign-tool-session.ts`.
+adapter in `src/invocation-host.ts` and `src/ephemeral-tool-session.ts`.
 `ToolInvocationHostPort` exposes `start`, `turn`, and `dispose`; the adapter
 answers a parked request and advances in one `turn` call. The existing `ToolSession` resource still sits underneath it, but it now
 exposes only `notices` and one internal `resume()` operation. MCP receives the

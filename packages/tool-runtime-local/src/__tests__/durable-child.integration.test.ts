@@ -1,6 +1,6 @@
 import { assertJson } from "@sweatpants/foundation";
 import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
-import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
+import { ephemeralToolSchemaEntries } from "@sweatpants/tool-session/ephemeral";
 import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 
@@ -98,7 +98,7 @@ const parentInput = createSchemaFixture(
 );
 const fixtureSchemas = () =>
   createDurableSchemaRegistry([
-    ...foreignToolSchemaEntries(),
+    ...ephemeralToolSchemaEntries(),
     choiceSchema.entry,
     sampleInput.entry,
     sampleOutput.entry,

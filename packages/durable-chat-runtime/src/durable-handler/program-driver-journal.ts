@@ -33,7 +33,7 @@ import {
 } from "@sweatpants/journal-authority/schema-registry";
 import { type SchemaBinding } from "@sweatpants/foundation/schema";
 
-import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
+import { ephemeralToolSchemaEntries } from "@sweatpants/tool-session/ephemeral";
 import { programDriverChatEngineSchemaEntries } from "./program-driver-schema.ts";
 
 export function programDriverSchemaRegistry(
@@ -41,7 +41,7 @@ export function programDriverSchemaRegistry(
 ): ReturnType<typeof createDurableSchemaRegistry> {
   return createDurableSchemaRegistry([
     ...programDriverChatEngineSchemaEntries(),
-    ...foreignToolSchemaEntries(),
+    ...ephemeralToolSchemaEntries(),
     ...entries,
   ]);
 }

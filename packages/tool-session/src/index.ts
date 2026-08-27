@@ -9,4 +9,4 @@ export {
   type ToolSessionEventLog,
 } from "./event-log.ts";
 
-export * from "./foreign.ts";
+export * from "./ephemeral.ts";

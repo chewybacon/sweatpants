@@ -14,7 +14,7 @@ import {
   type ModelSampleSourceRequest,
 } from "@sweatpants/model-sampling";
 import { assertJson, type Json } from "@sweatpants/foundation";
-import { FOREIGN_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/foreign";
+import { EPHEMERAL_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/ephemeral";
 
 import {
   isEphemeralToolCatalogExecution,
@@ -148,7 +148,7 @@ function* invokeCatalogTool(
       entry.kind === "program"
         ? { ...entry.program, input: call.input }
         : {
-            ...FOREIGN_TOOL_ADAPTER_PROGRAM,
+            ...EPHEMERAL_TOOL_ADAPTER_PROGRAM,
             input: {
               driver: entry.driver,
               tool: entry.tool,

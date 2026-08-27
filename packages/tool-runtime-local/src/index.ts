@@ -27,17 +27,17 @@ export {
   type LocalWorkerDurableProgramDriverOptions,
 } from "./local-worker-durable-driver.ts";
 export {
-  createToolInvocationForeignEffectRegistrations,
-  type ToolInvocationForeignDriverOptions,
-  type ToolInvocationForeignEffectRegistrations,
-  executeForeignToolCall,
-  type ForeignAskRelay,
-} from "./foreign-tool-session.ts";
+  createToolInvocationEphemeralEffectRegistrations,
+  type ToolInvocationEphemeralDriverOptions,
+  type ToolInvocationEphemeralEffectRegistrations,
+  executeEphemeralToolCall,
+  type EphemeralAskRelay,
+} from "./ephemeral-tool-session.ts";
 export {
   DURABLE_TOOL_FACADE_ANNOTATION,
   DurableToolFacadeError,
   createDurableToolSessionFacade,
-  createForeignPullResolver,
+  createEphemeralPullResolver,
   createInMemoryDurableToolFacadeStateStore,
   isDurableToolSessionFacade,
   type DurableToolFacadeStateStore,

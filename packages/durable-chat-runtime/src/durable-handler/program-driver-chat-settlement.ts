@@ -5,9 +5,9 @@ import { assertJson } from "@sweatpants/foundation";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { ToolInvocationHostPort } from "@sweatpants/tool-session";
 import {
-  FOREIGN_TOOL_ADAPTER_PROGRAM,
-  foreignToolInvocationId,
-} from "@sweatpants/tool-session/foreign";
+  EPHEMERAL_TOOL_ADAPTER_PROGRAM,
+  ephemeralToolInvocationId,
+} from "@sweatpants/tool-session/ephemeral";
 
 import type { ProgramDriverJournal } from "./program-driver-journal.ts";
 import type { ElicitResponse } from "./types.ts";
@@ -30,7 +30,7 @@ export function* disposeEphemeralChildSessions(
   );
   const taskIds = records.flatMap((record) =>
     record.payload.type === "TaskOpened" &&
-    record.payload.programId === FOREIGN_TOOL_ADAPTER_PROGRAM.id &&
+    record.payload.programId === EPHEMERAL_TOOL_ADAPTER_PROGRAM.id &&
     !closed.has(record.payload.taskId)
       ? [record.payload.taskId]
       : [],
@@ -40,7 +40,7 @@ export function* disposeEphemeralChildSessions(
   }
   const host = yield* ToolInvocationHostPort.use();
   for (const taskId of taskIds) {
-    yield* host.dispose(foreignToolInvocationId(sessionId, taskId));
+    yield* host.dispose(ephemeralToolInvocationId(sessionId, taskId));
   }
 }
 

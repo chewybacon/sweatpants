@@ -34,7 +34,7 @@ program ──propose──▶ [journal: PullRequested{driver,tool,input}]   par
    └──replay◀─[journal: PullResolved]◀── host executes LIVE call out ───┘
 ```
 
-- Resolver: facade's foreign resolver → `foreign-tool-session.ts::executeForeignToolCall` over the invocation host (worker boundary). Interactive chat tools use the pinned foreign adapter workflow child so nested sample/elicit exchanges remain ordinary child topology.
+- Resolver: facade's foreign resolver → `ephemeral-tool-session.ts::executeEphemeralToolCall` over the invocation host (worker boundary). Interactive chat tools use the pinned foreign adapter workflow child so nested sample/elicit exchanges remain ordinary child topology.
 - The external tool sees an ordinary function call. It learns nothing about
   durability. Death of the live reference = `foreign_reference_lost` error —
   there is nothing honest to replay otherwise.
@@ -62,7 +62,7 @@ additive. Until then this row is intentionally empty of code.
 | Program context | no — single `context.pull(descriptor)` | `durable-execution/program-authoring.ts` |
 | Authoring sugar | yes, by design | agent-sdk `durable-create.ts`, runtime op factories |
 | Hosts | no — registries only | facade generic block; engine `parkedPullResolvers` |
-| Kind transports | yes (their home) | `foreign-tool-session.ts`, sampling service |
+| Kind transports | yes (their home) | `ephemeral-tool-session.ts`, sampling service |
 
 Policy lives with kinds (`pull-kinds/*.ts`: schema, audience, gates, labels);
 snapshot codec derives from the same registry. Adding case-3 later = new

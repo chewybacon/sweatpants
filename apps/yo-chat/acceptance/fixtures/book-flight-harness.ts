@@ -34,7 +34,7 @@ import {
 import { ProgramDriverEphemeralEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createLocalToolInvocationRuntime,
-  createToolInvocationForeignEffectRegistrations,
+  createToolInvocationEphemeralEffectRegistrations,
 } from "@sweatpants/tool-runtime-local";
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
@@ -169,7 +169,7 @@ export async function createBookFlightSubstrate(options: {
           );
           yield* installToolRuntime(fallbackRuntime);
           yield* ProgramDriverEphemeralEffectsContext.set(
-            createToolInvocationForeignEffectRegistrations({
+            createToolInvocationEphemeralEffectRegistrations({
               tools: new Map<string, RuntimeTool>([[bookFlightTool.name, bookFlightTool]]),
             }),
           );

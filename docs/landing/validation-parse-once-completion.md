@@ -37,7 +37,7 @@ The counts are evidence indicators, not completion criteria or an edit queue. Ow
 
 ### Tool Runtime Local foreign sessions
 
-`packages/tool-runtime-local/src/foreign-tool-session.ts` now uses strict package-owned Zod schemas for:
+`packages/tool-runtime-local/src/ephemeral-tool-session.ts` now uses strict package-owned Zod schemas for:
 
 - continuation state;
 - durability discriminants;
@@ -86,7 +86,7 @@ Journal Authority remains intentionally free of Zod, as enforced by its package-
 
 ### Tool Session foreign and MCP contracts
 
-`packages/tool-session/src/foreign-contract.ts` keeps Standard Schema V1 as the durable/user-facing registry contract while strict private Zod schemas now own framework foreign start and continuation structure. Driver/tool identities, canonical input/state/response values, durability and response discriminants, optional route policy, bounds, and unknown-field closure are proved before the Standard Schema callback accepts the value. `mcp/durable-invocation.ts` now strictly parses the closed durable invocation metadata envelope, including format, UTF-8 idempotency-key bounds, and inventory digest. Manual generic record, exact-key, array, and primitive-field trees were removed; inventory-generation and invocation identity semantics remain typed code.
+`packages/tool-session/src/ephemeral-contract.ts` keeps Standard Schema V1 as the durable/user-facing registry contract while strict private Zod schemas now own framework foreign start and continuation structure. Driver/tool identities, canonical input/state/response values, durability and response discriminants, optional route policy, bounds, and unknown-field closure are proved before the Standard Schema callback accepts the value. `mcp/durable-invocation.ts` now strictly parses the closed durable invocation metadata envelope, including format, UTF-8 idempotency-key bounds, and inventory digest. Manual generic record, exact-key, array, and primitive-field trees were removed; inventory-generation and invocation identity semantics remain typed code.
 
 ### Tool Session MCP decoding and compatibility adapters
 

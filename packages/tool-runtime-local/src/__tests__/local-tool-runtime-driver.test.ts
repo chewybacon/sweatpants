@@ -272,7 +272,7 @@ describe("local ToolRuntimeDriver", () => {
 
       yield* installLocalToolRuntimeComposition({
         tools: [echoTool],
-        installForeignEffects: function* (registrations) {
+        installEphemeralEffects: function* (registrations) {
           yield* ProgramDriverEphemeralEffectsContext.set(registrations);
         },
         samplingProvider: {

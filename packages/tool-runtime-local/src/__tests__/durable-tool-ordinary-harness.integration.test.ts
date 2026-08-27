@@ -1,6 +1,6 @@
 import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { assertJson } from "@sweatpants/foundation";
-import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
+import { ephemeralToolSchemaEntries } from "@sweatpants/tool-session/ephemeral";
 
 import {
   ProgramDriverRegistryContext,
@@ -28,9 +28,9 @@ import {
   type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import {
-  FOREIGN_TOOL_ADAPTER_MANIFEST,
-  foreignToolAdapter,
-} from "@sweatpants/tool-session/foreign";
+  EPHEMERAL_TOOL_ADAPTER_MANIFEST,
+  ephemeralToolAdapter,
+} from "@sweatpants/tool-session/ephemeral";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { anyGuard, createSchemaFixture } from "@sweatpants/journal-authority/testing";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
@@ -40,7 +40,7 @@ import {
   createLocalToolInvocationRuntime,
   createDurableToolSessionFacade,
   createInMemoryDurableToolFacadeStateStore,
-  createToolInvocationForeignEffectRegistrations,
+  createToolInvocationEphemeralEffectRegistrations,
 } from "../index.ts";
 
 type InnerInput = { topic: string };
@@ -87,7 +87,7 @@ const innerOutput = createSchemaFixture(
 );
 const innerSchemas = () =>
   createDurableSchemaRegistry([
-    ...foreignToolSchemaEntries(),
+    ...ephemeralToolSchemaEntries(),
     sampleInput.entry,
     sampleOutput.entry,
     choiceSchema.entry,
@@ -169,7 +169,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       input: { topic: "durability" },
       durability: "ephemeral_handle",
     };
-    const adapterTools = createDurableToolRegistry([foreignToolAdapter]);
+    const adapterTools = createDurableToolRegistry([ephemeralToolAdapter]);
     const drivers = createProgramDriverRegistry([
       ["program", createWorkflowProgramDriver(adapterTools)],
     ]);
@@ -189,7 +189,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
     await run(function* () {
       yield* createLocalToolInvocationRuntime({});
       const effects = createDurableEffectRegistry([
-        ...createToolInvocationForeignEffectRegistrations({
+        ...createToolInvocationEphemeralEffectRegistrations({
           // SAFETY: the facade implements the callable RuntimeTool boundary;
           // its older AnyToolContract declaration omits the schemas property.
           tools: new Map<string, RuntimeTool>([[facade.name, facade as unknown as RuntimeTool]]),
@@ -217,7 +217,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
         sessionId,
         turnId: "turn-0",
         taskId,
-        manifest: FOREIGN_TOOL_ADAPTER_MANIFEST,
+        manifest: EPHEMERAL_TOOL_ADAPTER_MANIFEST,
         input: request,
         executionEpoch: 1,
         attachmentId: "unattached-outer-adapter",
@@ -305,9 +305,9 @@ function attachRequest(
     sessionId,
     taskId,
     program: {
-      id: FOREIGN_TOOL_ADAPTER_MANIFEST.programId,
-      version: FOREIGN_TOOL_ADAPTER_MANIFEST.version,
-      digest: FOREIGN_TOOL_ADAPTER_MANIFEST.digest,
+      id: EPHEMERAL_TOOL_ADAPTER_MANIFEST.programId,
+      version: EPHEMERAL_TOOL_ADAPTER_MANIFEST.version,
+      digest: EPHEMERAL_TOOL_ADAPTER_MANIFEST.digest,
     },
     input,
     route: { driverKind: "program" },

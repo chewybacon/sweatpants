@@ -12,9 +12,9 @@ import {
 import { assertJson, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
 import {
-  FOREIGN_TOOL_CONTINUE_EFFECT,
-  FOREIGN_TOOL_START_EFFECT,
-} from "@sweatpants/tool-session/foreign";
+  EPHEMERAL_TOOL_CONTINUE_EFFECT,
+  EPHEMERAL_TOOL_START_EFFECT,
+} from "@sweatpants/tool-session/ephemeral";
 
 import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { getToolParameterValidationErrorPayload } from "@sweatpants/tool-session/tool-parameters";
@@ -49,7 +49,7 @@ const continuationSchema = z.strictObject({
   elicitId: z.string().max(512),
 });
 
-type ToolRuntimeForeignOptions = {
+type ToolRuntimeEphemeralOptions = {
   runtime: ToolRuntime;
   entries: readonly ToolInventoryEntry[];
   threadId: string;
@@ -57,16 +57,16 @@ type ToolRuntimeForeignOptions = {
 };
 
 /**
- * Adapts framework ToolRuntime calls to the durable foreign-effect contract.
+ * Adapts framework ToolRuntime calls to the durable ephemeral-effect contract.
  * Sampling-capable inventory entries are rejected because ToolRuntime currently
  * hides their sampling continuation; callers must install the ToolSession-native
- * foreign registrations for those tools instead.
+ * ephemeral registrations for those tools instead.
  */
-export function createToolRuntimeForeignEffectRegistrations(
-  options: ToolRuntimeForeignOptions,
+export function createToolRuntimeEphemeralEffectRegistrations(
+  options: ToolRuntimeEphemeralOptions,
 ): readonly [DurableEffectRegistration, DurableEffectRegistration] {
   const start = createDurableEffectRegistration(
-    FOREIGN_TOOL_START_EFFECT,
+    EPHEMERAL_TOOL_START_EFFECT,
     { mode: "unsafe" },
     successfulEffect(function* (request, context): Operation<EphemeralToolDisposition> {
       if (request.driver !== DRIVER) {
@@ -97,34 +97,34 @@ export function createToolRuntimeForeignEffectRegistrations(
         return yield* disposition(execution, request.tool, options.runtime, entry);
       } catch (error) {
         if (context.cancellation.aborted) {
-          return failure("foreign_tool_cancelled", "Foreign tool was cancelled");
+          return failure("foreign_tool_cancelled", "Ephemeral tool was cancelled");
         }
         const validation = getToolParameterValidationErrorPayload(error);
         return validation
           ? failure(validation.code, validation.message)
-          : failure("foreign_tool_start_failed", "Foreign tool start failed");
+          : failure("foreign_tool_start_failed", "Ephemeral tool start failed");
       }
     }),
   );
 
   const continueRegistration = createDurableEffectRegistration(
-    FOREIGN_TOOL_CONTINUE_EFFECT,
+    EPHEMERAL_TOOL_CONTINUE_EFFECT,
     { mode: "unsafe" },
     successfulEffect(function* (request, context): Operation<EphemeralToolDisposition> {
       if (request.continuation.driver !== DRIVER) {
-        return failure("foreign_continuation_invalid", "Foreign continuation is invalid");
+        return failure("foreign_continuation_invalid", "Ephemeral continuation is invalid");
       }
       const parsed = parseContinuation(request.continuation.state);
       if (!parsed) {
-        return failure("foreign_continuation_invalid", "Foreign continuation is invalid");
+        return failure("foreign_continuation_invalid", "Ephemeral continuation is invalid");
       }
       if (request.response.kind === "cancel") {
         try {
           yield* options.runtime.abort(parsed.ref, "durable program cancelled");
         } catch {
-          return failure("foreign_tool_cancel_failed", "Foreign tool cancellation failed");
+          return failure("foreign_tool_cancel_failed", "Ephemeral tool cancellation failed");
         }
-        return failure("foreign_tool_cancelled", "Foreign tool was cancelled");
+        return failure("foreign_tool_cancelled", "Ephemeral tool was cancelled");
       }
       if (request.response.kind !== "elicit") {
         return failure("foreign_response_kind_mismatch", "Foreign response kind is invalid");
@@ -133,7 +133,7 @@ export function createToolRuntimeForeignEffectRegistrations(
       if (!parsedCompletion.ok) {
         return failure(
           "foreign_elicit_response_invalid",
-          "Foreign elicitation response is invalid",
+          "Ephemeral elicitation response is invalid",
         );
       }
       const completion = parsedCompletion.value;
@@ -154,8 +154,8 @@ export function createToolRuntimeForeignEffectRegistrations(
         return yield* disposition(execution, parsed.tool, options.runtime, entry);
       } catch {
         return context.cancellation.aborted
-          ? failure("foreign_tool_cancelled", "Foreign tool was cancelled")
-          : failure("foreign_tool_continue_failed", "Foreign tool continuation failed");
+          ? failure("foreign_tool_cancelled", "Ephemeral tool was cancelled")
+          : failure("foreign_tool_continue_failed", "Ephemeral tool continuation failed");
       }
     }),
   );
@@ -182,7 +182,7 @@ function* disposition(
       try {
         return { type: "completed", result: assertJson(execution.result) };
       } catch {
-        return failure("foreign_result_not_json", "Foreign tool returned a non-JSON result");
+        return failure("foreign_result_not_json", "Ephemeral tool returned a non-JSON result");
       }
     case "failed":
       return failure(execution.error.code ?? "foreign_tool_failed", execution.error.message);
@@ -193,7 +193,7 @@ function* disposition(
       while (true) {
         const next = yield* events.next();
         if (next.done) {
-          return failure("foreign_session_ended", "Foreign tool ended without a result");
+          return failure("foreign_session_ended", "Ephemeral tool ended without a result");
         }
         const mapped = mapEvent(next.value, execution.ref, tool, entry);
         if (mapped?.type === "failed" && mapped.error.code === "foreign_sampling_driver_required") {
@@ -227,12 +227,12 @@ function mapEvent(
       try {
         return { type: "completed", result: assertJson(event.result) };
       } catch {
-        return failure("foreign_result_not_json", "Foreign tool returned a non-JSON result");
+        return failure("foreign_result_not_json", "Ephemeral tool returned a non-JSON result");
       }
     case "error":
       return failure(event.code ?? "foreign_tool_failed", event.message);
     case "cancelled":
-      return failure("foreign_tool_cancelled", event.reason ?? "Foreign tool was cancelled");
+      return failure("foreign_tool_cancelled", event.reason ?? "Ephemeral tool was cancelled");
     case "elicit_request":
       return inputRequired(ref, tool, event, entry);
     case "sample_request":
@@ -285,7 +285,7 @@ function inputRequired(
       },
     };
   } catch {
-    return failure("foreign_elicit_not_json", "Foreign elicitation is not canonical JSON");
+    return failure("foreign_elicit_not_json", "Ephemeral elicitation is not canonical JSON");
   }
 }
 
@@ -295,7 +295,7 @@ function parseContinuation(
   return continuationSchema.safeParse(value).data;
 }
 
-function effectMetadata(options: ToolRuntimeForeignOptions, context: DurableEffectContext) {
+function effectMetadata(options: ToolRuntimeEphemeralOptions, context: DurableEffectContext) {
   return {
     threadId: options.threadId,
     runId: options.runId,

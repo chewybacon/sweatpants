@@ -3,7 +3,7 @@ import type { Json } from "@sweatpants/foundation";
 export type ModelSampleCaller =
   | "chat-root"
   | "nested-program"
-  | "foreign-tool-session"
+  | "ephemeral-tool-session"
   | "delegated-program";
 
 export interface ModelSamplePlacementFacts {

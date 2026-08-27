@@ -26,7 +26,7 @@ import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createLocalToolInvocationRuntime,
   createLocalWorkerDurableProgramDriver,
-  createToolInvocationForeignEffectRegistrations,
+  createToolInvocationEphemeralEffectRegistrations,
   installLocalToolRuntimeComposition,
 } from "@sweatpants/tool-runtime-local";
 import {
@@ -187,7 +187,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
     // Remote ordinary-tool execution uses the same invocation host foreign
     // effects as local composition.
     yield* ProgramDriverEphemeralEffectsContext.set(
-      createToolInvocationForeignEffectRegistrations({
+      createToolInvocationEphemeralEffectRegistrations({
         tools: new Map(ordinaryTools.map((tool) => [tool.name, tool])),
       }),
     );
@@ -247,7 +247,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   yield* installLocalToolRuntimeComposition({
     tools: ordinaryTools,
     samplingProvider: options.samplingProvider,
-    installForeignEffects: function* (registrations) {
+    installEphemeralEffects: function* (registrations) {
       yield* ProgramDriverEphemeralEffectsContext.set(registrations);
     },
   });

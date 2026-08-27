@@ -62,7 +62,7 @@ export function createReactAcceptanceApplication(
       });
       yield* installLocalToolRuntimeComposition({
         tools: [reactBookingTool],
-        installForeignEffects: function* (registrations) {
+        installEphemeralEffects: function* (registrations) {
           yield* ProgramDriverEphemeralEffectsContext.set(registrations);
         },
         samplingProvider: {

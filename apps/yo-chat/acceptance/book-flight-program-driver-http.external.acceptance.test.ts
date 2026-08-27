@@ -35,7 +35,7 @@ import {
 import { ProgramDriverEphemeralEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import {
   createLocalToolInvocationRuntime,
-  createToolInvocationForeignEffectRegistrations,
+  createToolInvocationEphemeralEffectRegistrations,
 } from "@sweatpants/tool-runtime-local";
 import {
   setupAgentCoreProgramDriverToolRuntime,
@@ -164,7 +164,7 @@ describe.skipIf(!externalSubstrateEnabled)(
             );
             yield* installToolRuntime(runtime);
             yield* ProgramDriverEphemeralEffectsContext.set(
-              createToolInvocationForeignEffectRegistrations({
+              createToolInvocationEphemeralEffectRegistrations({
                 tools: new Map<string, RuntimeTool>([[bookFlightTool.name, bookFlightTool]]),
               }),
             );
