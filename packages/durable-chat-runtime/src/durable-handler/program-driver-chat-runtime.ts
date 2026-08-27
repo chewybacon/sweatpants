@@ -56,8 +56,29 @@ import {
 } from "./model-sampling/service.ts";
 import { runWorkflowProgramActivation } from "./program-workflow-host.ts";
 import { rootTool } from "./program-driver-chat-program.ts";
-import type { ProgramDriverChatEngineParams } from "./program-driver-chat-types.ts";
-import type { WorkflowChatEngineParams } from "./types.ts";
+import type { Model, StreamOptions } from "@sweatpants/model-provider";
+import type { HistoryPolicy } from "@sweatpants/chat-core";
+import type { ConversationStore } from "@sweatpants/history-store/contract";
+import type { ToolInventoryEntry, ToolRuntime } from "@sweatpants/tool-runtime";
+import type { ProgramDriverNativeToolComposition } from "../program-driver/native-tools.ts";
+
+export interface ChatExecutionEnvironment {
+  readonly sessionId: string;
+  readonly sampling: {
+    readonly model: Model;
+    readonly conversationStore: ConversationStore;
+    readonly streamOptions?: StreamOptions;
+    readonly historyPolicy?: HistoryPolicy;
+  };
+  readonly native?: ProgramDriverNativeToolComposition;
+  readonly ephemeral: {
+    readonly effects?: readonly [DurableEffectRegistration, DurableEffectRegistration];
+    readonly runtime?: ToolRuntime;
+    readonly inventory: readonly ToolInventoryEntry[];
+    readonly threadId: string;
+    readonly runId: string;
+  };
+}
 
 export interface ChatExecutionRuntime {
   readonly liveMessageIds: ReadonlySet<string>;
@@ -69,45 +90,49 @@ export interface ChatExecutionRuntime {
 }
 
 export function* composeChatExecutionRuntime(
-  params: ProgramDriverChatEngineParams,
+  environment: ChatExecutionEnvironment,
   journal: ProgramDriverJournal,
   input: ChatProgramInput,
   attach: AttachProgramRequest,
 ): Operation<ChatExecutionRuntime> {
-  const scopedForeignEffects = params.foreignEffects;
+  const scopedEphemeralEffects = environment.ephemeral.effects;
   // SAFETY: registry storage erases manifest type witnesses; both tools are
   // restored from their exact pinned schemas before driver execution.
   const tools = createDurableToolRegistry([
     rootTool,
     foreignToolAdapter,
-    ...[...(params.nativeTools?.bindings.values() ?? [])].map((binding) => binding.tool),
+    ...[...(environment.native?.bindings.values() ?? [])].map((binding) => binding.tool),
   ]);
   const executionModelSamplingService = yield* ExecutionModelSamplingServiceContext.get();
   const liveMessageIds = new Set<string>();
   const endedLiveMessageIds = new Set<string>();
-  const boundForeignDriver = Object.values(input.catalog.entries).find(
+  const boundEphemeralDriver = Object.values(input.catalog.entries).find(
     (
       entry,
     ): entry is ChatToolCatalogEntry & {
       execution: Extract<ChatToolCatalogEntry["execution"], { kind: "foreign-tool" }>;
     } => entry.execution.kind === "foreign-tool",
   )?.execution.driver;
-  const foreignEffects =
-    boundForeignDriver === "tool-session"
-      ? requireScopedForeignEffects(scopedForeignEffects)
-      : boundForeignDriver === "chat-tool-runtime"
+  const ephemeralEffects =
+    boundEphemeralDriver === "tool-session"
+      ? requireScopedEphemeralEffects(scopedEphemeralEffects)
+      : boundEphemeralDriver === "chat-tool-runtime"
         ? createToolRuntimeForeignEffectRegistrations({
-            runtime: requireToolRuntime(params),
-            entries: params.toolInventoryEntries ?? [],
-            threadId: params.agUiRun.threadId,
-            runId: params.agUiRun.runId,
+            runtime: requireToolRuntime(environment.ephemeral.runtime),
+            entries: environment.ephemeral.inventory,
+            threadId: environment.ephemeral.threadId,
+            runId: environment.ephemeral.runId,
           })
         : [];
   const samplingServiceOptions = {
-    model: params.model,
-    ...(params.streamOptions ? { streamOptions: params.streamOptions } : {}),
+    model: environment.sampling.model,
+    ...(environment.sampling.streamOptions
+      ? { streamOptions: environment.sampling.streamOptions }
+      : {}),
     catalog: input.catalog,
-    ...(params.historyPolicy ? { historyPolicy: params.historyPolicy } : {}),
+    ...(environment.sampling.historyPolicy
+      ? { historyPolicy: environment.sampling.historyPolicy }
+      : {}),
     onLiveMessageStarted(messageId: string) {
       liveMessageIds.add(messageId);
     },
@@ -118,14 +143,14 @@ export function* composeChatExecutionRuntime(
   const hostModelSamplingService = createHostModelSamplingService({
     ...samplingServiceOptions,
     journal,
-    conversationStore: params.conversationStore,
-    conversationId: params.conversationId,
+    conversationStore: environment.sampling.conversationStore,
+    conversationId: environment.sessionId,
   });
   const routeResolverFn = function* (
     program: PinnedProgram,
     parentRoute: ProgramRoute,
   ): Operation<ProgramRoute> {
-    const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
+    const binding = [...(environment.native?.bindings.values() ?? [])].find(
       (candidate) =>
         candidate.tool.manifest.programId === program.id &&
         candidate.tool.manifest.version === program.version &&
@@ -133,7 +158,7 @@ export function* composeChatExecutionRuntime(
     );
     return binding?.route ?? parentRoute;
   };
-  const hostEffectRegistrations = [...foreignEffects, ...(params.nativeTools?.effects ?? [])];
+  const hostEffectRegistrations = [...ephemeralEffects, ...(environment.native?.effects ?? [])];
   const executionEffects = createDurableEffectRegistry(
     hostEffectRegistrations,
     Object.values(manifest.effects),
@@ -142,15 +167,15 @@ export function* composeChatExecutionRuntime(
   // ProgramDriver replay/advancement protocol. Placement changes transport,
   // never replay semantics.
   const drivers = createProgramDriverRegistry([
-    ...(params.nativeTools?.drivers ?? []),
+    ...(environment.native?.drivers ?? []),
     ["program", createWorkflowProgramDriver(tools)],
   ]);
   // Shared context-source resolver for sampling on both activation paths.
   const modelContextSourceResolver = function* (source: ModelContextSource) {
     return yield* resolveModelContextSource(source, {
-      conversationStore: params.conversationStore,
+      conversationStore: environment.sampling.conversationStore,
       journal,
-      maxCanonicalBytes: preparedModelContextByteLimit(params.model.contextWindow),
+      maxCanonicalBytes: preparedModelContextByteLimit(environment.sampling.model.contextWindow),
     });
   };
 
@@ -218,7 +243,7 @@ export function* composeChatExecutionRuntime(
                 attach: request.attach,
                 ...(activationOwnerId === undefined ? {} : { activationOwnerId }),
                 *stageSampleInput(input) {
-                  return yield* stageProgramDriverModelSampleInput(input, params.conversationId);
+                  return yield* stageProgramDriverModelSampleInput(input, environment.sessionId);
                 },
                 effects: {
                   *route({ authorization, definition }) {
@@ -254,7 +279,7 @@ export function* composeChatExecutionRuntime(
       });
 
     if (kind !== "program") {
-      if (params.nativeTools?.setup) yield* params.nativeTools.setup();
+      if (environment.native?.setup) yield* environment.native.setup();
       return yield* drive(authority);
     }
     return yield* runWorkflowProgramActivation(
@@ -266,8 +291,8 @@ export function* composeChatExecutionRuntime(
         routeResolver: routeResolverFn,
         modelContextSourceResolver,
         modelContextSourceStager: (context) =>
-          stageModelContextSource(context, params.conversationId),
-        ...(params.nativeTools?.setup ? { setup: params.nativeTools.setup } : {}),
+          stageModelContextSource(context, environment.sessionId),
+        ...(environment.native?.setup ? { setup: environment.native.setup } : {}),
       },
       drive,
     );
@@ -326,7 +351,7 @@ function routeDriverKind(route: ProgramRoute): string {
   return typeof kind === "string" && kind.length > 0 ? kind : "program";
 }
 
-function requireScopedForeignEffects(
+function requireScopedEphemeralEffects(
   registrations: readonly [DurableEffectRegistration, DurableEffectRegistration] | undefined,
 ) {
   if (!registrations) {
@@ -338,9 +363,9 @@ function requireScopedForeignEffects(
   return registrations;
 }
 
-function requireToolRuntime(params: WorkflowChatEngineParams) {
-  if (!params.toolRuntime) {
+function requireToolRuntime(runtime: ToolRuntime | undefined) {
+  if (!runtime) {
     throw new CrankError("tool_runtime_not_installed", "Tool runtime is not installed");
   }
-  return params.toolRuntime;
+  return runtime;
 }

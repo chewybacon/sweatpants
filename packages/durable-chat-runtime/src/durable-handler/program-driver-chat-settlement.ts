@@ -11,10 +11,10 @@ import {
 
 import type { ProgramDriverJournal } from "./program-driver-journal.ts";
 import type { ElicitResponse } from "./types.ts";
-import type { ProgramDriverChatEngineParams } from "./program-driver-chat-types.ts";
+import type { ProgramDriverNativeToolComposition } from "../program-driver/native-tools.ts";
 import { pendingCorrelation, type PendingElicit } from "./program-driver-chat-correlation.ts";
 
-export function* disposeForeignChildSessions(
+export function* disposeEphemeralChildSessions(
   records: readonly DurableSemanticRecord[],
   sessionId: string,
 ): Operation<void> {
@@ -76,8 +76,15 @@ export function* cancelPendingElicits(
   }
 }
 
+export interface ElicitSettlementRequest {
+  readonly responses: readonly ElicitResponse[];
+  readonly sessionId: string;
+  readonly participantId: string;
+  readonly nativeBindings?: ProgramDriverNativeToolComposition["bindings"];
+}
+
 function nativeElicitResponseSchema(
-  params: ProgramDriverChatEngineParams,
+  request: ElicitSettlementRequest,
   records: DurableSemanticRecord[],
   pending: PendingElicit,
 ) {
@@ -88,7 +95,7 @@ function nativeElicitResponseSchema(
   if (!openedPayload || openedPayload.type !== "TaskOpened") {
     return undefined;
   }
-  const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
+  const binding = [...(request.nativeBindings?.values() ?? [])].find(
     (candidate) => candidate.tool.manifest.digest === openedPayload.programDigest,
   );
   return binding?.tool.elicits[pending.descriptor.key]?.response;
@@ -101,7 +108,7 @@ function nativeElicitResponseSchema(
  * before the value is accepted by the durable program.
  */
 function* normalizeNativeElicitCompletion(
-  params: ProgramDriverChatEngineParams,
+  request: ElicitSettlementRequest,
   records: DurableSemanticRecord[],
   pending: PendingElicit,
   completion: ElicitResponse["completion"],
@@ -109,7 +116,7 @@ function* normalizeNativeElicitCompletion(
   if (completion.action !== "accept") {
     return completion;
   }
-  const schema = nativeElicitResponseSchema(params, records, pending);
+  const schema = nativeElicitResponseSchema(request, records, pending);
   if (!schema) {
     return completion;
   }
@@ -133,27 +140,27 @@ function* normalizeNativeElicitCompletion(
 }
 
 export function* resolveElicitResponses(
-  params: ProgramDriverChatEngineParams,
+  request: ElicitSettlementRequest,
   journal: ProgramDriverJournal,
   records: DurableSemanticRecord[],
 ): Operation<number> {
   let accepted = 0;
-  for (const response of params.elicitResponses ?? []) {
+  for (const response of request.responses) {
     const pending = findPendingResponse(records, response);
     if (!pending) {
       continue;
     }
     const completion = yield* normalizeNativeElicitCompletion(
-      params,
+      request,
       records,
       pending,
       response.completion,
     );
     const result = yield* journal.resolvePending({
-      sessionId: params.conversationId,
+      sessionId: request.sessionId,
       taskId: pending.taskId,
       pullId: pending.pullId,
-      audience: params.participantId,
+      audience: request.participantId,
       outcome: { status: "ok", value: assertJson(completion) },
     });
     if (result.status === "accepted" || result.status === "duplicate") {

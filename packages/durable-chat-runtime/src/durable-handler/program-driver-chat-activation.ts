@@ -4,48 +4,67 @@ import { CrankError, type AdvancementResult } from "@sweatpants/durable-executio
 import { stableTupleHash } from "@sweatpants/foundation";
 
 import { runWithRenewedActivationLease } from "../host/activation-lease-coordinator.ts";
-import { requiresFencedActivation } from "../program-driver/native-tools.ts";
-import { admitProgramDriverChatTurn } from "./program-driver-chat-admission.ts";
+import {
+  requiresFencedActivation,
+  type ProgramDriverNativeToolComposition,
+} from "../program-driver/native-tools.ts";
+import {
+  admitProgramDriverChatTurn,
+  type ChatAdmissionRequest,
+} from "./program-driver-chat-admission.ts";
 import {
   cancelPendingElicits,
-  disposeForeignChildSessions,
+  disposeEphemeralChildSessions,
   resolveElicitResponses,
+  type ElicitSettlementRequest,
 } from "./program-driver-chat-settlement.ts";
-import { composeChatExecutionRuntime } from "./program-driver-chat-runtime.ts";
-import type {
-  ChatActivationReport,
-  ProgramDriverChatEngineParams,
-} from "./program-driver-chat-types.ts";
+import {
+  composeChatExecutionRuntime,
+  type ChatExecutionEnvironment,
+} from "./program-driver-chat-runtime.ts";
+import type { PluginAbortRequest } from "./types.ts";
+import type { ChatActivationReport } from "./program-driver-chat-types.ts";
+
+export interface ChatActivationContext {
+  readonly admission: ChatAdmissionRequest;
+  readonly execution: ChatExecutionEnvironment;
+  readonly settlement: ElicitSettlementRequest;
+  readonly sessionId: string;
+  readonly participantId: string;
+  readonly pluginAbort?: PluginAbortRequest;
+  readonly onResumeAccepted?: () => Operation<void>;
+  readonly native?: ProgramDriverNativeToolComposition;
+}
 
 export function* runProgramDriverChatActivation(
-  params: ProgramDriverChatEngineParams,
+  context: ChatActivationContext,
 ): Operation<ChatActivationReport> {
-  const admission = yield* admitProgramDriverChatTurn(params);
+  const admission = yield* admitProgramDriverChatTurn(context.admission);
   const { journal, active, taskId, before, input, attach, replacementQueued } = admission;
 
-  if (active && (params.pluginAbort || replacementQueued)) {
-    const reason = params.pluginAbort?.reason ?? "active turn superseded by a new message";
+  if (active && (context.pluginAbort || replacementQueued)) {
+    const reason = context.pluginAbort?.reason ?? "active turn superseded by a new message";
     yield* journal.requestCancellation(
-      params.conversationId,
+      context.sessionId,
       active.taskId,
       reason,
-      params.pluginAbort?.commandId,
+      context.pluginAbort?.commandId,
     );
-    yield* cancelPendingElicits(journal, before, params.conversationId, params.participantId);
-    yield* disposeForeignChildSessions(before, params.conversationId);
+    yield* cancelPendingElicits(journal, before, context.sessionId, context.participantId);
+    yield* disposeEphemeralChildSessions(before, context.sessionId);
   }
   const accepted =
-    params.pluginAbort || replacementQueued
+    context.pluginAbort || replacementQueued
       ? 0
-      : yield* resolveElicitResponses(params, journal, before);
-  if (accepted > 0 && params.onResumeAccepted) {
-    yield* params.onResumeAccepted();
+      : yield* resolveElicitResponses(context.settlement, journal, before);
+  if (accepted > 0 && context.onResumeAccepted) {
+    yield* context.onResumeAccepted();
   }
 
-  const execution = yield* composeChatExecutionRuntime(params, journal, input, attach);
+  const execution = yield* composeChatExecutionRuntime(context.execution, journal, input, attach);
   let cancellationFenceLost = false;
   let outcome: AdvancementResult;
-  if (!requiresFencedActivation(params.nativeTools)) {
+  if (!requiresFencedActivation(context.native)) {
     outcome = yield* execution.driveTreeAtEpoch(attach.executionEpoch);
   } else {
     // Fenced native bindings: the SAME workflow turns, wrapped in the
@@ -55,7 +74,7 @@ export function* runProgramDriverChatActivation(
       outcome = yield* journal.withAuthority(function* (rootAuthority) {
         return yield* runFencedActivation(
           rootAuthority,
-          params.conversationId,
+          context.sessionId,
           attach.executionEpoch,
           true,
           function* (claimedEpoch, activationOwnerId) {
@@ -66,7 +85,7 @@ export function* runProgramDriverChatActivation(
     } catch (error) {
       if (
         !(yield* journal.withAuthority((authority) =>
-          isExpectedCancellationFenceLoss(authority, params.conversationId, taskId, error),
+          isExpectedCancellationFenceLoss(authority, context.sessionId, taskId, error),
         ))
       ) {
         throw error;
@@ -78,7 +97,7 @@ export function* runProgramDriverChatActivation(
       outcome = { state: "cancelled" };
     }
   }
-  const after = yield* journal.readJournal(params.conversationId, taskId);
+  const after = yield* journal.readJournal(context.sessionId, taskId);
   return {
     before,
     after,

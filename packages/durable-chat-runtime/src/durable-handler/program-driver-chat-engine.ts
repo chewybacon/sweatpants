@@ -2,6 +2,7 @@ import { resource, type Operation, type Stream } from "effection";
 
 import { runWithTurnEventWriter } from "./model-sampling/turn-event-api.ts";
 import { runProgramDriverChatActivation } from "./program-driver-chat-activation.ts";
+import { composeProgramDriverChat } from "./program-driver-chat-composition.ts";
 import { presentProgramDriverChatActivation } from "./program-driver-chat-presentation.ts";
 import type { ProgramDriverChatEngineParams, StreamEvent } from "./program-driver-chat-types.ts";
 
@@ -42,6 +43,14 @@ export function createProgramDriverChatEngine(
 }
 
 function* activateAndPresent(params: ProgramDriverChatEngineParams): Operation<StreamEvent[]> {
-  const report = yield* runProgramDriverChatActivation(params);
-  return yield* presentProgramDriverChatActivation(params, report, activateAndPresent);
+  const composition = composeProgramDriverChat(params);
+  const report = yield* runProgramDriverChatActivation(composition.activation);
+  const presented = yield* presentProgramDriverChatActivation(composition.presentation, report);
+  if (!presented.continueActivation) return presented.events;
+  const {
+    pluginAbort: _pluginAbort,
+    continueAfterCancellation: _continueAfterCancellation,
+    ...continuation
+  } = params;
+  return [...presented.events, ...(yield* activateAndPresent(continuation))];
 }

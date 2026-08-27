@@ -4,10 +4,10 @@ import {
   assertReplayedCanonicalValue,
   stableProgramAttachmentId,
   type AttachProgramRequest,
+  type PinnedProgram,
 } from "@sweatpants/durable-execution";
 import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 
-import { nativeProgramIdentities } from "../program-driver/native-tools.ts";
 import type { ProgramDriverJournal } from "./program-driver-journal.ts";
 import {
   manifest,
@@ -15,9 +15,29 @@ import {
   type ChatToolCatalog,
   type ChatToolCatalogEntry,
 } from "./program-driver-schema.ts";
-import type { ProgramDriverChatEngineParams } from "./program-driver-chat-types.ts";
+import type { ModelContextSource } from "@sweatpants/model-sampling";
+import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
+import type { ToolSchema } from "./types.ts";
+import type { StreamOptions } from "@sweatpants/model-provider";
 
 type ActiveChatTurn = { readonly taskId: string; readonly turnId: string; readonly input: Json };
+
+export interface ChatAdmissionRequest {
+  readonly journalStore: ProgramDriverJournalStore;
+  readonly conversationId: string;
+  readonly participantId: string;
+  readonly contextSource?: ModelContextSource;
+  readonly maxIterations: number;
+  readonly tools: readonly ToolSchema[];
+  readonly nativePrograms: Readonly<Record<string, PinnedProgram>>;
+  readonly ephemeralDriver: "tool-session" | "chat-tool-runtime";
+  readonly systemPrompt?: string;
+  readonly initialToolChoice?: StreamOptions["toolChoice"];
+  readonly recoveryOnly: boolean;
+  readonly superseding: boolean;
+  readonly hasElicitResponses: boolean;
+  readonly onTaskReady?: (taskId: string) => void;
+}
 
 export interface ChatTurnAdmission {
   readonly journal: ProgramDriverJournal;
@@ -30,11 +50,10 @@ export interface ChatTurnAdmission {
 }
 
 export function* admitProgramDriverChatTurn(
-  params: ProgramDriverChatEngineParams,
+  request: ChatAdmissionRequest,
 ): Operation<ChatTurnAdmission> {
-  const journal = yield* params.journalStore.open(params.conversationId);
-  const scopedForeignEffects = params.foreignEffects;
-  const recovery = yield* journal.recoveryState(params.conversationId);
+  const journal = yield* request.journalStore.open(request.conversationId);
+  const recovery = yield* journal.recoveryState(request.conversationId);
   const active =
     recovery.status === "active"
       ? { taskId: recovery.taskId, turnId: recovery.turnId, input: recovery.input }
@@ -43,51 +62,50 @@ export function* admitProgramDriverChatTurn(
     recovery.status === "active"
       ? (recovery.activeTasks.find((task) => task.taskId === recovery.taskId)?.executionEpoch ?? 1)
       : 1;
-  const turnNumber = yield* journal.rootTaskCount(params.conversationId);
+  const turnNumber = yield* journal.rootTaskCount(request.conversationId);
   const taskId = active?.taskId ?? `turn-${turnNumber}/root`;
   const turnId = active?.turnId ?? `turn-${turnNumber}`;
-  let before = yield* journal.readJournal(params.conversationId, taskId);
-  const foreignDriver = scopedForeignEffects ? "tool-session" : "chat-tool-runtime";
-  if (!params.modelContextSource) {
+  let before = yield* journal.readJournal(request.conversationId, taskId);
+  if (!request.contextSource) {
     throw new CrankError(
       "model_context_source_invalid",
       "Chat-root execution requires an authoritative conversation context source",
     );
   }
   const modelContextSource = {
-    ...params.modelContextSource,
+    ...request.contextSource,
     taskId,
   };
   const requestedInput: ChatProgramInput = {
     contextSource: modelContextSource,
-    maxIterations: params.maxIterations,
-    catalog: createChatToolCatalog(params, foreignDriver),
-    ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
-    ...(params.initialToolChoice !== undefined ? { toolChoice: params.initialToolChoice } : {}),
+    maxIterations: request.maxIterations,
+    catalog: createChatToolCatalog(request),
+    ...(request.systemPrompt !== undefined ? { systemPrompt: request.systemPrompt } : {}),
+    ...(request.initialToolChoice !== undefined ? { toolChoice: request.initialToolChoice } : {}),
   };
   // Replay of the accepted canonical input never reruns schema code (DR-023).
   const replacementQueued =
     active !== undefined &&
-    params.pluginAbort === undefined &&
-    params.recoveryOnly !== true &&
-    (params.elicitResponses?.length ?? 0) === 0 &&
+    !request.superseding &&
+    !request.recoveryOnly &&
+    !request.hasElicitResponses &&
     canonicalJson(active.input) !== canonicalJson(requestedInput);
   const input = active
     ? assertReplayedCanonicalValue<ChatProgramInput>(active.input)
     : requestedInput;
   const attach = {
-    sessionId: params.conversationId,
+    sessionId: request.conversationId,
     taskId,
     program: { id: manifest.programId, version: manifest.version, digest: manifest.digest },
     input,
     route: { driverKind: "program" },
     executionEpoch: recoveredExecutionEpoch,
-    affinity: { kind: "conversation" as const, key: params.conversationId },
+    affinity: { kind: "conversation" as const, key: request.conversationId },
   };
   if (!active) {
     try {
       yield* journal.openTask({
-        sessionId: params.conversationId,
+        sessionId: request.conversationId,
         turnId,
         taskId,
         manifest,
@@ -95,13 +113,13 @@ export function* admitProgramDriverChatTurn(
         executionEpoch: 1,
         attachmentId: stableProgramAttachmentId(attach),
         audience: "workflow-host",
-        elicitAudience: params.participantId,
+        elicitAudience: request.participantId,
       });
     } catch (error) {
       if (!(error instanceof CrankError) || error.code !== "invalid_journal") {
         throw error;
       }
-      const raced = yield* journal.recoveryState(params.conversationId);
+      const raced = yield* journal.recoveryState(request.conversationId);
       if (
         raced.status !== "active" ||
         raced.taskId !== taskId ||
@@ -110,9 +128,9 @@ export function* admitProgramDriverChatTurn(
         throw new CrankError("idempotency_conflict", "Concurrent root task input differs");
       }
     }
-    before = yield* journal.readJournal(params.conversationId, taskId);
+    before = yield* journal.readJournal(request.conversationId, taskId);
   }
-  params.onLiveTaskReady?.(taskId);
+  request.onTaskReady?.(taskId);
   return {
     journal,
     ...(active === undefined ? {} : { active }),
@@ -124,15 +142,10 @@ export function* admitProgramDriverChatTurn(
   };
 }
 
-function createChatToolCatalog(
-  params: ProgramDriverChatEngineParams,
-  foreignDriver: "tool-session" | "chat-tool-runtime",
-): ChatToolCatalog {
-  const nativePrograms = nativeProgramIdentities(params.nativeTools);
+function createChatToolCatalog(request: ChatAdmissionRequest): ChatToolCatalog {
+  const nativePrograms = request.nativePrograms;
   const entries: Record<string, ChatToolCatalogEntry> = {};
-  const sortedTools = [...params.toolSchemas].sort((left, right) =>
-    left.name.localeCompare(right.name),
-  );
+  const sortedTools = [...request.tools].sort((left, right) => left.name.localeCompare(right.name));
   for (const tool of sortedTools) {
     const program = nativePrograms[tool.name];
     entries[tool.name] = {
@@ -146,7 +159,7 @@ function createChatToolCatalog(
         : {
             kind: "foreign-tool",
             target: tool.name,
-            driver: foreignDriver,
+            driver: request.ephemeralDriver,
             tool: tool.name,
             durability: "ephemeral_handle",
           },

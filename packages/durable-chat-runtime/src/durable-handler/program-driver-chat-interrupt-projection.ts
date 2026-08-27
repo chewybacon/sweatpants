@@ -3,7 +3,9 @@ import { CrankError } from "@sweatpants/durable-execution";
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import { stableTupleHash, type Json, type JsonObject } from "@sweatpants/foundation";
 import { parseInteractionBinding } from "@sweatpants/agent-sdk";
-import type { ProgramDriverChatEngineParams, StreamEvent } from "./program-driver-chat-types.ts";
+import type { StreamEvent } from "./program-driver-chat-types.ts";
+import type { AgUiRunMetadata } from "@sweatpants/chat-core";
+import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { pendingElicit } from "./program-driver-chat-activity-projection.ts";
 import { pendingCorrelation, type PendingElicit } from "./program-driver-chat-correlation.ts";
 import { jsonRecord } from "./program-driver-chat-projection-values.ts";
@@ -15,10 +17,15 @@ export function pendingToolCallId(
   return pendingCorrelation(records, pending).callId ?? pending.pullId;
 }
 
+export interface InterruptProjectionPolicy {
+  readonly agUiRun: AgUiRunMetadata;
+  readonly toolInventory: readonly ToolInventoryEntry[];
+}
+
 export function projectInterrupt(
   records: DurableSemanticRecord[],
   pending: NonNullable<ReturnType<typeof pendingElicit>>,
-  params: ProgramDriverChatEngineParams,
+  policy: InterruptProjectionPolicy,
 ): Extract<StreamEvent, { type: EventType.RUN_FINISHED }> {
   const context = jsonRecord(pending.descriptor.context);
   const nested = jsonRecord(context?.["context"]);
@@ -34,7 +41,7 @@ export function projectInterrupt(
   };
   const publicKey =
     typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : pending.descriptor.key;
-  const inventoryElicit = params.toolInventoryEntries?.find(
+  const inventoryElicit = policy.toolInventory.find(
     (entry) => entry.definition.name === correlation.toolName,
   )?.elicits?.[publicKey];
   if (!inventoryElicit) {
@@ -48,7 +55,7 @@ export function projectInterrupt(
   const placement = placementForPending(records, pending, correlation);
   return {
     type: EventType.RUN_FINISHED,
-    ...params.agUiRun,
+    ...policy.agUiRun,
     outcome: {
       type: "interrupt",
       interrupts: [
