@@ -236,11 +236,11 @@ No flip work starts until these land behind their own tests.
 
 ## Phase 3 addition: foreignTool requirement
 
-`foreign-tool-session.integration.test.ts` drives foreign-tool invocations
-through the facade (`foreignToolAdapter` + `foreignToolAdapterChild`). The
+`ephemeral-tool-session.integration.test.ts` drives foreign-tool invocations
+through the facade (`ephemeralToolAdapter` + `ephemeralToolAdapterChild`). The
 workflow adapter currently rejects `ctx.foreignTool` eagerly, so the facade
 rewrite must either thread a foreign-child handler through
-`createWorkflowProgramDriver` options (mirroring `foreignToolAdapterChild`)
+`createWorkflowProgramDriver` options (mirroring `ephemeralToolAdapterChild`)
 or scope the initial flip to non-foreign tools and land foreign support as a
 follow-up with its own integration test.
 
@@ -326,7 +326,7 @@ follow-up with its own integration test.
 - Facade workflow branch composes parked child invocations host-side:
   resolve route (shared ProgramRouteResolver) -> ensure-child -> bind ->
   nested driveActivation (closes itself) -> parent restore replays the
-  settled invocation. New facade options: `foreignToolChild`, `children`.
+  settled invocation. New facade options: `ephemeralToolChild`, `children`.
 - Kernel bridge `installEffectRegistrations` added: legacy
   DurableEffectRegistration handlers (OperationOutcome envelopes) install
   onto InstalledEffectPort with envelope unwrapping — legacy registries
@@ -380,7 +380,7 @@ follow-up with its own integration test.
   audience `foreign:<driver>`, result validated as ANY_JSON (no manifest
   declaration). Non-ephemeral durabilities fail closed at reserve.
 - Adapter: `context.foreignTool` lowers onto the foreign boundary directly.
-  `foreignToolChild` factory deleted from driver + facade options.
+  `ephemeralToolChild` factory deleted from driver + facade options.
 - Facade: authored-child compose extracted into named operation
   (`composeAuthoredChild`, withAuthority threaded) per pattern-fit review.
 - Proofs (workflow-foreign.test.ts): park→session-resolve→replay→complete;
@@ -426,7 +426,7 @@ follow-up with its own integration test.
 
 ## Review round: session-side foreign executor + relay contract
 
-- Extracted `executeForeignToolCall` into foreign-tool-session: standalone
+- Extracted `executeEphemeralToolCall` into foreign-tool-session: standalone
   executor for parked foreign pulls over the invocation host (start →
   ask-relay loop → terminal), reusing the worker-boundary machinery so even
   local createTool executions carry external-process semantics (reviewer
@@ -556,7 +556,7 @@ physical deletion remains gated on fenced + this item.
 ## Manifest item 2 executed: facade option-bag swap
 
 - Options.foreign {tools,asks} replaced by options.pullResolvers (readonly
-  PullResolver[]); new exported createForeignPullResolver({tools,asks}) stock
+  PullResolver[]); new exported createEphemeralPullResolver({tools,asks}) stock
   builder; barrel export added; internal registry = static resolvers +
   outer-channel sample/elicit resolvers. No kind-shaped option bags remain
   (REQ-009 fully closed). Test migrated; TRL 58/58 tsc clean.
@@ -589,7 +589,7 @@ physical deletion remains gated on fenced + this item.
   activateWorkflow(claimedEpoch, always-bind), resolver loop included.
 - Legacy cluster deleted from engine: runLocalProgramActivation usage,
   ProgramRuntime.operations.run, effects/drivers registries,
-  foreignToolChild adapter-child wiring, effectInputPreparer +
+  ephemeralToolChild adapter-child wiring, effectInputPreparer +
   prepareModelSampleEffectInput consumption.
 - invokeCatalogTool foreign calls now use context.pull({kind:"foreign"...});
   legacy route field dropped from descriptor (raw-input model).
@@ -614,7 +614,7 @@ Zero-legacy manifest position:
    journal-program-runtime.ts itself (withAuthorityTestScope moves to a
    workflow test harness), local-program-host.ts runLocalProgramActivation
    (no production consumers remain), legacy context members
-   (foreignTool/foreignToolChild), foreign-adapter.ts continuation encoding,
+   (foreignTool/ephemeralToolChild), ephemeral-adapter.ts continuation encoding,
    dead worker-durable paths, prepareModelSampleEffectInput.
 7. ⬜ docs closure (spec REQs, retention line-by-line).
 Next sitting: execute 5→6→7 strictly in order; do not interleave.
