@@ -38,8 +38,6 @@ export interface DriveActivationRequest {
   readonly attach: AttachProgramRequest;
   readonly workflow: () => Workflow<Json>;
   readonly authority: AuthorityPort;
-  /** @deprecated Ignored; live authority is issued only by Mandate bind. */
-  readonly programCapability?: string;
   readonly onEffectResolved?: (info: {
     readonly pullId: string;
     readonly attemptId: string;

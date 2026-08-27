@@ -13,12 +13,15 @@ import type {
   OperationOutcome,
 } from "@sweatpants/durable-effects";
 import type {
+  DeliveryMandate,
   DurableChildDescriptor,
   DurableOperationDescriptor,
   DurableProgramManifest,
+  DurableSampleDescriptor,
   EmissionDescriptor,
   LivePlacement,
   Mandate,
+  PeerReadyTarget,
   ProgramRoute,
   TurnAddress,
   ProgramStep,
@@ -340,6 +343,27 @@ export type BindMandateResult =
       readonly mismatch: "strand_head" | "lease_epoch" | "fork_group_revision";
     };
 
+/** Peer bind uses the same atomic head/epoch/group CAS as crank-native bind. */
+export interface BindDeliveryMandateRequest {
+  readonly ready: PeerReadyTarget;
+  readonly attachmentId: string;
+  readonly ownerId: string;
+  readonly leaseDurationMs: number;
+  readonly placement: LivePlacement;
+  readonly expected: {
+    readonly strandHeadDigest: string;
+    readonly leaseEpoch: number;
+    readonly forkGroupRevision: number;
+  };
+}
+
+export type BindDeliveryMandateResult =
+  | { readonly status: "bound"; readonly mandate: DeliveryMandate }
+  | {
+      readonly status: "stale";
+      readonly mismatch: "strand_head" | "lease_epoch" | "fork_group_revision";
+    };
+
 export interface ReleaseMandateRequest {
   readonly mandate: Mandate;
   readonly reason: "parked" | "settled" | "terminal" | "failed" | "scope_exit";
@@ -562,32 +586,35 @@ export interface ForceOrphanForkGroupResult {
 
 /**
  * Journal-first peer delegation (REQ-038): commits the delivery record and
- * returns the stable correlator plus a DeliveryMandate. Retries under the
- * same correlator dedupe; no send may precede this commit.
+ * uses a previously CAS-issued DeliveryMandate and returns its stable
+ * correlator. Retries under the same correlator dedupe; no send may precede
+ * this commit.
  */
 export interface CommitPeerDelegationRequest {
-  readonly sessionId: string;
-  readonly taskId: string;
-  readonly groupId: string;
-  readonly memberTaskId: string;
+  readonly mandate: DeliveryMandate;
 }
 
 export interface CommitPeerDelegationResult {
   readonly status: "committed" | "duplicate";
   readonly correlator: string;
-  readonly deliveryMandate: string;
 }
 
 /** Peer terminal evidence proposed under the DeliveryMandate (REQ-074):
  *  the authority validates and commits; the mandate never mutates directly. */
+export interface ReserveDelegatedPeerSampleRequest {
+  readonly mandate: DeliveryMandate;
+  readonly descriptor: DurableSampleDescriptor;
+}
+
+export type ReserveDelegatedPeerSampleResult = Extract<
+  LiveReservationResult,
+  { readonly status: "pending" }
+>;
+
 export interface CommitPeerEvidenceRequest {
-  readonly sessionId: string;
-  readonly taskId: string;
-  readonly groupId: string;
-  readonly memberTaskId: string;
+  readonly mandate: DeliveryMandate;
   readonly correlator: string;
   readonly outcome: OperationOutcome;
-  readonly deliveryMandate: string;
 }
 
 export interface CommitPeerEvidenceResult {
@@ -597,13 +624,9 @@ export interface CommitPeerEvidenceResult {
 /** Typed peer loss report (REQ-043): closes the member with a journaled
  *  `peer_lost` outcome that flows through the group supervision policy. */
 export interface ReportPeerLossRequest {
-  readonly sessionId: string;
-  readonly taskId: string;
-  readonly groupId: string;
-  readonly memberTaskId: string;
+  readonly mandate: DeliveryMandate;
   readonly correlator: string;
   readonly reason: string;
-  readonly deliveryMandate: string;
 }
 
 export interface ReportPeerLossResult {

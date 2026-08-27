@@ -18,12 +18,14 @@ import {
   settlePullWithOutcome,
 } from "./execution-lifecycle-decisions.ts";
 import {
+  bindDeliveryMandate,
   breachForkGroup,
   commitPeerDelegation,
   commitPeerEvidence,
   forceOrphanForkGroup,
   openForkGroup,
   reportPeerLoss,
+  reserveDelegatedPeerSample,
   type ForkDecisionServices,
 } from "./fork-group-decisions.ts";
 import {
@@ -82,6 +84,7 @@ const forkDecisionServices: ForkDecisionServices = {
   requestCancellation,
   settlePull: settlePullWithOutcome,
   settleParent: settleParentFromChild,
+  reservePull,
 };
 
 function dispatchCommand<C extends AuthorityCommand>(
@@ -98,6 +101,9 @@ function dispatchCommand<C extends AuthorityCommand>(
       break;
     case "execution.bind-mandate":
       result = bindMandate(draft, command.request);
+      break;
+    case "execution.bind-delivery-mandate":
+      result = bindDeliveryMandate(draft, command.request);
       break;
     case "execution.release-mandate":
       result = releaseMandate(draft, command.request);
@@ -122,6 +128,9 @@ function dispatchCommand<C extends AuthorityCommand>(
       break;
     case "execution.commit-peer-evidence":
       result = commitPeerEvidence(draft, command.request, forkDecisionServices);
+      break;
+    case "execution.reserve-delegated-peer-sample":
+      result = reserveDelegatedPeerSample(draft, command.request, forkDecisionServices);
       break;
     case "execution.report-peer-loss":
       result = reportPeerLoss(draft, command.request, forkDecisionServices);
