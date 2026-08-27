@@ -153,7 +153,7 @@ function ephemeralToolEntry(
     );
   }
   return {
-    kind: "foreign-tool",
+    kind: "ephemeral-tool",
     target: tool,
     driver: request.ephemeral.driver,
     tool,

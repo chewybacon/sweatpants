@@ -16,7 +16,11 @@ import {
 import { assertJson, type Json } from "@sweatpants/foundation";
 import { FOREIGN_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/foreign";
 
-import { manifest, type ChatToolCatalogEntry } from "./program-driver-schema.ts";
+import {
+  isEphemeralToolCatalogExecution,
+  manifest,
+  type ChatToolCatalogEntry,
+} from "./program-driver-schema.ts";
 
 type ChatCall = {
   id: string;
@@ -163,7 +167,7 @@ function* invokeCatalogTool(
     if (
       !RECOVERABLE_FOREIGN_FAILURES.has(code) ||
       (code === "foreign_tool_error" &&
-        (entry.kind !== "foreign-tool" || entry.driver !== "tool-session"))
+        (!isEphemeralToolCatalogExecution(entry) || entry.driver !== "tool-session"))
     ) {
       throw error;
     }

@@ -28,6 +28,14 @@ export type ChatToolCatalogEntry = {
   execution:
     | { kind: "program"; target: string; program: NativeIdentity }
     | {
+        kind: "ephemeral-tool";
+        target: string;
+        driver: "tool-session" | "chat-tool-runtime";
+        tool: string;
+        durability: "ephemeral_handle";
+      }
+    /** Historical catalog encoding; read-only until version-1 journals retire. */
+    | {
         kind: "foreign-tool";
         target: string;
         driver: "tool-session" | "chat-tool-runtime";
@@ -35,6 +43,17 @@ export type ChatToolCatalogEntry = {
         durability: "ephemeral_handle";
       };
 };
+
+export type EphemeralToolCatalogExecution = Exclude<
+  ChatToolCatalogEntry["execution"],
+  { kind: "program" }
+>;
+
+export function isEphemeralToolCatalogExecution(
+  execution: ChatToolCatalogEntry["execution"],
+): execution is EphemeralToolCatalogExecution {
+  return execution.kind === "ephemeral-tool" || execution.kind === "foreign-tool";
+}
 
 /** Atomic model exposure plus execution target artifact accepted by chat-root. */
 export type ChatToolCatalog = {
@@ -62,6 +81,13 @@ const catalogExecutionSchema = z.discriminatedUnion("kind", [
       version: schemaText,
       digest: z.string().regex(/^[0-9a-f]{64}$/u),
     }),
+  }),
+  z.strictObject({
+    kind: z.literal("ephemeral-tool"),
+    target: schemaText,
+    driver: z.enum(["tool-session", "chat-tool-runtime"]),
+    tool: schemaText,
+    durability: z.literal("ephemeral_handle"),
   }),
   z.strictObject({
     kind: z.literal("foreign-tool"),
@@ -209,6 +235,18 @@ const chatRootInputDescriptor = chatEngineSchema(
                         kind: { const: "program" },
                         target: { type: "string" },
                         program: { type: "object" },
+                      },
+                      additionalProperties: false,
+                    },
+                    {
+                      type: "object",
+                      required: ["kind", "target", "driver", "tool", "durability"],
+                      properties: {
+                        kind: { const: "ephemeral-tool" },
+                        target: { type: "string" },
+                        driver: { enum: ["tool-session", "chat-tool-runtime"] },
+                        tool: { type: "string" },
+                        durability: { const: "ephemeral_handle" },
                       },
                       additionalProperties: false,
                     },

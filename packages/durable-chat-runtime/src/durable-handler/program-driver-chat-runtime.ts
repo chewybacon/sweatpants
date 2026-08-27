@@ -43,9 +43,10 @@ import { createParkedSamplePullResolver } from "./parked-sample-resolver.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ProgramDriverJournal } from "./program-driver-journal.ts";
 import {
+  isEphemeralToolCatalogExecution,
   manifest,
   type ChatProgramInput,
-  type ChatToolCatalogEntry,
+  type EphemeralToolCatalogExecution,
 } from "./program-driver-schema.ts";
 import {
   createHostModelSamplingService,
@@ -113,13 +114,11 @@ export function* composeChatExecutionRuntime(
   const executionModelSamplingService = yield* ExecutionModelSamplingServiceContext.get();
   const liveMessageIds = new Set<string>();
   const endedLiveMessageIds = new Set<string>();
-  const boundEphemeralDriver = Object.values(input.catalog.entries).find(
-    (
-      entry,
-    ): entry is ChatToolCatalogEntry & {
-      execution: Extract<ChatToolCatalogEntry["execution"], { kind: "foreign-tool" }>;
-    } => entry.execution.kind === "foreign-tool",
-  )?.execution.driver;
+  const boundEphemeralDriver = Object.values(input.catalog.entries)
+    .map((entry) => entry.execution)
+    .find((execution): execution is EphemeralToolCatalogExecution =>
+      isEphemeralToolCatalogExecution(execution),
+    )?.driver;
   const ephemeralEffects = (() => {
     switch (environment.ephemeral.kind) {
       case "none":
