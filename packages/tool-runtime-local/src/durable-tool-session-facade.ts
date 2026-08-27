@@ -30,7 +30,7 @@ import {
 } from "@sweatpants/journal-authority";
 import { installExecutionStore } from "@sweatpants/journal-authority/api";
 import { DURABLE_TOOL_FACADE_ANNOTATION } from "./durable-tool-facade-marker.ts";
-import { executeForeignToolCall, type ForeignAskRelay } from "./foreign-tool-session.ts";
+import { executeEphemeralToolCall, type EphemeralAskRelay } from "./ephemeral-tool-session.ts";
 export {
   DURABLE_TOOL_FACADE_ANNOTATION,
   isDurableToolSessionFacade,
@@ -52,7 +52,7 @@ import {
 } from "@sweatpants/journal-authority/schema-registry";
 import type { SchemaBinding } from "@sweatpants/foundation/schema";
 
-import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
+import { ephemeralToolSchemaEntries } from "@sweatpants/tool-session/ephemeral";
 
 /** Expected facade failure translated through the ordinary ToolSession exception boundary. */
 export class DurableToolFacadeError extends Error {
@@ -106,7 +106,7 @@ export interface DurableToolSessionFacadeOptions<I extends Json, O extends Json>
   /** Authored child programs available for automatic invocation composition. */
   children?: DurableToolRegistry;
   /**
-   * Static pull resolvers supplied by the host — e.g. createForeignPullResolver
+   * Static pull resolvers supplied by the host — e.g. createEphemeralPullResolver
    * for session-bound live tools. Sample/elicit resolvers are built internally
    * from the tool's outer channels (REQ-009: no kind-shaped option bags).
    */
@@ -241,7 +241,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
   ).artifacts?.catalog;
   const schemaRegistry =
     options.schemaRegistry ??
-    createDurableSchemaRegistry([...foreignToolSchemaEntries(), ...(authoredCatalog ?? [])]);
+    createDurableSchemaRegistry([...ephemeralToolSchemaEntries(), ...(authoredCatalog ?? [])]);
   const withAuthority = function* <T>(
     operation: (authority: JournalAuthorityContract) => Operation<T>,
   ): Operation<T> {
@@ -422,16 +422,16 @@ function findPull(
  * dispatch is generic. Kinds ride kernel name constants — no host literals.
  */
 /** Stock resolver for parked `foreign` pulls over host-supplied live tools. */
-export function createForeignPullResolver(statics: {
+export function createEphemeralPullResolver(statics: {
   readonly tools: ReadonlyMap<string, RuntimeTool>;
-  readonly asks?: ForeignAskRelay;
+  readonly asks?: EphemeralAskRelay;
 }): PullResolver {
   return {
     kind: PULL_KIND_EPHEMERAL,
     audience: (descriptor) => `ephemeral:${(descriptor as { driver: string }).driver}`,
     perform(ctx, descriptor) {
       const d = descriptor as { driver: string; tool: string; input: Json };
-      return executeForeignToolCall(
+      return executeEphemeralToolCall(
         { tools: statics.tools as Map<string, RuntimeTool> },
         {
           driver: d.driver,
@@ -532,8 +532,6 @@ interface ComposeRequest {
   readonly attach: AttachProgramRequest;
   readonly pullId: string;
   readonly children: DurableToolRegistry;
-  /** Reserved for foreign-call orchestration once session resolution lands. */
-  readonly foreignRequest?: undefined;
 }
 
 /**

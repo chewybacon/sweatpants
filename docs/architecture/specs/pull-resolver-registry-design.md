@@ -136,7 +136,7 @@ interface PullResolver {
 
 ## Dependencies
 - Internal: journal-authority (kernel pulls, decisions, snapshot codec),
-  tool-runtime-local (facade, foreign-tool-session executor), agent-sdk
+  tool-runtime-local (facade, ephemeral-tool-session executor), agent-sdk
   (durable-create sugar), model-sampling (`executeModelSamplePull`),
   durable-chat-runtime (engine).
 - Internal: green gate baseline — journal-authority 160, tool-runtime-local 58
@@ -168,8 +168,8 @@ All sites cited against the working tree at the time of writing:
   ~340-430 (foreign, sample, elicit) each repeating find→perform→resolve;
   finders at :471-545; canonicalization precedent added at the sample branch
   (`JSON.parse(JSON.stringify(...))` for rich RuntimeTool results).
-- `packages/tool-runtime-local/src/foreign-tool-session.ts` —
-  `executeForeignToolCall` (:516+) over invocation-host `turnOnce` loop with
+- `packages/tool-runtime-local/src/ephemeral-tool-session.ts` —
+  `executeEphemeralToolCall` (:516+) over invocation-host `turnOnce` loop with
   ask relays; fail-closed codes `foreign_ask_unanswered`,
   `foreign_reference_lost`. Becomes the foreign kind's transport module.
 - `packages/durable-chat-runtime/src/durable-handler/program-driver-chat-engine.ts:550-614`
@@ -180,7 +180,7 @@ All sites cited against the working tree at the time of writing:
   resolver body.
 - Invocation-host double-fire finding: two distinct requestIds per authored
   `ctx.sample` observed via executor probes
-  (`foreign-tool-session.ts` turn loop); dedupe scaffolding currently masks it
+  (`ephemeral-tool-session.ts` turn loop); dedupe scaffolding currently masks it
   in facade-foreign-execution.integration.test.ts. Root cause localized to
   post-resume crank re-emission in the local inline execution path; tracked as
   an open item resolved separately (see Open Questions).

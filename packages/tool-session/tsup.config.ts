@@ -5,7 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     contract: "src/contract.ts",
     "event-log": "src/event-log.ts",
-    foreign: "src/foreign.ts",
+    ephemeral: "src/ephemeral.ts",
     "mcp/index": "src/mcp/index.ts",
     "tool-parameters": "src/tool-parameters.ts",
     messages: "src/messages.ts",

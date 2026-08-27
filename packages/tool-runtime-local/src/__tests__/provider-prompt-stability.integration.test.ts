@@ -39,14 +39,14 @@ import {
   createDurableEffectRegistry,
 } from "@sweatpants/durable-effects/runtime";
 import {
-  FOREIGN_TOOL_ADAPTER_MANIFEST,
-  foreignToolAdapter,
-  foreignToolSchemaEntries,
-} from "@sweatpants/tool-session/foreign";
+  EPHEMERAL_TOOL_ADAPTER_MANIFEST,
+  ephemeralToolAdapter,
+  ephemeralToolSchemaEntries,
+} from "@sweatpants/tool-session/ephemeral";
 
 import {
   createLocalToolInvocationRuntime,
-  createToolInvocationForeignEffectRegistrations,
+  createToolInvocationEphemeralEffectRegistrations,
 } from "../index.ts";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 
@@ -96,9 +96,9 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
     sessionId,
     taskId,
     program: {
-      id: FOREIGN_TOOL_ADAPTER_MANIFEST.programId,
-      version: FOREIGN_TOOL_ADAPTER_MANIFEST.version,
-      digest: FOREIGN_TOOL_ADAPTER_MANIFEST.digest,
+      id: EPHEMERAL_TOOL_ADAPTER_MANIFEST.programId,
+      version: EPHEMERAL_TOOL_ADAPTER_MANIFEST.version,
+      digest: EPHEMERAL_TOOL_ADAPTER_MANIFEST.digest,
     },
     input: request,
     route: { driverKind: "program" },
@@ -111,17 +111,17 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
     journalId: "prompt-stability",
     journalIncarnation: "1",
     keyring,
-    schemaRegistry: createDurableSchemaRegistry(foreignToolSchemaEntries()),
+    schemaRegistry: createDurableSchemaRegistry(ephemeralToolSchemaEntries()),
   });
   const drivers = createProgramDriverRegistry([
-    ["program", createWorkflowProgramDriver(createDurableToolRegistry([foreignToolAdapter]))],
+    ["program", createWorkflowProgramDriver(createDurableToolRegistry([ephemeralToolAdapter]))],
   ]);
 
   const contexts: string[] = [];
   return run(function* () {
     yield* createLocalToolInvocationRuntime({});
     const effects = createDurableEffectRegistry([
-      ...createToolInvocationForeignEffectRegistrations({
+      ...createToolInvocationEphemeralEffectRegistrations({
         tools: new Map<string, RuntimeTool>([[probeTool.name, probeTool]]),
       }),
     ]);
@@ -146,7 +146,7 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
       sessionId,
       turnId: "turn-0",
       taskId,
-      manifest: FOREIGN_TOOL_ADAPTER_MANIFEST,
+      manifest: EPHEMERAL_TOOL_ADAPTER_MANIFEST,
       input: request,
       executionEpoch: 1,
       attachmentId: "unattached-adapter",

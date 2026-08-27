@@ -54,7 +54,7 @@ import { assertDurableEffectBindings } from "@sweatpants/durable-effects/runtime
 export type { NormalizedProgramOperationTrace, NormalizedProgramTaskTrace, NormalizedProgramTrace };
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
-import { FOREIGN_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/foreign";
+import { EPHEMERAL_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/ephemeral";
 
 import { createParkedSamplePullResolver } from "./parked-sample-resolver.ts";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
@@ -605,7 +605,7 @@ function assertCatalogDispatch(catalog: PinnedProgramCatalog, program: PinnedPro
   }
 
   const ephemeralAdapter =
-    exactProgramKey(program) === exactProgramKey(FOREIGN_TOOL_ADAPTER_PROGRAM) &&
+    exactProgramKey(program) === exactProgramKey(EPHEMERAL_TOOL_ADAPTER_PROGRAM) &&
     entries.some(isEphemeralCatalogEntry);
   if (ephemeralAdapter) {
     return;

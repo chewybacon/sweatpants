@@ -31,14 +31,14 @@ import {
   type ToolInvocationTurn,
 } from "@sweatpants/tool-session";
 import {
-  FOREIGN_TOOL_CONTINUE_EFFECT,
-  FOREIGN_TOOL_START_EFFECT,
-  foreignToolInvocationId,
-} from "@sweatpants/tool-session/foreign";
+  EPHEMERAL_TOOL_CONTINUE_EFFECT,
+  EPHEMERAL_TOOL_START_EFFECT,
+  ephemeralToolInvocationId,
+} from "@sweatpants/tool-session/ephemeral";
 
 const CONTINUATION_SCHEME = "sweatpants/tool-session-v1";
 
-const foreignDurabilitySchema = z.enum([
+const ephemeralDurabilitySchema = z.enum([
   "opaque",
   "ephemeral_handle",
   "resumable_handle",
@@ -54,7 +54,7 @@ const continuationStateSchema = z.strictObject({
     kind: z.enum(["sample", "elicit"]),
     requestId: z.string().min(1),
   }),
-  durability: foreignDurabilitySchema,
+  durability: ephemeralDurabilitySchema,
 });
 
 type ToolSessionContinuationState = z.infer<typeof continuationStateSchema>;
@@ -84,11 +84,11 @@ const sampleResponseSchema = z.union([
   z.strictObject(sampleBaseFields),
 ]);
 
-export interface ToolInvocationForeignDriverOptions {
+export interface ToolInvocationEphemeralDriverOptions {
   tools: ReadonlyMap<string, AnyToolContract>;
 }
 
-export type ToolInvocationForeignEffectRegistrations = readonly [
+export type ToolInvocationEphemeralEffectRegistrations = readonly [
   start: DurableEffectRegistration,
   continuation: DurableEffectRegistration,
 ];
@@ -100,11 +100,11 @@ export type ToolInvocationForeignEffectRegistrations = readonly [
  * The host owns tool identity, response delivery, and the crank after each
  * response.
  */
-export function createToolInvocationForeignEffectRegistrations(
-  options: ToolInvocationForeignDriverOptions,
-): ToolInvocationForeignEffectRegistrations {
+export function createToolInvocationEphemeralEffectRegistrations(
+  options: ToolInvocationEphemeralDriverOptions,
+): ToolInvocationEphemeralEffectRegistrations {
   const start = createDurableEffectRegistration(
-    FOREIGN_TOOL_START_EFFECT,
+    EPHEMERAL_TOOL_START_EFFECT,
     { mode: "unsafe" },
     successfulEffect(function* (request, context) {
       if (request.driver !== "tool-session") {
@@ -119,11 +119,11 @@ export function createToolInvocationForeignEffectRegistrations(
         return failure(
           request.durability,
           "foreign_tool_not_found",
-          `Foreign tool not found: ${request.tool}`,
+          `Ephemeral tool not found: ${request.tool}`,
         );
       }
       const host = yield* ToolInvocationHostPort.use();
-      const invocationId = foreignToolInvocationId(context.sessionId, context.taskId);
+      const invocationId = ephemeralToolInvocationId(context.sessionId, context.taskId);
       const toolInput = isDurableToolSessionFacade(tool)
         ? { invocationId: context.taskId, input: request.input }
         : request.input;
@@ -148,14 +148,14 @@ export function createToolInvocationForeignEffectRegistrations(
         return failure(
           request.durability,
           "foreign_session_create_failed",
-          "Foreign tool invocation could not start",
+          "Ephemeral tool invocation could not start",
         );
       }
     }),
   );
 
   const continueRegistration = createDurableEffectRegistration(
-    FOREIGN_TOOL_CONTINUE_EFFECT,
+    EPHEMERAL_TOOL_CONTINUE_EFFECT,
     { mode: "unsafe" },
     successfulEffect(function* (request, context) {
       const continuation = decodeContinuation(request.continuation);
@@ -273,7 +273,7 @@ function* decodeResume(
           failure: failure(
             continuation.durability,
             "foreign_sample_response_invalid",
-            "Foreign sample response is invalid",
+            "Ephemeral sample response is invalid",
           ),
         };
   }
@@ -288,7 +288,7 @@ function* decodeResume(
         failure: failure(
           continuation.durability,
           "foreign_elicit_response_invalid",
-          "Foreign elicitation response is invalid",
+          "Ephemeral elicitation response is invalid",
         ),
       };
 }
@@ -315,7 +315,7 @@ function dispositionFromTurn(
       return failure(
         durability,
         "foreign_tool_cancelled",
-        turn.reason ?? "Foreign tool was cancelled",
+        turn.reason ?? "Ephemeral tool was cancelled",
       );
     case "parked":
       return {
@@ -330,7 +330,7 @@ function inputRequestFromAsk(ask: ToolInvocationAsk): EphemeralInputRequest {
   if (ask.kind === "sample") {
     return {
       kind: "sample",
-      payload: foreignJson({
+      payload: canonicalToolJson({
         invocation: {
           context: {
             messages: ask.messages,
@@ -356,9 +356,9 @@ function inputRequestFromAsk(ask: ToolInvocationAsk): EphemeralInputRequest {
     kind: "elicit",
     key: ask.key,
     message: ask.message,
-    responseSchema: foreignJson(ask.schema),
+    responseSchema: canonicalToolJson(ask.schema),
     binding: ask.binding,
-    ...(ask.context === undefined ? {} : { context: foreignJson(ask.context) }),
+    ...(ask.context === undefined ? {} : { context: canonicalToolJson(ask.context) }),
   };
 }
 
@@ -428,7 +428,7 @@ function failure(
   };
 }
 
-function foreignJson(value: unknown): Json {
+function canonicalToolJson(value: unknown): Json {
   return assertJson(stripUndefined(value));
 }
 
@@ -449,7 +449,7 @@ function stripUndefined(value: unknown): unknown {
 // ── Session-side executor for parked foreign pulls ──
 
 /** Relays a live tool's backchannel asks to whoever can answer them. */
-export interface ForeignAskRelay {
+export interface EphemeralAskRelay {
   /** Answer a sampling ask with a sample exchange completion. */
   sample?(ask: {
     requestId: string;
@@ -504,11 +504,11 @@ function* turnOnce(
 /**
  * Executes one session-bound foreign tool call against the invocation host
  * and returns the outcome to journal on the parked pull. The tool's own
- * sample/elicit asks ride {@link ForeignAskRelay}; unanswered kinds fail the
+ * sample/elicit asks ride {@link EphemeralAskRelay}; unanswered kinds fail the
  * call closed.
  */
-export function* executeForeignToolCall(
-  options: ToolInvocationForeignDriverOptions,
+export function* executeEphemeralToolCall(
+  options: ToolInvocationEphemeralDriverOptions,
   request: {
     readonly driver: string;
     readonly tool: string;
@@ -516,7 +516,7 @@ export function* executeForeignToolCall(
     readonly durability: EphemeralDurability;
   },
   identity: { readonly sessionId: string; readonly taskId: string; readonly pullId: string },
-  relay?: ForeignAskRelay,
+  relay?: EphemeralAskRelay,
 ): Operation<OperationOutcome> {
   const fail = (code: string, message: string): OperationOutcome => ({
     status: "error",
@@ -531,11 +531,11 @@ export function* executeForeignToolCall(
   }
   const tool = options.tools.get(request.tool);
   if (!tool) {
-    return fail("foreign_tool_not_found", `Foreign tool not found: ${request.tool}`);
+    return fail("foreign_tool_not_found", `Ephemeral tool not found: ${request.tool}`);
   }
 
   const host = yield* ToolInvocationHostPort.use();
-  const invocationId = foreignToolInvocationId(
+  const invocationId = ephemeralToolInvocationId(
     identity.sessionId,
     `${identity.taskId}:${identity.pullId}`,
   );
@@ -550,7 +550,7 @@ export function* executeForeignToolCall(
       input: assertJson(toolInput),
     });
   } catch {
-    return fail("foreign_session_create_failed", "Foreign tool invocation could not start");
+    return fail("foreign_session_create_failed", "Ephemeral tool invocation could not start");
   }
 
   let cursor = 0;
@@ -612,7 +612,7 @@ export function* executeForeignToolCall(
     } catch (error) {
       return fail(
         "foreign_ask_failed",
-        error instanceof Error ? error.message : "Foreign ask could not be answered",
+        error instanceof Error ? error.message : "Ephemeral ask could not be answered",
       );
     }
 

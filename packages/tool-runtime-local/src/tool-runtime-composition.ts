@@ -3,13 +3,13 @@ import type { Operation } from "effection";
 import type { ToolRuntime } from "@sweatpants/tool-runtime";
 import { installLocalToolRuntime, type LocalToolRuntimeDriverOptions } from "./driver.ts";
 import {
-  createToolInvocationForeignEffectRegistrations,
-  type ToolInvocationForeignEffectRegistrations,
-} from "./foreign-tool-session.ts";
+  createToolInvocationEphemeralEffectRegistrations,
+  type ToolInvocationEphemeralEffectRegistrations,
+} from "./ephemeral-tool-session.ts";
 
 /**
  * Installs the worker-backed local tool runtime together with the durable
- * workflow foreign-effect adapter that uses the same registry and contracts.
+ * workflow ephemeral-effect adapter that uses the same registry and contracts.
  *
  * Use this composition helper when ordinary local tools can be invoked from a
  * durable program (including tools that call ctx.sample()). Applications that
@@ -17,14 +17,16 @@ import {
  */
 export function* installLocalToolRuntimeComposition(
   options: LocalToolRuntimeDriverOptions & {
-    installForeignEffects(registrations: ToolInvocationForeignEffectRegistrations): Operation<void>;
+    installEphemeralEffects(
+      registrations: ToolInvocationEphemeralEffectRegistrations,
+    ): Operation<void>;
   },
 ): Operation<ToolRuntime> {
   // Install first so worker-mode and duplicate-tool validation fail before any
-  // foreign-effect context is published.
+  // ephemeral-effect context is published.
   const runtime = yield* installLocalToolRuntime(options);
-  yield* options.installForeignEffects(
-    createToolInvocationForeignEffectRegistrations({
+  yield* options.installEphemeralEffects(
+    createToolInvocationEphemeralEffectRegistrations({
       tools: new Map(options.tools.map((tool: AnyToolContract) => [tool.name, tool])),
     }),
   );

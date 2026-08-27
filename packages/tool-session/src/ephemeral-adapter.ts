@@ -15,14 +15,14 @@ import {
   defineDurableProgramManifest,
 } from "@sweatpants/durable-execution";
 import {
-  FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
-  FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
-  FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR,
-  FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
-  FOREIGN_TOOL_ADAPTER_PROGRAM,
-  FOREIGN_TOOL_CONTINUE_EFFECT,
-  FOREIGN_TOOL_START_EFFECT,
-} from "./foreign-contract.ts";
+  EPHEMERAL_INPUT_CONTEXT_DESCRIPTOR,
+  EPHEMERAL_INPUT_RESPONSE_DESCRIPTOR,
+  EPHEMERAL_TOOL_ADAPTER_INPUT_DESCRIPTOR,
+  EPHEMERAL_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
+  EPHEMERAL_TOOL_ADAPTER_PROGRAM,
+  EPHEMERAL_TOOL_CONTINUE_EFFECT,
+  EPHEMERAL_TOOL_START_EFFECT,
+} from "./ephemeral-contract.ts";
 import { projectModelSampleCompletion } from "@sweatpants/agent-sdk";
 import { CrankError, type DurableProgramContext } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
@@ -30,7 +30,7 @@ import type { EphemeralToolRequest } from "@sweatpants/durable-execution";
 
 /**
  * Classification stamped onto every model.sample raised on behalf of a
- * foreign tool's nested ctx.sample(). Hosts use it to keep tool-owned
+ * ephemeral tool's nested ctx.sample(). Hosts use it to keep tool-owned
  * sampling out of outer-chat streaming and history.
  */
 export const TOOL_OWNED_SAMPLE_CLASSIFICATION = "sweatpants.tool-owned-sample";
@@ -51,7 +51,7 @@ function* sampleToolOwnedModel(
   if (!stage) {
     throw new CrankError(
       "model_context_source_invalid",
-      "Foreign adapter model sampling requires an authoring-edge context stager",
+      "Ephemeral adapter model sampling requires an authoring-edge context stager",
     );
   }
   const source = yield* stage(request.invocation.context);
@@ -67,25 +67,25 @@ function* sampleToolOwnedModel(
   );
 }
 
-/** Validated manifest for the built-in foreign adapter child program. */
-export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<
+/** Validated manifest for the built-in ephemeral adapter child program. */
+export const EPHEMERAL_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<
   EphemeralToolRequest,
   Json
 >({
-  programId: FOREIGN_TOOL_ADAPTER_PROGRAM.id,
-  version: FOREIGN_TOOL_ADAPTER_PROGRAM.version,
-  digest: FOREIGN_TOOL_ADAPTER_PROGRAM.digest,
-  inputSchema: FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR,
-  outputSchema: FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
+  programId: EPHEMERAL_TOOL_ADAPTER_PROGRAM.id,
+  version: EPHEMERAL_TOOL_ADAPTER_PROGRAM.version,
+  digest: EPHEMERAL_TOOL_ADAPTER_PROGRAM.digest,
+  inputSchema: EPHEMERAL_TOOL_ADAPTER_INPUT_DESCRIPTOR,
+  outputSchema: EPHEMERAL_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
   elicits: {
     foreign_input: {
-      response: FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
-      context: FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
+      response: EPHEMERAL_INPUT_RESPONSE_DESCRIPTOR,
+      context: EPHEMERAL_INPUT_CONTEXT_DESCRIPTOR,
     },
   },
   effects: {
-    [FOREIGN_TOOL_START_EFFECT.name]: FOREIGN_TOOL_START_EFFECT,
-    [FOREIGN_TOOL_CONTINUE_EFFECT.name]: FOREIGN_TOOL_CONTINUE_EFFECT,
+    [EPHEMERAL_TOOL_START_EFFECT.name]: EPHEMERAL_TOOL_START_EFFECT,
+    [EPHEMERAL_TOOL_CONTINUE_EFFECT.name]: EPHEMERAL_TOOL_CONTINUE_EFFECT,
   },
   pulls: {
     sample: {
@@ -101,10 +101,10 @@ export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<
 });
 
 const adapterTool = createPinnedDurableProgram(
-  FOREIGN_TOOL_ADAPTER_MANIFEST,
+  EPHEMERAL_TOOL_ADAPTER_MANIFEST,
   function* (request, context) {
     const audience = `foreign:${request.driver}`;
-    let disposition = yield* context.effect(FOREIGN_TOOL_START_EFFECT, request, {
+    let disposition = yield* context.effect(EPHEMERAL_TOOL_START_EFFECT, request, {
       audience,
       ...(request.route ? { route: request.route } : {}),
     });
@@ -120,7 +120,7 @@ const adapterTool = createPinnedDurableProgram(
                 kind: "elicit",
                 key: "foreign_input",
                 message: disposition.request.message,
-                response: FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
+                response: EPHEMERAL_INPUT_RESPONSE_DESCRIPTOR,
                 context: {
                   foreignDriver: request.driver,
                   foreignTool: request.tool,
@@ -131,7 +131,7 @@ const adapterTool = createPinnedDurableProgram(
                     ? { context: disposition.request.context }
                     : {}),
                 },
-                contextContract: FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
+                contextContract: EPHEMERAL_INPUT_CONTEXT_DESCRIPTOR,
                 ...(disposition.request.binding === undefined
                   ? {}
                   : { binding: disposition.request.binding }),
@@ -139,7 +139,7 @@ const adapterTool = createPinnedDurableProgram(
             );
 
       disposition = yield* context.effect(
-        FOREIGN_TOOL_CONTINUE_EFFECT,
+        EPHEMERAL_TOOL_CONTINUE_EFFECT,
         {
           continuation: disposition.continuation,
           response: { kind: disposition.request.kind, value: assertJson(response) },
@@ -159,4 +159,4 @@ const adapterTool = createPinnedDurableProgram(
 );
 
 /** Frozen built-in adapter that journals start, continuation, and pull boundaries. */
-export const foreignToolAdapter = Object.freeze(adapterTool);
+export const ephemeralToolAdapter = Object.freeze(adapterTool);

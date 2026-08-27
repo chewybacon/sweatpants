@@ -39,16 +39,16 @@
                 "default": "./dist/event-log.js"
             }
         },
-        "./foreign": {
+        "./ephemeral": {
             "development": {
-                "import": "./src/foreign.ts",
-                "types": "./src/foreign.ts"
+                "import": "./src/ephemeral.ts",
+                "types": "./src/ephemeral.ts"
             },
             "import": {
-                "types": "./dist/foreign.d.ts",
-                "default": "./dist/foreign.js"
+                "types": "./dist/ephemeral.d.ts",
+                "default": "./dist/ephemeral.js"
             },
-            "default": "./src/foreign.ts"
+            "default": "./src/ephemeral.ts"
         },
         "./elicit-context": {
             "development": {

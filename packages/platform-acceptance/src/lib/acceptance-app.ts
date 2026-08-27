@@ -269,7 +269,7 @@ export function createAcceptanceApplication(
       yield* installLocalToolRuntimeComposition({
         tools: [acceptanceBookingTool, acceptanceImmediateTool],
         samplingProvider,
-        installForeignEffects: function* (registrations) {
+        installEphemeralEffects: function* (registrations) {
           yield* ProgramDriverEphemeralEffectsContext.set(registrations);
         },
       });

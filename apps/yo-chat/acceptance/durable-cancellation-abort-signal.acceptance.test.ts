@@ -29,15 +29,15 @@ import {
 } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import {
-  FOREIGN_TOOL_ADAPTER_PROGRAM,
-  foreignToolAdapter,
-  foreignToolSchemaEntries,
-} from "@sweatpants/tool-session/foreign";
+  EPHEMERAL_TOOL_ADAPTER_PROGRAM,
+  ephemeralToolAdapter,
+  ephemeralToolSchemaEntries,
+} from "@sweatpants/tool-session/ephemeral";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { NULL_RESULT_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import {
   createLocalToolInvocationRuntime,
-  createToolInvocationForeignEffectRegistrations,
+  createToolInvocationEphemeralEffectRegistrations,
 } from "@sweatpants/tool-runtime-local";
 
 const parentManifest = defineDurableProgramManifest<null, Json>({
@@ -85,7 +85,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
         bodyContinuedAfterAbort = true;
         return { label, observedAbort: context.signal.aborted };
       });
-    const foreignRequest: EphemeralToolRequest = {
+    const ephemeralRequest: EphemeralToolRequest = {
       driver: "tool-session",
       tool: abortAwareTool.name,
       input: { label: "cancel-me" },
@@ -96,11 +96,11 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
       return yield* context.pull(
         assertJson({
           kind: "invoke",
-          child: { ...FOREIGN_TOOL_ADAPTER_PROGRAM, input: foreignRequest },
+          child: { ...EPHEMERAL_TOOL_ADAPTER_PROGRAM, input: ephemeralRequest },
         }),
       );
     });
-    const tools = createDurableToolRegistry([parent, foreignToolAdapter]);
+    const tools = createDurableToolRegistry([parent, ephemeralToolAdapter]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
     const keyring = createCapabilityKeyring("abort-signal-acceptance", [
       { keyId: "active", secret: "abort-signal-acceptance-key-32-bytes" },
@@ -109,7 +109,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
       journalId: "abort-signal-acceptance",
       journalIncarnation: "1",
       keyring,
-      schemaRegistry: createDurableSchemaRegistry(foreignToolSchemaEntries()),
+      schemaRegistry: createDurableSchemaRegistry(ephemeralToolSchemaEntries()),
     });
     const sessionId = "abort-signal-acceptance-session";
     const parentTaskId = "turn-0/root";
@@ -130,7 +130,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
     await run(function* () {
       yield* createLocalToolInvocationRuntime({});
       const effects = createDurableEffectRegistry([
-        ...createToolInvocationForeignEffectRegistrations({
+        ...createToolInvocationEphemeralEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[abortAwareTool.name, abortAwareTool]]),
         }),
       ]);

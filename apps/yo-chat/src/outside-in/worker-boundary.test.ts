@@ -15,7 +15,7 @@ import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import {
   createLocalToolInvocationRuntime,
-  createToolInvocationForeignEffectRegistrations,
+  createToolInvocationEphemeralEffectRegistrations,
 } from "@sweatpants/tool-runtime-local";
 import { ToolInvocationHostPort } from "@sweatpants/tool-session";
 import { calculator } from "@/tools/calculator";
@@ -46,7 +46,7 @@ describe("outside-in worker boundary (Tier A)", () => {
       yield* createLocalToolInvocationRuntime({
         worker: yoChatToolSessionWorkerConfig,
       });
-      const [start] = createToolInvocationForeignEffectRegistrations({
+      const [start] = createToolInvocationEphemeralEffectRegistrations({
         tools: new Map([[calculator.name, calculator]]),
       });
       const disposition = yield* start.handler(

@@ -1,4 +1,4 @@
-import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
+import { ephemeralToolSchemaEntries } from "@sweatpants/tool-session/ephemeral";
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -13,7 +13,7 @@ import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schem
 import { anyGuard, createSchemaFixture } from "@sweatpants/journal-authority/testing";
 import {
   createDurableToolSessionFacade,
-  createForeignPullResolver,
+  createEphemeralPullResolver,
   createInMemoryDurableToolFacadeStateStore,
   createLocalToolInvocationRuntime,
 } from "../index.ts";
@@ -106,12 +106,12 @@ describe("facade workflow runtime foreign execution", () => {
       keyring,
       name: "foreign_facade_tool",
       schemaRegistry: createDurableSchemaRegistry([
-        ...foreignToolSchemaEntries(),
+        ...ephemeralToolSchemaEntries(),
         parentInput.entry,
         parentOutput.entry,
       ]),
       pullResolvers: [
-        createForeignPullResolver({
+        createEphemeralPullResolver({
           tools: new Map([["wf_weather", weather]]),
           asks: {
             sample: function* (ask: {

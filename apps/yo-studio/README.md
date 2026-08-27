@@ -205,19 +205,19 @@ double-filing Jira tickets.
 
 ## What this depends on
 
-| Capability in the story                                                                         | Where it lives today                                                        |
-| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Durable sessions, parking, replay                                                               | `@sweatpants/durable-execution`, replay-crank-driver design                 |
-| Crank-native durable tools, pull boundary                                                       | crank-native-durable-remote-tools design                                    |
-| Closed capability maps, symbolic call-waits                                                     | wait-based-session-kernel design                                            |
-| Agent manifests, pinned program identity                                                        | agent-resource-artifact-identity + durable-chat-agent-authoring specs       |
-| Foreign MCP adapter (opaque at-least-once)                                                      | foreign-a2a-durable-task-adapter design, `@sweatpants/tool-session/foreign` |
-| A2A peer with delegated effects                                                                 | callee-authoritative-sweatpants-a2a-peers design                            |
-| Placement-aware `model.sample`                                                                  | placement-transparent-model-sampling spec                                   |
-| Activity stream vs semantic journal                                                             | journal-native-portable-agents design                                       |
-| **Code mode v1** (LLM-composed generator programs, admission pipeline, effect approval)         | _not yet designed — next memo_                                              |
-| **Code mode v2** (restricted subset → validated IR, effect-plan card, static policy predicates) | tisyn research (`protocols/tisyn/`), deliberately deferred                  |
-| Skill promotion (content-addressed workflow → manifest entrypoint)                              | future — builds on resource identity                                        |
+| Capability in the story                                                                         | Where it lives today                                                          |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Durable sessions, parking, replay                                                               | `@sweatpants/durable-execution`, replay-crank-driver design                   |
+| Crank-native durable tools, pull boundary                                                       | crank-native-durable-remote-tools design                                      |
+| Closed capability maps, symbolic call-waits                                                     | wait-based-session-kernel design                                              |
+| Agent manifests, pinned program identity                                                        | agent-resource-artifact-identity + durable-chat-agent-authoring specs         |
+| Foreign MCP adapter (opaque at-least-once)                                                      | foreign-a2a-durable-task-adapter design, `@sweatpants/tool-session/ephemeral` |
+| A2A peer with delegated effects                                                                 | callee-authoritative-sweatpants-a2a-peers design                              |
+| Placement-aware `model.sample`                                                                  | placement-transparent-model-sampling spec                                     |
+| Activity stream vs semantic journal                                                             | journal-native-portable-agents design                                         |
+| **Code mode v1** (LLM-composed generator programs, admission pipeline, effect approval)         | _not yet designed — next memo_                                                |
+| **Code mode v2** (restricted subset → validated IR, effect-plan card, static policy predicates) | tisyn research (`protocols/tisyn/`), deliberately deferred                    |
+| Skill promotion (content-addressed workflow → manifest entrypoint)                              | future — builds on resource identity                                          |
 
 The rows above the code-mode line are approved designs or shipping substrate.
 The rows below are what this app exists to pull into being.

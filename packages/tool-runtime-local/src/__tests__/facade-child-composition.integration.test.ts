@@ -1,5 +1,5 @@
 import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
-import { foreignToolSchemaEntries } from "@sweatpants/tool-session/foreign";
+import { ephemeralToolSchemaEntries } from "@sweatpants/tool-session/ephemeral";
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { assertJson } from "@sweatpants/foundation";
@@ -11,9 +11,9 @@ import {
   withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
 import {
-  FOREIGN_TOOL_ADAPTER_MANIFEST,
-  foreignToolAdapter,
-} from "@sweatpants/tool-session/foreign";
+  EPHEMERAL_TOOL_ADAPTER_MANIFEST,
+  ephemeralToolAdapter,
+} from "@sweatpants/tool-session/ephemeral";
 import {
   ProgramDriverRegistryContext,
   createProgramDriverRegistry,
@@ -34,7 +34,7 @@ import {
   createDurableToolSessionFacade,
   createInMemoryDurableToolFacadeStateStore,
   createLocalToolInvocationRuntime,
-  createToolInvocationForeignEffectRegistrations,
+  createToolInvocationEphemeralEffectRegistrations,
 } from "../index.ts";
 
 /**
@@ -128,7 +128,7 @@ describe("facade workflow runtime child composition", () => {
       name: "compose_durable_tool",
       children: createDurableToolRegistry([childTool]),
       schemaRegistry: createDurableSchemaRegistry([
-        ...foreignToolSchemaEntries(),
+        ...ephemeralToolSchemaEntries(),
         childInput.entry,
         childOutput.entry,
         parentInput.entry,
@@ -149,7 +149,7 @@ describe("facade workflow runtime child composition", () => {
       journalIncarnation: "1",
       keyring: outerKeyring,
       schemaRegistry: createDurableSchemaRegistry([
-        ...foreignToolSchemaEntries(),
+        ...ephemeralToolSchemaEntries(),
         parentInput.entry,
         parentOutput.entry,
       ]),
@@ -160,9 +160,9 @@ describe("facade workflow runtime child composition", () => {
       sessionId,
       taskId,
       program: {
-        id: FOREIGN_TOOL_ADAPTER_MANIFEST.programId,
-        version: FOREIGN_TOOL_ADAPTER_MANIFEST.version,
-        digest: FOREIGN_TOOL_ADAPTER_MANIFEST.digest,
+        id: EPHEMERAL_TOOL_ADAPTER_MANIFEST.programId,
+        version: EPHEMERAL_TOOL_ADAPTER_MANIFEST.version,
+        digest: EPHEMERAL_TOOL_ADAPTER_MANIFEST.digest,
       },
       input: request,
       route: { driverKind: "program" },
@@ -172,7 +172,7 @@ describe("facade workflow runtime child composition", () => {
     await run(function* () {
       yield* createLocalToolInvocationRuntime({});
       const effects = createDurableEffectRegistry([
-        ...createToolInvocationForeignEffectRegistrations({
+        ...createToolInvocationEphemeralEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[facade.name, facade as unknown as RuntimeTool]]),
         }),
       ]);
@@ -180,7 +180,7 @@ describe("facade workflow runtime child composition", () => {
         sessionId,
         turnId: "turn-0",
         taskId,
-        manifest: FOREIGN_TOOL_ADAPTER_MANIFEST,
+        manifest: EPHEMERAL_TOOL_ADAPTER_MANIFEST,
         input: request,
         executionEpoch: 1,
         attachmentId: "unattached-compose-adapter",
@@ -201,7 +201,7 @@ function runOuter(
   authority: ReturnType<typeof createAuthorityScenarioDriver>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
 ): Operation<AdvancementResult> {
-  const adapterTools = createDurableToolRegistry([foreignToolAdapter]);
+  const adapterTools = createDurableToolRegistry([ephemeralToolAdapter]);
   return ProgramDriverRegistryContext.with(
     createProgramDriverRegistry([["program", createWorkflowProgramDriver(adapterTools)]]),
     function* () {
