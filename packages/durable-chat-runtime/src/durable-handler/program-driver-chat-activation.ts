@@ -125,14 +125,9 @@ function* isExpectedCancellationFenceLoss(
   ) {
     return false;
   }
-  try {
-    return (
-      (yield* authority.query({ type: "task.cancellation-state", sessionId, taskId })).type !==
-      "none"
-    );
-  } catch {
-    return false;
-  }
+  return (
+    (yield* authority.query({ type: "task.cancellation-state", sessionId, taskId })).type !== "none"
+  );
 }
 
 /** Fences only deployments whose native bindings declare fenced activation. */

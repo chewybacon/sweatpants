@@ -15,7 +15,11 @@ import {
   type ResolutionReceipt,
 } from "@sweatpants/durable-execution";
 
-import type { EffectRouter, JournalSamplingService } from "./advancement-ports.ts";
+import {
+  RetryableEffectAcknowledgement,
+  type EffectRouter,
+  type JournalSamplingService,
+} from "./advancement-ports.ts";
 import type { ExecutionComposition } from "./execution-composition.ts";
 
 /** A committed settlement ends this advancement; orchestration must re-plan
@@ -237,8 +241,9 @@ export function* advanceCaughtUpLeaf(request: {
       if (request.effects.acknowledge) {
         try {
           yield* request.effects.acknowledge({ authorization, outcome });
-        } catch {
-          // Journal acceptance is authoritative; acknowledgement is retryable.
+        } catch (error) {
+          if (!(error instanceof RetryableEffectAcknowledgement)) throw error;
+          // The port explicitly classified this post-commit cleanup as retryable.
         }
       }
       return {

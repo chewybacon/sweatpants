@@ -2,6 +2,7 @@ import { type Operation } from "effection";
 import {
   CrankError,
   assertReplayedCanonicalValue,
+  rootTurnIdentity,
   stableProgramAttachmentId,
   type AttachProgramRequest,
   type PinnedProgram,
@@ -68,9 +69,10 @@ export function* admitProgramDriverChatTurn(
     }
     recoveredExecutionEpoch = recoveredRoot.executionEpoch;
   }
-  const turnNumber = yield* journal.rootTaskCount(request.conversationId);
-  const taskId = active?.taskId ?? `turn-${turnNumber}/root`;
-  const turnId = active?.turnId ?? `turn-${turnNumber}`;
+  const turnIdentity = active
+    ? { turnId: active.turnId, taskId: active.taskId }
+    : rootTurnIdentity(yield* journal.rootTaskCount(request.conversationId));
+  const { taskId, turnId } = turnIdentity;
   let before = yield* journal.readJournal(request.conversationId, taskId);
   const modelContextSource = {
     ...request.contextSource,

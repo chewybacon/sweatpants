@@ -14,6 +14,18 @@ export interface TurnAddress {
   readonly taskId: string;
 }
 
+/** Canonical root identity issued from the authority's root ordinal. */
+export function rootTurnIdentity(
+  rootOrdinal: number,
+  requested: { readonly turnId?: string; readonly taskId?: string } = {},
+): Pick<TurnAddress, "turnId" | "taskId"> {
+  const turnId = requested.turnId ?? `turn-${rootOrdinal}`;
+  return {
+    turnId,
+    taskId: requested.taskId ?? `${turnId}/root`,
+  };
+}
+
 export interface StrandHead {
   readonly actionIndex: number;
   readonly digest: string;

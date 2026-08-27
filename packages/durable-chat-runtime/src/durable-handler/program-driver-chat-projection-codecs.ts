@@ -7,6 +7,50 @@ export type TreePlacement = {
   readonly sequence: number;
 };
 
+export interface ElicitationContextEvidence {
+  readonly historical: boolean;
+  readonly authoredContext: Json | undefined;
+  readonly responseProjection: Json | undefined;
+  readonly publicKey: string;
+  readonly callId: string | undefined;
+  readonly toolName: string | undefined;
+  readonly elicitId: string | undefined;
+}
+
+/** Decodes historical lifted-tool context once at the projection boundary. */
+export function elicitationContextEvidence(
+  value: Json | undefined,
+  fallbackKey: string,
+): ElicitationContextEvidence {
+  const context = jsonRecord(value);
+  const nested = jsonRecord(context?.["context"]);
+  const historical = typeof context?.["foreignTool"] === "string";
+  return {
+    historical,
+    authoredContext: historical ? nested : context,
+    responseProjection: historical ? context?.["responseSchema"] : undefined,
+    publicKey: typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : fallbackKey,
+    callId:
+      typeof context?.["foreignRoute"] === "string"
+        ? context["foreignRoute"]
+        : typeof nested?.["callId"] === "string"
+          ? nested["callId"]
+          : undefined,
+    toolName:
+      typeof context?.["foreignTool"] === "string"
+        ? context["foreignTool"]
+        : typeof nested?.["toolName"] === "string"
+          ? nested["toolName"]
+          : undefined,
+    elicitId:
+      typeof nested?.["elicitId"] === "string"
+        ? nested["elicitId"]
+        : typeof context?.["foreignKey"] === "string"
+          ? context["foreignKey"]
+          : undefined,
+  };
+}
+
 export function jsonRecord(value: Json | undefined): Record<string, Json> | undefined {
   return value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
     ? value

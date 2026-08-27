@@ -39,16 +39,17 @@ export function planForestReplay(
   if (session === undefined) {
     throw new CrankError("unknown_target", `Unknown session ${sessionId}`);
   }
+  const relations = indexForestRelations(session);
   const ordered = breadthFirstTasks(session);
   const rows: PlannedForestRow[] = [];
   const replay: ReplayItem[] = [];
   const peers: PeerReadyTarget[] = [];
 
   for (const task of ordered) {
-    const groupContext = forkContext(session, task);
+    const groupContext = forkContext(task, relations);
     const head = strandHead(task);
-    const durability = taskDurability(session, task);
-    const classification = classifyTask(session, task, durability, nowMs);
+    const durability = taskDurability(task, relations);
+    const classification = classifyTask(task, durability, nowMs, relations);
     const parked = parkedHead(task);
     const row: PlannedForestRow = {
       address: { sessionId, turnId: task.turnId, taskId: task.taskId },
@@ -72,7 +73,7 @@ export function planForestReplay(
     if (classification === "replayable") {
       replay.push(buildReplayItem(task, row, journalHeadDigest));
     } else if (classification === "peer_hosted") {
-      const member = memberState(session, task.taskId);
+      const member = relations.memberByTask.get(task.taskId);
       if (!peerInvariantHolds(task, member)) continue;
       peers.push({
         address: row.address,
@@ -176,10 +177,10 @@ function breadthFirstTasks(session: AuthoritySessionState): TaskState[] {
 }
 
 function classifyTask(
-  session: AuthoritySessionState,
   task: TaskState,
   durability: "crank_native" | "peer_hosted",
   nowMs: number,
+  relations: ForestRelations,
 ): PlannedForestRow["classification"] {
   if (task.lifecycle.status !== "active") return "terminal";
   if (task.execution.liveLease !== undefined && task.execution.liveLease.expiresAtMs > nowMs) {
@@ -195,19 +196,13 @@ function classifyTask(
   }
   // A parent with an active child is structurally blocked even if a damaged
   // materialized cursor omitted the expected open invoke slot.
-  for (const candidate of session.execution.tasks.values()) {
-    if (
-      candidate.origin.kind === "child" &&
-      candidate.origin.invokedBy.taskId === task.taskId &&
-      candidate.lifecycle.status === "active"
-    ) {
-      return "structurally_blocked";
-    }
+  if (relations.activeChildByParent.has(task.taskId)) {
+    return "structurally_blocked";
   }
   return "replayable";
 }
 
-function peerInvariantHolds(task: TaskState, member: ReturnType<typeof memberState>): boolean {
+function peerInvariantHolds(task: TaskState, member: ForkGroupMember | undefined): boolean {
   if (
     task.lifecycle.status !== "active" ||
     task.lifecycle.cancellation.type !== "none" ||
@@ -227,24 +222,57 @@ function peerInvariantHolds(task: TaskState, member: ReturnType<typeof memberSta
   });
 }
 
+type ForkGroupMember = NonNullable<TaskState["forkGroup"]>["members"][number];
+type MemberGroupContext = {
+  readonly member: ForkGroupMember;
+  readonly parentTaskId: string;
+  readonly groupId: string;
+  readonly groupRevision: number;
+};
+interface ForestRelations {
+  readonly memberByTask: ReadonlyMap<string, ForkGroupMember>;
+  readonly memberGroupByTask: ReadonlyMap<string, MemberGroupContext>;
+  readonly activeChildByParent: ReadonlySet<string>;
+}
+
+/** Indexes topology once so each planned row performs constant-time lookups. */
+function indexForestRelations(session: AuthoritySessionState): ForestRelations {
+  const memberByTask = new Map<string, ForkGroupMember>();
+  const memberGroupByTask = new Map<string, MemberGroupContext>();
+  const activeChildByParent = new Set<string>();
+  for (const task of session.execution.tasks.values()) {
+    if (task.origin.kind === "child" && task.lifecycle.status === "active") {
+      activeChildByParent.add(task.origin.invokedBy.taskId);
+    }
+    const group = task.forkGroup;
+    if (!group) continue;
+    for (const member of group.members) {
+      const existing = memberGroupByTask.get(member.taskId);
+      if (existing && existing.parentTaskId !== task.taskId) {
+        throw new CrankError("invalid_journal", `Task ${member.taskId} belongs to two fork groups`);
+      }
+      memberByTask.set(member.taskId, member);
+      memberGroupByTask.set(member.taskId, {
+        member,
+        parentTaskId: task.taskId,
+        groupId: group.groupId,
+        groupRevision: group.revision ?? 0,
+      });
+    }
+  }
+  return { memberByTask, memberGroupByTask, activeChildByParent };
+}
+
 function taskDurability(
-  session: AuthoritySessionState,
   task: TaskState,
+  relations: ForestRelations,
 ): "crank_native" | "peer_hosted" {
-  return memberState(session, task.taskId)?.durability === "peer_hosted"
+  return relations.memberByTask.get(task.taskId)?.durability === "peer_hosted"
     ? "peer_hosted"
     : "crank_native";
 }
 
-function memberState(session: AuthoritySessionState, taskId: string) {
-  for (const parent of session.execution.tasks.values()) {
-    const member = parent.forkGroup?.members.find((candidate) => candidate.taskId === taskId);
-    if (member !== undefined) return member;
-  }
-  return undefined;
-}
-
-function forkContext(session: AuthoritySessionState, task: TaskState): ForkContext {
+function forkContext(task: TaskState, relations: ForestRelations): ForkContext {
   if (task.forkGroup !== undefined) {
     return {
       groupId: task.forkGroup.groupId,
@@ -252,16 +280,14 @@ function forkContext(session: AuthoritySessionState, task: TaskState): ForkConte
       parentTaskId: task.taskId,
     };
   }
-  for (const parent of session.execution.tasks.values()) {
-    if (parent.forkGroup?.members.some((member) => member.taskId === task.taskId)) {
-      return {
-        groupId: parent.forkGroup.groupId,
-        groupRevision: parent.forkGroup.revision ?? 0,
-        parentTaskId: parent.taskId,
-      };
-    }
-  }
-  return { groupRevision: 0 };
+  const parent = relations.memberGroupByTask.get(task.taskId);
+  return parent
+    ? {
+        groupId: parent.groupId,
+        groupRevision: parent.groupRevision,
+        parentTaskId: parent.parentTaskId,
+      }
+    : { groupRevision: 0 };
 }
 
 function buildReplayItem(
@@ -337,7 +363,7 @@ function buildReplayItem(
 export function currentForkGroupRevision(session: AuthoritySessionState, taskId: string): number {
   const task = session.execution.tasks.get(taskId);
   if (task === undefined) throw new CrankError("unknown_target", `Unknown task ${taskId}`);
-  return forkContext(session, task).groupRevision;
+  return forkContext(task, indexForestRelations(session)).groupRevision;
 }
 
 /** Invariant W predicate exported for focused property tests. */
