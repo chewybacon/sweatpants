@@ -76,7 +76,11 @@ export function driveProgramDriverActivation(
       }
       const disposition = yield* runPreparedAdvancement(
         request,
-        { ...item, route: request.attach.route },
+        {
+          ...item,
+          route: request.attach.route,
+          ...(request.attach.affinity === undefined ? {} : { affinity: request.attach.affinity }),
+        },
         ownerId,
       );
       if (disposition.state === "settled") continue;
@@ -145,7 +149,13 @@ function runPreparedAdvancement(
           }
           caughtUp = yield* replayWarmSuffix(
             caughtUp,
-            { ...nextItem, route: request.attach.route },
+            {
+              ...nextItem,
+              route: request.attach.route,
+              ...(request.attach.affinity === undefined
+                ? {}
+                : { affinity: request.attach.affinity }),
+            },
             disposition.actionIndex,
             disposition.attemptedInDriver,
             disposition.frontier,
