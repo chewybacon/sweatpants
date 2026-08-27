@@ -8,7 +8,8 @@ import {
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import { canonicalSnapshot, stableTupleHash } from "@sweatpants/foundation";
 import type { DecisionDraft } from "./decision-draft.ts";
-import type { DeepMutable, DraftPull, DraftTask } from "./decision-state.ts";
+import type { AuthorityKernel } from "./authority-transaction.ts";
+import type { DeepMutable, DraftTask } from "./decision-state.ts";
 import { pullById } from "./decision-state.ts";
 import {
   assertForkPolicyPairing,
@@ -30,49 +31,19 @@ import type {
   BindDeliveryMandateResult,
   BreachForkGroupRequest,
   BreachForkGroupResult,
-  CancellationAcknowledgement,
   CommitPeerDelegationRequest,
   CommitPeerDelegationResult,
   CommitPeerEvidenceRequest,
   CommitPeerEvidenceResult,
   ForceOrphanForkGroupRequest,
   ForceOrphanForkGroupResult,
-  OpenDurableTaskRequest,
   OpenForkGroupRequest,
   OpenForkGroupResult,
   ReportPeerLossRequest,
   ReportPeerLossResult,
   ReserveDelegatedPeerSampleRequest,
   ReserveDelegatedPeerSampleResult,
-  ReserveOperationRequest,
-  ReserveOperationResult,
 } from "./authority-types.ts";
-
-export interface ForkDecisionServices {
-  openTask(draft: DecisionDraft, request: OpenDurableTaskRequest): { programCapability: string };
-  requestCancellation(
-    draft: DecisionDraft,
-    sessionId: string,
-    taskId: string,
-    reason?: string,
-    commandId?: string,
-  ): CancellationAcknowledgement;
-  settlePull(
-    draft: DecisionDraft,
-    sessionId: string,
-    parent: DraftTask,
-    pull: DraftPull,
-    ownerEpoch: number,
-    outcome: OperationOutcome,
-  ): void;
-  settleParent(
-    draft: DecisionDraft,
-    sessionId: string,
-    task: DraftTask,
-    outcome: OperationOutcome,
-  ): void;
-  reservePull(draft: DecisionDraft, request: ReserveOperationRequest): ReserveOperationResult;
-}
 
 type ForkDescriptorPayload =
   | (DurableAllDescriptor & { readonly children: readonly DurableChildDescriptor[] })
@@ -84,10 +55,10 @@ type ForkDescriptorPayload =
  * opening; a second distinct group on a nonterminal pull is refused.
  */
 export function openForkGroup(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   request: OpenForkGroupRequest,
-  services: ForkDecisionServices,
 ): OpenForkGroupResult {
+  const { draft } = kernel;
   const parent = draft.task(request.sessionId, request.parentTaskId);
   draft.assertActive(parent);
   const pull = pullById(parent, request.parentPullId);
@@ -180,7 +151,7 @@ export function openForkGroup(
   };
   for (const [index, member] of request.members.entries()) {
     const durability = descriptor.children[index]!.durability;
-    services.openTask(draft, {
+    kernel.openTask({
       sessionId: request.sessionId,
       turnId: request.turnId,
       taskId: memberTaskIds[index]!,
@@ -226,10 +197,10 @@ export function openForkGroup(
  * later member successes member history only.
  */
 export function breachForkGroup(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   request: BreachForkGroupRequest,
-  services: ForkDecisionServices,
 ): BreachForkGroupResult {
+  const { draft } = kernel;
   const parent = draft.task(request.sessionId, request.taskId);
   const group = parent.forkGroup;
   if (group === undefined || group.groupId !== request.groupId) {
@@ -254,7 +225,7 @@ export function breachForkGroup(
     });
     cancelMembers = beginForkGroupCancellation(group, "expiry");
     for (const memberTaskId of cancelMembers) {
-      services.requestCancellation(draft, request.sessionId, memberTaskId, "fork_group_expired");
+      kernel.requestCancellation(request.sessionId, memberTaskId, "fork_group_expired");
     }
   }
   const resolution = drainForkGroup(group);
@@ -267,8 +238,7 @@ export function breachForkGroup(
       terminal: resolution,
       terminalDigest: canonicalSnapshot(resolution).sha,
     });
-    services.settlePull(
-      draft,
+    kernel.settlePull(
       request.sessionId,
       parent,
       pullById(parent, group.pullId),
@@ -289,10 +259,10 @@ export function breachForkGroup(
  * members are orphaned in place; later member messages stay opaque evidence.
  */
 export function forceOrphanForkGroup(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   request: ForceOrphanForkGroupRequest,
-  services: ForkDecisionServices,
 ): ForceOrphanForkGroupResult {
+  const { draft } = kernel;
   const parent = draft.task(request.sessionId, request.taskId);
   const group = parent.forkGroup;
   if (group === undefined || group.groupId !== request.groupId) {
@@ -331,8 +301,7 @@ export function forceOrphanForkGroup(
     terminal: resolution,
     terminalDigest: canonicalSnapshot(resolution).sha,
   });
-  services.settlePull(
-    draft,
+  kernel.settlePull(
     request.sessionId,
     parent,
     pullById(parent, group.pullId),
@@ -555,12 +524,12 @@ export function commitPeerDelegation(
  * reducer so supervision stays exact (REQ-043).
  */
 function closePeerMember(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   mandate: DeliveryMandate,
   correlator: string,
   outcome: OperationOutcome,
-  services: ForkDecisionServices,
 ): void {
+  const { draft } = kernel;
   const { sessionId, member } = deliveryContext(draft, mandate, correlator);
   if (member.delegationCorrelator !== correlator) {
     throw new CrankError("invalid_delivery_mandate", "Unknown delivery correlator");
@@ -585,7 +554,7 @@ function closePeerMember(
         }
       : { status: "closed", outcome, receipt: { offset, duplicate: false } };
   delete memberTask.execution.liveLease;
-  services.settleParent(draft, sessionId, memberTask, outcome);
+  kernel.settleParent(sessionId, memberTask, outcome);
 }
 
 function deliveryContext(
@@ -637,10 +606,10 @@ function deliveryContext(
 }
 
 export function reserveDelegatedPeerSample(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   request: ReserveDelegatedPeerSampleRequest,
-  services: ForkDecisionServices,
 ): ReserveDelegatedPeerSampleResult {
+  const { draft } = kernel;
   if ("audience" in request || request.descriptor.kind !== "sample") {
     throw new CrankError("invalid_descriptor", "Delegated sampling derives its audience locally");
   }
@@ -652,7 +621,7 @@ export function reserveDelegatedPeerSample(
     throw new CrankError("invalid_delivery_mandate", "Peer delegation is not committed");
   }
   const task = draft.task(sessionId, member.taskId);
-  const result = services.reservePull(draft, {
+  const result = kernel.reservePull({
     sessionId,
     turnId: task.turnId,
     taskId: task.taskId,
@@ -668,27 +637,19 @@ export function reserveDelegatedPeerSample(
 }
 
 export function commitPeerEvidence(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   request: CommitPeerEvidenceRequest,
-  services: ForkDecisionServices,
 ): CommitPeerEvidenceResult {
-  closePeerMember(draft, request.mandate, request.correlator, request.outcome, services);
+  closePeerMember(kernel, request.mandate, request.correlator, request.outcome);
   return { status: "accepted" };
 }
 
 /** Typed peer loss (REQ-043): a journaled `peer_lost` member outcome that
  *  flows through supervision, never a dangling member. */
 export function reportPeerLoss(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   request: ReportPeerLossRequest,
-  services: ForkDecisionServices,
 ): ReportPeerLossResult {
-  closePeerMember(
-    draft,
-    request.mandate,
-    request.correlator,
-    peerLossOutcome(request.reason),
-    services,
-  );
+  closePeerMember(kernel, request.mandate, request.correlator, peerLossOutcome(request.reason));
   return { status: "accepted" };
 }

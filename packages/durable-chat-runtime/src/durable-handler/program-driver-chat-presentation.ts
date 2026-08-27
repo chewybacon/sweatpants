@@ -44,15 +44,8 @@ export function* presentProgramDriverChatActivation(
   context: ChatPresentationContext,
   report: ChatActivationReport,
 ): Operation<ChatPresentationResult> {
-  const {
-    before,
-    after,
-    outcome,
-    liveMessageIds,
-    endedLiveMessageIds,
-    cancellationFenceLost,
-    replacementQueued,
-  } = report;
+  const { before, after, outcome, liveMessageIds, endedLiveMessageIds, cancellationFenceLost } =
+    report;
   const events: StreamEvent[] = [];
   const projection = indexChatJournal(after);
   const projected = projectRecords(after.slice(before.length), projection);
@@ -89,18 +82,17 @@ export function* presentProgramDriverChatActivation(
     );
   } else if (outcome.state === "parked") {
     // Bounded frontier (REQ-028): surface every participant-addressable slot
-    // a fork group parked on; a single park degrades to its one pull.
-    const slotPullIds =
-      outcome.slots === undefined ? [outcome.pullId] : outcome.slots.map((slot) => slot.pullId);
+    // a fork group parked on, including the single-park case.
+    const slotPullIds = outcome.slots.map((slot) => slot.pullId);
     const pendings = slotPullIds
       .map((slotPullId) => pendingElicit(projection, slotPullId))
       .filter((pending): pending is NonNullable<typeof pending> => pending !== undefined);
     if (pendings.length > 0) {
       for (const pending of pendings) {
-        const pendingCallId = pendingToolCallId(projection, pending);
-        if (pendingCallId) {
-          events.push({ type: EventType.TOOL_CALL_END, toolCallId: pendingCallId });
-        }
+        events.push({
+          type: EventType.TOOL_CALL_END,
+          toolCallId: pendingToolCallId(projection, pending),
+        });
         const interrupt = projectInterrupt(projection, pending, {
           agUiRun: context.agUiRun,
           toolInventory: context.toolInventory,
@@ -140,7 +132,7 @@ export function* presentProgramDriverChatActivation(
         { type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority: published.authority },
         terminalEvent,
       );
-    } else if (context.continueAfterCancellation || replacementQueued) {
+    } else if (context.continueAfterCancellation) {
       return { events, continueActivation: true };
     } else {
       const terminalEvent: AGUIEvent = {

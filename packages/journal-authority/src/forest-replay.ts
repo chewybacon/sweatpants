@@ -19,7 +19,7 @@ import type {
   TaskState,
 } from "./authority-contract.ts";
 
-const REPLAY_DOMAIN = "sweatpants.forest-replay.v1";
+const REPLAY_DOMAIN = "sweatpants.forest-replay.v2";
 
 /**
  * Pure breadth-first forest planner (REQ-007..REQ-011).
@@ -71,7 +71,7 @@ export function planForestReplay(
     rows.push(row);
 
     if (classification === "replayable") {
-      replay.push(buildReplayItem(task, row, journalHeadDigest));
+      replay.push(buildReplayItem(task, row));
     } else if (classification === "peer_hosted") {
       const member = relations.memberByTask.get(task.taskId);
       if (!peerInvariantHolds(task, member)) continue;
@@ -290,18 +290,14 @@ function forkContext(task: TaskState, relations: ForestRelations): ForkContext {
     : { groupRevision: 0 };
 }
 
-function buildReplayItem(
-  task: TaskState,
-  row: PlannedForestRow,
-  journalHeadDigest: string,
-): ReplayItem {
+function buildReplayItem(task: TaskState, row: PlannedForestRow): ReplayItem {
+  // The seed binds immutable strand identity. Mutable plan fields stay in the
+  // frontier proof so warm suffixes can compare their existing chain in O(1).
   const replayChainSeed = sha256(
     canonicalJson({
       domain: REPLAY_DOMAIN,
-      journalHeadDigest,
       address: row.address,
       strand: row.strand,
-      plannedHead: row.head,
       program: row.program,
     }),
   );

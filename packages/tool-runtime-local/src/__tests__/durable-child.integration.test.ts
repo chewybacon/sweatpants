@@ -216,6 +216,7 @@ describe("automatic local durable parent/child recovery", () => {
     const tools = createDurableToolRegistry([parent, child]);
     const concrete = createWorkflowProgramDriver(tools);
     const driver: ProgramDriver = {
+      evaluatorKind: concrete.evaluatorKind,
       capabilities: concrete.capabilities,
       *attach(request) {
         const attachment = yield* concrete.attach(request);

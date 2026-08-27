@@ -7,15 +7,12 @@ import type {
   KernelTransition,
 } from "./authority-contract.ts";
 import { DecisionDraft, type AuthorityDecisionOptions } from "./decision-draft.ts";
+import { createAuthorityKernel } from "./authority-transaction.ts";
 import {
   abandonAttempt,
   beginCancellationUnwind,
   detachAttempt,
-  detachTaskAttempts,
   forceOrphan,
-  requestCancellation,
-  settleParentFromChild,
-  settlePullWithOutcome,
 } from "./execution-lifecycle-decisions.ts";
 import {
   bindDeliveryMandate,
@@ -26,7 +23,6 @@ import {
   openForkGroup,
   reportPeerLoss,
   reserveDelegatedPeerSample,
-  type ForkDecisionServices,
 } from "./fork-group-decisions.ts";
 import {
   acceptAssistantPartial,
@@ -35,10 +31,8 @@ import {
   completeTask,
   completeUnderMandate,
   emitUnderMandate,
-  reservePull,
   reserveUnderMandate,
   resolvePull,
-  type PullDecisionServices,
 } from "./pull-decisions.ts";
 import {
   bindFrontier,
@@ -50,10 +44,8 @@ import {
   bindAttachment,
   bindMandate,
   ensureChild,
-  openTask,
   releaseMandate,
   replaceAttachment,
-  type TaskDecisionServices,
 } from "./task-decisions.ts";
 
 export { queryAuthorityState } from "./authority-queries.ts";
@@ -71,33 +63,18 @@ export function decideAuthorityCommand<C extends AuthorityCommand>(
   };
 }
 
-const pullDecisionServices: PullDecisionServices = {
-  settleParent: settleParentFromChild,
-};
-
-const taskDecisionServices: TaskDecisionServices = {
-  detachAttempts: detachTaskAttempts,
-};
-
-const forkDecisionServices: ForkDecisionServices = {
-  openTask,
-  requestCancellation,
-  settlePull: settlePullWithOutcome,
-  settleParent: settleParentFromChild,
-  reservePull,
-};
-
 function dispatchCommand<C extends AuthorityCommand>(
   draft: DecisionDraft,
   command: C,
 ): CommandResult<C> {
+  const kernel = createAuthorityKernel(draft);
   let result: unknown;
   switch (command.type) {
     case "execution.open-task":
-      result = openTask(draft, command.request);
+      result = kernel.openTask(command.request);
       break;
     case "execution.bind-attachment":
-      result = bindAttachment(draft, command.request, taskDecisionServices);
+      result = bindAttachment(kernel, command.request);
       break;
     case "execution.bind-mandate":
       result = bindMandate(draft, command.request);
@@ -109,34 +86,34 @@ function dispatchCommand<C extends AuthorityCommand>(
       result = releaseMandate(draft, command.request);
       break;
     case "execution.replace-attachment":
-      result = replaceAttachment(draft, command.request, taskDecisionServices);
+      result = replaceAttachment(kernel, command.request);
       break;
     case "execution.ensure-child":
       result = ensureChild(draft, command.request);
       break;
     case "execution.open-fork-group":
-      result = openForkGroup(draft, command.request, forkDecisionServices);
+      result = openForkGroup(kernel, command.request);
       break;
     case "execution.breach-fork-group":
-      result = breachForkGroup(draft, command.request, forkDecisionServices);
+      result = breachForkGroup(kernel, command.request);
       break;
     case "execution.force-orphan-fork-group":
-      result = forceOrphanForkGroup(draft, command.request, forkDecisionServices);
+      result = forceOrphanForkGroup(kernel, command.request);
       break;
     case "execution.commit-peer-delegation":
       result = commitPeerDelegation(draft, command.request);
       break;
     case "execution.commit-peer-evidence":
-      result = commitPeerEvidence(draft, command.request, forkDecisionServices);
+      result = commitPeerEvidence(kernel, command.request);
       break;
     case "execution.reserve-delegated-peer-sample":
-      result = reserveDelegatedPeerSample(draft, command.request, forkDecisionServices);
+      result = reserveDelegatedPeerSample(kernel, command.request);
       break;
     case "execution.report-peer-loss":
-      result = reportPeerLoss(draft, command.request, forkDecisionServices);
+      result = reportPeerLoss(kernel, command.request);
       break;
     case "execution.reserve-pull":
-      result = reservePull(draft, command.request);
+      result = kernel.reservePull(command.request);
       break;
     case "execution.mandate-reserve":
       result = reserveUnderMandate(draft, command.request);
@@ -145,7 +122,7 @@ function dispatchCommand<C extends AuthorityCommand>(
       result = emitUnderMandate(draft, command.request);
       break;
     case "execution.mandate-complete":
-      result = completeUnderMandate(draft, command.request, pullDecisionServices);
+      result = completeUnderMandate(kernel, command.request);
       break;
     case "execution.accept-preparation":
       result = acceptPreparation(draft, command.request);
@@ -160,11 +137,10 @@ function dispatchCommand<C extends AuthorityCommand>(
       result = appendEmission(draft, command.request);
       break;
     case "execution.complete-task":
-      result = completeTask(draft, command.request, pullDecisionServices);
+      result = completeTask(kernel, command.request);
       break;
     case "execution.request-cancellation":
-      result = requestCancellation(
-        draft,
+      result = kernel.requestCancellation(
         command.request.sessionId,
         command.request.taskId,
         command.request.reason,

@@ -50,6 +50,7 @@ export function createLocalWorkerDurableProgramDriver(
   options: LocalWorkerDurableProgramDriverOptions,
 ): ProgramDriver {
   return {
+    evaluatorKind: "worker",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     *attach(request) {
       const worker = yield* useWorker<

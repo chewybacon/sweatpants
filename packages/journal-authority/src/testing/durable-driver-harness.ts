@@ -241,6 +241,7 @@ export function* runDurableDriverRecoveryFixture(
   let attachmentCount = 0;
   let shutdownCount = 0;
   const driver: ProgramDriver = {
+    evaluatorKind: concreteDriver.evaluatorKind,
     capabilities: concreteDriver.capabilities,
     *attach(request) {
       const attachment = yield* concreteDriver.attach(request);
@@ -418,6 +419,7 @@ export function* runDurableDriverCancellationFixture(
   let attachmentCount = 0;
   let shutdownCount = 0;
   const driver: ProgramDriver = {
+    evaluatorKind: concreteDriver.evaluatorKind,
     capabilities: concreteDriver.capabilities,
     *attach(request) {
       const attachment = yield* concreteDriver.attach(request);

@@ -119,12 +119,12 @@ export function* replayWarmSuffix(
   ) {
     throw new CrankError("replay_diverged", "Warm replay target differs from caught-up strand");
   }
-  for (let index = 0; index < previous.item.replay.length; index += 1) {
-    if (
-      semanticEntryDigest(previous.item.replay[index]!) !== semanticEntryDigest(item.replay[index]!)
-    ) {
-      throw new CrankError("replay_diverged", "Warm replay prefix changed");
-    }
+  const prefixLength = previous.item.replay.length;
+  if (
+    prefixLength > 0 &&
+    item.replay[prefixLength - 1]!.entryDigest !== previous.item.replayChainDigest
+  ) {
+    throw new CrankError("replay_diverged", "Warm replay prefix changed");
   }
   let chain = item.replayChainSeed;
   for (const entry of item.replay) {
@@ -196,11 +196,6 @@ export function* replayWarmSuffix(
       cancellationReplayed,
     },
   };
-}
-
-function semanticEntryDigest(entry: ReplayEntry): string {
-  const { entryDigest: _entry, previousEntryDigest: _previous, ...semantic } = entry;
-  return canonicalSnapshot(semantic).sha;
 }
 
 function verifyEntry(item: ReplayItem, entry: ReplayEntry, previous: string): void {

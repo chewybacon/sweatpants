@@ -27,5 +27,4 @@ export interface ChatActivationReport {
   readonly liveMessageIds: ReadonlySet<string>;
   readonly endedLiveMessageIds: ReadonlySet<string>;
   readonly cancellationFenceLost: boolean;
-  readonly replacementQueued: boolean;
 }

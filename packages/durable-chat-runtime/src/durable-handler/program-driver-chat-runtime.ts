@@ -64,6 +64,11 @@ import type { ConversationStore } from "@sweatpants/history-store/contract";
 import type { ToolInventoryEntry, ToolRuntime } from "@sweatpants/tool-runtime";
 import type { ProgramDriverNativeToolComposition } from "../program-driver/native-tools.ts";
 
+export interface ChatSamplingPolicy {
+  readonly streamOptions?: StreamOptions;
+  readonly historyPolicy?: HistoryPolicy;
+}
+
 export type EphemeralExecutionStrategy =
   | { readonly kind: "none" }
   | {
@@ -83,8 +88,7 @@ export interface ChatExecutionEnvironment {
   readonly sampling: {
     readonly model: Model;
     readonly conversationStore: ConversationStore;
-    readonly streamOptions?: StreamOptions;
-    readonly historyPolicy?: HistoryPolicy;
+    readonly policy: ChatSamplingPolicy;
   };
   readonly native?: ProgramDriverNativeToolComposition;
   readonly ephemeral: EphemeralExecutionStrategy;
@@ -149,13 +153,8 @@ export function* composeChatExecutionRuntime(
   })();
   const samplingServiceOptions = {
     model: environment.sampling.model,
-    ...(environment.sampling.streamOptions
-      ? { streamOptions: environment.sampling.streamOptions }
-      : {}),
+    ...environment.sampling.policy,
     catalog: input.catalog,
-    ...(environment.sampling.historyPolicy
-      ? { historyPolicy: environment.sampling.historyPolicy }
-      : {}),
     onLiveMessageStarted(messageId: string) {
       liveMessageIds.add(messageId);
     },
@@ -265,34 +264,36 @@ export function* composeChatExecutionRuntime(
                 driver,
                 attach: request.attach,
                 ...(activationOwnerId === undefined ? {} : { activationOwnerId }),
-                *stageSampleInput(input) {
-                  return yield* stageProgramDriverModelSampleInput(input, environment.sessionId);
-                },
-                effects: {
-                  *route({ authorization, definition }) {
-                    if (kind === "program") return "execution";
-                    const routed = yield* DurableEffectRouting.operations.route({
-                      definition,
-                      effectContractDigest: authorization.effectContractDigest,
-                      sessionId: authorization.sessionId,
-                      taskId: authorization.taskId,
-                      pullId: authorization.pullId,
-                      attemptId: authorization.attemptId,
-                      program: request.attach.program,
-                      programRoute: request.attach.route,
-                    });
-                    if (routed.placement !== "host" && routed.placement !== "execution") {
-                      throw new CrankError(
-                        "effect_placement_unavailable",
-                        "Effect route is invalid",
-                      );
-                    }
-                    return routed.placement;
+                advancement: {
+                  *stageSampleInput(input) {
+                    return yield* stageProgramDriverModelSampleInput(input, environment.sessionId);
                   },
-                  *executeHost(authorization, placement) {
-                    return yield* ProgramPlacementContext.with(placement, function* () {
-                      return yield* DurableEffects.operations.execute(authorization);
-                    });
+                  effects: {
+                    *route({ authorization, definition }) {
+                      if (kind === "program") return "execution";
+                      const routed = yield* DurableEffectRouting.operations.route({
+                        definition,
+                        effectContractDigest: authorization.effectContractDigest,
+                        sessionId: authorization.sessionId,
+                        taskId: authorization.taskId,
+                        pullId: authorization.pullId,
+                        attemptId: authorization.attemptId,
+                        program: request.attach.program,
+                        programRoute: request.attach.route,
+                      });
+                      if (routed.placement !== "host" && routed.placement !== "execution") {
+                        throw new CrankError(
+                          "effect_placement_unavailable",
+                          "Effect route is invalid",
+                        );
+                      }
+                      return routed.placement;
+                    },
+                    *executeHost(authorization, placement) {
+                      return yield* ProgramPlacementContext.with(placement, function* () {
+                        return yield* DurableEffects.operations.execute(authorization);
+                      });
+                    },
                   },
                 },
               });

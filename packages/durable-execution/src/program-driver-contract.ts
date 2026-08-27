@@ -10,6 +10,7 @@ import type { Operation } from "effection";
 import type { Json, SerializedApplicationError } from "@sweatpants/foundation";
 import { CrankError } from "./errors.ts";
 import type { ProgramPlacementContextValue } from "@sweatpants/durable-effects";
+import type { EvaluatorKind } from "./execution-spine.ts";
 import type {
   DurableOperationDescriptor,
   DurableProgramManifest,
@@ -193,6 +194,8 @@ export const REPLAY_CHECKPOINT_CAPABILITIES: ProgramDriverCapabilities = Object.
 });
 
 export interface ProgramDriver {
+  /** Declares the evaluator class selected by this driver's registration. */
+  readonly evaluatorKind: EvaluatorKind;
   /** Current drivers restore by replay; continuation serialization is explicit and optional. */
   readonly capabilities: ProgramDriverCapabilities;
   /** Acquires an attachment owned by the caller's Effection scope. */
@@ -233,9 +236,8 @@ export type AdvancementResult =
       pullId: string;
       reason: string;
       /**
-       * Bounded open-slot set when a fork group parks with several live
-       * members (REQ-028): every slot is participant-addressable. Absent for
-       * single-park results; `pullId` remains the primary slot either way.
+       * Bounded open-slot set (REQ-028): every participant-addressable park is
+       * represented explicitly, including the single-park case.
        */
-      slots?: readonly ProgramParkedSlot[];
+      slots: readonly ProgramParkedSlot[];
     };

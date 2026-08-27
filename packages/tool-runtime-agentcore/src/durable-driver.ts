@@ -36,6 +36,7 @@ export function createAgentCoreDurableProgramDriver(
   } = {},
 ): ProgramDriver {
   return {
+    evaluatorKind: "remote",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     ...(options.manifests
       ? {

@@ -120,6 +120,73 @@ export type ForkGroupTerminal =
   | { readonly status: "expired"; readonly outcomes: readonly ForkMemberBiography[] }
   | { readonly status: "orphaned"; readonly reason: string };
 
+export type CompletedForkGroupTerminal = Extract<
+  ForkGroupTerminal,
+  { readonly status: "completed" }
+>;
+
+/** Decodes the only terminal value that may cross a successful fork pull. */
+export function completedForkGroupTerminal(value: unknown): CompletedForkGroupTerminal {
+  if (!isCompletedForkGroupTerminal(value)) {
+    throw new CrankError(
+      "invalid_journal",
+      "Successful fork-group outcome is not a completed terminal",
+    );
+  }
+  return value;
+}
+
+function isCompletedForkGroupTerminal(value: unknown): value is CompletedForkGroupTerminal {
+  const record = jsonRecord(value);
+  if (!record || record["status"] !== "completed") return false;
+  const winnerOrdinal = record["winnerOrdinal"];
+  if (
+    winnerOrdinal !== undefined &&
+    (typeof winnerOrdinal !== "number" || !Number.isSafeInteger(winnerOrdinal) || winnerOrdinal < 0)
+  ) {
+    return false;
+  }
+  const outcomes = record["outcomes"];
+  return Array.isArray(outcomes) && outcomes.every(isForkMemberBiography);
+}
+
+function isForkMemberBiography(value: unknown): value is ForkMemberBiography {
+  const record = jsonRecord(value);
+  if (!record) return false;
+  const ordinal = record["ordinal"];
+  const taskId = record["taskId"];
+  return (
+    typeof ordinal === "number" &&
+    Number.isSafeInteger(ordinal) &&
+    ordinal >= 0 &&
+    typeof taskId === "string" &&
+    isOperationOutcome(record["outcome"])
+  );
+}
+
+function isOperationOutcome(value: unknown): value is OperationOutcome {
+  const record = jsonRecord(value);
+  if (!record || typeof record["status"] !== "string") return false;
+  switch (record["status"]) {
+    case "ok":
+      return Object.prototype.hasOwnProperty.call(record, "value");
+    case "cancelled":
+      return true;
+    case "error": {
+      const error = jsonRecord(record["error"]);
+      return typeof error?.["code"] === "string" && typeof error["message"] === "string";
+    }
+    default:
+      return false;
+  }
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
 export interface ForkGroupMember {
   readonly ordinal: number;
   readonly taskId: string;

@@ -312,6 +312,7 @@ export {
 export {
   driveProgramDriverActivation,
   type DriveProgramDriverActivationRequest,
+  type AdvancementServices,
   type EffectRouter,
   type JournalSamplingService,
 } from "./workflow/driver-drive.ts";

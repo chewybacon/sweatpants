@@ -24,6 +24,11 @@ import type { ExecutionComposition } from "./execution-composition.ts";
 
 /** A committed settlement ends this advancement; orchestration must re-plan
  * and replay this exact record before another bind. */
+export interface AdvancementServices {
+  readonly effects?: EffectRouter;
+  readonly stageSampleInput?: JournalSamplingService;
+}
+
 export type AdvancementDisposition =
   | AdvancementResult
   | {
@@ -43,8 +48,7 @@ export type AdvancementDisposition =
 export function* advanceCaughtUpLeaf(request: {
   readonly caughtUp: CaughtUpLeaf;
   readonly execution: ExecutionComposition;
-  readonly effects?: EffectRouter;
-  readonly stageSampleInput?: JournalSamplingService;
+  readonly services: AdvancementServices;
 }): Operation<AdvancementDisposition> {
   const { caughtUp, execution } = request;
   const attachment = caughtUp.restored.attachment;
@@ -138,10 +142,21 @@ export function* advanceCaughtUpLeaf(request: {
       }
     }
 
-    const composed = yield* composeStep(step, attach, request.stageSampleInput);
+    const composed = yield* composeStep(step, attach, request.services.stageSampleInput);
     const reservation = yield* execution.reserve(composed.descriptor);
     if (reservation.status === "pending") {
-      return { state: "parked", pullId: reservation.pullId, reason: reservation.reason };
+      return {
+        state: "parked",
+        pullId: reservation.pullId,
+        reason: reservation.reason,
+        slots: [
+          {
+            taskId: execution.mandate.address.taskId,
+            pullId: reservation.pullId,
+            reason: reservation.reason,
+          },
+        ],
+      };
     }
 
     if (composed.descriptor.kind === "record") {
@@ -185,8 +200,19 @@ export function* advanceCaughtUpLeaf(request: {
     }
 
     if (composed.descriptor.kind === "effect") {
-      if (!request.effects) {
-        return { state: "parked", pullId: reservation.pullId, reason: "external_effect" };
+      if (!request.services.effects) {
+        return {
+          state: "parked",
+          pullId: reservation.pullId,
+          reason: "external_effect",
+          slots: [
+            {
+              taskId: execution.mandate.address.taskId,
+              pullId: reservation.pullId,
+              reason: "external_effect",
+            },
+          ],
+        };
       }
       if (reservation.descriptor.kind !== "effect" || !reservation.effectContractDigest) {
         throw new CrankError("runtime_error", "Installed effect authorization is malformed");
@@ -210,7 +236,7 @@ export function* advanceCaughtUpLeaf(request: {
         route: caughtUp.item.route,
         driverKind: execution.mandate.placement.route.driverKind,
       };
-      const route = yield* request.effects.route({ authorization, definition, placement });
+      const route = yield* request.services.effects.route({ authorization, definition, placement });
       let outcome: OperationOutcome;
       if (route === "execution") {
         const authorized = yield* ProgramPeer.operations.step(attachment, {
@@ -227,7 +253,7 @@ export function* advanceCaughtUpLeaf(request: {
         outcome = authorized.authorizedOutcome;
       } else {
         try {
-          outcome = yield* request.effects.executeHost(authorization, placement);
+          outcome = yield* request.services.effects.executeHost(authorization, placement);
         } catch (error) {
           outcome = { status: "error", error: serializeDurableError(error) };
         }
@@ -238,9 +264,9 @@ export function* advanceCaughtUpLeaf(request: {
         outcome,
       });
       if (resolution.status === "rejected") throw new CrankError(resolution.code);
-      if (request.effects.acknowledge) {
+      if (request.services.effects.acknowledge) {
         try {
-          yield* request.effects.acknowledge({ authorization, outcome });
+          yield* request.services.effects.acknowledge({ authorization, outcome });
         } catch (error) {
           if (!(error instanceof RetryableEffectAcknowledgement)) throw error;
           // The port explicitly classified this post-commit cleanup as retryable.

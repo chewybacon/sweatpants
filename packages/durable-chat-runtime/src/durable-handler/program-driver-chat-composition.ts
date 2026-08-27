@@ -1,10 +1,14 @@
 import { CrankError, type PinnedProgram } from "@sweatpants/durable-execution";
 import { nativeProgramIdentities } from "../program-driver/native-tools.ts";
 import type { ChatActivationContext } from "./program-driver-chat-activation.ts";
-import type { ChatAdmissionRequest } from "./program-driver-chat-admission.ts";
+import type {
+  ChatAdmissionInputPolicy,
+  ChatAdmissionRequest,
+} from "./program-driver-chat-admission.ts";
 import type { ChatPresentationContext } from "./program-driver-chat-presentation.ts";
 import type {
   ChatExecutionEnvironment,
+  ChatSamplingPolicy,
   EphemeralExecutionStrategy,
 } from "./program-driver-chat-runtime.ts";
 import type { ElicitSettlementRequest } from "./program-driver-chat-settlement.ts";
@@ -27,6 +31,16 @@ export function composeProgramDriverChat(
   }
   const nativePrograms = nativeProgramIdentities(params.nativeTools);
   const ephemeral = decideEphemeralExecution(params, nativePrograms);
+  const inputPolicy: ChatAdmissionInputPolicy = {
+    ...(params.systemPrompt === undefined ? {} : { systemPrompt: params.systemPrompt }),
+    ...(params.initialToolChoice === undefined
+      ? {}
+      : { initialToolChoice: params.initialToolChoice }),
+  };
+  const samplingPolicy: ChatSamplingPolicy = {
+    ...(params.streamOptions === undefined ? {} : { streamOptions: params.streamOptions }),
+    ...(params.historyPolicy === undefined ? {} : { historyPolicy: params.historyPolicy }),
+  };
   const admission: ChatAdmissionRequest = {
     journalStore: params.journalStore,
     conversationId: params.conversationId,
@@ -36,6 +50,7 @@ export function composeProgramDriverChat(
     nativePrograms,
     ephemeral:
       ephemeral.kind === "none" ? { kind: "none" } : { kind: "driver", driver: ephemeral.kind },
+    inputPolicy,
     recoveryOnly: params.recoveryOnly === true,
     superseding: params.pluginAbort !== undefined,
     hasElicitResponses: (params.elicitResponses?.length ?? 0) > 0,
@@ -51,8 +66,7 @@ export function composeProgramDriverChat(
     sampling: {
       model: params.model,
       conversationStore: params.conversationStore,
-      ...(params.streamOptions === undefined ? {} : { streamOptions: params.streamOptions }),
-      ...(params.historyPolicy === undefined ? {} : { historyPolicy: params.historyPolicy }),
+      policy: samplingPolicy,
     },
     ...(params.nativeTools === undefined ? {} : { native: params.nativeTools }),
     ephemeral,

@@ -43,14 +43,25 @@ export function createProgramDriverChatEngine(
 }
 
 function* activateAndPresent(params: ProgramDriverChatEngineParams): Operation<StreamEvent[]> {
-  const composition = composeProgramDriverChat(params);
-  const report = yield* runProgramDriverChatActivation(composition.activation);
-  const presented = yield* presentProgramDriverChatActivation(composition.presentation, report);
-  if (!presented.continueActivation) return presented.events;
-  const {
-    pluginAbort: _pluginAbort,
-    continueAfterCancellation: _continueAfterCancellation,
-    ...continuation
-  } = params;
-  return [...presented.events, ...(yield* activateAndPresent(continuation))];
+  for (;;) {
+    const composition = composeProgramDriverChat(params);
+    const activation = yield* runProgramDriverChatActivation(composition.activation);
+    const presentationContext =
+      activation.disposition.kind === "restart"
+        ? { ...composition.presentation, continueAfterCancellation: true }
+        : composition.presentation;
+    const presented = yield* presentProgramDriverChatActivation(
+      presentationContext,
+      activation.report,
+    );
+    if (activation.disposition.kind === "present" && !presented.continueActivation) {
+      return presented.events;
+    }
+    const {
+      pluginAbort: _pluginAbort,
+      continueAfterCancellation: _continueAfterCancellation,
+      ...continuation
+    } = params;
+    params = continuation;
+  }
 }

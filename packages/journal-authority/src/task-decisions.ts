@@ -7,6 +7,7 @@ import {
 import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
 import type { AuthorityState } from "./authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
+import type { AuthorityKernel } from "./authority-transaction.ts";
 import { pullById, terminalOutcome, type DraftTask } from "./decision-state.ts";
 import {
   currentForkGroupRevision,
@@ -25,10 +26,6 @@ import type {
   ReleaseMandateRequest,
   ReleaseMandateResult,
 } from "./authority-types.ts";
-
-export interface TaskDecisionServices {
-  detachAttempts(draft: DecisionDraft, sessionId: string, task: DraftTask, reason: string): void;
-}
 
 export function openTask(
   draft: DecisionDraft,
@@ -93,14 +90,7 @@ export function openTask(
       manifest: structuredClone(request.manifest),
       input,
     },
-    execution: {
-      epoch: request.executionEpoch,
-      attachmentId: request.attachmentId,
-      audience: request.audience,
-      ...(request.elicitAudience === undefined ? {} : { elicitAudience: request.elicitAudience }),
-      ...(request.route === undefined ? {} : { route: structuredClone(request.route) }),
-      ...(catalog === undefined ? {} : { catalog, catalogDigest: request.catalogDigest! }),
-    },
+    execution: taskExecution(request, catalog),
     actions: [],
     nextActionIndex: 0,
     nextPullIndex: 0,
@@ -141,10 +131,10 @@ export function openTask(
 }
 
 export function bindAttachment(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   request: { sessionId: string; taskId: string; attachmentId: string; executionEpoch: number },
-  services: TaskDecisionServices,
 ): { programCapability: string } {
+  const { draft } = kernel;
   const session = draft.session(request.sessionId);
   const task = draft.task(request.sessionId, request.taskId);
   draft.assertActive(task);
@@ -152,7 +142,7 @@ export function bindAttachment(
   if (task.execution.epoch !== request.executionEpoch)
     throw new CrankError("stale_program_capability");
   if (task.execution.attachmentId !== request.attachmentId) {
-    services.detachAttempts(draft, request.sessionId, task, "attachment_replaced");
+    kernel.detachAttempts(request.sessionId, task, "attachment_replaced");
     task.execution.attachmentId = request.attachmentId;
   }
   return { programCapability: draft.programCapability(task) };
@@ -294,10 +284,10 @@ export function releaseMandate(
 }
 
 export function replaceAttachment(
-  draft: DecisionDraft,
+  kernel: AuthorityKernel,
   request: { sessionId: string; taskId: string; attachmentId: string; audience?: string },
-  services: TaskDecisionServices,
 ): { executionEpoch: number; programCapability: string } {
+  const { draft } = kernel;
   const session = draft.session(request.sessionId);
   const lease = session.control.activationLease;
   if (lease && draft.context.nowMs < lease.expiresAtMs) {
@@ -312,7 +302,7 @@ export function replaceAttachment(
   }
   const task = draft.task(request.sessionId, request.taskId);
   draft.assertActive(task);
-  services.detachAttempts(draft, request.sessionId, task, "attachment_replaced");
+  kernel.detachAttempts(request.sessionId, task, "attachment_replaced");
   task.execution.epoch += 1;
   task.execution.attachmentId = request.attachmentId;
   if (request.audience !== undefined) task.execution.audience = request.audience;
@@ -369,17 +359,40 @@ export function ensureChild(
     executionEpoch: request.executionEpoch,
     attachmentId: "unattached-child",
     audience: request.audience,
+    ...inheritedChildExecutionOptions(parent, request.route),
+    parentTaskId: request.parentTaskId,
+    parentPullId: request.parentPullId,
+  });
+  return { taskId };
+}
+
+function taskExecution(
+  request: OpenDurableTaskRequest,
+  catalog: Json | undefined,
+): DraftTask["execution"] {
+  return {
+    epoch: request.executionEpoch,
+    attachmentId: request.attachmentId,
+    audience: request.audience,
+    ...(request.elicitAudience === undefined ? {} : { elicitAudience: request.elicitAudience }),
+    ...(request.route === undefined ? {} : { route: structuredClone(request.route) }),
+    ...(catalog === undefined ? {} : { catalog, catalogDigest: request.catalogDigest! }),
+  };
+}
+
+function inheritedChildExecutionOptions(
+  parent: DraftTask,
+  route: OpenDurableTaskRequest["route"],
+): Pick<OpenDurableTaskRequest, "elicitAudience" | "catalog" | "catalogDigest" | "route"> {
+  return {
     ...(parent.execution.elicitAudience === undefined
       ? {}
       : { elicitAudience: parent.execution.elicitAudience }),
     ...(parent.execution.catalog === undefined
       ? {}
       : { catalog: parent.execution.catalog, catalogDigest: parent.execution.catalogDigest! }),
-    ...(request.route === undefined ? {} : { route: request.route }),
-    parentTaskId: request.parentTaskId,
-    parentPullId: request.parentPullId,
-  });
-  return { taskId };
+    ...(route === undefined ? {} : { route }),
+  };
 }
 
 function assertEffectContractsCompatible(
