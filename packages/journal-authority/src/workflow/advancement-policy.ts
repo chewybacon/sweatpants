@@ -6,6 +6,7 @@ import {
   type DeliveryMandate,
   type LivePlacement,
   type Mandate,
+  programRouteDriverKind,
   type PeerReadyTarget,
   type PlacementRoute,
   type PreparedTarget,
@@ -36,7 +37,7 @@ export function requestedTargetPolicy(taskId: string, placement: LivePlacement):
 
 /** The one trust-boundary conversion from driver-owned route JSON. */
 export function livePlacement(route: ProgramRoute, affinity?: SandboxAffinity): LivePlacement {
-  const driverKind = routeDriverKind(route);
+  const driverKind = programRouteDriverKind(route);
   let placementRoute: PlacementRoute;
   let evaluatorKind: LivePlacement["evaluatorKind"];
   if (driverKind === "worker") {
@@ -125,13 +126,4 @@ export function assertMandateCurrent(mandate: Mandate): void {
   if (mandate.lease.expiresAtMs <= 0 || mandate.lease.epoch <= 0) {
     throw new CrankError("stale_activation", "Mandate lease is invalid");
   }
-}
-
-function routeDriverKind(route: ProgramRoute): string {
-  if (route !== null && typeof route === "object" && !Array.isArray(route)) {
-    const value = (route as Record<string, unknown>)["driverKind"];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  // This default lives at the sole route-taxonomy issuer, never below it.
-  return "program";
 }

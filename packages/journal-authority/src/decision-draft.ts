@@ -5,7 +5,6 @@ import type { AuthorityCommand, AuthorityDecisionFrame } from "./authority-contr
 import { signCapability, verifyProgramCapability } from "./capabilities.ts";
 import {
   cloneAuthorityState,
-  pullAudience,
   taskOriginSession,
   type DraftPull,
   type DraftSession,
@@ -15,6 +14,7 @@ import {
 import { parseRegisteredSchema } from "./schema-registry.ts";
 import type { DurableSemanticRecord } from "./semantic-record.ts";
 import { normalizeEmissionPolicy } from "./authority-support.ts";
+import { signResolutionCapability } from "./resolution-capability.ts";
 import type { SemanticEmissionPolicy } from "./authority-snapshot.ts";
 
 export interface AuthorityDecisionOptions {
@@ -110,23 +110,14 @@ export class DecisionDraft {
   }
 
   resolutionCapability(task: DraftTask, pull: DraftPull, attemptId: string | undefined): string {
-    return signCapability(
-      {
-        journalId: this.context.journalIdentity.id,
-        journalIncarnation: this.context.journalIdentity.incarnation,
-        sessionId: taskOriginSession(this.state, task.taskId),
-        taskId: task.taskId,
-        pullId: pull.pullId,
-        descriptorDigest: pull.request.proposedDescriptorDigest,
-        resultSchemaDigest: pull.request.resultSchemaDigest,
-        attemptId: attemptId ?? "none",
-        audience: pullAudience(pull),
-        permissions: ["resolve"],
-        maxOutcomeBytes: pull.request.maxOutcomeBytes,
-        nonce: this.nonce(),
-      },
-      this.context.keyring,
-    );
+    return signResolutionCapability({
+      context: this.context,
+      state: this.state,
+      task,
+      pull,
+      ...(attemptId === undefined ? {} : { attemptId }),
+      nonce: this.nonce(),
+    });
   }
 
   assertActive(task: DraftTask): void {

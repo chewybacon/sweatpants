@@ -19,7 +19,6 @@ import type {
   ValidateElicitResponseRequest,
   ValidateElicitResponseResult,
 } from "./authority-types.ts";
-import { DecisionDraft } from "./decision-draft.ts";
 import {
   cloneAuthorityState,
   currentAttempt,
@@ -30,8 +29,8 @@ import {
   taskFor,
   terminalCancellation,
   terminalOutcome,
-  type DraftTask,
 } from "./decision-state.ts";
+import { nextResolutionQueryNonce, signResolutionCapability } from "./resolution-capability.ts";
 import { planForestReplay } from "./forest-replay.ts";
 import { parseRegisteredSchema } from "./schema-registry.ts";
 import {
@@ -365,24 +364,18 @@ function resolutionCapabilityFor(
   taskId: string,
   pullId: string,
 ): string {
-  const task = taskFor(state, sessionId, taskId) as DraftTask;
+  const task = taskFor(state, sessionId, taskId);
   const pull = pullById(task, pullId);
   if (pull.resolutionAuthority.kind !== "attempt" && pull.resolutionAuthority.capability) {
     return pull.resolutionAuthority.capability;
   }
-  const draft = new DecisionDraft(
-    {
-      state,
-      context,
-      command: {
-        type: "execution.force-orphan",
-        request: { sessionId, taskId, reason: "cleanup_stuck" },
-      },
-      facts: {},
-    } as never,
-    {},
-  );
-  return draft.resolutionCapability(task, pull, undefined);
+  return signResolutionCapability({
+    context,
+    state,
+    task,
+    pull,
+    nonce: nextResolutionQueryNonce(context, state),
+  });
 }
 
 function assertNever(value: never): never {

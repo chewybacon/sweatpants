@@ -36,6 +36,7 @@ import {
   type PinnedProgram,
   type ProgramRoute,
   exactProgramKey,
+  programRouteDriverKind,
 } from "@sweatpants/durable-execution";
 import { foreignToolAdapter } from "@sweatpants/tool-session/foreign";
 
@@ -248,7 +249,7 @@ export function* composeChatExecutionRuntime(
     request: { readonly attach: AttachProgramRequest },
     activationOwnerId?: string,
   ): Operation<AdvancementResult> {
-    const kind = routeDriverKind(request.attach.route);
+    const kind = programRouteDriverKind(request.attach.route);
     const driver = drivers.get(kind);
     if (!driver) {
       throw new CrankError("unknown_target", `No program driver for ${kind}`);
@@ -354,7 +355,7 @@ export function* composeChatExecutionRuntime(
               resolver,
               attach: currentAttach,
               pullId: parked.pullId,
-              driverKind: routeDriverKind(currentAttach.route),
+              driverKind: programRouteDriverKind(currentAttach.route),
             });
             return true;
           },
@@ -363,15 +364,4 @@ export function* composeChatExecutionRuntime(
     });
   };
   return { driveTreeAtEpoch, liveMessageIds, endedLiveMessageIds };
-}
-
-function routeDriverKind(route: ProgramRoute): string {
-  if (route === null || typeof route !== "object" || Array.isArray(route)) {
-    throw new CrankError("invalid_descriptor", "Program route is not an object");
-  }
-  const kind = route["driverKind"];
-  if (typeof kind !== "string" || kind.length === 0) {
-    throw new CrankError("invalid_descriptor", "Program route has no driver kind");
-  }
-  return kind;
 }
