@@ -8,6 +8,7 @@ import { createInMemoryShellDrivers } from "../in-memory-shell.ts";
 import { createDurableSchemaRegistry } from "../schema-registry.ts";
 import { createSchemaFixture, stringGuard } from "../schema-fixtures.ts";
 import type { DurableProgramManifest } from "@sweatpants/durable-execution";
+import type { ResolveOperationResult } from "../authority-types.ts";
 import {
   elicit,
   effect,
@@ -202,7 +203,7 @@ describe("sequential pull kinds", () => {
         const resolved = yield* authority.command({
           type: "execution.resolve-pull",
           request: {
-            capability: reserved.resolutionCapability,
+            capability: reserved.resolutionCapability!,
             audience: "program-execution",
             outcome: attempted.outcome,
           },
@@ -310,26 +311,28 @@ describe("sequential pull kinds", () => {
         const early = yield* authority.command({
           type: "execution.resolve-pull",
           request: {
-            capability: reserved.resolutionCapability,
+            capability: reserved.resolutionCapability!,
             audience: "scheduler",
             outcome: { status: "ok", value: null },
           },
         });
-        expect(early.status).toBe("rejected");
-        if (early.status === "rejected") {
-          expect(early.code).toBe("wait_not_due");
+        const earlyResult = early as ResolveOperationResult;
+        expect(earlyResult.status).toBe("rejected");
+        if (earlyResult.status === "rejected") {
+          expect(earlyResult.code).toBe("wait_not_due");
         }
         clockMs += 6_000;
         const resolved = yield* authority.command({
           type: "execution.resolve-pull",
           request: {
-            capability: reserved.resolutionCapability,
+            capability: reserved.resolutionCapability!,
             audience: "scheduler",
             outcome: { status: "ok", value: null },
           },
         });
-        if (resolved.status !== "accepted") {
-          throw new Error(`resolution rejected: ${resolved.status}`);
+        const resolution = resolved as ResolveOperationResult;
+        if (resolution.status !== "accepted") {
+          throw new Error(`resolution rejected: ${resolution.status}`);
         }
         const terminal = yield* handle.exchange({
           type: "resume-record",
@@ -339,8 +342,8 @@ describe("sequential pull kinds", () => {
             sessionId: request.sessionId,
             taskId: request.taskId,
             pullId: reserved.pullId,
-            resolutionOffset: resolved.receipt.resolutionOffset,
-            outcomeDigest: resolved.receipt.outcomeDigest,
+            resolutionOffset: resolution.receipt.resolutionOffset,
+            outcomeDigest: resolution.receipt.outcomeDigest,
             status: "accepted",
           },
           replayed: true,
@@ -410,14 +413,14 @@ describe("sequential pull kinds", () => {
           throw new Error(`validation failed: ${validated.status}`);
         }
         expect(validated.audience).toBe("user:confirm");
-        const resolved = yield* authority.command({
+        const resolved = (yield* authority.command({
           type: "execution.resolve-pull",
           request: {
-            capability: reserved.resolutionCapability,
+            capability: reserved.resolutionCapability!,
             audience: validated.audience,
             outcome: validated.outcome,
           },
-        });
+        })) as ResolveOperationResult;
         if (resolved.status !== "accepted") {
           throw new Error(`resolution rejected: ${resolved.status}`);
         }
@@ -618,7 +621,7 @@ describe("sequential pull kinds", () => {
         });
         const started = yield* handle.exchange({ type: "start", input: "input" });
         expectEvent(started, "record-proposed");
-        if (started.type !== "record-proposed") return;
+        if (started.type !== "record-proposed") throw new Error("record was not proposed");
         const reserved = (yield* authority.command({
           type: "execution.reserve-pull",
           request: {
@@ -686,6 +689,7 @@ describe("sequential pull kinds", () => {
         });
         const started = yield* handle.exchange({ type: "start", input: "input" });
         expectEvent(started, "record-proposed");
+        if (started.type !== "record-proposed") throw new Error("record was not proposed");
         const reserved = yield* authority.command({
           type: "execution.reserve-pull",
           request: {
@@ -727,7 +731,11 @@ describe("sequential pull kinds", () => {
             if (descriptor.name !== "echo") {
               throw new CrankError("invalid_descriptor", "unknown effect");
             }
-            return `${descriptor.input["message"]}-handled`;
+            const input = descriptor.input;
+            if (input === null || typeof input !== "object" || Array.isArray(input)) {
+              throw new CrankError("invalid_descriptor", "effect input is not an object");
+            }
+            return `${String(input["message"])}-handled`;
           },
         });
         const handle = yield* openProgramAttachment(request, function* (): Workflow<Json> {
@@ -741,7 +749,7 @@ describe("sequential pull kinds", () => {
         });
         const started = yield* handle.exchange({ type: "start", input: "input" });
         expectEvent(started, "record-proposed");
-        if (started.type !== "record-proposed") return;
+        if (started.type !== "record-proposed") throw new Error("record was not proposed");
         const reserved = yield* authority.command({
           type: "execution.reserve-pull",
           request: {
@@ -786,7 +794,7 @@ describe("sequential pull kinds", () => {
           });
         });
         const started = yield* handle.exchange({ type: "start", input: "input" });
-        if (started.type !== "record-proposed") return;
+        if (started.type !== "record-proposed") throw new Error("record was not proposed");
         const attempted = yield* handle.exchange({
           type: "authorize-record",
           actionIndex: 0,

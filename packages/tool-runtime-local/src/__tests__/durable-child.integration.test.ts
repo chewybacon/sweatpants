@@ -326,10 +326,13 @@ describe("automatic local durable parent/child recovery", () => {
       );
       expect(childClose).toBeLessThan(parentResolution);
       expect(
-        journal.findLast(
-          (record) =>
-            record.payload.type === "TaskClosed" && record.payload.taskId === parentTaskId,
-        )?.payload,
+        journal
+          .slice()
+          .reverse()
+          .find(
+            (record) =>
+              record.payload.type === "TaskClosed" && record.payload.taskId === parentTaskId,
+          )?.payload,
       ).toMatchObject({
         type: "TaskClosed",
         taskId: parentTaskId,

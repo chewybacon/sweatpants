@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
@@ -291,7 +291,10 @@ describe("ProgramDriver model-context composition", () => {
     const store = createMemoryExecutionStore();
     const evidence = await run(function* () {
       yield* installExecutionStore(store);
-      const staged = yield* stageProgramDriverModelSampleInput(request, "conversation-1");
+      const staged = yield* stageProgramDriverModelSampleInput(
+        request as unknown as Json,
+        "conversation-1",
+      );
       const decoded = decodeModelSampleSourceRequest(staged);
       const resolved = yield* resolveModelContextSource(decoded.invocation.context);
       const repeated = yield* stageProgramDriverModelSampleInput(staged, "conversation-1");

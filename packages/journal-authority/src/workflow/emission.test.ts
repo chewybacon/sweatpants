@@ -177,6 +177,7 @@ describe("emission boundaries", () => {
           descriptor: proposed.descriptor,
         });
         expectEvent(attempted, "record-attempt-completed");
+        if (attempted.type !== "record-attempt-completed") throw new Error("attempt missing");
         const resolved = yield* authority.command({
           type: "execution.resolve-pull",
           request: {

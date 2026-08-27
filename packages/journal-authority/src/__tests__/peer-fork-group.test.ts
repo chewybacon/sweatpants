@@ -1,7 +1,6 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
-import type { OperationOutcome } from "@sweatpants/durable-effects";
 import { createCapabilityKeyring } from "../index.ts";
 import {
   createAuthorityScenarioDriver,

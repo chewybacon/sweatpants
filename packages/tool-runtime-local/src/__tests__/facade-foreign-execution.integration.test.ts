@@ -3,6 +3,7 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
+import type { Json } from "@sweatpants/foundation";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createPinnedDurableProgram,
@@ -139,7 +140,10 @@ describe("facade workflow runtime foreign execution", () => {
     // context: nothing should reach it — foreign asks ride the relays.
     const outcome = await run(function* () {
       yield* createLocalToolInvocationRuntime({});
-      const invoke = yield* facade({
+      const callableFacade = facade as unknown as (
+        context: never,
+      ) => Operation<(input: { invocationId: string; input: null }) => Operation<unknown>>;
+      const invoke = yield* callableFacade({
         sample() {
           throw new Error("outer sample must not be reached");
         },

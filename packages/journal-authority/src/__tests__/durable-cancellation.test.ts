@@ -354,7 +354,12 @@ describe("durable cancellation and partial results", () => {
     expect(catches).toBe(1);
     expect(cleanupRuns).toBe(1);
     const records = selected.readJournal(request.sessionId);
-    expect(records.findLast((record) => record.payload.type === "TaskClosed")?.payload).toEqual({
+    expect(
+      records
+        .slice()
+        .reverse()
+        .find((record) => record.payload.type === "TaskClosed")?.payload,
+    ).toEqual({
       type: "TaskClosed",
       taskId: request.taskId,
       outcome: { status: "cancelled" },

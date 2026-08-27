@@ -66,7 +66,7 @@ function makeAuthority(journalId: string) {
   });
 }
 
-function weatherWorkflow(): Workflow<Json> {
+function weatherWorkflow(): () => Workflow<Json> {
   return function* (): Workflow<Json> {
     const forecast = yield* pullOperation({
       kind: "ephemeral",
@@ -97,12 +97,12 @@ describe("workflow runtime foreign boundaries", () => {
           attachmentId: stableProgramAttachmentId(request),
           audience: "program-host",
         })) as unknown as { programCapability: string };
+        void opened;
 
         // Activation 1: parks on the live foreign reference.
         const parked = yield* driveActivation({
           attach: request,
           authority,
-          programCapability: opened.programCapability,
           workflow: weatherWorkflow(),
         });
         if (parked.state !== "parked" || parked.reason !== "ephemeral") {
@@ -115,8 +115,7 @@ describe("workflow runtime foreign boundaries", () => {
         const pending = authority
           .readJournal(sessionId)
           .find(
-            (e): e is Extract<typeof e, { payload: { type: "PullRequested" } }> =>
-              e.payload.type === "PullRequested" && e.payload.descriptor.kind === "ephemeral",
+            (e) => e.payload.type === "PullRequested" && e.payload.descriptor.kind === "ephemeral",
           );
         if (!pending || pending.payload.type !== "PullRequested") {
           throw new Error("ephemeral pull missing");
@@ -140,10 +139,10 @@ describe("workflow runtime foreign boundaries", () => {
           stableProgramAttachmentId(request) + "-2",
           1,
         );
+        void bound;
         const settled = yield* driveActivation({
           attach: request,
           authority,
-          programCapability: bound.programCapability,
           workflow: weatherWorkflow(),
         });
         return settled;
@@ -170,11 +169,11 @@ describe("workflow runtime foreign boundaries", () => {
           attachmentId: stableProgramAttachmentId(request),
           audience: "program-host",
         })) as unknown as { programCapability: string };
+        void opened;
 
         const parked = yield* driveActivation({
           attach: request,
           authority,
-          programCapability: opened.programCapability,
           workflow: weatherWorkflow(),
         });
         if (parked.state !== "parked") throw new Error(`expected parked, got ${parked.state}`);
@@ -184,8 +183,7 @@ describe("workflow runtime foreign boundaries", () => {
         const pending = authority
           .readJournal(sessionId)
           .find(
-            (e): e is Extract<typeof e, { payload: { type: "PullRequested" } }> =>
-              e.payload.type === "PullRequested" && e.payload.descriptor.kind === "ephemeral",
+            (e) => e.payload.type === "PullRequested" && e.payload.descriptor.kind === "ephemeral",
           );
         if (!pending || pending.payload.type !== "PullRequested") throw new Error("no pull");
         const resolved = yield* authority.resolve({
@@ -208,10 +206,10 @@ describe("workflow runtime foreign boundaries", () => {
           stableProgramAttachmentId(request) + "-2",
           1,
         );
+        void bound;
         return yield* driveActivation({
           attach: request,
           authority,
-          programCapability: bound.programCapability,
           workflow: weatherWorkflow(),
         });
       });
@@ -240,13 +238,13 @@ describe("workflow runtime foreign boundaries", () => {
           attachmentId: stableProgramAttachmentId(request),
           audience: "program-host",
         })) as unknown as { programCapability: string };
+        void opened;
 
         let threw: unknown;
         try {
           yield* driveActivation({
             attach: request,
             authority,
-            programCapability: opened.programCapability,
             workflow: function* (): Workflow<Json> {
               yield* pullOperation({
                 kind: "ephemeral",
@@ -283,20 +281,17 @@ describe("workflow runtime foreign boundaries", () => {
           attachmentId: stableProgramAttachmentId(request),
           audience: "program-host",
         })) as unknown as { programCapability: string };
+        void opened;
 
         yield* driveActivation({
           attach: request,
           authority,
-          programCapability: opened.programCapability,
           workflow: weatherWorkflow(),
         });
 
         const pull = authority
           .readJournal(sessionId)
-          .find(
-            (e): e is Extract<typeof e, { payload: { type: "PullRequested" } }> =>
-              e.payload.type === "PullRequested",
-          );
+          .find((e) => e.payload.type === "PullRequested");
         expect(pull?.payload.type).toBe("PullRequested");
         if (pull?.payload.type === "PullRequested") {
           expect(canonicalSnapshot(pull.payload.descriptor).value).toMatchObject({
