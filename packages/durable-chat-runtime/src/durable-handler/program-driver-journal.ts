@@ -59,11 +59,6 @@ export interface ProgramDriverJournal {
     taskId: string,
     pullId: string,
   ): Operation<DurableOperationState>;
-  replaceAttachment(
-    sessionId: string,
-    taskId: string,
-    attachmentId: string,
-  ): Operation<{ executionEpoch: number }>;
   readJournal(sessionId: string, rootTaskId?: string): Operation<DurableSemanticRecord[]>;
   requestCancellation(
     sessionId: string,
@@ -184,15 +179,6 @@ export function createProgramDriverJournalStore(
           return yield* withAuthority((authority) =>
             authority.query({ type: "pull.state", sessionId, taskId, pullId }),
           );
-        },
-        *replaceAttachment(sessionId, taskId, attachmentId) {
-          const replaced = yield* withAuthority((authority) =>
-            authority.command({
-              type: "execution.replace-attachment",
-              request: { sessionId, taskId, attachmentId, audience: "workflow-host" },
-            }),
-          );
-          return { executionEpoch: replaced.executionEpoch };
         },
         *readJournal(sessionId, rootTaskId) {
           return yield* scoped(function* () {

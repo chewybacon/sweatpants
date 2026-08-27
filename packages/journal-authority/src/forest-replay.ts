@@ -58,7 +58,13 @@ export function planForestReplay(
       classification,
       ...(parked === undefined
         ? {}
-        : { parked: { pullId: parked.pullId, reason: parkedReason(parked) } }),
+        : {
+            parked: {
+              pullId: parked.pullId,
+              reason: parkedReason(parked),
+              audience: parked.resolutionAuthority.audience,
+            },
+          }),
       groupContext,
     };
     rows.push(row);
@@ -311,10 +317,7 @@ function buildReplayItem(
 }
 
 /** Used by bind CAS to compare the current materialized row with a plan. */
-export function currentForkGroupRevision(
-  session: AuthoritySessionState,
-  taskId: string,
-): number {
+export function currentForkGroupRevision(session: AuthoritySessionState, taskId: string): number {
   const task = session.execution.tasks.get(taskId);
   if (task === undefined) throw new CrankError("unknown_target", `Unknown task ${taskId}`);
   return forkContext(session, task).groupRevision;
@@ -334,9 +337,11 @@ function parkedReason(pull: PullState): string {
   switch (pull.request.acceptedDescriptor.kind) {
     case "elicit":
     case "wait":
-    case "foreign":
     case "sample":
       return pull.request.acceptedDescriptor.kind;
+    case "ephemeral":
+    case "foreign":
+      return "ephemeral";
     case "invoke":
     case "all":
     case "race":

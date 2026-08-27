@@ -1,5 +1,7 @@
 # Spine Types — Inputs, Outputs, Call Stacks
 
+> **Design-authority notice:** The approved [durable execution spine design](../../../.pi/specs/durable-execution-spine-design.md) supersedes this draft for Venue, Step, attribution, replay, peer strands, Mandate, R7′, and the `ephemeral` rename. The sketches below are historical evidence, not current API declarations.
+
 **Status:** Jam draft — type-level consequences of R1′–R6′ and the
 vocabulary. Nothing here migrates data; compatibility notes at the end.
 

@@ -12,7 +12,7 @@ import type {
   StoredPublicArchiveSegment,
   StoredTerminalSegment,
 } from "@sweatpants/history-store/contract";
-import { spawn, type Operation, run } from "effection";
+import { race, spawn, type Operation, run } from "effection";
 import {
   withTestScenario,
   type ScenarioContext,
@@ -139,7 +139,13 @@ function* completeImmediateTurn(
       arguments: { value: `defect-value-${index}`, behavior: "complete" },
     },
   ]);
-  const final = yield* scenario.model.request({ model: ACCEPTANCE_MODEL_ID });
+  const final = yield* race([
+    scenario.model.request({ model: ACCEPTANCE_MODEL_ID }),
+    (function* () {
+      const failure = yield* turn.failure();
+      throw new Error(`stored turn failed before final sampling: ${failure.message}`);
+    })(),
+  ]);
   yield* final.respond.text(`SPINE_DEFECT_RESULT_${index}`);
   expect((yield* turn.settled()).text).toContain(`SPINE_DEFECT_RESULT_${index}`);
 }

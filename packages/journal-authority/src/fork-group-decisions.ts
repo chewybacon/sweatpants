@@ -139,16 +139,14 @@ export function openForkGroup(
     }
     throw new CrankError("invalid_descriptor", "Unknown member durability class");
   }
-  const deadlineMs = resolveForkDeadline(
-    descriptor.expiry,
-    parent.deadlineMs,
-    draft.context.nowMs,
-  );
+  const deadlineMs = resolveForkDeadline(descriptor.expiry, parent.deadlineMs, draft.context.nowMs);
   const groupId = forkGroupIdFor(parent.taskId, pull.pullId);
   const baseOrdinal = [...draft.session(request.sessionId).execution.tasks.values()].filter(
     (task) => task.origin.kind === "child" && task.origin.invokedBy.taskId === parent.taskId,
   ).length;
-  const memberTaskIds = request.members.map((_, index) => `${parent.taskId}.${baseOrdinal + index}`);
+  const memberTaskIds = request.members.map(
+    (_, index) => `${parent.taskId}.${baseOrdinal + index}`,
+  );
   const group: DeepMutable<ForkGroupState> = {
     revision: 1,
     groupId,
@@ -183,8 +181,7 @@ export function openForkGroup(
       attachmentId: "unattached-child",
       // Peer member audiences are derived locally, never taken from
       // peer-supplied claims (REQ-041).
-      audience:
-        durability?.kind === "peer_hosted" ? `peer:${durability.peer}` : request.audience,
+      audience: durability?.kind === "peer_hosted" ? `peer:${durability.peer}` : request.audience,
       ...(parent.execution.elicitAudience === undefined
         ? {}
         : { elicitAudience: parent.execution.elicitAudience }),
@@ -248,12 +245,7 @@ export function breachForkGroup(
     });
     cancelMembers = beginForkGroupCancellation(group, "expiry");
     for (const memberTaskId of cancelMembers) {
-      services.requestCancellation(
-        draft,
-        request.sessionId,
-        memberTaskId,
-        "fork_group_expired",
-      );
+      services.requestCancellation(draft, request.sessionId, memberTaskId, "fork_group_expired");
     }
   }
   const resolution = drainForkGroup(group);
@@ -407,7 +399,12 @@ export function commitPeerDelegation(
   draft: DecisionDraft,
   request: CommitPeerDelegationRequest,
 ): CommitPeerDelegationResult {
-  const { parent, group } = groupForRequest(draft, request.sessionId, request.taskId, request.groupId);
+  const { parent, group } = groupForRequest(
+    draft,
+    request.sessionId,
+    request.taskId,
+    request.groupId,
+  );
   if (group.status === "resolved") {
     throw new CrankError("fork_group_terminal", "Fork group already resolved");
   }
@@ -532,4 +529,3 @@ export function reportPeerLoss(
   );
   return { status: "accepted" };
 }
-

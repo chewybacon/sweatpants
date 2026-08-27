@@ -1,3 +1,4 @@
+import { race } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -52,7 +53,13 @@ async function runHistoryScenario(binding: Binding): Promise<void> {
       });
       yield* nested.respond.text(`${NESTED_SAMPLE_RESPONSE_MARKER} Use the train.`);
 
-      const final = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+      const final = yield* race([
+        s.model.request({ model: ACCEPTANCE_MODEL_ID }),
+        (function* () {
+          const failure = yield* turn1.failure();
+          throw new Error(`turn failed before final sampling: ${failure.message}`);
+        })(),
+      ]);
       yield* final.respond.text(OUTER_TERMINAL_TEXT);
       yield* turn1.settled();
 

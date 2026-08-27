@@ -1,8 +1,4 @@
-import {
-  CrankError,
-  assertInlineSize,
-  type ProgramStep,
-} from "@sweatpants/durable-execution";
+import { CrankError, assertInlineSize, type ProgramStep } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import { canonicalSnapshot, stableTupleHash } from "@sweatpants/foundation";
 import type { PullState } from "./authority-contract.ts";
@@ -501,4 +497,3 @@ function failIndeterminate(
     };
   draft.session(sessionId).control.runnable = true;
 }
-

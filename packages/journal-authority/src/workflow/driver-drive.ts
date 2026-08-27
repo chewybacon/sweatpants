@@ -11,11 +11,7 @@ import {
 
 import type { JournalAuthorityContract } from "../authority-contract.ts";
 import { advanceCaughtUpLeaf, type AdvancementDisposition } from "./advancement-drive.ts";
-import {
-  bindCaughtUpLeaf,
-  livePlacement,
-  requestedTargetPolicy,
-} from "./advancement-policy.ts";
+import { bindCaughtUpLeaf, livePlacement, requestedTargetPolicy } from "./advancement-policy.ts";
 import type { EffectRouter, JournalSamplingService } from "./advancement-ports.ts";
 import { executionComposition } from "./execution-composition.ts";
 import { replayStrand, replayWarmSuffix } from "./replay-walker.ts";
@@ -26,8 +22,6 @@ export interface DriveProgramDriverActivationRequest {
   readonly authority: JournalAuthorityContract;
   readonly driver: ProgramDriver;
   readonly attach: AttachProgramRequest;
-  /** @deprecated Opening no longer grants live authority; Mandate bind does. */
-  readonly initialProgramCapability?: string;
   /** Owner of the task-scoped Mandate lease. */
   readonly activationOwnerId?: string;
   readonly effects?: EffectRouter;
@@ -52,9 +46,7 @@ export function driveProgramDriverActivation(
         type: "forest.replay-plan",
         sessionId: request.attach.sessionId,
       });
-      const row = plan.rows.find(
-        (candidate) => candidate.address.taskId === request.attach.taskId,
-      );
+      const row = plan.rows.find((candidate) => candidate.address.taskId === request.attach.taskId);
       if (row === undefined) throw new CrankError("unknown_target", "Task is absent from forest");
       if (row.classification === "terminal") {
         const recovery = yield* request.authority.query({
@@ -82,7 +74,11 @@ export function driveProgramDriverActivation(
       if (item === undefined) {
         throw new CrankError("invalid_journal", "Replayable row has no replay item");
       }
-      const disposition = yield* runPreparedAdvancement(request, item, ownerId);
+      const disposition = yield* runPreparedAdvancement(
+        request,
+        { ...item, route: request.attach.route },
+        ownerId,
+      );
       if (disposition.state === "settled") continue;
       return disposition;
     }
@@ -149,7 +145,7 @@ function runPreparedAdvancement(
           }
           caughtUp = yield* replayWarmSuffix(
             caughtUp,
-            nextItem,
+            { ...nextItem, route: request.attach.route },
             disposition.actionIndex,
             disposition.attemptedInDriver,
             disposition.frontier,

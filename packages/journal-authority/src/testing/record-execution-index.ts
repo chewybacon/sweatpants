@@ -76,6 +76,8 @@ interface ValidationTask {
 
 const allowedPayloads = new Set<DurableSemanticRecord["payload"]["type"]>([
   "TaskOpened",
+  "AdvancementBound",
+  "AdvancementReleased",
   "PullRequested",
   "AttemptStarted",
   "AttemptDetached",
@@ -170,6 +172,9 @@ function validateRecordHistory(records: readonly DurableSemanticRecord[]): void 
         invalid(`Task ${payload.taskId} has a conflicting input digest`);
       }
       tasks.set(payload.taskId, { pulls: new Map(), closed: false });
+      continue;
+    }
+    if (payload.type === "AdvancementBound" || payload.type === "AdvancementReleased") {
       continue;
     }
     const task = exactTask(tasks, payload.taskId);

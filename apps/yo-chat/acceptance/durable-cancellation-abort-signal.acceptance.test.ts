@@ -24,7 +24,7 @@ import {
   createDurableToolRegistry,
   defineDurableProgramManifest,
   type AttachProgramRequest,
-  type ForeignToolRequest,
+  type EphemeralToolRequest,
   type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
@@ -85,7 +85,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
         bodyContinuedAfterAbort = true;
         return { label, observedAbort: context.signal.aborted };
       });
-    const foreignRequest: ForeignToolRequest = {
+    const foreignRequest: EphemeralToolRequest = {
       driver: "tool-session",
       tool: abortAwareTool.name,
       input: { label: "cancel-me" },

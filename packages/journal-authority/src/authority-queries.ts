@@ -1,7 +1,4 @@
-import {
-  CrankError,
-  assertInlineSize,
-} from "@sweatpants/durable-execution";
+import { CrankError, assertInlineSize } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 
 import type {
@@ -81,6 +78,11 @@ export function queryAuthorityState<Q extends AuthorityQuery>(
     case "task.input":
       result = structuredClone(taskFor(state, query.sessionId, query.taskId).program.input);
       break;
+    case "task.address": {
+      const task = taskFor(state, query.sessionId, query.taskId);
+      result = { sessionId: query.sessionId, turnId: task.turnId, taskId: task.taskId };
+      break;
+    }
     case "task.recovery-state":
       result = taskRecoveryState(state, query.sessionId, query.taskId);
       break;
@@ -147,7 +149,8 @@ function authorizeModelDispatch(
     task.lifecycle.status !== "active" ||
     pull.resolution.status !== "open" ||
     pull.resolution.revoked
-  ) return { status: "pull_not_pending" };
+  )
+    return { status: "pull_not_pending" };
   if (!isModelSampleDescriptor(pull.request.proposedDescriptor)) {
     return { status: "identity_conflict" };
   }
@@ -185,16 +188,22 @@ function validateElicitResponse(
     pull.request.proposedDescriptor.kind !== "elicit" ||
     pull.resolution.status !== "open" ||
     pull.resolution.revoked
-  ) return { status: "not_pending" };
+  )
+    return { status: "not_pending" };
   if (request.participantId !== pullAudience(pull)) return { status: "audience_invalid" };
   const descriptorContext = pull.request.proposedDescriptor.context;
-  if (descriptorContext !== null && typeof descriptorContext === "object" && !Array.isArray(descriptorContext)) {
+  if (
+    descriptorContext !== null &&
+    typeof descriptorContext === "object" &&
+    !Array.isArray(descriptorContext)
+  ) {
     const expiresAt = descriptorContext["expiresAt"];
     if (
       typeof expiresAt === "string" &&
       Number.isFinite(Date.parse(expiresAt)) &&
       context.nowMs >= Date.parse(expiresAt)
-    ) return { status: "expired" };
+    )
+      return { status: "expired" };
   }
   const envelope = parseProgramElicitResult(request.completion);
   if (envelope === undefined) return { status: "schema_validation_failed" };
@@ -248,9 +257,14 @@ function recoverableSessions(state: AuthorityState, now: number): RecoverableSes
   for (const [id, session] of state.sessions) {
     if (
       session.control.runnable &&
-      (session.control.activationNotBeforeMs === undefined || now >= session.control.activationNotBeforeMs)
-    ) result.set(id, { sessionId: id, reason: "runnable" });
-    if (session.control.activationLease !== undefined && now >= session.control.activationLease.expiresAtMs) {
+      (session.control.activationNotBeforeMs === undefined ||
+        now >= session.control.activationNotBeforeMs)
+    )
+      result.set(id, { sessionId: id, reason: "runnable" });
+    if (
+      session.control.activationLease !== undefined &&
+      now >= session.control.activationLease.expiresAtMs
+    ) {
       result.set(id, { sessionId: id, reason: "expired_activation" });
     }
   }
@@ -259,9 +273,12 @@ function recoverableSessions(state: AuthorityState, now: number): RecoverableSes
 
 /** Turn identity is admitted data; task-id text is never parsed. */
 function rootTaskCount(state: AuthorityState, sessionId: string): number {
-  return [...(state.sessions.get(sessionId)?.execution.tasks.values() ?? [])].filter(
-    (task) => task.origin.kind === "root",
-  ).length;
+  const session = state.sessions.get(sessionId);
+  if (session === undefined) return 0;
+  return (
+    session.control.nextRootOrdinal ??
+    [...session.execution.tasks.values()].filter((task) => task.origin.kind === "root").length
+  );
 }
 
 function taskExecutionState(
@@ -275,7 +292,10 @@ function taskExecutionState(
     ...(task.execution.route === undefined ? {} : { route: structuredClone(task.execution.route) }),
     ...(task.execution.catalog === undefined
       ? {}
-      : { catalog: structuredClone(task.execution.catalog), catalogDigest: task.execution.catalogDigest! }),
+      : {
+          catalog: structuredClone(task.execution.catalog),
+          catalogDigest: task.execution.catalogDigest!,
+        }),
   };
 }
 

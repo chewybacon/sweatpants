@@ -8,6 +8,7 @@ import { z } from "zod";
 const PULL_KIND_SNAPSHOT_KINDS = new Set([
   "elicit",
   "sample",
+  "ephemeral",
   "foreign",
   "invoke",
   "spawn",
@@ -333,7 +334,6 @@ const semanticPayloadSchema = z.union([
     ownerId: z.string(),
     leaseEpoch: nonNegativeIntegerSchema,
     expiresAtMs: z.number(),
-    attachmentId: z.string(),
     strandHeadDigest: digestSchema,
     forkGroupRevision: nonNegativeIntegerSchema,
     frontierDigest: digestSchema,
@@ -699,6 +699,7 @@ const sessionSchema = z.strictObject({
   control: z.strictObject({
     runnable: z.boolean(),
     revision: nonNegativeIntegerSchema,
+    nextRootOrdinal: nonNegativeIntegerSchema.optional(),
     activationLease: activationLeaseValueSchema.optional(),
     lastActivationEpoch: nonNegativeIntegerSchema,
     restoreNonce: z.string().optional(),

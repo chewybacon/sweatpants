@@ -1,5 +1,7 @@
 # Where the Complexity Comes From
 
+> **Design-authority notice:** The approved [durable execution spine design](../../../.pi/specs/durable-execution-spine-design.md) is normative for Venue, Step, attribution, replay, peer strands, Mandate, R7′, and the `ephemeral` rename. This document is retained as historical analysis and does not define a competing current shape.
+
 **Status:** Jam notes — working analysis, not yet decided policy.
 **Companion:** [vocabulary.md](./vocabulary.md) · [responsibility-map.md](./responsibility-map.md)
 

@@ -100,7 +100,13 @@ async function runDurableToolScenario(
       });
       yield* choose.accept({ selected: "trains-beta" });
 
-      const finalRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+      const finalRequest = yield* race([
+        s.model.request({ model: ACCEPTANCE_MODEL_ID }),
+        (function* () {
+          const failure = yield* turn.failure();
+          throw new Error(`durable tool failed before final sampling: ${failure.message}`);
+        })(),
+      ]);
       const finalInput = records(finalRequest.body.input);
       const outputRecord = finalInput.find(
         (item) => item["type"] === "function_call_output" && item["call_id"] === DURABLE_CALL_ID,

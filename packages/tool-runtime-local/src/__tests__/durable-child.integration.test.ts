@@ -325,19 +325,24 @@ describe("automatic local durable parent/child recovery", () => {
           record.payload.type === "PullResolved" && record.payload.taskId === parentTaskId,
       );
       expect(childClose).toBeLessThan(parentResolution);
-      expect(journal.at(-1)?.payload).toMatchObject({
+      expect(
+        journal.findLast(
+          (record) =>
+            record.payload.type === "TaskClosed" && record.payload.taskId === parentTaskId,
+        )?.payload,
+      ).toMatchObject({
         type: "TaskClosed",
         taskId: parentTaskId,
       });
     });
 
     expect(sampleExecutions).toBe(2);
-    // Tree composition reactivates the parent once after the terminal child
-    // settles its invoke pull; each public park still creates one child.
-    expect(parentFactories).toBe(4);
+    // Warm settlement replay keeps the caught-up parent attachment; public
+    // parks still reconstruct the child from its strand.
+    expect(parentFactories).toBe(2);
     expect(childFactories).toBe(3);
-    expect(attachmentCount).toBe(7);
-    expect(shutdownCount).toBe(7);
+    expect(attachmentCount).toBe(5);
+    expect(shutdownCount).toBe(5);
   });
 
   it("cancels an active child leaves-first and runs child cleanup before closing the parent", async () => {

@@ -183,11 +183,11 @@ describe("ProgramWorkflowHost", () => {
       expect(yield* opened.result).toMatchObject({ state: "parked" });
       const journal = yield* store.open(opened.sessionId);
       expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(
-        1,
+        2,
       );
       expect(yield* firstHost.resume(opened.sessionId)).toMatchObject({ state: "parked" });
       expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(
-        1,
+        2,
       );
 
       const trace = yield* replacementHost.trace(opened.sessionId);
@@ -203,7 +203,7 @@ describe("ProgramWorkflowHost", () => {
         }),
       ).toEqual({ state: "completed", value: "approved" });
       expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(
-        2,
+        3,
       );
     });
   });

@@ -18,7 +18,7 @@ import {
   createDurableToolRegistry,
   createProgramDriverRegistry,
   type AttachProgramRequest,
-  type ForeignToolRequest,
+  type EphemeralToolRequest,
   type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import { run } from "effection";
@@ -85,7 +85,7 @@ interface ExecutionCapture {
 }
 
 function executeProbe(sessionId: string): Promise<ExecutionCapture> {
-  const request: ForeignToolRequest = {
+  const request: EphemeralToolRequest = {
     driver: "tool-session",
     tool: probeTool.name,
     input: { topic: "stability" },

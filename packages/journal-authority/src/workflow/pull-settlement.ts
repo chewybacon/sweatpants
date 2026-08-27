@@ -27,15 +27,20 @@ export function* settleParkedPull(request: {
     throw new CrankError("invalid_journal", "Parked pull is absent from authority state");
   }
   const descriptor = assertJson(operation.descriptor);
+  const execution = yield* request.authority.query({
+    type: "task.execution-state",
+    sessionId: request.attach.sessionId,
+    taskId: request.attach.taskId,
+  });
   const context = {
     sessionId: request.attach.sessionId,
     taskId: request.attach.taskId,
     pullId: request.pullId,
     placement: {
       program: request.attach.program,
-      route: request.attach.route,
+      route: execution.route ?? request.attach.route,
       driverKind: request.driverKind,
-      executionEpoch: request.attach.executionEpoch,
+      executionEpoch: execution.executionEpoch,
     },
   };
   const outcome = yield* request.resolver.perform(context, descriptor);

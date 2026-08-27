@@ -57,10 +57,18 @@ describe("resolveForkDeadline (TC-017)", () => {
   });
 
   it("fails closed on malformed, expired, or unresolvable policies", () => {
-    expect(syncCode(() => resolveForkDeadline({ kind: "at", atMs: Number.NaN }, undefined, 1_000))).toBe("invalid_descriptor");
-    expect(syncCode(() => resolveForkDeadline({ kind: "at", atMs: 500 }, undefined, 1_000))).toBe("fork_expiry_unresolvable");
-    expect(syncCode(() => resolveForkDeadline({ kind: "after", durationMs: -1 }, undefined, 1_000))).toBe("invalid_descriptor");
-    expect(syncCode(() => resolveForkDeadline({ kind: "inherit" }, undefined, 1_000))).toBe("fork_expiry_unresolvable");
+    expect(
+      syncCode(() => resolveForkDeadline({ kind: "at", atMs: Number.NaN }, undefined, 1_000)),
+    ).toBe("invalid_descriptor");
+    expect(syncCode(() => resolveForkDeadline({ kind: "at", atMs: 500 }, undefined, 1_000))).toBe(
+      "fork_expiry_unresolvable",
+    );
+    expect(
+      syncCode(() => resolveForkDeadline({ kind: "after", durationMs: -1 }, undefined, 1_000)),
+    ).toBe("invalid_descriptor");
+    expect(syncCode(() => resolveForkDeadline({ kind: "inherit" }, undefined, 1_000))).toBe(
+      "fork_expiry_unresolvable",
+    );
   });
 
   it("inherits through ancestors and never exceeds the ancestor cap", () => {
@@ -74,9 +82,15 @@ describe("assertForkPolicyPairing (REQ-025)", () => {
   it("accepts the closed pairings and rejects mismatches", () => {
     expect(syncCode(() => assertForkPolicyPairing(ALL))).toBeUndefined();
     expect(syncCode(() => assertForkPolicyPairing(RACE))).toBeUndefined();
-    expect(syncCode(() => assertForkPolicyPairing({ mode: "all", supervision: "first_success" }))).toBe("invalid_descriptor");
-    expect(syncCode(() => assertForkPolicyPairing({ mode: "race", supervision: "one_for_all" }))).toBe("invalid_descriptor");
-    expect(syncCode(() => assertForkPolicyPairing({ mode: "spray", supervision: "none" }))).toBe("invalid_descriptor");
+    expect(
+      syncCode(() => assertForkPolicyPairing({ mode: "all", supervision: "first_success" })),
+    ).toBe("invalid_descriptor");
+    expect(
+      syncCode(() => assertForkPolicyPairing({ mode: "race", supervision: "one_for_all" })),
+    ).toBe("invalid_descriptor");
+    expect(syncCode(() => assertForkPolicyPairing({ mode: "spray", supervision: "none" }))).toBe(
+      "invalid_descriptor",
+    );
   });
 });
 
@@ -168,7 +182,9 @@ describe("reduceForkMemberTerminal (TC-020)", () => {
     const group = makeGroup(ALL, 2);
     reduceForkMemberTerminal(group, "p.0", ok("A"));
     expect(reduceForkMemberTerminal(group, "p.0", ok("A")).resolution).toBeUndefined();
-    expect(syncCode(() => reduceForkMemberTerminal(group, "p.0", ok("different")))).toBe("nondeterminism_detected");
+    expect(syncCode(() => reduceForkMemberTerminal(group, "p.0", ok("different")))).toBe(
+      "nondeterminism_detected",
+    );
   });
 
   it("confines late biographies after an orphaned resolution", () => {
@@ -179,7 +195,9 @@ describe("reduceForkMemberTerminal (TC-020)", () => {
     const late = reduceForkMemberTerminal(group, "p.1", cancelled());
     expect(late.resolution).toBeUndefined();
     expect(group.resolution).toMatchObject({ status: "orphaned" });
-    expect(syncCode(() => forceOrphanForkGroupResolution(group, "again"))).toBe("fork_group_terminal");
+    expect(syncCode(() => forceOrphanForkGroupResolution(group, "again"))).toBe(
+      "fork_group_terminal",
+    );
   });
 });
 
@@ -195,9 +213,7 @@ describe("forkGroupKey (TC-022)", () => {
 
 describe("forkGroupOutcome", () => {
   it("maps the five endings onto the outcome transport with the Terminal inside", () => {
-    expect(
-      forkGroupOutcome({ status: "completed", outcomes: [] }),
-    ).toMatchObject({ status: "ok" });
+    expect(forkGroupOutcome({ status: "completed", outcomes: [] })).toMatchObject({ status: "ok" });
     expect(
       forkGroupOutcome({
         status: "failed",

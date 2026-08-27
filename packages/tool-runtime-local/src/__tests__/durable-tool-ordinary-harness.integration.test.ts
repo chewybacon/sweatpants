@@ -23,7 +23,7 @@ import {
   createDurableToolRegistry,
   defineDurableProgramManifest,
   type AttachProgramRequest,
-  type ForeignToolRequest,
+  type EphemeralToolRequest,
   type ProgramElicitResult,
   type AdvancementResult,
 } from "@sweatpants/durable-execution";
@@ -163,7 +163,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
         innerActivations += 1;
       },
     });
-    const request: ForeignToolRequest = {
+    const request: EphemeralToolRequest = {
       driver: "tool-session",
       tool: facade.name,
       input: { topic: "durability" },
@@ -267,7 +267,9 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       // Sampling parks as a native kernel pull under the workflow runtime.
       expect(countPulls(innerJournal, "sample")).toBe(2);
       expect(countPulls(innerJournal, "elicit")).toBe(2);
-      expect(innerJournal.at(-1)?.payload).toMatchObject({
+      expect(
+        innerJournal.findLast((record) => record.payload.type === "TaskClosed")?.payload,
+      ).toMatchObject({
         type: "TaskClosed",
         outcome: {
           status: "ok",
@@ -294,7 +296,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
 function attachRequest(
   sessionId: string,
   taskId: string,
-  input: ForeignToolRequest,
+  input: EphemeralToolRequest,
 ): AttachProgramRequest {
   return {
     sessionId,

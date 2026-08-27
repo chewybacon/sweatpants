@@ -225,7 +225,7 @@ export function snapshotOutcome(outcome: OperationOutcome): OperationOutcome {
 
 export function pendingReason(
   descriptor: DurableOperationDescriptor,
-): "elicit" | "wait" | "child" | "foreign" | "sample" {
+): "elicit" | "wait" | "child" | "ephemeral" | "sample" {
   const policy = pullKindPolicy(descriptor.kind);
   if (!policy) return "child";
   return (policy.pendingReason ?? descriptor.kind) as ReturnType<typeof pendingReason>;

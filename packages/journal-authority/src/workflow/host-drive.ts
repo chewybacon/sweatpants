@@ -1,70 +1,43 @@
-import { scoped, type Operation } from "effection";
+import { type Operation } from "effection";
 import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
-import type { AttachProgramRequest, AdvancementResult } from "@sweatpants/durable-execution";
-import { DurableProgramCancellation, CrankError } from "@sweatpants/durable-execution";
-import { InstalledEffectPort } from "./runtime.ts";
+import {
+  CrankError,
+  DurableProgramCancellation,
+  ProgramDriverRegistryContext,
+  REPLAY_CHECKPOINT_CAPABILITIES,
+  stableProgramAttachmentId,
+  type AdvancementResult,
+  type AttachProgramRequest,
+  type ProgramAttachment,
+  type ProgramDriver,
+  type ProgramShutdownReason,
+  type ProgramStep,
+} from "@sweatpants/durable-execution";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+
 import type { JournalAuthorityContract } from "../authority-contract.ts";
-import type { Json } from "@sweatpants/foundation";
-import type {
-  AppendEmissionRequest,
-  CompleteTaskRequest,
-  ResolveOperationRequest,
-  ResolveOperationResult,
-  ReserveOperationRequest,
-  ReserveOperationResult,
-  CompleteTaskResult,
-} from "../authority-types.ts";
-import { openProgramAttachment, type ProgramAttachmentHandle, type Workflow } from "./runtime.ts";
+import { InstalledEffectPort } from "./runtime.ts";
+import {
+  openProgramAttachment,
+  type ProgramAttachmentHandle,
+  type ProgramCommand,
+  type ProgramEvent,
+  type Workflow,
+} from "./runtime.ts";
+import { driveProgramDriverActivation } from "./driver-drive.ts";
 
-/**
- * Adapts the port-facing command contract onto the HostAuthority surface.
- * Kernel-owned so hosts (facade included) share one implementation.
- */
-export function hostAuthority(authority: JournalAuthorityContract): HostAuthority {
-  return {
-    reserve(request) {
-      return authority.command({
-        type: "execution.reserve-pull",
-        request,
-      }) as Operation<ReserveOperationResult>;
-    },
-    resolve(request) {
-      return authority.command({
-        type: "execution.resolve-pull",
-        request,
-      }) as Operation<ResolveOperationResult>;
-    },
-    emit(request) {
-      return authority.command({ type: "execution.append-emission", request }) as Operation<{
-        readonly offset: string;
-      }>;
-    },
-    complete(request) {
-      return authority.command({
-        type: "execution.complete-task",
-        request,
-      }) as Operation<CompleteTaskResult>;
-    },
-  };
-}
+/** Canonical Authority role consumed by host composition. */
+export type AuthorityPort = JournalAuthorityContract;
 
-/** Minimal authority surface the parked-activation drive loop needs. */
-export interface HostAuthority {
-  reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult>;
-  resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
-  emit(request: AppendEmissionRequest): Operation<{ readonly offset: string }>;
-  complete(request: CompleteTaskRequest): Operation<CompleteTaskResult>;
+/** Compatibility-free adapter: callers now pass the production port unchanged. */
+export function hostAuthority(authority: JournalAuthorityContract): AuthorityPort {
+  return authority;
 }
 
 export interface DriveActivationRequest {
   readonly attach: AttachProgramRequest;
   readonly workflow: () => Workflow<Json>;
-  readonly authority: HostAuthority;
-  readonly programCapability: string;
-  /**
-   * Invoked after an inline effect settles and its resolution is journaled.
-   * Hosts use it for post-resolution bookkeeping (outcome acknowledgement).
-   */
+  readonly authority: AuthorityPort;
   readonly onEffectResolved?: (info: {
     readonly pullId: string;
     readonly attemptId: string;
@@ -74,173 +47,162 @@ export interface DriveActivationRequest {
 }
 
 /**
- * Runs one scoped workflow attachment until it parks or reaches a terminal
- * event. Terminal events close the authority task before this Operation
- * returns; resource disposal is owned here rather than by each caller.
+ * Adapts an in-process workflow factory to the one ProgramDriver spine.
+ * There is no second replay/activation pump: planner, replay walker, Mandate
+ * bind, relative live commands, and settlement replay are shared verbatim.
  */
 export function driveActivation(request: DriveActivationRequest): Operation<AdvancementResult> {
-  return scoped(function* () {
-    const handle = yield* openProgramAttachment(request.attach, request.workflow);
-    return yield* driveAttachment(
-      handle,
-      request.authority,
-      request.attach,
-      request.programCapability,
-      request.onEffectResolved,
-    );
+  const driver = workflowFactoryDriver(request.workflow);
+  const kind = routeDriverKind(request.attach.route);
+  const registry = new Map<string, ProgramDriver>([[kind, driver]]);
+  return ProgramDriverRegistryContext.with(registry, function* () {
+    return yield* driveProgramDriverActivation({
+      authority: request.authority,
+      driver,
+      attach: request.attach,
+      effects: {
+        *route() {
+          return "execution";
+        },
+        *executeHost() {
+          throw new CrankError("effect_placement_unavailable");
+        },
+        ...(request.onEffectResolved === undefined
+          ? {}
+          : {
+              *acknowledge({ authorization, outcome }) {
+                yield* request.onEffectResolved!({
+                  pullId: authorization.pullId,
+                  attemptId: authorization.attemptId,
+                  outcomeDigest: canonicalSnapshot(outcome).sha,
+                  effect: {
+                    name: authorization.descriptor.name,
+                    version: authorization.descriptor.version,
+                  },
+                });
+              },
+            }),
+      },
+    });
   });
 }
 
-function* driveAttachment(
-  handle: ProgramAttachmentHandle,
-  authority: HostAuthority,
-  attach: AttachProgramRequest,
-  programCapability: string,
-  onEffectResolved?: DriveActivationRequest["onEffectResolved"],
-): Operation<AdvancementResult> {
-  const { sessionId, taskId, input } = attach;
-  let event = yield* handle.exchange({ type: "start", input });
-  let pullIndex = 0;
-  while (event.type !== "completed" && event.type !== "failed") {
-    if (event.type === "emission-proposed") {
-      const receipt = yield* authority.emit({
-        sessionId,
-        taskId,
-        actionIndex: event.actionIndex,
-        descriptor: event.descriptor,
-        programCapability,
-      });
-      event = yield* handle.exchange({
-        type: "ack-emission",
-        actionIndex: event.actionIndex,
-        offset: receipt.offset,
-      });
-      continue;
-    }
-    if (event.type !== "record-proposed") {
-      throw new Error(`unexpected attachment event ${event.type}`);
-    }
-    const proposed = event;
-    const reserved = yield* authority.reserve({
-      sessionId,
-      turnId: turnIdFor(taskId),
-      taskId,
-      actionIndex: proposed.actionIndex,
-      pullIndex,
-      descriptor: proposed.descriptor,
-      programCapability,
-    });
-    if (reserved.status === "pending") {
-      // Parking is host policy: a pending reservation ends this activation;
-      // a later attachment replays the settled history.
+function workflowFactoryDriver(workflow: () => Workflow<Json>): ProgramDriver {
+  return {
+    capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
+    *attach(request): Operation<ProgramAttachment> {
+      const handle = yield* openProgramAttachment(request, workflow);
       return {
-        state: "parked",
-        reason: reserved.reason,
-        pullId: reserved.pullId,
+        attachmentId: stableProgramAttachmentId(request),
+        taskId: request.taskId,
+        driverKind: routeDriverKind(request.route),
+        route: request.route,
+        executionEpoch: request.executionEpoch,
+        handle,
       };
-    }
-    if (reserved.status === "resolved") {
-      pullIndex += 1;
-      event = yield* handle.exchange({
-        type: "resume-record",
-        actionIndex: event.actionIndex,
-        outcome: reserved.outcome,
-        receipt: { ...reserved.receipt!, status: "accepted" },
-        replayed: true,
-      });
-      continue;
-    }
-    if (reserved.status !== "authorized") {
-      throw new Error(`unexpected reservation state`);
-    }
-    pullIndex += 1;
-    const attempted = yield* handle.exchange({
-      type: "authorize-record",
-      actionIndex: event.actionIndex,
-      pullId: reserved.pullId,
-      attemptId: reserved.attemptId,
-      descriptor: event.descriptor,
-    });
-    if (attempted.type !== "record-attempt-completed") {
-      throw new Error(`expected attempt completion, got ${attempted.type}`);
-    }
-    const resolved = yield* authority.resolve({
-      capability: reserved.resolutionCapability,
-      audience: "program-execution",
-      outcome: attempted.outcome,
-    });
-    if (resolved.status !== "accepted") {
-      throw new Error(`resolution rejected: ${resolved.status}`);
-    }
-    if (onEffectResolved && proposed.descriptor.kind === "effect") {
-      yield* onEffectResolved({
-        pullId: reserved.pullId,
-        attemptId: reserved.attemptId,
-        outcomeDigest: resolved.receipt.outcomeDigest,
-        effect: {
-          name: proposed.descriptor.name,
-          version: proposed.descriptor.version,
-        },
-      });
-    }
-    event = yield* handle.exchange({
-      type: "resume-record",
-      actionIndex: event.actionIndex,
-      outcome: attempted.outcome,
-      receipt: {
-        sessionId,
-        taskId,
-        pullId: reserved.pullId,
-        resolutionOffset: resolved.receipt.resolutionOffset,
-        outcomeDigest: resolved.receipt.outcomeDigest,
-        status: "accepted",
-      },
-      replayed: false,
-    });
+    },
+    *step(attachment, command): Operation<ProgramStep> {
+      const handle = attachmentHandle(attachment);
+      if (command.type === "start") {
+        return toStep(yield* handle.exchange({ type: "start", input: command.input }));
+      }
+      if (command.type === "resume") {
+        return toStep(
+          yield* handle.exchange({
+            type: "resume-record",
+            actionIndex: command.actionIndex,
+            outcome: command.outcome,
+            receipt: command.receipt,
+            replayed: command.replayed,
+          }),
+        );
+      }
+      if (command.type === "authorize") {
+        if (command.descriptor === undefined) {
+          throw new CrankError("program_protocol_error", "Authorization has no descriptor");
+        }
+        const runtimeCommand: ProgramCommand = {
+          type: "authorize-record",
+          actionIndex: command.actionIndex,
+          pullId: command.pullId,
+          attemptId: command.attemptId,
+          descriptor: command.descriptor,
+          ...(command.placement === undefined ? {} : { placement: command.placement }),
+        };
+        const event = yield* handle.exchange(runtimeCommand);
+        if (event.type !== "record-attempt-completed") {
+          throw new CrankError("program_protocol_error", "Attempt did not complete");
+        }
+        return {
+          type: "operation",
+          actionIndex: event.actionIndex,
+          descriptor: command.descriptor,
+          authorizedOutcome: event.outcome,
+        };
+      }
+      if (command.type === "ack_emission") {
+        return toStep(
+          yield* handle.exchange({
+            type: "ack-emission",
+            actionIndex: command.actionIndex,
+            offset: command.offset,
+          }),
+        );
+      }
+      if (command.type === "cancel") {
+        return toStep(
+          yield* handle.exchange({
+            type: "cancel",
+            ...(command.reason === undefined ? {} : { reason: command.reason }),
+          }),
+        );
+      }
+      return assertNever(command);
+    },
+    *shutdown(attachment, reason: ProgramShutdownReason): Operation<void> {
+      yield* attachmentHandle(attachment).close(reason);
+    },
+  };
+}
+
+function attachmentHandle(attachment: ProgramAttachment): ProgramAttachmentHandle {
+  if (!(attachment.handle instanceof Object) || !("exchange" in attachment.handle)) {
+    throw new CrankError("program_protocol_error", "Workflow attachment handle is invalid");
   }
-  if (event.type === "failed") {
-    if (event.error.code === "program_cancelled") {
-      // Cancellation surfaces as a serialized failure event; the authority
-      // closes cancelled tasks through the dedicated outcome shape.
-      yield* authority.complete({
-        sessionId,
-        taskId,
-        actionIndex: event.actionIndex,
-        outcome: { status: "cancelled" },
-        programCapability,
-      });
-      return { state: "cancelled" };
-    }
-    yield* authority.complete({
-      sessionId,
-      taskId,
-      actionIndex: event.actionIndex,
-      outcome: { status: "error", error: event.error },
-      programCapability,
-    });
-    return { state: "failed", error: event.error };
+  return attachment.handle as ProgramAttachmentHandle;
+}
+
+function toStep(event: ProgramEvent): ProgramStep {
+  switch (event.type) {
+    case "record-proposed":
+      return { type: "operation", actionIndex: event.actionIndex, descriptor: event.descriptor };
+    case "emission-proposed":
+      return { type: "emission", actionIndex: event.actionIndex, descriptor: event.descriptor };
+    case "completed":
+      return { type: "completed", actionIndex: event.actionIndex, value: event.value };
+    case "failed":
+      return { type: "failed", actionIndex: event.actionIndex, error: event.error };
+    case "record-attempt-completed":
+    case "emission-recorded":
+      throw new CrankError("program_protocol_error", "Internal event escaped its exchange");
+    default:
+      return assertNever(event);
   }
-  const closed = yield* authority.complete({
-    sessionId,
-    taskId,
-    actionIndex: event.actionIndex,
-    outcome: { status: "ok", value: event.value },
-    programCapability,
-  });
-  if (closed.status === "rejected") {
-    // Program-authored value refused by policy: close through the standard
-    // error envelope so the journal records TaskClosed{error} uniformly.
-    const error = { code: closed.code, message: closed.message };
-    yield* authority.complete({
-      sessionId,
-      taskId,
-      actionIndex: event.actionIndex,
-      outcome: { status: "error", error },
-      programCapability,
-    });
-    return { state: "failed", error };
+}
+
+function routeDriverKind(route: AttachProgramRequest["route"]): string {
+  if (route !== null && typeof route === "object" && !Array.isArray(route)) {
+    const value = (route as Record<string, unknown>)["driverKind"];
+    if (typeof value === "string" && value.length > 0) return value;
   }
-  return { state: "completed", value: event.value };
+  return "program";
+}
+
+function assertNever(value: never): never {
+  throw new CrankError(
+    "program_protocol_error",
+    `Unknown workflow protocol value ${String(value)}`,
+  );
 }
 
 /**
@@ -254,38 +216,29 @@ export function* installEffectRegistrations(
 ): Operation<void> {
   yield* InstalledEffectPort.installDriver({
     *run(descriptor, attempt) {
-      const reg =
+      const registration =
         registrations.find(
-          (r) =>
-            r.definition.name === descriptor.name && r.definition.version === descriptor.version,
-        ) ?? registrations.find((r) => r.definition.name === descriptor.name);
-      if (!reg) {
+          (candidate) =>
+            candidate.definition.name === descriptor.name &&
+            candidate.definition.version === descriptor.version,
+        ) ?? registrations.find((candidate) => candidate.definition.name === descriptor.name);
+      if (registration === undefined) {
         throw new CrankError(
           "effect_handler_missing",
           `No installed-effect handler for ${descriptor.name}@${descriptor.version}`,
         );
       }
-      const context = {
+      const outcome = yield* registration.handler(descriptor.input, {
         sessionId: identity.sessionId,
         taskId: identity.taskId,
         pullId: attempt.pullId,
         attemptId: attempt.attemptId,
         cancellation: attempt.cancellation,
         resolver: descriptor.resolver,
-      };
-      const outcome = yield* reg.handler(descriptor.input, context);
-      if (outcome.status === "ok") {
-        return outcome.value;
-      }
-      if (outcome.status === "cancelled") {
-        throw new DurableProgramCancellation();
-      }
+      });
+      if (outcome.status === "ok") return outcome.value;
+      if (outcome.status === "cancelled") throw new DurableProgramCancellation();
       throw new CrankError(outcome.error.code, outcome.error.message, outcome.error.details);
     },
   });
-}
-
-function turnIdFor(taskId: string): string {
-  const separator = taskId.indexOf("/");
-  return separator === -1 ? "turn-0" : taskId.slice(0, separator);
 }

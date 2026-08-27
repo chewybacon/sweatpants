@@ -7,9 +7,11 @@ import type {
   TaskState,
 } from "./authority-contract.ts";
 import type { DurableSemanticRecord } from "./semantic-record.ts";
+import { verifyMaterializedIndexes } from "./materialized-index-verifier.ts";
 
 /** Expands the sole direct snapshot format into grouped in-process state. */
 export function authorityStateFromSnapshot(snapshot: DurableAuthoritySnapshot): AuthorityState {
+  verifyMaterializedIndexes(snapshot);
   const sessions = new Map<string, AuthoritySessionState>();
   for (const [sessionId, value] of snapshot.sessions) {
     if (sessions.has(sessionId)) invalid(`Duplicate session ${sessionId}`);

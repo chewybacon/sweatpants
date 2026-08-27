@@ -1,17 +1,8 @@
-import {
-  CrankError,
-  DEFAULT_MAX_INLINE_BYTES,
-} from "@sweatpants/durable-execution";
+import { CrankError, DEFAULT_MAX_INLINE_BYTES } from "@sweatpants/durable-execution";
 import { stableTupleHash, type Json } from "@sweatpants/foundation";
 
-import type {
-  AuthorityCommand,
-  AuthorityDecisionFrame,
-} from "./authority-contract.ts";
-import {
-  signCapability,
-  verifyProgramCapability,
-} from "./capabilities.ts";
+import type { AuthorityCommand, AuthorityDecisionFrame } from "./authority-contract.ts";
+import { signCapability, verifyProgramCapability } from "./capabilities.ts";
 import {
   cloneAuthorityState,
   pullAudience,
@@ -58,6 +49,7 @@ export class DecisionDraft {
         control: {
           runnable: false,
           revision: 0,
+          nextRootOrdinal: 0,
           lastActivationEpoch: 0,
           consecutiveRestoreStales: 0,
         },

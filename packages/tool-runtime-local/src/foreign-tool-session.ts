@@ -15,11 +15,11 @@ import {
   type OperationOutcome,
 } from "@sweatpants/durable-effects";
 import type {
-  ForeignContinuation,
-  ForeignDurability,
-  ForeignInputRequest,
-  ForeignToolContinueRequest,
-  ForeignToolDisposition,
+  EphemeralContinuation,
+  EphemeralDurability,
+  EphemeralInputRequest,
+  EphemeralToolContinueRequest,
+  EphemeralToolDisposition,
 } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import {
@@ -239,14 +239,14 @@ function* turnWithCancellation(
 }
 
 function* decodeResume(
-  request: ForeignToolContinueRequest,
+  request: EphemeralToolContinueRequest,
   continuation: ToolSessionContinuationState,
 ): Operation<
   | {
       type: "valid";
       value: NonNullable<Parameters<ToolInvocationHost["turn"]>[0]["resume"]>;
     }
-  | { type: "invalid"; failure: ForeignToolDisposition }
+  | { type: "invalid"; failure: EphemeralToolDisposition }
 > {
   if (request.response.kind === "cancel") {
     return { type: "valid", value: { kind: "cancel", reason: "durable program cancelled" } };
@@ -304,8 +304,8 @@ function successfulEffect<I extends Json, O extends Json>(
 function dispositionFromTurn(
   turn: ToolInvocationTurn,
   invocationId: string,
-  durability: ForeignDurability,
-): ForeignToolDisposition {
+  durability: EphemeralDurability,
+): EphemeralToolDisposition {
   switch (turn.type) {
     case "completed":
       return { type: "completed", result: turn.result };
@@ -326,7 +326,7 @@ function dispositionFromTurn(
   }
 }
 
-function inputRequestFromAsk(ask: ToolInvocationAsk): ForeignInputRequest {
+function inputRequestFromAsk(ask: ToolInvocationAsk): EphemeralInputRequest {
   if (ask.kind === "sample") {
     return {
       kind: "sample",
@@ -365,8 +365,8 @@ function inputRequestFromAsk(ask: ToolInvocationAsk): ForeignInputRequest {
 function createContinuation(
   invocationId: string,
   turn: Extract<ToolInvocationTurn, { type: "parked" }>,
-  durability: ForeignDurability,
-): ForeignContinuation {
+  durability: EphemeralDurability,
+): EphemeralContinuation {
   return {
     driver: "tool-session",
     state: {
@@ -379,7 +379,9 @@ function createContinuation(
   };
 }
 
-function decodeContinuation(value: ForeignContinuation): ToolSessionContinuationState | undefined {
+function decodeContinuation(
+  value: EphemeralContinuation,
+): ToolSessionContinuationState | undefined {
   if (value.driver !== "tool-session") {
     return undefined;
   }
@@ -416,10 +418,10 @@ function decodeElicitResponse(value: Json): ElicitExchangeCompletion<Json> | und
 }
 
 function failure(
-  durability: ForeignDurability,
+  durability: EphemeralDurability,
   code: string,
   message: string,
-): ForeignToolDisposition {
+): EphemeralToolDisposition {
   return {
     type: "failed",
     error: { code, message, durability, retryable: false },
@@ -511,7 +513,7 @@ export function* executeForeignToolCall(
     readonly driver: string;
     readonly tool: string;
     readonly input: Json;
-    readonly durability: ForeignDurability;
+    readonly durability: EphemeralDurability;
   },
   identity: { readonly sessionId: string; readonly taskId: string; readonly pullId: string },
   relay?: ForeignAskRelay,

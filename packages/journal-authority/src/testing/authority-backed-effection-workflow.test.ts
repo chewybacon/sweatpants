@@ -31,7 +31,7 @@ import {
   record,
   recordWorkflowOptionsParser,
   runProofRecordWorkflow,
-  proofHostAuthority,
+  proofAuthorityPort,
   type ProofProgramCommand,
   type ProofProgramEvent,
   type CoordinatedRecordAttempt,
@@ -182,7 +182,12 @@ function workflow(
 }
 
 function payloadTypes(records: readonly DurableSemanticRecord[]): string[] {
-  return records.map((entry) => entry.payload.type);
+  return records
+    .filter(
+      (entry) =>
+        entry.payload.type !== "AdvancementBound" && entry.payload.type !== "AdvancementReleased",
+    )
+    .map((entry) => entry.payload.type);
 }
 
 describe("authority-backed Effection Workflow proof", () => {
@@ -270,7 +275,7 @@ describe("authority-backed Effection Workflow proof", () => {
         const programCapability = yield* installAndOpen(mode, request);
         const result = yield* runProofRecordWorkflow({
           attach: request,
-          authority: proofHostAuthority(JournalAuthorityPort.api.operations),
+          authority: proofAuthorityPort(JournalAuthorityPort.api.operations),
           programCapability,
           workflow: workflow("live", function* () {
             const records = yield* AuthorityJournalPort.api.operations.readTree(
@@ -470,7 +475,7 @@ describe("authority-backed Effection Workflow proof", () => {
       controlled.arm();
       const result = yield* runProofRecordWorkflow({
         attach: request,
-        authority: proofHostAuthority(JournalAuthorityPort.api.operations),
+        authority: proofAuthorityPort(JournalAuthorityPort.api.operations),
         programCapability: opened.programCapability,
         workflow: workflow("cas", function* () {
           closureRuns += 1;
@@ -599,7 +604,7 @@ describe("authority-backed Effection Workflow proof", () => {
       const programCapability = yield* installAndOpen("stored", request);
       const result = yield* runProofRecordWorkflow({
         attach: request,
-        authority: proofHostAuthority(JournalAuthorityPort.api.operations),
+        authority: proofAuthorityPort(JournalAuthorityPort.api.operations),
         programCapability,
         workflow: workflow("cancelled-record", function* () {
           throw new DurableProgramCancellation("attempt cancelled");
@@ -629,7 +634,7 @@ describe("authority-backed Effection Workflow proof", () => {
         const programCapability = yield* installAndOpen(mode, request);
         const result = yield* runProofRecordWorkflow({
           attach: request,
-          authority: proofHostAuthority(JournalAuthorityPort.api.operations),
+          authority: proofAuthorityPort(JournalAuthorityPort.api.operations),
           programCapability,
           workflow: workflow("error", function* () {
             throw new CrankError("proof_error", "accepted proof error");

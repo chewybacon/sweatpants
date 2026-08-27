@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import { createCapabilityKeyring } from "../index.ts";
 import { createAuthorityScenarioDriver } from "../testing.ts";
-import { ANY_JSON_SCHEMA_DESCRIPTOR, type DurableProgramManifest } from "@sweatpants/durable-execution";
+import {
+  ANY_JSON_SCHEMA_DESCRIPTOR,
+  type DurableProgramManifest,
+} from "@sweatpants/durable-execution";
 
 const parentManifest: DurableProgramManifest = {
   programId: "fixture.parent",
@@ -137,14 +140,14 @@ describe("fork groups: admission and freeze (REQ-021, REQ-023, REQ-030)", () => 
       expect(
         yield* codeOf(() =>
           value.reserve({
-              sessionId: "s1",
-              turnId: "t1",
-              taskId: "task",
-              actionIndex: 1,
-              pullIndex: 1,
-              descriptor: { kind: "wait", key: "later", durationMs: 1_000 },
-              programCapability: opened.programCapability,
-            }),
+            sessionId: "s1",
+            turnId: "t1",
+            taskId: "task",
+            actionIndex: 1,
+            pullIndex: 1,
+            descriptor: { kind: "wait", key: "later", durationMs: 1_000 },
+            programCapability: opened.programCapability,
+          }),
         ),
       ).toBe("fork_group_open");
 
@@ -158,9 +161,7 @@ describe("fork groups: admission and freeze (REQ-021, REQ-023, REQ-030)", () => 
         deadlineMs: 51_000,
         memberTaskIds: ["task.0", "task.1"],
       });
-      expect(
-        journal.filter((record) => record.payload.type === "ForkGroupOpened"),
-      ).toHaveLength(1);
+      expect(journal.filter((record) => record.payload.type === "ForkGroupOpened")).toHaveLength(1);
     });
   });
 
@@ -623,11 +624,11 @@ describe("fork groups: force orphan (REQ-034)", () => {
       expect(
         yield* codeOf(() =>
           value.forceOrphanForkGroup({
-              sessionId: "s1",
-              taskId: "task",
-              groupId: group.groupId,
-              reason: "stuck",
-            }),
+            sessionId: "s1",
+            taskId: "task",
+            groupId: group.groupId,
+            reason: "stuck",
+          }),
         ),
       ).toBe("fork_group_not_cancelling");
 
@@ -661,11 +662,11 @@ describe("fork groups: force orphan (REQ-034)", () => {
       expect(
         yield* codeOf(() =>
           value.forceOrphanForkGroup({
-              sessionId: "s1",
-              taskId: "task",
-              groupId: group.groupId,
-              reason: "again",
-            }),
+            sessionId: "s1",
+            taskId: "task",
+            groupId: group.groupId,
+            reason: "again",
+          }),
         ),
       ).toBe("fork_group_terminal");
     });

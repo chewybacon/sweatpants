@@ -75,7 +75,9 @@ describe("local crank-native ProgramDriver integration", () => {
       "DurableEmission",
       "TaskClosed",
     ]);
-    expect(evidence.semanticJournal.at(-1)?.payload).toEqual({
+    expect(
+      evidence.semanticJournal.findLast((record) => record.payload.type === "TaskClosed")?.payload,
+    ).toEqual({
       type: "TaskClosed",
       taskId: evidence.invocationId,
       outcome: { status: "cancelled" },
@@ -136,7 +138,9 @@ describe("local crank-native ProgramDriver integration", () => {
     expect(evidence.effectExecutions).toBe(1);
     expect(evidence.cleanupExecutions).toBe(1);
     expect(evidence.cancellationCatches).toBe(1);
-    expect(evidence.semanticJournal.at(-1)?.payload).toMatchObject({
+    expect(
+      evidence.semanticJournal.findLast((record) => record.payload.type === "TaskClosed")?.payload,
+    ).toMatchObject({
       type: "TaskClosed",
       outcome: { status: "cancelled" },
     });

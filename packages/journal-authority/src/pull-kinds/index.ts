@@ -10,4 +10,4 @@ export * from "./elicit.ts";
 export * from "./wait.ts";
 export * from "./children.ts";
 export * from "./sample.ts";
-export * from "./foreign.ts";
+export * from "./ephemeral.ts";

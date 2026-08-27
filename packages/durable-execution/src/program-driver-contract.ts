@@ -199,8 +199,7 @@ export interface ProgramDriver {
 /** Runtime request controlling attachment and optional in-scope host dispatch. */
 export interface ProgramRunRequest {
   attach: AttachProgramRequest;
-  programCapability?: string;
-  /** Host-private owner used to issue/consume restore tickets under a claimed lease. */
+  /** Host-private owner used to fence task-scoped Mandate binds. */
   activationOwnerId?: string;
 }
 

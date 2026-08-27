@@ -9,10 +9,15 @@ import type { Json } from "@sweatpants/foundation";
  * decision.
  */
 export function normalizeSemanticJournal(records: readonly DurableSemanticRecord[]): Json[] {
-  return records.map((record) => ({
-    sessionId: record.sessionId,
-    payload: normalizePayload(record.payload),
-  }));
+  return records
+    .filter(
+      (record) =>
+        record.payload.type !== "AdvancementBound" && record.payload.type !== "AdvancementReleased",
+    )
+    .map((record) => ({
+      sessionId: record.sessionId,
+      payload: normalizePayload(record.payload),
+    }));
 }
 
 /** Domain-separated digest of the normalized real authority journal. */
@@ -32,8 +37,7 @@ function normalizePayload(payload: DurableSemanticRecord["payload"]): Json {
       return structuredClone(semantic) as unknown as Json;
     }
     case "AdvancementBound": {
-      const { ownerId: _owner, expiresAtMs: _expiry, attachmentId: _attachment, ...semantic } =
-        payload;
+      const { ownerId: _owner, expiresAtMs: _expiry, ...semantic } = payload;
       return structuredClone(semantic) as unknown as Json;
     }
     case "AdvancementReleased":

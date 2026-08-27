@@ -7,6 +7,7 @@ import type {
   ProgramRoute,
   ProgramStep,
   ResolutionReceipt,
+  TurnAddress,
 } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
@@ -277,6 +278,7 @@ export type AuthorityQuery =
   | { readonly type: "session.root-task-count"; readonly sessionId: string }
   | { readonly type: "task.execution-state"; readonly sessionId: string; readonly taskId: string }
   | { readonly type: "task.input"; readonly sessionId: string; readonly taskId: string }
+  | { readonly type: "task.address"; readonly sessionId: string; readonly taskId: string }
   | { readonly type: "task.recovery-state"; readonly sessionId: string; readonly taskId?: string }
   | {
       readonly type: "task.cancellation-state";
@@ -324,6 +326,7 @@ export interface QueryResultByType {
   readonly "session.root-task-count": number;
   readonly "task.execution-state": DurableTaskExecutionState;
   readonly "task.input": Json;
+  readonly "task.address": TurnAddress;
   readonly "task.recovery-state": DurableTaskRecoveryState;
   readonly "task.cancellation-state": DurableCancellationState;
   readonly "task.lifecycle": {
@@ -500,6 +503,8 @@ export interface AuthoritySessionState {
   readonly control: {
     readonly runnable: boolean;
     readonly revision: number;
+    /** Protocol-owned root address ordinal; task-id text is never parsed. */
+    readonly nextRootOrdinal?: number;
     readonly activationLease?: ActivationLeaseState;
     readonly lastActivationEpoch: number;
     readonly restoreNonce?: string;
