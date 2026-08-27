@@ -54,7 +54,7 @@ import {
   pullKindPolicy,
   allDescriptorSchema,
   elicitDescriptorSchema,
-  foreignDescriptorSchema,
+  ephemeralDescriptorSchema,
   invokeDescriptorSchema,
   raceDescriptorSchema,
   sampleDescriptorSchema,
@@ -518,7 +518,12 @@ function forkPull<T extends Json>(
   } as const;
   const descriptor =
     mode === "all"
-      ? requireParsed(parser(allDescriptorSchema), input, "invalid_descriptor", "Invalid all options")
+      ? requireParsed(
+          parser(allDescriptorSchema),
+          input,
+          "invalid_descriptor",
+          "Invalid all options",
+        )
       : requireParsed(
           parser(raceDescriptorSchema),
           input,
@@ -535,22 +540,27 @@ function forkPull<T extends Json>(
     },
   };
   return durable(
-    effectFromOperation(`${mode}(${descriptor.children.length})`, boundary.serializable, function* () {
-      const insideAttempt = yield* RecordAttemptGuardContext.get();
-      if (insideAttempt) {
-        throw new CrankError(
-          "nested_durable_operation",
-          "A fork group cannot be scheduled inside another durable operation",
-        );
-      }
-      const runtime = yield* ProgramEffectRuntimeContext.expect();
-      return yield* runtime.perform(boundary);
-    }),
+    effectFromOperation(
+      `${mode}(${descriptor.children.length})`,
+      boundary.serializable,
+      function* () {
+        const insideAttempt = yield* RecordAttemptGuardContext.get();
+        if (insideAttempt) {
+          throw new CrankError(
+            "nested_durable_operation",
+            "A fork group cannot be scheduled inside another durable operation",
+          );
+        }
+        const runtime = yield* ProgramEffectRuntimeContext.expect();
+        return yield* runtime.perform(boundary);
+      },
+    ),
     (settled) => {
       // failed/expired/orphaned surface as PullApplicationError via
       // unwrapOutcome; cancelled throws the program cancellation signal.
-      const terminal = unwrapOutcome<Json>(settled as OperationOutcome) as unknown as
-        ForkGroupTerminal;
+      const terminal = unwrapOutcome<Json>(
+        settled as OperationOutcome,
+      ) as unknown as ForkGroupTerminal;
       if (terminal.status !== "completed") {
         throw new PullApplicationError({
           code: `fork_group_${terminal.status}`,
@@ -598,23 +608,6 @@ export function race<T extends Json = Json>(options: ForkOptions): Durable<T> {
  */
 export function modelSample<T extends Json = Json>(input: Json): Durable<T> {
   return pullOperation<T>({ kind: "sample", input });
-}
-
-/**
- * Session-bound live tool call. Proposes a park-style pull that the owning
- * session settles against a live `createTool` execution: backchannels ride
- * the tool context; if the reference dies before a terminal response the
- * session journals an error resolution.
- */
-export function foreignTool<T extends Json = Json>(request: {
-  readonly driver: string;
-  readonly tool: string;
-  readonly input: Json;
-  readonly durability: "ephemeral_handle";
-}): Durable<T> {
-  // Durability gate fires at reserve via the kind policy (single source);
-  // keeping authoring non-throwing preserves reserve-path error semantics.
-  return pullOperation<T>({ ...request, kind: "foreign" });
 }
 
 /** Participant-settled elicitation boundary declared in the manifest. */
@@ -761,7 +754,7 @@ const sequentialOperationDescriptorSchema = z.discriminatedUnion("kind", [
   waitDescriptorSchema,
   invokeDescriptorSchema,
   sampleDescriptorSchema,
-  foreignDescriptorSchema,
+  ephemeralDescriptorSchema,
 ]);
 
 /**
@@ -777,13 +770,13 @@ const proposableOperationDescriptorSchema = z.discriminatedUnion("kind", [
   waitDescriptorSchema,
   invokeDescriptorSchema,
   sampleDescriptorSchema,
-  foreignDescriptorSchema,
+  ephemeralDescriptorSchema,
   allDescriptorSchema,
   raceDescriptorSchema,
 ]);
 
 export { elicitDescriptorSchema, waitDescriptorSchema } from "../pull-kinds/index.ts";
-export { assertEphemeralForeign } from "../pull-kinds/index.ts";
+export { assertEphemeralDescriptor } from "../pull-kinds/index.ts";
 
 const pullDescriptorParser = parser(proposableOperationDescriptorSchema);
 
@@ -993,9 +986,9 @@ function normalizeParsedDescriptor(
       };
     case "sample":
       return { kind: "sample", input: asJson(descriptor.input) };
-    case "foreign":
+    case "ephemeral":
       return {
-        kind: "foreign",
+        kind: "ephemeral",
         driver: descriptor.driver,
         tool: descriptor.tool,
         input: asJson(descriptor.input),

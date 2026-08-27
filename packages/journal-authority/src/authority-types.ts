@@ -345,9 +345,7 @@ export interface ReleaseMandateRequest {
   readonly reason: "parked" | "settled" | "terminal" | "failed" | "scope_exit";
 }
 
-export type ReleaseMandateResult =
-  | { readonly status: "released" }
-  | { readonly status: "stale" };
+export type ReleaseMandateResult = { readonly status: "released" } | { readonly status: "stale" };
 
 /** Program-authorized request to reserve an ordered operation before dispatch. */
 export interface ReserveOperationRequest {
@@ -387,7 +385,7 @@ export type ReserveOperationResult =
   | {
       status: "pending";
       pullId: string;
-      reason: "elicit" | "wait" | "child" | "foreign" | "sample";
+      reason: "elicit" | "wait" | "child" | "ephemeral" | "sample";
       resolutionCapability?: string;
       restoredFrontierConsumed?: true;
     };

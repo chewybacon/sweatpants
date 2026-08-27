@@ -9,18 +9,13 @@ import {
 } from "@sweatpants/durable-execution";
 
 import type { JournalAuthorityContract } from "../authority-contract.ts";
-import type {
-  DurableOperationDescriptor,
-  ProgramParkedSlot,
-} from "@sweatpants/durable-execution";
+import type { DurableOperationDescriptor, ProgramParkedSlot } from "@sweatpants/durable-execution";
 
 export interface WorkflowTreeActivationRequest {
   readonly attach: AttachProgramRequest;
-  /** Present only when task opening already minted the first attachment capability. */
-  readonly initialProgramCapability?: string;
 }
 
-export interface WorkflowTreeHost {
+export interface RootScope {
   /** Runs one task until it parks or becomes terminal. */
   activate(request: WorkflowTreeActivationRequest): Operation<AdvancementResult>;
   /** Resolves a pinned child manifest without weakening exact identity. */
@@ -40,7 +35,7 @@ export interface WorkflowTreeHost {
 
 export interface DriveWorkflowTreeRequest extends WorkflowTreeActivationRequest {
   readonly authority: JournalAuthorityContract;
-  readonly host: WorkflowTreeHost;
+  readonly rootScope: RootScope;
 }
 
 /**
@@ -50,35 +45,25 @@ export interface DriveWorkflowTreeRequest extends WorkflowTreeActivationRequest 
  * child allocation and parent settlement, while this coordinator recursively
  * activates the exact child selected by the accepted invoke descriptor.
  */
-export function* driveWorkflowTree(request: DriveWorkflowTreeRequest): Operation<AdvancementResult> {
-  return yield* driveNode(
-    request.authority,
-    request.host,
-    request.attach,
-    request.initialProgramCapability,
-  );
+export function* driveWorkflowTree(
+  request: DriveWorkflowTreeRequest,
+): Operation<AdvancementResult> {
+  return yield* driveNode(request.authority, request.rootScope, request.attach);
 }
 
 function* driveNode(
   authority: JournalAuthorityContract,
-  host: WorkflowTreeHost,
+  rootScope: RootScope,
   attach: AttachProgramRequest,
-  initialProgramCapability?: string,
 ): Operation<AdvancementResult> {
-  let capability = initialProgramCapability;
   for (;;) {
-    const outcome = yield* host.activate({
-      attach,
-      ...(capability === undefined ? {} : { initialProgramCapability: capability }),
-    });
-    // Every later activation creates a fresh attachment and must bind it.
-    capability = undefined;
+    const outcome = yield* rootScope.activate({ attach });
 
     if (outcome.state !== "parked") {
       return outcome;
     }
     if (outcome.reason !== "child") {
-      if (yield* host.settle(outcome, attach)) {
+      if (yield* rootScope.settle(outcome, attach)) {
         continue;
       }
       return outcome;
@@ -93,16 +78,19 @@ function* driveNode(
     if (operation.status !== "found") {
       throw new CrankError("invalid_journal", "Parked child pull is unknown");
     }
-    if (
-      operation.descriptor.kind === "all" ||
-      operation.descriptor.kind === "race"
-    ) {
+    const address = yield* authority.query({
+      type: "task.address",
+      sessionId: attach.sessionId,
+      taskId: attach.taskId,
+    });
+    if (operation.descriptor.kind === "all" || operation.descriptor.kind === "race") {
       const parked = yield* driveForkGroup(
         authority,
-        host,
+        rootScope,
         attach,
         outcome.pullId,
         operation.descriptor,
+        address.turnId,
       );
       // undefined means the group resolved: re-run the parent so ordinary
       // replay consumes the committed Terminal value.
@@ -114,38 +102,33 @@ function* driveNode(
     }
 
     const child = operation.descriptor.child;
-    const route = yield* host.route(child, attach.route);
-    const manifest = yield* host.manifest(child);
+    const route = yield* rootScope.route(child, attach.route);
+    const manifest = yield* rootScope.manifest(child);
     const childTask = yield* authority.command({
       type: "execution.ensure-child",
       request: {
         sessionId: attach.sessionId,
-        turnId: turnIdFor(attach.taskId),
+        turnId: address.turnId,
         parentTaskId: attach.taskId,
         parentPullId: outcome.pullId,
         child,
         manifest,
         executionEpoch: attach.executionEpoch,
-        audience: "workflow-host",
+        audience: "workflow-rootScope",
         route,
       },
     });
 
     if (childTask.outcome === undefined) {
-      const childOutcome = yield* driveNode(
-        authority,
-        host,
-        {
-          sessionId: attach.sessionId,
-          taskId: childTask.taskId,
-          program: { id: child.id, version: child.version, digest: child.digest },
-          input: child.input,
-          route,
-          executionEpoch: attach.executionEpoch,
-          ...(attach.affinity === undefined ? {} : { affinity: attach.affinity }),
-        },
-        undefined,
-      );
+      const childOutcome = yield* driveNode(authority, rootScope, {
+        sessionId: attach.sessionId,
+        taskId: childTask.taskId,
+        program: { id: child.id, version: child.version, digest: child.digest },
+        input: child.input,
+        route,
+        executionEpoch: attach.executionEpoch,
+        ...(attach.affinity === undefined ? {} : { affinity: attach.affinity }),
+      });
       if (childOutcome.state === "parked") {
         return childOutcome;
       }
@@ -155,24 +138,20 @@ function* driveNode(
   }
 }
 
-function turnIdFor(taskId: string): string {
-  const slash = taskId.indexOf("/");
-  return slash === -1 ? "turn-0" : taskId.slice(0, slash);
-}
-
 /**
  * Drives one fork group (REQ-024): members advance as ordinary roots in
- * round-robin passes; advancement order is host policy, never authority
+ * round-robin passes; advancement order is rootScope policy, never authority
  * choice (REQ-027). A pass ends when every member is blocked on participant
  * input or terminal; the group resolves inside the authority, and the parent
  * re-runs once its fork slot settles.
  */
 function* driveForkGroup(
   authority: JournalAuthorityContract,
-  host: WorkflowTreeHost,
+  rootScope: RootScope,
   attach: AttachProgramRequest,
   pullId: string,
   descriptor: Extract<DurableOperationDescriptor, { kind: "all" | "race" }>,
+  turnId: string,
 ): Operation<Extract<AdvancementResult, { state: "parked" }> | undefined> {
   const members = [] as {
     child: (typeof descriptor.children)[number];
@@ -182,20 +161,20 @@ function* driveForkGroup(
   for (const child of descriptor.children) {
     members.push({
       child,
-      route: yield* host.route(child, attach.route),
-      manifest: yield* host.manifest(child),
+      route: yield* rootScope.route(child, attach.route),
+      manifest: yield* rootScope.manifest(child),
     });
   }
   const group = yield* authority.command({
     type: "execution.open-fork-group",
     request: {
       sessionId: attach.sessionId,
-      turnId: turnIdFor(attach.taskId),
+      turnId,
       parentTaskId: attach.taskId,
       parentPullId: pullId,
       members,
       executionEpoch: attach.executionEpoch,
-      audience: "workflow-host",
+      audience: "workflow-rootScope",
     },
   });
 
@@ -214,24 +193,19 @@ function* driveForkGroup(
       });
       if (lifecycle.status !== "active") continue;
       const member = members[index]!;
-      const childOutcome = yield* driveNode(
-        authority,
-        host,
-        {
-          sessionId: attach.sessionId,
-          taskId: memberTaskId,
-          program: {
-            id: member.child.id,
-            version: member.child.version,
-            digest: member.child.digest,
-          },
-          input: member.child.input,
-          route: member.route,
-          executionEpoch: attach.executionEpoch,
-          ...(attach.affinity === undefined ? {} : { affinity: attach.affinity }),
+      const childOutcome = yield* driveNode(authority, rootScope, {
+        sessionId: attach.sessionId,
+        taskId: memberTaskId,
+        program: {
+          id: member.child.id,
+          version: member.child.version,
+          digest: member.child.digest,
         },
-        undefined,
-      );
+        input: member.child.input,
+        route: member.route,
+        executionEpoch: attach.executionEpoch,
+        ...(attach.affinity === undefined ? {} : { affinity: attach.affinity }),
+      });
       if (childOutcome.state === "parked") {
         slots.push({
           taskId: memberTaskId,

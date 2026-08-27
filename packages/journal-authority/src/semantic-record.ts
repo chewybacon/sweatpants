@@ -36,7 +36,6 @@ export type DurableSemanticRecord = {
         ownerId: string;
         leaseEpoch: number;
         expiresAtMs: number;
-        attachmentId: string;
         strandHeadDigest: string;
         forkGroupRevision: number;
         frontierDigest: string;

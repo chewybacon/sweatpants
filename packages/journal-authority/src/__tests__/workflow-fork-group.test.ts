@@ -25,8 +25,18 @@ import { createWorkflowProgramDriver } from "../workflow/program-driver.ts";
  * stack (test-plan TC-002 at workflow level; REQ-053's two-elicit behavior).
  */
 
-const inputFixture = createSchemaFixture("fixture.fork/input", "program_input", { type: "string" }, stringGuard);
-const outputFixture = createSchemaFixture("fixture.fork/output", "program_output", { type: "string" }, stringGuard);
+const inputFixture = createSchemaFixture(
+  "fixture.fork/input",
+  "program_input",
+  { type: "string" },
+  stringGuard,
+);
+const outputFixture = createSchemaFixture(
+  "fixture.fork/output",
+  "program_output",
+  { type: "string" },
+  stringGuard,
+);
 const answerFixture = createSchemaFixture(
   "fixture.fork/answer",
   "elicit_response",
@@ -62,20 +72,17 @@ const parentManifest: DurableProgramManifest = {
 };
 
 function elicitingChild(id: string, digestChar: string) {
-  return createPinnedDurableProgram(
-    childManifest(id, digestChar),
-    function* (input, context) {
-      const answer = (yield* context.pull(
-        assertJson({
-          kind: "elicit",
-          key: "answer",
-          message: `${id} asks?`,
-          response: answerFixture.descriptor,
-        }),
-      )) as { action: string };
-      return `${input}:${answer.action}`;
-    },
-  );
+  return createPinnedDurableProgram(childManifest(id, digestChar), function* (input, context) {
+    const answer = (yield* context.pull(
+      assertJson({
+        kind: "elicit",
+        key: "answer",
+        message: `${id} asks?`,
+        response: answerFixture.descriptor,
+      }),
+    )) as { action: string };
+    return `${input}:${answer.action}`;
+  });
 }
 
 const childA = elicitingChild("fixture.fork/child-a", "a");
@@ -181,9 +188,7 @@ describe("fork groups through the workflow program driver", () => {
     const drivers = createProgramDriverRegistry([
       [
         "program",
-        createWorkflowProgramDriver(
-          createDurableToolRegistry([mixedParent, childA, peerProgram]),
-        ),
+        createWorkflowProgramDriver(createDurableToolRegistry([mixedParent, childA, peerProgram])),
       ],
     ]);
     const request = attachRequest(mixedParent.manifest);
@@ -287,7 +292,10 @@ describe("fork groups through the workflow program driver", () => {
   it("parks one elicit per member and resolves in descriptor order (REQ-053)", async () => {
     const authority = makeAuthority();
     const drivers = createProgramDriverRegistry([
-      ["program", createWorkflowProgramDriver(createDurableToolRegistry([parentTool, childA, childB]))],
+      [
+        "program",
+        createWorkflowProgramDriver(createDurableToolRegistry([parentTool, childA, childB])),
+      ],
     ]);
     const request = attachRequest();
 
@@ -347,7 +355,8 @@ describe("fork groups through the workflow program driver", () => {
         }
 
         const secondRun: AdvancementResult = yield* activate(2, "-2");
-        if (secondRun.state !== "completed") throw new Error(`expected completed, got ${secondRun.state}`);
+        if (secondRun.state !== "completed")
+          throw new Error(`expected completed, got ${secondRun.state}`);
         expect(secondRun.value).toBe("A:accept|B:accept");
 
         const types = authority.readJournal(sessionId).map((entry) => entry.payload.type);
@@ -421,7 +430,8 @@ describe("fork groups through the workflow program driver", () => {
         );
         // The fast member wins in the first pass; the slow member's open
         // elicit is cancelled and drains inside the same drive.
-        if (result.state !== "completed") throw new Error(`expected completed, got ${result.state}`);
+        if (result.state !== "completed")
+          throw new Error(`expected completed, got ${result.state}`);
         expect(result.value).toBe("R:fast");
 
         const journal = authority.readJournal(sessionId);

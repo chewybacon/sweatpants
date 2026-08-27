@@ -119,7 +119,9 @@ export function* replayWarmSuffix(
     throw new CrankError("replay_diverged", "Warm replay target differs from caught-up strand");
   }
   for (let index = 0; index < previous.item.replay.length; index += 1) {
-    if (semanticEntryDigest(previous.item.replay[index]!) !== semanticEntryDigest(item.replay[index]!)) {
+    if (
+      semanticEntryDigest(previous.item.replay[index]!) !== semanticEntryDigest(item.replay[index]!)
+    ) {
       throw new CrankError("replay_diverged", "Warm replay prefix changed");
     }
   }
@@ -159,7 +161,10 @@ export function* replayWarmSuffix(
             offset: entry.offset,
           });
   }
-  if (chain !== item.replayChainDigest || item.replayedThroughActionIndex !== item.plannedHead.actionIndex) {
+  if (
+    chain !== item.replayChainDigest ||
+    item.replayedThroughActionIndex !== item.plannedHead.actionIndex
+  ) {
     throw new CrankError("replay_diverged", "Warm replay did not reach the planned head");
   }
   const frontierDigest = sha256(
@@ -225,7 +230,8 @@ function assertExpectedFrontier(step: ProgramStep, entry: ReplayEntry): void {
     if (
       step.type !== "operation" ||
       step.descriptor.kind !== entry.descriptorKind ||
-      canonicalSnapshot(step.descriptor).sha !== entry.descriptorDigest
+      (step.descriptor.kind !== "sample" &&
+        canonicalSnapshot(step.descriptor).sha !== entry.descriptorDigest)
     ) {
       throw new CrankError("replay_diverged", "Evaluator operation differs from history");
     }

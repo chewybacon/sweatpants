@@ -6,7 +6,7 @@ import {
   type AttachProgramRequest,
   type DurableProgramManifest,
   type DurableToolRegistry,
-  type ForeignDurability,
+  type EphemeralDurability,
   type NormalizedProgramOperationTrace,
   type NormalizedProgramTaskTrace,
   type NormalizedProgramTrace,
@@ -65,7 +65,7 @@ export type ProgramCatalogEntry =
       target: string;
       driver: string;
       tool: string;
-      durability: ForeignDurability;
+      durability: EphemeralDurability;
     };
 
 export interface PinnedProgramCatalog {
@@ -249,7 +249,6 @@ export function createProgramWorkflowHost(
   // Process-local ownership is only a churn-avoidance hint. Every reuse is
   // checked against authority state; a replacement Host has an empty map and
   // therefore claims newer fences for the complete active task tree.
-  const ownedSessionEpochs = new Map<string, number>();
 
   function findTool(program: PinnedProgram) {
     return options.programs.get(exactProgramKey(program));
@@ -283,7 +282,6 @@ export function createProgramWorkflowHost(
     program: PinnedProgram,
     input: Json,
     execution: AcceptedExecution,
-    initialProgramCapability?: string,
   ): Operation<AdvancementResult> {
     const rootAttach = {
       sessionId,
@@ -320,7 +318,6 @@ export function createProgramWorkflowHost(
     };
     const activate = function* (request: {
       readonly attach: typeof rootAttach;
-      readonly initialProgramCapability?: string;
     }): Operation<AdvancementResult> {
       const tool = findTool(request.attach.program);
       if (!tool) {
@@ -345,22 +342,9 @@ export function createProgramWorkflowHost(
           ...(options.setup ? { setup: options.setup } : {}),
         },
         function* (authority) {
-          let capability = request.initialProgramCapability;
-          if (capability === undefined) {
-            capability = (yield* authority.command({
-              type: "execution.bind-attachment",
-              request: {
-                sessionId: request.attach.sessionId,
-                taskId: request.attach.taskId,
-                attachmentId: `${stableProgramAttachmentId(request.attach)}-${request.attach.executionEpoch}`,
-                executionEpoch: request.attach.executionEpoch,
-              },
-            })).programCapability;
-          }
           return yield* driveActivation({
             attach: request.attach,
             authority: hostAuthority(authority),
-            programCapability: capability,
             workflow: durableToolWorkflow(tool, request.attach.input),
             ...(options.effectOutcomeAcknowledger
               ? {
@@ -385,8 +369,7 @@ export function createProgramWorkflowHost(
         return yield* driveWorkflowTree({
           authority,
           attach: rootAttach,
-          ...(initialProgramCapability === undefined ? {} : { initialProgramCapability }),
-          host: {
+          rootScope: {
             activate,
             *manifest(child) {
               const tool = findTool(child);
@@ -441,34 +424,12 @@ export function createProgramWorkflowHost(
       throw new CrankError("program_version_unavailable", "Accepted program is unavailable");
     }
     const accepted = yield* acceptedExecution(journal, sessionId, recovery.taskId);
-    const states = new Map(
-      recovery.activeTasks.map((task) => [task.taskId, task.executionEpoch] as const),
-    );
-    const ownedEpoch = ownedSessionEpochs.get(sessionId);
-    const canReuseOwnedEpoch =
-      ownedEpoch !== undefined && [...states.values()].every((epoch) => epoch === ownedEpoch);
-
-    let rootExecutionEpoch = canReuseOwnedEpoch ? ownedEpoch : undefined;
-    if (!canReuseOwnedEpoch) {
-      const targetEpoch = Math.max(0, ...states.values()) + 1;
-      for (const task of recovery.activeTasks) {
-        let taskEpoch = task.executionEpoch;
-        while (taskEpoch < targetEpoch) {
-          taskEpoch = (yield* journal.replaceAttachment(
-            sessionId,
-            task.taskId,
-            `local-host-resume:${crypto.randomUUID()}`,
-          )).executionEpoch;
-        }
-        if (task.taskId === recovery.taskId) {
-          rootExecutionEpoch = taskEpoch;
-        }
-      }
-    }
+    const rootExecutionEpoch = recovery.activeTasks.find(
+      (task) => task.taskId === recovery.taskId,
+    )?.executionEpoch;
     if (rootExecutionEpoch === undefined) {
-      throw new CrankError("invalid_journal", "Runnable root was not fenced for recovery");
+      throw new CrankError("invalid_journal", "Runnable root has no execution epoch");
     }
-    ownedSessionEpochs.set(sessionId, rootExecutionEpoch);
     return yield* runTask(journal, sessionId, recovery.taskId, program, recovery.input, {
       ...accepted,
       executionEpoch: rootExecutionEpoch,
@@ -497,7 +458,7 @@ export function createProgramWorkflowHost(
         route,
         executionEpoch: execution.executionEpoch,
       };
-      const opened = yield* journal.openTask({
+      yield* journal.openTask({
         sessionId,
         turnId,
         taskId,
@@ -510,20 +471,11 @@ export function createProgramWorkflowHost(
         catalogDigest: request.catalog.digest,
         route,
       });
-      ownedSessionEpochs.set(sessionId, execution.executionEpoch);
       return {
         sessionId,
         turnId,
         taskId,
-        result: runTask(
-          journal,
-          sessionId,
-          taskId,
-          request.program,
-          request.input,
-          execution,
-          opened.programCapability,
-        ),
+        result: runTask(journal, sessionId, taskId, request.program, request.input, execution),
       };
     },
 

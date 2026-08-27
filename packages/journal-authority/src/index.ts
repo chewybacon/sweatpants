@@ -1,14 +1,98 @@
-export * from "./store.ts";
-export * from "./memory.ts";
-export * from "./store-persistence.ts";
-export * from "./store-planners.ts";
-export * from "./store-repository.ts";
-export * from "./api.ts";
-export * from "./fact-store.ts";
-export * from "./metrics-middleware.ts";
-export * from "./turn-authority.ts";
-export * from "./capabilities.ts";
-export * from "./fork-group.ts";
+export {
+  type CommitExecutionRequest,
+  type CommitExecutionResult,
+  type DurableCounter,
+  type ExecutionControl,
+  type ExecutionObjectPointer,
+  type ExecutionStore,
+  ExecutionStoreError,
+  type ExecutionStoreErrorCode,
+  type Milliseconds,
+  type PrivateSegmentPointer,
+  type StoredExecutionObject,
+  type StoredPrivateSegment,
+} from "./store.ts";
+export { createMemoryExecutionStore } from "./memory.ts";
+export {
+  decodeAuthorityControl,
+  decodeExecutionControl,
+  decodeExecutionObject,
+  decodePrivateSegment,
+  encodeExecutionControl,
+  encodeExecutionObject,
+  encodeExecutionObjectEnvelope,
+  encodePrivateSegment,
+  encodePrivateSegmentEnvelope,
+  encodePrivateSegmentEnvelopeFromCanonical,
+  executionKeys,
+} from "./store-persistence.ts";
+export { type ExecutionPlan, planExecutionCommit, privateSegmentEnsure } from "./store-planners.ts";
+export { createKernelExecutionStore } from "./store-repository.ts";
+export {
+  ExecutionStoreApi,
+  ExecutionStoreContext,
+  type ExecutionStoreFacade,
+  ExecutionStorePort,
+  ExecutionStoreUnavailable,
+  installExecutionStore,
+  useExecutionStore,
+} from "./api.ts";
+export {
+  AcceptedProjectionFactsError,
+  AcceptedProjectionFactStore,
+  type FactStore,
+  type PutFactsRequest,
+  type ReadFactsRequest,
+} from "./fact-store.ts";
+export {
+  installStorageMetrics,
+  type StorageMetrics,
+  type StorageMetricsRecorder,
+} from "./metrics-middleware.ts";
+export {
+  type CompleteAuthorityTurnRequest,
+  type OpenAuthorityTurnRequest,
+  TurnAuthorityBoundaryError,
+  TurnJournalAuthority,
+} from "./turn-authority.ts";
+export {
+  capabilityClaimsParser,
+  type CapabilityKey,
+  type CapabilityKeyring,
+  createCapabilityKeyring,
+  isDeliveryClaims,
+  isProgramClaims,
+  isResolutionClaims,
+  signCapability,
+  signPrivateAuthorityToken,
+  verifyCapability,
+  verifyDeliveryMandate,
+  verifyPrivateAuthorityToken,
+  verifyProgramCapability,
+  verifyResolutionCapability,
+} from "./capabilities.ts";
+export {
+  assertForkPolicyPairing,
+  beginForkGroupCancellation,
+  type DraftForkGroup,
+  drainForkGroup,
+  forceOrphanForkGroupResolution,
+  type ForkExpiryPolicy,
+  forkGroupIdFor,
+  forkGroupKey,
+  type ForkGroupMember,
+  forkGroupOutcome,
+  type ForkGroupState,
+  type ForkGroupStatus,
+  type ForkGroupTerminal,
+  type ForkMemberBiography,
+  type ForkPolicy,
+  type ForkReduction,
+  peerDeliveryCorrelator,
+  peerLossOutcome,
+  reduceForkMemberTerminal,
+  resolveForkDeadline,
+} from "./fork-group.ts";
 export type {
   AcceptAssistantPartialRequest,
   AcceptAssistantPartialResult,
@@ -80,7 +164,43 @@ export type {
   InMemoryJournalAuthorityOptions,
   SemanticEmissionPolicy,
 } from "./authority-snapshot.ts";
-export * from "./authority-contract.ts";
+export {
+  type AbandonAttemptCommand,
+  type ActionState,
+  type ActivationControlCommand,
+  type ActiveCancellationState,
+  type AttemptState,
+  type AuthorityCommand,
+  type AuthorityDecisionFrame,
+  type AuthorityJournalContract,
+  type AuthorityQuery,
+  type AuthoritySessionState,
+  type AuthoritySnapshotContract,
+  type AuthorityState,
+  type BeginCancellationUnwindCommand,
+  type BindAttachmentCommand,
+  type CommandResult,
+  type CommandResultByType,
+  type DetachAttemptCommand,
+  type ExecutionCommand,
+  type ForceOrphanCommand,
+  type JournalAppendCursor,
+  type JournalAuthorityContract,
+  type KernelContext,
+  type KernelTransition,
+  type OrphanReason,
+  type PullResolution,
+  type PullState,
+  type QueryResult,
+  type QueryResultByType,
+  type RecoveryCommand,
+  type ReplaceAttachmentCommand,
+  type RequestCancellationCommand,
+  type ResolutionAuthority,
+  type TaskLifecycle,
+  type TaskOrigin,
+  type TaskState,
+} from "./authority-contract.ts";
 export {
   AuthorityJournalPort,
   AuthoritySnapshotPort,
@@ -94,19 +214,151 @@ export type {
   AuthoritySnapshotFacade,
   JournalAuthorityFacade,
 } from "./authority-ports.ts";
-export * from "./authority-state.ts";
-export * from "./execution-forest.ts";
+export { authorityStateFromSnapshot, snapshotFromAuthorityState } from "./authority-state.ts";
+export {
+  type ExecutionAction,
+  type ExecutionForest,
+  type ExecutionTask,
+  type ProjectedAttempt,
+  type ProjectedSettlement,
+  type ProjectedTaskLifecycle,
+  projectExecutionForest,
+} from "./execution-forest.ts";
 export type { StoredJournalAuthorityOptions } from "./stored-shell.ts";
-export * from "./commit-loop.ts";
-export * from "./segmentation.ts";
-
-export * from "./schema-registry.ts";
-export * from "./workflow/runtime.ts";
-export * from "./workflow/tool-adapter.ts";
-export * from "./workflow/program-driver.ts";
-export * from "./workflow/host-drive.ts";
-export * from "./workflow/tree-drive.ts";
-export * from "./workflow/driver-drive.ts";
-export * from "./workflow/pull-settlement.ts";
-export * from "./error-taxonomy.ts";
-export * from "./pull-kinds/index.ts";
+export {
+  type ExecutionCommitDecision,
+  inlineControl,
+  runExecutionCommitLoop,
+} from "./commit-loop.ts";
+export {
+  DEFAULT_PRIVATE_SEGMENT_TARGET,
+  encodedJsonBytes,
+  LOW_PRIVATE_SEGMENT_TARGET,
+  type PrivateSegmentTarget,
+  segmentPrivateEntries,
+} from "./segmentation.ts";
+export {
+  createDurableSchemaCatalog,
+  createDurableSchemaRegistry,
+  createDurableSchemaRegistryFromCatalogs,
+  type DurableSchemaCatalog,
+  type DurableSchemaRegistry,
+  parseRegisteredSchema,
+  reconcileSchemaCoverage,
+  type RegistrySchemaValidation,
+} from "./schema-registry.ts";
+export {
+  all,
+  assertEphemeralDescriptor,
+  type CoordinatedRecordAttempt,
+  type Durable,
+  type DurableProgramEffect,
+  effect,
+  effectOptionsParser,
+  elicit,
+  elicitDescriptorSchema,
+  elicitOptionsParser,
+  emit,
+  ephemeral,
+  type ForkOptions,
+  installedEffect,
+  type InstalledEffectContract,
+  InstalledEffectPort,
+  invoke,
+  invokeOptionsParser,
+  modelSample,
+  openProgramAttachment,
+  type ProgramAttachmentHandle,
+  type ProgramCommand,
+  programCommandParser,
+  type ProgramEffectRuntime,
+  ProgramEffectRuntimeContext,
+  type ProgramEvent,
+  programShutdownReasonParser,
+  pullOperation,
+  race,
+  record,
+  type RecordAttemptContract,
+  RecordAttemptPort,
+  recordWorkflowOptionsParser,
+  type RuntimeRecordBoundary,
+  type SerializableProgramProposal,
+  wait,
+  waitDescriptorSchema,
+  waitOptionsParser,
+  type Workflow,
+} from "./workflow/runtime.ts";
+export { durableToolWorkflow } from "./workflow/tool-adapter.ts";
+export {
+  createWorkflowEffectHandlers,
+  createWorkflowProgramDriver,
+  type WorkflowEffectAttempt,
+  type WorkflowEffectHandler,
+  type WorkflowProgramDriverOptions,
+} from "./workflow/program-driver.ts";
+export {
+  driveActivation,
+  type DriveActivationRequest,
+  hostAuthority,
+  type AuthorityPort,
+  installEffectRegistrations,
+} from "./workflow/host-drive.ts";
+export {
+  driveWorkflowTree,
+  type DriveWorkflowTreeRequest,
+  type WorkflowTreeActivationRequest,
+  type RootScope,
+} from "./workflow/tree-drive.ts";
+export {
+  driveProgramDriverActivation,
+  type DriveProgramDriverActivationRequest,
+  type EffectRouter,
+  type JournalSamplingService,
+} from "./workflow/driver-drive.ts";
+export {
+  projectDurableExecution,
+  type DurableExecutionProjection,
+  type ProjectionPolicy,
+  type PublicOpenSlot,
+  type PublicTaskProjection,
+} from "./public-projection.ts";
+export type { AdvancementPolicy } from "./workflow/advancement-policy.ts";
+export type { ExecutionComposition } from "./workflow/execution-composition.ts";
+export { settleParkedPull } from "./workflow/pull-settlement.ts";
+export {
+  classifyError,
+  type ErrorChannel,
+  type ErrorCodeClassification,
+  type ErrorRecovery,
+  PUBLIC_ERROR_CODES,
+} from "./error-taxonomy.ts";
+export {
+  allDescriptorSchema,
+  createPullResolverRegistry,
+  createWaitPullResolver,
+  type EphemeralDescriptor,
+  ephemeralDescriptorParser,
+  ephemeralDescriptorSchema,
+  ephemeralDurabilitySchema,
+  forkExpirySchema,
+  invokeDescriptorSchema,
+  legacyForeignDescriptorParser,
+  legacyForeignDescriptorSchema,
+  portableSchemaDescriptorSchema,
+  PULL_KIND_ELICIT,
+  PULL_KIND_EPHEMERAL,
+  PULL_KIND_SAMPLE,
+  PULL_KIND_WAIT,
+  pullKindPolicy,
+  type PullKindPolicy,
+  type PullResolutionContext,
+  type PullResolver,
+  raceDescriptorSchema,
+  recordKeySchema,
+  registeredPullKinds,
+  registerPullKind,
+  type SampleDescriptor,
+  sampleDescriptorParser,
+  sampleDescriptorSchema,
+  spawnDescriptorSchema,
+} from "./pull-kinds/index.ts";

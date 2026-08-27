@@ -391,7 +391,13 @@ export function* runDurableDriverRecoveryFixture(
     secondRun: second,
     invocationId,
     pendingPullId: pending.payload.pullId,
-    normalizedJournal: semanticJournal.map((record) => record.payload.type),
+    normalizedJournal: semanticJournal
+      .filter(
+        (record) =>
+          record.payload.type !== "AdvancementBound" &&
+          record.payload.type !== "AdvancementReleased",
+      )
+      .map((record) => record.payload.type),
     semanticJournal,
     attachmentWasProcessless,
     attachmentCount,
@@ -526,7 +532,13 @@ export function* runDurableDriverCancellationFixture(
     secondRun: second,
     invocationId,
     pendingPullId: pending.payload.pullId,
-    normalizedJournal: semanticJournal.map((record) => record.payload.type),
+    normalizedJournal: semanticJournal
+      .filter(
+        (record) =>
+          record.payload.type !== "AdvancementBound" &&
+          record.payload.type !== "AdvancementReleased",
+      )
+      .map((record) => record.payload.type),
     semanticJournal,
     attachmentWasProcessless,
     attachmentCount,

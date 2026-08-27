@@ -1,5 +1,7 @@
 # Vocabulary — Post-Cutover Language
 
+> **Design-authority notice:** The approved [durable execution spine design](../../../.pi/specs/durable-execution-spine-design.md) is normative for Venue, Step, attribution, replay, peer strands, Mandate, R7′, and the `ephemeral` rename. Conflicting entries below are superseded rather than alternate current definitions.
+
 **Status:** Draft for adoption
 **Supersedes:** conflicting entries in `docs/domain-glossary.md` (see Stale-doc register)
 **Companion:** [responsibility-map.md](./responsibility-map.md)
@@ -150,22 +152,17 @@ is the same conversation over a process-independent wire — identical
 semantics, different transports, which is why the two pumps rhyme but never
 merge.
 
-**commission** *(design target — no code yet)* — The bind-time envelope an
-attachment carries to speak for its task: placement, capability, addressing,
-kernel context — every fact true when binding happened, constructed once.
-Commands become relative through it (`commission.reserve(descriptor)`),
-replacing hand-threaded `{sessionId, turnId, taskId, pullIndex,
-programCapability}` clumps. KernelContext : kernel :: commission :
-attachment. One reason to change: what an attachment must carry to speak for
-its task. Distinct neighbors — lease faces the kernel (who may run),
-capability faces any spender (one operation), commission faces the protocol
-(everything carried).
+**Mandate** — The runtime-only bind envelope authorizing one caught-up task
+to cross the live edge: typed address, strand and exact program pin, placement,
+attachment identity, fork context, task lease, bound frontier proof, and
+program capability. Commands are relative through `ExecutionComposition`;
+consumers never reconstruct identity/capability/counter clumps. A Mandate is
+issued only by bind CAS and never enters durable JSON or projection.
 
-**reservation** — The kernel's admission decision on one proposed interaction,
-answering exactly one question — may this proceed? — with three exclusive
-answers: `resolved` (replay hands back history), `authorized` (proceed, here
-are pullId/attemptId/resolutionCapability), `pending` (park, here is why).
-Parking is born here: pending ends the activation.
+**reservation** — The kernel's live admission decision on one newly proposed
+interaction, with the closed answers `authorized` (proceed with the admitted
+attempt) or `pending` (park). Recorded outcomes are replay input and are
+unrepresentable at the live edge.
 
 **resolution** — The commit turning a live outcome into history: reserve →
 authorize → perform → resolve-pull. After resolution, replays see it; before,
@@ -181,14 +178,14 @@ which consumes settlements and should be renamed `onPark`.
 **disposition** — Declared ending-classification supplied by an owner:
 `setDisposition(reason)` on the attachment handle (how the attachment ended,
 read by scope teardown) and interaction dispositions (`ModelSampleDisposition`,
-`ForeignToolDisposition`). Three-way distinction to preserve: outcome = what
+`EphemeralToolDisposition`). Three-way distinction to preserve: outcome = what
 the program produced; disposition = how the attempt ended, declared by its
 owner; release reason = why the lease freed. Values overlap; declarer and
 subject differ.
 
 **park** — Suspension state and act: `{ state: "parked", reason, pullId }`,
 reasons drawn only from pull kinds allowed to wait (elicit, wait, child,
-foreign, sample). Normal control flow, not failure. Reason set stays closed.
+ephemeral, sample). Normal control flow, not failure. Reason set stays closed.
 
 **execution** *(canonical sense)* — One epoch-numbered attempt window of a
 task: the span bounded by lease grant and release within one
@@ -209,15 +206,16 @@ frontier proofs, lease ownership. Fencing is why two activations can race
 and only one commits.
 
 **restore / recovery** — Re-establishing an evaluator after process loss:
-prepare-restore (kernel issues ticket + replay) → evaluator restores →
-bind-frontier (ticket bound to frontier digest). Diverged or stale restorations
-are rejected, not reconciled.
+Authority produces a capability-free forest replay plan; the common replay
+walker reconstructs exactly to the planned head; advancement policy selects a
+prepared target; bind CAS issues a Mandate. Diverged replay is terminal and
+stale prepared state is discarded and replanned.
 
 ### Security grammar
 
 **capability** — Unforgeable opaque token Authority mints to authorize one
-operation: `programCapability` (task closure, minted at openTask),
-`resolutionCapability` (minted at reserve, spent at resolve), restore tickets.
+operation: the program capability carried only inside a Mandate and the
+`resolutionCapability` minted at reserve and spent at settlement.
 Hosts cannot do what they were not granted; grants are single-use, journaled.
 
 **audience** — The addressing half of the grammar: who must be spending.
@@ -244,7 +242,7 @@ dare to end activations.
 
 **pull** — The single parked-interaction primitive: authored programs propose
 typed descriptors; registries hold policies; resolvers settle them. Kind
-taxonomy lives under pull (elicit, wait, sample, foreign, invoke, effect).
+taxonomy lives under pull (elicit, wait, sample, ephemeral, invoke, effect).
 
 **effect** — Named, versioned, schema-described side effect (`name@version`,
 input/output schemas, cancellation partial, retrySafety). Attempt → outcome →
@@ -270,10 +268,11 @@ attachment internals are private and may stay.
 **native tool** — A tool whose body is an authored durable program behind a
 tool surface; routed to evaluators through configured driver bindings.
 
-**foreign tool** — A protocol-unaware external tool invoked as a live,
+**ephemeral tool** — A protocol-unaware external tool invoked as a live,
 session-bound call: host retains authority, journals the exchange under a
 canonical `invocationId`, exposes only `ephemeral_handle` references — lost
-references fail as `foreign_reference_lost`, never dangle.
+references retain the historical error literal `foreign_reference_lost` and
+never dangle. `foreign` remains a read-only legacy descriptor spelling.
 
 **projection** — Deriving public views from journal records without mutating
 them: `projectRecords`, `projectExecutionForest`; the chat engine's entire
@@ -465,11 +464,9 @@ topology recursion). Candidates to unify under the Activation contract.
 6. `WorkflowTreeHost.settle` → `onPark`.
 7. Effect-routing `resolver` argument → `route`/`placement` naming.
 8. Driver→Evaluator: blocked pending ADR supersession decision.
-9. Introduce the **commission**: bind-time envelope unifying placement,
-   capability, addressing, and kernel context behind relative commands —
-   retires the identity clump threaded through every command site. Measured:
-   adding the next cross-cutting fact touches one file; command-site params
-   drop from ~7 to ~2.
+9. **Mandate landed:** bind-time CAS now issues the placement, capability,
+   typed address, lease, fork context, and frontier proof behind relative live
+   commands. ReplayItems carry none of these live rights.
 
 Each rename is mechanical and gate-checkable. Structure work (Activation
 contract lift, placement binding, settlement-observation seam) follows after

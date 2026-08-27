@@ -13,11 +13,9 @@ import {
 import {
   createPullResolverRegistry,
   createWaitPullResolver,
-  driveActivation,
+  createWorkflowProgramDriver,
   driveProgramDriverActivation,
   driveWorkflowTree,
-  durableToolWorkflow,
-  hostAuthority,
   modelPullOwnerFence,
   settleParkedPull,
   type DurableSemanticRecord,
@@ -100,7 +98,6 @@ import {
   type ProgramDriverNativeToolComposition,
 } from "../program-driver/native-tools.ts";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
-import { runWorkflowProgramActivation } from "./program-workflow-host.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ElicitResponse, WorkflowChatEngineParams } from "./types.ts";
 import {
@@ -111,6 +108,7 @@ import {
   stageModelContextSource,
 } from "./model-sampling/service.ts";
 import { runWithTurnEventWriter } from "./model-sampling/turn-event-api.ts";
+import { runWorkflowProgramActivation } from "./program-workflow-host.ts";
 
 type TreePlacement = {
   readonly nodeId: string;
@@ -344,17 +342,10 @@ function* activateProgramDriverChatEngine(
     recovery.status === "active"
       ? { taskId: recovery.taskId, turnId: recovery.turnId, input: recovery.input }
       : undefined;
-  let recoveredExecutionEpoch = 1;
-  if (recovery.status === "active") {
-    for (const task of recovery.activeTasks) {
-      const replaced = yield* journal.replaceAttachment(
-        params.conversationId,
-        task.taskId,
-        task.attachmentId,
-      );
-      if (task.taskId === recovery.taskId) recoveredExecutionEpoch = replaced.executionEpoch;
-    }
-  }
+  const recoveredExecutionEpoch =
+    recovery.status === "active"
+      ? (recovery.activeTasks.find((task) => task.taskId === recovery.taskId)?.executionEpoch ?? 1)
+      : 1;
   const turnNumber = yield* journal.rootTaskCount(params.conversationId);
   const taskId = active?.taskId ?? `turn-${turnNumber}/root`;
   const turnId = active?.turnId ?? `turn-${turnNumber}`;
@@ -396,10 +387,9 @@ function* activateProgramDriverChatEngine(
     executionEpoch: recoveredExecutionEpoch,
     affinity: { kind: "conversation" as const, key: params.conversationId },
   };
-  let openedCapability = "";
   if (!active) {
     try {
-      const openedTask = yield* journal.openTask({
+      yield* journal.openTask({
         sessionId: params.conversationId,
         turnId,
         taskId,
@@ -410,7 +400,6 @@ function* activateProgramDriverChatEngine(
         audience: "workflow-host",
         elicitAudience: params.participantId,
       });
-      openedCapability = openedTask.programCapability;
     } catch (error) {
       if (!(error instanceof CrankError) || error.code !== "invalid_journal") {
         throw error;
@@ -506,15 +495,17 @@ function* activateProgramDriverChatEngine(
     return binding?.route ?? parentRoute;
   };
   const hostEffectRegistrations = [...foreignEffects, ...(params.nativeTools?.effects ?? [])];
-  const workflowEffectRegistrations = hostEffectRegistrations;
-  // ProgramDriver remains the intentional transport protocol for remote and
-  // process-independent evaluators. This registry is used only when a child
-  // route selects such a driver; local programs stay on the workflow runtime.
-  const remoteEffects = createDurableEffectRegistry(
+  const executionEffects = createDurableEffectRegistry(
     hostEffectRegistrations,
     Object.values(manifest.effects),
   );
-  const remoteDrivers = createProgramDriverRegistry(params.nativeTools?.drivers ?? []);
+  // Full cutover: local, worker, and remote placements all speak the same
+  // ProgramDriver replay/advancement protocol. Placement changes transport,
+  // never replay semantics.
+  const drivers = createProgramDriverRegistry([
+    ...(params.nativeTools?.drivers ?? []),
+    ["program", createWorkflowProgramDriver(tools)],
+  ]);
   // Shared context-source resolver for sampling on both activation paths.
   const modelContextSourceResolver = function* (source: ModelContextSource) {
     return yield* resolveModelContextSource(source, {
@@ -566,113 +557,85 @@ function* activateProgramDriverChatEngine(
     createWaitPullResolver(),
   ]);
 
-  const activateWorkflowTask = function* (request: {
-    readonly attach: AttachProgramRequest;
-    readonly initialProgramCapability?: string;
-  }): Operation<AdvancementResult> {
-    const currentAttach = request.attach;
-    const tool = tools.get(exactProgramKey(currentAttach.program));
-    if (!tool) {
-      throw new CrankError("program_version_unavailable", "No pinned program for activation");
+  const activateTask = function* (
+    authority: JournalAuthorityContract,
+    request: { readonly attach: AttachProgramRequest },
+    activationOwnerId?: string,
+  ): Operation<AdvancementResult> {
+    const kind = routeDriverKind(request.attach.route);
+    const driver = drivers.get(kind);
+    if (!driver) {
+      throw new CrankError("unknown_target", `No program driver for ${kind}`);
+    }
+    const drive = (selectedAuthority: JournalAuthorityContract): Operation<AdvancementResult> =>
+      ProgramDriverRegistryContext.with(drivers, function* () {
+        return yield* ModelContextSourceResolverContext.with(
+          modelContextSourceResolver,
+          function* () {
+            return yield* DurableEffectRegistryContext.with(executionEffects, function* () {
+              return yield* driveProgramDriverActivation({
+                authority: selectedAuthority,
+                driver,
+                attach: request.attach,
+                ...(activationOwnerId === undefined ? {} : { activationOwnerId }),
+                *stageSampleInput(input) {
+                  return yield* stageProgramDriverModelSampleInput(input, params.conversationId);
+                },
+                effects: {
+                  *route({ authorization, definition }) {
+                    if (kind === "program") return "execution";
+                    const routed = yield* DurableEffectRouting.operations.route({
+                      definition,
+                      effectContractDigest: authorization.effectContractDigest,
+                      sessionId: authorization.sessionId,
+                      taskId: authorization.taskId,
+                      pullId: authorization.pullId,
+                      attemptId: authorization.attemptId,
+                      program: request.attach.program,
+                      programRoute: request.attach.route,
+                    });
+                    if (routed.placement !== "host" && routed.placement !== "execution") {
+                      throw new CrankError(
+                        "effect_placement_unavailable",
+                        "Effect route is invalid",
+                      );
+                    }
+                    return routed.placement;
+                  },
+                  *executeHost(authorization, placement) {
+                    return yield* ProgramPlacementContext.with(placement, function* () {
+                      return yield* DurableEffects.operations.execute(authorization);
+                    });
+                  },
+                },
+              });
+            });
+          },
+        );
+      });
+
+    if (kind !== "program") {
+      if (params.nativeTools?.setup) yield* params.nativeTools.setup();
+      return yield* drive(authority);
     }
     return yield* runWorkflowProgramActivation(
       {
         installAuthority: () => journal.install(),
-        attach: currentAttach,
+        attach: request.attach,
         driverKind: "workflow",
-        effectRegistrations: workflowEffectRegistrations,
+        effectRegistrations: hostEffectRegistrations,
         routeResolver: routeResolverFn,
         modelContextSourceResolver,
         modelContextSourceStager: (context) =>
           stageModelContextSource(context, params.conversationId),
         ...(params.nativeTools?.setup ? { setup: params.nativeTools.setup } : {}),
       },
-      function* (authority) {
-        let programCapability = request.initialProgramCapability;
-        if (programCapability === undefined) {
-          const bound = yield* authority.command({
-            type: "execution.bind-attachment",
-            request: {
-              sessionId: currentAttach.sessionId,
-              taskId: currentAttach.taskId,
-              attachmentId: `${stableProgramAttachmentId(currentAttach)}-${currentAttach.executionEpoch}`,
-              executionEpoch: currentAttach.executionEpoch,
-            },
-          });
-          programCapability = bound.programCapability;
-        }
-        return yield* driveActivation({
-          attach: currentAttach,
-          authority: hostAuthority(authority),
-          programCapability,
-          workflow: durableToolWorkflow(tool, currentAttach.input),
-        });
-      },
+      drive,
     );
-  };
-
-  const activateRemoteTask = function* (
-    authority: JournalAuthorityContract,
-    request: {
-      readonly attach: AttachProgramRequest;
-      readonly initialProgramCapability?: string;
-    },
-    activationOwnerId?: string,
-  ): Operation<AdvancementResult> {
-    const kind = routeDriverKind(request.attach.route);
-    const driver = remoteDrivers.get(kind);
-    if (!driver) {
-      throw new CrankError("unknown_target", `No program driver for ${kind}`);
-    }
-    return yield* ProgramDriverRegistryContext.with(remoteDrivers, function* () {
-      return yield* ModelContextSourceResolverContext.with(
-        modelContextSourceResolver,
-        function* () {
-          return yield* DurableEffectRegistryContext.with(remoteEffects, function* () {
-            return yield* driveProgramDriverActivation({
-              authority,
-              driver,
-              attach: request.attach,
-              ...(request.initialProgramCapability === undefined
-                ? {}
-                : { initialProgramCapability: request.initialProgramCapability }),
-              ...(activationOwnerId === undefined ? {} : { activationOwnerId }),
-              *stageSampleInput(input) {
-                return yield* stageProgramDriverModelSampleInput(input, params.conversationId);
-              },
-              effects: {
-                *route({ authorization, definition }) {
-                  const routed = yield* DurableEffectRouting.operations.route({
-                    definition,
-                    effectContractDigest: authorization.effectContractDigest,
-                    sessionId: authorization.sessionId,
-                    taskId: authorization.taskId,
-                    pullId: authorization.pullId,
-                    attemptId: authorization.attemptId,
-                    program: request.attach.program,
-                    programRoute: request.attach.route,
-                  });
-                  if (routed.placement !== "host" && routed.placement !== "execution") {
-                    throw new CrankError("effect_placement_unavailable", "Effect route is invalid");
-                  }
-                  return routed.placement;
-                },
-                *executeHost(authorization, placement) {
-                  return yield* ProgramPlacementContext.with(placement, function* () {
-                    return yield* DurableEffects.operations.execute(authorization);
-                  });
-                },
-              },
-            });
-          });
-        },
-      );
-    });
   };
 
   const driveTreeAtEpoch = function* (
     executionEpoch: number,
-    initialProgramCapability?: string,
     activationOwnerId?: string,
   ): Operation<AdvancementResult> {
     const rootAttach = { ...attach, executionEpoch };
@@ -680,12 +643,9 @@ function* activateProgramDriverChatEngine(
       return yield* driveWorkflowTree({
         authority,
         attach: rootAttach,
-        ...(initialProgramCapability === undefined ? {} : { initialProgramCapability }),
-        host: {
+        rootScope: {
           activate(request) {
-            return routeDriverKind(request.attach.route) === "program"
-              ? activateWorkflowTask(request)
-              : activateRemoteTask(authority, request, activationOwnerId);
+            return activateTask(authority, request, activationOwnerId);
           },
           *manifest(program) {
             const tool = tools.get(exactProgramKey(program));
@@ -719,7 +679,7 @@ function* activateProgramDriverChatEngine(
   let cancellationFenceLost = false;
   let outcome: AdvancementResult;
   if (!requiresFencedActivation(params.nativeTools)) {
-    outcome = yield* driveTreeAtEpoch(attach.executionEpoch, active ? undefined : openedCapability);
+    outcome = yield* driveTreeAtEpoch(attach.executionEpoch);
   } else {
     // Fenced native bindings: the SAME workflow turns, wrapped in the
     // host-side activation lease (claim/renew/release). The kernel's
@@ -732,7 +692,7 @@ function* activateProgramDriverChatEngine(
           attach.executionEpoch,
           true,
           function* (claimedEpoch, activationOwnerId) {
-            return yield* driveTreeAtEpoch(claimedEpoch, undefined, activationOwnerId);
+            return yield* driveTreeAtEpoch(claimedEpoch, activationOwnerId);
           },
         );
       });

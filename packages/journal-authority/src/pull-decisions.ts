@@ -100,6 +100,9 @@ export function reserveUnderMandate(
   request: MandateReserveRequest,
 ): LiveReservationResult {
   const task = mandateTask(draft, request.mandate);
+  if (request.descriptor.kind === "foreign") {
+    throw new CrankError("invalid_descriptor", "Legacy foreign descriptors are read-only");
+  }
   const result = reservePull(draft, {
     sessionId: request.mandate.address.sessionId,
     turnId: request.mandate.address.turnId,
@@ -138,13 +141,17 @@ export function completeUnderMandate(
   services: PullDecisionServices,
 ): CompleteTaskResult {
   const task = mandateTask(draft, request.mandate);
-  const result = completeTask(draft, {
-    sessionId: request.mandate.address.sessionId,
-    taskId: task.taskId,
-    actionIndex: task.nextActionIndex,
-    outcome: request.outcome,
-    programCapability: request.mandate.programCapability,
-  }, services);
+  const result = completeTask(
+    draft,
+    {
+      sessionId: request.mandate.address.sessionId,
+      taskId: task.taskId,
+      actionIndex: task.nextActionIndex,
+      outcome: request.outcome,
+      programCapability: request.mandate.programCapability,
+    },
+    services,
+  );
   if (result.status !== "rejected") {
     endLiveLease(draft, request.mandate.address.sessionId, task, "terminal");
   }
@@ -661,7 +668,10 @@ export function resolvePull(
   return { status: "accepted", receipt };
 }
 
-export function appendEmission(draft: DecisionDraft, request: AppendEmissionRequest): EmissionReceipt {
+export function appendEmission(
+  draft: DecisionDraft,
+  request: AppendEmissionRequest,
+): EmissionReceipt {
   const task = draft.task(request.sessionId, request.taskId);
   draft.assertProgram(request.programCapability, task, request.sessionId);
   draft.assertActive(task);

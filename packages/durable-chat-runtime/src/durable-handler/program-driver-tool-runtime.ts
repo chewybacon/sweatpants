@@ -1,7 +1,10 @@
 import { parseElicitExchangeCompletion } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
-import { type ForeignDurability, type ForeignToolDisposition } from "@sweatpants/durable-execution";
+import {
+  type EphemeralDurability,
+  type EphemeralToolDisposition,
+} from "@sweatpants/durable-execution";
 import {
   type DurableEffectContext,
   type DurableEffectRegistration,
@@ -23,7 +26,7 @@ import type {
 } from "@sweatpants/tool-runtime";
 
 const DRIVER = "chat-tool-runtime";
-const DURABILITY: ForeignDurability = "ephemeral_handle";
+const DURABILITY: EphemeralDurability = "ephemeral_handle";
 const continuationSchema = z.strictObject({
   ref: z
     .strictObject({
@@ -65,7 +68,7 @@ export function createToolRuntimeForeignEffectRegistrations(
   const start = createDurableEffectRegistration(
     FOREIGN_TOOL_START_EFFECT,
     { mode: "unsafe" },
-    successfulEffect(function* (request, context): Operation<ForeignToolDisposition> {
+    successfulEffect(function* (request, context): Operation<EphemeralToolDisposition> {
       if (request.driver !== DRIVER) {
         return failure("foreign_driver_mismatch", `Unsupported foreign driver: ${request.driver}`);
       }
@@ -107,7 +110,7 @@ export function createToolRuntimeForeignEffectRegistrations(
   const continueRegistration = createDurableEffectRegistration(
     FOREIGN_TOOL_CONTINUE_EFFECT,
     { mode: "unsafe" },
-    successfulEffect(function* (request, context): Operation<ForeignToolDisposition> {
+    successfulEffect(function* (request, context): Operation<EphemeralToolDisposition> {
       if (request.continuation.driver !== DRIVER) {
         return failure("foreign_continuation_invalid", "Foreign continuation is invalid");
       }
@@ -173,7 +176,7 @@ function* disposition(
   tool: string,
   runtime: ToolRuntime,
   entry?: ToolInventoryEntry,
-): Operation<ForeignToolDisposition> {
+): Operation<EphemeralToolDisposition> {
   switch (execution.kind) {
     case "completed":
       try {
@@ -214,7 +217,7 @@ function mapEvent(
   ref: ToolExecutionRef,
   tool: string,
   entry?: ToolInventoryEntry,
-): ForeignToolDisposition | undefined {
+): EphemeralToolDisposition | undefined {
   switch (event.type) {
     case "progress":
     case "log":
@@ -252,7 +255,7 @@ function inputRequired(
     binding?: { readonly id: string };
   },
   entry?: ToolInventoryEntry,
-): ForeignToolDisposition {
+): EphemeralToolDisposition {
   try {
     const binding = request.binding ?? entry?.elicits?.[request.key]?.binding;
     if (!binding) {
@@ -301,7 +304,7 @@ function effectMetadata(options: ToolRuntimeForeignOptions, context: DurableEffe
   };
 }
 
-function failure(code: string, message: string): ForeignToolDisposition {
+function failure(code: string, message: string): EphemeralToolDisposition {
   return {
     type: "failed",
     error: { code, message, durability: DURABILITY, retryable: false },

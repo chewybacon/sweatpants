@@ -1,10 +1,11 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import {
-  claimActivation,
-  releaseActivation,
-  renewActivation,
-} from "./activation-decisions.ts";
-import type { AuthorityCommand, AuthorityDecisionFrame, CommandResult, KernelTransition } from "./authority-contract.ts";
+import { claimActivation, releaseActivation, renewActivation } from "./activation-decisions.ts";
+import type {
+  AuthorityCommand,
+  AuthorityDecisionFrame,
+  CommandResult,
+  KernelTransition,
+} from "./authority-contract.ts";
 import { DecisionDraft, type AuthorityDecisionOptions } from "./decision-draft.ts";
 import {
   abandonAttempt,
@@ -206,4 +207,3 @@ function assertNever(value: never): never {
     `Unknown authority operation ${(value as { type?: string }).type ?? "missing"}`,
   );
 }
-

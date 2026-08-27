@@ -56,7 +56,11 @@ export const raceDescriptorSchema = z.strictObject({
 
 type ChildMode = "invoke" | "all" | "race" | "spawn";
 
-function childPolicy(kind: ChildMode, schema: z.ZodType, label: (descriptor: Json) => string): void {
+function childPolicy(
+  kind: ChildMode,
+  schema: z.ZodType,
+  label: (descriptor: Json) => string,
+): void {
   registerPullKind({
     kind,
     // The whole child family parks under the shared "child" reason.
@@ -72,15 +76,23 @@ function childPolicy(kind: ChildMode, schema: z.ZodType, label: (descriptor: Jso
   });
 }
 
-childPolicy("invoke", invokeDescriptorSchema, (descriptor) =>
-  `invoke(${(descriptor as z.infer<typeof invokeDescriptorSchema>).child.id})`,
+childPolicy(
+  "invoke",
+  invokeDescriptorSchema,
+  (descriptor) => `invoke(${(descriptor as z.infer<typeof invokeDescriptorSchema>).child.id})`,
 );
-childPolicy("spawn", spawnDescriptorSchema, (descriptor) =>
-  `spawn(${(descriptor as z.infer<typeof spawnDescriptorSchema>).child.id})`,
+childPolicy(
+  "spawn",
+  spawnDescriptorSchema,
+  (descriptor) => `spawn(${(descriptor as z.infer<typeof spawnDescriptorSchema>).child.id})`,
 );
-childPolicy("all", allDescriptorSchema, (descriptor) =>
-  `all(${(descriptor as z.infer<typeof allDescriptorSchema>).children.length})`,
+childPolicy(
+  "all",
+  allDescriptorSchema,
+  (descriptor) => `all(${(descriptor as z.infer<typeof allDescriptorSchema>).children.length})`,
 );
-childPolicy("race", raceDescriptorSchema, (descriptor) =>
-  `race(${(descriptor as z.infer<typeof raceDescriptorSchema>).children.length})`,
+childPolicy(
+  "race",
+  raceDescriptorSchema,
+  (descriptor) => `race(${(descriptor as z.infer<typeof raceDescriptorSchema>).children.length})`,
 );

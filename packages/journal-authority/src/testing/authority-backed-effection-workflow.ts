@@ -29,5 +29,5 @@ export {
 
 export {
   driveActivation as runProofRecordWorkflow,
-  hostAuthority as proofHostAuthority,
+  hostAuthority as proofAuthorityPort,
 } from "../workflow/host-drive.ts";

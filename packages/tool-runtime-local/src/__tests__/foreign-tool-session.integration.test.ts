@@ -21,7 +21,7 @@ import {
 import {
   createDurableToolRegistry,
   type AttachProgramRequest,
-  type ForeignToolRequest,
+  type EphemeralToolRequest,
   type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import {
@@ -132,7 +132,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
           answer: response.action === "accept" ? response.content.answer : "none",
         };
       });
-    const request: ForeignToolRequest = {
+    const request: EphemeralToolRequest = {
       driver: "tool-session",
       tool: tool.name,
       input: { topic: "durability" },
@@ -227,7 +227,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
 function attachRequest(
   sessionId: string,
   taskId: string,
-  input: ForeignToolRequest,
+  input: EphemeralToolRequest,
 ): AttachProgramRequest {
   return {
     sessionId,

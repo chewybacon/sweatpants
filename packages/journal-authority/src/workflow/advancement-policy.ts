@@ -19,10 +19,7 @@ export interface AdvancementPolicy {
 }
 
 /** Deterministic policy used by the recursive composition coordinator. */
-export function requestedTargetPolicy(
-  taskId: string,
-  placement: LivePlacement,
-): AdvancementPolicy {
+export function requestedTargetPolicy(taskId: string, placement: LivePlacement): AdvancementPolicy {
   return {
     *select(targets) {
       const target = targets.find((candidate) =>
@@ -36,10 +33,7 @@ export function requestedTargetPolicy(
 }
 
 /** The one trust-boundary conversion from driver-owned route JSON. */
-export function livePlacement(
-  route: ProgramRoute,
-  affinity?: SandboxAffinity,
-): LivePlacement {
+export function livePlacement(route: ProgramRoute, affinity?: SandboxAffinity): LivePlacement {
   const driverKind = routeDriverKind(route);
   let placementRoute: PlacementRoute;
   let evaluatorKind: LivePlacement["evaluatorKind"];

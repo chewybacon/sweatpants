@@ -251,7 +251,10 @@ function* composeStep(
   stage: JournalSamplingService | undefined,
 ): Operation<Extract<ProgramStep, { type: "operation" }>> {
   if (!stage || step.descriptor.kind !== "sample") return step;
-  return { ...step, descriptor: { ...step.descriptor, input: yield* stage(step.descriptor.input, attach) } };
+  return {
+    ...step,
+    descriptor: { ...step.descriptor, input: yield* stage(step.descriptor.input, attach) },
+  };
 }
 
 function assertAuthorizedStep(

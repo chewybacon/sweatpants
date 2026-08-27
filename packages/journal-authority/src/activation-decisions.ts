@@ -67,7 +67,8 @@ export function renewActivation(
     lease.ownerId !== request.ownerId ||
     lease.epoch !== request.epoch ||
     draft.context.nowMs >= lease.expiresAtMs
-  ) return { status: "stale_activation" };
+  )
+    return { status: "stale_activation" };
   const expiresAtMs = draft.context.nowMs + lease.leaseDurationMs;
   session.control.activationLease = { ...lease, expiresAtMs };
   return { status: "renewed", expiresAtMs };

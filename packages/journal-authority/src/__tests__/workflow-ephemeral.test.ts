@@ -5,7 +5,7 @@ import { stableProgramAttachmentId } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 import { createAuthorityScenarioDriver, withProgramDriverTestScope } from "../testing.ts";
-import { foreignTool, type Workflow } from "../workflow/runtime.ts";
+import { pullOperation, type Workflow } from "../workflow/runtime.ts";
 import { driveActivation } from "../workflow/host-drive.ts";
 import { anyGuard, createSchemaFixture } from "../schema-fixtures.ts";
 import { createCapabilityKeyring } from "../capabilities.ts";
@@ -68,7 +68,8 @@ function makeAuthority(journalId: string) {
 
 function weatherWorkflow(): Workflow<Json> {
   return function* (): Workflow<Json> {
-    const forecast = yield* foreignTool({
+    const forecast = yield* pullOperation({
+      kind: "ephemeral",
       driver: "tool-session",
       tool: "weather",
       input: { city: " oslo" },
@@ -79,7 +80,7 @@ function weatherWorkflow(): Workflow<Json> {
 }
 
 describe("workflow runtime foreign boundaries", () => {
-  it("parks on a foreign call and settles through session resolution", async () => {
+  it("parks on a ephemeral call and settles through session resolution", async () => {
     const sessionId = "foreign-ok";
     const authority = makeAuthority("journal-foreign-ok");
     const request = attach(sessionId);
@@ -104,9 +105,9 @@ describe("workflow runtime foreign boundaries", () => {
           programCapability: opened.programCapability,
           workflow: weatherWorkflow(),
         });
-        if (parked.state !== "parked" || parked.reason !== "foreign") {
+        if (parked.state !== "parked" || parked.reason !== "ephemeral") {
           throw new Error(
-            `expected parked foreign, got ${parked.state}/${"reason" in parked ? parked.reason : "?"}`,
+            `expected parked ephemeral, got ${parked.state}/${"reason" in parked ? parked.reason : "?"}`,
           );
         }
 
@@ -115,19 +116,19 @@ describe("workflow runtime foreign boundaries", () => {
           .readJournal(sessionId)
           .find(
             (e): e is Extract<typeof e, { payload: { type: "PullRequested" } }> =>
-              e.payload.type === "PullRequested" && e.payload.descriptor.kind === "foreign",
+              e.payload.type === "PullRequested" && e.payload.descriptor.kind === "ephemeral",
           );
         if (!pending || pending.payload.type !== "PullRequested") {
-          throw new Error("foreign pull missing");
+          throw new Error("ephemeral pull missing");
         }
-        if (pending.payload.descriptor.kind !== "foreign") return;
+        if (pending.payload.descriptor.kind !== "ephemeral") return;
         const resolved = yield* authority.resolve({
           capability: authority.resolutionCapability(
             sessionId,
             request.taskId,
             pending.payload.pullId,
           ),
-          audience: "foreign:tool-session",
+          audience: "ephemeral:tool-session",
           outcome: { status: "ok", value: { sky: "sunny" } },
         });
         if (resolved.status === "rejected") throw new Error(resolved.code);
@@ -184,7 +185,7 @@ describe("workflow runtime foreign boundaries", () => {
           .readJournal(sessionId)
           .find(
             (e): e is Extract<typeof e, { payload: { type: "PullRequested" } }> =>
-              e.payload.type === "PullRequested" && e.payload.descriptor.kind === "foreign",
+              e.payload.type === "PullRequested" && e.payload.descriptor.kind === "ephemeral",
           );
         if (!pending || pending.payload.type !== "PullRequested") throw new Error("no pull");
         const resolved = yield* authority.resolve({
@@ -193,7 +194,7 @@ describe("workflow runtime foreign boundaries", () => {
             request.taskId,
             pending.payload.pullId,
           ),
-          audience: "foreign:tool-session",
+          audience: "ephemeral:tool-session",
           outcome: {
             status: "error",
             error: { code: "foreign_reference_lost", message: "live reference gone" },
@@ -247,7 +248,8 @@ describe("workflow runtime foreign boundaries", () => {
             authority,
             programCapability: opened.programCapability,
             workflow: function* (): Workflow<Json> {
-              yield* foreignTool({
+              yield* pullOperation({
+                kind: "ephemeral",
                 driver: "mcp",
                 tool: "remote",
                 input: {},
@@ -298,7 +300,7 @@ describe("workflow runtime foreign boundaries", () => {
         expect(pull?.payload.type).toBe("PullRequested");
         if (pull?.payload.type === "PullRequested") {
           expect(canonicalSnapshot(pull.payload.descriptor).value).toMatchObject({
-            kind: "foreign",
+            kind: "ephemeral",
             driver: "tool-session",
             tool: "weather",
           });

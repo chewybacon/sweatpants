@@ -26,7 +26,4 @@ export interface EffectRouter {
 }
 
 /** Journal-owned sampling preparation boundary. */
-export type JournalSamplingService = (
-  input: Json,
-  attach: AttachProgramRequest,
-) => Operation<Json>;
+export type JournalSamplingService = (input: Json, attach: AttachProgramRequest) => Operation<Json>;

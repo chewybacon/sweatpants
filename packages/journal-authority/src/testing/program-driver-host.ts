@@ -105,19 +105,13 @@ export function driveTestProgramTree(
     return yield* driveWorkflowTree({
       authority,
       attach: request.attach,
-      ...(request.programCapability === undefined
-        ? {}
-        : { initialProgramCapability: request.programCapability }),
-      host: {
+      rootScope: {
         *activate(activation) {
           const driver = driverFor(activation.attach.route);
           return yield* driveProgramDriverActivation({
             authority,
             driver,
             attach: activation.attach,
-            ...(activation.initialProgramCapability === undefined
-              ? {}
-              : { initialProgramCapability: activation.initialProgramCapability }),
             ...(request.activationOwnerId === undefined
               ? {}
               : { activationOwnerId: request.activationOwnerId }),

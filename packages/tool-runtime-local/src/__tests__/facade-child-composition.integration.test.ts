@@ -22,7 +22,7 @@ import {
   createDurableToolRegistry,
   defineDurableProgramManifest,
   type AttachProgramRequest,
-  type ForeignToolRequest,
+  type EphemeralToolRequest,
   type AdvancementResult,
 } from "@sweatpants/durable-execution";
 import {
@@ -136,7 +136,7 @@ describe("facade workflow runtime child composition", () => {
         parentOutput.entry,
       ]),
     });
-    const request: ForeignToolRequest = {
+    const request: EphemeralToolRequest = {
       driver: "tool-session",
       tool: facade.name,
       input: null,

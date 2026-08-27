@@ -86,7 +86,7 @@ describe("facade workflow runtime foreign execution", () => {
     });
     const parentTool = createPinnedDurableProgram(parentManifest, function* (_input, context) {
       const result = (yield* context.pull({
-        kind: "foreign",
+        kind: "ephemeral",
         driver: "tool-session",
         tool: "wf_weather",
         input: { city: "oslo" },

@@ -60,7 +60,11 @@ export interface PlannedForestRow {
   readonly head: StrandHead;
   readonly program: PinnedProgram;
   readonly classification: PlannedRowClassification;
-  readonly parked?: { readonly pullId: string; readonly reason: string };
+  readonly parked?: {
+    readonly pullId: string;
+    readonly reason: string;
+    readonly audience: string;
+  };
   readonly groupContext: ForkContext;
 }
 

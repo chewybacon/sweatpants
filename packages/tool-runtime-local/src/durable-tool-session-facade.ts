@@ -21,19 +21,12 @@ import {
   durableToolWorkflow,
   driveActivation,
   InstalledEffectPort,
-  type HostAuthority,
+  type AuthorityPort,
   createPullResolverRegistry,
   PULL_KIND_ELICIT,
-  PULL_KIND_FOREIGN,
+  PULL_KIND_EPHEMERAL,
   PULL_KIND_SAMPLE,
   type PullResolver,
-  type AppendEmissionRequest,
-  type CompleteTaskRequest,
-  type ResolveOperationRequest,
-  type ResolveOperationResult,
-  type ReserveOperationRequest,
-  type ReserveOperationResult,
-  type CompleteTaskResult,
 } from "@sweatpants/journal-authority";
 import { installExecutionStore } from "@sweatpants/journal-authority/api";
 import { DURABLE_TOOL_FACADE_ANNOTATION } from "./durable-tool-facade-marker.ts";
@@ -46,7 +39,6 @@ import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory
 import {
   assertReplayedCanonicalValue,
   ProgramRouteResolver,
-  stableProgramAttachmentId,
   exactProgramKey,
   type AttachProgramRequest,
   type DurableTool,
@@ -192,22 +184,9 @@ export function createDurableToolSessionFacade<I extends Json, O extends Json>(
 
 /** Returns whether a runtime tool carries the durable-facade annotation. */
 
-/** Adapts the journal-authority contract onto the drive loop's host surface. */
-function hostAuthorityFor(authority: JournalAuthorityContract): HostAuthority {
-  return {
-    reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult> {
-      return authority.command({ type: "execution.reserve-pull", request });
-    },
-    resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult> {
-      return authority.command({ type: "execution.resolve-pull", request });
-    },
-    emit(request: AppendEmissionRequest): Operation<{ readonly offset: string }> {
-      return authority.command({ type: "execution.append-emission", request });
-    },
-    complete(request: CompleteTaskRequest): Operation<CompleteTaskResult> {
-      return authority.command({ type: "execution.complete-task", request });
-    },
-  };
+/** The production Authority port is consumed without a second facade. */
+function hostAuthorityFor(authority: JournalAuthorityContract): AuthorityPort {
+  return authority;
 }
 
 /**
@@ -448,8 +427,8 @@ export function createForeignPullResolver(statics: {
   readonly asks?: ForeignAskRelay;
 }): PullResolver {
   return {
-    kind: PULL_KIND_FOREIGN,
-    audience: (descriptor) => `foreign:${(descriptor as { driver: string }).driver}`,
+    kind: PULL_KIND_EPHEMERAL,
+    audience: (descriptor) => `ephemeral:${(descriptor as { driver: string }).driver}`,
     perform(ctx, descriptor) {
       const d = descriptor as { driver: string; tool: string; input: Json };
       return executeForeignToolCall(
@@ -613,21 +592,11 @@ function* composeAuthoredChild(
       route: childRoute,
       executionEpoch: attach.executionEpoch,
     };
-    const bound = yield* authority.command({
-      type: "execution.bind-attachment",
-      request: {
-        sessionId: invocationId,
-        taskId: childTask.taskId,
-        attachmentId: stableProgramAttachmentId(childRequest),
-        executionEpoch: attach.executionEpoch,
-      },
-    });
     // The composed child closes itself; restoring the parent is the caller's
     // next activation.
     yield* driveActivation({
       attach: childRequest,
       authority: hostAuthorityFor(authority),
-      programCapability: bound.programCapability,
       workflow: durableToolWorkflow(childTool, pull.child.input),
     });
   });
@@ -659,11 +628,10 @@ interface WorkflowActivationResult {
 function* runWorkflowActivation<I extends Json>(
   request: WorkflowActivationRequest<I>,
 ): Operation<WorkflowActivationResult> {
-  const { options, invocationId, taskId, activation, input } = request;
+  const { options, invocationId, taskId, input } = request;
   return yield* request.withAuthority(function* (authority): Operation<WorkflowActivationResult> {
-    let programCapability: string;
     if (!request.snapshotExists) {
-      const openedTask = yield* authority.command({
+      yield* authority.command({
         type: "execution.open-task",
         request: {
           sessionId: invocationId,
@@ -676,18 +644,6 @@ function* runWorkflowActivation<I extends Json>(
           audience: "workflow-host",
         },
       });
-      programCapability = openedTask.programCapability;
-    } else {
-      const bound = yield* authority.command({
-        type: "execution.bind-attachment",
-        request: {
-          sessionId: invocationId,
-          taskId,
-          attachmentId: `unattached-facade-program-${activation}`,
-          executionEpoch: 1,
-        },
-      });
-      programCapability = bound.programCapability;
     }
     yield* installWorkflowEffectHandlers(invocationId, taskId, options.effectHandlers);
     const outcome: AdvancementResult = yield* driveActivation({
@@ -705,7 +661,6 @@ function* runWorkflowActivation<I extends Json>(
       },
       workflow: durableToolWorkflow(options.tool, input),
       authority: hostAuthorityFor(authority),
-      programCapability,
     });
     const snapshotPort = yield* AuthoritySnapshotPort.use();
     const journalPort = yield* AuthorityJournalPort.use();

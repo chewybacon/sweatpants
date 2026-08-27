@@ -26,7 +26,7 @@ import {
 import { projectModelSampleCompletion } from "@sweatpants/agent-sdk";
 import { CrankError, type DurableProgramContext } from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
-import type { ForeignToolRequest } from "@sweatpants/durable-execution";
+import type { EphemeralToolRequest } from "@sweatpants/durable-execution";
 
 /**
  * Classification stamped onto every model.sample raised on behalf of a
@@ -68,36 +68,37 @@ function* sampleToolOwnedModel(
 }
 
 /** Validated manifest for the built-in foreign adapter child program. */
-export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<ForeignToolRequest, Json>(
-  {
-    programId: FOREIGN_TOOL_ADAPTER_PROGRAM.id,
-    version: FOREIGN_TOOL_ADAPTER_PROGRAM.version,
-    digest: FOREIGN_TOOL_ADAPTER_PROGRAM.digest,
-    inputSchema: FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR,
-    outputSchema: FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
-    elicits: {
-      foreign_input: {
-        response: FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
-        context: FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
-      },
-    },
-    effects: {
-      [FOREIGN_TOOL_START_EFFECT.name]: FOREIGN_TOOL_START_EFFECT,
-      [FOREIGN_TOOL_CONTINUE_EFFECT.name]: FOREIGN_TOOL_CONTINUE_EFFECT,
-    },
-    pulls: {
-      sample: {
-        input: MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
-        output: MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR,
-      },
-    },
-    capabilities: {
-      durableEmissions: false,
-      structuredChildren: false,
-      replay: "strict",
+export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<
+  EphemeralToolRequest,
+  Json
+>({
+  programId: FOREIGN_TOOL_ADAPTER_PROGRAM.id,
+  version: FOREIGN_TOOL_ADAPTER_PROGRAM.version,
+  digest: FOREIGN_TOOL_ADAPTER_PROGRAM.digest,
+  inputSchema: FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR,
+  outputSchema: FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
+  elicits: {
+    foreign_input: {
+      response: FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
+      context: FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
     },
   },
-);
+  effects: {
+    [FOREIGN_TOOL_START_EFFECT.name]: FOREIGN_TOOL_START_EFFECT,
+    [FOREIGN_TOOL_CONTINUE_EFFECT.name]: FOREIGN_TOOL_CONTINUE_EFFECT,
+  },
+  pulls: {
+    sample: {
+      input: MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
+      output: MODEL_SAMPLE_PULL_OUTPUT_DESCRIPTOR,
+    },
+  },
+  capabilities: {
+    durableEmissions: false,
+    structuredChildren: false,
+    replay: "strict",
+  },
+});
 
 const adapterTool = createPinnedDurableProgram(
   FOREIGN_TOOL_ADAPTER_MANIFEST,

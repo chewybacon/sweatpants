@@ -147,7 +147,7 @@ export interface DurableTaskHandle {
   __durableTask: string;
   owner: string;
 }
-export type ForeignDurability =
+export type EphemeralDurability =
   | "opaque"
   | "ephemeral_handle"
   | "resumable_handle"
@@ -158,27 +158,35 @@ export interface DurableSampleDescriptor {
   kind: "sample";
   input: Json;
 }
-export type ForeignToolRequest = {
+export type EphemeralToolRequest = {
   driver: string;
   tool: string;
   input: Json;
-  durability: ForeignDurability;
+  durability: EphemeralDurability;
   route?: string;
 };
 /** Session-bound live tool call proposed by a journaled program. */
-export interface DurableForeignDescriptor {
+export interface DurableEphemeralDescriptor {
+  kind: "ephemeral";
+  driver: string;
+  tool: string;
+  input: Json;
+  durability: EphemeralDurability;
+}
+/** Historical wire-only spelling. New live reservations reject this variant. */
+export interface LegacyForeignDescriptor {
   kind: "foreign";
   driver: string;
   tool: string;
   input: Json;
-  durability: ForeignDurability;
+  durability: EphemeralDurability;
 }
-export type ForeignContinuation = { driver: string; state: Json };
+export type EphemeralContinuation = { driver: string; state: Json };
 export type ProgramElicitResult<T extends Json = Json> =
   | { action: "accept"; content: T }
   | { action: "decline"; reason?: string }
   | { action: "cancel"; reason?: string };
-export type ForeignInputRequest =
+export type EphemeralInputRequest =
   | { kind: "sample"; payload: Json }
   | {
       kind: "elicit";
@@ -189,15 +197,15 @@ export type ForeignInputRequest =
       /** Structurally identical to agent-sdk InteractionBinding without a dependency cycle. */
       binding: { readonly id: string };
     };
-export type ForeignToolDisposition =
-  | { type: "input_required"; request: ForeignInputRequest; continuation: ForeignContinuation }
+export type EphemeralToolDisposition =
+  | { type: "input_required"; request: EphemeralInputRequest; continuation: EphemeralContinuation }
   | { type: "completed"; result: Json }
   | {
       type: "failed";
-      error: { code: string; message: string; durability: ForeignDurability; retryable: boolean };
+      error: { code: string; message: string; durability: EphemeralDurability; retryable: boolean };
     };
-export type ForeignToolContinueRequest = {
-  continuation: ForeignContinuation;
+export type EphemeralToolContinueRequest = {
+  continuation: EphemeralContinuation;
   response: { kind: "sample" | "elicit" | "cancel"; value: Json };
 };
 export interface DurableJoinDescriptor {
@@ -218,7 +226,8 @@ export type DurableOperationDescriptor =
   | WaitDescriptor
   | DurableInvokeDescriptor
   | DurableSampleDescriptor
-  | DurableForeignDescriptor
+  | DurableEphemeralDescriptor
+  | LegacyForeignDescriptor
   | DurableAllDescriptor
   | DurableRaceDescriptor
   | DurableSpawnDescriptor

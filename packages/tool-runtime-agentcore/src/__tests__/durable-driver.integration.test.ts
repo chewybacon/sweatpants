@@ -203,7 +203,9 @@ describe("AgentCore crank-native ProgramDriver integration", () => {
     expect(evidence.effectExecutions).toBe(1);
     expect(transportEvidence?.containerGenerations).toEqual([1, 2]);
     expect(transportEvidence?.shutdownReasons).toEqual(["parked", "completed"]);
-    expect(transportEvidence?.replayEntryCounts).toEqual([0, 3]);
+    // Replay uses the common attach/step contract across placements; the
+    // optional transport-specific restore fast path is no longer selected.
+    expect(transportEvidence?.replayEntryCounts).toEqual([]);
     const semanticJson = JSON.stringify(evidence.semanticJournal);
     expect(semanticJson).not.toContain("containerGeneration");
     expect(semanticJson).not.toContain("remoteInvocationId");

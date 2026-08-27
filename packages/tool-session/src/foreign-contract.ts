@@ -5,9 +5,9 @@ import {
 } from "@sweatpants/foundation/schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
-  ForeignToolContinueRequest,
-  ForeignToolRequest,
-  ForeignToolDisposition,
+  EphemeralToolContinueRequest,
+  EphemeralToolRequest,
+  EphemeralToolDisposition,
 } from "@sweatpants/durable-execution";
 import type { EffectDefinition } from "@sweatpants/durable-effects";
 import { MODEL_SAMPLE_PULL_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
@@ -204,7 +204,7 @@ export function foreignToolSchemaEntries(): Array<{
   ];
 }
 
-const startDefinition: EffectDefinition<ForeignToolRequest, ForeignToolDisposition> = {
+const startDefinition: EffectDefinition<EphemeralToolRequest, EphemeralToolDisposition> = {
   name: "foreign.tool.start",
   version: "1",
   inputSchema: FOREIGN_TOOL_START_INPUT_DESCRIPTOR,
@@ -216,14 +216,15 @@ const startDefinition: EffectDefinition<ForeignToolRequest, ForeignToolDispositi
 /** Effect contract for starting a foreign driver invocation exactly once. */
 export const FOREIGN_TOOL_START_EFFECT = Object.freeze(startDefinition);
 
-const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignToolDisposition> = {
-  name: "foreign.tool.continue",
-  version: "1",
-  inputSchema: FOREIGN_TOOL_CONTINUE_INPUT_DESCRIPTOR,
-  outputSchema: FOREIGN_TOOL_CONTINUE_OUTPUT_DESCRIPTOR,
-  // See `foreign.tool.start`: the resolver is in-host and cannot outlive it.
-  retrySafety: { mode: "unsafe" },
-};
+const continueDefinition: EffectDefinition<EphemeralToolContinueRequest, EphemeralToolDisposition> =
+  {
+    name: "foreign.tool.continue",
+    version: "1",
+    inputSchema: FOREIGN_TOOL_CONTINUE_INPUT_DESCRIPTOR,
+    outputSchema: FOREIGN_TOOL_CONTINUE_OUTPUT_DESCRIPTOR,
+    // See `foreign.tool.start`: the resolver is in-host and cannot outlive it.
+    retrySafety: { mode: "unsafe" },
+  };
 /** Effect contract for applying one response to foreign continuation state. */
 export const FOREIGN_TOOL_CONTINUE_EFFECT = Object.freeze(continueDefinition);
 

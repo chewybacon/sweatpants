@@ -324,4 +324,3 @@ function recordRestoreStale(
   session.control.runnable = true;
   return { status: "restore_stale", consecutiveStales: count, retryAfterMs, releaseRequired: true };
 }
-

@@ -1,5 +1,7 @@
 # Responsibility Map — Authority-Backed Effection Workflow Runtime
 
+> **Design-authority notice:** The approved [durable execution spine design](../../../.pi/specs/durable-execution-spine-design.md) is normative for Venue, Step, attribution, replay, peer strands, Mandate, R7′, and the `ephemeral` rename. The measurements below remain useful; superseded ownership sketches are not current design.
+
 One page. Each actor gets one sentence per cell. A cell that cannot be filled
 in one sentence is a convicted seam, listed below the table. Baseline metrics
 at the bottom are the "before" numbers for any future refactor.

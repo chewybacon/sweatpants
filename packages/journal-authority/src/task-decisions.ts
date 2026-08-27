@@ -8,7 +8,12 @@ import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/found
 import type { AuthorityState } from "./authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import { pullById, terminalOutcome, type DraftTask } from "./decision-state.ts";
-import { currentForkGroupRevision, parkedHead, planForestReplay, strandHead } from "./forest-replay.ts";
+import {
+  currentForkGroupRevision,
+  parkedHead,
+  planForestReplay,
+  strandHead,
+} from "./forest-replay.ts";
 import { resolveForkDeadline } from "./fork-group.ts";
 import { effectContractDigest } from "./authority-support.ts";
 import type {
@@ -110,6 +115,12 @@ export function openTask(
     lifecycle: { status: "active", cancellation: { type: "none" } },
   };
   session.execution.tasks.set(request.taskId, task);
+  if (origin.kind === "root") {
+    const retainedRoots = [...session.execution.tasks.values()].filter(
+      (candidate) => candidate.origin.kind === "root",
+    ).length;
+    session.control.nextRootOrdinal = Math.max(session.control.nextRootOrdinal ?? 0, retainedRoots);
+  }
   draft.append(request.sessionId, request.executionEpoch, {
     type: "TaskOpened",
     taskId: request.taskId,
@@ -146,10 +157,7 @@ export function bindAttachment(
   return { programCapability: draft.programCapability(task) };
 }
 
-export function bindMandate(
-  draft: DecisionDraft,
-  request: BindMandateRequest,
-): BindMandateResult {
+export function bindMandate(draft: DecisionDraft, request: BindMandateRequest): BindMandateResult {
   if (
     !request.ownerId ||
     !Number.isSafeInteger(request.leaseDurationMs) ||
@@ -220,7 +228,6 @@ export function bindMandate(
     ownerId: request.ownerId,
     leaseEpoch: task.execution.epoch,
     expiresAtMs,
-    attachmentId: request.attachmentId,
     strandHeadDigest: head.digest,
     forkGroupRevision: groupRevision,
     frontierDigest: request.frontierProof.frontierDigest,
@@ -311,7 +318,10 @@ export function replaceAttachment(
   return { executionEpoch: task.execution.epoch, programCapability: draft.programCapability(task) };
 }
 
-export function ensureChild(draft: DecisionDraft, request: EnsureChildTaskRequest): EnsureChildTaskResult {
+export function ensureChild(
+  draft: DecisionDraft,
+  request: EnsureChildTaskRequest,
+): EnsureChildTaskResult {
   const parent = draft.task(request.sessionId, request.parentTaskId);
   draft.assertActive(parent);
   const parentPull = pullById(parent, request.parentPullId);
@@ -394,4 +404,3 @@ function assertEffectContractsCompatible(
     }
   }
 }
-

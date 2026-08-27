@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import { createCapabilityKeyring } from "../index.ts";
-import { createAuthorityScenarioDriver, createPeerSimulator, PeerTransportError } from "../testing.ts";
+import {
+  createAuthorityScenarioDriver,
+  createPeerSimulator,
+  PeerTransportError,
+} from "../testing.ts";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   type DurableChildDescriptor,
