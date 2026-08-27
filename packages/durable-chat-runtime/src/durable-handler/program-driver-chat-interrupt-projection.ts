@@ -1,20 +1,20 @@
 import { EventType } from "@ag-ui/core";
 import { CrankError } from "@sweatpants/durable-execution";
-import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import { stableTupleHash, type Json, type JsonObject } from "@sweatpants/foundation";
 import { parseInteractionBinding } from "@sweatpants/agent-sdk";
 import type { StreamEvent } from "./program-driver-chat-types.ts";
 import type { AgUiRunMetadata } from "@sweatpants/chat-core";
 import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
-import { pendingElicit } from "./program-driver-chat-activity-projection.ts";
-import { pendingCorrelation, type PendingElicit } from "./program-driver-chat-correlation.ts";
-import { jsonRecord } from "./program-driver-chat-projection-values.ts";
+import { pendingCorrelation } from "./program-driver-chat-correlation.ts";
+import {
+  pendingElicit,
+  type ChatJournalIndex,
+  type PendingElicit,
+} from "./program-driver-chat-journal-index.ts";
+import { jsonRecord } from "./program-driver-chat-projection-codecs.ts";
 
-export function pendingToolCallId(
-  records: DurableSemanticRecord[],
-  pending: PendingElicit,
-): string {
-  return pendingCorrelation(records, pending).callId ?? pending.pullId;
+export function pendingToolCallId(index: ChatJournalIndex, pending: PendingElicit): string {
+  return pendingCorrelation(index, pending).callId ?? pending.pullId;
 }
 
 export interface InterruptProjectionPolicy {
@@ -23,13 +23,13 @@ export interface InterruptProjectionPolicy {
 }
 
 export function projectInterrupt(
-  records: DurableSemanticRecord[],
+  index: ChatJournalIndex,
   pending: NonNullable<ReturnType<typeof pendingElicit>>,
   policy: InterruptProjectionPolicy,
 ): Extract<StreamEvent, { type: EventType.RUN_FINISHED }> {
   const context = jsonRecord(pending.descriptor.context);
   const nested = jsonRecord(context?.["context"]);
-  const correlation = pendingCorrelation(records, pending);
+  const correlation = pendingCorrelation(index, pending);
   const legacyForeignContext = typeof context?.["foreignTool"] === "string";
   const authoredContext = legacyForeignContext ? nested : context;
   const responseProjection = legacyForeignContext
@@ -52,7 +52,7 @@ export function projectInterrupt(
   }
   const { responseContract, contextContract } = inventoryElicit;
   const binding = bindingForPending(pending);
-  const placement = placementForPending(records, pending, correlation);
+  const placement = placementForPending(index, pending, correlation);
   return {
     type: EventType.RUN_FINISHED,
     ...policy.agUiRun,
@@ -102,19 +102,12 @@ function bindingForPending(pending: PendingElicit) {
 }
 
 function placementForPending(
-  records: DurableSemanticRecord[],
+  index: ChatJournalIndex,
   pending: PendingElicit,
   correlation: { callId?: string },
 ): { nodeId: string; parentNodeId: string | null; sequence: number } {
   const callId = correlation.callId;
-  const publicExecution = callId
-    ? records.some(
-        (record) =>
-          record.payload.type === "DurableEmission" &&
-          record.payload.descriptor.eventType === "tool_started" &&
-          jsonRecord(record.payload.descriptor.payload)?.["callId"] === callId,
-      )
-    : false;
+  const publicExecution = callId ? index.publicToolCallIds.has(callId) : false;
   const parentNodeId =
     callId && publicExecution
       ? `execution:${callId}`

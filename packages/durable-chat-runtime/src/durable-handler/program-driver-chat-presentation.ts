@@ -9,11 +9,9 @@ import {
 } from "@sweatpants/chat-core";
 import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
 
-import {
-  pendingElicit,
-  publicActivityElicitSnapshots,
-} from "./program-driver-chat-activity-projection.ts";
+import { publicActivityElicitSnapshots } from "./program-driver-chat-activity-projection.ts";
 import { pendingToolCallId, projectInterrupt } from "./program-driver-chat-interrupt-projection.ts";
+import { indexChatJournal, pendingElicit } from "./program-driver-chat-journal-index.ts";
 import { projectRecords } from "./program-driver-chat-record-projection.ts";
 import type { ChatActivationReport, StreamEvent } from "./program-driver-chat-types.ts";
 
@@ -56,7 +54,8 @@ export function* presentProgramDriverChatActivation(
     replacementQueued,
   } = report;
   const events: StreamEvent[] = [];
-  const projected = projectRecords(after.slice(before.length), after);
+  const projection = indexChatJournal(after);
+  const projected = projectRecords(after.slice(before.length), projection);
   events.push(
     ...projected.filter((event) => {
       if (
@@ -94,19 +93,19 @@ export function* presentProgramDriverChatActivation(
     const slotPullIds =
       outcome.slots === undefined ? [outcome.pullId] : outcome.slots.map((slot) => slot.pullId);
     const pendings = slotPullIds
-      .map((slotPullId) => pendingElicit(after, slotPullId))
+      .map((slotPullId) => pendingElicit(projection, slotPullId))
       .filter((pending): pending is NonNullable<typeof pending> => pending !== undefined);
     if (pendings.length > 0) {
       for (const pending of pendings) {
-        const pendingCallId = pendingToolCallId(after, pending);
+        const pendingCallId = pendingToolCallId(projection, pending);
         if (pendingCallId) {
           events.push({ type: EventType.TOOL_CALL_END, toolCallId: pendingCallId });
         }
-        const interrupt = projectInterrupt(after, pending, {
+        const interrupt = projectInterrupt(projection, pending, {
           agUiRun: context.agUiRun,
           toolInventory: context.toolInventory,
         });
-        events.push(...publicActivityElicitSnapshots(after, pending, interrupt));
+        events.push(...publicActivityElicitSnapshots(projection, pending, interrupt));
         events.push(interrupt);
       }
     } else {

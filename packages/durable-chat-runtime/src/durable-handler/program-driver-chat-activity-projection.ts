@@ -14,7 +14,7 @@ import {
   placementFromJson,
   portableDescriptorFromJson,
   type TreePlacement,
-} from "./program-driver-chat-projection-values.ts";
+} from "./program-driver-chat-projection-codecs.ts";
 
 type RecursiveExecutionNode = {
   readonly type: "execution";
@@ -25,29 +25,11 @@ type RecursiveExecutionNode = {
   readonly children: readonly never[];
 };
 
-import type { PendingElicit } from "./program-driver-chat-correlation.ts";
-
-export function pendingElicit(
-  records: DurableSemanticRecord[],
-  pullId: string,
-): PendingElicit | undefined {
-  const resolved = records.some(
-    (record) => record.payload.type === "PullResolved" && record.payload.pullId === pullId,
-  );
-  if (resolved) {
-    return undefined;
-  }
-  const found = records.find(
-    (record) =>
-      record.payload.type === "PullRequested" &&
-      record.payload.pullId === pullId &&
-      record.payload.descriptor.kind === "elicit",
-  );
-  if (found?.payload.type !== "PullRequested" || found.payload.descriptor.kind !== "elicit") {
-    return undefined;
-  }
-  return { ...found.payload, descriptor: found.payload.descriptor };
-}
+import {
+  parentToolStart,
+  type ChatJournalIndex,
+  type PendingElicit,
+} from "./program-driver-chat-journal-index.ts";
 
 function publicActivitySnapshot(
   messageId: string,
@@ -99,13 +81,13 @@ function opaqueExecutionActivity(node: RecursiveExecutionNode): ActivitySnapshot
 }
 
 export function publicActivityToolStartSnapshots(
-  allRecords: DurableSemanticRecord[],
+  index: ChatJournalIndex,
   record: DurableSemanticRecord,
   payload: Record<string, Json>,
 ): ActivitySnapshotEvent[] {
   const callId = String(payload["callId"]);
   const toolName = String(payload["tool"]);
-  const parentNodeId = parentExecutionNodeId(allRecords, record);
+  const parentNodeId = parentExecutionNodeId(index, record);
   const messageId = `message:${record.payload.type === "DurableEmission" ? record.payload.taskId : "unknown"}:${callId}`;
   const executionId = `execution:${callId}`;
   return [
@@ -137,7 +119,7 @@ export function publicActivityToolStartSnapshots(
 }
 
 export function publicActivityElicitSnapshots(
-  records: DurableSemanticRecord[],
+  index: ChatJournalIndex,
   pending: PendingElicit,
   interrupt: Extract<StreamEvent, { type: EventType.RUN_FINISHED }>,
 ): ActivitySnapshotEvent[] {
@@ -156,7 +138,7 @@ export function publicActivityElicitSnapshots(
   }
   const snapshots: ActivitySnapshotEvent[] = [];
   if (placement.parentNodeId === stableTupleHash(["execution-opaque", pending.taskId])) {
-    const opaqueNodes = opaqueAncestryForTask(records, pending.taskId, placement.sequence);
+    const opaqueNodes = opaqueAncestryForTask(index, pending.taskId, placement.sequence);
     const first = opaqueNodes[0];
     if (!first) {
       throw new CrankError(
@@ -243,66 +225,35 @@ export function publicActivityElicitSnapshots(
 }
 
 function parentExecutionNodeId(
-  records: DurableSemanticRecord[],
+  index: ChatJournalIndex,
   record: DurableSemanticRecord,
 ): string | null {
   if (record.payload.type !== "DurableEmission") {
     return null;
   }
-  return parentExecutionNodeIdForTask(records, record.payload.taskId);
+  return parentExecutionNodeIdForTask(index, record.payload.taskId);
 }
 
-function parentExecutionNodeIdForTask(
-  records: DurableSemanticRecord[],
-  taskId: string,
-): string | null {
-  const opened = records.find(
-    (candidate) => candidate.payload.type === "TaskOpened" && candidate.payload.taskId === taskId,
-  );
-  const openedPayload = opened?.payload;
-  if (!openedPayload || openedPayload.type !== "TaskOpened" || !openedPayload.parentPullId) {
-    return null;
-  }
-  const parentPullIndex = records.findIndex(
-    (candidate) =>
-      candidate.payload.type === "PullRequested" &&
-      candidate.payload.pullId === openedPayload.parentPullId,
-  );
-  for (let index = parentPullIndex - 1; index >= 0; index -= 1) {
-    const candidate = records[index]?.payload;
-    if (
-      candidate?.type !== "DurableEmission" ||
-      candidate.taskId !== openedPayload.parentTaskId ||
-      candidate.descriptor.eventType !== "tool_started"
-    ) {
-      continue;
-    }
-    const payload = jsonRecord(candidate.descriptor.payload);
-    if (typeof payload?.["callId"] === "string") {
-      return `execution:${payload["callId"]}`;
-    }
-  }
-  return null;
+function parentExecutionNodeIdForTask(index: ChatJournalIndex, taskId: string): string | null {
+  const parent = parentToolStart(index, taskId);
+  return parent ? `execution:${parent.callId}` : null;
 }
 
 function opaqueAncestryForTask(
-  records: DurableSemanticRecord[],
+  index: ChatJournalIndex,
   taskId: string,
   leafSequence: number,
   leafTaskId = taskId,
 ): RecursiveExecutionNode[] {
-  const opened = records.find(
-    (candidate) => candidate.payload.type === "TaskOpened" && candidate.payload.taskId === taskId,
-  );
-  const openedPayload = opened?.payload;
-  const publicParent = parentExecutionNodeIdForTask(records, taskId);
+  const openedPayload = index.tasks.get(taskId);
+  const publicParent = parentExecutionNodeIdForTask(index, taskId);
   const parentNodes =
     publicParent ||
     !openedPayload ||
     openedPayload.type !== "TaskOpened" ||
     !openedPayload.parentTaskId
       ? []
-      : opaqueAncestryForTask(records, openedPayload.parentTaskId, 0, leafTaskId);
+      : opaqueAncestryForTask(index, openedPayload.parentTaskId, 0, leafTaskId);
   const parentNodeId = publicParent ?? parentNodes.at(-1)?.placement.nodeId ?? null;
   const nodeId = stableTupleHash(["execution-opaque", taskId]);
   const node: RecursiveExecutionNode = {
