@@ -3,8 +3,10 @@ import {
   CrankError,
   type AdvancementPlan,
   type CaughtUpLeaf,
+  type DeliveryMandate,
   type LivePlacement,
   type Mandate,
+  type PeerReadyTarget,
   type PlacementRoute,
   type PreparedTarget,
   type ProgramRoute,
@@ -91,6 +93,32 @@ export function* bindCaughtUpLeaf(
   });
   if (bound.status === "stale") return null;
   return bound.mandate;
+}
+
+export function* bindPeerReadyTarget(
+  authority: JournalAuthorityContract,
+  ready: PeerReadyTarget,
+  placement: LivePlacement,
+  ownerId: string,
+  attachmentId: string,
+  leaseDurationMs = 30_000,
+): Operation<DeliveryMandate | null> {
+  const bound = yield* authority.command({
+    type: "execution.bind-delivery-mandate",
+    request: {
+      ready,
+      attachmentId,
+      ownerId,
+      leaseDurationMs,
+      placement,
+      expected: {
+        strandHeadDigest: ready.evidenceHead.digest,
+        leaseEpoch: ready.executionEpoch,
+        forkGroupRevision: ready.groupContext.groupRevision,
+      },
+    },
+  });
+  return bound.status === "stale" ? null : bound.mandate;
 }
 
 export function assertMandateCurrent(mandate: Mandate): void {

@@ -25,6 +25,8 @@ import type {
   AssistantPartialAcceptedFact,
   AuthorizeModelDispatchRequest,
   AuthorizeModelDispatchResult,
+  BindDeliveryMandateRequest,
+  BindDeliveryMandateResult,
   BindMandateRequest,
   BindMandateResult,
   BindRestoreFrontierRequest,
@@ -80,6 +82,8 @@ import type {
   CommitPeerEvidenceResult,
   ReportPeerLossRequest,
   ReportPeerLossResult,
+  ReserveDelegatedPeerSampleRequest,
+  ReserveDelegatedPeerSampleResult,
 } from "./authority-types.ts";
 import type { ForkGroupState } from "./fork-group.ts";
 import type { DurableSchemaRegistry } from "./schema-registry.ts";
@@ -165,6 +169,10 @@ export type ExecutionCommand =
   | { readonly type: "execution.open-task"; readonly request: OpenDurableTaskRequest }
   | { readonly type: "execution.bind-attachment"; readonly request: BindAttachmentCommand }
   | { readonly type: "execution.bind-mandate"; readonly request: BindMandateRequest }
+  | {
+      readonly type: "execution.bind-delivery-mandate";
+      readonly request: BindDeliveryMandateRequest;
+    }
   | { readonly type: "execution.release-mandate"; readonly request: ReleaseMandateRequest }
   | { readonly type: "execution.replace-attachment"; readonly request: ReplaceAttachmentCommand }
   | { readonly type: "execution.ensure-child"; readonly request: EnsureChildTaskRequest }
@@ -181,6 +189,10 @@ export type ExecutionCommand =
   | {
       readonly type: "execution.commit-peer-evidence";
       readonly request: CommitPeerEvidenceRequest;
+    }
+  | {
+      readonly type: "execution.reserve-delegated-peer-sample";
+      readonly request: ReserveDelegatedPeerSampleRequest;
     }
   | { readonly type: "execution.report-peer-loss"; readonly request: ReportPeerLossRequest }
   | { readonly type: "execution.reserve-pull"; readonly request: ReserveOperationRequest }
@@ -227,6 +239,7 @@ export interface CommandResultByType {
   readonly "execution.open-task": { readonly programCapability: string };
   readonly "execution.bind-attachment": { readonly programCapability: string };
   readonly "execution.bind-mandate": BindMandateResult;
+  readonly "execution.bind-delivery-mandate": BindDeliveryMandateResult;
   readonly "execution.release-mandate": ReleaseMandateResult;
   readonly "execution.replace-attachment": {
     readonly executionEpoch: number;
@@ -238,6 +251,7 @@ export interface CommandResultByType {
   readonly "execution.force-orphan-fork-group": ForceOrphanForkGroupResult;
   readonly "execution.commit-peer-delegation": CommitPeerDelegationResult;
   readonly "execution.commit-peer-evidence": CommitPeerEvidenceResult;
+  readonly "execution.reserve-delegated-peer-sample": ReserveDelegatedPeerSampleResult;
   readonly "execution.report-peer-loss": ReportPeerLossResult;
   readonly "execution.reserve-pull": ReserveOperationResult;
   readonly "execution.mandate-reserve": LiveReservationResult;

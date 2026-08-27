@@ -71,13 +71,19 @@ export function planForestReplay(
 
     if (classification === "replayable") {
       replay.push(buildReplayItem(task, row, journalHeadDigest));
-    } else if (classification === "peer_hosted" && peerInvariantHolds(task)) {
+    } else if (classification === "peer_hosted") {
       const member = memberState(session, task.taskId);
+      if (!peerInvariantHolds(task, member)) continue;
       peers.push({
         address: row.address,
         strand: row.strand,
         evidenceHead: head,
+        executionEpoch: task.execution.epoch,
         groupContext,
+        frontierProof: {
+          strandHeadDigest: head.digest,
+          groupRevision: groupContext.groupRevision,
+        },
         deliveryCursor: {
           ...(member?.delegationCorrelator === undefined
             ? {}
@@ -201,13 +207,24 @@ function classifyTask(
   return "replayable";
 }
 
-function peerInvariantHolds(task: TaskState): boolean {
-  if (task.lifecycle.status !== "active") return false;
-  return !task.actions.some(
-    (action) =>
-      action.kind === "pull" &&
-      action.pull.attempts.some((attempt) => attempt.status === "started"),
-  );
+function peerInvariantHolds(task: TaskState, member: ReturnType<typeof memberState>): boolean {
+  if (
+    task.lifecycle.status !== "active" ||
+    task.lifecycle.cancellation.type !== "none" ||
+    member?.durability !== "peer_hosted"
+  ) {
+    return false;
+  }
+  return !task.actions.some((action) => {
+    if (action.kind !== "pull") return false;
+    if (action.pull.attempts.some((attempt) => attempt.status === "started")) return true;
+    if (action.pull.resolution.status === "settled") return false;
+    return !(
+      member.sampling === "delegated" &&
+      member.delegationCorrelator !== undefined &&
+      action.pull.request.acceptedDescriptor.kind === "sample"
+    );
+  });
 }
 
 function taskDurability(

@@ -223,24 +223,42 @@ describe("fork groups through the workflow program driver", () => {
         const journal = authority.readJournal(sessionId);
         const openedRecord = journal.find((entry) => entry.payload.type === "ForkGroupOpened");
         if (openedRecord?.payload.type !== "ForkGroupOpened") throw new Error("no group");
-        const groupId = openedRecord.payload.groupId;
         const peerTaskId = openedRecord.payload.memberTaskIds[1]!;
 
-        // Journal-first delegation, then peer evidence under the mandate.
-        const delegation = yield* authority.commitPeerDelegation({
-          sessionId,
-          taskId: request.taskId,
-          groupId,
-          memberTaskId: peerTaskId,
+        // Journal-first delegation, then peer evidence under a CAS-issued mandate.
+        const plan = yield* authority.query({ type: "forest.replay-plan", sessionId });
+        const ready = plan.peers.find((candidate) => candidate.address.taskId === peerTaskId);
+        if (ready === undefined) throw new Error("peer target was not prepared");
+        const peerBound = yield* authority.command({
+          type: "execution.bind-delivery-mandate",
+          request: {
+            ready,
+            attachmentId: `peer-delivery:${peerTaskId}`,
+            ownerId: "workflow-peer-test",
+            leaseDurationMs: 30_000,
+            placement: {
+              route: {
+                kind: "peer",
+                driverKind: "peer",
+                peer: "peer-1",
+                route: { driverKind: "peer" },
+              },
+              evaluatorKind: "peer",
+              sandbox: { mode: "allocate" },
+            },
+            expected: {
+              strandHeadDigest: ready.evidenceHead.digest,
+              leaseEpoch: ready.executionEpoch,
+              forkGroupRevision: ready.groupContext.groupRevision,
+            },
+          },
         });
+        if (peerBound.status !== "bound") throw new Error("peer bind was stale");
+        const delegation = yield* authority.commitPeerDelegation({ mandate: peerBound.mandate });
         yield* authority.commitPeerEvidence({
-          sessionId,
-          taskId: request.taskId,
-          groupId,
-          memberTaskId: peerTaskId,
+          mandate: peerBound.mandate,
           correlator: delegation.correlator,
           outcome: { status: "ok", value: "P:peer" },
-          deliveryMandate: delegation.deliveryMandate,
         });
 
         // Settle the local member's elicit and re-drive.
@@ -311,25 +329,13 @@ describe("fork groups through the workflow program driver", () => {
           attachmentId: stableProgramAttachmentId(request),
           audience: "program-host",
         });
-        const activate = (epoch: number, suffix: string) =>
+        void opened;
+        const activate = () =>
           ProgramDriverRegistryContext.with(drivers, function* () {
-            let capability = opened.programCapability;
-            if (epoch > 1) {
-              const bound = yield* authority.bindProgramAttachment(
-                request.sessionId,
-                request.taskId,
-                stableProgramAttachmentId(request) + suffix,
-                1,
-              );
-              capability = bound.programCapability;
-            }
-            return yield* driveInstalledTestProgramTree({
-              attach: request,
-              programCapability: capability,
-            });
+            return yield* driveInstalledTestProgramTree({ attach: request });
           });
 
-        const firstRun: AdvancementResult = yield* activate(1, "");
+        const firstRun: AdvancementResult = yield* activate();
         if (firstRun.state !== "parked") throw new Error(`expected parked, got ${firstRun.state}`);
         // Bounded frontier: both member elicits surface as slots.
         expect(firstRun.reason).toBe("child");
@@ -354,7 +360,7 @@ describe("fork groups through the workflow program driver", () => {
           if (resolved.status !== "accepted") throw new Error(`resolve ${resolved.status}`);
         }
 
-        const secondRun: AdvancementResult = yield* activate(2, "-2");
+        const secondRun: AdvancementResult = yield* activate();
         if (secondRun.state !== "completed")
           throw new Error(`expected completed, got ${secondRun.state}`);
         expect(secondRun.value).toBe("A:accept|B:accept");

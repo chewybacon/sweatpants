@@ -9,10 +9,16 @@ export function structuralCommandSessionId(command: AuthorityCommand): string | 
   switch (command.type) {
     case "execution.bind-mandate":
       return command.request.address.sessionId;
+    case "execution.bind-delivery-mandate":
+      return command.request.ready.address.sessionId;
     case "execution.release-mandate":
     case "execution.mandate-reserve":
     case "execution.mandate-emission":
     case "execution.mandate-complete":
+    case "execution.commit-peer-delegation":
+    case "execution.commit-peer-evidence":
+    case "execution.reserve-delegated-peer-sample":
+    case "execution.report-peer-loss":
       return command.request.mandate.address.sessionId;
     default:
       return undefined;

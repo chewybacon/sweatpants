@@ -272,11 +272,10 @@ describe("authority-backed Effection Workflow proof", () => {
       const request = attach(`live-${mode}`);
       let closureRuns = 0;
       await run(function* () {
-        const programCapability = yield* installAndOpen(mode, request);
+        yield* installAndOpen(mode, request);
         const result = yield* runProofRecordWorkflow({
           attach: request,
           authority: proofAuthorityPort(JournalAuthorityPort.api.operations),
-          programCapability,
           workflow: workflow("live", function* () {
             const records = yield* AuthorityJournalPort.api.operations.readTree(
               request.sessionId,
@@ -601,11 +600,10 @@ describe("authority-backed Effection Workflow proof", () => {
   it("accepts a canonical record cancellation", async () => {
     const request = attach("accepted-cancellation");
     await run(function* () {
-      const programCapability = yield* installAndOpen("stored", request);
+      yield* installAndOpen("stored", request);
       const result = yield* runProofRecordWorkflow({
         attach: request,
         authority: proofAuthorityPort(JournalAuthorityPort.api.operations),
-        programCapability,
         workflow: workflow("cancelled-record", function* () {
           throw new DurableProgramCancellation("attempt cancelled");
         }),
@@ -631,11 +629,10 @@ describe("authority-backed Effection Workflow proof", () => {
     it(`accepts and replays the record error identity in ${mode} mode`, async () => {
       const request = attach(`error-${mode}`);
       await run(function* () {
-        const programCapability = yield* installAndOpen(mode, request);
+        yield* installAndOpen(mode, request);
         const result = yield* runProofRecordWorkflow({
           attach: request,
           authority: proofAuthorityPort(JournalAuthorityPort.api.operations),
-          programCapability,
           workflow: workflow("error", function* () {
             throw new CrankError("proof_error", "accepted proof error");
           }),

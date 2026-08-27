@@ -33,6 +33,9 @@ function memberManifest(id: string, digestChar: string): DurableProgramManifest 
     outputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
     elicits: {},
     effects: {},
+    pulls: {
+      sample: { input: ANY_JSON_SCHEMA_DESCRIPTOR, output: ANY_JSON_SCHEMA_DESCRIPTOR },
+    },
     capabilities: { durableEmissions: true, structuredChildren: false, replay: "strict" },
   };
 }
@@ -61,7 +64,10 @@ function authority(now: () => number) {
   });
 }
 
-function* openMixedGroup(value: ReturnType<typeof authority>) {
+function* openMixedGroup(
+  value: ReturnType<typeof authority>,
+  remoteChild: DurableChildDescriptor = peerChild,
+) {
   const opened = yield* value.openTask({
     sessionId: "s1",
     turnId: "t1",
@@ -81,7 +87,7 @@ function* openMixedGroup(value: ReturnType<typeof authority>) {
     descriptor: {
       kind: "all",
       supervision: "one_for_all",
-      children: [localChild, peerChild],
+      children: [localChild, remoteChild],
       expiry: { kind: "after", durationMs: 50_000 },
     },
     programCapability: opened.programCapability,
@@ -94,12 +100,39 @@ function* openMixedGroup(value: ReturnType<typeof authority>) {
     parentPullId: reserved.pullId,
     members: [
       { child: localChild, manifest: memberManifest(localChild.id, "b") },
-      { child: peerChild, manifest: memberManifest(peerChild.id, "c") },
+      { child: remoteChild, manifest: memberManifest(remoteChild.id, "c") },
     ],
     executionEpoch: 1,
     audience: "workflow-host",
   });
   return { opened, reserved, group };
+}
+
+function* bindPeer(value: ReturnType<typeof authority>, memberTaskId = "task.1") {
+  const plan = yield* value.query({ type: "forest.replay-plan", sessionId: "s1" });
+  const ready = plan.peers.find((candidate) => candidate.address.taskId === memberTaskId);
+  if (ready === undefined) throw new Error("peer target was not prepared");
+  const bound = yield* value.command({
+    type: "execution.bind-delivery-mandate",
+    request: {
+      ready,
+      attachmentId: `peer-delivery:${memberTaskId}`,
+      ownerId: "peer-delivery-test",
+      leaseDurationMs: 30_000,
+      placement: {
+        route: { kind: "peer", driverKind: "peer", peer: "peer-1", route: { driverKind: "peer" } },
+        evaluatorKind: "peer",
+        sandbox: { mode: "allocate" },
+      },
+      expected: {
+        strandHeadDigest: ready.evidenceHead.digest,
+        leaseEpoch: ready.executionEpoch,
+        forkGroupRevision: ready.groupContext.groupRevision,
+      },
+    },
+  });
+  if (bound.status !== "bound") throw new Error(`peer bind was stale: ${bound.mismatch}`);
+  return bound.mandate;
 }
 
 describe("peer members: classification and admission (REQ-035, REQ-042)", () => {
@@ -173,19 +206,104 @@ describe("peer members: classification and admission (REQ-035, REQ-042)", () => 
   });
 });
 
+describe("peer sampling trust boundary (REQ-041, REQ-042, REQ-054)", () => {
+  it("journals delegated sampling locally and rejects private or peer-supplied authority", async () => {
+    const delegated = authority(() => 1_000);
+    await run(function* () {
+      yield* openMixedGroup(delegated);
+      const mandate = yield* bindPeer(delegated);
+      yield* delegated.commitPeerDelegation({ mandate });
+      const sample = yield* delegated.command({
+        type: "execution.reserve-delegated-peer-sample",
+        request: { mandate, descriptor: { kind: "sample", input: { prompt: "delegated" } } },
+      });
+      expect(sample).toMatchObject({ status: "pending", reason: "sample" });
+      const requested = delegated
+        .readJournal("s1")
+        .find(
+          (record) => record.payload.type === "PullRequested" && record.payload.taskId === "task.1",
+        );
+      expect(requested?.payload).toMatchObject({
+        type: "PullRequested",
+        descriptor: { kind: "sample", input: { prompt: "delegated" } },
+      });
+      const peerTask = delegated
+        .exportSnapshot()
+        .sessions[0]?.[1].execution.tasks.find((task) => task.taskId === "task.1");
+      const action = peerTask?.actions[0];
+      if (action?.kind !== "pull") throw new Error("delegated sample slot missing");
+      expect(action.pull.resolutionAuthority.audience).not.toBe("peer-supplied");
+      yield* delegated.resolve({
+        capability: sample.resolutionCapability!,
+        audience: action.pull.resolutionAuthority.audience,
+        outcome: { status: "ok", value: { text: "host-metered" } },
+      });
+      expect(
+        delegated
+          .readJournal("s1")
+          .some(
+            (record) =>
+              record.payload.type === "PullResolved" && record.payload.taskId === "task.1",
+          ),
+      ).toBe(true);
+
+      let injectedCode: string | undefined;
+      try {
+        yield* delegated.command({
+          type: "execution.reserve-delegated-peer-sample",
+          request: {
+            mandate,
+            descriptor: { kind: "sample", input: null },
+            audience: "peer-supplied",
+          } as never,
+        });
+      } catch (error) {
+        injectedCode =
+          error instanceof Error && "code" in error ? String(error.code) : String(error);
+      }
+      expect(injectedCode).toBe("invalid_descriptor");
+    });
+
+    const privatePeer = authority(() => 1_000);
+    await run(function* () {
+      const privateChild: DurableChildDescriptor = {
+        ...peerChild,
+        durability: { kind: "peer_hosted", peer: "peer-1", sampling: "private" },
+      };
+      yield* openMixedGroup(privatePeer, privateChild);
+      const mandate = yield* bindPeer(privatePeer);
+      yield* privatePeer.commitPeerDelegation({ mandate });
+      let code: string | undefined;
+      try {
+        yield* privatePeer.command({
+          type: "execution.reserve-delegated-peer-sample",
+          request: { mandate, descriptor: { kind: "sample", input: null } },
+        });
+      } catch (error) {
+        code = error instanceof Error && "code" in error ? String(error.code) : String(error);
+      }
+      expect(code).toBe("invalid_descriptor");
+      expect(
+        privatePeer
+          .readJournal("s1")
+          .some(
+            (record) =>
+              record.payload.type === "PullRequested" && record.payload.taskId === "task.1",
+          ),
+      ).toBe(false);
+    });
+  });
+});
+
 describe("peer delivery: journal-first, correlators, mandates (REQ-038, REQ-040, REQ-074)", () => {
   it("commits before send, dedupes by correlator, and never serializes capabilities", async () => {
     const value = authority(() => 1_000);
     const simulator = createPeerSimulator();
     await run(function* () {
       const { group } = yield* openMixedGroup(value);
+      const mandate = yield* bindPeer(value);
 
-      const delegation = yield* value.commitPeerDelegation({
-        sessionId: "s1",
-        taskId: "task",
-        groupId: group.groupId,
-        memberTaskId: "task.1",
-      });
+      const delegation = yield* value.commitPeerDelegation({ mandate });
       expect(delegation.status).toBe("committed");
       // Journal-first: the record exists before any send.
       expect(
@@ -220,12 +338,7 @@ describe("peer delivery: journal-first, correlators, mandates (REQ-038, REQ-040,
       expect(simulator.server.deliveries[1]).toEqual(simulator.server.deliveries[0]);
 
       // Delegation retry is idempotent and keeps the correlator stable.
-      const again = yield* value.commitPeerDelegation({
-        sessionId: "s1",
-        taskId: "task",
-        groupId: group.groupId,
-        memberTaskId: "task.1",
-      });
+      const again = yield* value.commitPeerDelegation({ mandate });
       expect(again).toMatchObject({ status: "duplicate", correlator: delegation.correlator });
       expect(
         value.readJournal("s1").filter((r) => r.payload.type === "PeerDelegationCommitted"),
@@ -235,18 +348,55 @@ describe("peer delivery: journal-first, correlators, mandates (REQ-038, REQ-040,
       let code: string | undefined;
       try {
         yield* value.commitPeerEvidence({
-          sessionId: "s1",
-          taskId: "task",
-          groupId: group.groupId,
-          memberTaskId: "task.0", // crank-native member: no peer path
+          mandate: {
+            ...mandate,
+            address: { ...mandate.address, taskId: "task.0" },
+          }, // crank-native member: no peer path
           correlator: delegation.correlator,
           outcome: { status: "ok", value: "wrong" },
-          deliveryMandate: delegation.deliveryMandate,
         });
       } catch (error) {
         code = error instanceof Error && "code" in error ? String(error.code) : String(error);
       }
       expect(code).toBe("invalid_descriptor");
+    });
+  });
+});
+
+describe("peer bind CAS (REQ-012, REQ-074, REQ-075)", () => {
+  it("rejects a prepared peer target when cancellation lands before bind", async () => {
+    const value = authority(() => 1_000);
+    await run(function* () {
+      yield* openMixedGroup(value);
+      const plan = yield* value.query({ type: "forest.replay-plan", sessionId: "s1" });
+      const ready = plan.peers.find((candidate) => candidate.address.taskId === "task.1");
+      if (ready === undefined) throw new Error("peer target was not prepared");
+      yield* value.requestCancellation("s1", "task.1", "bind-race");
+      const bound = yield* value.command({
+        type: "execution.bind-delivery-mandate",
+        request: {
+          ready,
+          attachmentId: "stale-peer-target",
+          ownerId: "peer-bind-race",
+          leaseDurationMs: 30_000,
+          placement: {
+            route: {
+              kind: "peer",
+              driverKind: "peer",
+              peer: "peer-1",
+              route: { driverKind: "peer" },
+            },
+            evaluatorKind: "peer",
+            sandbox: { mode: "allocate" },
+          },
+          expected: {
+            strandHeadDigest: ready.evidenceHead.digest,
+            leaseEpoch: ready.executionEpoch,
+            forkGroupRevision: ready.groupContext.groupRevision,
+          },
+        },
+      });
+      expect(bound).toEqual({ status: "stale", mismatch: "strand_head" });
     });
   });
 });
@@ -257,12 +407,8 @@ describe("peer evidence and loss (REQ-026, REQ-032, REQ-043)", () => {
     const simulator = createPeerSimulator();
     await run(function* () {
       const { reserved, group } = yield* openMixedGroup(value);
-      const delegation = yield* value.commitPeerDelegation({
-        sessionId: "s1",
-        taskId: "task",
-        groupId: group.groupId,
-        memberTaskId: "task.1",
-      });
+      const mandate = yield* bindPeer(value);
+      const delegation = yield* value.commitPeerDelegation({ mandate });
       yield* simulator.transport.deliver({
         correlator: delegation.correlator,
         groupId: group.groupId,
@@ -291,13 +437,9 @@ describe("peer evidence and loss (REQ-026, REQ-032, REQ-043)", () => {
       const frame = yield* simulator.transport.nextEvidence();
       if (frame === null) throw new Error("peer died unexpectedly");
       yield* value.commitPeerEvidence({
-        sessionId: "s1",
-        taskId: "task",
-        groupId: group.groupId,
-        memberTaskId: "task.1",
+        mandate,
         correlator: frame.correlator,
         outcome: frame.outcome,
-        deliveryMandate: delegation.deliveryMandate,
       });
 
       state = yield* value.operationState("s1", "task", reserved.pullId);
@@ -319,13 +461,9 @@ describe("peer evidence and loss (REQ-026, REQ-032, REQ-043)", () => {
       let code: string | undefined;
       try {
         yield* value.commitPeerEvidence({
-          sessionId: "s1",
-          taskId: "task",
-          groupId: group.groupId,
-          memberTaskId: "task.1",
+          mandate,
           correlator: delegation.correlator,
           outcome: { status: "ok", value: "P-again" },
-          deliveryMandate: delegation.deliveryMandate,
         });
       } catch (error) {
         code = error instanceof Error && "code" in error ? String(error.code) : String(error);
@@ -339,12 +477,8 @@ describe("peer evidence and loss (REQ-026, REQ-032, REQ-043)", () => {
     const simulator = createPeerSimulator();
     await run(function* () {
       const { reserved, group } = yield* openMixedGroup(value);
-      const delegation = yield* value.commitPeerDelegation({
-        sessionId: "s1",
-        taskId: "task",
-        groupId: group.groupId,
-        memberTaskId: "task.1",
-      });
+      const mandate = yield* bindPeer(value);
+      const delegation = yield* value.commitPeerDelegation({ mandate });
 
       simulator.server.kill();
       let lost: unknown;
@@ -363,13 +497,9 @@ describe("peer evidence and loss (REQ-026, REQ-032, REQ-043)", () => {
       expect(lost).toBeInstanceOf(PeerTransportError);
 
       yield* value.reportPeerLoss({
-        sessionId: "s1",
-        taskId: "task",
-        groupId: group.groupId,
-        memberTaskId: "task.1",
+        mandate,
         correlator: delegation.correlator,
         reason: "peer-1 unreachable",
-        deliveryMandate: delegation.deliveryMandate,
       });
 
       // one_for_all: the sibling is cancelled before the group fails.

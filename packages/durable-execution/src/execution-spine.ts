@@ -89,7 +89,12 @@ export interface PeerReadyTarget {
   readonly address: TurnAddress;
   readonly strand: string;
   readonly evidenceHead: StrandHead;
+  readonly executionEpoch: number;
   readonly groupContext: ForkContext;
+  readonly frontierProof: {
+    readonly strandHeadDigest: string;
+    readonly groupRevision: number;
+  };
   readonly deliveryCursor: { readonly correlator?: string };
 }
 

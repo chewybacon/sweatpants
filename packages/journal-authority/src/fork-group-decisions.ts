@@ -2,6 +2,7 @@ import {
   CrankError,
   type DurableAllDescriptor,
   type DurableChildDescriptor,
+  type DeliveryMandate,
   type DurableRaceDescriptor,
 } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
@@ -23,7 +24,10 @@ import {
   type ForkPolicy,
 } from "./fork-group.ts";
 import { signCapability, verifyDeliveryMandate } from "./capabilities.ts";
+import { currentForkGroupRevision, planForestReplay, strandHead } from "./forest-replay.ts";
 import type {
+  BindDeliveryMandateRequest,
+  BindDeliveryMandateResult,
   BreachForkGroupRequest,
   BreachForkGroupResult,
   CancellationAcknowledgement,
@@ -38,6 +42,10 @@ import type {
   OpenForkGroupResult,
   ReportPeerLossRequest,
   ReportPeerLossResult,
+  ReserveDelegatedPeerSampleRequest,
+  ReserveDelegatedPeerSampleResult,
+  ReserveOperationRequest,
+  ReserveOperationResult,
 } from "./authority-types.ts";
 
 export interface ForkDecisionServices {
@@ -63,6 +71,7 @@ export interface ForkDecisionServices {
     task: DraftTask,
     outcome: OperationOutcome,
   ): void;
+  reservePull(draft: DecisionDraft, request: ReserveOperationRequest): ReserveOperationResult;
 }
 
 type ForkDescriptorPayload =
@@ -361,7 +370,122 @@ function groupForRequest(
   return { parent, group };
 }
 
-function mintDeliveryMandate(
+export function bindDeliveryMandate(
+  draft: DecisionDraft,
+  request: BindDeliveryMandateRequest,
+): BindDeliveryMandateResult {
+  if (
+    !request.ownerId ||
+    !Number.isSafeInteger(request.leaseDurationMs) ||
+    request.leaseDurationMs < 1 ||
+    request.leaseDurationMs > 300_000 ||
+    request.placement.route.kind !== "peer"
+  ) {
+    throw new CrankError("invalid_command", "Invalid peer delivery lease request");
+  }
+  const ready = request.ready;
+  const session = draft.session(ready.address.sessionId);
+  const task = draft.task(ready.address.sessionId, ready.address.taskId);
+  draft.assertActive(task);
+  const parentTaskId = ready.groupContext.parentTaskId;
+  const groupId = ready.groupContext.groupId;
+  if (parentTaskId === undefined || groupId === undefined) {
+    throw new CrankError("invalid_descriptor", "Peer target lacks fork-group context");
+  }
+  const parent = draft.task(ready.address.sessionId, parentTaskId);
+  const group = parent.forkGroup;
+  if (group === undefined || group.groupId !== groupId || group.status === "resolved") {
+    return { status: "stale", mismatch: "fork_group_revision" };
+  }
+  const member = peerMemberOf(group, task.taskId);
+  const head = strandHead(task);
+  if (
+    head.digest !== request.expected.strandHeadDigest ||
+    ready.evidenceHead.digest !== request.expected.strandHeadDigest ||
+    ready.frontierProof.strandHeadDigest !== request.expected.strandHeadDigest
+  ) {
+    return { status: "stale", mismatch: "strand_head" };
+  }
+  if (
+    task.execution.epoch !== request.expected.leaseEpoch ||
+    (task.execution.liveLease !== undefined &&
+      draft.context.nowMs < task.execution.liveLease.expiresAtMs)
+  ) {
+    return { status: "stale", mismatch: "lease_epoch" };
+  }
+  const groupRevision = currentForkGroupRevision(session, task.taskId);
+  if (
+    groupRevision !== request.expected.forkGroupRevision ||
+    ready.frontierProof.groupRevision !== groupRevision
+  ) {
+    return { status: "stale", mismatch: "fork_group_revision" };
+  }
+  const planned = planForestReplay(
+    draft.state,
+    ready.address.sessionId,
+    draft.context.journalHeadDigest,
+    draft.context.nowMs,
+  );
+  if (!planned.peers.some((candidate) => candidate.address.taskId === task.taskId)) {
+    return { status: "stale", mismatch: "strand_head" };
+  }
+
+  task.execution.epoch += 1;
+  task.execution.attachmentId = request.attachmentId;
+  const expiresAtMs = draft.context.nowMs + request.leaseDurationMs;
+  const correlator =
+    ready.deliveryCursor.correlator ?? peerDeliveryCorrelator(group.groupId, member.taskId);
+  task.execution.liveLease = {
+    ownerId: request.ownerId,
+    epoch: task.execution.epoch,
+    expiresAtMs,
+    attachmentId: request.attachmentId,
+    strandHeadDigest: head.digest,
+    forkGroupRevision: groupRevision,
+    frontierDigest: head.digest,
+  };
+  draft.append(ready.address.sessionId, task.execution.epoch, {
+    type: "AdvancementBound",
+    taskId: task.taskId,
+    ownerId: request.ownerId,
+    leaseEpoch: task.execution.epoch,
+    expiresAtMs,
+    strandHeadDigest: head.digest,
+    forkGroupRevision: groupRevision,
+    frontierDigest: head.digest,
+  });
+  const deliveryCapability = mintDeliveryCapability(
+    draft,
+    ready.address.sessionId,
+    parent,
+    group,
+    member.taskId,
+    correlator,
+    member.peer!,
+  );
+  const mandate: DeliveryMandate = {
+    kind: "delivery_mandate",
+    address: structuredClone(ready.address),
+    strand: ready.strand,
+    placement: structuredClone(request.placement),
+    attachment: {
+      attachmentId: request.attachmentId,
+      boundAtRevision: session.control.revision,
+    },
+    groupContext: structuredClone(ready.groupContext),
+    lease: { ownerId: request.ownerId, epoch: task.execution.epoch, expiresAtMs },
+    boundFrontier: {
+      strandHeadDigest: head.digest,
+      groupRevision,
+    },
+    deliveryCursor: { correlator },
+    deliveryCapability,
+  };
+  session.control.runnable = false;
+  return { status: "bound", mandate };
+}
+
+function mintDeliveryCapability(
   draft: DecisionDraft,
   sessionId: string,
   parent: DraftTask,
@@ -399,35 +523,19 @@ export function commitPeerDelegation(
   draft: DecisionDraft,
   request: CommitPeerDelegationRequest,
 ): CommitPeerDelegationResult {
-  const { parent, group } = groupForRequest(
-    draft,
-    request.sessionId,
-    request.taskId,
-    request.groupId,
-  );
+  const { sessionId, parent, group, member, correlator } = deliveryContext(draft, request.mandate);
   if (group.status === "resolved") {
     throw new CrankError("fork_group_terminal", "Fork group already resolved");
   }
-  const member = peerMemberOf(group, request.memberTaskId);
-  const correlator = peerDeliveryCorrelator(group.groupId, member.taskId);
-  const mandate = mintDeliveryMandate(
-    draft,
-    request.sessionId,
-    parent,
-    group,
-    member.taskId,
-    correlator,
-    member.peer!,
-  );
   if (member.delegationCorrelator !== undefined) {
     if (member.delegationCorrelator !== correlator) {
       throw new CrankError("nondeterminism_detected", "Peer delegation correlator differs");
     }
-    return { status: "duplicate", correlator, deliveryMandate: mandate };
+    return { status: "duplicate", correlator };
   }
   member.delegationCorrelator = correlator;
   group.revision = (group.revision ?? 0) + 1;
-  draft.append(request.sessionId, parent.execution.epoch, {
+  draft.append(sessionId, parent.execution.epoch, {
     type: "PeerDelegationCommitted",
     taskId: parent.taskId,
     groupId: group.groupId,
@@ -436,8 +544,8 @@ export function commitPeerDelegation(
     peer: member.peer!,
     deadlineMs: group.deadlineMs,
   });
-  draft.session(request.sessionId).control.runnable = true;
-  return { status: "committed", correlator, deliveryMandate: mandate };
+  draft.session(sessionId).control.runnable = true;
+  return { status: "committed", correlator };
 }
 
 /**
@@ -448,23 +556,12 @@ export function commitPeerDelegation(
  */
 function closePeerMember(
   draft: DecisionDraft,
-  sessionId: string,
-  group: DeepMutable<ForkGroupState>,
-  memberTaskId: string,
+  mandate: DeliveryMandate,
   correlator: string,
-  mandate: string,
   outcome: OperationOutcome,
   services: ForkDecisionServices,
 ): void {
-  const member = peerMemberOf(group, memberTaskId);
-  verifyDeliveryMandate(mandate, draft.context.keyring, {
-    journalId: draft.context.journalIdentity.id,
-    journalIncarnation: draft.context.journalIdentity.incarnation,
-    sessionId,
-    groupId: group.groupId,
-    memberTaskId,
-    correlator,
-  });
+  const { sessionId, member } = deliveryContext(draft, mandate, correlator);
   if (member.delegationCorrelator !== correlator) {
     throw new CrankError("invalid_delivery_mandate", "Unknown delivery correlator");
   }
@@ -487,7 +584,87 @@ function closePeerMember(
           commandId: stableTupleHash(["peer-cancel", correlator]),
         }
       : { status: "closed", outcome, receipt: { offset, duplicate: false } };
+  delete memberTask.execution.liveLease;
   services.settleParent(draft, sessionId, memberTask, outcome);
+}
+
+function deliveryContext(
+  draft: DecisionDraft,
+  mandate: DeliveryMandate,
+  expectedCorrelator?: string,
+): {
+  sessionId: string;
+  parent: DraftTask;
+  group: DeepMutable<ForkGroupState>;
+  member: DeepMutable<ForkGroupState>["members"][number];
+  correlator: string;
+} {
+  const sessionId = mandate.address.sessionId;
+  const parentTaskId = mandate.groupContext.parentTaskId;
+  const groupId = mandate.groupContext.groupId;
+  const correlator = mandate.deliveryCursor.correlator;
+  if (parentTaskId === undefined || groupId === undefined || correlator === undefined) {
+    throw new CrankError("invalid_delivery_mandate", "Incomplete delivery mandate");
+  }
+  if (expectedCorrelator !== undefined && expectedCorrelator !== correlator) {
+    throw new CrankError("invalid_delivery_mandate", "Delivery cursor differs");
+  }
+  const { parent, group } = groupForRequest(draft, sessionId, parentTaskId, groupId);
+  const member = peerMemberOf(group, mandate.address.taskId);
+  verifyDeliveryMandate(mandate.deliveryCapability, draft.context.keyring, {
+    journalId: draft.context.journalIdentity.id,
+    journalIncarnation: draft.context.journalIdentity.incarnation,
+    sessionId,
+    groupId,
+    memberTaskId: member.taskId,
+    correlator,
+  });
+  const memberTask = draft.task(sessionId, member.taskId);
+  if (memberTask.lifecycle.status !== "active") {
+    throw new CrankError("fork_member_terminal", "Peer member is already terminal");
+  }
+  const lease = memberTask.execution.liveLease;
+  if (
+    lease === undefined ||
+    lease.ownerId !== mandate.lease.ownerId ||
+    lease.epoch !== mandate.lease.epoch ||
+    lease.attachmentId !== mandate.attachment.attachmentId ||
+    draft.context.nowMs >= lease.expiresAtMs
+  ) {
+    throw new CrankError("stale_activation", "Delivery mandate lease is stale");
+  }
+  return { sessionId, parent, group, member, correlator };
+}
+
+export function reserveDelegatedPeerSample(
+  draft: DecisionDraft,
+  request: ReserveDelegatedPeerSampleRequest,
+  services: ForkDecisionServices,
+): ReserveDelegatedPeerSampleResult {
+  if ("audience" in request || request.descriptor.kind !== "sample") {
+    throw new CrankError("invalid_descriptor", "Delegated sampling derives its audience locally");
+  }
+  const { sessionId, member, correlator } = deliveryContext(draft, request.mandate);
+  if (member.sampling !== "delegated") {
+    throw new CrankError("invalid_descriptor", "Peer member uses private sampling");
+  }
+  if (member.delegationCorrelator !== correlator) {
+    throw new CrankError("invalid_delivery_mandate", "Peer delegation is not committed");
+  }
+  const task = draft.task(sessionId, member.taskId);
+  const result = services.reservePull(draft, {
+    sessionId,
+    turnId: task.turnId,
+    taskId: task.taskId,
+    actionIndex: task.nextActionIndex,
+    pullIndex: task.nextPullIndex,
+    descriptor: structuredClone(request.descriptor),
+    programCapability: draft.programCapability(task),
+  });
+  if (result.status !== "pending" || result.reason !== "sample") {
+    throw new CrankError("invalid_journal", "Delegated sample did not create a sample slot");
+  }
+  return result;
 }
 
 export function commitPeerEvidence(
@@ -495,17 +672,7 @@ export function commitPeerEvidence(
   request: CommitPeerEvidenceRequest,
   services: ForkDecisionServices,
 ): CommitPeerEvidenceResult {
-  const { group } = groupForRequest(draft, request.sessionId, request.taskId, request.groupId);
-  closePeerMember(
-    draft,
-    request.sessionId,
-    group,
-    request.memberTaskId,
-    request.correlator,
-    request.deliveryMandate,
-    request.outcome,
-    services,
-  );
+  closePeerMember(draft, request.mandate, request.correlator, request.outcome, services);
   return { status: "accepted" };
 }
 
@@ -516,14 +683,10 @@ export function reportPeerLoss(
   request: ReportPeerLossRequest,
   services: ForkDecisionServices,
 ): ReportPeerLossResult {
-  const { group } = groupForRequest(draft, request.sessionId, request.taskId, request.groupId);
   closePeerMember(
     draft,
-    request.sessionId,
-    group,
-    request.memberTaskId,
+    request.mandate,
     request.correlator,
-    request.deliveryMandate,
     peerLossOutcome(request.reason),
     services,
   );
