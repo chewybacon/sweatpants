@@ -57,7 +57,7 @@ Run from the repo root; all should support the documents' claims:
 # legacy symbols really are gone (expect 0 hits each):
 for pat in ProgramRuntime journal-program-runtime runLocalProgramActivation \
            installJournalProgramRuntime withAuthorityTestScope \
-           foreignToolChild foreignToolAdapterChild createLocalProgramHost \
+           ephemeralToolChild ephemeralToolAdapterChild createLocalProgramHost \
            local-program-driver sampleDurableModel; do
   printf '%-32s %s\n' "$pat" "$(rg -n "$pat" packages apps --glob '!node_modules/**' | wc -l)"
 done
