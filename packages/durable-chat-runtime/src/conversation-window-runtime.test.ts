@@ -8,7 +8,7 @@ import {
   buildConversationWindow,
   persistConversationCheckpoint,
 } from "./conversation-persistence.ts";
-import { createDurableChatHandler } from "./durable-handler/handler.ts";
+import { createDurableChatEndpoints } from "./durable-handler/handler.ts";
 import { createHostScopeOwner, installHostScopeOwner } from "./host/host-scope.ts";
 import { installDurableStreamsOwner } from "./response-streams/owner.ts";
 import { setupInMemoryDurableStreams } from "./response-streams/setup.ts";
@@ -25,12 +25,15 @@ function message(id: string, content: string): Message {
   return { id, role: "user", content };
 }
 
-function historyRequest(conversationId: string, cursor: string): Request {
-  return new Request(`http://localhost/api/chat/${conversationId}/history:page`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cursor }),
-  });
+function historyRequest(conversationId: string, cursor: string) {
+  return {
+    conversationId,
+    request: new Request("http://localhost/history:page", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cursor }),
+    }),
+  };
 }
 
 function* initialize(store: ConversationStore, conversationId: string) {
@@ -183,7 +186,7 @@ describe("native ConversationWindow production", () => {
         archiveFrontierOrdinal: "2",
       });
 
-      const handler = createDurableChatHandler({
+      const endpoints = createDurableChatEndpoints({
         conversationStore: store,
         projectionTokens: keyring,
         programDriverJournalStore: {} as never,
@@ -192,13 +195,7 @@ describe("native ConversationWindow production", () => {
         },
       });
       const pageResponse = yield* call(() =>
-        handler(
-          new Request(`http://localhost/api/chat/${conversationId}/history:page`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cursor: continued.olderHistoryCursor }),
-          }),
-        ),
+        endpoints.pageHistory(historyRequest(conversationId, continued.olderHistoryCursor!)),
       );
       expect(pageResponse.status).toBe(200);
       expect(pageResponse.headers.get("cache-control")).toBe("private, no-store");
@@ -209,7 +206,7 @@ describe("native ConversationWindow production", () => {
       expect(pageBody.roots.map((root) => root.position)).toEqual(["0", "1"]);
       expect(pageBody.nextOlderCursor).toBeNull();
 
-      const forbidden = createDurableChatHandler({
+      const forbidden = createDurableChatEndpoints({
         conversationStore: store,
         projectionTokens: keyring,
         programDriverJournalStore: {} as never,
@@ -218,13 +215,7 @@ describe("native ConversationWindow production", () => {
         },
       });
       const forbiddenResponse = yield* call(() =>
-        forbidden(
-          new Request(`http://localhost/api/chat/${conversationId}/history:page`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cursor: "invalid.token" }),
-          }),
-        ),
+        forbidden.pageHistory(historyRequest(conversationId, "invalid.token")),
       );
       expect(forbiddenResponse.status).toBe(403);
 
@@ -316,7 +307,7 @@ describe("native ConversationWindow production", () => {
       yield* installHostScopeOwner(owner);
       yield* installDurableStreamsOwner(owner);
       yield* setupInMemoryDurableStreams();
-      const handler = createDurableChatHandler({
+      const endpoints = createDurableChatEndpoints({
         conversationStore: observedStore,
         projectionTokens: keyring,
         programDriverJournalStore: {} as never,
@@ -324,10 +315,11 @@ describe("native ConversationWindow production", () => {
           return "authorized" as const;
         },
       });
-      const scopedHandler = handler.withScope(scope);
+      const readChat = endpoints.readChat.withScope(scope);
       const response = yield* call(() =>
-        scopedHandler(
-          new Request("http://localhost/chat", {
+        readChat({
+          conversationId,
+          request: new Request("http://localhost/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -335,7 +327,7 @@ describe("native ConversationWindow production", () => {
               conversationId,
             }),
           }),
-        ),
+        }),
       );
       expect(response.status).toBe(200);
       const frames = (yield* call(() => response.text()))
@@ -392,14 +384,14 @@ describe("native ConversationWindow production", () => {
         authorization: "authorized" | "unauthenticated" | "forbidden",
         selectedStore: ConversationStore = observedStore,
       ) =>
-        createDurableChatHandler({
+        createDurableChatEndpoints({
           conversationStore: selectedStore,
           projectionTokens: keyring,
           programDriverJournalStore: {} as never,
           *authorizeHistoryRead() {
             return authorization;
           },
-        });
+        }).pageHistory;
 
       expect(
         (yield* call(() =>

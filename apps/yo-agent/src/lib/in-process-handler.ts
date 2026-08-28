@@ -1,4 +1,4 @@
-import { createChatHandler } from "@sweatpants/agent-host/server";
+import { createChatEndpoints } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createProgramDriverJournalStore,
@@ -73,7 +73,7 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
     yield* MaxIterationsContext.set(maxIterations);
   };
 
-  const handler = createChatHandler({
+  const endpoints = createChatEndpoints({
     setup: function* setup(ctx) {
       yield* setupDurableStreams(ctx);
       yield* setupProvider(ctx);
@@ -98,13 +98,26 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
     const request = typeof input === "string" ? new Request(input, init) : input;
 
     const pathname = new URL(request.url).pathname;
-    if (
-      request.method === "POST" &&
-      (pathname === "/api/chat" || /^\/api\/chat\/[^/]+\/history:page\/?$/.test(pathname))
-    ) {
-      return handler(request);
+    if (request.method !== "POST") {
+      return new Response(null, { status: 405, headers: { Allow: "POST" } });
     }
-
+    if (pathname === "/api/chat") {
+      return endpoints.postChat(request);
+    }
+    const historyMatch = /^\/api\/chat\/([^/]+)\/history:page\/?$/.exec(pathname);
+    if (historyMatch) {
+      return endpoints.pageHistory({
+        request,
+        conversationId: decodeURIComponent(historyMatch[1]!),
+      });
+    }
+    const readMatch = /^\/api\/chat\/([^/]+)\/?$/.exec(pathname);
+    if (readMatch) {
+      return endpoints.readChat({
+        request,
+        conversationId: decodeURIComponent(readMatch[1]!),
+      });
+    }
     return new Response("Not found", { status: 404 });
   }
 

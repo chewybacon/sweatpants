@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe("yo-studio durable chat HTTP projection", () => {
-  it("drives workspace child programs through createDurableChatHandler", async () => {
+  it("drives workspace child programs through the POST chat endpoint", async () => {
     const root = await mkdtemp(join(tmpdir(), "yo-studio-chat-handler-"));
     roots.push(root);
     const runtime = await run(function* () {
@@ -59,11 +59,12 @@ describe("yo-studio durable chat HTTP projection", () => {
       expect(transcript).toContain("workspace_test");
       expect(transcript).toContain("Created demo.txt and the declared test script passed.");
 
-      const refreshed = await application.handle(
-        new Request("http://localhost/api/chat?conversationId=yo-studio-test", {
+      const refreshed = await application.handleEndpoint(application.endpoints.readChat, {
+        conversationId: "yo-studio-test",
+        request: new Request("http://localhost/api/chat/yo-studio-test", {
           method: "GET",
         }),
-      );
+      });
       expect(refreshed.status).toBe(200);
       await expect(refreshed.text()).resolves.toContain(
         "Created demo.txt and the declared test script passed.",

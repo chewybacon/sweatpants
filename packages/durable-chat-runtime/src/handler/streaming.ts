@@ -36,6 +36,11 @@ export interface HandlerContext {
  */
 export const HandlerContext = createContext<HandlerContext>("handler-context");
 
+export interface StreamingEndpointContext {
+  readonly headers: Headers;
+  status: number;
+}
+
 /**
  * Options for createStreamingHandler
  */
@@ -49,7 +54,7 @@ export interface StreamingHandlerOptions {
   /** Serialize value to string (default: identity for strings, JSON.stringify for objects) */
   serialize?: (value: string) => string;
   /** Custom error handler - return a Response or undefined to use default behavior */
-  onSetupError?: (error: Error, ctx: HandlerContext) => Response | undefined;
+  onSetupError?: (error: Error, ctx: StreamingEndpointContext) => Response | undefined;
 }
 
 /**
@@ -70,9 +75,17 @@ export type SetupFn = () => Operation<SetupResult>;
 
 export type FetchHandler = (request: Request) => Promise<Response>;
 
-export interface ScopedFetchHandler extends FetchHandler {
-  withScope(parentScope: Scope): FetchHandler;
+export interface ScopedEndpoint<Input> {
+  (input: Input): Promise<Response>;
+  withScope(parentScope: Scope): (input: Input) => Promise<Response>;
 }
+
+export interface ScopedFetchHandler extends FetchHandler, ScopedEndpoint<Request> {}
+
+export type StreamingEndpointSetup<Input> = (
+  input: Input,
+  context: StreamingEndpointContext,
+) => Operation<SetupResult>;
 
 // =============================================================================
 // HELPER: useHandlerContext
@@ -131,11 +144,11 @@ export function* useHandlerContext(): Operation<HandlerContext> {
  * app.post('/api/chat', handler)
  * ```
  */
-export function createStreamingHandler(
-  setup: SetupFn,
+export function createStreamingEndpoint<Input>(
+  setup: StreamingEndpointSetup<Input>,
   options: StreamingHandlerOptions = {},
-): ScopedFetchHandler {
-  const buildHandler = (parentScope: Scope | undefined): ScopedFetchHandler => {
+): ScopedEndpoint<Input> {
+  const buildHandler = (parentScope: Scope | undefined): ScopedEndpoint<Input> => {
     const {
       defaultHeaders = { "Content-Type": "application/x-ndjson" },
       defaultStatus = 200,
@@ -143,13 +156,12 @@ export function createStreamingHandler(
       onSetupError,
     } = options;
 
-    const handler = async function handler(request: Request): Promise<Response> {
+    const handler = async function handler(input: Input): Promise<Response> {
       const [scope, destroy] = parentScope ? createScope(parentScope) : createScope();
       const encoder = new TextEncoder();
 
       // Create mutable context for setup to modify
-      const ctx: HandlerContext = {
-        request,
+      const ctx: StreamingEndpointContext = {
         headers: new Headers(defaultHeaders),
         status: defaultStatus,
       };
@@ -181,8 +193,7 @@ export function createStreamingHandler(
       try {
         // Run setup in scope with context
         const result = await scope.run(function* () {
-          yield* HandlerContext.set(ctx);
-          return yield* setup();
+          return yield* setup(input, ctx);
         });
 
         // Normalize result
@@ -269,9 +280,28 @@ export function createStreamingHandler(
       });
     };
 
-    handler.withScope = (scope: Scope): FetchHandler => buildHandler(scope);
+    handler.withScope = (scope: Scope) => buildHandler(scope);
     return handler;
   };
 
   return buildHandler(options.parentScope);
+}
+
+export function createStreamingHandler(
+  setup: SetupFn,
+  options: StreamingHandlerOptions = {},
+): ScopedFetchHandler {
+  return createStreamingEndpoint<Request>(function* (request, response): Operation<SetupResult> {
+    const context: HandlerContext = {
+      request,
+      headers: response.headers,
+      status: response.status,
+    };
+    yield* HandlerContext.set(context);
+    try {
+      return yield* setup();
+    } finally {
+      response.status = context.status;
+    }
+  }, options);
 }

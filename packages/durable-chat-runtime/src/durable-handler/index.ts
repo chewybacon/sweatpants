@@ -9,8 +9,13 @@
  * @module
  */
 
-// Main handler factory
-export { createDurableChatHandler } from "./handler.ts";
+// Route-independent endpoint factories
+export { createDurableChatEndpoints, createDurableChatHandler } from "./handler.ts";
+export type {
+  DurableChatEndpoints,
+  DurableChatReadRequest,
+  DurableHistoryPageRequest,
+} from "./types.ts";
 export { createProjectionTokenKeyring } from "../projection-tokens.ts";
 
 // Plugin session manager

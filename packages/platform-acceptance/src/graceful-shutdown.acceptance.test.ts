@@ -49,7 +49,13 @@ describe("graceful Host shutdown", () => {
         expect((yield* turn.settled()).text).toBe("SHUTDOWN_FIRST_V1SHUTDOWN_SECOND_V1");
         let closedError: unknown;
         try {
-          yield* call(() => application!.handle(new Request("http://localhost/chat")));
+          yield* call(() =>
+            application!.handle(
+              new Request("http://localhost/api/chat", {
+                method: "POST",
+              }),
+            ),
+          );
         } catch (error) {
           closedError = error;
         }

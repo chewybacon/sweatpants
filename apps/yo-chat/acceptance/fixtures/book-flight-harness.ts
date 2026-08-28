@@ -26,7 +26,7 @@ import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
 import {
-  createDurableChatHandler,
+  createDurableChatEndpoints,
   createProgramDriverJournalStore,
   createProjectionTokenKeyring,
   type ProgramDriverJournalStore,
@@ -39,6 +39,7 @@ import {
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
 import { bookFlightTool } from "../../src/tools/book-flight/tool.ts";
+import { routeNativeChatApplication } from "./native-chat-router.ts";
 
 /** Public AG-UI frame projected from one durable response line. */
 export type PublicEvent = { type: string; [key: string]: unknown };
@@ -145,7 +146,7 @@ export async function createBookFlightSubstrate(options: {
     conversationId: uniqueConversationId(options.conversationId),
     messages: [{ id: "user:http-book", role: "user", content: "Book NYC to LAX" }],
     createRuntime() {
-      const handler = createDurableChatHandler({
+      const endpoints = createDurableChatEndpoints({
         programDriverJournalStore: journalStore,
         executionStore,
         conversationStore,
@@ -160,7 +161,7 @@ export async function createBookFlightSubstrate(options: {
         },
       });
       const application = createChatApplication({
-        handler,
+        handler: endpoints.postChat,
         setup: function* () {
           yield* setupDurableStreams({ bufferStore, registryStore });
           yield* createLocalToolInvocationRuntime({});
@@ -175,10 +176,7 @@ export async function createBookFlightSubstrate(options: {
           );
         },
       });
-      return {
-        handle: (request: Request) => application.handle(request),
-        close: () => application.close(),
-      };
+      return routeNativeChatApplication(application, endpoints);
     },
     async close() {},
   };
@@ -374,7 +372,7 @@ export async function reattach(
   conversationId: string,
 ): Promise<PublicEvent[]> {
   const response = await handler(
-    new Request("http://localhost/chat", {
+    new Request(`http://localhost/api/chat/${encodeURIComponent(conversationId)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientId: "book-flight-acceptance", conversationId }),

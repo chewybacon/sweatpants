@@ -6,6 +6,7 @@
         "src/server.{ts,tsx,js,jsx}",
         "scripts/*.{ts,mts,mjs}"
     ],
+    "ignorePatterns": ["**/routeTree.gen.ts"],
     "workspaces": {
         "patterns": ["packages/*", "apps/*"]
     },
@@ -13,7 +14,23 @@
         "ignore": ["apps/hydra/docs/ts/**"]
     },
     "health": {
-        "ignore": ["apps/hydra/docs/ts/**"]
+        "maxCrap": 0,
+        "ignore": [
+            "apps/hydra/docs/ts/**",
+            "**/*.test.{ts,tsx,js,jsx}",
+            "**/*.spec.{ts,tsx,js,jsx}",
+            "**/*.type-test.{ts,tsx}",
+            "**/*.typecheck.{ts,tsx}",
+            "**/__tests__/**",
+            "**/acceptance/**",
+            "**/e2e/**",
+            "**/src/testing/**",
+            "packages/test-rig/**"
+        ],
+        "suggestInlineSuppression": false
+    },
+    "typeAware": {
+        "enabled": true
     },
     "ignoreDependencies": ["effect"],
     "ignoreUnresolvedImports": ["./server/server.js", "**/server/server.js"],

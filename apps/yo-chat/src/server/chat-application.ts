@@ -1,21 +1,29 @@
-import { createChatApplication } from "@sweatpants/agent-host/server";
+import { createChatApplication, type ChatApplication } from "@sweatpants/agent-host/server";
 import { setupLogger } from "@sweatpants/agent-host/logging";
 import { setupYoChatDurableStreams } from "./durable-streams";
 import { setupYoChatBaseContexts } from "./tools";
 import { setupYoChatPluginsAndRuntime } from "./tool-runtime";
-import { createYoChatHandler } from "./chat-handler";
+import { createYoChatEndpoints } from "./chat-handler";
+import type { DurableChatEndpoints } from "@sweatpants/durable-chat-runtime/durable-handler";
 export { withDefaultSystemPrompt } from "./default-system-prompt";
 export { ProgramDriverConfigurationError } from "./chat-handler";
 
-/** Creates yo-chat with one root scope and the parsed execution-engine configuration. */
-export function createYoChatApplication() {
+export interface YoChatApplication extends ChatApplication {
+  readonly endpoints: DurableChatEndpoints;
+}
+
+/** Creates yo-chat with one root scope and route-independent endpoints. */
+export function createYoChatApplication(): YoChatApplication {
   const setup = function* setupApplication() {
     yield* setupLogger();
     yield* setupYoChatDurableStreams();
     yield* setupYoChatBaseContexts();
     yield* setupYoChatPluginsAndRuntime();
   };
-  return createChatApplication({ setup, handler: createYoChatHandler() });
+  const endpoints = createYoChatEndpoints();
+  return Object.assign(createChatApplication({ setup, handler: endpoints.postChat }), {
+    endpoints,
+  });
 }
 
 export const chatApp = createYoChatApplication();

@@ -16,7 +16,7 @@ import {
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
+import { createChatApplication, createChatEndpoints } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createProgramDriverJournalStore,
@@ -108,7 +108,7 @@ export function createStudioDurableChatApplication(options: {
     }
   };
   const modelProvider = options.modelProvider ?? createPiAiStudioModelProvider();
-  const handler = createChatHandler({
+  const endpoints = createChatEndpoints({
     programDriverJournalStore: journalStore,
     projectionTokens: createProjectionTokenKeyring(
       "yo-studio-windowed-conversation-projection-key",
@@ -122,33 +122,38 @@ export function createStudioDurableChatApplication(options: {
     },
   });
 
-  return createChatApplication({
-    handler,
-    setup: function* () {
-      yield* setupDurableStreams({
-        bufferStore: createInMemoryBufferStore<string>(),
-        registryStore: createInMemoryRegistryStore(),
-      });
-      yield* installToolInventory(
-        createToolInventory(definitions.map((definition) => createToolInventoryEntry(definition))),
-      );
-      yield* ProgramDriverNativeToolsContext.set({
-        bindings: new Map(
-          definitions.map((definition) => [
-            definition.name,
-            {
-              publicName: definition.name,
-              tool: definition,
-              route: { driverKind: "program" as const },
-            },
-          ]),
-        ),
-        drivers: [],
-        effects: [],
-        setup: installWorkspace,
-      });
-    },
-  });
+  return Object.assign(
+    createChatApplication({
+      handler: endpoints.postChat,
+      setup: function* () {
+        yield* setupDurableStreams({
+          bufferStore: createInMemoryBufferStore<string>(),
+          registryStore: createInMemoryRegistryStore(),
+        });
+        yield* installToolInventory(
+          createToolInventory(
+            definitions.map((definition) => createToolInventoryEntry(definition)),
+          ),
+        );
+        yield* ProgramDriverNativeToolsContext.set({
+          bindings: new Map(
+            definitions.map((definition) => [
+              definition.name,
+              {
+                publicName: definition.name,
+                tool: definition,
+                route: { driverKind: "program" as const },
+              },
+            ]),
+          ),
+          drivers: [],
+          effects: [],
+          setup: installWorkspace,
+        });
+      },
+    }),
+    { endpoints },
+  );
 }
 
 export function createScriptedStudioModelProvider(

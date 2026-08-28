@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Operation } from "effection";
-import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
+import { createChatApplication, createChatEndpoints } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createProgramDriverJournalStore,
@@ -17,7 +17,11 @@ import {
   createLocalToolInvocationRuntime,
   installLocalToolRuntimeComposition,
 } from "@sweatpants/tool-runtime-local";
-import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants/test-rig";
+import {
+  routeNativeChatTestApplication,
+  type TestApplication,
+  type TestApplicationFactoryContext,
+} from "@sweatpants/test-rig";
 import { reactBookingTool } from "./fixtures/react-booking.tool.ts";
 
 export const REACT_ACCEPTANCE_MODEL_ID = "react-chat-acceptance";
@@ -51,7 +55,17 @@ export function createReactAcceptanceApplication(
     schemaRegistry: programDriverSchemaRegistry(reactBookingTool.artifacts.catalog),
   });
 
-  return createChatApplication({
+  const endpoints = createChatEndpoints({
+    programDriverJournalStore: journalStore,
+    projectionTokens: createProjectionTokenKeyring("react-acceptance-windowed-projection-key"),
+    *authorizeHistoryRead() {
+      return "authorized" as const;
+    },
+    setup: function* (): Operation<void> {
+      yield* context.model.install();
+    },
+  });
+  const application = createChatApplication({
     setup: function* (): Operation<void> {
       yield* setupInMemoryDurableStreams<string>({
         retentionPolicy: { mode: "retain_forever" },
@@ -72,15 +86,7 @@ export function createReactAcceptanceApplication(
         },
       });
     },
-    handler: createChatHandler({
-      programDriverJournalStore: journalStore,
-      projectionTokens: createProjectionTokenKeyring("react-acceptance-windowed-projection-key"),
-      *authorizeHistoryRead() {
-        return "authorized" as const;
-      },
-      setup: function* (): Operation<void> {
-        yield* context.model.install();
-      },
-    }),
+    handler: endpoints.postChat,
   });
+  return routeNativeChatTestApplication(application, endpoints);
 }
