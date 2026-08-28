@@ -22,6 +22,7 @@ import { Route as ChatCardsIndexRouteImport } from './routes/chat/cards/index'
 import { Route as ChatBasicIndexRouteImport } from './routes/chat/basic/index'
 import { Route as LabDurabilityJournalRouteImport } from './routes/lab/durability/journal'
 import { Route as ApiThreadedChatThreadsIndexRouteImport } from './routes/api/threaded-chat/threads/index'
+import { Route as ApiChatConversationIdIndexRouteImport } from './routes/api/chat/$conversationId/index'
 import { Route as ApiThreadedChatThreadsThreadIdRouteImport } from './routes/api/threaded-chat/threads/$threadId'
 import { Route as ApiStreamsChatThreadIdRouteImport } from './routes/api/streams/chat/$threadId'
 import { Route as ApiDevJournalsConversationIdRouteImport } from './routes/api/dev/journals/$conversationId'
@@ -93,6 +94,12 @@ const ApiThreadedChatThreadsIndexRoute =
     path: '/api/threaded-chat/threads/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiChatConversationIdIndexRoute =
+  ApiChatConversationIdIndexRouteImport.update({
+    id: '/$conversationId/',
+    path: '/$conversationId/',
+    getParentRoute: () => ApiChatRoute,
+  } as any)
 const ApiThreadedChatThreadsThreadIdRoute =
   ApiThreadedChatThreadsThreadIdRouteImport.update({
     id: '/api/threaded-chat/threads/$threadId',
@@ -134,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/api/dev/journals/$conversationId': typeof ApiDevJournalsConversationIdRoute
   '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
+  '/api/chat/$conversationId': typeof ApiChatConversationIdIndexRoute
   '/api/threaded-chat/threads': typeof ApiThreadedChatThreadsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -153,6 +161,7 @@ export interface FileRoutesByTo {
   '/api/dev/journals/$conversationId': typeof ApiDevJournalsConversationIdRoute
   '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
+  '/api/chat/$conversationId': typeof ApiChatConversationIdIndexRoute
   '/api/threaded-chat/threads': typeof ApiThreadedChatThreadsIndexRoute
 }
 export interface FileRoutesById {
@@ -173,6 +182,7 @@ export interface FileRoutesById {
   '/api/dev/journals/$conversationId': typeof ApiDevJournalsConversationIdRoute
   '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
+  '/api/chat/$conversationId/': typeof ApiChatConversationIdIndexRoute
   '/api/threaded-chat/threads/': typeof ApiThreadedChatThreadsIndexRoute
 }
 export interface FileRouteTypes {
@@ -194,6 +204,7 @@ export interface FileRouteTypes {
     | '/api/dev/journals/$conversationId'
     | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
+    | '/api/chat/$conversationId'
     | '/api/threaded-chat/threads'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -213,6 +224,7 @@ export interface FileRouteTypes {
     | '/api/dev/journals/$conversationId'
     | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
+    | '/api/chat/$conversationId'
     | '/api/threaded-chat/threads'
   id:
     | '__root__'
@@ -232,6 +244,7 @@ export interface FileRouteTypes {
     | '/api/dev/journals/$conversationId'
     | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
+    | '/api/chat/$conversationId/'
     | '/api/threaded-chat/threads/'
   fileRoutesById: FileRoutesById
 }
@@ -347,6 +360,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiThreadedChatThreadsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/chat/$conversationId/': {
+      id: '/api/chat/$conversationId/'
+      path: '/$conversationId'
+      fullPath: '/api/chat/$conversationId'
+      preLoaderRoute: typeof ApiChatConversationIdIndexRouteImport
+      parentRoute: typeof ApiChatRoute
+    }
     '/api/threaded-chat/threads/$threadId': {
       id: '/api/threaded-chat/threads/$threadId'
       path: '/api/threaded-chat/threads/$threadId'
@@ -380,11 +400,13 @@ declare module '@tanstack/react-router' {
 
 interface ApiChatRouteChildren {
   ApiChatConversationIdHistoryChar58pageRoute: typeof ApiChatConversationIdHistoryChar58pageRoute
+  ApiChatConversationIdIndexRoute: typeof ApiChatConversationIdIndexRoute
 }
 
 const ApiChatRouteChildren: ApiChatRouteChildren = {
   ApiChatConversationIdHistoryChar58pageRoute:
     ApiChatConversationIdHistoryChar58pageRoute,
+  ApiChatConversationIdIndexRoute: ApiChatConversationIdIndexRoute,
 }
 
 const ApiChatRouteWithChildren =

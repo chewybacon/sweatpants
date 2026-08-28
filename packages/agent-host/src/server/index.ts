@@ -9,7 +9,7 @@ import {
 } from "effection";
 import type {
   FetchHandler,
-  ScopedFetchHandler,
+  ScopedEndpoint,
 } from "@sweatpants/durable-chat-runtime/handler/streaming";
 import { createHostScopeOwner, installHostScopeOwner } from "@sweatpants/durable-chat-runtime/host";
 import { installDurableStreamsOwner } from "@sweatpants/durable-chat-runtime/response-streams";
@@ -29,6 +29,10 @@ export interface ChatApplicationSetupContext {
 /** Fetch application whose root Effection scope is owned until close completes. */
 export interface ChatApplication {
   handle(request: Request): Promise<Response>;
+  handleEndpoint<Input>(
+    endpoint: ScopedEndpoint<Input> | ((input: Input) => Promise<Response>),
+    input: Input,
+  ): Promise<Response>;
   close(): Promise<void>;
 }
 
@@ -52,8 +56,10 @@ export class ChatApplicationClosedError extends Error {
   }
 }
 
-function isScopedFetchHandler(handler: FetchHandler): handler is ScopedFetchHandler {
-  return "withScope" in handler && typeof handler.withScope === "function";
+function isScopedEndpoint<Input>(
+  endpoint: ScopedEndpoint<Input> | ((input: Input) => Promise<Response>),
+): endpoint is ScopedEndpoint<Input> {
+  return "withScope" in endpoint && typeof endpoint.withScope === "function";
 }
 
 function isHaltedError(error: unknown): boolean {
@@ -75,7 +81,7 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
 
   let closed = false;
   let setupPromise: Promise<Scope> | undefined;
-  let scopedHandler: FetchHandler | undefined;
+  let scopedEndpoints = new WeakMap<object, (input: unknown) => Promise<Response>>();
 
   function ensureSetup(): Promise<Scope> {
     if (!setupPromise) {
@@ -117,39 +123,51 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
     return setupPromise;
   }
 
-  return {
-    async handle(request: Request): Promise<Response> {
+  async function handleEndpoint<Input>(
+    endpoint: ScopedEndpoint<Input> | ((input: Input) => Promise<Response>),
+    input: Input,
+  ): Promise<Response> {
+    if (closed) {
+      throw new ChatApplicationClosedError();
+    }
+    try {
+      const scope = await ensureSetup();
       if (closed) {
         throw new ChatApplicationClosedError();
       }
-      try {
-        const scope = await ensureSetup();
-        if (closed) {
-          throw new ChatApplicationClosedError();
-        }
-        if (!scopedHandler) {
-          scopedHandler = isScopedFetchHandler(baseHandler)
-            ? baseHandler.withScope(scope)
-            : (nextRequest) =>
-                scope.run(function* () {
-                  return yield* call(() => baseHandler(nextRequest));
-                });
-        }
-        return scopedHandler(request);
-      } catch (error) {
-        if (closed || (error instanceof Error && error.message === closedApplicationErrorMessage)) {
-          throw new ChatApplicationClosedError();
-        }
-        console.error("[ChatApplication] setup failed", { errorTag: "setup_failed" });
-        return new Response(
-          JSON.stringify({ type: "error", message: "Chat application setup failed" }),
-          {
-            status: 500,
-            headers: { "content-type": "application/json" },
-          },
-        );
+      let scoped = scopedEndpoints.get(endpoint) as
+        | ((nextInput: Input) => Promise<Response>)
+        | undefined;
+      if (!scoped) {
+        scoped = isScopedEndpoint(endpoint)
+          ? endpoint.withScope(scope)
+          : (nextInput) =>
+              scope.run(function* () {
+                return yield* call(() => endpoint(nextInput));
+              });
+        scopedEndpoints.set(endpoint, scoped as (input: unknown) => Promise<Response>);
       }
+      return scoped(input);
+    } catch (error) {
+      if (closed || (error instanceof Error && error.message === closedApplicationErrorMessage)) {
+        throw new ChatApplicationClosedError();
+      }
+      console.error("[ChatApplication] setup failed", { errorTag: "setup_failed" });
+      return new Response(
+        JSON.stringify({ type: "error", message: "Chat application setup failed" }),
+        {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }
+  }
+
+  return {
+    handle(request: Request): Promise<Response> {
+      return handleEndpoint(baseHandler, request);
     },
+    handleEndpoint,
     async close(): Promise<void> {
       if (closed) {
         return;
@@ -169,19 +187,25 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
         }
         // Reclaims deadline-exceeding work and runs reachable finalizers.
         await destroyRootScope();
-        scopedHandler = undefined;
+        scopedEndpoints = new WeakMap();
       }
     },
   };
 }
 
 import {
-  createDurableChatHandler,
+  createDurableChatEndpoints,
+  type DurableChatEndpoints,
   type DurableChatHandlerConfig,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 
-/** Host ingress factory over the destination-owned durable Turn handler. */
-export function createChatHandler(config: DurableChatHandlerConfig) {
-  return createDurableChatHandler(config);
+/** Host ingress factory over route-independent durable chat capabilities. */
+export function createChatEndpoints(config: DurableChatHandlerConfig): DurableChatEndpoints {
+  return createDurableChatEndpoints(config);
 }
-export type { DurableChatHandlerConfig };
+
+/** Backward-compatible factory for the route-specific POST chat endpoint. */
+export function createChatHandler(config: DurableChatHandlerConfig) {
+  return createChatEndpoints(config).postChat;
+}
+export type { DurableChatEndpoints, DurableChatHandlerConfig };

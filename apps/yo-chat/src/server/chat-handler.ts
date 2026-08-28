@@ -1,4 +1,4 @@
-import { createChatHandler } from "@sweatpants/agent-host/server";
+import { createChatEndpoints } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { env } from "@/env";
 import { setupYoChatModelProvider } from "./model-provider";
@@ -29,8 +29,7 @@ export function getActiveProgramDriverJournalStore(): ProgramDriverJournalStore 
   return activeProgramDriverJournalStore;
 }
 
-/** Creates the configured yo-chat handler without acquiring application resources. */
-export function createYoChatHandler(): ReturnType<typeof createChatHandler> {
+function createYoChatHandlerConfig(): Parameters<typeof createChatEndpoints>[0] {
   const secret = env.PROGRAM_DRIVER_CAPABILITY_SECRET;
   if (!secret) {
     throw new ProgramDriverConfigurationError();
@@ -41,7 +40,7 @@ export function createYoChatHandler(): ReturnType<typeof createChatHandler> {
   const executionStore = createYoChatExecutionStore();
   const journalStore = createYoChatProgramDriverJournalStore(keyring, executionStore);
   activeProgramDriverJournalStore = journalStore;
-  return createChatHandler({
+  return {
     setup: setupYoChatModelProvider,
     maxToolIterations: 10,
     programDriverJournalStore: journalStore,
@@ -50,5 +49,10 @@ export function createYoChatHandler(): ReturnType<typeof createChatHandler> {
     *authorizeHistoryRead() {
       return "authorized" as const;
     },
-  });
+  };
+}
+
+/** Creates route-independent yo-chat endpoint capabilities. */
+export function createYoChatEndpoints(): ReturnType<typeof createChatEndpoints> {
+  return createChatEndpoints(createYoChatHandlerConfig());
 }

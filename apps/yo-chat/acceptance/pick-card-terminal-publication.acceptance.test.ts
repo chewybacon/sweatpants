@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
+import { createChatApplication, createChatEndpoints } from "@sweatpants/agent-host/server";
 import { durableEffectKey } from "@sweatpants/durable-effects";
 import { createDurableToolRegistry } from "@sweatpants/durable-execution";
 import { createLocalWorkerDurableProgramDriver } from "@sweatpants/tool-runtime-local";
@@ -32,6 +32,7 @@ import {
 import { race, type Operation } from "effection";
 import { pickCard } from "../src/tools/pick-card/durable.ts";
 import { createDrawPickCardsRegistration } from "../src/tools/pick-card/durable-effects.ts";
+import { routeNativeChatApplication } from "./fixtures/native-chat-router.ts";
 
 const MODEL_ID = "yo-chat-pick-card-acceptance";
 type Binding = TestRigOptions["binding"];
@@ -95,6 +96,18 @@ function createPickCardApplication(
     registry,
   });
 
+  const endpoints = createChatEndpoints({
+    executionStore,
+    conversationStore,
+    programDriverJournalStore: journalStore,
+    projectionTokens: createProjectionTokenKeyring("yo-chat-pick-card-window-projection-key"),
+    *authorizeHistoryRead() {
+      return "authorized" as const;
+    },
+    setup: function* (): Operation<void> {
+      yield* context.model.install();
+    },
+  });
   const application = createChatApplication({
     setup: function* (): Operation<void> {
       yield* setupInMemoryDurableStreams<string>({
@@ -118,20 +131,9 @@ function createPickCardApplication(
         effects: [drawCards],
       });
     },
-    handler: createChatHandler({
-      executionStore,
-      conversationStore,
-      programDriverJournalStore: journalStore,
-      projectionTokens: createProjectionTokenKeyring("yo-chat-pick-card-window-projection-key"),
-      *authorizeHistoryRead() {
-        return "authorized" as const;
-      },
-      setup: function* (): Operation<void> {
-        yield* context.model.install();
-      },
-    }),
+    handler: endpoints.postChat,
   });
-  return application;
+  return routeNativeChatApplication(application, endpoints);
 }
 
 async function runScenario(binding: Binding): Promise<void> {

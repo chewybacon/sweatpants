@@ -25,7 +25,7 @@ export interface HttpTransportOptions {
 function joinUrl(api: string, conversationId?: string, clientId?: string): string {
   const url = new URL(api, "http://sweatpants.invalid");
   if (conversationId !== undefined) {
-    url.searchParams.set("conversationId", conversationId);
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(conversationId)}`;
   }
   if (clientId !== undefined) {
     url.searchParams.set("clientId", clientId);

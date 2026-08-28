@@ -661,6 +661,12 @@ describe("headless ChatClient", () => {
       "thread-a",
       "thread-b",
     ]);
+    expect(reconnects.map((request) => new URL(request.url).pathname)).toEqual([
+      "/chat/thread-a",
+      "/chat/thread-b",
+      "/chat/thread-a",
+      "/chat/thread-b",
+    ]);
     expect(reconnects.every((request) => !("cursor" in request.body))).toBe(true);
     await first.close();
     await second.close();

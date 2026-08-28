@@ -20,7 +20,6 @@ import {
   call,
   ensure,
   resource,
-  run,
   withResolvers,
   type Operation,
   type Scope,
@@ -55,7 +54,11 @@ import { ToolExposureApi } from "@sweatpants/chat-core";
 import { HistoryPolicyContext } from "@sweatpants/chat-core";
 import { useLogger } from "../logger/index.ts";
 import { bindModel, createBindingSource, stringParam } from "../handler/model-binder.ts";
-import { createStreamingHandler, HandlerContext, useHandlerContext } from "../handler/streaming.ts";
+import {
+  createStreamingEndpoint,
+  HandlerContext,
+  type ScopedEndpoint,
+} from "../handler/streaming.ts";
 import type { StreamEvent } from "../handler/types.ts";
 import { createProgramDriverChatEngine } from "./program-driver-chat-engine.ts";
 import { manifest as chatProgramManifest } from "./program-driver-schema.ts";
@@ -69,7 +72,9 @@ import {
 } from "../response-streams/index.ts";
 import type {
   ChatRequestBody,
+  DurableChatEndpoints,
   DurableChatHandlerConfig,
+  DurableChatReadRequest,
   WorkflowChatEngineParams,
   ToolSchema,
 } from "./types.ts";
@@ -98,9 +103,6 @@ import {
   acceptedPublicMessageFact,
   buildConversationWindow,
   ConversationCheckpointConflictError,
-  DEFAULT_HISTORY_PAGE_BYTE_LIMIT,
-  DEFAULT_HISTORY_PAGE_ROOT_LIMIT,
-  DEFAULT_PROJECTION_TOKEN_TTL_MS,
   persistConversationCheckpoint,
   preflightConversationCheckpoint,
   readAllPublicRootsForModel,
@@ -108,154 +110,11 @@ import {
 import { LOW_CHECKPOINT_TARGETS } from "@sweatpants/history-store";
 import { assertJson, stableTupleHash, type Json } from "@sweatpants/foundation";
 import type { ConversationHead, ConversationStore } from "@sweatpants/history-store/contract";
-import { ConversationStoreError } from "@sweatpants/history-store/contract";
 import { conversationAuthority, conversationAuthorityFrame } from "../conversation-authority.ts";
-import {
-  mintPublicHistoryCursor,
-  ProjectionTokenError,
-  verifyPublicHistoryCursor,
-} from "../projection-tokens.ts";
+import { createDurableHistoryPageEndpoint } from "./history-page-endpoint.ts";
 
 const MAX_CHAT_REQUEST_BYTES = 2 * 1024 * 1024;
 let responseWriterEpoch = 1;
-
-function historyPageConversationId(pathname: string): string | null {
-  const match = /^\/api\/chat\/([^/]+)\/history:page\/?$/.exec(pathname);
-  if (!match) return null;
-  try {
-    const value = decodeURIComponent(match[1]!);
-    return value.length > 0 && value.length <= 512 ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-async function readHistoryCursorBody(request: Request): Promise<string> {
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > 128 * 1024) {
-    throw new ProjectionTokenError(
-      "public_history_cursor_invalid",
-      "History page body exceeds 128 KiB",
-    );
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(text) as unknown;
-  } catch {
-    throw new ProjectionTokenError(
-      "public_history_cursor_invalid",
-      "History page body must be valid JSON",
-    );
-  }
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    Object.keys(value).length !== 1 ||
-    typeof (value as Record<string, unknown>)["cursor"] !== "string"
-  ) {
-    throw new ProjectionTokenError(
-      "public_history_cursor_invalid",
-      "History page body must contain exactly one cursor",
-    );
-  }
-  return (value as { cursor: string }).cursor;
-}
-
-async function createHistoryPageResponse(params: {
-  request: Request;
-  conversationId: string;
-  store: ConversationStore;
-  config: DurableChatHandlerConfig;
-  scope?: Scope;
-}): Promise<Response> {
-  const execute = <T>(operation: () => Operation<T>): Promise<T> =>
-    params.scope ? params.scope.run(operation) : run(operation);
-  const headers = new Headers({
-    "Content-Type": "application/json",
-    "Cache-Control": "private, no-store",
-  });
-  const authorization = await execute(() =>
-    params.config.authorizeHistoryRead(params.request, params.conversationId),
-  );
-  if (authorization === "unauthenticated") {
-    return new Response(JSON.stringify({ error: "unauthenticated" }), { status: 401, headers });
-  }
-  if (authorization === "forbidden") {
-    return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers });
-  }
-  try {
-    const token = await readHistoryCursorBody(params.request);
-    const now = Date.now();
-    const cursor = await verifyPublicHistoryCursor(token, params.config.projectionTokens, now);
-    const head = await execute(() => params.store.loadHead(params.conversationId));
-    if (!head) {
-      return new Response(JSON.stringify({ error: "conversation_not_found" }), {
-        status: 404,
-        headers,
-      });
-    }
-    if (head.state === "deleted") {
-      return new Response(JSON.stringify({ error: "conversation_deleted" }), {
-        status: 410,
-        headers,
-      });
-    }
-    const checkpointPointer = head.checkpoint;
-    if (!checkpointPointer) {
-      return new Response(JSON.stringify({ error: "conversation_not_found" }), {
-        status: 404,
-        headers,
-      });
-    }
-    const checkpoint = await execute(() => params.store.getCheckpoint(checkpointPointer));
-    if (
-      !checkpoint ||
-      checkpoint.lineageId !== cursor.lineageId ||
-      BigInt(cursor.archiveFrontierOrdinal) > BigInt(checkpoint.archiveFrontierOrdinal) ||
-      BigInt(cursor.nextPublicPosition) > BigInt(checkpoint.nextPublicPosition)
-    ) {
-      return new Response(JSON.stringify({ error: "public_history_frontier_changed" }), {
-        status: 409,
-        headers,
-      });
-    }
-    const page = await execute(() =>
-      params.store.readPublicHistoryBefore({
-        conversationId: params.conversationId,
-        basis: cursor,
-        beforePosition: cursor.beforePosition,
-        maxRoots: DEFAULT_HISTORY_PAGE_ROOT_LIMIT,
-        maxBytes: DEFAULT_HISTORY_PAGE_BYTE_LIMIT,
-      }),
-    );
-    const roots = page.roots.map((root) => decodePublicProjectionRoot(root));
-    const nextOlderCursor = page.nextBeforePosition
-      ? await mintPublicHistoryCursor(
-          {
-            ...cursor,
-            beforePosition: page.nextBeforePosition,
-            issuedAt: now,
-            expiresAt:
-              now + (params.config.projectionTokenTtlMs ?? DEFAULT_PROJECTION_TOKEN_TTL_MS),
-          },
-          params.config.projectionTokens,
-        )
-      : null;
-    return new Response(JSON.stringify({ roots, nextOlderCursor }), { status: 200, headers });
-  } catch (error) {
-    if (error instanceof ProjectionTokenError) {
-      return new Response(JSON.stringify({ error: error.code }), {
-        status: error.code === "public_history_cursor_expired" ? 409 : 400,
-        headers,
-      });
-    }
-    if (error instanceof ConversationStoreError && error.code === "public_root_conflict") {
-      return new Response(JSON.stringify({ error: error.code }), { status: 409, headers });
-    }
-    throw error;
-  }
-}
 
 function* directChatSubscription(
   registry: SessionRegistry<StreamEvent>,
@@ -602,11 +461,27 @@ function createLiveCancellationEngine(params: {
 }
 
 // =============================================================================
-// DURABLE CHAT HANDLER
+// DURABLE CHAT ENDPOINTS
 // =============================================================================
 
+type ChatStreamInvocation =
+  | { readonly kind: "post-chat"; readonly request: Request }
+  | ({ readonly kind: "read-chat" } & DurableChatReadRequest);
+
+function mapScopedEndpoint<Source, Target>(
+  endpoint: ScopedEndpoint<Target>,
+  map: (source: Source) => Target,
+): ScopedEndpoint<Source> {
+  const mapped = (source: Source): Promise<Response> => endpoint(map(source));
+  mapped.withScope = (scope: Scope) => {
+    const scoped = endpoint.withScope(scope);
+    return (source: Source): Promise<Response> => scoped(map(source));
+  };
+  return mapped;
+}
+
 /**
- * Create a durable chat handler.
+ * Create route-independent durable chat endpoint capabilities.
  *
  * The handler:
  * 1. Normalizes a native command or cursor-free reconnect body.
@@ -617,28 +492,53 @@ function createLiveCancellationEngine(params: {
  * @param config - Handler configuration
  * @returns Fetch handler function
  */
-export function createDurableChatHandler(config: DurableChatHandlerConfig) {
+export function createDurableChatEndpoints(config: DurableChatHandlerConfig): DurableChatEndpoints {
   const { setup, maxToolIterations = 10 } = config;
   const executionStore = config.executionStore ?? createMemoryExecutionStore();
   const conversationStore = config.conversationStore ?? createMemoryConversationStore();
   const checkpointTargets = config.storageProfile === "low" ? LOW_CHECKPOINT_TARGETS : undefined;
   const liveProgramActivations = new Map<string, LiveProgramActivation>();
-  const streamingHandler = createStreamingHandler(
-    function* () {
-      const ctx = yield* useHandlerContext();
-      const request = ctx.request;
+  const streamingEndpoint = createStreamingEndpoint<ChatStreamInvocation>(
+    function* (invocation, responseContext) {
+      const request = invocation.request;
+      const ctx: HandlerContext = {
+        request,
+        headers: responseContext.headers,
+        get status() {
+          return responseContext.status;
+        },
+        set status(value: number) {
+          responseContext.status = value;
+        },
+      };
       const bindingSource = createBindingSource(request);
       const { conversationId: requestedConversationIdParam } = durableParamsBinder(bindingSource);
-      const method = request.method.toUpperCase();
-      const body =
-        method === "POST"
-          ? parseChatRequestBody(yield* readBoundedChatRequest(request))
-          : ({ messages: [] } as ChatRequestBody);
+      const submittedBody = request.body
+        ? parseChatRequestBody(yield* readBoundedChatRequest(request))
+        : ({ messages: [] } as ChatRequestBody);
+      if (invocation.kind === "post-chat" && !submittedBody.command) {
+        throw new CrankError("invalid_chat_request", "POST chat requests require a command");
+      }
+      if (invocation.kind === "read-chat" && submittedBody.command) {
+        throw new CrankError("invalid_chat_request", "Chat read requests cannot carry a command");
+      }
+      const body: ChatRequestBody =
+        invocation.kind === "post-chat"
+          ? submittedBody
+          : {
+              ...submittedBody,
+              conversationId: invocation.conversationId,
+              ...(invocation.knownWindowToken
+                ? { knownWindowToken: invocation.knownWindowToken }
+                : {}),
+            };
       const clientConversationId =
-        body.conversationId?.trim() ||
-        requestedConversationIdParam?.trim() ||
-        body.threadId?.trim() ||
-        undefined;
+        invocation.kind === "read-chat"
+          ? invocation.conversationId.trim()
+          : body.conversationId?.trim() ||
+            requestedConversationIdParam?.trim() ||
+            body.threadId?.trim() ||
+            undefined;
       const requestedConversationId = clientConversationId ?? crypto.randomUUID();
 
       const hostOwner = yield* useHostScopeOwner();
@@ -708,19 +608,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   {
                     sessionId,
                     conversationId: requestedConversationId,
-                    method,
+                    endpoint: invocation.kind,
                     isReconnect,
                     messageCount: body.messages.length,
                   },
                   "request received",
                 );
 
-                if (method === "POST" && !body.command && !clientConversationId) {
-                  throw new CrankError(
-                    "invalid_chat_request",
-                    "Hydration/reconnect requires conversationId",
-                  );
-                }
                 if (body.command) {
                   const now = Date.now();
                   if (body.command.expiresAt <= now) {
@@ -1044,11 +938,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   },
                   "determining path",
                 );
-
-                if (method === "HEAD") {
-                  ctx.status = 405;
-                  return yield* createEmptyStream();
-                }
 
                 if (isReconnect) {
                   // A response cursor selects presentation replay only. If its
@@ -1759,39 +1648,23 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       },
     },
   );
-  const handler = (async (request: Request): Promise<Response> => {
-    const conversationId = historyPageConversationId(new URL(request.url).pathname);
-    if (conversationId !== null) {
-      if (request.method.toUpperCase() !== "POST") {
-        return new Response(null, { status: 405, headers: { Allow: "POST" } });
-      }
-      return await createHistoryPageResponse({
-        request,
-        conversationId,
-        store: conversationStore,
-        config,
-      });
-    }
-    return await streamingHandler(request);
-  }) as typeof streamingHandler;
-  handler.withScope = (scope) => {
-    const scoped = streamingHandler.withScope(scope);
-    return async (request: Request): Promise<Response> => {
-      const conversationId = historyPageConversationId(new URL(request.url).pathname);
-      if (conversationId === null) return await scoped(request);
-      if (request.method.toUpperCase() !== "POST") {
-        return new Response(null, { status: 405, headers: { Allow: "POST" } });
-      }
-      return await createHistoryPageResponse({
-        request,
-        conversationId,
-        store: conversationStore,
-        config,
-        scope,
-      });
-    };
-  };
-  return handler;
+  const postChat = mapScopedEndpoint<Request, ChatStreamInvocation>(
+    streamingEndpoint,
+    (request) => ({ kind: "post-chat", request }),
+  );
+  const readChat = mapScopedEndpoint<DurableChatReadRequest, ChatStreamInvocation>(
+    streamingEndpoint,
+    (request) => ({ kind: "read-chat", ...request }),
+  );
+  const pageHistory = createDurableHistoryPageEndpoint(config, conversationStore);
+  return { postChat, readChat, pageHistory };
+}
+
+/** Backward-compatible name for the route-specific POST chat endpoint. */
+export function createDurableChatHandler(
+  config: DurableChatHandlerConfig,
+): ScopedEndpoint<Request> {
+  return createDurableChatEndpoints(config).postChat;
 }
 
 function* readBoundedChatRequest(request: Request): Operation<unknown> {

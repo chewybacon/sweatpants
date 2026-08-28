@@ -9,6 +9,7 @@ import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
 import type { ProjectionTokenKeyring } from "../projection-tokens.ts";
+import type { ScopedEndpoint } from "../handler/streaming.ts";
 
 import type {
   ChatHandlerSetup,
@@ -100,6 +101,23 @@ export type WorkflowChatEngine = Stream<StreamEvent, void>;
  * and its journal authority MUST be supplied by the host composition.
  */
 export type HistoryReadAuthorization = "authorized" | "unauthenticated" | "forbidden";
+
+export interface DurableChatReadRequest {
+  readonly request: Request;
+  readonly conversationId: string;
+  readonly knownWindowToken?: string;
+}
+
+export interface DurableHistoryPageRequest {
+  readonly request: Request;
+  readonly conversationId: string;
+}
+
+export interface DurableChatEndpoints {
+  readonly postChat: ScopedEndpoint<Request>;
+  readonly readChat: ScopedEndpoint<DurableChatReadRequest>;
+  readonly pageHistory: ScopedEndpoint<DurableHistoryPageRequest>;
+}
 
 export interface DurableChatHandlerConfig {
   setup?: ChatHandlerSetup;

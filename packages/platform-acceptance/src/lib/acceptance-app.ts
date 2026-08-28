@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Operation } from "effection";
-import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
+import { createChatApplication, createChatEndpoints } from "@sweatpants/agent-host/server";
 import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import { createCapabilityKeyring, LOW_PRIVATE_SEGMENT_TARGET } from "@sweatpants/journal-authority";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
@@ -45,7 +45,11 @@ import {
   installLocalToolRuntimeComposition,
   type LocalToolInvocationRuntime,
 } from "@sweatpants/tool-runtime-local";
-import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants/test-rig";
+import {
+  routeNativeChatTestApplication,
+  type TestApplication,
+  type TestApplicationFactoryContext,
+} from "@sweatpants/test-rig";
 import { acceptanceBookingTool } from "../fixtures/acceptance-booking.tool.ts";
 import {
   acceptanceDurableTool,
@@ -207,6 +211,20 @@ export function createAcceptanceApplication(
     },
   });
 
+  const endpoints = createChatEndpoints({
+    programDriverJournalStore: journalStore,
+    executionStore,
+    conversationStore,
+    projectionTokens: createProjectionTokenKeyring("platform-acceptance-windowed-projection-key"),
+    *authorizeHistoryRead() {
+      return "authorized" as const;
+    },
+    ...(options.storageProfile ? { storageProfile: options.storageProfile } : {}),
+    setup: function* (): Operation<void> {
+      yield* context.model.install();
+    },
+    maxToolIterations: options.maxToolIterations ?? 4,
+  });
   const application = createChatApplication({
     setup: function* (): Operation<void> {
       yield* setupInMemoryDurableStreams<string>(
@@ -328,23 +346,10 @@ export function createAcceptanceApplication(
         effects: [...durableOptionsProvider.registrations],
       });
     },
-    handler: createChatHandler({
-      programDriverJournalStore: journalStore,
-      executionStore,
-      conversationStore,
-      projectionTokens: createProjectionTokenKeyring("platform-acceptance-windowed-projection-key"),
-      *authorizeHistoryRead() {
-        return "authorized" as const;
-      },
-      ...(options.storageProfile ? { storageProfile: options.storageProfile } : {}),
-      setup: function* (): Operation<void> {
-        yield* context.model.install();
-      },
-      maxToolIterations: options.maxToolIterations ?? 4,
-    }),
+    handler: endpoints.postChat,
   });
   return {
-    ...application,
+    ...routeNativeChatTestApplication(application, endpoints),
     scenario: {
       async checkpointErrors() {
         return checkpointErrors;

@@ -43,6 +43,61 @@ export interface TestApplication {
   scenario?: TestApplicationScenario;
 }
 
+interface NativeChatTestEndpoints {
+  readonly postChat: (request: Request) => Promise<Response>;
+  readonly readChat: (input: { request: Request; conversationId: string }) => Promise<Response>;
+  readonly pageHistory: (input: { request: Request; conversationId: string }) => Promise<Response>;
+}
+
+interface EndpointApplication {
+  handleEndpoint<Input>(
+    endpoint: (input: Input) => Promise<Response>,
+    input: Input,
+  ): Promise<Response>;
+  close(): Promise<void>;
+}
+
+function conversationIdAt(pathname: string, suffix = ""): string | null {
+  const match = new RegExp(`^/api/chat/([^/]+)${suffix}/?$`).exec(pathname);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]!);
+  } catch {
+    return null;
+  }
+}
+
+/** Route adapter used by test servers that mount the native chat HTTP contract. */
+export function routeNativeChatTestApplication(
+  application: EndpointApplication,
+  endpoints: NativeChatTestEndpoints,
+): TestApplication {
+  return {
+    async handle(request: Request): Promise<Response> {
+      if (request.method.toUpperCase() !== "POST") {
+        return new Response(null, { status: 405, headers: { Allow: "POST" } });
+      }
+      const pathname = new URL(request.url).pathname;
+      if (pathname === "/api/chat" || pathname === "/chat") {
+        return application.handleEndpoint(endpoints.postChat, request);
+      }
+      const historyConversationId = conversationIdAt(pathname, "/history:page");
+      if (historyConversationId) {
+        return application.handleEndpoint(endpoints.pageHistory, {
+          request,
+          conversationId: historyConversationId,
+        });
+      }
+      const conversationId = conversationIdAt(pathname);
+      if (conversationId) {
+        return application.handleEndpoint(endpoints.readChat, { request, conversationId });
+      }
+      return new Response(null, { status: 404 });
+    },
+    close: () => application.close(),
+  };
+}
+
 export interface TestModelInstallation {
   baseUrl: string;
   apiKey: string;

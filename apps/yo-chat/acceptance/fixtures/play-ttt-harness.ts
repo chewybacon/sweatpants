@@ -27,7 +27,7 @@ import { createMemoryConversationStore } from "@sweatpants/history-store/memory"
 import type { ConversationStore } from "@sweatpants/history-store/contract";
 import { createRedisExecutionStore } from "@sweatpants/execution-store-redis";
 import {
-  createDurableChatHandler,
+  createDurableChatEndpoints,
   createProgramDriverJournalStore,
   createProjectionTokenKeyring,
   programDriverSchemaRegistry,
@@ -38,6 +38,7 @@ import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
 import type { Json } from "@sweatpants/foundation";
 import { playTttTool } from "../../src/tools/play-ttt/tool.ts";
+import { routeNativeChatApplication } from "./native-chat-router.ts";
 
 /** Public AG-UI frame projected from one durable response line. */
 export type PublicEvent = { type: string; [key: string]: unknown };
@@ -162,7 +163,7 @@ function createApplication(
   bufferStore: ReturnType<typeof createInMemoryBufferStore<string>>,
   registryStore: ReturnType<typeof createInMemoryRegistryStore>,
 ) {
-  const handler = createDurableChatHandler({
+  const endpoints = createDurableChatEndpoints({
     programDriverJournalStore: journalStore,
     executionStore,
     conversationStore,
@@ -176,8 +177,8 @@ function createApplication(
       yield* ModelProviderModelContext.set(model);
     },
   });
-  return createChatApplication({
-    handler,
+  const application = createChatApplication({
+    handler: endpoints.postChat,
     setup: function* () {
       yield* setupDurableStreams({ bufferStore, registryStore });
       yield* installToolInventory(createToolInventory([createToolInventoryEntry(playTttTool)]));
@@ -197,6 +198,7 @@ function createApplication(
       });
     },
   });
+  return routeNativeChatApplication(application, endpoints);
 }
 
 function sampleMessage(request: ModelProviderStreamRequest, sequence: number): ModelResponse {
@@ -400,7 +402,7 @@ export async function reattach(
   conversationId: string,
 ): Promise<PublicEvent[]> {
   const response = await handler(
-    new Request("http://localhost/chat", {
+    new Request(`http://localhost/api/chat/${encodeURIComponent(conversationId)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientId: "play-ttt-acceptance", conversationId }),

@@ -242,7 +242,7 @@ export function createStreamTransportHandle(
     reconnect(checkpoint) {
       return open(
         checkpoint.conversationId,
-        fetch("/api/chat", {
+        fetch(`/api/chat/${encodeURIComponent(checkpoint.conversationId)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
           body: JSON.stringify({

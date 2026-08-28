@@ -30,7 +30,7 @@ import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local
 
 import { setupYoChatDurableStreams } from "@/server/durable-streams";
 import { setupYoChatBaseContexts, allTools } from "@/server/tools";
-import { createYoChatHandler } from "@/server/chat-handler";
+import { createYoChatEndpoints } from "@/server/chat-handler";
 import { installYoChatToolRuntime } from "@/server/tool-runtime-installation";
 import { withDefaultSystemPrompt } from "@/server/default-system-prompt";
 import { createPluginSamplingProvider } from "@/server/plugin-sampling-provider";
@@ -65,6 +65,7 @@ function* setupTierAWorkerRuntime(): Operation<void> {
  * Create a Tier A (in-process, worker-backed, real-model) chat binding.
  */
 export function createTierABinding(): ChatBinding {
+  const endpoints = createYoChatEndpoints();
   const app = createChatApplication({
     setup: function* setupApplication() {
       yield* setupLogger();
@@ -72,7 +73,7 @@ export function createTierABinding(): ChatBinding {
       yield* setupYoChatBaseContexts();
       yield* setupTierAWorkerRuntime();
     },
-    handler: createYoChatHandler(),
+    handler: endpoints.postChat,
   });
 
   const baseUrl = "http://localhost/api/chat";
@@ -86,11 +87,28 @@ export function createTierABinding(): ChatBinding {
   const realFetch: typeof globalThis.fetch = globalThis.fetch.bind(globalThis);
 
   const handlerFetch = handlerToChatFetch(async (request) => {
-    // Mirror the real /api/chat route: POST gets the default system prompt.
-    if (request.method.toUpperCase() === "POST") {
-      return app.handle(await withDefaultSystemPrompt(request));
+    const pathname = new URL(request.url).pathname;
+    if (request.method.toUpperCase() !== "POST") {
+      return new Response(null, { status: 405, headers: { Allow: "POST" } });
     }
-    return app.handle(request);
+    if (pathname === "/api/chat") {
+      return app.handleEndpoint(endpoints.postChat, await withDefaultSystemPrompt(request));
+    }
+    const historyMatch = /^\/api\/chat\/([^/]+)\/history:page\/?$/.exec(pathname);
+    if (historyMatch) {
+      return app.handleEndpoint(endpoints.pageHistory, {
+        request,
+        conversationId: decodeURIComponent(historyMatch[1]!),
+      });
+    }
+    const readMatch = /^\/api\/chat\/([^/]+)\/?$/.exec(pathname);
+    if (readMatch) {
+      return app.handleEndpoint(endpoints.readChat, {
+        request,
+        conversationId: decodeURIComponent(readMatch[1]!),
+      });
+    }
+    return new Response(null, { status: 404 });
   });
 
   const fetch: typeof handlerFetch = (input, init) => {

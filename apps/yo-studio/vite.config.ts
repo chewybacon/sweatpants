@@ -54,8 +54,20 @@ function studioApi(): Plugin {
         const pathname = new URL(request.url ?? "/", "http://yo-studio").pathname;
         if (pathname.startsWith("/api/chat")) {
           const webRequest = nodeRequestToWebRequest(request, "http://127.0.0.1:8100");
-          chat
-            .handle(webRequest)
+          const historyMatch = /^\/api\/chat\/([^/]+)\/history:page\/?$/.exec(pathname);
+          const readMatch = /^\/api\/chat\/([^/]+)\/?$/.exec(pathname);
+          const routed = historyMatch
+            ? chat.handleEndpoint(chat.endpoints.pageHistory, {
+                request: webRequest,
+                conversationId: decodeURIComponent(historyMatch[1]!),
+              })
+            : readMatch
+              ? chat.handleEndpoint(chat.endpoints.readChat, {
+                  request: webRequest,
+                  conversationId: decodeURIComponent(readMatch[1]!),
+                })
+              : chat.handleEndpoint(chat.endpoints.postChat, webRequest);
+          routed
             .then((webResponse) => sendWebResponse(response, webResponse))
             .catch((error) => {
               if (!response.headersSent) {

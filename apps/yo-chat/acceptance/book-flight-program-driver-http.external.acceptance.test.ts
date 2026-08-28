@@ -27,7 +27,7 @@ import {
 import { createChatApplication } from "@sweatpants/agent-host/server";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
-  createDurableChatHandler,
+  createDurableChatEndpoints,
   createProgramDriverJournalStore,
   createProjectionTokenKeyring,
   type ProgramDriverJournalStore,
@@ -131,7 +131,7 @@ describe.skipIf(!externalSubstrateEnabled)(
         },
         *abort(): Operation<void> {},
       };
-      const handler = createDurableChatHandler({
+      const endpoints = createDurableChatEndpoints({
         programDriverJournalStore: journalStore,
         projectionTokens: createProjectionTokenKeyring(
           "book-flight-external-window-projection-key",
@@ -147,7 +147,7 @@ describe.skipIf(!externalSubstrateEnabled)(
       });
       let setupFailure: unknown;
       const application = createChatApplication({
-        handler,
+        handler: endpoints.postChat,
         setup: function* () {
           try {
             yield* setupDurableStreams({
