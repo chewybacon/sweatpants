@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import Database from "better-sqlite3";
 import { sql } from "drizzle-orm";
 import { run } from "effection";
 import { openBetterSqliteStorage } from "../better-sqlite3.ts";
@@ -52,6 +53,10 @@ describe("SQLite spine schema", () => {
             WHERE type = 'table' AND name LIKE 'sp_%' ORDER BY name`,
       ) as Array<{ name: string; sql: string }>;
       expect(domainSql).toHaveLength(10);
+      expect(domainSql.map((table) => table.name)).not.toContain("sp_stop_intents");
+      expect(domainSql.some((table) => /response.*tail|tail.*response/i.test(table.name))).toBe(
+        false,
+      );
       expect(domainSql.every((table) => !/format.?version|version.?field/i.test(table.sql))).toBe(
         true,
       );
@@ -66,6 +71,29 @@ describe("SQLite spine schema", () => {
       );
     } finally {
       await run(() => handle.close());
+    }
+  });
+
+  it("fails closed on a superseded pre-release schema without deleting it", async () => {
+    const path = await temporaryDatabase();
+    const legacy = new Database(path);
+    legacy.exec(
+      "CREATE TABLE sp_conversation_heads (legacy_marker TEXT NOT NULL); " +
+        "INSERT INTO sp_conversation_heads (legacy_marker) VALUES ('preserve-me')",
+    );
+    legacy.close();
+
+    await expect(
+      run(() => openBetterSqliteStorage(path, { migrate: true, wal: false })),
+    ).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+
+    const inspection = new Database(path, { readonly: true, fileMustExist: true });
+    try {
+      expect(inspection.prepare("SELECT legacy_marker FROM sp_conversation_heads").get()).toEqual({
+        legacy_marker: "preserve-me",
+      });
+    } finally {
+      inspection.close();
     }
   });
 });

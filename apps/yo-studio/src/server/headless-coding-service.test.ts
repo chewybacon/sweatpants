@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "effection";
 import { afterEach, describe, expect, it } from "vitest";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import {
   createLoopbackWorkspaceConnector,
   createWorkspaceService,
@@ -35,6 +36,7 @@ describe("headless durable coding vertical", () => {
     const service = createHeadlessCodingService({
       connector: createLoopbackWorkspaceConnector(workspace),
       fence,
+      executionStore: createMemoryExecutionStore(),
     });
 
     const result = await run(function* () {

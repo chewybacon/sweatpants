@@ -2,6 +2,7 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createDurableTool } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import type { ModelSamplingService } from "@sweatpants/model-sampling";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { createDurableToolRegistry } from "@sweatpants/durable-execution";
@@ -42,6 +43,7 @@ function sharedApprovalStore() {
       { keyId: "active", secret: "local-host-test-secret-32-bytes!!" },
     ]),
     schemaRegistry: programDriverSchemaRegistry(approvalProgram.artifacts.catalog),
+    executionStore: createMemoryExecutionStore(),
   });
 }
 
@@ -313,6 +315,7 @@ describe("ProgramWorkflowHost", () => {
           ...parent.artifacts.catalog,
           ...child.artifacts.catalog,
         ]),
+        executionStore: createMemoryExecutionStore(),
       }),
       programs,
       effects: createDurableEffectRegistry([]),
@@ -370,6 +373,7 @@ describe("ProgramWorkflowHost", () => {
           { keyId: "active", secret: "catalog-host-secret-at-least-32!!" },
         ]),
         schemaRegistry: programDriverSchemaRegistry(parent.artifacts.catalog),
+        executionStore: createMemoryExecutionStore(),
       }),
       programs,
       effects: createDurableEffectRegistry([]),
@@ -476,6 +480,7 @@ describe("ProgramWorkflowHost", () => {
           { keyId: "active", secret: "local-host-sample-test-secret-32!!" },
         ]),
         schemaRegistry: programDriverSchemaRegistry(sampledProgram.artifacts.catalog),
+        executionStore: createMemoryExecutionStore(),
       }),
       programs,
       effects: createDurableEffectRegistry([]),

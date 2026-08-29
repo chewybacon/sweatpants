@@ -108,6 +108,7 @@ export function useDevServer(options: DevServerOptions = {}): Operation<DevServe
         tools,
         toolsModuleUrl: pathToFileURL(resolve(root, toolsPath, "index.ts")).toString(),
         owner: { scope: ownerScope, register: () => undefined },
+        storage: { kind: "memory" },
       });
     }
 

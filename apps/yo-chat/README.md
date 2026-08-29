@@ -21,6 +21,29 @@ pnpm model:auth:login --provider openai-codex
 pnpm dev:yo-chat
 ```
 
+## Durable storage
+
+Yo-chat uses SQLite for conversation and execution authority by default. The
+first chat/history request lazily opens and migrates
+`apps/yo-chat/.data/yo-chat.sqlite`; the application scope closes that handle
+on shutdown. Set `SWEATPANTS_DB_PATH` to use another local file.
+
+```bash
+SWEATPANTS_DB_PATH=/var/lib/yo-chat/authority.sqlite pnpm dev:yo-chat
+```
+
+SQLite WAL mode requires a local filesystem and one owning application process.
+Do not place the file on a network filesystem or share one writable file across
+processes. For an incompatible pre-release schema, stop the app and explicitly
+remove or replace the file; the app never deletes it automatically.
+
+Tests and tooling may opt into non-durable storage with
+`SWEATPANTS_STORAGE=memory`. Combining that override with
+`SWEATPANTS_DB_PATH` is a configuration error.
+
+`REDIS_URL` configures volatile response tails and AgentCore session caches
+only. Redis is not conversation or execution authority.
+
 ## Model providers and auth
 
 yo-chat persists credentials and the selected model once in the repository-local,
@@ -94,9 +117,8 @@ AGENTCORE_REDIS_KEY_PREFIX=sp:yo-chat:agentcore:
 REDIS_URL=redis://localhost:6379
 
 # The authority-backed workflow host is the only HTTP chat engine. Its
-# capability secret is required and must contain at least 32 bytes. Redis persists the private
-# authority journal when configured; otherwise it is process-local and intended
-# only for development.
+# capability secret is required and must contain at least 32 bytes. Conversation
+# and execution authority use the SQLite file described above.
 PROGRAM_DRIVER_CAPABILITY_SECRET='replace-with-at-least-32-random-bytes'
 
 # Optional chat model allow-list. When unset, only the configured default is allowed.

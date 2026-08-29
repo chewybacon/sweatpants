@@ -1,15 +1,9 @@
-import { createChatEndpoints } from "@sweatpants/agent-host/server";
-import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import { createChatEndpoints, type ChatAppConfig } from "@sweatpants/agent-host/server";
 import { env } from "@/env";
 import { setupYoChatModelProvider } from "./model-provider";
-import {
-  createYoChatExecutionStore,
-  createYoChatProgramDriverJournalStore,
-} from "./program-driver-journal";
-import {
-  createProjectionTokenKeyring,
-  type ProgramDriverJournalStore,
-} from "@sweatpants/durable-chat-runtime/durable-handler";
+import { createYoChatStorageConfig } from "./storage-config";
+import { pickCard } from "../tools/pick-card/durable";
+import { playTttTool } from "../tools/play-ttt/tool";
 
 /** Expected composition failure for invalid workflow host configuration. */
 export class ProgramDriverConfigurationError extends Error {
@@ -22,37 +16,26 @@ export class ProgramDriverConfigurationError extends Error {
   }
 }
 
-let activeProgramDriverJournalStore: ProgramDriverJournalStore | undefined;
-
-/** Returns the journal store owned by the active yo-chat handler for dev inspection. */
-export function getActiveProgramDriverJournalStore(): ProgramDriverJournalStore | undefined {
-  return activeProgramDriverJournalStore;
-}
-
-function createYoChatHandlerConfig(): Parameters<typeof createChatEndpoints>[0] {
+/**
+ * The yo-chat durable chat configuration. One name + secret derives journal
+ * and projection-token keys; `programs` registers durable tool schemas.
+ */
+export function yoChatConfig(): ChatAppConfig {
   const secret = env.PROGRAM_DRIVER_CAPABILITY_SECRET;
   if (!secret) {
     throw new ProgramDriverConfigurationError();
   }
-  const keyring = createCapabilityKeyring("yo-chat-program-driver", [
-    { keyId: "yo-chat-program-driver-v1", secret },
-  ]);
-  const executionStore = createYoChatExecutionStore();
-  const journalStore = createYoChatProgramDriverJournalStore(keyring, executionStore);
-  activeProgramDriverJournalStore = journalStore;
   return {
+    name: "yo-chat",
+    secret,
+    storage: createYoChatStorageConfig(),
+    programs: [pickCard, playTttTool],
     setup: setupYoChatModelProvider,
     maxToolIterations: 10,
-    programDriverJournalStore: journalStore,
-    executionStore,
-    projectionTokens: createProjectionTokenKeyring(secret),
-    *authorizeHistoryRead() {
-      return "authorized" as const;
-    },
   };
 }
 
 /** Creates route-independent yo-chat endpoint capabilities. */
 export function createYoChatEndpoints(): ReturnType<typeof createChatEndpoints> {
-  return createChatEndpoints(createYoChatHandlerConfig());
+  return createChatEndpoints(yoChatConfig());
 }

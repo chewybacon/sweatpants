@@ -66,11 +66,21 @@ function isHaltedError(error: unknown): boolean {
   return error instanceof Error && error.message === "halted";
 }
 
+interface ChatApplicationKernel extends ChatApplication {
+  /** Awaits lazy setup and returns the application-owned scope. */
+  applicationScope(): Promise<Scope>;
+}
+
 /**
  * Creates a lazy, scope-owned chat application. Setup runs once; close cancels
  * and awaits all owned work. Setup defects become a client-safe HTTP response.
  */
 export function createChatApplication(config: ChatApplicationConfig): ChatApplication {
+  const { handle, handleEndpoint, close } = createChatApplicationKernel(config);
+  return { handle, handleEndpoint, close };
+}
+
+function createChatApplicationKernel(config: ChatApplicationConfig): ChatApplicationKernel {
   const baseHandler = config.handler;
   const [rootScope, destroyRootScope] = createScope();
   const hostOwner = createHostScopeOwner(rootScope);
@@ -147,7 +157,7 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
               });
         scopedEndpoints.set(endpoint, scoped as (input: unknown) => Promise<Response>);
       }
-      return scoped(input);
+      return await scoped(input);
     } catch (error) {
       if (closed || (error instanceof Error && error.message === closedApplicationErrorMessage)) {
         throw new ChatApplicationClosedError();
@@ -168,6 +178,12 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
       return handleEndpoint(baseHandler, request);
     },
     handleEndpoint,
+    async applicationScope(): Promise<Scope> {
+      if (closed) {
+        throw new ChatApplicationClosedError();
+      }
+      return ensureSetup();
+    },
     async close(): Promise<void> {
       if (closed) {
         return;
@@ -197,6 +213,7 @@ import {
   createDurableChatEndpoints,
   type DurableChatEndpoints,
   type DurableChatHandlerConfig,
+  type DurableChatStorageInspection,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 
 /** Host ingress factory over route-independent durable chat capabilities. */
@@ -209,3 +226,74 @@ export function createChatHandler(config: DurableChatHandlerConfig) {
   return createChatEndpoints(config).postChat;
 }
 export type { DurableChatEndpoints, DurableChatHandlerConfig };
+
+export { chatStorageFromEnv } from "@sweatpants/durable-chat-runtime/durable-handler";
+export type {
+  ChatStorageConfig,
+  ChatStorageEnvOptions,
+  DurableChatCompositionConfig,
+  DurableChatIdentityConfig,
+  DurableChatProgram,
+  DurableChatStorageInspection,
+} from "@sweatpants/durable-chat-runtime/durable-handler";
+
+/** One chat application: scope-owned lifecycle plus its route endpoints. */
+export interface ChatApp extends ChatApplication {
+  /** Route-independent endpoints for mounting under any HTTP framework. */
+  readonly endpoints: DurableChatEndpoints;
+  /**
+   * Resolves the authority storage composition, opening it if no request has
+   * arrived yet. Intended for development inspectors and diagnostics.
+   */
+  inspect(): Promise<DurableChatStorageInspection>;
+}
+
+/**
+ * Unified chat application configuration: every durable chat handler option
+ * plus application lifecycle seams.
+ */
+export type ChatAppConfig = DurableChatHandlerConfig & {
+  /**
+   * Runs once inside the application scope before the first request:
+   * durable streams, tool inventories, logging.
+   * (`setup` remains the request-scoped seam.)
+   */
+  appSetup?: (ctx: ChatApplicationSetupContext) => Operation<void>;
+  /** Maximum graceful drain before close halts remaining work. */
+  shutdownDeadlineMs?: number;
+};
+
+/**
+ * The main entry point for building a durable chat application.
+ *
+ * Minimal configuration:
+ *
+ * ```ts
+ * const app = createChatApp({
+ *   name: "my-app",
+ *   secret: process.env.MY_APP_SECRET!,
+ *   storage: chatStorageFromEnv({
+ *     defaultPath: new URL("../.data/my-app.sqlite", import.meta.url),
+ *   }),
+ *   programs: [myDurableTool],
+ *   setup: installMyModelProvider,
+ * });
+ * // app.handle(request), app.endpoints.pageHistory, app.close()
+ * ```
+ */
+export function createChatApp(config: ChatAppConfig): ChatApp {
+  const { appSetup, shutdownDeadlineMs, ...handlerConfig } = config;
+  const endpoints = createChatEndpoints(handlerConfig as DurableChatHandlerConfig);
+  const kernel = createChatApplicationKernel({
+    handler: endpoints.postChat,
+    ...(appSetup ? { setup: appSetup } : {}),
+    ...(shutdownDeadlineMs === undefined ? {} : { shutdownDeadlineMs }),
+  });
+  return {
+    handle: kernel.handle,
+    handleEndpoint: kernel.handleEndpoint,
+    close: kernel.close,
+    endpoints,
+    inspect: () => kernel.applicationScope().then((scope) => endpoints.inspect(scope)),
+  };
+}

@@ -14,7 +14,7 @@ export type SqliteFaultPoint =
   | "execution-after-segment-insert"
   | "execution-before-commit";
 
-type BetterSqliteStorageOptions = { migrate?: boolean; wal?: boolean };
+type BetterSqliteStorageOptions = { migrate?: boolean; wal?: boolean; readonly?: boolean };
 type BetterSqliteStorageTestOptions = BetterSqliteStorageOptions & {
   faultInjection?: SqliteFaultPoint;
 };
@@ -39,16 +39,35 @@ function* openBetterSqliteStorageInternal(
   options: BetterSqliteStorageOptions,
   faultInjection?: SqliteFaultPoint,
 ): Operation<BetterSqliteStorageTestHandle> {
-  const client = new Database(path);
-  client.defaultSafeIntegers(true);
-  client.pragma("foreign_keys = ON");
-  if (options.wal !== false) {
-    client.pragma("journal_mode = WAL");
-  }
+  let client: Database.Database | undefined;
+  let database: BetterSQLite3Database<SqliteSchema>;
+  try {
+    client = new Database(
+      path,
+      options.readonly ? { readonly: true, fileMustExist: true } : undefined,
+    );
+    client.defaultSafeIntegers(true);
+    client.pragma("foreign_keys = ON");
+    if (options.wal !== false && options.readonly !== true) {
+      client.pragma("journal_mode = WAL");
+    }
 
-  const database = drizzle(client, { schema: sqliteSchema });
-  if (options.migrate === true) {
-    runSqliteMigrations(database);
+    database = drizzle(client, { schema: sqliteSchema });
+    if (options.migrate === true) {
+      runSqliteMigrations(database);
+    }
+  } catch (error) {
+    try {
+      client?.close();
+    } catch {
+      // Opening or migration already failed; preserve the original cause.
+    }
+    if (error instanceof StorageError) {
+      throw error;
+    }
+    throw new StorageError("sqlite_transaction_failed", "SQLite storage open failed", {
+      cause: error,
+    });
   }
 
   // Drizzle's better-sqlite3 transaction callback is synchronous, while the

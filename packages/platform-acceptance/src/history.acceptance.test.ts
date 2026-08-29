@@ -10,7 +10,7 @@ import {
   ACCEPTANCE_MODEL_ID,
   ACCEPTANCE_TOOL_NAME,
   CALL_ID,
-  createAcceptanceApplication,
+  createDurabilityAcceptanceApplication,
   NESTED_SAMPLE_PROMPT_MARKER,
   NESTED_SAMPLE_RESPONSE_MARKER,
   OUTER_TERMINAL_TEXT,
@@ -23,7 +23,7 @@ async function runHistoryScenario(binding: Binding): Promise<void> {
     {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
-      createApplication: createAcceptanceApplication,
+      createApplication: createDurabilityAcceptanceApplication,
       scenarioTimeoutMs: 30_000,
     },
     function* (s) {

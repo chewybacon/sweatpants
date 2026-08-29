@@ -75,9 +75,14 @@ import type {
   DurableChatEndpoints,
   DurableChatHandlerConfig,
   DurableChatReadRequest,
+  DurableChatStorageInspection,
   WorkflowChatEngineParams,
   ToolSchema,
 } from "./types.ts";
+import {
+  resolveDurableChatComposition,
+  type ResolvedDurableChatComposition,
+} from "./configuration.ts";
 import { cancelOpenInterruptsForThread, settleInterruptForThread } from "../interrupts/index.ts";
 import { parseChatRequestBody } from "../handler/request-normalization.ts";
 import { planTurn } from "../handler/turn-plan.ts";
@@ -87,9 +92,7 @@ import {
   createStoredConversationCheckpointResponse,
 } from "../handler/hydrate-responses.ts";
 import { useHostScopeOwner } from "../host/host-scope.ts";
-import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { installExecutionStore } from "@sweatpants/journal-authority/api";
-import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
 import { ConversationStoreApi, installConversationStore } from "@sweatpants/history-store/port";
 import {
   beginTurnPublication,
@@ -112,6 +115,12 @@ import { assertJson, stableTupleHash, type Json } from "@sweatpants/foundation";
 import type { ConversationHead, ConversationStore } from "@sweatpants/history-store/contract";
 import { conversationAuthority, conversationAuthorityFrame } from "../conversation-authority.ts";
 import { createDurableHistoryPageEndpoint } from "./history-page-endpoint.ts";
+import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
+import {
+  openScopedSqliteChatStorage,
+  resolveImmediateChatStorage,
+  type ResolvedChatStorage,
+} from "./storage.ts";
 
 const MAX_CHAT_REQUEST_BYTES = 2 * 1024 * 1024;
 let responseWriterEpoch = 1;
@@ -418,7 +427,7 @@ function createLiveProgramActivation(executionId: string): LiveProgramActivation
 }
 
 function createLiveCancellationEngine(params: {
-  journalStore: DurableChatHandlerConfig["programDriverJournalStore"];
+  journalStore: ProgramDriverJournalStore;
   conversationStore: ConversationStore;
   activation: LiveProgramActivation;
   conversationId: string;
@@ -480,8 +489,102 @@ function mapScopedEndpoint<Source, Target>(
   return mapped;
 }
 
+type DurableChatEndpointSet = Pick<DurableChatEndpoints, "postChat" | "readChat" | "pageHistory">;
+
+interface ResolvedEndpointBundle {
+  readonly endpoints: DurableChatEndpointSet;
+  readonly inspection: DurableChatStorageInspection;
+}
+
+function bindEndpointSet(endpoints: DurableChatEndpointSet, scope: Scope): DurableChatEndpointSet {
+  return {
+    postChat: Object.assign(endpoints.postChat.withScope(scope), {
+      withScope: (nextScope: Scope) => endpoints.postChat.withScope(nextScope),
+    }),
+    readChat: Object.assign(endpoints.readChat.withScope(scope), {
+      withScope: (nextScope: Scope) => endpoints.readChat.withScope(nextScope),
+    }),
+    pageHistory: Object.assign(endpoints.pageHistory.withScope(scope), {
+      withScope: (nextScope: Scope) => endpoints.pageHistory.withScope(nextScope),
+    }),
+  };
+}
+
 /**
  * Create route-independent durable chat endpoint capabilities.
+ *
+ * SQLite resolution is deferred until the first request bound to an
+ * application scope. Memory and custom stores are resolved synchronously.
+ */
+export function createDurableChatEndpoints(config: DurableChatHandlerConfig): DurableChatEndpoints {
+  if (!config.storage) {
+    throw new TypeError("Durable chat storage is required");
+  }
+  if (config.storage.kind === "sqlite" && config.storage.path.trim().length === 0) {
+    throw new TypeError("Durable chat SQLite path must not be empty");
+  }
+  const composition = resolveDurableChatComposition(config);
+
+  const immediateBundle =
+    config.storage.kind === "sqlite"
+      ? undefined
+      : createResolvedDurableChatEndpoints(
+          config,
+          composition,
+          resolveImmediateChatStorage(config.storage),
+        );
+  const scopedBundles = new WeakMap<Scope, Promise<ResolvedEndpointBundle>>();
+
+  const bundleForScope = (scope: Scope): Promise<ResolvedEndpointBundle> => {
+    const current = scopedBundles.get(scope);
+    if (current) {
+      return current;
+    }
+    const resolving =
+      config.storage.kind === "sqlite"
+        ? openScopedSqliteChatStorage(config.storage, scope).then((storage) => {
+            const bundle = createResolvedDurableChatEndpoints(config, composition, storage);
+            return {
+              endpoints: bindEndpointSet(bundle.endpoints, scope),
+              inspection: bundle.inspection,
+            };
+          })
+        : Promise.resolve({
+            endpoints: bindEndpointSet(immediateBundle!.endpoints, scope),
+            inspection: immediateBundle!.inspection,
+          });
+    scopedBundles.set(scope, resolving);
+    return resolving;
+  };
+
+  const deferredEndpoint = <Input>(
+    select: (endpoints: DurableChatEndpointSet) => ScopedEndpoint<Input>,
+  ): ScopedEndpoint<Input> => {
+    const endpoint = async (input: Input): Promise<Response> => {
+      if (!immediateBundle) {
+        throw new Error(
+          "SQLite durable chat endpoints must be bound to an application-owned scope",
+        );
+      }
+      return select(immediateBundle.endpoints)(input);
+    };
+    endpoint.withScope =
+      (scope: Scope) =>
+      async (input: Input): Promise<Response> =>
+        select((await bundleForScope(scope)).endpoints)(input);
+    return endpoint;
+  };
+
+  return {
+    postChat: deferredEndpoint((endpoints) => endpoints.postChat),
+    readChat: deferredEndpoint((endpoints) => endpoints.readChat),
+    pageHistory: deferredEndpoint((endpoints) => endpoints.pageHistory),
+    inspect: (scope) => bundleForScope(scope).then((bundle) => bundle.inspection),
+  };
+}
+
+/**
+ * Build an endpoint set over one already-resolved authority composition.
  *
  * The handler:
  * 1. Normalizes a native command or cursor-free reconnect body.
@@ -492,11 +595,16 @@ function mapScopedEndpoint<Source, Target>(
  * @param config - Handler configuration
  * @returns Fetch handler function
  */
-export function createDurableChatEndpoints(config: DurableChatHandlerConfig): DurableChatEndpoints {
+function createResolvedDurableChatEndpoints(
+  config: DurableChatHandlerConfig,
+  composition: ResolvedDurableChatComposition,
+  storage: ResolvedChatStorage,
+): ResolvedEndpointBundle {
   const { setup, maxToolIterations = 10 } = config;
-  const executionStore = config.executionStore ?? createMemoryExecutionStore();
-  const conversationStore = config.conversationStore ?? createMemoryConversationStore();
-  const checkpointTargets = config.storageProfile === "low" ? LOW_CHECKPOINT_TARGETS : undefined;
+  const { executionStore, conversationStore } = storage;
+  const projectionTokens = composition.projectionTokens;
+  const programDriverJournalStore = composition.createJournalStore(executionStore);
+  const checkpointTargets = storage.profile === "low" ? LOW_CHECKPOINT_TARGETS : undefined;
   const liveProgramActivations = new Map<string, LiveProgramActivation>();
   const streamingEndpoint = createStreamingEndpoint<ChatStreamInvocation>(
     function* (invocation, responseContext) {
@@ -676,7 +784,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
                     conversationId: requestedConversationId!,
                     head: resolvedHead,
                     checkpoint: storedConversationCheckpoint,
-                    keyring: config.projectionTokens,
+                    keyring: projectionTokens,
                     ...(body.knownWindowToken ? { knownWindowToken: body.knownWindowToken } : {}),
                     ...(config.projectionTokenTtlMs === undefined
                       ? {}
@@ -753,8 +861,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
                       message: "Elicitation response does not identify the selected interrupt",
                     });
                   }
-                  const journal =
-                    yield* config.programDriverJournalStore.open(requestedConversationId);
+                  const journal = yield* programDriverJournalStore.open(requestedConversationId);
                   const validation = yield* journal.validateElicitResponse({
                     sessionId: requestedConversationId,
                     pullId: body.command.interruptId,
@@ -1003,7 +1110,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
                         conversationId: requestedConversationId,
                         head: reconnectHead,
                         checkpoint: reconnectCheckpoint,
-                        keyring: config.projectionTokens,
+                        keyring: projectionTokens,
                         ...(body.knownWindowToken
                           ? { knownWindowToken: body.knownWindowToken }
                           : {}),
@@ -1153,7 +1260,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
                             conversationId: requestedConversationId,
                             head: retryHead,
                             checkpoint: retryCheckpoint,
-                            keyring: config.projectionTokens,
+                            keyring: projectionTokens,
                             ...(body.knownWindowToken
                               ? { knownWindowToken: body.knownWindowToken }
                               : {}),
@@ -1451,14 +1558,14 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
                       });
                       return {
                         authority: conversationAuthority(requestedConversationId, persisted.head),
-                        ...(config.projectionTokens
+                        ...(projectionTokens
                           ? {
                               window: yield* buildConversationWindow({
                                 store: conversationStore,
                                 conversationId: requestedConversationId,
                                 head: persisted.head,
                                 checkpoint: persisted.checkpoint,
-                                keyring: config.projectionTokens,
+                                keyring: projectionTokens,
                                 ...(body.knownWindowToken
                                   ? { knownWindowToken: body.knownWindowToken }
                                   : {}),
@@ -1509,7 +1616,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
                                 conversationId: requestedConversationId,
                                 head: terminalHead,
                                 checkpoint: terminalCheckpoint,
-                                keyring: config.projectionTokens,
+                                keyring: projectionTokens,
                                 ...(body.knownWindowToken
                                   ? { knownWindowToken: body.knownWindowToken }
                                   : {}),
@@ -1524,7 +1631,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
                   };
                   const engineSource: ChatEngineSource = liveCancellation
                     ? createLiveCancellationEngine({
-                        journalStore: config.programDriverJournalStore,
+                        journalStore: programDriverJournalStore,
                         conversationStore,
                         activation: liveCancellation.activation,
                         conversationId: requestedConversationId,
@@ -1536,7 +1643,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
                       : (liveEvent: TurnEventSink) =>
                           createProgramDriverChatEngine({
                             ...engineParams,
-                            journalStore: config.programDriverJournalStore,
+                            journalStore: programDriverJournalStore,
                             liveEvent,
                             ...(programDriverEphemeralEffects
                               ? { ephemeralEffects: programDriverEphemeralEffects }
@@ -1570,7 +1677,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
                       conversationId: requestedConversationId,
                       head: authorityHead,
                       checkpoint: authorityCheckpoint,
-                      keyring: config.projectionTokens,
+                      keyring: projectionTokens,
                       ...(body.knownWindowToken ? { knownWindowToken: body.knownWindowToken } : {}),
                       ...(config.projectionTokenTtlMs === undefined
                         ? {}
@@ -1656,8 +1763,20 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
     streamingEndpoint,
     (request) => ({ kind: "read-chat", ...request }),
   );
-  const pageHistory = createDurableHistoryPageEndpoint(config, conversationStore);
-  return { postChat, readChat, pageHistory };
+  const pageHistory = createDurableHistoryPageEndpoint(
+    {
+      projectionTokens,
+      authorizeHistoryRead: composition.authorizeHistoryRead,
+      ...(config.projectionTokenTtlMs === undefined
+        ? {}
+        : { projectionTokenTtlMs: config.projectionTokenTtlMs }),
+    },
+    conversationStore,
+  );
+  return {
+    endpoints: { postChat, readChat, pageHistory },
+    inspection: { conversationStore, executionStore, programDriverJournalStore },
+  };
 }
 
 /** Backward-compatible name for the route-specific POST chat endpoint. */

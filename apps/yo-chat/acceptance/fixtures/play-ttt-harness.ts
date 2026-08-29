@@ -4,7 +4,6 @@ import {
   installToolInventory,
 } from "@sweatpants/tool-runtime";
 import { resource, run, type Operation, type Stream } from "effection";
-import { createClient, type RedisClientType } from "redis";
 import {
   installModelProvider,
   ModelProviderModelContext,
@@ -25,7 +24,6 @@ import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
-import { createRedisExecutionStore } from "@sweatpants/execution-store-redis";
 import {
   createDurableChatEndpoints,
   createProgramDriverJournalStore,
@@ -103,16 +101,7 @@ export async function createPlayTttSubstrate(options: {
   const keyring = createCapabilityKeyring("play-ttt-http", [
     { keyId: "test-v1", secret: "play-ttt-http-program-driver-key!!" },
   ]);
-  let redisClient: RedisClientType | undefined;
-  if (process.env["PROGRAM_DRIVER_ACCEPTANCE_REDIS"] === "1") {
-    redisClient = createClient({ url: requiredRedisUrl() }) as RedisClientType;
-    await redisClient.connect();
-  }
-  const executionStore: ExecutionStore = redisClient
-    ? createRedisExecutionStore(redisClient, {
-        keyPrefix: "sweatpants:execution-store:v1:",
-      })
-    : createMemoryExecutionStore();
+  const executionStore: ExecutionStore = createMemoryExecutionStore();
   const conversationStore = createMemoryConversationStore();
   const journalStore = createProgramDriverJournalStore({
     keyring,
@@ -146,11 +135,7 @@ export async function createPlayTttSubstrate(options: {
         close: () => application.close(),
       };
     },
-    async close() {
-      if (redisClient?.isOpen) {
-        await redisClient.disconnect();
-      }
-    },
+    async close() {},
   };
 }
 
@@ -164,13 +149,9 @@ function createApplication(
   registryStore: ReturnType<typeof createInMemoryRegistryStore>,
 ) {
   const endpoints = createDurableChatEndpoints({
-    programDriverJournalStore: journalStore,
-    executionStore,
-    conversationStore,
+    storage: { kind: "custom", executionStore, conversationStore },
+    createProgramDriverJournalStore: () => journalStore,
     projectionTokens: createProjectionTokenKeyring("play-ttt-harness-window-projection-key"),
-    *authorizeHistoryRead() {
-      return "authorized" as const;
-    },
     maxToolIterations: 5,
     setup: function* () {
       yield* installModelProvider(driver);
@@ -576,14 +557,6 @@ function findBoard(value: Json | undefined): Json[] | undefined {
     }
   }
   return undefined;
-}
-
-function requiredRedisUrl(): string {
-  const value = process.env["REDIS_URL"];
-  if (!value) {
-    throw new Error("REDIS_URL is required for Redis workflow host acceptance");
-  }
-  return value;
 }
 
 function isJsonRecord(value: Json | undefined): value is Record<string, Json> {

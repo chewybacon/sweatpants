@@ -14,7 +14,18 @@ import {
   verifyPublicHistoryCursor,
 } from "../projection-tokens.ts";
 import type { ScopedEndpoint } from "../handler/streaming.ts";
-import type { DurableChatHandlerConfig, DurableHistoryPageRequest } from "./types.ts";
+import type { ProjectionTokenKeyring } from "../projection-tokens.ts";
+import type { DurableHistoryPageRequest, HistoryReadAuthorization } from "./types.ts";
+
+/** Resolved authority pieces required to serve archived history pages. */
+export interface HistoryPageEndpointConfig {
+  readonly projectionTokens: ProjectionTokenKeyring;
+  readonly projectionTokenTtlMs?: number;
+  readonly authorizeHistoryRead: (
+    request: Request,
+    conversationId: string,
+  ) => Operation<HistoryReadAuthorization>;
+}
 
 async function readHistoryCursorBody(request: Request): Promise<string> {
   const text = await request.text();
@@ -52,7 +63,7 @@ async function createHistoryPageResponse(params: {
   request: Request;
   conversationId: string;
   store: ConversationStore;
-  config: DurableChatHandlerConfig;
+  config: HistoryPageEndpointConfig;
   scope?: Scope;
 }): Promise<Response> {
   const execute = <T>(operation: () => Operation<T>): Promise<T> =>
@@ -145,7 +156,7 @@ async function createHistoryPageResponse(params: {
 
 /** Route-independent archived history endpoint. */
 export function createDurableHistoryPageEndpoint(
-  config: DurableChatHandlerConfig,
+  config: HistoryPageEndpointConfig,
   store: ConversationStore,
 ): ScopedEndpoint<DurableHistoryPageRequest> {
   const endpoint = (input: DurableHistoryPageRequest): Promise<Response> =>

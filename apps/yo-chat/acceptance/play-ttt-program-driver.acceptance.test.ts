@@ -3,6 +3,7 @@ import type { ModelSampleResult, ModelSamplingService } from "@sweatpants/model-
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { createDurableToolRegistry } from "@sweatpants/durable-execution";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
@@ -79,6 +80,7 @@ describe("journal-native play_ttt through the workflow host", () => {
           { keyId: "active", secret: "native-play-ttt-key-material-32!!" },
         ]),
         schemaRegistry: programDriverSchemaRegistry(playTttTool.artifacts.catalog),
+        executionStore: createMemoryExecutionStore(),
       }),
       programs,
       effects,

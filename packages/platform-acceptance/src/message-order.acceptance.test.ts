@@ -5,7 +5,7 @@ import {
   ACCEPTANCE_MODEL_ID,
   ACCEPTANCE_TOOL_NAME,
   DURABLE_SAMPLE_PROMPT_MARKER,
-  createAcceptanceApplication,
+  createDurabilityAcceptanceApplication,
 } from "./lib/acceptance-app.ts";
 
 type Binding = TestRigOptions["binding"];
@@ -141,8 +141,9 @@ async function runDurableSelectionOrder(binding: Binding): Promise<void> {
     {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
-      createApplication: createAcceptanceApplication,
-      scenarioTimeoutMs: 30_000,
+      createApplication: createDurabilityAcceptanceApplication,
+      barrierTimeoutMs: process.env["PLATFORM_ACCEPTANCE_STORAGE"] === "sqlite" ? 30_000 : 10_000,
+      scenarioTimeoutMs: process.env["PLATFORM_ACCEPTANCE_STORAGE"] === "sqlite" ? 60_000 : 30_000,
     },
     function* (s) {
       const conversation = s.conversation({ initialToolChoice: "required" });
@@ -215,8 +216,9 @@ async function runOrdinaryBookingOrder(binding: Binding): Promise<void> {
     {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
-      createApplication: createAcceptanceApplication,
-      scenarioTimeoutMs: 30_000,
+      createApplication: createDurabilityAcceptanceApplication,
+      barrierTimeoutMs: process.env["PLATFORM_ACCEPTANCE_STORAGE"] === "sqlite" ? 30_000 : 10_000,
+      scenarioTimeoutMs: process.env["PLATFORM_ACCEPTANCE_STORAGE"] === "sqlite" ? 60_000 : 30_000,
     },
     function* (s) {
       const conversation = s.conversation({ initialToolChoice: "required" });

@@ -1040,35 +1040,17 @@ Result-oriented parsing applies to meaningful boundary objects. Scalar field hel
 
 Start with adapter-owned transactions. JSONB statement or stored-function execution is a backend optimization after the mutation algebra stabilizes.
 
-## Open questions
+## Resolved questions
 
-### Counter representation
+The approved [SQLite production storage cutover specification](../../../.pi/specs/sqlite-production-storage-cutover-spec.md) resolves the former open questions in REQ-023 through REQ-031:
 
-Should authority revision and fence exist only as kernel metadata, or also appear in encoded domain values and be cross-validated? Keeping them only in metadata avoids duplication. Including them in complete records can simplify domain snapshots and inspection.
-
-### Alternate immutable identity
-
-Should alternate keys be a generic ensure feature, or should checkpoint and terminal collection definitions implement their fixed alternate identities explicitly? Generic alternate keys are convenient but move the kernel closer to a constraint language.
-
-### Conversation publication transaction size
-
-Should bounded archive/checkpoint/terminal objects normally commit with the head, or stage before a shorter head transaction? The kernel supports both. Measurement and read-reachability needs should decide per operation.
-
-### Public and terminal page direction
-
-Should the semantic API pivot to newest-to-oldest pages anchored at the frontier, or preserve oldest-to-newest behavior using a published membership/index mechanism?
-
-### Private segment staging
-
-Is there a demonstrated need to stage journal/replay segments before fenced control commit? If not, standalone append operations should disappear.
-
-### Physical collection binding
-
-Should each adapter use hand-written fixed bindings, generated bindings, or a small declarative table mapping? The answer must not create a general ORM.
-
-### PostgreSQL mutation execution
-
-When PostgreSQL exists, does a bounded adapter-owned transaction meet latency goals, or is one JSONB statement worth its additional SQL complexity? Measurement must precede a stored-function decision.
+1. Counters exist in kernel metadata only. Domain codecs validate complete domain values, and inspection joins metadata to content.
+2. Alternate immutable identities use explicit per-collection fixed bindings. The kernel has no generic alternate-key constraint language.
+3. Checkpoint, archive, terminal, and head publication commit in one bounded semantic mutation. Staging requires a later measured design.
+4. Public and terminal pages are newest-first backward pages anchored at a pinned frontier. There is no second oldest-first public API.
+5. Journal and replay segments commit atomically with their fenced control transition. There is no standalone private-segment staging API.
+6. Each adapter owns hand-written fixed physical bindings. The kernel does not define an ORM or declarative table mapping.
+7. A future PostgreSQL adapter starts with adapter-owned asynchronous transactions. JSONB single-statement or stored-function execution requires measurements and separate approval.
 
 ## Relationship to prior designs
 

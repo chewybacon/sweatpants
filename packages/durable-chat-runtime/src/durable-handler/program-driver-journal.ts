@@ -25,7 +25,6 @@ import {
   type ValidateElicitResponseResult,
 } from "@sweatpants/journal-authority";
 import { installExecutionStore } from "@sweatpants/journal-authority/api";
-import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import {
   createDurableSchemaRegistry,
@@ -101,25 +100,27 @@ export interface ProgramDriverJournalStoreOptions {
   journalPrefix?: string;
   now?: () => number;
   schemaRegistry?: DurableSchemaRegistry;
-  executionStore?: ExecutionStore;
+  executionStore: ExecutionStore;
   privateSegmentTarget?: PrivateSegmentTarget;
 }
 
 export function createDevelopmentProgramDriverJournalStore(options: {
   readonly audience: string;
   readonly secret: string;
+  readonly executionStore: ExecutionStore;
 }): ProgramDriverJournalStore {
   return createProgramDriverJournalStore({
     keyring: createCapabilityKeyring(options.audience, [
       { keyId: "development-v1", secret: options.secret },
     ]),
+    executionStore: options.executionStore,
   });
 }
 
 export function createProgramDriverJournalStore(
   options: ProgramDriverJournalStoreOptions,
 ): ProgramDriverJournalStore {
-  const executionStore = options.executionStore ?? createMemoryExecutionStore();
+  const executionStore = options.executionStore;
 
   return {
     *open(conversationId): Operation<ProgramDriverJournal> {

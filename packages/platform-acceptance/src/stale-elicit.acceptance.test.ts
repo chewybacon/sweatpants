@@ -5,7 +5,7 @@ import {
   ACCEPTANCE_DURABLE_TOOL_NAME,
   ACCEPTANCE_MODEL_ID,
   DURABLE_SAMPLE_PROMPT_MARKER,
-  createAcceptanceApplication,
+  createDurabilityAcceptanceApplication,
 } from "./lib/acceptance-app.ts";
 
 type Binding = TestRigOptions["binding"];
@@ -80,7 +80,7 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
     {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
-      createApplication: createAcceptanceApplication,
+      createApplication: createDurabilityAcceptanceApplication,
       scenarioTimeoutMs: 30_000,
     },
     function* (s) {

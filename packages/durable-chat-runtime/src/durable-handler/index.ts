@@ -13,9 +13,16 @@
 export { createDurableChatEndpoints, createDurableChatHandler } from "./handler.ts";
 export type {
   DurableChatEndpoints,
+  DurableChatProgram,
   DurableChatReadRequest,
+  DurableChatStorageInspection,
   DurableHistoryPageRequest,
+  HistoryReadAuthorization,
 } from "./types.ts";
+export { chatStorageFromEnv } from "./storage.ts";
+export type { ChatStorageConfig, ChatStorageEnvOptions } from "./storage.ts";
+export { resolveDurableChatComposition } from "./configuration.ts";
+export type { ResolvedDurableChatComposition } from "./configuration.ts";
 export { createProjectionTokenKeyring } from "../projection-tokens.ts";
 
 // Plugin session manager
@@ -87,6 +94,9 @@ export type {
 
   // Handler types
   DurableChatHandlerConfig,
+  DurableChatHandlerOptions,
+  DurableChatIdentityConfig,
+  DurableChatCompositionConfig,
   ChatHandlerSetupContext,
   ChatHandlerSetup,
   ChatRequestBody,

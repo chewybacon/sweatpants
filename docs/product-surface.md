@@ -58,7 +58,7 @@ Three lanes classify every workspace package:
 `destination domain packages` is **dual-natured**:
 
 - **Product entries** (import these):
-  - `@sweatpants/agent-host/server` — `createChatApplication` and `createChatHandler` / `createDurableChatHandler`
+  - `@sweatpants/agent-host/server` — `createChatApp` (primary; see [chat-application-configuration.md](./chat-application-configuration.md)), plus `createChatApplication` and `createChatHandler` / `createDurableChatHandler`
   - `@sweatpants/chat-core` — framework-neutral message/event/frame types, codecs, immutable folds, and internal placement normalization
   - `@sweatpants/chat-client` — headless client/runtime/transport Ports, reconnect, middleware, and pipeline orchestration
   - `@sweatpants/react-chat` — thin React `useChat`, client/runtime facades, framework-native `makePlugin`, and prepared native render parts
@@ -75,6 +75,7 @@ Three lanes classify every workspace package:
 | `ChatClient` / `ChatRuntime` | `@sweatpants/chat-client` |
 | `createChatClient` / `createChatRuntime` / `useChat` | `@sweatpants/react-chat` |
 | `makePlugin` | `@sweatpants/react-chat` (framework-native) |
+| `createChatApp` / `chatStorageFromEnv` | `@sweatpants/agent-host/server` |
 | `createChatApplication` | `@sweatpants/agent-host/server` |
 | `createChatHandler` / `createDurableChatHandler` | `@sweatpants/agent-host/server` |
 | `createTool` | `@sweatpants/agent-sdk` |

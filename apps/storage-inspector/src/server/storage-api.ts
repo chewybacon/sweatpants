@@ -20,7 +20,7 @@ interface StorageDatabaseRow {
 
 const defaultDatabasePath = resolve(
   process.env["SWEATPANTS_STORAGE_SPINE_PATH"] ??
-    resolve(process.cwd(), ".tmp/storage-spine/spine.sqlite"),
+    resolve(process.cwd(), "apps/yo-chat/.data/yo-chat.sqlite"),
 );
 
 function jsonSafe(value: unknown): unknown {
@@ -192,7 +192,7 @@ export async function createStorageInspectorApi(
   if (existsSync(databasePath)) {
     try {
       handle = await run(() =>
-        openBetterSqliteStorage(databasePath, { migrate: false, wal: false }),
+        openBetterSqliteStorage(databasePath, { migrate: false, wal: false, readonly: true }),
       );
     } catch (error) {
       openError = error;

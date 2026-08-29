@@ -12,6 +12,7 @@ import {
   type WorkspaceService,
 } from "@sweatpants/workspace-runtime";
 
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { createHeadlessCodingService } from "./headless-coding-service.ts";
 
 export interface StudioDevelopmentRuntime {
@@ -55,7 +56,11 @@ export function createStudioDevelopmentApi(
   runtime: StudioDevelopmentRuntime,
 ): StudioDevelopmentApi {
   const { workspace, fence } = runtime;
-  const coding = createHeadlessCodingService({ operations: workspace.operations, fence });
+  const coding = createHeadlessCodingService({
+    operations: workspace.operations,
+    fence,
+    executionStore: createMemoryExecutionStore(),
+  });
   return {
     *handle(request, response, next) {
       const url = new URL(request.url ?? "/", "http://yo-studio");

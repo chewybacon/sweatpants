@@ -1,6 +1,7 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { createProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { type DurableProgramManifest } from "@sweatpants/durable-execution";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
@@ -24,6 +25,7 @@ describe("ProgramDriver journal inspector", () => {
       keyring: createCapabilityKeyring("journal-inspector", [
         { keyId: "test", secret: "journal-inspector-key-is-32-bytes" },
       ]),
+      executionStore: createMemoryExecutionStore(),
     });
     await run(function* () {
       const journal = yield* store.open("conversation-inspect");

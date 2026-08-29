@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 const isCI = process.env["CI"];
@@ -9,6 +12,12 @@ if (!Number.isSafeInteger(playwrightPort) || playwrightPort < 1 || playwrightPor
   throw new Error("PLAYWRIGHT_PORT must be a valid TCP port");
 }
 const playwrightBaseUrl = `http://localhost:${playwrightPort}`;
+if (process.env["SWEATPANTS_STORAGE"] === "memory") {
+  throw new Error("Playwright E2E requires the default SQLite authority store");
+}
+const playwrightStorageRoot = mkdtempSync(join(tmpdir(), "yo-chat-e2e-"));
+const playwrightDatabasePath = join(playwrightStorageRoot, "yo-chat.sqlite");
+process.env["SWEATPANTS_DB_PATH"] = playwrightDatabasePath;
 
 // Playwright is an optional presentation/browser gate:
 // - default: deterministic browser smoke tests when explicitly invoked
@@ -28,6 +37,7 @@ export default defineConfig({
   ...(runFullE2E
     ? { globalSetup: "./e2e/global-setup.ts" }
     : { testMatch: deterministicBrowserSmokeSpecs }),
+  globalTeardown: "./e2e/global-teardown.ts",
   fullyParallel: true,
   timeout: 120_000,
   expect: { timeout: 10_000 },
@@ -57,6 +67,10 @@ export default defineConfig({
     env: {
       ...process.env,
       MCP_TOOL_RUNTIME: process.env["MCP_TOOL_RUNTIME"] ?? "local",
+      PROGRAM_DRIVER_CAPABILITY_SECRET:
+        process.env["PROGRAM_DRIVER_CAPABILITY_SECRET"] ??
+        "yo-chat-playwright-capability-secret-at-least-32-bytes",
+      SWEATPANTS_DB_PATH: playwrightDatabasePath,
       PLAYWRIGHT_TEST_SERVER: "1",
       VITE_PLAYWRIGHT_TEST_SERVER: "1",
     },

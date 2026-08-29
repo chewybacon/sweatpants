@@ -1,10 +1,5 @@
-import { createChatEndpoints } from "@sweatpants/agent-host/server";
-import { createCapabilityKeyring } from "@sweatpants/journal-authority";
-import {
-  createProgramDriverJournalStore,
-  createProjectionTokenKeyring,
-  type ChatHandlerSetupContext,
-} from "@sweatpants/durable-chat-runtime/durable-handler";
+import { createChatEndpoints, type ChatStorageConfig } from "@sweatpants/agent-host/server";
+import type { ChatHandlerSetupContext } from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
   createToolInventory,
   createToolInventoryEntry,
@@ -30,10 +25,11 @@ export interface InProcessHandlerConfig {
   toolsModuleUrl: string | URL;
   maxIterations?: number;
   owner: DurableStreamsOwner;
+  storage: ChatStorageConfig;
 }
 
 export function createInProcessHandler(config: InProcessHandlerConfig) {
-  const { tools, toolsModuleUrl, maxIterations = 10, owner } = config;
+  const { tools, toolsModuleUrl, maxIterations = 10, owner, storage } = config;
 
   const toolWorkerBootstrapUrl = new URL(
     "../../src/lib/tool-worker-bootstrap.mjs",
@@ -74,6 +70,9 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
   };
 
   const endpoints = createChatEndpoints({
+    name: "yo-agent-in-process",
+    secret: "yo-agent-in-process-local-key-material",
+    storage,
     setup: function* setup(ctx) {
       yield* setupDurableStreams(ctx);
       yield* setupProvider(ctx);
@@ -81,17 +80,6 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
       yield* setupMaxIterations(ctx);
     },
     maxToolIterations: maxIterations,
-    projectionTokens: createProjectionTokenKeyring(
-      "yo-agent-in-process-projection-token-key-material",
-    ),
-    *authorizeHistoryRead() {
-      return "authorized" as const;
-    },
-    programDriverJournalStore: createProgramDriverJournalStore({
-      keyring: createCapabilityKeyring("yo-agent-in-process", [
-        { keyId: "local", secret: "yo-agent-in-process-local-key-material" },
-      ]),
-    }),
   });
 
   async function inProcessFetch(input: string | Request, init?: RequestInit): Promise<Response> {

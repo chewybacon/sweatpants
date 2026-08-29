@@ -261,10 +261,13 @@ describe("product facade golden path", () => {
         yield* installToolRuntime(createLocalToolRuntime([echo]));
       },
       handler: createChatHandler({
-        programDriverJournalStore: createDevelopmentProgramDriverJournalStore({
-          audience: "golden-path-workflow-host",
-          secret: "golden-path-workflow-host-secret",
-        }),
+        storage: { kind: "memory" },
+        createProgramDriverJournalStore: (executionStore) =>
+          createDevelopmentProgramDriverJournalStore({
+            audience: "golden-path-workflow-host",
+            secret: "golden-path-workflow-host-secret",
+            executionStore,
+          }),
         projectionTokens: createProjectionTokenKeyring("golden-path-windowed-projection-key"),
         *authorizeHistoryRead() {
           return "authorized" as const;

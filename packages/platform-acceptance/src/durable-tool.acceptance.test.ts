@@ -14,7 +14,7 @@ import {
   DURABLE_SAMPLE_RESPONSE_MARKER,
   DURABLE_TOOL_RESULT_MARKER,
   acceptanceDurableTool,
-  createAcceptanceApplication,
+  createDurabilityAcceptanceApplication,
   type AcceptanceApplicationInspection,
   type AcceptanceApplicationOptions,
 } from "./lib/acceptance-app.ts";
@@ -50,7 +50,7 @@ async function runDurableToolScenario(
       modelId: ACCEPTANCE_MODEL_ID,
       scenarioTimeoutMs: 30_000,
       createApplication(context) {
-        return createAcceptanceApplication(
+        return createDurabilityAcceptanceApplication(
           context,
           (created) => {
             inspection = created;
@@ -194,7 +194,7 @@ async function runDurableElicitOutcome(
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
       createApplication(context) {
-        return createAcceptanceApplication(context, (created) => {
+        return createDurabilityAcceptanceApplication(context, (created) => {
           inspection = created;
         });
       },
@@ -242,7 +242,11 @@ async function runDurableElicitOutcome(
 
 async function runDurableEffectFailure(binding: Binding): Promise<void> {
   await withTestScenario(
-    { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
+    {
+      binding,
+      modelId: ACCEPTANCE_MODEL_ID,
+      createApplication: createDurabilityAcceptanceApplication,
+    },
     function* (s) {
       const conversation = s.conversation();
       const turn = yield* conversation.send("DURABLE_EFFECT_FAILURE_V1");

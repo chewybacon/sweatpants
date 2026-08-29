@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Operation } from "effection";
+import { run, type Operation } from "effection";
 import { createChatApplication, createChatEndpoints } from "@sweatpants/agent-host/server";
 import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import { createCapabilityKeyring, LOW_PRIVATE_SEGMENT_TARGET } from "@sweatpants/journal-authority";
@@ -33,6 +35,7 @@ import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
 import type { ModelContext } from "@sweatpants/model-provider";
 import type { ChatMessage } from "@sweatpants/chat-contract";
+import { openBetterSqliteStorage } from "@sweatpants/storage-sqlite/better-sqlite3";
 import {
   createDurableToolRegistry,
   type DurableToolRegistry,
@@ -183,21 +186,41 @@ export function createAcceptanceApplication(
   let toolInvocationRuntime: LocalToolInvocationRuntime | undefined;
   const executionStore = options.executionStore ?? createMemoryExecutionStore();
   const conversationStore = options.conversationStore ?? createMemoryConversationStore();
-  const journalStore =
-    options.journalStore ??
-    createProgramDriverJournalStore({
-      keyring: createCapabilityKeyring("test-rig-acceptance", [
-        {
-          keyId: "test-v1",
-          secret: "test-rig-acceptance-secret-at-least-32-bytes",
-        },
-      ]),
-      schemaRegistry: programDriverSchemaRegistry(acceptanceDurableTool.artifacts.catalog),
+  let journalStore: ProgramDriverJournalStore | undefined;
+  const endpoints = createChatEndpoints({
+    storage: {
+      kind: "custom",
+      conversationStore,
       executionStore,
-      ...(options.storageProfile === "low"
-        ? { privateSegmentTarget: LOW_PRIVATE_SEGMENT_TARGET }
-        : {}),
-    });
+      ...(options.storageProfile ? { profile: options.storageProfile } : {}),
+    },
+    createProgramDriverJournalStore(selectedExecutionStore) {
+      journalStore =
+        options.journalStore ??
+        createProgramDriverJournalStore({
+          keyring: createCapabilityKeyring("test-rig-acceptance", [
+            {
+              keyId: "test-v1",
+              secret: "test-rig-acceptance-secret-at-least-32-bytes",
+            },
+          ]),
+          schemaRegistry: programDriverSchemaRegistry(acceptanceDurableTool.artifacts.catalog),
+          executionStore: selectedExecutionStore,
+          ...(options.storageProfile === "low"
+            ? { privateSegmentTarget: LOW_PRIVATE_SEGMENT_TARGET }
+            : {}),
+        });
+      return journalStore;
+    },
+    projectionTokens: createProjectionTokenKeyring("platform-acceptance-windowed-projection-key"),
+    setup: function* (): Operation<void> {
+      yield* context.model.install();
+    },
+    maxToolIterations: options.maxToolIterations ?? 4,
+  });
+  if (!journalStore) {
+    throw new Error("acceptance journal store was not composed");
+  }
   inspect?.({
     journalStore,
     conversationStore,
@@ -211,20 +234,6 @@ export function createAcceptanceApplication(
     },
   });
 
-  const endpoints = createChatEndpoints({
-    programDriverJournalStore: journalStore,
-    executionStore,
-    conversationStore,
-    projectionTokens: createProjectionTokenKeyring("platform-acceptance-windowed-projection-key"),
-    *authorizeHistoryRead() {
-      return "authorized" as const;
-    },
-    ...(options.storageProfile ? { storageProfile: options.storageProfile } : {}),
-    setup: function* (): Operation<void> {
-      yield* context.model.install();
-    },
-    maxToolIterations: options.maxToolIterations ?? 4,
-  });
   const application = createChatApplication({
     setup: function* (): Operation<void> {
       yield* setupInMemoryDurableStreams<string>(
@@ -356,4 +365,46 @@ export function createAcceptanceApplication(
       },
     },
   };
+}
+
+/** Real-file backend for the durability-sensitive acceptance lane. */
+export async function createSqliteAcceptanceApplication(
+  context: TestApplicationFactoryContext,
+  inspect?: (inspection: AcceptanceApplicationInspection) => void,
+  options: AcceptanceApplicationOptions = {},
+): Promise<TestApplication> {
+  const root = await mkdtemp(join(tmpdir(), "platform-acceptance-sqlite-"));
+  const handle = await run(function* () {
+    return yield* openBetterSqliteStorage(join(root, "authority.sqlite"), {
+      migrate: true,
+      wal: true,
+    });
+  });
+  const application = createAcceptanceApplication(context, inspect, {
+    ...options,
+    conversationStore: handle.storage.conversationStore,
+    executionStore: handle.storage.executionStore,
+  });
+  return {
+    ...application,
+    async close() {
+      try {
+        await application.close();
+      } finally {
+        await run(() => handle.close());
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  };
+}
+
+/** Selected by the dedicated SQLite lane; memory remains the normal fast lane. */
+export function createDurabilityAcceptanceApplication(
+  context: TestApplicationFactoryContext,
+  inspect?: (inspection: AcceptanceApplicationInspection) => void,
+  options: AcceptanceApplicationOptions = {},
+): TestApplication | Promise<TestApplication> {
+  return process.env["PLATFORM_ACCEPTANCE_STORAGE"] === "sqlite"
+    ? createSqliteAcceptanceApplication(context, inspect, options)
+    : createAcceptanceApplication(context, inspect, options);
 }

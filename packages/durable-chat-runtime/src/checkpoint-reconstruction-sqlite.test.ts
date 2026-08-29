@@ -7,9 +7,9 @@ import {
   hydratePublicRoots,
   persistConversationCheckpoint,
   readAllPublicRootsForModel,
-} from "@sweatpants/durable-chat-runtime";
+} from "./index.ts";
 import { LOW_CHECKPOINT_TARGETS } from "@sweatpants/history-store";
-import { openBetterSqliteStorage } from "../better-sqlite3.ts";
+import { openBetterSqliteStorage } from "@sweatpants/storage-sqlite/better-sqlite3";
 
 const databases: string[] = [];
 

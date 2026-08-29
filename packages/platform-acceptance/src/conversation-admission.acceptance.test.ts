@@ -5,7 +5,7 @@ import { withTestScenario } from "@sweatpants/test-rig";
 import {
   ACCEPTANCE_MODEL_ID,
   ACCEPTANCE_TOOL_NAME,
-  createAcceptanceApplication,
+  createDurabilityAcceptanceApplication,
 } from "./lib/acceptance-app.ts";
 
 type WireFrame = {
@@ -28,7 +28,7 @@ describe("ordinary message admission", () => {
       {
         binding: "in-process",
         modelId: ACCEPTANCE_MODEL_ID,
-        createApplication: createAcceptanceApplication,
+        createApplication: createDurabilityAcceptanceApplication,
       },
       function* (s) {
         const conversation = s.conversation();
@@ -78,7 +78,7 @@ describe("ordinary message admission", () => {
       {
         binding: "http",
         modelId: ACCEPTANCE_MODEL_ID,
-        createApplication: createAcceptanceApplication,
+        createApplication: createDurabilityAcceptanceApplication,
       },
       function* (s) {
         const conversation = s.conversation({ initialToolChoice: "required" });
