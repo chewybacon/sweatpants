@@ -14,6 +14,17 @@ yo-studio is a product team's sweatpants deployment: a few agents, a foreign MCP
 server, some leaf tools, and a chat surface — composed dynamically by the model
 into durable, verifiable, human-gated workflows.
 
+## Durable storage
+
+The chat application uses SQLite authority storage by default at
+`apps/yo-studio/.data/yo-studio.sqlite`. `SWEATPANTS_DB_PATH` selects another
+local file. `SWEATPANTS_STORAGE=memory` is an explicit test/tooling override and
+cannot be combined with a database path.
+
+SQLite runs in WAL mode and requires one owning process on a local filesystem.
+An incompatible pre-release file fails closed. Development reset is an explicit
+file removal while the app is stopped; the app does not delete durable data.
+
 ---
 
 ## The deployment

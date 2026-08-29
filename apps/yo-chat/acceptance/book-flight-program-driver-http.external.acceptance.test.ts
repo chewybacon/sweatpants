@@ -8,7 +8,8 @@ import {
 // @vitest-environment node
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
-import { createClient } from "redis";
+import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
 import {
@@ -41,7 +42,6 @@ import {
   setupAgentCoreProgramDriverToolRuntime,
   useAgentCoreProgramDriverAcceptance,
 } from "./program-driver-agentcore-setup.ts";
-import { createRedisProgramDriverJournalStore } from "../src/server/program-driver-journal.ts";
 import { bookFlightTool } from "../src/tools/book-flight/tool.ts";
 
 const model: Model = {
@@ -55,8 +55,7 @@ const model: Model = {
   maxTokens: 1_000,
 };
 
-const externalSubstrateEnabled =
-  process.env["PROGRAM_DRIVER_ACCEPTANCE_REDIS"] === "1" || useAgentCoreProgramDriverAcceptance();
+const externalSubstrateEnabled = useAgentCoreProgramDriverAcceptance();
 
 describe.skipIf(!externalSubstrateEnabled)(
   "unchanged book_flight through an external HTTP workflow host substrate",
@@ -109,16 +108,9 @@ describe.skipIf(!externalSubstrateEnabled)(
       const keyring = createCapabilityKeyring("book-flight-http", [
         { keyId: "test-v1", secret: "book-flight-http-program-driver-key" },
       ]);
-      const redisClient =
-        process.env["PROGRAM_DRIVER_ACCEPTANCE_REDIS"] === "1"
-          ? createClient({ url: requiredRedisUrl() })
-          : undefined;
-      if (redisClient) {
-        await redisClient.connect();
-      }
-      const journalStore = redisClient
-        ? createRedisProgramDriverJournalStore(redisClient, keyring)
-        : createProgramDriverJournalStore({ keyring });
+      const executionStore = createMemoryExecutionStore();
+      const conversationStore = createMemoryConversationStore();
+      const journalStore = createProgramDriverJournalStore({ keyring, executionStore });
       const runtime: ToolRuntime = {
         *runtimeId() {
           return "foreign-context-only";
@@ -132,7 +124,8 @@ describe.skipIf(!externalSubstrateEnabled)(
         *abort(): Operation<void> {},
       };
       const endpoints = createDurableChatEndpoints({
-        programDriverJournalStore: journalStore,
+        storage: { kind: "custom", executionStore, conversationStore },
+        createProgramDriverJournalStore: () => journalStore,
         projectionTokens: createProjectionTokenKeyring(
           "book-flight-external-window-projection-key",
         ),
@@ -228,9 +221,6 @@ describe.skipIf(!externalSubstrateEnabled)(
         expect(journal.at(-1)?.payload.type).toBe("TaskClosed");
       } finally {
         await application.close();
-        if (redisClient?.isOpen) {
-          await redisClient.disconnect();
-        }
       }
     }, 20_000);
   },
@@ -384,14 +374,6 @@ function interrupt(events: PublicEvent[]): {
 async function readJournal(store: ProgramDriverJournalStore, conversationId: string) {
   const journal = await run(() => store.open(conversationId));
   return await run(() => journal.readJournal(conversationId));
-}
-
-function requiredRedisUrl(): string {
-  const value = process.env["REDIS_URL"];
-  if (!value) {
-    throw new Error("REDIS_URL is required for Redis workflow host acceptance");
-  }
-  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

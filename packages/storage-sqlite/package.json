@@ -116,7 +116,6 @@
         "effection": "catalog:"
     },
     "devDependencies": {
-        "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@types/better-sqlite3": "catalog:",
         "@types/node": "catalog:",

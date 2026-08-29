@@ -663,9 +663,6 @@ importers:
       '@sweatpants/durable-streams':
         specifier: workspace:*
         version: link:../../packages/durable-streams
-      '@sweatpants/execution-store-redis':
-        specifier: workspace:*
-        version: link:../../packages/execution-store-redis
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../../packages/foundation
@@ -684,6 +681,9 @@ importers:
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
+      '@sweatpants/storage-sqlite':
+        specifier: workspace:*
+        version: link:../../packages/storage-sqlite
       '@sweatpants/stream-bridge':
         specifier: workspace:*
         version: link:../../packages/stream-bridge
@@ -963,6 +963,9 @@ importers:
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
+      '@sweatpants/storage-sqlite':
+        specifier: workspace:*
+        version: link:../../packages/storage-sqlite
       '@sweatpants/stream-bridge':
         specifier: workspace:*
         version: link:../../packages/stream-bridge
@@ -1339,6 +1342,9 @@ importers:
       '@sweatpants/model-sampling':
         specifier: workspace:*
         version: link:../model-sampling
+      '@sweatpants/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../tool-runtime
@@ -1888,9 +1894,6 @@ importers:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
     devDependencies:
-      '@sweatpants/durable-chat-runtime':
-        specifier: workspace:*
-        version: link:../durable-chat-runtime
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config

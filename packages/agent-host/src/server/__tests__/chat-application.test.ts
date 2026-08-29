@@ -10,7 +10,7 @@ import {
   type Subscription,
 } from "effection";
 import type { RecoverableSessionRegistry } from "@sweatpants/durable-streams";
-import { createChatApplication, createChatHandler } from "../index.ts";
+import { createChatApp, createChatApplication, createChatHandler } from "../index.ts";
 import { createStreamingHandler } from "@sweatpants/durable-chat-runtime/handler/streaming";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 
@@ -245,5 +245,26 @@ describe("createChatHandler public config boundary", () => {
     } satisfies Parameters<typeof createChatHandler>[0];
 
     expect(_legacyConfig).toBeTruthy();
+  });
+});
+
+describe("createChatApp", () => {
+  it("exposes endpoints and one stable storage composition until closed", async () => {
+    const app = createChatApp({
+      name: "chat-app-test",
+      secret: "chat-app-test-secret-material-32-bytes",
+      storage: { kind: "memory" },
+    });
+    expect(typeof app.endpoints.postChat).toBe("function");
+    expect(typeof app.endpoints.pageHistory.withScope).toBe("function");
+
+    const first = await app.inspect();
+    const second = await app.inspect();
+    expect(second.conversationStore).toBe(first.conversationStore);
+    expect(second.executionStore).toBe(first.executionStore);
+    expect(second.programDriverJournalStore).toBe(first.programDriverJournalStore);
+
+    await app.close();
+    await expect(app.inspect()).rejects.toMatchObject({ name: "ChatApplicationClosedError" });
   });
 });

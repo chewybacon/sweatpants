@@ -6,7 +6,10 @@ import {
   type TestRigOptions,
 } from "@sweatpants/test-rig";
 import type { ProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
-import { ACCEPTANCE_MODEL_ID, createAcceptanceApplication } from "./lib/acceptance-app.ts";
+import {
+  ACCEPTANCE_MODEL_ID,
+  createDurabilityAcceptanceApplication,
+} from "./lib/acceptance-app.ts";
 
 type Binding = TestRigOptions["binding"];
 
@@ -15,7 +18,7 @@ async function runFiniteSegmentAndHydration(binding: Binding): Promise<void> {
     {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
-      createApplication: createAcceptanceApplication,
+      createApplication: createDurabilityAcceptanceApplication,
       scenarioTimeoutMs: 30_000,
     },
     function* (s) {
@@ -55,7 +58,7 @@ describe("windowed native lifecycle", () => {
   it("uses a bounded conversation source recipe in the durable root task", async () => {
     let journalStore: ProgramDriverJournalStore | undefined;
     const createApplication = (context: TestApplicationFactoryContext) =>
-      createAcceptanceApplication(context, (inspection) => {
+      createDurabilityAcceptanceApplication(context, (inspection) => {
         journalStore ??= inspection.journalStore;
       });
 
@@ -108,7 +111,7 @@ describe("windowed native lifecycle", () => {
         {
           binding,
           modelId: ACCEPTANCE_MODEL_ID,
-          createApplication: createAcceptanceApplication,
+          createApplication: createDurabilityAcceptanceApplication,
           scenarioTimeoutMs: 30_000,
         },
         function* (s) {

@@ -1,7 +1,12 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Message } from "@ag-ui/core";
 import { call, run, useScope } from "effection";
 import { describe, expect, it } from "vitest";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
+import { openBetterSqliteStorage } from "@sweatpants/storage-sqlite/better-sqlite3";
 import type { ConversationHead, ConversationStore } from "@sweatpants/history-store/contract";
 import {
   acceptedPublicMessageFact,
@@ -23,6 +28,14 @@ const keyring = createProjectionTokenKeyring("window-runtime-test-key-material-3
 
 function message(id: string, content: string): Message {
   return { id, role: "user", content };
+}
+
+function storageFor(conversationStore: ConversationStore) {
+  return {
+    kind: "custom" as const,
+    conversationStore,
+    executionStore: createMemoryExecutionStore(),
+  };
 }
 
 function historyRequest(conversationId: string, cursor: string) {
@@ -86,176 +99,185 @@ function* publish(
 
 describe("native ConversationWindow production", () => {
   it("uses reset initially and continue with complete prior-hot and newly allocated spill catch-up", async () => {
-    await run(function* () {
-      const store = createMemoryConversationStore();
-      const conversationId = "window-runtime";
-      const now = Date.now();
-      const initial = yield* initialize(store, conversationId);
-      const first = yield* publish(
-        store,
-        initial,
-        [acceptedPublicMessageFact(message("user-1", "one"))],
-        "first",
-      );
-      let initialHistoryReads = 0;
-      const hydrationStore = new Proxy(store, {
-        get(target, property, receiver) {
-          if (property === "readPublicHistoryBefore") {
-            return function* (
-              request: Parameters<ConversationStore["readPublicHistoryBefore"]>[0],
-            ) {
-              initialHistoryReads += 1;
-              return yield* target.readPublicHistoryBefore(request);
-            };
-          }
-          const value = Reflect.get(target, property, receiver) as unknown;
-          return typeof value === "function" ? value.bind(target) : value;
-        },
-      }) as ConversationStore;
-      const firstWindow = yield* buildConversationWindow({
-        store: hydrationStore,
-        conversationId,
-        head: first.head,
-        checkpoint: first.checkpoint,
-        keyring,
-        now,
-      });
-      expect(firstWindow.windowMode).toBe("reset");
-      expect(initialHistoryReads).toBe(0);
-      expect(firstWindow.hotRoots.map((root) => root.position)).toEqual(["0"]);
-      expect(firstWindow.olderHistoryCursor).toBeNull();
-      const firstBasis = yield* call(() =>
-        verifyWindowToken(firstWindow.windowToken, keyring, now + 1),
-      );
-      expect(firstBasis).toMatchObject({
-        hotRootPositions: ["0"],
-        nextPublicPosition: "1",
-      });
+    const root = await mkdtemp(join(tmpdir(), "conversation-window-sqlite-"));
+    const handle = await run(function* () {
+      return yield* openBetterSqliteStorage(join(root, "conversation.sqlite"), { migrate: true });
+    });
+    try {
+      await run(function* () {
+        const store = handle.storage.conversationStore;
+        const conversationId = "window-runtime";
+        const now = Date.now();
+        const initial = yield* initialize(store, conversationId);
+        const first = yield* publish(
+          store,
+          initial,
+          [acceptedPublicMessageFact(message("user-1", "one"))],
+          "first",
+        );
+        let initialHistoryReads = 0;
+        const hydrationStore = new Proxy(store, {
+          get(target, property, receiver) {
+            if (property === "readPublicHistoryBefore") {
+              return function* (
+                request: Parameters<ConversationStore["readPublicHistoryBefore"]>[0],
+              ) {
+                initialHistoryReads += 1;
+                return yield* target.readPublicHistoryBefore(request);
+              };
+            }
+            const value = Reflect.get(target, property, receiver) as unknown;
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        }) as ConversationStore;
+        const firstWindow = yield* buildConversationWindow({
+          store: hydrationStore,
+          conversationId,
+          head: first.head,
+          checkpoint: first.checkpoint,
+          keyring,
+          now,
+        });
+        expect(firstWindow.windowMode).toBe("reset");
+        expect(initialHistoryReads).toBe(0);
+        expect(firstWindow.hotRoots.map((root) => root.position)).toEqual(["0"]);
+        expect(firstWindow.olderHistoryCursor).toBeNull();
+        const firstBasis = yield* call(() =>
+          verifyWindowToken(firstWindow.windowToken, keyring, now + 1),
+        );
+        expect(firstBasis).toMatchObject({
+          hotRootPositions: ["0"],
+          nextPublicPosition: "1",
+        });
 
-      const second = yield* publish(
-        store,
-        first.head,
-        [
-          acceptedPublicMessageFact(message("user-2", "two")),
-          acceptedPublicMessageFact(message("user-3", "three")),
-        ],
-        "second",
-      );
-      const continued = yield* buildConversationWindow({
-        store,
-        conversationId,
-        head: second.head,
-        checkpoint: second.checkpoint,
-        keyring,
-        knownWindowToken: firstWindow.windowToken,
-        now: now + 100,
-      });
-      expect(continued.windowMode).toBe("continue");
-      expect(continued.hotRoots.map((root) => root.position)).toEqual(["2"]);
-      expect(continued.sealedCatchupRoots.map((root) => root.position)).toEqual(["0", "1"]);
-      expect(continued.olderHistoryCursor).not.toBeNull();
-
-      const corruptStore = {
-        ...store,
-        *readPublicHistoryBefore() {
-          return { roots: [], nextBeforePosition: null };
-        },
-      } as ConversationStore;
-      let corruption: unknown;
-      try {
-        yield* buildConversationWindow({
-          store: corruptStore,
+        const second = yield* publish(
+          store,
+          first.head,
+          [
+            acceptedPublicMessageFact(message("user-2", "two")),
+            acceptedPublicMessageFact(message("user-3", "three")),
+          ],
+          "second",
+        );
+        const continued = yield* buildConversationWindow({
+          store,
           conversationId,
           head: second.head,
           checkpoint: second.checkpoint,
           keyring,
           knownWindowToken: firstWindow.windowToken,
-          now: now + 101,
+          now: now + 100,
         });
-      } catch (error) {
-        corruption = error;
-      }
-      expect(corruption).toMatchObject({ code: "public_root_conflict" });
+        expect(continued.windowMode).toBe("continue");
+        expect(continued.hotRoots.map((root) => root.position)).toEqual(["2"]);
+        expect(continued.sealedCatchupRoots.map((root) => root.position)).toEqual(["0", "1"]);
+        expect(continued.olderHistoryCursor).not.toBeNull();
 
-      const cursor = yield* call(() =>
-        verifyPublicHistoryCursor(continued.olderHistoryCursor!, keyring, now + 101),
-      );
-      expect(cursor).toMatchObject({
-        lineageId: second.checkpoint.lineageId,
-        beforePosition: "3",
-        archiveFrontierOrdinal: "2",
-      });
+        const corruptStore = {
+          ...store,
+          *readPublicHistoryBefore() {
+            return { roots: [], nextBeforePosition: null };
+          },
+        } as ConversationStore;
+        let corruption: unknown;
+        try {
+          yield* buildConversationWindow({
+            store: corruptStore,
+            conversationId,
+            head: second.head,
+            checkpoint: second.checkpoint,
+            keyring,
+            knownWindowToken: firstWindow.windowToken,
+            now: now + 101,
+          });
+        } catch (error) {
+          corruption = error;
+        }
+        expect(corruption).toMatchObject({ code: "public_root_conflict" });
 
-      const endpoints = createDurableChatEndpoints({
-        conversationStore: store,
-        projectionTokens: keyring,
-        programDriverJournalStore: {} as never,
-        *authorizeHistoryRead() {
-          return "authorized" as const;
-        },
-      });
-      const pageResponse = yield* call(() =>
-        endpoints.pageHistory(historyRequest(conversationId, continued.olderHistoryCursor!)),
-      );
-      expect(pageResponse.status).toBe(200);
-      expect(pageResponse.headers.get("cache-control")).toBe("private, no-store");
-      const pageBody = (yield* call(() => pageResponse.json())) as {
-        roots: Array<{ position: string }>;
-        nextOlderCursor: string | null;
-      };
-      expect(pageBody.roots.map((root) => root.position)).toEqual(["0", "1"]);
-      expect(pageBody.nextOlderCursor).toBeNull();
-
-      const forbidden = createDurableChatEndpoints({
-        conversationStore: store,
-        projectionTokens: keyring,
-        programDriverJournalStore: {} as never,
-        *authorizeHistoryRead() {
-          return "forbidden" as const;
-        },
-      });
-      const forbiddenResponse = yield* call(() =>
-        forbidden.pageHistory(historyRequest(conversationId, "invalid.token")),
-      );
-      expect(forbiddenResponse.status).toBe(403);
-
-      const reset = yield* buildConversationWindow({
-        store,
-        conversationId,
-        head: second.head,
-        checkpoint: second.checkpoint,
-        keyring,
-        knownWindowToken: "invalid.token",
-        now: now + 200,
-      });
-      expect(reset.windowMode).toBe("reset");
-      expect(reset.sealedCatchupRoots).toEqual([]);
-
-      let oversized = second;
-      for (let batch = 0; batch < 3; batch += 1) {
-        oversized = yield* publish(
-          store,
-          oversized.head,
-          Array.from({ length: 200 }, (_, index) =>
-            acceptedPublicMessageFact(
-              message(`oversized-${batch}-${index}`, `batch ${batch} message ${index}`),
-            ),
-          ),
-          `oversized-${batch}`,
+        const cursor = yield* call(() =>
+          verifyPublicHistoryCursor(continued.olderHistoryCursor!, keyring, now + 101),
         );
-      }
-      const oversizedWindow = yield* buildConversationWindow({
-        store,
-        conversationId,
-        head: oversized.head,
-        checkpoint: oversized.checkpoint,
-        keyring,
-        knownWindowToken: firstWindow.windowToken,
-        now: now + 300,
+        expect(cursor).toMatchObject({
+          lineageId: second.checkpoint.lineageId,
+          beforePosition: "3",
+          archiveFrontierOrdinal: "2",
+        });
+
+        const endpoints = createDurableChatEndpoints({
+          storage: storageFor(store),
+          projectionTokens: keyring,
+          createProgramDriverJournalStore: () => ({}) as never,
+          *authorizeHistoryRead() {
+            return "authorized" as const;
+          },
+        });
+        const pageResponse = yield* call(() =>
+          endpoints.pageHistory(historyRequest(conversationId, continued.olderHistoryCursor!)),
+        );
+        expect(pageResponse.status).toBe(200);
+        expect(pageResponse.headers.get("cache-control")).toBe("private, no-store");
+        const pageBody = (yield* call(() => pageResponse.json())) as {
+          roots: Array<{ position: string }>;
+          nextOlderCursor: string | null;
+        };
+        expect(pageBody.roots.map((root) => root.position)).toEqual(["0", "1"]);
+        expect(pageBody.nextOlderCursor).toBeNull();
+
+        const forbidden = createDurableChatEndpoints({
+          storage: storageFor(store),
+          projectionTokens: keyring,
+          createProgramDriverJournalStore: () => ({}) as never,
+          *authorizeHistoryRead() {
+            return "forbidden" as const;
+          },
+        });
+        const forbiddenResponse = yield* call(() =>
+          forbidden.pageHistory(historyRequest(conversationId, "invalid.token")),
+        );
+        expect(forbiddenResponse.status).toBe(403);
+
+        const reset = yield* buildConversationWindow({
+          store,
+          conversationId,
+          head: second.head,
+          checkpoint: second.checkpoint,
+          keyring,
+          knownWindowToken: "invalid.token",
+          now: now + 200,
+        });
+        expect(reset.windowMode).toBe("reset");
+        expect(reset.sealedCatchupRoots).toEqual([]);
+
+        let oversized = second;
+        for (let batch = 0; batch < 3; batch += 1) {
+          oversized = yield* publish(
+            store,
+            oversized.head,
+            Array.from({ length: 200 }, (_, index) =>
+              acceptedPublicMessageFact(
+                message(`oversized-${batch}-${index}`, `batch ${batch} message ${index}`),
+              ),
+            ),
+            `oversized-${batch}`,
+          );
+        }
+        const oversizedWindow = yield* buildConversationWindow({
+          store,
+          conversationId,
+          head: oversized.head,
+          checkpoint: oversized.checkpoint,
+          keyring,
+          knownWindowToken: firstWindow.windowToken,
+          now: now + 300,
+        });
+        expect(oversizedWindow.windowMode).toBe("reset");
+        expect(oversizedWindow.sealedCatchupRoots).toEqual([]);
       });
-      expect(oversizedWindow.windowMode).toBe("reset");
-      expect(oversizedWindow.sealedCatchupRoots).toEqual([]);
-    });
+    } finally {
+      await run(() => handle.close());
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("hydrates through the production handler with one head and checkpoint read and no archive read", async () => {
@@ -308,9 +330,9 @@ describe("native ConversationWindow production", () => {
       yield* installDurableStreamsOwner(owner);
       yield* setupInMemoryDurableStreams();
       const endpoints = createDurableChatEndpoints({
-        conversationStore: observedStore,
+        storage: storageFor(observedStore),
         projectionTokens: keyring,
-        programDriverJournalStore: {} as never,
+        createProgramDriverJournalStore: () => ({}) as never,
         *authorizeHistoryRead() {
           return "authorized" as const;
         },
@@ -385,9 +407,9 @@ describe("native ConversationWindow production", () => {
         selectedStore: ConversationStore = observedStore,
       ) =>
         createDurableChatEndpoints({
-          conversationStore: selectedStore,
+          storage: storageFor(selectedStore),
           projectionTokens: keyring,
-          programDriverJournalStore: {} as never,
+          createProgramDriverJournalStore: () => ({}) as never,
           *authorizeHistoryRead() {
             return authorization;
           },

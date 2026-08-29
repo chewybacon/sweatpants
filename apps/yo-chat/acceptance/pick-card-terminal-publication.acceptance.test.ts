@@ -97,9 +97,8 @@ function createPickCardApplication(
   });
 
   const endpoints = createChatEndpoints({
-    executionStore,
-    conversationStore,
-    programDriverJournalStore: journalStore,
+    storage: { kind: "custom", executionStore, conversationStore },
+    createProgramDriverJournalStore: () => journalStore,
     projectionTokens: createProjectionTokenKeyring("yo-chat-pick-card-window-projection-key"),
     *authorizeHistoryRead() {
       return "authorized" as const;

@@ -7,7 +7,7 @@ import {
   ACCEPTANCE_TOOL_NAME,
   DURABLE_SAMPLE_PROMPT_MARKER,
   NESTED_SAMPLE_PROMPT_MARKER,
-  createAcceptanceApplication,
+  createDurabilityAcceptanceApplication,
   type AcceptanceApplicationInspection,
 } from "./lib/acceptance-app.ts";
 
@@ -21,7 +21,7 @@ async function supersedeParkedOrdinaryTool(binding: Binding): Promise<void> {
       modelId: ACCEPTANCE_MODEL_ID,
       cancellationTimeoutMs: 15_000,
       createApplication(context) {
-        return createAcceptanceApplication(context, (created) => {
+        return createDurabilityAcceptanceApplication(context, (created) => {
           inspection = created;
         });
       },
@@ -72,7 +72,7 @@ async function supersedeParkedDurableTool(binding: Binding): Promise<void> {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
       cancellationTimeoutMs: 15_000,
-      createApplication: createAcceptanceApplication,
+      createApplication: createDurabilityAcceptanceApplication,
     },
     function* (s) {
       const conversation = s.conversation();
@@ -118,7 +118,7 @@ async function cancelDurableNestedSample(binding: Binding): Promise<void> {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
       cancellationTimeoutMs: 15_000,
-      createApplication: createAcceptanceApplication,
+      createApplication: createDurabilityAcceptanceApplication,
     },
     function* (s) {
       const conversation = s.conversation();

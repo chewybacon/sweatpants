@@ -24,6 +24,7 @@
     "apps/yo-studio"
   ],
   "experimentalPathPatterns": [
+    "@sweatpants/execution-store-redis",
     "createIsomorphicTool",
     "defineIsomorphicTool",
     "defineServerOnlyTool",

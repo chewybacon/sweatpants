@@ -24,6 +24,7 @@ describe("yo-studio durable chat HTTP projection", () => {
       return yield* createStudioDevelopmentRuntime(root);
     });
     const application = createStudioDurableChatApplication({
+      storage: { kind: "memory" },
       ...runtime,
       modelProvider: createScriptedStudioModelProvider(() =>
         runtime.workspace.currentWorkspaceVersion(),
@@ -82,6 +83,7 @@ describe("yo-studio durable chat HTTP projection", () => {
     });
     const affinities: Array<{ readonly kind: string; readonly key: string }> = [];
     const application = createStudioDurableChatApplication({
+      storage: { kind: "memory" },
       resolveWorkspace: function* (execution) {
         affinities.push(execution.affinity);
         return { connector: runtime.connector, fence: runtime.fence };

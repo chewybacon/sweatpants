@@ -236,6 +236,7 @@
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/model-sampling": "workspace:*",
+        "@sweatpants/storage-sqlite": "workspace:*",
         "@sweatpants/tool-runtime": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "effection": "catalog:",

@@ -1,5 +1,6 @@
-import type { Operation, Stream } from "effection";
+import type { Operation, Scope, Stream } from "effection";
 import type { Json, JsonObject } from "@sweatpants/foundation";
+import type { SchemaBinding } from "@sweatpants/foundation/schema";
 import type { Model, StreamOptions } from "@sweatpants/model-provider";
 import type { ToolInventoryEntry, ToolRuntime } from "@sweatpants/tool-runtime";
 import type { AgUiRunMetadata, ConversationAuthority, HistoryPolicy } from "@sweatpants/chat-core";
@@ -10,6 +11,7 @@ import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
 import type { ProjectionTokenKeyring } from "../projection-tokens.ts";
 import type { ScopedEndpoint } from "../handler/streaming.ts";
+import type { ChatStorageConfig } from "./storage.ts";
 
 import type {
   ChatHandlerSetup,
@@ -113,31 +115,83 @@ export interface DurableHistoryPageRequest {
   readonly conversationId: string;
 }
 
+/** Read-only view of the authority composition bound to one application scope. */
+export interface DurableChatStorageInspection {
+  readonly conversationStore: ConversationStore;
+  readonly executionStore: ExecutionStore;
+  readonly programDriverJournalStore: ProgramDriverJournalStore;
+}
+
 export interface DurableChatEndpoints {
   readonly postChat: ScopedEndpoint<Request>;
   readonly readChat: ScopedEndpoint<DurableChatReadRequest>;
   readonly pageHistory: ScopedEndpoint<DurableHistoryPageRequest>;
+  /**
+   * Resolves the storage composition owned by `scope`, opening it if the
+   * first request has not arrived yet. Intended for development inspectors
+   * and diagnostics, not request handling.
+   */
+  readonly inspect: (scope: Scope) => Promise<DurableChatStorageInspection>;
 }
 
-export interface DurableChatHandlerConfig {
+/**
+ * Minimal shape of a durable tool or program definition that contributes
+ * journal schema bindings, such as tools built with the durable tool SDK.
+ */
+export interface DurableChatProgram {
+  readonly artifacts: { readonly catalog: Iterable<SchemaBinding> };
+}
+
+/** Options shared by both configuration modes. */
+export interface DurableChatHandlerOptions {
+  /** Request-scoped setup: install model providers and per-request contexts. */
   setup?: ChatHandlerSetup;
   maxToolIterations?: number;
   /** Trusted composition identity; wire clientId remains correlation only. */
   resolveParticipantId?: (request: Request) => Operation<string>;
-  programDriverJournalStore: ProgramDriverJournalStore;
-  /** Bounded private execution authority persistence; shared for Host replacement. */
-  executionStore?: ExecutionStore;
-  /** Authoritative conversation persistence; shared for Host replacement. */
-  conversationStore?: ConversationStore;
-  /** Integrity keys for opaque window/history projection tokens. */
-  projectionTokens: ProjectionTokenKeyring;
+  /** One explicit authority-storage choice. There is no implicit fallback. */
+  storage: ChatStorageConfig;
   /** Projection token validity; defaults to fifteen minutes. */
   projectionTokenTtlMs?: number;
-  /** Authenticates and authorizes history reads before token verification or store access. */
-  authorizeHistoryRead: (
+  /**
+   * Authenticates and authorizes history reads before token verification or
+   * store access. Defaults to `authorized`: deployments that expose history
+   * routes beyond a trusted boundary MUST override this.
+   */
+  authorizeHistoryRead?: (
     request: Request,
     conversationId: string,
   ) => Operation<HistoryReadAuthorization>;
-  /** Lowers spill/segment targets for the durability walking skeleton. */
-  storageProfile?: "low" | "default";
 }
+
+/**
+ * Simple mode: one stable application `name` plus one deployment `secret`
+ * (32+ UTF-8 bytes) derive the journal capability keyring, journal prefix,
+ * and projection-token keys. `programs` contributes durable tool schemas.
+ * Each derived piece may still be overridden individually.
+ */
+export interface DurableChatIdentityConfig extends DurableChatHandlerOptions {
+  /** Stable application identity; seeds journal audience, key id, and prefix. */
+  name: string;
+  /** Deployment secret (32–4096 UTF-8 bytes) for capability and token keys. */
+  secret: string;
+  /** Durable tools/programs whose schema catalogs the journal must accept. */
+  programs?: readonly DurableChatProgram[];
+  /** Override: builds the journal over the ExecutionStore selected by `storage`. */
+  createProgramDriverJournalStore?: (executionStore: ExecutionStore) => ProgramDriverJournalStore;
+  /** Override: integrity keys for opaque window/history projection tokens. */
+  projectionTokens?: ProjectionTokenKeyring;
+}
+
+/** Advanced mode: the composition supplies every authority piece explicitly. */
+export interface DurableChatCompositionConfig extends DurableChatHandlerOptions {
+  name?: string;
+  secret?: undefined;
+  programs?: undefined;
+  /** Builds the journal over the exact ExecutionStore selected by `storage`. */
+  createProgramDriverJournalStore: (executionStore: ExecutionStore) => ProgramDriverJournalStore;
+  /** Integrity keys for opaque window/history projection tokens. */
+  projectionTokens: ProjectionTokenKeyring;
+}
+
+export type DurableChatHandlerConfig = DurableChatIdentityConfig | DurableChatCompositionConfig;

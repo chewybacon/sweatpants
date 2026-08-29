@@ -1,7 +1,10 @@
 import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { withTestScenario } from "@sweatpants/test-rig";
-import { ACCEPTANCE_MODEL_ID, createAcceptanceApplication } from "./lib/acceptance-app.ts";
+import {
+  ACCEPTANCE_MODEL_ID,
+  createDurabilityAcceptanceApplication,
+} from "./lib/acceptance-app.ts";
 
 describe("HTTP response-stream reconnect", () => {
   it("replays only unseen deltas and does not rerun the model request", async () => {
@@ -10,7 +13,9 @@ describe("HTTP response-stream reconnect", () => {
         binding: "http",
         modelId: ACCEPTANCE_MODEL_ID,
         createApplication(context) {
-          return createAcceptanceApplication(context, undefined, { retainResponseStreams: true });
+          return createDurabilityAcceptanceApplication(context, undefined, {
+            retainResponseStreams: true,
+          });
         },
       },
       function* (s) {

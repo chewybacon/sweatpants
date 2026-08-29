@@ -55,7 +55,10 @@ export const appEnv = createEnv({
     // Max tool call iterations
     MAX_TOOL_ITERATIONS: z.coerce.number().default(10),
 
-    // Redis configuration (optional, falls back to in-memory if not set)
+    // Authority storage is resolved by chatStorageFromEnv in storage-config.ts:
+    // SQLite by default, SWEATPANTS_STORAGE=memory as the explicit override.
+
+    // Redis configures volatile response tails only; it is not authority storage.
     REDIS_URL: z.string().optional(),
 
     // workflow host journal signing secret. Startup fails when it is absent.

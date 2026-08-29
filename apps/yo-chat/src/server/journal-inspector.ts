@@ -1,8 +1,6 @@
 import { run } from "effection";
 import type { ProgramDriverJournalStore } from "@sweatpants/durable-chat-runtime/durable-handler";
 
-import { getActiveProgramDriverJournalStore } from "./chat-handler";
-
 export type ProgramJournalInspection = {
   conversationId: string;
   recordCount: number;
@@ -14,16 +12,24 @@ export type ProgramJournalInspection = {
   records: Array<Record<string, unknown>>;
 };
 
+/** Resolves the journal store owned by the running yo-chat application. */
+async function activeJournalStore(): Promise<ProgramDriverJournalStore> {
+  try {
+    const { chatApp } = await import("./chat-application");
+    return (await chatApp.inspect()).programDriverJournalStore;
+  } catch {
+    throw new JournalInspectorError("journal_store_unavailable", 503);
+  }
+}
+
 /** Reads and safely redacts one ProgramDriver semantic journal. */
 export async function inspectProgramDriverJournal(
   conversationId: string,
-  store = getActiveProgramDriverJournalStore(),
+  store?: ProgramDriverJournalStore,
 ): Promise<ProgramJournalInspection> {
-  if (!store) {
-    throw new JournalInspectorError("journal_store_unavailable", 503);
-  }
+  const journalStore = store ?? (await activeJournalStore());
   const records = await run(function* () {
-    const journal = yield* store.open(conversationId);
+    const journal = yield* journalStore.open(conversationId);
     return yield* journal.readJournal(conversationId);
   });
   const redacted = records.map((record) => redactSensitive(record));

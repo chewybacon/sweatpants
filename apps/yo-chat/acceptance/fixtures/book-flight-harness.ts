@@ -147,13 +147,9 @@ export async function createBookFlightSubstrate(options: {
     messages: [{ id: "user:http-book", role: "user", content: "Book NYC to LAX" }],
     createRuntime() {
       const endpoints = createDurableChatEndpoints({
-        programDriverJournalStore: journalStore,
-        executionStore,
-        conversationStore,
+        storage: { kind: "custom", executionStore, conversationStore },
+        createProgramDriverJournalStore: () => journalStore,
         projectionTokens: createProjectionTokenKeyring("book-flight-harness-window-projection-key"),
-        *authorizeHistoryRead() {
-          return "authorized" as const;
-        },
         maxToolIterations: 5,
         setup: function* () {
           yield* installModelProvider(driver);

@@ -45,22 +45,20 @@ export function createReactAcceptanceApplication(
   context: TestApplicationFactoryContext,
 ): TestApplication {
   const inventory = createToolInventory([createToolInventoryEntry(reactBookingTool)]);
-  const journalStore = createProgramDriverJournalStore({
-    keyring: createCapabilityKeyring("react-chat-acceptance", [
-      {
-        keyId: "test-v1",
-        secret: "react-chat-acceptance-secret-at-least-32-bytes",
-      },
-    ]),
-    schemaRegistry: programDriverSchemaRegistry(reactBookingTool.artifacts.catalog),
-  });
-
   const endpoints = createChatEndpoints({
-    programDriverJournalStore: journalStore,
+    storage: { kind: "memory" },
+    createProgramDriverJournalStore: (executionStore) =>
+      createProgramDriverJournalStore({
+        keyring: createCapabilityKeyring("react-chat-acceptance", [
+          {
+            keyId: "test-v1",
+            secret: "react-chat-acceptance-secret-at-least-32-bytes",
+          },
+        ]),
+        schemaRegistry: programDriverSchemaRegistry(reactBookingTool.artifacts.catalog),
+        executionStore,
+      }),
     projectionTokens: createProjectionTokenKeyring("react-acceptance-windowed-projection-key"),
-    *authorizeHistoryRead() {
-      return "authorized" as const;
-    },
     setup: function* (): Operation<void> {
       yield* context.model.install();
     },

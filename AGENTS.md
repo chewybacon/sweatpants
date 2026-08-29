@@ -44,9 +44,9 @@ fit for it. Long unparked work lives in box 3, not box 4.
   to the port above.
 - `LambdaMicrovmWorkspaceManager` (`workspace-lambda-microvm`) — a workspace lease
   manager (`resolve / inspect / close`). Also unrelated to the port above.
-- `execution-store-redis` — the bounded per-execution control/replay/payload
-  storage adapter. It owns no authority transition semantics and never
-  reconstructs an in-memory authority.
+- `execution-store-redis` — an experimental, uncertified bounded storage
+  adapter retained for future multi-host work. Production apps do not import it;
+  its current tests use `memory-fake`, not Redis semantics.
 
 ### There are two chat engines, and both are live
 
@@ -67,16 +67,15 @@ falling back.
   edits to Agent Host source have no effect until `pnpm -C packages/agent-host build`.
   The `development` export condition resolves to source; `packages/a2a`
   certification fixtures use `--conditions=development`.
-- **Redis certification fails closed.** Set `REDIS_URL` and `REDIS_REQUIRED=1`;
-  the live suite and bounded-storage command reject an unreachable server and
-  never substitute the unit-test fake.
+- **Redis execution storage is uncertified.** Its current conformance output
+  explicitly says `memory-fake (NOT Redis semantics)`. Do not use it as
+  production authority until a real-Redis lane is approved and green.
 - **Worker vs in-process ToolSession registry.** Production `tool-runtime-local`
   requires a worker-backed registry (`driver.ts`). Tests that build an
   in-process registry exercise a configuration that never ships.
-- **Redis persists between runs.** In-memory stores are fresh each run; Redis is
-  not. Namespace conversation and key prefixes per run, as
-  `apps/yo-chat/acceptance/fixtures/*-harness.ts` and the `execution-store-redis`
-  suite do.
+- **SQLite persists between runs.** Product apps default to local SQLite.
+  Tests must select explicit memory or a unique temporary `SWEATPANTS_DB_PATH`
+  so durable state cannot leak across runs.
 
 ### Durability model in one paragraph
 

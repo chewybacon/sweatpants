@@ -16,13 +16,7 @@ import {
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import { createChatApplication, createChatEndpoints } from "@sweatpants/agent-host/server";
-import { createCapabilityKeyring } from "@sweatpants/journal-authority";
-import {
-  createProgramDriverJournalStore,
-  createProjectionTokenKeyring,
-  programDriverSchemaRegistry,
-} from "@sweatpants/durable-chat-runtime/durable-handler";
+import { createChatApp, type ChatApp, type ChatStorageConfig } from "@sweatpants/agent-host/server";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
 import {
   installLocalWorkspaceFilesProvider,
@@ -40,6 +34,7 @@ import {
 
 import { codingCapabilities } from "../capabilities/index.ts";
 import { codingModelProvider } from "../deployment.ts";
+import { createYoStudioStorageConfig } from "./storage-config.ts";
 
 const model: Model = {
   id: "yo-studio-scripted",
@@ -73,16 +68,9 @@ export function createStudioDurableChatApplication(options: {
     execution: ProgramExecutionValue,
   ) => Operation<{ readonly connector: WorkspaceConnector; readonly fence: WorkspaceFence }>;
   readonly modelProvider?: StudioModelProviderRuntime;
-}) {
+  readonly storage?: ChatStorageConfig;
+}): ChatApp {
   const definitions = Object.values(codingCapabilities);
-  const journalStore = createProgramDriverJournalStore({
-    keyring: createCapabilityKeyring("yo-studio-durable-chat", [
-      { keyId: "active", secret: "yo-studio-durable-chat-development-key" },
-    ]),
-    schemaRegistry: programDriverSchemaRegistry(
-      definitions.flatMap((definition) => [...definition.artifacts.catalog]),
-    ),
-  });
   const resolveWorkspace =
     options.resolveWorkspace ??
     function* () {
@@ -108,52 +96,41 @@ export function createStudioDurableChatApplication(options: {
     }
   };
   const modelProvider = options.modelProvider ?? createPiAiStudioModelProvider();
-  const endpoints = createChatEndpoints({
-    programDriverJournalStore: journalStore,
-    projectionTokens: createProjectionTokenKeyring(
-      "yo-studio-windowed-conversation-projection-key",
-    ),
-    *authorizeHistoryRead() {
-      return "authorized" as const;
-    },
+
+  return createChatApp({
+    name: "yo-studio",
+    secret: "yo-studio-durable-chat-development-key",
+    storage: options.storage ?? createYoStudioStorageConfig(),
+    programs: definitions,
     maxToolIterations: 8,
     setup: function* () {
       yield* installPiAiModelProvider(modelProvider);
     },
+    appSetup: function* () {
+      yield* setupDurableStreams({
+        bufferStore: createInMemoryBufferStore<string>(),
+        registryStore: createInMemoryRegistryStore(),
+      });
+      yield* installToolInventory(
+        createToolInventory(definitions.map((definition) => createToolInventoryEntry(definition))),
+      );
+      yield* ProgramDriverNativeToolsContext.set({
+        bindings: new Map(
+          definitions.map((definition) => [
+            definition.name,
+            {
+              publicName: definition.name,
+              tool: definition,
+              route: { driverKind: "program" as const },
+            },
+          ]),
+        ),
+        drivers: [],
+        effects: [],
+        setup: installWorkspace,
+      });
+    },
   });
-
-  return Object.assign(
-    createChatApplication({
-      handler: endpoints.postChat,
-      setup: function* () {
-        yield* setupDurableStreams({
-          bufferStore: createInMemoryBufferStore<string>(),
-          registryStore: createInMemoryRegistryStore(),
-        });
-        yield* installToolInventory(
-          createToolInventory(
-            definitions.map((definition) => createToolInventoryEntry(definition)),
-          ),
-        );
-        yield* ProgramDriverNativeToolsContext.set({
-          bindings: new Map(
-            definitions.map((definition) => [
-              definition.name,
-              {
-                publicName: definition.name,
-                tool: definition,
-                route: { driverKind: "program" as const },
-              },
-            ]),
-          ),
-          drivers: [],
-          effects: [],
-          setup: installWorkspace,
-        });
-      },
-    }),
-    { endpoints },
-  );
 }
 
 export function createScriptedStudioModelProvider(

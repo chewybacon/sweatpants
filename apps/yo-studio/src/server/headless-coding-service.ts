@@ -14,7 +14,7 @@ import {
   type NormalizedProgramTrace,
   type ProgramWorkflowHost,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
-import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import { createCapabilityKeyring, type ExecutionStore } from "@sweatpants/journal-authority";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { createDurableToolRegistry } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
@@ -60,6 +60,7 @@ export function createHeadlessCodingService(options: {
   readonly operations?: WorkspaceOperations;
   readonly fence: WorkspaceFence;
   readonly modelSamplingProvider?: CodingModelSampleProvider;
+  readonly executionStore: ExecutionStore;
 }): HeadlessCodingService {
   const definitions = [codingHarness, ...Object.values(codingCapabilities)];
   const programs = createDurableToolRegistry(definitions);
@@ -95,6 +96,7 @@ export function createHeadlessCodingService(options: {
         { keyId: "active", secret: "yo-studio-headless-development-secret" },
       ]),
       schemaRegistry: programDriverSchemaRegistry(schemas),
+      executionStore: options.executionStore,
     }),
     programs,
     effects: createDurableEffectRegistry([

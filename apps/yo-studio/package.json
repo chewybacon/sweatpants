@@ -25,6 +25,7 @@
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/model-sampling": "workspace:*",
         "@sweatpants/react-chat": "workspace:*",
+        "@sweatpants/storage-sqlite": "workspace:*",
         "@sweatpants/stream-bridge": "workspace:*",
         "@sweatpants/tool-runtime": "workspace:*",
         "@sweatpants/vite-plugin": "workspace:*",
