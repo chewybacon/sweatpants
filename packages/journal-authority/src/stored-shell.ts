@@ -29,6 +29,7 @@ import type {
   AuthorityCommand,
   AuthorityJournalContract,
   AuthorityQuery,
+  AuthorityState,
   AuthoritySnapshotContract,
   CommandResult,
   JournalAuthorityContract,
@@ -284,8 +285,9 @@ export function createStoredShellDrivers(
           : { decisionDiagnostics: options.decisionDiagnostics }),
         liveEffectTargets: liveEffectTargets(loaded.snapshot),
       };
+      const loadedState = authorityStateFromSnapshot(loaded.snapshot);
       const transition = decideAuthorityTransition({
-        state: authorityStateFromSnapshot(loaded.snapshot),
+        state: loadedState,
         context,
         command,
       }) as KernelTransition<C>;
@@ -315,16 +317,15 @@ export function createStoredShellDrivers(
         groupJournalRecords(allRecords),
       );
       const compacted = compactAuthoritySnapshot(exported);
-      if (canonicalSnapshot(compacted).sha === canonicalSnapshot(loaded.snapshot).sha) {
+      if (
+        transition.entries.length === 0 &&
+        canonicalSnapshot(compacted).sha ===
+          canonicalSnapshot(compactAuthoritySnapshot(loaded.snapshot)).sha
+      ) {
         return { status: "return", result: transition.result };
       }
       const appended = [...transition.entries];
-      const retainedEventIds = new Set(
-        compacted.records.flatMap(([, records]) => records.map((record) => record.eventId)),
-      );
-      const evicted = exported.records.flatMap(([, records]) =>
-        records.filter((record) => !retainedEventIds.has(record.eventId)),
-      );
+      const evicted = newlyEvictedRecords(loadedState, history, exported, compacted);
       const journal = makeSegments(
         "authority",
         loaded.authorityControl?.journalHead ?? null,
@@ -571,6 +572,41 @@ function commandSessionId(
     return "";
   }
   return "";
+}
+
+/**
+ * Records evicted by this commit that no earlier commit archived. The stored
+ * topology names exactly the tasks retained by the previous commit, so any
+ * history record outside it was archived by the commit that evicted it.
+ * Archiving only this delta keeps the replay chain linear in unique events
+ * instead of re-archiving the complete evicted history on every command.
+ */
+function newlyEvictedRecords(
+  previousState: AuthorityState,
+  history: readonly DurableSemanticRecord[],
+  exported: DurableAuthoritySnapshot,
+  compacted: DurableAuthoritySnapshot,
+): DurableSemanticRecord[] {
+  const retainedEventIds = new Set(
+    compacted.records.flatMap(([, records]) => records.map((record) => record.eventId)),
+  );
+  const previouslyRetained = new Map(
+    [...previousState.sessions].map(([sessionId, session]) => [
+      sessionId,
+      new Set(session.execution.tasks.keys()),
+    ]),
+  );
+  const previouslyArchivedEventIds = new Set(
+    history
+      .filter((record) => !previouslyRetained.get(record.sessionId)?.has(record.payload.taskId))
+      .map((record) => record.eventId),
+  );
+  return exported.records.flatMap(([, records]) =>
+    records.filter(
+      (record) =>
+        !retainedEventIds.has(record.eventId) && !previouslyArchivedEventIds.has(record.eventId),
+    ),
+  );
 }
 
 /** Retains active trees or only the latest terminal tree for each session. */
