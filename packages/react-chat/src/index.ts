@@ -1,5 +1,5 @@
 /** @sweatpants/react-chat — the thin React facade over @sweatpants/chat-client. */
-export * from "./useChat.ts";
+export * from "./use-chat.ts";
 export * from "./plugin.ts";
 export {
   createChatClient,

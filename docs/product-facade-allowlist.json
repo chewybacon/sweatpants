@@ -33,7 +33,7 @@
   ],
   "knownExceptions": [],
   "goldenPathSuites": [
-    "packages/platform-acceptance/src/product/golden-path.acceptance.test.ts"
+    "packages/platform-acceptance/src/product/__tests__/golden-path.acceptance.test.ts"
   ],
   "notes": {
     "advancedWiring": [

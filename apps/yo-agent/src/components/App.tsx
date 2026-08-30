@@ -4,7 +4,7 @@ import { StatusBar } from "./StatusBar.tsx";
 import { MessageList } from "./MessageList.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { InputBar } from "./InputBar.tsx";
-import { useAgentChat } from "../hooks/useAgentChat.ts";
+import { useAgentChat } from "../hooks/use-agent-chat.ts";
 
 export interface AppProps {
   readonly client: TerminalChatClient;
