@@ -21,7 +21,7 @@ import {
   foldAGUIEvents,
   materializeChatMessages,
   type ChatProjectionState,
-} from "../chat-client-projection.ts";
+} from "../client/chat-client-projection.ts";
 
 const MESSAGE_ID = "m1";
 

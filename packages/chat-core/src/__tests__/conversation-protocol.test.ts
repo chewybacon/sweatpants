@@ -3,7 +3,7 @@ import {
   advanceConversationAuthority,
   compareAuthorityRevisions,
   decodeConversationAuthority,
-} from "../conversation-protocol.ts";
+} from "../client/conversation-protocol.ts";
 
 describe("conversation authority protocol", () => {
   it("parses one complete active authority value", () => {

@@ -6,9 +6,15 @@ import {
   type ProjectionProgram,
 } from "@sweatpants/foundation/projection";
 import { describe, expect, it } from "vitest";
-import { decodePublicProjectionRoot, type PublicProjectionRoot } from "../conversation-window.ts";
-import { materializeChatMessages, projectChatMessagesToAGUI } from "../chat-client-projection.ts";
-import { projectionFromPublicRoots, PublicRootConflictError } from "../window-projection.ts";
+import {
+  decodePublicProjectionRoot,
+  type PublicProjectionRoot,
+} from "../client/conversation-window.ts";
+import {
+  materializeChatMessages,
+  projectChatMessagesToAGUI,
+} from "../client/chat-client-projection.ts";
+import { projectionFromPublicRoots, PublicRootConflictError } from "../client/window-projection.ts";
 
 type ProjectionNote = { readonly kind: string; readonly count: number };
 

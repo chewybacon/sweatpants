@@ -1,7 +1,7 @@
 import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
-import { decodePublicProjectionRoot } from "../conversation-window.ts";
-import { projectionFromPublicRoots } from "../window-projection.ts";
+import { decodePublicProjectionRoot } from "../client/conversation-window.ts";
+import { projectionFromPublicRoots } from "../client/window-projection.ts";
 
 describe("window projection", () => {
   it("replays placement anchors ancestor-first when child sequence is lower", () => {

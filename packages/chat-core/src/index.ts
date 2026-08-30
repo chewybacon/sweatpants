@@ -147,7 +147,7 @@ export type {
   CustomEvent,
   FramePipeline,
   FramePipelineFactory,
-} from "./chat-client-types.ts";
+} from "./client/chat-client-types.ts";
 export {
   ChatProtocolError,
   activityPatchParser,
@@ -159,13 +159,13 @@ export {
   validateActivityPatch,
   decodeActivitySnapshotEvent,
   decodeActivityDeltaEvent,
-} from "./chat-client-codec.ts";
-export type { ChatProtocolErrorCode } from "./chat-client-codec.ts";
-export * from "./conversation-protocol.ts";
-export * from "./conversation-window.ts";
-export * from "./conversation-stream-validator.ts";
-export * from "./conversation-stream-codec.ts";
-export * from "./window-projection.ts";
+} from "./client/chat-client-codec.ts";
+export type { ChatProtocolErrorCode } from "./client/chat-client-codec.ts";
+export * from "./client/conversation-protocol.ts";
+export * from "./client/conversation-window.ts";
+export * from "./client/conversation-stream-validator.ts";
+export * from "./client/conversation-stream-codec.ts";
+export * from "./client/window-projection.ts";
 export {
   ChatProjectionError,
   createChatProjection,
@@ -179,13 +179,13 @@ export {
   updateTextPartFrame,
   findElicitNode,
   findTextParts,
-} from "./chat-client-projection.ts";
+} from "./client/chat-client-projection.ts";
 export type {
   ChatProjectionErrorCode,
   ChatProjectionState,
   ChatProjectionAction,
   ChatProjectionTransition,
-} from "./chat-client-projection.ts";
+} from "./client/chat-client-projection.ts";
 
 // Shared primitives
 export type {
@@ -199,7 +199,7 @@ export type {
 } from "./core-types.ts";
 
 // Frame protocol
-export * from "./frame.ts";
+export * from "./client/frame.ts";
 
 // Persona resolver
 export type { PersonaResolver, ResolvedPersona } from "./setup-types.ts";

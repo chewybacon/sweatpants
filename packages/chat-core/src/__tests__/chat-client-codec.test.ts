@@ -7,7 +7,7 @@ import {
   decodeAGUIEvent,
   encodeAGUIEvent,
   publicActivityParser,
-} from "../chat-client-codec.ts";
+} from "../client/chat-client-codec.ts";
 
 describe("official AG-UI chat codec", () => {
   it("accepts official message, reasoning, raw, and custom events", () => {

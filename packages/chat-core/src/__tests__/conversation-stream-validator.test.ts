@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_AUTHORITY_FRAME_TYPE,
   type ConversationAuthorityFrame,
-} from "../conversation-protocol.ts";
-import { validateConversationSegment } from "../conversation-stream-validator.ts";
+} from "../client/conversation-protocol.ts";
+import { validateConversationSegment } from "../client/conversation-stream-validator.ts";
 import {
   CONVERSATION_WINDOW_FRAME_TYPE,
   type ConversationWindowFrame,
-} from "../conversation-window.ts";
+} from "../client/conversation-window.ts";
 
 const running: ConversationAuthorityFrame = {
   type: CONVERSATION_AUTHORITY_FRAME_TYPE,

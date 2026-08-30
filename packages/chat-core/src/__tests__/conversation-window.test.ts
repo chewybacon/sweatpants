@@ -6,7 +6,7 @@ import {
   decodeConversationWindow,
   decodePublicHistoryCursorPayload,
   decodePublicProjectionRoot,
-} from "../conversation-window.ts";
+} from "../client/conversation-window.ts";
 
 const messageRoot = {
   rootId: "root-1",

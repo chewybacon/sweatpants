@@ -73,7 +73,7 @@ export type {
   JsonPatchOperation,
   FramePipeline,
   FramePipelineFactory,
-} from "./chat-client-types.ts";
+} from "./client/chat-client-types.ts";
 
 export {
   ChatProtocolError,
@@ -83,8 +83,8 @@ export {
   validateActivityPatch,
   decodeActivitySnapshotEvent,
   decodeActivityDeltaEvent,
-} from "./chat-client-codec.ts";
-export type { ChatProtocolErrorCode } from "./chat-client-codec.ts";
+} from "./client/chat-client-codec.ts";
+export type { ChatProtocolErrorCode } from "./client/chat-client-codec.ts";
 
 export {
   ChatProjectionError,
@@ -97,13 +97,13 @@ export {
   updateTextPartFrame,
   findElicitNode,
   findTextParts,
-} from "./chat-client-projection.ts";
+} from "./client/chat-client-projection.ts";
 export type {
   ChatProjectionErrorCode,
   ChatProjectionState,
   ChatProjectionAction,
   ChatProjectionTransition,
-} from "./chat-client-projection.ts";
+} from "./client/chat-client-projection.ts";
 
 export { ChatConversionError } from "./ag-ui/conversion.ts";
 export type { ChatConversionErrorCode, ChatConversionDirection } from "./ag-ui/conversion.ts";
