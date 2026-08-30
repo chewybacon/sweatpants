@@ -15,7 +15,7 @@ import {
   type SandboxAffinity,
 } from "@sweatpants/durable-execution";
 
-import type { JournalAuthorityContract } from "../authority-contract.ts";
+import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 
 /** Deployment policy owns selection and placement; replay owns neither. */
 export interface AdvancementPolicy {

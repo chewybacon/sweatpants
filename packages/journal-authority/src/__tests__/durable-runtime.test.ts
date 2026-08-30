@@ -26,7 +26,7 @@ import {
   driveInstalledTestProgramTree,
   withProgramDriverTestScope,
 } from "../testing/program-driver-host.ts";
-import { createAuthorityScenarioDriver } from "../testing.ts";
+import { createAuthorityScenarioDriver } from "../testing/testing.ts";
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,

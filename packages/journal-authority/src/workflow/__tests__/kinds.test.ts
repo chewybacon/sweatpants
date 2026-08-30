@@ -2,13 +2,13 @@ import { run, scoped, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import type { Json } from "@sweatpants/foundation";
 import { CrankError } from "@sweatpants/durable-execution";
-import { createCapabilityKeyring } from "../../capabilities.ts";
-import { AuthorityJournalPort, JournalAuthorityPort } from "../../authority-ports.ts";
-import { createInMemoryShellDrivers } from "../../in-memory-shell.ts";
-import { createDurableSchemaRegistry } from "../../schema-registry.ts";
-import { createSchemaFixture, stringGuard } from "../../schema-fixtures.ts";
+import { createCapabilityKeyring } from "../../contract/capabilities.ts";
+import { AuthorityJournalPort, JournalAuthorityPort } from "../../contract/authority-ports.ts";
+import { createInMemoryShellDrivers } from "../../shell/in-memory-shell.ts";
+import { createDurableSchemaRegistry } from "../../contract/schema-registry.ts";
+import { createSchemaFixture, stringGuard } from "../../testing/schema-fixtures.ts";
 import type { DurableProgramManifest } from "@sweatpants/durable-execution";
-import type { ResolveOperationResult } from "../../authority-types.ts";
+import type { ResolveOperationResult } from "../../contract/authority-types.ts";
 import {
   elicit,
   effect,

@@ -9,7 +9,7 @@ import {
   type ReplayItem,
 } from "@sweatpants/durable-execution";
 
-import type { JournalAuthorityContract } from "../authority-contract.ts";
+import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 import {
   advanceCaughtUpLeaf,
   type AdvancementDisposition,

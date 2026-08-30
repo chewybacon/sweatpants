@@ -2,10 +2,10 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
 import { createCapabilityKeyring } from "../../index.ts";
-import { createAuthorityScenarioDriver } from "../../testing.ts";
+import { createAuthorityScenarioDriver } from "../testing.ts";
 import { type DurableProgramManifest } from "@sweatpants/durable-execution";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
-import type { DurableSemanticRecord } from "../../semantic-record.ts";
+import type { DurableSemanticRecord } from "../../contract/semantic-record.ts";
 import {
   normalizeSemanticJournal,
   normalizedSemanticJournalDigest,

@@ -6,14 +6,14 @@ import type {
   Mandate,
 } from "@sweatpants/durable-execution";
 
-import type { JournalAuthorityContract } from "../authority-contract.ts";
+import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 import type {
   CompleteTaskResult,
   DurableCancellationState,
   EmissionReceipt,
   LiveReservationResult,
   ResolveOperationResult,
-} from "../authority-types.ts";
+} from "../contract/authority-types.ts";
 
 /**
  * Relative live surface carried by one Mandate (REQ-018, REQ-067/068).

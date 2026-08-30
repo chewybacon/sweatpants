@@ -11,8 +11,8 @@ export {
   type PrivateSegmentPointer,
   type StoredExecutionObject,
   type StoredPrivateSegment,
-} from "./store.ts";
-export { createMemoryExecutionStore } from "./memory.ts";
+} from "./store/store.ts";
+export { createMemoryExecutionStore } from "./store/memory.ts";
 export {
   decodeAuthorityControl,
   decodeExecutionControl,
@@ -25,9 +25,13 @@ export {
   encodePrivateSegmentEnvelope,
   encodePrivateSegmentEnvelopeFromCanonical,
   executionKeys,
-} from "./store-persistence.ts";
-export { type ExecutionPlan, planExecutionCommit, privateSegmentEnsure } from "./store-planners.ts";
-export { createKernelExecutionStore } from "./store-repository.ts";
+} from "./store/store-persistence.ts";
+export {
+  type ExecutionPlan,
+  planExecutionCommit,
+  privateSegmentEnsure,
+} from "./store/store-planners.ts";
+export { createKernelExecutionStore } from "./store/store-repository.ts";
 export {
   ExecutionStoreApi,
   ExecutionStoreContext,
@@ -43,18 +47,18 @@ export {
   type FactStore,
   type PutFactsRequest,
   type ReadFactsRequest,
-} from "./fact-store.ts";
+} from "./store/fact-store.ts";
 export {
   installStorageMetrics,
   type StorageMetrics,
   type StorageMetricsRecorder,
-} from "./metrics-middleware.ts";
+} from "./store/metrics-middleware.ts";
 export {
   type CompleteAuthorityTurnRequest,
   type OpenAuthorityTurnRequest,
   TurnAuthorityBoundaryError,
   TurnJournalAuthority,
-} from "./turn-authority.ts";
+} from "./shell/turn-authority.ts";
 export {
   capabilityClaimsParser,
   type CapabilityKey,
@@ -70,7 +74,7 @@ export {
   verifyPrivateAuthorityToken,
   verifyProgramCapability,
   verifyResolutionCapability,
-} from "./capabilities.ts";
+} from "./contract/capabilities.ts";
 export {
   assertForkPolicyPairing,
   beginForkGroupCancellation,
@@ -92,7 +96,7 @@ export {
   peerLossOutcome,
   reduceForkMemberTerminal,
   resolveForkDeadline,
-} from "./fork-group.ts";
+} from "./forest/fork-group.ts";
 export type {
   AcceptAssistantPartialRequest,
   AcceptAssistantPartialResult,
@@ -144,26 +148,26 @@ export type {
   TaskCloseReceipt,
   ValidateElicitResponseRequest,
   ValidateElicitResponseResult,
-} from "./authority-types.ts";
+} from "./contract/authority-types.ts";
 export {
   DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES,
   durableAuthoritySnapshotParser,
   parseDurableAuthoritySnapshot,
-} from "./snapshot-codec.ts";
+} from "./store/snapshot-codec.ts";
 export {
   emissionPolicyParser,
   modelPullOwnerFence,
   programElicitResultParser,
   restoreTicketClaimsParser,
-} from "./authority-support.ts";
-export type { DurableAttemptState, DurableSemanticRecord } from "./semantic-record.ts";
+} from "./state/authority-support.ts";
+export type { DurableAttemptState, DurableSemanticRecord } from "./contract/semantic-record.ts";
 export type {
   DecisionStageDiagnostic,
   DecisionStageName,
   DurableAuthoritySnapshot,
   InMemoryJournalAuthorityOptions,
   SemanticEmissionPolicy,
-} from "./authority-snapshot.ts";
+} from "./state/authority-snapshot.ts";
 export {
   type AbandonAttemptCommand,
   type ActionState,
@@ -200,7 +204,7 @@ export {
   type TaskLifecycle,
   type TaskOrigin,
   type TaskState,
-} from "./authority-contract.ts";
+} from "./contract/authority-contract.ts";
 export {
   AuthorityJournalPort,
   AuthoritySnapshotPort,
@@ -208,13 +212,13 @@ export {
   JournalAuthorityUnavailable,
   installInMemoryJournalAuthority,
   installStoredJournalAuthority,
-} from "./authority-ports.ts";
+} from "./contract/authority-ports.ts";
 export type {
   AuthorityJournalFacade,
   AuthoritySnapshotFacade,
   JournalAuthorityFacade,
-} from "./authority-ports.ts";
-export { authorityStateFromSnapshot, snapshotFromAuthorityState } from "./authority-state.ts";
+} from "./contract/authority-ports.ts";
+export { authorityStateFromSnapshot, snapshotFromAuthorityState } from "./state/authority-state.ts";
 export {
   type ExecutionAction,
   type ExecutionForest,
@@ -223,20 +227,20 @@ export {
   type ProjectedSettlement,
   type ProjectedTaskLifecycle,
   projectExecutionForest,
-} from "./execution-forest.ts";
-export type { StoredJournalAuthorityOptions } from "./stored-shell.ts";
+} from "./forest/execution-forest.ts";
+export type { StoredJournalAuthorityOptions } from "./shell/stored-shell.ts";
 export {
   type ExecutionCommitDecision,
   inlineControl,
   runExecutionCommitLoop,
-} from "./commit-loop.ts";
+} from "./store/commit-loop.ts";
 export {
   DEFAULT_PRIVATE_SEGMENT_TARGET,
   encodedJsonBytes,
   LOW_PRIVATE_SEGMENT_TARGET,
   type PrivateSegmentTarget,
   segmentPrivateEntries,
-} from "./segmentation.ts";
+} from "./store/segmentation.ts";
 export {
   createDurableSchemaCatalog,
   createDurableSchemaRegistry,
@@ -246,7 +250,7 @@ export {
   parseRegisteredSchema,
   reconcileSchemaCoverage,
   type RegistrySchemaValidation,
-} from "./schema-registry.ts";
+} from "./contract/schema-registry.ts";
 export {
   all,
   assertEphemeralDescriptor,
@@ -322,7 +326,7 @@ export {
   type ProjectionPolicy,
   type PublicOpenSlot,
   type PublicTaskProjection,
-} from "./public-projection.ts";
+} from "./state/public-projection.ts";
 export type { AdvancementPolicy } from "./workflow/advancement-policy.ts";
 export type { ExecutionComposition } from "./workflow/execution-composition.ts";
 export { settleParkedPull } from "./workflow/pull-settlement.ts";
@@ -332,7 +336,7 @@ export {
   type ErrorCodeClassification,
   type ErrorRecovery,
   PUBLIC_ERROR_CODES,
-} from "./error-taxonomy.ts";
+} from "./contract/error-taxonomy.ts";
 export {
   allDescriptorSchema,
   createPullResolverRegistry,

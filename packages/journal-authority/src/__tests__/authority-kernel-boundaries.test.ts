@@ -1,17 +1,17 @@
 import { run, scoped } from "effection";
 import { describe, expect, it } from "vitest";
 
-import { createCapabilityKeyring } from "../capabilities.ts";
+import { createCapabilityKeyring } from "../contract/capabilities.ts";
 import {
   JournalAuthorityPort,
   AuthorityJournalPort,
   installInMemoryJournalAuthority,
   installStoredJournalAuthority,
-} from "../authority-ports.ts";
+} from "../contract/authority-ports.ts";
 import { installExecutionStore } from "../api.ts";
-import { createMemoryExecutionStore } from "../memory.ts";
-import { projectExecutionForest } from "../execution-forest.ts";
-import type { DurableSemanticRecord } from "../semantic-record.ts";
+import { createMemoryExecutionStore } from "../store/memory.ts";
+import { projectExecutionForest } from "../forest/execution-forest.ts";
+import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   type DurableProgramManifest,

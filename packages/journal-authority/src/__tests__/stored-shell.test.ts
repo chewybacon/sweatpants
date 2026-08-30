@@ -1,7 +1,7 @@
 import { run } from "effection";
 import { describe, it } from "vitest";
 
-import { createMemoryExecutionStore } from "../memory.ts";
+import { createMemoryExecutionStore } from "../store/memory.ts";
 import { createStoredScenarioDriver } from "../testing/stored-scenario-driver.ts";
 import {
   createJournalAuthorityConformanceCases,

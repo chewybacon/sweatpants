@@ -6,7 +6,7 @@ import {
   createAuthorityScenarioDriver,
   createPeerSimulator,
   PeerTransportError,
-} from "../testing.ts";
+} from "../testing/testing.ts";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   type DurableChildDescriptor,

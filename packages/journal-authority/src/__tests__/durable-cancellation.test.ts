@@ -16,7 +16,7 @@ import {
   driveInstalledTestProgramTree,
   withProgramDriverTestScope,
 } from "../testing/program-driver-host.ts";
-import { createAuthorityScenarioDriver } from "../testing.ts";
+import { createAuthorityScenarioDriver } from "../testing/testing.ts";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,

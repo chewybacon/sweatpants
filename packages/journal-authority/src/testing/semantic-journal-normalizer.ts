@@ -1,5 +1,5 @@
 import { stableTupleHash } from "@sweatpants/foundation";
-import type { DurableSemanticRecord } from "../semantic-record.ts";
+import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 import type { Json } from "@sweatpants/foundation";
 
 /**

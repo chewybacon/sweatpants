@@ -3,8 +3,11 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { all, type Operation } from "effection";
 
 import { canonicalJson } from "@sweatpants/foundation";
-import { createCapabilityKeyring, type CapabilityKeyring } from "../capabilities.ts";
-import { createDurableSchemaRegistry, type DurableSchemaRegistry } from "../schema-registry.ts";
+import { createCapabilityKeyring, type CapabilityKeyring } from "../contract/capabilities.ts";
+import {
+  createDurableSchemaRegistry,
+  type DurableSchemaRegistry,
+} from "../contract/schema-registry.ts";
 
 import {
   anyGuard,
@@ -12,7 +15,7 @@ import {
   createSchemaFixture,
   nullGuard,
   stringGuard,
-} from "../schema-fixtures.ts";
+} from "./schema-fixtures.ts";
 import type {
   BindRestoreFrontierRequest,
   BindRestoreFrontierResult,
@@ -27,7 +30,7 @@ import type {
   ReleaseActivationRequest,
   ReleaseActivationResult,
   PrepareProgramRestoreRequest,
-} from "../authority-types.ts";
+} from "../contract/authority-types.ts";
 import type {
   CancellationAcknowledgement,
   ReserveOperationRequest,
@@ -37,15 +40,15 @@ import type {
   DurableOperationState,
   DurableTaskRecoveryState,
   OpenDurableTaskRequest,
-} from "../authority-types.ts";
+} from "../contract/authority-types.ts";
 import type { DurableProgramManifest } from "@sweatpants/durable-execution";
 import type {
   AuthorityCommand,
   AuthorityJournalContract,
   CommandResult,
   JournalAuthorityContract,
-} from "../authority-contract.ts";
-import type { DurableSemanticRecord } from "../semantic-record.ts";
+} from "../contract/authority-contract.ts";
+import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 
 /**
  * Operation-native authority surface exercised identically by every durable
@@ -57,10 +60,12 @@ export interface JournalAuthorityConformancePort {
   taskExecutionState(
     sessionId: string,
     taskId: string,
-  ): Operation<import("../authority-types.ts").DurableTaskExecutionState>;
+  ): Operation<import("../contract/authority-types.ts").DurableTaskExecutionState>;
   taskInput(sessionId: string, taskId: string): Operation<import("@sweatpants/foundation").Json>;
   nonterminalSchemaDigests(): Operation<readonly string[]>;
-  recoverableSessions(): Operation<readonly import("../authority-types.ts").RecoverableSession[]>;
+  recoverableSessions(): Operation<
+    readonly import("../contract/authority-types.ts").RecoverableSession[]
+  >;
   bindProgramAttachment(
     sessionId: string,
     taskId: string,
@@ -70,27 +75,27 @@ export interface JournalAuthorityConformancePort {
   cancellationState(
     sessionId: string,
     taskId: string,
-  ): Operation<import("../authority-types.ts").DurableCancellationState>;
+  ): Operation<import("../contract/authority-types.ts").DurableCancellationState>;
   beginCancellationUnwind(
     sessionId: string,
     taskId: string,
     restoredFrontier?: {
-      readonly proof: import("../authority-types.ts").RestoredFrontierProof;
+      readonly proof: import("../contract/authority-types.ts").RestoredFrontierProof;
       readonly step: import("@sweatpants/durable-execution").ProgramStep;
     },
-  ): Operation<import("../authority-types.ts").DurableCancellationState>;
+  ): Operation<import("../contract/authority-types.ts").DurableCancellationState>;
   prepareProgramRestore(
     request: PrepareProgramRestoreRequest,
-  ): Operation<import("../authority-types.ts").PreparedProgramRestore>;
+  ): Operation<import("../contract/authority-types.ts").PreparedProgramRestore>;
   emit(
-    request: import("../authority-types.ts").AppendEmissionRequest,
-  ): Operation<import("../authority-types.ts").EmissionReceipt>;
+    request: import("../contract/authority-types.ts").AppendEmissionRequest,
+  ): Operation<import("../contract/authority-types.ts").EmissionReceipt>;
   complete(
-    request: import("../authority-types.ts").CompleteTaskRequest,
-  ): Operation<import("../authority-types.ts").CompleteTaskResult>;
+    request: import("../contract/authority-types.ts").CompleteTaskRequest,
+  ): Operation<import("../contract/authority-types.ts").CompleteTaskResult>;
   ensureChildTask(
-    request: import("../authority-types.ts").EnsureChildTaskRequest,
-  ): Operation<import("../authority-types.ts").EnsureChildTaskResult>;
+    request: import("../contract/authority-types.ts").EnsureChildTaskRequest,
+  ): Operation<import("../contract/authority-types.ts").EnsureChildTaskResult>;
   /** Selects active root work or its terminal value without exposing the journal. */
   taskRecoveryState(
     sessionId: string,

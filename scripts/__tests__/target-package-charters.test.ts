@@ -356,8 +356,8 @@ describe("target package charters", () => {
   it("keeps authored service and repository ports Effection-native", () => {
     const contractFiles = [
       "packages/durable-execution/src/program-driver-contract.ts",
-      "packages/journal-authority/src/authority-types.ts",
-      "packages/journal-authority/src/store.ts",
+      "packages/journal-authority/src/contract/authority-types.ts",
+      "packages/journal-authority/src/store/store.ts",
       "packages/history-store/src/contract.ts",
       "packages/tool-session/src/contract.ts",
       "packages/tool-session/src/mcp/durable-invocation.ts",

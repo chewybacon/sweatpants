@@ -1,7 +1,7 @@
 import { DurableCollections, durableKey } from "@sweatpants/durable-storage-kernel";
 import { describe, expect, it } from "vitest";
-import { encodeExecutionControl } from "../store-persistence.ts";
-import { planExecutionCommit } from "../store-planners.ts";
+import { encodeExecutionControl } from "../store/store-persistence.ts";
+import { planExecutionCommit } from "../store/store-planners.ts";
 
 const control = {
   executionId: "execution",

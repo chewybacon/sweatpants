@@ -13,7 +13,7 @@ import {
   resolveForkDeadline,
   type ForkGroupState,
   type ForkPolicy,
-} from "../fork-group.ts";
+} from "../forest/fork-group.ts";
 
 const ok = (value: string): OperationOutcome => ({ status: "ok", value });
 const err = (code: string): OperationOutcome => ({

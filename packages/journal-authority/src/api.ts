@@ -10,7 +10,7 @@ import type {
   PrivateSegmentPointer,
   StoredExecutionObject,
   StoredPrivateSegment,
-} from "./store.ts";
+} from "./store/store.ts";
 
 export class ExecutionStoreUnavailable extends Error {
   readonly code = "execution_store_unavailable";

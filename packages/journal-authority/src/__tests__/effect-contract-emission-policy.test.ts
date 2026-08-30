@@ -18,8 +18,11 @@ import {
   driveInstalledTestProgramTree,
   withProgramDriverTestScope,
 } from "../testing/program-driver-host.ts";
-import { createAuthorityScenarioDriver, type InMemoryJournalAuthorityOptions } from "../testing.ts";
-import type { DurableAuthoritySnapshot } from "../authority-snapshot.ts";
+import {
+  createAuthorityScenarioDriver,
+  type InMemoryJournalAuthorityOptions,
+} from "../testing/testing.ts";
+import type { DurableAuthoritySnapshot } from "../state/authority-snapshot.ts";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,

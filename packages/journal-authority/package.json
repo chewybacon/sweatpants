@@ -22,69 +22,69 @@
         },
         "./store": {
             "development": {
-                "import": "./src/store.ts",
-                "types": "./src/store.ts"
+                "import": "./src/store/store.ts",
+                "types": "./src/store/store.ts"
             },
             "import": {
                 "types": "./dist/store.d.ts",
                 "default": "./dist/store.js"
             },
-            "default": "./src/store.ts"
+            "default": "./src/store/store.ts"
         },
         "./memory": {
             "development": {
-                "import": "./src/memory.ts",
-                "types": "./src/memory.ts"
+                "import": "./src/store/memory.ts",
+                "types": "./src/store/memory.ts"
             },
             "import": {
                 "types": "./dist/memory.d.ts",
                 "default": "./dist/memory.js"
             },
-            "default": "./src/memory.ts"
+            "default": "./src/store/memory.ts"
         },
         "./store-persistence": {
             "development": {
-                "import": "./src/store-persistence.ts",
-                "types": "./src/store-persistence.ts"
+                "import": "./src/store/store-persistence.ts",
+                "types": "./src/store/store-persistence.ts"
             },
             "import": {
                 "types": "./dist/store-persistence.d.ts",
                 "default": "./dist/store-persistence.js"
             },
-            "default": "./src/store-persistence.ts"
+            "default": "./src/store/store-persistence.ts"
         },
         "./store-planners": {
             "development": {
-                "import": "./src/store-planners.ts",
-                "types": "./src/store-planners.ts"
+                "import": "./src/store/store-planners.ts",
+                "types": "./src/store/store-planners.ts"
             },
             "import": {
                 "types": "./dist/store-planners.d.ts",
                 "default": "./dist/store-planners.js"
             },
-            "default": "./src/store-planners.ts"
+            "default": "./src/store/store-planners.ts"
         },
         "./store-repository": {
             "development": {
-                "import": "./src/store-repository.ts",
-                "types": "./src/store-repository.ts"
+                "import": "./src/store/store-repository.ts",
+                "types": "./src/store/store-repository.ts"
             },
             "import": {
                 "types": "./dist/store-repository.d.ts",
                 "default": "./dist/store-repository.js"
             },
-            "default": "./src/store-repository.ts"
+            "default": "./src/store/store-repository.ts"
         },
         "./testing": {
             "development": {
-                "import": "./src/testing.ts",
-                "types": "./src/testing.ts"
+                "import": "./src/testing/testing.ts",
+                "types": "./src/testing/testing.ts"
             },
             "import": {
                 "types": "./dist/testing.d.ts",
                 "default": "./dist/testing.js"
             },
-            "default": "./src/testing.ts"
+            "default": "./src/testing/testing.ts"
         },
         "./api": {
             "development": {
@@ -99,25 +99,25 @@
         },
         "./turn-authority": {
             "development": {
-                "import": "./src/turn-authority.ts",
-                "types": "./src/turn-authority.ts"
+                "import": "./src/shell/turn-authority.ts",
+                "types": "./src/shell/turn-authority.ts"
             },
             "import": {
                 "types": "./dist/turn-authority.d.ts",
                 "default": "./dist/turn-authority.js"
             },
-            "default": "./src/turn-authority.ts"
+            "default": "./src/shell/turn-authority.ts"
         },
         "./schema-registry": {
             "development": {
-                "import": "./src/schema-registry.ts",
-                "types": "./src/schema-registry.ts"
+                "import": "./src/contract/schema-registry.ts",
+                "types": "./src/contract/schema-registry.ts"
             },
             "import": {
                 "types": "./dist/schema-registry.d.ts",
                 "default": "./dist/schema-registry.js"
             },
-            "default": "./src/schema-registry.ts"
+            "default": "./src/contract/schema-registry.ts"
         }
     },
     "scripts": {

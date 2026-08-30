@@ -6,13 +6,13 @@ import type {
   CommandResult,
   JournalAuthorityContract,
   QueryResult,
-} from "../authority-contract.ts";
-import { createInMemoryShellDrivers } from "../in-memory-shell.ts";
+} from "../contract/authority-contract.ts";
+import { createInMemoryShellDrivers } from "../shell/in-memory-shell.ts";
 import type {
   DurableAuthoritySnapshot,
   InMemoryJournalAuthorityOptions,
-} from "../authority-snapshot.ts";
-import type { DurableSemanticRecord } from "../semantic-record.ts";
+} from "../state/authority-snapshot.ts";
+import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 import type {
   AcceptAssistantPartialRequest,
   AcceptAssistantPartialResult,
@@ -66,9 +66,9 @@ import type {
   RestoredFrontierProof,
   ValidateElicitResponseRequest,
   ValidateElicitResponseResult,
-} from "../authority-types.ts";
-import { normalizeEmissionPolicy } from "../authority-support.ts";
-import { signCapability } from "../capabilities.ts";
+} from "../contract/authority-types.ts";
+import { normalizeEmissionPolicy } from "../state/authority-support.ts";
+import { signCapability } from "../contract/capabilities.ts";
 export type AuthorityScenarioDriver = ReturnType<typeof createAuthorityScenarioDriver>;
 
 export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityOptions) {
@@ -174,7 +174,7 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
     ): Operation<AcceptAssistantPartialResult>;
     resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
     emit(
-      request: import("../authority-types.ts").AppendEmissionRequest,
+      request: import("../contract/authority-types.ts").AppendEmissionRequest,
     ): Operation<EmissionReceipt>;
     complete(request: CompleteTaskRequest): Operation<CompleteTaskResult>;
     requestCancellation(
@@ -199,7 +199,7 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
     forceOrphan(
       sessionId: string,
       taskId: string,
-      reason: import("../authority-contract.ts").OrphanReason,
+      reason: import("../contract/authority-contract.ts").OrphanReason,
     ): Operation<void>;
     resolutionCapability(sessionId: string, taskId: string, pullId: string): string;
     readJournal(sessionId: string): DurableSemanticRecord[];

@@ -2,7 +2,7 @@ import type { Operation } from "effection";
 import { CrankError, type AttachProgramRequest } from "@sweatpants/durable-execution";
 import { assertJson } from "@sweatpants/foundation";
 
-import type { JournalAuthorityContract } from "../authority-contract.ts";
+import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 import type { PullResolver } from "../pull-kinds/registry.ts";
 
 /**

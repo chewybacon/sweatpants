@@ -1,8 +1,8 @@
 import { call, run } from "effection";
 import { describe, expect, it } from "vitest";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
-import { createMemoryExecutionStore } from "../memory.ts";
-import type { StoredPrivateSegment } from "../store.ts";
+import { createMemoryExecutionStore } from "../store/memory.ts";
+import type { StoredPrivateSegment } from "../store/store.ts";
 
 function control(executionId: string, expectedRevision: string | null, ownerFence = "0") {
   return {

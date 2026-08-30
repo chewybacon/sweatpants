@@ -6,14 +6,14 @@ import {
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 
-import type { TaskOrigin } from "../authority-contract.ts";
+import type { TaskOrigin } from "../contract/authority-contract.ts";
 import {
   projectExecutionForest,
   type ExecutionForest,
   type ExecutionTask,
   type ProjectedAttempt,
-} from "../execution-forest.ts";
-import type { DurableSemanticRecord } from "../semantic-record.ts";
+} from "../forest/execution-forest.ts";
+import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 
 export interface RecordExecutionIndex {
   readonly tasks: ReadonlyMap<string, RecordTaskIndex>;

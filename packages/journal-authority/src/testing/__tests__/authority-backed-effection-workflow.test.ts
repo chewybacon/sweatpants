@@ -11,16 +11,16 @@ import {
 } from "@sweatpants/durable-execution";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 
-import { createCapabilityKeyring } from "../../capabilities.ts";
-import { createDurableSchemaRegistry } from "../../schema-registry.ts";
-import { createSchemaFixture, stringGuard } from "../../schema-fixtures.ts";
-import { createInMemoryShellDrivers } from "../../in-memory-shell.ts";
-import { createStoredShellDrivers } from "../../stored-shell.ts";
-import { createMemoryExecutionStore } from "../../memory.ts";
-import { AuthorityJournalPort, JournalAuthorityPort } from "../../authority-ports.ts";
-import { projectExecutionForest } from "../../execution-forest.ts";
-import type { DurableSemanticRecord } from "../../semantic-record.ts";
-import type { ExecutionStore } from "../../store.ts";
+import { createCapabilityKeyring } from "../../contract/capabilities.ts";
+import { createDurableSchemaRegistry } from "../../contract/schema-registry.ts";
+import { createSchemaFixture, stringGuard } from "../schema-fixtures.ts";
+import { createInMemoryShellDrivers } from "../../shell/in-memory-shell.ts";
+import { createStoredShellDrivers } from "../../shell/stored-shell.ts";
+import { createMemoryExecutionStore } from "../../store/memory.ts";
+import { AuthorityJournalPort, JournalAuthorityPort } from "../../contract/authority-ports.ts";
+import { projectExecutionForest } from "../../forest/execution-forest.ts";
+import type { DurableSemanticRecord } from "../../contract/semantic-record.ts";
+import type { ExecutionStore } from "../../store/store.ts";
 import {
   ProgramEffectRuntimeContext,
   ephemeral,

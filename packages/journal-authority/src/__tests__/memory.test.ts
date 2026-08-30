@@ -1,8 +1,8 @@
 import { call, run } from "effection";
 import { describe, expect, it } from "vitest";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
-import { createMemoryExecutionStore } from "../memory.ts";
-import type { CommitExecutionRequest, StoredPrivateSegment } from "../store.ts";
+import { createMemoryExecutionStore } from "../store/memory.ts";
+import type { CommitExecutionRequest, StoredPrivateSegment } from "../store/store.ts";
 
 function initial(executionId: string, control: Json = { state: "open" }): CommitExecutionRequest {
   return {

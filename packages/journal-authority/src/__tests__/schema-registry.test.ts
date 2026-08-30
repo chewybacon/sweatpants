@@ -5,7 +5,7 @@ import {
   createPortableSchemaDescriptor,
 } from "@sweatpants/foundation/schema";
 import { safeSchemaIssues } from "@sweatpants/foundation/schema-validation";
-import { createDurableSchemaRegistry, parseRegisteredSchema } from "../schema-registry.ts";
+import { createDurableSchemaRegistry, parseRegisteredSchema } from "../contract/schema-registry.ts";
 
 function descriptor(identity: string) {
   return createPortableSchemaDescriptor({
