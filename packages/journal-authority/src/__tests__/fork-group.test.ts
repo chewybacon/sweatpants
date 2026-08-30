@@ -1,674 +1,236 @@
-import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
+import type { OperationOutcome } from "@sweatpants/durable-effects";
+import { CrankError } from "@sweatpants/durable-execution";
 
-import { createCapabilityKeyring } from "../index.ts";
-import { createAuthorityScenarioDriver } from "../testing.ts";
 import {
-  ANY_JSON_SCHEMA_DESCRIPTOR,
-  type DurableProgramManifest,
-} from "@sweatpants/durable-execution";
+  assertForkPolicyPairing,
+  beginForkGroupCancellation,
+  drainForkGroup,
+  forceOrphanForkGroupResolution,
+  forkGroupKey,
+  forkGroupOutcome,
+  reduceForkMemberTerminal,
+  resolveForkDeadline,
+  type ForkGroupState,
+  type ForkPolicy,
+} from "../fork-group.ts";
 
-const parentManifest: DurableProgramManifest = {
-  programId: "fixture.parent",
-  version: "1",
-  digest: "a".repeat(64),
-  inputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
-  outputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
-  elicits: {},
-  effects: {},
-  capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
-};
+const ok = (value: string): OperationOutcome => ({ status: "ok", value });
+const err = (code: string): OperationOutcome => ({
+  status: "error",
+  error: { code, message: code },
+});
+const cancelled = (): OperationOutcome => ({ status: "cancelled" });
 
-function childManifest(id: string, digestChar: string): DurableProgramManifest {
+const ALL: ForkPolicy = { mode: "all", supervision: "one_for_all" };
+const RACE: ForkPolicy = { mode: "race", supervision: "first_success" };
+
+function makeGroup(policy: ForkPolicy, memberCount = 2): ForkGroupState {
   return {
-    programId: id,
-    version: "1",
-    digest: digestChar.repeat(64),
-    inputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
-    outputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
-    elicits: {},
-    effects: {},
-    capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
+    groupId: "g1",
+    parentTaskId: "p",
+    pullId: "pull-0",
+    descriptorDigest: "d".repeat(16),
+    policy,
+    deadlineMs: 10_000,
+    members: Array.from({ length: memberCount }, (_, ordinal) => ({
+      ordinal,
+      taskId: `p.${ordinal}`,
+    })),
+    status: "open",
   };
 }
 
-const childA = { id: "fixture.child-a", version: "1", digest: "b".repeat(64), input: { n: 1 } };
-const childB = { id: "fixture.child-b", version: "1", digest: "c".repeat(64), input: { n: 2 } };
-
-function authority(now: () => number) {
-  return createAuthorityScenarioDriver({
-    journalId: "journal",
-    journalIncarnation: "incarnation",
-    keyring: createCapabilityKeyring("tests", [{ keyId: "k1", secret: "x".repeat(32) }]),
-    now,
-  });
-}
-
-function* codeOf(operation: () => Operation<unknown>): Operation<string | undefined> {
+function syncCode(fn: () => unknown): string | undefined {
   try {
-    yield* operation();
+    fn();
     return undefined;
   } catch (error) {
-    return error instanceof Error && "code" in error ? String(error.code) : String(error);
+    return error instanceof CrankError ? error.code : String(error);
   }
 }
 
-describe("fork groups: admission and freeze (REQ-021, REQ-023, REQ-030)", () => {
-  it("opens all members atomically, dedupes retries, and freezes the parent", async () => {
-    const clock = () => 1_000;
-    const value = authority(clock);
-    await run(function* () {
-      const opened = yield* value.openTask({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        manifest: parentManifest,
-        input: {},
-        executionEpoch: 1,
-        attachmentId: "initial",
-        audience: "workflow-host",
-        expiryPolicy: { kind: "at", atMs: 100_000 },
-      });
-      const reserved = yield* value.reserve({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        actionIndex: 0,
-        pullIndex: 0,
-        descriptor: {
-          kind: "all",
-          supervision: "one_for_all",
-          children: [childA, childB],
-          expiry: { kind: "after", durationMs: 50_000 },
-        },
-        programCapability: opened.programCapability,
-      });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
-
-      const group = yield* value.openForkGroup({
-        sessionId: "s1",
-        turnId: "t1",
-        parentTaskId: "task",
-        parentPullId: reserved.pullId,
-        members: [
-          { child: childA, manifest: childManifest(childA.id, "b") },
-          { child: childB, manifest: childManifest(childB.id, "c") },
-        ],
-        executionEpoch: 1,
-        audience: "workflow-host",
-      });
-      expect(group).toEqual({
-        status: "opened",
-        groupId: "task/" + reserved.pullId + "/group",
-        deadlineMs: 51_000,
-        memberTaskIds: ["task.0", "task.1"],
-      });
-
-      // Identical retry commits once (REQ-023).
-      const retry = yield* value.openForkGroup({
-        sessionId: "s1",
-        turnId: "t1",
-        parentTaskId: "task",
-        parentPullId: reserved.pullId,
-        members: [
-          { child: childA, manifest: childManifest(childA.id, "b") },
-          { child: childB, manifest: childManifest(childB.id, "c") },
-        ],
-        executionEpoch: 1,
-        audience: "workflow-host",
-      });
-      expect(retry.status).toBe("duplicate");
-      expect(retry.memberTaskIds).toEqual(["task.0", "task.1"]);
-
-      // Freeze (REQ-021): new work on the parent is refused while the group is
-      // open; replay re-reserve of the recorded pull stays legal.
-      const replayed = yield* value.reserve({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        actionIndex: 0,
-        pullIndex: 0,
-        descriptor: {
-          kind: "all",
-          supervision: "one_for_all",
-          children: [childA, childB],
-          expiry: { kind: "after", durationMs: 50_000 },
-        },
-        programCapability: opened.programCapability,
-      });
-      expect(replayed.status).toBe("pending");
-      expect(
-        yield* codeOf(() =>
-          value.reserve({
-            sessionId: "s1",
-            turnId: "t1",
-            taskId: "task",
-            actionIndex: 1,
-            pullIndex: 1,
-            descriptor: { kind: "wait", key: "later", durationMs: 1_000 },
-            programCapability: opened.programCapability,
-          }),
-        ),
-      ).toBe("fork_group_open");
-
-      // Fork evidence is journaled.
-      const journal = value.readJournal("s1");
-      const openedRecord = journal.find((record) => record.payload.type === "ForkGroupOpened");
-      expect(openedRecord?.payload).toMatchObject({
-        type: "ForkGroupOpened",
-        taskId: "task",
-        policy: { mode: "all", supervision: "one_for_all" },
-        deadlineMs: 51_000,
-        memberTaskIds: ["task.0", "task.1"],
-      });
-      expect(journal.filter((record) => record.payload.type === "ForkGroupOpened")).toHaveLength(1);
-    });
+describe("resolveForkDeadline (TC-017)", () => {
+  it("resolves absolute deadlines", () => {
+    expect(resolveForkDeadline({ kind: "at", atMs: 5_000 }, undefined, 1_000)).toBe(5_000);
+    expect(resolveForkDeadline({ kind: "after", durationMs: 500 }, undefined, 1_000)).toBe(1_500);
   });
 
-  it("fails admission closed on unresolvable or expired policies", async () => {
-    const value = authority(() => 1_000);
-    await run(function* () {
-      const opened = yield* value.openTask({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        manifest: parentManifest,
-        input: {},
-        executionEpoch: 1,
-        attachmentId: "initial",
-        audience: "workflow-host",
-        // No root expiry policy: inherit has nowhere to resolve from.
-      });
-      const reserved = yield* value.reserve({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        actionIndex: 0,
-        pullIndex: 0,
-        descriptor: {
-          kind: "all",
-          supervision: "one_for_all",
-          children: [childA],
-          expiry: { kind: "inherit" },
-        },
-        programCapability: opened.programCapability,
-      });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
-      expect(
-        yield* codeOf(() =>
-          value.openForkGroup({
-            sessionId: "s1",
-            turnId: "t1",
-            parentTaskId: "task",
-            parentPullId: reserved.pullId,
-            members: [{ child: childA, manifest: childManifest(childA.id, "b") }],
-            executionEpoch: 1,
-            audience: "workflow-host",
-          }),
-        ),
-      ).toBe("fork_expiry_unresolvable");
-      // No member rows exist after the failed admission.
-      expect(value.exportSnapshot().sessions[0]?.[1].execution.tasks).toHaveLength(1);
-    });
+  it("fails closed on malformed, expired, or unresolvable policies", () => {
+    expect(
+      syncCode(() => resolveForkDeadline({ kind: "at", atMs: Number.NaN }, undefined, 1_000)),
+    ).toBe("invalid_descriptor");
+    expect(syncCode(() => resolveForkDeadline({ kind: "at", atMs: 500 }, undefined, 1_000))).toBe(
+      "fork_expiry_unresolvable",
+    );
+    expect(
+      syncCode(() => resolveForkDeadline({ kind: "after", durationMs: -1 }, undefined, 1_000)),
+    ).toBe("invalid_descriptor");
+    expect(syncCode(() => resolveForkDeadline({ kind: "inherit" }, undefined, 1_000))).toBe(
+      "fork_expiry_unresolvable",
+    );
+  });
+
+  it("inherits through ancestors and never exceeds the ancestor cap", () => {
+    expect(resolveForkDeadline({ kind: "inherit" }, 8_000, 1_000)).toBe(8_000);
+    expect(resolveForkDeadline({ kind: "at", atMs: 9_000 }, 8_000, 1_000)).toBe(8_000);
+    expect(resolveForkDeadline({ kind: "after", durationMs: 60_000 }, 8_000, 1_000)).toBe(8_000);
   });
 });
 
-describe("fork groups: terminal algebra (REQ-026)", () => {
-  async function openAllGroup(clock: () => number) {
-    const value = authority(clock);
-    const result = await run(function* () {
-      const opened = yield* value.openTask({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        manifest: parentManifest,
-        input: {},
-        executionEpoch: 1,
-        attachmentId: "initial",
-        audience: "workflow-host",
-      });
-      const reserved = yield* value.reserve({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        actionIndex: 0,
-        pullIndex: 0,
-        descriptor: {
-          kind: "all",
-          supervision: "one_for_all",
-          children: [childA, childB],
-          expiry: { kind: "after", durationMs: 50_000 },
-        },
-        programCapability: opened.programCapability,
-      });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
-      const group = yield* value.openForkGroup({
-        sessionId: "s1",
-        turnId: "t1",
-        parentTaskId: "task",
-        parentPullId: reserved.pullId,
-        members: [
-          { child: childA, manifest: childManifest(childA.id, "b") },
-          { child: childB, manifest: childManifest(childB.id, "c") },
-        ],
-        executionEpoch: 1,
-        audience: "workflow-host",
-      });
-      return { pullId: reserved.pullId, group };
-    });
-    return { value, ...result };
-  }
-
-  it("resolves the parent slot once with biographies in descriptor order", async () => {
-    const { value, pullId } = await openAllGroup(() => 1_000);
-    await run(function* () {
-      // Either completion order resolves the same value.
-      yield* value.complete({
-        sessionId: "s1",
-        taskId: "task.1",
-        actionIndex: 0,
-        outcome: { status: "ok", value: "B" },
-        programCapability: value.programCapability("s1", "task.1"),
-      });
-      let state = yield* value.operationState("s1", "task", pullId);
-      expect(state).toMatchObject({ status: "found" });
-      expect("outcome" in state && state.outcome !== undefined).toBe(false);
-
-      yield* value.complete({
-        sessionId: "s1",
-        taskId: "task.0",
-        actionIndex: 0,
-        outcome: { status: "ok", value: "A" },
-        programCapability: value.programCapability("s1", "task.0"),
-      });
-      state = yield* value.operationState("s1", "task", pullId);
-      expect(state).toMatchObject({
-        status: "found",
-        outcome: {
-          status: "ok",
-          value: {
-            status: "completed",
-            outcomes: [
-              { ordinal: 0, taskId: "task.0", outcome: { status: "ok", value: "A" } },
-              { ordinal: 1, taskId: "task.1", outcome: { status: "ok", value: "B" } },
-            ],
-          },
-        },
-      });
-      const resolutions = value
-        .readJournal("s1")
-        .filter((record) => record.payload.type === "ForkGroupResolved");
-      expect(resolutions).toHaveLength(1);
-    });
-  });
-
-  it("one-for-all: first failure cancels the sibling and fails after drain", async () => {
-    const { value, pullId } = await openAllGroup(() => 1_000);
-    await run(function* () {
-      yield* value.complete({
-        sessionId: "s1",
-        taskId: "task.0",
-        actionIndex: 0,
-        outcome: { status: "error", error: { code: "boom", message: "boom" } },
-        programCapability: value.programCapability("s1", "task.0"),
-      });
-      // Sibling cancellation was requested before any group resolution.
-      expect(
-        value
-          .readJournal("s1")
-          .filter((record) => record.payload.type === "CancellationRequested")
-          .map((record) => record.payload),
-      ).toMatchObject([{ type: "CancellationRequested", taskId: "task.1" }]);
-      expect(
-        value.readJournal("s1").filter((r) => r.payload.type === "ForkGroupResolved"),
-      ).toHaveLength(0);
-
-      yield* value.complete({
-        sessionId: "s1",
-        taskId: "task.1",
-        actionIndex: 0,
-        outcome: { status: "cancelled" },
-        programCapability: value.programCapability("s1", "task.1"),
-      });
-      const state = yield* value.operationState("s1", "task", pullId);
-      expect(state).toMatchObject({
-        status: "found",
-        outcome: { status: "error", error: { code: "boom" } },
-      });
-    });
+describe("assertForkPolicyPairing (REQ-025)", () => {
+  it("accepts the closed pairings and rejects mismatches", () => {
+    expect(syncCode(() => assertForkPolicyPairing(ALL))).toBeUndefined();
+    expect(syncCode(() => assertForkPolicyPairing(RACE))).toBeUndefined();
+    expect(
+      syncCode(() => assertForkPolicyPairing({ mode: "all", supervision: "first_success" })),
+    ).toBe("invalid_descriptor");
+    expect(
+      syncCode(() => assertForkPolicyPairing({ mode: "race", supervision: "one_for_all" })),
+    ).toBe("invalid_descriptor");
+    expect(syncCode(() => assertForkPolicyPairing({ mode: "spray", supervision: "none" }))).toBe(
+      "invalid_descriptor",
+    );
   });
 });
 
-describe("fork groups: race precedence (REQ-026, REQ-032)", () => {
-  async function openRaceGroup(clock: () => number) {
-    const value = authority(clock);
-    const result = await run(function* () {
-      const opened = yield* value.openTask({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        manifest: parentManifest,
-        input: {},
-        executionEpoch: 1,
-        attachmentId: "initial",
-        audience: "workflow-host",
-      });
-      const reserved = yield* value.reserve({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        actionIndex: 0,
-        pullIndex: 0,
-        descriptor: {
-          kind: "race",
-          supervision: "first_success",
-          children: [childA, childB],
-          expiry: { kind: "at", atMs: 60_000 },
-        },
-        programCapability: opened.programCapability,
-      });
-      if (reserved.status !== "pending") throw new Error("race pull did not park");
-      const group = yield* value.openForkGroup({
-        sessionId: "s1",
-        turnId: "t1",
-        parentTaskId: "task",
-        parentPullId: reserved.pullId,
-        members: [
-          { child: childA, manifest: childManifest(childA.id, "b") },
-          { child: childB, manifest: childManifest(childB.id, "c") },
-        ],
-        executionEpoch: 1,
-        audience: "workflow-host",
-      });
-      return { pullId: reserved.pullId, group };
-    });
-    return { value, ...result };
-  }
-
-  it("selects the first committed winner and resolves after losers drain", async () => {
-    const { value, pullId, group } = await openRaceGroup(() => 1_000);
-    await run(function* () {
-      yield* value.complete({
-        sessionId: "s1",
-        taskId: "task.0",
-        actionIndex: 0,
-        outcome: { status: "ok", value: "fast" },
-        programCapability: value.programCapability("s1", "task.0"),
-      });
-      const journal = value.readJournal("s1");
-      expect(
-        journal.find((record) => record.payload.type === "RaceWinnerSelected")?.payload,
-      ).toMatchObject({ type: "RaceWinnerSelected", winnerTaskId: "task.0" });
-      // Loser cancellation precedes resolution.
-      expect(
-        journal.find((record) => record.payload.type === "CancellationRequested")?.payload,
-      ).toMatchObject({ taskId: "task.1" });
-
-      yield* value.complete({
-        sessionId: "s1",
-        taskId: "task.1",
-        actionIndex: 0,
-        outcome: { status: "cancelled" },
-        programCapability: value.programCapability("s1", "task.1"),
-      });
-      const state = yield* value.operationState("s1", "task", pullId);
-      expect(state).toMatchObject({
-        status: "found",
-        outcome: {
-          status: "ok",
-          value: { status: "completed", winnerOrdinal: 0 },
-        },
-      });
-
-      // Breach after resolution is a typed rejection (first commit won).
-      expect(
-        yield* codeOf(() =>
-          value.breachForkGroup({ sessionId: "s1", taskId: "task", groupId: group.groupId }),
-        ),
-      ).toBe("fork_group_terminal");
+describe("reduceForkMemberTerminal (TC-020)", () => {
+  it("all: resolves completed with outcomes in descriptor order", () => {
+    const group = makeGroup(ALL, 2);
+    expect(reduceForkMemberTerminal(group, "p.1", ok("B")).resolution).toBeUndefined();
+    const reduction = reduceForkMemberTerminal(group, "p.0", ok("A"));
+    expect(reduction.resolution).toMatchObject({
+      status: "completed",
+      outcomes: [
+        { ordinal: 0, outcome: { status: "ok", value: "A" } },
+        { ordinal: 1, outcome: { status: "ok", value: "B" } },
+      ],
     });
   });
 
-  it("breach first: late success is confined and the group resolves expired", async () => {
-    let clock = 1_000;
-    const { value, pullId, group } = await openRaceGroup(() => clock);
-    await run(function* () {
-      // Too early: no breach before the deadline.
-      expect(
-        yield* codeOf(() =>
-          value.breachForkGroup({ sessionId: "s1", taskId: "task", groupId: group.groupId }),
-        ),
-      ).toBe("fork_group_unexpired");
-
-      clock = 61_000;
-      const breach = yield* value.breachForkGroup({
-        sessionId: "s1",
-        taskId: "task",
-        groupId: group.groupId,
-      });
-      expect(breach.cancelMembers).toEqual(["task.0", "task.1"]);
-
-      // Late success after the breach selects no winner.
-      yield* value.complete({
-        sessionId: "s1",
-        taskId: "task.0",
-        actionIndex: 0,
-        outcome: { status: "ok", value: "too-late" },
-        programCapability: value.programCapability("s1", "task.0"),
-      });
-      expect(
-        value.readJournal("s1").filter((r) => r.payload.type === "RaceWinnerSelected"),
-      ).toHaveLength(0);
-
-      yield* value.complete({
-        sessionId: "s1",
-        taskId: "task.1",
-        actionIndex: 0,
-        outcome: { status: "cancelled" },
-        programCapability: value.programCapability("s1", "task.1"),
-      });
-      const state = yield* value.operationState("s1", "task", pullId);
-      expect(state).toMatchObject({
-        status: "found",
-        outcome: { status: "error", error: { code: "fork_group_expired" } },
-      });
-
-      // Breach record precedes every cancellation offset (REQ-031).
-      const journal = value.readJournal("s1");
-      const breachOffset = Number(
-        journal.find((r) => r.payload.type === "ForkGroupBreached")!.offset,
-      );
-      for (const record of journal.filter((r) => r.payload.type === "CancellationRequested")) {
-        expect(Number(record.offset)).toBeGreaterThan(breachOffset);
-      }
+  it("all: first failure starts one-for-all cancellation and fails after drain", () => {
+    const group = makeGroup(ALL, 3);
+    const first = reduceForkMemberTerminal(group, "p.0", err("boom"));
+    expect(group.status).toBe("cancelling");
+    expect(first.cancelMembers).toEqual(["p.1", "p.2"]);
+    expect(first.resolution).toBeUndefined();
+    reduceForkMemberTerminal(group, "p.1", cancelled());
+    const drained = reduceForkMemberTerminal(group, "p.2", cancelled());
+    expect(drained.resolution).toMatchObject({
+      status: "failed",
+      error: { code: "boom" },
     });
+  });
+
+  it("race: first committed success wins; losers cancel; winner leads the biography", () => {
+    const group = makeGroup(RACE, 2);
+    const winner = reduceForkMemberTerminal(group, "p.0", ok("fast"));
+    expect(winner.winnerSelected).toEqual({
+      ordinal: 0,
+      outcomeDigest: expect.any(String),
+    });
+    expect(winner.cancelMembers).toEqual(["p.1"]);
+    expect(winner.resolution).toBeUndefined();
+    const drained = reduceForkMemberTerminal(group, "p.1", cancelled());
+    expect(drained.resolution).toMatchObject({
+      status: "completed",
+      winnerOrdinal: 0,
+      outcomes: [{ ordinal: 0, outcome: { status: "ok", value: "fast" } }, { ordinal: 1 }],
+    });
+  });
+
+  it("race: all-member failure fails after the last terminal member", () => {
+    const group = makeGroup(RACE, 2);
+    expect(reduceForkMemberTerminal(group, "p.0", err("a")).resolution).toBeUndefined();
+    expect(group.status).toBe("open");
+    const drained = reduceForkMemberTerminal(group, "p.1", err("b"));
+    expect(drained.resolution).toMatchObject({
+      status: "failed",
+      error: { code: "fork_group_failed" },
+    });
+  });
+
+  it("member cancellation resolves the group cancelled", () => {
+    const group = makeGroup(ALL, 2);
+    reduceForkMemberTerminal(group, "p.0", cancelled());
+    const drained = reduceForkMemberTerminal(group, "p.1", cancelled());
+    expect(drained.resolution).toMatchObject({ status: "cancelled" });
+  });
+
+  it("expiry cause resolves expired only once every member is terminal", () => {
+    const group = makeGroup(ALL, 2);
+    const members = beginForkGroupCancellation(group, "expiry");
+    expect(members).toEqual(["p.0", "p.1"]);
+    reduceForkMemberTerminal(group, "p.0", cancelled());
+    expect(drainForkGroup(group)).toBeUndefined();
+    reduceForkMemberTerminal(group, "p.1", cancelled());
+    expect(drainForkGroup(group)).toMatchObject({ status: "expired" });
+  });
+
+  it("breach-first precedence: late success is confined to member history", () => {
+    const group = makeGroup(RACE, 2);
+    beginForkGroupCancellation(group, "expiry");
+    // A late success arrives after the breach: no winner is selected.
+    const late = reduceForkMemberTerminal(group, "p.0", ok("too-late"));
+    expect(late.winnerSelected).toBeUndefined();
+    reduceForkMemberTerminal(group, "p.1", cancelled());
+    expect(drainForkGroup(group)).toMatchObject({ status: "expired" });
+    expect(group.resolution).toMatchObject({ status: "expired" });
+  });
+
+  it("rejects a second differing terminal for the same member", () => {
+    const group = makeGroup(ALL, 2);
+    reduceForkMemberTerminal(group, "p.0", ok("A"));
+    expect(reduceForkMemberTerminal(group, "p.0", ok("A")).resolution).toBeUndefined();
+    expect(syncCode(() => reduceForkMemberTerminal(group, "p.0", ok("different")))).toBe(
+      "nondeterminism_detected",
+    );
+  });
+
+  it("confines late biographies after an orphaned resolution", () => {
+    const group = makeGroup(ALL, 2);
+    reduceForkMemberTerminal(group, "p.0", cancelled());
+    const resolution = forceOrphanForkGroupResolution(group, "cleanup_stuck");
+    expect(resolution).toMatchObject({ status: "orphaned" });
+    const late = reduceForkMemberTerminal(group, "p.1", cancelled());
+    expect(late.resolution).toBeUndefined();
+    expect(group.resolution).toMatchObject({ status: "orphaned" });
+    expect(syncCode(() => forceOrphanForkGroupResolution(group, "again"))).toBe(
+      "fork_group_terminal",
+    );
   });
 });
 
-describe("fork groups: snapshot restart (REQ-071)", () => {
-  it("restores a mid-group forest from the snapshot and resolves identically", async () => {
-    const keyring = createCapabilityKeyring("tests", [{ keyId: "k1", secret: "x".repeat(32) }]);
-    const options = { journalId: "journal", journalIncarnation: "incarnation", keyring };
-    const value = createAuthorityScenarioDriver({ ...options, now: () => 1_000 });
-    const { snapshot, pullId } = await run(function* () {
-      const opened = yield* value.openTask({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        manifest: parentManifest,
-        input: {},
-        executionEpoch: 1,
-        attachmentId: "initial",
-        audience: "workflow-host",
-      });
-      const reserved = yield* value.reserve({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        actionIndex: 0,
-        pullIndex: 0,
-        descriptor: {
-          kind: "all",
-          supervision: "one_for_all",
-          children: [childA, childB],
-          expiry: { kind: "after", durationMs: 50_000 },
-        },
-        programCapability: opened.programCapability,
-      });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
-      yield* value.openForkGroup({
-        sessionId: "s1",
-        turnId: "t1",
-        parentTaskId: "task",
-        parentPullId: reserved.pullId,
-        members: [
-          { child: childA, manifest: childManifest(childA.id, "b") },
-          { child: childB, manifest: childManifest(childB.id, "c") },
-        ],
-        executionEpoch: 1,
-        audience: "workflow-host",
-      });
-      // Crash point: one member terminal, group unresolved.
-      yield* value.complete({
-        sessionId: "s1",
-        taskId: "task.0",
-        actionIndex: 0,
-        outcome: { status: "ok", value: "A" },
-        programCapability: value.programCapability("s1", "task.0"),
-      });
-      return { snapshot: value.exportSnapshot(), pullId: reserved.pullId };
-    });
-
-    const restored = createAuthorityScenarioDriver({ ...options, now: () => 1_000, snapshot });
-    await run(function* () {
-      // Idempotent replay of the recorded member terminal.
-      yield* restored.complete({
-        sessionId: "s1",
-        taskId: "task.0",
-        actionIndex: 0,
-        outcome: { status: "ok", value: "A" },
-        programCapability: restored.programCapability("s1", "task.0"),
-      });
-      yield* restored.complete({
-        sessionId: "s1",
-        taskId: "task.1",
-        actionIndex: 0,
-        outcome: { status: "ok", value: "B" },
-        programCapability: restored.programCapability("s1", "task.1"),
-      });
-      const state = yield* restored.operationState("s1", "task", pullId);
-      expect(state).toMatchObject({
-        status: "found",
-        outcome: {
-          status: "ok",
-          value: {
-            status: "completed",
-            outcomes: [
-              { ordinal: 0, outcome: { status: "ok", value: "A" } },
-              { ordinal: 1, outcome: { status: "ok", value: "B" } },
-            ],
-          },
-        },
-      });
-      expect(
-        restored.readJournal("s1").filter((r) => r.payload.type === "ForkGroupResolved"),
-      ).toHaveLength(1);
-    });
+describe("forkGroupKey (TC-022)", () => {
+  it("is stable for the composite identity and distinct when any field changes", () => {
+    const base = forkGroupKey("p", "pull-0", "digest");
+    expect(forkGroupKey("p", "pull-0", "digest")).toBe(base);
+    expect(forkGroupKey("p", "pull-1", "digest")).not.toBe(base);
+    expect(forkGroupKey("q", "pull-0", "digest")).not.toBe(base);
+    expect(forkGroupKey("p", "pull-0", "other")).not.toBe(base);
   });
 });
 
-describe("fork groups: force orphan (REQ-034)", () => {
-  it("records orphaned honestly and settles the parent with the Terminal value", async () => {
-    let clock = 1_000;
-    const value = authority(() => clock);
-    await run(function* () {
-      const opened = yield* value.openTask({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        manifest: parentManifest,
-        input: {},
-        executionEpoch: 1,
-        attachmentId: "initial",
-        audience: "workflow-host",
-      });
-      const reserved = yield* value.reserve({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        actionIndex: 0,
-        pullIndex: 0,
-        descriptor: {
-          kind: "all",
-          supervision: "one_for_all",
-          children: [childA, childB],
-          expiry: { kind: "after", durationMs: 50_000 },
-        },
-        programCapability: opened.programCapability,
-      });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
-      const group = yield* value.openForkGroup({
-        sessionId: "s1",
-        turnId: "t1",
-        parentTaskId: "task",
-        parentPullId: reserved.pullId,
-        members: [
-          { child: childA, manifest: childManifest(childA.id, "b") },
-          { child: childB, manifest: childManifest(childB.id, "c") },
-        ],
-        executionEpoch: 1,
-        audience: "workflow-host",
-      });
-
-      // Force-orphan requires a stuck cancelling group.
-      expect(
-        yield* codeOf(() =>
-          value.forceOrphanForkGroup({
-            sessionId: "s1",
-            taskId: "task",
-            groupId: group.groupId,
-            reason: "stuck",
-          }),
-        ),
-      ).toBe("fork_group_not_cancelling");
-
-      clock = 51_000;
-      yield* value.breachForkGroup({ sessionId: "s1", taskId: "task", groupId: group.groupId });
-      // Cleanup cannot terminate (no member close arrives): force-orphan.
-      const orphan = yield* value.forceOrphanForkGroup({
-        sessionId: "s1",
-        taskId: "task",
-        groupId: group.groupId,
-        reason: "cleanup_stuck",
-      });
-      expect(orphan.resolution).toEqual({ status: "orphaned", reason: "cleanup_stuck" });
-
-      const state = yield* value.operationState("s1", "task", reserved.pullId);
-      expect(state).toMatchObject({
-        status: "found",
-        outcome: { status: "error", error: { code: "fork_group_orphaned" } },
-      });
-      // Members were orphaned in place, not fabricated as cancelled.
-      expect(
-        value
-          .readJournal("s1")
-          .filter((r) => r.payload.type === "TaskOrphaned")
-          .map((r) => r.payload),
-      ).toMatchObject([
-        { type: "TaskOrphaned", taskId: "task.0", reason: "cleanup_stuck" },
-        { type: "TaskOrphaned", taskId: "task.1", reason: "cleanup_stuck" },
-      ]);
-      // The orphan authorization is single-shot.
-      expect(
-        yield* codeOf(() =>
-          value.forceOrphanForkGroup({
-            sessionId: "s1",
-            taskId: "task",
-            groupId: group.groupId,
-            reason: "again",
-          }),
-        ),
-      ).toBe("fork_group_terminal");
+describe("forkGroupOutcome", () => {
+  it("maps the five endings onto the outcome transport with the Terminal inside", () => {
+    expect(forkGroupOutcome({ status: "completed", outcomes: [] })).toMatchObject({ status: "ok" });
+    expect(
+      forkGroupOutcome({
+        status: "failed",
+        error: { code: "x", message: "x" },
+        outcomes: [],
+      }),
+    ).toMatchObject({ status: "error", error: { code: "x" } });
+    expect(forkGroupOutcome({ status: "cancelled", outcomes: [] })).toMatchObject({
+      status: "cancelled",
+    });
+    expect(forkGroupOutcome({ status: "expired", outcomes: [] })).toMatchObject({
+      status: "error",
+      error: { code: "fork_group_expired" },
+    });
+    expect(forkGroupOutcome({ status: "orphaned", reason: "r" })).toMatchObject({
+      status: "error",
+      error: { code: "fork_group_orphaned" },
     });
   });
 });

@@ -103,6 +103,12 @@ Use the narrowest deterministic tests while implementing:
 
 Acceptance tests are the preferred fast feedback loop for framework/package contracts. They are meant to be narrower and faster than full browser e2e while still exercising public or near-public implementation boundaries.
 
+### Test Code Style
+
+Unit tests live in a `__tests__/` folder beside the code they test, at every level of the source tree; behavioral test names that don't mirror a source file are fine. Two further folders refine that placement: `__tests__/process/` holds files whose assertion target is another OS process (exit codes, signals, restart generations, cross-process contention), and `__tests__/fixtures/` holds spawnable helper programs (not modules under test).
+
+Tests are read months or years later to answer "what does this guarantee and why?". Top-to-bottom narrative clarity outranks DRY: repeating setup inline across tests is preferable to hiding the scenario behind abstraction. Extract helpers only for mechanical harness work (temp directories, process lifecycle, dependency wiring that no test asserts on) or named semantic operations that tests assert _through_ — never for the arrange-act-assert flow itself. Assertions belong in the test body where the reader can see them.
+
 ### Acceptance Test Policy
 
 Acceptance tests are contractual. They should pass as written.

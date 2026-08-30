@@ -180,7 +180,7 @@ describe("SQLite ExecutionStore", () => {
 
   it("fails closed instead of looping forever on a cyclic private chain", async () => {
     const path = await temporaryDatabase();
-    const script = fileURLToPath(new URL("./execution-cycle-probe.ts", import.meta.url));
+    const script = fileURLToPath(new URL("./fixtures/execution-cycle-probe.ts", import.meta.url));
     const result = await new Promise<{
       readonly code: number | null;
       readonly signal: NodeJS.Signals | null;

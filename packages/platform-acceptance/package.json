@@ -9,7 +9,7 @@
         "typecheck": "tsc --noEmit",
         "lint": "oxlint src",
         "test": "vitest run --maxWorkers=4 && pnpm test:sqlite",
-        "test:sqlite": "PLATFORM_ACCEPTANCE_STORAGE=sqlite vitest run --maxWorkers=1 src/reconnect.acceptance.test.ts src/cancellation.acceptance.test.ts src/host-replacement.acceptance.test.ts src/stale-elicit.acceptance.test.ts src/pending-elicit-reconnect.acceptance.test.ts src/message-order.acceptance.test.ts src/durable-tool.acceptance.test.ts src/windowed-runtime.acceptance.test.ts src/history.acceptance.test.ts src/conversation-admission.acceptance.test.ts src/storage-spine.test.ts src/storage-spine-defects.acceptance.test.ts"
+        "test:sqlite": "PLATFORM_ACCEPTANCE_STORAGE=sqlite vitest run --maxWorkers=1 src/__tests__/reconnect.acceptance.test.ts src/__tests__/process/cancellation.acceptance.test.ts src/__tests__/host-replacement.acceptance.test.ts src/__tests__/stale-elicit.acceptance.test.ts src/__tests__/pending-elicit-reconnect.acceptance.test.ts src/__tests__/message-order.acceptance.test.ts src/__tests__/durable-tool.acceptance.test.ts src/__tests__/windowed-runtime.acceptance.test.ts src/__tests__/history.acceptance.test.ts src/__tests__/conversation-admission.acceptance.test.ts src/__tests__/process/storage-spine.test.ts src/__tests__/process/storage-spine-defects.acceptance.test.ts"
     },
     "dependencies": {
         "@ag-ui/core": "0.0.57",
