@@ -17,7 +17,8 @@ async function activeJournalStore(): Promise<ProgramDriverJournalStore> {
   try {
     const { chatApp } = await import("./chat-application");
     return (await chatApp.inspect()).programDriverJournalStore;
-  } catch {
+  } catch (error) {
+    console.error("[journal-inspector] chat application storage is unavailable", { error });
     throw new JournalInspectorError("journal_store_unavailable", 503);
   }
 }

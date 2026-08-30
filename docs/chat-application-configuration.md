@@ -75,11 +75,99 @@ contract, shared by every sweatpants app:
 | `SWEATPANTS_STORAGE=memory` + `SWEATPANTS_DB_PATH` | configuration error |
 | `SWEATPANTS_DB_PATH=""` | configuration error |
 
-SQLite opens lazily on the first request: the application creates parent
+Path mode opens lazily on the first request: the application creates parent
 directories, runs migrations, and enables WAL on one app-owned handle, then
-closes it in `app.close()`. Open, migration, or schema-compatibility failures
+closes it in `app.close()`. In database mode the binding opens when the author
+creates it (typically at composition — an unopenable path fails loudly at
+startup, which is the fail-closed behavior you want) and kernel migrations run
+at the first request. Open, migration, or schema-compatibility failures
 fail the request closed — storage never silently degrades to memory and files
 are never deleted automatically.
+
+### Binding inversion: own the connection yourself
+
+Applications that want their own tables beside the authority tables — a
+thread list, user preferences, anything durable — own the binding and hand it
+to the kernel. The binding is the `better-sqlite3` connection, not the ORM;
+each consumer builds its own drizzle view over it:
+
+```ts
+import { openBetterSqliteStorage } from "@sweatpants/storage-sqlite/better-sqlite3";
+import {
+  chatStorageFromEnv,
+  createChatApp,
+  openChatStorageDatabase,
+} from "@sweatpants/agent-host/server";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { sqliteSchema } from "@sweatpants/storage-sqlite/schema";
+import { myTables } from "./db/schema";
+
+const selection = chatStorageFromEnv({
+  defaultPath: new URL("../.data/my-app.sqlite", import.meta.url),
+});
+const database = openChatStorageDatabase(selection); // caller-owned when sqlite
+const app = createChatApp({
+  name: "my-app",
+  secret,
+  storage: database ? { kind: "sqlite", database } : selection,
+  programs: [myDurableTool],
+});
+
+// One connection, two ORM views:
+const orm = drizzle(database!, { schema: { ...sqliteSchema, ...myTables } });
+```
+
+The rules that make this safe:
+
+- **The owner closes.** The kernel never closes a caller-owned binding;
+  `app.close()` leaves it open. Path mode closes what it created.
+- **The `sp_` prefix is reserved.** Any SQLite object (table, view, index,
+  trigger) named `sp_*` that the kernel does not manage fails the open closed.
+  Non-prefixed co-tenant objects are invisible to kernel validation.
+- **Write discipline.** The kernel binding is kernel-exclusive for writes
+  (its transactions hold `BEGIN IMMEDIATE` across awaits). Write your co-tenant
+  tables through your own connection to the same file; reads may use any
+  connection. Kernel connections set `busy_timeout ≥ 5000 ms`, so
+  cross-connection contention waits instead of failing.
+- **One writer process.** Unchanged: one process owns the file. Multiple
+  connections inside that process are expected.
+
+### Reading authority data: two tiers
+
+| Tier | Import | Stability | Use for |
+|---|---|---|---|
+| 1 — schema | `@sweatpants/storage-sqlite/schema` | additive-only in minors; breaking = major | full SQL expressiveness, admin tooling |
+| 2 — client | `@sweatpants/storage-sqlite/client` | stable read models | thread lists, transcript pages, product UIs |
+
+```ts
+import { createChatStorageClient, openChatStorageReader } from "@sweatpants/storage-sqlite/client";
+
+// Tier 2 over any disciplined binding:
+const client = createChatStorageClient(orm);
+client.threads.list();                       // non-deleted, newest first
+client.threads.get(conversationId);
+client.transcript.page(conversationId, { after: 10, limit: 50 });
+
+// Out-of-process tools (inspectors, ops) get a read-only binding:
+const reader = openChatStorageReader("/var/lib/my-app/authority.sqlite");
+const roClient = createChatStorageClient(reader.database);
+reader.close();
+```
+
+The client façade is read-only by construction: authority mutations belong to
+kernel operations only. Neither tier adds authorization — filesystem access to
+the SQLite file is the trust boundary. Kernel tables come into existence when
+the kernel first opens with `migrate: true` (path mode) or on the first
+request (database mode); read from them only after that, or open the file once
+with `openBetterSqliteStorage(path, { migrate: true })` at startup to migrate
+early.
+
+### First consumer: yo-chat's thread list
+
+yo-chat stores its sidebar thread metadata in a `thread_metadata` co-tenant
+table on the same binding it hands to the kernel
+(`apps/yo-chat/src/lib/thread-metadata-store.ts`). The list survives restarts
+because it is read from SQLite, not memory.
 
 ## Lifecycle seams
 

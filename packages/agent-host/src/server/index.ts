@@ -227,7 +227,10 @@ export function createChatHandler(config: DurableChatHandlerConfig) {
 }
 export type { DurableChatEndpoints, DurableChatHandlerConfig };
 
-export { chatStorageFromEnv } from "@sweatpants/durable-chat-runtime/durable-handler";
+export {
+  chatStorageFromEnv,
+  openChatStorageDatabase,
+} from "@sweatpants/durable-chat-runtime/durable-handler";
 export type {
   ChatStorageConfig,
   ChatStorageEnvOptions,

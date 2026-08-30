@@ -246,6 +246,7 @@
         "@ag-ui/core": "0.0.57",
         "@sweatpants/stream-bridge": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
+        "@types/better-sqlite3": "catalog:",
         "@types/node": "catalog:",
         "tsup": "catalog:",
         "typescript": "catalog:",

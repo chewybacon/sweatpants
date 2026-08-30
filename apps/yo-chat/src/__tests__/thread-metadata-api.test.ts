@@ -1,13 +1,39 @@
-import { beforeEach, describe, expect, it } from "vitest";
+// @vitest-environment node
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { handleThreadMetadataRequest } from "@/lib/thread-metadata-api";
-import { getThreadMetadataStore } from "@/lib/thread-metadata-store";
+import {
+  configureThreadMetadataStore,
+  createSqliteThreadMetadataStore,
+  getThreadMetadataStore,
+} from "@/lib/thread-metadata-store";
+import { createSqliteWriterBinding } from "@sweatpants/storage-sqlite/better-sqlite3";
+
+const roots: string[] = [];
+const bindings: Array<{ close(): void }> = [];
+
+afterEach(() => {
+  for (const binding of bindings.splice(0).reverse()) {
+    try {
+      binding.close();
+    } catch {
+      // Teardown best effort.
+    }
+  }
+  for (const root of roots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 describe("thread metadata API", () => {
   beforeEach(() => {
-    const store = getThreadMetadataStore();
-    for (const thread of store.list()) {
-      store.delete(thread.id);
-    }
+    const root = mkdtempSync(join(tmpdir(), "thread-metadata-api-"));
+    roots.push(root);
+    const binding = createSqliteWriterBinding(join(root, "threads.sqlite"));
+    bindings.push(binding);
+    configureThreadMetadataStore(createSqliteThreadMetadataStore(binding));
   });
 
   it("creates and lists thread metadata without transcript state", async () => {

@@ -3,15 +3,26 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { call, createScope, ensure, suspend, type Operation, type Scope } from "effection";
 import { z } from "zod";
+import type Database from "better-sqlite3";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
+import {
+  createSqliteWriterBinding,
+  openBetterSqliteStorage,
+} from "@sweatpants/storage-sqlite/better-sqlite3";
 
 export type ChatStorageConfig =
   | {
       readonly kind: "sqlite";
       readonly path: string;
+      readonly profile?: "low" | "default";
+    }
+  | {
+      readonly kind: "sqlite";
+      /** Caller-owned binding; the kernel never closes it. */
+      readonly database: Database.Database;
       readonly profile?: "low" | "default";
     }
   | {
@@ -24,6 +35,45 @@ export type ChatStorageConfig =
       readonly executionStore: ExecutionStore;
       readonly profile?: "low" | "default";
     };
+
+/**
+ * Validates the sqlite variant: exactly one of `path` or `database`.
+ * Fails loud at composition time, matching the established configuration
+ * error style.
+ */
+export function assertChatSqliteStorageVariant(
+  variant: Extract<ChatStorageConfig, { readonly kind: "sqlite" }>,
+): void {
+  const hasPath =
+    "path" in variant && typeof variant.path === "string" && variant.path.trim().length > 0;
+  const hasDatabase = "database" in variant && variant.database !== undefined;
+  if (hasPath && hasDatabase) {
+    throw new TypeError(
+      "Durable chat storage configuration accepts either a database binding or a path, not both",
+    );
+  }
+  if (!hasPath && !hasDatabase) {
+    throw new TypeError(
+      "Durable chat storage configuration requires a SQLite path or a database binding",
+    );
+  }
+}
+
+/**
+ * Converts a resolved storage selection into a caller-owned binding.
+ * Returns `null` for non-sqlite selections; returns a handed-in binding
+ * unchanged; opens and disciplines a writer binding for path selections.
+ */
+export function openChatStorageDatabase(selection: ChatStorageConfig): Database.Database | null {
+  if (selection.kind !== "sqlite") {
+    return null;
+  }
+  assertChatSqliteStorageVariant(selection);
+  if ("database" in selection) {
+    return selection.database;
+  }
+  return createSqliteWriterBinding(selection.path);
+}
 
 export interface ResolvedChatStorage {
   readonly conversationStore: ConversationStore;
@@ -141,19 +191,27 @@ export function openScopedSqliteChatStorage(
   config: Extract<ChatStorageConfig, { readonly kind: "sqlite" }>,
   applicationScope: Scope,
 ): Promise<ResolvedChatStorage> {
+  const databaseMode = "database" in config;
+  const databasePath = databaseMode ? undefined : config.path;
+  const databaseBinding = databaseMode ? config.database : undefined;
   const [ownerScope, destroyOwnerScope] = createScope(applicationScope);
   let settled = false;
 
   return new Promise<ResolvedChatStorage>((resolve, reject) => {
     ownerScope
       .run(function* (): Operation<void> {
-        yield* call(() => mkdir(dirname(config.path), { recursive: true }));
-        const sqlite = yield* call(() => import("@sweatpants/storage-sqlite/better-sqlite3"));
-        const handle = yield* sqlite.openBetterSqliteStorage(config.path, {
+        if (!databaseMode) {
+          yield* call(() => mkdir(dirname(config.path), { recursive: true }));
+        }
+        const handle = yield* openBetterSqliteStorage(databasePath, {
           migrate: true,
           wal: true,
+          ...(databaseBinding ? { database: databaseBinding } : {}),
         });
-        yield* ensure(() => handle.close());
+        // Caller-owned bindings are closed by their owner (REQ-005).
+        if (!databaseMode) {
+          yield* ensure(() => handle.close());
+        }
         settled = true;
         resolve({
           conversationStore: handle.storage.conversationStore,

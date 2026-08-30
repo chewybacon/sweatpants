@@ -1,4 +1,8 @@
+import type Database from "better-sqlite3";
+import { desc, eq } from "drizzle-orm";
+import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { ThreadSummary } from "@/lib/threaded-chat-types";
+import { ensureThreadMetadataSchema, threadMetadata } from "@/lib/thread-metadata-schema";
 
 export interface CreateThreadMetadataInput {
   namespace?: string;
@@ -64,6 +68,30 @@ export function createThreadSummary(
   };
 }
 
+function applyUpdate(
+  existing: ThreadSummary,
+  input: UpdateThreadMetadataInput,
+  updatedAt: number,
+): ThreadSummary {
+  return {
+    ...existing,
+    title: input.title !== undefined ? normalizeTitle(input.title) : existing.title,
+    lastMessagePreview:
+      input.lastMessagePreview !== undefined
+        ? normalizePreview(input.lastMessagePreview)
+        : existing.lastMessagePreview,
+    messageCount:
+      input.messageCount !== undefined
+        ? normalizeMessageCount(input.messageCount)
+        : existing.messageCount,
+    updatedAt,
+  };
+}
+
+/**
+ * Memory-mode thread metadata. Used only when the storage selection is
+ * `SWEATPANTS_STORAGE=memory`; durable selections use the co-tenant store.
+ */
 export function createInMemoryThreadMetadataStore(): ThreadMetadataStore {
   const threads = new Map<string, ThreadSummary>();
 
@@ -89,22 +117,7 @@ export function createInMemoryThreadMetadataStore(): ThreadMetadataStore {
       if (!existing) {
         return null;
       }
-
-      const updatedAt = Date.now();
-      const next: ThreadSummary = {
-        ...existing,
-        title: input.title !== undefined ? normalizeTitle(input.title) : existing.title,
-        lastMessagePreview:
-          input.lastMessagePreview !== undefined
-            ? normalizePreview(input.lastMessagePreview)
-            : existing.lastMessagePreview,
-        messageCount:
-          input.messageCount !== undefined
-            ? normalizeMessageCount(input.messageCount)
-            : existing.messageCount,
-        updatedAt,
-      };
-
+      const next = applyUpdate(existing, input, Date.now());
       threads.set(threadId, next);
       return next;
     },
@@ -115,8 +128,109 @@ export function createInMemoryThreadMetadataStore(): ThreadMetadataStore {
   };
 }
 
-const sharedThreadMetadataStore = createInMemoryThreadMetadataStore();
+/**
+ * Durable thread metadata as a co-tenant table: rows live in yo-chat's own
+ * `thread_metadata` table beside the kernel's reserved `sp_` namespace, on
+ * the same binding the application hands to the kernel. Writes run on this
+ * application connection per the co-tenant write discipline; authority
+ * writes stay on the kernel's connection.
+ */
+export function createSqliteThreadMetadataStore(binding: Database.Database): ThreadMetadataStore {
+  ensureThreadMetadataSchema(binding);
+  const db: BetterSQLite3Database<{ threadMetadata: typeof threadMetadata }> = drizzle(binding, {
+    schema: { threadMetadata },
+  });
+
+  const readRow = (row: typeof threadMetadata.$inferSelect): ThreadSummary => ({
+    namespace: row.namespace,
+    id: row.id,
+    title: row.title,
+    // The kernel-disciplined binding returns INTEGER columns as bigint.
+    createdAt: Number(row.createdAt),
+    updatedAt: Number(row.updatedAt),
+    lastMessagePreview: row.lastMessagePreview,
+    messageCount: Number(row.messageCount),
+  });
+
+  const get = (threadId: string): ThreadSummary | null => {
+    const row = db.select().from(threadMetadata).where(eq(threadMetadata.id, threadId)).get();
+    return row ? readRow(row) : null;
+  };
+
+  return {
+    list(namespace) {
+      const rows = db
+        .select()
+        .from(threadMetadata)
+        .where(
+          namespace === undefined
+            ? undefined
+            : eq(threadMetadata.namespace, normalizeNamespace(namespace)),
+        )
+        .orderBy(desc(threadMetadata.updatedAt))
+        .all();
+      return rows.map(readRow);
+    },
+
+    get,
+
+    create(input = {}) {
+      const thread = createThreadSummary(input);
+      db.insert(threadMetadata)
+        .values({
+          id: thread.id,
+          namespace: thread.namespace,
+          title: thread.title,
+          createdAt: thread.createdAt,
+          updatedAt: thread.updatedAt,
+          lastMessagePreview: thread.lastMessagePreview,
+          messageCount: thread.messageCount,
+        })
+        .run();
+      return thread;
+    },
+
+    update(threadId, input) {
+      const existing = get(threadId);
+      if (!existing) {
+        return null;
+      }
+      const next = applyUpdate(existing, input, Date.now());
+      db.update(threadMetadata)
+        .set({
+          title: next.title,
+          lastMessagePreview: next.lastMessagePreview,
+          messageCount: next.messageCount,
+          updatedAt: next.updatedAt,
+        })
+        .where(eq(threadMetadata.id, threadId))
+        .run();
+      return next;
+    },
+
+    delete(threadId) {
+      const result = db.delete(threadMetadata).where(eq(threadMetadata.id, threadId)).run();
+      return result.changes > 0;
+    },
+  };
+}
+
+let sharedThreadMetadataStore: ThreadMetadataStore | null = null;
+
+/**
+ * Configures the process-wide thread metadata store once per storage
+ * selection at composition time: sqlite selections get the durable
+ * co-tenant store, memory selections the in-memory store.
+ */
+export function configureThreadMetadataStore(store: ThreadMetadataStore): void {
+  sharedThreadMetadataStore = store;
+}
 
 export function getThreadMetadataStore(): ThreadMetadataStore {
+  if (!sharedThreadMetadataStore) {
+    throw new Error(
+      "Thread metadata storage is not configured; compose yo-chat through createYoChatApplication",
+    );
+  }
   return sharedThreadMetadataStore;
 }

@@ -32,6 +32,14 @@ on shutdown. Set `SWEATPANTS_DB_PATH` to use another local file.
 SWEATPANTS_DB_PATH=/var/lib/yo-chat/authority.sqlite pnpm dev:yo-chat
 ```
 
+Yo-chat owns that binding and hands it to the kernel (binding inversion): its
+sidebar thread metadata lives in a `thread_metadata` co-tenant table in the
+same file, so the thread list survives restarts. The `sp_` prefix is reserved
+for kernel tables; yo-chat's own tables use unprefixed names and are written
+through yo-chat's own connection. See
+[`docs/chat-application-configuration.md`](../../docs/chat-application-configuration.md)
+for the full rules.
+
 SQLite WAL mode requires a local filesystem and one owning application process.
 Do not place the file on a network filesystem or share one writable file across
 processes. For an incompatible pre-release schema, stop the app and explicitly
