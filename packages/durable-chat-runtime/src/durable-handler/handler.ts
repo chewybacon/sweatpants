@@ -117,6 +117,7 @@ import { conversationAuthority, conversationAuthorityFrame } from "../conversati
 import { createDurableHistoryPageEndpoint } from "./history-page-endpoint.ts";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import {
+  assertChatSqliteStorageVariant,
   openScopedSqliteChatStorage,
   resolveImmediateChatStorage,
   type ResolvedChatStorage,
@@ -520,8 +521,8 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
   if (!config.storage) {
     throw new TypeError("Durable chat storage is required");
   }
-  if (config.storage.kind === "sqlite" && config.storage.path.trim().length === 0) {
-    throw new TypeError("Durable chat SQLite path must not be empty");
+  if (config.storage.kind === "sqlite") {
+    assertChatSqliteStorageVariant(config.storage);
   }
   const composition = resolveDurableChatComposition(config);
 

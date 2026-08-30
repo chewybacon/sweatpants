@@ -11,20 +11,30 @@ describe("SQLite raw SQL allowlist", () => {
     const uses: string[] = [];
     for (const file of files) {
       const lines = (await readFile(new URL(`../${file}`, import.meta.url), "utf8")).split("\n");
-      for (const [index, line] of lines.entries()) {
-        if (line.includes("sql.raw(") || line.includes("client.exec(")) {
-          uses.push(`${file}:${index + 1}:${line.trim()}`);
+      for (const line of lines) {
+        if (
+          line.includes("sql.raw(") ||
+          line.includes("client.exec(") ||
+          line.trimStart().startsWith(".prepare(")
+        ) {
+          // Locations are reviewed as file + statement; line numbers are
+          // noise that otherwise breaks on unrelated edits.
+          uses.push(`${file}:${line.trim()}`);
         }
       }
     }
+    uses.sort();
 
-    expect(uses).toEqual([
-      'better-sqlite3.ts:95:client.exec("BEGIN IMMEDIATE");',
-      'better-sqlite3.ts:97:client.exec("COMMIT");',
-      'better-sqlite3.ts:101:client.exec("ROLLBACK");',
-      "inspection.ts:54:sql.raw(",
-      "inspection.ts:67:sql.raw(",
-      "inspection.ts:79:sql.raw(",
-    ]);
+    expect(uses).toEqual(
+      [
+        "better-sqlite3.ts:.prepare(",
+        'better-sqlite3.ts:client.exec("BEGIN IMMEDIATE");',
+        'better-sqlite3.ts:client.exec("COMMIT");',
+        'better-sqlite3.ts:client.exec("ROLLBACK");',
+        "inspection.ts:sql.raw(",
+        "inspection.ts:sql.raw(",
+        "inspection.ts:sql.raw(",
+      ].sort(),
+    );
   });
 });

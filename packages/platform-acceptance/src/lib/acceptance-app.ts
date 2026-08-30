@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { run, type Operation } from "effection";
-import { createChatApplication, createChatEndpoints } from "@sweatpants/agent-host/server";
+import {
+  createChatApplication,
+  createChatEndpoints,
+  type ChatStorageConfig,
+} from "@sweatpants/agent-host/server";
 import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import { createCapabilityKeyring, LOW_PRIVATE_SEGMENT_TARGET } from "@sweatpants/journal-authority";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
@@ -153,6 +157,11 @@ export interface AcceptanceApplicationOptions {
   conversationStore?: ConversationStore;
   /** Direct ExecutionStore shared by terminal authority and program journal. */
   executionStore?: ExecutionStore;
+  /**
+   * Full storage selection override (for example a caller-owned SQLite
+   * binding). Takes precedence over the direct conversation/execution stores.
+   */
+  storage?: ChatStorageConfig;
   /** Lowers checkpoint spill and private segment targets for the SQLite spine. */
   storageProfile?: "low" | "default";
   durableDriverKind?: string;
@@ -188,7 +197,7 @@ export function createAcceptanceApplication(
   const conversationStore = options.conversationStore ?? createMemoryConversationStore();
   let journalStore: ProgramDriverJournalStore | undefined;
   const endpoints = createChatEndpoints({
-    storage: {
+    storage: options.storage ?? {
       kind: "custom",
       conversationStore,
       executionStore,
@@ -218,11 +227,15 @@ export function createAcceptanceApplication(
     },
     maxToolIterations: options.maxToolIterations ?? 4,
   });
-  if (!journalStore) {
-    throw new Error("acceptance journal store was not composed");
-  }
   inspect?.({
-    journalStore,
+    // Deferred storage (a caller-owned SQLite binding) composes the journal
+    // store lazily at first request, so inspection resolves it on access.
+    get journalStore() {
+      if (!journalStore) {
+        throw new Error("acceptance journal store was not composed");
+      }
+      return journalStore;
+    },
     conversationStore,
     executionStore,
     modelSamplingExecutors,

@@ -47,7 +47,10 @@ export type StorageErrorCode =
   | "segment_entry_too_large"
   | "public_root_conflict"
   | "sqlite_integer_out_of_range"
-  | "sqlite_transaction_failed";
+  | "sqlite_transaction_failed"
+  | "sqlite_storage_binding_conflict"
+  | "sqlite_storage_binding_readonly"
+  | "sqlite_namespace_collision";
 
 export class StorageError extends Error {
   constructor(

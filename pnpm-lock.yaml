@@ -738,6 +738,9 @@ importers:
       compression:
         specifier: 'catalog:'
         version: 1.8.1
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@9.6.0)(better-sqlite3@13.0.3)
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -814,6 +817,9 @@ importers:
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/better-sqlite3':
+        specifier: 'catalog:'
+        version: 9.6.0
       '@types/compression':
         specifier: 'catalog:'
         version: 1.8.1
@@ -1367,6 +1373,9 @@ importers:
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
+      '@types/better-sqlite3':
+        specifier: 'catalog:'
+        version: 9.6.0
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5

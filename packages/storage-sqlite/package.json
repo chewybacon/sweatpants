@@ -32,6 +32,17 @@
             },
             "default": "./src/schema.ts"
         },
+        "./client": {
+            "development": {
+                "import": "./src/client.ts",
+                "types": "./src/client.ts"
+            },
+            "import": {
+                "types": "./dist/client.d.ts",
+                "default": "./dist/client.js"
+            },
+            "default": "./src/client.ts"
+        },
         "./repository": {
             "development": {
                 "import": "./src/repository.ts",
@@ -54,6 +65,7 @@
             },
             "default": "./src/better-sqlite3.ts"
         },
+        "./package.json": "./package.json",
         "./migrations": {
             "development": {
                 "import": "./src/migrations.ts",

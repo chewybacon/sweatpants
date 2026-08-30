@@ -19,7 +19,11 @@ export type {
   DurableHistoryPageRequest,
   HistoryReadAuthorization,
 } from "./types.ts";
-export { chatStorageFromEnv } from "./storage.ts";
+export {
+  assertChatSqliteStorageVariant,
+  chatStorageFromEnv,
+  openChatStorageDatabase,
+} from "./storage.ts";
 export type { ChatStorageConfig, ChatStorageEnvOptions } from "./storage.ts";
 export { resolveDurableChatComposition } from "./configuration.ts";
 export type { ResolvedDurableChatComposition } from "./configuration.ts";
