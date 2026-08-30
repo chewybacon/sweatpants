@@ -1,7 +1,7 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { createMemoryExecutionStore } from "../memory.ts";
-import { runExecutionCommitLoop } from "../commit-loop.ts";
+import { createMemoryExecutionStore } from "../store/memory.ts";
+import { runExecutionCommitLoop } from "../store/commit-loop.ts";
 
 describe("direct execution control commit loop", () => {
   it("commits one bounded control transition", async () => {

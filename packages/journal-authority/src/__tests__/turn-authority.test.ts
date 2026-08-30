@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
 import { ExecutionStoreApi, installExecutionStore } from "../api.ts";
-import { AcceptedProjectionFactStore } from "../fact-store.ts";
-import { createMemoryExecutionStore } from "../memory.ts";
-import { TurnJournalAuthority } from "../turn-authority.ts";
+import { AcceptedProjectionFactStore } from "../store/fact-store.ts";
+import { createMemoryExecutionStore } from "../store/memory.ts";
+import { TurnJournalAuthority } from "../shell/turn-authority.ts";
 
 const identity = {
   executionId: "execution-1",

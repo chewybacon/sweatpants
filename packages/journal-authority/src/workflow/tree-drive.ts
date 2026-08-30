@@ -8,7 +8,7 @@ import {
   type AdvancementResult,
 } from "@sweatpants/durable-execution";
 
-import type { JournalAuthorityContract } from "../authority-contract.ts";
+import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 import type { DurableOperationDescriptor, ProgramParkedSlot } from "@sweatpants/durable-execution";
 
 export interface WorkflowTreeActivationRequest {

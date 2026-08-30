@@ -15,11 +15,11 @@ import {
   driveInstalledTestProgramTree,
   withProgramDriverTestScope,
 } from "../testing/program-driver-host.ts";
-import { createAuthorityScenarioDriver } from "../testing.ts";
-import { projectExecutionForest } from "../execution-forest.ts";
-import { booleanGuard, createSchemaFixture, stringGuard } from "../schema-fixtures.ts";
-import { createCapabilityKeyring } from "../capabilities.ts";
-import { createDurableSchemaRegistry } from "../schema-registry.ts";
+import { createAuthorityScenarioDriver } from "../testing/testing.ts";
+import { projectExecutionForest } from "../forest/execution-forest.ts";
+import { booleanGuard, createSchemaFixture, stringGuard } from "../testing/schema-fixtures.ts";
+import { createCapabilityKeyring } from "../contract/capabilities.ts";
+import { createDurableSchemaRegistry } from "../contract/schema-registry.ts";
 import { createWorkflowProgramDriver } from "../workflow/program-driver.ts";
 
 const programInput = createSchemaFixture(

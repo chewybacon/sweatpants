@@ -16,7 +16,7 @@ import {
 } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
-import type { ResolutionAuthority } from "../authority-contract.ts";
+import type { ResolutionAuthority } from "../contract/authority-contract.ts";
 
 /** Structural contract hosts implement to settle one kind of parked pull. */
 export interface PullResolutionContext {

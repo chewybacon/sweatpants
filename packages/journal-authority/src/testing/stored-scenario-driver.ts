@@ -4,9 +4,9 @@ import {
   createStoredShellDrivers,
   type StoredJournalAuthorityOptions,
   type StoredShellDrivers,
-} from "../stored-shell.ts";
-import type { DurableAuthoritySnapshot } from "../authority-snapshot.ts";
-import type { DurableSemanticRecord } from "../semantic-record.ts";
+} from "../shell/stored-shell.ts";
+import type { DurableAuthoritySnapshot } from "../state/authority-snapshot.ts";
+import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 import type {
   AcceptAssistantPartialRequest,
   AcceptAssistantPartialResult,
@@ -48,8 +48,8 @@ import type {
   RestoredFrontierProof,
   ValidateElicitResponseRequest,
   ValidateElicitResponseResult,
-} from "../authority-types.ts";
-import type { OrphanReason } from "../authority-contract.ts";
+} from "../contract/authority-types.ts";
+import type { OrphanReason } from "../contract/authority-contract.ts";
 
 export type StoredScenarioDriver = StoredShellDrivers & {
   journalIdentity(): { readonly id: string; readonly incarnation: string };
@@ -106,7 +106,9 @@ export type StoredScenarioDriver = StoredShellDrivers & {
     request: AcceptAssistantPartialRequest,
   ): Operation<AcceptAssistantPartialResult>;
   resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
-  emit(request: import("../authority-types.ts").AppendEmissionRequest): Operation<EmissionReceipt>;
+  emit(
+    request: import("../contract/authority-types.ts").AppendEmissionRequest,
+  ): Operation<EmissionReceipt>;
   complete(request: CompleteTaskRequest): Operation<CompleteTaskResult>;
   openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }>;
   replaceAttachment(
@@ -143,7 +145,7 @@ export type StoredScenarioDriver = StoredShellDrivers & {
 };
 
 export function createStoredScenarioDriver(
-  store: import("../store.ts").ExecutionStore,
+  store: import("../store/store.ts").ExecutionStore,
   options: StoredJournalAuthorityOptions,
 ): StoredScenarioDriver {
   const drivers = createStoredShellDrivers(store, options);

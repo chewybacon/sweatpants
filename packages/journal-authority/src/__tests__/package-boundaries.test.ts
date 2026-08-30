@@ -24,7 +24,11 @@ describe("journal-authority package boundaries", () => {
     ]);
 
     // Authority semantics remain independent of concrete storage and hosting adapters.
-    const sourceFiles = ["workflow/driver-drive.ts", "authority-decisions.ts", "index.ts"];
+    const sourceFiles = [
+      "workflow/driver-drive.ts",
+      "decisions/authority-decisions.ts",
+      "index.ts",
+    ];
     for (const file of sourceFiles) {
       const source = readFileSync(resolve(packageRoot, "src", file), "utf8");
       expect(source, file).not.toContain(["@sweatpants", "framework"].join("/"));
@@ -73,7 +77,7 @@ describe("journal-authority package boundaries", () => {
     }
 
     const decisionSource = readFileSync(
-      resolve(packageRoot, "src", "authority-decisions.ts"),
+      resolve(packageRoot, "src", "decisions/authority-decisions.ts"),
       "utf8",
     );
     expect(decisionSource).not.toContain("AUTHORITY_DECISION_HISTORY");
@@ -82,20 +86,23 @@ describe("journal-authority package boundaries", () => {
     expect(decisionSource).not.toContain("ExecutionStore");
     expect(decisionSource).not.toContain("AuthorityKernelReducer");
     const decisionPipelineSource = readFileSync(
-      resolve(packageRoot, "src", "decision-pipeline.ts"),
+      resolve(packageRoot, "src", "decisions/decision-pipeline.ts"),
       "utf8",
     );
     expect(decisionPipelineSource).not.toContain("createApi");
     expect(decisionPipelineSource).not.toContain("authorityStateFromSnapshot");
     expect(decisionPipelineSource).not.toContain("evaluateSnapshotQuery");
 
-    const storedShellSource = readFileSync(resolve(packageRoot, "src", "stored-shell.ts"), "utf8");
+    const storedShellSource = readFileSync(
+      resolve(packageRoot, "src", "shell/stored-shell.ts"),
+      "utf8",
+    );
     expect(storedShellSource).not.toContain("StoredScenarioDriver");
     expect(storedShellSource).not.toContain("createStoredScenarioDriver");
     expect(storedShellSource).not.toContain("taskExecutionState");
 
     const directStateSource = readFileSync(
-      resolve(packageRoot, "src", "authority-state.ts"),
+      resolve(packageRoot, "src", "state/authority-state.ts"),
       "utf8",
     );
     expect(directStateSource).not.toContain("AUTHORITY_DECISION_HISTORY");

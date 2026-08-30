@@ -1,7 +1,7 @@
 import { run } from "effection";
 import { describe, it } from "vitest";
 
-import { createInMemoryShellDrivers } from "../in-memory-shell.ts";
+import { createInMemoryShellDrivers } from "../shell/in-memory-shell.ts";
 import {
   adaptAuthorityPortsForConformance,
   createJournalAuthorityConformanceCases,

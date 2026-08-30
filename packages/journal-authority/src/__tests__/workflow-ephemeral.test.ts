@@ -4,12 +4,12 @@ import type { AttachProgramRequest, DurableProgramManifest } from "@sweatpants/d
 import { stableProgramAttachmentId } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 import { canonicalSnapshot } from "@sweatpants/foundation";
-import { createAuthorityScenarioDriver, withProgramDriverTestScope } from "../testing.ts";
+import { createAuthorityScenarioDriver, withProgramDriverTestScope } from "../testing/testing.ts";
 import { pullOperation, type Workflow } from "../workflow/runtime.ts";
 import { driveActivation } from "../workflow/host-drive.ts";
-import { anyGuard, createSchemaFixture } from "../schema-fixtures.ts";
-import { createCapabilityKeyring } from "../capabilities.ts";
-import { createDurableSchemaRegistry } from "../schema-registry.ts";
+import { anyGuard, createSchemaFixture } from "../testing/schema-fixtures.ts";
+import { createCapabilityKeyring } from "../contract/capabilities.ts";
+import { createDurableSchemaRegistry } from "../contract/schema-registry.ts";
 
 const programInput = createSchemaFixture(
   "fixture.foreign/input",

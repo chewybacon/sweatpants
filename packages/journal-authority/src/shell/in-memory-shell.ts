@@ -1,0 +1,236 @@
+import { canonicalSnapshot } from "@sweatpants/foundation";
+import { hasLiveDurablePull, signalLiveDurablePull } from "@sweatpants/durable-effects/runtime";
+import { verifyResolutionCapability } from "../contract/capabilities.ts";
+import type { Operation } from "effection";
+
+import { createDurableSchemaRegistry } from "../contract/schema-registry.ts";
+import type {
+  AuthorityCommand,
+  AuthorityJournalContract,
+  AuthorityQuery,
+  AuthoritySnapshotContract,
+  AuthorityState,
+  CommandResult,
+  JournalAuthorityContract,
+  KernelContext,
+  KernelTransition,
+  QueryResult,
+} from "../contract/authority-contract.ts";
+import {
+  authorityStateFromSnapshot,
+  snapshotFromAuthorityState,
+} from "../state/authority-state.ts";
+import { queryAuthorityState } from "../decisions/authority-decisions.ts";
+import { structuralCommandSessionId } from "../contract/authority-command-address.ts";
+import { decideAuthorityTransition } from "../decisions/decision-pipeline.ts";
+import type {
+  DurableAuthoritySnapshot,
+  InMemoryJournalAuthorityOptions,
+} from "../state/authority-snapshot.ts";
+import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
+
+export function createInMemoryShellDrivers(options: InMemoryJournalAuthorityOptions): {
+  readonly authority: JournalAuthorityContract;
+  readonly journal: AuthorityJournalContract;
+  readonly snapshot: AuthoritySnapshotContract;
+} {
+  const initial = options.snapshot ?? emptySnapshot();
+  let state = authorityStateFromSnapshot(initial);
+  let history = initial.records.flatMap(([, records]) => structuredClone(records));
+  const identity = {
+    id: options.journalId,
+    incarnation: options.journalIncarnation ?? "1",
+  };
+
+  const authority: JournalAuthorityContract = {
+    *command<C extends AuthorityCommand>(command: C): Operation<CommandResult<C>> {
+      while (true) {
+        const selectedState = state;
+        const selectedHistory = history;
+        const sessionId = commandSessionId(command, selectedState, options);
+        const context: KernelContext = {
+          nowMs: options.now?.() ?? Date.now(),
+          journalIdentity: identity,
+          appendCursor: { sessionId, nextOffset: nextOffset(selectedHistory, sessionId) },
+          journalHeadDigest: canonicalSnapshot(
+            selectedHistory.filter((record) => record.sessionId === sessionId),
+          ).sha,
+          keyring: options.keyring,
+          schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
+          ...(options.maxOutcomeBytes === undefined
+            ? {}
+            : { maxOutcomeBytes: options.maxOutcomeBytes }),
+          ...(options.emissionPolicy === undefined
+            ? {}
+            : { emissionPolicy: options.emissionPolicy }),
+          ...(options.decisionDiagnostics === undefined
+            ? {}
+            : { decisionDiagnostics: options.decisionDiagnostics }),
+          liveEffectTargets: liveEffectTargets(selectedState),
+        };
+        const transition = decideAuthorityTransition({
+          state: selectedState,
+          context,
+          command,
+        }) as KernelTransition<C>;
+        if (state !== selectedState || history !== selectedHistory) continue;
+        state = transition.state;
+        history = [...selectedHistory, ...structuredClone(transition.entries)];
+        signalCommittedCancellation(command, transition.state);
+        return transition.result;
+      }
+    },
+    *query<Q extends AuthorityQuery>(query: Q): Operation<QueryResult<Q>> {
+      return queryAuthorityState(
+        state,
+        {
+          nowMs: options.now?.() ?? Date.now(),
+          journalIdentity: identity,
+          appendCursor: { sessionId: "", nextOffset: 0 },
+          journalHeadDigest: "",
+          keyring: options.keyring,
+          schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
+          ...(options.maxOutcomeBytes === undefined
+            ? {}
+            : { maxOutcomeBytes: options.maxOutcomeBytes }),
+          ...(options.emissionPolicy === undefined
+            ? {}
+            : { emissionPolicy: options.emissionPolicy }),
+          ...(options.decisionDiagnostics === undefined
+            ? {}
+            : { decisionDiagnostics: options.decisionDiagnostics }),
+        },
+        query,
+      );
+    },
+  };
+
+  const journal: AuthorityJournalContract = {
+    *readSession(sessionId) {
+      return structuredClone(history.filter((record) => record.sessionId === sessionId));
+    },
+    *readTree(sessionId, rootTaskId) {
+      const records = history.filter((record) => record.sessionId === sessionId);
+      const taskIds = new Set([rootTaskId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const record of records) {
+          if (
+            record.payload.type === "TaskOpened" &&
+            record.payload.parentTaskId &&
+            taskIds.has(record.payload.parentTaskId) &&
+            !taskIds.has(record.payload.taskId)
+          ) {
+            taskIds.add(record.payload.taskId);
+            changed = true;
+          }
+        }
+      }
+      return structuredClone(records.filter((record) => taskIds.has(record.payload.taskId)));
+    },
+  };
+  const snapshot: AuthoritySnapshotContract = {
+    *exportSnapshot() {
+      return snapshotFromAuthorityState(state, groupHistory(history));
+    },
+  };
+  return { authority, journal, snapshot };
+}
+
+function commandSessionId(
+  command: AuthorityCommand,
+  state: AuthorityState,
+  options: InMemoryJournalAuthorityOptions,
+): string {
+  const structural = structuralCommandSessionId(command);
+  if (structural !== undefined) return structural;
+  if (command.type === "execution.resolve-pull") {
+    try {
+      return verifyResolutionCapability(
+        command.request.capability,
+        options.keyring,
+        command.request.audience,
+      ).sessionId;
+    } catch {
+      return "";
+    }
+  }
+  if (
+    command.type === "execution.accept-preparation" ||
+    command.type === "execution.accept-assistant-partial"
+  ) {
+    for (const [sessionId, session] of state.sessions) {
+      if (session.execution.tasks.has(command.request.taskId)) return sessionId;
+    }
+  }
+  return "";
+}
+
+function nextOffset(records: readonly DurableSemanticRecord[], sessionId: string): number {
+  let next = 0;
+  for (const record of records) {
+    if (record.sessionId !== sessionId) continue;
+    const offset = Number(record.offset);
+    if (Number.isSafeInteger(offset)) next = Math.max(next, offset + 1);
+  }
+  return next;
+}
+
+function groupHistory(
+  records: readonly DurableSemanticRecord[],
+): Array<[string, readonly DurableSemanticRecord[]]> {
+  const groups = new Map<string, DurableSemanticRecord[]>();
+  for (const record of records) {
+    const values = groups.get(record.sessionId) ?? [];
+    values.push(record);
+    groups.set(record.sessionId, values);
+  }
+  return [...groups.entries()];
+}
+
+function liveEffectTargets(state: AuthorityState): readonly { taskId: string; pullId: string }[] {
+  const targets: { taskId: string; pullId: string }[] = [];
+  for (const [sessionId, session] of state.sessions) {
+    for (const task of session.execution.tasks.values()) {
+      for (const action of task.actions) {
+        if (
+          action.kind === "pull" &&
+          action.pull.resolution.status === "open" &&
+          hasLiveDurablePull(sessionId, task.taskId, action.pull.pullId)
+        ) {
+          targets.push({ taskId: task.taskId, pullId: action.pull.pullId });
+        }
+      }
+    }
+  }
+  return targets;
+}
+
+function signalCommittedCancellation<C extends AuthorityCommand>(
+  command: C,
+  state: AuthorityState,
+): void {
+  if (command.type !== "execution.request-cancellation") return;
+  const session = state.sessions.get(command.request.sessionId);
+  if (!session) return;
+  for (const task of session.execution.tasks.values()) {
+    const lifecycle = task.lifecycle;
+    if (lifecycle.status !== "active" || lifecycle.cancellation.type !== "settling_pull") {
+      continue;
+    }
+    const pullId = lifecycle.cancellation.pullId;
+    if (hasLiveDurablePull(command.request.sessionId, task.taskId, pullId)) {
+      signalLiveDurablePull(
+        command.request.sessionId,
+        task.taskId,
+        pullId,
+        lifecycle.cancellation.reason,
+      );
+    }
+  }
+}
+
+function emptySnapshot(): DurableAuthoritySnapshot {
+  return { version: 1, sessions: [], nextNonce: 0, records: [] };
+}

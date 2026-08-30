@@ -19,7 +19,7 @@ import {
 } from "@sweatpants/durable-effects/runtime";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 
-import type { JournalAuthorityContract } from "../authority-contract.ts";
+import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 import { createPullResolverRegistry, type PullResolver } from "../pull-kinds/registry.ts";
 import {
   driveProgramDriverActivation,

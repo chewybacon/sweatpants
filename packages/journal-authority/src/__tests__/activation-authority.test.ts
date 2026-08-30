@@ -2,7 +2,7 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
 import { createCapabilityKeyring } from "../index.ts";
-import { createAuthorityScenarioDriver } from "../testing.ts";
+import { createAuthorityScenarioDriver } from "../testing/testing.ts";
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import { type DurableProgramManifest } from "@sweatpants/durable-execution";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";

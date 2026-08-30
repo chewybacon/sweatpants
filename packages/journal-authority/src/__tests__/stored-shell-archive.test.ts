@@ -5,10 +5,10 @@ import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   type DurableProgramManifest,
 } from "@sweatpants/durable-execution";
-import { createCapabilityKeyring } from "../capabilities.ts";
-import { createMemoryExecutionStore } from "../memory.ts";
-import { createStoredShellDrivers } from "../stored-shell.ts";
-import type { PrivateSegmentPointer } from "../store.ts";
+import { createCapabilityKeyring } from "../contract/capabilities.ts";
+import { createMemoryExecutionStore } from "../store/memory.ts";
+import { createStoredShellDrivers } from "../shell/stored-shell.ts";
+import type { PrivateSegmentPointer } from "../store/store.ts";
 
 const manifest: DurableProgramManifest = {
   programId: "archive-linearity.fixture",

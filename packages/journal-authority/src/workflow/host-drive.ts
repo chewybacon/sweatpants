@@ -16,7 +16,7 @@ import {
 } from "@sweatpants/durable-execution";
 import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 
-import type { JournalAuthorityContract } from "../authority-contract.ts";
+import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 import { InstalledEffectPort } from "./runtime.ts";
 import {
   openProgramAttachment,

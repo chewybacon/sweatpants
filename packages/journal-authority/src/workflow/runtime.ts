@@ -60,7 +60,7 @@ import {
   sampleDescriptorSchema,
   waitDescriptorSchema,
 } from "../pull-kinds/index.ts";
-import { completedForkGroupTerminal, type ForkGroupTerminal } from "../fork-group.ts";
+import { completedForkGroupTerminal, type ForkGroupTerminal } from "../forest/fork-group.ts";
 import type { DurableChildDurability, DurableForkExpiry } from "@sweatpants/durable-execution";
 import { definePort } from "@sweatpants/foundation/port";
 

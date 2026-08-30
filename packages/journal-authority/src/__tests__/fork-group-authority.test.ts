@@ -2,7 +2,7 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 
 import { createCapabilityKeyring } from "../index.ts";
-import { createAuthorityScenarioDriver } from "../testing.ts";
+import { createAuthorityScenarioDriver } from "../testing/testing.ts";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   type DurableProgramManifest,
