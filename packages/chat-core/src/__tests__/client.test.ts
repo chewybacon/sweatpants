@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EventType } from "@ag-ui/core";
 import { decodeChatContent, decodeAGUIEvent } from "../client.ts";
 import type { ChatUIMessage, ChatUIPart } from "../client.ts";
-import { emptyFrame } from "../frame.ts";
+import { emptyFrame } from "../client/frame.ts";
 
 describe("Chat Core client facade", () => {
   it("exposes client-safe content and original AG-UI event names", () => {

@@ -1,7 +1,7 @@
 import type { RunStartedEvent } from "@ag-ui/core";
 import type { Json } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
-import type { PublicActivityPlacement } from "../chat-client-types.ts";
+import type { PublicActivityPlacement } from "../client/chat-client-types.ts";
 
 type TreePlacement = Omit<PublicActivityPlacement, "presentation">;
 

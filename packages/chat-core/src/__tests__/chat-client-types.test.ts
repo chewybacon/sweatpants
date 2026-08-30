@@ -3,7 +3,7 @@ import type {
   ChatUIActivityPart,
   ChatUIStructuredOutputPart,
   ChatUIToolCallPart,
-} from "../chat-client-types.ts";
+} from "../client/chat-client-types.ts";
 
 describe("state-discriminated Chat UI parts", () => {
   it("keeps lifecycle variants constructible with only their valid fields", () => {

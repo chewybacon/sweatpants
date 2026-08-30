@@ -210,9 +210,9 @@ describe("target package charters", () => {
     expect(existsSync(resolve(root, "packages/chat-core/src/session"))).toBe(false);
     expect(existsSync(resolve(root, "packages/chat-core/src/recursive-tree.ts"))).toBe(false);
     expect(existsSync(resolve(root, "packages/chat-core/src/ag-ui/index.ts"))).toBe(true);
-    expect(existsSync(resolve(root, "packages/chat-core/src/chat-client-projection.ts"))).toBe(
-      true,
-    );
+    expect(
+      existsSync(resolve(root, "packages/chat-core/src/client/chat-client-projection.ts")),
+    ).toBe(true);
   });
 
   it("keeps Durable Execution free of persistence, hosting, and chat projection", () => {
