@@ -73,9 +73,12 @@ export function createSqliteWriterBinding(path: string): Database.Database {
   const client = new Database(path);
   try {
     client.defaultSafeIntegers(true);
+    // The busy handler must exist before any lock-taking pragma: a co-tenant
+    // writer holding the database at creation time makes journal_mode wait
+    // its turn instead of failing the binding outright.
+    client.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
     client.pragma("foreign_keys = ON");
     client.pragma("journal_mode = WAL");
-    client.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
   } catch (error) {
     try {
       client.close();
