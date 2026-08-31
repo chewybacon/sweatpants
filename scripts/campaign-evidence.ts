@@ -36,7 +36,7 @@ const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".json", ".yam
 const EXCLUDED_DIRS = new Set(["node_modules", "dist", "build", ".artifacts", ".cache", ".git"]);
 /** The evidence script and its test carry pattern literals by construction; the
  * reset-policy test crafts the pre-cutover kind as its fixture (REQ-012). */
-const SELF_SCANNING = /campaign-evidence|journal-reset\.test/;
+const SELF_SCANNING = /campaign-evidence|journal-reset\.test|durability-contract\.test/;
 /** Historical records (landing notes, landed-spec mirrors) are exempt from scans. */
 const HISTORICAL = /docs[\\/]landing|docs[\\/]architecture[\\/]specs/;
 

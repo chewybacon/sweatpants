@@ -147,12 +147,7 @@ export interface DurableTaskHandle {
   __durableTask: string;
   owner: string;
 }
-export type EphemeralDurability =
-  | "opaque"
-  | "ephemeral_handle"
-  | "resumable_handle"
-  | "server_task"
-  | "crank_native";
+export type EphemeralDurability = "opaque" | "ephemeral_handle" | "crank_native";
 /** Model-sampling pull proposed by a journaled program; input is the canonical wire request. */
 export interface DurableSampleDescriptor {
   kind: "sample";

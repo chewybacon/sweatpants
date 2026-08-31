@@ -7,13 +7,7 @@ import {
 import { parser, type Parser } from "@sweatpants/foundation";
 import { registerPullKind } from "./registry.ts";
 
-export const ephemeralDurabilitySchema = z.enum([
-  "opaque",
-  "ephemeral_handle",
-  "resumable_handle",
-  "server_task",
-  "crank_native",
-]);
+export const ephemeralDurabilitySchema = z.enum(["opaque", "ephemeral_handle", "crank_native"]);
 
 export const ephemeralDescriptorSchema = z.strictObject({
   kind: z.literal("ephemeral"),

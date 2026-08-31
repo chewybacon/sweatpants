@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { call, run } from "effection";
 import { describe, expect, it } from "vitest";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
-import { createMcpHandler } from "@sweatpants/tool-session/mcp";
+import { createMcpHandler, classifyMcpToolDurability } from "@sweatpants/tool-session/mcp";
 import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
 import {
   ACCEPTANCE_TOOL_NAME,
@@ -80,6 +80,11 @@ function post(body: unknown, sessionId?: string): Request {
 describe("MCP Streamable HTTP worker integration", () => {
   it("routes elicitation and sampling responses back into one live tool session", async () => {
     const result = await run(function* () {
+      // REQ-016: this session negotiates no durable-effects extension, so its
+      // tools classify `opaque` — the journal owns the verbatim exchange and
+      // nothing else is promised. The round-trip below is that mode's
+      // observable end-to-end behavior.
+      expect(classifyMcpToolDurability({})).toBe("opaque");
       yield* createLocalToolInvocationRuntime({
         worker: { workerUrl: workerBootstrapUrl(), isDev: false },
       });

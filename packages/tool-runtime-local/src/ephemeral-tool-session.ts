@@ -38,13 +38,7 @@ import {
 
 const CONTINUATION_SCHEME = "sweatpants/tool-session-v1";
 
-const ephemeralDurabilitySchema = z.enum([
-  "opaque",
-  "ephemeral_handle",
-  "resumable_handle",
-  "server_task",
-  "crank_native",
-]);
+const ephemeralDurabilitySchema = z.enum(["opaque", "ephemeral_handle", "crank_native"]);
 
 const continuationStateSchema = z.strictObject({
   scheme: z.literal(CONTINUATION_SCHEME),

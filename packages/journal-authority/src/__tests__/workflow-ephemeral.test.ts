@@ -221,7 +221,7 @@ describe("workflow runtime foreign boundaries", () => {
     });
   });
 
-  it("rejects non-ephemeral foreign durabilities at reserve", async () => {
+  it("rejects non-process-bound durabilities at reserve (Case 2 gate)", async () => {
     const sessionId = "foreign-durability";
     const authority = makeAuthority("journal-foreign-durability");
     const request = attach(sessionId);
@@ -251,7 +251,7 @@ describe("workflow runtime foreign boundaries", () => {
                 driver: "mcp",
                 tool: "remote",
                 input: {},
-                durability: "resumable_handle",
+                durability: "opaque",
               });
               return {};
             },

@@ -12,13 +12,12 @@ export const MCP_DURABLE_COMMIT_REQUEST = "sweatpants.chat/durable-effects/commi
 export const MCP_REQUEST_STATE_MAX_BYTES = 1024 * 1024;
 
 /** Effective tool durability exposed by the negotiated transport boundary. */
-export type ToolDurability = "opaque" | "server_task" | "crank_native";
+export type ToolDurability = "opaque" | "crank_native";
 
 /** Parsed MCP capability metadata used to classify effective durability. */
 export interface McpToolDurabilityMetadata {
   negotiatedExtensions?: readonly string[];
   supportsFreshReplay?: boolean;
-  serverTask?: boolean;
 }
 
 /** Classifies durability conservatively at the weakest exposed boundary. */
@@ -28,9 +27,6 @@ export function classifyMcpToolDurability(metadata: McpToolDurabilityMetadata): 
     metadata.supportsFreshReplay === true
   ) {
     return "crank_native";
-  }
-  if (metadata.serverTask) {
-    return "server_task";
   }
   return "opaque";
 }
