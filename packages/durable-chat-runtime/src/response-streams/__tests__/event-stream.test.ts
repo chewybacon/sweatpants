@@ -1,7 +1,7 @@
 import { EventType } from "@ag-ui/core";
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
-import type { StreamEvent } from "../../handler/types.ts";
+import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import { createSerializedEventStream } from "../event-stream.ts";
 
 function oneEventStream(event: StreamEvent, onNext: () => void): Stream<StreamEvent, void> {

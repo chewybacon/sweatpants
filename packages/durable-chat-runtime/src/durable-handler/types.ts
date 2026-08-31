@@ -4,20 +4,19 @@ import type { SchemaBinding } from "@sweatpants/foundation/schema";
 import type { Model, StreamOptions } from "@sweatpants/model-provider";
 import type { ToolInventoryEntry, ToolRuntime } from "@sweatpants/tool-runtime";
 import type { AgUiRunMetadata, ConversationAuthority, HistoryPolicy } from "@sweatpants/chat-core";
-import type { StreamEvent, ChatHistoryEntry } from "../handler/types.ts";
+import type {
+  ConversationStreamEvent as StreamEvent,
+  ChatHistoryEntry,
+} from "@sweatpants/chat-core";
 import type { ModelContextSource } from "@sweatpants/model-sampling";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
 import type { ProjectionTokenKeyring } from "../projection-tokens.ts";
-import type { ScopedEndpoint } from "../handler/streaming.ts";
+import type { ScopedEndpoint } from "../streaming.ts";
 import type { ChatStorageConfig } from "./storage.ts";
 
-import type {
-  ChatHandlerSetup,
-  ElicitResponse,
-  PluginAbortRequest,
-} from "../handler/chat-types.ts";
+import type { ChatHandlerSetup, ElicitResponse, PluginAbortRequest } from "./chat-types.ts";
 
 export type {
   ChatHandlerSetup,
@@ -25,7 +24,7 @@ export type {
   ChatRequestBody,
   ElicitResponse,
   PluginAbortRequest,
-} from "../handler/chat-types.ts";
+} from "./chat-types.ts";
 
 export interface ToolSchema {
   name: string;

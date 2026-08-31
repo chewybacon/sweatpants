@@ -7,7 +7,7 @@
  */
 import { resource, type Operation, type Stream } from "effection";
 import type { TokenBufferWriter } from "@sweatpants/durable-streams";
-import type { StreamEvent } from "../handler/types.ts";
+import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import { registerInterruptsFromRunFinished } from "../interrupts/index.ts";
 import { toStrictPublicEvent } from "../projection.ts";
 

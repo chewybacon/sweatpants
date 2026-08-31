@@ -10,7 +10,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   createStreamingHandler,
   useHandlerContext,
-} from "@sweatpants/durable-chat-runtime/handler/streaming";
+} from "@sweatpants/durable-chat-runtime/streaming";
 import { resource, sleep, call } from "effection";
 import type { Operation, Stream } from "effection";
 

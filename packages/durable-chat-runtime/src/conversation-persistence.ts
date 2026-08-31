@@ -35,7 +35,7 @@ import type {
 import { ConversationStoreError } from "@sweatpants/history-store/contract";
 import { call, type Operation } from "effection";
 import { CrankError } from "@sweatpants/durable-execution";
-import type { StreamEvent } from "./handler/types.ts";
+import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import {
   mintPublicHistoryCursor,
   mintWindowToken,
