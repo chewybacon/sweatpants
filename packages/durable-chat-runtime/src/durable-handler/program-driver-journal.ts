@@ -102,6 +102,8 @@ export interface ProgramDriverJournalStoreOptions {
   schemaRegistry?: DurableSchemaRegistry;
   executionStore: ExecutionStore;
   privateSegmentTarget?: PrivateSegmentTarget;
+  /** Named by the REQ-012 reset failure when stored data cannot be parsed. */
+  dataDirectory?: string;
 }
 
 export function createDevelopmentProgramDriverJournalStore(options: {
@@ -132,6 +134,7 @@ export function createProgramDriverJournalStore(
         ...(options.privateSegmentTarget
           ? { privateSegmentTarget: options.privateSegmentTarget }
           : {}),
+        ...(options.dataDirectory ? { dataDirectory: options.dataDirectory } : {}),
         schemaRegistry: options.schemaRegistry ?? programDriverSchemaRegistry(),
       };
 

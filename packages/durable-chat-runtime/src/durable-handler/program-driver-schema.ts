@@ -33,14 +33,6 @@ export type ChatToolCatalogEntry = {
         driver: "tool-session" | "chat-tool-runtime";
         tool: string;
         durability: "ephemeral_handle";
-      }
-    /** Historical catalog encoding; read-only until version-1 journals retire. */
-    | {
-        kind: "foreign-tool";
-        target: string;
-        driver: "tool-session" | "chat-tool-runtime";
-        tool: string;
-        durability: "ephemeral_handle";
       };
 };
 
@@ -52,7 +44,7 @@ export type EphemeralToolCatalogExecution = Exclude<
 export function isEphemeralToolCatalogExecution(
   execution: ChatToolCatalogEntry["execution"],
 ): execution is EphemeralToolCatalogExecution {
-  return execution.kind === "ephemeral-tool" || execution.kind === "foreign-tool";
+  return execution.kind === "ephemeral-tool";
 }
 
 /** Atomic model exposure plus execution target artifact accepted by chat-root. */
@@ -84,13 +76,6 @@ const catalogExecutionSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     kind: z.literal("ephemeral-tool"),
-    target: schemaText,
-    driver: z.enum(["tool-session", "chat-tool-runtime"]),
-    tool: schemaText,
-    durability: z.literal("ephemeral_handle"),
-  }),
-  z.strictObject({
-    kind: z.literal("foreign-tool"),
     target: schemaText,
     driver: z.enum(["tool-session", "chat-tool-runtime"]),
     tool: schemaText,
@@ -243,18 +228,6 @@ const chatRootInputDescriptor = chatEngineSchema(
                       required: ["kind", "target", "driver", "tool", "durability"],
                       properties: {
                         kind: { const: "ephemeral-tool" },
-                        target: { type: "string" },
-                        driver: { enum: ["tool-session", "chat-tool-runtime"] },
-                        tool: { type: "string" },
-                        durability: { const: "ephemeral_handle" },
-                      },
-                      additionalProperties: false,
-                    },
-                    {
-                      type: "object",
-                      required: ["kind", "target", "driver", "tool", "durability"],
-                      properties: {
-                        kind: { const: "foreign-tool" },
                         target: { type: "string" },
                         driver: { enum: ["tool-session", "chat-tool-runtime"] },
                         tool: { type: "string" },

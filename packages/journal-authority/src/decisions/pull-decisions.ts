@@ -107,9 +107,6 @@ export function reserveUnderMandate(
   request: MandateReserveRequest,
 ): LiveReservationResult {
   const task = mandateTask(draft, request.mandate);
-  if (request.descriptor.kind === "foreign") {
-    throw new CrankError("invalid_descriptor", "Legacy foreign descriptors are read-only");
-  }
   const result = reservePull(draft, {
     sessionId: request.mandate.address.sessionId,
     turnId: request.mandate.address.turnId,

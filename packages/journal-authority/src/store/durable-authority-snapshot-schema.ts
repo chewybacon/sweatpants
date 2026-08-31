@@ -9,7 +9,6 @@ const PULL_KIND_SNAPSHOT_KINDS = new Set([
   "elicit",
   "sample",
   "ephemeral",
-  "foreign",
   "invoke",
   "spawn",
   "all",

@@ -11,6 +11,7 @@
  * - projection tokens:           HMAC keyring over `secret`
  * - history reads:               authorized (place auth in front, or override)
  */
+import { dirname } from "node:path";
 import type { Operation } from "effection";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
@@ -55,6 +56,10 @@ export function resolveDurableChatComposition(
   }
   const authorizeHistoryRead = config.authorizeHistoryRead ?? authorizedHistoryRead;
   const { secret, name } = config;
+  const dataDirectory =
+    config.storage.kind === "sqlite" && "path" in config.storage
+      ? dirname(config.storage.path)
+      : undefined;
 
   if (secret === undefined) {
     const { createProgramDriverJournalStore: createJournalStore, projectionTokens } = config;
@@ -87,6 +92,7 @@ export function resolveDurableChatComposition(
           programs.flatMap((program) => [...program.artifacts.catalog]),
         ),
         executionStore,
+        ...(dataDirectory ? { dataDirectory } : {}),
       }));
 
   return {

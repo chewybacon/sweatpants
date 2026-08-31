@@ -30,12 +30,6 @@ export interface DurableProgramContext {
     input: I,
     resolver: { audience: string; route?: string },
   ): Operation<O>;
-  effect<T extends Json = Json>(
-    name: string,
-    version: string,
-    input: Json,
-    resolver: { audience: string; route?: string },
-  ): Operation<T>;
   record<T extends Json>(
     options: RecordOptions,
     operation: (context: RecordAttemptContext) => Operation<T>,

@@ -27,7 +27,6 @@ export interface PublicTaskProjection {
   readonly state: PlannedForestRow["classification"];
   /** Derived only from TaskOpened lineage records, never descriptor claims. */
   readonly parentTaskId?: string;
-  readonly detachedLegacy: boolean;
 }
 
 export interface DurableExecutionProjection {
@@ -50,21 +49,9 @@ export function projectDurableExecution(
   policy: ProjectionPolicy,
 ): DurableExecutionProjection {
   const lineage = new Map<string, string | undefined>();
-  const detachedLegacy = new Set<string>();
-  const spawnPulls = new Set(
-    records
-      .filter(
-        (record) =>
-          record.payload.type === "PullRequested" && record.payload.descriptor.kind === "spawn",
-      )
-      .map((record) => (record.payload.type === "PullRequested" ? record.payload.pullId : "")),
-  );
   for (const record of records) {
     if (record.payload.type !== "TaskOpened") continue;
     lineage.set(record.payload.taskId, record.payload.parentTaskId);
-    if (record.payload.parentPullId !== undefined && spawnPulls.has(record.payload.parentPullId)) {
-      detachedLegacy.add(record.payload.taskId);
-    }
   }
 
   const tasks = plan.rows.map(
@@ -74,7 +61,6 @@ export function projectDurableExecution(
       ...(lineage.get(row.address.taskId) === undefined
         ? {}
         : { parentTaskId: lineage.get(row.address.taskId)! }),
-      detachedLegacy: detachedLegacy.has(row.address.taskId),
     }),
   );
   const openSlots: PublicOpenSlot[] = [];

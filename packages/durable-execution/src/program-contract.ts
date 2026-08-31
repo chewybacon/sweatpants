@@ -173,14 +173,6 @@ export interface DurableEphemeralDescriptor {
   input: Json;
   durability: EphemeralDurability;
 }
-/** Historical wire-only spelling. New live reservations reject this variant. */
-export interface LegacyForeignDescriptor {
-  kind: "foreign";
-  driver: string;
-  tool: string;
-  input: Json;
-  durability: EphemeralDurability;
-}
 export type EphemeralContinuation = { driver: string; state: Json };
 export type ProgramElicitResult<T extends Json = Json> =
   | { action: "accept"; content: T }
@@ -227,7 +219,6 @@ export type DurableOperationDescriptor =
   | DurableInvokeDescriptor
   | DurableSampleDescriptor
   | DurableEphemeralDescriptor
-  | LegacyForeignDescriptor
   | DurableAllDescriptor
   | DurableRaceDescriptor
   | DurableSpawnDescriptor

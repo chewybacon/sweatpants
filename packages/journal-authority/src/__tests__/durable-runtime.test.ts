@@ -13,6 +13,7 @@ import { call, run, type Operation } from "effection";
 import { createApi } from "effection/experimental";
 import { describe, expect, it } from "vitest";
 
+import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
@@ -79,6 +80,13 @@ const echoOutput = createSchemaFixture(
   { type: "string" },
   stringGuard,
 );
+const echoDefinition = defineDurableEffect<string, string>({
+  name: "echo",
+  version: "1",
+  inputSchema: echoInput.descriptor,
+  outputSchema: echoOutput.descriptor,
+  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
+});
 const mutateInput = createSchemaFixture(
   "fixture.basic/mutate-input",
   "effect_input",
@@ -127,13 +135,7 @@ const manifest: DurableProgramManifest = {
     approval: { response: approvalResponse.descriptor },
   },
   effects: {
-    echo: {
-      name: "echo",
-      version: "1",
-      inputSchema: echoInput.descriptor,
-      outputSchema: echoOutput.descriptor,
-      retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
-    },
+    echo: echoDefinition,
     mutate: {
       name: "mutate",
       version: "1",
@@ -554,7 +556,7 @@ describe("crank-native durable runtime", () => {
   it("validates manifests and drives a disposable local program task with ordered actions", async () => {
     const tool = createPinnedDurableProgram(manifest, function* (input, context) {
       yield* context.emit("progress", { input });
-      return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
+      return yield* context.effect(echoDefinition, input, { audience: "host-effects" });
     });
     const registry = createDurableToolRegistry([tool]);
     const driver = createWorkflowProgramDriver(registry);
@@ -1489,7 +1491,7 @@ describe("crank-native durable runtime", () => {
   it("routes an installed effect to execution through scoped middleware", async () => {
     let executions = 0;
     const tool = createPinnedDurableProgram(manifest, function* (input, context) {
-      return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
+      return yield* context.effect(echoDefinition, input, { audience: "host-effects" });
     });
     const tools = createDurableToolRegistry([tool]);
     const effects = createDurableEffectRegistry([
@@ -1544,7 +1546,7 @@ describe("crank-native durable runtime", () => {
   it("fails closed when execution placement has no implementation", async () => {
     let hostExecutions = 0;
     const tool = createPinnedDurableProgram(manifest, function* (input, context) {
-      return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
+      return yield* context.effect(echoDefinition, input, { audience: "host-effects" });
     });
     const tools = createDurableToolRegistry([tool]);
     const hostEffects = createDurableEffectRegistry([
@@ -1703,7 +1705,7 @@ describe("crank-native durable runtime", () => {
   it("rejects nested durable scheduling inside a recorded operation", async () => {
     const tool = createPinnedDurableProgram(manifest, function* (input, context) {
       return yield* context.record({ key: "unlabeled-record" }, function* () {
-        return yield* context.effect<string>("echo", "1", input, {
+        return yield* context.effect(echoDefinition, input, {
           audience: "host-effects",
         });
       });
@@ -1748,7 +1750,7 @@ describe("crank-native durable runtime", () => {
   it("uses native createApi max/min middleware and runs host effects through durable receipt gating", async () => {
     const tool = createPinnedDurableProgram(manifest, function* (input, context) {
       yield* context.emit("progress", { stage: "before" });
-      return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
+      return yield* context.effect(echoDefinition, input, { audience: "host-effects" });
     });
     const tools = createDurableToolRegistry([tool]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);

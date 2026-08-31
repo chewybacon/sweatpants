@@ -63,6 +63,12 @@ export interface StoredJournalAuthorityOptions {
   readonly initialSnapshot?: DurableAuthoritySnapshot;
   /** Private journal/replay segment targets. */
   readonly privateSegmentTarget?: PrivateSegmentTarget;
+  /**
+   * The embedding's persisted-data directory, named verbatim by the reset
+   * failure when stored data cannot be parsed under the current schema
+   * (REQ-012: hard-fail with an actionable reset message; no migration).
+   */
+  readonly dataDirectory?: string;
 }
 
 export interface StoredShellDrivers {
@@ -131,8 +137,21 @@ export function createStoredShellDrivers(
     };
   }
 
+  function resetFailure(operation: string, record: string, cause: unknown): CrankError {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    const reset = options.dataDirectory
+      ? `delete the data directory ${options.dataDirectory} (or point storage at a fresh location) and restart`
+      : "delete this journal store's persisted data and restart";
+    return new CrankError(
+      "invalid_journal",
+      `Stored journal data cannot be parsed under the current schema while ${operation} (${record}). ` +
+        `Pre-cutover data is disposable: ${reset}. Parse failure: ${detail}`,
+    );
+  }
+
   function parseJournalCollections(
     entries: readonly Json[],
+    journalHead: string,
   ): Array<[string, DurableSemanticRecord[]]> {
     const grouped = new Map<string, Json[]>();
     for (const entry of entries) {
@@ -142,7 +161,11 @@ export function createStoredShellDrivers(
         Array.isArray(entry) ||
         typeof entry["sessionId"] !== "string"
       ) {
-        throw new CrankError("invalid_journal", "Stored authority journal entry is invalid");
+        throw resetFailure(
+          "replaying stored journal records",
+          `journal entry after head ${journalHead}`,
+          new Error("Stored authority journal entry is invalid"),
+        );
       }
       const sessionId = entry["sessionId"];
       const sessionEntries = grouped.get(sessionId) ?? [];
@@ -150,9 +173,18 @@ export function createStoredShellDrivers(
       grouped.set(sessionId, sessionEntries);
     }
     return [...grouped.entries()].map(([sessionId, sessionEntries]) => {
-      const parsed = parseDurableAuthoritySnapshot(
-        JSON.stringify({ ...empty, records: [[sessionId, sessionEntries]] }),
-      );
+      let parsed: DurableAuthoritySnapshot;
+      try {
+        parsed = parseDurableAuthoritySnapshot(
+          JSON.stringify({ ...empty, records: [[sessionId, sessionEntries]] }),
+        );
+      } catch (error) {
+        throw resetFailure(
+          "replaying stored journal records",
+          `session ${sessionId} (${sessionEntries.length} record(s) after head ${journalHead})`,
+          error,
+        );
+      }
       return parsed.records[0] ?? [sessionId, []];
     });
   }
@@ -183,7 +215,16 @@ export function createStoredShellDrivers(
     // The mutable authority object stores topology and frontiers only. The
     // complete semantic record collection is reconstructed from immutable
     // journal segments before the authority is handed to the in-memory engine.
-    const base = parseDurableAuthoritySnapshot(JSON.stringify({ ...payload.body, records: [] }));
+    let base: DurableAuthoritySnapshot;
+    try {
+      base = parseDurableAuthoritySnapshot(JSON.stringify({ ...payload.body, records: [] }));
+    } catch (error) {
+      throw resetFailure(
+        "restoring the stored authority snapshot",
+        `snapshot ${authorityControl.snapshot.id}`,
+        error,
+      );
+    }
     const journal = authorityControl.journalHead
       ? yield* store.readJournal({
           executionId,
@@ -203,7 +244,10 @@ export function createStoredShellDrivers(
       authorityControl,
       snapshot: {
         ...base,
-        records: parseJournalCollections(entries),
+        records: parseJournalCollections(
+          entries,
+          authorityControl.journalHead?.segmentId ?? "none",
+        ),
       },
     };
   }
