@@ -3,7 +3,7 @@ import type { Operation } from "effection";
 import type { ChatHistoryEntry, ConversationCommand } from "@sweatpants/chat-core";
 import type { StreamOptions } from "@sweatpants/model-provider";
 import type { ToolExecutionRef } from "@sweatpants/tool-runtime";
-import type { ResumeEntry } from "./types.ts";
+import type { ResumeEntry } from "../interrupts/registry.ts";
 
 export interface ChatHandlerSetupContext {
   request: Request;

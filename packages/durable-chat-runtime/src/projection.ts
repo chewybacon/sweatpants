@@ -14,7 +14,7 @@ import {
   type ProjectionProgram,
 } from "@sweatpants/foundation/projection";
 import { resource, type Operation, type Stream } from "effection";
-import type { StreamEvent } from "./handler/types.ts";
+import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import {
   agUiMessagesToChatHistoryEntries,
   buildAgUiCustomState,

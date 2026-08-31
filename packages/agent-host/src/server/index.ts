@@ -7,10 +7,7 @@ import {
   type Operation,
   type Scope,
 } from "effection";
-import type {
-  FetchHandler,
-  ScopedEndpoint,
-} from "@sweatpants/durable-chat-runtime/handler/streaming";
+import type { FetchHandler, ScopedEndpoint } from "@sweatpants/durable-chat-runtime/streaming";
 import { createHostScopeOwner, installHostScopeOwner } from "@sweatpants/durable-chat-runtime/host";
 import { installDurableStreamsOwner } from "@sweatpants/durable-chat-runtime/response-streams";
 

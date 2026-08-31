@@ -1,10 +1,15 @@
-import type { ResumeEntry } from "../handler/types.ts";
 import { assertJson, stableTupleHash, type Json } from "@sweatpants/foundation";
 import {
   parsePortableSchemaDescriptor,
   type PortableSchemaDescriptor,
 } from "@sweatpants/foundation/schema";
 import { z } from "zod";
+
+export interface ResumeEntry {
+  interruptId: string;
+  status: "resolved" | "cancelled";
+  payload?: unknown;
+}
 
 /** Interrupt response schemas are JSON Schema documents: always keyed objects. */
 const responseSchemaSchema = z.record(z.string(), z.unknown());

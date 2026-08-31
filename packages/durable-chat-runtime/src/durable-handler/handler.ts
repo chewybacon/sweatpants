@@ -53,13 +53,9 @@ import type { ChatToolDefinition } from "@sweatpants/chat-contract";
 import { ToolExposureApi } from "@sweatpants/chat-core";
 import { HistoryPolicyContext } from "@sweatpants/chat-core";
 import { useLogger } from "../logger/index.ts";
-import { bindModel, createBindingSource, stringParam } from "../handler/model-binder.ts";
-import {
-  createStreamingEndpoint,
-  HandlerContext,
-  type ScopedEndpoint,
-} from "../handler/streaming.ts";
-import type { StreamEvent } from "../handler/types.ts";
+import { bindModel, createBindingSource, stringParam } from "./model-binder.ts";
+import { createStreamingEndpoint, HandlerContext, type ScopedEndpoint } from "../streaming.ts";
+import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import { createProgramDriverChatEngine } from "./program-driver/program-driver-chat-engine.ts";
 import { manifest as chatProgramManifest } from "./program-driver-schema.ts";
 import { preparedModelContextByteLimit } from "./model-sampling/service.ts";
@@ -84,13 +80,13 @@ import {
   type ResolvedDurableChatComposition,
 } from "./configuration.ts";
 import { cancelOpenInterruptsForThread, settleInterruptForThread } from "../interrupts/index.ts";
-import { parseChatRequestBody } from "../handler/request-normalization.ts";
-import { planTurn } from "../handler/turn-plan.ts";
+import { parseChatRequestBody } from "./request-normalization.ts";
+import { planTurn } from "./turn-plan.ts";
 import { createEmptyStream, createPullStream } from "@sweatpants/durable-streams";
 import {
   createConversationCommandErrorResponse,
   createStoredConversationCheckpointResponse,
-} from "../handler/hydrate-responses.ts";
+} from "./hydrate-responses.ts";
 import { useHostScopeOwner } from "../host/host-scope.ts";
 import { installExecutionStore } from "@sweatpants/journal-authority/api";
 import { ConversationStoreApi, installConversationStore } from "@sweatpants/history-store/port";

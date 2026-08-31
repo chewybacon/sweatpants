@@ -11,7 +11,7 @@ import {
   replayConversationViews,
   type ProjectionFrame,
 } from "../projection.ts";
-import type { StreamEvent } from "../handler/types.ts";
+import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 
 function frames(...events: readonly StreamEvent[]): ProjectionFrame[] {
   return parseBufferedFrames([...events]);

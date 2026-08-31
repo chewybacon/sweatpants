@@ -13,7 +13,7 @@ import {
   ProjectionTokenError,
   verifyPublicHistoryCursor,
 } from "../projection-tokens.ts";
-import type { ScopedEndpoint } from "../handler/streaming.ts";
+import type { ScopedEndpoint } from "../streaming.ts";
 import type { ProjectionTokenKeyring } from "../projection-tokens.ts";
 import type { DurableHistoryPageRequest, HistoryReadAuthorization } from "./types.ts";
 

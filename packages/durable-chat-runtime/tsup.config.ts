@@ -2,15 +2,9 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
+    streaming: "src/streaming.ts",
     "response-streams/index": "src/response-streams/index.ts",
     "response-streams/testing": "src/response-streams/__tests__/vitest-effection.ts",
-    "handler/streaming": "src/handler/streaming.ts",
-    "handler/model-binder": "src/handler/model-binder.ts",
-    "handler/types": "src/handler/types.ts",
-    "handler/hydrate-responses": "src/handler/hydrate-responses.ts",
-    "handler/chat-types": "src/handler/chat-types.ts",
-    "handler/request-normalization": "src/handler/request-normalization.ts",
-    "handler/turn-plan": "src/handler/turn-plan.ts",
     "interrupts/index": "src/interrupts/index.ts",
     "program-driver/effects": "src/program-driver/effects.ts",
     "program-driver/native-tools": "src/program-driver/native-tools.ts",
