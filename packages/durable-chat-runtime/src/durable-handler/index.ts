@@ -60,7 +60,7 @@ export {
   createProgramDeliveryWriter,
   highestRemoteOriginLsn,
   projectProgramDeliveryEnvelope,
-} from "./model-sampling-relay.ts";
+} from "./model-sampling/model-sampling-relay.ts";
 export { ProgramDriverEphemeralEffectsContext } from "../program-driver/effects.ts";
 export { createHostModelSamplingService } from "./model-sampling/service.ts";
 export {

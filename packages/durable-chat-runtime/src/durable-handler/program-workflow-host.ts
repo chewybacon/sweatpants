@@ -56,7 +56,7 @@ import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation
 import { z } from "zod";
 import { EPHEMERAL_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/ephemeral";
 
-import { createParkedSamplePullResolver } from "./parked-sample-resolver.ts";
+import { createParkedSamplePullResolver } from "./model-sampling/parked-sample-resolver.ts";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
 
 export type ProgramCatalogEntry =

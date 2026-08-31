@@ -60,7 +60,7 @@ import {
   type ScopedEndpoint,
 } from "../handler/streaming.ts";
 import type { StreamEvent } from "../handler/types.ts";
-import { createProgramDriverChatEngine } from "./program-driver-chat-engine.ts";
+import { createProgramDriverChatEngine } from "./program-driver/program-driver-chat-engine.ts";
 import { manifest as chatProgramManifest } from "./program-driver-schema.ts";
 import { preparedModelContextByteLimit } from "./model-sampling/service.ts";
 import { useOptionalProgramDriverEphemeralEffects } from "../program-driver/effects.ts";

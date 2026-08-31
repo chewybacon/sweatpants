@@ -4,7 +4,7 @@ import { CrankError } from "@sweatpants/durable-execution";
 import type { ModelSamplingService } from "@sweatpants/model-sampling";
 import type { ModelContext } from "@sweatpants/model-provider";
 
-import { createParkedSamplePullResolver } from "../parked-sample-resolver.ts";
+import { createParkedSamplePullResolver } from "../model-sampling/parked-sample-resolver.ts";
 
 const placement = {
   program: { id: "chat.root", version: "1", digest: "a".repeat(64) },

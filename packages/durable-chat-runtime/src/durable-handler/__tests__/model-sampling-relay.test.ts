@@ -7,7 +7,7 @@ import {
   createProgramDeliveryWriter,
   highestRemoteOriginLsn,
   projectProgramDeliveryEnvelope,
-} from "../model-sampling-relay.ts";
+} from "../model-sampling/model-sampling-relay.ts";
 
 function envelope(lsn: number, streamId = "remote-1"): ProgramDeliveryEnvelope {
   return {

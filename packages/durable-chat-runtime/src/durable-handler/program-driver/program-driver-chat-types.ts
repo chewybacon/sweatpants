@@ -3,9 +3,9 @@ import type { AdvancementResult } from "@sweatpants/durable-execution";
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import type { ConversationStreamEvent } from "@sweatpants/chat-core";
 
-import type { ProgramDriverNativeToolComposition } from "../program-driver/native-tools.ts";
-import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
-import type { WorkflowChatEngineParams } from "./types.ts";
+import type { ProgramDriverNativeToolComposition } from "../../program-driver/native-tools.ts";
+import type { ProgramDriverJournalStore } from "../program-driver-journal.ts";
+import type { WorkflowChatEngineParams } from "../types.ts";
 
 export type StreamEvent = ConversationStreamEvent;
 

@@ -1,6 +1,6 @@
 import { resource, type Operation, type Stream } from "effection";
 
-import { runWithTurnEventWriter } from "./model-sampling/turn-event-api.ts";
+import { runWithTurnEventWriter } from "../model-sampling/turn-event-api.ts";
 import { runProgramDriverChatActivation } from "./program-driver-chat-activation.ts";
 import { composeProgramDriverChat } from "./program-driver-chat-composition.ts";
 import { presentProgramDriverChatActivation } from "./program-driver-chat-presentation.ts";

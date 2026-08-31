@@ -9,9 +9,9 @@ import {
   ephemeralToolInvocationId,
 } from "@sweatpants/tool-session/ephemeral";
 
-import type { ProgramDriverJournal } from "./program-driver-journal.ts";
-import type { ElicitResponse } from "./types.ts";
-import type { ProgramDriverNativeToolComposition } from "../program-driver/native-tools.ts";
+import type { ProgramDriverJournal } from "../program-driver-journal.ts";
+import type { ElicitResponse } from "../types.ts";
+import type { ProgramDriverNativeToolComposition } from "../../program-driver/native-tools.ts";
 import { pendingCorrelation } from "./program-driver-chat-correlation.ts";
 import {
   indexChatJournal,

@@ -1,5 +1,5 @@
 import { CrankError, type PinnedProgram } from "@sweatpants/durable-execution";
-import { nativeProgramIdentities } from "../program-driver/native-tools.ts";
+import { nativeProgramIdentities } from "../../program-driver/native-tools.ts";
 import type { ChatActivationContext } from "./program-driver-chat-activation.ts";
 import type {
   ChatAdmissionInputPolicy,

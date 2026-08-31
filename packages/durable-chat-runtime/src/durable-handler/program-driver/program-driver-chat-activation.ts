@@ -3,11 +3,11 @@ import { type JournalAuthorityContract } from "@sweatpants/journal-authority";
 import { CrankError, type AdvancementResult } from "@sweatpants/durable-execution";
 import { stableTupleHash } from "@sweatpants/foundation";
 
-import { runWithRenewedActivationLease } from "../host/activation-lease-coordinator.ts";
+import { runWithRenewedActivationLease } from "../../host/activation-lease-coordinator.ts";
 import {
   requiresFencedActivation,
   type ProgramDriverNativeToolComposition,
-} from "../program-driver/native-tools.ts";
+} from "../../program-driver/native-tools.ts";
 import {
   admitProgramDriverChatTurn,
   type ChatAdmissionRequest,
@@ -22,7 +22,7 @@ import {
   composeChatExecutionRuntime,
   type ChatExecutionEnvironment,
 } from "./program-driver-chat-runtime.ts";
-import type { PluginAbortRequest } from "./types.ts";
+import type { PluginAbortRequest } from "../types.ts";
 import type { ChatActivationReport } from "./program-driver-chat-types.ts";
 
 export interface ChatActivationContext {

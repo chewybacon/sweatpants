@@ -20,7 +20,7 @@ import {
   isEphemeralToolCatalogExecution,
   manifest,
   type ChatToolCatalogEntry,
-} from "./program-driver-schema.ts";
+} from "../program-driver-schema.ts";
 
 type ChatCall = {
   id: string;
