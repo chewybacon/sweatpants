@@ -26,7 +26,7 @@ program ──propose──▶ [journal: PullRequested]          park
   `model-sampling/src/effect.ts::executeModelSamplePull`.
 - Log owns: the full request and response. External world: none involved.
 
-## Case 2 — External tools that don't know us (`foreign`)
+## Case 2 — External tools that don't know us (`ephemeral`)
 
 ```
 program ──propose──▶ [journal: PullRequested{driver,tool,input}]   park
@@ -34,9 +34,9 @@ program ──propose──▶ [journal: PullRequested{driver,tool,input}]   par
    └──replay◀─[journal: PullResolved]◀── host executes LIVE call out ───┘
 ```
 
-- Resolver: facade's foreign resolver → `ephemeral-tool-session.ts::executeEphemeralToolCall` over the invocation host (worker boundary). Interactive chat tools use the pinned foreign adapter workflow child so nested sample/elicit exchanges remain ordinary child topology.
+- Resolver: facade's ephemeral resolver → `ephemeral-tool-session.ts::executeEphemeralToolCall` over the invocation host (worker boundary). Interactive chat tools use the pinned ephemeral adapter workflow child so nested sample/elicit exchanges remain ordinary child topology.
 - The external tool sees an ordinary function call. It learns nothing about
-  durability. Death of the live reference = `foreign_reference_lost` error —
+  durability. Death of the live reference = `ephemeral_reference_lost` error —
   there is nothing honest to replay otherwise.
 - Log owns: verbatim exchange. Authority stays home.
 

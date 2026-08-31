@@ -56,13 +56,13 @@ const parentManifest = defineDurableProgramManifest<null, Json>({
 });
 
 describe("durable cancellation reaches an ordinary createTool AbortSignal", () => {
-  it("aborts the scope-owned signal while cancelling the foreign child leaves-first", async () => {
+  it("aborts the scope-owned signal while cancelling the ephemeral child leaves-first", async () => {
     const toolStarted = createQueue<void, void>();
     let invocationSignal: AbortSignal | undefined;
     let signalAbortCount = 0;
     let bodyContinuedAfterAbort = false;
 
-    const abortAwareTool = createTool("abort_aware_foreign_tool")
+    const abortAwareTool = createTool("abort_aware_ephemeral_tool")
       .description("Wait until its ordinary invocation is cancelled")
       .parameters(z.object({ label: z.string() }))
       .execute(function* ({ label }, context) {

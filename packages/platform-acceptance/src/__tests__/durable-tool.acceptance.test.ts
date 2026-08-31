@@ -164,7 +164,7 @@ async function runDurableToolScenario(
         ),
       ).toHaveLength(1);
       expect(JSON.stringify(journal)).not.toContain("function* ()");
-      expect(JSON.stringify(journal)).not.toContain("foreign.tool.start");
+      expect(JSON.stringify(journal)).not.toContain("ephemeral.tool.start");
 
       const followUpTurn = yield* conversation.send("DURABLE_FOLLOW_UP_V1 What did I select?");
       const followUpRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });

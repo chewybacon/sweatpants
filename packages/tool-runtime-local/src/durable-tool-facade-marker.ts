@@ -1,6 +1,6 @@
 /**
  * Leaf module carrying the durable-facade identity markers so that the
- * facade, the foreign executor, and the invocation runtime can recognize
+ * facade, the ephemeral executor, and the invocation runtime can recognize
  * facades without importing each other (cycle-free).
  */
 export const DURABLE_TOOL_FACADE_ANNOTATION = "sweatpants/durable-tool-facade";

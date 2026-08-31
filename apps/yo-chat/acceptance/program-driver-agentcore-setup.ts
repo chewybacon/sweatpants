@@ -11,7 +11,7 @@ import {
 
 import { installYoChatToolRuntime } from "../src/server/tool-runtime-installation.ts";
 
-/** Installs one real AgentCore-hosted tool behind the workflow host foreign boundary. */
+/** Installs one real AgentCore-hosted tool behind the workflow host ephemeral boundary. */
 export function* setupAgentCoreProgramDriverToolRuntime(tool: RuntimeTool): Operation<void> {
   const runtimeArn = requiredEnvironment("AGENTCORE_RUNTIME_ARN");
   const region = requiredEnvironment("AWS_REGION");

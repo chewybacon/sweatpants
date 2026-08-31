@@ -59,7 +59,7 @@ interface SagaStep<K extends PullKindName> {
 interface CompensationOf {
   elicit:  { retractQuestion: true };
   fork:    { requestTermination: readonly TaskId[] };
-  foreign: { deliverCancellation: boolean };
+  ephemeral: { deliverCancellation: boolean };
   effect: never; append: never; sample: never; wait: never;
 }
 
@@ -180,7 +180,7 @@ export const DeliveryPort = definePort("spine.delivery", {
   },
 });
 // drivers per transport wire; middleware stamps correlators,
-// applies retry/backoff, maps failures to foreign_reference_lost outcomes
+// applies retry/backoff, maps failures to ephemeral_reference_lost outcomes
 
 export const ExpiryPort = definePort("spine.group.expiry", {
   *deadline(group: ForkGroupRef) { /* policy source, R5′ */ },
@@ -210,7 +210,7 @@ type LiveReservation =
   | { status: "authorized";
       pullId: PullId; attemptId: AttemptId;
       resolutionCapability: ResolutionCapability }
-  | { status: "pending"; reason: PendingReason };   // elicit|wait|child|foreign|sample
+  | { status: "pending"; reason: PendingReason };   // elicit|wait|child|ephemeral|sample
 
 /** Venue is data (registry), not a subsystem. Emission rides as "append". */
 type Venue = "attempt" | "append" | "transport" | "host" | "world";
@@ -237,7 +237,7 @@ interface Delivery {
 
 type DeliveryResult = "delivered" | "peer_lost";
 // peer_lost resolves the parked pull with an errored outcome
-// (foreign_reference_lost class); authored code moves on. Evidence written
+// (ephemeral_reference_lost class); authored code moves on. Evidence written
 // by peers enters strands as opaque attributed records — never recipe.
 ```
 
@@ -318,7 +318,7 @@ Peer never touches the journal; host-metered because delegated.
 
 ```
 SPINE       delivery → peer_lost
-            resolve(pullId, error{foreign_reference_lost}) ✦
+            resolve(pullId, error{ephemeral_reference_lost}) ✦
               → STORAGE WRITE (errored commitment)
             live edge resumes: authored failure is data
             (move on | terminate)

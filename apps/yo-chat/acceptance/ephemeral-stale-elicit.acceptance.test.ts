@@ -17,12 +17,12 @@ function settlementResult(settlement: Settlement): { action: string; content?: u
   return settlement === "accept" ? answerFor("flight") : { action: settlement };
 }
 
-function foreignToolStarts(journal: readonly DurableSemanticRecord[]): number {
+function ephemeralToolStarts(journal: readonly DurableSemanticRecord[]): number {
   return journal.filter(
     (entry) =>
       entry.payload.type === "PullRequested" &&
       entry.payload.descriptor.kind === "effect" &&
-      entry.payload.descriptor.name === "foreign.tool.start",
+      entry.payload.descriptor.name === "ephemeral.tool.start",
   ).length;
 }
 
@@ -62,12 +62,12 @@ async function settle(
     });
     callId = latestToolCallId(current) ?? callId;
   }
-  throw new Error("foreign booking did not settle within eight elicitation rounds");
+  throw new Error("ephemeral booking did not settle within eight elicitation rounds");
 }
 
 async function runStaleForeignElicit(settlement: Settlement): Promise<void> {
   const substrate = await createBookFlightSubstrate({
-    conversationId: `foreign-stale-${settlement}`,
+    conversationId: `ephemeral-stale-${settlement}`,
   });
   const runtime = substrate.createRuntime();
   try {
@@ -96,7 +96,7 @@ async function runStaleForeignElicit(settlement: Settlement): Promise<void> {
     expect(hasRunFinished(settled)).toBe(true);
 
     const journalBeforeRetry = await readJournal(substrate.journalStore, substrate.conversationId);
-    const foreignStartsBeforeRetry = foreignToolStarts(journalBeforeRetry);
+    const ephemeralStartsBeforeRetry = ephemeralToolStarts(journalBeforeRetry);
 
     const retry = await post(
       runtime.handle,
@@ -109,7 +109,7 @@ async function runStaleForeignElicit(settlement: Settlement): Promise<void> {
     expect(retry.some((event) => event.type === "sweatpants.conversation-window.v1")).toBe(true);
 
     const journalAfterRetry = await readJournal(substrate.journalStore, substrate.conversationId);
-    expect(foreignToolStarts(journalAfterRetry)).toBe(foreignStartsBeforeRetry);
+    expect(ephemeralToolStarts(journalAfterRetry)).toBe(ephemeralStartsBeforeRetry);
 
     const conflict = await post(runtime.handle, substrate.conversationId, substrate.messages, {
       ...captured,
@@ -124,14 +124,14 @@ async function runStaleForeignElicit(settlement: Settlement): Promise<void> {
       substrate.journalStore,
       substrate.conversationId,
     );
-    expect(foreignToolStarts(journalAfterConflict)).toBe(foreignStartsBeforeRetry);
+    expect(ephemeralToolStarts(journalAfterConflict)).toBe(ephemeralStartsBeforeRetry);
   } finally {
     await runtime.close();
     await substrate.close();
   }
 }
 
-describe("single foreign elicitation stale-client semantics", () => {
+describe("single ephemeral elicitation stale-client semantics", () => {
   it.each(["accept", "decline", "cancel"] as const)(
     "%s remains idempotent and conflict-safe",
     async (settlement) => {

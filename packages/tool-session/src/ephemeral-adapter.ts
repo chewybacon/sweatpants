@@ -78,7 +78,7 @@ export const EPHEMERAL_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<
   inputSchema: EPHEMERAL_TOOL_ADAPTER_INPUT_DESCRIPTOR,
   outputSchema: EPHEMERAL_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
   elicits: {
-    foreign_input: {
+    ephemeral_input: {
       response: EPHEMERAL_INPUT_RESPONSE_DESCRIPTOR,
       context: EPHEMERAL_INPUT_CONTEXT_DESCRIPTOR,
     },
@@ -103,7 +103,7 @@ export const EPHEMERAL_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<
 const adapterTool = createPinnedDurableProgram(
   EPHEMERAL_TOOL_ADAPTER_MANIFEST,
   function* (request, context) {
-    const audience = `foreign:${request.driver}`;
+    const audience = `ephemeral:${request.driver}`;
     let disposition = yield* context.effect(EPHEMERAL_TOOL_START_EFFECT, request, {
       audience,
       ...(request.route ? { route: request.route } : {}),
@@ -118,14 +118,14 @@ const adapterTool = createPinnedDurableProgram(
           : yield* context.pull(
               assertJson({
                 kind: "elicit",
-                key: "foreign_input",
+                key: "ephemeral_input",
                 message: disposition.request.message,
                 response: EPHEMERAL_INPUT_RESPONSE_DESCRIPTOR,
                 context: {
-                  foreignDriver: request.driver,
-                  foreignTool: request.tool,
-                  foreignKey: disposition.request.key,
-                  ...(request.route !== undefined ? { foreignRoute: request.route } : {}),
+                  ephemeralDriver: request.driver,
+                  ephemeralTool: request.tool,
+                  ephemeralKey: disposition.request.key,
+                  ...(request.route !== undefined ? { ephemeralRoute: request.route } : {}),
                   responseSchema: disposition.request.responseSchema,
                   ...(disposition.request.context !== undefined
                     ? { context: disposition.request.context }

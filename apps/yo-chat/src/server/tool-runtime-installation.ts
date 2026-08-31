@@ -184,7 +184,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   }
 
   if (options.mode === "agentcore") {
-    // Remote ordinary-tool execution uses the same invocation host foreign
+    // Remote ordinary-tool execution uses the same invocation host ephemeral
     // effects as local composition.
     yield* ProgramDriverEphemeralEffectsContext.set(
       createToolInvocationEphemeralEffectRegistrations({

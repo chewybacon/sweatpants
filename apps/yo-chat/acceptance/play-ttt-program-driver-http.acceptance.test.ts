@@ -50,8 +50,8 @@ describe("journal-native play_ttt through the HTTP workflow host", () => {
           ? [entry.payload.descriptor.name]
           : [],
       );
-      expect(effectNames).not.toContain("foreign.tool.start");
-      expect(effectNames).not.toContain("foreign.tool.continue");
+      expect(effectNames).not.toContain("ephemeral.tool.start");
+      expect(effectNames).not.toContain("ephemeral.tool.continue");
       expect(
         journal.filter(
           (entry) =>

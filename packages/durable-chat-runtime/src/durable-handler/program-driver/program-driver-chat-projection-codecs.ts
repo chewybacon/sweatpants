@@ -25,29 +25,30 @@ export function elicitationContextEvidence(
 ): ElicitationContextEvidence {
   const context = jsonRecord(value);
   const nested = jsonRecord(context?.["context"]);
-  const historical = typeof context?.["foreignTool"] === "string";
+  const historical = typeof context?.["ephemeralTool"] === "string";
   return {
     historical,
     authoredContext: historical ? nested : context,
     responseProjection: historical ? context?.["responseSchema"] : undefined,
-    publicKey: typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : fallbackKey,
+    publicKey:
+      typeof context?.["ephemeralKey"] === "string" ? context["ephemeralKey"] : fallbackKey,
     callId:
-      typeof context?.["foreignRoute"] === "string"
-        ? context["foreignRoute"]
+      typeof context?.["ephemeralRoute"] === "string"
+        ? context["ephemeralRoute"]
         : typeof nested?.["callId"] === "string"
           ? nested["callId"]
           : undefined,
     toolName:
-      typeof context?.["foreignTool"] === "string"
-        ? context["foreignTool"]
+      typeof context?.["ephemeralTool"] === "string"
+        ? context["ephemeralTool"]
         : typeof nested?.["toolName"] === "string"
           ? nested["toolName"]
           : undefined,
     elicitId:
       typeof nested?.["elicitId"] === "string"
         ? nested["elicitId"]
-        : typeof context?.["foreignKey"] === "string"
-          ? context["foreignKey"]
+        : typeof context?.["ephemeralKey"] === "string"
+          ? context["ephemeralKey"]
           : undefined,
   };
 }

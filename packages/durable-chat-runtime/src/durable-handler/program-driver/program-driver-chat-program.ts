@@ -83,7 +83,7 @@ export const rootTool = createPinnedDurableProgram(manifest, function* (input, c
       });
       const catalogEntry = input.catalog.entries[call.target];
       if (!catalogEntry) {
-        throw new CrankError("foreign_tool_not_found", `Tool not found: ${call.target}`);
+        throw new CrankError("ephemeral_tool_not_found", `Tool not found: ${call.target}`);
       }
       const outcome = yield* invokeCatalogTool(context, catalogEntry.execution, call);
       yield* context.emit("tool_completed", {
@@ -100,7 +100,7 @@ export const rootTool = createPinnedDurableProgram(manifest, function* (input, c
 type CatalogToolCall = ChatCall;
 
 /**
- * Failures that mean "the foreign process is gone or unreachable".
+ * Failures that mean "the ephemeral process is gone or unreachable".
  *
  * These are outside the durable program's control: a non-journal-native tool
  * holds its continuation in its own process, and that process may vanish
@@ -116,10 +116,10 @@ type CatalogToolCall = ChatCall;
  * errors rather than being narrated to the model as ordinary results.
  */
 const RECOVERABLE_FOREIGN_FAILURES: ReadonlySet<string> = new Set([
-  "foreign_session_ended",
-  "foreign_continuation_lost",
-  "foreign_tool_start_failed",
-  "foreign_tool_error",
+  "ephemeral_session_ended",
+  "ephemeral_continuation_lost",
+  "ephemeral_tool_start_failed",
+  "ephemeral_tool_error",
   "effect_outcome_indeterminate",
 ]);
 
@@ -127,7 +127,7 @@ const RECOVERABLE_FOREIGN_FAILURES: ReadonlySet<string> = new Set([
  * Runs one catalog tool call and converts an application-level failure into an
  * ordinary tool result.
  *
- * A foreign tool is not journal-native: its process may vanish between an
+ * An ephemeral tool is not journal-native: its process may vanish between an
  * elicitation and the human's answer, and no amount of durable replay can
  * revive it. When that happens the adapter reports a typed failure and the
  * authority journals it. That is information the conversation can act on — the
@@ -166,7 +166,7 @@ function* invokeCatalogTool(
     const { code, message, details } = error.applicationError;
     if (
       !RECOVERABLE_FOREIGN_FAILURES.has(code) ||
-      (code === "foreign_tool_error" &&
+      (code === "ephemeral_tool_error" &&
         (!isEphemeralToolCatalogExecution(entry) || entry.driver !== "tool-session"))
     ) {
       throw error;

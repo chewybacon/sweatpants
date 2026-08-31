@@ -68,8 +68,8 @@ function commandLifetime(commandId: string): { issuedAt: number; expiresAt: numb
 }
 
 const model: Model = {
-  id: "book-flight-foreign",
-  name: "Book Flight foreign boundary",
+  id: "book-flight-ephemeral",
+  name: "Book Flight ephemeral boundary",
   api: "test",
   provider: "test",
   reasoning: false,
@@ -80,8 +80,8 @@ const model: Model = {
 
 /**
  * Durable state for one book_flight conversation. `book_flight` is a
- * ToolSession-native tool, so it crosses the foreign adapter boundary and its
- * journal contains `foreign.tool.start` / `foreign.tool.continue` — the two
+ * ToolSession-native tool, so it crosses the ephemeral adapter boundary and its
+ * journal contains `ephemeral.tool.start` / `ephemeral.tool.continue` — the two
  * effects declared `unsafe`.
  *
  * Every store lives on the substrate rather than on a runtime generation,
@@ -116,8 +116,8 @@ export async function createBookFlightSubstrate(options: {
       throw new Error("workflow host must use the streaming model seam");
     },
   };
-  const keyring = createCapabilityKeyring("book-flight-foreign", [
-    { keyId: "test-v1", secret: "book-flight-foreign-program-driver-key" },
+  const keyring = createCapabilityKeyring("book-flight-ephemeral", [
+    { keyId: "test-v1", secret: "book-flight-ephemeral-program-driver-key" },
   ]);
   const executionStore = createMemoryExecutionStore();
   const conversationStore = createMemoryConversationStore();
@@ -130,7 +130,7 @@ export async function createBookFlightSubstrate(options: {
 
   const fallbackRuntime: ToolRuntime = {
     *runtimeId() {
-      return "foreign-context-only";
+      return "ephemeral-context-only";
     },
     *execute(): Operation<never> {
       throw new Error("ToolRuntime fallback must not execute the ToolSession-native tool");
@@ -183,7 +183,7 @@ export async function createBookFlightSubstrate(options: {
  *
  * The one non-trivial rule: when the newest tool result reports an error, the
  * model restarts the booking rather than giving up. That is the whole point of
- * surfacing a foreign-tool failure as an ordinary result — the conversation
+ * surfacing a ephemeral-tool failure as an ordinary result — the conversation
  * decides what to do about it.
  */
 function sampleMessage(request: ModelProviderStreamRequest, sequence: number): ModelResponse {
@@ -488,7 +488,7 @@ export function answerFor(message: string): { action: string; content: unknown }
 
 /**
  * Newest tool call id observed in one response batch. A retry after a failed
- * foreign session allocates a fresh call id, so resume traffic must follow it
+ * ephemeral session allocates a fresh call id, so resume traffic must follow it
  * rather than assume the original.
  */
 export function latestToolCallId(events: PublicEvent[]): string | undefined {

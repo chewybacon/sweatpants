@@ -136,7 +136,7 @@ export function* composeChatExecutionRuntime(
         return [];
       case "tool-session":
         if (boundEphemeralDriver !== "tool-session") {
-          throw new CrankError("foreign_driver_not_installed", "Catalog driver differs");
+          throw new CrankError("ephemeral_driver_not_installed", "Catalog driver differs");
         }
         return environment.ephemeral.effects;
       case "chat-tool-runtime":

@@ -264,7 +264,7 @@ describe("local ToolRuntimeDriver", () => {
     expect(() => createToolInventory([entry, entry])).toThrow("Duplicate tool name");
   });
 
-  it("program installer publishes matching durable foreign effects", async () => {
+  it("program installer publishes matching durable ephemeral effects", async () => {
     await run(function* () {
       yield* createLocalToolInvocationRuntime({
         worker: localRuntimeWorkerConfig,
@@ -284,8 +284,8 @@ describe("local ToolRuntimeDriver", () => {
 
       const effects = yield* ProgramDriverEphemeralEffectsContext.get();
       expect(effects?.map((registration) => registration.definition.name)).toEqual([
-        "foreign.tool.start",
-        "foreign.tool.continue",
+        "ephemeral.tool.start",
+        "ephemeral.tool.continue",
       ]);
     });
   });

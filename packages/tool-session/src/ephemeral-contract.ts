@@ -13,13 +13,11 @@ import type { EffectDefinition } from "@sweatpants/durable-effects";
 import { MODEL_SAMPLE_PULL_SCHEMA_ENTRIES } from "@sweatpants/model-sampling";
 import { z } from "zod";
 
-/** Pinned identity of the built-in ephemeral adapter program.
- * Its historical wire identity is retained so existing journals remain readable.
- */
+/** Pinned identity of the built-in ephemeral adapter program. */
 export const EPHEMERAL_TOOL_ADAPTER_PROGRAM = Object.freeze({
-  id: "sweatpants.foreign-tool-adapter",
-  version: "1.3.0",
-  digest: sha256("sweatpants.foreign-tool-adapter@1.3.0:workflow-pulls"),
+  id: "sweatpants.ephemeral-tool-adapter",
+  version: "2.0.0",
+  digest: sha256("sweatpants.ephemeral-tool-adapter@2.0.0:workflow-pulls"),
 });
 
 const EPHEMERAL_DURABILITIES = ["opaque", "ephemeral_handle", "crank_native"] as const;
@@ -82,7 +80,7 @@ const anyJsonGuard = (value: unknown): string | undefined => {
 };
 
 const EPHEMERAL_TOOL_START_INPUT_DESCRIPTOR = builtinDescriptor(
-  "sweatpants.foreign-tool-adapter/start-input",
+  "sweatpants.ephemeral-tool-adapter/start-input",
   "effect_input",
   {
     type: "object",
@@ -99,13 +97,13 @@ const EPHEMERAL_TOOL_START_INPUT_DESCRIPTOR = builtinDescriptor(
 );
 
 const EPHEMERAL_TOOL_START_OUTPUT_DESCRIPTOR = builtinDescriptor(
-  "sweatpants.foreign-tool-adapter/start-output",
+  "sweatpants.ephemeral-tool-adapter/start-output",
   "effect_output",
   true,
 );
 
 const EPHEMERAL_TOOL_CONTINUE_INPUT_DESCRIPTOR = builtinDescriptor(
-  "sweatpants.foreign-tool-adapter/continue-input",
+  "sweatpants.ephemeral-tool-adapter/continue-input",
   "effect_input",
   {
     type: "object",
@@ -129,14 +127,14 @@ const EPHEMERAL_TOOL_CONTINUE_INPUT_DESCRIPTOR = builtinDescriptor(
 );
 
 const EPHEMERAL_TOOL_CONTINUE_OUTPUT_DESCRIPTOR = builtinDescriptor(
-  "sweatpants.foreign-tool-adapter/continue-output",
+  "sweatpants.ephemeral-tool-adapter/continue-output",
   "effect_output",
   true,
 );
 
 /** Program-input descriptor for the built-in ephemeral adapter program. */
 export const EPHEMERAL_TOOL_ADAPTER_INPUT_DESCRIPTOR = builtinDescriptor(
-  "sweatpants.foreign-tool-adapter/program-input",
+  "sweatpants.ephemeral-tool-adapter/program-input",
   "program_input",
   {
     type: "object",
@@ -154,21 +152,21 @@ export const EPHEMERAL_TOOL_ADAPTER_INPUT_DESCRIPTOR = builtinDescriptor(
 
 /** Program-output descriptor for the built-in ephemeral adapter program. */
 export const EPHEMERAL_TOOL_ADAPTER_OUTPUT_DESCRIPTOR = builtinDescriptor(
-  "sweatpants.foreign-tool-adapter/program-output",
+  "sweatpants.ephemeral-tool-adapter/program-output",
   "program_output",
   true,
 );
 
 /** Accepted-content descriptor for lifted ephemeral elicitations (any canonical JSON). */
 export const EPHEMERAL_INPUT_RESPONSE_DESCRIPTOR = builtinDescriptor(
-  "sweatpants.foreign-tool-adapter/foreign-input-response",
+  "sweatpants.ephemeral-tool-adapter/ephemeral-input-response",
   "elicit_response",
   true,
 );
 
 /** Context descriptor for lifted ephemeral elicitations (any canonical JSON). */
 export const EPHEMERAL_INPUT_CONTEXT_DESCRIPTOR = builtinDescriptor(
-  "sweatpants.foreign-tool-adapter/foreign-input-context",
+  "sweatpants.ephemeral-tool-adapter/ephemeral-input-context",
   "elicit_context",
   true,
 );
@@ -204,7 +202,7 @@ export function ephemeralToolSchemaEntries(): Array<{
 }
 
 const startDefinition: EffectDefinition<EphemeralToolRequest, EphemeralToolDisposition> = {
-  name: "foreign.tool.start",
+  name: "ephemeral.tool.start",
   version: "1",
   inputSchema: EPHEMERAL_TOOL_START_INPUT_DESCRIPTOR,
   outputSchema: EPHEMERAL_TOOL_START_OUTPUT_DESCRIPTOR,
@@ -212,24 +210,24 @@ const startDefinition: EffectDefinition<EphemeralToolRequest, EphemeralToolDispo
   // a detached attempt settles as a coded indeterminate outcome.
   retrySafety: { mode: "unsafe" },
 };
-/** Effect contract for starting a foreign driver invocation exactly once. */
+/** Effect contract for starting an ephemeral driver invocation exactly once. */
 export const EPHEMERAL_TOOL_START_EFFECT = Object.freeze(startDefinition);
 
 const continueDefinition: EffectDefinition<EphemeralToolContinueRequest, EphemeralToolDisposition> =
   {
-    name: "foreign.tool.continue",
+    name: "ephemeral.tool.continue",
     version: "1",
     inputSchema: EPHEMERAL_TOOL_CONTINUE_INPUT_DESCRIPTOR,
     outputSchema: EPHEMERAL_TOOL_CONTINUE_OUTPUT_DESCRIPTOR,
-    // See `foreign.tool.start`: the resolver is in-host and cannot outlive it.
+    // See `ephemeral.tool.start`: the resolver is in-host and cannot outlive it.
     retrySafety: { mode: "unsafe" },
   };
-/** Effect contract for applying one response to foreign continuation state. */
+/** Effect contract for applying one response to ephemeral continuation state. */
 export const EPHEMERAL_TOOL_CONTINUE_EFFECT = Object.freeze(continueDefinition);
 
 /** Canonical live ToolInvocationHost identity for one ephemeral adapter task.
  * The ID prefix remains historical for in-flight invocation compatibility.
  */
 export function ephemeralToolInvocationId(sessionId: string, taskId: string): string {
-  return `foreign:${sessionId}:${taskId}`;
+  return `ephemeral:${sessionId}:${taskId}`;
 }

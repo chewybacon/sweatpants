@@ -12,13 +12,13 @@ import { createCapabilityKeyring } from "../contract/capabilities.ts";
 import { createDurableSchemaRegistry } from "../contract/schema-registry.ts";
 
 const programInput = createSchemaFixture(
-  "fixture.foreign/input",
+  "fixture.ephemeral/input",
   "program_input",
   { type: "null" },
   () => undefined,
 );
 const programOutput = createSchemaFixture(
-  "fixture.foreign/output",
+  "fixture.ephemeral/output",
   "program_output",
   {
     type: "object",
@@ -30,12 +30,12 @@ const programOutput = createSchemaFixture(
 );
 const schemaRegistry = () => createDurableSchemaRegistry([programInput.entry, programOutput.entry]);
 
-const keyring = createCapabilityKeyring("foreign-authority", [
-  { keyId: "foreign-key", secret: "foreign-key-secret-is-32-bytes-ok" },
+const keyring = createCapabilityKeyring("ephemeral-authority", [
+  { keyId: "ephemeral-key", secret: "ephemeral-key-secret-is-32-bytes-ok" },
 ]);
 
 const manifest: DurableProgramManifest = {
-  programId: "fixture.foreign",
+  programId: "fixture.ephemeral",
   version: "1.0.0",
   digest: "9".repeat(64),
   inputSchema: programInput.descriptor,
@@ -79,10 +79,10 @@ function weatherWorkflow(): () => Workflow<Json> {
   };
 }
 
-describe("workflow runtime foreign boundaries", () => {
+describe("workflow runtime ephemeral boundaries", () => {
   it("parks on a ephemeral call and settles through session resolution", async () => {
-    const sessionId = "foreign-ok";
-    const authority = makeAuthority("journal-foreign-ok");
+    const sessionId = "ephemeral-ok";
+    const authority = makeAuthority("journal-ephemeral-ok");
     const request = attach(sessionId);
 
     const outcome = await run(function* () {
@@ -99,7 +99,7 @@ describe("workflow runtime foreign boundaries", () => {
         })) as unknown as { programCapability: string };
         void opened;
 
-        // Activation 1: parks on the live foreign reference.
+        // Activation 1: parks on the live ephemeral reference.
         const parked = yield* driveActivation({
           attach: request,
           authority,
@@ -153,8 +153,8 @@ describe("workflow runtime foreign boundaries", () => {
   });
 
   it("journals a lost-reference resolution as a program failure", async () => {
-    const sessionId = "foreign-lost";
-    const authority = makeAuthority("journal-foreign-lost");
+    const sessionId = "ephemeral-lost";
+    const authority = makeAuthority("journal-ephemeral-lost");
     const request = attach(sessionId);
 
     const outcome = await run(function* () {
@@ -195,7 +195,7 @@ describe("workflow runtime foreign boundaries", () => {
           audience: "ephemeral:tool-session",
           outcome: {
             status: "error",
-            error: { code: "foreign_reference_lost", message: "live reference gone" },
+            error: { code: "ephemeral_reference_lost", message: "live reference gone" },
           },
         });
         if (resolved.status === "rejected") throw new Error(resolved.code);
@@ -217,13 +217,13 @@ describe("workflow runtime foreign boundaries", () => {
 
     expect(outcome).toEqual({
       state: "failed",
-      error: { code: "foreign_reference_lost", message: "live reference gone" },
+      error: { code: "ephemeral_reference_lost", message: "live reference gone" },
     });
   });
 
   it("rejects non-process-bound durabilities at reserve (Case 2 gate)", async () => {
-    const sessionId = "foreign-durability";
-    const authority = makeAuthority("journal-foreign-durability");
+    const sessionId = "ephemeral-durability";
+    const authority = makeAuthority("journal-ephemeral-durability");
     const request = attach(sessionId);
 
     await run(function* () {
@@ -264,9 +264,9 @@ describe("workflow runtime foreign boundaries", () => {
     });
   });
 
-  it("records the foreign request canonically in the journal", async () => {
-    const sessionId = "foreign-journal";
-    const authority = makeAuthority("journal-foreign-journal");
+  it("records the ephemeral request canonically in the journal", async () => {
+    const sessionId = "ephemeral-journal";
+    const authority = makeAuthority("journal-ephemeral-journal");
     const request = attach(sessionId);
 
     await run(function* () {

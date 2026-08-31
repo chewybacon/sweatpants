@@ -19,8 +19,8 @@ import {
 } from "../index.ts";
 
 /**
- * End-to-end foreign execution through the facade's workflow runtime,
- * driven via the callable-tool surface: the parent proposes a foreign pull,
+ * End-to-end ephemeral execution through the facade's workflow runtime,
+ * driven via the callable-tool surface: the parent proposes a ephemeral pull,
  * the facade's executor runs the live `createTool` across its sample and
  * elicit backchannels (answered by pure relays), resolves the pull, and the
  * parent completes.
@@ -29,10 +29,10 @@ import {
 // host's crank semantics currently re-raise the sampling ask once after the
 // resume is delivered, so the relay observes two distinct requestIds for one
 // authored ctx.sample call. Everything else in the flow (park, settlement,
-// replay) is verified by the kernel-level foreign proofs. Skipped until the
+// replay) is verified by the kernel-level ephemeral proofs. Skipped until the
 // sampling-park semantic decision lands.
-describe("facade workflow runtime foreign execution", () => {
-  it("executes a backchannel-heavy foreign tool across one parked pull", async () => {
+describe("facade workflow runtime ephemeral execution", () => {
+  it("executes a backchannel-heavy ephemeral tool across one parked pull", async () => {
     let sampledPrompts = 0;
     const elicitedCities: unknown[] = [];
 
@@ -59,13 +59,13 @@ describe("facade workflow runtime foreign execution", () => {
       });
 
     const parentInput = createSchemaFixture(
-      "foreign-facade/input",
+      "ephemeral-facade/input",
       "program_input",
       { type: "null" },
       anyGuard,
     );
     const parentOutput = createSchemaFixture(
-      "foreign-facade/output",
+      "ephemeral-facade/output",
       "program_output",
       {
         type: "object",
@@ -76,7 +76,7 @@ describe("facade workflow runtime foreign execution", () => {
       anyGuard,
     );
     const parentManifest = defineDurableProgramManifest<null, { report: string }>({
-      programId: "foreign-facade/parent",
+      programId: "ephemeral-facade/parent",
       version: "1.0.0",
       digest: "f".repeat(64),
       inputSchema: parentInput.descriptor,
@@ -97,14 +97,14 @@ describe("facade workflow runtime foreign execution", () => {
     });
 
     const stateStore = createInMemoryDurableToolFacadeStateStore();
-    const keyring = createCapabilityKeyring("foreign-facade", [
-      { keyId: "active", secret: "foreign-facade-secret-is-32-bytes" },
+    const keyring = createCapabilityKeyring("ephemeral-facade", [
+      { keyId: "active", secret: "ephemeral-facade-secret-is-32-bytes" },
     ]);
     const facade = createDurableToolSessionFacade({
       tool: parentTool,
       stateStore,
       keyring,
-      name: "foreign_facade_tool",
+      name: "ephemeral_facade_tool",
       schemaRegistry: createDurableSchemaRegistry([
         ...ephemeralToolSchemaEntries(),
         parentInput.entry,
@@ -137,7 +137,7 @@ describe("facade workflow runtime foreign execution", () => {
     });
 
     // Drive the facade through its callable surface with a rejecting outer
-    // context: nothing should reach it — foreign asks ride the relays.
+    // context: nothing should reach it — ephemeral asks ride the relays.
     const outcome = await run(function* () {
       yield* createLocalToolInvocationRuntime({});
       const callableFacade = facade as unknown as (
@@ -151,7 +151,7 @@ describe("facade workflow runtime foreign execution", () => {
           throw new Error("outer elicit must not be reached");
         },
       } as never);
-      return yield* invoke({ invocationId: "foreign-facade-inv-1", input: null });
+      return yield* invoke({ invocationId: "ephemeral-facade-inv-1", input: null });
     });
 
     expect(outcome).toEqual({ report: "oslo: sunny (approved)" });

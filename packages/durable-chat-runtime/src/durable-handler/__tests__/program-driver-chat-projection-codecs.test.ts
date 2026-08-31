@@ -52,11 +52,11 @@ describe("chat projection boundary codecs", () => {
     expect(
       toolFailureEnvelope({
         status: "error",
-        error: { code: "foreign_tool_error", message: "Tool failed" },
+        error: { code: "ephemeral_tool_error", message: "Tool failed" },
       }),
     ).toEqual({
       status: "error",
-      error: { code: "foreign_tool_error", message: "Tool failed" },
+      error: { code: "ephemeral_tool_error", message: "Tool failed" },
     });
   });
 
