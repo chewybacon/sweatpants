@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import Database from "better-sqlite3";
-import { run, sleep, type Operation } from "effection";
+import { run, type Operation } from "effection";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -275,6 +275,14 @@ describe("SQLite binding inversion", () => {
     // execution, exactly as the storage-inspector reader does.
     const require = createRequire(import.meta.url);
     const betterSqlite3Path = require.resolve("better-sqlite3");
+    // Deterministic interleaving: the parent converts the fresh file to WAL
+    // first (uncontended - SQLite's journal_mode conversion does not invoke
+    // the busy handler, so converting under a co-tenant lock would fail
+    // instantly), then the child acquires and announces the held write
+    // transaction, and the kernel write below must wait on its busy_timeout
+    // for the child's 250ms commit - the exact behavior under test.
+    const binding = track(createSqliteWriterBinding(path));
+
     const holder = spawnProcess(
       process.execPath,
       [
@@ -285,20 +293,28 @@ describe("SQLite binding inversion", () => {
          db.exec("CREATE TABLE IF NOT EXISTS co_tenant_notes (id text primary key, note text)");
          db.exec("BEGIN IMMEDIATE");
          db.prepare("INSERT INTO co_tenant_notes VALUES ('held', 'by-child')").run();
+         process.stdout.write("locked\\n");
          setTimeout(() => { db.exec("COMMIT"); db.close(); }, 250);`,
         betterSqlite3Path,
         path,
       ],
-      { stdio: "ignore" },
+      { stdio: ["ignore", "pipe", "ignore"] },
     );
 
-    const binding = track(createSqliteWriterBinding(path));
+    await new Promise<void>((resolve, reject) => {
+      holder.stdout.setEncoding("utf8");
+      holder.stdout.once("data", (chunk: string) =>
+        chunk.includes("locked")
+          ? resolve()
+          : reject(new Error(`unexpected child output: ${chunk}`)),
+      );
+      holder.once("exit", (code) => reject(new Error(`holder exited ${code} before locking`)));
+    });
+
     const outcome = await attemptUse(
       undefined,
       { database: binding, migrate: true },
       function* (handle) {
-        // Let the child reach BEGIN IMMEDIATE before the kernel write begins.
-        yield* sleep(120);
         yield* handle.storage.executionStore.putObject(putObjectBody("contention"));
       },
     );
