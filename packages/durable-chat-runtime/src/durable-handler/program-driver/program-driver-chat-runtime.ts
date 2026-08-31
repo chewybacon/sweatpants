@@ -40,29 +40,29 @@ import {
 } from "@sweatpants/durable-execution";
 import { ephemeralToolAdapter } from "@sweatpants/tool-session/ephemeral";
 
-import { createParkedSamplePullResolver } from "./parked-sample-resolver.ts";
+import { createParkedSamplePullResolver } from "../model-sampling/parked-sample-resolver.ts";
 import { createToolRuntimeEphemeralEffectRegistrations } from "./program-driver-tool-runtime.ts";
-import type { ProgramDriverJournal } from "./program-driver-journal.ts";
+import type { ProgramDriverJournal } from "../program-driver-journal.ts";
 import {
   isEphemeralToolCatalogExecution,
   manifest,
   type ChatProgramInput,
   type EphemeralToolCatalogExecution,
-} from "./program-driver-schema.ts";
+} from "../program-driver-schema.ts";
 import {
   createHostModelSamplingService,
   stageProgramDriverModelSampleInput,
   preparedModelContextByteLimit,
   resolveModelContextSource,
   stageModelContextSource,
-} from "./model-sampling/service.ts";
-import { runWorkflowProgramActivation } from "./program-workflow-host.ts";
+} from "../model-sampling/service.ts";
+import { runWorkflowProgramActivation } from "../program-workflow-host.ts";
 import { rootTool } from "./program-driver-chat-program.ts";
 import type { Model, StreamOptions } from "@sweatpants/model-provider";
 import type { HistoryPolicy } from "@sweatpants/chat-core";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
 import type { ToolInventoryEntry, ToolRuntime } from "@sweatpants/tool-runtime";
-import type { ProgramDriverNativeToolComposition } from "../program-driver/native-tools.ts";
+import type { ProgramDriverNativeToolComposition } from "../../program-driver/native-tools.ts";
 
 export interface ChatSamplingPolicy {
   readonly streamOptions?: StreamOptions;

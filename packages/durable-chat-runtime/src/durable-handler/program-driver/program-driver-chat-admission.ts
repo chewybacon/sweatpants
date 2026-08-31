@@ -9,16 +9,16 @@ import {
 } from "@sweatpants/durable-execution";
 import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
 
-import type { ProgramDriverJournal } from "./program-driver-journal.ts";
+import type { ProgramDriverJournal } from "../program-driver-journal.ts";
 import {
   manifest,
   type ChatProgramInput,
   type ChatToolCatalog,
   type ChatToolCatalogEntry,
-} from "./program-driver-schema.ts";
+} from "../program-driver-schema.ts";
 import type { ModelContextSource } from "@sweatpants/model-sampling";
-import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
-import type { ToolSchema } from "./types.ts";
+import type { ProgramDriverJournalStore } from "../program-driver-journal.ts";
+import type { ToolSchema } from "../types.ts";
 import type { StreamOptions } from "@sweatpants/model-provider";
 
 type ActiveChatTurn = { readonly taskId: string; readonly turnId: string; readonly input: Json };

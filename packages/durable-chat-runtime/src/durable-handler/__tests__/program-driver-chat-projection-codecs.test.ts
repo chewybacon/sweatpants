@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Json } from "@sweatpants/foundation";
 
-import { toolFailureEnvelope } from "../program-driver-chat-projection-codecs.ts";
-import { requiredPendingCorrelation } from "../program-driver-chat-correlation.ts";
-import type { ChatJournalIndex, PendingElicit } from "../program-driver-chat-journal-index.ts";
+import { toolFailureEnvelope } from "../program-driver/program-driver-chat-projection-codecs.ts";
+import { requiredPendingCorrelation } from "../program-driver/program-driver-chat-correlation.ts";
+import type {
+  ChatJournalIndex,
+  PendingElicit,
+} from "../program-driver/program-driver-chat-journal-index.ts";
 
 function pending(context: Json | undefined): PendingElicit {
   return {
