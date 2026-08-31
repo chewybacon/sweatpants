@@ -12,12 +12,12 @@ A request moves through four independently replaceable boxes. Most confusion
 comes from collapsing box 3 and box 4, which run different code under different
 constraints.
 
-| box                   | decides                                                             | port                                                                                  | live implementations                                                     |
-| --------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 1. Ingress            | where HTTP lands                                                    | `createChatApplication` (`agent-host/src/server`)                                     | Node HTTP (`apps/yo-chat`)                                               |
-| 2. Journal authority  | where truth lives; the serialization domain                         | `DurableJournalAuthorityService` (`journal-authority/src/durable-authority-types.ts`) | `createStoredDurableJournalAuthority` over memory/Redis Execution Stores |
-| 3. Crank / activation | where the durable program generator runs; chatty with the authority | `ProgramRuntime`, `handler/durable/local-program-host.ts`                             | in-process (Node)                                                        |
-| 4. Tool execution     | where tool code runs; never touches the journal                     | see the two tiers below                                                               | see below                                                                |
+| box                   | decides                                                             | port                                                                                  | live implementations                                                      |
+| --------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| 1. Ingress            | where HTTP lands                                                    | `createChatApplication` (`agent-host/src/server`)                                     | Node HTTP (`apps/yo-chat`)                                                |
+| 2. Journal authority  | where truth lives; the serialization domain                         | `DurableJournalAuthorityService` (`journal-authority/src/durable-authority-types.ts`) | `createStoredDurableJournalAuthority` over memory/SQLite Execution Stores |
+| 3. Crank / activation | where the durable program generator runs; chatty with the authority | `ProgramRuntime`, `handler/durable/local-program-host.ts`                             | in-process (Node)                                                         |
+| 4. Tool execution     | where tool code runs; never touches the journal                     | see the two tiers below                                                               | see below                                                                 |
 
 Box 4 has two tiers, and they are different ports:
 
@@ -44,9 +44,6 @@ fit for it. Long unparked work lives in box 3, not box 4.
   to the port above.
 - `LambdaMicrovmWorkspaceManager` (`workspace-lambda-microvm`) — a workspace lease
   manager (`resolve / inspect / close`). Also unrelated to the port above.
-- `execution-store-redis` — an experimental, uncertified bounded storage
-  adapter retained for future multi-host work. Production apps do not import it;
-  its current tests use `memory-fake`, not Redis semantics.
 
 ### There are two chat engines, and both are live
 
@@ -87,6 +84,37 @@ never promised. Unsafe effects whose attempt is detached settle as a coded
 is no state where a pull parks with no exit. `apps/yo-chat/acceptance/`
 demonstrates this: the harnesses model host loss by discarding a runtime while
 the substrate keeps journal, stream buffers, and foreign sessions.
+
+## The No-Sediment Rules (pre-release)
+
+The codebase is the current specification, not a history of discarded
+approaches. History lives in git and `.pi/specs/archive/` — never in code.
+Five rules, ratified 2026-08-31 (spec:
+`.pi/specs/code-is-spec-simplification-spec.md`):
+
+1. **Code is spec.** Every retained line must be justifiable by a currently
+   ratified requirement — never by history ("this used to be needed").
+2. **A cut lands with its delete.** When a requirement supersedes an
+   implementation, the superseded code is deleted in the same change. No
+   deprecation periods, no `@deprecated` markers, no alias/re-export shims,
+   no parallel old/new paths beyond one change.
+3. **One-change vocabulary renames.** When understanding renames a concept,
+   the old name is deleted across code, tests, error codes, and ratified
+   docs in the same change. One concept, one name.
+4. **Hard-fail journal policy is the only compat story.** While the
+   pre-release license holds, persisted data that cannot be parsed under the
+   current schema fails fast with a reset message naming the data directory.
+   No migrations, no dual-read schemas, no best-effort recovery. Format
+   changes stay free.
+5. **Consumer-or-parked.** Every workspace member either has a source-level
+   consumer or carries an annotation in the `.pi/specs/INDEX.md` member
+   ledger (product / docs / parked / infrastructure). The gate
+   (`pnpm check:hygiene`) enforces this; `scripts/campaign-evidence.ts`
+   re-verifies deleted identities stay deleted.
+
+**License expiry:** these freedoms expire the first time an external user
+holds data they care about. From that point, a compatibility policy
+specification MUST exist before any further data-format change.
 
 ## Quality Gates and Definition of Done
 

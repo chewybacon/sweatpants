@@ -50,7 +50,7 @@ function expectNoMatches(source: string, patterns: readonly RegExp[]): void {
 describe("target package charters", () => {
   it("keeps Journal Authority free of Host, history, chat, and concrete Redis adapters", () => {
     expectNoMatches(productionSource("journal-authority"), [
-      /from ["']@sweatpants\/(?:agent-host|history-store|chat-core|execution-store-redis)/,
+      /from ["']@sweatpants\/(?:agent-host|history-store|chat-core)/,
       /from ["'](?:node:http|redis|react)["']/,
     ]);
   });
@@ -195,7 +195,7 @@ describe("target package charters", () => {
   it("keeps Chat Core free of hosting, authority persistence, Redis, and MCP handlers", () => {
     const source = productionSource("chat-core");
     expectNoMatches(source, [
-      /from ["']@sweatpants\/(?:agent-host|journal-authority|execution-store-redis)/,
+      /from ["']@sweatpants\/(?:agent-host|journal-authority)/,
       /@sweatpants\/tool-session\/mcp\/handler/,
       /from ["'](?:node:http|redis)["']/,
       /\b(?:OllamaChatRequest|OllamaChatChunk|ClientToolSchema)\b/,
@@ -217,7 +217,7 @@ describe("target package charters", () => {
 
   it("keeps Durable Execution free of persistence, hosting, and chat projection", () => {
     expectNoMatches(productionSource("durable-execution"), [
-      /from ["']@sweatpants\/(?:journal-authority|history-store|agent-host|chat-core|execution-store-redis)/,
+      /from ["']@sweatpants\/(?:journal-authority|history-store|agent-host|chat-core)/,
       /from ["'](?:node:http|redis|react)["']/,
     ]);
   });

@@ -84,6 +84,10 @@ async function main(): Promise<void> {
       // Fixture tests for the custom rules themselves: `lint` proves the repo
       // obeys them, this proves they still detect what they claim to.
       { name: "test:tooling", command: "pnpm", args: ["test:tooling"], timeoutMs: 5 * 60_000 },
+      // Consumer-or-parked gate (no-sediment rule 5). The campaign evidence
+      // script joins the gate at Cut 4 closure (scripts/campaign-evidence.ts);
+      // during the campaign it runs per-cut via `pnpm check:evidence <cut>`.
+      { name: "check:hygiene", command: "pnpm", args: ["check:hygiene"], timeoutMs: 2 * 60_000 },
       {
         name: "build:clean",
         command: "pnpm",

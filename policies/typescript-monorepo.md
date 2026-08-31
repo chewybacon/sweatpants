@@ -214,8 +214,7 @@ For packages with multiple entry points:
     "references": [
         { "path": "./packages/tool-session" },
         { "path": "./packages/cli" },
-        { "path": "./packages/agent-host" },
-        { "path": "./apps/hydra" }
+        { "path": "./packages/agent-host" }
     ],
     "files": []
 }
