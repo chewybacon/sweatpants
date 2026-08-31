@@ -35,8 +35,8 @@ describe("Tool Session model history projection", () => {
 
     const invalid: ToolSampleConfig<ChatMessage> = {
       messages: [
-        // @ts-expect-error Canonical Chat messages reject foreign message roles.
-        { role: "foreign", content: "x" },
+        // @ts-expect-error Canonical Chat messages reject ephemeral message roles.
+        { role: "ephemeral", content: "x" },
       ],
     };
     void invalid;

@@ -271,8 +271,9 @@ tool surface; routed to evaluators through configured driver bindings.
 **ephemeral tool** — A protocol-unaware external tool invoked as a live,
 session-bound call: host retains authority, journals the exchange under a
 canonical `invocationId`, exposes only `ephemeral_handle` references — lost
-references retain the historical error literal `foreign_reference_lost` and
-never dangle. `foreign` remains a read-only legacy descriptor spelling.
+references fail with `ephemeral_reference_lost` and never dangle. The old
+`foreign` spelling is deleted; pre-cutover journals hard-fail with a reset
+message (REQ-012).
 
 **projection** — Deriving public views from journal records without mutating
 them: `projectRecords`, `projectExecutionForest`; the chat engine's entire

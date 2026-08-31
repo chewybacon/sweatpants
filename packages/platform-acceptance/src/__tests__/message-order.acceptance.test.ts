@@ -314,13 +314,13 @@ async function runOrdinaryBookingOrder(binding: Binding): Promise<void> {
 }
 
 describe("generic multi-turn message timeline", () => {
-  // The worker-backed ordinary tool is the deterministic foreign/remote
+  // The worker-backed ordinary tool is the deterministic ephemeral/remote
   // execution boundary; the HTTP case adds the remote transport boundary.
-  it("preserves ordinary foreign-tool elicits and message order in-process", async () => {
+  it("preserves ordinary ephemeral-tool elicits and message order in-process", async () => {
     await runOrdinaryBookingOrder("in-process");
   }, 30_000);
 
-  it("preserves ordinary foreign-tool elicits and message order over HTTP", async () => {
+  it("preserves ordinary ephemeral-tool elicits and message order over HTTP", async () => {
     await runOrdinaryBookingOrder("http");
   }, 30_000);
 

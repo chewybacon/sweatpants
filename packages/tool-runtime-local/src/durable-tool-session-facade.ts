@@ -85,7 +85,7 @@ type FacadeOuterContext = {
   /** Receives the raw model-sample request exactly as journaled. */
   sample?(request: Json): Operation<Json>;
   elicit(
-    key: "foreign_input",
+    key: "ephemeral_input",
     request: { message: string; context: unknown },
   ): Operation<
     | { action: "accept"; content: unknown }
@@ -157,7 +157,7 @@ export function createDurableToolSessionFacade<I extends Json, O extends Json>(
       }),
     )
     .elicits({
-      foreign_input: {
+      ephemeral_input: {
         response: z.unknown(),
         context: z.unknown(),
       },
@@ -176,7 +176,7 @@ export function createDurableToolSessionFacade<I extends Json, O extends Json>(
               },
             }),
         *elicit(_key, request) {
-          return yield* context.elicit("foreign_input", request);
+          return yield* context.elicit("ephemeral_input", request);
         },
       });
     });
@@ -421,7 +421,7 @@ function findPull(
  * Facade-side resolver registry: each interaction kind owns its transport;
  * dispatch is generic. Kinds ride kernel name constants — no host literals.
  */
-/** Stock resolver for parked `foreign` pulls over host-supplied live tools. */
+/** Stock resolver for parked `ephemeral` pulls over host-supplied live tools. */
 export function createEphemeralPullResolver(statics: {
   readonly tools: ReadonlyMap<string, RuntimeTool>;
   readonly asks?: EphemeralAskRelay;
@@ -481,7 +481,7 @@ function facadePullResolvers(
           response: { inputProjection: Json };
           context?: Json;
         };
-        const elicitResponse = yield* outerContext.elicit("foreign_input", {
+        const elicitResponse = yield* outerContext.elicit("ephemeral_input", {
           message: d.message,
           context: {
             key: d.key,

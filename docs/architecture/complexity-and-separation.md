@@ -173,7 +173,7 @@ Delivery contract: journal-first, then deliver with correlator;
 at-least-once toward the peer; peers SHOULD be idempotent per correlator.
 Replay covers our strand only — the peer side of history is absent from it
 by construction, so replaying them is a no-op by type. Peer death surfaces
-as an errored outcome (foreign_reference_lost class), journaled, and the
+as an errored outcome (ephemeral_reference_lost class), journaled, and the
 authored program moves on. Park rent during long waits is commercial, not
 correctness. Evidence discipline: anything a peer exports enters the strand
 as opaque, attributed evidence — observations from foreign authorities are

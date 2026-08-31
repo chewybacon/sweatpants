@@ -19,7 +19,7 @@ interface BookingOutcome {
   readonly runError: boolean;
   readonly terminalRecord: string | undefined;
   readonly terminalError: string | undefined;
-  readonly foreignStarts: number;
+  readonly ephemeralStarts: number;
 }
 
 function summarize(journal: DurableSemanticRecord[], events: PublicEvent[]): BookingOutcome {
@@ -53,7 +53,7 @@ function summarize(journal: DurableSemanticRecord[], events: PublicEvent[]): Boo
       typeof terminal.outcome.error.code === "string"
         ? terminal.outcome.error.code
         : undefined,
-    foreignStarts: effectNames.filter((name) => name === "foreign.tool.start").length,
+    ephemeralStarts: effectNames.filter((name) => name === "ephemeral.tool.start").length,
   };
 }
 
@@ -97,7 +97,7 @@ describe("book_flight durability across disconnect and runtime replacement", () 
       expect(outcome.completed).toBe(true);
       expect(outcome.runError).toBe(false);
       expect(outcome.terminalRecord).toBe("TaskClosed");
-      expect(outcome.foreignStarts).toBe(1);
+      expect(outcome.ephemeralStarts).toBe(1);
     } finally {
       await runtime.close();
       await substrate.close();
@@ -132,8 +132,8 @@ describe("book_flight durability across disconnect and runtime replacement", () 
   it("survives graceful runtime-generation replacement between turns", async () => {
     // The first segment completes cleanly and parks on an elicitation. The
     // runtime generation is then gracefully replaced before the user answers.
-    // Durable stores remain shared; the replacement reports the ended foreign
-    // session to the model, which starts a fresh foreign flow.
+    // Durable stores remain shared; the replacement reports the ended ephemeral
+    // session to the model, which starts a fresh ephemeral flow.
     const substrate = await createBookFlightSubstrate({ conversationId: "bf-host-replaced" });
     let runtime = substrate.createRuntime();
     try {
@@ -152,8 +152,8 @@ describe("book_flight durability across disconnect and runtime replacement", () 
       expect(outcome.runError, "replacing the runtime must not surface a run error").toBe(false);
       expect(outcome.completed, "booking must survive runtime replacement").toBe(true);
       expect(
-        outcome.foreignStarts,
-        "the model restarts the foreign flow after the ended session is reported",
+        outcome.ephemeralStarts,
+        "the model restarts the ephemeral flow after the ended session is reported",
       ).toBe(2);
     } finally {
       await runtime.close();

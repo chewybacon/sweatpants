@@ -37,8 +37,10 @@ const EXCLUDED_DIRS = new Set(["node_modules", "dist", "build", ".artifacts", ".
 /** The evidence script and its test carry pattern literals by construction; the
  * reset-policy test crafts the pre-cutover kind as its fixture (REQ-012). */
 const SELF_SCANNING = /campaign-evidence|journal-reset\.test|durability-contract\.test/;
-/** Historical records (landing notes, landed-spec mirrors) are exempt from scans. */
-const HISTORICAL = /docs[\\/]landing|docs[\\/]architecture[\\/]specs/;
+/** Historical records (landing notes, landed-spec mirrors, point-in-time
+ * findings, generated drizzle metadata) are exempt from scans. */
+const HISTORICAL =
+  /docs[\\/]landing|docs[\\/]architecture[\\/]specs|drizzle[\\/]|FRAMEWORK-DX-FINDINGS/;
 
 function listFiles(dir: string): string[] {
   const files: string[] = [];

@@ -140,7 +140,7 @@ describe("journal-native play_ttt through the workflow host", () => {
       expect(
         operations.filter((operation) => operation.descriptor["kind"] === "elicit"),
       ).toHaveLength(userResponses);
-      expect(JSON.stringify(trace)).not.toContain("foreign.tool");
+      expect(JSON.stringify(trace)).not.toContain("ephemeral.tool");
       expect(JSON.stringify(trace)).not.toContain("tool.execute");
     });
 

@@ -237,7 +237,7 @@ export function* createMcpHandler(options: McpHandlerOptions): Operation<{
 }> {
   // HTTP requests execute in standalone scopes created below, not descendants
   // of this installation scope. Bind the two installed capabilities so those
-  // foreign request scopes dispatch through the application-owned runtime.
+  // ephemeral request scopes dispatch through the application-owned runtime.
   const installationScope = yield* useScope();
   // SCOPE-CROSSING (ownership): standalone HTTP request scopes use the
   // invocation host owned by this MCP application installation.

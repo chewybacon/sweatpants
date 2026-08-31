@@ -113,7 +113,7 @@ describe.skipIf(!externalSubstrateEnabled)(
       const journalStore = createProgramDriverJournalStore({ keyring, executionStore });
       const runtime: ToolRuntime = {
         *runtimeId() {
-          return "foreign-context-only";
+          return "ephemeral-context-only";
         },
         *execute(): Operation<never> {
           throw new Error("ToolRuntime fallback must not execute the ToolSession-native tool");
@@ -213,8 +213,8 @@ describe.skipIf(!externalSubstrateEnabled)(
             ? [record.payload.descriptor.name]
             : [],
         );
-        expect(effectNames).toContain("foreign.tool.start");
-        expect(effectNames).toContain("foreign.tool.continue");
+        expect(effectNames).toContain("ephemeral.tool.start");
+        expect(effectNames).toContain("ephemeral.tool.continue");
         expect(effectNames.filter((name) => name === "model.sample")).toHaveLength(3);
         expect(effectNames).not.toContain("tool.execute");
         expect(effectNames).not.toContain("tool.resume");

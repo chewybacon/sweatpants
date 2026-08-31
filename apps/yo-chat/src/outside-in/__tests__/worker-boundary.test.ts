@@ -57,12 +57,12 @@ describe("outside-in worker boundary (Tier A)", () => {
           durability: "ephemeral_handle",
         },
         {
-          sessionId: "calculator-foreign-smoke",
+          sessionId: "calculator-ephemeral-smoke",
           taskId: "turn-0/root.0",
           pullId: "pull-calculator",
           attemptId: "attempt-calculator",
           cancellation: new AbortController().signal,
-          resolver: { audience: "foreign:tool-session" },
+          resolver: { audience: "ephemeral:tool-session" },
         },
       );
       expect(disposition).toMatchObject({

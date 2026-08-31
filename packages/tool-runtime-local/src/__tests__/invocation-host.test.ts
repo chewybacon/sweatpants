@@ -49,13 +49,13 @@ describe("ToolInvocationHost", () => {
       const host = yield* ToolInvocationHostPort.use();
       const expected = bindingIdentityTool.bindings.elicits["choose"]!;
       yield* host.start({
-        invocationId: "foreign:session:identity",
+        invocationId: "ephemeral:session:identity",
         tool: bindingIdentityTool,
         input: {},
       });
 
       const parked = yield* host.turn({
-        invocationId: "foreign:session:identity",
+        invocationId: "ephemeral:session:identity",
         commandId: "pull-0",
         cursor: 0,
       });
@@ -75,7 +75,7 @@ describe("ToolInvocationHost", () => {
     const result = await run(function* () {
       yield* createLocalToolInvocationRuntime({});
       const host = yield* ToolInvocationHostPort.use();
-      const invocationId = "foreign:session:turn-0/root";
+      const invocationId = "ephemeral:session:turn-0/root";
 
       yield* host.start({
         invocationId,
@@ -150,7 +150,7 @@ describe("ToolInvocationHost", () => {
       });
 
       const facade = yield* ToolInvocationHostPort.use();
-      const invocationId = "foreign:session:port";
+      const invocationId = "ephemeral:session:port";
       yield* facade.start({ invocationId, tool: bookingTool, input: { destination: "LHR" } });
       const parked = yield* facade.turn({ invocationId, commandId: "pull-0", cursor: 0 });
       if (parked.type !== "parked") throw new Error("expected parked invocation");
@@ -164,10 +164,10 @@ describe("ToolInvocationHost", () => {
     });
 
     expect(observed).toEqual([
-      "start:foreign:session:port",
+      "start:ephemeral:session:port",
       "turn:pull-0",
       "turn:cancel-0",
-      "dispose:foreign:session:port",
+      "dispose:ephemeral:session:port",
     ]);
   });
 
@@ -186,7 +186,7 @@ describe("ToolInvocationHost", () => {
     await run(function* () {
       yield* createLocalToolInvocationRuntime({});
       const host = yield* ToolInvocationHostPort.use();
-      const invocationId = "foreign:session:active-abort";
+      const invocationId = "ephemeral:session:active-abort";
       yield* host.start({ invocationId, tool: activeTool, input: {} });
 
       const activeTurn = yield* spawn(function* () {
@@ -221,7 +221,7 @@ describe("ToolInvocationHost", () => {
     const result = await run(function* () {
       yield* createLocalToolInvocationRuntime({});
       const host = yield* ToolInvocationHostPort.use();
-      const invocationId = "foreign:session:cancelled-turn";
+      const invocationId = "ephemeral:session:cancelled-turn";
 
       yield* host.start({
         invocationId,

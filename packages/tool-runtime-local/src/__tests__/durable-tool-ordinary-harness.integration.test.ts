@@ -281,8 +281,8 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       });
 
       const outerJournal = authority.readJournal(sessionId);
-      expect(countEffectPulls(outerJournal, "foreign.tool.start")).toBe(1);
-      expect(countEffectPulls(outerJournal, "foreign.tool.continue")).toBe(4);
+      expect(countEffectPulls(outerJournal, "ephemeral.tool.start")).toBe(1);
+      expect(countEffectPulls(outerJournal, "ephemeral.tool.continue")).toBe(4);
       expect(countPulls(outerJournal, "sample")).toBe(2);
       expect(countPulls(outerJournal, "elicit")).toBe(2);
       expect(JSON.stringify(outerJournal)).not.toContain("inner-model");
@@ -374,7 +374,7 @@ function* acceptPending(
   }
   const result = yield* authority.resolve({
     capability: authority.resolutionCapability(sessionId, taskId, record.payload.pullId),
-    audience: "user:foreign_input",
+    audience: "user:ephemeral_input",
     outcome: { status: "ok", value: { action: "accept", content } },
   });
   if (result.status === "rejected") {

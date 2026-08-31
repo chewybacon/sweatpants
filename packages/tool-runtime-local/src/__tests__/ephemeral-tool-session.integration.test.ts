@@ -36,7 +36,7 @@ import {
 } from "../index.ts";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 
-describe("ToolSession foreign-tool durability boundary", () => {
+describe("ToolSession ephemeral-tool durability boundary", () => {
   it("returns malformed continuation responses as expected failure values", async () => {
     const tool = createTool("sample_once")
       .description("Samples once")
@@ -103,7 +103,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
     expect(result).toMatchObject({
       disposition: {
         type: "failed",
-        error: { code: "foreign_sample_response_invalid", retryable: false },
+        error: { code: "ephemeral_sample_response_invalid", retryable: false },
       },
     });
   });
@@ -111,8 +111,8 @@ describe("ToolSession foreign-tool durability boundary", () => {
   it("fails without restarting when an ephemeral ToolSession host disappears", async () => {
     let toolBodyExecutions = 0;
     let ephemeralStarts = 0;
-    const tool = createTool("lost_foreign_tool")
-      .description("A foreign tool whose live host will disappear")
+    const tool = createTool("lost_ephemeral_tool")
+      .description("A ephemeral tool whose live host will disappear")
       .parameters(z.object({ topic: z.string() }))
       .elicits({
         choose: {
@@ -140,16 +140,16 @@ describe("ToolSession foreign-tool durability boundary", () => {
     };
     const tools = createDurableToolRegistry([ephemeralToolAdapter]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
-    const keyring = createCapabilityKeyring("foreign-loss", [
-      { keyId: "active", secret: "foreign-loss-secret-is-32-bytes!!" },
+    const keyring = createCapabilityKeyring("ephemeral-loss", [
+      { keyId: "active", secret: "ephemeral-loss-secret-is-32-bytes!!" },
     ]);
     let authority = createAuthorityScenarioDriver({
-      journalId: "foreign-loss",
+      journalId: "ephemeral-loss",
       journalIncarnation: "1",
       keyring,
       schemaRegistry: createDurableSchemaRegistry(ephemeralToolSchemaEntries()),
     });
-    const sessionId = "foreign-loss-session";
+    const sessionId = "ephemeral-loss-session";
     const taskId = "turn-0/root";
     const attach = attachRequest(sessionId, taskId, request);
 
@@ -213,11 +213,11 @@ describe("ToolSession foreign-tool durability boundary", () => {
 
     expect(recovered).toMatchObject({
       state: "failed",
-      error: { code: "foreign_continuation_lost" },
+      error: { code: "ephemeral_continuation_lost" },
     });
     const journal = authority.readJournal(sessionId);
-    expect(countEffectPulls(journal, "foreign.tool.start")).toBe(1);
-    expect(countEffectPulls(journal, "foreign.tool.continue")).toBe(2);
+    expect(countEffectPulls(journal, "ephemeral.tool.start")).toBe(1);
+    expect(countEffectPulls(journal, "ephemeral.tool.continue")).toBe(2);
     expect(countSamplePulls(journal)).toBe(1);
     expect(ephemeralStarts).toBe(1);
     expect(toolBodyExecutions).toBe(1);
@@ -266,7 +266,7 @@ function recreate(
   keyring: ReturnType<typeof createCapabilityKeyring>,
 ) {
   return createAuthorityScenarioDriver({
-    journalId: "foreign-loss",
+    journalId: "ephemeral-loss",
     journalIncarnation: "1",
     keyring,
     schemaRegistry: createDurableSchemaRegistry(ephemeralToolSchemaEntries()),
@@ -293,11 +293,11 @@ function* acceptPending(
       !resolved.has(record.payload.pullId),
   );
   if (!request || request.payload.type !== "PullRequested") {
-    throw new Error("Missing foreign elicitation");
+    throw new Error("Missing ephemeral elicitation");
   }
   const result = yield* authority.resolve({
     capability: authority.resolutionCapability(sessionId, taskId, request.payload.pullId),
-    audience: "user:foreign_input",
+    audience: "user:ephemeral_input",
     outcome: {
       status: "ok",
       value: { action: "accept", content: { answer: "answer-after-loss" } },

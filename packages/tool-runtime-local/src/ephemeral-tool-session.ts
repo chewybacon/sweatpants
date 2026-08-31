@@ -88,7 +88,7 @@ export type ToolInvocationEphemeralEffectRegistrations = readonly [
 ];
 
 /**
- * Creates durable foreign-tool effects over the pull-based invocation host.
+ * Creates durable ephemeral-tool effects over the pull-based invocation host.
  * The adapter owns durable continuation encoding. It resolves only the scoped
  * host Port; composition chooses the concrete local, worker, or remote host.
  * The host owns tool identity, response delivery, and the crank after each
@@ -104,7 +104,7 @@ export function createToolInvocationEphemeralEffectRegistrations(
       if (request.driver !== "tool-session") {
         return failure(
           request.durability,
-          "foreign_driver_mismatch",
+          "ephemeral_driver_mismatch",
           `ToolSession driver cannot handle ${request.driver}`,
         );
       }
@@ -112,7 +112,7 @@ export function createToolInvocationEphemeralEffectRegistrations(
       if (!tool) {
         return failure(
           request.durability,
-          "foreign_tool_not_found",
+          "ephemeral_tool_not_found",
           `Ephemeral tool not found: ${request.tool}`,
         );
       }
@@ -141,7 +141,7 @@ export function createToolInvocationEphemeralEffectRegistrations(
       } catch {
         return failure(
           request.durability,
-          "foreign_session_create_failed",
+          "ephemeral_session_create_failed",
           "Ephemeral tool invocation could not start",
         );
       }
@@ -156,7 +156,7 @@ export function createToolInvocationEphemeralEffectRegistrations(
       if (!continuation) {
         return failure(
           "ephemeral_handle",
-          "foreign_continuation_invalid",
+          "ephemeral_continuation_invalid",
           "ToolSession continuation is invalid",
         );
       }
@@ -188,7 +188,7 @@ export function createToolInvocationEphemeralEffectRegistrations(
         if (error instanceof ToolInvocationHostError && error.code === "invocation_not_found") {
           return failure(
             continuation.durability,
-            "foreign_continuation_lost",
+            "ephemeral_continuation_lost",
             `Tool invocation ${invocationId} is unavailable`,
           );
         }
@@ -250,7 +250,7 @@ function* decodeResume(
       type: "invalid",
       failure: failure(
         continuation.durability,
-        "foreign_response_kind_mismatch",
+        "ephemeral_response_kind_mismatch",
         `Expected ${continuation.pending.kind}, received ${request.response.kind}`,
       ),
     };
@@ -266,7 +266,7 @@ function* decodeResume(
           type: "invalid",
           failure: failure(
             continuation.durability,
-            "foreign_sample_response_invalid",
+            "ephemeral_sample_response_invalid",
             "Ephemeral sample response is invalid",
           ),
         };
@@ -281,7 +281,7 @@ function* decodeResume(
         type: "invalid",
         failure: failure(
           continuation.durability,
-          "foreign_elicit_response_invalid",
+          "ephemeral_elicit_response_invalid",
           "Ephemeral elicitation response is invalid",
         ),
       };
@@ -304,11 +304,11 @@ function dispositionFromTurn(
     case "completed":
       return { type: "completed", result: turn.result };
     case "failed":
-      return failure(durability, "foreign_tool_error", turn.error.message);
+      return failure(durability, "ephemeral_tool_error", turn.error.message);
     case "cancelled":
       return failure(
         durability,
-        "foreign_tool_cancelled",
+        "ephemeral_tool_cancelled",
         turn.reason ?? "Ephemeral tool was cancelled",
       );
     case "parked":
@@ -440,7 +440,7 @@ function stripUndefined(value: unknown): unknown {
   return value;
 }
 
-// ── Session-side executor for parked foreign pulls ──
+// ── Session-side executor for parked ephemeral pulls ──
 
 /** Relays a live tool's backchannel asks to whoever can answer them. */
 export interface EphemeralAskRelay {
@@ -490,13 +490,13 @@ function* turnOnce(
       pullId: commandId,
       attemptId: "none",
       cancellation: new AbortController().signal,
-      resolver: { audience: "foreign:tool-session" },
+      resolver: { audience: "ephemeral:tool-session" },
     } as never,
   );
 }
 
 /**
- * Executes one session-bound foreign tool call against the invocation host
+ * Executes one session-bound ephemeral tool call against the invocation host
  * and returns the outcome to journal on the parked pull. The tool's own
  * sample/elicit asks ride {@link EphemeralAskRelay}; unanswered kinds fail the
  * call closed.
@@ -518,14 +518,14 @@ export function* executeEphemeralToolCall(
   });
 
   if (request.driver !== "tool-session") {
-    return fail("foreign_driver_mismatch", `ToolSession driver cannot handle ${request.driver}`);
+    return fail("ephemeral_driver_mismatch", `ToolSession driver cannot handle ${request.driver}`);
   }
   if (request.durability !== "ephemeral_handle") {
-    return fail("unsupported_park", "Only ephemeral_handle foreign calls are supported");
+    return fail("unsupported_park", "Only ephemeral_handle calls are supported");
   }
   const tool = options.tools.get(request.tool);
   if (!tool) {
-    return fail("foreign_tool_not_found", `Ephemeral tool not found: ${request.tool}`);
+    return fail("ephemeral_tool_not_found", `Ephemeral tool not found: ${request.tool}`);
   }
 
   const host = yield* ToolInvocationHostPort.use();
@@ -544,7 +544,7 @@ export function* executeEphemeralToolCall(
       input: assertJson(toolInput),
     });
   } catch {
-    return fail("foreign_session_create_failed", "Ephemeral tool invocation could not start");
+    return fail("ephemeral_session_create_failed", "Ephemeral tool invocation could not start");
   }
 
   let cursor = 0;
@@ -566,7 +566,7 @@ export function* executeEphemeralToolCall(
     if (event.type === "failed") {
       return {
         status: "error",
-        error: { code: "foreign_tool_error", message: event.error.message },
+        error: { code: "ephemeral_tool_error", message: event.error.message },
       };
     }
     if (event.type === "cancelled") {
@@ -586,7 +586,7 @@ export function* executeEphemeralToolCall(
     try {
       if (ask.kind === "sample") {
         if (!relay?.sample) {
-          return fail("foreign_ask_unanswered", "No sample relay configured");
+          return fail("ephemeral_ask_unanswered", "No sample relay configured");
         }
         const lastText = ask.messages?.at(-1)?.text;
         answer = yield* relay.sample({
@@ -596,7 +596,7 @@ export function* executeEphemeralToolCall(
         });
       } else {
         if (!relay?.elicit) {
-          return fail("foreign_ask_unanswered", "No elicit relay configured");
+          return fail("ephemeral_ask_unanswered", "No elicit relay configured");
         }
         answer = yield* relay.elicit({
           message: ask.message ?? "",
@@ -605,7 +605,7 @@ export function* executeEphemeralToolCall(
       }
     } catch (error) {
       return fail(
-        "foreign_ask_failed",
+        "ephemeral_ask_failed",
         error instanceof Error ? error.message : "Ephemeral ask could not be answered",
       );
     }
@@ -639,7 +639,7 @@ export function* executeEphemeralToolCall(
       );
     } catch (error) {
       if (error instanceof ToolInvocationHostError && error.code === "invocation_not_found") {
-        return fail("foreign_reference_lost", `Live reference ${invocationId} is gone`);
+        return fail("ephemeral_reference_lost", `Live reference ${invocationId} is gone`);
       }
       throw error;
     }
