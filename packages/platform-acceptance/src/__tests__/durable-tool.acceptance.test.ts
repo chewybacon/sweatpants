@@ -50,6 +50,10 @@ async function runDurableToolScenario(
       modelId: ACCEPTANCE_MODEL_ID,
       scenarioTimeoutMs: 30_000,
       createApplication(context) {
+        // REQ-016: this scenario is the `crank_native` placement — the tool is
+        // itself a pinned durable program executed under the crank and replayed
+        // from the journal.
+        expect(acceptanceDurableTool.durability).toBe("crank_native");
         return createDurabilityAcceptanceApplication(
           context,
           (created) => {

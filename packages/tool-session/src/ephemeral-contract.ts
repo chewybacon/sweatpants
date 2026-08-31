@@ -22,13 +22,7 @@ export const EPHEMERAL_TOOL_ADAPTER_PROGRAM = Object.freeze({
   digest: sha256("sweatpants.foreign-tool-adapter@1.3.0:workflow-pulls"),
 });
 
-const EPHEMERAL_DURABILITIES = [
-  "opaque",
-  "ephemeral_handle",
-  "resumable_handle",
-  "server_task",
-  "crank_native",
-] as const;
+const EPHEMERAL_DURABILITIES = ["opaque", "ephemeral_handle", "crank_native"] as const;
 const ephemeralStartSchema = z.strictObject({
   driver: z.string().min(1).max(512),
   tool: z.string().min(1).max(512),

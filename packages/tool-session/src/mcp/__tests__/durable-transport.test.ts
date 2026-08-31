@@ -32,7 +32,6 @@ describe("durable purity and transport boundaries", () => {
 
   it("classifies MCP durability honestly and stores only encrypted caller-bound latest request state", () => {
     expect(classifyMcpToolDurability({})).toBe("opaque");
-    expect(classifyMcpToolDurability({ serverTask: true })).toBe("server_task");
     expect(
       classifyMcpToolDurability({
         negotiatedExtensions: [MCP_DURABLE_EFFECTS_EXTENSION],

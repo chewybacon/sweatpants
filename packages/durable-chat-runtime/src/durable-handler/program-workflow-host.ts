@@ -92,13 +92,7 @@ const programCatalogEntrySchema = z.discriminatedUnion("kind", [
     target: catalogTextSchema,
     driver: catalogTextSchema,
     tool: catalogTextSchema,
-    durability: z.enum([
-      "opaque",
-      "ephemeral_handle",
-      "resumable_handle",
-      "server_task",
-      "crank_native",
-    ]),
+    durability: z.enum(["opaque", "ephemeral_handle", "crank_native"]),
   }),
 ]);
 const programCatalogEntriesSchema = z.record(catalogTextSchema, programCatalogEntrySchema);
