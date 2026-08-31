@@ -1,4 +1,7 @@
-import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
+import type {
+  AgentCoreRuntimeRelease,
+  AgentCoreTaskPlacement,
+} from "../placement/placement-types.ts";
 import { call, useAbortSignal, type Operation } from "effection";
 import { z } from "zod";
 

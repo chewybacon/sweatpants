@@ -27,12 +27,12 @@ import {
 import {
   createAgentCoreToolInvocationResources,
   type AgentCoreToolInvocationResources,
-} from "../agentcore-invocation-resources.ts";
+} from "../agentcore/agentcore-invocation-resources.ts";
 import {
   createInMemoryAgentCoreToolSessionEventStore,
   createInMemoryAgentCoreToolSessionHandleStore,
-} from "../agentcore-memory-store.ts";
-import type { AgentCoreToolSessionStores } from "../agentcore-types.ts";
+} from "../agentcore/agentcore-memory-store.ts";
+import type { AgentCoreToolSessionStores } from "../agentcore/agentcore-types.ts";
 
 const remoteTool = createTool("remote_echo")
   .description("Remote echo")

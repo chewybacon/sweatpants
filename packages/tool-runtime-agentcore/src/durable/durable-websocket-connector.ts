@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import type { AgentCoreRuntimeRelease } from "./placement-types.ts";
+import type { AgentCoreRuntimeRelease } from "../placement/placement-types.ts";
 import { createHash, createHmac } from "node:crypto";
 
 import {

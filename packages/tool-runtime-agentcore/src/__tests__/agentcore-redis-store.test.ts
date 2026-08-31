@@ -5,7 +5,7 @@ import { AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION } from "../index.ts";
 import {
   createRedisAgentCoreToolSessionEventStore,
   createRedisAgentCoreToolSessionHandleStore,
-} from "../agentcore-redis-store.ts";
+} from "../agentcore/agentcore-redis-store.ts";
 import type { AgentCoreToolSessionHandle, RedisLikeClient } from "../index.ts";
 
 class InMemoryRedisLikeClient implements RedisLikeClient {
