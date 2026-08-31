@@ -12,13 +12,13 @@ import {
   createAgentCoreToolInvocationRuntime,
   streamFromAgentCoreResponses,
 } from "../index.ts";
-import { createAgentCoreToolInvocationResources } from "../agentcore-invocation-resources.ts";
+import { createAgentCoreToolInvocationResources } from "../agentcore/agentcore-invocation-resources.ts";
 import {
   createInMemoryAgentCoreToolSessionEventStore,
   createInMemoryAgentCoreToolSessionHandleStore,
-} from "../agentcore-memory-store.ts";
-import type { AgentCoreToolSessionStores } from "../agentcore-types.ts";
-import { createAgentCoreToolSession } from "../agentcore-tool-session.ts";
+} from "../agentcore/agentcore-memory-store.ts";
+import type { AgentCoreToolSessionStores } from "../agentcore/agentcore-types.ts";
+import { createAgentCoreToolSession } from "../agentcore/agentcore-tool-session.ts";
 import type {
   AgentCoreToolRuntimeProfile,
   AgentCoreToolSessionHandle,

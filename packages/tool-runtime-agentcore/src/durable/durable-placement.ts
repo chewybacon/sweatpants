@@ -1,5 +1,8 @@
 import { z } from "zod";
-import type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
+import type {
+  AgentCoreRuntimeRelease,
+  AgentCoreTaskPlacement,
+} from "../placement/placement-types.ts";
 import { durableEffectKey } from "@sweatpants/durable-effects";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import {

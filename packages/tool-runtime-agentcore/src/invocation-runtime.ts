@@ -8,23 +8,23 @@ import {
   type ToolSession,
 } from "@sweatpants/tool-session";
 import { createToolInvocationHost } from "@sweatpants/tool-session";
-import { createAgentCoreToolInvocationResources } from "./agentcore-invocation-resources.ts";
+import { createAgentCoreToolInvocationResources } from "./agentcore/agentcore-invocation-resources.ts";
 import type { InteractionBinding } from "@sweatpants/agent-sdk";
 import type {
   AgentCoreToolRuntimeProfile,
   AgentCoreToolSessionHandle,
   RemoteToolRuntimeClient,
-} from "./agentcore-types.ts";
+} from "./agentcore/agentcore-types.ts";
 import {
   createInMemoryAgentCoreToolSessionEventStore,
   createInMemoryAgentCoreToolSessionHandleStore,
-} from "./agentcore-memory-store.ts";
+} from "./agentcore/agentcore-memory-store.ts";
 import {
   createRedisAgentCoreToolSessionEventStore,
   createRedisAgentCoreToolSessionHandleStore,
   type AgentCoreRedisStoreOptions,
   type RedisLikeClient,
-} from "./agentcore-redis-store.ts";
+} from "./agentcore/agentcore-redis-store.ts";
 
 export type AgentCoreToolInvocationPersistence =
   | { readonly kind: "memory" }

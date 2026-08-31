@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseAgentCoreSseResponses } from "../agentcore-aws-invoker.ts";
+import { parseAgentCoreSseResponses } from "../agentcore/agentcore-aws-invoker.ts";
 
 describe("parseAgentCoreSseResponses", () => {
   it("parses structurally valid provider responses", () => {

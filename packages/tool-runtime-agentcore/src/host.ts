@@ -15,11 +15,14 @@ export type {
   RuntimeInvokeOptions,
   RemoteToolRuntimeClient,
   AgentCoreToolRuntimeProfile,
-} from "./agentcore-types.ts";
+} from "./agentcore/agentcore-types.ts";
 
-export { AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION } from "./agentcore-types.ts";
+export { AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION } from "./agentcore/agentcore-types.ts";
 
-export type { RedisLikeClient, AgentCoreRedisStoreOptions } from "./agentcore-redis-store.ts";
+export type {
+  RedisLikeClient,
+  AgentCoreRedisStoreOptions,
+} from "./agentcore/agentcore-redis-store.ts";
 
 export {
   createAgentCoreRemoteToolRuntimeClient,
@@ -27,13 +30,13 @@ export {
   protocolErrorStream,
   type AgentCoreInvoker,
   type AgentCoreInvokeInput,
-} from "./agentcore-runtime-client.ts";
+} from "./agentcore/agentcore-runtime-client.ts";
 
 export {
   createAwsSdkAgentCoreInvoker,
   parseAgentCoreSseResponses,
   streamFromAgentCoreToolRuntimeResponses,
   type AwsSdkAgentCoreInvokerOptions,
-} from "./agentcore-aws-invoker.ts";
+} from "./agentcore/agentcore-aws-invoker.ts";
 
-export { FakeAgentCoreRemoteToolRuntimeClient } from "./agentcore-fake-runtime.ts";
+export { FakeAgentCoreRemoteToolRuntimeClient } from "./agentcore/agentcore-fake-runtime.ts";

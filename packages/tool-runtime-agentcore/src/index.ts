@@ -1,4 +1,7 @@
-export type { AgentCoreRuntimeRelease, AgentCoreTaskPlacement } from "./placement-types.ts";
+export type {
+  AgentCoreRuntimeRelease,
+  AgentCoreTaskPlacement,
+} from "./placement/placement-types.ts";
 export {
   createAgentCoreToolExecutionStrategy,
   createAgentCoreToolRuntimeDriver,
@@ -26,9 +29,9 @@ export type {
   RuntimeInvokeOptions,
   RemoteToolRuntimeClient,
   AgentCoreToolRuntimeProfile,
-} from "./agentcore-types.ts";
+} from "./agentcore/agentcore-types.ts";
 
-export { AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION } from "./agentcore-types.ts";
+export { AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION } from "./agentcore/agentcore-types.ts";
 
 export {
   createAgentCoreToolInvocationRuntime,
@@ -36,7 +39,10 @@ export {
   type AgentCoreToolInvocationRuntimeOptions,
 } from "./invocation-runtime.ts";
 
-export type { RedisLikeClient, AgentCoreRedisStoreOptions } from "./agentcore-redis-store.ts";
+export type {
+  RedisLikeClient,
+  AgentCoreRedisStoreOptions,
+} from "./agentcore/agentcore-redis-store.ts";
 
 export {
   createAgentCoreRemoteToolRuntimeClient,
@@ -44,23 +50,23 @@ export {
   protocolErrorStream,
   type AgentCoreInvoker,
   type AgentCoreInvokeInput,
-} from "./agentcore-runtime-client.ts";
+} from "./agentcore/agentcore-runtime-client.ts";
 
 export {
   createAwsSdkAgentCoreInvoker,
   parseAgentCoreSseResponses,
   streamFromAgentCoreToolRuntimeResponses,
   type AwsSdkAgentCoreInvokerOptions,
-} from "./agentcore-aws-invoker.ts";
+} from "./agentcore/agentcore-aws-invoker.ts";
 
-export { FakeAgentCoreRemoteToolRuntimeClient } from "./agentcore-fake-runtime.ts";
+export { FakeAgentCoreRemoteToolRuntimeClient } from "./agentcore/agentcore-fake-runtime.ts";
 
 export { exactProgramKey } from "@sweatpants/durable-execution";
 
 export {
   createAgentCoreDurableProgramDriver,
   type AgentCoreDurableProgramTransport,
-} from "./durable-driver.ts";
+} from "./durable/durable-driver.ts";
 
 export {
   AGENTCORE_DURABLE_PROTOCOL_VERSION,
@@ -80,7 +86,7 @@ export {
   type AgentCoreDurableReadinessInput,
   type AgentCoreSamplingReadinessInput,
   type InvocationPlacementRequest,
-} from "./durable-placement.ts";
+} from "./durable/durable-placement.ts";
 
 export {
   AGENTCORE_MAX_ERROR_TEXT_BYTES,
@@ -100,7 +106,7 @@ export {
   type HostProgramMessage,
   type ReplayChainSeedInput,
   type RuntimeProgramMessage,
-} from "./durable-protocol.ts";
+} from "./durable/durable-protocol.ts";
 
 export {
   createSigV4AgentCoreWebSocketConnector,
@@ -108,40 +114,40 @@ export {
   type AgentCoreWebSocketConnection,
   type AgentCoreWebSocketConnector,
   type SigV4AgentCoreWebSocketConnectorOptions,
-} from "./durable-websocket-connector.ts";
+} from "./durable/durable-websocket-connector.ts";
 
 export {
   createAgentCoreWebSocketProgramTransport,
   type AgentCoreDurableProgramRoute,
-} from "./durable-websocket-transport.ts";
+} from "./durable/durable-websocket-transport.ts";
 
 export {
   createAgentCoreDurableEvaluator,
   type AgentCoreDurableEvaluatorOptions,
-} from "./durable-evaluator.ts";
+} from "./durable/durable-evaluator.ts";
 
 export {
   runPlacementModelSampleProducer,
   type PlacementModelProvider,
-} from "./placement-model-producer.ts";
+} from "./placement/placement-model-producer.ts";
 
 export {
   REMOTE_SAMPLE_MAX_RECORD_BYTES,
   createRedisPlacementModelSampler,
   remoteSampleRecordParser,
   type RedisPlacementModelSampler,
-} from "./redis-placement-model-sampler.ts";
+} from "./placement/redis-placement-model-sampler.ts";
 
 export {
   createPlacementSamplingAuthorizationIssuer,
   verifyPlacementSamplingAuthorization,
   type PlacementSamplingAuthorizationClaims,
-} from "./placement-sampling-authorization.ts";
+} from "./placement/placement-sampling-authorization.ts";
 
 export {
   createInMemoryPlacementModelSampler,
   type InMemoryPlacementModelSampler,
-} from "./in-memory-placement-model-sampler.ts";
+} from "./placement/in-memory-placement-model-sampler.ts";
 
 export {
   AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
@@ -156,10 +162,10 @@ export {
   type RemoteSampleIdentity,
   type RemoteSampleRecord,
   type RemoteSampleState,
-} from "./placement-model-sampler.ts";
+} from "./placement/placement-model-sampler.ts";
 
 export {
   createAgentCoreActivationCoordinator,
   type AgentCoreActivationCoordinatorOptions,
   type CoordinatedActivationResult,
-} from "./durable-activation-coordinator.ts";
+} from "./durable/durable-activation-coordinator.ts";

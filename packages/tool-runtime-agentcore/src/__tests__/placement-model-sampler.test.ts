@@ -10,19 +10,19 @@ import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 
-import { createInMemoryPlacementModelSampler } from "../in-memory-placement-model-sampler.ts";
-import { runPlacementModelSampleProducer } from "../placement-model-producer.ts";
-import { remoteSampleRecordParser } from "../redis-placement-model-sampler.ts";
+import { createInMemoryPlacementModelSampler } from "../placement/in-memory-placement-model-sampler.ts";
+import { runPlacementModelSampleProducer } from "../placement/placement-model-producer.ts";
+import { remoteSampleRecordParser } from "../placement/redis-placement-model-sampler.ts";
 import {
   createPlacementSamplingAuthorizationIssuer,
   verifyPlacementSamplingAuthorization,
-} from "../placement-sampling-authorization.ts";
+} from "../placement/placement-sampling-authorization.ts";
 import {
   AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
   createPlacementModelSamplingService,
   type PlacementModelSampler,
   type RemoteSampleAttachment,
-} from "../placement-model-sampler.ts";
+} from "../placement/placement-model-sampler.ts";
 
 const identity = {
   journalId: "journal",

@@ -1,4 +1,4 @@
-import type { AgentCoreRuntimeRelease } from "../placement-types.ts";
+import type { AgentCoreRuntimeRelease } from "../placement/placement-types.ts";
 import { describe, expect, it } from "vitest";
 import { type ReplayOperationEntry } from "@sweatpants/durable-execution";
 import { canonicalSnapshot } from "@sweatpants/foundation";

@@ -1,10 +1,10 @@
 export {
   createAgentCoreDurableEvaluator,
   type AgentCoreDurableEvaluatorOptions,
-} from "./durable-evaluator.ts";
+} from "./durable/durable-evaluator.ts";
 export {
   encodeAgentCoreProgramMessage,
   parseHostProgramMessage,
   type HostProgramMessage,
   type RuntimeProgramMessage,
-} from "./durable-protocol.ts";
+} from "./durable/durable-protocol.ts";

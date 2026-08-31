@@ -16,12 +16,12 @@ import {
   createAwsSdkAgentCoreInvoker,
   type AgentCoreToolRuntimeProfile,
 } from "../src/index.ts";
-import { createAgentCoreToolInvocationResources } from "../src/agentcore-invocation-resources.ts";
+import { createAgentCoreToolInvocationResources } from "../src/agentcore/agentcore-invocation-resources.ts";
 import {
   createInMemoryAgentCoreToolSessionEventStore,
   createInMemoryAgentCoreToolSessionHandleStore,
-} from "../src/agentcore-memory-store.ts";
-import type { AgentCoreToolSessionStores } from "../src/agentcore-types.ts";
+} from "../src/agentcore/agentcore-memory-store.ts";
+import type { AgentCoreToolSessionStores } from "../src/agentcore/agentcore-types.ts";
 
 const enabled = process.env["AGENTCORE_LIVE_E2E"] === "yes";
 const runtimeArn = process.env["AGENTCORE_RUNTIME_ARN"];
