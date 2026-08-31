@@ -624,24 +624,14 @@ function contextForDeclarations(
       return client;
     },
     effect(
-      definitionOrName: EffectDefinition<Json, Json, Json> | string,
-      inputOrVersion: Json,
-      resolverOrInput?: Json | { audience: string; route?: string },
-      explicitResolver?: { audience: string; route?: string },
+      definition: EffectDefinition<Json, Json, Json>,
+      input: Json,
+      resolver?: { audience: string; route?: string },
     ) {
-      if (typeof definitionOrName === "string") {
-        return context.effect(
-          definitionOrName,
-          String(inputOrVersion),
-          resolverOrInput as Json,
-          explicitResolver!,
-        );
-      }
-      const resolver = resolverOrInput as { audience: string; route?: string } | undefined;
       return context.effect(
-        definitionOrName,
-        inputOrVersion,
-        resolver ?? { audience: `effect:${definitionOrName.name}` },
+        definition,
+        input,
+        resolver ?? { audience: `effect:${definition.name}` },
       );
     },
     ...(sampling

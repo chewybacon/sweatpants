@@ -57,7 +57,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
         pullId: "pull-0",
         attemptId: "attempt-0",
         cancellation: new AbortController().signal,
-        resolver: { audience: "foreign-tool" },
+        resolver: { audience: "ephemeral-tool" },
       };
       const startedDisposition = yield* start.handler(
         {

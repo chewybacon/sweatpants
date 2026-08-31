@@ -379,7 +379,6 @@ function parkedReason(pull: PullState): string {
     case "sample":
       return pull.request.acceptedDescriptor.kind;
     case "ephemeral":
-    case "foreign":
       return "ephemeral";
     case "invoke":
     case "all":

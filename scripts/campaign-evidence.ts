@@ -34,10 +34,11 @@ const agentsDoc = join(repoRoot, "AGENTS.md");
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".json", ".yaml", ".md", ".mjs"]);
 const EXCLUDED_DIRS = new Set(["node_modules", "dist", "build", ".artifacts", ".cache", ".git"]);
-/** The evidence script and its test carry pattern literals by construction. */
-const SELF_SCANNING = /campaign-evidence/;
-/** Historical landing records, like the spec archive, are exempt from scans. */
-const HISTORICAL = /docs[\\/]landing/;
+/** The evidence script and its test carry pattern literals by construction; the
+ * reset-policy test crafts the pre-cutover kind as its fixture (REQ-012). */
+const SELF_SCANNING = /campaign-evidence|journal-reset\.test/;
+/** Historical records (landing notes, landed-spec mirrors) are exempt from scans. */
+const HISTORICAL = /docs[\\/]landing|docs[\\/]architecture[\\/]specs/;
 
 function listFiles(dir: string): string[] {
   const files: string[] = [];

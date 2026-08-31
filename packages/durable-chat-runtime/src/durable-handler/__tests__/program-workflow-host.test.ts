@@ -68,29 +68,6 @@ const catalog = createPinnedProgramCatalog({
 });
 
 describe("ProgramWorkflowHost", () => {
-  it("reads a historical foreign-tool catalog entry while dispatching its program", async () => {
-    const host = fixture();
-    const historicalCatalog = createPinnedProgramCatalog({
-      host_approval: { kind: "program", target: "host_approval", program: pin },
-      historical_tool: {
-        kind: "foreign-tool",
-        target: "historical_tool",
-        driver: "tool-session",
-        tool: "historical_tool",
-        durability: "ephemeral_handle",
-      },
-    });
-    await run(function* () {
-      const opened = yield* host.open({
-        program: pin,
-        manifest: approvalProgram.manifest,
-        input: { prompt: "Continue?" },
-        catalog: historicalCatalog,
-      });
-      expect(yield* opened.result).toMatchObject({ state: "parked", reason: "elicit" });
-    });
-  });
-
   it("opens, parks, accepts a typed response, resumes, and returns a normalized trace", async () => {
     const host = fixture();
     await run(function* () {

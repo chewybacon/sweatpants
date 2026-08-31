@@ -347,8 +347,6 @@ export {
   ephemeralDurabilitySchema,
   forkExpirySchema,
   invokeDescriptorSchema,
-  legacyForeignDescriptorParser,
-  legacyForeignDescriptorSchema,
   portableSchemaDescriptorSchema,
   PULL_KIND_ELICIT,
   PULL_KIND_EPHEMERAL,

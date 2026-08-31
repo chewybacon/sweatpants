@@ -21,32 +21,16 @@ export function durableToolWorkflow<I extends Json, O extends Json>(
   tool: Pick<DurableTool<I, O>, "program"> & { readonly manifest?: DurableProgramManifest<I, O> },
   input: I,
 ): () => Workflow<Json> {
-  const isDefinition = (
-    candidate: EffectDefinition<Json, Json, never> | string,
-  ): candidate is EffectDefinition<Json, Json, never> => typeof candidate !== "string";
-
   const context: DurableProgramContext = {
-    // The two context-effect overloads collapse onto one installed-effect boundary;
-    // the payload is schema-validated by the authority against the manifest.
     effect: function* (
-      definitionOrName: EffectDefinition<Json, Json, never> | string,
-      versionOrInput: string | Json,
-      maybeInput?: Json,
+      definition: EffectDefinition<Json, Json, never>,
+      input: Json,
       resolver?: { audience: string; route?: string },
     ): Operation<Json> {
-      const definition = isDefinition(definitionOrName) ? definitionOrName : undefined;
-      const name = definition ? definition.name : (definitionOrName as string);
-      // Legacy authoring allowed version-less effect proposals; resolve the
-      // version from the pinned manifest exactly like the local driver did.
-      const version = definition
-        ? definition.version
-        : ((definitionOrName === undefined ? undefined : (versionOrInput as string)) ??
-          tool.manifest?.effects?.[name]?.version ??
-          "");
       const outcome = (yield* installedEffect({
-        name,
-        version,
-        input: definition ? (versionOrInput as Json) : ((maybeInput ?? undefined) as Json),
+        name: definition.name,
+        version: definition.version,
+        input,
         resolver: resolver ?? { audience: "program-execution" },
       })) as Json;
       return outcome;

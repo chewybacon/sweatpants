@@ -10,6 +10,7 @@ import {
   type ProgramElicitResult,
 } from "@sweatpants/durable-execution";
 import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
 import { DurableEffectRouting } from "@sweatpants/durable-effects/runtime";
 import {
   driveInstalledTestProgramTree,
@@ -65,6 +66,14 @@ const keyring = createCapabilityKeyring("flip-authority", [
 ]);
 const digest = "9".repeat(64);
 
+const echoDefinition = defineDurableEffect<{ message: string }, string>({
+  name: "echo",
+  version: "1.0.0",
+  inputSchema: echoInput.descriptor,
+  outputSchema: echoOutput.descriptor,
+  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
+});
+
 const manifest: DurableProgramManifest = {
   programId: "fixture.flip",
   version: "1.0.0",
@@ -74,15 +83,7 @@ const manifest: DurableProgramManifest = {
   elicits: {
     approval: { response: approvalResponse.descriptor },
   },
-  effects: {
-    echo: {
-      name: "echo",
-      version: "1.0.0",
-      inputSchema: echoInput.descriptor,
-      outputSchema: echoOutput.descriptor,
-      retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
-    },
-  },
+  effects: { echo: echoDefinition },
   capabilities: { durableEmissions: true, structuredChildren: false, replay: "strict" },
 };
 
@@ -122,11 +123,12 @@ const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
   const a = yield* context.record({ key: "step-one" }, function* () {
     return "one";
   });
-  const echoed = yield* context.effect<string>(
-    "echo",
-    "1.0.0",
+  const echoed = yield* context.effect(
+    echoDefinition,
     { message: a },
-    { audience: "program-execution" },
+    {
+      audience: "program-execution",
+    },
   );
   yield* context.emit("workflow.flip/between", { after: echoed });
   const b = yield* context.record({ key: "step-two" }, function* () {
