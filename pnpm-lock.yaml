@@ -173,9 +173,6 @@ importers:
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:packages/durable-execution
-      '@sweatpants/execution-store-redis':
-        specifier: workspace:*
-        version: link:packages/execution-store-redis
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:packages/foundation
@@ -206,9 +203,6 @@ importers:
       oxlint-tsgolint:
         specifier: ^7.0.2001
         version: 7.0.2001
-      redis:
-        specifier: ^4.7.0
-        version: 4.7.1
       tsx:
         specifier: 'catalog:'
         version: 4.21.0
@@ -367,58 +361,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
-
-  apps/hydra:
-    dependencies:
-      '@effectionx/process':
-        specifier: ^0.6.1
-        version: 0.6.2
-      '@effectionx/tinyexec':
-        specifier: ^0.3.1
-        version: 0.3.1
-      effection:
-        specifier: 4.1.0-alpha.9
-        version: 4.1.0-alpha.9
-      express:
-        specifier: '>=4.0.0'
-        version: 5.2.1
-      http-proxy:
-        specifier: '>=1.0.0'
-        version: 1.18.1(debug@4.4.3)
-      morgan:
-        specifier: ^1.10.0
-        version: 1.10.1
-      zod:
-        specifier: 4.1.13
-        version: 4.1.13
-    devDependencies:
-      '@sweatpants/ts-config':
-        specifier: workspace:*
-        version: link:../../packages/ts-config
-      '@types/express':
-        specifier: ^5.0.0
-        version: 5.0.6
-      '@types/http-proxy':
-        specifier: ^1.17.17
-        version: 1.17.17
-      '@types/morgan':
-        specifier: ^1.9.10
-        version: 1.9.10
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.5
-      dotenv:
-        specifier: ^17.2.3
-        version: 17.2.3
-      tsup:
-        specifier: ^8.3.5
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
 
   apps/lambda-durable-program-runtime:
     dependencies:
@@ -1479,46 +1421,6 @@ importers:
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.19.5
-      redis:
-        specifier: ^4.7.0
-        version: 4.7.1
-      tsup:
-        specifier: 'catalog:'
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vitest:
-        specifier: 'catalog:'
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
-
-  packages/execution-store-redis:
-    dependencies:
-      '@sweatpants/durable-execution':
-        specifier: workspace:*
-        version: link:../durable-execution
-      '@sweatpants/foundation':
-        specifier: workspace:*
-        version: link:../foundation
-      '@sweatpants/journal-authority':
-        specifier: workspace:*
-        version: link:../journal-authority
-      effection:
-        specifier: 4.1.0-alpha.9
-        version: 4.1.0-alpha.9
-      zod:
-        specifier: 'catalog:'
-        version: 4.1.13
-    devDependencies:
-      '@sweatpants/ts-config':
-        specifier: workspace:*
-        version: link:../ts-config
-      '@sweatpants/workspace-runtime':
-        specifier: workspace:*
-        version: link:../workspace-runtime
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
@@ -2986,10 +2888,6 @@ packages:
     resolution: {integrity: sha512-UCEmk/uibrx4PvUh/tm1SWy6e6rAaq2BzpEDLu5XJZ/LaRdazv5VxHqg4F3N+G4AcxgPvosprjS0j3dDSTCzFg==}
     engines: {node: '>= 16'}
 
-  '@effectionx/process@0.6.2':
-    resolution: {integrity: sha512-U94gqTNXASRw8KBJOtSE+MaWL09Tox7la9/rmJCzUpaLWSmrSOvH28NCv++PKKy8qNCErD+QQip5q+E8lARNEQ==}
-    engines: {node: '>= 16'}
-
   '@effectionx/raf@0.1.1':
     resolution: {integrity: sha512-bEf7FTHjO7kzX4zcSiwLpTSfNANKTuB5kxLVyL9eP3vs11+T/IPR8FNZifqkw0gV1/nRXCjBopPLIlzcrB7zZg==}
     engines: {node: '>= 16'}
@@ -3008,10 +2906,6 @@ packages:
     resolution: {integrity: sha512-cc7SLpL3svAYK8M5NS8kLQuL0lrZNoQb+Hi9NSaWOudzAW1HoewuDfUtfXLemPJnnLqLYhbghRhmpVqCm4Xg3Q==}
     peerDependencies:
       effection: 4.1.0-alpha.9
-
-  '@effectionx/tinyexec@0.3.1':
-    resolution: {integrity: sha512-FV4XRhsq1jHFgRqQUU/YgUsfNqjlq0+wg8YqvDS2wmwWPsUzBfjiijsmkrowVU5AVtrxda7b+8WE2BWPcoPz0w==}
-    engines: {node: '>= 16'}
 
   '@effectionx/vitest@0.3.1':
     resolution: {integrity: sha512-sWOcpslkK5ftFSzu7uMAefeku6EqoymceNaAM/GXDQ3FeFPtd1iWNS9LEvHa/GA2IyC5BstnsxFV6A46H44buA==}
@@ -5826,9 +5720,6 @@ packages:
   '@types/connect@3.4.38':
     resolution: {integrity: sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug==}
 
-  '@types/cross-spawn@6.0.6':
-    resolution: {integrity: sha512-fXRhhUkG4H3TQk5dBhQ7m/JDdSNHKwR2BBia62lhwEIq9xGiQKLxd6LymNhn47SjXhsUEPmxi+PKw2OkW4LLjA==}
-
   '@types/d3-array@3.2.2':
     resolution: {integrity: sha512-hOLWVbm7uRza0BYXpIIW5pxfrKe0W+D5lrFiAEYR+pb6w3N2SwSMaJbXdUfSEv+dT4MfHBLtn5js0LAWaO6otw==}
 
@@ -6885,9 +6776,6 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
-
-  ctrlc-windows@2.2.0:
-    resolution: {integrity: sha512-t9y568r+T8FUuBaqKK60YGFJdj3b3ktdJW9WXIT3CuBdQhAOYdSZu75jFUN0Ay4Yz5HHicVQqAYCwcnqhOn23g==}
 
   cytoscape-cose-bilkent@4.1.0:
     resolution: {integrity: sha512-wgQlVIUJF13Quxiv5e1gstZ08rnZj2XaLHGoFMYXz7SkNfCDOOteKBE6SYRfA9WxxI/iBc3ajfDoc6hb/MRAHQ==}
@@ -9318,9 +9206,6 @@ packages:
     resolution: {integrity: sha512-ObmnIF4hXNg1BqhnHmgbDETF8dLPCggZWBjkQfhZpbszZnYur5DUljTcCHii5LC3J5E0yeO/1LIMyH+UvHQgyw==}
     engines: {node: '>= 0.4'}
 
-  shellwords@1.1.1:
-    resolution: {integrity: sha512-LzESUkEHUuFbjaE7j8uyIjKvySfSFvCF6G4WOygjwSwQj3VuX8hr+v4M252B3twEct6XTWrrNSFu74mTlx4uAQ==}
-
   shiki-magic-move@1.2.1:
     resolution: {integrity: sha512-421QfXnBNbsyOkb+gh/Sm18SSedN7pVc+ZA4gMCEF6YPtvEIntP5CojBiVz9AL0apCRsWeiZfVBEmw0oUP+uMg==}
     peerDependencies:
@@ -11451,14 +11336,6 @@ snapshots:
     dependencies:
       effection: 4.1.0-alpha.9
 
-  '@effectionx/process@0.6.2':
-    dependencies:
-      '@types/cross-spawn': 6.0.6
-      cross-spawn: 7.0.6
-      ctrlc-windows: 2.2.0
-      effection: 4.1.0-alpha.9
-      shellwords: 1.1.1
-
   '@effectionx/raf@0.1.1':
     dependencies:
       effection: 4.1.0-alpha.9
@@ -11475,11 +11352,6 @@ snapshots:
   '@effectionx/timebox@0.4.3(effection@4.1.0-alpha.9)':
     dependencies:
       effection: 4.1.0-alpha.9
-
-  '@effectionx/tinyexec@0.3.1':
-    dependencies:
-      effection: 4.1.0-alpha.9
-      tinyexec: 0.3.2
 
   '@effectionx/vitest@0.3.1(effection@4.1.0-alpha.9)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
@@ -14068,10 +13940,6 @@ snapshots:
     dependencies:
       '@types/node': 22.19.5
 
-  '@types/cross-spawn@6.0.6':
-    dependencies:
-      '@types/node': 22.19.5
-
   '@types/d3-array@3.2.2': {}
 
   '@types/d3-axis@3.0.6':
@@ -15254,8 +15122,6 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  ctrlc-windows@2.2.0: {}
-
   cytoscape-cose-bilkent@4.1.0(cytoscape@3.33.1):
     dependencies:
       cose-base: 1.0.3
@@ -15551,7 +15417,8 @@ snapshots:
       domelementtype: 2.3.0
       domhandler: 5.0.3
 
-  dotenv@17.2.3: {}
+  dotenv@17.2.3:
+    optional: true
 
   drauu@0.4.3:
     dependencies:
@@ -18002,8 +17869,6 @@ snapshots:
   shebang-regex@3.0.0: {}
 
   shell-quote@1.8.3: {}
-
-  shellwords@1.1.1: {}
 
   shiki-magic-move@1.2.1(react@19.2.3)(shiki@3.21.0)(solid-js@1.9.10)(vue@3.5.26(typescript@5.9.3)):
     dependencies:

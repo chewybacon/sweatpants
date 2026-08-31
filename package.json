@@ -16,6 +16,8 @@
         "test": "pnpm run -r --workspace-concurrency=1 test",
         "test:tooling": "vitest run --config vitest.scripts.config.ts",
         "check:tests": "./scripts/check-tests.sh",
+        "check:hygiene": "tsx scripts/workspace-hygiene.ts",
+        "check:evidence": "tsx scripts/campaign-evidence.ts",
         "test:e2e": "pnpm -C apps/yo-chat test:e2e && pnpm -C apps/yo-mcp test",
         "test:e2e:optional": "pnpm -C apps/yo-chat test:e2e",
         "test:e2e:manual": "pnpm -C apps/yo-chat test:e2e:manual",
@@ -60,7 +62,6 @@
     "devDependencies": {
         "@earendil-works/pi-ai": "0.84.0",
         "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/execution-store-redis": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/history-store": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
@@ -71,7 +72,6 @@
         "oxfmt": "^0.43.0",
         "oxlint": "^1.58.0",
         "oxlint-tsgolint": "^7.0.2001",
-        "redis": "^4.7.0",
         "tsx": "catalog:",
         "typescript": "catalog:",
         "vitest": "catalog:"
