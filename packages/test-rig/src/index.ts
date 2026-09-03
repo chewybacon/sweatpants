@@ -194,8 +194,15 @@ async function createHttpBinding(
       }
       res.end();
     } catch (error) {
-      res.statusCode = 500;
-      res.end(error instanceof Error ? error.message : String(error));
+      if (res.headersSent) {
+        // Once a streaming response has started, an error is a broken
+        // connection—not another payload frame. Appending error text would
+        // corrupt NDJSON/SSE and test the parser instead of transport recovery.
+        res.destroy(error instanceof Error ? error : new Error(String(error)));
+      } else {
+        res.statusCode = 500;
+        res.end(error instanceof Error ? error.message : String(error));
+      }
     }
   });
   await new Promise<void>((resolve, reject) => {

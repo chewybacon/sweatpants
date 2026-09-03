@@ -517,6 +517,14 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
             }
             if (sendMessage) {
               await client.sendMessage(message);
+              const snapshot = client.getServerSnapshot();
+              if (
+                activeTurn?.id === turnId &&
+                snapshot.status === "ready" &&
+                snapshot.authority?.state === "idle"
+              ) {
+                settleTurn();
+              }
             }
           } catch (error) {
             if (activeTurn?.id === turnId) {

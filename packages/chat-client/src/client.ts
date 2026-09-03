@@ -3,6 +3,7 @@ import {
   call,
   createScope,
   each,
+  scoped,
   spawn,
   suspend,
   useAbortSignal,
@@ -185,6 +186,10 @@ interface CommandEntry {
   run(): Promise<void>;
   reject(error: unknown): void;
 }
+
+type RequestTaskOutcome =
+  | { readonly ok: true; readonly terminal: AGUIEvent | null }
+  | { readonly ok: false; readonly error: unknown };
 
 function deepFreeze<T>(value: T, seen = new WeakSet()): T {
   if (value !== null && typeof value === "object") {
@@ -432,8 +437,8 @@ class ChatClientController<
   private commandScope: Scope | null = null;
   private destroyClientScope: (() => Promise<void>) | null = null;
   private bootstrapTask: Task<void> | null = null;
-  private activeTask: Task<AGUIEvent | null> | null = null;
-  private readonly intentionallyInterruptedTasks = new WeakSet<Task<AGUIEvent | null>>();
+  private activeTask: Task<RequestTaskOutcome> | null = null;
+  private readonly intentionallyInterruptedTasks = new WeakSet<Task<RequestTaskOutcome>>();
   /** Monotonic authority survives temporary UI synchronization uncertainty. */
   private authorityBaseline: ConversationAuthority | null = null;
   private lastStreamEventType: string | null = null;
@@ -1033,7 +1038,7 @@ class ChatClientController<
     }
   }
 
-  private *reconnectImpl(): Operation<void> {
+  private *reconnectImpl(drainQueued = true): Operation<void> {
     this.ensureOpen();
     const signal = yield* useAbortSignal();
     this.publish({ authority: null, connectionStatus: "connecting" });
@@ -1089,7 +1094,7 @@ class ChatClientController<
           runId: null,
         },
         true,
-        !parked,
+        drainQueued && !parked,
       );
       // Parked authority itself controls sendability; no request object is retained.
     } catch (error) {
@@ -1231,24 +1236,57 @@ class ChatClientController<
     this.publish({});
   }
 
+  private *requestTaskOutcome(request: ChatTransportRequest): Operation<RequestTaskOutcome> {
+    try {
+      return {
+        ok: true,
+        terminal: yield* scoped(() => this.requestOperation(request)),
+      };
+    } catch (error) {
+      return { ok: false, error };
+    }
+  }
+
   private *runRequest(request: ChatTransportRequest): Operation<AGUIEvent | null> {
-    const task = yield* spawn(() => this.requestOperation(request));
+    // Paced streams own a background reader. requestTaskOutcome contains reader
+    // failures so they become outcomes instead of faulting the long-lived client.
+    const task = yield* spawn(() => this.requestTaskOutcome(request));
     this.activeTask = task;
     let failure: ChatClientError | null = null;
     try {
-      return yield* task;
-    } catch (error) {
-      if (
-        this.intentionallyInterruptedTasks.has(task) &&
-        error instanceof Error &&
-        error.message === "halted"
-      ) {
+      let outcome: RequestTaskOutcome;
+      try {
+        outcome = yield* task;
+      } catch (error) {
+        if (
+          this.intentionallyInterruptedTasks.has(task) &&
+          error instanceof Error &&
+          error.message === "halted"
+        ) {
+          return null;
+        }
+        if (error instanceof Error && error.message === "halted") {
+          throw error;
+        }
+        outcome = { ok: false, error };
+      }
+      if (outcome.ok) {
+        return outcome.terminal;
+      }
+      const transportFailure = asChatClientError(
+        outcome.error,
+        "chat_transport_failed",
+        "Chat request failed",
+      );
+      const recoverable =
+        transportFailure.code === "chat_transport_failed" ||
+        transportFailure.code === "chat_transport_truncated";
+      if (recoverable && (yield* this.reconcileAcceptedSend(request))) {
         return null;
       }
-      if (error instanceof ChatClientError) {
-        failure = error;
-      }
-      throw error;
+      failure = transportFailure;
+      this.rejectQueued(failure);
+      throw failure;
     } finally {
       if (this.activeTask === task) {
         this.activeTask = null;
@@ -1269,10 +1307,42 @@ class ChatClientController<
       if (signal.aborted) {
         throw error;
       }
-      const failure = asChatClientError(error, "chat_transport_failed", "Chat request failed");
-      this.rejectQueued(failure);
-      throw failure;
+      throw asChatClientError(error, "chat_transport_failed", "Chat request failed");
     }
+  }
+
+  private *reconcileAcceptedSend(request: ChatTransportRequest): Operation<boolean> {
+    if (
+      request.command.type !== "send-message" ||
+      this.pendingUserMessages.has(request.command.messageId)
+    ) {
+      return false;
+    }
+
+    try {
+      // The original request still owns activeTask. Queue draining resumes in
+      // finishRequest after this recovery operation proves terminal authority.
+      yield* this.reconnectImpl(false);
+    } catch {
+      return false;
+    }
+
+    const authority = this.snapshot.authority;
+    if (authority === null || authority.revision === null) {
+      return false;
+    }
+    const terminalAuthority = authority.state === "idle" || authority.state === "parked";
+    const revisionAdvanced =
+      request.command.basisRevision === null ||
+      BigInt(authority.revision) > BigInt(request.command.basisRevision);
+    const userMessageCommitted = !this.pendingUserMessages.has(request.command.messageId);
+
+    return (
+      terminalAuthority &&
+      revisionAdvanced &&
+      userMessageCommitted &&
+      this.snapshot.status !== "error"
+    );
   }
 
   private *finishRequest(terminal: AGUIEvent | null): Operation<void> {
