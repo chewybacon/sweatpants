@@ -12,7 +12,7 @@
         "build": "tsup",
         "check": "tsc --noEmit",
         "start": "node dist/cli.js",
-        "inspect": "tsx --conditions=development src/cli.ts & sleep 1 && npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp",
+        "inspect": "tsx --conditions=development src/cli.ts & sleep 1 && pnpm exec mcp-inspector --web --transport http --server-url http://localhost:3001/mcp",
         "test": "vitest run src",
         "test:inspector": "playwright test",
         "test:ui": "playwright test --ui",
@@ -26,6 +26,7 @@
         "zod": "catalog:"
     },
     "devDependencies": {
+        "@modelcontextprotocol/inspector": "2.5.0",
         "@playwright/test": "^1.49.0",
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",

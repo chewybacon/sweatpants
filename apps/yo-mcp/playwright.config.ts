@@ -47,11 +47,10 @@ export default defineConfig({
       stdout: "pipe", // Show server output
     },
     {
-      // Start MCP Inspector (connects to yo-mcp)
-      // DANGEROUSLY_OMIT_AUTH=true disables proxy auth for testing
-      // MCP_AUTO_OPEN_ENABLED=false prevents auto-opening the browser
+      // Start MCP Inspector (connects to yo-mcp). The exact app-local
+      // dependency keeps the UI and protocol client reproducible.
       command:
-        "DANGEROUSLY_OMIT_AUTH=true MCP_AUTO_OPEN_ENABLED=false npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp",
+        "DANGEROUSLY_OMIT_AUTH=true MCP_AUTO_OPEN_ENABLED=false pnpm exec mcp-inspector --web --transport http --server-url http://localhost:3001/mcp",
       port: 6274, // Inspector UI port
       reuseExistingServer,
       timeout: 30000,

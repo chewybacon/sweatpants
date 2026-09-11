@@ -107,8 +107,8 @@ Five rules, ratified 2026-08-31 (spec:
    No migrations, no dual-read schemas, no best-effort recovery. Format
    changes stay free.
 5. **Consumer-or-parked.** Every workspace member either has a source-level
-   consumer or carries an annotation in the `.pi/specs/INDEX.md` member
-   ledger (product / docs / parked / infrastructure). The gate
+   consumer or carries an annotation in the tracked `docs/workspace/INDEX.md`
+   member ledger (product / docs / parked / infrastructure). The gate
    (`pnpm check:hygiene`) enforces this; `scripts/campaign-evidence.ts`
    re-verifies deleted identities stay deleted.
 

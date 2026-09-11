@@ -29,8 +29,6 @@ export { resolveDurableChatComposition } from "./configuration.ts";
 export type { ResolvedDurableChatComposition } from "./configuration.ts";
 export { createProjectionTokenKeyring } from "../projection-tokens.ts";
 
-// Plugin session manager
-export { createPluginSessionManager } from "./plugin-session-manager.ts";
 export {
   createDevelopmentProgramDriverJournalStore,
   createProgramDriverJournalStore,
@@ -75,16 +73,6 @@ export type {
   ProgramDriverJournal,
   ProgramDriverJournalStore,
 } from "./program-driver-journal.ts";
-/** Plugin-session lifecycle contracts re-exported by the durable handler package. */
-export type {
-  PluginSessionManager,
-  PluginSession,
-  PluginSessionStatus,
-  PluginSessionEvent,
-  PluginSessionInfo,
-  PluginSessionManagerOptions,
-  CreatePluginSessionConfig,
-} from "./plugin-session-manager.ts";
 
 // Types
 /** Durable handler request, setup, stream, and tool-inventory contracts. */

@@ -135,9 +135,17 @@ function createFaultingApplication(
     return {
       ...application,
       async handle(request) {
-        const body = request.method === "POST" ? await request.clone().json().catch(() => null) : null;
+        const body =
+          request.method === "POST"
+            ? await request
+                .clone()
+                .json()
+                .catch(() => null)
+            : null;
         const isCommand =
-          body !== null && typeof body === "object" && "command" in (body as Record<string, unknown>);
+          body !== null &&
+          typeof body === "object" &&
+          "command" in (body as Record<string, unknown>);
         const response = await application.handle(request);
         if (!armed || consumed || !isCommand) {
           return response;
@@ -212,9 +220,7 @@ describe("authoritative stream reconciliation", () => {
         // The original client must converge to the same authoritative state
         // rather than surfacing the network failure with a partial projection.
         expect(settlementFailure).toBeUndefined();
-        expect(recoveredProjection).toContain(
-          "AUTHORITATIVE_FIRST_V1 AUTHORITATIVE_SECOND_V1",
-        );
+        expect(recoveredProjection).toContain("AUTHORITATIVE_FIRST_V1 AUTHORITATIVE_SECOND_V1");
         expect(s.model.requests()).toHaveLength(1);
       },
     );

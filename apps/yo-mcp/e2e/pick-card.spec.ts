@@ -5,55 +5,30 @@ import { test, expect, type Page } from "@playwright/test";
  *
  * The pick_card tool uses the elicitation backchannel to let the user pick a card.
  * When the tool runs, it draws random cards and sends an elicitation request to the client,
- * which should display a form in the Elicitations tab for the user to respond.
+ * which should display an inline form in the Inspector for the user to respond.
  */
 
-// Helper to connect to server
+// Helper to connect to server and open the Tools view.
 async function connectToServer(page: Page) {
-  // Select Streamable HTTP transport
-  const transportDropdown = page.locator("#transport-type-select");
-  await transportDropdown.click();
-  await page.waitForTimeout(300);
-
-  const httpOption = page.getByRole("option", { name: "Streamable HTTP" });
-  await httpOption.click();
-  await page.waitForTimeout(300);
-
-  // Set the URL
-  const urlInput = page.getByLabel(/url/i).first();
-  await urlInput.clear();
-  await urlInput.fill("http://localhost:3001/mcp");
-
-  // Click Connect
-  const connectButton = page.getByRole("button", { name: /connect/i });
-  await connectButton.click();
-
-  // Wait for connection indicator
-  await expect(page.getByText("Connected")).toBeVisible({ timeout: 10000 });
-}
-
-// Helper to list tools (click List Tools button if needed)
-async function ensureToolsListed(page: Page) {
-  const listToolsButton = page.getByRole("button", { name: "List Tools" });
-  if (await listToolsButton.isEnabled()) {
-    await listToolsButton.click();
-    await page.waitForTimeout(1000);
+  const serverSwitch = page.getByRole("switch");
+  await expect(serverSwitch).toBeVisible({ timeout: 10000 });
+  if (!(await serverSwitch.isChecked())) {
+    await serverSwitch.click({ force: true });
   }
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible({ timeout: 10000 });
+  await page.locator('label[for$="-Tools"]').click();
 }
 
 // Helper to click on a tool in the list
 async function selectTool(page: Page, toolName: string) {
-  const toolItem = page.locator(".cursor-pointer").filter({ hasText: toolName }).first();
-  await toolItem.click();
+  await page.getByRole("button", { name: toolName, exact: true }).click();
   await page.waitForTimeout(500);
 }
 
 test.describe("Pick Card Tool (Elicitation)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("#transport-type-select")).toBeVisible({ timeout: 10000 });
     await connectToServer(page);
-    await ensureToolsListed(page);
   });
 
   test("picks a card via elicitation backchannel", async ({ page }) => {
@@ -78,39 +53,26 @@ test.describe("Pick Card Tool (Elicitation)", () => {
 
     await page.screenshot({ path: "test-results/pick-card-02-filled.png", fullPage: true });
 
-    // Click Run - this will trigger the elicitation request
-    const runButton = page.getByRole("button", { name: /run/i }).first();
-    await runButton.click();
+    // Execute the tool - this triggers the elicitation request.
+    await page.getByRole("button", { name: "Execute Tool", exact: true }).click();
 
-    // Wait for the elicitation request to be sent
-    await page.waitForTimeout(2000);
+    // Wait for the elicitation request to be sent.
+    await expect(page.getByText("Elicitation Request", { exact: true })).toBeVisible({
+      timeout: 10000,
+    });
 
     await page.screenshot({ path: "test-results/pick-card-03-after-run.png", fullPage: true });
 
-    // The Elicitations tab should show a badge with "1" indicating pending request
-    const elicitationsTab = page.getByRole("tab", { name: /elicitation/i });
-
-    // Wait for badge to appear (indicates pending elicitation)
-    await expect(elicitationsTab.locator(".absolute")).toBeVisible({ timeout: 10000 });
-
+    // The current Inspector renders the pending request inline rather than in a tab.
     await page.screenshot({
       path: "test-results/pick-card-04-elicitation-pending.png",
-      fullPage: true,
-    });
-
-    // Click on Elicitations tab
-    await elicitationsTab.click();
-    await page.waitForTimeout(500);
-
-    await page.screenshot({
-      path: "test-results/pick-card-05-elicitation-tab.png",
       fullPage: true,
     });
 
     // The elicitation message should contain the card options
     // Format: "1. <rank> of <suit>\n2. <rank> of <suit>\n3. <rank> of <suit>"
     const bodyText = (await page.locator("body").textContent()) ?? "";
-    console.log("Body after clicking elicitation tab:", bodyText.slice(0, 2000));
+    console.log("Body with inline elicitation form:", bodyText.slice(0, 2000));
 
     // Extract the first card from the message using regex
     // The message format is "1. X of Y" where X is rank (2-10, J, Q, K, A) and Y is suit
@@ -124,10 +86,7 @@ test.describe("Pick Card Tool (Elicitation)", () => {
 
     // Fill in the cardNumber field - pick card 1
     // The Inspector should render an input for cardNumber based on the JSON schema
-    const cardNumberInput = page
-      .getByRole("spinbutton")
-      .or(page.locator('input[type="number"]'))
-      .first();
+    const cardNumberInput = page.locator('input[type="text"]').last();
 
     await expect(cardNumberInput).toBeVisible({ timeout: 5000 });
     await cardNumberInput.fill("1");
@@ -138,7 +97,7 @@ test.describe("Pick Card Tool (Elicitation)", () => {
     });
 
     // Click Submit button to submit the elicitation response
-    const submitButton = page.getByRole("button", { name: /submit/i }).first();
+    const submitButton = page.getByRole("button", { name: "Submit", exact: true });
     await expect(submitButton).toBeVisible();
     await submitButton.click();
 
@@ -147,24 +106,18 @@ test.describe("Pick Card Tool (Elicitation)", () => {
 
     await page.screenshot({ path: "test-results/pick-card-07-after-approve.png", fullPage: true });
 
-    // Go back to Tools tab to see the result
-    const toolsTab = page.getByRole("tab", { name: /tools/i });
-    await toolsTab.click();
-    await page.waitForTimeout(1000);
-
+    // The current Inspector keeps the result in the tool view.
     await page.screenshot({ path: "test-results/pick-card-08-final-result.png", fullPage: true });
 
     // Verify the result contains the picked card
     const finalBodyText = (await page.locator("body").textContent()) ?? "";
     console.log("Final body text:", finalBodyText.slice(0, 2000));
 
-    // The result should show "Tool Result: Success" and contain:
+    // The result JSON contains:
     // - "picked": "<rank> of <suit>" matching our first card
     // - "success": true
-    expect(finalBodyText).toContain("Tool Result");
-    expect(finalBodyText).toContain("success");
-    expect(finalBodyText).toContain("true");
-    expect(finalBodyText).toContain("picked");
+    expect(finalBodyText).toContain('"success": true');
+    expect(finalBodyText).toContain('"picked":');
 
     // Verify the picked card matches what we selected (card 1)
     expect(finalBodyText.toLowerCase()).toContain(firstCardDescription.toLowerCase());
@@ -183,19 +136,13 @@ test.describe("Pick Card Tool (Elicitation)", () => {
 
     // Use default count (5)
 
-    // Click Run
-    const runButton = page.getByRole("button", { name: /run/i }).first();
-    await runButton.click();
+    // Execute the tool.
+    await page.getByRole("button", { name: "Execute Tool", exact: true }).click();
 
-    await page.waitForTimeout(2000);
-
-    // Wait for elicitation badge
-    const elicitationsTab = page.getByRole("tab", { name: /elicitation/i });
-    await expect(elicitationsTab.locator(".absolute")).toBeVisible({ timeout: 10000 });
-
-    // Go to Elicitations tab
-    await elicitationsTab.click();
-    await page.waitForTimeout(500);
+    // The current Inspector renders the pending request inline.
+    await expect(page.getByText("Elicitation Request", { exact: true })).toBeVisible({
+      timeout: 10000,
+    });
 
     await page.screenshot({
       path: "test-results/pick-card-decline-01-elicitation-tab.png",
@@ -214,11 +161,7 @@ test.describe("Pick Card Tool (Elicitation)", () => {
       fullPage: true,
     });
 
-    // Go back to Tools tab
-    const toolsTab = page.getByRole("tab", { name: /tools/i });
-    await toolsTab.click();
-    await page.waitForTimeout(1000);
-
+    // The current Inspector keeps the result in the tool view.
     await page.screenshot({
       path: "test-results/pick-card-decline-03-final-result.png",
       fullPage: true,
@@ -229,9 +172,7 @@ test.describe("Pick Card Tool (Elicitation)", () => {
     console.log("Final body text after reject:", finalBodyText.slice(0, 2000));
 
     // Result should show success: false and "No card was picked"
-    expect(finalBodyText).toContain("Tool Result");
-    expect(finalBodyText).toContain("success");
-    expect(finalBodyText).toContain("false");
-    expect(finalBodyText.toLowerCase()).toMatch(/no card|not picked/i);
+    expect(finalBodyText).toContain('"success": false');
+    expect(finalBodyText).toContain('"message": "No card was picked."');
   });
 });

@@ -303,6 +303,19 @@ async function runOrdinaryBookingOrder(binding: Binding): Promise<void> {
       assertTurnOrder(complete, firstPrompt, secondPrompt, "ORDER_TURN_1_COMPLETE", false);
       expect(latestElicit(complete, "pickFlight").state).toBe("responded");
       expect(latestElicit(complete, "pickSeat").state).toBe("responded");
+
+      // Recreate the browser's final reload after a completed multi-turn
+      // booking. This uses a fresh real ChatClient over the same authority and
+      // requires the window to close every activity/text parent before it is
+      // presented.
+      const finalReload = yield* reopened.reopen();
+      const finalSnapshot = finalReload.snapshot();
+      expect(finalSnapshot.status).toBe("ready");
+      expect(finalSnapshot.error).toBeNull();
+      assertTurnOrder(finalSnapshot, firstPrompt, secondPrompt, "ORDER_TURN_1_COMPLETE", false);
+      expect(latestElicit(finalSnapshot, "pickFlight").state).toBe("responded");
+      expect(latestElicit(finalSnapshot, "pickSeat").state).toBe("responded");
+
       const frames = s.agui.frames();
       expect(frames.length).toBeGreaterThan(0);
       expect(frames.map((frame) => frame.sequence)).toEqual(

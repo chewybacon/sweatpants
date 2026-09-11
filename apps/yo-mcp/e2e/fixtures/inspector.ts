@@ -4,11 +4,10 @@ import { type Page, type Locator, expect } from "@playwright/test";
  * Page object for interacting with the MCP Inspector UI.
  *
  * The Inspector has several key areas:
- * - Connection panel: Shows server connection status
- * - Tools tab: Lists available tools with run buttons
- * - Resources tab: Lists resources (not used in yo-mcp)
- * - Prompts tab: Lists prompts (not used in yo-mcp)
- * - Notifications pane: Shows logs and server messages
+ * - Server list: Shows server connection status
+ * - Tools view: Lists available tools with execute forms
+ * - Resources and prompts: Not used in yo-mcp
+ * - Messages pane: Shows protocol traffic and server messages
  */
 export class McpInspector {
   readonly page: Page;
@@ -35,16 +34,16 @@ export class McpInspector {
     this.page = page;
 
     // Connection UI - these selectors may need adjustment based on actual Inspector UI
-    this.connectButton = page.getByRole("button", { name: /connect/i });
-    this.connectionStatus = page.locator('[data-testid="connection-status"]');
+    this.connectButton = page.getByRole("switch");
+    this.connectionStatus = page.getByText("Connected", { exact: true });
 
     // Navigation tabs
-    this.toolsTab = page.getByRole("tab", { name: /tools/i });
-    this.resourcesTab = page.getByRole("tab", { name: /resources/i });
-    this.promptsTab = page.getByRole("tab", { name: /prompts/i });
+    this.toolsTab = page.locator('label[for$="-Tools"]');
+    this.resourcesTab = page.getByRole("radio", { name: /resources/i });
+    this.promptsTab = page.getByRole("radio", { name: /prompts/i });
 
     // Tools panel
-    this.toolsList = page.locator('[data-testid="tools-list"]');
+    this.toolsList = page.locator("button.list-item");
 
     // Result panel
     this.resultPanel = page.locator('[data-testid="result-panel"]');
@@ -59,7 +58,7 @@ export class McpInspector {
   async goto(authToken?: string) {
     const url = authToken ? `/?MCP_PROXY_AUTH_TOKEN=${authToken}` : "/";
     await this.page.goto(url);
-    await this.page.locator("#transport-type-select").waitFor({ state: "visible", timeout: 10000 });
+    await this.page.getByRole("switch").waitFor({ state: "visible", timeout: 10000 });
   }
 
   /**
@@ -68,15 +67,15 @@ export class McpInspector {
   async waitForConnection(timeout = 10000) {
     // Look for indicators that we're connected
     // This might be a status badge, the tools list populating, etc.
-    await expect(this.page.getByText(/connected/i)).toBeVisible({ timeout });
+    await expect(this.page.getByText("Connected", { exact: true })).toBeVisible({ timeout });
   }
 
   /**
    * Click the Tools tab to show the tools list.
    */
   async showToolsTab() {
-    await this.toolsTab.click();
-    await expect(this.toolsList).toBeVisible();
+    await this.page.locator('label[for$="-Tools"]').click();
+    await expect(this.page.getByRole("button", { name: "echo", exact: true })).toBeVisible();
   }
 
   /**
@@ -84,9 +83,7 @@ export class McpInspector {
    */
   getToolByName(name: string): Locator {
     // Tools are typically listed with their name visible
-    return this.page
-      .locator(`[data-tool-name="${name}"]`)
-      .or(this.page.getByText(name, { exact: true }).locator(".."));
+    return this.page.getByRole("button", { name, exact: true });
   }
 
   /**
@@ -94,7 +91,8 @@ export class McpInspector {
    */
   async runTool(name: string) {
     const toolRow = this.getToolByName(name);
-    await toolRow.getByRole("button", { name: /run/i }).click();
+    await toolRow.click();
+    await this.page.getByRole("button", { name: "Execute Tool", exact: true }).click();
   }
 
   /**
@@ -120,7 +118,7 @@ export class McpInspector {
    * Submit the tool arguments form.
    */
   async submitToolArguments() {
-    await this.page.getByRole("button", { name: /run|execute|submit/i }).click();
+    await this.page.getByRole("button", { name: "Execute Tool", exact: true }).click();
   }
 
   /**

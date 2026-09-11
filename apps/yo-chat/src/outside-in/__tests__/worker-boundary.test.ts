@@ -21,7 +21,7 @@ import { ToolInvocationHostPort } from "@sweatpants/tool-session";
 import { calculator } from "@/tools/calculator";
 import { yoChatToolSessionWorkerConfig } from "@/server/tool-worker-config";
 
-const PROBE_WORKER_URL = new URL("./lib/worker-probe-bootstrap.mjs", import.meta.url);
+const PROBE_WORKER_URL = new URL("../lib/worker-probe-bootstrap.mjs", import.meta.url);
 
 const probeResultSchema = z
   .object({
