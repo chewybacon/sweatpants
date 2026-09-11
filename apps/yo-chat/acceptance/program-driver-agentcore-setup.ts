@@ -1,6 +1,5 @@
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import { createPluginSessionManager } from "@sweatpants/durable-chat-runtime/durable-handler";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createAgentCoreRemoteToolRuntimeClient,
@@ -38,10 +37,8 @@ export function* setupAgentCoreProgramDriverToolRuntime(tool: RuntimeTool): Oper
     defaultProfile: profile.name,
   };
   yield* createAgentCoreToolInvocationRuntime(runtimeOptions);
-  const pluginManager = yield* createPluginSessionManager({ samplingProvider });
   yield* installYoChatToolRuntime({
     mode: "agentcore",
-    pluginManager,
     samplingProvider,
     tools: [tool],
   });

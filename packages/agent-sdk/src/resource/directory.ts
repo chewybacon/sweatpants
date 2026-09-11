@@ -37,9 +37,18 @@ type FsPromisesPort = {
   mkdir(path: string, options: { recursive: true }): Promise<unknown>;
   lstat(path: string): Promise<FileStat>;
 };
-type PathPort = { join(...parts: string[]): string; dirname(path: string): string };
+type PathPort = {
+  join(...parts: string[]): string;
+  dirname(path: string): string;
+  resolve(...parts: string[]): string;
+};
+type WatchFilename = string | { toString(): string };
 type WatchPort = {
-  watch(path: string, options: { recursive: true }, listener: () => void): { close(): void };
+  watch(
+    path: string,
+    options: { recursive: true },
+    listener: (eventType: string, filename: WatchFilename | null) => void,
+  ): { close(): void };
 };
 
 async function loadNodeModule(specifier: string): Promise<unknown> {
@@ -292,24 +301,52 @@ export function renderGeneratedProgramIdentity(
   ].join("\n");
 }
 
-/** Development watcher reruns the canonical compiler and notifies only on digest changes. */
+/**
+ * Development watcher reruns the canonical compiler and notifies only on digest changes.
+ * Call `stop()` from a callback; the owner calls `close()` to await the rebuild drain.
+ */
 export async function watchResourceDirectory(
   options: Omit<ResourceDirectoryCompilerOptions, "mode">,
   onChange: (result: CompiledResourceDirectory) => void | Promise<void>,
-): Promise<{ readonly close: () => void }> {
+): Promise<{ readonly stop: () => void; readonly close: () => Promise<void> }> {
   const fs = (await loadNodeModule("node:fs")) as WatchPort;
+  const pathApi = (await loadNodeModule("node:path")) as PathPort;
   let closed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let rebuilding = false;
   let rebuildRequested = false;
-  let lastDigest = (await compileResourceDirectory({ ...options, mode: "write" })).package.manifest
-    .digest;
+  let initialized = false;
+  let pendingChange = false;
+  let rebuildPromise: Promise<void> | undefined;
+  let closePromise: Promise<void> | undefined;
+  let watcher: ReturnType<WatchPort["watch"]> | undefined;
+  const rootPath = pathApi.resolve(options.root);
+  const outputFile = options.outputFile ? pathApi.resolve(options.outputFile) : undefined;
+  const outputDirectory = outputFile ? pathApi.resolve(pathApi.dirname(outputFile)) : undefined;
 
-  const rebuild = async (): Promise<void> => {
-    if (rebuilding) {
-      rebuildRequested = true;
+  let lastDigest: string | undefined;
+
+  const isGeneratedOutputEvent = (filename: WatchFilename | null): boolean => {
+    if (!filename || !outputFile || !outputDirectory) {
+      return false;
+    }
+    const eventPath = pathApi.resolve(rootPath, filename.toString());
+    return eventPath === outputFile || eventPath === outputDirectory;
+  };
+
+  const stop = (): void => {
+    if (closed) {
       return;
     }
+    closed = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    watcher?.close();
+  };
+
+  const rebuild = async (): Promise<void> => {
     rebuilding = true;
     try {
       do {
@@ -325,26 +362,68 @@ export async function watchResourceDirectory(
     }
   };
 
-  const watcher = fs.watch(options.root, { recursive: true }, () => {
+  const startRebuild = (): void => {
     if (closed) {
+      return;
+    }
+    if (rebuilding) {
+      rebuildRequested = true;
+      return;
+    }
+    const current = rebuild();
+    rebuildPromise = current;
+    void current.catch(() => {
+      stop();
+    });
+  };
+
+  watcher = fs.watch(options.root, { recursive: true }, (_eventType, filename) => {
+    if (closed || isGeneratedOutputEvent(filename)) {
+      return;
+    }
+    if (!initialized) {
+      pendingChange = true;
       return;
     }
     if (timer) {
       clearTimeout(timer);
     }
     timer = setTimeout(() => {
-      void rebuild();
+      timer = undefined;
+      startRebuild();
     }, 50);
   });
-  return Object.freeze({
-    close: () => {
-      closed = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
-      watcher.close();
-    },
-  });
+
+  try {
+    lastDigest = (await compileResourceDirectory({ ...options, mode: "write" })).package.manifest
+      .digest;
+    initialized = true;
+    if (pendingChange) {
+      pendingChange = false;
+      startRebuild();
+    }
+  } catch (error) {
+    closed = true;
+    watcher.close();
+    throw error;
+  }
+
+  const close = (): Promise<void> => {
+    stop();
+    if (!closePromise) {
+      closePromise = (async () => {
+        if (rebuildPromise) {
+          await rebuildPromise;
+        }
+      })();
+      // Keep a callback-safe stop() separate from the owner-only drain so a
+      // callback can stop scheduling without awaiting its own rebuild.
+      void closePromise.catch(() => undefined);
+    }
+    return closePromise;
+  };
+
+  return Object.freeze({ stop, close });
 }
 
 type GlobMatcher = (path: string) => boolean;

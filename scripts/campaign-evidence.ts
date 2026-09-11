@@ -8,28 +8,33 @@ import { dirname, join, relative, resolve } from "node:path";
  * (spec: .pi/specs/code-is-spec-simplification-spec.md).
  *
  * Deterministic, read-only name-search checks over the working tree. Each
- * check carries the spec requirements and the cut whose closure it gates.
- * Run all:      tsx scripts/campaign-evidence.ts
- * Run one cut:  tsx scripts/campaign-evidence.ts 2
+ * check carries the requirements it verifies; campaign-only checks run during
+ * explicit closure verification.
+ * Permanent:    tsx scripts/campaign-evidence.ts
+ * Closure:      tsx scripts/campaign-evidence.ts --closure
  *
- * The script is the re-runnable form of the spec's negative claims (NFR-003)
- * and stays in the tree permanently: it re-verifies that deleted identities
- * stay deleted (REQ-013) on every future run.
+ * The permanent invocation is the re-runnable form of the spec's negative
+ * claims (NFR-003) and stays in the tree: it re-verifies that deleted
+ * identities stay deleted (REQ-013) on every future run. Closure adds only the
+ * campaign archive/reference checks.
  */
 
-type Cut = 1 | 2 | 3 | 4;
+export type EvidenceMode = "permanent" | "closure";
 
 interface CheckResult {
   readonly id: string;
   readonly reqs: readonly string[];
-  readonly cut: Cut;
   readonly passed: boolean;
   readonly detail: string;
 }
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const specIndexDefault = resolve(repoRoot, "..", ".pi", "specs", "INDEX.md");
-const specIndex = process.env["SWEATPANTS_SPEC_INDEX"] ?? specIndexDefault;
+const ledgerPath =
+  process.env["SWEATPANTS_SPEC_INDEX"] ?? join(repoRoot, "docs", "workspace", "INDEX.md");
+const campaignSpecRoot =
+  process.env["SWEATPANTS_CAMPAIGN_SPEC_ROOT"] ?? resolve(repoRoot, "..", ".pi", "specs");
+const campaignEvidenceRoot =
+  process.env["SWEATPANTS_CAMPAIGN_EVIDENCE_ROOT"] ?? resolve(repoRoot, "..", ".pi", "evidence");
 const agentsDoc = join(repoRoot, "AGENTS.md");
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".json", ".yaml", ".md", ".mjs"]);
@@ -103,8 +108,8 @@ function readRepoFile(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), "utf8");
 }
 
-function readSpecIndex(): string {
-  return existsSync(specIndex) ? readFileSync(specIndex, "utf8") : "";
+function readLedger(): string {
+  return existsSync(ledgerPath) ? readFileSync(ledgerPath, "utf8") : "";
 }
 
 /** SHA-256 content fingerprint of every file under a directory. */
@@ -120,30 +125,37 @@ export function directoryFingerprint(dir: string): string {
 
 type CheckBody = () => { passed: boolean; detail: string };
 
-function check(id: string, reqs: readonly string[], cut: Cut, body: CheckBody): () => CheckResult {
-  return () => {
-    try {
-      const { passed, detail } = body();
-      return { id, reqs, cut, passed, detail };
-    } catch (error) {
-      return {
-        id,
-        reqs,
-        cut,
-        passed: false,
-        detail: `threw: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
+interface RegisteredCheck {
+  readonly id: string;
+  readonly run: () => CheckResult;
+}
+
+function check(id: string, reqs: readonly string[], body: CheckBody): RegisteredCheck {
+  return {
+    id,
+    run: () => {
+      try {
+        const { passed, detail } = body();
+        return { id, reqs, passed, detail };
+      } catch (error) {
+        return {
+          id,
+          reqs,
+          passed: false,
+          detail: `threw: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    },
   };
 }
 
-const checks: readonly (() => CheckResult)[] = [
+const checks: readonly RegisteredCheck[] = [
   // ── Cut 1 — Orphans & governance ─────────────────────────────────────────
-  check("E1a", ["REQ-006"], 1, () => ({
+  check("E1a", ["REQ-006"], () => ({
     passed: !exists("packages/execution-store-redis"),
     detail: "packages/execution-store-redis absent",
   })),
-  check("E1b", ["REQ-006"], 1, () => {
+  check("E1b", ["REQ-006"], () => {
     const hits = filesMatching(
       workspaceFiles().filter((file) => !file.includes("apps/yo-slides")),
       /execution-store-redis/,
@@ -153,11 +165,11 @@ const checks: readonly (() => CheckResult)[] = [
       detail: `references to execution-store-redis: ${describeHits(hits)}`,
     };
   }),
-  check("E2a", ["REQ-007"], 1, () => ({
+  check("E2a", ["REQ-007"], () => ({
     passed: !exists("apps/hydra"),
     detail: "apps/hydra absent",
   })),
-  check("E2b", ["REQ-007"], 1, () => {
+  check("E2b", ["REQ-007"], () => {
     const hits = filesMatching(
       workspaceFiles().filter((file) => !file.includes("apps/yo-slides")),
       /hydra-effection|apps\/hydra/,
@@ -167,21 +179,21 @@ const checks: readonly (() => CheckResult)[] = [
       detail: `references to hydra outside docs-classified slides: ${describeHits(hits)}`,
     };
   }),
-  check("E3", ["REQ-008"], 1, () => {
+  check("E3", ["REQ-008"], () => {
     const slidesPresent =
       exists("apps/yo-slides/effection-team") &&
       exists("apps/yo-slides/principal-engineers") &&
       exists("apps/yo-slides/tech-leads");
-    const ledger = readSpecIndex();
+    const ledger = readLedger();
     const annotated = /\|\s*`apps\/yo-slides`\s*\|\s*docs\s*\|/.test(ledger);
     return {
       passed: slidesPresent && annotated,
       detail: `slide dirs present=${slidesPresent}, ledger docs entry=${annotated}`,
     };
   }),
-  check("E4", ["REQ-009"], 1, () => {
+  check("E4", ["REQ-009"], () => {
     const pkg = exists("packages/workspace-lambda-microvm/package.json");
-    const ledger = readSpecIndex();
+    const ledger = readLedger();
     const parked = /\|\s*`packages\/workspace-lambda-microvm`\s*\|\s*parked\s*\|/.test(ledger);
     const reaudit = /re-audit: when the experiment resumes/.test(ledger);
     return {
@@ -189,16 +201,16 @@ const checks: readonly (() => CheckResult)[] = [
       detail: `package present=${pkg}, park record=${parked}, re-audit condition=${reaudit}`,
     };
   }),
-  check("E5", ["REQ-010"], 1, () => {
+  check("E5", ["REQ-010"], () => {
     const shell = exists("apps/lambda-microvm-sandbox/package.json");
-    const ledger = readSpecIndex();
+    const ledger = readLedger();
     const recorded = /\|\s*`apps\/lambda-microvm-sandbox`\s*\|\s*parked\s*\|/.test(ledger);
     return {
       passed: shell && recorded,
       detail: `shell present=${shell}, ledger record=${recorded}`,
     };
   }),
-  check("E9", ["REQ-002", "REQ-013"], 1, () => {
+  check("E9", ["REQ-002", "REQ-013"], () => {
     const srcTrees = [
       ...listFiles(join(repoRoot, "packages")),
       ...listFiles(join(repoRoot, "apps")),
@@ -211,11 +223,11 @@ const checks: readonly (() => CheckResult)[] = [
       detail: `@deprecated markers in member sources: ${describeHits(hits)}`,
     };
   }),
-  check("E10", ["REQ-005", "NFR-004"], 1, () => {
+  check("E10", ["REQ-005", "NFR-004"], () => {
     const agents = existsSync(agentsDoc) ? readFileSync(agentsDoc, "utf8") : "";
     const rules = agents.includes("No-Sediment Rules");
     const expiry = agents.includes("first time an external user");
-    const ledger = readSpecIndex();
+    const ledger = readLedger();
     const linked =
       /no-sediment standing rules.*AGENTS\.md|AGENTS\.md.*\(see "The No-Sediment Rules/.test(
         ledger,
@@ -225,22 +237,16 @@ const checks: readonly (() => CheckResult)[] = [
       detail: `rules=${rules}, expiry=${expiry}, ledger link=${linked}`,
     };
   }),
-  check("E11", ["REQ-018"], 1, () => {
-    const baselinePath = resolve(
-      repoRoot,
-      "..",
-      ".pi",
-      "evidence",
-      "campaign-archive-baseline.json",
-    );
+  check("E11", ["REQ-018"], () => {
+    const baselinePath = join(campaignEvidenceRoot, "campaign-archive-baseline.json");
     if (!existsSync(baselinePath)) {
       return {
         passed: false,
-        detail: "archive baseline not yet recorded (.pi/evidence/campaign-archive-baseline.json)",
+        detail: `archive baseline not yet recorded (${baselinePath})`,
       };
     }
     const baseline = JSON.parse(readFileSync(baselinePath, "utf8")) as { fingerprint: string };
-    const archiveDir = resolve(repoRoot, "..", ".pi", "specs", "archive");
+    const archiveDir = join(campaignSpecRoot, "archive");
     const current = directoryFingerprint(archiveDir);
     return {
       passed: current === baseline.fingerprint,
@@ -252,14 +258,14 @@ const checks: readonly (() => CheckResult)[] = [
   }),
 
   // ── Cut 2 — Legacy regime ────────────────────────────────────────────────
-  check("E6", ["REQ-011", "REQ-001", "REQ-004"], 2, () => {
+  check("E6", ["REQ-011", "REQ-001", "REQ-004"], () => {
     const hits = filesMatching(workspaceFiles(), /legacyForeign|detachedLegacy/);
     return {
       passed: hits.size === 0,
       detail: `legacy foreign regime references: ${describeHits(hits)}`,
     };
   }),
-  check("E6b", ["REQ-011"], 2, () => {
+  check("E6b", ["REQ-011"], () => {
     const hits = filesMatching(workspaceFiles(), /kind:\s*"foreign"|"foreign-tool"/);
     return {
       passed: hits.size === 0,
@@ -268,13 +274,13 @@ const checks: readonly (() => CheckResult)[] = [
   }),
 
   // ── Cut 3 — Contract collapse ────────────────────────────────────────────
-  check("E7", ["REQ-015", "REQ-014"], 3, () => {
+  check("E7", ["REQ-015", "REQ-014"], () => {
     const hits = filesMatching(workspaceFiles(), /resumable_handle|server_task/);
     return { passed: hits.size === 0, detail: `dead durability modes: ${describeHits(hits)}` };
   }),
 
   // ── Cut 4 — Vocabulary ───────────────────────────────────────────────────
-  check("E8a", ["REQ-017"], 4, () => {
+  check("E8a", ["REQ-017"], () => {
     const renamed =
       exists("apps/yo-chat/acceptance/ephemeral-stale-elicit.acceptance.test.ts") &&
       exists("apps/yo-chat/acceptance/book-flight-ephemeral-invariance.acceptance.test.ts");
@@ -286,27 +292,26 @@ const checks: readonly (() => CheckResult)[] = [
       detail: `renamed tests present=${renamed}, old names gone=${!old}`,
     };
   }),
-  check("E8b", ["REQ-017", "REQ-003"], 4, () => {
+  check("E8b", ["REQ-017", "REQ-003"], () => {
     const hits = filesMatching(workspaceFiles(), /foreign_reference_lost/);
     return {
       passed: hits.size === 0,
       detail: `foreign_reference_lost references: ${describeHits(hits)}`,
     };
   }),
-  check("E8c", ["REQ-017"], 4, () => {
-    const doc = existsSync(specIndex.replace(/INDEX\.md$/, "boundaries-and-logs.md"))
-      ? readFileSync(specIndex.replace(/INDEX\.md$/, "boundaries-and-logs.md"), "utf8")
-      : "";
+  check("E8c", ["REQ-017"], () => {
+    const boundariesPath = join(campaignSpecRoot, "boundaries-and-logs.md");
+    const doc = existsSync(boundariesPath) ? readFileSync(boundariesPath, "utf8") : "";
     const ephemeralCase2 =
       doc.includes("Case 2") &&
       /Case 2[^\n]*ephemeral/.test(doc) &&
       !doc.includes("foreign_reference_lost");
     return {
       passed: ephemeralCase2,
-      detail: `boundaries-and-logs Case 2 aligned=${ephemeralCase2}`,
+      detail: `boundaries-and-logs Case 2 aligned=${ephemeralCase2} (${boundariesPath})`,
     };
   }),
-  check("E8d", ["REQ-017", "REQ-003"], 4, () => {
+  check("E8d", ["REQ-017", "REQ-003"], () => {
     const hits = filesMatching(
       workspaceFiles(),
       /foreign_tool_|foreign_driver_|foreign_session_|foreign_continuation_|foreign_sampling_|foreign_ask_|foreign_result_|foreign_elicit_|foreign_response_|foreignKey|foreignTool|foreignRoute|foreignDriver|foreign\.tool\.|foreign_input|foreign-tool-adapter/,
@@ -318,30 +323,35 @@ const checks: readonly (() => CheckResult)[] = [
   }),
 ];
 
-export function runChecks(filterCut?: Cut): readonly CheckResult[] {
+const CLOSURE_CHECKS = new Set(["E8c", "E11"]);
+
+export function runChecks(mode: EvidenceMode = "permanent"): readonly CheckResult[] {
   return checks
-    .map((run) => run())
-    .filter((result) => filterCut === undefined || result.cut <= filterCut);
+    .filter(({ id }) => mode === "closure" || !CLOSURE_CHECKS.has(id))
+    .map(({ run }) => run());
 }
 
 function main(): void {
   const arg = process.argv[2];
-  const filterCut = arg === undefined ? undefined : (Number(arg) as Cut);
-  const results = runChecks(filterCut);
+  if (arg !== undefined && arg !== "--closure") {
+    console.error("usage: pnpm check:evidence | pnpm check:evidence:closure");
+    process.exitCode = 2;
+    return;
+  }
+  const mode: EvidenceMode = arg === "--closure" ? "closure" : "permanent";
+  const results = runChecks(mode);
   let failed = 0;
   for (const result of results) {
     const mark = result.passed ? "PASS" : "FAIL";
     if (!result.passed) failed += 1;
-    console.log(
-      `${mark} [cut ${result.cut}] ${result.id} (${result.reqs.join(", ")}) — ${result.detail}`,
-    );
+    console.log(`${mark} ${result.id} (${result.reqs.join(", ")}) — ${result.detail}`);
   }
   console.log(
     failed === 0
-      ? `\ncampaign evidence: all ${results.length} checks pass${filterCut ? ` through cut ${filterCut}` : ""}`
-      : `\ncampaign evidence: ${failed} of ${results.length} checks fail${filterCut ? ` through cut ${filterCut}` : ""}`,
+      ? `\ncampaign evidence (${mode}): all ${results.length} checks pass`
+      : `\ncampaign evidence (${mode}): ${failed} of ${results.length} checks fail`,
   );
-  if (failed > 0) process.exit(1);
+  if (failed > 0) process.exitCode = 1;
 }
 
 const isDirectRun =

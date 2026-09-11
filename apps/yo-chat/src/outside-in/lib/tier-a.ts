@@ -24,7 +24,6 @@ import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import type { Operation } from "effection";
 import { createChatApplication } from "@sweatpants/agent-host/server";
-import { createPluginSessionManager } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { setupLogger } from "@sweatpants/agent-host/logging";
 import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
 
@@ -51,11 +50,8 @@ function* setupTierAWorkerRuntime(): Operation<void> {
   yield* createLocalToolInvocationRuntime({
     worker: yoChatToolSessionWorkerConfig,
   });
-  const manager = yield* createPluginSessionManager({ samplingProvider });
-
   yield* installYoChatToolRuntime({
     mode: "local",
-    pluginManager: manager,
     samplingProvider,
     tools: [...allTools],
   });

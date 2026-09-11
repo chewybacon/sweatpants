@@ -7,53 +7,27 @@ import { test, expect, type Page } from "@playwright/test";
  * It just echoes back the input message with optional uppercase transform.
  */
 
-// Helper to connect to server
+// Helper to connect to server and open the Tools view.
 async function connectToServer(page: Page) {
-  // Select Streamable HTTP transport
-  const transportDropdown = page.locator("#transport-type-select");
-  await transportDropdown.click();
-  await page.waitForTimeout(300);
-
-  const httpOption = page.getByRole("option", { name: "Streamable HTTP" });
-  await httpOption.click();
-  await page.waitForTimeout(300);
-
-  // Set the URL
-  const urlInput = page.getByLabel(/url/i).first();
-  await urlInput.clear();
-  await urlInput.fill("http://localhost:3001/mcp");
-
-  // Click Connect
-  const connectButton = page.getByRole("button", { name: /connect/i });
-  await connectButton.click();
-
-  // Wait for connection indicator
-  await expect(page.getByText("Connected")).toBeVisible({ timeout: 10000 });
-}
-
-// Helper to list tools (click List Tools button if needed)
-async function ensureToolsListed(page: Page) {
-  const listToolsButton = page.getByRole("button", { name: "List Tools" });
-  if (await listToolsButton.isEnabled()) {
-    await listToolsButton.click();
-    await page.waitForTimeout(1000);
+  const serverSwitch = page.getByRole("switch");
+  await expect(serverSwitch).toBeVisible({ timeout: 10000 });
+  if (!(await serverSwitch.isChecked())) {
+    await serverSwitch.click({ force: true });
   }
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible({ timeout: 10000 });
+  await page.locator('label[for$="-Tools"]').click();
 }
 
 // Helper to click on a tool in the list
 async function selectTool(page: Page, toolName: string) {
-  // Tools are in a list with this structure
-  const toolItem = page.locator(".cursor-pointer").filter({ hasText: toolName }).first();
-  await toolItem.click();
+  await page.getByRole("button", { name: toolName, exact: true }).click();
   await page.waitForTimeout(500);
 }
 
 test.describe("Echo Tool", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("#transport-type-select")).toBeVisible({ timeout: 10000 });
     await connectToServer(page);
-    await ensureToolsListed(page);
   });
 
   test("echoes back a simple message", async ({ page }) => {
@@ -64,7 +38,7 @@ test.describe("Echo Tool", () => {
 
     // The right panel should show the tool form
     // Look for the message input field
-    const messageInput = page.getByLabel(/message/i).first();
+    const messageInput = page.getByRole("textbox", { name: "message" });
     await expect(messageInput).toBeVisible({ timeout: 5000 });
 
     // Fill in the message
@@ -72,9 +46,8 @@ test.describe("Echo Tool", () => {
 
     await page.screenshot({ path: "test-results/echo-02-filled.png", fullPage: true });
 
-    // Click Run/Execute button
-    const runButton = page.getByRole("button", { name: /run/i }).first();
-    await runButton.click();
+    // Execute the tool.
+    await page.getByRole("button", { name: "Execute Tool", exact: true }).click();
 
     // Wait for result to appear
     await page.waitForTimeout(2000);
@@ -92,12 +65,12 @@ test.describe("Echo Tool", () => {
     await selectTool(page, "echo");
 
     // Fill in the message
-    const messageInput = page.getByLabel(/message/i).first();
+    const messageInput = page.getByRole("textbox", { name: "message" });
     await expect(messageInput).toBeVisible({ timeout: 5000 });
     await messageInput.fill("hello world");
 
     // Find and check the uppercase checkbox
-    const uppercaseCheckbox = page.getByLabel(/uppercase/i);
+    const uppercaseCheckbox = page.getByRole("checkbox", { name: /uppercase/i });
     if (await uppercaseCheckbox.isVisible()) {
       await uppercaseCheckbox.check();
     } else {
@@ -110,9 +83,8 @@ test.describe("Echo Tool", () => {
 
     await page.screenshot({ path: "test-results/echo-uppercase-01-filled.png", fullPage: true });
 
-    // Click Run
-    const runButton = page.getByRole("button", { name: /run/i }).first();
-    await runButton.click();
+    // Execute the tool.
+    await page.getByRole("button", { name: "Execute Tool", exact: true }).click();
 
     await page.waitForTimeout(2000);
 
@@ -128,13 +100,12 @@ test.describe("Echo Tool", () => {
     await selectTool(page, "echo");
 
     // Fill in a known-length message
-    const messageInput = page.getByLabel(/message/i).first();
+    const messageInput = page.getByRole("textbox", { name: "message" });
     await expect(messageInput).toBeVisible({ timeout: 5000 });
     await messageInput.fill("12345");
 
-    // Click Run
-    const runButton = page.getByRole("button", { name: /run/i }).first();
-    await runButton.click();
+    // Execute the tool.
+    await page.getByRole("button", { name: "Execute Tool", exact: true }).click();
 
     await page.waitForTimeout(2000);
 

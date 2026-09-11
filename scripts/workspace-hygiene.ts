@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, resolve } from "node:path";
+import ts from "typescript";
 
 /**
  * Consumer-or-parked workspace hygiene gate (spec REQ-019/REQ-020).
@@ -8,7 +9,7 @@ import { dirname, join, relative, resolve } from "node:path";
  * Scans every workspace member (`packages/*`, `apps/*`), counts source-level
  * consumers (non-test source files in other members importing the member's
  * package name), and fails when a zero-consumer member lacks an annotation in
- * the `.pi/specs/INDEX.md` member ledger. Ledger statuses: library, product,
+ * the `docs/workspace/INDEX.md` member ledger. Ledger statuses: library, product,
  * docs, parked, infrastructure. A `library` row on a zero-consumer member is
  * a stale ledger and fails the gate.
  */
@@ -84,8 +85,40 @@ function discoverMembers(root: string): PackageInfo[] {
   return members;
 }
 
-const IMPORT_PATTERN = (name: string): RegExp =>
-  new RegExp(`from\\s+["']${name.replaceAll("/", "\\/")}(\\/.*)?["']`);
+function importedModuleNames(file: string, source: string): Set<string> {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const names = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+      names.add(statement.moduleSpecifier.text);
+      continue;
+    }
+    if (ts.isExportDeclaration(statement) && statement.moduleSpecifier) {
+      if (ts.isStringLiteral(statement.moduleSpecifier)) {
+        names.add(statement.moduleSpecifier.text);
+      }
+      continue;
+    }
+    if (
+      ts.isImportEqualsDeclaration(statement) &&
+      ts.isExternalModuleReference(statement.moduleReference) &&
+      ts.isStringLiteral(statement.moduleReference.expression)
+    ) {
+      names.add(statement.moduleReference.expression.text);
+    }
+  }
+  return names;
+}
+
+function isPackageImport(moduleName: string, packageName: string): boolean {
+  return moduleName === packageName || moduleName.startsWith(`${packageName}/`);
+}
 
 /** Source-level import graph over workspace members, excluding test files. */
 export function buildConsumerMap(
@@ -97,11 +130,12 @@ export function buildConsumerMap(
   for (const member of members) {
     for (const file of listSourceFiles(root, member.dir)) {
       const source = readFileSync(file, "utf8");
-      for (const [name, target] of byName) {
-        if (target === member.member) continue;
-        if (consumers.get(target)?.includes(member.member)) continue;
-        if (IMPORT_PATTERN(name).test(source)) {
-          consumers.get(target)?.push(member.member);
+      for (const importedName of importedModuleNames(file, source)) {
+        for (const [name, target] of byName) {
+          if (target === member.member || !isPackageImport(importedName, name)) continue;
+          if (!consumers.get(target)?.includes(member.member)) {
+            consumers.get(target)?.push(member.member);
+          }
         }
       }
     }
@@ -109,21 +143,47 @@ export function buildConsumerMap(
   return consumers;
 }
 
-/** Parses the `## Workspace member ledger` table from the spec index. */
+function ledgerError(indexPath: string, reason: string): Error {
+  return new Error(`[workspace-hygiene] workspace ledger malformed: ${indexPath} (${reason})`);
+}
+
+/** Parses and validates the `## Workspace member ledger` table. */
 export function parseMemberLedger(indexPath: string): Map<string, LedgerStatus> {
-  const ledger = new Map<string, LedgerStatus>();
-  if (!existsSync(indexPath)) return ledger;
+  if (!existsSync(indexPath)) {
+    throw new Error(`[workspace-hygiene] workspace ledger missing: ${indexPath}`);
+  }
   const content = readFileSync(indexPath, "utf8");
   const sectionStart = content.indexOf("## Workspace member ledger");
-  if (sectionStart === -1) return ledger;
+  if (sectionStart === -1) {
+    throw ledgerError(indexPath, "missing `## Workspace member ledger` section");
+  }
   const nextSection = content.indexOf("\n## ", sectionStart + 1);
   const section = content.slice(sectionStart, nextSection === -1 ? undefined : nextSection);
   const valid = new Set(["library", "product", "docs", "parked", "infrastructure"]);
-  for (const line of section.split("\n")) {
-    const row = /^\\?\|\s*`([^`]+)`\s*\\?\|\s*(\w+)\s*\\?\|/.exec(line);
-    if (row && valid.has(row[2])) {
-      ledger.set(row[1], row[2] as LedgerStatus);
+  const ledger = new Map<string, LedgerStatus>();
+  let rowCount = 0;
+  for (const rawLine of section.split("\n")) {
+    const line = rawLine.trim();
+    if (line === "" || line === "## Workspace member ledger") continue;
+    if (/^\|\s*:?-{3,}/.test(line)) continue;
+    if (/^\|\s*Member\s*\|\s*Status\s*\|/i.test(line)) continue;
+    if (!line.startsWith("|")) continue;
+    const row = /^\|\s*`([^`]+)`\s*\|\s*([A-Za-z]+)\s*\|/.exec(line);
+    if (!row) {
+      throw ledgerError(indexPath, `invalid ledger row: ${line}`);
     }
+    const [, member, status] = row;
+    if (!valid.has(status)) {
+      throw ledgerError(indexPath, `unknown status ${JSON.stringify(status)} for ${member}`);
+    }
+    if (ledger.has(member)) {
+      throw ledgerError(indexPath, `duplicate member ${member}`);
+    }
+    ledger.set(member, status as LedgerStatus);
+    rowCount += 1;
+  }
+  if (rowCount === 0) {
+    throw ledgerError(indexPath, "member table has no data rows");
   }
   return ledger;
 }
@@ -197,10 +257,15 @@ export function formatReport(report: HygieneReport): string {
 function main(): void {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const ledgerPath =
-    process.env["SWEATPANTS_SPEC_INDEX"] ?? resolve(root, "..", ".pi", "specs", "INDEX.md");
-  const report = scanWorkspace(root, ledgerPath);
-  console.log(formatReport(report));
-  if (report.violations.length > 0) process.exit(1);
+    process.env["SWEATPANTS_SPEC_INDEX"] ?? resolve(root, "docs", "workspace", "INDEX.md");
+  try {
+    const report = scanWorkspace(root, ledgerPath);
+    console.log(formatReport(report));
+    if (report.violations.length > 0) process.exitCode = 1;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }
 
 const isDirectRun =

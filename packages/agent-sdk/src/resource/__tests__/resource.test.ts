@@ -328,6 +328,10 @@ describe("directory compiler", () => {
     const changed = new Promise<string>((resolve) => {
       resolveChange = resolve;
     });
+    let resolveCallback!: () => void;
+    const callbackRelease = new Promise<void>((resolve) => {
+      resolveCallback = resolve;
+    });
     const watcher = await watchResourceDirectory(
       {
         root,
@@ -336,13 +340,15 @@ describe("directory compiler", () => {
         ignore: ["generated/**"],
         outputFile,
       },
-      (result) => {
+      async (result) => {
         notifications += 1;
         resolveChange(result.package.manifest.digest);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        await callbackRelease;
       },
     );
     try {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise<void>((resolve) => setImmediate(resolve));
       await writeFile(join(root, "a.txt"), "after");
       const digest = await Promise.race([
         changed,
@@ -351,10 +357,177 @@ describe("directory compiler", () => {
         ),
       ]);
       expect(digest).toMatch(/^[0-9a-f]{64}$/);
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      const closing = watcher.close();
+      resolveCallback();
+      await closing;
       expect(notifications).toBe(1);
     } finally {
-      watcher.close();
+      resolveCallback();
+      await watcher.close();
     }
+  });
+
+  it("stops safely when onChange awaits before stopping", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sweatpants-resource-watch-close-"));
+    temporary.push(root);
+    await writeFile(join(root, "a.txt"), "before");
+    const outputFile = join(root, "generated", "resources.ts");
+    let watcher!: Awaited<ReturnType<typeof watchResourceDirectory>>;
+    let resolveChange!: () => void;
+    const changed = new Promise<void>((resolve) => {
+      resolveChange = resolve;
+    });
+    let resolveStopped!: () => void;
+    const stopped = new Promise<void>((resolve) => {
+      resolveStopped = resolve;
+    });
+    watcher = await watchResourceDirectory(
+      {
+        root,
+        id: "watched-close",
+        version: "1",
+        ignore: ["generated/**"],
+        outputFile,
+      },
+      async () => {
+        resolveChange();
+        await Promise.resolve();
+        watcher.stop();
+        resolveStopped();
+      },
+    );
+
+    await writeFile(join(root, "a.txt"), "after");
+    await Promise.race([
+      changed,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("watch close notification timed out")), 3000),
+      ),
+    ]);
+    await stopped;
+    await watcher.close();
+  });
+
+  it("externally initiated close waits for a pending onChange", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sweatpants-resource-watch-external-close-"));
+    temporary.push(root);
+    await writeFile(join(root, "a.txt"), "before");
+    const outputFile = join(root, "generated", "resources.ts");
+    let resolveChange!: () => void;
+    const changed = new Promise<void>((resolve) => {
+      resolveChange = resolve;
+    });
+    let resolveCallback!: () => void;
+    const callbackRelease = new Promise<void>((resolve) => {
+      resolveCallback = resolve;
+    });
+    const watcher = await watchResourceDirectory(
+      {
+        root,
+        id: "watched-external-close",
+        version: "1",
+        ignore: ["generated/**"],
+        outputFile,
+      },
+      async () => {
+        resolveChange();
+        await callbackRelease;
+      },
+    );
+
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await writeFile(join(root, "a.txt"), "after");
+      await Promise.race([
+        changed,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("watch external close timed out")), 3000),
+        ),
+      ]);
+      let settled = false;
+      const closing = watcher.close().then(() => {
+        settled = true;
+      });
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      expect(settled).toBe(false);
+      resolveCallback();
+      await closing;
+      expect(settled).toBe(true);
+    } finally {
+      resolveCallback();
+      await watcher.close();
+    }
+  });
+
+  it("observes an included source beside the generated output", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sweatpants-resource-watch-sibling-"));
+    temporary.push(root);
+    const outputDirectory = join(root, "generated");
+    await mkdir(outputDirectory);
+    const source = join(outputDirectory, "source.txt");
+    await writeFile(source, "before");
+    let resolveChange!: () => void;
+    const changed = new Promise<void>((resolve) => {
+      resolveChange = resolve;
+    });
+    const watcher = await watchResourceDirectory(
+      {
+        root,
+        id: "watched-sibling",
+        version: "1",
+        include: ["generated/source.txt"],
+        outputFile: join(outputDirectory, "resources.ts"),
+      },
+      () => {
+        resolveChange();
+      },
+    );
+
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await writeFile(source, "after");
+      await Promise.race([
+        changed,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("watch sibling notification timed out")), 3000),
+        ),
+      ]);
+    } finally {
+      await watcher.close();
+    }
+  });
+
+  it("surfaces rebuild failures through close", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sweatpants-resource-watch-error-"));
+    temporary.push(root);
+    await writeFile(join(root, "a.txt"), "before");
+    const outputFile = join(root, "generated", "resources.ts");
+    const failure = new Error("consumer rejected the resource update");
+    let resolveChange!: () => void;
+    const changed = new Promise<void>((resolve) => {
+      resolveChange = resolve;
+    });
+    const watcher = await watchResourceDirectory(
+      {
+        root,
+        id: "watched-error",
+        version: "1",
+        ignore: ["generated/**"],
+        outputFile,
+      },
+      () => {
+        resolveChange();
+        throw failure;
+      },
+    );
+
+    await writeFile(join(root, "a.txt"), "after");
+    await Promise.race([
+      changed,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("watch error notification timed out")), 3000),
+      ),
+    ]);
+    await expect(watcher.close()).rejects.toBe(failure);
   });
 });

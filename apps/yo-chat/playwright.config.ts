@@ -51,7 +51,8 @@ export default defineConfig({
     baseURL: playwrightBaseUrl,
     actionTimeout: 10_000,
     navigationTimeout: 30_000,
-    trace: "on-first-retry",
+    // Landing disables retries; retain the first failure's evidence too.
+    trace: "retain-on-failure",
   },
   projects: [
     {

@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { formatReport, scanWorkspace } from "../workspace-hygiene.ts";
+import { formatReport, parseMemberLedger, scanWorkspace } from "../workspace-hygiene.ts";
 
 /**
  * Behavioral tests for the consumer-or-parked hygiene gate (spec REQ-019/020,
@@ -47,6 +47,34 @@ afterAll(() => {
 });
 
 describe("workspace hygiene gate", () => {
+  it("fails loudly when the workspace ledger is missing", () => {
+    const root = makeWorkspace();
+    const ledgerPath = join(root, "docs", "workspace", "INDEX.md");
+    expect(() => parseMemberLedger(ledgerPath)).toThrow(
+      `[workspace-hygiene] workspace ledger missing: ${ledgerPath}`,
+    );
+  });
+
+  it.each([
+    [
+      "unknown status",
+      "| `packages/orphan` | experiment | not a valid status |",
+      'unknown status "experiment" for packages/orphan',
+    ],
+    [
+      "duplicate member",
+      "| `packages/orphan` | parked | first |\n| `packages/orphan` | docs | second |",
+      "duplicate member packages/orphan",
+    ],
+  ])("rejects a ledger with %s", (_kind, row, reason) => {
+    const root = makeWorkspace();
+    const ledgerPath = join(root, ".pi", "specs", "INDEX.md");
+    ledgerWith(root, `${row}\n`);
+    expect(() => parseMemberLedger(ledgerPath)).toThrow(
+      `[workspace-hygiene] workspace ledger malformed: ${ledgerPath} (${reason})`,
+    );
+  });
+
   it("TC-017: fails on a synthetic orphan, naming member and missing annotation", () => {
     const root = makeWorkspace();
     const report = scanWorkspace(root, join(root, ".pi", "specs", "INDEX.md"));
@@ -66,6 +94,78 @@ describe("workspace hygiene gate", () => {
     const report = scanWorkspace(root, join(root, ".pi", "specs", "INDEX.md"));
     const real = report.members.find((member) => member.member === "packages/real");
     expect(real?.violation).toBeNull();
+  });
+
+  it("counts side-effect imports but ignores commented and string lookalikes", () => {
+    const root = makeWorkspace();
+    writeFileSync(
+      join(root, "packages", "real", "src", "index.ts"),
+      '// import { orphan } from "@fixture/orphan";\n' +
+        "const note = 'import \"@fixture/orphan\"';\n",
+    );
+    let report = scanWorkspace(root, join(root, ".pi", "specs", "INDEX.md"));
+    let orphan = report.members.find((member) => member.member === "packages/orphan");
+    expect(orphan?.consumerCount).toBe(0);
+    expect(orphan?.violation).not.toBeNull();
+
+    writeFileSync(join(root, "packages", "real", "src", "index.ts"), 'import "@fixture/orphan";\n');
+    report = scanWorkspace(root, join(root, ".pi", "specs", "INDEX.md"));
+    orphan = report.members.find((member) => member.member === "packages/orphan");
+    expect(orphan?.consumerCount).toBe(1);
+    expect(orphan?.consumers).toEqual(["packages/real"]);
+    expect(orphan?.violation).toBeNull();
+  });
+
+  it("rejects a similarly named package and accepts an exact package subpath", () => {
+    const root = makeWorkspace();
+    writeFileSync(
+      join(root, "packages", "real", "src", "index.ts"),
+      'import "@fixture/orphanish";\n',
+    );
+    let report = scanWorkspace(root, join(root, ".pi", "specs", "INDEX.md"));
+    let orphan = report.members.find((member) => member.member === "packages/orphan");
+    expect(orphan?.consumerCount).toBe(0);
+    expect(orphan?.violation).not.toBeNull();
+
+    writeFileSync(
+      join(root, "packages", "real", "src", "index.ts"),
+      'import "@fixture/orphan/subpath";\n',
+    );
+    report = scanWorkspace(root, join(root, ".pi", "specs", "INDEX.md"));
+    orphan = report.members.find((member) => member.member === "packages/orphan");
+    expect(orphan?.consumerCount).toBe(1);
+    expect(orphan?.consumers).toEqual(["packages/real"]);
+    expect(orphan?.violation).toBeNull();
+  });
+
+  it("ignores dynamic and nested runtime loads as non-module-scope consumers", () => {
+    const root = makeWorkspace();
+    writeFileSync(
+      join(root, "packages", "real", "src", "index.ts"),
+      'const load = () => import("@fixture/orphan");\n' +
+        'function loadWithRequire() { return require("@fixture/orphan"); }\n',
+    );
+    const report = scanWorkspace(root, join(root, ".pi", "specs", "INDEX.md"));
+    const orphan = report.members.find((member) => member.member === "packages/orphan");
+    expect(orphan?.consumerCount).toBe(0);
+    expect(orphan?.violation).not.toBeNull();
+  });
+
+  it.each([
+    ["import-equals", 'import orphan = require("@fixture/orphan");\n'],
+    ["re-export", 'export { orphan } from "@fixture/orphan";\n'],
+    ["type-only import", 'import type { orphan } from "@fixture/orphan";\n'],
+  ])("retains a module-scope %s consumer", (_syntax, source) => {
+    // The original `from` matcher counted re-exports and type-only imports;
+    // these are still module-scope package dependencies under the consumer
+    // contract. TypeScript import-equals is retained for the same reason.
+    const root = makeWorkspace();
+    writeFileSync(join(root, "packages", "real", "src", "index.ts"), source);
+    const report = scanWorkspace(root, join(root, ".pi", "specs", "INDEX.md"));
+    const orphan = report.members.find((member) => member.member === "packages/orphan");
+    expect(orphan?.consumerCount).toBe(1);
+    expect(orphan?.consumers).toEqual(["packages/real"]);
+    expect(orphan?.violation).toBeNull();
   });
 
   it("TC-019: a docs annotation in the ledger alone flips the verdict", () => {
@@ -123,7 +223,7 @@ describe("workspace hygiene gate", () => {
 
   it("TC-018: the real workspace passes with its ledger annotations", () => {
     const repoRoot = join(import.meta.dirname, "..", "..");
-    const ledgerPath = join(repoRoot, "..", ".pi", "specs", "INDEX.md");
+    const ledgerPath = join(repoRoot, "docs", "workspace", "INDEX.md");
     const report = scanWorkspace(repoRoot, ledgerPath);
     expect(report.violations, formatReport(report)).toHaveLength(0);
   });

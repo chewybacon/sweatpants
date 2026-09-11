@@ -138,6 +138,8 @@ export class LiveChatCompactor {
   private readonly pipelines = new Map<string, FramePipeline>();
   private readonly dirtyParts = new Map<string, DirtyPart>();
   private pendingPresentationReconciliation: ReadonlyMap<string, TextPresentation> | null = null;
+  /** Invalidates presentation work that suspended across an authoritative replacement. */
+  private projectionGeneration = 0;
 
   constructor(private readonly pipelineFactory: FramePipelineFactory) {}
 
@@ -155,6 +157,7 @@ export class LiveChatCompactor {
 
   ingest(event: AGUIEvent): readonly LiveCompactorAction[] {
     if (event.type === EventType.MESSAGES_SNAPSHOT) {
+      this.projectionGeneration += 1;
       this.sealedRoots.clear();
       this.hotRoots.clear();
       this.lineageId = null;
@@ -231,6 +234,7 @@ export class LiveChatCompactor {
   }
 
   reset(): void {
+    this.projectionGeneration += 1;
     this.current = createChatProjection();
     this.sealedRoots.clear();
     this.hotRoots.clear();
@@ -267,6 +271,7 @@ export class LiveChatCompactor {
 
     const batch = [...this.dirtyParts.values()];
     this.dirtyParts.clear();
+    const generation = this.projectionGeneration;
     for (const entry of batch) {
       const pipeline = this.pipelines.get(entry.partId);
       if (!pipeline || pipeline.isDone) {
@@ -275,9 +280,18 @@ export class LiveChatCompactor {
       let frame: Frame;
       if (entry.done) {
         frame = yield* pipeline.flush();
-        this.pipelines.delete(entry.partId);
       } else {
         frame = yield* pipeline.pull();
+      }
+      // A window/reset may replace `current` while presentation work is
+      // suspended in a processor. That whole batch belongs to the old
+      // projection; never apply it to the new one. The replacement's semantic
+      // text remains authoritative and will be presented by its next pull.
+      if (generation !== this.projectionGeneration) {
+        return;
+      }
+      if (entry.done) {
+        this.pipelines.delete(entry.partId);
       }
       const rendered = frame.blocks.map((block) => block.rendered || block.raw).join("");
       this.current = updateTextPartFrame(
@@ -330,6 +344,7 @@ export class LiveChatCompactor {
 
   /** Record an authoritative semantic replacement for the next presentation pull. */
   private replaceProjection(projection: ChatProjectionState): void {
+    this.projectionGeneration += 1;
     this.pendingPresentationReconciliation = new Map(
       findTextParts(this.current).map((entry) => [
         `${entry.messageId}\u0000${entry.part.id}`,

@@ -1,9 +1,5 @@
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { call, type Operation } from "effection";
-import {
-  createPluginSessionManager,
-  type PluginSessionManager,
-} from "@sweatpants/durable-chat-runtime/durable-handler";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
@@ -39,7 +35,6 @@ import { installYoChatToolRuntime } from "./tool-runtime-installation";
 // only when the single selected runtime is local.
 import toolWorkerUrl from "./tool-worker.ts?modulePath";
 
-let sharedPluginSessionManager: PluginSessionManager | null = null;
 let sharedSamplingProvider: ToolSessionSamplingProvider | null = null;
 
 function* createAgentCorePersistence(): Operation<AgentCoreToolInvocationPersistence> {
@@ -251,16 +246,10 @@ function developmentProgramReleases():
 export function* setupYoChatPluginsAndRuntime(): Operation<void> {
   sharedSamplingProvider ??= createPluginSamplingProvider();
   yield* installSelectedInvocationRuntime();
-  if (!sharedPluginSessionManager) {
-    sharedPluginSessionManager = yield* createPluginSessionManager({
-      samplingProvider: sharedSamplingProvider,
-    });
-  }
   const agentCoreDurable =
     env.MCP_TOOL_RUNTIME === "agentcore" ? durableAgentCoreInstallation() : undefined;
   yield* installYoChatToolRuntime({
     mode: env.MCP_TOOL_RUNTIME,
-    pluginManager: sharedPluginSessionManager,
     samplingProvider: sharedSamplingProvider,
     tools: [...allTools],
     ...(agentCoreDurable ? { agentCoreDurable } : {}),

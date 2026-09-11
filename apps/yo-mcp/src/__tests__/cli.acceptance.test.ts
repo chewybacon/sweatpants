@@ -12,7 +12,100 @@ function ssePayloads(text: string): Array<Record<string, unknown>> {
     .map((data) => JSON.parse(data) as Record<string, unknown>);
 }
 
+async function nextSsePayload(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  state: { text: string },
+): Promise<Record<string, unknown>> {
+  const decoder = new TextDecoder();
+  while (true) {
+    const boundary = state.text.indexOf("\n\n");
+    if (boundary >= 0) {
+      const raw = state.text.slice(0, boundary);
+      state.text = state.text.slice(boundary + 2);
+      const data = raw
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n")
+        .trim();
+      if (data) return JSON.parse(data) as Record<string, unknown>;
+      continue;
+    }
+    const next = await reader.read();
+    if (next.done) throw new Error("MCP stream ended before a JSON-RPC message");
+    state.text += decoder.decode(next.value, { stream: true });
+  }
+}
+
 describe("yo-mcp HTTP composition", () => {
+  it("preserves the real elicitation response schema through the worker and HTTP wire", async () => {
+    const server = await startYoMcpServer(0);
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      const called = await fetch(`${server.origin}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+        },
+        body: rpc("pick-card-schema", "tools/call", {
+          name: "pick_card",
+          arguments: { count: 3 },
+        }),
+      });
+      expect(called.status).toBe(200);
+      const sessionId = called.headers.get("mcp-session-id");
+      expect(sessionId).toBeTruthy();
+      reader = called.body!.getReader();
+      const sseState = { text: "" };
+
+      const request = await nextSsePayload(reader, sseState);
+      expect(request["method"]).toBe("elicitation/create");
+      expect(request["params"]).toMatchObject({ mode: "form" });
+      expect(request["params"]).toMatchObject({
+        requestedSchema: {
+          type: "object",
+          properties: {
+            cardNumber: {
+              type: "number",
+              minimum: 1,
+              description: "Card number (1-based)",
+            },
+          },
+          required: ["cardNumber"],
+        },
+      });
+      expect(request["params"]).toMatchObject({
+        requestedSchema: {
+          "x-elicit-context": { cards: expect.any(Array) },
+        },
+      });
+
+      const response = await fetch(`${server.origin}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          "mcp-session-id": sessionId!,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: request["id"],
+          result: { action: "decline" },
+        }),
+      });
+      expect(response.status).toBe(202);
+      const terminal = await nextSsePayload(reader, sseState);
+      expect(terminal["id"]).toBe("pick-card-schema");
+      expect(terminal["result"]).toMatchObject({
+        content: [{ text: expect.stringContaining('"success":false') }],
+      });
+    } finally {
+      await reader?.cancel();
+      await server.close();
+    }
+  });
+
   it("serves CORS, the app tool inventory, and a real worker-backed tool call", async () => {
     const server = await startYoMcpServer(0);
     try {

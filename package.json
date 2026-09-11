@@ -18,6 +18,7 @@
         "check:tests": "./scripts/check-tests.sh",
         "check:hygiene": "tsx scripts/workspace-hygiene.ts",
         "check:evidence": "tsx scripts/campaign-evidence.ts",
+        "check:evidence:closure": "tsx scripts/campaign-evidence.ts --closure",
         "test:e2e": "pnpm -C apps/yo-chat test:e2e && pnpm -C apps/yo-mcp test",
         "test:e2e:optional": "pnpm -C apps/yo-chat test:e2e",
         "test:e2e:manual": "pnpm -C apps/yo-chat test:e2e:manual",

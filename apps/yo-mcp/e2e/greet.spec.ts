@@ -10,41 +10,18 @@ import { test, expect, type Page } from "@playwright/test";
 
 // Helper to connect to server
 async function connectToServer(page: Page) {
-  // Select Streamable HTTP transport
-  const transportDropdown = page.locator("#transport-type-select");
-  await transportDropdown.click();
-  await page.waitForTimeout(300);
-
-  const httpOption = page.getByRole("option", { name: "Streamable HTTP" });
-  await httpOption.click();
-  await page.waitForTimeout(300);
-
-  // Set the URL
-  const urlInput = page.getByLabel(/url/i).first();
-  await urlInput.clear();
-  await urlInput.fill("http://localhost:3001/mcp");
-
-  // Click Connect
-  const connectButton = page.getByRole("button", { name: /connect/i });
-  await connectButton.click();
-
-  // Wait for connection indicator
-  await expect(page.getByText("Connected")).toBeVisible({ timeout: 10000 });
-}
-
-// Helper to list tools (click List Tools button if needed)
-async function ensureToolsListed(page: Page) {
-  const listToolsButton = page.getByRole("button", { name: "List Tools" });
-  if (await listToolsButton.isEnabled()) {
-    await listToolsButton.click();
-    await page.waitForTimeout(1000);
+  const serverSwitch = page.getByRole("switch");
+  await expect(serverSwitch).toBeVisible({ timeout: 10000 });
+  if (!(await serverSwitch.isChecked())) {
+    await serverSwitch.click({ force: true });
   }
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible({ timeout: 10000 });
+  await page.locator('label[for$="-Tools"]').click();
 }
 
 // Helper to click on a tool in the list
 async function selectTool(page: Page, toolName: string) {
-  const toolItem = page.locator(".cursor-pointer").filter({ hasText: toolName }).first();
-  await toolItem.click();
+  await page.getByRole("button", { name: toolName, exact: true }).click();
   await page.waitForTimeout(500);
 }
 
@@ -203,9 +180,7 @@ async function callGreetViaMcpSampling(input: {
 test.describe("Greet Tool (Sampling)", () => {
   test("generates greeting via sampling backchannel", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("#transport-type-select")).toBeVisible({ timeout: 10000 });
     await connectToServer(page);
-    await ensureToolsListed(page);
 
     // Capture console messages for debugging
     page.on("console", (msg) => {
@@ -218,7 +193,7 @@ test.describe("Greet Tool (Sampling)", () => {
     await selectTool(page, "greet");
 
     // The right panel should show the tool form
-    const nameInput = page.getByLabel(/name/i).first();
+    const nameInput = page.getByRole("textbox", { name: "name" });
     await expect(nameInput).toBeVisible({ timeout: 5000 });
     await nameInput.fill("Alice");
 
@@ -226,33 +201,25 @@ test.describe("Greet Tool (Sampling)", () => {
     // backchannel is what this test exercises, and combobox rendering has been
     // a source of Inspector-version-specific flake.
 
-    // Click Run - this triggers the sampling request.
-    await page.getByRole("button", { name: /run/i }).first().click();
+    // Execute the tool - this triggers the sampling request.
+    await page.getByRole("button", { name: "Execute Tool", exact: true }).click();
 
-    const samplingTab = page.getByRole("tab", { name: /sampling/i });
-    await expect(samplingTab).toBeVisible({ timeout: 10000 });
-    await samplingTab.click();
+    await expect(page.getByText("Sampling Request", { exact: true })).toBeVisible({
+      timeout: 10000,
+    });
 
-    const textContentInput = page.getByRole("textbox", { name: "text content" }).first();
-    await expect(textContentInput).toBeVisible({ timeout: 10000 });
-    await textContentInput.fill(
+    const responseInput = page.getByRole("textbox", { name: "Response", exact: true });
+    await expect(responseInput).toBeVisible({ timeout: 10000 });
+    await responseInput.fill(
       "Dear Alice, it is my pleasure to extend warm greetings to you on this fine day.",
     );
 
-    await page
-      .getByRole("button", { name: /approve/i })
-      .first()
-      .click();
-
-    const toolsTab = page.getByRole("tab", { name: /tools/i });
-    await toolsTab.click();
-
-    await expect(page.getByText("Tool Result: Success")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/Dear Alice, it is my pleasure/)).toBeVisible();
+    await page.getByRole("button", { name: "Send Response", exact: true }).click();
 
     const resultText = await page.locator("body").textContent();
-    expect(resultText).toContain('name:"Alice"');
-    expect(resultText).toContain("Dear Alice, it is my pleasure");
+    expect(resultText).toContain('"name": "Alice"');
+    expect(resultText).toContain('"style": "casual"');
+    expect(resultText).toContain('"greeting": "Dear Alice, it is my pleasure');
     expect(resultText).not.toContain("Running...");
   });
 

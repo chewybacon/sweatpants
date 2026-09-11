@@ -6,14 +6,12 @@ import {
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import type { AnyToolContract, RuntimeTool } from "@sweatpants/agent-sdk";
 import type { Operation } from "effection";
-import { PluginSessionManagerContext } from "@sweatpants/durable-chat-runtime/contexts";
 import { projectAvailableToolContracts } from "@sweatpants/durable-chat-runtime/tool-inventory";
 import { createStrategyToolRuntime, installToolRuntime } from "@sweatpants/tool-runtime";
 import {
   ProgramDriverEphemeralEffectsContext,
   ProgramDriverNativeToolsContext,
   programDriverSchemaRegistry,
-  type PluginSessionManager,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
   createDurableToolRegistry,
@@ -43,7 +41,6 @@ import { yoChatDurableProgramWorkerUrl } from "./tool-worker-config";
 /** Explicit dependencies for installing one complete yo-chat tool runtime. */
 export interface YoChatToolRuntimeInstallation {
   mode: "local" | "agentcore";
-  pluginManager: PluginSessionManager;
   samplingProvider: ToolSessionSamplingProvider;
   tools: AnyToolContract[];
   /** Explicit immutable durable release readiness. Absence safely omits pick_card. */
@@ -152,7 +149,6 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
     schemas: schemaRegistry,
     durableDrivers: new Map(readyPrograms.map((tool) => [tool.name, driverKind])),
   });
-  yield* PluginSessionManagerContext.set(options.pluginManager);
   yield* installToolInventory(
     createToolInventory(availableContracts.map((tool) => createToolInventoryEntry(tool))),
   );
