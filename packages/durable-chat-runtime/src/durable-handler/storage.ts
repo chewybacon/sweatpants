@@ -12,6 +12,7 @@ import {
   createSqliteWriterBinding,
   openBetterSqliteStorage,
 } from "@sweatpants/storage-sqlite/better-sqlite3";
+import { openPostgresStorage } from "@sweatpants/storage-postgres/pg-binding";
 
 export type ChatStorageConfig =
   | {
@@ -23,6 +24,13 @@ export type ChatStorageConfig =
       readonly kind: "sqlite";
       /** Caller-owned binding; the kernel never closes it. */
       readonly database: Database.Database;
+      readonly profile?: "low" | "default";
+    }
+  | {
+      readonly kind: "postgres";
+      readonly connectionString: string;
+      readonly maxPoolSize?: number;
+      readonly synchronousCommit?: "on" | "off";
       readonly profile?: "low" | "default";
     }
   | {
@@ -99,14 +107,16 @@ const storageEnvironmentSchema = z
   .object({
     SWEATPANTS_STORAGE: z.string().optional(),
     SWEATPANTS_DB_PATH: z.string().optional(),
+    SWEATPANTS_PG_URL: z.string().optional(),
   })
   .superRefine((value, context) => {
-    if (value.SWEATPANTS_STORAGE !== undefined && value.SWEATPANTS_STORAGE !== "memory") {
+    const selector = value.SWEATPANTS_STORAGE;
+    if (selector !== undefined && selector !== "memory" && selector !== "postgres") {
       context.addIssue({
         code: "custom",
         path: ["SWEATPANTS_STORAGE"],
         message:
-          'SWEATPANTS_STORAGE only accepts "memory"; leave it unset to use SQLite (the default)',
+          'SWEATPANTS_STORAGE only accepts "memory" or "postgres"; leave it unset to use SQLite (the default)',
       });
     }
     if (value.SWEATPANTS_DB_PATH !== undefined && value.SWEATPANTS_DB_PATH.trim().length === 0) {
@@ -116,11 +126,32 @@ const storageEnvironmentSchema = z
         message: "SWEATPANTS_DB_PATH must not be empty",
       });
     }
-    if (value.SWEATPANTS_STORAGE === "memory" && value.SWEATPANTS_DB_PATH !== undefined) {
+    if (value.SWEATPANTS_PG_URL !== undefined && value.SWEATPANTS_PG_URL.trim().length === 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["SWEATPANTS_PG_URL"],
+        message: "SWEATPANTS_PG_URL must not be empty",
+      });
+    }
+    if (selector === "postgres" && value.SWEATPANTS_DB_PATH !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["SWEATPANTS_STORAGE"],
+        message: "SWEATPANTS_STORAGE=postgres cannot be combined with SWEATPANTS_DB_PATH",
+      });
+    }
+    if (selector === "memory" && value.SWEATPANTS_DB_PATH !== undefined) {
       context.addIssue({
         code: "custom",
         path: ["SWEATPANTS_STORAGE"],
         message: "SWEATPANTS_STORAGE=memory cannot be combined with SWEATPANTS_DB_PATH",
+      });
+    }
+    if (selector === "memory" && value.SWEATPANTS_PG_URL !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["SWEATPANTS_STORAGE"],
+        message: "SWEATPANTS_STORAGE=memory cannot be combined with SWEATPANTS_PG_URL",
       });
     }
   });
@@ -142,6 +173,9 @@ export function chatStorageFromEnv(options: ChatStorageEnvOptions): ChatStorageC
     ...(source["SWEATPANTS_DB_PATH"] !== undefined
       ? { SWEATPANTS_DB_PATH: source["SWEATPANTS_DB_PATH"] }
       : {}),
+    ...(source["SWEATPANTS_PG_URL"] !== undefined
+      ? { SWEATPANTS_PG_URL: source["SWEATPANTS_PG_URL"] }
+      : {}),
   });
   if (!result.success) {
     throw new TypeError(
@@ -153,6 +187,14 @@ export function chatStorageFromEnv(options: ChatStorageEnvOptions): ChatStorageC
   if (parsed.SWEATPANTS_STORAGE === "memory") {
     return { kind: "memory", ...profile };
   }
+  if (parsed.SWEATPANTS_STORAGE === "postgres") {
+    return {
+      kind: "postgres",
+      connectionString:
+        parsed.SWEATPANTS_PG_URL ?? "postgres://postgres:postgres@localhost:5432/postgres",
+      ...profile,
+    };
+  }
   const path =
     parsed.SWEATPANTS_DB_PATH ??
     (typeof options.defaultPath === "string"
@@ -162,7 +204,7 @@ export function chatStorageFromEnv(options: ChatStorageEnvOptions): ChatStorageC
 }
 
 export function resolveImmediateChatStorage(
-  config: Exclude<ChatStorageConfig, { readonly kind: "sqlite" }>,
+  config: Exclude<ChatStorageConfig, { readonly kind: "sqlite" } | { readonly kind: "postgres" }>,
 ): ResolvedChatStorage {
   if (config.kind === "custom") {
     return {
@@ -227,6 +269,52 @@ export function openScopedSqliteChatStorage(
           void destroyOwnerScope().catch(() => undefined);
         } else if (!isHaltedError(error)) {
           console.error("[ChatStorage] SQLite owner failed", { error });
+        }
+      });
+  });
+}
+
+/**
+ * Opens one Postgres composition in a child of the application scope. The
+ * pool is owned by the child scope and closed when the application scope
+ * closes; caller-owned pools and databases are closed by their owner.
+ */
+export function openScopedPostgresChatStorage(
+  config: Extract<ChatStorageConfig, { readonly kind: "postgres" }>,
+  applicationScope: Scope,
+): Promise<ResolvedChatStorage> {
+  const [ownerScope, destroyOwnerScope] = createScope(applicationScope);
+  let settled = false;
+
+  return new Promise<ResolvedChatStorage>((resolve, reject) => {
+    ownerScope
+      .run(function* (): Operation<void> {
+        const handle = yield* call(() =>
+          openPostgresStorage({
+            connectionString: config.connectionString,
+            migrate: true,
+            ...(config.maxPoolSize !== undefined ? { maxPoolSize: config.maxPoolSize } : {}),
+            ...(config.synchronousCommit !== undefined
+              ? { synchronousCommit: config.synchronousCommit }
+              : {}),
+          }),
+        );
+        yield* ensure(() => handle.close());
+        settled = true;
+        resolve({
+          conversationStore: handle.storage.conversationStore,
+          executionStore: handle.storage.executionStore,
+          ...(config.profile ? { profile: config.profile } : {}),
+        });
+        yield* suspend();
+      })
+      .catch((error: unknown) => {
+        if (!settled) {
+          settled = true;
+          reject(error);
+          void destroyOwnerScope().catch(() => undefined);
+        } else if (!isHaltedError(error)) {
+          console.error("[ChatStorage] Postgres owner failed", { error });
         }
       });
   });
