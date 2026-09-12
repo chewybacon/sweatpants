@@ -94,6 +94,10 @@ export const ConversationStorePort = definePort<ConversationStore>("conversation
 
 export const ConversationStoreApi = ConversationStorePort.api;
 
+export function* useConversationStore(): Operation<ConversationStore> {
+  return yield* ConversationStorePort.use();
+}
+
 export function installConversationStore(store: ConversationStore): Operation<void> {
   return ConversationStorePort.installDriver(store);
 }

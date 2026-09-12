@@ -88,8 +88,8 @@ import {
   createStoredConversationCheckpointResponse,
 } from "./hydrate-responses.ts";
 import { useHostScopeOwner } from "../host/host-scope.ts";
-import { installExecutionStore } from "@sweatpants/journal-authority/api";
-import { ConversationStoreApi, installConversationStore } from "@sweatpants/history-store/port";
+import { useExecutionStore } from "@sweatpants/journal-authority/api";
+import { ConversationStoreApi, useConversationStore } from "@sweatpants/history-store/port";
 import {
   beginTurnPublication,
   completeAndPublishTurn,
@@ -114,8 +114,8 @@ import { createDurableHistoryPageEndpoint } from "./history-page-endpoint.ts";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import {
   assertChatSqliteStorageVariant,
-  openScopedPostgresChatStorage,
-  openScopedSqliteChatStorage,
+  chatStorageForScope,
+  installChatStorageDrivers,
   resolveImmediateChatStorage,
   type ChatStorageConfig,
   type ResolvedChatStorage,
@@ -547,10 +547,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
       return current;
     }
     const resolving = isScopedChatStorage(config.storage)
-      ? (config.storage.kind === "postgres"
-          ? openScopedPostgresChatStorage(config.storage, scope)
-          : openScopedSqliteChatStorage(config.storage, scope)
-        ).then((storage) => {
+      ? chatStorageForScope(config.storage, scope).then((storage) => {
           const bundle = createResolvedDurableChatEndpoints(config, composition, storage);
           return {
             endpoints: bindEndpointSet(bundle.endpoints, scope),
@@ -663,14 +660,18 @@ function createResolvedDurableChatEndpoints(
       }
       // Select the authority-visible active Turn after normalization and before
       // constructing its structural owner. This read never starts durable work.
-      yield* installExecutionStore(executionStore);
-      yield* installConversationStore(conversationStore);
+      yield* installChatStorageDrivers(storage);
       const selectedHead = yield* ConversationStoreApi.operations.loadHead(requestedConversationId);
+      // From here on, request-path store access flows through the port
+      // facades so the API middleware chain applies uniformly.
+      const stores = {
+        conversation: yield* useConversationStore(),
+        execution: yield* useExecutionStore(),
+      };
       const selectedActiveExecutionId = selectedHead?.activeExecutionId;
       const turnOwner: DurableTurnOwner = yield* createDurableTurnOwner(hostOwner, function* () {
         yield* HandlerContext.set(ctx);
-        yield* installExecutionStore(executionStore);
-        yield* installConversationStore(conversationStore);
+        yield* installChatStorageDrivers(storage);
         if (setup) {
           yield* setup({ request, body });
         }
@@ -686,7 +687,7 @@ function createResolvedDurableChatEndpoints(
                 const resolvedHead = shouldResolveConversation ? selectedHead : null;
                 const storedConversationCheckpoint =
                   shouldResolveConversation && resolvedHead?.checkpoint
-                    ? yield* conversationStore.getCheckpoint(resolvedHead.checkpoint)
+                    ? yield* stores.conversation.getCheckpoint(resolvedHead.checkpoint)
                     : null;
                 if (
                   shouldResolveConversation &&
@@ -749,7 +750,7 @@ function createResolvedDurableChatEndpoints(
                   }
                 }
                 const selectedCommandReceipt = body.command
-                  ? yield* conversationStore.getCommandReceipt(
+                  ? yield* stores.conversation.getCommandReceipt(
                       requestedConversationId,
                       body.command.commandId,
                     )
@@ -788,7 +789,7 @@ function createResolvedDurableChatEndpoints(
                   resolvedHead.state !== "recovering"
                 ) {
                   const window = yield* buildConversationWindow({
-                    store: conversationStore,
+                    store: stores.conversation,
                     conversationId: requestedConversationId!,
                     head: resolvedHead,
                     checkpoint: storedConversationCheckpoint,
@@ -893,7 +894,7 @@ function createResolvedDurableChatEndpoints(
                 let authoritativeSnapshot: AuthoritativeCommandSnapshot;
                 try {
                   authoritativeSnapshot = yield* authoritativeCommandSnapshot({
-                    store: conversationStore,
+                    store: stores.conversation,
                     conversationId: requestedConversationId,
                     head: selectedHead,
                     command: body.command,
@@ -913,7 +914,7 @@ function createResolvedDurableChatEndpoints(
                 const authoritativeMessages = authoritativeSnapshot.messages;
                 const controlHead =
                   body.command?.type === "interrupt-turn"
-                    ? yield* conversationStore.loadHead(requestedConversationId)
+                    ? yield* stores.conversation.loadHead(requestedConversationId)
                     : selectedHead;
                 if (
                   body.command?.type === "interrupt-turn" &&
@@ -1073,9 +1074,9 @@ function createResolvedDurableChatEndpoints(
                   } else {
                     log.debug({ sessionId }, "reconnect path: session acquired");
                     const reconnectHead =
-                      yield* conversationStore.loadHead(requestedConversationId);
+                      yield* stores.conversation.loadHead(requestedConversationId);
                     const reconnectCheckpoint = reconnectHead?.checkpoint
-                      ? yield* conversationStore.getCheckpoint(reconnectHead.checkpoint)
+                      ? yield* stores.conversation.getCheckpoint(reconnectHead.checkpoint)
                       : null;
                     if (
                       !reconnectHead ||
@@ -1114,7 +1115,7 @@ function createResolvedDurableChatEndpoints(
                         },
                       },
                       yield* buildConversationWindow({
-                        store: conversationStore,
+                        store: stores.conversation,
                         conversationId: requestedConversationId,
                         head: reconnectHead,
                         checkpoint: reconnectCheckpoint,
@@ -1207,7 +1208,7 @@ function createResolvedDurableChatEndpoints(
                         : ("send-message" as const),
                     preflight: function* (): Operation<void> {
                       yield* preflightConversationCheckpoint({
-                        store: conversationStore,
+                        store: stores.conversation,
                         conversationId: requestedConversationId,
                         roots: [
                           ...toProviderHistorySnapshot(body.messages).map(
@@ -1258,13 +1259,13 @@ function createResolvedDurableChatEndpoints(
                         error.code === "command_already_terminal"
                       ) {
                         const retryHead =
-                          yield* conversationStore.loadHead(requestedConversationId);
+                          yield* stores.conversation.loadHead(requestedConversationId);
                         const retryCheckpoint = retryHead?.checkpoint
-                          ? yield* conversationStore.getCheckpoint(retryHead.checkpoint)
+                          ? yield* stores.conversation.getCheckpoint(retryHead.checkpoint)
                           : null;
                         if (retryCheckpoint && retryHead) {
                           const retryWindow = yield* buildConversationWindow({
-                            store: conversationStore,
+                            store: stores.conversation,
                             conversationId: requestedConversationId,
                             head: retryHead,
                             checkpoint: retryCheckpoint,
@@ -1316,7 +1317,7 @@ function createResolvedDurableChatEndpoints(
                       resolvedHead.activeLogicalTurnId &&
                       resolvedHead.activeExecutionId
                     ) {
-                      yield* claimDetachedTurnRecovery(conversationStore, {
+                      yield* claimDetachedTurnRecovery(stores.conversation, {
                         conversationId: requestedConversationId,
                         commandId: stableTupleHash([
                           "recover-writer",
@@ -1355,7 +1356,7 @@ function createResolvedDurableChatEndpoints(
                       );
                     }
                     try {
-                      yield* claimDetachedTurnRecovery(conversationStore, {
+                      yield* claimDetachedTurnRecovery(stores.conversation, {
                         conversationId: requestedConversationId,
                         commandId: interruptCommand.commandId,
                         kind: "interrupt-turn",
@@ -1414,13 +1415,13 @@ function createResolvedDurableChatEndpoints(
                     authorityTurn.executionId === proposedAuthorityTurn.executionId &&
                     !recoveredPublication
                   ) {
-                    const runningHead = yield* conversationStore.loadHead(requestedConversationId);
+                    const runningHead = yield* stores.conversation.loadHead(requestedConversationId);
                     if (runningHead) {
                       const admissionFacts: Json[] = [
                         ...toProviderHistorySnapshot(body.messages).map(acceptedPublicMessageFact),
                         assertJson(runStartedEvent),
                       ];
-                      yield* persistConversationCheckpoint(conversationStore, {
+                      yield* persistConversationCheckpoint(stores.conversation, {
                         conversationId: requestedConversationId,
                         causeKey: stableTupleHash([
                           authorityTurn.executionId,
@@ -1453,7 +1454,7 @@ function createResolvedDurableChatEndpoints(
                     }
                   }
                   const contextHead = authorityTurn
-                    ? yield* conversationStore.loadHead(requestedConversationId)
+                    ? yield* stores.conversation.loadHead(requestedConversationId)
                     : resolvedHead;
                   const sourceCheckpoint = contextHead?.checkpoint;
                   const activeCommandId =
@@ -1491,7 +1492,7 @@ function createResolvedDurableChatEndpoints(
                     ...(historyPolicy ? { historyPolicy } : {}),
                     maxIterations,
                     conversationId: requestedConversationId,
-                    conversationStore,
+                    conversationStore: stores.conversation,
                     participantId,
                     agUiRun,
                     onLiveTaskReady(taskId): void {
@@ -1526,7 +1527,7 @@ function createResolvedDurableChatEndpoints(
                       if (!authorityTurn) {
                         throw new Error("Parked checkpoint has no authoritative Turn");
                       }
-                      const parkedHead = yield* conversationStore.loadHead(requestedConversationId);
+                      const parkedHead = yield* stores.conversation.loadHead(requestedConversationId);
                       if (
                         !parkedHead ||
                         parkedHead.activeExecutionId !== authorityTurn.executionId
@@ -1534,7 +1535,7 @@ function createResolvedDurableChatEndpoints(
                         throw new Error("Parked checkpoint lost its authoritative Turn");
                       }
                       const encodedEvents = events.map((event) => assertJson(event));
-                      const persisted = yield* persistConversationCheckpoint(conversationStore, {
+                      const persisted = yield* persistConversationCheckpoint(stores.conversation, {
                         conversationId: requestedConversationId,
                         causeKey: stableTupleHash([
                           authorityTurn.executionId,
@@ -1569,7 +1570,7 @@ function createResolvedDurableChatEndpoints(
                         ...(projectionTokens
                           ? {
                               window: yield* buildConversationWindow({
-                                store: conversationStore,
+                                store: stores.conversation,
                                 conversationId: requestedConversationId,
                                 head: persisted.head,
                                 checkpoint: persisted.checkpoint,
@@ -1607,20 +1608,20 @@ function createResolvedDurableChatEndpoints(
                         project: projectChatTurnFacts,
                       });
                       const terminalHead =
-                        yield* conversationStore.loadHead(requestedConversationId);
+                        yield* stores.conversation.loadHead(requestedConversationId);
                       if (disposition === "cancelled") {
                         cancelOpenInterruptsForThread(agUiThreadId);
                       }
                       liveActivation?.terminal.resolve(undefined);
                       const terminalCheckpoint = terminalHead?.checkpoint
-                        ? yield* conversationStore.getCheckpoint(terminalHead.checkpoint)
+                        ? yield* stores.conversation.getCheckpoint(terminalHead.checkpoint)
                         : null;
                       return {
                         authority: conversationAuthority(requestedConversationId, terminalHead),
                         ...(terminalHead && terminalCheckpoint
                           ? {
                               window: yield* buildConversationWindow({
-                                store: conversationStore,
+                                store: stores.conversation,
                                 conversationId: requestedConversationId,
                                 head: terminalHead,
                                 checkpoint: terminalCheckpoint,
@@ -1640,7 +1641,7 @@ function createResolvedDurableChatEndpoints(
                   const engineSource: ChatEngineSource = liveCancellation
                     ? createLiveCancellationEngine({
                         journalStore: programDriverJournalStore,
-                        conversationStore,
+                        conversationStore: stores.conversation,
                         activation: liveCancellation.activation,
                         conversationId: requestedConversationId,
                         reason: liveCancellation.reason ?? "Program was cancelled",
@@ -1667,12 +1668,12 @@ function createResolvedDurableChatEndpoints(
                   // atomically establish its public base before incrementals.
                   const initialEvents: StreamEvent[] = [runStartedEvent];
 
-                  const authorityHead = yield* conversationStore.loadHead(requestedConversationId);
+                  const authorityHead = yield* stores.conversation.loadHead(requestedConversationId);
                   if (!authorityHead) {
                     throw new Error(`Conversation ${requestedConversationId} has no admitted head`);
                   }
                   const authorityCheckpoint = authorityHead.checkpoint
-                    ? yield* conversationStore.getCheckpoint(authorityHead.checkpoint)
+                    ? yield* stores.conversation.getCheckpoint(authorityHead.checkpoint)
                     : null;
                   if (!authorityCheckpoint) {
                     throw new Error(
@@ -1681,7 +1682,7 @@ function createResolvedDurableChatEndpoints(
                   }
                   initialEvents.push(
                     yield* buildConversationWindow({
-                      store: conversationStore,
+                      store: stores.conversation,
                       conversationId: requestedConversationId,
                       head: authorityHead,
                       checkpoint: authorityCheckpoint,

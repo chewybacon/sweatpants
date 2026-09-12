@@ -5,9 +5,11 @@ import { call, createScope, ensure, suspend, type Operation, type Scope } from "
 import { z } from "zod";
 import type Database from "better-sqlite3";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
+import { installConversationStore } from "@sweatpants/history-store/port";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
+import { installExecutionStore } from "@sweatpants/journal-authority/api";
 import {
   createSqliteWriterBinding,
   openBetterSqliteStorage,
@@ -206,18 +208,13 @@ export function chatStorageFromEnv(options: ChatStorageEnvOptions): ChatStorageC
 export function resolveImmediateChatStorage(
   config: Exclude<ChatStorageConfig, { readonly kind: "sqlite" } | { readonly kind: "postgres" }>,
 ): ResolvedChatStorage {
-  if (config.kind === "custom") {
-    return {
-      conversationStore: config.conversationStore,
-      executionStore: config.executionStore,
-      ...(config.profile ? { profile: config.profile } : {}),
-    };
+  const drivers = resolveChatStorageDrivers(config);
+  if (!drivers) {
+    throw new TypeError(
+      `Immediate chat storage does not support the "${config.kind}" backend; use scoped resolution`,
+    );
   }
-  return {
-    conversationStore: createMemoryConversationStore(),
-    executionStore: createMemoryExecutionStore(),
-    ...(config.profile ? { profile: config.profile } : {}),
-  };
+  return drivers;
 }
 
 function isHaltedError(error: unknown): boolean {
@@ -318,4 +315,60 @@ export function openScopedPostgresChatStorage(
         }
       });
   });
+}
+
+/**
+ * Resolves a storage selection into driver instances WITHOUT opening a
+ * backend: memory and caller-owned stores are the drivers themselves.
+ */
+/**
+ * Resolves a storage selection into driver instances WITHOUT opening a
+ * backend: memory and caller-owned stores are the drivers themselves.
+ */
+export function resolveChatStorageDrivers(config: ChatStorageConfig): ResolvedChatStorage | null {
+  if (config.kind === "custom") {
+    return {
+      conversationStore: config.conversationStore,
+      executionStore: config.executionStore,
+      ...(config.profile ? { profile: config.profile } : {}),
+    };
+  }
+  if (config.kind === "memory") {
+    return {
+      conversationStore: createMemoryConversationStore(),
+      executionStore: createMemoryExecutionStore(),
+      ...(config.profile ? { profile: config.profile } : {}),
+    };
+  }
+  return null;
+}
+
+/**
+ * Registers the resolved storage drivers into the current scope's ports.
+ * This is the single registration call request and turn scopes make;
+ * drivers were selected by {@link installChatStorage} or the caller.
+ */
+export function* installChatStorageDrivers(storage: ResolvedChatStorage): Operation<void> {
+  yield* installConversationStore(storage.conversationStore);
+  yield* installExecutionStore(storage.executionStore);
+}
+
+/**
+ * The one composition point for chat storage: opens whichever backend the
+ * configuration selects, keeps its handle alive on the application scope,
+ * and returns the driver bundle. Consumers never see backend identity —
+ * they resolve stores through the ports via `installChatStorageDrivers`.
+ */
+export function chatStorageForScope(
+  config: ChatStorageConfig,
+  applicationScope: Scope,
+): Promise<ResolvedChatStorage> {
+  if (config.kind === "custom" || config.kind === "memory") {
+    return Promise.resolve(resolveImmediateChatStorage(config));
+  }
+  if (config.kind === "postgres") {
+    return openScopedPostgresChatStorage(config, applicationScope);
+  }
+  assertChatSqliteStorageVariant(config);
+  return openScopedSqliteChatStorage(config, applicationScope);
 }
