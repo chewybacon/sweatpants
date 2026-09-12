@@ -14,7 +14,7 @@ import {
   type BetterSqliteStorageHandle,
   type BetterSqliteStorageOptions,
 } from "../better-sqlite3.ts";
-import { StorageError } from "../contract.ts";
+import { DurableKernelError, SqliteBindingError } from "../contract.ts";
 
 const roots: string[] = [];
 const closables: Array<{ close(): void }> = [];
@@ -128,12 +128,12 @@ describe("SQLite binding inversion", () => {
 
     const both = await attemptOpen(path, { database: track(new Database(":memory:")) });
     expect(both.ok).toBe(false);
-    expect((both as { error: StorageError }).error).toBeInstanceOf(StorageError);
-    expect((both as { error: StorageError }).error.code).toBe("sqlite_storage_binding_conflict");
+    expect((both as { error: SqliteBindingError }).error).toBeInstanceOf(SqliteBindingError);
+    expect((both as { error: SqliteBindingError }).error.code).toBe("binding_conflict");
 
     const neither = await attemptOpen(undefined, {});
     expect(neither.ok).toBe(false);
-    expect((neither as { error: StorageError }).error.code).toBe("sqlite_storage_binding_conflict");
+    expect((neither as { error: SqliteBindingError }).error.code).toBe("binding_conflict");
   });
 
   it("rejects readonly bindings without closing them (TC-003)", async () => {
@@ -144,7 +144,7 @@ describe("SQLite binding inversion", () => {
     const reader = track(createSqliteReaderBinding(path));
     const outcome = await attemptOpen(undefined, { database: reader, migrate: true });
     expect(outcome.ok).toBe(false);
-    expect((outcome as { error: StorageError }).error.code).toBe("sqlite_storage_binding_readonly");
+    expect((outcome as { error: SqliteBindingError }).error.code).toBe("binding_readonly");
     expect(reader.open).toBe(true);
   });
 
@@ -237,9 +237,9 @@ describe("SQLite binding inversion", () => {
 
       const outcome = await attemptOpen(path, { migrate: true });
       expect(outcome.ok, kind).toBe(false);
-      const error = (outcome as { error: StorageError }).error;
-      expect(error, kind).toBeInstanceOf(StorageError);
-      expect(error.code, kind).toBe("sqlite_namespace_collision");
+      const error = (outcome as { error: SqliteBindingError }).error;
+      expect(error, kind).toBeInstanceOf(SqliteBindingError);
+      expect(error.code, kind).toBe("namespace_collision");
       expect(error.message, kind).toContain(objectName);
 
       const survives = raw
@@ -357,7 +357,7 @@ describe("SQLite binding inversion", () => {
     await writeFile(path, "this is not a sqlite file".repeat(10));
     const outcome = await attemptOpen(path, { migrate: true });
     expect(outcome.ok).toBe(false);
-    expect((outcome as { error: StorageError }).error).toBeInstanceOf(StorageError);
+    expect((outcome as { error: DurableKernelError }).error).toBeInstanceOf(DurableKernelError);
   });
 
   it("keeps generation state isolated between opens", async () => {

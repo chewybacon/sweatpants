@@ -132,7 +132,7 @@ describe("SQLite command admission", () => {
       );
       await expect(
         run(() => handle.storage.conversationStore.admitCommand(runningRequest())),
-      ).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      ).rejects.toMatchObject({ code: "durable_kernel_transaction_failed" });
 
       const head = await run(() => handle.storage.conversationStore.loadHead("conversation-1"));
       expect(head).toMatchObject({ revision: "0", ownerEpoch: "0", state: "idle" });

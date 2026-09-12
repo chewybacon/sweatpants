@@ -9,7 +9,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
-import { StorageError } from "./contract.ts";
+import { DurableKernelError } from "@sweatpants/durable-storage-kernel";
 
 export const durableCounter = customType<{
   data: string;
@@ -20,29 +20,32 @@ export const durableCounter = customType<{
   },
   toDriver(value) {
     if (!/^\d+$/.test(value)) {
-      throw new StorageError("sqlite_integer_out_of_range", `Invalid durable counter: ${value}`);
+      throw new DurableKernelError(
+        "durable_kernel_integer_out_of_range",
+        `Invalid durable counter: ${value}`,
+      );
     }
     const parsed = BigInt(value);
     if (parsed > 9_223_372_036_854_775_807n) {
-      throw new StorageError(
-        "sqlite_integer_out_of_range",
-        `Durable counter is outside SQLite INTEGER range: ${value}`,
+      throw new DurableKernelError(
+        "durable_kernel_integer_out_of_range",
+        `Durable counter is outside the backend integer range: ${value}`,
       );
     }
     return parsed;
   },
   fromDriver(value) {
     if (typeof value === "number" && !Number.isSafeInteger(value)) {
-      throw new StorageError(
-        "sqlite_integer_out_of_range",
-        `Unsafe durable counter returned by SQLite driver: ${value}`,
+      throw new DurableKernelError(
+        "durable_kernel_integer_out_of_range",
+        `Unsafe durable counter returned by the backend driver: ${value}`,
       );
     }
     const parsed = typeof value === "bigint" ? value : BigInt(value);
     if (parsed < 0n || parsed > 9_223_372_036_854_775_807n) {
-      throw new StorageError(
-        "sqlite_integer_out_of_range",
-        `Durable counter is outside SQLite INTEGER range: ${parsed}`,
+      throw new DurableKernelError(
+        "durable_kernel_integer_out_of_range",
+        `Durable counter is outside the backend integer range: ${parsed}`,
       );
     }
     return parsed.toString(10);

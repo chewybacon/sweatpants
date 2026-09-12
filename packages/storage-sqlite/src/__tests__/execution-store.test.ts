@@ -136,7 +136,7 @@ describe("SQLite ExecutionStore", () => {
     try {
       await expect(
         run(() => handle.storage.executionStore.commitExecution(initialCommit())),
-      ).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      ).rejects.toMatchObject({ code: "durable_kernel_transaction_failed" });
       const control = await run(() => handle.storage.executionStore.loadControl("execution-1"));
       expect(control).toBeNull();
       const journalRows = handle.database.all(
@@ -165,7 +165,7 @@ describe("SQLite ExecutionStore", () => {
     try {
       await expect(
         run(() => handle.storage.executionStore.commitExecution(initialCommit())),
-      ).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      ).rejects.toMatchObject({ code: "durable_kernel_transaction_failed" });
       expect(await run(() => handle.storage.executionStore.loadControl("execution-1"))).toBeNull();
       expect(
         handle.database.all(sql`SELECT segment_id FROM sp_execution_journal_segments`),

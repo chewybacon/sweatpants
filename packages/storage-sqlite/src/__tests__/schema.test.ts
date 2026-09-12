@@ -85,7 +85,7 @@ describe("SQLite spine schema", () => {
 
     await expect(
       run(() => openBetterSqliteStorage(path, { migrate: true, wal: false })),
-    ).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+    ).rejects.toMatchObject({ code: "durable_kernel_unavailable" });
 
     const inspection = new Database(path, { readonly: true, fileMustExist: true });
     try {

@@ -3,9 +3,12 @@ import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { call, type Operation } from "effection";
-import type { DurableKernel } from "@sweatpants/durable-storage-kernel";
+import {
+  DurableKernelError,
+  type DurableKernel,
+} from "@sweatpants/durable-storage-kernel";
 import { createSqliteStorageComposition, type SqliteStorage } from "./repository.ts";
-import { StorageError } from "./contract.ts";
+import { SqliteBindingError } from "./contract.ts";
 import { sqliteMigrationFolder } from "./migrations.ts";
 import { sqliteSchema, type SqliteSchema } from "./schema.ts";
 
@@ -53,13 +56,13 @@ export interface BetterSqliteStorageTestHandle extends BetterSqliteStorageHandle
   readonly kernel: DurableKernel;
 }
 
-function bindingConflict(message: string): StorageError {
-  return new StorageError("sqlite_storage_binding_conflict", message);
+function bindingConflict(message: string): SqliteBindingError {
+  return new SqliteBindingError("binding_conflict", message);
 }
 
-function bindingReadonly(): StorageError {
-  return new StorageError(
-    "sqlite_storage_binding_readonly",
+function bindingReadonly(): SqliteBindingError {
+  return new SqliteBindingError(
+    "binding_readonly",
     "SQLite storage requires a writable binding; readonly connections cannot hold authority",
   );
 }
@@ -85,7 +88,7 @@ export function createSqliteWriterBinding(path: string): Database.Database {
     } catch {
       // The binding failed during discipline; nothing to preserve.
     }
-    throw new StorageError("sqlite_transaction_failed", "SQLite binding creation failed", {
+    throw new DurableKernelError("durable_kernel_unavailable", "SQLite binding creation failed", {
       cause: error,
     });
   }
@@ -105,9 +108,11 @@ export function createSqliteReaderBinding(path: string): Database.Database {
     } catch {
       // The binding failed during discipline; nothing to preserve.
     }
-    throw new StorageError("sqlite_transaction_failed", "SQLite reader binding creation failed", {
-      cause: error,
-    });
+    throw new DurableKernelError(
+      "durable_kernel_unavailable",
+      "SQLite reader binding creation failed",
+      { cause: error },
+    );
   }
   return client;
 }
@@ -148,8 +153,8 @@ function assertReservedNamespace(client: Database.Database): void {
       .map((row) => `'${row.name}' (${row.type})`)
       .slice(0, 5)
       .join(", ");
-    throw new StorageError(
-      "sqlite_namespace_collision",
+    throw new SqliteBindingError(
+      "namespace_collision",
       `SQLite file contains object(s) in the reserved 'sp_' namespace that the storage kernel does not manage: ${offending}`,
     );
   }
@@ -210,10 +215,10 @@ function* openBetterSqliteStorageInternal(
         // Opening or migration already failed; preserve the original cause.
       }
     }
-    if (error instanceof StorageError) {
+    if (error instanceof SqliteBindingError) {
       throw error;
     }
-    throw new StorageError("sqlite_transaction_failed", "SQLite storage open failed", {
+    throw new DurableKernelError("durable_kernel_unavailable", "SQLite storage open failed", {
       cause: error,
     });
   }
@@ -229,11 +234,14 @@ function* openBetterSqliteStorageInternal(
     faultInjection: (point) => {
       if (armedFault === point) {
         armedFault = undefined;
-        throw new StorageError("sqlite_transaction_failed", `Injected SQLite fault at ${point}`);
+        throw new DurableKernelError(
+          "durable_kernel_transaction_failed",
+          `Injected SQLite fault at ${point}`,
+        );
       }
     },
-    transactions: {
-      immediate<T>(body: (transaction: typeof database) => T | Promise<T>): Operation<T> {
+    transactionRunner: {
+      transaction<T>(body: (transaction: typeof database) => T | Promise<T>): Operation<T> {
         return call(async () => {
           const run = writeQueue.then(async () => {
             // better-sqlite3's drizzle.transaction() rejects a Promise-returning
@@ -251,7 +259,8 @@ function* openBetterSqliteStorageInternal(
                 // The connection may already be closed or have no open transaction.
               }
               if (
-                error instanceof StorageError ||
+                error instanceof SqliteBindingError ||
+                error instanceof DurableKernelError ||
                 (error !== null &&
                   typeof error === "object" &&
                   "code" in error &&
@@ -259,9 +268,11 @@ function* openBetterSqliteStorageInternal(
               ) {
                 throw error;
               }
-              throw new StorageError("sqlite_transaction_failed", "SQLite transaction failed", {
-                cause: error,
-              });
+              throw new DurableKernelError(
+                "durable_kernel_transaction_failed",
+                "SQLite transaction failed",
+                { cause: error },
+              );
             }
           });
           // Keep the queue alive after a failed transaction while preserving
