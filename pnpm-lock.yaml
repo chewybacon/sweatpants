@@ -1299,6 +1299,9 @@ importers:
       '@sweatpants/model-sampling':
         specifier: workspace:*
         version: link:../model-sampling
+      '@sweatpants/storage-postgres':
+        specifier: workspace:*
+        version: link:../storage-postgres
       '@sweatpants/storage-sqlite':
         specifier: workspace:*
         version: link:../storage-sqlite

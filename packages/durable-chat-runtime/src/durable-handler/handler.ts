@@ -114,10 +114,19 @@ import { createDurableHistoryPageEndpoint } from "./history-page-endpoint.ts";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import {
   assertChatSqliteStorageVariant,
+  openScopedPostgresChatStorage,
   openScopedSqliteChatStorage,
   resolveImmediateChatStorage,
+  type ChatStorageConfig,
   type ResolvedChatStorage,
 } from "./storage.ts";
+
+/** Storage kinds that open one handle per application scope. */
+function isScopedChatStorage(
+  config: ChatStorageConfig,
+): config is Extract<ChatStorageConfig, { readonly kind: "sqlite" | "postgres" }> {
+  return config.kind === "sqlite" || config.kind === "postgres";
+}
 
 const MAX_CHAT_REQUEST_BYTES = 2 * 1024 * 1024;
 let responseWriterEpoch = 1;
@@ -523,7 +532,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
   const composition = resolveDurableChatComposition(config);
 
   const immediateBundle =
-    config.storage.kind === "sqlite"
+    isScopedChatStorage(config.storage)
       ? undefined
       : createResolvedDurableChatEndpoints(
           config,
@@ -537,16 +546,18 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
     if (current) {
       return current;
     }
-    const resolving =
-      config.storage.kind === "sqlite"
-        ? openScopedSqliteChatStorage(config.storage, scope).then((storage) => {
-            const bundle = createResolvedDurableChatEndpoints(config, composition, storage);
-            return {
-              endpoints: bindEndpointSet(bundle.endpoints, scope),
-              inspection: bundle.inspection,
-            };
-          })
-        : Promise.resolve({
+    const resolving = isScopedChatStorage(config.storage)
+      ? (config.storage.kind === "postgres"
+          ? openScopedPostgresChatStorage(config.storage, scope)
+          : openScopedSqliteChatStorage(config.storage, scope)
+        ).then((storage) => {
+          const bundle = createResolvedDurableChatEndpoints(config, composition, storage);
+          return {
+            endpoints: bindEndpointSet(bundle.endpoints, scope),
+            inspection: bundle.inspection,
+          };
+        })
+      : Promise.resolve({
             endpoints: bindEndpointSet(immediateBundle!.endpoints, scope),
             inspection: immediateBundle!.inspection,
           });
