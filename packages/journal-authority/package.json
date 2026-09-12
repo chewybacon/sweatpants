@@ -118,6 +118,17 @@
                 "default": "./dist/schema-registry.js"
             },
             "default": "./src/contract/schema-registry.ts"
+        },
+        "./store-conformance": {
+            "development": {
+                "import": "./src/store-conformance.ts",
+                "types": "./src/store-conformance.ts"
+            },
+            "import": {
+                "types": "./src/store-conformance.d.ts",
+                "default": "./dist/store-conformance.js"
+            },
+            "default": "./src/store-conformance.ts"
         }
     },
     "scripts": {

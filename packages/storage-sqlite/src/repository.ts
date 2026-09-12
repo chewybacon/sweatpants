@@ -1,18 +1,18 @@
 import { createKernelConversationStore } from "@sweatpants/history-store/repository";
 import { createKernelExecutionStore } from "@sweatpants/journal-authority/store-repository";
+import type { TransactionRunner } from "@sweatpants/durable-storage-kernel";
 import type { ConversationStore, ExecutionStore } from "./contract.ts";
 import {
   createSqliteDurableKernel,
   type SQLiteResultKind,
-  type SqliteImmediateTransactions,
   type SweatpantsSqliteDatabase,
 } from "./sqlite-kernel.ts";
 
 export type {
   SQLiteResultKind,
-  SqliteImmediateTransactions,
   SweatpantsSqliteDatabase,
 } from "./sqlite-kernel.ts";
+export type { TransactionRunner } from "@sweatpants/durable-storage-kernel";
 
 export interface SqliteStorage {
   readonly conversationStore: ConversationStore;
@@ -34,7 +34,9 @@ export function createSqliteStorageComposition<
   TRunResult,
 >(options: {
   database: SweatpantsSqliteDatabase<TResultKind, TRunResult>;
-  transactions: SqliteImmediateTransactions<SweatpantsSqliteDatabase<TResultKind, TRunResult>>;
+  transactionRunner: TransactionRunner<
+    SweatpantsSqliteDatabase<TResultKind, TRunResult>
+  >;
   faultInjection?: (point: string) => void;
 }): SqliteStorageComposition {
   const kernel = createSqliteDurableKernel(options);
@@ -52,7 +54,9 @@ export function createSqliteRepositories<
   TRunResult,
 >(options: {
   database: SweatpantsSqliteDatabase<TResultKind, TRunResult>;
-  transactions: SqliteImmediateTransactions<SweatpantsSqliteDatabase<TResultKind, TRunResult>>;
+  transactionRunner: TransactionRunner<
+    SweatpantsSqliteDatabase<TResultKind, TRunResult>
+  >;
   faultInjection?: (point: string) => void;
 }): SqliteStorage {
   return createSqliteStorageComposition(options).storage;

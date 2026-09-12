@@ -6,6 +6,7 @@ import {
   decodeJsonValue,
   validateMutationStructure,
   validateScan,
+  DurableKernelError,
   type AuthorityCollectionId,
   type BoundedScan,
   type DurableKernel,
@@ -15,6 +16,7 @@ import {
   type StoredAuthorityRecord,
   type StoredImmutableRecord,
   type StoredScanPage,
+  type TransactionRunner,
 } from "@sweatpants/durable-storage-kernel";
 import { canonicalJson, canonicalSnapshot, parseJsonText, type Json } from "@sweatpants/foundation";
 import {
@@ -53,7 +55,6 @@ import type { ExecutionControl, StoredExecutionObject } from "@sweatpants/journa
 import { and, asc, desc, eq, gt, gte, inArray, lt, lte, or, type SQL } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { call, sleep, type Operation } from "effection";
-import { StorageError } from "./contract.ts";
 import {
   spConversationCheckpoints,
   spConversationCommandReceipts,
@@ -74,9 +75,6 @@ export type SweatpantsSqliteDatabase<
   TRunResult = unknown,
 > = BaseSQLiteDatabase<TResultKind, TRunResult, SqliteSchema>;
 
-export interface SqliteImmediateTransactions<TDatabase> {
-  immediate<T>(body: (transaction: TDatabase) => T | Promise<T>): Operation<T>;
-}
 
 type Database = SweatpantsSqliteDatabase<SQLiteResultKind, unknown>;
 type HeadRow = typeof spConversationHeads.$inferSelect;
@@ -94,7 +92,7 @@ async function resolved<T>(value: T | Promise<T>): Promise<T> {
 }
 
 function invalid(message: string): never {
-  throw new StorageError("persisted_data_invalid", message);
+  throw new DurableKernelError("durable_kernel_persisted_data_invalid", message);
 }
 
 function numberValue(value: number | bigint, field: string): number {
@@ -111,7 +109,10 @@ function nullableJson(value: string | null, field: string): Json | null {
 function requireKey(key: string, lengths: readonly number[]): readonly string[] {
   const parts = decodeDurableKey(key);
   if (!lengths.includes(parts.length)) {
-    throw new StorageError("persisted_data_invalid", `Unexpected durable key shape ${key}`);
+    throw new DurableKernelError(
+      "durable_kernel_persisted_data_invalid",
+      `Unexpected durable key shape ${key}`,
+    );
   }
   return parts;
 }
@@ -1298,11 +1299,11 @@ export function createSqliteDurableKernel<
   TRunResult,
 >(options: {
   database: SweatpantsSqliteDatabase<TResultKind, TRunResult>;
-  transactions: SqliteImmediateTransactions<SweatpantsSqliteDatabase<TResultKind, TRunResult>>;
+  transactionRunner: TransactionRunner<SweatpantsSqliteDatabase<TResultKind, TRunResult>>;
   faultInjection?: (point: string) => void;
 }): DurableKernel {
   const database = options.database as Database;
-  const transactions = options.transactions as SqliteImmediateTransactions<Database>;
+  const transactionRunner = options.transactionRunner as TransactionRunner<Database>;
   return {
     *readAuthority(collection, key): Operation<StoredAuthorityRecord | null> {
       return yield* call(() => readAuthorityIn(database, collection, key));
@@ -1327,7 +1328,7 @@ export function createSqliteDurableKernel<
     },
     *apply(mutation): Operation<DurableMutationOutcome> {
       validateMutationStructure(mutation);
-      return yield* transactions.immediate((transaction) =>
+      return yield* transactionRunner.transaction((transaction) =>
         applyIn(transaction, mutation, options.faultInjection),
       );
     },

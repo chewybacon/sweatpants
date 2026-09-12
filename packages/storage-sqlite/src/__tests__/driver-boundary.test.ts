@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
+import type { TransactionRunner } from "@sweatpants/durable-storage-kernel";
 import type { SqliteSchema } from "../schema.ts";
 import {
   createSqliteRepositories,
-  type SqliteImmediateTransactions,
   type SweatpantsSqliteDatabase,
 } from "../repository.ts";
 
@@ -24,23 +24,23 @@ type DurableObjectIsSyncSqlite = Expect<
 
 function acceptFutureDriver<TResultKind extends "sync" | "async", TRunResult>(options: {
   database: SweatpantsSqliteDatabase<TResultKind, TRunResult>;
-  transactions: SqliteImmediateTransactions<SweatpantsSqliteDatabase<TResultKind, TRunResult>>;
+  transactionRunner: TransactionRunner<SweatpantsSqliteDatabase<TResultKind, TRunResult>>;
 }) {
   return createSqliteRepositories(options);
 }
 
 function acceptD1(
   database: SweatpantsSqliteDatabase<"async", unknown>,
-  transactions: SqliteImmediateTransactions<SweatpantsSqliteDatabase<"async", unknown>>,
+  transactionRunner: TransactionRunner<SweatpantsSqliteDatabase<"async", unknown>>,
 ) {
-  return acceptFutureDriver({ database, transactions });
+  return acceptFutureDriver({ database, transactionRunner });
 }
 
 function acceptDurableObject(
   database: SweatpantsSqliteDatabase<"sync", unknown>,
-  transactions: SqliteImmediateTransactions<SweatpantsSqliteDatabase<"sync", unknown>>,
+  transactionRunner: TransactionRunner<SweatpantsSqliteDatabase<"sync", unknown>>,
 ) {
-  return acceptFutureDriver({ database, transactions });
+  return acceptFutureDriver({ database, transactionRunner });
 }
 
 const typeProofs: [D1IsAsyncSqlite, DurableObjectIsSyncSqlite] = [true, true];

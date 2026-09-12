@@ -104,7 +104,7 @@ describe("SQLite durable counters", () => {
             updatedAt: 1,
           })
           .run(),
-      ).toThrowError(expect.objectContaining({ code: "sqlite_integer_out_of_range" }));
+      ).toThrowError(expect.objectContaining({ code: "durable_kernel_integer_out_of_range" }));
     } finally {
       await run(() => handle.close());
     }

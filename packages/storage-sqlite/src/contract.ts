@@ -38,27 +38,30 @@ export type {
   StoredPrivateSegment,
 } from "@sweatpants/journal-authority/store";
 
-export type StorageErrorCode =
-  | "head_conflict"
-  | "command_identity_conflict"
-  | "immutable_object_conflict"
-  | "persisted_data_invalid"
-  | "checkpoint_bound_exceeded"
-  | "segment_entry_too_large"
-  | "public_root_conflict"
-  | "sqlite_integer_out_of_range"
-  | "sqlite_transaction_failed"
-  | "sqlite_storage_binding_conflict"
-  | "sqlite_storage_binding_readonly"
-  | "sqlite_namespace_collision";
+export type { TransactionRunner } from "@sweatpants/durable-storage-kernel";
+export {
+  DurableKernelError,
+  type DurableKernelErrorCode,
+} from "@sweatpants/durable-storage-kernel";
 
-export class StorageError extends Error {
+/**
+ * Misconfiguration of the SQLite binding itself (reserved-namespace
+ * collisions, readonly authority bindings). These are SQLite-backend
+ * concerns; kernel-surface failures use `DurableKernelError` and store
+ * semantic failures use `ConversationStoreError` / `ExecutionStoreError`.
+ */
+export type SqliteBindingErrorCode =
+  | "binding_conflict"
+  | "binding_readonly"
+  | "namespace_collision";
+
+export class SqliteBindingError extends Error {
   constructor(
-    readonly code: StorageErrorCode,
+    readonly code: SqliteBindingErrorCode,
     message: string,
     options?: ErrorOptions,
   ) {
     super(message, options);
-    this.name = "StorageError";
+    this.name = "SqliteBindingError";
   }
 }
