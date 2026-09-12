@@ -26,7 +26,6 @@ import type {
   ArchivedPublicRootIndex,
   ConversationHead,
   ConversationHeadProposal,
-  ConversationStore,
   PublicArchivePointer,
   StoredCheckpoint,
   StoredPublicArchiveSegment,
@@ -34,6 +33,7 @@ import type {
 } from "@sweatpants/history-store/contract";
 import { ConversationStoreError } from "@sweatpants/history-store/contract";
 import { call, type Operation } from "effection";
+import { useConversationStore } from "@sweatpants/history-store/port";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import {
@@ -88,11 +88,11 @@ function sameBasis(left: PublicProjectionBasis, right: PublicProjectionBasis): b
 }
 
 function* sealedCatchupRoots(
-  store: ConversationStore,
   conversationId: string,
   previous: PublicProjectionBasis,
   current: PublicProjectionBasis,
 ): Operation<readonly PublicProjectionRoot[] | null> {
+  const store = yield* useConversationStore();
   if (
     previous.lineageId !== current.lineageId ||
     BigInt(previous.archiveFrontierOrdinal) > BigInt(current.archiveFrontierOrdinal) ||
@@ -193,7 +193,6 @@ function* sealedCatchupRoots(
 }
 
 export function* buildConversationWindow(params: {
-  store: ConversationStore;
   conversationId: string;
   head: ConversationHead;
   checkpoint: StoredCheckpoint;
@@ -211,7 +210,7 @@ export function* buildConversationWindow(params: {
       const previous = yield* call(() =>
         verifyWindowToken(params.knownWindowToken!, params.keyring, now),
       );
-      catchup = yield* sealedCatchupRoots(params.store, params.conversationId, previous, basis);
+      catchup = yield* sealedCatchupRoots(params.conversationId, previous, basis);
     } catch (error) {
       if (error instanceof ProjectionTokenError) {
         catchup = null;
@@ -674,7 +673,6 @@ function planArchiveSegments(
  * eventual checkpoint is committed.
  */
 export function* preflightConversationCheckpoint(params: {
-  readonly store: ConversationStore;
   readonly conversationId: string;
   readonly roots: readonly Json[];
   readonly applicationState?: Json;
@@ -686,8 +684,9 @@ export function* preflightConversationCheckpoint(params: {
   readonly expectedOwnerEpoch?: string;
   readonly expectedExecutionId?: string | null;
 }): Operation<void> {
+  const store = yield* useConversationStore();
   const targets = params.targets ?? DEFAULT_CHECKPOINT_TARGETS;
-  const head = yield* params.store.loadHead(params.conversationId);
+  const head = yield* store.loadHead(params.conversationId);
   if (
     head &&
     ((params.expectedRevision !== undefined && head.revision !== params.expectedRevision) ||
@@ -701,7 +700,7 @@ export function* preflightConversationCheckpoint(params: {
     );
   }
   const previousCheckpoint = head?.checkpoint
-    ? yield* params.store.getCheckpoint(head.checkpoint)
+    ? yield* store.getCheckpoint(head.checkpoint)
     : null;
   const previousHot = (
     previousCheckpoint ? checkpointHotRoots(previousCheckpoint.payload) : []
@@ -747,9 +746,9 @@ export function* preflightConversationCheckpoint(params: {
 }
 
 export function* persistConversationCheckpoint(
-  store: ConversationStore,
   request: ConversationCheckpointRequest,
 ): Operation<ConversationCheckpointResult> {
+  const store = yield* useConversationStore();
   const targets = request.targets ?? DEFAULT_CHECKPOINT_TARGETS;
   const head = yield* store.loadHead(request.conversationId);
   if (!head) throw new Error(`Conversation ${request.conversationId} has no admitted head`);
@@ -845,11 +844,11 @@ export function hydratePublicRoots(checkpoint: StoredCheckpoint): readonly Json[
 
 /** Reads immutable archived roots in bounded pages for server-side model planning only. */
 export function* readAllPublicRootsForModel(
-  store: ConversationStore,
   conversationId: string,
   checkpoint: StoredCheckpoint,
   maxCanonicalBytes: number,
 ): Operation<readonly Json[]> {
+  const store = yield* useConversationStore();
   if (!Number.isSafeInteger(maxCanonicalBytes) || maxCanonicalBytes <= 0) {
     throw new CrankError(
       "model_context_limit_exceeded",

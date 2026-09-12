@@ -140,7 +140,7 @@ export function* publishTurn<Entry extends Json = Json>(
   });
   let publishedHead: ConversationHead;
   try {
-    const persisted = yield* persistConversationCheckpoint(conversation, {
+    const persisted = yield* persistConversationCheckpoint({
       conversationId: capsule.sessionId,
       causeKey: stableTupleHash([capsule.executionId, capsule.turnId, "terminal"]),
       cause: {

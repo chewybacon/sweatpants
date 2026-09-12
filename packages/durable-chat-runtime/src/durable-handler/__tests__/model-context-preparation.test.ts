@@ -3,6 +3,7 @@ import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { installExecutionStore } from "@sweatpants/journal-authority/api";
+import { installConversationStore } from "@sweatpants/history-store/port";
 import type {
   AcceptPullPreparationRequest,
   ModelContextPreparedFact,
@@ -172,6 +173,7 @@ function journalAuthority(state: {
 describe("accepted model-context preparation", () => {
   it("resolves a conversation source against the selected authoritative checkpoint", async () => {
     await run(function* () {
+      yield* installConversationStore(conversationStore());
       const resolved = yield* resolveModelContextSource(
         {
           type: "conversation",
@@ -182,7 +184,7 @@ describe("accepted model-context preparation", () => {
           taskId: "turn-1/root",
           taskJournalFrontier: "frontier-1",
         },
-        { conversationStore: conversationStore(), maxCanonicalBytes: 64 * 1024 },
+        { maxCanonicalBytes: 64 * 1024 },
       );
       expect(resolved).toEqual({ messages: [], tools: [] });
     });

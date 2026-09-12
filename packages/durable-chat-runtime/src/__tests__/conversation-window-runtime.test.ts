@@ -2,7 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@ag-ui/core";
-import { call, run, useScope } from "effection";
+import { call, run, scoped, useScope, type Operation } from "effection";
+import { installConversationStore } from "@sweatpants/history-store/port";
 import { describe, expect, it } from "vitest";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
@@ -49,6 +50,17 @@ function historyRequest(conversationId: string, cursor: string) {
   };
 }
 
+/**
+ * Port drivers are terminal per scope, so calls that must observe a specific
+ * store instance run in a child scope with that store installed.
+ */
+function withConversationStore<T>(store: ConversationStore, op: () => Operation<T>): Operation<T> {
+  return scoped(function* () {
+    yield* installConversationStore(store);
+    return yield* op();
+  });
+}
+
 function* initialize(store: ConversationStore, conversationId: string) {
   const result = yield* store.compareAndSwapHead(conversationId, null, null, {
     state: "idle",
@@ -72,8 +84,9 @@ function* publish(
   facts: readonly ReturnType<typeof acceptedPublicMessageFact>[],
   causeKey: string,
 ) {
-  return yield* persistConversationCheckpoint(store, {
-    conversationId: head.conversationId,
+  return yield* withConversationStore(store, () =>
+    persistConversationCheckpoint({
+      conversationId: head.conversationId,
     causeKey,
     cause: { kind: "test", causeKey },
     roots: facts,
@@ -94,7 +107,8 @@ function* publish(
       spill: { maxRoots: 1, maxEncodedBytes: 8 * 1024 * 1024 },
       segment: { maxEntries: 8, maxEncodedBytes: 8 * 1024 * 1024 },
     },
-  });
+    }),
+  );
 }
 
 describe("native ConversationWindow production", () => {
@@ -130,14 +144,15 @@ describe("native ConversationWindow production", () => {
             return typeof value === "function" ? value.bind(target) : value;
           },
         }) as ConversationStore;
-        const firstWindow = yield* buildConversationWindow({
-          store: hydrationStore,
-          conversationId,
-          head: first.head,
-          checkpoint: first.checkpoint,
-          keyring,
-          now,
-        });
+        const firstWindow = yield* withConversationStore(hydrationStore, () =>
+          buildConversationWindow({
+            conversationId,
+            head: first.head,
+            checkpoint: first.checkpoint,
+            keyring,
+            now,
+          }),
+        );
         expect(firstWindow.windowMode).toBe("reset");
         expect(initialHistoryReads).toBe(0);
         expect(firstWindow.hotRoots.map((root) => root.position)).toEqual(["0"]);
@@ -159,15 +174,16 @@ describe("native ConversationWindow production", () => {
           ],
           "second",
         );
-        const continued = yield* buildConversationWindow({
-          store,
-          conversationId,
-          head: second.head,
-          checkpoint: second.checkpoint,
-          keyring,
-          knownWindowToken: firstWindow.windowToken,
-          now: now + 100,
-        });
+        const continued = yield* withConversationStore(store, () =>
+          buildConversationWindow({
+            conversationId,
+            head: second.head,
+            checkpoint: second.checkpoint,
+            keyring,
+            knownWindowToken: firstWindow.windowToken,
+            now: now + 100,
+          }),
+        );
         expect(continued.windowMode).toBe("continue");
         expect(continued.hotRoots.map((root) => root.position)).toEqual(["2"]);
         expect(continued.sealedCatchupRoots.map((root) => root.position)).toEqual(["0", "1"]);
@@ -181,15 +197,16 @@ describe("native ConversationWindow production", () => {
         } as ConversationStore;
         let corruption: unknown;
         try {
-          yield* buildConversationWindow({
-            store: corruptStore,
-            conversationId,
-            head: second.head,
-            checkpoint: second.checkpoint,
-            keyring,
-            knownWindowToken: firstWindow.windowToken,
-            now: now + 101,
-          });
+            yield* withConversationStore(corruptStore, () =>
+            buildConversationWindow({
+              conversationId,
+              head: second.head,
+              checkpoint: second.checkpoint,
+              keyring,
+              knownWindowToken: firstWindow.windowToken,
+              now: now + 101,
+            }),
+          );
         } catch (error) {
           corruption = error;
         }
@@ -237,15 +254,16 @@ describe("native ConversationWindow production", () => {
         );
         expect(forbiddenResponse.status).toBe(403);
 
-        const reset = yield* buildConversationWindow({
-          store,
-          conversationId,
-          head: second.head,
-          checkpoint: second.checkpoint,
-          keyring,
-          knownWindowToken: "invalid.token",
-          now: now + 200,
-        });
+        const reset = yield* withConversationStore(store, () =>
+          buildConversationWindow({
+            conversationId,
+            head: second.head,
+            checkpoint: second.checkpoint,
+            keyring,
+            knownWindowToken: "invalid.token",
+            now: now + 200,
+          }),
+        );
         expect(reset.windowMode).toBe("reset");
         expect(reset.sealedCatchupRoots).toEqual([]);
 
@@ -262,15 +280,16 @@ describe("native ConversationWindow production", () => {
             `oversized-${batch}`,
           );
         }
-        const oversizedWindow = yield* buildConversationWindow({
-          store,
-          conversationId,
-          head: oversized.head,
-          checkpoint: oversized.checkpoint,
-          keyring,
-          knownWindowToken: firstWindow.windowToken,
-          now: now + 300,
-        });
+        const oversizedWindow = yield* withConversationStore(store, () =>
+          buildConversationWindow({
+            conversationId,
+            head: oversized.head,
+            checkpoint: oversized.checkpoint,
+            keyring,
+            knownWindowToken: firstWindow.windowToken,
+            now: now + 300,
+          }),
+        );
         expect(oversizedWindow.windowMode).toBe("reset");
         expect(oversizedWindow.sealedCatchupRoots).toEqual([]);
       });
@@ -329,6 +348,11 @@ describe("native ConversationWindow production", () => {
       yield* installHostScopeOwner(owner);
       yield* installDurableStreamsOwner(owner);
       yield* setupInMemoryDurableStreams();
+      // Seeding ran through the same counting driver; reset so only the
+      // handler's reads are measured.
+      headReads = 0;
+      checkpointReads = 0;
+      historyReads = 0;
       const endpoints = createDurableChatEndpoints({
         storage: storageFor(observedStore),
         projectionTokens: keyring,

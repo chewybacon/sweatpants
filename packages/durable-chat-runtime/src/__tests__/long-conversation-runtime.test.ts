@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { canonicalSnapshot } from "@sweatpants/foundation";
 import { run } from "effection";
+import { installConversationStore } from "@sweatpants/history-store/port";
 import { describe, expect, it } from "vitest";
 import { openBetterSqliteStorage } from "@sweatpants/storage-sqlite/better-sqlite3";
 import type {
@@ -32,65 +33,6 @@ describe("long conversation bounded hydration", () => {
     try {
       await run(function* () {
         const store = handle.storage.conversationStore;
-        const conversationId = "long-conversation";
-        const initialized = yield* store.compareAndSwapHead(conversationId, null, null, {
-          state: "idle",
-          checkpoint: null,
-          terminalHistory: null,
-          activeLogicalTurnId: null,
-          activeExecutionId: null,
-          latestCompletedExecutionId: null,
-          activeSegment: null,
-          activeCommand: null,
-          deletedAt: null,
-          ownerTransition: { kind: "clear" },
-        });
-        if (initialized.status !== "committed") throw new Error("initialization failed");
-
-        const body = "x".repeat(MESSAGE_BODY_BYTES);
-        let currentHead: ConversationHead = initialized.head;
-        let currentCheckpoint: StoredCheckpoint | null = null;
-        const batchSize = 200;
-        for (let start = 0; start < MESSAGE_COUNT; start += batchSize) {
-          const end = Math.min(MESSAGE_COUNT, start + batchSize);
-          const facts = Array.from({ length: end - start }, (_, offset) => {
-            const index = start + offset;
-            return acceptedPublicMessageFact({
-              id: `long-message-${index.toString().padStart(5, "0")}`,
-              role: "user",
-              content: body,
-            });
-          });
-          const published = yield* persistConversationCheckpoint(store, {
-            conversationId,
-            causeKey: `long-conversation-seed-${start}`,
-            cause: { kind: "test", from: start, before: end },
-            roots: facts,
-            proposal: {
-              state: "idle",
-              activeLogicalTurnId: null,
-              activeExecutionId: null,
-              latestCompletedExecutionId: null,
-              activeSegment: null,
-              activeCommand: null,
-              deletedAt: null,
-              ownerTransition: { kind: "clear" },
-            },
-            createdAt: start + 1,
-            expectedRevision: currentHead.revision,
-            expectedOwnerEpoch: currentHead.ownerEpoch,
-            targets: {
-              spill: { maxRoots: 256, maxEncodedBytes: CHECKPOINT_LIMIT },
-              segment: { maxEntries: 64, maxEncodedBytes: CHECKPOINT_LIMIT },
-            },
-          });
-          currentHead = published.head;
-          currentCheckpoint = published.checkpoint;
-        }
-        if (!currentCheckpoint) throw new Error("long conversation was not published");
-        expect(BigInt(currentCheckpoint.archiveFrontierOrdinal)).toBeGreaterThan(0n);
-        expect(currentCheckpoint.encodedBytes).toBeLessThanOrEqual(CHECKPOINT_LIMIT);
-
         let headReads = 0;
         let checkpointReads = 0;
         let historyReads = 0;
@@ -120,13 +62,76 @@ describe("long conversation bounded hydration", () => {
             return typeof value === "function" ? value.bind(target) : value;
           },
         }) as ConversationStore;
+        yield* installConversationStore(observedStore);
+        const conversationId = "long-conversation";
+        const initialized = yield* store.compareAndSwapHead(conversationId, null, null, {
+          state: "idle",
+          checkpoint: null,
+          terminalHistory: null,
+          activeLogicalTurnId: null,
+          activeExecutionId: null,
+          latestCompletedExecutionId: null,
+          activeSegment: null,
+          activeCommand: null,
+          deletedAt: null,
+          ownerTransition: { kind: "clear" },
+        });
+        if (initialized.status !== "committed") throw new Error("initialization failed");
 
+        const body = "x".repeat(MESSAGE_BODY_BYTES);
+        let currentHead: ConversationHead = initialized.head;
+        let currentCheckpoint: StoredCheckpoint | null = null;
+        const batchSize = 200;
+        for (let start = 0; start < MESSAGE_COUNT; start += batchSize) {
+          const end = Math.min(MESSAGE_COUNT, start + batchSize);
+          const facts = Array.from({ length: end - start }, (_, offset) => {
+            const index = start + offset;
+            return acceptedPublicMessageFact({
+              id: `long-message-${index.toString().padStart(5, "0")}`,
+              role: "user",
+              content: body,
+            });
+          });
+          const published = yield* persistConversationCheckpoint({
+            conversationId,
+            causeKey: `long-conversation-seed-${start}`,
+            cause: { kind: "test", from: start, before: end },
+            roots: facts,
+            proposal: {
+              state: "idle",
+              activeLogicalTurnId: null,
+              activeExecutionId: null,
+              latestCompletedExecutionId: null,
+              activeSegment: null,
+              activeCommand: null,
+              deletedAt: null,
+              ownerTransition: { kind: "clear" },
+            },
+            createdAt: start + 1,
+            expectedRevision: currentHead.revision,
+            expectedOwnerEpoch: currentHead.ownerEpoch,
+            targets: {
+              spill: { maxRoots: 256, maxEncodedBytes: CHECKPOINT_LIMIT },
+              segment: { maxEntries: 64, maxEncodedBytes: CHECKPOINT_LIMIT },
+            },
+          });
+          currentHead = published.head;
+          currentCheckpoint = published.checkpoint;
+        }
+        if (!currentCheckpoint) throw new Error("long conversation was not published");
+        expect(BigInt(currentCheckpoint.archiveFrontierOrdinal)).toBeGreaterThan(0n);
+        expect(currentCheckpoint.encodedBytes).toBeLessThanOrEqual(CHECKPOINT_LIMIT);
+
+        // Counters were inflated by seeding through the same driver; reset
+        // them so only the measured reads are observed.
+        headReads = 0;
+        checkpointReads = 0;
+        historyReads = 0;
         const head = yield* observedStore.loadHead(conversationId);
         if (!head?.checkpoint) throw new Error("long conversation head has no checkpoint");
         const checkpoint = yield* observedStore.getCheckpoint(head.checkpoint);
         if (!checkpoint) throw new Error("long conversation checkpoint is missing");
         const window = yield* buildConversationWindow({
-          store: observedStore,
           conversationId,
           head,
           checkpoint,
@@ -145,7 +150,7 @@ describe("long conversation bounded hydration", () => {
 
         let budgetError: unknown;
         try {
-          yield* readAllPublicRootsForModel(observedStore, conversationId, checkpoint, 64 * 1024);
+          yield* readAllPublicRootsForModel(conversationId, checkpoint, 64 * 1024);
         } catch (error) {
           budgetError = error;
         }
