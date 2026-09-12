@@ -13,6 +13,7 @@ import type {
   StoredTerminalSegment,
 } from "@sweatpants/history-store/contract";
 import { race, spawn, type Operation, run } from "effection";
+import { installConversationStore } from "@sweatpants/history-store/port";
 import {
   withTestScenario,
   type ScenarioContext,
@@ -375,7 +376,7 @@ describe("database-backed durability-spine regression probes", () => {
         throw new Error("test-rig turn did not become active");
       }
 
-      const request: Parameters<typeof persistConversationCheckpoint>[1] = {
+      const request: Parameters<typeof persistConversationCheckpoint>[0] = {
         conversationId: conversation.conversationId,
         causeKey: "stale-terminal-publication",
         cause: {
@@ -399,7 +400,8 @@ describe("database-backed durability-spine regression probes", () => {
       };
       let publicationError: unknown;
       try {
-        yield* persistConversationCheckpoint(store, request);
+        yield* installConversationStore(store);
+        yield* persistConversationCheckpoint(request);
       } catch (error) {
         publicationError = error;
       }
@@ -432,7 +434,8 @@ describe("database-backed durability-spine regression probes", () => {
       ) as Array<{ rows: number | bigint }>;
       const beforeCount = Number(beforeRows[0]?.rows ?? 0);
 
-      yield* persistConversationCheckpoint(store, {
+      yield* installConversationStore(store);
+      yield* persistConversationCheckpoint({
         conversationId: conversation.conversationId,
         causeKey: "mutable-only-rolling-cut",
         cause: { kind: "rolling", executionId: current.activeExecutionId },

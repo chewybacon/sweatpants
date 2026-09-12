@@ -33,6 +33,7 @@ import {
   type PublicProjectionRoot,
 } from "@sweatpants/chat-core";
 import { ExecutionStoreApi } from "@sweatpants/journal-authority/api";
+import { useConversationStore } from "@sweatpants/history-store/port";
 import type {
   DurableSemanticRecord,
   ModelContextPolicyDecision,
@@ -279,25 +280,19 @@ function taskModelMessages(records: readonly DurableSemanticRecord[]): ModelCont
 export function* resolveModelContextSource(
   source: ModelContextSource,
   options: {
-    readonly conversationStore?: ConversationStore;
     readonly journal?: ProgramDriverJournal;
     readonly maxCanonicalBytes?: number;
   } = {},
 ): Operation<ModelContext> {
   if (source.type === "conversation") {
-    if (!options.conversationStore) {
-      throw new CrankError(
-        "model_context_source_invalid",
-        "Conversation context source requires the conversation store",
-      );
-    }
+    const conversationStore = yield* useConversationStore();
     if (source.contextArtifact) {
       throw new CrankError(
         "model_context_source_invalid",
         "Conversation context artifacts require an explicit coverage planner",
       );
     }
-    const head = yield* options.conversationStore.loadHead(source.conversationId);
+    const head = yield* conversationStore.loadHead(source.conversationId);
     if (!head || head.activeExecutionId !== source.executionId) {
       throw new CrankError(
         "model_context_source_invalid",
@@ -316,7 +311,7 @@ export function* resolveModelContextSource(
         "Conversation context source has no active command",
       );
     }
-    const checkpoint = yield* options.conversationStore.getCheckpoint(source.checkpoint);
+    const checkpoint = yield* conversationStore.getCheckpoint(source.checkpoint);
     if (!checkpoint) {
       throw new CrankError(
         "model_context_source_invalid",
@@ -324,7 +319,6 @@ export function* resolveModelContextSource(
       );
     }
     const roots = yield* readAllPublicRootsForModel(
-      options.conversationStore,
       source.conversationId,
       checkpoint,
       options.maxCanonicalBytes ?? MAX_PREPARED_CONTEXT_BYTES,

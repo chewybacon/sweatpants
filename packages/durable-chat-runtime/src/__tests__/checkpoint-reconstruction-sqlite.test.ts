@@ -2,7 +2,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { run } from "effection";
+import { run, scoped, type Operation } from "effection";
+import { installConversationStore } from "@sweatpants/history-store/port";
+import type { ConversationStore } from "@sweatpants/history-store/contract";
+
+/** Port drivers are terminal per scope; run store-dependent calls in a child scope. */
+function withConversationStore<T>(store: ConversationStore, op: () => Operation<T>): Operation<T> {
+  return scoped(function* () {
+    yield* installConversationStore(store);
+    return yield* op();
+  });
+}
 import {
   hydratePublicRoots,
   persistConversationCheckpoint,
@@ -59,7 +69,8 @@ describe("checkpoint archive reconstruction", () => {
           null,
           idle,
         );
-        yield* persistConversationCheckpoint(handle.storage.conversationStore, {
+        yield* withConversationStore(handle.storage.conversationStore, () =>
+          persistConversationCheckpoint({
           conversationId: "conversation-1",
           causeKey: "first",
           cause: { kind: "command", commandId: "first" },
@@ -67,8 +78,10 @@ describe("checkpoint archive reconstruction", () => {
           proposal: idle,
           createdAt: 1,
           targets: LOW_CHECKPOINT_TARGETS,
-        });
-        const second = yield* persistConversationCheckpoint(handle.storage.conversationStore, {
+        }),
+        );
+        const second = yield* withConversationStore(handle.storage.conversationStore, () =>
+          persistConversationCheckpoint({
           conversationId: "conversation-1",
           causeKey: "second",
           cause: { kind: "command", commandId: "second" },
@@ -76,17 +89,16 @@ describe("checkpoint archive reconstruction", () => {
           proposal: idle,
           createdAt: 2,
           targets: LOW_CHECKPOINT_TARGETS,
-        });
+        }),
+        );
         expect(BigInt(second.checkpoint.archiveFrontierOrdinal)).toBeGreaterThan(0n);
         expect(BigInt(second.checkpoint.nextPublicPosition)).toBeGreaterThanOrEqual(2n);
 
         const hot = hydratePublicRoots(second.checkpoint);
         expect(hot.length).toBeLessThanOrEqual(LOW_CHECKPOINT_TARGETS.spill.maxRoots);
-        const reconstructed = yield* readAllPublicRootsForModel(
+        const reconstructed = yield* withConversationStore(
           handle.storage.conversationStore,
-          "conversation-1",
-          second.checkpoint,
-          64 * 1024 * 1024,
+          () => readAllPublicRootsForModel("conversation-1", second.checkpoint, 64 * 1024 * 1024),
         );
         const ids = reconstructed.flatMap((root) => {
           const value = root as { kind?: string; message?: { id?: string } };

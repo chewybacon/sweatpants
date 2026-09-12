@@ -195,7 +195,6 @@ export function* composeChatExecutionRuntime(
   // Shared context-source resolver for sampling on both activation paths.
   const modelContextSourceResolver = function* (source: ModelContextSource) {
     return yield* resolveModelContextSource(source, {
-      conversationStore: environment.sampling.conversationStore,
       journal,
       maxCanonicalBytes: preparedModelContextByteLimit(environment.sampling.model.contextWindow),
     });
