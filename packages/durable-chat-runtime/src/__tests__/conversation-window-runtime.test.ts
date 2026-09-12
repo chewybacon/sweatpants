@@ -2,13 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@ag-ui/core";
-import { call, run, scoped, useScope, type Operation } from "effection";
-import { installConversationStore } from "@sweatpants/history-store/port";
+import { call, run, useScope } from "effection";
 import { describe, expect, it } from "vitest";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { openBetterSqliteStorage } from "@sweatpants/storage-sqlite/better-sqlite3";
 import type { ConversationHead, ConversationStore } from "@sweatpants/history-store/contract";
+import { withConversationStore } from "./with-conversation-store.ts";
 import {
   acceptedPublicMessageFact,
   buildConversationWindow,
@@ -48,17 +48,6 @@ function historyRequest(conversationId: string, cursor: string) {
       body: JSON.stringify({ cursor }),
     }),
   };
-}
-
-/**
- * Port drivers are terminal per scope, so calls that must observe a specific
- * store instance run in a child scope with that store installed.
- */
-function withConversationStore<T>(store: ConversationStore, op: () => Operation<T>): Operation<T> {
-  return scoped(function* () {
-    yield* installConversationStore(store);
-    return yield* op();
-  });
 }
 
 function* initialize(store: ConversationStore, conversationId: string) {
