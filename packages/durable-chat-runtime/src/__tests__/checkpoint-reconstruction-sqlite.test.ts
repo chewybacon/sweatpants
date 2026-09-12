@@ -2,17 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { run, scoped, type Operation } from "effection";
-import { installConversationStore } from "@sweatpants/history-store/port";
-import type { ConversationStore } from "@sweatpants/history-store/contract";
-
-/** Port drivers are terminal per scope; run store-dependent calls in a child scope. */
-function withConversationStore<T>(store: ConversationStore, op: () => Operation<T>): Operation<T> {
-  return scoped(function* () {
-    yield* installConversationStore(store);
-    return yield* op();
-  });
-}
+import { run } from "effection";
+import { withConversationStore } from "./with-conversation-store.ts";
 import {
   hydratePublicRoots,
   persistConversationCheckpoint,
