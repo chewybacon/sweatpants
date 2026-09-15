@@ -171,15 +171,13 @@ function* directChatSubscription(
   return yield* stream;
 }
 
-function* claimDetachedTurnRecovery(
-  request: {
-    conversationId: string;
-    commandId: string;
-    kind: "interrupt-turn" | "recover-writer";
-    logicalTurnId: string;
-    executionId: string;
-  },
-): Operation<ConversationHead> {
+function* claimDetachedTurnRecovery(request: {
+  conversationId: string;
+  commandId: string;
+  kind: "interrupt-turn" | "recover-writer";
+  logicalTurnId: string;
+  executionId: string;
+}): Operation<ConversationHead> {
   const store = yield* useConversationStore();
   for (let attempt = 0; attempt < 64; attempt += 1) {
     const head = yield* store.loadHead(request.conversationId);
@@ -530,14 +528,13 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
   }
   const composition = resolveDurableChatComposition(config);
 
-  const immediateBundle =
-    isScopedChatStorage(config.storage)
-      ? undefined
-      : createResolvedDurableChatEndpoints(
-          config,
-          composition,
-          resolveImmediateChatStorage(config.storage),
-        );
+  const immediateBundle = isScopedChatStorage(config.storage)
+    ? undefined
+    : createResolvedDurableChatEndpoints(
+        config,
+        composition,
+        resolveImmediateChatStorage(config.storage),
+      );
   const scopedBundles = new WeakMap<Scope, Promise<ResolvedEndpointBundle>>();
 
   const bundleForScope = (scope: Scope): Promise<ResolvedEndpointBundle> => {
@@ -554,9 +551,9 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
           };
         })
       : Promise.resolve({
-            endpoints: bindEndpointSet(immediateBundle!.endpoints, scope),
-            inspection: immediateBundle!.inspection,
-          });
+          endpoints: bindEndpointSet(immediateBundle!.endpoints, scope),
+          inspection: immediateBundle!.inspection,
+        });
     scopedBundles.set(scope, resolving);
     return resolving;
   };
@@ -1409,7 +1406,8 @@ function createResolvedDurableChatEndpoints(
                     authorityTurn.executionId === proposedAuthorityTurn.executionId &&
                     !recoveredPublication
                   ) {
-                    const runningHead = yield* stores.conversation.loadHead(requestedConversationId);
+                    const runningHead =
+                      yield* stores.conversation.loadHead(requestedConversationId);
                     if (runningHead) {
                       const admissionFacts: Json[] = [
                         ...toProviderHistorySnapshot(body.messages).map(acceptedPublicMessageFact),
@@ -1521,7 +1519,8 @@ function createResolvedDurableChatEndpoints(
                       if (!authorityTurn) {
                         throw new Error("Parked checkpoint has no authoritative Turn");
                       }
-                      const parkedHead = yield* stores.conversation.loadHead(requestedConversationId);
+                      const parkedHead =
+                        yield* stores.conversation.loadHead(requestedConversationId);
                       if (
                         !parkedHead ||
                         parkedHead.activeExecutionId !== authorityTurn.executionId
@@ -1659,7 +1658,8 @@ function createResolvedDurableChatEndpoints(
                   // atomically establish its public base before incrementals.
                   const initialEvents: StreamEvent[] = [runStartedEvent];
 
-                  const authorityHead = yield* stores.conversation.loadHead(requestedConversationId);
+                  const authorityHead =
+                    yield* stores.conversation.loadHead(requestedConversationId);
                   if (!authorityHead) {
                     throw new Error(`Conversation ${requestedConversationId} has no admitted head`);
                   }

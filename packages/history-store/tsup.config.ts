@@ -11,6 +11,7 @@ export default defineConfig({
     segmentation: "src/segmentation.ts",
     "checkpoint-payload": "src/checkpoint-payload.ts",
     "checkpoint-bounds": "src/checkpoint-bounds.ts",
+    conformance: "src/conformance.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

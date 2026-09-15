@@ -4,11 +4,8 @@ import { join } from "node:path";
 import { afterEach } from "vitest";
 import { run } from "effection";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
-import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import { describeExecutionStoreConformance } from "@sweatpants/journal-authority/store-conformance";
-import { checkpointPayloadFromHotRoots } from "@sweatpants/history-store";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
-import type { ConversationStore } from "@sweatpants/history-store/contract";
 import { describeConversationStoreConformance } from "@sweatpants/history-store/conformance";
 import { openBetterSqliteStorage } from "../better-sqlite3.ts";
 
@@ -53,11 +50,17 @@ function sqliteExecutionCase() {
 }
 
 describeConversationStoreConformance([
-  { name: "memory", create: async () => ({ store: createMemoryConversationStore(), close: async () => undefined }) },
+  {
+    name: "memory",
+    create: async () => ({ store: createMemoryConversationStore(), close: async () => undefined }),
+  },
   sqliteConversationCase(),
 ]);
 
 describeExecutionStoreConformance([
-  { name: "memory", create: async () => ({ store: createMemoryExecutionStore(), close: async () => undefined }) },
+  {
+    name: "memory",
+    create: async () => ({ store: createMemoryExecutionStore(), close: async () => undefined }),
+  },
   sqliteExecutionCase(),
 ]);

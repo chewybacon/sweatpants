@@ -8,10 +8,7 @@ import {
   type SweatpantsSqliteDatabase,
 } from "./sqlite-kernel.ts";
 
-export type {
-  SQLiteResultKind,
-  SweatpantsSqliteDatabase,
-} from "./sqlite-kernel.ts";
+export type { SQLiteResultKind, SweatpantsSqliteDatabase } from "./sqlite-kernel.ts";
 export type { TransactionRunner } from "@sweatpants/durable-storage-kernel";
 
 export interface SqliteStorage {
@@ -34,9 +31,7 @@ export function createSqliteStorageComposition<
   TRunResult,
 >(options: {
   database: SweatpantsSqliteDatabase<TResultKind, TRunResult>;
-  transactionRunner: TransactionRunner<
-    SweatpantsSqliteDatabase<TResultKind, TRunResult>
-  >;
+  transactionRunner: TransactionRunner<SweatpantsSqliteDatabase<TResultKind, TRunResult>>;
   faultInjection?: (point: string) => void;
 }): SqliteStorageComposition {
   const kernel = createSqliteDurableKernel(options);
@@ -54,9 +49,7 @@ export function createSqliteRepositories<
   TRunResult,
 >(options: {
   database: SweatpantsSqliteDatabase<TResultKind, TRunResult>;
-  transactionRunner: TransactionRunner<
-    SweatpantsSqliteDatabase<TResultKind, TRunResult>
-  >;
+  transactionRunner: TransactionRunner<SweatpantsSqliteDatabase<TResultKind, TRunResult>>;
   faultInjection?: (point: string) => void;
 }): SqliteStorage {
   return createSqliteStorageComposition(options).storage;

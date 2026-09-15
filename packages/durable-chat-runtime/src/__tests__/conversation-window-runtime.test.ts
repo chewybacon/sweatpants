@@ -76,26 +76,26 @@ function* publish(
   return yield* withConversationStore(store, () =>
     persistConversationCheckpoint({
       conversationId: head.conversationId,
-    causeKey,
-    cause: { kind: "test", causeKey },
-    roots: facts,
-    proposal: {
-      state: "idle",
-      activeLogicalTurnId: null,
-      activeExecutionId: null,
-      latestCompletedExecutionId: head.latestCompletedExecutionId,
-      activeSegment: null,
-      activeCommand: null,
-      deletedAt: null,
-      ownerTransition: { kind: "clear" },
-    },
-    createdAt: Date.now(),
-    expectedRevision: head.revision,
-    expectedOwnerEpoch: head.ownerEpoch,
-    targets: {
-      spill: { maxRoots: 1, maxEncodedBytes: 8 * 1024 * 1024 },
-      segment: { maxEntries: 8, maxEncodedBytes: 8 * 1024 * 1024 },
-    },
+      causeKey,
+      cause: { kind: "test", causeKey },
+      roots: facts,
+      proposal: {
+        state: "idle",
+        activeLogicalTurnId: null,
+        activeExecutionId: null,
+        latestCompletedExecutionId: head.latestCompletedExecutionId,
+        activeSegment: null,
+        activeCommand: null,
+        deletedAt: null,
+        ownerTransition: { kind: "clear" },
+      },
+      createdAt: Date.now(),
+      expectedRevision: head.revision,
+      expectedOwnerEpoch: head.ownerEpoch,
+      targets: {
+        spill: { maxRoots: 1, maxEncodedBytes: 8 * 1024 * 1024 },
+        segment: { maxEntries: 8, maxEncodedBytes: 8 * 1024 * 1024 },
+      },
     }),
   );
 }
@@ -186,7 +186,7 @@ describe("native ConversationWindow production", () => {
         } as ConversationStore;
         let corruption: unknown;
         try {
-            yield* withConversationStore(corruptStore, () =>
+          yield* withConversationStore(corruptStore, () =>
             buildConversationWindow({
               conversationId,
               head: second.head,

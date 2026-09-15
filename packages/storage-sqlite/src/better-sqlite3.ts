@@ -3,10 +3,7 @@ import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { call, type Operation } from "effection";
-import {
-  DurableKernelError,
-  type DurableKernel,
-} from "@sweatpants/durable-storage-kernel";
+import { DurableKernelError, type DurableKernel } from "@sweatpants/durable-storage-kernel";
 import { createSqliteStorageComposition, type SqliteStorage } from "./repository.ts";
 import { SqliteBindingError } from "./contract.ts";
 import { sqliteMigrationFolder } from "./migrations.ts";

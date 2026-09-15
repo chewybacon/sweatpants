@@ -12,6 +12,7 @@ export default defineConfig({
     "turn-authority": "src/shell/turn-authority.ts",
     "schema-registry": "src/contract/schema-registry.ts",
     segmentation: "src/store/segmentation.ts",
+    "store-conformance": "src/store-conformance.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

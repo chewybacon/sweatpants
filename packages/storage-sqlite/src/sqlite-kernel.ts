@@ -75,7 +75,6 @@ export type SweatpantsSqliteDatabase<
   TRunResult = unknown,
 > = BaseSQLiteDatabase<TResultKind, TRunResult, SqliteSchema>;
 
-
 type Database = SweatpantsSqliteDatabase<SQLiteResultKind, unknown>;
 type HeadRow = typeof spConversationHeads.$inferSelect;
 type ReceiptRow = typeof spConversationCommandReceipts.$inferSelect;

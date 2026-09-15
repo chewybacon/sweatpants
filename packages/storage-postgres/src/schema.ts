@@ -332,7 +332,10 @@ export const spExecutionObjects = pgTable(
     createdAt: epochMillis("created_at").notNull(),
   },
   (table) => [
-    check("sp_execution_object_scope", sql`${table.lifetimeScope} IN ('execution', 'conversation')`),
+    check(
+      "sp_execution_object_scope",
+      sql`${table.lifetimeScope} IN ('execution', 'conversation')`,
+    ),
     check("sp_execution_object_bytes", sql`${table.byteLength} >= 0`),
     check(
       "sp_execution_object_one_body",

@@ -4,10 +4,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import type { TransactionRunner } from "@sweatpants/durable-storage-kernel";
 import type { SqliteSchema } from "../schema.ts";
-import {
-  createSqliteRepositories,
-  type SweatpantsSqliteDatabase,
-} from "../repository.ts";
+import { createSqliteRepositories, type SweatpantsSqliteDatabase } from "../repository.ts";
 
 type Expect<T extends true> = T;
 type Extends<Left, Right> = Left extends Right ? true : false;
