@@ -62,34 +62,33 @@ describe("checkpoint archive reconstruction", () => {
         );
         yield* withConversationStore(handle.storage.conversationStore, () =>
           persistConversationCheckpoint({
-          conversationId: "conversation-1",
-          causeKey: "first",
-          cause: { kind: "command", commandId: "first" },
-          roots: messageEvents("first", 10),
-          proposal: idle,
-          createdAt: 1,
-          targets: LOW_CHECKPOINT_TARGETS,
-        }),
+            conversationId: "conversation-1",
+            causeKey: "first",
+            cause: { kind: "command", commandId: "first" },
+            roots: messageEvents("first", 10),
+            proposal: idle,
+            createdAt: 1,
+            targets: LOW_CHECKPOINT_TARGETS,
+          }),
         );
         const second = yield* withConversationStore(handle.storage.conversationStore, () =>
           persistConversationCheckpoint({
-          conversationId: "conversation-1",
-          causeKey: "second",
-          cause: { kind: "command", commandId: "second" },
-          roots: messageEvents("second", 2),
-          proposal: idle,
-          createdAt: 2,
-          targets: LOW_CHECKPOINT_TARGETS,
-        }),
+            conversationId: "conversation-1",
+            causeKey: "second",
+            cause: { kind: "command", commandId: "second" },
+            roots: messageEvents("second", 2),
+            proposal: idle,
+            createdAt: 2,
+            targets: LOW_CHECKPOINT_TARGETS,
+          }),
         );
         expect(BigInt(second.checkpoint.archiveFrontierOrdinal)).toBeGreaterThan(0n);
         expect(BigInt(second.checkpoint.nextPublicPosition)).toBeGreaterThanOrEqual(2n);
 
         const hot = hydratePublicRoots(second.checkpoint);
         expect(hot.length).toBeLessThanOrEqual(LOW_CHECKPOINT_TARGETS.spill.maxRoots);
-        const reconstructed = yield* withConversationStore(
-          handle.storage.conversationStore,
-          () => readAllPublicRootsForModel("conversation-1", second.checkpoint, 64 * 1024 * 1024),
+        const reconstructed = yield* withConversationStore(handle.storage.conversationStore, () =>
+          readAllPublicRootsForModel("conversation-1", second.checkpoint, 64 * 1024 * 1024),
         );
         const ids = reconstructed.flatMap((root) => {
           const value = root as { kind?: string; message?: { id?: string } };

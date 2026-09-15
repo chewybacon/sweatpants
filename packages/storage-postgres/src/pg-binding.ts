@@ -47,7 +47,9 @@ function unavailable(message: string, cause?: unknown): DurableKernelError {
   return new DurableKernelError("durable_kernel_unavailable", message, { cause });
 }
 
-export async function runPostgresMigrations(database: NodePgDatabase<PostgresSchema>): Promise<void> {
+export async function runPostgresMigrations(
+  database: NodePgDatabase<PostgresSchema>,
+): Promise<void> {
   await migrate(database, { migrationsFolder: pgMigrationFolder });
 }
 
@@ -61,15 +63,14 @@ export async function openPostgresStorage(
     );
   }
 
-  const ownedPool = options.database || options.pool
-    ? null
-    : new Pool({
-        connectionString: options.connectionString ?? DEFAULT_POSTGRES_URL,
-        max: options.maxPoolSize ?? 10,
-        ...(options.synchronousCommit === "off"
-          ? { options: "-c synchronous_commit=off" }
-          : {}),
-      });
+  const ownedPool =
+    options.database || options.pool
+      ? null
+      : new Pool({
+          connectionString: options.connectionString ?? DEFAULT_POSTGRES_URL,
+          max: options.maxPoolSize ?? 10,
+          ...(options.synchronousCommit === "off" ? { options: "-c synchronous_commit=off" } : {}),
+        });
   const pool = options.pool ?? ownedPool!;
   const owned = ownedPool !== null;
 

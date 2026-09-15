@@ -2,10 +2,7 @@ import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { checkpointPayloadFromHotRoots } from "./checkpoint-payload.ts";
-import type {
-  ConversationStore,
-  StoredPublicArchiveSegment,
-} from "./contract.ts";
+import type { ConversationStore, StoredPublicArchiveSegment } from "./contract.ts";
 
 export interface ConversationStoreBackendCase {
   readonly name: string;

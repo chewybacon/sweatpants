@@ -100,7 +100,8 @@ function invalid(message: string): never {
 }
 
 function numberValue(value: number | string | bigint, field: string): number {
-  const result = typeof value === "bigint" ? Number(value) : typeof value === "string" ? Number(value) : value;
+  const result =
+    typeof value === "bigint" ? Number(value) : typeof value === "string" ? Number(value) : value;
   return Number.isSafeInteger(result) && result >= 0
     ? result
     : invalid(`${field} is outside the safe integer range`);
@@ -208,7 +209,6 @@ async function headFromRow(database: Database, row: HeadRow): Promise<Conversati
     }),
   );
 }
-
 
 function controlFromRow(row: ControlRow): ExecutionControl {
   return decodeExecutionControl(
@@ -966,7 +966,11 @@ async function applyIn(
   }
   let current: StoredAuthorityRecord | null = null;
   if (mutation.authority) {
-    current = await readAuthorityIn(database, mutation.authority.collection, mutation.authority.key);
+    current = await readAuthorityIn(
+      database,
+      mutation.authority.collection,
+      mutation.authority.key,
+    );
     const mismatch = authorityMismatch(mutation.authority, current);
     if (mismatch) {
       return {
@@ -1267,9 +1271,7 @@ export function createPostgresDurableKernel(options: {
     ({
       transaction<T>(body: (transaction: Database) => T | Promise<T>): Operation<T> {
         return call(async () =>
-          database.transaction(async (transaction) =>
-            body(transaction as unknown as Database),
-          ),
+          database.transaction(async (transaction) => body(transaction as unknown as Database)),
         );
       },
     } as TransactionRunner<Database>);
@@ -1286,7 +1288,9 @@ export function createPostgresDurableKernel(options: {
     *waitForChange(request): Operation<void> {
       const deadline = Date.now() + Math.max(0, request.timeoutMs);
       while (Date.now() < deadline) {
-        const current = yield* call(() => readAuthorityIn(database, request.collection, request.key));
+        const current = yield* call(() =>
+          readAuthorityIn(database, request.collection, request.key),
+        );
         if (current && BigInt(current.revision) > BigInt(request.afterRevision)) {
           return;
         }

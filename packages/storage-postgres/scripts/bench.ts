@@ -37,7 +37,8 @@ const SCAN_PAGES = 200;
 const PAGE_SIZE = SCAN_TOTAL / 20; // 20 pages of 100
 /** The Docker harness always listens here; override via SWEATPANTS_DATABASE_URL. */
 const connectionString =
-  process.env.SWEATPANTS_DATABASE_URL ?? "postgres://postgres:postgres@127.0.0.1:55432/sweatpants_test";
+  process.env.SWEATPANTS_DATABASE_URL ??
+  "postgres://postgres:postgres@127.0.0.1:55432/sweatpants_test";
 
 // ---- workload value builders (kernel values must decode; these are the
 // canonical encoded forms the repositories produce) ----
@@ -309,12 +310,13 @@ async function benchBackend(
 
   await handle.close();
 
-  const fmt = (s: Series) =>
-    `${s.opsPerSec}/s  p50=${s.p50}ms p95=${s.p95}ms p99=${s.p99}ms`;
+  const fmt = (s: Series) => `${s.opsPerSec}/s  p50=${s.p50}ms p95=${s.p95}ms p99=${s.p99}ms`;
   console.log(`\nbackend: ${name}  (N=${N}, workers=${WORKERS})`);
   console.log(`  cas-commit (apply w/ claim+CAS)   ${fmt(summarize(cas.samples, cas.totalMs))}`);
   console.log(`  read-head                          ${fmt(summarize(read.samples, read.totalMs))}`);
-  console.log(`  immutable-append (ensure only)     ${fmt(summarize(append.samples, append.totalMs))}`);
+  console.log(
+    `  immutable-append (ensure only)     ${fmt(summarize(append.samples, append.totalMs))}`,
+  );
   console.log(
     `  scan full pass (${SCAN_PAGES} pages)         ${fmt(summarize(scan.samples, scan.totalMs))}`,
   );

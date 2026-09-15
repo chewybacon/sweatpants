@@ -7,7 +7,8 @@ import { openPostgresStorage } from "../pg-binding.ts";
 
 /** The Docker harness always listens here; override via SWEATPANTS_DATABASE_URL. */
 const connectionString =
-  process.env.SWEATPANTS_DATABASE_URL ?? "postgres://postgres:postgres@127.0.0.1:55432/sweatpants_test";
+  process.env.SWEATPANTS_DATABASE_URL ??
+  "postgres://postgres:postgres@127.0.0.1:55432/sweatpants_test";
 
 function postgresConversationCase() {
   return {

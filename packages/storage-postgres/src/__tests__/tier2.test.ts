@@ -48,7 +48,10 @@ function headValue(conversationId: string, revision: number): Uint8Array {
   return encodeConversationHead(head);
 }
 
-function receiptValue(conversationId: string, commandId: string): { digest: string; value: Uint8Array } {
+function receiptValue(
+  conversationId: string,
+  commandId: string,
+): { digest: string; value: Uint8Array } {
   const receipt: CommandReceipt = {
     conversationId,
     commandId,

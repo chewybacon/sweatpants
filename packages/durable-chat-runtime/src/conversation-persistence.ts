@@ -699,9 +699,7 @@ export function* preflightConversationCheckpoint(params: {
       `Conversation ${params.conversationId} changed before admission preflight`,
     );
   }
-  const previousCheckpoint = head?.checkpoint
-    ? yield* store.getCheckpoint(head.checkpoint)
-    : null;
+  const previousCheckpoint = head?.checkpoint ? yield* store.getCheckpoint(head.checkpoint) : null;
   const previousHot = (
     previousCheckpoint ? checkpointHotRoots(previousCheckpoint.payload) : []
   ).map((root) => decodePublicProjectionRoot(root));
