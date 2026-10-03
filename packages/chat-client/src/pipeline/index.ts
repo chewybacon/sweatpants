@@ -157,3 +157,4 @@ export {
 export type { Pipeline } from "./runner.ts";
 
 export { createPipeline, composeProcessFns, runPipeline, runPipelineStreaming } from "./runner.ts";
+export { getFrameDocument, type FrameDocument, type MathNode } from "./document.ts";

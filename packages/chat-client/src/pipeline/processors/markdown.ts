@@ -9,7 +9,7 @@
  * - Is idempotent (safe to run multiple times)
  */
 import type { Operation } from "effection";
-import { marked } from "marked";
+import { getFrameDocument, parseFrameDocument, renderFrameDocument } from "../document.ts";
 import type { Frame, Processor } from "../types.ts";
 import { updateBlockById, setBlockRendered, addTrace } from "../frame.ts";
 import { registerBuiltinProcessor } from "../resolver.ts";
@@ -74,14 +74,14 @@ export const markdown: Processor = {
     for (const block of frame.blocks) {
       if (block.type === "text") {
         // For text blocks, render if no HTML yet or still streaming
-        const shouldRender =
-          block.renderPass === "none" || (block.status === "streaming" && block.raw.length > 0);
+        const shouldRender = getFrameDocument(block)?.source !== block.raw;
 
         if (shouldRender) {
-          const rendered = marked.parse(block.raw, { async: false });
+          const document = parseFrameDocument(block);
+          const rendered = renderFrameDocument(document);
 
           currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockRendered(b, rendered, "quick"),
+            setBlockRendered({ ...b, meta: { ...b.meta, document } }, rendered, "quick"),
           );
 
           if (block.renderPass === "none") {
