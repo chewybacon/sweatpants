@@ -56,7 +56,8 @@ const config = defineConfig({
 
   build: {
     rollupOptions: {
-      external: [...externalPackages, ...nodeBuiltins],
+      // Browser renderer imports must become lazy chunks; SSR externals are above.
+      external: ["@earendil-works/pi-ai", ...nodeBuiltins],
     },
   },
 

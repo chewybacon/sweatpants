@@ -1,104 +1,54 @@
-/**
- * shiki/loader.ts
- *
- * Singleton Shiki highlighter with hybrid language loading.
- *
- * Strategy:
- * - Pre-load common languages (JS/TS/Python/JSON/Bash/CSS/HTML) on first use
- * - Lazy-load exotic languages on demand
- * - Returns an Effection Operation for async integration
- *
- * Usage:
- * ```typescript
- * const html = yield* highlightCode(code, 'python')
- * ```
- */
-import { call } from "effection";
-import type { Operation } from "effection";
-import {
-  createHighlighter,
-  type Highlighter,
-  type BundledLanguage,
-  type BundledTheme,
-} from "shiki";
+/** Shiki and its grammars load only when a completed code fence needs them. */
+import { call, type Operation } from "effection";
+import type * as ShikiModule from "shiki";
 
-// Common languages to preload (covers most LLM output)
-const PRELOAD_LANGUAGES: BundledLanguage[] = [
-  "javascript",
-  "typescript",
-  "python",
-  "json",
-  "bash",
-  "css",
-  "html",
-  "markdown",
-  "tsx",
-  "jsx",
-];
+const THEME = "github-dark";
+let library: Promise<typeof ShikiModule> | undefined;
+let loading: Promise<ShikiModule.Highlighter> | undefined;
+let highlighter: ShikiModule.Highlighter | undefined;
+const languageLoads = new Map<string, Promise<void>>();
 
-// Theme to use (dark theme for our slate UI)
-const THEME: BundledTheme = "github-dark";
+function getLibrary(): Promise<typeof ShikiModule> {
+  library ??= import("shiki").catch((error: unknown) => {
+    library = undefined;
+    throw error;
+  });
+  return library;
+}
 
-// Singleton state
-let highlighterPromise: Promise<Highlighter> | null = null;
-let highlighter: Highlighter | null = null;
-const loadedLanguages = new Set<string>();
-
-/**
- * Get the Shiki highlighter, initializing if needed.
- * First call triggers preloading of common languages.
- */
-async function getHighlighter(): Promise<Highlighter> {
-  if (highlighter) {
-    return highlighter;
-  }
-
-  if (!highlighterPromise) {
-    highlighterPromise = createHighlighter({
-      themes: [THEME],
-      langs: PRELOAD_LANGUAGES,
-    }).then((h) => {
-      highlighter = h;
-      PRELOAD_LANGUAGES.forEach((lang) => loadedLanguages.add(lang));
-      return h;
+function getHighlighter(): Promise<ShikiModule.Highlighter> {
+  loading ??= getLibrary()
+    .then((module) =>
+      module.createHighlighter({
+        themes: [THEME],
+        langs: [],
+      }),
+    )
+    .then((instance) => {
+      highlighter = instance;
+      return instance;
+    })
+    .catch((error: unknown) => {
+      loading = undefined;
+      throw error;
     });
-  }
-
-  return highlighterPromise;
+  return loading;
 }
 
-/**
- * Ensure a language is loaded, lazy-loading if necessary.
- */
-async function ensureLanguage(lang: string): Promise<boolean> {
-  const h = await getHighlighter();
-
-  // Already loaded
-  if (loadedLanguages.has(lang)) {
-    return true;
+async function ensureLanguage(instance: ShikiModule.Highlighter, language: string): Promise<void> {
+  if (instance.getLoadedLanguages().includes(language)) {
+    return;
   }
-
-  // Check if it's a valid bundled language
-  const loadedLangs = h.getLoadedLanguages();
-  if (loadedLangs.includes(lang)) {
-    loadedLanguages.add(lang);
-    return true;
+  let pending = languageLoads.get(language);
+  if (!pending) {
+    pending = instance.loadLanguage(language as ShikiModule.BundledLanguage).finally(() => {
+      languageLoads.delete(language);
+    });
+    languageLoads.set(language, pending);
   }
-
-  // Try to load it
-  try {
-    await h.loadLanguage(lang as BundledLanguage);
-    loadedLanguages.add(lang);
-    return true;
-  } catch (e) {
-    console.warn(`Shiki: Failed to load language "${lang}":`, e);
-    return false;
-  }
+  await pending;
 }
 
-/**
- * Map common language aliases to Shiki language IDs.
- */
 function normalizeLanguage(lang: string): string {
   const aliases: Record<string, string> = {
     js: "javascript",
@@ -118,58 +68,37 @@ function normalizeLanguage(lang: string): string {
   return aliases[lang.toLowerCase()] || lang.toLowerCase();
 }
 
-/**
- * Highlight code using Shiki.
- *
- * This is an Effection Operation that:
- * 1. Ensures the highlighter is loaded
- * 2. Lazy-loads the language if needed
- * 3. Returns the highlighted HTML
- *
- * @param code - The code to highlight
- * @param lang - The language identifier
- * @returns HTML string with syntax highlighting
- */
-export function* highlightCode(code: string, lang: string): Operation<string> {
-  const normalizedLang = normalizeLanguage(lang);
-
-  // Get or create highlighter, load language
-  const [h, langLoaded] = yield* call(async () => {
-    const highlighter = await getHighlighter();
-    const loaded = await ensureLanguage(normalizedLang);
-    return [highlighter, loaded] as const;
-  });
-
-  // If language didn't load, fall back to plain text
-  const effectiveLang = langLoaded ? normalizedLang : "text";
-
-  // Highlight!
-  const html = h.codeToHtml(code, {
-    lang: effectiveLang,
-    theme: THEME,
-  });
-
-  return html;
+function plaintext(code: string): string {
+  const escaped = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<pre class="code-block"><code>${escaped}</code></pre>`;
 }
 
-/**
- * Check if the highlighter is ready (for preload status).
- */
+export function* highlightCode(code: string, language: string): Operation<string> {
+  const normalized = normalizeLanguage(language);
+  if (!normalized || normalized === "text") {
+    return plaintext(code);
+  }
+  const module = yield* call(getLibrary);
+  if (!Object.hasOwn(module.bundledLanguages, normalized)) {
+    return plaintext(code);
+  }
+  const instance = yield* call(async () => {
+    const ready = await getHighlighter();
+    await ensureLanguage(ready, normalized);
+    return ready;
+  });
+  return instance.codeToHtml(code, { lang: normalized, theme: THEME });
+}
+
 export function isHighlighterReady(): boolean {
-  return highlighter !== null;
+  return highlighter !== undefined;
 }
 
-/**
- * Preload the highlighter (call on app init for faster first highlight).
- * Returns a promise that resolves when ready.
- */
-export function preloadHighlighter(): Promise<void> {
-  return getHighlighter().then(() => undefined);
+/** Explicit opt-in warmup of the engine and theme. Grammars remain demand-loaded. */
+export async function preloadHighlighter(): Promise<void> {
+  await getHighlighter();
 }
 
-/**
- * Get list of currently loaded languages (for debugging).
- */
 export function getLoadedLanguages(): string[] {
-  return Array.from(loadedLanguages);
+  return highlighter?.getLoadedLanguages() ?? [];
 }

@@ -105,7 +105,7 @@ describe("semantic math in lazy frames", () => {
   });
 
   it("reuses completed math nodes as prose arrives and does no work on push or an empty pull", async () => {
-    const render = vi.spyOn(loader, "renderMathSync");
+    const render = vi.spyOn(loader, "renderMath");
     try {
       const pipeline = createPipeline({ processors: "math" });
       pipeline.push("Start $x^2$\n");

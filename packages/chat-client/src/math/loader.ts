@@ -1,15 +1,26 @@
 import { call, type Operation } from "effection";
-import * as katex from "katex";
+import type * as KatexModule from "katex";
+type Katex = typeof KatexModule;
+let katex: Katex | undefined;
+let loading: Promise<Katex> | undefined;
 
-const katexInstance: typeof katex = katex;
-
-/** KaTeX is statically linked so the headless pipeline has one deterministic module graph. */
-async function initKatex(): Promise<typeof katex> {
-  return katexInstance;
+/** Shared on-demand import; failed loads can be retried by a later render. */
+function initKatex(): Promise<Katex> {
+  loading ??= import("katex").then(
+    (module) => {
+      katex = module;
+      return module;
+    },
+    (error: unknown) => {
+      loading = undefined;
+      throw error;
+    },
+  );
+  return loading;
 }
 
 export function isKatexReady(): boolean {
-  return true;
+  return katex !== undefined;
 }
 
 export function preloadKatex(): Operation<void> {
@@ -40,19 +51,4 @@ export function renderMath(latex: string, displayMode: boolean): Operation<MathR
       } as const;
     }
   });
-}
-
-export function renderMathSync(latex: string, displayMode: boolean): string | null {
-  try {
-    return katexInstance.renderToString(latex, {
-      displayMode,
-      throwOnError: false,
-      errorColor: "#ef4444",
-      trust: false,
-      strict: "warn",
-      output: "html",
-    });
-  } catch {
-    return null;
-  }
 }
