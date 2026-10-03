@@ -1,3 +1,6 @@
+import { createHostScopeOwner, installHostScopeOwner } from "@sweatpants/durable-chat-runtime/host";
+import { installDurableStreamsOwner } from "@sweatpants/durable-chat-runtime/response-streams";
+import type { FetchHandler, ScopedEndpoint } from "@sweatpants/durable-chat-runtime/streaming";
 import {
   call,
   createScope,
@@ -7,9 +10,8 @@ import {
   type Operation,
   type Scope,
 } from "effection";
-import type { FetchHandler, ScopedEndpoint } from "@sweatpants/durable-chat-runtime/streaming";
-import { createHostScopeOwner, installHostScopeOwner } from "@sweatpants/durable-chat-runtime/host";
-import { installDurableStreamsOwner } from "@sweatpants/durable-chat-runtime/response-streams";
+import type { BoundChatEndpoints } from "./chat-endpoints.ts";
+import { createChatRouter, normalizeChatBasePath } from "./chat-router.ts";
 
 export {
   parseTraceContext,
@@ -17,6 +19,7 @@ export {
   type TrustedHttpProjection,
   type TrustedProxyPolicy,
 } from "./enterprise-http.ts";
+export type { DurableChatEndpoints, DurableChatHandlerConfig };
 
 /** Scoped setup context cancelled when the application closes. */
 export interface ChatApplicationSetupContext {
@@ -209,11 +212,12 @@ function createChatApplicationKernel(config: ChatApplicationConfig): ChatApplica
 
 import {
   createDurableChatEndpoints,
+  type ChatHandlerSetup,
   type DurableChatEndpoints,
   type DurableChatHandlerConfig,
   type DurableChatStorageInspection,
-  type ChatHandlerSetup,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
+import { createChatApi, type ChatApi } from "./chat-api.ts";
 
 /** Host ingress factory over route-independent durable chat capabilities. */
 export function createChatEndpoints(config: DurableChatHandlerConfig): DurableChatEndpoints {
@@ -224,7 +228,6 @@ export function createChatEndpoints(config: DurableChatHandlerConfig): DurableCh
 export function createChatHandler(config: DurableChatHandlerConfig) {
   return createChatEndpoints(config).postChat;
 }
-export type { DurableChatEndpoints, DurableChatHandlerConfig };
 
 export {
   chatStorageFromEnv,
@@ -241,12 +244,6 @@ export type {
 
 export { ChatApiError } from "./chat-api.ts";
 export type { ChatApi, ChatApiInput, ChatHistoryPageInput, ChatPostBody } from "./chat-api.ts";
-import {
-  createChatApi,
-  createChatRouter,
-  normalizeChatBasePath,
-  type ChatApi,
-} from "./chat-api.ts";
 
 /** One application owns HTTP routing, direct server calls, and their lifetime. */
 export interface ChatApp {
@@ -306,18 +303,21 @@ export function createChatApp(config: ChatAppConfig): ChatApp {
     ...(shutdownDeadlineMs === undefined ? {} : { shutdownDeadlineMs }),
   });
   let closed = false;
-  const route = createChatRouter(basePath, {
+  const bound: BoundChatEndpoints = {
     postChat: (request) => kernel.handleEndpoint(endpoints.postChat, request),
     readChat: (input) => kernel.handleEndpoint(endpoints.readChat, input),
     pageHistory: (input) => kernel.handleEndpoint(endpoints.pageHistory, input),
-  });
+  };
+  const route = createChatRouter(basePath, bound);
   const handler = async (request: Request): Promise<Response> => {
-    if (closed) throw new ChatApplicationClosedError();
+    if (closed) {
+      throw new ChatApplicationClosedError();
+    }
     return route(request);
   };
   return {
     handler,
-    api: createChatApi(handler, origin.origin, basePath),
+    api: createChatApi(bound, origin.origin, basePath),
     async close() {
       closed = true;
       await kernel.close();

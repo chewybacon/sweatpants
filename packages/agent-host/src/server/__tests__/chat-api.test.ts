@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createContext, ensure, sleep } from "effection";
 import { createChatApp, ChatApiError } from "../index.ts";
-import { createChatApi, createChatRouter } from "../chat-api.ts";
+import { createChatApi } from "../chat-api.ts";
+import { createChatRouter } from "../chat-router.ts";
 
 const identity = {
   name: "server-api-test",
@@ -125,6 +126,64 @@ describe("application HTTP router", () => {
   });
 });
 
+describe("chat endpoint boundaries", () => {
+  it("rejects misplaced commands before chat setup and reads missing conversations without a model", async () => {
+    let chatSetups = 0;
+    const app = createChatApp({
+      ...identity,
+      setup: {
+        chat: function* () {
+          chatSetups++;
+        },
+      },
+    });
+    try {
+      const post = await app.handler(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          body: JSON.stringify({ conversationId: "missing", clientId: "client" }),
+        }),
+      );
+      expect(await post.json()).toMatchObject({
+        code: "invalid_chat_request",
+        message: "POST chat requests require a command",
+      });
+      const command = {
+        type: "send-message",
+        commandId: "00000000-0000-4000-8000-000000000001",
+        messageId: "message",
+        basisRevision: null,
+        issuedAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+      };
+      const read = await app.handler(
+        new Request("http://localhost/api/chat/missing", {
+          method: "POST",
+          body: JSON.stringify({
+            conversationId: "missing",
+            clientId: "client",
+            command,
+            userMessage: { id: "message", role: "user", content: "hi" },
+          }),
+        }),
+      );
+      expect(await read.json()).toMatchObject({
+        code: "invalid_chat_request",
+        message: "Chat read requests cannot carry a command",
+      });
+      expect(chatSetups).toBe(0);
+      const missing = await app.api.readChat({
+        body: { conversationId: "missing", clientId: "client" },
+      });
+      expect(missing.status).toBe(404);
+      expect(await missing.text()).toBe("");
+      expect(chatSetups).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("direct server API", () => {
   it("shares lazy setup, scoped authorization, and cleanup with HTTP", async () => {
     const Context = createContext<string>("api-test");
@@ -207,7 +266,11 @@ describe("direct server API", () => {
       Response.json({ error: "expired" }, { status: 409, headers: { "x-request-id": "r" } }),
     ];
     const handler = vi.fn<() => Promise<Response>>(async () => responses.shift()!);
-    const api = createChatApi(handler, "http://localhost", "/api/chat");
+    const api = createChatApi(
+      { postChat: handler, readChat: handler, pageHistory: handler },
+      "http://localhost",
+      "/api/chat",
+    );
     const input = { body: { conversationId: "a", cursor: "cursor" } };
     expect(await api.pageHistory(input)).toEqual(page);
     const response = await api.pageHistory({ ...input, asResponse: true });
@@ -234,15 +297,25 @@ describe("direct server API", () => {
     );
     let request: Request | undefined;
     const api = createChatApi(
-      async (next) => {
-        request = next;
-        return response;
+      {
+        postChat: async () => {
+          throw new Error("unexpected command");
+        },
+        pageHistory: async () => {
+          throw new Error("unexpected history page");
+        },
+        readChat: async (input) => {
+          request = input.request;
+          expect(input.conversationId).toBe("a");
+          expect(input.knownWindowToken).toBe("window-token");
+          return response;
+        },
       },
       "http://localhost",
       "/api/chat",
     );
     const result = await api.readChat({
-      headers: { authorization: "Bearer credential" },
+      headers: { authorization: "Bearer credential", "x-known-window-token": " window-token " },
       signal: controller.signal,
       body: { conversationId: "a", clientId: "c" },
     });
