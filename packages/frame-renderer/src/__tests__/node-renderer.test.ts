@@ -9,7 +9,7 @@ import {
   mathSyntax,
   type NodeRenderResult,
 } from "../index.ts";
-import * as mathLoader from "../../math/loader.ts";
+import * as mathLoader from "../math/loader.ts";
 
 const citationSyntax = defineInlineSyntax({
   name: "citation",

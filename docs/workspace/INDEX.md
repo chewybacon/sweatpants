@@ -42,6 +42,7 @@ status here. Statuses:
 | `packages/durable-storage-kernel` | library | |
 | `packages/durable-streams` | library | |
 | `packages/foundation` | library | |
+| `packages/frame-renderer` | library | Demand-driven frames and renderer authoring |
 | `packages/history-store` | library | |
 | `packages/journal-authority` | library | |
 | `packages/model-provider` | library | |

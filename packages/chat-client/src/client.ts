@@ -62,13 +62,17 @@ import {
 } from "@sweatpants/chat-core";
 import type { Json } from "@sweatpants/foundation";
 import { createEagerBuffer } from "@sweatpants/foundation/stream";
-import type { PipelineConfig, Processor, ProcessorPreset } from "./pipeline/types.ts";
-import { createPipeline } from "./pipeline/runner.ts";
-import { markdown } from "./pipeline/processors/markdown.ts";
-import { shiki } from "./pipeline/processors/shiki.ts";
-import { mermaid } from "./pipeline/processors/mermaid.ts";
-import { math } from "./pipeline/processors/math.ts";
-import { resolveProcessors } from "./pipeline/resolver.ts";
+import {
+  createPipeline,
+  markdown,
+  shiki,
+  mermaid,
+  math,
+  resolveProcessors,
+  type PipelineConfig,
+  type Processor,
+  type ProcessorPreset,
+} from "@sweatpants/frame-renderer";
 import { overlayLocalParts } from "./local-overlay.ts";
 import { LiveChatCompactor, type LiveCompactorAction } from "./live-compactor.ts";
 

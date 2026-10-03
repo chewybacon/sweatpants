@@ -35,6 +35,7 @@
     "dependencies": {
         "@sweatpants/chat-client": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/frame-renderer": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
         "effection": "catalog:"
     },

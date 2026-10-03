@@ -210,19 +210,6 @@ export interface Frame {
   readonly activeBlockIndex: number | null;
 }
 
-let emptyFrameCounter = 0;
-
-/** Create a framework-neutral empty frame for a newly observed content part. */
-export function emptyFrame(): Frame {
-  return Object.freeze({
-    id: `chat-frame-${++emptyFrameCounter}`,
-    blocks: Object.freeze([]),
-    timestamp: Date.now(),
-    trace: Object.freeze([]),
-    activeBlockIndex: null,
-  });
-}
-
 // =============================================================================
 // Processor Types
 // =============================================================================

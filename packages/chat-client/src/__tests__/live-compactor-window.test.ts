@@ -1,9 +1,8 @@
+import { emptyFrame, type Frame } from "@sweatpants/frame-renderer";
 import { describe, expect, it } from "vitest";
 import { call, run } from "effection";
 import { EventType } from "@ag-ui/core";
 import {
-  emptyFrame,
-  type Frame,
   type FramePipeline,
   type ConversationWindowFrame,
   type FramePipelineFactory,

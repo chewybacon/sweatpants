@@ -496,6 +496,9 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../../packages/foundation
+      '@sweatpants/frame-renderer':
+        specifier: workspace:*
+        version: link:../../packages/frame-renderer
       '@sweatpants/journal-authority':
         specifier: workspace:*
         version: link:../../packages/journal-authority
@@ -1118,21 +1121,12 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      '@sweatpants/frame-renderer':
+        specifier: workspace:*
+        version: link:../frame-renderer
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
-      katex:
-        specifier: ^0.16.27
-        version: 0.16.27
-      marked:
-        specifier: ^17.0.1
-        version: 17.0.1
-      mermaid:
-        specifier: ^11.12.2
-        version: 11.12.2
-      shiki:
-        specifier: ^3.20.0
-        version: 3.21.0
     devDependencies:
       '@ag-ui/core':
         specifier: 0.0.57
@@ -1189,6 +1183,9 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      '@sweatpants/frame-renderer':
+        specifier: workspace:*
+        version: link:../frame-renderer
       '@sweatpants/model-provider':
         specifier: workspace:*
         version: link:../model-provider
@@ -1480,6 +1477,40 @@ importers:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.0)
 
+  packages/frame-renderer:
+    dependencies:
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
+      katex:
+        specifier: ^0.16.27
+        version: 0.16.27
+      marked:
+        specifier: ^17.0.1
+        version: 17.0.1
+      mermaid:
+        specifier: ^11.12.2
+        version: 11.12.2
+      shiki:
+        specifier: ^3.20.0
+        version: 3.21.0
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@types/katex':
+        specifier: ^0.16.7
+        version: 0.16.8
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.0)
+
   packages/history-store:
     dependencies:
       '@sweatpants/durable-storage-kernel':
@@ -1737,6 +1768,9 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      '@sweatpants/frame-renderer':
+        specifier: workspace:*
+        version: link:../frame-renderer
       '@sweatpants/tool-session':
         specifier: workspace:*
         version: link:../tool-session

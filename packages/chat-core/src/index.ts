@@ -198,9 +198,6 @@ export type {
   ServerToolResult,
 } from "./core-types.ts";
 
-// Frame protocol
-export * from "./client/frame.ts";
-
 // Persona resolver
 export type { PersonaResolver, ResolvedPersona } from "./setup-types.ts";
 

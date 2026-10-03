@@ -47,7 +47,7 @@ export type {
 } from "./public-activity.ts";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { ChatContent, ChatContentSource } from "../content.ts";
-import type { Frame } from "./frame.ts";
+import type { Frame } from "@sweatpants/frame-renderer";
 
 /** A generic local part supplied by a frontend adapter. */
 export interface ChatLocalPart {

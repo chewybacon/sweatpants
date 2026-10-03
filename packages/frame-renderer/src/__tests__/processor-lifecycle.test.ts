@@ -1,7 +1,7 @@
 import { run } from "effection";
 import { afterEach, expect, it, vi } from "vitest";
 import { createPipeline } from "../runner.ts";
-import * as mermaidLoader from "../../mermaid/loader.ts";
+import * as mermaidLoader from "../mermaid/loader.ts";
 
 afterEach(() => vi.restoreAllMocks());
 

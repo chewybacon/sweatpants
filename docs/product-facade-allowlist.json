@@ -8,7 +8,7 @@
     "@sweatpants/agent-sdk/tools",
     "@sweatpants/chat-core",
     "@sweatpants/chat-client",
-    "@sweatpants/chat-client/pipeline",
+    "@sweatpants/frame-renderer",
     "@sweatpants/durable-chat-runtime/durable-handler",
     "@sweatpants/durable-chat-runtime/response-streams",
     "@sweatpants/model-provider",

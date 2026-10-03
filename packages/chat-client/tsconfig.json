@@ -9,5 +9,15 @@
     },
     "include": ["src/**/*.ts"],
     "exclude": ["dist", "node_modules", "**/*.test.ts"],
-    "references": [{ "path": "../chat-core" }, { "path": "../foundation" }]
+    "references": [
+        {
+            "path": "../chat-core"
+        },
+        {
+            "path": "../foundation"
+        },
+        {
+            "path": "../frame-renderer"
+        }
+    ]
 }

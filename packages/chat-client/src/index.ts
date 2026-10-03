@@ -126,5 +126,3 @@ export {
   updateTextPartFrame,
 } from "@sweatpants/chat-core";
 export type { ChatProtocolErrorCode, ChatProjectionErrorCode } from "@sweatpants/chat-core";
-
-export * from "./pipeline/index.ts";

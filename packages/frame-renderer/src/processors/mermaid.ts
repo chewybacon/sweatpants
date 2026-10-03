@@ -14,7 +14,7 @@ import {
   renderMermaid,
   preloadMermaid as preloadMermaidLoader,
   isMermaidReady as isMermaidReadyLoader,
-} from "../../mermaid/loader.ts";
+} from "../mermaid/loader.ts";
 import { registerBuiltinProcessor } from "../resolver.ts";
 
 // =============================================================================
@@ -114,7 +114,7 @@ function wrapCodeBlock(html: string, isQuick: boolean): string {
  *
  * @example
  * ```typescript
- * import { mermaid } from '@sweatpants/chat-client/pipeline'
+ * import { mermaid } from '@sweatpants/frame-renderer'
  *
  * useChat({
  *   processors: [mermaid]  // markdown will be auto-added as dependency

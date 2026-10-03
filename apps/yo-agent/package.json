@@ -20,6 +20,7 @@
         "@sweatpants/chat-client": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/frame-renderer": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/tool-runtime": "workspace:*",

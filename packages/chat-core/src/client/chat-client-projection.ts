@@ -2,7 +2,7 @@ import { EventType, type AGUIEvent, type Message } from "@ag-ui/core";
 import { parse as parsePartialJson } from "partial-json";
 import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
 import { decodeChatContent, type ChatContentPart } from "../content.ts";
-import { emptyFrame, type Frame } from "./frame.ts";
+import { emptyFrame, type Frame } from "@sweatpants/frame-renderer";
 import type {
   ActivityDeltaEvent,
   ChatUIActivityPart,
