@@ -20,6 +20,18 @@ Use one pipeline per independent content stream. `push` buffers text synchronous
 
 Built-in presets are `"markdown"`, `"math"`, `"shiki"`, `"mermaid"`, and `"full"`. KaTeX, Shiki, and Mermaid load only when eligible content needs them. Shiki loads requested grammars on demand. Unfinished fences remain source previews; closed fences render when pulled. Mermaid requires a browser. Math inside code remains literal. Browser hosts must include KaTeX's stylesheet and fonts to display math correctly (for example, `import "katex/dist/katex.min.css"` when KaTeX is a direct dependency of the host).
 
+## Publication and lifecycle
+
+`pipeline.frame` always points to the last fully rendered snapshot. A pull builds its next frame privately, then publishes it once all processors finish. Input pushed during that render stays buffered for the next pull. Rendering copies only the parser's small state; it does not reparse the entire document to protect publication.
+
+Only one `pull` or `flush` may execute at a time per pipeline. Overlap throws `PipelineLifecycleError` with `code: "busy"`; await the current operation before requesting another frame. An idle pull returns the published frame unchanged. `hasPending` is true for queued input or an in-flight render; an incomplete line already held by the parser still requires a newline or `flush`.
+
+Cancellation or a thrown renderer error leaves the published frame and parser unchanged and restores consumed input ahead of later arrivals. The next pull can retry it. Processors may therefore execute again and must not rely on exactly-once effects. Effection cancellation remains owned by the calling scope.
+
+`flush` processes the remaining input and publishes the final frame atomically. It rejects pushes while running and after successful completion. If cancelled or failed, it retains input and reopens the stream. `isDone` becomes true only on successful publication; subsequent pulls and flushes return that final frame.
+
+`reset` discards the document, queued input, and all parser state, allowing a new stream immediately. An older render cannot publish into the new document; if its processor returns after reset, the operation throws `PipelineLifecycleError` with `code: "reset"`. Reset invalidates that work but does not cancel its caller-owned scope.
+
 ## Authoring renderers
 
 A fence renderer receives code, language, and fence metadata. The pipeline handles routing, source previews, caching, and diagnostics. A renderer claiming a language takes precedence over Shiki's generic fallback regardless of processor order.

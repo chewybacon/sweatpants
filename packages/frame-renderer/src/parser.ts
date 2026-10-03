@@ -107,16 +107,16 @@ interface ParserState {
  *
  * @internal
  */
-export const createParser: ParserFactory = () => {
-  // State persists across calls
-  const state: ParserState = {
+export const createParser: ParserFactory = () =>
+  parserWithState({
     inFence: false,
     delimiter: "",
     language: "",
     lineBuffer: "",
-  };
+  });
 
-  const parser: Parser = (frame: Frame, chunk: string, ctx: ParseContext): Frame => {
+function parserWithState(state: ParserState): Parser {
+  const parse = (frame: Frame, chunk: string, ctx: ParseContext): Frame => {
     let currentFrame = frame;
 
     // Add chunk to line buffer
@@ -147,8 +147,8 @@ export const createParser: ParserFactory = () => {
     return currentFrame;
   };
 
-  return parser;
-};
+  return Object.assign(parse, { fork: () => parserWithState({ ...state }) });
+}
 
 /**
  * Process a complete line (with trailing newline).

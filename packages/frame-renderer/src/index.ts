@@ -160,7 +160,13 @@ export {
 
 export type { Pipeline } from "./runner.ts";
 
-export { createPipeline, composeProcessFns, runPipeline, runPipelineStreaming } from "./runner.ts";
+export {
+  createPipeline,
+  PipelineLifecycleError,
+  composeProcessFns,
+  runPipeline,
+  runPipelineStreaming,
+} from "./runner.ts";
 export { getFrameNodes, type RenderNode } from "./document.ts";
 export { defineInlineSyntax, defineNodeSyntax } from "./syntax.ts";
 export { defineNodeRenderer } from "./node-renderer.ts";

@@ -42,14 +42,7 @@
  * frame without changing parser or processor semantics.
  */
 import type { Operation } from "effection";
-import type {
-  Frame,
-  Processor,
-  ProcessorPreset,
-  PipelineConfig,
-  ParseContext,
-  ProcessFn,
-} from "./types.ts";
+import type { Frame, Processor, ProcessorPreset, PipelineConfig, ProcessFn } from "./types.ts";
 import { emptyFrame } from "./frame.ts";
 import { createParser } from "./parser.ts";
 import { resolveProcessors } from "./resolver.ts";
@@ -93,13 +86,13 @@ function resolvePreset(preset: ProcessorPreset): readonly Processor[] {
  * This decouples processor cadence from token arrival.
  */
 export interface Pipeline {
-  /** Current frame state (last pulled frame, or empty if never pulled) */
+  /** Last fully published frame. Rendering never exposes partial processor output. */
   readonly frame: Frame;
 
-  /** Whether there's buffered content that hasn't been processed yet */
+  /** Whether input is queued or rendering is in flight. Parser-held partial lines need flush. */
   readonly hasPending: boolean;
 
-  /** Whether the stream has ended (flush was called) */
+  /** True after a flush successfully publishes its final frame. */
   readonly isDone: boolean;
 
   /**
@@ -112,17 +105,22 @@ export interface Pipeline {
    * Pull the next frame by processing all buffered content.
    * Runs parser + all processors on accumulated buffer.
    * Returns the same frame if nothing new was buffered.
+   * Concurrent pull/flush operations throw PipelineLifecycleError with code "busy".
+   * Failed or cancelled rendering retains input for retry; processors may run again.
    */
   pull(): Operation<Frame>;
 
   /**
-   * Signal end of stream and pull final frame.
+   * Signal end of stream and atomically publish the final frame.
+   * Push is rejected while flushing. A failed/cancelled flush reopens input.
    * After this, hasPending will be false and isDone will be true.
    */
   flush(): Operation<Frame>;
 
   /**
-   * Reset the pipeline for a new stream.
+   * Reset all input, parser, and published state for a new stream.
+   * An old render cannot publish; if it resumes, it throws code "reset".
+   * Reset invalidates work but does not cancel its caller-owned Effection scope.
    */
   reset(): void;
 }
@@ -160,107 +158,92 @@ function resolveConfig(config: PipelineConfig): ResolvedConfig {
  * @param config - Pipeline configuration (processors or preset)
  */
 export function createPipeline(config: PipelineConfig): Pipeline {
-  // Resolve config
-  const resolved = resolveConfig(config);
+  const { processFns } = resolveConfig(config);
+  const freshState = () => ({
+    frame: emptyFrame(),
+    parser: createParser(),
+    buffer: "",
+    busy: false,
+    closing: false,
+    done: false,
+  });
+  let state = freshState();
 
-  // Create parser (internal) - maintains fence state across chunks
-  const parser = createParser();
+  function* render(flush: boolean): Operation<Frame> {
+    const owner = state;
+    if (owner.busy) {
+      throw new PipelineLifecycleError("busy", "A pull or flush is already rendering.");
+    }
+    if (owner.done || (!flush && owner.buffer.length === 0)) {
+      return owner.frame;
+    }
 
-  // Get process functions
-  const processFns = resolved.processFns;
+    owner.busy = true;
+    owner.closing = flush;
+    const chunk = owner.buffer;
+    owner.buffer = "";
+    const parser = owner.parser.fork();
+    let committed = false;
+    try {
+      // Back buffer: neither parser state nor partially rendered frames are public.
+      let next = parser(owner.frame, chunk, { flush });
+      if (next !== owner.frame) {
+        for (const process of processFns) {
+          next = yield* process(next);
+          if (state !== owner) {
+            throw new PipelineLifecycleError("reset", "The pipeline was reset during rendering.");
+          }
+        }
+      }
+      owner.parser = parser;
+      owner.frame = next;
+      owner.done = flush;
+      committed = true;
+      return next;
+    } finally {
+      // Cancellation and thrown errors preserve arrival order for the next demand.
+      // A reset discards the old generation, including its failed render's input.
+      if (!committed && state === owner) {
+        owner.buffer = chunk + owner.buffer;
+      }
+      owner.busy = false;
+      owner.closing = false;
+    }
+  }
 
-  // Pipeline state
-  let currentFrame = emptyFrame();
-  let buffer = "";
-  let isDone = false;
-
-  const instance: Pipeline = {
+  return {
     get frame() {
-      return currentFrame;
+      return state.frame;
     },
-
     get hasPending() {
-      return buffer.length > 0;
+      return state.busy || state.buffer.length > 0;
     },
-
     get isDone() {
-      return isDone;
+      return state.done;
     },
-
     push(chunk: string): void {
-      if (isDone) {
-        throw new Error("Cannot push to a finished pipeline. Call reset() first.");
+      if (state.done || state.closing) {
+        throw new Error("Cannot push to a closing or finished pipeline. Call reset() first.");
       }
-      buffer += chunk;
+      state.buffer += chunk;
     },
-
-    *pull(): Operation<Frame> {
-      // Nothing to process
-      if (buffer.length === 0) {
-        return currentFrame;
-      }
-
-      // Step 1: Parse buffered content into block structure
-      const ctx: ParseContext = { flush: false };
-      const chunkToProcess = buffer;
-      buffer = ""; // Clear buffer before processing
-
-      const parsedFrame = parser(currentFrame, chunkToProcess, ctx);
-
-      // If parser changed the frame, run processors
-      if (parsedFrame !== currentFrame) {
-        currentFrame = parsedFrame;
-
-        // Step 2: Run processors in sequence
-        for (const processFn of processFns) {
-          const processedFrame = yield* processFn(currentFrame);
-          if (processedFrame !== currentFrame) {
-            currentFrame = processedFrame;
-          }
-        }
-      }
-
-      return currentFrame;
-    },
-
-    *flush(): Operation<Frame> {
-      if (isDone) {
-        return currentFrame;
-      }
-
-      // Process any remaining buffer first
-      if (buffer.length > 0) {
-        yield* instance.pull();
-      }
-
-      // Parse with flush=true to handle any incomplete content
-      const ctx: ParseContext = { flush: true };
-      const parsedFrame = parser(currentFrame, "", ctx);
-
-      if (parsedFrame !== currentFrame) {
-        currentFrame = parsedFrame;
-
-        // Run processors on flushed frame
-        for (const processFn of processFns) {
-          const processedFrame = yield* processFn(currentFrame);
-          if (processedFrame !== currentFrame) {
-            currentFrame = processedFrame;
-          }
-        }
-      }
-
-      isDone = true;
-      return currentFrame;
-    },
-
+    pull: () => render(false),
+    flush: () => render(true),
     reset(): void {
-      currentFrame = emptyFrame();
-      buffer = "";
-      isDone = false;
+      state = freshState();
     },
   };
+}
 
-  return instance;
+/** Invalid use of a pipeline's rendering lifecycle. */
+export class PipelineLifecycleError extends Error {
+  constructor(
+    readonly code: "busy" | "reset",
+    message: string,
+  ) {
+    super(message);
+    this.name = "PipelineLifecycleError";
+  }
 }
 
 // =============================================================================
