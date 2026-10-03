@@ -9,9 +9,7 @@
  *
  * Only processes code blocks with language="mermaid".
  */
-import type { Operation } from "effection";
-import type { Frame, Processor } from "../types.ts";
-import { updateBlockById, setBlockRendered, addTrace } from "../frame.ts";
+import { defineFenceRenderer } from "../fence-renderer.ts";
 import {
   renderMermaid,
   preloadMermaid as preloadMermaidLoader,
@@ -123,93 +121,26 @@ function wrapCodeBlock(html: string, isQuick: boolean): string {
  * })
  * ```
  */
-export const mermaid: Processor = {
+export const mermaid = defineFenceRenderer({
   name: "mermaid",
   description: "Render Mermaid diagrams",
-
-  // Depends on markdown for basic code block structure
-  dependencies: ["markdown"],
-
+  languages: ["mermaid"],
   *preload() {
     yield* preloadMermaidLoader();
   },
-
   isReady: isMermaidReadyLoader,
-
-  process: function* (frame: Frame): Operation<Frame> {
-    let currentFrame = frame;
-    let changed = false;
-
-    for (const block of frame.blocks) {
-      // Only process mermaid code blocks
-      if (block.type !== "code" || block.language?.toLowerCase() !== "mermaid") {
-        continue;
-      }
-
-      if (block.status === "streaming") {
-        // Streaming: apply quick highlighting
-        if (block.renderPass === "none" || block.renderPass === "quick") {
-          const highlighted = quickHighlightMermaid(block.raw);
-          const rendered = wrapCodeBlock(highlighted, true);
-
-          currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockRendered(b, rendered, "quick"),
-          );
-
-          if (block.renderPass === "none") {
-            currentFrame = addTrace(currentFrame, "mermaid", "update", {
-              blockId: block.id,
-              detail: "quick highlight",
-            });
-          }
-          changed = true;
-        }
-      } else if (block.status === "complete") {
-        // Complete: render the diagram as SVG
-        if (block.renderPass !== "full") {
-          const startTime = Date.now();
-          const result = yield* renderMermaid(block.raw);
-          const durationMs = Date.now() - startTime;
-
-          if (result.success) {
-            currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-              setBlockRendered(b, result.svg, "full"),
-            );
-            currentFrame = addTrace(currentFrame, "mermaid", "update", {
-              blockId: block.id,
-              detail: "rendered SVG",
-              durationMs,
-            });
-            changed = true;
-          } else if (result.error === "Mermaid requires browser environment") {
-            // On server - don't mark as full, let client-side render
-            currentFrame = addTrace(currentFrame, "mermaid", "skip", {
-              blockId: block.id,
-              detail: "skipped on server",
-            });
-            // Don't set changed=true, frame is unchanged
-          } else {
-            // Rendering failed - keep the quick highlighted version
-            // but mark as full so we don't retry
-            currentFrame = updateBlockById(currentFrame, block.id, (b) => ({
-              ...b,
-              renderPass: "full" as const,
-              meta: { ...b.meta, mermaidError: result.error },
-            }));
-            currentFrame = addTrace(currentFrame, "mermaid", "error", {
-              blockId: block.id,
-              detail: `render failed: ${result.error}`,
-              durationMs,
-            });
-            changed = true;
-          }
-        }
-      }
+  preview: ({ code }) => wrapCodeBlock(quickHighlightMermaid(code), true),
+  *render({ code }) {
+    const result = yield* renderMermaid(code);
+    if (result.success) {
+      return result.svg;
     }
-
-    return changed ? currentFrame : frame;
+    return {
+      status: result.error === "Mermaid requires browser environment" ? "unavailable" : "error",
+      reason: result.error,
+    };
   },
-};
+});
 
 // Register as built-in for auto-dependency resolution
 registerBuiltinProcessor("mermaid", () => mermaid);

@@ -126,6 +126,19 @@ export interface Block {
   /** Language identifier for code blocks */
   readonly language?: string;
 
+  /** Raw fence info after the language identifier. */
+  readonly fenceMeta?: string;
+
+  /** Framework-owned presentation cache; renderer authors never update this. */
+  readonly fencePresentation?: {
+    readonly renderer: string;
+    readonly code: string;
+    readonly language: string;
+    readonly meta: string | undefined;
+    readonly status: BlockStatus;
+    readonly error?: string;
+  };
+
   /**
    * Annotations extracted by processors.
    * These don't affect visual rendering but can be consumed by other systems.
@@ -261,6 +274,34 @@ export type ProcessFn = (frame: Frame) => Operation<Frame>;
  * }
  * ```
  */
+/** Content passed to a fence renderer, independent of frame bookkeeping. */
+export interface FenceContent {
+  readonly code: string;
+  readonly language: string;
+  readonly meta?: string;
+}
+
+/** Unavailable keeps source for a later render; errors settle with source and a trace. */
+export type FenceRenderResult =
+  | string
+  | {
+      readonly status: "unavailable" | "error";
+      readonly reason: string;
+    };
+
+export interface FenceRendererDefinition {
+  readonly name: string;
+  /** Specific languages take precedence over the single wildcard fallback. */
+  readonly languages: readonly string[] | "*";
+  readonly description?: string;
+  readonly preload?: () => Operation<void>;
+  readonly isReady?: () => boolean;
+  /** Cheap synchronous HTML preview. Defaults to escaped source. */
+  readonly preview?: (content: FenceContent) => string;
+  /** Called only on demand after a closing fence. Returns trusted rendered HTML. */
+  readonly render: (content: FenceContent) => Operation<FenceRenderResult>;
+}
+
 export interface Processor {
   /**
    * Unique identifier for this processor.
@@ -306,6 +347,9 @@ export interface Processor {
    * Should be stateless - all state lives in the Frame.
    */
   readonly process: ProcessFn;
+
+  /** Declaration used by the resolver to route fenced content. */
+  readonly fenceRenderer?: FenceRendererDefinition;
 }
 
 // =============================================================================

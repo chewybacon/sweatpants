@@ -9,10 +9,8 @@
  *
  * Works on code blocks, enhancing their HTML.
  */
-import type { Operation } from "effection";
 import { call } from "effection";
-import type { Frame, Processor } from "../types.ts";
-import { updateBlockById, setBlockRendered, addTrace } from "../frame.ts";
+import { defineFenceRenderer } from "../fence-renderer.ts";
 import { highlightCode, preloadHighlighter, isHighlighterReady } from "../../shiki/loader.ts";
 import { registerBuiltinProcessor } from "../resolver.ts";
 
@@ -123,7 +121,9 @@ function quickHighlight(code: string, language: string): string {
  * Wrap highlighted code in a pre/code block.
  */
 function wrapCodeBlock(html: string, language: string, isQuick: boolean): string {
-  const langClass = language ? ` language-${language}` : "";
+  const langClass = language
+    ? ` language-${language.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")}`
+    : "";
   const passClass = isQuick ? " quick-highlight" : " shiki-highlight";
   return `<pre class="code-block${passClass}"><code class="${langClass}">${html}</code></pre>`;
 }
@@ -148,75 +148,19 @@ function wrapCodeBlock(html: string, language: string, isQuick: boolean): string
  * })
  * ```
  */
-export const shiki: Processor = {
+export const shiki = defineFenceRenderer({
   name: "shiki",
   description: "Syntax highlighting with Shiki",
-
-  // Depends on markdown for basic code block structure
-  dependencies: ["markdown"],
-
+  languages: "*",
   *preload() {
     yield* call(() => preloadHighlighter());
   },
-
   isReady: isHighlighterReady,
-
-  process: function* (frame: Frame): Operation<Frame> {
-    let currentFrame = frame;
-    let changed = false;
-
-    for (const block of frame.blocks) {
-      // Only process code blocks
-      if (block.type !== "code") {
-        continue;
-      }
-
-      // Skip mermaid blocks (handled by mermaid processor)
-      if (block.language?.toLowerCase() === "mermaid") {
-        continue;
-      }
-
-      if (block.status === "streaming") {
-        // Streaming: apply quick highlighting
-        if (block.renderPass === "none" || block.renderPass === "quick") {
-          const highlighted = quickHighlight(block.raw, block.language || "");
-          const rendered = wrapCodeBlock(highlighted, block.language || "", true);
-
-          currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockRendered(b, rendered, "quick"),
-          );
-
-          if (block.renderPass === "none") {
-            currentFrame = addTrace(currentFrame, "shiki", "update", {
-              blockId: block.id,
-              detail: `quick highlight: ${block.language || "plain"}`,
-            });
-          }
-          changed = true;
-        }
-      } else if (block.status === "complete") {
-        // Complete: apply full Shiki highlighting if not already done
-        if (block.renderPass !== "full") {
-          const startTime = Date.now();
-          const rendered = yield* highlightCode(block.raw, block.language || "");
-          const durationMs = Date.now() - startTime;
-
-          currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockRendered(b, rendered, "full"),
-          );
-          currentFrame = addTrace(currentFrame, "shiki", "update", {
-            blockId: block.id,
-            detail: `full highlight: ${block.language || "plain"}`,
-            durationMs,
-          });
-          changed = true;
-        }
-      }
-    }
-
-    return changed ? currentFrame : frame;
+  preview: ({ code, language }) => wrapCodeBlock(quickHighlight(code, language), language, true),
+  *render({ code, language }) {
+    return yield* highlightCode(code, language);
   },
-};
+});
 
 // Register as built-in for auto-dependency resolution
 registerBuiltinProcessor("shiki", () => shiki);

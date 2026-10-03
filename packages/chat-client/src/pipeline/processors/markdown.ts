@@ -33,7 +33,7 @@ const escapeHtml = (text: string): string =>
  * Wrap code in a pre/code block.
  */
 const wrapCodeBlock = (code: string, language: string): string => {
-  const langClass = language ? ` class="language-${language}"` : "";
+  const langClass = language ? ` class="language-${escapeHtml(language)}"` : "";
   return `<pre><code${langClass}>${escapeHtml(code)}</code></pre>`;
 };
 
@@ -105,7 +105,7 @@ export const markdown: Processor = {
             detail: `escaped code: ${block.language || "plain"}`,
           });
           changed = true;
-        } else if (block.status === "streaming") {
+        } else if (block.status === "streaming" && !block.fencePresentation) {
           // Code block is still streaming - update the escaped output
           const rendered = wrapCodeBlock(block.raw, block.language || "");
 
