@@ -61,6 +61,9 @@ export type {
 
   // Processor types
   Processor,
+  FenceContent,
+  FenceRenderResult,
+  FenceRendererDefinition,
   ProcessFn,
   ProcessorPreset,
 
@@ -158,3 +161,5 @@ export type { Pipeline } from "./runner.ts";
 
 export { createPipeline, composeProcessFns, runPipeline, runPipelineStreaming } from "./runner.ts";
 export { getFrameDocument, type FrameDocument, type MathNode } from "./document.ts";
+
+export { defineFenceRenderer } from "./fence-renderer.ts";

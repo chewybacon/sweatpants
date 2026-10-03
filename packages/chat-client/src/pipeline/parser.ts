@@ -39,19 +39,22 @@ import {
 // =============================================================================
 
 /** Regex to detect fence start: ``` or ~~~ with optional language */
-const FENCE_START = /^(`{3,}|~{3,})(\w*)\s*$/;
+const FENCE_START = /^(`{3,}|~{3,})[ \t]*([^\s`~]*)(?:[ \t]+(.*))?$/;
 
 /** Regex to detect fence end: ``` or ~~~ */
 const FENCE_END = /^(`{3,}|~{3,})\s*$/;
 
 /**
  * Check if a line is a fence start.
- * Returns [delimiter, language] or null.
+ * Returns [delimiter, language, metadata] or null.
  */
-const matchFenceStart = (line: string): [string, string] | null => {
+const matchFenceStart = (line: string): [string, string, string | undefined] | null => {
   const match = line.trim().match(FENCE_START);
   if (match) {
-    return [match[1]!, match[2] || ""];
+    if (match[1]!.startsWith("`") && match[3]?.includes("`")) {
+      return null;
+    }
+    return [match[1]!, match[2] || "", match[3]];
   }
   return null;
 };
@@ -158,7 +161,7 @@ function processLine(frame: Frame, line: string, state: ParserState): Frame {
     const fenceStart = matchFenceStart(lineContent);
 
     if (fenceStart) {
-      const [delimiter, language] = fenceStart;
+      const [delimiter, language, fenceMeta] = fenceStart;
 
       // Complete any current text block
       let currentFrame = completeCurrentTextBlock(frame);
@@ -169,7 +172,10 @@ function processLine(frame: Frame, line: string, state: ParserState): Frame {
       state.language = language;
 
       // Create new code block
-      const codeBlock = createCodeBlock(language, "", "streaming");
+      const codeBlock = {
+        ...createCodeBlock(language, "", "streaming"),
+        ...(fenceMeta !== undefined && { fenceMeta }),
+      };
       currentFrame = addBlock(currentFrame, codeBlock);
       currentFrame = addTrace(currentFrame, "parser", "create", {
         blockId: codeBlock.id,

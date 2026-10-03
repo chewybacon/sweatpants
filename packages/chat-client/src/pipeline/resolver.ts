@@ -12,6 +12,7 @@
  * we no longer need settler negotiation.
  */
 import { type Operation, all as effectionAll } from "effection";
+import { createFenceProcess } from "./fence-renderer.ts";
 import type { Processor, ResolvedProcessors } from "./types.ts";
 
 // =============================================================================
@@ -267,8 +268,29 @@ export function resolveProcessors(processors: readonly Processor[]): ResolvedPro
 
   const { sorted, added } = topologicalSort(processors, true);
 
+  const owners = new Map<string, string>();
+  for (const processor of sorted) {
+    const renderer = processor.fenceRenderer;
+    if (!renderer) {
+      continue;
+    }
+    for (const language of renderer.languages === "*" ? ["*"] : renderer.languages) {
+      const owner = owners.get(language);
+      if (owner !== undefined && owner !== processor.name) {
+        throw new ProcessorResolutionError(
+          `Fence language '${language}' is claimed by '${owner}' and '${processor.name}'`,
+        );
+      }
+      owners.set(language, processor.name);
+    }
+  }
+  const claimed = new Set(owners.keys());
   return {
-    processors: sorted,
+    processors: sorted.map((processor) =>
+      processor.fenceRenderer?.languages === "*"
+        ? { ...processor, process: createFenceProcess(processor.fenceRenderer, claimed) }
+        : processor,
+    ),
     addedDependencies: added,
   };
 }
