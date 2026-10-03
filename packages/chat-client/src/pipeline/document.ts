@@ -1,36 +1,32 @@
-import { Marked, type TokensList } from "marked";
-import type { Block } from "./types.ts";
+import { Marked, type TokensList, type TokenizerAndRendererExtension } from "marked";
+import type { Block, NodeSyntax, SyntaxRule } from "./types.ts";
 
-/** Semantic math source retained inside a frame, before Markdown consumes escapes. */
-export interface MathNode {
-  readonly type: "math";
+/** Framework-owned immutable node snapshot. Application renderers receive only data. */
+export interface RenderNode<T = unknown> {
   readonly id: string;
+  readonly syntax: NodeSyntax<T>;
   readonly raw: string;
-  readonly latex: string;
-  readonly delimiter: "$" | "$$" | "\\(" | "\\[";
-  readonly displayMode: boolean;
+  readonly data: T;
   readonly complete: boolean;
   readonly rendered?: string;
+  readonly settled?: boolean;
+  readonly error?: string;
 }
 
-/** Processor-owned document in Block.meta; tokens retain Markdown nesting and math references. */
+/** Internal Markdown document; parser-specific tokens never reach renderer callbacks. */
 export interface FrameDocument {
   readonly source: string;
   readonly tokens: TokensList;
-  readonly math: readonly MathNode[];
-  readonly mathRendered: boolean;
+  readonly syntaxes: readonly NodeSyntax<unknown>[];
+  readonly nodes: readonly RenderNode[];
 }
 
-interface MathToken extends TokenFields {
-  type: "frameMath";
-  node: number;
-}
-interface TokenFields {
+interface NodeToken {
+  type: string;
   raw: string;
-  latex: string;
-  delimiter: MathNode["delimiter"];
-  displayMode: boolean;
+  data: unknown;
   complete: boolean;
+  node: number;
 }
 
 export function escapeText(text: string): string {
@@ -41,112 +37,111 @@ export function escapeText(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Called by Markdown's lexer, so code spans/fences and link destinations stay opaque. */
-function mathToken(source: string, displayOnly: boolean): MathToken | undefined {
-  const delimiter = (["$$", "\\[", "\\(", "$"] as const).find((open) => source.startsWith(open));
-  if (!delimiter) {
-    return;
+function findStart(source: string, rule: SyntaxRule<unknown>, level: "inline" | "block"): number {
+  if (rule.start) {
+    return rule.start(source);
   }
-  const displayMode = delimiter === "$$" || delimiter === "\\[";
-  if (displayOnly && !displayMode) {
-    return;
-  }
-  // A dollar followed by whitespace is prose/currency, not an opening delimiter.
-  if (delimiter === "$" && (!source[1] || /\s/.test(source[1]))) {
-    return;
-  }
-  const close = delimiter === "\\[" ? "\\]" : delimiter === "\\(" ? "\\)" : delimiter;
-  let end = delimiter.length;
-  let complete = false;
-  for (; end < source.length; end++) {
-    if (!displayMode && source[end] === "\n") {
-      break;
+  // Matchers without a hint still work in the middle of prose. Block rules only
+  // probe line boundaries so code spans cannot become false block boundaries.
+  for (let index = 0; index < source.length; index++) {
+    if (level === "block" && index > 0 && source[index - 1] !== "\n") {
+      continue;
     }
-    if (source.startsWith(close, end)) {
-      complete = true;
-      break;
-    }
-    // Escaped punctuation cannot close a dollar expression.
-    if (source[end] === "\\" && delimiter.startsWith("$")) {
-      end++;
+    if (rule.match(source.slice(index))) {
+      return index;
     }
   }
-  const latexEnd = Math.min(end, source.length);
-  const rawEnd = complete ? end + close.length : latexEnd;
-  return {
-    type: "frameMath",
-    node: -1,
-    raw: source.slice(0, rawEnd),
-    latex: source.slice(delimiter.length, latexEnd),
-    delimiter,
-    displayMode,
-    complete,
-  };
+  return -1;
 }
 
-function parser(render: (token: MathToken) => string): Marked {
-  return new Marked({
-    extensions: [
-      {
-        name: "frameMath",
-        level: "block",
-        // A block boundary is a line boundary, never a delimiter inside a code span.
-        start: (source) => source.search(/^(?:\$\$|\\\[)/m),
-        tokenizer: (source) => mathToken(source, true),
-        renderer: (token) => render(token as MathToken),
-      },
-      {
-        name: "frameMath",
-        level: "inline",
-        start: (source) => source.search(/\$|\\[([]/),
-        tokenizer: (source) => mathToken(source, false),
-        renderer: (token) => render(token as MathToken),
-      },
-    ],
-  });
+function parser(
+  syntaxes: readonly NodeSyntax<unknown>[],
+  render: (token: NodeToken) => string,
+): Marked {
+  const extensions: TokenizerAndRendererExtension[] = [];
+  for (const [index, syntax] of syntaxes.entries()) {
+    for (const level of ["block", "inline"] as const) {
+      const rule = syntax[level];
+      if (!rule) {
+        continue;
+      }
+      const name = `frameNode${index}`;
+      extensions.push({
+        name,
+        level,
+        start: (source) => findStart(source, rule, level),
+        tokenizer(source) {
+          const match = rule.match(source);
+          if (!match) {
+            return undefined;
+          }
+          if (!match.raw || !source.startsWith(match.raw)) {
+            throw new Error(`Syntax '${syntax.name}' must consume a nonempty source prefix`);
+          }
+          return { type: name, ...match, node: -1 };
+        },
+        renderer: (token) => render(token as NodeToken),
+      });
+    }
+  }
+  // Marked tries extensions in reverse registration order. Preserve the author's
+  // processor order as the explicit precedence for overlapping syntax rules.
+  // ES2022 target; this array is newly allocated and private to this parser.
+  // oxlint-disable-next-line unicorn/no-array-reverse
+  return new Marked({ extensions: extensions.reverse() });
 }
 
 export function getFrameDocument(block: Block): FrameDocument | undefined {
   return block.meta?.["document"] as FrameDocument | undefined;
 }
 
-/** Only called on a presentation pull. Previous snapshots and completed math nodes stay immutable. */
-export function parseFrameDocument(block: Block): FrameDocument {
-  const previous = getFrameDocument(block);
-  if (previous?.source === block.raw) {
-    return previous;
-  }
-  const engine = parser((token) => escapeText(token.raw));
-  const tokens = engine.lexer(block.raw);
-  const math: MathNode[] = [];
-  engine.walkTokens(tokens, (token) => {
-    if (token.type !== "frameMath") {
-      return;
-    }
-    const parsed = token as MathToken;
-    parsed.node = math.length;
-    const prior = previous?.math[math.length];
-    math.push(
-      prior?.raw === parsed.raw
-        ? prior
-        : {
-            type: "math",
-            id: `${block.id}:math:${math.length}`,
-            raw: parsed.raw,
-            latex: parsed.latex,
-            delimiter: parsed.delimiter,
-            displayMode: parsed.displayMode,
-            complete: parsed.complete,
-          },
-    );
-  });
-  return { source: block.raw, tokens, math, mathRendered: false };
+/** Inspect nodes with their inferred data type, without exposing Markdown tokens. */
+export function getFrameNodes<T>(block: Block, syntax: NodeSyntax<T>): readonly RenderNode<T>[] {
+  return (getFrameDocument(block)?.nodes.filter((node) => node.syntax === syntax) ??
+    []) as RenderNode<T>[];
 }
 
-/** Both processors render the same document; neither searches or patches another processor's HTML. */
+/** Runs only on presentation demand. Unchanged nodes preserve their cached output. */
+export function parseFrameDocument(
+  block: Block,
+  syntaxes: readonly NodeSyntax<unknown>[],
+): FrameDocument {
+  const previous = getFrameDocument(block);
+  const sameSyntax =
+    previous?.syntaxes.length === syntaxes.length &&
+    previous.syntaxes.every((syntax, index) => syntax === syntaxes[index]);
+  if (sameSyntax && previous.source === block.raw) {
+    return previous;
+  }
+  const engine = parser(syntaxes, (token) => escapeText(token.raw));
+  const tokens = engine.lexer(block.raw);
+  const nodes: RenderNode[] = [];
+  const counts = new Map<string, number>();
+  const priorNodes = new Map(sameSyntax ? previous.nodes.map((node) => [node.id, node]) : []);
+  const tokenSyntaxes = new Map(syntaxes.map((syntax, index) => [`frameNode${index}`, syntax]));
+  engine.walkTokens(tokens, (token) => {
+    const syntax = tokenSyntaxes.get(token.type);
+    if (!syntax) {
+      return;
+    }
+    const parsed = token as NodeToken;
+    const ordinal = counts.get(syntax.name) ?? 0;
+    counts.set(syntax.name, ordinal + 1);
+    const id = `${block.id}:node:${syntax.name}:${ordinal}`;
+    parsed.node = nodes.length;
+    const prior = priorNodes.get(id);
+    nodes.push(
+      prior?.raw === parsed.raw && prior.complete === parsed.complete
+        ? prior
+        : { id, syntax, raw: parsed.raw, data: parsed.data, complete: parsed.complete },
+    );
+  });
+  return { source: block.raw, tokens, syntaxes, nodes };
+}
+
 export function renderFrameDocument(document: FrameDocument): string {
-  return parser((token) => {
-    const node = document.math[token.node]!;
-    return node.rendered ?? escapeText(token.raw);
-  }).parser(document.tokens);
+  return parser(
+    document.syntaxes,
+    (token) => document.nodes[token.node]?.rendered ?? escapeText(token.raw),
+  ).parser(document.tokens);
 }

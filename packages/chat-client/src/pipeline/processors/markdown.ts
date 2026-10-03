@@ -10,7 +10,7 @@
  */
 import type { Operation } from "effection";
 import { getFrameDocument, parseFrameDocument, renderFrameDocument } from "../document.ts";
-import type { Frame, Processor } from "../types.ts";
+import type { Frame, Processor, NodeSyntax, ProcessFn } from "../types.ts";
 import { updateBlockById, setBlockRendered, addTrace } from "../frame.ts";
 import { registerBuiltinProcessor } from "../resolver.ts";
 
@@ -67,17 +67,25 @@ export const markdown: Processor = {
   // No async assets to preload - omit preload field
   isReady: () => true,
 
-  process: function* (frame: Frame): Operation<Frame> {
+  process: createMarkdownProcess([]),
+};
+
+// Register as built-in for auto-dependency resolution
+registerBuiltinProcessor("markdown", () => markdown);
+
+/** @internal Bind syntax to this pipeline, never to a shared Marked instance. */
+export function createMarkdownProcess(syntaxes: readonly NodeSyntax<unknown>[]): ProcessFn {
+  return function* (frame: Frame): Operation<Frame> {
     let currentFrame = frame;
     let changed = false;
 
     for (const block of frame.blocks) {
       if (block.type === "text") {
         // For text blocks, render if no HTML yet or still streaming
-        const shouldRender = getFrameDocument(block)?.source !== block.raw;
+        const document = parseFrameDocument(block, syntaxes);
+        const shouldRender = getFrameDocument(block) !== document;
 
         if (shouldRender) {
-          const document = parseFrameDocument(block);
           const rendered = renderFrameDocument(document);
 
           currentFrame = updateBlockById(currentFrame, block.id, (b) =>
@@ -120,8 +128,5 @@ export const markdown: Processor = {
     }
 
     return changed ? currentFrame : frame;
-  },
-};
-
-// Register as built-in for auto-dependency resolution
-registerBuiltinProcessor("markdown", () => markdown);
+  };
+}
