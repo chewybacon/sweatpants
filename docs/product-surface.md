@@ -23,7 +23,7 @@ Three lanes classify every workspace package:
 | Package / path | Notes |
 |---|---|
 | `@sweatpants/chat-client` | Headless `ChatClient`, optional `ChatRuntime`, transport Ports, reconnect, middleware, and frame pipeline |
-| `@sweatpants/chat-client/pipeline` | Framework-neutral Sweatpants frame pipeline |
+| `@sweatpants/frame-renderer` | Framework-neutral Sweatpants frame pipeline |
 | `@sweatpants/react-chat` | Thin React client facade (`createChatClient`, `createChatRuntime`, `useChat`, `makePlugin`) |
 | `destination domain packages` **product entries** | Dual-nature (see below). Product import paths: `/server`, `/chat`, `/chat/mcp-tools`, `/chat/durable-streams`; `/chat` owns `defineChatProgram`, while `/server` owns explicit agent serving profiles and connectivity |
 | `@sweatpants/agent-sdk` **authoring surface** | `createTool`, content-addressed resources/guidance, `defineAgent`, advertised capabilities, and portable manifest types (`.` / `/tool` / `/tools`) |

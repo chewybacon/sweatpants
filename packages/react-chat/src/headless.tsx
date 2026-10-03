@@ -26,7 +26,7 @@ import {
   type ChatSchedulerDriver,
   ChatSchedulerPort,
 } from "@sweatpants/chat-client";
-import type { PipelineConfig } from "@sweatpants/chat-client/pipeline";
+import type { PipelineConfig } from "@sweatpants/frame-renderer";
 import type { Json } from "@sweatpants/foundation";
 import type { ClientPlugin } from "@sweatpants/tool-session/mcp";
 import type { ReactElicitCapabilities } from "./plugin.ts";

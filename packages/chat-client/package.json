@@ -1,7 +1,7 @@
 {
     "name": "@sweatpants/chat-client",
     "version": "0.1.0",
-    "description": "Headless Sweatpants chat client, runtime, transport ports, and frame pipeline",
+    "description": "Headless Sweatpants chat client, runtime, and transport ports",
     "license": "MIT",
     "files": [
         "dist",
@@ -23,21 +23,6 @@
                 "default": "./dist/index.cjs"
             },
             "default": "./src/index.ts"
-        },
-        "./pipeline": {
-            "development": {
-                "import": "./src/pipeline/index.ts",
-                "types": "./src/pipeline/index.ts"
-            },
-            "import": {
-                "types": "./dist/pipeline/index.d.ts",
-                "default": "./dist/pipeline.js"
-            },
-            "require": {
-                "types": "./dist/pipeline/index.d.ts",
-                "default": "./dist/pipeline.cjs"
-            },
-            "default": "./src/pipeline/index.ts"
         },
         "./http": {
             "development": {
@@ -80,11 +65,8 @@
     "dependencies": {
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
-        "effection": "catalog:",
-        "katex": "^0.16.27",
-        "marked": "^17.0.1",
-        "mermaid": "^11.12.2",
-        "shiki": "^3.20.0"
+        "@sweatpants/frame-renderer": "workspace:*",
+        "effection": "catalog:"
     },
     "devDependencies": {
         "@ag-ui/core": "0.0.57",

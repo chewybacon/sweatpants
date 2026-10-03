@@ -18,6 +18,9 @@
         },
         {
             "path": "../../packages/tool-runtime-local/tsconfig.json"
+        },
+        {
+            "path": "../../packages/frame-renderer"
         }
     ]
 }

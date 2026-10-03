@@ -8,7 +8,7 @@
  */
 import React from "react";
 import { Box, Text } from "ink";
-import type { Frame, Block } from "@sweatpants/chat-client/pipeline";
+import type { Frame, Block } from "@sweatpants/frame-renderer";
 
 // =============================================================================
 // Block Renderer

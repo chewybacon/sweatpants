@@ -4,7 +4,7 @@ import {
   renderMath,
   preloadKatex as preloadKatexLoader,
   isKatexReady as isKatexReadyLoader,
-} from "../../math/loader.ts";
+} from "../math/loader.ts";
 import { registerBuiltinProcessor } from "../resolver.ts";
 
 export const math = defineNodeRenderer({

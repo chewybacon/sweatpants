@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createPipeline } from "../runner.ts";
 import { getFrameNodes } from "../document.ts";
 import { mathSyntax } from "../math-syntax.ts";
-import * as loader from "../../math/loader.ts";
+import * as loader from "../math/loader.ts";
 
 const source = String.raw`Inline $E=mc^2$, parentheses \(a^2+b^2=c^2\).
 

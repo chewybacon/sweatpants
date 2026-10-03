@@ -9,5 +9,15 @@
     },
     "include": ["src/**/*.ts"],
     "exclude": ["dist", "node_modules", "**/*.test.ts"],
-    "references": [{ "path": "../agent-sdk" }, { "path": "../foundation" }]
+    "references": [
+        {
+            "path": "../agent-sdk"
+        },
+        {
+            "path": "../foundation"
+        },
+        {
+            "path": "../frame-renderer"
+        }
+    ]
 }

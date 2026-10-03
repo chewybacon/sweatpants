@@ -20,40 +20,19 @@ it("does not import heavy engines for full-pipeline startup, prose or open fence
   vi.doMock("shiki", shiki);
   vi.doMock("mermaid", mermaid);
   const { createPipeline } = await import("../index.ts");
-  const { createChatClient } = await import("../../index.ts");
-  const client = createChatClient({
-    pipeline: "full",
-    initialConversation: "new",
-    connection: {
-      *sendMessages() {
-        throw new Error("No transport requests expected");
-      },
-      *reconnectToStream() {
-        return null;
-      },
-      *disconnect() {},
-    },
-  });
-  try {
-    await client.initialized;
-    expect(client.getSnapshot().renderStatus).toBe("ready");
-    expect(client.getSnapshot().canSendMessage).toBe(true);
-    for (const content of [
-      "Just **prose**.\n",
-      "```typescript\nlet value = 1;\n",
-      "```mermaid\ngraph TD\n",
-      "$$x\n",
-    ]) {
-      const pipeline = createPipeline({ processors: "full" });
-      pipeline.push(content);
-      await run(() => pipeline.flush());
-    }
-    expect(katex).not.toHaveBeenCalled();
-    expect(shiki).not.toHaveBeenCalled();
-    expect(mermaid).not.toHaveBeenCalled();
-  } finally {
-    await client.close();
+  for (const content of [
+    "Just **prose**.\n",
+    "```typescript\nlet value = 1;\n",
+    "```mermaid\ngraph TD\n",
+    "$$x\n",
+  ]) {
+    const pipeline = createPipeline({ processors: "full" });
+    pipeline.push(content);
+    await run(() => pipeline.flush());
   }
+  expect(katex).not.toHaveBeenCalled();
+  expect(shiki).not.toHaveBeenCalled();
+  expect(mermaid).not.toHaveBeenCalled();
 });
 
 it("shares one KaTeX import across concurrent pulls and still supports explicit preloading", async () => {
@@ -92,7 +71,7 @@ it("loads only requested Shiki grammars and coalesces concurrent language loads"
     bundledLanguages: { typescript: {}, python: {} },
   }));
   vi.doMock("shiki", imported);
-  const { highlightCode } = await import("../../shiki/loader.ts");
+  const { highlightCode } = await import("../shiki/loader.ts");
   expect(await run(() => highlightCode("<plain>", "text"))).toContain("&lt;plain&gt;");
   expect(imported).not.toHaveBeenCalled();
   await Promise.all([
@@ -115,7 +94,7 @@ it("does not import Mermaid on the server", async () => {
   vi.resetModules();
   const imported = vi.fn(() => ({}));
   vi.doMock("mermaid", imported);
-  const { renderMermaid, preloadMermaid } = await import("../../mermaid/loader.ts");
+  const { renderMermaid, preloadMermaid } = await import("../mermaid/loader.ts");
   await run(() => preloadMermaid());
   expect(await run(() => renderMermaid("graph TD\nA-->B"))).toEqual({
     success: false,
@@ -137,7 +116,7 @@ it("imports and initializes Mermaid once when a browser first needs a diagram", 
     },
   }));
   vi.doMock("mermaid", imported);
-  const { renderMermaid, isMermaidReady } = await import("../../mermaid/loader.ts");
+  const { renderMermaid, isMermaidReady } = await import("../mermaid/loader.ts");
   expect(isMermaidReady()).toBe(false);
   expect(imported).not.toHaveBeenCalled();
   const results = await Promise.all([
@@ -179,7 +158,7 @@ it("allows a later Shiki request to retry failed initialization", async () => {
       codeToHtml: () => '<pre class="shiki">recovered</pre>',
     });
   vi.doMock("shiki", () => ({ createHighlighter, bundledLanguages: { typescript: {} } }));
-  const { highlightCode } = await import("../../shiki/loader.ts");
+  const { highlightCode } = await import("../shiki/loader.ts");
   await expect(run(() => highlightCode("const x = 1", "ts"))).rejects.toThrow(
     "Engine initialization failed",
   );

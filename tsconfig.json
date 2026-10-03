@@ -76,6 +76,9 @@
         },
         {
             "path": "./packages/vite-plugin"
+        },
+        {
+            "path": "./packages/frame-renderer"
         }
     ],
     "files": []

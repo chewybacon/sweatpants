@@ -11,7 +11,7 @@
  */
 import { call } from "effection";
 import { defineFenceRenderer } from "../fence-renderer.ts";
-import { highlightCode, preloadHighlighter, isHighlighterReady } from "../../shiki/loader.ts";
+import { highlightCode, preloadHighlighter, isHighlighterReady } from "../shiki/loader.ts";
 import { registerBuiltinProcessor } from "../resolver.ts";
 
 // =============================================================================
@@ -141,7 +141,7 @@ function wrapCodeBlock(html: string, language: string, isQuick: boolean): string
  *
  * @example
  * ```typescript
- * import { shiki } from '@sweatpants/chat-client/pipeline'
+ * import { shiki } from '@sweatpants/frame-renderer'
  *
  * useChat({
  *   processors: [shiki]  // markdown will be auto-added as dependency

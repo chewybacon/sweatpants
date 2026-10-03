@@ -1,7 +1,7 @@
 {
     "name": "@sweatpants/chat-core",
     "version": "0.1.0",
-    "description": "Framework-neutral chat types, codecs, projection, frames, and authoring",
+    "description": "Framework-neutral chat types, codecs, projection, and authoring",
     "license": "MIT",
     "files": [
         "dist",
@@ -65,6 +65,7 @@
         "@sweatpants/durable-effects": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/frame-renderer": "workspace:*",
         "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/tool-runtime": "workspace:*",
         "effection": "catalog:",

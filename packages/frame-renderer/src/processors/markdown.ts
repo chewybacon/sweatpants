@@ -50,7 +50,7 @@ const wrapCodeBlock = (code: string, language: string): string => {
  *
  * @example
  * ```typescript
- * import { markdown } from '@sweatpants/chat-client/pipeline'
+ * import { markdown } from '@sweatpants/frame-renderer'
  *
  * useChat({
  *   processors: [markdown]

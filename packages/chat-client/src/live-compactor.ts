@@ -1,3 +1,4 @@
+import type { Frame } from "@sweatpants/frame-renderer";
 import { EventType, type Message } from "@ag-ui/core";
 import type { Operation } from "effection";
 import {
@@ -24,7 +25,6 @@ import {
   type PublicHistoryPage,
   type PublicProjectionRoot,
   type PublicRootProjectionNote,
-  type Frame,
   type FramePipeline,
   type FramePipelineFactory,
 } from "@sweatpants/chat-core";

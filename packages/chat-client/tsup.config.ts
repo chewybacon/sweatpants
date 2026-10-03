@@ -3,7 +3,6 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
-    pipeline: "src/pipeline/index.ts",
     http: "src/http.ts",
     ports: "src/ports.ts",
   },
@@ -13,7 +12,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   minify: false,
-  external: ["effection", "marked", "shiki", "mermaid", "katex", "tailwind-merge"],
+  external: ["effection", "@sweatpants/frame-renderer"],
   treeshake: true,
   skipNodeModulesBundle: true,
 });

@@ -49,13 +49,14 @@ export const resetIdCounters = (): void => {
 /**
  * Create an empty frame (starting point for a new stream).
  */
-export const emptyFrame = (): Frame => ({
-  id: generateFrameId(),
-  blocks: [],
-  timestamp: Date.now(),
-  trace: [],
-  activeBlockIndex: null,
-});
+export const emptyFrame = (): Frame =>
+  Object.freeze({
+    id: generateFrameId(),
+    blocks: Object.freeze([]),
+    timestamp: Date.now(),
+    trace: Object.freeze([]),
+    activeBlockIndex: null,
+  });
 
 /**
  * Create a new frame from an existing frame with updates.

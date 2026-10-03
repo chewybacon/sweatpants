@@ -26,17 +26,13 @@
  * ## Example
  *
  * ```typescript
- * import { markdown, shiki, mermaid } from '@sweatpants/chat-client/pipeline'
+ * import { createPipeline, markdown, math } from '@sweatpants/frame-renderer'
  *
- * // Simple - just list processors, dependencies auto-resolved
- * useChat({
- *   processors: [markdown, shiki, mermaid]
- * })
- *
- * // Or use a preset
- * useChat({
- *   processors: 'full'  // = [markdown, shiki, mermaid, math]
- * })
+ * const pipeline = createPipeline({ processors: [markdown, math] })
+ * pipeline.push('Hello **world**.\n') // buffers without rendering
+ * const frame = yield* pipeline.pull() // consumer decides when to render
+ * pipeline.push('More content')
+ * const finalFrame = yield* pipeline.flush() // settles the remaining text
  * ```
  */
 
