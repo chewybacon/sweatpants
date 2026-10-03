@@ -1,50 +1,58 @@
 import { call, type Operation } from "effection";
-import mermaid from "mermaid";
+import type MermaidModule from "mermaid";
+type Mermaid = typeof MermaidModule;
+let mermaid: Mermaid | undefined;
+let loading: Promise<Mermaid> | undefined;
 
-let initialized = false;
 let idCounter = 0;
 const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
 
-function initializeMermaid(): typeof mermaid | null {
+async function initializeMermaid(): Promise<Mermaid | null> {
   if (!isBrowser) {
     return null;
   }
-  if (!initialized) {
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: "dark",
-      securityLevel: "strict",
-      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-      flowchart: { htmlLabels: true, curve: "basis" },
-      sequence: { diagramMarginX: 10, diagramMarginY: 10 },
-      themeVariables: {
-        primaryColor: "#3b82f6",
-        primaryTextColor: "#f8fafc",
-        primaryBorderColor: "#60a5fa",
-        lineColor: "#94a3b8",
-        secondaryColor: "#1e293b",
-        tertiaryColor: "#334155",
-        background: "#0f172a",
-        mainBkg: "#1e293b",
-        nodeBorder: "#60a5fa",
-        clusterBkg: "#1e293b",
-        clusterBorder: "#475569",
-        titleColor: "#f8fafc",
-        edgeLabelBackground: "#1e293b",
-      },
+  loading ??= import("mermaid")
+    .then(({ default: module }) => {
+      module.initialize({
+        startOnLoad: false,
+        theme: "dark",
+        securityLevel: "strict",
+        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+        flowchart: { htmlLabels: true, curve: "basis" },
+        sequence: { diagramMarginX: 10, diagramMarginY: 10 },
+        themeVariables: {
+          primaryColor: "#3b82f6",
+          primaryTextColor: "#f8fafc",
+          primaryBorderColor: "#60a5fa",
+          lineColor: "#94a3b8",
+          secondaryColor: "#1e293b",
+          tertiaryColor: "#334155",
+          background: "#0f172a",
+          mainBkg: "#1e293b",
+          nodeBorder: "#60a5fa",
+          clusterBkg: "#1e293b",
+          clusterBorder: "#475569",
+          titleColor: "#f8fafc",
+          edgeLabelBackground: "#1e293b",
+        },
+      });
+      mermaid = module;
+      return module;
+    })
+    .catch((error: unknown) => {
+      loading = undefined;
+      throw error;
     });
-    initialized = true;
-  }
-  return mermaid;
+  return loading;
 }
 
 export function isMermaidReady(): boolean {
-  return !isBrowser || initialized;
+  return !isBrowser || mermaid !== undefined;
 }
 
 export function preloadMermaid(): Operation<void> {
-  return call(() => {
-    initializeMermaid();
+  return call(async () => {
+    await initializeMermaid();
   });
 }
 
@@ -55,7 +63,7 @@ export type MermaidRenderResult =
 export function renderMermaid(code: string): Operation<MermaidRenderResult> {
   return call(async () => {
     try {
-      const module = initializeMermaid();
+      const module = await initializeMermaid();
       if (!module) {
         return { success: false, error: "Mermaid requires browser environment" };
       }

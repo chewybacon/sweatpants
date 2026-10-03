@@ -21,7 +21,7 @@ const citationSyntax = defineInlineSyntax({
 
 it("renders typed citations and math on demand, preserving completed nodes and prior frames", async () => {
   const calls: string[] = [];
-  const renderMath = vi.spyOn(mathLoader, "renderMathSync");
+  const renderMath = vi.spyOn(mathLoader, "renderMath");
   try {
     const citations = defineNodeRenderer({
       name: "citations",

@@ -367,8 +367,8 @@ export interface Processor {
   /**
    * Preload async assets (highlighters, renderers, etc.)
    *
-   * Called eagerly when the pipeline is initialized.
-   * Runs in parallel with other processor preloads.
+   * Explicit opt-in via preloadProcessors; client startup does not load assets.
+   * Built-in renderers load their assets on first rendering demand.
    */
   readonly preload?: () => Operation<void>;
 

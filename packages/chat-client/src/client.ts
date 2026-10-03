@@ -68,7 +68,7 @@ import { markdown } from "./pipeline/processors/markdown.ts";
 import { shiki } from "./pipeline/processors/shiki.ts";
 import { mermaid } from "./pipeline/processors/mermaid.ts";
 import { math } from "./pipeline/processors/math.ts";
-import { resolveProcessors, preloadProcessors } from "./pipeline/resolver.ts";
+import { resolveProcessors } from "./pipeline/resolver.ts";
 import { overlayLocalParts } from "./local-overlay.ts";
 import { LiveChatCompactor, type LiveCompactorAction } from "./live-compactor.ts";
 
@@ -767,14 +767,14 @@ class ChatClientController<
     try {
       const processors = pipelineProcessors(this.options.pipeline);
       if (processors) {
-        yield* preloadProcessors(resolveProcessors(processors).processors);
+        resolveProcessors(processors);
       }
       this.publish({ renderStatus: "ready" });
     } catch (error) {
       const failure = asChatClientError(
         error,
         "chat_pipeline_failed",
-        "Chat pipeline preload failed",
+        "Chat pipeline configuration failed",
       );
       this.publish({ renderStatus: "error", error: failure });
     }

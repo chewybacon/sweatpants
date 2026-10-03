@@ -1,7 +1,7 @@
 import { defineNodeRenderer } from "../node-renderer.ts";
 import { mathSyntax } from "../math-syntax.ts";
 import {
-  renderMathSync,
+  renderMath,
   preloadKatex as preloadKatexLoader,
   isKatexReady as isKatexReadyLoader,
 } from "../../math/loader.ts";
@@ -14,11 +14,11 @@ export const math = defineNodeRenderer({
   preload: preloadKatexLoader,
   isReady: isKatexReadyLoader,
   *render({ latex, displayMode }) {
-    const html = renderMathSync(latex, displayMode);
-    if (html === null) {
-      return { status: "error", reason: "KaTeX could not render expression" };
+    const result = yield* renderMath(latex, displayMode);
+    if (!result.success) {
+      return { status: "error", reason: result.error };
     }
-    return `<span class="${displayMode ? "math-block" : "math-inline"}">${html}</span>`;
+    return `<span class="${displayMode ? "math-block" : "math-inline"}">${result.html}</span>`;
   },
 });
 
