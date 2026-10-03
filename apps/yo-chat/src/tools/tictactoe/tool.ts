@@ -306,7 +306,7 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
       winner: clientResult.winner,
       board: clientResult.board,
       boardDisplay: clientResult.boardDisplay,
-      winningLine: clientResult.winningLine,
+      ...(clientResult.winningLine ? { winningLine: clientResult.winningLine } : {}),
       message:
         clientResult.status === "draw"
           ? "The game ended in a draw!"
