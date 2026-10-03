@@ -1,7 +1,8 @@
 import { run } from "effection";
 import { describe, expect, it, vi } from "vitest";
 import { createPipeline } from "../runner.ts";
-import { getFrameDocument } from "../document.ts";
+import { getFrameNodes } from "../document.ts";
+import { mathSyntax } from "../math-syntax.ts";
 import * as loader from "../../math/loader.ts";
 
 const source = String.raw`Inline $E=mc^2$, parentheses \(a^2+b^2=c^2\).
@@ -23,7 +24,7 @@ describe("semantic math in lazy frames", () => {
     const block = frame.blocks[0]!;
     expect(block.rendered).toContain("a|b");
     expect(block.rendered.match(/class="katex"/g)).toHaveLength(2);
-    expect(getFrameDocument(block)?.math.map((node) => node.latex)).toEqual(["x", "y"]);
+    expect(getFrameNodes(block, mathSyntax).map((node) => node.data.latex)).toEqual(["x", "y"]);
   });
 
   it("does not split inline code at display delimiters or treat link destinations as math", async () => {
@@ -34,8 +35,8 @@ describe("semantic math in lazy frames", () => {
     const block = frame.blocks[0]!;
     expect(block.rendered).toContain("<code>$$x^2$$</code>");
     expect(block.rendered).toContain("<code>\\[x\\]</code>");
-    expect(getFrameDocument(block)?.math).toMatchObject([{ raw: "$x$" }]);
-    expect(getFrameDocument(block)?.math).toHaveLength(1);
+    expect(getFrameNodes(block, mathSyntax)).toMatchObject([{ raw: "$x$" }]);
+    expect(getFrameNodes(block, mathSyntax)).toHaveLength(1);
   });
 
   it("is independent of transport chunk boundaries", async () => {
@@ -77,9 +78,9 @@ describe("semantic math in lazy frames", () => {
     expect(pipeline.frame.blocks).toHaveLength(0);
     const frame = await run(() => pipeline.flush());
     const html = frame.blocks.map((block) => block.rendered).join("");
-    const nodes = frame.blocks.flatMap((block) => getFrameDocument(block)?.math ?? []);
-    expect(nodes.map((node) => node.delimiter)).toEqual(["$", "\\(", "$$", "\\["]);
-    expect(nodes[2]?.latex).toContain(String.raw`x^2\,dx`);
+    const nodes = frame.blocks.flatMap((block) => getFrameNodes(block, mathSyntax));
+    expect(nodes.map((node) => node.data.delimiter)).toEqual(["$", "\\(", "$$", "\\["]);
+    expect(nodes[2]?.data.latex).toContain(String.raw`x^2\,dx`);
     expect(html.match(/class="katex"/g)).toHaveLength(4);
     expect(html.match(/class="katex-display"/g)).toHaveLength(2);
     expect(html).not.toContain("katex-error");
@@ -89,12 +90,12 @@ describe("semantic math in lazy frames", () => {
     const streamed = createPipeline({ processors: "math" });
     streamed.push("Value\n" + String.raw`\[\frac{1}` + "\n");
     const provisional = await run(() => streamed.pull());
-    const provisionalNode = getFrameDocument(provisional.blocks[0]!)?.math[0];
+    const provisionalNode = getFrameNodes(provisional.blocks[0]!, mathSyntax)[0];
     expect(provisionalNode?.complete).toBe(false);
     expect(provisionalNode?.rendered).toBeUndefined();
     streamed.push(String.raw`{2}\]`);
     const completed = await run(() => streamed.flush());
-    expect(getFrameDocument(completed.blocks[0]!)?.math[0]?.complete).toBe(true);
+    expect(getFrameNodes(completed.blocks[0]!, mathSyntax)[0]?.complete).toBe(true);
     expect(provisionalNode?.complete).toBe(false);
 
     const batched = createPipeline({ processors: "math" });
@@ -110,11 +111,11 @@ describe("semantic math in lazy frames", () => {
       pipeline.push("Start $x^2$\n");
       expect(render).not.toHaveBeenCalled();
       const first = await run(() => pipeline.pull());
-      const node = getFrameDocument(first.blocks[0]!)?.math[0];
+      const node = getFrameNodes(first.blocks[0]!, mathSyntax)[0];
       expect(render).toHaveBeenCalledTimes(1);
       pipeline.push("more **prose**\n");
       const next = await run(() => pipeline.pull());
-      expect(getFrameDocument(next.blocks[0]!)?.math[0]).toBe(node);
+      expect(getFrameNodes(next.blocks[0]!, mathSyntax)[0]).toBe(node);
       expect(render).toHaveBeenCalledTimes(1);
       expect(next.blocks[0]?.rendered).toContain("<strong>prose</strong>");
       expect(await run(() => pipeline.pull())).toBe(next);
@@ -134,7 +135,7 @@ $$x^2$$
 `.replace(/\\`/g, "`"),
     );
     const frame = await run(() => pipeline.flush());
-    expect(frame.blocks.flatMap((block) => getFrameDocument(block)?.math ?? [])).toHaveLength(0);
+    expect(frame.blocks.flatMap((block) => getFrameNodes(block, mathSyntax))).toHaveLength(0);
     expect(frame.blocks.map((block) => block.rendered).join("")).not.toContain('class="katex"');
   });
 });

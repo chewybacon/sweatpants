@@ -302,6 +302,45 @@ export interface FenceRendererDefinition {
   readonly render: (content: FenceContent) => Operation<FenceRenderResult>;
 }
 
+/** A syntax match consumes a nonempty prefix of the supplied Markdown text. */
+export interface SyntaxMatch<T> {
+  readonly raw: string;
+  readonly data: T;
+  readonly complete: boolean;
+}
+
+export interface SyntaxRule<T> {
+  readonly match: (source: string) => SyntaxMatch<T> | null;
+  /** Optional acceleration: index of the next possible match, or -1. */
+  readonly start?: (source: string) => number;
+}
+
+/** Pure syntax declaration. Matchers must depend only on their source text. */
+export interface NodeSyntax<T> {
+  readonly name: string;
+  readonly inline?: SyntaxRule<T>;
+  readonly block?: SyntaxRule<T>;
+}
+
+export interface NodeRendererDefinition<T> {
+  readonly name: string;
+  readonly syntax: NodeSyntax<T>;
+  readonly description?: string;
+  readonly preload?: () => Operation<void>;
+  readonly isReady?: () => boolean;
+  /** Cheap HTML for an incomplete match. Defaults to escaped source. */
+  readonly preview?: (data: T) => string;
+  /** Render completed nodes on demand. Output is trusted HTML. */
+  readonly render: (data: T) => Operation<NodeRenderResult>;
+}
+
+export type NodeRenderResult =
+  | string
+  | {
+      readonly status: "unavailable" | "error";
+      readonly reason: string;
+    };
+
 export interface Processor {
   /**
    * Unique identifier for this processor.
@@ -350,6 +389,9 @@ export interface Processor {
 
   /** Declaration used by the resolver to route fenced content. */
   readonly fenceRenderer?: FenceRendererDefinition;
+
+  /** Type-erased binding created by defineNodeRenderer; scoped to a pipeline. */
+  readonly nodeRenderer?: NodeRendererDefinition<unknown>;
 }
 
 // =============================================================================

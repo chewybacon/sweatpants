@@ -268,6 +268,20 @@ export function resolveProcessors(processors: readonly Processor[]): ResolvedPro
 
   const { sorted, added } = topologicalSort(processors, true);
 
+  const syntaxOwners = new Map<string, string>();
+  for (const processor of sorted) {
+    const syntax = processor.nodeRenderer?.syntax;
+    if (!syntax) {
+      continue;
+    }
+    const owner = syntaxOwners.get(syntax.name);
+    if (owner !== undefined) {
+      throw new ProcessorResolutionError(
+        `Node syntax '${syntax.name}' is claimed by '${owner}' and '${processor.name}'`,
+      );
+    }
+    syntaxOwners.set(syntax.name, processor.name);
+  }
   const owners = new Map<string, string>();
   for (const processor of sorted) {
     const renderer = processor.fenceRenderer;

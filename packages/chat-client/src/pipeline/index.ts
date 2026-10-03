@@ -61,6 +61,11 @@ export type {
 
   // Processor types
   Processor,
+  NodeSyntax,
+  SyntaxRule,
+  SyntaxMatch,
+  NodeRendererDefinition,
+  NodeRenderResult,
   FenceContent,
   FenceRenderResult,
   FenceRendererDefinition,
@@ -160,6 +165,9 @@ export {
 export type { Pipeline } from "./runner.ts";
 
 export { createPipeline, composeProcessFns, runPipeline, runPipelineStreaming } from "./runner.ts";
-export { getFrameDocument, type FrameDocument, type MathNode } from "./document.ts";
+export { getFrameNodes, type RenderNode } from "./document.ts";
+export { defineInlineSyntax, defineNodeSyntax } from "./syntax.ts";
+export { defineNodeRenderer } from "./node-renderer.ts";
+export { mathSyntax, type MathContent } from "./math-syntax.ts";
 
 export { defineFenceRenderer } from "./fence-renderer.ts";

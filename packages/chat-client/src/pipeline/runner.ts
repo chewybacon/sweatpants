@@ -55,7 +55,7 @@ import { createParser } from "./parser.ts";
 import { resolveProcessors } from "./resolver.ts";
 
 // Import built-in processors to ensure they register themselves
-import { markdown } from "./processors/markdown.ts";
+import { markdown, createMarkdownProcess } from "./processors/markdown.ts";
 import { shiki } from "./processors/shiki.ts";
 import { mermaid } from "./processors/mermaid.ts";
 import { math } from "./processors/math.ts";
@@ -138,24 +138,19 @@ interface ResolvedConfig {
  * Resolve a PipelineConfig to process functions.
  */
 function resolveConfig(config: PipelineConfig): ResolvedConfig {
-  // Handle preset string
-  if (typeof config.processors === "string") {
-    const processors = resolvePreset(config.processors);
-    const resolved = resolveProcessors(processors);
-    return {
-      processFns: resolved.processors.map((p) => p.process),
-    };
-  }
-
-  // Handle array of processors
-  const processors = config.processors;
-  if (processors.length === 0) {
-    return { processFns: [] };
-  }
-
+  const processors =
+    typeof config.processors === "string" ? resolvePreset(config.processors) : config.processors;
   const resolved = resolveProcessors(processors);
+  const syntaxes = resolved.processors.flatMap((processor) =>
+    processor.nodeRenderer ? [processor.nodeRenderer.syntax] : [],
+  );
+  if (syntaxes.length > 0 && !resolved.processors.includes(markdown)) {
+    throw new Error("Node renderers require the built-in markdown processor");
+  }
   return {
-    processFns: resolved.processors.map((p) => p.process),
+    processFns: resolved.processors.map((processor) =>
+      processor === markdown ? createMarkdownProcess(syntaxes) : processor.process,
+    ),
   };
 }
 
