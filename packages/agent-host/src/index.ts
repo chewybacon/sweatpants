@@ -1,10 +1,19 @@
 export {
+  createChatApp,
+  ChatApiError,
   createChatApplication,
   createChatEndpoints,
   createChatHandler,
   ChatApplicationClosedError,
 } from "./server/index.ts";
 export type {
+  ChatApp,
+  ChatAppConfig,
+  ChatAppSetup,
+  ChatApi,
+  ChatApiInput,
+  ChatHistoryPageInput,
+  ChatPostBody,
   ChatApplication,
   ChatApplicationConfig,
   DurableChatEndpoints,

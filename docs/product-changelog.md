@@ -12,6 +12,22 @@ See also: [product-surface.md](./product-surface.md) · [product-facade-allowlis
 
 ---
 
+## 2026-10-03 — application handler and direct server API
+
+`createChatApp` now owns its route family through `app.handler`, with typed
+`app.api.postChat`, `readChat`, and `pageHistory` calls using the same lifecycle
+and authorization. `basePath` defaults to `/api/chat`; `baseURL` configures the
+origin used for direct server calls. Streaming calls return live Responses;
+history calls return typed data or a Response with `asResponse: true`.
+
+Migration: replace ChatApp `handle`/`handleEndpoint`/`endpoints` use with
+`handler` for HTTP routing or `api` for direct calls. Move `appSetup` to
+`setup.application` and the chat setup function to `setup.chat`. Mount one
+route family; the unused yo-chat `/api/streams/chat/:threadId` route is removed
+in favor of GET `/api/chat/:conversationId`. Low-level scope-owning host
+composition still uses `createChatApplication` and `createChatEndpoints`.
+
+
 ## 2026-08-03 — deterministic chat timeline acceptance
 
 ### Summary
