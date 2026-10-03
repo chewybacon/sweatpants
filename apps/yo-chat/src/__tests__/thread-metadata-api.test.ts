@@ -74,8 +74,8 @@ describe("thread metadata API", () => {
 
   it("lists only the requested demo namespace", async () => {
     const store = getThreadMetadataStore();
-    store.create({ namespace: "cards", id: "cards:one", title: "Cards" });
-    store.create({ namespace: "math", id: "math:one", title: "Math" });
+    await store.create({ namespace: "cards", id: "cards:one", title: "Cards" });
+    await store.create({ namespace: "math", id: "math:one", title: "Math" });
 
     const response = await handleThreadMetadataRequest(
       new Request("http://localhost/api/threaded-chat/threads?namespace=cards", { method: "GET" }),
@@ -99,7 +99,7 @@ describe("thread metadata API", () => {
 
   it("updates and deletes thread metadata by id", async () => {
     const store = getThreadMetadataStore();
-    const thread = store.create({ id: "thread-abc", title: "Initial title" });
+    const thread = await store.create({ id: "thread-abc", title: "Initial title" });
 
     const patchResponse = await handleThreadMetadataRequest(
       new Request(`http://localhost/api/threaded-chat/threads/${thread.id}`, {

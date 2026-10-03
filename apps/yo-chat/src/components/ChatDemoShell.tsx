@@ -1,3 +1,4 @@
+import { useThreadMetadata } from "@/lib/use-thread-metadata";
 import { MessageCirclePlus, PanelLeftOpen, RefreshCcw, Terminal } from "lucide-react";
 import {
   useChat,
@@ -308,9 +309,13 @@ function DemoThreadPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  useEffect(() => {
-    onMetadata(threadId, summarizeThread(messages));
-  }, [messages, onMetadata, threadId]);
+  useThreadMetadata({
+    threadId,
+    summary: summarizeThread(messages),
+    busy,
+    ready: renderReady && authority !== null,
+    onMetadata,
+  });
 
   const handleSubmit = useCallback(
     (event: React.FormEvent) => {

@@ -1,3 +1,4 @@
+import { createPostgresThreadMetadataStore } from "@/lib/postgres-thread-metadata-store";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
@@ -50,7 +51,11 @@ export function yoChatConfig(): DurableChatHandlerConfig {
   }
   const database = openChatStorageDatabase(selection);
   configureThreadMetadataStore(
-    database ? createSqliteThreadMetadataStore(database) : createInMemoryThreadMetadataStore(),
+    database
+      ? createSqliteThreadMetadataStore(database)
+      : selection.kind === "postgres"
+        ? createPostgresThreadMetadataStore(selection.connectionString)
+        : createInMemoryThreadMetadataStore(),
   );
   return {
     name: "yo-chat",

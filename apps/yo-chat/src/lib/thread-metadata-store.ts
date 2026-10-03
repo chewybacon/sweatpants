@@ -18,13 +18,21 @@ export interface UpdateThreadMetadataInput {
   messageCount?: number;
 }
 
-export interface ThreadMetadataStore {
+interface SynchronousThreadMetadataStore {
   list(namespace?: string): ThreadSummary[];
   get(threadId: string): ThreadSummary | null;
   create(input?: CreateThreadMetadataInput): ThreadSummary;
   update(threadId: string, input: UpdateThreadMetadataInput): ThreadSummary | null;
   delete(threadId: string): boolean;
 }
+
+export type ThreadMetadataStore = {
+  [K in keyof SynchronousThreadMetadataStore]: (
+    ...args: Parameters<SynchronousThreadMetadataStore[K]>
+  ) =>
+    | ReturnType<SynchronousThreadMetadataStore[K]>
+    | Promise<ReturnType<SynchronousThreadMetadataStore[K]>>;
+} & { close?: () => Promise<void> };
 
 function normalizeNamespace(namespace: string | undefined): string {
   const value = compact(namespace ?? "");
@@ -92,7 +100,7 @@ function applyUpdate(
  * Memory-mode thread metadata. Used only when the storage selection is
  * `SWEATPANTS_STORAGE=memory`; durable selections use the co-tenant store.
  */
-export function createInMemoryThreadMetadataStore(): ThreadMetadataStore {
+export function createInMemoryThreadMetadataStore(): SynchronousThreadMetadataStore {
   const threads = new Map<string, ThreadSummary>();
 
   return {
@@ -135,7 +143,9 @@ export function createInMemoryThreadMetadataStore(): ThreadMetadataStore {
  * application connection per the co-tenant write discipline; authority
  * writes stay on the kernel's connection.
  */
-export function createSqliteThreadMetadataStore(binding: Database.Database): ThreadMetadataStore {
+export function createSqliteThreadMetadataStore(
+  binding: Database.Database,
+): SynchronousThreadMetadataStore {
   ensureThreadMetadataSchema(binding);
   const db: BetterSQLite3Database<{ threadMetadata: typeof threadMetadata }> = drizzle(binding, {
     schema: { threadMetadata },
@@ -219,8 +229,8 @@ let sharedThreadMetadataStore: ThreadMetadataStore | null = null;
 
 /**
  * Configures the process-wide thread metadata store once per storage
- * selection at composition time: sqlite selections get the durable
- * co-tenant store, memory selections the in-memory store.
+ * selection at composition time. SQLite and Postgres use durable co-tenant
+ * stores; only explicit memory mode uses the in-memory store.
  */
 export function configureThreadMetadataStore(store: ThreadMetadataStore): void {
   sharedThreadMetadataStore = store;

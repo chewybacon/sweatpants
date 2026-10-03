@@ -21,12 +21,14 @@ export async function handleThreadMetadataRequest(request: Request): Promise<Res
 
   if (pathname === "/api/threaded-chat/threads") {
     if (method === "GET") {
-      return Response.json({ threads: store.list(url.searchParams.get("namespace") ?? undefined) });
+      return Response.json({
+        threads: await store.list(url.searchParams.get("namespace") ?? undefined),
+      });
     }
 
     if (method === "POST") {
       const body = (await parseJsonBody<CreateThreadMetadataInput>(request)) ?? {};
-      const thread = store.create(body);
+      const thread = await store.create(body);
       return Response.json({ thread }, { status: 201 });
     }
 
@@ -39,7 +41,7 @@ export async function handleThreadMetadataRequest(request: Request): Promise<Res
   }
 
   if (method === "GET") {
-    const thread = store.get(threadId);
+    const thread = await store.get(threadId);
     if (!thread) {
       return new Response("Not Found", { status: 404 });
     }
@@ -49,19 +51,19 @@ export async function handleThreadMetadataRequest(request: Request): Promise<Res
 
   if (method === "PUT") {
     const body = (await parseJsonBody<CreateThreadMetadataInput>(request)) ?? {};
-    const existing = store.get(threadId);
+    const existing = await store.get(threadId);
     if (existing) {
-      const updated = store.update(threadId, body);
+      const updated = await store.update(threadId, body);
       return Response.json({ thread: updated }, { status: 200 });
     }
 
-    const thread = store.create({ ...body, id: threadId });
+    const thread = await store.create({ ...body, id: threadId });
     return Response.json({ thread }, { status: 201 });
   }
 
   if (method === "PATCH") {
     const body = (await parseJsonBody<UpdateThreadMetadataInput>(request)) ?? {};
-    const updated = store.update(threadId, body);
+    const updated = await store.update(threadId, body);
     if (!updated) {
       return new Response("Not Found", { status: 404 });
     }
@@ -70,7 +72,7 @@ export async function handleThreadMetadataRequest(request: Request): Promise<Res
   }
 
   if (method === "DELETE") {
-    const deleted = store.delete(threadId);
+    const deleted = await store.delete(threadId);
     if (!deleted) {
       return new Response("Not Found", { status: 404 });
     }
