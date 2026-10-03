@@ -58,7 +58,7 @@ Three lanes classify every workspace package:
 `destination domain packages` is **dual-natured**:
 
 - **Product entries** (import these):
-  - `@sweatpants/agent-host/server` — `createChatApp` (primary; see [chat-application-configuration.md](./chat-application-configuration.md)), plus `createChatApplication` and `createChatHandler` / `createDurableChatHandler`
+  - `@sweatpants/agent-host/server` — `createChatApp` (`handler`, typed `api`, nested `setup`; see [chat-application-configuration.md](./chat-application-configuration.md)), plus `createChatApplication` and `createChatHandler` / `createDurableChatHandler`
   - `@sweatpants/chat-core` — framework-neutral message/event/frame types, codecs, immutable folds, and internal placement normalization
   - `@sweatpants/chat-client` — headless client/runtime/transport Ports, reconnect, middleware, and pipeline orchestration
   - `@sweatpants/react-chat` — thin React `useChat`, client/runtime facades, framework-native `makePlugin`, and prepared native render parts
@@ -191,6 +191,7 @@ Deviations from this baseline MUST be recorded here with date and reason (and re
 
 | Date | Change | Reason |
 |---|---|---|
+| 2026-10-03 | ChatApp owns HTTP routing and typed server calls; setup uses application/chat hooks | One configuration and handler for endpoint mounting |
 | 2026-07-18 | Added agent/chat authoring and explicit serving profiles to existing core/chat/server targets | Durable authoring without adding a fifth product target |
 | 2026-07-09 | Initial baseline classification | Phase 0 product surface program |
 

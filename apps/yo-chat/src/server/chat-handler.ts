@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import {
   createChatEndpoints,
   openChatStorageDatabase,
-  type ChatAppConfig,
+  type DurableChatHandlerConfig,
 } from "@sweatpants/agent-host/server";
 import { env } from "@/env";
 import { setupYoChatModelProvider } from "./model-provider";
@@ -37,7 +37,7 @@ export class ProgramDriverConfigurationError extends Error {
  * Binding creation is fail-loud at composition: an unopenable path stops the
  * server before it serves traffic.
  */
-export function yoChatConfig(): ChatAppConfig {
+export function yoChatConfig(): DurableChatHandlerConfig {
   const secret = env.PROGRAM_DRIVER_CAPABILITY_SECRET;
   if (!secret) {
     throw new ProgramDriverConfigurationError();

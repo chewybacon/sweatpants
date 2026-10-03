@@ -3,7 +3,7 @@
 `createChatApp` from `@sweatpants/agent-host/server` is the entry point for
 building a durable chat application. One call produces the application
 lifecycle (lazy setup, request handling, graceful close) and the route
-endpoints, with production-grade SQLite authority storage by default.
+endpoints, with an explicit authority storage choice.
 
 ## Quick start
 
@@ -11,6 +11,7 @@ endpoints, with production-grade SQLite authority storage by default.
 import { chatStorageFromEnv, createChatApp } from "@sweatpants/agent-host/server";
 import { myDurableTool } from "./tools/my-durable-tool";
 import { installMyModelProvider } from "./model-provider";
+import { installApplicationServices } from "./application-services";
 
 export const app = createChatApp({
   name: "my-app",
@@ -19,23 +20,78 @@ export const app = createChatApp({
     defaultPath: new URL("../.data/my-app.sqlite", import.meta.url),
   }),
   programs: [myDurableTool],
-  setup: installMyModelProvider,
+  setup: {
+    application: installApplicationServices, // streams, tool inventory, logging
+    chat: installMyModelProvider,
+  },
 });
 ```
 
-Mount it under any HTTP framework:
+Mount its base path and catch-all route under any framework using Web Requests:
 
 ```ts
-// POST /api/chat
-app.handle(request);
+// /api/chat and /api/chat/* — framework route exports
+export const GET = app.handler;
+export const POST = app.handler;
 
-// GET /api/chat/:conversationId (reconnect) and POST …/history:page
-app.handleEndpoint(app.endpoints.readChat, { request, conversationId });
-app.handleEndpoint(app.endpoints.pageHistory, { request, conversationId });
-
-// Graceful shutdown: drains work and closes the SQLite handle.
+// Graceful shutdown drains work and closes app-owned storage.
 await app.close();
 ```
+
+`basePath` defaults to `/api/chat`. The handler owns this route family:
+
+| Method | Path | Operation |
+|---|---|---|
+| POST | `/api/chat` | submit a chat command |
+| GET or POST | `/api/chat/:conversationId` | hydrate/reconnect |
+| POST | `/api/chat/:conversationId/history:page` | page archived history |
+
+GET reconnect accepts `x-known-window-token`; POST reconnect accepts the native
+reconnect body. Conversation IDs are decoded once from a single URL segment.
+Unknown paths return 404; unsupported methods return 405 with `Allow`.
+A trailing slash is accepted. Routing failures do not initialize the application.
+If your framework requires separate base and catch-all route files, both forward
+to the same handler. Point the chat client's `api` option at the configured base path.
+
+## Direct server API
+
+```ts
+const streamResponse = await app.api.postChat({
+  headers: request.headers,
+  signal: request.signal,
+  body: command, // typed native ChatPostBody
+});
+
+const reconnectResponse = await app.api.readChat({
+  headers: request.headers,
+  body: { conversationId, clientId },
+});
+
+const page = await app.api.pageHistory({
+  headers: request.headers,
+  body: { conversationId, cursor },
+});
+// page.roots, page.nextOlderCursor
+
+const response = await app.api.pageHistory({
+  headers: request.headers,
+  body: { conversationId, cursor },
+  asResponse: true,
+});
+```
+
+Direct calls use the same handler, validation, authorization, and application scope;
+no HTTP fetch is made. Credentials must be forwarded explicitly. `baseURL` supplies
+the origin of these internally constructed requests (default `http://sweatpants.local`);
+set it to your public origin when authorization or setup examines the request URL.
+It accepts an HTTP(S) origin only; route placement belongs to `basePath`.
+
+`postChat` and `readChat` return a live `Response`, including HTTP error statuses.
+Consume or cancel its body; Sweatpants does not buffer the stream. Passing `signal`
+propagates cancellation to the request. History calls return `PublicHistoryPage`
+and throw `ChatApiError` with `status`, `body`, and `headers` on failure.
+`asResponse: true` returns the original history response, including error statuses.
+All calls after close reject with `ChatApplicationClosedError`.
 
 That is the entire required surface. `name` and `secret` derive every signing
 key; `programs` registers your durable tools' journal schemas; `storage`
@@ -173,19 +229,21 @@ because it is read from SQLite, not memory.
 
 | Option | Scope | Use for |
 |---|---|---|
-| `appSetup(ctx)` | once per application, before the first request | durable streams, tool inventories, logging |
-| `setup(ctx)` | every request | model provider installation, request contexts |
+| `setup.application(ctx)` | once per application, before its first operation | durable streams, tool inventories, logging |
+| `setup.chat(ctx)` | chat execution, including reconnect; not history paging | model provider installation, chat contexts |
 | `shutdownDeadlineMs` | close | max graceful drain (default 30 s) |
 
 ```ts
 createChatApp({
   // …
-  setup: function* ({ request, body }) {
-    yield* installMyModelProvider();
-  },
-  appSetup: function* ({ signal }) {
-    yield* setupInMemoryDurableStreams();
-    yield* installToolInventory(inventory);
+  setup: {
+    application: function* ({ signal }) {
+      yield* setupInMemoryDurableStreams();
+      yield* installToolInventory(inventory);
+    },
+    chat: function* ({ request, body }) {
+      yield* installMyModelProvider({ request, body });
+    },
   },
 });
 ```
@@ -226,12 +284,14 @@ either `{ name, secret }` or
 `{ createProgramDriverJournalStore, projectionTokens }`, never neither.
 
 For endpoint-only composition (embedding into an existing scope-owning
-application), `createChatEndpoints(config)` accepts the same configuration
-minus `appSetup`/`shutdownDeadlineMs`, and `createChatApplication({ handler })`
-remains the low-level lifecycle primitive.
+application), `createChatEndpoints(config)` accepts `DurableChatHandlerConfig`, whose `setup`
+is the chat execution hook. It exposes unbound scoped endpoints for hosts that
+own their own lifecycle. `createChatApplication({ handler, setup })` remains
+the low-level lifecycle primitive; its `setup` configures the application scope.
+Neither is needed for ordinary HTTP mounting with `createChatApp`.
 
 ## Reference examples
 
 - `apps/yo-chat/src/server/chat-handler.ts` — production app, env-driven storage, durable tools
-- `apps/yo-studio/src/server/durable-chat-application.ts` — workspace tooling with `appSetup`
+- `apps/yo-studio/src/server/durable-chat-application.ts` — workspace tooling with `setup.application`
 - `apps/yo-agent/src/lib/in-process-handler.ts` — endpoint-only embedding

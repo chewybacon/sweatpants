@@ -57,25 +57,31 @@ function Chat() {
 ### Server wiring
 
 ```ts
-import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
-import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
+import { createChatApp, chatStorageFromEnv } from "@sweatpants/agent-host/server";
+import { myTool } from "./tools/my-tool";
+import { installApplicationServices, installModelProvider } from "./server/setup";
 
-export function createApp() {
-    return createChatApplication({
-        setup: function* () {
-            // Local/in-memory default — no Redis required for happy path
-            yield* setupInMemoryDurableStreams<string>();
-            // wire model provider + tools in your app setup
-        },
-        handler: createChatHandler({
-            setup: function* (/* request ctx */) {
-                // set model provider for this request
-            },
-            maxToolIterations: 10,
-        }),
-    });
-}
+export const app = createChatApp({
+    name: "my-app",
+    secret: process.env.MY_APP_SECRET!,
+    storage: chatStorageFromEnv({
+        defaultPath: new URL("./.data/chat.sqlite", import.meta.url),
+    }),
+    programs: [myTool],
+    setup: {
+        application: installApplicationServices,
+        chat: installModelProvider,
+    },
+});
+
+// Mount at /api/chat and /api/chat/* in your framework.
+export const GET = app.handler;
+export const POST = app.handler;
 ```
+
+Application setup installs streams, tool inventories, and logging. Chat setup
+installs the model provider and chat contexts. Use `app.api.*` for direct server
+calls and `app.close()` at shutdown. See [configuration](./docs/chat-application-configuration.md).
 
 ### Tool authoring
 

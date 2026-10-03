@@ -79,12 +79,13 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
 
 function createChatApplicationKernel(config: ChatApplicationConfig): ChatApplicationKernel {
   const baseHandler = config.handler;
-  const [rootScope, destroyRootScope] = createScope();
-  const hostOwner = createHostScopeOwner(rootScope);
   const shutdownDeadlineMs = config.shutdownDeadlineMs ?? 30_000;
   if (!Number.isFinite(shutdownDeadlineMs) || shutdownDeadlineMs < 0) {
     throw new Error("ChatApplication shutdownDeadlineMs must be a non-negative finite number");
   }
+
+  const [rootScope, destroyRootScope] = createScope();
+  const hostOwner = createHostScopeOwner(rootScope);
 
   let closed = false;
   let setupPromise: Promise<Scope> | undefined;
@@ -211,6 +212,7 @@ import {
   type DurableChatEndpoints,
   type DurableChatHandlerConfig,
   type DurableChatStorageInspection,
+  type ChatHandlerSetup,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 
 /** Host ingress factory over route-independent durable chat capabilities. */
@@ -237,63 +239,89 @@ export type {
   DurableChatStorageInspection,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 
-/** One chat application: scope-owned lifecycle plus its route endpoints. */
-export interface ChatApp extends ChatApplication {
-  /** Route-independent endpoints for mounting under any HTTP framework. */
-  readonly endpoints: DurableChatEndpoints;
-  /**
-   * Resolves the authority storage composition, opening it if no request has
-   * arrived yet. Intended for development inspectors and diagnostics.
-   */
+export { ChatApiError } from "./chat-api.ts";
+export type { ChatApi, ChatApiInput, ChatHistoryPageInput, ChatPostBody } from "./chat-api.ts";
+import {
+  createChatApi,
+  createChatRouter,
+  normalizeChatBasePath,
+  type ChatApi,
+} from "./chat-api.ts";
+
+/** One application owns HTTP routing, direct server calls, and their lifetime. */
+export interface ChatApp {
+  readonly handler: (request: Request) => Promise<Response>;
+  readonly api: ChatApi;
+  close(): Promise<void>;
+  /** Opens and inspects the application-owned authority storage. */
   inspect(): Promise<DurableChatStorageInspection>;
 }
 
-/**
- * Unified chat application configuration: every durable chat handler option
- * plus application lifecycle seams.
- */
-export type ChatAppConfig = DurableChatHandlerConfig & {
-  /**
-   * Runs once inside the application scope before the first request:
-   * durable streams, tool inventories, logging.
-   * (`setup` remains the request-scoped seam.)
-   */
-  appSetup?: (ctx: ChatApplicationSetupContext) => Operation<void>;
+export interface ChatAppSetup {
+  /** Runs once in the application scope before its first operation. */
+  application?: (ctx: ChatApplicationSetupContext) => Operation<void>;
+  /** Runs in the chat execution scope, including reconnect; not history paging. */
+  chat?: ChatHandlerSetup;
+}
+
+// Distribute Omit over the union so explicit journal composition remains typed.
+type WithoutSetup<T> = T extends unknown ? Omit<T, "setup"> : never;
+export type ChatAppConfig = WithoutSetup<DurableChatHandlerConfig> & {
+  /** Route prefix; defaults to /api/chat. */
+  basePath?: string;
+  /** Origin used for direct API requests; defaults to http://sweatpants.local. */
+  baseURL?: string;
+  setup?: ChatAppSetup;
   /** Maximum graceful drain before close halts remaining work. */
   shutdownDeadlineMs?: number;
 };
 
-/**
- * The main entry point for building a durable chat application.
- *
- * Minimal configuration:
- *
- * ```ts
- * const app = createChatApp({
- *   name: "my-app",
- *   secret: process.env.MY_APP_SECRET!,
- *   storage: chatStorageFromEnv({
- *     defaultPath: new URL("../.data/my-app.sqlite", import.meta.url),
- *   }),
- *   programs: [myDurableTool],
- *   setup: installMyModelProvider,
- * });
- * // app.handle(request), app.endpoints.pageHistory, app.close()
- * ```
- */
+/** Creates a lazy application. Mount handler once at basePath and its children. */
 export function createChatApp(config: ChatAppConfig): ChatApp {
-  const { appSetup, shutdownDeadlineMs, ...handlerConfig } = config;
-  const endpoints = createChatEndpoints(handlerConfig as DurableChatHandlerConfig);
+  const { setup, shutdownDeadlineMs, basePath: path, baseURL, ...options } = config;
+  // JavaScript callers also receive a composition error for an invalid setup shape.
+  // oxlint-disable-next-line typescript/no-unnecessary-condition
+  if (setup !== undefined && (setup === null || typeof setup !== "object")) {
+    throw new TypeError("ChatApp setup must contain application and/or chat functions");
+  }
+  const basePath = normalizeChatBasePath(path ?? "/api/chat");
+  const origin = new URL(baseURL ?? "http://sweatpants.local");
+  if (
+    !["http:", "https:"].includes(origin.protocol) ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash ||
+    origin.username ||
+    origin.password
+  ) {
+    throw new TypeError("ChatApp baseURL must be an HTTP(S) origin without a path or credentials");
+  }
+  const endpoints = createChatEndpoints({
+    ...options,
+    ...(setup?.chat ? { setup: setup.chat } : {}),
+  });
   const kernel = createChatApplicationKernel({
     handler: endpoints.postChat,
-    ...(appSetup ? { setup: appSetup } : {}),
+    ...(setup?.application ? { setup: setup.application } : {}),
     ...(shutdownDeadlineMs === undefined ? {} : { shutdownDeadlineMs }),
   });
+  let closed = false;
+  const route = createChatRouter(basePath, {
+    postChat: (request) => kernel.handleEndpoint(endpoints.postChat, request),
+    readChat: (input) => kernel.handleEndpoint(endpoints.readChat, input),
+    pageHistory: (input) => kernel.handleEndpoint(endpoints.pageHistory, input),
+  });
+  const handler = async (request: Request): Promise<Response> => {
+    if (closed) throw new ChatApplicationClosedError();
+    return route(request);
+  };
   return {
-    handle: kernel.handle,
-    handleEndpoint: kernel.handleEndpoint,
-    close: kernel.close,
-    endpoints,
+    handler,
+    api: createChatApi(handler, origin.origin, basePath),
+    async close() {
+      closed = true;
+      await kernel.close();
+    },
     inspect: () => kernel.applicationScope().then((scope) => endpoints.inspect(scope)),
   };
 }

@@ -31,40 +31,33 @@ describe("yo-studio durable chat HTTP projection", () => {
       ),
     });
     try {
-      const response = await application.handle(
-        new Request("http://localhost/api/chat?conversationId=yo-studio-test", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            command: {
-              type: "send-message",
-              commandId: "00000000-0000-4000-8000-000000000001",
-              issuedAt: Date.now(),
-              expiresAt: Date.now() + 60_000,
-              basisRevision: null,
-              messageId: "user-1",
-            },
-            clientId: "yo-studio-test-client",
-            conversationId: "yo-studio-test",
-            runId: "run-yo-studio-test",
-            userMessage: { id: "user-1", role: "user", content: "Create demo.txt and test it" },
-            state: {},
-            context: [],
-            forwardedProps: {},
-          }),
-        }),
-      );
+      const response = await application.api.postChat({
+        body: {
+          command: {
+            type: "send-message",
+            commandId: "00000000-0000-4000-8000-000000000001",
+            issuedAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+            basisRevision: null,
+            messageId: "user-1",
+          },
+          clientId: "yo-studio-test-client",
+          conversationId: "yo-studio-test",
+          runId: "run-yo-studio-test",
+          userMessage: { id: "user-1", role: "user", content: "Create demo.txt and test it" },
+          state: {},
+          context: [],
+          forwardedProps: {},
+        },
+      });
       expect(response.status).toBe(200);
       const transcript = await response.text();
       expect(transcript).toContain("workspace_write");
       expect(transcript).toContain("workspace_test");
       expect(transcript).toContain("Created demo.txt and the declared test script passed.");
 
-      const refreshed = await application.handleEndpoint(application.endpoints.readChat, {
-        conversationId: "yo-studio-test",
-        request: new Request("http://localhost/api/chat/yo-studio-test", {
-          method: "GET",
-        }),
+      const refreshed = await application.api.readChat({
+        body: { conversationId: "yo-studio-test", clientId: "studio-test" },
       });
       expect(refreshed.status).toBe(200);
       await expect(refreshed.text()).resolves.toContain(
@@ -93,7 +86,7 @@ describe("yo-studio durable chat HTTP projection", () => {
       ),
     });
     try {
-      const response = await application.handle(
+      const response = await application.handler(
         new Request("http://localhost/api/chat?conversationId=shared-workspace-conversation", {
           method: "POST",
           headers: { "content-type": "application/json" },

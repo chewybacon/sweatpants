@@ -103,32 +103,36 @@ export function createStudioDurableChatApplication(options: {
     storage: options.storage ?? createYoStudioStorageConfig(),
     programs: definitions,
     maxToolIterations: 8,
-    setup: function* () {
-      yield* installPiAiModelProvider(modelProvider);
-    },
-    appSetup: function* () {
-      yield* setupDurableStreams({
-        bufferStore: createInMemoryBufferStore<string>(),
-        registryStore: createInMemoryRegistryStore(),
-      });
-      yield* installToolInventory(
-        createToolInventory(definitions.map((definition) => createToolInventoryEntry(definition))),
-      );
-      yield* ProgramDriverNativeToolsContext.set({
-        bindings: new Map(
-          definitions.map((definition) => [
-            definition.name,
-            {
-              publicName: definition.name,
-              tool: definition,
-              route: { driverKind: "program" as const },
-            },
-          ]),
-        ),
-        drivers: [],
-        effects: [],
-        setup: installWorkspace,
-      });
+    setup: {
+      chat: function* () {
+        yield* installPiAiModelProvider(modelProvider);
+      },
+      application: function* () {
+        yield* setupDurableStreams({
+          bufferStore: createInMemoryBufferStore<string>(),
+          registryStore: createInMemoryRegistryStore(),
+        });
+        yield* installToolInventory(
+          createToolInventory(
+            definitions.map((definition) => createToolInventoryEntry(definition)),
+          ),
+        );
+        yield* ProgramDriverNativeToolsContext.set({
+          bindings: new Map(
+            definitions.map((definition) => [
+              definition.name,
+              {
+                publicName: definition.name,
+                tool: definition,
+                route: { driverKind: "program" as const },
+              },
+            ]),
+          ),
+          drivers: [],
+          effects: [],
+          setup: installWorkspace,
+        });
+      },
     },
   });
 }

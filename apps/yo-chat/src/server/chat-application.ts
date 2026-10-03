@@ -11,13 +11,17 @@ export type YoChatApplication = ChatApp;
 
 /** Creates yo-chat with one root scope and route-independent endpoints. */
 export function createYoChatApplication(): YoChatApplication {
+  const { setup: chat, ...config } = yoChatConfig();
   return createChatApp({
-    ...yoChatConfig(),
-    appSetup: function* setupApplication() {
-      yield* setupLogger();
-      yield* setupYoChatDurableStreams();
-      yield* setupYoChatBaseContexts();
-      yield* setupYoChatPluginsAndRuntime();
+    ...config,
+    setup: {
+      ...(chat ? { chat } : {}),
+      application: function* setupApplication() {
+        yield* setupLogger();
+        yield* setupYoChatDurableStreams();
+        yield* setupYoChatBaseContexts();
+        yield* setupYoChatPluginsAndRuntime();
+      },
     },
   });
 }

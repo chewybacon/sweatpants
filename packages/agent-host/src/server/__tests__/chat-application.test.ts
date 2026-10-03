@@ -255,8 +255,8 @@ describe("createChatApp", () => {
       secret: "chat-app-test-secret-material-32-bytes",
       storage: { kind: "memory" },
     });
-    expect(typeof app.endpoints.postChat).toBe("function");
-    expect(typeof app.endpoints.pageHistory.withScope).toBe("function");
+    expect(typeof app.handler).toBe("function");
+    expect(typeof app.api.pageHistory).toBe("function");
 
     const first = await app.inspect();
     const second = await app.inspect();
