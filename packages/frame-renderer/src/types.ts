@@ -445,7 +445,11 @@ export interface ParseContext {
  * Internal parser function type.
  * @internal
  */
-export type Parser = (frame: Frame, chunk: string, ctx: ParseContext) => Frame;
+export interface Parser {
+  (frame: Frame, chunk: string, ctx: ParseContext): Frame;
+  /** Copy the small parser state for an isolated rendering transaction. */
+  fork(): Parser;
+}
 
 /**
  * Factory to create a parser with internal state.
