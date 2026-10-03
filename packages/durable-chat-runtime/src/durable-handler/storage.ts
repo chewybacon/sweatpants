@@ -164,6 +164,7 @@ const storageEnvironmentSchema = z
  *
  * - unset selector: SQLite at `SWEATPANTS_DB_PATH` or `defaultPath`
  * - `SWEATPANTS_STORAGE=memory`: explicit non-durable in-memory storage
+ * - `SWEATPANTS_STORAGE=postgres`: Postgres at `SWEATPANTS_PG_URL` or localhost:5432
  * - anything contradictory or unrecognized: a thrown configuration error
  */
 export function chatStorageFromEnv(options: ChatStorageEnvOptions): ChatStorageConfig {

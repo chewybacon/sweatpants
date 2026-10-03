@@ -56,7 +56,7 @@ function bindEndpointSet(endpoints: DurableChatEndpointSet, scope: Scope): Durab
 /**
  * Create route-independent durable chat endpoint capabilities.
  *
- * SQLite resolution is deferred until the first request bound to an
+ * SQLite and Postgres resolution is deferred until the first request bound to an
  * application scope. Memory and custom stores are resolved synchronously.
  */
 export function createDurableChatEndpoints(config: DurableChatHandlerConfig): DurableChatEndpoints {
@@ -104,7 +104,7 @@ export function createDurableChatEndpoints(config: DurableChatHandlerConfig): Du
     const endpoint = async (input: Input): Promise<Response> => {
       if (!immediateBundle) {
         throw new Error(
-          "SQLite durable chat endpoints must be bound to an application-owned scope",
+          "Persistent durable chat endpoints must be bound to an application-owned scope",
         );
       }
       return select(immediateBundle.endpoints)(input);

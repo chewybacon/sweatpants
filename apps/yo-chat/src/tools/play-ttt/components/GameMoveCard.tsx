@@ -28,8 +28,8 @@ export interface GameMoveCardProps {
   moveNumber: number;
   /** Is this a winning move? */
   winningLine?: number[] | undefined;
-  /** Game result (only on final move) */
-  gameResult?: "win" | "lose" | "draw" | undefined;
+  /** Explicit winner or draw (only on the final move). */
+  gameResult?: "user_wins" | "model_wins" | "draw" | undefined;
 }
 
 // =============================================================================
@@ -115,14 +115,10 @@ export function GameMoveCard({
 
   // Result styling
   const resultLabel =
-    gameResult === "win"
-      ? isModel
+    gameResult === "user_wins"
+      ? "🎉 You win!"
+      : gameResult === "model_wins"
         ? "🎉 Model wins!"
-        : "🎉 You win!"
-      : gameResult === "lose"
-        ? isModel
-          ? "You win!"
-          : "Model wins!"
         : gameResult === "draw"
           ? "🤝 It's a draw!"
           : null;

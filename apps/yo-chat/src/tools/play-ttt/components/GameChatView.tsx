@@ -11,7 +11,7 @@
  */
 import type { ReactRenderableProps } from "@sweatpants/react-chat";
 import type { Board, Player } from "../../tictactoe/types";
-import { GameMoveCard } from "./GameMoveCard";
+import { GameMoveCard, type GameMoveCardProps } from "./GameMoveCard";
 
 // =============================================================================
 // TYPES
@@ -154,12 +154,12 @@ export function GameChatView({
   }
 
   // Determine game result for the last move card
-  const getGameResult = (move: GameMove): "win" | "lose" | "draw" | undefined => {
+  const getGameResult = (move: GameMove): GameMoveCardProps["gameResult"] => {
     if (!gameOver || move.moveNumber !== moveHistory.length) {
       return undefined;
     }
     if (winningLine && winningLine.length > 0) {
-      return move.isModel ? "win" : "lose";
+      return move.isModel ? "model_wins" : "user_wins";
     }
     return "draw";
   };

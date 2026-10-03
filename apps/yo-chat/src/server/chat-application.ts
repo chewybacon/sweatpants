@@ -1,3 +1,4 @@
+import { getThreadMetadataStore } from "@/lib/thread-metadata-store";
 import { createChatApp, type ChatApp } from "@sweatpants/agent-host/server";
 import { setupLogger } from "@sweatpants/agent-host/logging";
 import { setupYoChatDurableStreams } from "./durable-streams";
@@ -12,7 +13,8 @@ export type YoChatApplication = ChatApp;
 /** Creates yo-chat with one root scope and route-independent endpoints. */
 export function createYoChatApplication(): YoChatApplication {
   const { setup: chat, ...config } = yoChatConfig();
-  return createChatApp({
+  const metadata = getThreadMetadataStore();
+  const app = createChatApp({
     ...config,
     setup: {
       ...(chat ? { chat } : {}),
@@ -24,6 +26,16 @@ export function createYoChatApplication(): YoChatApplication {
       },
     },
   });
+  return {
+    ...app,
+    async close() {
+      try {
+        await app.close();
+      } finally {
+        await metadata.close?.();
+      }
+    },
+  };
 }
 
 export const chatApp = createYoChatApplication();
