@@ -113,6 +113,14 @@ demand; the Node demo propagates socket backpressure and cancellation.
 
 ### Continuations and authored interactions
 
+The yo-mcp `plan_trip` tool demonstrates multiple turns in a single invocation:
+it asks for a city, then an activity, then confirmation. Submitting an unchecked
+confirmation returns to the activity prompt while retaining the city and traveler.
+Confirming finishes the plan; decline or cancel ends the tool at any prompt.
+It uses ordinary `ctx.elicit` calls and a generator loop, with no protocol state
+or stream handling in the authored tool. It creates a suggested plan only and
+does not make bookings.
+
 Elicitation and sampling use `inputRequests` embedded in `input_required`. The
 client retries the original method and arguments with a new JSON-RPC ID,
 `inputResponses`, and the signed `requestState`. Tokens bind the server, authenticated
