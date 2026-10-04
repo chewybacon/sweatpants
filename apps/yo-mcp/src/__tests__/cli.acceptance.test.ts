@@ -56,6 +56,7 @@ describe("yo-mcp modern HTTP composition", () => {
         "echo",
         "greet",
         "pick_card",
+        "plan_trip",
       ]);
       for (const message of ["first", "second"]) {
         const called = await rpc(server.origin, "tools/call", {
@@ -229,6 +230,120 @@ describe("yo-mcp modern HTTP composition", () => {
         inputResponses: { [key]: { action: "decline" } },
       });
       expect(conflict.body.error.code).toBe(-32602);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+describe("multi-turn trip planning", () => {
+  it("keeps answers across five interactions, revises, and retries without advancing twice", async () => {
+    const server = await startYoMcpServer(0);
+    try {
+      const params = { name: "plan_trip", arguments: { traveler: "Ada" } };
+      const started = await rpc(server.origin, "tools/call", params);
+      const destination = started.body.result;
+      expect(destination.resultType).toBe("input_required");
+      const destinationId = Object.keys(destination.inputRequests)[0];
+      expect(destination.inputRequests[destinationId].params.message).toContain("Ada");
+      const answerDestination = {
+        ...params,
+        requestState: destination.requestState,
+        inputResponses: { [destinationId]: { action: "accept", content: { city: "Kyoto" } } },
+      };
+      const selected = await rpc(server.origin, "tools/call", answerDestination);
+      const activity = selected.body.result;
+      expect(activity.resultType).toBe("input_required");
+      const activityId = Object.keys(activity.inputRequests)[0];
+      expect(activity.inputRequests[activityId].params.message).toContain("Kyoto");
+      const duplicate = await rpc(server.origin, "tools/call", answerDestination);
+      expect(duplicate.body.result.inputRequests).toEqual(activity.inputRequests);
+
+      const proposed = await rpc(server.origin, "tools/call", {
+        ...params,
+        requestState: activity.requestState,
+        inputResponses: { [activityId]: { action: "accept", content: { activity: "museum" } } },
+      });
+      const review = proposed.body.result;
+      expect(review.resultType).toBe("input_required");
+      const reviewId = Object.keys(review.inputRequests)[0];
+      expect(review.inputRequests[reviewId].params.message).toContain("Ada: Kyoto, with a museum");
+      const revised = await rpc(server.origin, "tools/call", {
+        ...params,
+        requestState: review.requestState,
+        inputResponses: { [reviewId]: { action: "accept", content: { confirmed: false } } },
+      });
+      const nextActivity = revised.body.result;
+      expect(nextActivity.resultType).toBe("input_required");
+      const nextActivityId = Object.keys(nextActivity.inputRequests)[0];
+      expect(nextActivity.inputRequests[nextActivityId].params.message).toContain("Kyoto");
+      const reproposed = await rpc(server.origin, "tools/call", {
+        ...params,
+        requestState: nextActivity.requestState,
+        inputResponses: { [nextActivityId]: { action: "accept", content: { activity: "park" } } },
+      });
+      const nextReview = reproposed.body.result;
+      expect(nextReview.resultType).toBe("input_required");
+      const nextReviewId = Object.keys(nextReview.inputRequests)[0];
+      expect(nextReview.inputRequests[nextReviewId].params.message).toContain(
+        "Ada: Kyoto, with a park",
+      );
+      expect(
+        new Set([destinationId, activityId, reviewId, nextActivityId, nextReviewId]).size,
+      ).toBe(5);
+      const answerReview = {
+        ...params,
+        requestState: nextReview.requestState,
+        inputResponses: { [nextReviewId]: { action: "accept", content: { confirmed: true } } },
+      };
+      const completed = await rpc(server.origin, "tools/call", answerReview);
+      expect(completed.body.result).toMatchObject({ resultType: "complete", isError: false });
+      expect(JSON.parse(completed.body.result.content[0].text)).toEqual({
+        status: "planned",
+        traveler: "Ada",
+        city: "Kyoto",
+        activity: "park",
+      });
+      const completedAgain = await rpc(server.origin, "tools/call", answerReview);
+      expect(completedAgain.body.result).toEqual(completed.body.result);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it.each([
+    ["destination", "cancel", 0],
+    ["destination", "decline", 0],
+    ["activity", "cancel", 1],
+    ["activity", "decline", 1],
+    ["review", "cancel", 2],
+    ["review", "decline", 2],
+  ] as const)("ends at %s on %s", async (stage, action, answers) => {
+    const server = await startYoMcpServer(0);
+    try {
+      const params = { name: "plan_trip", arguments: { traveler: "Ada" } };
+      let pending = (await rpc(server.origin, "tools/call", params)).body.result;
+      const contents = [{ city: "Kyoto" }, { activity: "museum" }];
+      for (const content of contents.slice(0, answers)) {
+        expect(pending.resultType).toBe("input_required");
+        const id = Object.keys(pending.inputRequests)[0];
+        pending = (
+          await rpc(server.origin, "tools/call", {
+            ...params,
+            requestState: pending.requestState,
+            inputResponses: { [id]: { action: "accept", content } },
+          })
+        ).body.result;
+      }
+      expect(pending.resultType).toBe("input_required");
+      const id = Object.keys(pending.inputRequests)[0];
+      const completed = await rpc(server.origin, "tools/call", {
+        ...params,
+        requestState: pending.requestState,
+        inputResponses: { [id]: { action } },
+      });
+      expect(completed.body.result).toMatchObject({ resultType: "complete", isError: false });
+      expect(JSON.parse(completed.body.result.content[0].text)).toEqual({ status: action, stage });
     } finally {
       await server.close();
     }
