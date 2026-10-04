@@ -52,6 +52,28 @@
                 "default": "./dist/logging/index.js"
             },
             "default": "./src/logging/index.ts"
+        },
+        "./mcp": {
+            "development": {
+                "import": "./src/mcp/index.ts",
+                "types": "./src/mcp/index.ts"
+            },
+            "import": {
+                "types": "./dist/mcp/index.d.ts",
+                "default": "./dist/mcp/index.js"
+            },
+            "default": "./src/mcp/index.ts"
+        },
+        "./node": {
+            "development": {
+                "import": "./src/node/index.ts",
+                "types": "./src/node/index.ts"
+            },
+            "import": {
+                "types": "./dist/node/index.d.ts",
+                "default": "./dist/node/index.js"
+            },
+            "default": "./src/node/index.ts"
         }
     },
     "scripts": {
@@ -78,6 +100,7 @@
         "effection": "catalog:",
         "pino": "^9.6.0",
         "pino-pretty": "^13.0.0",
+        "srvx": "1.0.5",
         "zod": "catalog:"
     },
     "devDependencies": {

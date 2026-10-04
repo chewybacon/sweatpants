@@ -22,14 +22,3 @@ export { confirmTool } from "./confirm";
  * All available tools
  */
 export const allTools: RuntimeTool[] = [echoTool, pickCardTool, greetTool, confirmTool];
-
-/**
- * Tools map (for handler)
- */
-export function createToolsMap(): Map<string, RuntimeTool> {
-  const map = new Map<string, RuntimeTool>();
-  for (const tool of allTools) {
-    map.set(tool.name, tool);
-  }
-  return map;
-}

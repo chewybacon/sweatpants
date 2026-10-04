@@ -1,7 +1,7 @@
 /**
  * MCP Spec Alignment Tests
  *
- * Tests for the MCP 2025-11-25 spec alignment changes:
+ * Tests for the MCP 2026-07-28 spec alignment changes:
  * 1. __schema__ meta-tool encoding pattern
  * 2. SampleExchange message counts (2 for raw, 3 for structured)
  * 3. URL elicitation guard

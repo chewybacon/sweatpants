@@ -5,7 +5,7 @@ import { parseMcpManifest } from "../lib/fetch-manifest.ts";
 const validManifest = {
   version: "1.0",
   server: { name: "server", version: "1.0.0" },
-  mcp: { endpoint: "/mcp", protocolVersion: "2025-11-25" },
+  mcp: { endpoint: "/mcp", protocolVersion: "2026-07-28" },
   tools: [
     {
       name: "echo",

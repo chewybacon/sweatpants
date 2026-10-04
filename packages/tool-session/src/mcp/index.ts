@@ -115,8 +115,6 @@ export { MCP_PROTOCOL_VERSION } from "./protocol-version.ts";
 
 export {
   // Encoder
-  encodeSessionEvent,
-  createEncoderContext,
   encodeProgressNotification,
   encodeLogNotification,
   encodeElicitationRequest,
@@ -139,12 +137,7 @@ export {
   formatMessageAsSse,
   parseSseEvent,
   parseSseChunk,
-  generateEventId,
-  parseEventId,
-  createPrimeEvent,
-  createCloseEvent,
   createSseHeaders,
-  createSseWriter,
 
   // Type guards
   isJsonRpcError,
@@ -207,11 +200,8 @@ export type {
 
   // SSE types
   SseEvent,
-  SseWriter,
 
   // Encoder/decoder types
-  EncoderContext,
-  EncodedMessage,
   DecodedMessage,
   DecoderContext,
   PendingRequest,
@@ -222,73 +212,10 @@ export type {
 // MCP HTTP HANDLER (Streamable HTTP transport)
 // =============================================================================
 
-export {
-  // Main factory
-  createMcpHandler,
-
-  // Session manager
-  createSessionManager,
-  McpSessionManager,
-  McpSessionManagerContext,
-
-  // Request parsing
-  parseHeaders,
-  assertPostHeaders,
-  assertGetHeaders,
-  parseRequest,
-  classifyRequest,
-  parseAndClassify,
-
-  // POST handling
-  handleToolsCall,
-  handleElicitResponse,
-  handleSampleResponse,
-  handlePost,
-
-  // SSE streaming
-  createSseEventStream,
-  createSseStreamSetup,
-  handleGet,
-
-  // Error handling
-  McpHandlerError,
-  MCP_HANDLER_ERRORS,
-} from "./handler/index.ts";
-
-export type {
-  // Config
-  McpHandlerConfig,
-  McpHandlerOptions,
-  McpHttpHandler,
-
-  // Request types
-  McpHttpMethod,
-  McpRequestHeaders,
-  McpParsedRequest,
-  McpRequestType,
-  McpClassifiedRequest,
-  McpToolsCallRequest,
-  McpElicitResponse,
-  McpSampleResponse,
-  McpSseStreamRequest,
-  McpTerminateRequest,
-
-  // Response types
-  McpPostResult,
-
-  // Session state
-  McpSessionState,
-  PendingElicitation,
-  PendingSample,
-  McpSessionManagerOptions,
-
-  // Handler options
-  PostHandlerOptions,
-  SseStreamOptions,
-
-  // Error types
-  McpHandlerErrorCode,
-} from "./handler/index.ts";
+export { createMcpHandler } from "./handler/mcp-handler.ts";
+export type { McpHandlerOptions, McpHttpHandler } from "./handler/mcp-handler.ts";
+export { generateMcpManifest } from "./handler/manifest.ts";
+export type { McpManifest, GenerateMcpManifestOptions } from "./handler/manifest.ts";
 
 export {
   createMcpContinuations,
@@ -301,3 +228,12 @@ export type {
   McpContinuationReference,
   McpFormResponse,
 } from "./continuations.ts";
+
+export {
+  readMcpRequestMetadata,
+  encodeMcpHeaderValue,
+  requireMcpFormCapability,
+  McpRequestMetadataError,
+} from "./request-metadata.ts";
+
+export type { McpFormAdapter, McpFormAdapters } from "./handler/interactions.ts";

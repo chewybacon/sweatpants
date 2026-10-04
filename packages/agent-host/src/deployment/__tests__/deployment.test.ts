@@ -93,7 +93,7 @@ describe("deployment authoring", () => {
     expect(first.projections[2]).toEqual({
       kind: "mcp",
       path: "/mcp",
-      protocolVersion: "2025-11-25",
+      protocolVersion: "2026-07-28",
     });
   });
 

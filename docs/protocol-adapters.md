@@ -35,57 +35,127 @@ subagent lifecycle ordering, including ownership restored from window snapshots.
 Native producers use attribution-only streams; they do not yet emit subagent
 lifecycle announcements. Usage decoding does not imply usage accounting.
 
-## MCP multi-round-trip tracer
+## MCP 2026-07-28
 
-The production MCP endpoint still implements `2025-11-25`. The executable
-`apps/yo-chat/acceptance/mcp-pick-card-tracer.test.ts` explores the `2026-07-28`
-`input_required` / retry exchange against the real authored `pick_card` program.
-The adapter is a test fixture, not a second exported MCP server.
+The public MCP endpoint implements only `2026-07-28`. Inspector is pinned to
+`2.9.0`, and yo-mcp launches it with `--protocol-era modern`. The migration removes
+initialize, protocol sessions, GET/DELETE transport routes, and Last-Event-ID
+resumption. Unsupported RPC methods fail explicitly; optional subscriptions,
+resources, prompts, roots and URL elicitation are not advertised.
 
-The tracer opens one durable invocation, projects a journaled elicitation into
-`inputRequests`, and issues a signed `requestState` bound to the caller, invocation,
-method, tool, arguments, pending pull, and expiry. A retry has a new JSON-RPC ID but
-resolves the same journaled pull. Duplicate accepted content returns the existing
-terminal result; conflicting content is rejected. Reconstructing the authority
-from a serialized snapshot and creating a fresh generator driver does not redraw
-cards. Tampered, expired, or incorrectly bound continuations cannot resolve input.
-
-The tracer translates a standard flat MCP form selection back into the authored
-nested card response before journal validation. Acceptance, decline, and cancel
-all survive authority reconstruction and duplicate retries without another draw.
-
-### Reusable continuation API
-
-`@sweatpants/tool-session/mcp` exports `createMcpContinuations` and
-`decodeMcpFormResponse`. Both token operations are Effection operations:
+Application authors configure tools and execution once. The app owns lazy setup,
+Effection scopes, invocation resources and request cleanup:
 
 ```ts
-const continuations = createMcpContinuations({
+import { createMcpApp } from "@sweatpants/agent-host/mcp";
+import { local } from "@sweatpants/tool-runtime-local";
+
+const app = createMcpApp({
+  name: "my-tools",
+  version: "0.1.0",
   secret,
-  verificationSecrets: [previousSecret], // optional rotation window
-  ttlMs: 300_000,
+  tools: [pickCard, greet],
+  execution: local({ worker: new URL("./tool-worker.mjs", import.meta.url) }),
+  *authenticate(request) {
+    return yield* authenticateCaller(request);
+  },
+  setup: {
+    application: installApplicationServices,
+  },
 });
-const binding = {
-  serverId: "my-mcp-server",
-  callerId: authenticatedCallerId,
-  method: "tools/call",
-  params: { name, arguments: args },
-};
-const requestState = yield* continuations.issue(binding, { invocationId, pullId });
-const reference = yield* continuations.verify(requestState, binding);
-const response = decodeMcpFormResponse(inputResponses, reference.pullId);
+
+// Mount in an existing Fetch-based framework:
+export const POST = app.handler;
+// The owning framework calls app.close() during teardown.
 ```
 
-Bindings exclude JSON-RPC IDs and continuation fields. Caller identity must come
-from authentication, not client-provided form data. Tokens use HMAC-SHA256, a
-request-binding digest, expiry, bounded parsing, and optional verification keys
-for rotation. They are signed, not encrypted; they contain journal references,
-never journal capabilities or generator state. Verification does not consume a
-token or authorize a response. The adapter must locate the invocation, validate
-the authored input, and resolve it through the journal, which owns deduplication.
-The form decoder requires exactly the pending response key and flat MCP content;
-it does not replace authored schema validation or implement URL-mode elicitation.
+`setup` is optional. It runs once before the first request; authentication inherits
+its scoped services. `authenticate` returns a trusted, stable caller ID to bind
+continuations, never self-reported MCP clientInfo. Origins default to same-origin;
+additional trusted origins can be listed in `allowedOrigins`. Authored `createTool`
+definitions and the execution host contract are unchanged. `execution` uses the
+same placement interface as chat, without importing any concrete runtime into
+Agent Host. This factory requires invocation resources; it does not install a
+journal host for crank-native durable programs.
 
-Discovery, per-request capabilities, HTTP headers, concurrent request admission,
-initial-call retry identity, and the other MCP methods remain separate endpoint
-migration work. A protocol version bump alone would incorrectly advertise support.
+For standalone Node hosting:
+
+```ts
+import { serve } from "@sweatpants/agent-host/node";
+
+const server = await serve(app, { hostname: "127.0.0.1", port: 3001 });
+// During shutdown: stops ingress, cancels connections, awaits app cleanup.
+await server.close();
+```
+
+`serve` uses srvx 1.0.5's Node adapter and leaves process signal handling to the
+entry point. It accepts optional srvx middleware for application HTTP policy,
+such as the local Inspector demo's CORS headers. Applications do not convert or
+pipe Readables. The transport stops pulling when socket writes need `drain` and
+cancels the Web reader on disconnect. MCP response streams keep a zero high-water
+mark; the socket has bounded transport buffering, not an eager response collector.
+The Node adapter is covered by a blocked-writable test and real socket disconnect
+tests, alongside MCP's one-notification-per-demand test.
+
+Advanced hosts can mount `toNodeHandler(app.handler)` on an existing `node:http`
+server, retaining responsibility for `app.close()`. Scope-owning Effection hosts
+can use `createMcpHandler` from `@sweatpants/tool-session/mcp` after installing an
+invocation runtime; it uses the same `authenticate` option. Request-level errors
+are isolated from the application supervisor, while app shutdown cancels request
+scopes and runtime resources.
+
+Each POST carries version, method and optional target headers, plus request-local
+client capabilities. Annotated tool parameter headers are compiled and checked.
+Discovery and tool lists include cache policy; tool calls return request-scoped SSE
+notifications followed by one `complete` or `input_required` result. Log messages
+require an explicit request log level. The Web stream pulls projection records on
+demand; the Node demo propagates socket backpressure and cancellation.
+
+### Continuations and authored interactions
+
+Elicitation and sampling use `inputRequests` embedded in `input_required`. The
+client retries the original method and arguments with a new JSON-RPC ID,
+`inputResponses`, and the signed `requestState`. Tokens bind the server, authenticated
+caller, method, arguments, invocation, pending cursor and expiry. Each retry checks
+current capabilities. The invocation host deduplicates the resume command and
+rejects changed answers. Independent initial calls get independent invocation IDs;
+JSON-RPC IDs are not an initial-call idempotency key.
+
+Plain flat form schemas work directly. A rich authored interaction can install a
+MCP-only projection without changing its tool contract:
+
+```ts
+forms: {
+  pick_card: {
+    choose: {
+      present(ask) {
+        return {
+          message: ask.message,
+          requestedSchema: {
+            type: "object",
+            properties: { rank: { type: "string", enum: ["A", "K"] } },
+            required: ["rank"],
+          },
+        };
+      },
+      accept(content) {
+        return { card: { rank: content.rank } };
+      },
+    },
+  },
+}
+```
+
+The runtime still validates the mapped authored response. Decline and cancel pass
+through unchanged. Sampling preserves tool-use responses for agent-like tools.
+
+Transport tokens are signed references, not execution state or authority. Durable
+restart guarantees remain those of the installed runtime. The yo-mcp demo uses a
+live worker runtime; this endpoint does not turn it into a durable journal. The
+separate `apps/yo-chat/acceptance/mcp-pick-card-tracer.test.ts` proves continuation
+reconstruction and deduplication against the durable journal, including nested
+card projection. It is a test fixture, not a second production endpoint.
+
+`createMcpContinuations` remains available for adapters integrating directly with
+a journal. It supports verification-key rotation and a configurable TTL;
+`decodeMcpFormResponse` validates exactly the pending response key and flat content.
