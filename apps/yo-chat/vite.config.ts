@@ -76,7 +76,7 @@ const config = defineConfig({
     environment: "jsdom",
     env: {
       DEFAULT_CHAT_MODEL_PROVIDER: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
-      DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.5",
+      DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.6",
     },
     // Exclude Playwright e2e tests from Vitest.
     // The outside-in HTTP tier is excluded from the default (hermetic) run and

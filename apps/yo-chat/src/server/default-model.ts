@@ -17,6 +17,6 @@ export function defaultYoChatModel(): ModelSelection {
   const id =
     process.env["DEFAULT_CHAT_MODEL_ID"] ??
     (stored?.provider === provider ? stored.id : undefined) ??
-    (isYoChatAuthProvider(provider) ? defaultModelForProvider(provider) : "claude-sonnet-4.5");
+    (isYoChatAuthProvider(provider) ? defaultModelForProvider(provider) : "claude-sonnet-4.6");
   return { provider, id };
 }

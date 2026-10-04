@@ -61,7 +61,7 @@
         "effection": "catalog:"
     },
     "devDependencies": {
-        "@earendil-works/pi-ai": "0.84.0",
+        "@earendil-works/pi-ai": "1.0.1",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/history-store": "workspace:*",
@@ -82,7 +82,7 @@
         "overrides": {
             "@effectionx/signals": "^0.5.3",
             "@effectionx/timebox": "^0.4.3",
-            "effection": "4.1.0-alpha.9"
+            "effection": "4.2.0"
         }
     }
 }

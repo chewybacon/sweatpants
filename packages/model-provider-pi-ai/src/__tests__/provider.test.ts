@@ -5,6 +5,8 @@ import {
   type Model,
   type AssistantMessage,
   type ProviderStreams,
+  type ProviderImages,
+  type ImageModel,
 } from "@earendil-works/pi-ai";
 import { run } from "effection";
 import { describe, expect, it, vi } from "vitest";
@@ -94,6 +96,60 @@ describe("configured Pi model provider", () => {
       expect.objectContaining({ maxTokens: 123, apiKey: "test-key" }),
     );
     expect(stream).toHaveBeenCalledOnce();
+  });
+
+  it("generates images through the configured collection and its credentials", async () => {
+    const imageModel: ImageModel<string> = {
+      type: "image",
+      id: "private-image",
+      name: "Private image",
+      provider: customModel.provider,
+      api: "openai-images",
+      baseUrl: customModel.baseUrl,
+      input: ["text"],
+      output: ["image"],
+      cost: customModel.cost,
+    };
+    const generateImages = vi.fn<ProviderImages["generateImages"]>(async () => ({
+      api: imageModel.api,
+      provider: imageModel.provider,
+      model: imageModel.id,
+      output: [{ type: "image", data: "aW1hZ2U=", mimeType: "image/png" }],
+      stopReason: "stop",
+      timestamp: 1,
+    }));
+    const models = createModels();
+    models.setProvider(
+      createProvider({
+        id: customModel.provider,
+        models: [customModel, imageModel],
+        auth: {
+          apiKey: {
+            name: "Test credentials",
+            resolve: async () => ({ auth: { apiKey: "shared-key" }, source: "env" }),
+          },
+        },
+        api: { stream: completedStream, streamSimple: completedStream },
+        images: { "openai-images": { generateImages } },
+      }),
+    );
+    const provider = createPiAiModelProvider({ models });
+    await run(function* () {
+      const result = yield* provider.runtime.generateImages(imageModel, { input: "Draw a tree" });
+      expect(result.stopReason).toBe("stop");
+      expect(result.output).toEqual([
+        {
+          type: "image",
+          source: { type: "data", value: "aW1hZ2U=", mimeType: "image/png" },
+          metadata: null,
+        },
+      ]);
+    });
+    expect(generateImages).toHaveBeenCalledWith(
+      expect.objectContaining({ id: imageModel.id, type: "image" }),
+      { input: [{ type: "text", text: "Draw a tree" }] },
+      expect.objectContaining({ apiKey: "shared-key", signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("keeps configured catalogs isolated and reads collection updates without a stale snapshot", () => {

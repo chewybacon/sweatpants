@@ -1,5 +1,4 @@
 import { call, resource, useAbortSignal, type Operation } from "effection";
-import { builtinImagesModels } from "@earendil-works/pi-ai/providers/all";
 import type * as PiAi from "@earendil-works/pi-ai";
 import {
   UnsupportedModelCapabilityError,
@@ -73,8 +72,9 @@ function toPiModel(model: Model): PiAi.Model<string> {
   };
 }
 
-function toPiImageModel(model: ImageModel): PiAi.ImagesModel<string> {
+function toPiImageModel(model: ImageModel): PiAi.ImageModel<string> {
   return {
+    type: "image",
     id: model.id,
     name: model.name,
     api: model.api,
@@ -161,11 +161,6 @@ function toPiStreamOptions(
 ): PiAi.SimpleStreamOptions & Record<string, unknown> {
   const apiKey = options?.apiKey;
   const reasoning = toPiReasoning(options);
-  const toolChoice = options?.responseFormat
-    ? encodePiToolChoice(model, "required")
-    : options?.toolChoice === undefined
-      ? undefined
-      : encodePiToolChoice(model, options.toolChoice);
   const reasoningEffort =
     direct &&
     reasoning !== undefined &&
@@ -188,7 +183,6 @@ function toPiStreamOptions(
     ...(options?.onPayload
       ? { onPayload: (payload: unknown) => options.onPayload?.(payload) }
       : {}),
-    ...(toolChoice !== undefined ? { toolChoice } : {}),
     ...(reasoning !== undefined ? { reasoning } : {}),
     ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
     ...(options?.thinkingBudgets ? { thinkingBudgets: options.thinkingBudgets } : {}),
@@ -229,15 +223,10 @@ function decodeStreamEvent(
 export interface AdapterRuntimeOptions {
   /** Non-compat Pi-AI model collection; injection keeps provider ownership explicit. */
   readonly models: PiAi.Models;
-  /** Non-compat Pi-AI image-model collection. */
-  readonly images?: PiAi.ImagesModels;
 }
-
-const defaultPiImages = builtinImagesModels();
 
 export function createPiAiRuntime(options: AdapterRuntimeOptions): Runtime {
   const models = options.models;
-  const images = options.images ?? defaultPiImages;
   return {
     stream(model, context, streamOptions) {
       return resource(function* (provide) {
@@ -255,7 +244,13 @@ export function createPiAiRuntime(options: AdapterRuntimeOptions): Runtime {
           direct,
         );
         const stream = direct
-          ? models.stream(piModel, piContext, piOptions)
+          ? models.stream(piModel, piContext, {
+              ...piOptions,
+              toolChoice: encodePiToolChoice(
+                model,
+                streamOptions?.responseFormat ? "required" : (streamOptions?.toolChoice ?? "auto"),
+              ),
+            })
           : models.streamSimple(piModel, piContext, piOptions);
         const iterator = stream[Symbol.asyncIterator]();
 
@@ -295,7 +290,7 @@ export function createPiAiRuntime(options: AdapterRuntimeOptions): Runtime {
         const combined = combineAbortSignals(scopeSignal, imageOptions?.signal);
         try {
           const result = yield* call(() =>
-            images.generateImages(
+            models.generateImages(
               toPiImageModel(model),
               encodePiImageContext(context),
               toPiImageOptions(imageOptions, combined.controller.signal),

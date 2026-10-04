@@ -40,7 +40,7 @@ describe("yo-chat AgentCore runtime smoke", () => {
         AGENTCORE_REDIS_KEY_PREFIX: "sp:test:agentcore:",
         AGENTCORE_TOOL_NAMES: undefined,
         DEFAULT_CHAT_MODEL_PROVIDER: "github-copilot",
-        DEFAULT_CHAT_MODEL_ID: "claude-sonnet-4.5",
+        DEFAULT_CHAT_MODEL_ID: "claude-sonnet-4.6",
       },
     }));
 

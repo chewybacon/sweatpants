@@ -33,7 +33,7 @@
         "build:types": "tsc -b tsconfig.json --force"
     },
     "dependencies": {
-        "@earendil-works/pi-ai": "^0.84.0",
+        "@earendil-works/pi-ai": "^1.0.1",
         "@sweatpants/chat-contract": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/model-provider": "workspace:*"
@@ -46,6 +46,6 @@
         "vitest": "catalog:"
     },
     "peerDependencies": {
-        "effection": ">=4.1.0-alpha.9 <5.0.0"
+        "effection": ">=4.2.0 <5.0.0"
     }
 }

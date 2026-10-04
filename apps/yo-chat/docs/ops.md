@@ -33,7 +33,7 @@ Examples:
 
 ```bash
 # Managed providers are selected once; this is an explicit per-process override
-DEFAULT_CHAT_MODEL_PROVIDER=github-copilot DEFAULT_CHAT_MODEL_ID=claude-sonnet-4.5
+DEFAULT_CHAT_MODEL_PROVIDER=github-copilot DEFAULT_CHAT_MODEL_ID=claude-sonnet-4.6
 
 # ChatGPT Codex OAuth
 DEFAULT_CHAT_MODEL_PROVIDER=openai-codex DEFAULT_CHAT_MODEL_ID=gpt-5.5
