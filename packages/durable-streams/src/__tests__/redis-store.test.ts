@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { run } from "effection";
 import { createClient, type RedisClientType } from "redis";
 import { appendTestTokens, completeTestBuffer, failTestBuffer } from "./test-writer.ts";
@@ -110,6 +110,47 @@ describe("RedisTokenBufferStore", () => {
     const result = await run(() => buffer.read(10));
     expect(result.tokens).toEqual([]);
     expect(result.lsn).toBe(1);
+  });
+
+  it("seeks directly to the reconnect LSN with a bounded Redis query", async ({ skip }) => {
+    requireRedis(skip);
+    const store = createRedisTokenBufferStore<string>(client);
+    const buffer = await run(() => store.create("bounded-reconnect"));
+    await run(() =>
+      appendTestTokens(
+        buffer,
+        Array.from({ length: 1_000 }, (_, i) => String(i)),
+      ),
+    );
+    const reconnected = await run(() => store.get(buffer.id));
+    expect(reconnected).not.toBeNull();
+    const query = vi.spyOn(client, "xRange");
+    try {
+      expect(await run(() => reconnected!.read(990, 3))).toEqual({
+        tokens: ["990", "991", "992"],
+        lsn: 1_000,
+      });
+      expect(query).toHaveBeenCalledExactlyOnceWith(
+        "durable-stream:bounded-reconnect:stream",
+        "(990-0",
+        "1000-0",
+        { COUNT: 3 },
+      );
+    } finally {
+      query.mockRestore();
+    }
+  });
+
+  it("requires an explicit reset of buffers using an unsupported storage format", async ({
+    skip,
+  }) => {
+    requireRedis(skip);
+    const store = createRedisTokenBufferStore<string>(client);
+    await run(() => store.create("old-format"));
+    await client.hDel("durable-stream:old-format:meta", "format");
+    await expect(run(() => store.get("old-format"))).rejects.toThrow(
+      "Reset Redis keys durable-stream:old-format:*",
+    );
   });
 
   it("completes the buffer", async ({ skip }) => {

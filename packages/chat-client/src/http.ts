@@ -219,8 +219,8 @@ function fetchInit(options: HttpTransportOptions, signal: AbortSignal, body?: st
     method: "POST",
     headers: requestHeaders(options),
     signal,
-    ...(options.credentials !== undefined ? { credentials: options.credentials } : {}),
-    ...(body === undefined ? {} : { body }),
+    credentials: options.credentials,
+    body,
   };
 }
 
@@ -259,7 +259,7 @@ export function createHttpTransport(options: HttpTransportOptions = {}): ChatTra
           headers,
           body,
           signal,
-          ...(options.credentials !== undefined ? { credentials: options.credentials } : {}),
+          credentials: options.credentials,
         }),
       );
       if (response.status === 404) {

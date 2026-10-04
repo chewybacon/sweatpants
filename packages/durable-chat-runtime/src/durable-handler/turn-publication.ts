@@ -44,7 +44,7 @@ export function createTurnPublishers(
           logicalTurnId: authorityTurn.turnId,
         },
         roots: encodedEvents,
-        ...(checkpointTargets ? { targets: checkpointTargets } : {}),
+        targets: checkpointTargets,
         expectedRevision: parkedHead.revision,
         expectedOwnerEpoch: parkedHead.ownerEpoch,
         expectedExecutionId: authorityTurn.executionId,
@@ -69,10 +69,8 @@ export function createTurnPublishers(
                 head: persisted.head,
                 checkpoint: persisted.checkpoint,
                 keyring: projectionTokens,
-                ...(body.knownWindowToken ? { knownWindowToken: body.knownWindowToken } : {}),
-                ...(config.projectionTokenTtlMs === undefined
-                  ? {}
-                  : { tokenTtlMs: config.projectionTokenTtlMs }),
+                knownWindowToken: body.knownWindowToken || undefined,
+                tokenTtlMs: config.projectionTokenTtlMs,
               }),
             }
           : {}),
@@ -114,10 +112,8 @@ export function createTurnPublishers(
                 head: terminalHead,
                 checkpoint: terminalCheckpoint,
                 keyring: projectionTokens,
-                ...(body.knownWindowToken ? { knownWindowToken: body.knownWindowToken } : {}),
-                ...(config.projectionTokenTtlMs === undefined
-                  ? {}
-                  : { tokenTtlMs: config.projectionTokenTtlMs }),
+                knownWindowToken: body.knownWindowToken || undefined,
+                tokenTtlMs: config.projectionTokenTtlMs,
               }),
             }
           : {}),

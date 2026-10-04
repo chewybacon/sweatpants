@@ -353,7 +353,7 @@ function builder(state: BuilderState): unknown {
       return builder({
         ...state,
         parameters,
-        ...(projections ? { parametersProjections: projections } : {}),
+        parametersProjections: projections ?? state.parametersProjections,
       });
     },
     output(output: StandardSchemaV1, projections?: SchemaProjectionOptions) {
@@ -361,7 +361,7 @@ function builder(state: BuilderState): unknown {
       return builder({
         ...state,
         output,
-        ...(projections ? { outputProjections: projections } : {}),
+        outputProjections: projections ?? state.outputProjections,
       });
     },
     elicits(elicits: ElicitsMap) {
@@ -492,11 +492,9 @@ function builder(state: BuilderState): unknown {
         identity: `tool:${state.name}`,
         version,
         parameters,
-        ...(state.parametersProjections
-          ? { parametersProjections: state.parametersProjections }
-          : {}),
-        ...(state.output ? { output: state.output } : {}),
-        ...(state.outputProjections ? { outputProjections: state.outputProjections } : {}),
+        parametersProjections: state.parametersProjections,
+        output: state.output,
+        outputProjections: state.outputProjections,
         elicits: normalizedElicits,
       });
       const catalogByDigest = new Map(

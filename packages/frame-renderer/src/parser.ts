@@ -174,7 +174,7 @@ function processLine(frame: Frame, line: string, state: ParserState): Frame {
       // Create new code block
       const codeBlock = {
         ...createCodeBlock(language, "", "streaming"),
-        ...(fenceMeta !== undefined && { fenceMeta }),
+        fenceMeta,
       };
       currentFrame = addBlock(currentFrame, codeBlock);
       currentFrame = addTrace(currentFrame, "parser", "create", {
@@ -199,7 +199,7 @@ function processLine(frame: Frame, line: string, state: ParserState): Frame {
       const currentFrame = updateActiveBlock(frame, completeBlock);
       const activeBlock = getActiveBlock(currentFrame);
       return addTrace(currentFrame, "parser", "update", {
-        ...(activeBlock && { blockId: activeBlock.id }),
+        blockId: activeBlock?.id,
         detail: "code fence end",
       });
     }

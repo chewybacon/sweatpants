@@ -6,7 +6,8 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import { createLocalToolInvocationRuntime, createLocalToolRuntimeDriver } from "../src/index.ts";
+import { createLocalToolInvocationRuntime } from "../src/index.ts";
+import { createInvocationToolRuntimeDriver } from "@sweatpants/tool-session/execution";
 
 const workerFixtureCandidates = [
   resolve(process.cwd(), "src/__tests__/fixtures/tool-worker-bootstrap.mjs"),
@@ -44,7 +45,8 @@ describe("@sweatpants/tool-runtime-local strict parameter acceptance", () => {
         worker: localRuntimeWorkerConfig,
       });
 
-      const driver = yield* createLocalToolRuntimeDriver({
+      const driver = yield* createInvocationToolRuntimeDriver({
+        id: "local",
         tools: [strictTool],
         samplingProvider: {
           *sample() {

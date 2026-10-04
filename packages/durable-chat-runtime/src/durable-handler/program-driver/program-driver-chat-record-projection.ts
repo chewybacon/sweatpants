@@ -1,3 +1,4 @@
+import { publicSubagentRunId } from "./program-driver-chat-attribution.ts";
 import { EventType } from "@ag-ui/core";
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
@@ -48,13 +49,20 @@ function projectRecordsFromIndex(
   let cancellationClosed = false;
   let errorClosed: DurableSemanticRecord | undefined;
   for (const recordEntry of records) {
+    const subagentRunId = publicSubagentRunId(index, recordEntry.payload.taskId);
+    const emit = (...values: StreamEvent[]) =>
+      events.push(
+        ...values.map((event) =>
+          subagentRunId === undefined ? event : { ...event, subagentRunId },
+        ),
+      );
     if (recordEntry.payload.type === "TaskClosed") {
       if (recordEntry.payload.outcome.status === "cancelled") cancellationClosed = true;
       if (recordEntry.payload.outcome.status === "error") errorClosed = recordEntry;
     }
     if (recordEntry.payload.type === "AssistantPartialAccepted") {
       const fact = recordEntry.payload.fact;
-      events.push(
+      emit(
         { type: EventType.TEXT_MESSAGE_START, messageId: fact.messageId, role: "assistant" },
         {
           type: EventType.TEXT_MESSAGE_CONTENT,
@@ -74,7 +82,7 @@ function projectRecordsFromIndex(
             : undefined;
         const cancelled =
           recordEntry.payload.outcome.status === "cancelled" || completion?.["action"] === "cancel";
-        events.push(
+        emit(
           publicElicitActivityDelta(
             `elicit:${recordEntry.payload.pullId}`,
             cancelled ? "cancelled" : "responded",
@@ -94,7 +102,7 @@ function projectRecordsFromIndex(
     if (descriptor.eventType === "assistant_text" && typeof payload["text"] === "string") {
       const messageId = index.modelMessageIds.get(recordEntry) ?? null;
       if (!messageId) continue;
-      events.push(
+      emit(
         { type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" },
         { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: payload["text"] },
         { type: EventType.TEXT_MESSAGE_END, messageId },
@@ -106,7 +114,7 @@ function projectRecordsFromIndex(
       typeof payload["tool"] === "string"
     ) {
       activeToolCalls.add(payload["callId"]);
-      events.push(
+      emit(
         {
           type: EventType.TOOL_CALL_START,
           toolCallId: payload["callId"],
@@ -129,9 +137,9 @@ function projectRecordsFromIndex(
       const activeInThisRun = activeToolCalls.delete(payload["callId"]);
       const startedPreviously = index.previousToolStarts.get(payload["callId"]);
       if (activeInThisRun) {
-        events.push({ type: EventType.TOOL_CALL_END, toolCallId: payload["callId"] });
+        emit({ type: EventType.TOOL_CALL_END, toolCallId: payload["callId"] });
       } else if (!startedPreviously) {
-        events.push(
+        emit(
           {
             type: EventType.TOOL_CALL_START,
             toolCallId: payload["callId"],
@@ -143,7 +151,7 @@ function projectRecordsFromIndex(
       }
       const failed = payload["failed"] === true;
       const result = payload["result"] ?? null;
-      events.push({
+      emit({
         type: EventType.TOOL_CALL_RESULT,
         messageId: `tool:${payload["callId"]}`,
         toolCallId: payload["callId"],

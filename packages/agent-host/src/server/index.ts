@@ -13,6 +13,20 @@ import {
 import type { BoundChatEndpoints } from "./chat-endpoints.ts";
 import { createChatRouter, normalizeChatBasePath } from "./chat-router.ts";
 
+import {
+  installModelProvider,
+  ModelProviderModelContext,
+  ModelProviderStreamOptionsContext,
+  type ChatModel,
+} from "@sweatpants/model-provider";
+import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
+import { prepareChatTools } from "./tool-execution.ts";
+import type { ChatTool, ToolExecutionAdapter } from "@sweatpants/tool-session/execution";
+import { createModelSamplingProvider } from "./model-sampling.ts";
+export { createModelSamplingProvider } from "./model-sampling.ts";
+export { inProcess, installChatTools } from "./tool-execution.ts";
+export type { ChatModel } from "@sweatpants/model-provider";
+
 export {
   parseTraceContext,
   projectTrustedHttpRequest,
@@ -262,8 +276,14 @@ export interface ChatAppSetup {
 }
 
 // Distribute Omit over the union so explicit journal composition remains typed.
-type WithoutSetup<T> = T extends unknown ? Omit<T, "setup"> : never;
+type WithoutSetup<T> = T extends unknown ? Omit<T, "setup" | "programs"> : never;
 export type ChatAppConfig = WithoutSetup<DurableChatHandlerConfig> & {
+  /** One authored inventory; execution kind stays on each tool definition. */
+  tools?: readonly ChatTool[];
+  execution?: ToolExecutionAdapter;
+  effects?: readonly DurableEffectRegistration[];
+  /** Default inherited by chat and tool sampling. Chat setup may override in its child scope. */
+  model?: ChatModel;
   /** Route prefix; defaults to /api/chat. */
   basePath?: string;
   /** Origin used for direct API requests; defaults to http://sweatpants.local. */
@@ -275,7 +295,21 @@ export type ChatAppConfig = WithoutSetup<DurableChatHandlerConfig> & {
 
 /** Creates a lazy application. Mount handler once at basePath and its children. */
 export function createChatApp(config: ChatAppConfig): ChatApp {
-  const { setup, shutdownDeadlineMs, basePath: path, baseURL, ...options } = config;
+  const {
+    setup,
+    shutdownDeadlineMs,
+    basePath: path,
+    baseURL,
+    tools,
+    execution,
+    effects,
+    model,
+    ...options
+  } = config;
+  const composition =
+    tools !== undefined ? prepareChatTools(tools, execution, effects ?? []) : undefined;
+  if (!composition && (execution || effects))
+    throw new Error("execution and effects require tools");
   // JavaScript callers also receive a composition error for an invalid setup shape.
   // oxlint-disable-next-line typescript/no-unnecessary-condition
   if (setup !== undefined && (setup === null || typeof setup !== "object")) {
@@ -293,14 +327,23 @@ export function createChatApp(config: ChatAppConfig): ChatApp {
   ) {
     throw new TypeError("ChatApp baseURL must be an HTTP(S) origin without a path or credentials");
   }
-  const endpoints = createChatEndpoints({
-    ...options,
-    ...(setup?.chat ? { setup: setup.chat } : {}),
-  });
+  const endpoints = createChatEndpoints(
+    options.secret !== undefined
+      ? { ...options, programs: composition?.programs, setup: setup?.chat }
+      : { ...options, setup: setup?.chat },
+  );
   const kernel = createChatApplicationKernel({
     handler: endpoints.postChat,
-    ...(setup?.application ? { setup: setup.application } : {}),
-    ...(shutdownDeadlineMs === undefined ? {} : { shutdownDeadlineMs }),
+    setup: function* (ctx) {
+      if (model) {
+        yield* installModelProvider(model.driver);
+        yield* ModelProviderModelContext.set(model.model);
+        if (model.streamOptions) yield* ModelProviderStreamOptionsContext.set(model.streamOptions);
+      }
+      if (setup?.application) yield* setup.application(ctx);
+      if (composition) yield* composition.install(createModelSamplingProvider());
+    },
+    shutdownDeadlineMs,
   });
   let closed = false;
   const bound: BoundChatEndpoints = {

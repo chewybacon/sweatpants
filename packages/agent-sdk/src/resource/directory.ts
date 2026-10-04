@@ -200,7 +200,7 @@ export async function compileResourceDirectory(
     id: options.id,
     version: options.version,
     files,
-    ...(options.limits ? { limits: options.limits } : {}),
+    limits: options.limits,
   } satisfies DefineResourcePackageOptions);
   const generatedSource = renderGeneratedResourcePackage(pkg, configDigest);
   const result = Object.freeze({

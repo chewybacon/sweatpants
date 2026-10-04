@@ -46,6 +46,7 @@ export type {
 } from "./durable-create.ts";
 export {
   defineEffect,
+  implementEffect,
   effectCatalogEntries,
   effectRuntimeValidators,
   type DefineEffectOptions,

@@ -13,10 +13,8 @@ import {
 import { createToolInventory, installToolInventory } from "@sweatpants/tool-runtime";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverEphemeralEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
-import {
-  createLocalToolInvocationRuntime,
-  installLocalToolRuntimeComposition,
-} from "@sweatpants/tool-runtime-local";
+import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
+import { installInvocationToolRuntimeComposition } from "@sweatpants/tool-session/execution";
 import {
   routeNativeChatTestApplication,
   type TestApplication,
@@ -72,7 +70,8 @@ export function createReactAcceptanceApplication(
       yield* createLocalToolInvocationRuntime({
         worker: { workerUrl: workerBootstrapUrl(), isDev: false },
       });
-      yield* installLocalToolRuntimeComposition({
+      yield* installInvocationToolRuntimeComposition({
+        id: "local",
         tools: [reactBookingTool],
         installEphemeralEffects: function* (registrations) {
           yield* ProgramDriverEphemeralEffectsContext.set(registrations);

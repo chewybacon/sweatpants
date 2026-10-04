@@ -21,10 +21,10 @@ export function defineNodeRenderer<T>(definition: NodeRendererDefinition<T>): Pr
   const renderer = Object.freeze({ ...definition }) as NodeRendererDefinition<unknown>;
   return Object.freeze({
     name: renderer.name,
-    ...(renderer.description !== undefined && { description: renderer.description }),
+    description: renderer.description,
     dependencies: Object.freeze(["markdown"]),
-    ...(renderer.preload && { preload: renderer.preload }),
-    ...(renderer.isReady && { isReady: renderer.isReady }),
+    preload: renderer.preload,
+    isReady: renderer.isReady,
     nodeRenderer: renderer,
     process: createNodeProcess(renderer),
   });

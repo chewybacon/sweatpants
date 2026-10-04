@@ -32,14 +32,12 @@ export function composeProgramDriverChat(
   const nativePrograms = nativeProgramIdentities(params.nativeTools);
   const ephemeral = decideEphemeralExecution(params, nativePrograms);
   const inputPolicy: ChatAdmissionInputPolicy = {
-    ...(params.systemPrompt === undefined ? {} : { systemPrompt: params.systemPrompt }),
-    ...(params.initialToolChoice === undefined
-      ? {}
-      : { initialToolChoice: params.initialToolChoice }),
+    systemPrompt: params.systemPrompt,
+    initialToolChoice: params.initialToolChoice,
   };
   const samplingPolicy: ChatSamplingPolicy = {
-    ...(params.streamOptions === undefined ? {} : { streamOptions: params.streamOptions }),
-    ...(params.historyPolicy === undefined ? {} : { historyPolicy: params.historyPolicy }),
+    streamOptions: params.streamOptions,
+    historyPolicy: params.historyPolicy,
   };
   const admission: ChatAdmissionRequest = {
     journalStore: params.journalStore,
@@ -55,11 +53,7 @@ export function composeProgramDriverChat(
     superseding: params.pluginAbort !== undefined,
     hasElicitResponses: (params.elicitResponses?.length ?? 0) > 0,
     contextSource: params.modelContextSource,
-    ...(params.systemPrompt === undefined ? {} : { systemPrompt: params.systemPrompt }),
-    ...(params.initialToolChoice === undefined
-      ? {}
-      : { initialToolChoice: params.initialToolChoice }),
-    ...(params.onLiveTaskReady === undefined ? {} : { onTaskReady: params.onLiveTaskReady }),
+    onTaskReady: params.onLiveTaskReady,
   };
   const execution: ChatExecutionEnvironment = {
     sessionId: params.conversationId,
@@ -68,14 +62,14 @@ export function composeProgramDriverChat(
       conversationStore: params.conversationStore,
       policy: samplingPolicy,
     },
-    ...(params.nativeTools === undefined ? {} : { native: params.nativeTools }),
+    native: params.nativeTools,
     ephemeral,
   };
   const settlement: ElicitSettlementRequest = {
     responses: params.elicitResponses ?? [],
     sessionId: params.conversationId,
     participantId: params.participantId,
-    ...(params.nativeTools === undefined ? {} : { nativeBindings: params.nativeTools.bindings }),
+    nativeBindings: params.nativeTools?.bindings,
   };
   return {
     activation: {
@@ -84,11 +78,9 @@ export function composeProgramDriverChat(
       settlement,
       sessionId: params.conversationId,
       participantId: params.participantId,
-      ...(params.pluginAbort === undefined ? {} : { pluginAbort: params.pluginAbort }),
-      ...(params.onResumeAccepted === undefined
-        ? {}
-        : { onResumeAccepted: params.onResumeAccepted }),
-      ...(params.nativeTools === undefined ? {} : { native: params.nativeTools }),
+      pluginAbort: params.pluginAbort,
+      onResumeAccepted: params.onResumeAccepted,
+      native: params.nativeTools,
     },
     presentation: {
       agUiRun: params.agUiRun,
@@ -96,9 +88,7 @@ export function composeProgramDriverChat(
       continueAfterCancellation: params.continueAfterCancellation === true,
       cancellationMessage: params.pluginAbort?.reason ?? "Program was cancelled",
       publishTerminal: params.publishTerminal,
-      ...(params.publishCheckpoint === undefined
-        ? {}
-        : { publishCheckpoint: params.publishCheckpoint }),
+      publishCheckpoint: params.publishCheckpoint,
     },
   };
 }

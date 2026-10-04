@@ -60,15 +60,15 @@ function toPiModel(model: Model): PiAi.Model<string> {
     provider: model.provider,
     baseUrl: model.baseUrl ?? "",
     reasoning: model.reasoning,
-    ...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
+    thinkingLevelMap: model.thinkingLevelMap,
     input: model.input.filter(
       (input): input is "text" | "image" => input === "text" || input === "image",
     ),
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
     cost: model.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    ...(model.headers ? { headers: model.headers } : {}),
-    ...(model.compat ? { compat: model.compat as never } : {}),
+    headers: model.headers,
+    compat: model.compat as never,
   };
 }
 
@@ -87,7 +87,7 @@ function toPiImageModel(model: ImageModel): PiAi.ImageModel<string> {
       (output): output is "text" | "image" => output === "text" || output === "image",
     ),
     cost: model.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    ...(model.headers ? { headers: model.headers } : {}),
+    headers: model.headers,
   };
 }
 
@@ -171,6 +171,7 @@ function toPiStreamOptions(
       ? reasoning
       : undefined;
   return {
+    // Omitted canonical options must preserve provider-specific defaults.
     ...options?.providerOptions,
     signal,
     ...(apiKey ? { apiKey } : {}),
@@ -194,6 +195,7 @@ function toPiImageOptions(
   signal: AbortSignal,
 ): PiAi.ImagesOptions & Record<string, unknown> {
   return {
+    // Omitted canonical options must preserve provider-specific defaults.
     ...options?.providerOptions,
     signal,
     ...(options?.apiKey ? { apiKey: options.apiKey } : {}),

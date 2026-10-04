@@ -40,7 +40,7 @@
         "effection": "catalog:"
     },
     "devDependencies": {
-        "@ag-ui/core": "0.0.57",
+        "@ag-ui/core": "1.0.1",
         "@effectionx/raf": "catalog:",
         "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",

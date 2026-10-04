@@ -274,6 +274,7 @@ interface ConversationReplayFacts {
   readonly providerProjection: ReturnType<typeof createChatProjection>;
   readonly activityProjection: ReturnType<typeof createChatProjection>;
   readonly activityRecordOrder: readonly string[];
+  readonly activityOwners: ReadonlyMap<string, string>;
 }
 
 interface ConversationReplayOptions {
@@ -291,6 +292,7 @@ function* replayConversationFrames(
     const activityEvents: AGUIEvent[] = [];
     const activityRecordOrder: string[] = [];
     const seenActivityRecords = new Set<string>();
+    const activityOwners = new Map<string, string>();
 
     for (const frame of frames) {
       const event = frame.event;
@@ -308,6 +310,8 @@ function* replayConversationFrames(
           seenActivityRecords.add(event.messageId);
           activityRecordOrder.push(event.messageId);
         }
+        if (event.subagentRunId !== undefined)
+          activityOwners.set(event.messageId, event.subagentRunId);
         activityEvents.push(event);
         continue;
       }
@@ -323,7 +327,7 @@ function* replayConversationFrames(
       providerEvents: providerEvents.length,
       activityEvents: activityEvents.length,
     });
-    return { providerProjection, activityProjection, activityRecordOrder };
+    return { providerProjection, activityProjection, activityRecordOrder, activityOwners };
   });
 }
 
@@ -352,6 +356,9 @@ function activitySnapshotsFromProjection(
       {
         type: EventType.ACTIVITY_SNAPSHOT,
         messageId: activityRecordId,
+        ...(projection.activityOwners.has(activityRecordId)
+          ? { subagentRunId: projection.activityOwners.get(activityRecordId) }
+          : {}),
         activityType: "sweatpants:public-execution",
         content: { version: 1 as const, node: projected.node },
         replace: true,

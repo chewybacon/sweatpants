@@ -35,7 +35,8 @@ export interface TokenBuffer<T> {
     ownerId: string;
     activationEpoch: number;
   }): Operation<TokenBufferWriter<T>>;
-  read(afterLSN?: number): Operation<{ tokens: T[]; lsn: number }>;
+  /** Read a suffix, optionally bounded. `lsn` is the tail, not the batch end. */
+  read(afterLSN?: number, limit?: number): Operation<{ tokens: T[]; lsn: number }>;
   /** O(1)-materialization tail read for index/pointer buffers. */
   readLatest?(): Operation<{ token: T | undefined; lsn: number }>;
   isComplete(): Operation<boolean>;

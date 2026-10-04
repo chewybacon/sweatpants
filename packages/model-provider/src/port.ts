@@ -75,3 +75,10 @@ export function* useModel(): Operation<Model> {
 export function* useStreamOptions(): Operation<StreamOptions | undefined> {
   return yield* ModelProviderStreamOptionsContext.get();
 }
+
+/** A selected model and its provider, suitable for application configuration. */
+export interface ChatModel {
+  readonly model: Model;
+  readonly driver: ModelProviderDriver;
+  readonly streamOptions?: StreamOptions;
+}

@@ -29,12 +29,11 @@ import {
   type PullResolver,
 } from "@sweatpants/journal-authority";
 import { installExecutionStore } from "@sweatpants/journal-authority/api";
-import { DURABLE_TOOL_FACADE_ANNOTATION } from "./durable-tool-facade-marker.ts";
-import { executeEphemeralToolCall, type EphemeralAskRelay } from "./ephemeral-tool-session.ts";
-export {
-  DURABLE_TOOL_FACADE_ANNOTATION,
-  isDurableToolSessionFacade,
-} from "./durable-tool-facade-marker.ts";
+import { DURABLE_TOOL_FACADE_ANNOTATION } from "@sweatpants/tool-session/execution";
+import {
+  executeEphemeralToolCall,
+  type EphemeralAskRelay,
+} from "@sweatpants/tool-session/execution";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import {
   assertReplayedCanonicalValue,
@@ -212,7 +211,7 @@ function* installWorkflowEffectHandlers(
       };
       const configuredHandler = configured?.get(descriptor.name);
       if (configuredHandler) {
-        return yield* configuredHandler(input, context);
+        return assertJson(yield* configuredHandler(input, context));
       }
       // Sampling knowledge belongs to whoever installs handlers; the facade
       // itself carries no model-sampling protocol.
@@ -252,7 +251,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
         journalIncarnation: "1",
         keyring: options.keyring,
         schemaRegistry,
-        ...(snapshot ? { initialSnapshot: snapshot } : {}),
+        initialSnapshot: snapshot,
       });
       const authority = yield* JournalAuthorityPort.use();
       return yield* operation(authority);
@@ -489,16 +488,14 @@ function facadePullResolvers(
             ...(d.context !== undefined ? { context: d.context } : {}),
           },
         });
-        return {
-          status: "ok" as const,
-          value:
-            elicitResponse.action === "accept"
-              ? { action: "accept", content: assertJson(elicitResponse.content) }
-              : {
-                  action: elicitResponse.action,
-                  ...(elicitResponse.reason !== undefined ? { reason: elicitResponse.reason } : {}),
-                },
-        };
+        const value: Json =
+          elicitResponse.action === "accept"
+            ? { action: "accept", content: assertJson(elicitResponse.content) }
+            : {
+                action: elicitResponse.action,
+                ...(elicitResponse.reason !== undefined ? { reason: elicitResponse.reason } : {}),
+              };
+        return { status: "ok" as const, value };
       },
     },
   ]);

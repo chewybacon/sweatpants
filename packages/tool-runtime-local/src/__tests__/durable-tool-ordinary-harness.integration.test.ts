@@ -40,8 +40,8 @@ import {
   createLocalToolInvocationRuntime,
   createDurableToolSessionFacade,
   createInMemoryDurableToolFacadeStateStore,
-  createToolInvocationEphemeralEffectRegistrations,
 } from "../index.ts";
+import { createToolInvocationEphemeralEffectRegistrations } from "@sweatpants/tool-session/execution";
 
 type InnerInput = { topic: string };
 type InnerOutput = { answers: string[] };

@@ -43,10 +43,10 @@ export function defineFenceRenderer(definition: FenceRendererDefinition): Proces
   const renderer = Object.freeze({ ...definition, languages });
   return Object.freeze({
     name: renderer.name,
-    ...(renderer.description !== undefined && { description: renderer.description }),
+    description: renderer.description,
     dependencies: Object.freeze(["markdown"]),
-    ...(renderer.preload && { preload: renderer.preload }),
-    ...(renderer.isReady && { isReady: renderer.isReady }),
+    preload: renderer.preload,
+    isReady: renderer.isReady,
     fenceRenderer: renderer,
     process: createFenceProcess(renderer),
   });
@@ -85,7 +85,7 @@ export function createFenceProcess(
       const content: FenceContent = {
         code: block.raw,
         language,
-        ...(block.fenceMeta !== undefined && { meta: block.fenceMeta }),
+        meta: block.fenceMeta,
       };
       const start = Date.now();
       const preview = renderer.preview ?? sourcePreview;
@@ -112,7 +112,7 @@ export function createFenceProcess(
             language,
             meta: block.fenceMeta,
             status: block.status,
-            ...(error !== undefined && { error }),
+            error,
           },
         }),
       }));

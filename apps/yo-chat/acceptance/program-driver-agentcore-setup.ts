@@ -3,12 +3,12 @@ import type { Operation } from "effection";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   createAgentCoreRemoteToolRuntimeClient,
-  createAgentCoreToolInvocationRuntime,
   createAwsSdkAgentCoreInvoker,
   type AgentCoreToolRuntimeProfile,
 } from "@sweatpants/tool-runtime-agentcore";
 
-import { installYoChatToolRuntime } from "../src/server/tool-runtime-installation.ts";
+import { installChatTools } from "@sweatpants/agent-host/server";
+import { agentCore } from "@sweatpants/tool-runtime-agentcore";
 
 /** Installs one real AgentCore-hosted tool behind the workflow host ephemeral boundary. */
 export function* setupAgentCoreProgramDriverToolRuntime(tool: RuntimeTool): Operation<void> {
@@ -36,9 +36,8 @@ export function* setupAgentCoreProgramDriverToolRuntime(tool: RuntimeTool): Oper
     profiles: [profile],
     defaultProfile: profile.name,
   };
-  yield* createAgentCoreToolInvocationRuntime(runtimeOptions);
-  yield* installYoChatToolRuntime({
-    mode: "agentcore",
+  yield* installChatTools({
+    execution: agentCore({ runtime: runtimeOptions }),
     samplingProvider,
     tools: [tool],
   });

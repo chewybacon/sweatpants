@@ -34,10 +34,8 @@ import {
   type ProgramDriverJournalStore,
 } from "@sweatpants/durable-chat-runtime/durable-handler";
 import { ProgramDriverEphemeralEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
-import {
-  createLocalToolInvocationRuntime,
-  createToolInvocationEphemeralEffectRegistrations,
-} from "@sweatpants/tool-runtime-local";
+import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
+import { createToolInvocationEphemeralEffectRegistrations } from "@sweatpants/tool-session/execution";
 import {
   setupAgentCoreProgramDriverToolRuntime,
   useAgentCoreProgramDriverAcceptance,

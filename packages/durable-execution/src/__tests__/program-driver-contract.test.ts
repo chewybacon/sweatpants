@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Json } from "@sweatpants/foundation";
 
 import { programRouteDriverKind } from "../program-driver-contract.ts";
 
@@ -7,7 +8,7 @@ describe("program route discrimination", () => {
     expect(programRouteDriverKind({ driverKind: "worker", profile: "isolated" })).toBe("worker");
   });
 
-  it.each([null, {}, { kind: "worker" }, { driverKind: "" }])(
+  it.each<Json>([null, {}, { kind: "worker" }, { driverKind: "" }])(
     "rejects a route without a bound driver kind: %j",
     (route) => {
       expect(() => programRouteDriverKind(route)).toThrow(/Program route/);

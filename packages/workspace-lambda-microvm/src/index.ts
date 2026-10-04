@@ -114,7 +114,7 @@ export function createLambdaMicrovmWorkspaceManager(
   const runner =
     options.runner ??
     createAwsCliCommandRunner({
-      ...(options.profile ? { profile: options.profile } : {}),
+      profile: options.profile || undefined,
       region: options.region,
     });
   const leases = new Map<string, LambdaMicrovmWorkspaceLease>();

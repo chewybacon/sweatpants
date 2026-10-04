@@ -1,5 +1,5 @@
+import { EventSchemas } from "@ag-ui/core/schemas";
 import {
-  EventSchemas,
   EventType,
   type ActivityDeltaEvent,
   type ActivitySnapshotEvent,
@@ -460,11 +460,8 @@ function normalizeActivityPatch(
     ) {
       patchInvalid("public activity text fields require strings", `${path}[${index}].value`);
     }
-    return {
-      op: input.op,
-      path: patchPath,
-      ...(patchJsonValue !== undefined ? { value: patchJsonValue } : {}),
-    };
+    if (input.op === "remove") return { op: "remove", path: patchPath };
+    return { op: input.op, path: patchPath, value: patchJsonValue! };
   });
 }
 
@@ -531,10 +528,10 @@ function normalizeAGUIEventResult(envelope: Record<string, unknown>): ParseResul
 
   try {
     if (type === EventType.ACTIVITY_SNAPSHOT) {
-      return success(decodeActivitySnapshot(input.value));
+      return success({ ...parsed.value, ...decodeActivitySnapshot(input.value) });
     }
     if (type === EventType.ACTIVITY_DELTA) {
-      return success(decodeActivityDelta(input.value));
+      return success({ ...parsed.value, ...decodeActivityDelta(input.value) });
     }
     if (type === EventType.CUSTOM) {
       const custom = parsed.value as AGUIEvent & { name?: string };

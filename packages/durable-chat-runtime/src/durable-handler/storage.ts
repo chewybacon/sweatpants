@@ -246,7 +246,7 @@ export function openScopedSqliteChatStorage(
         const handle = yield* openBetterSqliteStorage(databasePath, {
           migrate: true,
           wal: true,
-          ...(databaseBinding ? { database: databaseBinding } : {}),
+          database: databaseBinding,
         });
         // Caller-owned bindings are closed by their owner (REQ-005).
         if (!databaseMode) {
@@ -256,7 +256,7 @@ export function openScopedSqliteChatStorage(
         resolve({
           conversationStore: handle.storage.conversationStore,
           executionStore: handle.storage.executionStore,
-          ...(config.profile ? { profile: config.profile } : {}),
+          profile: config.profile,
         });
         yield* suspend();
       })
@@ -291,10 +291,8 @@ export function openScopedPostgresChatStorage(
           openPostgresStorage({
             connectionString: config.connectionString,
             migrate: true,
-            ...(config.maxPoolSize !== undefined ? { maxPoolSize: config.maxPoolSize } : {}),
-            ...(config.synchronousCommit !== undefined
-              ? { synchronousCommit: config.synchronousCommit }
-              : {}),
+            maxPoolSize: config.maxPoolSize,
+            synchronousCommit: config.synchronousCommit,
           }),
         );
         yield* ensure(() => handle.close());
@@ -302,7 +300,7 @@ export function openScopedPostgresChatStorage(
         resolve({
           conversationStore: handle.storage.conversationStore,
           executionStore: handle.storage.executionStore,
-          ...(config.profile ? { profile: config.profile } : {}),
+          profile: config.profile,
         });
         yield* suspend();
       })
@@ -331,14 +329,14 @@ export function resolveChatStorageDrivers(config: ChatStorageConfig): ResolvedCh
     return {
       conversationStore: config.conversationStore,
       executionStore: config.executionStore,
-      ...(config.profile ? { profile: config.profile } : {}),
+      profile: config.profile,
     };
   }
   if (config.kind === "memory") {
     return {
       conversationStore: createMemoryConversationStore(),
       executionStore: createMemoryExecutionStore(),
-      ...(config.profile ? { profile: config.profile } : {}),
+      profile: config.profile,
     };
   }
   return null;

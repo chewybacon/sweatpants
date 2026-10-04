@@ -597,9 +597,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
           // Track token usage
           const estimatedTokens = estimateTokensFromConversation({
-            ...(sampleOptions.systemPrompt !== undefined
-              ? { systemPrompt: sampleOptions.systemPrompt }
-              : {}),
+            systemPrompt: sampleOptions.systemPrompt,
             messages,
             completion: result.text,
           });
@@ -785,7 +783,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
               return {
                 text: result.text,
-                ...(result.model !== undefined && { model: result.model }),
+                model: result.model,
                 stopReason: "toolUse" as const,
                 toolCalls: result.toolCalls,
                 exchange: resultWithExchange.exchange,
@@ -908,8 +906,8 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
                 return {
                   text: result.text,
-                  ...(result.model !== undefined && { model: result.model }),
-                  ...(result.stopReason !== undefined && { stopReason: result.stopReason }),
+                  model: result.model,
+                  stopReason: result.stopReason,
                   parsed: parsedResult.value,
                   exchange,
                 };

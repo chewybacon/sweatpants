@@ -1,8 +1,7 @@
 {
     "extends": "@sweatpants/ts-config/tsconfig.app.json",
     "compilerOptions": {
-        "customConditions": ["development"],
-        "noPropertyAccessFromIndexSignature": false
+        "customConditions": ["development"]
     },
     "include": ["src/**/*"],
     "exclude": ["node_modules", "dist"],

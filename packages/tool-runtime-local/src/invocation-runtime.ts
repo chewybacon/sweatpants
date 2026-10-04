@@ -68,7 +68,7 @@ function resolveWorkerUrl(workerUrl: string | URL, isDev?: boolean): string | UR
   return workerUrl;
 }
 
-interface LocalToolInvocationResourceFactory extends ToolInvocationResourceFactory {
+export interface LocalToolInvocationResourceFactory extends ToolInvocationResourceFactory {
   activeIds(): readonly string[];
   drained(): Operation<void>;
 }
@@ -78,7 +78,7 @@ interface LocalToolInvocationResourceFactory extends ToolInvocationResourceFacto
  * creation commands to it; invocation tasks are its children and therefore
  * survive request teardown without retaining a foreign Scope handle.
  */
-function* createLocalToolInvocationResourceFactory(
+export function* createLocalToolInvocationResourceFactory(
   options: LocalToolInvocationRuntimeOptions,
 ): Operation<LocalToolInvocationResourceFactory> {
   return yield* resource(function* (provide) {
@@ -143,7 +143,7 @@ function* createLocalToolInvocationResourceFactory(
       }
       return yield* createToolInvocationExecution(inlineTool!, params, {
         sessionId: request.invocationId,
-        ...(options.defaultTimeout === undefined ? {} : { timeout: options.defaultTimeout }),
+        timeout: options.defaultTimeout,
       });
     }
 

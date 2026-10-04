@@ -35,10 +35,8 @@ import {
 } from "@sweatpants/tool-session/ephemeral";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { NULL_RESULT_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
-import {
-  createLocalToolInvocationRuntime,
-  createToolInvocationEphemeralEffectRegistrations,
-} from "@sweatpants/tool-runtime-local";
+import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
+import { createToolInvocationEphemeralEffectRegistrations } from "@sweatpants/tool-session/execution";
 
 const parentManifest = defineDurableProgramManifest<null, Json>({
   programId: "acceptance.abort-signal-parent",

@@ -158,12 +158,12 @@ export const WorkerSessionApi = createApi("worker-session", {
       type: "sample_request",
       sampleId,
       messages,
-      ...(request.systemPrompt !== undefined && { systemPrompt: request.systemPrompt }),
-      ...(request.maxTokens !== undefined && { maxTokens: request.maxTokens }),
-      ...(request.modelPreferences !== undefined && { modelPreferences: request.modelPreferences }),
-      ...(request.tools !== undefined && { tools: request.tools }),
-      ...(request.toolChoice !== undefined && { toolChoice: request.toolChoice }),
-      ...(request.schema !== undefined && { schema: request.schema }),
+      systemPrompt: request.systemPrompt,
+      maxTokens: request.maxTokens,
+      modelPreferences: request.modelPreferences,
+      tools: request.tools,
+      toolChoice: request.toolChoice,
+      schema: request.schema,
     });
 
     const result = yield* queue.next();

@@ -145,9 +145,7 @@ function createResolvedDurableChatEndpoints(
     {
       projectionTokens,
       authorizeHistoryRead: composition.authorizeHistoryRead,
-      ...(config.projectionTokenTtlMs === undefined
-        ? {}
-        : { projectionTokenTtlMs: config.projectionTokenTtlMs }),
+      projectionTokenTtlMs: config.projectionTokenTtlMs,
     },
     conversationStore,
   );

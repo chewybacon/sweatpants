@@ -289,3 +289,15 @@ export type {
   // Error types
   McpHandlerErrorCode,
 } from "./handler/index.ts";
+
+export {
+  createMcpContinuations,
+  decodeMcpFormResponse,
+  McpContinuationError,
+} from "./continuations.ts";
+export type {
+  McpContinuations,
+  McpContinuationBinding,
+  McpContinuationReference,
+  McpFormResponse,
+} from "./continuations.ts";

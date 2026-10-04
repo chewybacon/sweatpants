@@ -10,13 +10,9 @@ import { workerTools } from "./worker-tools";
 import { bookFlightTool } from "../tools/book-flight/tool";
 import { askQuestion } from "../tools/general/ask-question/tool";
 import { pickCard } from "../tools/pick-card/durable";
-import { playTttTool } from "../tools/play-ttt/tool";
 import { tictactoeTool } from "../tools/tictactoe/tool";
 
-/** Complete tool inventory in stable (alphabetical) order. */
-export const allTools = [...workerTools, pickCard, playTttTool].sort((a, b) =>
-  a.name.localeCompare(b.name),
-);
+export { tools as allTools } from "./tool-definitions";
 
 /** Server-composition-owned ordinary interactive tools. */
 export const mcpPluginTools = [askQuestion, bookFlightTool, tictactoeTool] as const;

@@ -117,7 +117,7 @@ export function createToolInvocationExecution<
       params: validatedParams,
       callId: sessionId,
       signal: invocationSignal,
-      ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
+      systemPrompt: options.systemPrompt,
     };
     const host = createBridgeHost(hostConfig);
 

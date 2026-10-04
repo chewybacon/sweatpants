@@ -57,15 +57,9 @@ export function createInMemoryShellDrivers(options: InMemoryJournalAuthorityOpti
           ).sha,
           keyring: options.keyring,
           schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
-          ...(options.maxOutcomeBytes === undefined
-            ? {}
-            : { maxOutcomeBytes: options.maxOutcomeBytes }),
-          ...(options.emissionPolicy === undefined
-            ? {}
-            : { emissionPolicy: options.emissionPolicy }),
-          ...(options.decisionDiagnostics === undefined
-            ? {}
-            : { decisionDiagnostics: options.decisionDiagnostics }),
+          maxOutcomeBytes: options.maxOutcomeBytes,
+          emissionPolicy: options.emissionPolicy,
+          decisionDiagnostics: options.decisionDiagnostics,
           liveEffectTargets: liveEffectTargets(selectedState),
         };
         const transition = decideAuthorityTransition({
@@ -90,15 +84,9 @@ export function createInMemoryShellDrivers(options: InMemoryJournalAuthorityOpti
           journalHeadDigest: "",
           keyring: options.keyring,
           schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
-          ...(options.maxOutcomeBytes === undefined
-            ? {}
-            : { maxOutcomeBytes: options.maxOutcomeBytes }),
-          ...(options.emissionPolicy === undefined
-            ? {}
-            : { emissionPolicy: options.emissionPolicy }),
-          ...(options.decisionDiagnostics === undefined
-            ? {}
-            : { decisionDiagnostics: options.decisionDiagnostics }),
+          maxOutcomeBytes: options.maxOutcomeBytes,
+          emissionPolicy: options.emissionPolicy,
+          decisionDiagnostics: options.decisionDiagnostics,
         },
         query,
       );

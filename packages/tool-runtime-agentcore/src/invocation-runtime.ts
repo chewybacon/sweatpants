@@ -60,9 +60,9 @@ function remoteResource(
   };
 }
 
-export function* createAgentCoreToolInvocationRuntime(
+export function* createAgentCoreToolInvocationResourceFactory(
   options: AgentCoreToolInvocationRuntimeOptions,
-): Operation<void> {
+): Operation<ToolInvocationResourceFactory> {
   const persistence = options.persistence ?? { kind: "memory" };
   const stores =
     persistence.kind === "redis"
@@ -84,11 +84,9 @@ export function* createAgentCoreToolInvocationRuntime(
     stores,
     runtimeClient: options.runtimeClient,
     profiles: options.profiles,
-    ...(options.defaultProfile === undefined ? {} : { defaultProfile: options.defaultProfile }),
-    ...(options.now === undefined ? {} : { now: options.now }),
-    ...(options.createRuntimeSessionId === undefined
-      ? {}
-      : { createRuntimeSessionId: options.createRuntimeSessionId }),
+    defaultProfile: options.defaultProfile,
+    now: options.now,
+    createRuntimeSessionId: options.createRuntimeSessionId,
   });
   const factory: ToolInvocationResourceFactory = {
     *create(request: StartToolInvocation) {
@@ -111,6 +109,13 @@ export function* createAgentCoreToolInvocationRuntime(
     },
   };
 
+  return factory;
+}
+
+export function* createAgentCoreToolInvocationRuntime(
+  options: AgentCoreToolInvocationRuntimeOptions,
+): Operation<void> {
+  const factory = yield* createAgentCoreToolInvocationResourceFactory(options);
   yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(factory));
   yield* ToolInvocationEventSourcePort.installDriver({
     *open(invocationId) {

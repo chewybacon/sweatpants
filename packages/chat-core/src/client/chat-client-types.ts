@@ -56,6 +56,7 @@ export interface ChatLocalPart {
 }
 
 export interface ChatUIMessage<TLocalPart extends ChatLocalPart = never> {
+  readonly subagentRunId?: string;
   readonly id: string;
   readonly role: "user" | "assistant" | "system";
   readonly parts: readonly ChatUIPart<TLocalPart>[];

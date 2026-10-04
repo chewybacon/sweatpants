@@ -315,7 +315,7 @@ export function* composeChatExecutionRuntime(
         modelContextSourceResolver,
         modelContextSourceStager: (context) =>
           stageModelContextSource(context, environment.sessionId),
-        ...(environment.native?.setup ? { setup: environment.native.setup } : {}),
+        setup: environment.native?.setup,
       },
       drive,
     );

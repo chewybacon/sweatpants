@@ -1,6 +1,6 @@
+import { durableEffectKey } from "@sweatpants/durable-effects";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { call, type Operation } from "effection";
-import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
@@ -10,11 +10,15 @@ import {
 } from "@sweatpants/durable-execution";
 import { type Json } from "@sweatpants/foundation";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
+import { local } from "@sweatpants/tool-runtime-local";
+import { installChatTools, createModelSamplingProvider } from "@sweatpants/agent-host/server";
+import { type ChatTool } from "@sweatpants/tool-session/execution";
+import { agentCore } from "@sweatpants/tool-runtime-agentcore";
+import { yoChatDurableProgramWorkerUrl } from "./tool-worker-config";
+import { createDrawPickCardsRegistration } from "../tools/pick-card/durable-effects";
 import {
   createAgentCoreDurableProgramDriver,
   createAgentCoreRemoteToolRuntimeClient,
-  createAgentCoreToolInvocationRuntime,
   createAwsSdkAgentCoreInvoker,
   createAgentCoreWebSocketProgramTransport,
   createSigV4AgentCoreWebSocketConnector,
@@ -28,14 +32,12 @@ import { getSharedRedisClient } from "@/lib/shared-redis";
 import { pickCard } from "../tools/pick-card/durable";
 import { playTttTool } from "../tools/play-ttt/tool";
 import { allTools } from "./tools";
-import { createPluginSamplingProvider } from "./plugin-sampling-provider";
-import { installYoChatToolRuntime } from "./tool-runtime-installation";
+import { pi } from "@sweatpants/model-provider-pi-ai";
+import { defaultYoChatModel } from "./default-model";
 
 // The Vite plugin resolves this to the hand-authored worker entry. It is used
 // only when the single selected runtime is local.
 import toolWorkerUrl from "./tool-worker.ts?modulePath";
-
-let sharedSamplingProvider: ToolSessionSamplingProvider | null = null;
 
 function* createAgentCorePersistence(): Operation<AgentCoreToolInvocationPersistence> {
   const redis = yield* call(() => getSharedRedisClient());
@@ -52,7 +54,7 @@ function* createAgentCorePersistence(): Operation<AgentCoreToolInvocationPersist
   return { kind: "redis", client, options: redisOptions };
 }
 
-function* installAgentCoreInvocationRuntime(): Operation<void> {
+function* agentCoreRuntimeOptions() {
   if (!env.AGENTCORE_RUNTIME_ARN) {
     throw new Error("AGENTCORE_RUNTIME_ARN is required when MCP_TOOL_RUNTIME=agentcore");
   }
@@ -76,35 +78,7 @@ function* installAgentCoreInvocationRuntime(): Operation<void> {
     profiles: [profile],
     defaultProfile: profile.name,
   };
-  yield* createAgentCoreToolInvocationRuntime(registryOptions);
-}
-
-function redactAgentCoreArn(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const suffix = value.split("/").pop()?.slice(-8) ?? "unknown";
-  return `[redacted-agentcore-runtime:${suffix}]`;
-}
-
-function* installSelectedInvocationRuntime(): Operation<void> {
-  if (env.MCP_TOOL_RUNTIME === "agentcore") {
-    console.info("[yo-chat] tool runtime: agentcore", {
-      runtimeArn: redactAgentCoreArn(env.AGENTCORE_RUNTIME_ARN),
-      endpointName: env.AGENTCORE_ENDPOINT_NAME,
-      region: env.AGENTCORE_REGION,
-      toolCount: allTools.length,
-    });
-    yield* installAgentCoreInvocationRuntime();
-    return;
-  }
-  console.info("[yo-chat] tool runtime: local", { toolCount: allTools.length });
-  yield* createLocalToolInvocationRuntime({
-    worker: {
-      workerUrl: toolWorkerUrl,
-      isDev: process.env["NODE_ENV"] !== "production",
-    },
-  });
+  return registryOptions;
 }
 
 function durableAgentCoreInstallation() {
@@ -164,7 +138,9 @@ function durableAgentCoreInstallation() {
     ),
     availableEffects: new Set<string>(
       readyTools.flatMap((tool) =>
-        Object.values(tool.manifest.effects).map((effect) => `${effect.name}@${effect.version}`),
+        Object.values(tool.manifest.effects).map((effect) =>
+          durableEffectKey(effect.name, effect.version),
+        ),
       ),
     ),
     availableSchemaDigests: new Set<string>([
@@ -175,7 +151,7 @@ function durableAgentCoreInstallation() {
         tool.artifacts.catalog.map((entry) => entry.descriptor.digest),
       ),
     ]),
-    ...(developmentPrograms ? { developmentPrograms } : {}),
+    developmentPrograms,
   };
 }
 
@@ -242,16 +218,57 @@ function developmentProgramReleases():
   ];
 }
 
-/** Installs all discovered tools into the single selected runtime. */
+/** One authored list, with placement selected independently from execution kind. */
+export function yoChatToolConfig() {
+  const effects = [createDrawPickCardsRegistration()];
+  if (env.MCP_TOOL_RUNTIME !== "agentcore") {
+    return {
+      tools: allTools,
+      effects,
+      execution: local({
+        profile: "yo-chat-durable-tools",
+        worker: toolWorkerUrl,
+        durableWorker: yoChatDurableProgramWorkerUrl,
+        isDev: process.env.NODE_ENV !== "production",
+      }),
+    };
+  }
+  const durable = durableAgentCoreInstallation();
+  const programs: readonly ChatTool[] =
+    durable?.developmentPrograms?.map((entry) => entry.tool) ?? (durable ? [pickCard] : []);
+  return {
+    tools: [...allTools.filter((tool) => tool.execution !== "crank_native"), ...programs],
+    effects,
+    execution: agentCore({
+      runtime: agentCoreRuntimeOptions,
+      durable: durable
+        ? {
+            ...durable,
+            route: (name): Json => {
+              const entry = durable.developmentPrograms?.find((entry) => entry.tool.name === name);
+              return entry
+                ? {
+                    development: {
+                      collection: entry.collection,
+                      publicKey: entry.publicKey,
+                      evaluatorAbi: entry.evaluatorAbi,
+                    },
+                  }
+                : {};
+            },
+          }
+        : undefined,
+    }),
+  };
+}
+
+/** Scoped entry for host-level acceptance tests and custom app hosts. */
 export function* setupYoChatPluginsAndRuntime(): Operation<void> {
-  sharedSamplingProvider ??= createPluginSamplingProvider();
-  yield* installSelectedInvocationRuntime();
-  const agentCoreDurable =
-    env.MCP_TOOL_RUNTIME === "agentcore" ? durableAgentCoreInstallation() : undefined;
-  yield* installYoChatToolRuntime({
-    mode: env.MCP_TOOL_RUNTIME,
-    samplingProvider: sharedSamplingProvider,
-    tools: [...allTools],
-    ...(agentCoreDurable ? { agentCoreDurable } : {}),
+  const selection = defaultYoChatModel();
+  yield* installChatTools({
+    ...yoChatToolConfig(),
+    samplingProvider: createModelSamplingProvider(
+      pi({ provider: selection.provider, model: selection.id }),
+    ),
   });
 }

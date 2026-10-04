@@ -29,12 +29,12 @@ import {
   type ToolInvocationHost,
   type ToolInvocationResume,
   type ToolInvocationTurn,
-} from "@sweatpants/tool-session";
+} from "../index.ts";
 import {
   EPHEMERAL_TOOL_CONTINUE_EFFECT,
   EPHEMERAL_TOOL_START_EFFECT,
   ephemeralToolInvocationId,
-} from "@sweatpants/tool-session/ephemeral";
+} from "../ephemeral.ts";
 
 const CONTINUATION_SCHEME = "sweatpants/tool-session-v1";
 

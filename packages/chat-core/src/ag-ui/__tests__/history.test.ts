@@ -134,14 +134,14 @@ describe("AG-UI and composed Chat History conversion", () => {
     ]);
   });
 
-  it("rejects binary content and malformed tool arguments", () => {
+  it("rejects unresolved file references and malformed tool arguments", () => {
     expect(() =>
       agUiMessageToChatHistoryEntry({
         id: "user-1",
         role: "user",
-        content: [{ type: "binary", mimeType: "application/octet-stream", data: "AA==" }],
+        content: [{ type: "image", source: { type: "file", value: "file-123" } }],
       }),
-    ).toThrowError(expect.objectContaining({ code: "unsupported-binary-content" }));
+    ).toThrowError(expect.objectContaining({ code: "unsupported-content" }));
 
     expect(() =>
       agUiMessageToChatHistoryEntry({

@@ -85,10 +85,10 @@ export function createChatClient(options: CreateReactChatClientOptions): ReactCh
   if (runtime) {
     return runtime.createClient({
       ...headlessOptions,
-      ...(api !== undefined ? { api } : {}),
-      ...(pipeline !== undefined ? { pipeline } : {}),
-      ...(plugins !== undefined ? { plugins } : {}),
-      ...(options.scheduler !== undefined ? { scheduler: options.scheduler } : {}),
+      api,
+      pipeline,
+      plugins,
+      scheduler: options.scheduler,
     });
   }
   const transport: ChatTransportOptions | undefined =
@@ -96,18 +96,18 @@ export function createChatClient(options: CreateReactChatClientOptions): ReactCh
     (api !== undefined || headlessOptions.fetcher !== undefined
       ? {
           http: {
-            ...(api !== undefined ? { api } : {}),
-            ...(headlessOptions.fetcher !== undefined ? { fetch: headlessOptions.fetcher } : {}),
+            api,
+            fetch: headlessOptions.fetcher,
           },
         }
       : undefined);
-  const interaction = new ReactInteractionRuntime(plugins === undefined ? {} : { plugins });
+  const interaction = new ReactInteractionRuntime({ plugins });
   const clientOptions = {
     ...headlessOptions,
-    ...(transport !== undefined ? { transport } : {}),
+    transport,
     setup: reactSetup(headlessOptions.setup, options.scheduler),
     interaction,
-    ...(pipeline !== undefined ? { pipeline } : {}),
+    pipeline,
   } satisfies HeadlessChatClientOptions<ReactRenderPart>;
   return createHeadlessChatClient(clientOptions);
 }
@@ -123,19 +123,17 @@ export function createChatRuntime(options: HeadlessChatRuntimeOptions = {}): Rea
         (api !== undefined || headlessOptions.fetcher !== undefined
           ? {
               http: {
-                ...(api !== undefined ? { api } : {}),
-                ...(headlessOptions.fetcher !== undefined
-                  ? { fetch: headlessOptions.fetcher }
-                  : {}),
+                api,
+                fetch: headlessOptions.fetcher,
               },
             }
           : undefined);
       return runtime.createClient({
         ...headlessOptions,
-        ...(transport !== undefined ? { transport } : {}),
+        transport,
         setup: reactSetup(headlessOptions.setup, clientOptions.scheduler),
-        interaction: new ReactInteractionRuntime(plugins === undefined ? {} : { plugins }),
-        ...(pipeline !== undefined ? { pipeline } : {}),
+        interaction: new ReactInteractionRuntime({ plugins }),
+        pipeline,
       });
     },
     close: () => runtime.close(),
@@ -384,29 +382,25 @@ function createPendingOwnedChat(options: OwnedUseChatOptions): PendingOwnedChat 
           threadId: options.threadId,
           clientId,
           runtime,
-          ...(options.api !== undefined ? { api: options.api } : {}),
-          ...(options.fetcher !== undefined ? { fetcher: options.fetcher } : {}),
-          ...(options.connection !== undefined ? { connection: options.connection } : {}),
-          ...(options.transport !== undefined ? { transport: options.transport } : {}),
-          ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
-          ...(options.eventMiddleware !== undefined
-            ? { eventMiddleware: options.eventMiddleware }
-            : {}),
-          ...(options.setup !== undefined ? { setup: options.setup } : {}),
+          api: options.api,
+          fetcher: options.fetcher,
+          connection: options.connection,
+          transport: options.transport,
+          middleware: options.middleware,
+          eventMiddleware: options.eventMiddleware,
+          setup: options.setup,
           initialize:
             options.initialize ??
             (function* (control): Operation<void> {
               yield* call(() => control.reconnect());
             } satisfies NonNullable<HeadlessChatClientOptions<ReactRenderPart>["initialize"]>),
-          ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
-          ...(options.pipeline !== undefined ? { pipeline: options.pipeline } : {}),
-          ...(options.scheduler !== undefined ? { scheduler: options.scheduler } : {}),
-          ...(options.queue !== undefined ? { queue: options.queue } : {}),
-          ...(options.state !== undefined ? { state: options.state } : {}),
-          ...(options.context !== undefined ? { context: options.context } : {}),
-          ...(options.forwardedProps !== undefined
-            ? { forwardedProps: options.forwardedProps }
-            : {}),
+          plugins: options.plugins,
+          pipeline: options.pipeline,
+          scheduler: options.scheduler,
+          queue: options.queue,
+          state: options.state,
+          context: options.context,
+          forwardedProps: options.forwardedProps,
         };
         attach(createChatClient(createdOptions));
       } catch (error) {

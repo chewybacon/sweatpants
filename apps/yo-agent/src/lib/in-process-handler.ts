@@ -12,10 +12,8 @@ import {
   setupInMemoryDurableStreams,
   type DurableStreamsOwner,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import {
-  createLocalToolInvocationRuntime,
-  installLocalToolRuntime,
-} from "@sweatpants/tool-runtime-local";
+import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
+import { installInvocationToolRuntime } from "@sweatpants/tool-session/execution";
 import type { Operation } from "effection";
 
 const piProvider = createPiAiModelProvider();
@@ -62,9 +60,7 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
     yield* createLocalToolInvocationRuntime({
       worker: { workerUrl, isDev: false },
     });
-    yield* installLocalToolRuntime({
-      tools,
-    });
+    yield* installInvocationToolRuntime({ id: "local", tools });
   };
 
   const setupMaxIterations = function* (_ctx: ChatHandlerSetupContext): Operation<void> {

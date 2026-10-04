@@ -13,11 +13,8 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool, isExecutableToolContract, projectToolContract } from "@sweatpants/agent-sdk";
-import {
-  createLocalToolInvocationRuntime,
-  createLocalToolRuntimeDriver,
-  ToolInvocationHostPort,
-} from "../src/index.ts";
+import { createLocalToolInvocationRuntime, ToolInvocationHostPort } from "../src/index.ts";
+import { createInvocationToolRuntimeDriver } from "@sweatpants/tool-session/execution";
 
 const workerFixtureCandidates = [
   resolve(process.cwd(), "src/__tests__/fixtures/tool-worker-bootstrap.mjs"),
@@ -72,7 +69,8 @@ describe("portable tool contract projection (F4)", () => {
         worker: workerConfig,
       });
       const projection = projectToolContract(echoTool);
-      const driver = yield* createLocalToolRuntimeDriver({
+      const driver = yield* createInvocationToolRuntimeDriver({
+        id: "local",
         tools: [projection],
         samplingProvider: {
           *sample() {

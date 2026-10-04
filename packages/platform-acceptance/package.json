@@ -12,7 +12,7 @@
         "test:sqlite": "PLATFORM_ACCEPTANCE_STORAGE=sqlite vitest run --maxWorkers=1 src/__tests__/reconnect.acceptance.test.ts src/__tests__/process/cancellation.acceptance.test.ts src/__tests__/host-replacement.acceptance.test.ts src/__tests__/stale-elicit.acceptance.test.ts src/__tests__/pending-elicit-reconnect.acceptance.test.ts src/__tests__/message-order.acceptance.test.ts src/__tests__/durable-tool.acceptance.test.ts src/__tests__/windowed-runtime.acceptance.test.ts src/__tests__/history.acceptance.test.ts src/__tests__/conversation-admission.acceptance.test.ts src/__tests__/process/storage-spine.test.ts src/__tests__/process/storage-spine-defects.acceptance.test.ts"
     },
     "dependencies": {
-        "@ag-ui/core": "0.0.57",
+        "@ag-ui/core": "1.0.1",
         "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/chat-contract": "workspace:*",

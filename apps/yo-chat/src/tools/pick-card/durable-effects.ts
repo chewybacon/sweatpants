@@ -1,6 +1,5 @@
 import { type DurableEffectRegistration } from "@sweatpants/durable-effects";
-import { effectRuntimeValidators } from "@sweatpants/agent-sdk";
-import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
+import { implementEffect } from "@sweatpants/agent-sdk";
 import { sha256, type Json } from "@sweatpants/foundation";
 
 import { createCardDeck } from "./cards";
@@ -8,29 +7,24 @@ import { drawPickCards } from "./durable";
 
 /** Host-side deterministic draw handler keyed by the durable pull identity. */
 export function createDrawPickCardsRegistration(): DurableEffectRegistration {
-  return createDurableEffectRegistration(
-    drawPickCards,
-    { mode: "idempotent", mechanism: "pull_id_key" },
-    function* (input, context) {
-      const count = drawCount(input);
-      const ordered = createCardDeck().map((card) => ({
-        card,
-        order: sha256(`${context.pullId}:${drawPickCards.version}:${card.rank}:${card.suit}`),
-      }));
-      const cards = [];
-      while (cards.length < count) {
-        let winnerIndex = 0;
-        for (let index = 1; index < ordered.length; index += 1) {
-          if (ordered[index]!.order < ordered[winnerIndex]!.order) {
-            winnerIndex = index;
-          }
+  return implementEffect(drawPickCards, function* (input, context) {
+    const count = drawCount(input);
+    const ordered = createCardDeck().map((card) => ({
+      card,
+      order: sha256(`${context.pullId}:${drawPickCards.version}:${card.rank}:${card.suit}`),
+    }));
+    const cards = [];
+    while (cards.length < count) {
+      let winnerIndex = 0;
+      for (let index = 1; index < ordered.length; index += 1) {
+        if (ordered[index]!.order < ordered[winnerIndex]!.order) {
+          winnerIndex = index;
         }
-        cards.push(ordered.splice(winnerIndex, 1)[0]!.card);
       }
-      return { status: "ok", value: { cards } };
-    },
-    effectRuntimeValidators(drawPickCards),
-  );
+      cards.push(ordered.splice(winnerIndex, 1)[0]!.card);
+    }
+    return { cards };
+  });
 }
 
 function drawCount(input: Json): number {

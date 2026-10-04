@@ -186,7 +186,7 @@ function toolMessage(
     role: "tool",
     toolCallId: message.toolCallId,
     name: toolName,
-    content: message.content,
+    content: contentFromAgUi(message.content, "$.content"),
     isError: message.error !== undefined,
   };
 }
@@ -309,26 +309,19 @@ function toolHistoryToAgUiMessage(
       `tool ${message.toolCallId} has no matching preceding assistant call`,
     );
   }
-  if (typeof message.content !== "string") {
-    throw historyConversion(
-      "unsupported-content",
-      `${path}.message.content`,
-      "AG-UI tool messages only represent string content",
-    );
-  }
   return message.isError
     ? {
         id,
         role: "tool",
         toolCallId: message.toolCallId,
-        content: message.content,
-        error: message.content,
+        content: contentToAgUiUserContent(message.content),
+        error: typeof message.content === "string" ? message.content : "Tool execution failed",
       }
     : {
         id,
         role: "tool",
         toolCallId: message.toolCallId,
-        content: message.content,
+        content: contentToAgUiUserContent(message.content),
       };
 }
 
@@ -344,13 +337,6 @@ function contentToAgUiUserContent(value: ChatContent): AgUiUserMessage["content"
 }
 
 function inputPartToCanonical(part: InputContentPart, path: string): ChatContentPart {
-  if (part.type === "binary") {
-    throw conversion(
-      "unsupported-binary-content",
-      path,
-      "AG-UI binary content has no canonical Chat Content variant",
-    );
-  }
   if (part.type === "text") return { type: "text", text: part.text };
   try {
     return decodeChatContentPart(

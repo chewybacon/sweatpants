@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { run } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import { withConversationStore } from "./with-conversation-store.ts";
 import {
   hydratePublicRoots,
@@ -38,7 +39,7 @@ const idle = {
 };
 
 function messageEvents(prefix: string, count: number) {
-  return Array.from({ length: count }, (_, index) => {
+  return Array.from({ length: count }, (_, index): Json[] => {
     const id = `${prefix}-${index}`;
     return [
       { type: "TEXT_MESSAGE_START", messageId: id, role: "user" },

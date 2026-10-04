@@ -1,3 +1,4 @@
+import { publicSubagentRunId } from "./program-driver-chat-attribution.ts";
 import { EventType } from "@ag-ui/core";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
@@ -219,7 +220,12 @@ export function publicActivityElicitSnapshots(
       },
     }),
   );
-  return snapshots;
+  const subagentRunId = publicSubagentRunId(index, pending.taskId);
+  return subagentRunId === undefined
+    ? snapshots
+    : snapshots.map((event) =>
+        event.messageId === `elicit:${pending.pullId}` ? { ...event, subagentRunId } : event,
+      );
 }
 
 function parentExecutionNodeId(

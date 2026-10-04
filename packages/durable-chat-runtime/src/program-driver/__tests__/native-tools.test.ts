@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { DurableTool } from "@sweatpants/durable-execution";
 import {
   requiresFencedActivation,
-  type ProgramDriverNativeToolBinding,
   type ProgramDriverNativeToolComposition,
 } from "../native-tools.ts";
+import { type ToolExecutionBinding } from "@sweatpants/tool-session/execution";
 
 function stubTool(name: string): DurableTool<never, never> {
   return {
@@ -22,7 +22,7 @@ function stubTool(name: string): DurableTool<never, never> {
 }
 
 function composition(
-  bindings: Array<Partial<ProgramDriverNativeToolBinding> & { publicName: string }>,
+  bindings: Array<Partial<ToolExecutionBinding> & { publicName: string }>,
 ): ProgramDriverNativeToolComposition {
   return {
     bindings: new Map(
@@ -32,7 +32,7 @@ function composition(
           tool: stubTool(binding.publicName),
           route: { driverKind: "program" },
           ...binding,
-        } as ProgramDriverNativeToolBinding,
+        } as ToolExecutionBinding,
       ]),
     ),
     drivers: [],

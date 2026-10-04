@@ -23,7 +23,7 @@
         "server:dev": "tsx express-server.ts"
     },
     "dependencies": {
-        "@ag-ui/core": "0.0.57",
+        "@ag-ui/core": "1.0.1",
         "@effectionx/context-api": "catalog:",
         "@radix-ui/react-avatar": "^1.1.11",
         "@radix-ui/react-collapsible": "^1.1.12",

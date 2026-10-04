@@ -93,6 +93,16 @@
                 "default": "./dist/messages.js"
             },
             "default": "./src/messages.ts"
+        },
+        "./execution": {
+            "development": {
+                "import": "./src/execution/index.ts",
+                "types": "./src/execution/index.ts"
+            },
+            "import": {
+                "types": "./dist/execution/index.d.ts",
+                "default": "./dist/execution/index.js"
+            }
         }
     },
     "scripts": {
@@ -109,6 +119,7 @@
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/model-sampling": "workspace:*",
+        "@sweatpants/tool-runtime": "workspace:*",
         "effection": "catalog:",
         "zod": "catalog:"
     },

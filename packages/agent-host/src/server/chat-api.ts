@@ -67,7 +67,7 @@ export function createChatApi(
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      ...(input.signal ? { signal: input.signal } : {}),
+      signal: input.signal,
     });
   };
   // Encode identity as one path segment; reject dot segments that URL would normalize.
@@ -110,7 +110,7 @@ export function createChatApi(
       return endpoints.readChat({
         request,
         conversationId: input.body.conversationId,
-        ...(knownWindowToken ? { knownWindowToken } : {}),
+        knownWindowToken: knownWindowToken || undefined,
       });
     },
     pageHistory,

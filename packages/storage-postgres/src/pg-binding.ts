@@ -98,7 +98,7 @@ export async function openPostgresStorage(
 
   const composition = createPostgresStorageComposition({
     database,
-    ...(options.faultInjection ? { faultInjection: options.faultInjection } : {}),
+    faultInjection: options.faultInjection,
   });
 
   return {
@@ -122,7 +122,7 @@ export async function openPostgresStorageForTest(
   const storage = await openPostgresStorage(options);
   const composition = createPostgresStorageComposition({
     database: storage.database,
-    ...(options.faultInjection ? { faultInjection: options.faultInjection } : {}),
+    faultInjection: options.faultInjection,
   });
   return {
     storage: storage.storage,

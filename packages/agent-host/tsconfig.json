@@ -26,6 +26,18 @@
         },
         {
             "path": "../durable-streams"
+        },
+        {
+            "path": "../tool-runtime"
+        },
+        {
+            "path": "../tool-session"
+        },
+        {
+            "path": "../model-provider"
+        },
+        {
+            "path": "../model-sampling"
         }
     ]
 }
